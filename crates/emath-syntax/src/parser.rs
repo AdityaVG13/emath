@@ -9,9 +9,9 @@
 use crate::lexer::lex;
 use crate::token::{Keyword, Token, TokenKind};
 use crate::tree::{
-    Argument, ArgumentValue, BinaryOp, Binder, BinderKind, CommandArgument, Declaration, Expr,
-    ExprKind, GenericParam, Item, Param, Place, Section, Stmt, StmtKind, Suite, SyntaxTree,
-    TypeExpr, TypeKind, UnaryOp, UseTree, Visibility,
+    Argument, ArgumentValue, BinaryOp, Binder, BinderKind, CommandArgument, Declaration,
+    DeclarationSignature, Expr, ExprKind, GenericParam, Item, Param, Place, Section, Stmt,
+    StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UnaryOp, UseTree, Visibility,
 };
 use emath_core::{limits::Limits, Diagnostics, FileId, Span};
 
@@ -40,7 +40,6 @@ struct Parser {
 }
 
 impl Parser {
-
     fn new(source: &str, file: FileId, limits: &Limits) -> Self {
         let (tokens, lex_diagnostics) = lex(source, file, limits);
         Self {
@@ -396,7 +395,8 @@ impl Parser {
             item_kind,
             as_kind,
             attributes: Vec::new(),
-            sections: suite_as_sections(suite),
+            body: suite.statements,
+            signature: None,
             source: start.cover(self.last_span()),
             head_source: start.cover(self.last_span()),
         })
@@ -408,16 +408,11 @@ impl Parser {
     fn parse_extern_item(&mut self) -> Option<Declaration> {
         let start = self.current_span();
         self.advance(); // `extern`
-        let as_kind = match self.peek().clone() {
-            TokenKind::Ident(what) => {
-                self.advance();
-                what
-            }
-            _ => {
-                self.error_here("E-SYN-110", "expected `operator` or `fn` after `extern`");
-                return None;
-            }
+        let TokenKind::Ident(as_kind) = self.peek().clone() else {
+            self.error_here("E-SYN-110", "expected `operator` or `fn` after `extern`");
+            return None;
         };
+        self.advance();
         let TokenKind::Ident(name) = self.peek().clone() else {
             self.error_here("E-SYN-110", "expected an operator name after `extern`");
             return None;
@@ -428,13 +423,12 @@ impl Parser {
         } else {
             Vec::new()
         };
-        let (_params, _ret) = self.parse_params_after_name()?;
+        let (params, ret) = self.parse_params_after_name()?;
         let suite = if self.eat(&TokenKind::Colon) {
             self.parse_suite()
         } else {
             None
         };
-        let sections = suite.map_or_else(Vec::new, suite_as_sections);
         let source = start.cover(self.last_span());
         Some(Declaration {
             name,
@@ -442,7 +436,8 @@ impl Parser {
             item_kind: "extern".to_string(),
             as_kind,
             attributes: Vec::new(),
-            sections,
+            body: suite.map_or_else(Vec::new, |suite| suite.statements),
+            signature: Some(DeclarationSignature { params, ret }),
             head_source: source,
             source,
         })
@@ -697,9 +692,7 @@ impl Parser {
             | TokenKind::Bang
             | TokenKind::LParen
             | TokenKind::LBracket
-            | TokenKind::Keyword(
-                Keyword::True | Keyword::False | Keyword::Derivative,
-            ) => {
+            | TokenKind::Keyword(Keyword::True | Keyword::False | Keyword::Derivative) => {
                 let expr = self.parse_expr()?;
                 if let Some(stmt) = self.parse_equation_tail(&expr, start) {
                     return Some(stmt);
@@ -888,6 +881,7 @@ impl Parser {
             start,
             StmtKind::FnDecl {
                 visibility,
+                head: "fn".to_string(),
                 name,
                 params,
                 ret,
@@ -1162,9 +1156,7 @@ impl Parser {
 
         // `evaluate <score>:` section heads — but not comparisons
         // (`a < b < c`): the matching `>` must be followed by `:` or `(`.
-        if matches!(self.peek_at(1), TokenKind::Lt)
-            && self.lookahead_matches_lt_angle_head()
-        {
+        if matches!(self.peek_at(1), TokenKind::Lt) && self.lookahead_matches_lt_angle_head() {
             self.advance(); // name
             self.advance(); // <
             let TokenKind::Ident(generic) = self.peek().clone() else {
@@ -1231,7 +1223,6 @@ impl Parser {
         if matches!(self.peek_at(1), TokenKind::Ident(_))
             && matches!(self.peek_at(2), TokenKind::LParen)
         {
-
             // disambiguate from `produce rust.library` style by scanning for a
             // matching `)` followed by `->` or `:`
             if self.looks_like_params_header() {
@@ -1250,7 +1241,8 @@ impl Parser {
                     start,
                     StmtKind::FnDecl {
                         visibility: None,
-                        name: format!("{name} {second}"),
+                        head: name,
+                        name: second,
                         params,
                         ret,
                         suite,
@@ -1275,6 +1267,7 @@ impl Parser {
                 start,
                 StmtKind::FnDecl {
                     visibility: None,
+                    head: "fn".to_string(),
                     name,
                     params,
                     ret,
@@ -1558,7 +1551,6 @@ impl Parser {
         None
     }
 
-
     /// For `<name>:` section heads: scan ahead for a matching `>` that is
     /// followed by `:` or `(` (a section head), not by another comparison
     /// operand (`a < b < c` is an expression).
@@ -1804,7 +1796,10 @@ impl Parser {
         // word into the head. It arrives as `-` then ident when the first
         // word was collected, or as ident `-` ident (head collection stops
         // before the dash now).
-        if head.first().is_some_and(|h| h == "numeric" || h == "safety") {
+        if head
+            .first()
+            .is_some_and(|h| h == "numeric" || h == "safety")
+        {
             if matches!(self.peek(), TokenKind::Minus)
                 && matches!(self.peek_at(1), TokenKind::Ident(_))
             {
@@ -1837,9 +1832,7 @@ impl Parser {
         }
         // `define y = expr` / `method score = score`: a trailing
         // `name = value` argument after the head words.
-        if matches!(self.peek(), TokenKind::Ident(_))
-            && matches!(self.peek_at(1), TokenKind::Eq)
-        {
+        if matches!(self.peek(), TokenKind::Ident(_)) && matches!(self.peek_at(1), TokenKind::Eq) {
             let TokenKind::Ident(name) = self.peek().clone() else {
                 unreachable!()
             };
@@ -2717,9 +2710,7 @@ impl Parser {
                     }
                 }
                 let mut generics = None;
-                if matches!(self.peek(), TokenKind::Lt)
-                    && self.lookahead_has_matching_gt()
-                {
+                if matches!(self.peek(), TokenKind::Lt) && self.lookahead_has_matching_gt() {
                     let save = self.pos;
                     self.advance();
                     if let Some(first_arg) = self.parse_type_expr() {
@@ -2807,14 +2798,5 @@ fn visibility_name(visibility: Visibility) -> &'static str {
     }
 }
 
-/// Convert a declaration body suite into its sections.
-pub fn suite_as_sections(suite: Suite) -> Vec<Section> {
-    suite
-        .statements
-        .into_iter()
-        .filter_map(|stmt| match stmt.kind {
-            StmtKind::Section(section) => Some(section),
-            _ => None,
-        })
-        .collect()
-}
+// Declarations keep their full ordered body (`Declaration.body`); sections
+// are a filtered view via `Declaration::sections()`.

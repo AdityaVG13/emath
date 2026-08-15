@@ -43,9 +43,40 @@ pub struct Declaration {
     pub item_kind: String,
     pub as_kind: String,
     pub attributes: Vec<Attribute>,
-    pub sections: Vec<Section>,
+    /// Ordered body statements. Section-headed blocks (and any other
+    /// statement form) appear in source order; `sections()` filters the
+    /// section statements.
+    pub body: Vec<Stmt>,
+    /// Fn-like declaration signature (`extern operator ...(params) -> Ret`).
+    /// `None` for ordinary declarations.
+    pub signature: Option<DeclarationSignature>,
     pub source: Span,
     pub head_source: Span,
+}
+
+/// Fn-like signature carried on an item (e.g. `extern operator`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeclarationSignature {
+    /// Parameter list.
+    pub params: Vec<Param>,
+    /// Optional result type after `->`.
+    pub ret: Option<TypeExpr>,
+}
+
+impl Declaration {
+    /// Section statements in source order.
+    pub fn sections(&self) -> impl Iterator<Item = &Section> {
+        self.body.iter().filter_map(|stmt| match &stmt.kind {
+            StmtKind::Section(section) => Some(section),
+            _ => None,
+        })
+    }
+
+    /// Owned sections (consumed by admission and goal elaboration).
+    #[must_use]
+    pub fn sections_vec(&self) -> Vec<Section> {
+        self.sections().cloned().collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +122,9 @@ pub enum StmtKind {
     },
     FnDecl {
         visibility: Option<Visibility>,
+        /// Head word: `fn` (V5), or the fn-like section head such as
+        /// `constructor`, `define`, `method` (V6). Preserved losslessly.
+        head: String,
         name: String,
         params: Vec<Param>,
         ret: Option<TypeExpr>,
@@ -312,7 +346,10 @@ pub struct Place {
 pub enum CommandArgument {
     Expr(Expr),
     /// `define y = expr` / `method score = score`: a trailing `name = value`.
-    Assignment { name: String, value: Expr },
+    Assignment {
+        name: String,
+        value: Expr,
+    },
     List(Vec<Expr>),
 }
 

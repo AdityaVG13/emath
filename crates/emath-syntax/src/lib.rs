@@ -105,7 +105,7 @@ mod tests {
         };
         assert_eq!(decl.name, "AffinePolicy");
         assert_eq!(decl.as_kind, "policy");
-        let names: Vec<&str> = decl.sections.iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<&str> = decl.sections().map(|s| s.name.as_str()).collect();
         assert_eq!(
             names,
             [
@@ -119,11 +119,7 @@ mod tests {
                 "compile"
             ]
         );
-        let definitions = decl
-            .sections
-            .iter()
-            .find(|s| s.name == "definitions")
-            .unwrap();
+        let definitions = decl.sections().find(|s| s.name == "definitions").unwrap();
         match &definitions.suite.statements[0].kind {
             StmtKind::Assign { target, value } => {
                 assert_eq!(target.segments, ["score"]);
@@ -139,7 +135,7 @@ mod tests {
         let Item::Declaration(decl) = &tree.items[0] else {
             panic!()
         };
-        let inputs = decl.sections.iter().find(|s| s.name == "inputs").unwrap();
+        let inputs = decl.sections().find(|s| s.name == "inputs").unwrap();
         let StmtKind::FieldDecl { name, .. } = &inputs.suite.statements[0].kind else {
             panic!()
         };
