@@ -1,0 +1,14 @@
+[package]
+name = "emath-calibration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "V7 g8 semantic calibration: example partitions, fitting, held-out challenge, drift, world versioning."
+
+[dependencies]
+emath-term = { path = "../emath-term" }
+emath-world-ir = { path = "../emath-world-ir" }
+
+[lints]
+workspace = true
