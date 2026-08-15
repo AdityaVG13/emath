@@ -23,6 +23,7 @@ members = [
   "crates/emath-term",
   "crates/emath-world-ir",
   "crates/emath-tuning",
+  "crates/emath-agent-protocol",
   "crates/emath-genesis",
   "crates/emath-meaning-provider-api",
   "crates/emath-portfolio",
@@ -65,6 +66,7 @@ emath-cli = { path = "crates/emath-cli" }
 emath-term = { path = "crates/emath-term" }
 emath-world-ir = { path = "crates/emath-world-ir" }
 emath-tuning = { path = "crates/emath-tuning" }
+emath-agent-protocol = { path = "crates/emath-agent-protocol" }
 emath-genesis = { path = "crates/emath-genesis" }
 emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }

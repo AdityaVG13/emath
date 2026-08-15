@@ -31,6 +31,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-agent-protocol"
+version = "0.1.0"
+dependencies = [
+ "emath-portfolio",
+ "emath-term",
+ "emath-tuning",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-artifact"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,16 @@
+[package]
+name = "emath-agent-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "V7 g9 agent-native meaning proposals: submission schema, challenge loop, feedback, capability gates."
+
+[dependencies]
+emath-term = { path = "../emath-term" }
+emath-world-ir = { path = "../emath-world-ir" }
+emath-tuning = { path = "../emath-tuning" }
+emath-portfolio = { path = "../emath-portfolio" }
+
+[lints]
+workspace = true
