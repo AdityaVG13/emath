@@ -228,6 +228,14 @@ name = "emath-term"
 version = "0.1.0"
 
 [[package]]
+name = "emath-tuning"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-world-codegen-rust"
 version = "0.1.0"
 dependencies = [
