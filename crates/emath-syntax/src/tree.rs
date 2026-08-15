@@ -10,6 +10,11 @@ pub struct SyntaxTree {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Item {
+    /// `package examples.square` — the V6 package identity line.
+    Package {
+        path: Vec<String>,
+        source: Span,
+    },
     Use {
         path: Vec<String>,
         tree: UseTree,
@@ -135,6 +140,12 @@ pub enum StmtKind {
     Command {
         head: Vec<String>,
         argument: Option<CommandArgument>,
+    },
+    /// A full-expression equation (`mass * derivative(velocity) = rhs`,
+    /// `a * a + b * b = c * c`) used in `equation:`/`constraint:` sections.
+    Equation {
+        left: Expr,
+        right: Expr,
     },
 }
 
@@ -300,6 +311,8 @@ pub struct Place {
 #[derive(Clone, Debug, PartialEq)]
 pub enum CommandArgument {
     Expr(Expr),
+    /// `define y = expr` / `method score = score`: a trailing `name = value`.
+    Assignment { name: String, value: Expr },
     List(Vec<Expr>),
 }
 
