@@ -24,6 +24,7 @@ members = [
   "crates/emath-meaning-provider-api",
   "crates/emath-portfolio",
   "crates/emath-world-codegen-rust",
+  "crates/emath-adapter-rumoca",
   "examples/demo-host",
   "examples/demo-host-independent",
   "examples/provider-skeleton",
@@ -62,6 +63,7 @@ emath-genesis = { path = "crates/emath-genesis" }
 emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
+emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
