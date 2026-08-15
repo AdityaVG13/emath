@@ -1,0 +1,14 @@
+[package]
+name = "emath-checker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+emath-core = { workspace = true }
+emath-ir = { workspace = true }
+emath-artifact = { workspace = true }
+
+[lints]
+workspace = true
