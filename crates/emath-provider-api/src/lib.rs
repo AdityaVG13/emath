@@ -11,6 +11,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod descriptor;
+pub mod filter;
+pub mod registry;
+
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{EvidenceLevel, Goal, ResolutionPlan};
 use emath_runtime::{Budget, Cancellation, Outcome};
@@ -89,6 +93,13 @@ pub trait Adapter<Source, Target> {
     fn encode(&self, source: &Source) -> Result<Target, ProviderError>;
     fn decode(&self, target: &Target) -> Result<Source, ProviderError>;
 }
+
+pub use descriptor::{
+    capability_token, lock_token, CapabilitySpec, CapabilityTable, DescriptorProblem,
+    ProviderIsolation, ProviderLock, RepresentationSpec,
+};
+pub use filter::{filter_goal, Compatibility, ExclusionReason, ProviderVerdict};
+pub use registry::{ProviderRegistry, RegistryConfig, RegistryError};
 
 /// Only `Admitted` results may satisfy a goal with authority.
 pub trait ResultChecker {
