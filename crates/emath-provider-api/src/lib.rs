@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod constellation;
 pub mod descriptor;
 pub mod filter;
 pub mod registry;
@@ -94,6 +95,10 @@ pub trait Adapter<Source, Target> {
     fn decode(&self, target: &Target) -> Result<Source, ProviderError>;
 }
 
+pub use constellation::{
+    compose_chain, default_constellation, CompositionOutcome, ConstellationError,
+    ConstellationLock, ConstellationProvider, MaturityLevel, MaturityRegistry, VersionEntry,
+};
 pub use descriptor::{
     capability_token, lock_token, CapabilitySpec, CapabilityTable, DescriptorProblem,
     ProviderIsolation, ProviderLock, RepresentationSpec,
