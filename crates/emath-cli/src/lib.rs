@@ -1,7 +1,11 @@
-//! eMath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, `help`.
+//! eMath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, and the
+//! Semantic Genesis commands (`parse`, `signature`, `genesis`, `compile
+//! --parametric`, `world show`, `portfolio show`).
 //! Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error.
 
 #![forbid(unsafe_code)]
+
+mod genesis_cmd;
 
 use emath_artifact::{verify_artifact, StagedFile, Staging};
 use emath_build::{build_file, BuildOptions};
@@ -224,7 +228,7 @@ pub fn architecture() -> u8 {
 /// `help` output.
 pub fn help_text() -> String {
     "\
-eMath Phase 1 compiler
+eMath compiler (Phase 1 + Semantic Genesis G0-G3)
 
 usage:
   emath check <file.emath> [--json]
@@ -236,6 +240,20 @@ usage:
       --verify runs `cargo test` on the staged crate before publish
   emath artifact <dir> check
       re-verify every published artifact's fingerprints (independent checker)
+  emath parse --forest <file.emath> [--out <dir>]
+      genesis glyphs + bounded parse forest (parse-forest.json)
+  emath signature <file.emath> [--out <dir>]
+      arity/fixity/type-variable signature inference (signature.json)
+  emath genesis <file.emath> --out <dir>
+      full analysis: forest, signature, free term, meaning problem,
+      world candidates + admission log, portfolio, answer receipt
+  emath compile --parametric <file.emath> --out <dir> [--world LABEL]
+      emit the parametric generated crate (free_symbolic, boolean_algebra,
+      modular_numeric) + manifest + source map
+  emath world show WORLD_ID --dir <dir>
+      print one world candidate artifact
+  emath portfolio show PORTFOLIO_ID --dir <dir>
+      print one interpretation portfolio artifact
   emath architecture
       describe the provider-neutral pipeline
   emath help
@@ -295,6 +313,60 @@ pub fn run(args: &[String]) -> u8 {
                 _ => usage("build <file.emath> --out <dir> [--verify] [--json]"),
             }
         }
+        "parse" => {
+            let (path, out, _) = parse_genesis_args(&args[1..]);
+            let forest_only = args[1..].iter().any(|arg| arg == "--forest");
+            match path {
+                Some(path) => genesis_cmd::parse_cmd(&path, out.as_ref(), forest_only),
+                None => usage("parse --forest <file.emath> [--out <dir>]"),
+            }
+        }
+        "signature" => {
+            let (path, out, _) = parse_genesis_args(&args[1..]);
+            match path {
+                Some(path) => genesis_cmd::signature_cmd(&path, out.as_ref()),
+                None => usage("signature <file.emath> [--out <dir>]"),
+            }
+        }
+        "genesis" => {
+            let (path, out, _) = parse_genesis_args(&args[1..]);
+            match (path, out) {
+                (Some(path), Some(out)) => genesis_cmd::genesis_cmd(&path, &out),
+                _ => usage("genesis <file.emath> --out <dir>"),
+            }
+        }
+        "compile" => {
+            let (path, out, worlds) = parse_genesis_args(&args[1..]);
+            let parametric = args[1..].iter().any(|arg| arg == "--parametric");
+            match (path, out, parametric) {
+                (Some(path), Some(out), true) => genesis_cmd::compile_cmd(&path, &out, &worlds),
+                _ => usage("compile --parametric <file.emath> --out <dir> [--world LABEL]"),
+            }
+        }
+        "world" => {
+            if args.get(1).is_some_and(|sub| sub == "show") && args.len() >= 3 {
+                let (_, dir, _) = parse_genesis_args(&args[3..]);
+                let id = &args[2];
+                match dir {
+                    Some(dir) => genesis_cmd::world_show_cmd(id, &dir),
+                    None => usage("world show WORLD_ID --dir <dir>"),
+                }
+            } else {
+                usage("world show WORLD_ID --dir <dir>")
+            }
+        }
+        "portfolio" => {
+            if args.get(1).is_some_and(|sub| sub == "show") && args.len() >= 3 {
+                let (_, dir, _) = parse_genesis_args(&args[3..]);
+                let id = &args[2];
+                match dir {
+                    Some(dir) => genesis_cmd::portfolio_show_cmd(id, &dir),
+                    None => usage("portfolio show PORTFOLIO_ID --dir <dir>"),
+                }
+            } else {
+                usage("portfolio show PORTFOLIO_ID --dir <dir>")
+            }
+        }
         "artifact" => {
             if args.get(1).is_some_and(|c| c == "check") && args.len() >= 3 {
                 artifact_check(&PathBuf::from(&args[2]))
@@ -313,6 +385,35 @@ pub fn run(args: &[String]) -> u8 {
             EXIT_USAGE
         }
     }
+}
+
+/// Shared arg scan for genesis commands: positional file, `--out`, `--world`.
+fn parse_genesis_args(args: &[String]) -> (Option<PathBuf>, Option<PathBuf>, Vec<String>) {
+    let mut path = None;
+    let mut out = None;
+    let mut worlds = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" | "-o" | "--dir" => {
+                index += 1;
+                if index < args.len() {
+                    out = Some(PathBuf::from(&args[index]));
+                }
+            }
+            "--world" => {
+                index += 1;
+                if index < args.len() {
+                    worlds.push(args[index].clone());
+                }
+            }
+            "--parametric" | "--forest" | "--json" => {}
+            other if other.starts_with('-') => {}
+            other => path = Some(PathBuf::from(other)),
+        }
+        index += 1;
+    }
+    (path, out, worlds)
 }
 
 fn parse_file_args(args: &[String]) -> (Option<PathBuf>, bool) {

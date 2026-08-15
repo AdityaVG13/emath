@@ -62,13 +62,18 @@ dependencies = [
  "emath-artifact",
  "emath-build",
  "emath-core",
+ "emath-genesis",
  "emath-goal",
  "emath-ir",
  "emath-plan",
+ "emath-portfolio",
  "emath-rust-backend",
  "emath-sema",
  "emath-source",
  "emath-syntax",
+ "emath-term",
+ "emath-world-codegen-rust",
+ "emath-world-ir",
 ]
 
 [[package]]
@@ -81,6 +86,14 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+]
+
+[[package]]
+name = "emath-genesis"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]
@@ -107,6 +120,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-meaning-provider-api"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-plan"
 version = "0.1.0"
 dependencies = [
@@ -114,6 +135,13 @@ dependencies = [
  "emath-goal",
  "emath-ir",
  "emath-runtime",
+]
+
+[[package]]
+name = "emath-portfolio"
+version = "0.1.0"
+dependencies = [
+ "emath-world-ir",
 ]
 
 [[package]]
@@ -174,6 +202,26 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-source",
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
+name = "emath-term"
+version = "0.1.0"
+
+[[package]]
+name = "emath-world-codegen-rust"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+]
+
+[[package]]
+name = "emath-world-ir"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
 ]
 
 [[package]]
@@ -185,3 +233,11 @@ dependencies = [
  "emath-provider-api",
  "emath-runtime",
 ]
+
+[[package]]
+name = "semantic-genesis-worlds"
+version = "0.1.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"

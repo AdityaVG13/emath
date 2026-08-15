@@ -1,0 +1,12 @@
+[package]
+name = "emath-world-ir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+emath-term = { path = "../emath-term" }

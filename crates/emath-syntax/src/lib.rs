@@ -5,9 +5,15 @@
 //! node, indentation enforcement, duplicate-section checks, precedence,
 //! bounded source/token/nesting limits, and recovery at statement
 //! boundaries. This crate is provider-free.
+//!
+//! V7 Semantic Genesis adds two modules: [`genesis`] parses `emath custom`
+//! world declarations (G0) and [`forest`] builds the bounded parse forest and
+//! infers the world signature (G1).
 
 #![forbid(unsafe_code)]
 
+pub mod forest;
+pub mod genesis;
 pub mod lexer;
 pub mod parser;
 pub mod token;
