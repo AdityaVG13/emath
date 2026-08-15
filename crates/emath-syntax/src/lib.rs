@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 pub mod forest;
+pub mod formatter;
 pub mod genesis;
 pub mod lexer;
 pub mod parser;
@@ -20,6 +21,7 @@ pub mod token;
 pub mod tree;
 
 use emath_core::{limits::Limits, Diagnostics, FileId};
+use token::Comment;
 use tree::SyntaxTree;
 
 /// Parse an in-memory source into a syntax tree.
@@ -32,6 +34,35 @@ pub fn parse(text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnost
 #[must_use]
 pub fn parse_str(text: &str) -> (SyntaxTree, Diagnostics) {
     parser::parse(text, FileId(0), &Limits::default())
+}
+
+/// The lossless parse result: the tree plus every
+/// retained comment with its span, for formatting round-trips.
+#[derive(Clone, Debug)]
+pub struct LosslessParse {
+    pub tree: SyntaxTree,
+    pub diagnostics: Diagnostics,
+    pub comments: Vec<Comment>,
+}
+
+/// Parse with comment retention. Deterministic: tokenization and parsing
+/// are pure over the source bytes.
+#[must_use]
+pub fn parse_lossless(text: &str, file: FileId, limits: &Limits) -> LosslessParse {
+    let (_, _, comments) = lexer::lex_with_comments(text, file, limits);
+    let (tree, diagnostics) = parser::parse(text, file, limits);
+    LosslessParse {
+        tree,
+        diagnostics,
+        comments,
+    }
+}
+
+/// Format the lossless parse canonically: idempotent, comment-preserving,
+/// parse-stable.
+#[must_use]
+pub fn format_lossless(parse: &LosslessParse) -> String {
+    formatter::format(&parse.tree, &parse.comments)
 }
 
 #[cfg(test)]
