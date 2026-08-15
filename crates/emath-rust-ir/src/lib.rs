@@ -5,4 +5,11 @@
 #![forbid(unsafe_code)]
 
 pub mod ast;
+pub mod profiles;
 pub mod render;
+
+pub use profiles::{parse_profile, CrateProfile, ProfileProblem};
+pub use render::{
+    coverage_gaps, render_file_set, render_file_set_partitioned, render_generics, render_module,
+    Anchor, FileSet, RenderResult,
+};
