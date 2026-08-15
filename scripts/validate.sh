@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# eMath Phase 1 validation gate (AGENTS.md): fmt, test, clippy, artifacts.
+# emath Phase 1 validation gate (AGENTS.md): fmt, test, clippy, artifacts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

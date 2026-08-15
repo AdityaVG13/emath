@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
 /// `AffinePolicy`: a `policy` declaration generated from `.emath`.
-/// Generated deterministically by eMath Phase 1; do not edit.
+/// Generated deterministically by emath Phase 1; do not edit.
 #[derive(Clone, Debug)]
 pub struct AffinePolicy {
     scale: f64,

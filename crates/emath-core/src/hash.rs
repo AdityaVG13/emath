@@ -44,7 +44,7 @@ mod tests {
         );
         assert_ne!(
             bootstrap_content_id(b"emath"),
-            bootstrap_content_id(b"eMath")
+            bootstrap_content_id(b"emathX")
         );
         assert_ne!(
             bootstrap_content_id(b"emath"),

@@ -78,7 +78,7 @@ pub trait Provider {
     ) -> Outcome<ProviderResult, ProviderError>;
 }
 
-/// Adapter between an eMath semantic object `Source` and a provider
+/// Adapter between an emath semantic object `Source` and a provider
 /// representation `Target`. The adapter declares its relation via
 /// `relation()`; unsupported semantics must refuse before provider
 /// execution (never silently approximate).

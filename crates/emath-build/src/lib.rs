@@ -1,4 +1,4 @@
-//! eMath build pipeline: `.emath` → check → plan → EMIR → Rust backend →
+//! emath build pipeline: `.emath` → check → plan → EMIR → Rust backend →
 //! staged artifact → atomic publish → independent verification.
 //!
 //! `compile_direct_module` keeps the V3 build-script contract: build an

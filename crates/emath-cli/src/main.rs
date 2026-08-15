@@ -1,4 +1,4 @@
-//! eMath CLI entry point. All logic lives in the library for testability.
+//! emath CLI entry point. All logic lives in the library for testability.
 
 use std::process::ExitCode;
 

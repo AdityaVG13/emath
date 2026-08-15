@@ -48,7 +48,7 @@ package  available within package
 private  declaration-local/module-local according to construct
 ```
 
-Generated Rust visibility is derived from eMath visibility, not copied mechanically when doing so would let callers forge invariants.
+Generated Rust visibility is derived from emath visibility, not copied mechanically when doing so would let callers forge invariants.
 
 ## Feature configuration
 

@@ -1,4 +1,4 @@
-(* eMath surface grammar — design grammar, version 5/fork-constellation-1 *)
+(* emath surface grammar — design grammar, version 5/fork-constellation-1 *)
 
 source_file      = { newline | item } ;
 

@@ -1,4 +1,4 @@
-# eMath Language Assets
+# emath Language Assets
 
 - `grammar/emath.ebnf` is the V5 design grammar.
 - `spec/` is the normative semantic specification.

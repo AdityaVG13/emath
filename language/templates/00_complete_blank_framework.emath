@@ -1,4 +1,4 @@
-/// Complete blank eMath declaration framework.
+/// Complete blank emath declaration framework.
 /// Delete unused sections. A custom kind schema determines which sections are valid.
 
 @edition("2026")

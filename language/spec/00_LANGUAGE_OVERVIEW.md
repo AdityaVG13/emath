@@ -1,4 +1,4 @@
-# eMath Language Overview
+# emath Language Overview
 
 ## 1. Design center
 
