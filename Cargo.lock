@@ -155,6 +155,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-law-check"
+version = "0.1.0"
+dependencies = [
+ "emath-calibration",
+ "emath-portfolio",
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-meaning-provider-api"
 version = "0.1.0"
 dependencies = [

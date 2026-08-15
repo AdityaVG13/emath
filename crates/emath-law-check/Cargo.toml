@@ -1,0 +1,16 @@
+[package]
+name = "emath-law-check"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "V7 g6 independent world checker: law obligations, minimized counterexamples, scoped authority, answer receipts."
+
+[dependencies]
+emath-term = { path = "../emath-term" }
+emath-world-ir = { path = "../emath-world-ir" }
+emath-calibration = { path = "../emath-calibration" }
+emath-portfolio = { path = "../emath-portfolio" }
+
+[lints]
+workspace = true
