@@ -36,6 +36,26 @@ This is a **work-in-progress prototype** (v0.1.0). It is built in vertical slice
 
 Not release-proof yet: content identity is still the FNV-1a bootstrap id (replaced before stable publication), and providers, the frontier engine, and most of the language breadth are still planned.
 
+## Quickstart
+
+**Prerequisites:** a stable Rust toolchain (`rustup default stable`; the repo pins stable via `rust-toolchain.toml` and needs the `rustfmt` and `clippy` components). That is all: the workspace has zero third-party dependencies and the demos are std-only.
+
+**First build:** allow a few minutes for a debug build of the workspace (subsequent runs are incremental).
+
+```console
+$ git clone <repo-url> && cd emath
+$ cargo xtask demo all
+```
+
+(The `<repo-url>` here is filled in when the public repository is reserved; inside a checkout the second line is all that is needed.)
+
+`cargo xtask demo all` runs both capstones; each prints `ok` and exits 0 on success:
+
+- **cache-policy** — the Phase 1 vertical slice: compiles `implementation/tests/valid/stateful.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
+- **semantic-genesis** — the V7 G0–G3 pipeline: parses the reference glyph body, runs the analysis twice and proves byte-identical output, checks fidelity against the committed replay bundle, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
+
+Exit criteria: both demos reach their final `ok` lines; the command exits 0. Detailed evidence boundary: `BUILD_STATUS.md`; implementation notes: `HANDOFF.md`; depth: `docs/v7-semantic-genesis/` and `phases/PHASE_01_EMATH_OWNED_VERTICAL_SLICE.md`.
+
 ## Example
 
 The target language looks like this (illustrative; the implemented subset today is smaller — see `BUILD_STATUS.md` and `implementation/tests/valid/`):
