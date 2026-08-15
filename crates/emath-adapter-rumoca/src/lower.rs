@@ -118,7 +118,8 @@ pub fn lower(model: &StructuralModel) -> Result<DaePlan, LowerError> {
     }
     parameters.sort_unstable();
     variables.sort_unstable();
-    states.sort_unstable();
+    // States keep model (insertion) order: position/velocity semantics are
+    // preserved for trajectory consumers. Deterministic for a given model.
     let parameters_set: BTreeSet<String> = parameters.iter().cloned().collect();
 
     let derivatives: Vec<DerivativeDef> = states
@@ -420,7 +421,7 @@ mod tests {
         let issues = model.validate();
         assert!(issues.is_empty(), "model should validate: {issues:?}");
         let plan = lower(&model).unwrap();
-        assert_eq!(plan.states, ["v", "x"]);
+        assert_eq!(plan.states, ["x", "v"]);
         assert_eq!(plan.parameters, ["c", "k", "m"]);
         assert_eq!(plan.order.len(), 2);
         // der(x)=v must be causally first.
