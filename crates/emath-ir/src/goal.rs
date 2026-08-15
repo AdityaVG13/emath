@@ -126,6 +126,18 @@ pub struct CompileSpec {
     pub unresolved: Option<String>,
 }
 
+impl Default for CompileSpec {
+    fn default() -> Self {
+        Self {
+            target: String::new(),
+            profile: String::new(),
+            numeric: NumericProfile::StrictF64,
+            safety: SafetyProfile::ForbidUnsafe,
+            unresolved: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NumericProfile {
     StrictF64,

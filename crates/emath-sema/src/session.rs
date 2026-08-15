@@ -146,8 +146,11 @@ impl CompilerSession {
                 .items
                 .iter()
                 .filter_map(|item| match item {
+                    // V6 declarations are admitted by the front-end; goal
+                    // elaboration remains a V5 (`emath custom`) path until
+                    // the V6 intent-compiler lane lands.
                     emath_syntax::tree::Item::Declaration(d)
-                        if d.name == declaration.name.leaf() =>
+                        if d.item_kind == "custom" && d.name == declaration.name.leaf() =>
                     {
                         Some(d.sections_vec())
                     }

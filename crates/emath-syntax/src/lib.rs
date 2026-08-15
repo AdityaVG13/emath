@@ -119,10 +119,7 @@ mod tests {
                 "compile"
             ]
         );
-        let definitions = decl
-            .sections()
-            .find(|s| s.name == "definitions")
-            .unwrap();
+        let definitions = decl.sections().find(|s| s.name == "definitions").unwrap();
         match &definitions.suite.statements[0].kind {
             StmtKind::Assign { target, value } => {
                 assert_eq!(target.segments, ["score"]);
