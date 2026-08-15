@@ -22,6 +22,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-adapter-dew"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-exec-ir",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-artifact"
 version = "0.1.0"
 dependencies = [
@@ -102,6 +111,14 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-syntax",
+]
+
+[[package]]
+name = "emath-hir"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
  "emath-syntax",
 ]
 
