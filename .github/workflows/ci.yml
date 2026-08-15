@@ -1,0 +1,38 @@
+# emath CI: fmt / test / clippy / validate on push.
+#
+# Rust channel is pinned by the repository toolchain file
+# (rust-toolchain.toml: stable, profile minimal, rustfmt + clippy);
+# setup-rust-toolchain honors it, so CI and local gates agree.
+# Cargo caching is built into actions-rust-lang/setup-rust-toolchain@v1.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: fmt / test / clippy / validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain (rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+      - name: Lint with clippy (warnings denied)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run repository validation gate
+        run: bash scripts/validate.sh
