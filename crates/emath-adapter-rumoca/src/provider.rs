@@ -72,8 +72,9 @@ impl Default for SimulationConfig {
 impl SimulationConfig {
     /// Horizon in seconds.
     #[must_use]
+    #[allow(clippy::cast_precision_loss)] // steps bounded far below 2^53
     pub fn horizon(&self) -> f64 {
-        self.dt * f64::try_from(self.steps).unwrap_or(f64::MAX)
+        self.dt * self.steps as f64
     }
 }
 
