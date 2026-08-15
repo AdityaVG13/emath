@@ -1,8 +1,15 @@
 //! Laboratory core: experiment manifests, observations and promotion
 //! policies for the Phase 10 laboratory. Types only; the lab harness that
 //! consumes them arrives with the Phase 10 milestone.
+//!
+//! [`selector`] adds the Phase 10 runtime machinery on top of the types:
+//! deterministic promotion decisions ([`selector::RuntimeSelector`]),
+//! auditable drift receipts ([`selector::DriftReceipt`]) and the bounded
+//! candidate loop ([`selector::candidate_loop`]).
 
 #![forbid(unsafe_code)]
+
+pub mod selector;
 
 use emath_core::{ContentId, Span};
 use std::collections::BTreeMap;
