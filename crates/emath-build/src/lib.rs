@@ -7,6 +7,15 @@
 
 #![forbid(unsafe_code)]
 
+pub mod deps;
+pub mod script;
+
+pub use deps::{
+    check_declared, plan_dependencies, requests_for, CargoDependency, DepError, DepPlan, DepPolicy,
+    DepRequest, DepSource, RuntimeKind, TargetKind,
+};
+pub use script::{locked_build_script, ScriptError, ScriptLock, ScriptReport};
+
 use emath_artifact::{
     plan_to_record, publish, required_artifact_paths, stage, verify_artifact,
     write_artifact_manifest, write_evidence_bundle, write_resolution_plan, write_source_map,
@@ -138,19 +147,43 @@ pub fn build_text(
 
     let mut package = plan_result.package;
     package.seal();
-    let package_id = package.content_id();
 
     if !refusal_codes.is_empty() {
         // Typed refusal: no artifact, no half-built crate.
         return Err(BuildError::AdmittedWithErrors(refusal_codes));
     }
 
+    build_package(
+        &package,
+        name,
+        &diagnostics,
+        &plan_result.plans,
+        target_dir,
+        options,
+    )
+}
+
+///: artifact pipeline over an already-elaborated package
+/// (programmatic models and macro-expanded sources use this exact path:
+/// same schema/sema/plan/artifact flow as `.emath` text).
+pub fn build_package(
+    package: &emath_ir::SemanticPackage,
+    source_name: &str,
+    diagnostics: &Diagnostics,
+    plans: &[ResolutionPlan],
+    target_dir: &Path,
+    options: BuildOptions,
+) -> Result<BuildReport, BuildError> {
+    std::fs::create_dir_all(target_dir).map_err(|error| {
+        BuildError::Io(format!("cannot create {}: {error}", target_dir.display()))
+    })?;
+    let package_id = package.content_id();
     let crate_name = package
         .identity
         .as_ref()
         .map_or_else(|| "package".to_string(), |id| id.name.clone());
     let backend = BackendInput {
-        package: &package,
+        package,
         crate_name: crate_name.clone(),
         version: "0.1.0".to_string(),
     };
@@ -169,18 +202,11 @@ pub fn build_text(
     };
 
     let meta = ComposeMeta {
-        source_name: name,
+        source_name,
         crate_name: &crate_name,
         package_id: &package_id,
     };
-    let mut artifact = compose_artifact(
-        &meta,
-        &package,
-        &plan_result.plans,
-        &output,
-        &diagnostics,
-        verify_ok,
-    )?;
+    let mut artifact = compose_artifact(&meta, package, plans, &output, diagnostics, verify_ok)?;
 
     // Stage: provisional manifest, then final with the real artifact id.
     let mut provisional = artifact.clone();
@@ -204,11 +230,7 @@ pub fn build_text(
         package_id,
         artifact_id,
         crate_name,
-        plan_ids: plan_result
-            .plans
-            .iter()
-            .map(|p| p.plan_id.0.clone())
-            .collect(),
+        plan_ids: plans.iter().map(|p| p.plan_id.0.clone()).collect(),
         assumptions: output.assumptions.clone(),
         exports: artifact.manifest.public_exports.clone(),
         refusal_codes: Vec::new(),

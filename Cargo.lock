@@ -59,6 +59,7 @@ dependencies = [
 name = "emath-builder"
 version = "0.1.0"
 dependencies = [
+ "emath-build",
  "emath-core",
  "emath-ir",
  "emath-sema",
@@ -128,6 +129,13 @@ name = "emath-lab-core"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+]
+
+[[package]]
+name = "emath-macro"
+version = "0.1.0"
+dependencies = [
+ "emath-builder",
 ]
 
 [[package]]

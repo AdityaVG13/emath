@@ -1,0 +1,15 @@
+[package]
+name = "emath-macro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+emath-builder = { workspace = true }
+
+[lints]
+workspace = true
