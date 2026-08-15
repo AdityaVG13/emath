@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/emath-core",
+  "crates/emath-source",
+  "crates/emath-syntax",
+  "crates/emath-ir",
+  "crates/emath-goal",
+  "crates/emath-plan",
+  "crates/emath-sema",
+  "crates/emath-exec-ir",
+  "crates/emath-rust-ir",
+  "crates/emath-rust-backend",
+  "crates/emath-artifact",
+  "crates/emath-runtime",
+  "crates/emath-provider-api",
+  "crates/emath-build",
+  "crates/emath-builder",
+  "crates/emath-lab-core",
+  "crates/emath-cli",
+  "examples/demo-host",
+  "examples/demo-host-independent",
+  "examples/provider-skeleton",
+]
+exclude = ["bootstrap", "implementation/rust-next", "artifacts"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.74"
+
+[workspace.dependencies]
+emath-core = { path = "crates/emath-core" }
+emath-source = { path = "crates/emath-source" }
+emath-syntax = { path = "crates/emath-syntax" }
+emath-ir = { path = "crates/emath-ir" }
+emath-goal = { path = "crates/emath-goal" }
+emath-plan = { path = "crates/emath-plan" }
+emath-sema = { path = "crates/emath-sema" }
+emath-exec-ir = { path = "crates/emath-exec-ir" }
+emath-rust-ir = { path = "crates/emath-rust-ir" }
+emath-rust-backend = { path = "crates/emath-rust-backend" }
+emath-artifact = { path = "crates/emath-artifact" }
+emath-runtime = { path = "crates/emath-runtime" }
+emath-provider-api = { path = "crates/emath-provider-api" }
+emath-build = { path = "crates/emath-build" }
+emath-builder = { path = "crates/emath-builder" }
+emath-lab-core = { path = "crates/emath-lab-core" }
+emath-cli = { path = "crates/emath-cli" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+too_many_lines = "allow"

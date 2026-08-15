@@ -1,0 +1,15 @@
+[package]
+name = "emath-plan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+emath-core = { workspace = true }
+emath-goal = { workspace = true }
+emath-ir = { workspace = true }
+emath-runtime = { workspace = true }
+
+[lints]
+workspace = true

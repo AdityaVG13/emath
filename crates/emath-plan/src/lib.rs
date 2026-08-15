@@ -1,0 +1,201 @@
+//! Deterministic native resolution planner (Phase 1 bootstrap).
+//!
+//! Builds the resolution-plan DAG for `evaluate → rust.library` using the
+//! native path: lower → execute(native) → check → package → admit. No
+//! external providers are installed in Phase 1; every other candidate is
+//! recorded as excluded with its reason (an honest trace, not a silent
+//! fallback).
+
+#![forbid(unsafe_code)]
+
+use emath_core::{ContentId, SchemaId};
+use emath_ir::{
+    EvidenceClaimId, ExcludedCandidate, GoalId, PlanNodeDef, PlanNodeId, PlanOperation,
+    ProviderRef, ResolutionPlan,
+};
+use std::collections::BTreeMap;
+
+pub const POLICY: &str = "native-deterministic.v1";
+pub const PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
+
+/// Provider identities known to the constellation but not installed in
+/// Phase 1; they are excluded with reasons in every plan.
+pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
+    ("dew", "adapter not installed until Phase 2"),
+    ("rumoca", "adapter not installed until Phase 3"),
+    ("wrenfold", "optional symbolic provider, not installed"),
+    ("frankenjax", "adapter not installed until Phase 7"),
+    ("frankennumpy", "adapter not installed until Phase 7"),
+    ("frankenscipy", "adapter not installed until Phase 7"),
+    ("frankensim", "adapter not installed until Phase 7"),
+    ("frankenlean", "adapter not installed until Phase 7"),
+    ("frankenengine", "adapter not installed until Phase 7"),
+];
+
+/// Build the deterministic native plan for a goal.
+#[must_use]
+pub fn native_plan(goal: GoalId, artifact_class: &str) -> ResolutionPlan {
+    let mut nodes = BTreeMap::new();
+    let lower = PlanNodeId(0);
+    let execute = PlanNodeId(1);
+    let check = PlanNodeId(2);
+    let package = PlanNodeId(3);
+    let admit = PlanNodeId(4);
+    nodes.insert(
+        lower,
+        PlanNodeDef {
+            id: lower,
+            operation: PlanOperation::Lower,
+            dependencies: vec![],
+            provider: Some(ProviderRef {
+                id: "emath.native".into(),
+                version: "0.1.0".into(),
+                implementation: ContentId("fnv1a64:0000000000000000".into()),
+            }),
+            checks: vec![],
+            fallback: None,
+            budget: Some("compile:1".into()),
+        },
+    );
+    nodes.insert(
+        execute,
+        PlanNodeDef {
+            id: execute,
+            operation: PlanOperation::Execute,
+            dependencies: vec![lower],
+            provider: Some(ProviderRef {
+                id: "emath.native".into(),
+                version: "0.1.0".into(),
+                implementation: ContentId("fnv1a64:0000000000000000".into()),
+            }),
+            checks: vec![],
+            fallback: None,
+            budget: Some("compile:1".into()),
+        },
+    );
+    nodes.insert(
+        check,
+        PlanNodeDef {
+            id: check,
+            operation: PlanOperation::Check,
+            dependencies: vec![execute],
+            provider: Some(ProviderRef {
+                id: "emath.native".into(),
+                version: "0.1.0".into(),
+                implementation: ContentId("fnv1a64:0000000000000000".into()),
+            }),
+            checks: vec![EvidenceClaimId(0)],
+            fallback: None,
+            budget: None,
+        },
+    );
+    nodes.insert(
+        package,
+        PlanNodeDef {
+            id: package,
+            operation: PlanOperation::Package,
+            dependencies: vec![check],
+            provider: None,
+            checks: vec![],
+            fallback: None,
+            budget: None,
+        },
+    );
+    nodes.insert(
+        admit,
+        PlanNodeDef {
+            id: admit,
+            operation: PlanOperation::Admit,
+            dependencies: vec![package],
+            provider: None,
+            checks: vec![EvidenceClaimId(0)],
+            fallback: None,
+            budget: None,
+        },
+    );
+    let plan_bytes = canonical_plan(&nodes, admit, artifact_class);
+    ResolutionPlan {
+        schema: SchemaId(PLAN_SCHEMA.into()),
+        plan_id: ContentId(plan_bytes),
+        goal,
+        policy: POLICY.to_string(),
+        artifact_class: artifact_class.to_string(),
+        nodes,
+        root: admit,
+        excluded_candidates: EXCLUDED_PROVIDERS
+            .iter()
+            .map(|(provider, reason)| ExcludedCandidate {
+                provider: (*provider).to_string(),
+                reason: (*reason).to_string(),
+            })
+            .collect(),
+    }
+}
+
+fn canonical_plan(
+    nodes: &BTreeMap<PlanNodeId, PlanNodeDef>,
+    root: PlanNodeId,
+    artifact_class: &str,
+) -> String {
+    let mut out = String::new();
+    out.push_str("emath.plan.v1\n");
+    out.push_str(artifact_class);
+    out.push('\n');
+    let root_line = format!("root {}\n", root.0);
+    out.push_str(&root_line);
+    for (id, node) in nodes {
+        let head = format!(
+            "{} {} {}",
+            id.0,
+            node.operation.name(),
+            node.dependencies.len()
+        );
+        out.push_str(&head);
+        let tail = node
+            .dependencies
+            .iter()
+            .map(|dep| format!(" {}", dep.0))
+            .collect::<Vec<_>>()
+            .concat();
+        out.push_str(&tail);
+        out.push('\n');
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use emath_ir::GoalId;
+
+    #[test]
+    fn native_plan_is_deterministic_and_acyclic() {
+        let first = native_plan(GoalId(0), "native");
+        let second = native_plan(GoalId(0), "native");
+        assert_eq!(first.plan_id, second.plan_id);
+        // root reachable, all nodes reachable backward from root
+        let mut count = 0;
+        let mut stack = vec![first.root];
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(id) = stack.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            count += 1;
+            if let Some(node) = first.nodes.get(&id) {
+                stack.extend(node.dependencies.iter().copied());
+            }
+        }
+        assert_eq!(count, first.nodes.len());
+    }
+
+    #[test]
+    fn excluded_providers_are_recorded() {
+        let plan = native_plan(GoalId(0), "native");
+        assert!(plan.excluded_candidates.iter().any(|c| c.provider == "dew"));
+        assert!(plan
+            .excluded_candidates
+            .iter()
+            .any(|c| c.reason.contains("Phase 2")));
+    }
+}
