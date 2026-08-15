@@ -18,9 +18,17 @@ members = [
   "crates/emath-builder",
   "crates/emath-lab-core",
   "crates/emath-cli",
+  "crates/emath-term",
+  "crates/emath-world-ir",
+  "crates/emath-genesis",
+  "crates/emath-meaning-provider-api",
+  "crates/emath-portfolio",
+  "crates/emath-world-codegen-rust",
   "examples/demo-host",
   "examples/demo-host-independent",
   "examples/provider-skeleton",
+  "examples/generated/semantic-genesis-worlds",
+  "xtask",
 ]
 exclude = ["bootstrap", "implementation/rust-next", "artifacts"]
 
@@ -48,6 +56,12 @@ emath-build = { path = "crates/emath-build" }
 emath-builder = { path = "crates/emath-builder" }
 emath-lab-core = { path = "crates/emath-lab-core" }
 emath-cli = { path = "crates/emath-cli" }
+emath-term = { path = "crates/emath-term" }
+emath-world-ir = { path = "crates/emath-world-ir" }
+emath-genesis = { path = "crates/emath-genesis" }
+emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
+emath-portfolio = { path = "crates/emath-portfolio" }
+emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

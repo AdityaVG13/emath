@@ -1,0 +1,21 @@
+emath custom <AlienGlyphs>:
+    body:
+        ⧖(a ⋈ b) ⊛ ζ
+
+    construct meaning:
+        explore:
+            free_symbolic
+            Boolean_algebra
+            modular_numeric
+            matrix
+            graph
+
+        protect:
+            total
+            deterministic
+
+        keep:
+            pareto 8
+
+    answer:
+        return interpretation_portfolio

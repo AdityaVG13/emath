@@ -1,0 +1,60 @@
+(* emath Semantic Genesis grammar addendum — design grammar, V7 *)
+
+genesis-declaration = "emath", ( "custom", "<", identifier, ">" | kind, identifier ), ":", newline, genesis-section* ;
+
+genesis-section = syntax-section
+                | carrier-section
+                | symbol-section
+                | operator-section
+                | constructor-section
+                | law-section
+                | example-section
+                | body-section
+                | construct-meaning-section
+                | answer-section
+                | request-section
+                | tuning-section
+                | evidence-section
+                | host-section ;
+
+syntax-section = indent, "syntax", ":", newline, syntax-decl+ ;
+syntax-decl = indent, ( "prefix" | "postfix" | "infixl" | "infixr" | "infix" ), integer, glyph, newline
+            | indent, "constant", glyph, newline
+            | indent, "delimiter", glyph, glyph, newline ;
+
+carrier-section = indent, ( "carrier" | "carriers" ), ":", newline, carrier-decl+ ;
+carrier-decl = indent, identifier, ( "=", type-expr )?, ":"?, newline, field-decl* ;
+
+symbol-section = indent, "symbols", ":", newline, symbol-decl+ ;
+symbol-decl = indent, ( "prefix" | "postfix" | "infixl" | "infixr" | "infix" )?, integer?, glyph,
+              ":", type-signature, newline
+            | indent, "constant", glyph, ":", type-expr, newline ;
+
+operator-section = indent, "operator", glyph, "(", parameter-list?, ")", "->", type-expr, ":", newline,
+                   operator-body ;
+operator-body = indent, ( expression | "semantic", "hole", identifier ), newline ;
+
+constructor-section = indent, ( "constructor" | "world", "constructor" | "artifact", "constructor" ),
+                      identifier, constructor-signature?, ":", newline, constructor-body ;
+
+law-section = indent, "laws", ":", newline, law-decl+ ;
+law-decl = indent, expression, newline ;
+
+example-section = indent, "examples", ( identifier )?, ":", newline, example-decl+ ;
+example-decl = indent, expression, "=>", expression, newline ;
+
+body-section = indent, "body", ":", newline, indent, expression, newline ;
+
+construct-meaning-section = indent, "construct", "meaning", ":", newline, meaning-clause+ ;
+meaning-clause = indent, ( "explore" | "strategies" | "providers" | "protect" | "prefer" | "optimize" | "keep" | "search" ), ":", newline, list-item+ ;
+
+answer-section = indent, "answer", ":", newline, answer-clause+ ;
+answer-clause = indent, "return", ( identifier | "[", identifier-list, "]" ), newline ;
+
+tuning-section = indent, "tune", ( "meaning" | "implementation" | "joint" ), ":", newline, tuning-clause+ ;
+
+glyph = unicode-symbol | quoted-symbol ;
+semantic-hole = "?" | "semantic", "hole", identifier ;
+
+(* The implementation must use the canonical language grammar and version this addendum.
+   This EBNF is a design contract, not permission to implement an unbounded parser. *)
