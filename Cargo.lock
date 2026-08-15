@@ -66,6 +66,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-checker"
+version = "0.1.0"
+dependencies = [
+ "emath-artifact",
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-cli"
 version = "0.1.0"
 dependencies = [
