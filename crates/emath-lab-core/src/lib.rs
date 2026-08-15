@@ -1,8 +1,36 @@
-//! Laboratory core: experiment manifests, observations and promotion
-//! policies for the Phase 10 laboratory. Types only; the lab harness that
-//! consumes them arrives with the Phase 10 milestone.
+//! Laboratory core: experiment manifests, quality gates, measurement,
+//! statistical protocol and promotion policy engine for the Phase 10
+//! laboratory. Everything is std-only and deterministic; wall-clock timing
+//! enters only as injected raw samples.
+//!
+//! - `` `manifest::LabManifest` — frozen experiment manifest;
+//! - `` `gate::QualityGate` — correctness/evidence before
+//!   performance;
+//! - `` `measure` — measurement harness with deterministic
+//!   summaries and explicit energy/cost models;
+//! - `` `stats::StatisticalProtocol` — warmup, repetitions,
+//!   randomization, paired comparison, MAD outlier policy, raw retention;
+//! - `` `promotion::decide` — promote/shadow/canary/retain/
+//!   demote/quarantine with typed reasons.
 
 #![forbid(unsafe_code)]
+
+pub mod error;
+pub mod gate;
+pub mod json;
+pub mod manifest;
+pub mod measure;
+pub mod promotion;
+pub mod stats;
+
+pub use error::LabError;
+pub use gate::{GateCheck, GateCheckKind, GateVerdict, QualityGate};
+pub use manifest::LabManifest;
+pub use measure::{DerivedMetric, HarnessReport, Measurement, MeasurementKind, Summary};
+pub use promotion::{decide, EnginePolicy, PromotionDecision, PromotionOutcome, PromotionReason};
+pub use stats::{
+    evaluate_paired, OutlierPolicy, PairedObservation, PairedResult, StatisticalProtocol,
+};
 
 use emath_core::{ContentId, Span};
 use std::collections::BTreeMap;
