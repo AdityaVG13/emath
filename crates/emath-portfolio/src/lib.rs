@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 
-//! Deterministic interpretation portfolio seed.
+//! Deterministic interpretation portfolios (spec 11).
+
+pub mod lock;
+pub mod record;
+pub mod selection;
+
+pub use lock::{replay_identity, PortfolioLock};
+pub use record::{CandidateRecord, Disqualification, ExampleEvaluation, LawVerdict};
+pub use selection::{select, SelectionOutcome, SelectionPolicy, SelectionWeights};
 
 use emath_world_ir::WorldId;
 
