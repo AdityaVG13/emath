@@ -65,7 +65,6 @@ pub struct DeclarationSignature {
 
 impl Declaration {
     /// Section statements in source order.
-    #[must_use]
     pub fn sections(&self) -> impl Iterator<Item = &Section> {
         self.body.iter().filter_map(|stmt| match &stmt.kind {
             StmtKind::Section(section) => Some(section),
@@ -347,7 +346,10 @@ pub struct Place {
 pub enum CommandArgument {
     Expr(Expr),
     /// `define y = expr` / `method score = score`: a trailing `name = value`.
-    Assignment { name: String, value: Expr },
+    Assignment {
+        name: String,
+        value: Expr,
+    },
     List(Vec<Expr>),
 }
 

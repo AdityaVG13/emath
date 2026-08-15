@@ -232,14 +232,6 @@ fn format_section_head(out: &mut String, section: &Section) {
     out.push(':');
 }
 
-fn format_section(out: &mut String, section: &Section, level: usize) {
-    indent(out, level);
-    format_section_head(out, section);
-    out.push('\n');
-    format_suite(out, &section.suite, level + 1);
-    // A non-empty suite's last statement already ends with a newline.
-}
-
 fn format_argument(out: &mut String, argument: &Argument) {
     if let Some(name) = &argument.name {
         out.push_str(name);
