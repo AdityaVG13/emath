@@ -10,6 +10,10 @@ mod genesis_cmd;
 use emath_artifact::{verify_artifact, StagedFile, Staging};
 use emath_build::{build_file, BuildOptions};
 use emath_core::Diagnostics;
+use emath_plan::{
+    emit_provider_trait, lift_missing, plan as run_planner, PlannerConfig, PlanningOutcome,
+};
+use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::session::CompilerSession;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -142,6 +146,89 @@ pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
             }
         }
     }
+}
+
+/// `planner <file.emath> [--json] [--parametric]`: run the deterministic
+/// planner over the (empty by default) provider registry and print the
+/// machine inspection: candidates, exclusions with reasons, selected plan,
+/// checks, budget and artifact disposition. With `--parametric`, goals are
+/// inspected under the parametric fallback, lifting missing providers to a
+/// compilable Rust trait.
+pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let Ok(package) = session.load_package(path) else {
+        eprintln!("error: cannot read {}", path.display());
+        return EXIT_USAGE;
+    };
+    let result = session.plan(package.file);
+    if result.diagnostics.has_errors() {
+        print_diagnostics(&result.diagnostics);
+        return EXIT_REFUSED;
+    }
+    let registry = ProviderRegistry::new(RegistryConfig::static_only());
+    let mut config = PlannerConfig::default();
+    if parametric {
+        config.policy = "deterministic-planner.v1:parametric".to_string();
+    }
+    for goal in &result.package.goals {
+        let mut goal = goal.clone();
+        if parametric {
+            goal.requirements.fallback = emath_ir::FallbackPolicy::Parametric;
+        }
+        let outcome = run_planner(&goal, &registry, &config);
+        match &outcome {
+            PlanningOutcome::Selected { plan, inspection } => {
+                if json {
+                    println!("{}", inspection.to_json());
+                }
+                println!(
+                    "plan goal={} disposition={} candidates={} root={} checks={}",
+                    goal.target,
+                    plan.artifact_class,
+                    inspection.candidate_count(),
+                    plan.root.index(),
+                    inspection.checks.join(",")
+                );
+            }
+            PlanningOutcome::NoEligible {
+                reasons,
+                disposition,
+                inspection,
+            } => {
+                if json {
+                    println!("{}", inspection.to_json());
+                }
+                for reason in reasons {
+                    println!("excluded: {reason}");
+                }
+                println!(
+                    "disposition goal={} class={}",
+                    goal.target,
+                    disposition.name()
+                );
+                if *disposition == emath_plan::ArtifactDisposition::Parametric {
+                    let spec = lift_missing(&goal.target, &["unknown-operator".to_string()]);
+                    println!("{}", emit_provider_trait(&spec));
+                }
+            }
+            PlanningOutcome::Exhausted {
+                continuation,
+                disposition,
+                inspection,
+            } => {
+                if json {
+                    println!("{}", inspection.to_json());
+                }
+                println!(
+                    "exhausted goal={} class={} continuation={}",
+                    goal.target,
+                    disposition.name(),
+                    continuation
+                );
+            }
+        }
+    }
+    EXIT_OK
 }
 
 /// `import modelica <file.mo> [--json]`: retain a Modelica subset source as
@@ -278,6 +365,10 @@ usage:
       parse + admit, no codegen
   emath plan <file.emath> [--json]
       admit + goals + deterministic native resolution plan
+  emath planner <file.emath> [--json] [--parametric]
+      deterministic planner inspection: candidates, exclusions, selected
+      plan, checks, budget, disposition; --parametric lifts missing
+      providers to a compilable Rust trait (Phase 6)
   emath build <file.emath> --out <dir> [--verify] [--json]
       full pipeline; publishes artifact under <dir>/emath/<artifact-id>
       --verify runs `cargo test` on the staged crate before publish
@@ -329,6 +420,23 @@ pub fn run(args: &[String]) -> u8 {
             match path {
                 Some(path) => plan(&path, json),
                 None => usage("plan <file.emath> [--json]"),
+            }
+        }
+        "planner" => {
+            let mut path = None;
+            let mut json = false;
+            let mut parametric = false;
+            for arg in &args[1..] {
+                match arg.as_str() {
+                    "--json" => json = true,
+                    "--parametric" => parametric = true,
+                    other if other.starts_with('-') => {}
+                    other => path = Some(PathBuf::from(other)),
+                }
+            }
+            match path {
+                Some(path) => planner_cmd(&path, json, parametric),
+                None => usage("planner <file.emath> [--json] [--parametric]"),
             }
         }
         "build" => {
@@ -571,6 +679,43 @@ mod tests {
     fn file_id_is_typed() {
         let file = emath_core::FileId(0);
         assert_eq!(file.0, 0);
+    }
+
+    #[test]
+    fn planner_inspects_and_lifts_parametric() {
+        let dir =
+            std::env::temp_dir().join(format!("emath-cli-test-planner-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("planner.emath");
+        std::fs::write(
+            &file,
+            "emath custom <PlannerDemo> as function:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = x * x
+    requests:
+        evaluate <y>:
+            produce rust.library
+",
+        )
+        .unwrap();
+        assert_eq!(
+            run(&["planner".to_string(), file.display().to_string()]),
+            EXIT_OK
+        );
+        assert_eq!(
+            run(&[
+                "planner".to_string(),
+                file.display().to_string(),
+                "--json".to_string(),
+                "--parametric".to_string()
+            ]),
+            EXIT_OK
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -4,9 +4,35 @@
 //! native path: lower → execute(native) → check → package → admit. No
 //! external providers are installed in Phase 1; every other candidate is
 //! recorded as excluded with its reason (an honest trace, not a silent
-//! fallback).
+//! fallback). Phase 6 adds the deterministic planner over the provider
+//! registry: decomposition rules, representation planning, fallback
+//! graphs, provider lifting, total dispositions, inspection and the plan
+//! identity/cache.
 
 #![forbid(unsafe_code)]
+
+pub mod decompose;
+pub mod dispositions;
+pub mod fallback;
+pub mod identity;
+pub mod inspect;
+pub mod lifting;
+pub mod planner;
+pub mod registry_helpers;
+pub mod representations;
+
+pub use decompose::{
+    decompose, requirements_preserved, DecompositionRule, SubgoalDag, SubgoalNode,
+};
+pub use dispositions::{
+    disposition_exhausted, disposition_for_plan, disposition_without_plan, ArtifactDisposition,
+};
+pub use fallback::{FallbackGraph, FallbackNode};
+pub use identity::{plan_identity, provider_set_fingerprint, PlanCache, ProviderFingerprint};
+pub use inspect::PlanInspection;
+pub use lifting::{emit_provider_trait, lift_missing, LiftedMethod, ProviderTraitSpec};
+pub use planner::{plan, PlannerConfig, PlanningOutcome, TieBreak};
+pub use representations::{find_conversion_path, Conversion, ConversionNode, RepresentationError};
 
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{
