@@ -1,10 +1,19 @@
-# emath Fork Constellation Implementation Foundation V5
+# emath
 
-This repository package contains the complete strategy, language design, architecture, phased implementation plan, upstream fork policy, Rust API foundations, schemas, examples, tests, validation tools, and historical prototypes needed to begin implementing emath.
+> **Write the mathematics you mean. emath builds what you can run.**
 
-## One-sentence product definition
+**emath** is a Rust-first language, compiler, and optimization lab for turning mathematical intent into executable, inspectable Cargo components.
 
-emath is a **mathematical package and goal compiler**: users define typed mathematical systems in `.emath`; the Rust compiler elaborates them into neutral semantic and execution IRs; compatible providers solve, compile, search, verify, or simulate requested goals; and the system emits evidence-carrying Cargo artifacts that can be benchmarked and promoted inside real Rust programs.
+A `.emath` program can describe:
+
+- formulas, tensors, graphs, dynamic systems, constraints, and search spaces;
+- constructors and legal object states;
+- goals such as evaluate, differentiate, solve, integrate, optimize, simulate, search, verify, compile, and tune;
+- numerical semantics, units, shapes, domains, precision, and error limits;
+- evidence requirements;
+- Rust host interfaces and protected performance objectives.
+
+emath resolves that intent through interchangeable providers, generates one or more implementations, validates them, and packages the result as ordinary Rust software.
 
 ## What emath is not
 
@@ -14,6 +23,62 @@ emath is a **mathematical package and goal compiler**: users define typed mathem
 - It is not a theorem prover pretending every theorem is executable.
 - It is not one giant vendored workspace of unrelated repositories.
 - It is not an AI code generator whose output is accepted without deterministic checking.
+
+## Status
+
+This is a **work-in-progress prototype** (v0.1.0). It is built in vertical slices; every slice ships with a real consumer, negative controls, and retained evidence. Details: `BUILD_STATUS.md`, `HANDOFF.md`, `ROADMAP.md`, `CONTRIBUTING.md`.
+
+### What works today
+
+- **Phase 1 vertical slice:** a `.emath` policy declaration compiles into a checked constructor, a score method, and a standalone zero-dependency Rust crate with an evidence manifest and source map. The gate (`cargo fmt --all -- --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `scripts/validate.sh`) is green.
+- **Semantic Genesis G0–G3:** the glyph world interface — arbitrary Unicode glyphs as identifiers, bounded parse forests, signature inference, a neutral `Term` IR, and deterministic parametric Rust artifact generation producing free-symbolic, Boolean, and modular-17 worlds with a wrong-world negative control.
+- **Capstones:** `cargo xtask demo cache-policy` and `cargo xtask demo semantic-genesis` both pass locally.
+
+Not release-proof yet: content identity is still the FNV-1a bootstrap id (replaced before stable publication), and providers, the frontier engine, and most of the language breadth are still planned.
+
+## Example
+
+The target language looks like this (illustrative; the implemented subset today is smaller — see `BUILD_STATUS.md` and `implementation/tests/valid/`):
+
+```emath
+emath policy CachePriority:
+    input:
+        candidate: CacheCandidate
+
+    state:
+        alpha: NonNegative<Real>
+        decay: NonNegative<Per<Second>>
+
+    constructor new(
+        alpha: Real,
+        decay: Per<Second>,
+    ) -> Result<Self, ConfigError>:
+        require alpha >= 0
+        require decay >= 0 / s
+
+        Self:
+            alpha = alpha
+            decay = decay
+
+    define score(candidate) -> Real:
+        candidate.reuse_probability ^ self.alpha
+        * (candidate.rebuild_cost / 1 ms)
+        * exp(-(self.decay * candidate.age))
+        / (1 + candidate.bytes / 1 MiB)
+
+    goal compile score for rust.library
+    goal differentiate score wrt [alpha, decay]
+
+    evidence:
+        require finite over CacheCandidate::admitted_domain
+        require max_relative_error <= 1e-10
+
+    host rust:
+        implement cache_core::Policy:
+            method score = score
+```
+
+The implemented vertical slice covers a scalar subset: a declaration with validated `state`, one checked constructor, scalar `define`d methods, `tests:` blocks, and `host rust` export — compiled and verified end to end as `examples/generated/affine-policy-rs`.
 
 ## Core composition
 
@@ -32,14 +97,58 @@ emath is a **mathematical package and goal compiler**: users define typed mathem
   → protected baseline/candidate experiment
 ```
 
-## Principal upstream substrates
+## Command surface
 
-- Rumoca: structural modeling, class/package instantiation, equations and DAE-oriented compiler phases.
-- Dew: expression representation, Rust/code-token output, JIT and accelerator backend patterns.
-- Wrenfold: optional symbolic provider, derivative/code-generation reference, and differential oracle.
-- Modelica Standard Library: compatibility and scientific component corpus.
-- Franken repositories: optional numerical, tensor, AD, simulation, verification, proof, replay, and runtime providers.
+Implemented today:
 
-No upstream internal type appears in emath's stable public IR.
+```console
+emath check                       semantic admission
+emath plan                        deterministic resolution plan
+emath build --out <dir> --verify  generate + verify Cargo artifact
+emath artifact check              independent artifact validation
+emath parse --forest              G0/G1: glyphs → bounded parse forest
+emath signature                   signature/fixity inference
+emath genesis --out <dir>         semantic genesis analysis pipeline
+emath compile --parametric --out  deterministic generated crate
+emath world show / portfolio show introspection
+emath architecture / help         stable docs entry
+```
 
-Begin with `START_HERE.md`.
+Planned (per `implementation/CLI_REFERENCE.md`): `new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `migrate`, `doctor`, `vendor`, `provider list|inspect|test`.
+
+## The provider model
+
+emath owns its language, semantic IR, goals, evidence model, artifact format, and runtime outcome contract.
+
+Providers contribute implementations:
+
+```text
+Dew                 expression optimization, Rust codegen, JIT, GPU backends
+Rumoca              component models, equations, flattening, DAE analysis
+Wrenfold            optional symbolic oracle and code-generation reference
+FrankenJAX          tensors, automatic differentiation, transforms
+FrankenSciPy        numerical solvers, optimization, integration
+FrankenSim          operator graphs, kernels, certified numerical paths
+FrankenLean         optional theorem and proof evidence
+native providers    exact arithmetic, intervals, search, basic numerics
+```
+
+Providers are pinned dependencies behind adapters (Phase 2+). They do not define emath's public semantics. No upstream fork type appears in emath's stable public IR.
+
+## Why Rust
+
+Rust provides:
+
+- predictable native deployment;
+- zero-cost abstractions for generated code;
+- strong type and ownership boundaries;
+- a mature package model through Cargo;
+- practical integration with systems software;
+- multiple JIT, GPU, numerical, and proof ecosystems;
+- a suitable language for implementing the compiler itself.
+
+The core toolchain is Rust-first. Optional providers may use other implementation languages behind stable adapters.
+
+## License
+
+The intended emath-owned code license is `MIT OR Apache-2.0`. Provider and corpus licenses remain independently tracked and reproduced in release bundles. See `legal/THIRD_PARTY_INVENTORY.md`.
