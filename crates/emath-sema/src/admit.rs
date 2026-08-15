@@ -627,7 +627,7 @@ pub fn admit_declaration(decl: &emath_syntax::tree::Declaration) -> AdmitResult 
 
     // Section collection with duplicate detection (E-SYN-103).
     let mut by_name: BTreeMap<&str, &Section> = BTreeMap::new();
-    for section in &decl.sections {
+    for section in decl.sections() {
         if let Some(previous) = by_name.get(section.name.as_str()) {
             admitter.error(
                 "E-SYN-103",

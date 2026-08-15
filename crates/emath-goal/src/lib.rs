@@ -197,7 +197,7 @@ mod tests {
         };
         let mut diagnostics = Diagnostics::new();
         let package = SemanticPackage::new();
-        let requests = elaborate_requests(&package, "X", &decl.sections, &mut diagnostics);
+        let requests = elaborate_requests(&package, "X", &decl.sections_vec(), &mut diagnostics);
         assert!(requests.is_empty());
         assert!(diagnostics.items().iter().any(|d| d.code == "E-GOAL-043"));
         let _ = compile_spec();
