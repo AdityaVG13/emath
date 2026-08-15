@@ -141,6 +141,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-holes"
+version = "0.1.0"
+dependencies = [
+ "emath-calibration",
+ "emath-law-check",
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-ir"
 version = "0.1.0"
 dependencies = [

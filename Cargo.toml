@@ -26,6 +26,7 @@ members = [
   "crates/emath-agent-protocol",
   "crates/emath-calibration",
   "crates/emath-law-check",
+  "crates/emath-holes",
   "crates/emath-genesis",
   "crates/emath-meaning-provider-api",
   "crates/emath-portfolio",
@@ -68,6 +69,7 @@ emath-tuning = { path = "crates/emath-tuning" }
 emath-agent-protocol = { path = "crates/emath-agent-protocol" }
 emath-calibration = { path = "crates/emath-calibration" }
 emath-law-check = { path = "crates/emath-law-check" }
+emath-holes = { path = "crates/emath-holes" }
 emath-genesis = { path = "crates/emath-genesis" }
 emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }

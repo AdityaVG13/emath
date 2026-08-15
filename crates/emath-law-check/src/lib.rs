@@ -25,8 +25,8 @@ pub enum Law {
     Associative(SymbolId),
     /// `op(x, x) == x` for all carrier elements.
     Idempotent(SymbolId),
-    /// There is `e` with `op(x, e) == x` and `op(e, x) == x` for all
-    /// carrier elements.
+    /// The declared element `e` is the identity: `op(x, e) == x` and
+    /// `op(e, x) == x` for all carrier elements.
     Identity(SymbolId, SymbolId),
     /// Declarative law text checked by an external oracle; the finite
     /// checker refuses it rather than passing it vacuously.
@@ -257,59 +257,36 @@ fn check_law(table: &FittedTable, obligation: &WorldObligation, carrier: &[Strin
                 }
             }
         }
-        Law::Identity(_, _) => {
-            // Try each carrier element as the identity candidate in
-            // sorted order. Keep the first failing candidate/x pair in
-            // case no candidate works at all (that pair is minimized).
-            let mut first_failure: Option<(String, String)> = None;
-            let mut found = false;
-            for e in carrier {
-                let mut pair_failure = None;
-                let mut witness = true;
-                for x in carrier {
-                    let Some(left) = eval(table, x, e) else {
-                        return LawCheck::Untotal {
-                            inputs: vec![x.clone(), e.clone()],
-                        };
-                    };
-                    let Some(right) = eval(table, e, x) else {
-                        return LawCheck::Untotal {
-                            inputs: vec![e.clone(), x.clone()],
-                        };
-                    };
-                    if left != *x || right != *x {
-                        witness = false;
-                        pair_failure = Some((e.clone(), x.clone()));
-                        break;
-                    }
-                }
-                if witness {
-                    found = true;
-                    break;
-                }
-                if first_failure.is_none() {
-                    first_failure = pair_failure;
-                }
+        Law::Identity(_, e) => {
+            // The declared identity element `e` must BE the identity:
+            // op(x, e) == x and op(e, x) == x for every carrier element.
+            // A different witness does not satisfy the declared law.
+            let e = e.0.clone();
+            if !carrier.contains(&e) {
+                return LawCheck::Violated(MinimizedCounterexample {
+                    obligation_id: obligation.id,
+                    inputs: Vec::new(),
+                    detail: format!("declared identity element {e} is not in the carrier"),
+                });
             }
-            if !found {
-                return match first_failure {
-                    Some((e, x)) => {
-                        let left = eval(table, &x, &e).unwrap_or_default();
-                        LawCheck::Violated(MinimizedCounterexample {
-                            obligation_id: obligation.id,
-                            inputs: vec![x.clone(), e.clone()],
-                            detail: format!(
-                                "{}({x},{e})={left} != {x}; no identity element in carrier",
-                                op.0
-                            ),
-                        })
-                    }
-                    None => LawCheck::Violated(MinimizedCounterexample {
-                        obligation_id: obligation.id,
-                        inputs: Vec::new(),
-                        detail: format!("no identity element for {} in carrier", op.0),
-                    }),
+            for x in carrier {
+                let Some(left) = eval(table, x, &e) else {
+                    return LawCheck::Untotal {
+                        inputs: vec![x.clone(), e.clone()],
+                    };
                 };
+                let Some(right) = eval(table, &e, x) else {
+                    return LawCheck::Untotal {
+                        inputs: vec![e.clone(), x.clone()],
+                    };
+                };
+                if left != *x || right != *x {
+                    return LawCheck::Violated(MinimizedCounterexample {
+                        obligation_id: obligation.id,
+                        inputs: vec![x.clone(), e.clone()],
+                        detail: format!("{}({x},{e})={left} != {x}", op.0),
+                    });
+                }
             }
         }
         Law::Idempotent(_) => {
