@@ -1,0 +1,16 @@
+/// Blank declarative custom-kind template.
+
+emath custom <MyKind> as kind:
+    extends model
+
+    schema:
+        # require section inputs
+        # allow section custom_section
+        # forbid together [section_a, section_b]
+
+    traits:
+        # automatically implements Executable
+
+    lower:
+        # model.inputs = section.inputs
+        # model.extensions += section.custom_section

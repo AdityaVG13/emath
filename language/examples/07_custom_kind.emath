@@ -1,0 +1,38 @@
+/// A declaration kind defined entirely in `.emath`.
+
+emath custom <ScoringPolicyKind> as kind:
+    extends model
+
+    schema:
+        require section inputs
+        require section outputs
+        require section definitions
+        allow section state
+        allow section constructors
+        allow section evidence
+        allow section host
+        require exactly_one output
+
+    traits:
+        automatically implements Executable
+        automatically implements Benchable
+
+    lower:
+        model.inputs = section.inputs
+        model.outputs = section.outputs
+        model.state = section.state or []
+        model.constructors = section.constructors or []
+        model.definitions = section.definitions
+        model.evidence = section.evidence or []
+        model.host = section.host or []
+
+emath custom <SimpleScore> as ScoringPolicyKind:
+    inputs:
+        x: Real
+        y: Real
+
+    outputs:
+        score: Real
+
+    definitions:
+        score = x / (1 + abs(y))

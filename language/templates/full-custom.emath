@@ -1,0 +1,150 @@
+/// Full blank `.emath` declaration template.
+/// Delete unused sections. Add plugin-defined sections freely after importing their schemas.
+
+emath custom <Name<GenericParameters>> as model:
+    about:
+        summary: ""
+        version: "0.1.0"
+        authors: []
+        tags: []
+
+    use:
+        # core::math::{Real, Int, Bool}
+        # core::units::*
+        # plugin::some_package::*
+
+    generics:
+        # T: Real = f64
+        # N: Nat
+
+    capabilities:
+        # Pure
+        # Deterministic
+        # Differentiable(order = 2)
+        # Stateful
+
+    types:
+        # type Alias = Real
+        # record Input:
+        #     value: Real
+        # variant Decision:
+        #     Accept(score: Real)
+        #     Reject(reason: Text)
+
+    units:
+        # unit CustomBase = base "custom"
+        # unit CustomDerived = 1000 * CustomBase
+
+    domains:
+        # domain Ω = Box([0, 1], [0, 1])
+
+    shapes:
+        # shape InputShape = [Batch, Features]
+
+    data:
+        # dataset observations: Dataset<Observation>
+
+    inputs:
+        # x: Real
+
+    outputs:
+        # y: Real
+
+    state:
+        # count: Nat = 0
+
+    constants:
+        # epsilon: Real = 1e-9
+
+    constructors:
+        # public fn new(...) -> Self:
+        #     Self:
+        #         ...
+
+    functions:
+        # fn helper(x: Real) -> Real:
+        #     x
+
+    definitions:
+        # y = helper(x)
+
+    equations:
+        # residual(x, y) == 0
+
+    relations:
+        # forall x in domain: property(x)
+
+    constraints:
+        # x >= 0
+
+    invariants:
+        # state.count >= 0
+
+    objectives:
+        # maximize y
+
+    transitions:
+        # on observe(value):
+        #     state.count += 1
+
+    events:
+        # event ThresholdCrossed(value: Real)
+
+    requests:
+        # evaluate <y>:
+        #     produce rust.library
+        #
+        # differentiate <y>:
+        #     wrt [x]
+        #     order 1
+        #
+        # solve <equations>:
+        #     for [x]
+
+    strategies:
+        # prefer [native, symbolic, interval]
+        # allow plugins matching capability NumericSolver
+        # fallback parametric
+
+    evidence:
+        # claim <output_finite>:
+        #     statement is_finite(y)
+        #     require runtime-check
+
+    budgets:
+        # compile:
+        #     wall_time: 30 s
+        #     memory: 1 GiB
+        # runtime:
+        #     evaluations: 1_000_000
+        #     iterations: 10_000
+
+    compile:
+        target rust
+        profile library
+        numeric default
+        unresolved parametric
+
+    exports:
+        # public function y
+        # public type Input
+
+    host:
+        # rust:
+        #     crate_name "generated_name"
+        #     implement path::Trait for Self:
+        #         method call = y
+
+    tests:
+        # example <smoke>:
+        #     given x = 1
+        #     expect y == 1
+        #
+        # property <finite>:
+        #     for x in -100..100
+        #     expect is_finite(y)
+
+    benchmarks:
+        # benchmark <baseline>:
+        #     compare y against host::baseline
+        #     measure [latency, throughput, allocations, binary_size]

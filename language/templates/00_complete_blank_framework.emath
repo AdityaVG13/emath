@@ -1,0 +1,174 @@
+/// Complete blank eMath declaration framework.
+/// Delete unused sections. A custom kind schema determines which sections are valid.
+
+@edition("2026")
+emath custom <Name<T, N>> as model:
+    about:
+        summary: ""
+        version: "0.1.0"
+        authors: []
+        license: ""
+        repository: ""
+        tags: []
+
+    use:
+        # core::prelude::*
+        # core::units::*
+        # package::module::{Thing, Other}
+
+    generics:
+        # T: Real = Float64
+        # N: Nat
+        # U: Unit
+        # P: Provider<Capability>
+
+    capabilities:
+        # Pure
+        # Deterministic
+        # Stateful
+        # Differentiable(order = 2)
+
+    attributes:
+        # semantic identity-affecting metadata only
+
+    types:
+        # type Probability = Real where 0 <= self and self <= 1
+        # record Input:
+        #     value: Real
+        # variant Decision:
+        #     Accept(score: Real)
+        #     Reject(reason: Text)
+
+    units:
+        # unit Item = base "item"
+        # unit ItemRate = Item / s
+
+    domains:
+        # domain Ω = Box([0 m, 1 m], [0 m, 1 m])
+
+    shapes:
+        # shape InputShape = [Batch, Features]
+
+    data:
+        # dataset observations: Dataset<Observation>
+
+    inputs:
+        # x: Real
+
+    outputs:
+        # y: Real
+
+    state:
+        # parameter: Real
+        # count: Nat = 0
+
+    constants:
+        # epsilon: Positive<Real> = 1e-9
+
+    constructors:
+        # public fn new(parameter: Real) -> Result<Self, ConfigError>:
+        #     require parameter >= 0
+        #
+        #     Self:
+        #         parameter = parameter
+        #         count = 0
+
+    functions:
+        # fn helper(x: Real) -> Real:
+        #     x
+
+    definitions:
+        # y = helper(x)
+
+    equations:
+        # residual(x, y) == 0
+
+    relations:
+        # forall x in domain: property(x)
+
+    constraints:
+        # x >= 0
+
+    invariants:
+        # state.count >= 0
+
+    objectives:
+        # minimize cost
+        # maximize quality
+
+    transitions:
+        # on observe(value):
+        #     state.count += 1
+
+    events:
+        # event ThresholdCrossed(value: Real)
+
+    requests:
+        # evaluate <y>:
+        #     produce rust.library
+        #
+        # differentiate <y>:
+        #     wrt [x]
+        #     order 1
+        #     require evidence >= E2
+        #
+        # solve <equations>:
+        #     for [x]
+        #
+        # compile <Self>:
+        #     to rust.library
+
+    strategies:
+        # prefer [native, symbolic, interval]
+        # allow providers matching NumericSolver
+        # deny remote
+        # fallback parametric
+
+    evidence:
+        # claim <output_finite>:
+        #     statement is_finite(y)
+        #     require runtime-check
+
+    budgets:
+        # compile:
+        #     wall_time: 30 s
+        #     memory: 1 GiB
+        # runtime:
+        #     evaluations: 1_000_000
+        #     iterations: 10_000
+
+    compile:
+        target rust
+        profile library
+        numeric default
+        unresolved parametric
+        safety forbid-unsafe
+
+    exports:
+        # public constructor new
+        # public function y
+        # public type Input
+
+    host:
+        # rust:
+        #     crate_name "generated_name"
+        #     implement path::Trait for Self:
+        #         method call = y
+
+    tests:
+        # example <smoke>:
+        #     given x = 1
+        #     expect y == 1
+        #
+        # property <finite>:
+        #     for x in -100..100
+        #     expect is_finite(y)
+
+    benchmarks:
+        # benchmark <baseline>:
+        #     compare Self against host::baseline
+        #     measure [latency, throughput, allocations, binary_size]
+
+    extensions:
+        # org::package::section:
+        #     custom: "data"

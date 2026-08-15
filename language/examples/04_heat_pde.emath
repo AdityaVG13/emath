@@ -1,0 +1,48 @@
+use core::calculus::*
+use core::field::*
+use core::units::{m, s, K}
+use franken::simulation::{Mesh, Material}
+
+emath custom <HeatDiffusion2D> as pde_model:
+    domains:
+        domain Ω = Box([0 m, 1 m], [0 m, 1 m])
+        domain Time = Interval(0 s, 10 s)
+
+    inputs:
+        material: Material
+        mesh: Mesh<Ω>
+        initial_temperature: Field<K, Ω>
+        boundary_temperature: Field<K, boundary(Ω)>
+
+    outputs:
+        temperature: Field<K, Ω * Time>
+
+    equations:
+        material.density * material.heat_capacity * derivative temperature wrt time
+            == divergence(material.conductivity * gradient(temperature))
+
+    constraints:
+        temperature at time.start == initial_temperature
+        temperature on boundary(Ω) == boundary_temperature
+
+    requests:
+        solve <temperature>:
+            over Time
+            produce rust.library
+
+        verify <temperature>:
+            require residual-bound
+            require energy-estimator
+
+        differentiate <temperature>:
+            wrt [material.conductivity]
+            strategy adjoint
+
+    strategies:
+        prefer [frankensim::opdsl_fem, standard::finite_difference]
+        fallback parametric
+
+    evidence:
+        claim <boundary_preserved>:
+            statement temperature on boundary(Ω) == boundary_temperature
+            require bounded

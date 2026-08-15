@@ -1,0 +1,23 @@
+/// Blank compilation/validation/promotion pipeline.
+
+emath pipeline <ReleasePipeline>:
+    stages:
+        check
+        plan
+        generate rust
+        compile
+        test
+        translate_validate
+        benchmark
+        promote
+
+    policy:
+        deterministic true
+        unresolved parametric
+        network false
+
+    outputs:
+        rust_crate
+        artifact_manifest
+        evidence_bundle
+        benchmark_receipt

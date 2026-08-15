@@ -1,0 +1,28 @@
+emath custom <SemanticRouter<D: Nat>> as policy:
+    inputs:
+        query: Vector<Float32, D>
+        candidate: Vector<Float32, D>
+
+    outputs:
+        probability: Probability
+
+    functions:
+        extern fn semantic_similarity(
+            left: Vector<Float32, D>,
+            right: Vector<Float32, D>,
+        ) -> Probability
+
+    definitions:
+        probability = semantic_similarity(query, candidate)
+
+    requests:
+        evaluate <probability>:
+            produce rust.library
+
+    strategies:
+        fallback parametric
+
+    compile:
+        target rust
+        profile library
+        unresolved parametric

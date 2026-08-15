@@ -1,0 +1,51 @@
+use core::units::*
+
+emath custom <MassSpringDamper> as dynamic_model:
+    inputs:
+        force: Force
+
+    outputs:
+        position: Length
+        velocity: Velocity
+
+    state:
+        mass: Positive<Mass>
+        damping: NonNegative<Damping>
+        stiffness: NonNegative<Stiffness>
+        position: Length = 0 m
+        velocity: Velocity = 0 m/s
+
+    constructors:
+        public fn new(
+            mass: Mass,
+            damping: Damping,
+            stiffness: Stiffness,
+        ) -> Result<Self, ConfigError>:
+            require mass > 0 kg
+            require damping >= 0 N*s/m
+            require stiffness >= 0 N/m
+
+            Self:
+                mass = mass
+                damping = damping
+                stiffness = stiffness
+                position = 0 m
+                velocity = 0 m/s
+
+    equations:
+        derivative(position) == velocity
+        state.mass * derivative(velocity) == force - state.damping * velocity - state.stiffness * position
+
+    requests:
+        simulate <equations>:
+            over Time = Interval(0 s, 10 s)
+            outputs [position, velocity]
+            require error <= 1e-6
+
+    strategies:
+        prefer [rumoca::structural, numerical::adaptive_ode]
+        fallback parametric
+
+    compile:
+        target rust
+        profile library

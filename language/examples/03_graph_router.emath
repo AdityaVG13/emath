@@ -1,0 +1,52 @@
+use core::graph::*
+use core::math::{Real, Probability}
+use core::units::{Token, Duration}
+
+emath custom <ToolRouteGraph<NodeCount: Nat>> as graph_algorithm:
+    types:
+        record NodeCost:
+            token_cost: Token
+            latency: Duration
+            failure_probability: Probability
+
+        record Route:
+            nodes: Sequence<NodeId>
+            total_cost: Real
+
+    inputs:
+        graph: DirectedGraph<NodeId, NodeCost, NodeCount>
+        start: NodeId
+        goal: NodeId
+        token_weight: NonNegative<Real>
+        latency_weight: NonNegative<Real>
+        failure_weight: NonNegative<Real>
+
+    outputs:
+        route: Option<Route>
+
+    functions:
+        fn edge_score(edge: NodeCost) -> Real:
+            token_weight * edge.token_cost / 1 Token
+            + latency_weight * edge.latency / 1 ms
+            + failure_weight * -log(1 - edge.failure_probability)
+
+    objectives:
+        minimize sum edge in path: edge_score(edge)
+
+    constraints:
+        path begins_at start
+        path ends_at goal
+        path is_simple
+
+    requests:
+        solve <route>:
+            using shortest_path
+            produce rust.library
+
+        verify <route>:
+            claim route_is_valid
+            require checked-certificate
+
+    strategies:
+        prefer [dijkstra if all edge_score >= 0, bellman_ford]
+        fallback provider graph_solver

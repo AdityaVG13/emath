@@ -1,0 +1,27 @@
+emath custom <CounterexampleSearch<N: Nat>> as conjecture_search:
+    generics:
+        N: Nat
+
+    inputs:
+        bound: Positive<Nat>
+
+    outputs:
+        result: SearchResult<Witness>
+
+    relations:
+        conjecture = forall object in objects_up_to(bound): property(object)
+        counterexample(witness) = object_valid(witness) and not property(witness)
+
+    requests:
+        search <witness>:
+            where counterexample(witness)
+            budget iterations = 10_000_000
+            produce continuation
+
+        verify <witness>:
+            require deterministic-checker
+
+    compile:
+        target rust
+        profile executable
+        unresolved continuation

@@ -1,0 +1,159 @@
+(* eMath surface grammar — design grammar, version 5/fork-constellation-1 *)
+
+source_file      = { newline | item } ;
+
+item             = use_item | emath_item ;
+emath_item       = { attribute } , "emath" , item_kind , declaration_head , [ "as" , path ] , ":" , suite ;
+use_item         = "use" , use_tree , newline ;
+use_tree         = path , [ "::" , ( "*" | "{" , use_member , { "," , use_member } , [ "," ] , "}" ) ] , [ "as" , identifier ] ;
+use_member       = identifier , [ "as" , identifier ] ;
+item_kind        = identifier ;
+declaration_head = "<" , path , [ generic_arguments ] , ">" ;
+
+generic_arguments = "<" , generic_parameter , { "," , generic_parameter } , [ "," ] , ">" ;
+generic_parameter = identifier , [ ":" , type_expr ] , [ "=" , expression ] ;
+
+attribute        = "@" , path , [ "(" , [ argument_list ] , ")" ] , newline ;
+
+suite            = newline , indent , { section | statement | newline } , dedent
+                 | inline_value , newline ;
+
+section          = { attribute } , section_head , ":" , suite ;
+section_head     = identifier , [ "<" , identifier , ">" ] , [ argument_tuple ] ;
+argument_tuple   = "(" , [ argument_list ] , ")" ;
+argument_list    = argument , { "," , argument } , [ "," ] ;
+argument         = [ identifier , "=" ] , expression ;
+
+statement        = declaration_statement
+                 | let_statement
+                 | assignment_statement
+                 | return_statement
+                 | require_statement
+                 | ensure_statement
+                 | invariant_statement
+                 | expression_statement
+                 | if_statement
+                 | match_statement
+                 | for_statement
+                 | while_statement ;
+
+declaration_statement = visibility , declaration_form ;
+visibility       = [ "public" | "package" | "private" ] ;
+declaration_form = function_decl
+                 | constructor_decl
+                 | type_decl
+                 | record_decl
+                 | variant_decl
+                 | trait_decl
+                 | impl_decl
+                 | operator_decl
+                 | notation_decl
+                 | extern_decl ;
+
+function_decl    = [ "async" ] , "fn" , identifier , [ generic_arguments ] , parameter_list , [ "->" , type_expr ] , ":" , suite ;
+constructor_decl = "constructor" , identifier , parameter_list , [ "->" , type_expr ] , ":" , suite ;
+parameter_list   = "(" , [ parameter , { "," , parameter } , [ "," ] ] , ")" ;
+parameter        = identifier , ":" , type_expr , [ "=" , expression ] ;
+
+type_decl        = "type" , identifier , [ generic_arguments ] , "=" , type_expr , [ "where" , expression ] ;
+record_decl      = "record" , identifier , [ generic_arguments ] , ":" , suite ;
+variant_decl     = "variant" , identifier , [ generic_arguments ] , ":" , suite ;
+trait_decl       = "trait" , identifier , [ generic_arguments ] , ":" , suite ;
+impl_decl        = "impl" , type_expr , [ "for" , type_expr ] , ":" , suite ;
+operator_decl    = [ "extern" ] , "operator" , identifier , [ generic_arguments ] , parameter_list , "->" , type_expr , ":" , suite ;
+notation_decl    = "notation" , notation_fixity , integer , string , "=>" , path ;
+notation_fixity  = "prefix" | "postfix" | "infixl" | "infixr" | "infix" ;
+extern_decl      = "extern" , ( function_decl | type_decl | operator_decl ) ;
+
+let_statement    = "let" , pattern , [ ":" , type_expr ] , "=" , expression ;
+assignment_statement = place_expr , assignment_op , expression ;
+assignment_op    = "=" | "+=" | "-=" | "*=" | "/=" ;
+return_statement = "return" , [ expression ] ;
+require_statement = "require" , expression ;
+ensure_statement = "ensure" , expression ;
+invariant_statement = "invariant" , expression ;
+expression_statement = expression ;
+
+if_statement     = "if" , expression , ":" , suite , { "else" , "if" , expression , ":" , suite } , [ "else" , ":" , suite ] ;
+match_statement  = "match" , expression , ":" , newline , indent , { pattern , [ "if" , expression ] , "=>" , suite } , dedent ;
+for_statement    = "for" , pattern , "in" , expression , ":" , suite ;
+while_statement  = "while" , expression , [ "with" , argument_tuple ] , ":" , suite ;
+
+expression       = lambda_expr | conditional_expr | binary_expr ;
+lambda_expr      = "fn" , parameter_list , [ "->" , type_expr ] , "=>" , expression ;
+conditional_expr = "if" , expression , ":" , expression , "else" , ":" , expression ;
+binary_expr      = unary_expr , { operator_token , unary_expr } ;
+unary_expr       = { prefix_operator } , postfix_expr ;
+postfix_expr     = primary_expr , { call_suffix | index_suffix | field_suffix | generic_suffix } ;
+call_suffix      = "(" , [ argument_list ] , ")" ;
+index_suffix     = "[" , [ expression , { "," , expression } ] , "]" ;
+field_suffix     = "." , identifier ;
+generic_suffix   = "::<" , type_expr , { "," , type_expr } , ">" ;
+
+primary_expr     = literal
+                 | path
+                 | tuple_expr
+                 | list_expr
+                 | record_expr
+                 | range_expr
+                 | binder_expr
+                 | "(" , expression , ")" ;
+
+tuple_expr       = "(" , expression , "," , [ expression , { "," , expression } ] , ")" ;
+list_expr        = "[" , [ expression , { "," , expression } ] , "]"
+                 | "[" , expression , "for" , pattern , "in" , expression , [ "if" , expression ] , "]" ;
+record_expr      = path , ":" , suite ;
+range_expr       = [ expression ] , ( ".." | "..=" ) , [ expression ] ;
+
+binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , binder_list , ":" , expression
+                 | ( "derivative" | "jacobian" | "hessian" ) , expression , "wrt" , expression ;
+binder_list      = pattern , "in" , expression , { "," , pattern , "in" , expression } ;
+
+type_expr        = type_primary , { type_operator , type_primary } ;
+type_primary     = path , [ "<" , type_expr , { "," , type_expr } , ">" ]
+                 | "(" , type_expr , { "," , type_expr } , ")"
+                 | "[" , type_expr , ";" , expression , "]"
+                 | "fn" , parameter_list , "->" , type_expr
+                 | type_primary , "where" , expression ;
+type_operator    = "|" | "&" | "*" | "/" ;
+
+pattern          = identifier
+                 | "_"
+                 | literal
+                 | path , [ "(" , [ pattern , { "," , pattern } ] , ")" ]
+                 | "(" , pattern , { "," , pattern } , ")" ;
+
+place_expr       = path , { field_suffix | index_suffix } ;
+path             = identifier , { "::" , identifier } ;
+
+literal          = integer | decimal | float_literal | rational_literal | quantity_literal | string | character | boolean | complex_literal ;
+boolean          = "true" | "false" ;
+
+inline_value     = expression | string ;
+operator_token   = punctuation_operator | custom_operator ;
+prefix_operator  = "+" | "-" | "!" | custom_operator ;
+
+identifier       = unicode_identifier ;
+integer          = digit , { digit | "_" } ;
+decimal          = integer , "." , integer , [ exponent ] ;
+float_literal    = ( integer | decimal ) , ( "f16" | "bf16" | "f32" | "f64" | "f128" ) ;
+rational_literal = integer , "//" , integer ;
+quantity_literal = ( integer | decimal | rational_literal ) , whitespace , path ;
+complex_literal  = expression , ( "+" | "-" ) , expression , "i" ;
+exponent         = ( "e" | "E" ) , [ "+" | "-" ] , integer ;
+
+newline          = ? line ending ? ;
+indent           = ? increased indentation token ? ;
+dedent           = ? decreased indentation token ? ;
+string           = ? UTF-8 quoted string with escapes ? ;
+character        = ? Unicode scalar literal ? ;
+punctuation_operator = ? built-in operator token ? ;
+custom_operator  = ? imported scoped notation token ? ;
+unicode_identifier = ? Unicode XID start followed by XID continue, normalized to NFC ? ;
+digit            = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+whitespace       = " " , { " " } ;
+
+
+(* Layout note: NEWLINE is suppressed inside (), [], and {}, and after an
+   incomplete infix/prefix/assignment expression. This permits vertically
+   formatted expressions such as `score =` followed by an indented expression. *)

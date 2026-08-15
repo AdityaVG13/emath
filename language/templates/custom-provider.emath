@@ -1,0 +1,11 @@
+/// Blank external-provider interface.
+
+emath custom <MyProvider> as interface:
+    extern fn operation(input: Input) -> Result<Output, ProviderError>
+
+    provider:
+        rust trait my_crate::MyProvider
+        component "org.example:providers/my-provider@1"
+
+    evidence:
+        # provider laws and required checks

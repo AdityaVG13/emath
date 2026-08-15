@@ -1,0 +1,19 @@
+/// Blank resolver declaration. Complex planning behavior is implemented by a plugin.
+
+emath resolver <MyResolver>:
+    accepts:
+        # goal pattern
+
+    requires:
+        # semantic traits and provider capabilities
+
+    options:
+        # typed resolver configuration
+
+    emits:
+        # plan family
+        # evidence class
+        # continuation support
+
+    plugin:
+        component "org.example:emath/my-resolver@1"

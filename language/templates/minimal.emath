@@ -1,0 +1,16 @@
+emath custom <MyFunction> as function:
+    inputs:
+        x: Real
+
+    outputs:
+        y: Real
+
+    definitions:
+        y = x
+
+    requests:
+        evaluate <y>:
+            produce rust.library
+
+    compile:
+        target rust

@@ -1,0 +1,22 @@
+[package]
+name = "my-emath-package"
+version = "0.1.0"
+edition = "2026"
+license = "MIT OR Apache-2.0"
+
+[sources]
+root = "src/lib.emath"
+
+[dependencies]
+core = { registry = "emath", version = "1" }
+
+[providers]
+# interval = { package = "emath-provider-interval", version = "1" }
+
+[compile]
+targets = ["rust-library"]
+locked = true
+
+[policy]
+network = "deny"
+unsafe_native_plugins = "deny"
