@@ -1,12 +1,12 @@
-# eMath Fork Constellation Implementation Foundation V5
+# emath Fork Constellation Implementation Foundation V5
 
-This repository package contains the complete strategy, language design, architecture, phased implementation plan, upstream fork policy, Rust API foundations, schemas, examples, tests, validation tools, and historical prototypes needed to begin implementing eMath.
+This repository package contains the complete strategy, language design, architecture, phased implementation plan, upstream fork policy, Rust API foundations, schemas, examples, tests, validation tools, and historical prototypes needed to begin implementing emath.
 
 ## One-sentence product definition
 
-eMath is a **mathematical package and goal compiler**: users define typed mathematical systems in `.emath`; the Rust compiler elaborates them into neutral semantic and execution IRs; compatible providers solve, compile, search, verify, or simulate requested goals; and the system emits evidence-carrying Cargo artifacts that can be benchmarked and promoted inside real Rust programs.
+emath is a **mathematical package and goal compiler**: users define typed mathematical systems in `.emath`; the Rust compiler elaborates them into neutral semantic and execution IRs; compatible providers solve, compile, search, verify, or simulate requested goals; and the system emits evidence-carrying Cargo artifacts that can be benchmarked and promoted inside real Rust programs.
 
-## What eMath is not
+## What emath is not
 
 - It is not merely a computer algebra system.
 - It is not merely Modelica rewritten in Rust.
@@ -40,6 +40,6 @@ eMath is a **mathematical package and goal compiler**: users define typed mathem
 - Modelica Standard Library: compatibility and scientific component corpus.
 - Franken repositories: optional numerical, tensor, AD, simulation, verification, proof, replay, and runtime providers.
 
-No upstream internal type appears in eMath's stable public IR.
+No upstream internal type appears in emath's stable public IR.
 
 Begin with `START_HERE.md`.

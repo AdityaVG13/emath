@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! eMath capstone demos: `cargo xtask demo cache-policy` and
+//! emath capstone demos: `cargo xtask demo cache-policy` and
 //! `cargo xtask demo semantic-genesis`.
 //!
 //! Both demos run the real compiler pipeline through the `emath` CLI and

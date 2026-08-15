@@ -1,5 +1,5 @@
 //! Demo host: integrates the generated `AffinePolicy` crate at build time
-//! (build.rs runs the full eMath pipeline) and promotes the artifact
+//! (build.rs runs the full emath pipeline) and promotes the artifact
 //! through the protected host surface: construct via the checked
 //! constructor, evaluate, and verify the artifact fingerprints.
 

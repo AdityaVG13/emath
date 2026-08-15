@@ -1,4 +1,4 @@
-# Contributing to eMath
+# Contributing to emath
 
 ## Change classes
 
@@ -45,7 +45,7 @@ An RFC is required for changes to:
 
 ## Fork contributions
 
-Follow `forks/FORK_GOVERNANCE.md`. Keep eMath-specific code in adapters whenever practical. An upstream patch must retain upstream style and tests; an eMath divergence must have a ledger entry and rebase owner.
+Follow `forks/FORK_GOVERNANCE.md`. Keep emath-specific code in adapters whenever practical. An upstream patch must retain upstream style and tests; an emath divergence must have a ledger entry and rebase owner.
 
 ## Evidence discipline
 

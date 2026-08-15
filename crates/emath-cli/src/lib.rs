@@ -1,4 +1,4 @@
-//! eMath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, and the
+//! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, and the
 //! Semantic Genesis commands (`parse`, `signature`, `genesis`, `compile
 //! --parametric`, `world show`, `portfolio show`).
 //! Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error.
@@ -228,7 +228,7 @@ pub fn architecture() -> u8 {
 /// `help` output.
 pub fn help_text() -> String {
     "\
-eMath compiler (Phase 1 + Semantic Genesis G0-G3)
+emath compiler (Phase 1 + Semantic Genesis G0-G3)
 
 usage:
   emath check <file.emath> [--json]

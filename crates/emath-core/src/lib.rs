@@ -1,4 +1,4 @@
-//! eMath core: identity, spans, stable diagnostics, limits, content identity.
+//! emath core: identity, spans, stable diagnostics, limits, content identity.
 //!
 //! Tier 0 of the canonical crate map. Std only, no provider concepts.
 
