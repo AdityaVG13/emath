@@ -75,7 +75,7 @@ pub fn format(tree: &SyntaxTree, comments: &[Comment]) -> String {
 
 fn item_span_start(item: &Item) -> usize {
     match item {
-        Item::Use { source, .. } => source.start as usize,
+        Item::Package { source, .. } | Item::Use { source, .. } => source.start as usize,
         Item::Declaration(decl) => decl.head_source.start as usize,
     }
 }
@@ -108,6 +108,12 @@ fn indent(out: &mut String, level: usize) {
 
 fn format_item(out: &mut String, item: &Item, level: usize) {
     match item {
+        Item::Package { path, .. } => {
+            indent(out, level);
+            out.push_str("package ");
+            out.push_str(&path.join("."));
+            out.push('\n');
+        }
         Item::Use { path, tree, .. } => {
             indent(out, level);
             out.push_str("use ");
@@ -388,12 +394,25 @@ fn format_stmt_kind(out: &mut String, kind: &StmtKind, level: usize) {
             }
             out.push('\n');
         }
+        StmtKind::Equation { left, right } => {
+            indent(out, level);
+            format_expr(out, left, Prec::Comparison);
+            out.push_str(" = ");
+            format_expr(out, right, Prec::Comparison);
+            out.push('\n');
+        }
         StmtKind::Command { head, argument } => {
             out.push_str(&head.join(" "));
             match argument {
                 Some(CommandArgument::Expr(expr)) => {
                     out.push(' ');
                     format_expr(out, expr, Prec::Root);
+                }
+                Some(CommandArgument::Assignment { name, value }) => {
+                    out.push(' ');
+                    out.push_str(name);
+                    out.push_str(" = ");
+                    format_expr(out, value, Prec::Root);
                 }
                 Some(CommandArgument::List(items)) => {
                     out.push(' ');

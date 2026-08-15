@@ -363,13 +363,18 @@ impl Lexer<'_> {
                 self.nesting = self.nesting.saturating_sub(1_usize);
                 self.push(TokenKind::RBracket, start);
             }
-            b'{' | b'}' => {
+            b'{' => {
                 self.pos += 1;
-                self.error(
-                    "E-SYN-101",
-                    "braces are not part of the Phase 1 surface",
-                    start,
-                );
+                self.nesting = self.nesting.saturating_add(1_usize);
+                if self.nesting > self.limits.max_nesting {
+                    self.error("E-SYN-106", "nesting limit exceeded", start);
+                }
+                self.push(TokenKind::LBrace, start);
+            }
+            b'}' => {
+                self.pos += 1;
+                self.nesting = self.nesting.saturating_sub(1_usize);
+                self.push(TokenKind::RBrace, start);
             }
             b',' => {
                 self.pos += 1;
