@@ -163,6 +163,7 @@ impl HirPackage {
         let mut declarations = Vec::new();
         for item in &tree.items {
             match item {
+                Item::Package { .. } => {}
                 Item::Use { path, tree, .. } => {
                     let resolved: Vec<String> = path.clone();
                     match tree {
@@ -341,6 +342,11 @@ fn push_stmt_shape(out: &mut String, stmt: &emath_syntax::tree::Stmt) {
         StmtKind::Ensure(expr) => {
             out.push_str("ensure ");
             push_expr_shape(out, expr);
+        }
+        StmtKind::Equation { left, right } => {
+            push_expr_shape(out, left);
+            out.push('=');
+            push_expr_shape(out, right);
         }
         StmtKind::Command { head, .. } => {
             out.push_str(&head.join(" "));
