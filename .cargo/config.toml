@@ -1,0 +1,4 @@
+# Repository-local cargo configuration.
+# Makes `cargo xtask demo all` work for freshly cloned workspaces.
+[alias]
+xtask = "run -q -p xtask --"
