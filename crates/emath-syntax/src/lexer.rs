@@ -4,10 +4,10 @@
 //! inside `()`, `[]`, and `{}` so multi-line argument lists lex as one flow.
 //! Comments: `#` and `//` and `///` to end of line.
 
-use crate::token::{Keyword, Token, TokenKind};
+use crate::token::{Comment, Keyword, Token, TokenKind};
 use emath_core::{limits::Limits, Diagnostics, FileId, Span};
 
-/// Lex the whole source into layout-aware tokens.
+/// Lex the whole source into layout-aware tokens (comments skipped).
 #[must_use]
 pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnostics) {
     let mut lexer = Lexer {
@@ -21,6 +21,8 @@ pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnost
         indent_stack: vec![0],
         paren_depth: 0,
         nesting: 0,
+        comments: Vec::new(),
+        keep_comments: false,
     };
     lexer.lex_lines();
     let end = u32::try_from(source.len()).unwrap_or(u32::MAX);
@@ -29,6 +31,37 @@ pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnost
         span: Span::new(file, end, end),
     });
     (lexer.tokens, lexer.diagnostics)
+}
+
+/// Lex the whole source into layout-aware tokens and retain every comment
+/// with its span ( lossless tokenization / ).
+#[must_use]
+pub fn lex_with_comments(
+    source: &str,
+    file: FileId,
+    limits: &Limits,
+) -> (Vec<Token>, Diagnostics, Vec<Comment>) {
+    let mut lexer = Lexer {
+        source,
+        file,
+        limits,
+        bytes: source.as_bytes(),
+        pos: 0,
+        tokens: Vec::new(),
+        diagnostics: Diagnostics::new(),
+        indent_stack: vec![0],
+        paren_depth: 0,
+        nesting: 0,
+        comments: Vec::new(),
+        keep_comments: true,
+    };
+    lexer.lex_lines();
+    let end = u32::try_from(source.len()).unwrap_or(u32::MAX);
+    lexer.tokens.push(Token {
+        kind: TokenKind::Eof,
+        span: Span::new(file, end, end),
+    });
+    (lexer.tokens, lexer.diagnostics, lexer.comments)
 }
 
 struct Lexer<'a> {
@@ -42,6 +75,9 @@ struct Lexer<'a> {
     indent_stack: Vec<usize>,
     paren_depth: u32,
     nesting: usize,
+    /// Retained comments when `keep_comments` is set.
+    comments: Vec<Comment>,
+    keep_comments: bool,
 }
 
 impl Lexer<'_> {
@@ -167,11 +203,43 @@ impl Lexer<'_> {
     }
 
     fn skip_line_comment(&mut self) {
+        let start = self.pos;
         while let Some(byte) = self.peek() {
             if byte == b'\n' || byte == b'\r' {
                 break;
             }
             self.pos += 1;
+        }
+        self.record_comment(start, self.pos);
+    }
+
+    fn record_comment(&mut self, start: usize, end: usize) {
+        if !self.keep_comments {
+            return;
+        }
+        let text = self.source[start..end].trim_end().to_string();
+        if text.is_empty() {
+            return;
+        }
+        self.comments.push(Comment {
+            text,
+            span: Span::new(
+                self.file,
+                u32::try_from(start).unwrap_or(u32::MAX),
+                u32::try_from(end).unwrap_or(u32::MAX),
+            ),
+            own_line: self.at_line_start(),
+        });
+    }
+
+    fn at_line_start(&self) -> bool {
+        // The lexer has consumed indentation before real content; comments
+        // reached through the at_line_start branch are line leads. We track
+        // this implicitly by inspecting the last emitted token: a comment is
+        // own_line when the previous significant token was Newline (or none).
+        match self.tokens.last() {
+            None => true,
+            Some(token) => matches!(token.kind, TokenKind::Newline),
         }
     }
 
