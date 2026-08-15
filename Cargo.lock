@@ -120,6 +120,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-lsp"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-sema",
+]
+
+[[package]]
 name = "emath-meaning-provider-api"
 version = "0.1.0"
 dependencies = [
@@ -138,6 +146,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-plugin-sdk"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+]
+
+[[package]]
 name = "emath-portfolio"
 version = "0.1.0"
 dependencies = [
@@ -151,6 +166,13 @@ dependencies = [
  "emath-core",
  "emath-ir",
  "emath-runtime",
+]
+
+[[package]]
+name = "emath-registry"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
 ]
 
 [[package]]
