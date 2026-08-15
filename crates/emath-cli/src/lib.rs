@@ -417,8 +417,6 @@ pub fn run(args: &[String]) -> u8 {
             if args.get(1).is_some_and(|sub| sub == "modelica") && args.len() >= 3 {
                 let json = args[2..].iter().any(|arg| arg == "--json");
                 import_modelica_cmd(&PathBuf::from(&args[2]), json)
-            } else if args.get(1).is_some_and(|sub| sub == "modelica") {
-                usage("import modelica <file.mo> [--json]")
             } else {
                 usage("import modelica <file.mo> [--json]")
             }
