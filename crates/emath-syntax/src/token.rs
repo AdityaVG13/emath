@@ -230,6 +230,18 @@ pub struct Token {
     pub span: Span,
 }
 
+/// A comment retained for lossless formatting.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Comment {
+    /// Comment text including the marker (`#`, `//`, `///`) and trailing
+    /// newline-adjacent whitespace trimmed.
+    pub text: String,
+    pub span: Span,
+    /// True when the comment occupies its own line (line lead); false for
+    /// trailing comments after code.
+    pub own_line: bool,
+}
+
 impl Token {
     #[must_use]
     pub fn describe(&self) -> String {
