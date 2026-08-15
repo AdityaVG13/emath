@@ -10,6 +10,7 @@ name = "emath"
 path = "src/main.rs"
 
 [dependencies]
+emath-adapter-rumoca = { workspace = true }
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-core = { workspace = true }

@@ -27,6 +27,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-runtime",
 ]
 
 [[package]]
@@ -67,6 +68,7 @@ dependencies = [
 name = "emath-cli"
 version = "0.1.0"
 dependencies = [
+ "emath-adapter-rumoca",
  "emath-artifact",
  "emath-build",
  "emath-core",

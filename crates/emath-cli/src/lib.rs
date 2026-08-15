@@ -144,6 +144,49 @@ pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
     }
 }
 
+/// `import modelica <file.mo> [--json]`: retain a Modelica subset source as
+/// foreign-model declarations with adapter identity. No source rewrite.
+pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("error: cannot read {}: {error}", path.display());
+            return EXIT_USAGE;
+        }
+    };
+    match emath_adapter_rumoca::import::import_modelica(&source) {
+        Ok(declarations) => {
+            if json {
+                let mut object = emath_artifact::JsonWriter::object();
+                object.string("command", "import modelica");
+                object.int("declarations", declarations.len() as u64);
+                let mut names = String::new();
+                for declaration in &declarations {
+                    let entry = format!("{} ", declaration.name);
+                    names.push_str(&entry);
+                }
+                object.string("models", &names);
+                println!("{}", object.finish());
+            }
+            for declaration in &declarations {
+                println!(
+                    "foreign {} adapter={} parameters={} equations={} identity={:016x}",
+                    declaration.name,
+                    declaration.adapter,
+                    declaration.parameters.join(","),
+                    declaration.equations,
+                    declaration.content_identity()
+                );
+            }
+            EXIT_OK
+        }
+        Err(error) => {
+            eprintln!("error: {} {}", error.code, error.message);
+            EXIT_REFUSED
+        }
+    }
+}
+
 /// `artifact <dir> check`: re-verify fingerprints from the published
 /// artifact directory (`<dir>/emath/<artifact-id>`).
 pub fn artifact_check(dir: &Path) -> u8 {
@@ -240,6 +283,9 @@ usage:
       --verify runs `cargo test` on the staged crate before publish
   emath artifact <dir> check
       re-verify every published artifact's fingerprints (independent checker)
+  emath import modelica <file.mo> [--json]
+      retain a Modelica subset source as foreign-model declarations with
+      adapter identity (no silent source rewrite)
   emath parse --forest <file.emath> [--out <dir>]
       genesis glyphs + bounded parse forest (parse-forest.json)
   emath signature <file.emath> [--out <dir>]
@@ -365,6 +411,16 @@ pub fn run(args: &[String]) -> u8 {
                 }
             } else {
                 usage("portfolio show PORTFOLIO_ID --dir <dir>")
+            }
+        }
+        "import" => {
+            if args.get(1).is_some_and(|sub| sub == "modelica") && args.len() >= 3 {
+                let json = args[2..].iter().any(|arg| arg == "--json");
+                import_modelica_cmd(&PathBuf::from(&args[2]), json)
+            } else if args.get(1).is_some_and(|sub| sub == "modelica") {
+                usage("import modelica <file.mo> [--json]")
+            } else {
+                usage("import modelica <file.mo> [--json]")
             }
         }
         "artifact" => {
@@ -517,5 +573,47 @@ mod tests {
     fn file_id_is_typed() {
         let file = emath_core::FileId(0);
         assert_eq!(file.0, 0);
+    }
+
+    #[test]
+    fn import_modelica_retains_foreign_declaration() {
+        let dir = std::env::temp_dir().join(format!("emath-cli-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("mass_spring.mo");
+        std::fs::write(
+            &file,
+            "model MassSpring\n  parameter Real m = 1;\n  Real x;\nequation\n  der(x) = 0;\nend MassSpring;\n",
+        )
+        .unwrap();
+        assert_eq!(
+            run(&[
+                "import".to_string(),
+                "modelica".to_string(),
+                file.display().to_string()
+            ]),
+            EXIT_OK
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_modelica_unsupported_construct_refused() {
+        let dir = std::env::temp_dir().join(format!("emath-cli-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("sampled.mo");
+        std::fs::write(
+            &file,
+            "model Sampled\n  Real x;\nequation\n  x = sample(0, 1);\nend Sampled;\n",
+        )
+        .unwrap();
+        assert_eq!(
+            run(&[
+                "import".to_string(),
+                "modelica".to_string(),
+                file.display().to_string()
+            ]),
+            EXIT_REFUSED
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
