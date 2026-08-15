@@ -200,7 +200,7 @@ fn lower_declaration(package: &PackageId, decl: &Declaration) -> HirDeclaration 
     let mut constructors = Vec::new();
     let mut goals = Vec::new();
     let mut sections = Vec::new();
-    for section in &decl.sections {
+    for section in decl.sections() {
         sections.push(section.name.clone());
         for stmt in &section.suite.statements {
             match &stmt.kind {
@@ -263,7 +263,7 @@ fn render_decl_body(decl: &Declaration) -> String {
     out.push_str(&decl.item_kind);
     out.push(':');
     out.push_str(&decl.as_kind);
-    for section in &decl.sections {
+    for section in decl.sections() {
         out.push('\n');
         out.push_str(&section.name);
         if let Some(generic) = &section.generic {
@@ -560,8 +560,9 @@ mod tests {
         let decl = &package.declarations[0];
         assert_eq!(decl.name, "AffinePolicy");
         assert_eq!(decl.kind, HirDeclarationKind::Policy);
-        assert!(!decl.sections.is_empty());
-        assert!(decl.sections.contains(&"constructors".to_string()));
+        let sections: Vec<&str> = decl.sections().map(|s| s.name.as_str()).collect();
+        assert!(!sections.is_empty());
+        assert!(sections.contains(&"constructors"));
         assert!(
             decl.constructors
                 .iter()

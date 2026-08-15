@@ -21,5 +21,5 @@ pub use goal::{
     ProviderRef, ResolutionPlan, SafetyProfile, TargetProfile,
 };
 pub use ids::{DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
-pub use package::{Declaration, PackageIdentity, SemanticPackage};
+pub use package::{Declaration, ImportEntry, ImportSelection, PackageIdentity, SemanticPackage};
 pub use types::TypeNode;

@@ -10,6 +10,7 @@
 
 pub mod admit;
 pub mod session;
+pub mod v6;
 
 pub use admit::{CheckResult, SemanticTrace, TraceEntry};
 pub use session::{
@@ -119,13 +120,97 @@ mod tests {
     }
 
     #[test]
-    fn imports_are_refused_in_phase1() {
-        let bad = "use core::math::*\nemath custom <X> as function:\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n";
+    fn external_file_imports_are_refused() {
+        // Library-path imports are admitted by the front-end; file-style
+        // paths (`./x.emath`) are refused by the lexer/parser (E-SYN),
+        // and the front-end keeps E-PKG-050 as defense-in-depth for any
+        // file-like path that reaches it.
+        let bad = "use ./local.emath\nemath custom <X> as function:\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n";
+        let result = check(bad);
+        assert!(
+            result
+                .diagnostics
+                .items()
+                .iter()
+                .any(|d| d.code == "E-SYN-110" || d.code == "E-PKG-050"),
+            "file-style import must be refused, got {:?}",
+            result
+                .diagnostics
+                .items()
+                .iter()
+                .map(|d| d.code)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn v6_file_front_end_records_package_and_imports() {
+        let source = "package examples.square\nuse std.numeric.Real\nuse std.units.{Millisecond, Second}\n\nemath function Square:\n    input:\n        x: Real\n\n    output:\n        y: Real\n\n    define:\n        y = x * x\n";
+        let result = check(source);
+        assert!(
+            !result.diagnostics.has_errors(),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics.items()
+        );
+        let package = &result.package;
+        assert_eq!(
+            package.package_path.as_deref(),
+            Some(&["examples".to_string(), "square".to_string()][..])
+        );
+        assert_eq!(package.imports.len(), 2);
+        assert_eq!(package.imports[0].path, ["std", "numeric"]);
+        assert_eq!(package.declarations.len(), 1);
+        assert_eq!(package.declarations[0].kind_label, "function");
+    }
+
+    #[test]
+    fn v6_imports_are_deterministic_in_identity() {
+        let a = "package p.a\nuse std.units.{Mebibyte, Millisecond}\nemath record R:\n    state:\n        x: Millisecond\n";
+        let b = "package p.a\nuse std.units.{Millisecond, Mebibyte}\nemath record R:\n    state:\n        x: Millisecond\n";
+        let result_a = check(a);
+        let result_b = check(b);
+        assert!(!result_a.diagnostics.has_errors());
+        assert!(!result_b.diagnostics.has_errors());
+        assert_eq!(result_a.package.content_id(), result_b.package.content_id());
+    }
+
+    #[test]
+    fn v6_unknown_kind_is_refused() {
+        let bad = "package p.q\nemath unknown_kind Thing:\n    input:\n        x: Real\n";
         let result = check(bad);
         assert!(result
             .diagnostics
             .items()
             .iter()
-            .any(|d| d.code == "E-PKG-050"));
+            .any(|d| d.code == "E-KIND-001"));
+    }
+
+    #[test]
+    fn v6_unknown_section_is_refused() {
+        let bad = "package p.q\nemath function F:\n    input:\n        x: Real\n    telemetry:\n        y = 1\n";
+        let result = check(bad);
+        assert!(result
+            .diagnostics
+            .items()
+            .iter()
+            .any(|d| d.code == "E-SYN-101" && d.message.contains("telemetry")));
+    }
+
+    #[test]
+    fn v6_kind_application_enforces_schema() {
+        let good = "emath kind K:\n    schema:\n        require section input\n        require exactly_one output\n\nemath K App:\n    input:\n        x: Real\n\n    output:\n        y: Real\n";
+        let result = check(good);
+        assert!(
+            !result.diagnostics.has_errors(),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics.items()
+        );
+        let bad = "emath kind K:\n    schema:\n        require section input\n        require exactly_one output\n\nemath K App:\n    output:\n        y: Real\n";
+        let result = check(bad);
+        assert!(result
+            .diagnostics
+            .items()
+            .iter()
+            .any(|d| d.code == "E-KIND-003" && d.message.contains("input")));
     }
 }

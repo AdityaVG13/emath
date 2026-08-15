@@ -627,7 +627,7 @@ pub fn admit_declaration(decl: &emath_syntax::tree::Declaration) -> AdmitResult 
 
     // Section collection with duplicate detection (E-SYN-103).
     let mut by_name: BTreeMap<&str, &Section> = BTreeMap::new();
-    for section in &decl.sections {
+    for section in decl.sections() {
         if let Some(previous) = by_name.get(section.name.as_str()) {
             admitter.error(
                 "E-SYN-103",
@@ -1410,22 +1410,39 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
     let mut diagnostics = Diagnostics::new();
     let mut trace = SemanticTrace::default();
     let mut package = emath_ir::SemanticPackage::new();
+
+    // V6 front-end: package identity and `use` imports. External file
+    // imports remain a Phase 2 refusal (E-PKG-050).
+    let has_v6_items = tree.items.iter().any(|item| match item {
+        emath_syntax::tree::Item::Package { .. } | emath_syntax::tree::Item::Use { .. } => true,
+        emath_syntax::tree::Item::Declaration(decl) => decl.item_kind != "custom",
+    });
+    let v6 = if has_v6_items {
+        let front_end = crate::v6::admit_front_end(tree, &mut diagnostics, &mut trace);
+        package.package_path = front_end.package_path;
+        package.imports = front_end.imports;
+        Some(crate::v6::collect_kind_defs(tree))
+    } else {
+        None
+    };
+
     let mut declaration_id = 0_u32;
-
-    for item in &tree.items {
-        if let emath_syntax::tree::Item::Use { source, .. } = item {
-            diagnostics.error(
-                "E-PKG-050",
-                "imports (`use`) are outside the Phase 1 single-file subset (Phase 2)",
-                *source,
-            );
-        }
-    }
-
     for item in &tree.items {
         let emath_syntax::tree::Item::Declaration(decl) = item else {
             continue;
         };
+        if let Some(kind_defs) = &v6 {
+            if decl.item_kind != "custom" {
+                crate::v6::admit_declaration(
+                    decl,
+                    kind_defs,
+                    &mut package,
+                    &mut diagnostics,
+                    &mut trace,
+                );
+                continue;
+            }
+        }
         if decl.item_kind != "custom" {
             diagnostics.error(
                 "E-KIND-001",

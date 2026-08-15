@@ -141,6 +141,25 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
 pub fn canonical_package(package: &SemanticPackage) -> ContentId {
     let mut out = String::new();
     push_str(&mut out, SCHEMA);
+    if let Some(path) = &package.package_path {
+        push_str(&mut out, "package ");
+        out.push_str(&path.join("."));
+        out.push('\n');
+    }
+    let mut imports = package.imports.clone();
+    imports.sort_by(|a, b| {
+        a.path
+            .join(".")
+            .cmp(&b.path.join("."))
+            .then_with(|| a.selection.canonical().cmp(&b.selection.canonical()))
+    });
+    for import in &imports {
+        push_str(&mut out, "import ");
+        out.push_str(&import.path.join("."));
+        out.push(':');
+        out.push_str(&import.selection.canonical());
+        out.push('\n');
+    }
     for declaration in &package.declarations {
         push_str(&mut out, "declaration");
         out.push_str(&declaration.name.0);

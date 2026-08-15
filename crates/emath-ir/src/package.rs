@@ -37,10 +37,56 @@ pub struct Declaration {
     pub source: Span,
 }
 
+/// One admitted import (`use` front-end, V6).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportEntry {
+    /// Dotted library path (`std.units`).
+    pub path: Vec<String>,
+    /// Imported names / wildcard.
+    pub selection: ImportSelection,
+    /// Source span of the `use` item.
+    pub source: Span,
+}
+
+/// Imported name selection.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImportSelection {
+    /// `use std.numeric.*`
+    All,
+    /// `use std.units.{Millisecond, ...}` or `use std.numeric.Real`
+    Named(Vec<(String, Option<String>)>),
+}
+
+impl ImportSelection {
+    /// Deterministic canonical form.
+    #[must_use]
+    pub fn canonical(&self) -> String {
+        match self {
+            Self::All => "*".to_string(),
+            Self::Named(names) => {
+                let mut names = names.clone();
+                names.sort_by(|a, b| a.0.cmp(&b.0));
+                names
+                    .iter()
+                    .map(|(name, alias)| match alias {
+                        Some(alias) => format!("{name} as {alias}"),
+                        None => name.clone(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            }
+        }
+    }
+}
+
 /// The neutral semantic package. IDs index the sibling arenas.
 #[derive(Clone, Debug, Default)]
 pub struct SemanticPackage {
     pub identity: Option<PackageIdentity>,
+    /// `package <dotted>` identity declared by the V6 front-end.
+    pub package_path: Option<Vec<String>>,
+    /// Admitted imports (V6 front-end).
+    pub imports: Vec<ImportEntry>,
     pub declarations: Vec<Declaration>,
     pub types: Vec<TypeNode>,
     pub exprs: Vec<ExprNode>,
@@ -55,6 +101,8 @@ impl SemanticPackage {
     pub fn new() -> Self {
         Self {
             identity: None,
+            package_path: None,
+            imports: Vec::new(),
             declarations: Vec::new(),
             types: Vec::new(),
             exprs: Vec::new(),
