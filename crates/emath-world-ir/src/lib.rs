@@ -2,6 +2,8 @@
 
 //! Provider-neutral World IR and meaning-hole structures.
 
+pub mod translation;
+
 use emath_term::{Signature, SymbolId};
 
 /// Content identity placeholder for an admitted world.
