@@ -10,6 +10,7 @@ members = [
   "crates/emath-sema",
   "crates/emath-exec-ir",
   "crates/emath-adapter-dew",
+  "crates/emath-hir",
   "crates/emath-rust-ir",
   "crates/emath-rust-backend",
   "crates/emath-artifact",

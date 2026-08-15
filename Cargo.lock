@@ -115,6 +115,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-hir"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-syntax",
+]
+
+[[package]]
 name = "emath-ir"
 version = "0.1.0"
 dependencies = [
