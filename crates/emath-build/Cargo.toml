@@ -1,0 +1,22 @@
+[package]
+name = "emath-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+emath-artifact = { workspace = true }
+emath-core = { workspace = true }
+emath-exec-ir = { workspace = true }
+emath-goal = { workspace = true }
+emath-ir = { workspace = true }
+emath-plan = { workspace = true }
+emath-rust-backend = { workspace = true }
+emath-rust-ir = { workspace = true }
+emath-sema = { workspace = true }
+emath-source = { workspace = true }
+emath-syntax = { workspace = true }
+
+[lints]
+workspace = true

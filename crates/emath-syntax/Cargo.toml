@@ -1,0 +1,13 @@
+[package]
+name = "emath-syntax"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+emath-core = { workspace = true }
+emath-source = { workspace = true }
+
+[lints]
+workspace = true

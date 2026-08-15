@@ -1,0 +1,12 @@
+[package]
+name = "emath-rust-ir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+emath-core = { workspace = true }
+
+[lints]
+workspace = true
