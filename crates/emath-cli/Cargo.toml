@@ -19,6 +19,7 @@ emath-goal = { workspace = true }
 emath-ir = { workspace = true }
 emath-plan = { workspace = true }
 emath-portfolio = { workspace = true }
+emath-provider-api = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-sema = { workspace = true }
 emath-source = { workspace = true }

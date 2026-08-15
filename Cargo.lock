@@ -77,6 +77,7 @@ dependencies = [
  "emath-ir",
  "emath-plan",
  "emath-portfolio",
+ "emath-provider-api",
  "emath-rust-backend",
  "emath-sema",
  "emath-source",
@@ -141,9 +142,11 @@ dependencies = [
 name = "emath-plan"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-core",
  "emath-goal",
  "emath-ir",
+ "emath-provider-api",
  "emath-runtime",
 ]
 
