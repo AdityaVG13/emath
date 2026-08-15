@@ -75,6 +75,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-calibration"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-cli"
 version = "0.1.0"
 dependencies = [
