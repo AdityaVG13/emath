@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-adapter-rumoca"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-artifact"
 version = "0.1.0"
 dependencies = [
