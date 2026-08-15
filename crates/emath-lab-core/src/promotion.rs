@@ -49,6 +49,13 @@ pub enum PromotionReason {
     /// Quality gate blocked the candidate (`E-HOST-005`, or the check's
     /// own evidence code).
     CorrectnessFailed { code: &'static str, detail: String },
+    /// Runtime drift detected (`E-HOST-010`); the candidate was demoted.
+    DriftDetected {
+        /// Drift dimension.
+        kind: crate::drift::DriftKind,
+        /// Metric id that drifted.
+        metric: String,
+    },
     /// Evidence missing for a declared metric.
     EvidenceMissing { metric: String },
     /// Too few samples for a decision (`E-HOST-006`).
@@ -81,6 +88,7 @@ impl PromotionReason {
     pub const fn code(&self) -> Option<&'static str> {
         match self {
             Self::CorrectnessFailed { code, .. } => Some(*code),
+            Self::DriftDetected { .. } => Some("E-HOST-010"),
             Self::EvidenceMissing { .. } => Some("E-HOST-005"),
             Self::InsufficientSamples { .. } => Some("E-HOST-006"),
             Self::Incomparable { .. } => Some("E-HOST-008"),
@@ -102,6 +110,9 @@ impl PromotionReason {
         match self {
             Self::CorrectnessFailed { code, detail } => {
                 format!("{code}: {detail}")
+            }
+            Self::DriftDetected { kind, metric } => {
+                format!("E-HOST-010: {} drift in {metric}", kind.as_str())
             }
             Self::EvidenceMissing { metric } => {
                 format!("E-HOST-005: evidence missing for {metric}")
