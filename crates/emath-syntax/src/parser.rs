@@ -9,9 +9,9 @@
 use crate::lexer::lex;
 use crate::token::{Keyword, Token, TokenKind};
 use crate::tree::{
-    Argument, ArgumentValue, BinaryOp, Binder, BinderKind, CommandArgument, Declaration, Expr,
-    ExprKind, GenericParam, Item, Param, Place, Section, Stmt, StmtKind, Suite, SyntaxTree,
-    TypeExpr, TypeKind, UnaryOp, UseTree, Visibility,
+    Argument, ArgumentValue, BinaryOp, Binder, BinderKind, CommandArgument, Declaration,
+    DeclarationSignature, Expr, ExprKind, GenericParam, Item, Param, Place, Section, Stmt,
+    StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UnaryOp, UseTree, Visibility,
 };
 use emath_core::{limits::Limits, Diagnostics, FileId, Span};
 
@@ -396,7 +396,8 @@ impl Parser {
             item_kind,
             as_kind,
             attributes: Vec::new(),
-            sections: suite_as_sections(suite),
+            body: suite.statements,
+            signature: None,
             source: start.cover(self.last_span()),
             head_source: start.cover(self.last_span()),
         })
@@ -428,13 +429,12 @@ impl Parser {
         } else {
             Vec::new()
         };
-        let (_params, _ret) = self.parse_params_after_name()?;
+        let (params, ret) = self.parse_params_after_name()?;
         let suite = if self.eat(&TokenKind::Colon) {
             self.parse_suite()
         } else {
             None
         };
-        let sections = suite.map_or_else(Vec::new, suite_as_sections);
         let source = start.cover(self.last_span());
         Some(Declaration {
             name,
@@ -442,7 +442,8 @@ impl Parser {
             item_kind: "extern".to_string(),
             as_kind,
             attributes: Vec::new(),
-            sections,
+            body: suite.map_or_else(Vec::new, |suite| suite.statements),
+            signature: Some(DeclarationSignature { params, ret }),
             head_source: source,
             source,
         })
@@ -888,6 +889,7 @@ impl Parser {
             start,
             StmtKind::FnDecl {
                 visibility,
+                head: "fn".to_string(),
                 name,
                 params,
                 ret,
@@ -1250,7 +1252,8 @@ impl Parser {
                     start,
                     StmtKind::FnDecl {
                         visibility: None,
-                        name: format!("{name} {second}"),
+                        head: name,
+                        name: second,
                         params,
                         ret,
                         suite,
@@ -1275,6 +1278,7 @@ impl Parser {
                 start,
                 StmtKind::FnDecl {
                     visibility: None,
+                    head: "fn".to_string(),
                     name,
                     params,
                     ret,
@@ -2807,14 +2811,5 @@ fn visibility_name(visibility: Visibility) -> &'static str {
     }
 }
 
-/// Convert a declaration body suite into its sections.
-pub fn suite_as_sections(suite: Suite) -> Vec<Section> {
-    suite
-        .statements
-        .into_iter()
-        .filter_map(|stmt| match stmt.kind {
-            StmtKind::Section(section) => Some(section),
-            _ => None,
-        })
-        .collect()
-}
+// Declarations keep their full ordered body (`Declaration.body`); sections
+// are a filtered view via `Declaration::sections()`.

@@ -149,7 +149,7 @@ impl CompilerSession {
                     emath_syntax::tree::Item::Declaration(d)
                         if d.name == declaration.name.leaf() =>
                     {
-                        Some(d.sections.clone())
+                        Some(d.sections_vec())
                     }
                     _ => None,
                 })

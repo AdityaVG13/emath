@@ -166,18 +166,33 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
         out.push_str(" as ");
         out.push_str(&decl.as_kind);
     }
+    if let Some(signature) = &decl.signature {
+        out.push('(');
+        for (i, param) in signature.params.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&param.name);
+            out.push_str(": ");
+            format_type(out, &param.ty);
+        }
+        out.push(')');
+        if let Some(ret) = &signature.ret {
+            out.push_str(" -> ");
+            format_type(out, ret);
+        }
+    }
     out.push(':');
     out.push('\n');
     for attribute in &decl.attributes {
         format_attribute(out, attribute, level + 1);
         out.push('\n');
     }
-    // Sections in declaration order, separated by blank lines.
-    for (i, section) in decl.sections.iter().enumerate() {
-        if i > 0 {
-            out.push('\n');
-        }
-        format_section(out, section, level + 1);
+    // Body statements (sections, fn-like heads, and other statements) in
+    // source order, separated by blank lines at declaration level.
+    for stmt in &decl.body {
+        format_stmt(out, stmt, level + 1);
+        out.push('\n');
     }
 }
 
@@ -272,6 +287,7 @@ fn format_stmt_kind(out: &mut String, kind: &StmtKind, level: usize) {
         }
         StmtKind::FnDecl {
             visibility,
+            head,
             name,
             params,
             ret,
@@ -279,7 +295,8 @@ fn format_stmt_kind(out: &mut String, kind: &StmtKind, level: usize) {
             ..
         } => {
             format_visibility(out, *visibility);
-            out.push_str("fn ");
+            out.push_str(head);
+            out.push(' ');
             out.push_str(name);
             format_params(out, params);
             if let Some(ret_ty) = ret {
