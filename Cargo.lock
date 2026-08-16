@@ -102,6 +102,14 @@ name = "emath-core"
 version = "0.1.0"
 
 [[package]]
+name = "emath-evidence"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-exec-ir"
 version = "0.1.0"
 dependencies = [
