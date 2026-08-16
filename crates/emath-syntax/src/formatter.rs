@@ -1,4 +1,4 @@
-//!: canonical formatter.
+//! Canonical formatter.
 //!
 //! Idempotent, comment-preserving printer over the `SyntaxTree`. Layout is
 //! canonical (4-space indents, one statement per line); parentheses are

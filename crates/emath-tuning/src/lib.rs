@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! V7 g10 — Semantic and joint tuning.
+//! Semantic and joint tuning.
 //!
 //! Semantic tuning varies selected carriers, operators, constants, laws, or
 //! valuations while protecting declared laws and held-out examples. Joint

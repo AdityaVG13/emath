@@ -1,4 +1,4 @@
-//! Built-in candidate-world providers (g4 exit): at least five world
+//! Built-in candidate-world providers: at least five world
 //! classes with deterministic identities, provider-neutral and
 //! emath-owned.
 
@@ -7,7 +7,7 @@ use crate::{
 };
 use emath_term::{Signature, SymbolId};
 
-/// Built-in world classes (g4: five or more classes).
+/// Built-in world classes (five or more classes).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WorldClass {
     /// Free term algebra over a signature; no laws.

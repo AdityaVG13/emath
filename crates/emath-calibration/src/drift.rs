@@ -1,4 +1,4 @@
-//! Semantic drift (spec 12): when future examples invalidate a world, the
+//! Semantic drift: when future examples invalidate a world, the
 //! world is not silently redefined; a new version or semantic delta is
 //! created and dependent artifacts are re-evaluated.
 
@@ -19,7 +19,7 @@ pub struct SemanticDrift {
     pub delta: String,
     /// Example ids whose meaning changed between the tables.
     pub changed_example_ids: Vec<u64>,
-    /// Always true: dependents must re-evaluate (spec 12).
+    /// Always true: dependents must re-evaluate.
     pub dependents_re_evaluate: bool,
 }
 

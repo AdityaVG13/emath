@@ -10,7 +10,7 @@ pub struct SyntaxTree {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Item {
-    /// `package examples.square` — the V6 package identity line.
+    /// `package examples.square` — the package identity line.
     Package {
         path: Vec<String>,
         source: Span,
@@ -122,8 +122,8 @@ pub enum StmtKind {
     },
     FnDecl {
         visibility: Option<Visibility>,
-        /// Head word: `fn` (V5), or the fn-like section head such as
-        /// `constructor`, `define`, `method` (V6). Preserved losslessly.
+        /// Head word: `fn`, or a fn-like section head such as
+        /// `constructor`, `define`, or `method`. Preserved losslessly.
         head: String,
         name: String,
         params: Vec<Param>,

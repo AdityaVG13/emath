@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! V7 g6 — Independent world checking (spec 10, WorldChecker): law
+//! Independent world checking (WorldChecker): law
 //! obligations over finite worlds, minimized counterexamples, scoped
 //! authority, and deterministic answer receipts.
 //!

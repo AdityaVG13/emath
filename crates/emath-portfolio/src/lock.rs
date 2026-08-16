@@ -1,4 +1,4 @@
-//! Portfolio generation replay (spec 11): generation is replayable from
+//! Portfolio generation replay: generation is replayable from
 //! locks, seeds, budgets, provider versions, and canonical inputs.
 
 use emath_world_ir::fnv1a64;
