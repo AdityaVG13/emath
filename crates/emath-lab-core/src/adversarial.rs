@@ -1,4 +1,4 @@
-//!: adversarial experiment tests.
+//! Adversarial experiment tests.
 //!
 //! Deterministic detectors for changed inputs, benchmark cheating,
 //! asymmetric warmup, missing failures, poisoned calibration and

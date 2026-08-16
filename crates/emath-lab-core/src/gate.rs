@@ -1,4 +1,4 @@
-//!: correctness/quality gate API.
+//! Correctness/quality gate API.
 //!
 //! Semantic, evidence and correctness checks run *before* any performance
 //! measurement. A candidate whose gate fails is never measured, never

@@ -1,4 +1,4 @@
-//!: statistical protocol.
+//! Statistical protocol.
 //!
 //! Freezes warmup, repetition count, randomization seed, paired
 //! comparison, outlier policy and raw-sample retention before runs. All

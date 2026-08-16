@@ -1,4 +1,4 @@
-//!: certificate registry.
+//! Certificate registry.
 //!
 //! Versioned checker contracts for the seven certificate kinds
 //! (interval, witness, residual, optimization, rewrite, proof,

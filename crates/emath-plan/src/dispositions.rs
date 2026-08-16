@@ -1,4 +1,4 @@
-//!: total compilation dispositions.
+//! Total compilation dispositions.
 //!
 //! Every planning outcome maps to exactly one artifact disposition, driven
 //! by the goal's fallback policy. Nothing silently falls back.

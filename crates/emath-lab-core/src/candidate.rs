@@ -1,4 +1,4 @@
-//!: candidate generation loop.
+//! Candidate generation loop.
 //!
 //! Human/AI/evolutionary proposers hand candidates through the
 //! compiler, evidence gates and lab into a Pareto archive. The proposer

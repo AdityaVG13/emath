@@ -1,4 +1,4 @@
-//!: restricted lowering language.
+//! Restricted lowering language.
 //!
 //! Lowering is bounded and typed: a fixed set of ops transformed over
 //! the kind schema, never arbitrary code. Every application is checked

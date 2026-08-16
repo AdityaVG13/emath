@@ -1,4 +1,4 @@
-//!: content-addressed evidence store.
+//! Content-addressed evidence store.
 //!
 //! Records are addressed by the FNV-1a of their canonical token, so
 //! identical content always maps to one slot and a content-identity

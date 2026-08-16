@@ -1,5 +1,5 @@
 //! Custom kind schemas and restricted lowering (`CRATE_MAP` Tier 1
-//! `emath-schema`, ).
+//! `emath-schema`).
 //!
 //! - `lang`: the schema language: required/optional/
 //!   repeatable sections, payload policies, defaults, predicates and

@@ -1,4 +1,4 @@
-//!: type representation, refinement
+//! Type representation, refinement
 //! obligations and constrained inference.
 //!
 //! Type schemes cover primitives, generic records/variants, functions and
@@ -56,7 +56,7 @@ impl DischargeStatus {
         }
     }
 
-    ///: whether the obligation is a compile-time concern.
+    /// Whether the obligation is a compile-time concern.
     #[must_use]
     pub const fn is_compile_time(self) -> bool {
         matches!(self, Self::Static | Self::Certificate)

@@ -1,4 +1,4 @@
-//!: Dew capability census and optimization evidence.
+//! Dew capability census and optimization evidence.
 //!
 //! The capability descriptor is machine-readable and deterministic.
 //! Backends not listed in the inventory are never claimed; promoted

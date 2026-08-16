@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Minimal language-server-protocol skeleton for emath (P11).
+//! Minimal language-server-protocol skeleton for emath.
 //!
 //! Implements a std-only, deterministic LSP server slice:
 //!

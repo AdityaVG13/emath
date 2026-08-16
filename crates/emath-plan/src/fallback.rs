@@ -1,4 +1,4 @@
-//!: fallback graph.
+//! Fallback graph.
 //!
 //! Precomputed contract-preserving fallback/deopt paths: an exact node
 //! falls back to a bounded node, then to an estimate node, within the same

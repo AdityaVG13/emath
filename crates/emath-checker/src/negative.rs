@@ -1,4 +1,4 @@
-//!: negative-control framework.
+//! Negative-control framework.
 //!
 //! Seeds tampered, stale, wrong-goal, incomplete and unsupported
 //! artifacts for every checker. A control that the checker admits is an

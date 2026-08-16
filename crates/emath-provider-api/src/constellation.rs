@@ -1,4 +1,4 @@
-//!: provider constellation waves and maturity ladder.
+//! Provider constellation waves and maturity ladder.
 //!
 //! Independently versioned provider entries across waves A..H, each with a
 //! capability census, a no-claim boundary, disable/rollback state, a

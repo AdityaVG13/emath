@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Plugin SDK slice (P11): descriptors, sandbox policy decisions, and a
+//! Plugin SDK slice: descriptors, sandbox policy decisions, and a
 //! deterministic test-harness contract.
 //!
 //! A plugin is a component with a declared capability set and a sandbox

@@ -1,4 +1,4 @@
-//!: compiler-phase census for the Rumoca provider seam.
+//! Compiler-phase census for the Rumoca provider seam.
 //!
 //! Documents the provider compiler phases that emath models flow through,
 //! with their stability posture and whether emath relies on the public

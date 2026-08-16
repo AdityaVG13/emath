@@ -1,4 +1,4 @@
-//!: host trait bindings.
+//! Host trait bindings.
 //!
 //! Generated implementations of a declared host trait: each host method
 //! delegates to a generated model method with a conversion check (Result →

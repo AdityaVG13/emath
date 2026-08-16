@@ -55,7 +55,7 @@ const PROVIDERS: [(&str, &str, &str); 6] = [
     ("phase5.numerics", "solvers and optimization", "planned"),
 ];
 
-/// Dispatch for all tooling subcommands added by the P11 slice.
+/// Dispatch for all tooling subcommands added by the tooling slice.
 pub fn tooling_dispatch(command: &str, args: &[String]) -> u8 {
     match command {
         "new" => new_cmd(args),

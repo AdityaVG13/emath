@@ -1,4 +1,4 @@
-//!: assumption ledger.
+//! Assumption ledger.
 //!
 //! Classifies every assumption as Math (M), Numeric (N), System (S),
 //! Environment (E) or Host (H) and exposes the ledger deterministically

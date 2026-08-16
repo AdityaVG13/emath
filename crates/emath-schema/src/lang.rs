@@ -1,4 +1,4 @@
-//!: the kind schema language.
+//! The kind schema language.
 //!
 //! A schema is one directive per line:
 //!

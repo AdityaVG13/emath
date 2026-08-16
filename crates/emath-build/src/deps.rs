@@ -1,4 +1,4 @@
-//!: Cargo dependency planner.
+//! Cargo dependency planner.
 //!
 //! Maps provider/runtime/features/targets to exact Cargo dependencies,
 //! detects version conflicts (`E-CODEGEN-007`), forbidden sources/names

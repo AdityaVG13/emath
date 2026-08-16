@@ -1,4 +1,4 @@
-//!: MSL conformance ladder.
+//! MSL conformance ladder.
 //!
 //! Per-feature coverage across corpus tiers (syntax/import, name/type/
 //! instantiation, flattened equations, structural analysis, simulation

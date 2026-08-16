@@ -1,4 +1,4 @@
-//!: plan inspection (CLI + machine JSON).
+//! Plan inspection (CLI + machine JSON).
 //!
 //! The inspection carries goals, retained candidates, every exclusion with
 //! its stable reason, the selected plan, planned checks, budget and the

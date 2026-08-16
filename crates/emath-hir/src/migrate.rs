@@ -1,4 +1,4 @@
-//! core: migration from bootstrap syntax.
+//! Core: migration from bootstrap syntax.
 //!
 //! The bootstrap parser stays behind a compatibility tool, not the
 //! production compiler. `migrate_declaration` rewrites a bootstrap-era

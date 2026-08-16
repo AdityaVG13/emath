@@ -1,4 +1,4 @@
-//!: certify-the-certifier corpus.
+//! Certify-the-certifier corpus.
 //!
 //! A fixed corpus of known-unsound certifier outputs (optimizations,
 //! estimators, proofs, translations) must be rejected by the admission

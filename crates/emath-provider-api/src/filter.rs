@@ -1,4 +1,4 @@
-//!: compatibility filter.
+//! Compatibility filter.
 //!
 //! Every exclusion carries a stable reason code and provenance
 //! (`E-PROV-512` goal kind/subset, `E-PROV-513` evidence/checker,

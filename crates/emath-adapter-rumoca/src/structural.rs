@@ -1,4 +1,4 @@
-//!: neutral structural model IR.
+//! Neutral structural model IR.
 //!
 //! Provider-free structural/equation IR for resolved and flattened dynamic
 //! models: components, variables/parameters, units with dimensional

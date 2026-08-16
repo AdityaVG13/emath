@@ -1,4 +1,4 @@
-//!: provider descriptor schema.
+//! Provider descriptor schema.
 //!
 //! Capability vocabulary, semantic subsets, representations with costs,
 //! evidence ceilings, permissions, targets, failure modes and checker

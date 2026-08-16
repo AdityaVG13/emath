@@ -1,4 +1,4 @@
-//!: reproducible decision receipts.
+//! Reproducible decision receipts.
 //!
 //! A receipt freezes the manifest, gate checks, protocol, raw samples,
 //! commands, environment and artifact hashes alongside the decision, so

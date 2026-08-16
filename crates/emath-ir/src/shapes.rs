@@ -1,4 +1,4 @@
-//!: shapes and layouts.
+//! Shapes and layouts.
 //!
 //! Ranks, fixed and symbolic extents, broadcasting, slices and sparse
 //! target representations. Invalid tensor/matrix operations are typed

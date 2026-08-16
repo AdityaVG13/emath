@@ -1,4 +1,4 @@
-//!: provider diagnostic mapping.
+//! Provider diagnostic mapping.
 //!
 //! Provider diagnostics preserve their body for debugging while mapping to
 //! emath component paths and spans. A missing source-map entry is reported

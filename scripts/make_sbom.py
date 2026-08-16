@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" SBOM generator.
+"""SBOM generator.
 
 Deterministic SPDX-lite inventory over every workspace package: name,
 version, license, edition, repo-relative manifest path, and a sha256 digest
@@ -21,7 +21,6 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXCLUDED_DIRS = {"target", ".git", ".beads", "internal", "artifacts", "licenses"}
 
-
 def package_sha256(directory):
     """Deterministic directory digest: sorted relative paths + contents."""
     digest = hashlib.sha256()
@@ -39,7 +38,6 @@ def package_sha256(directory):
             digest.update(b"\0")
     return digest.hexdigest()
 
-
 def workspace_version():
     """Root package version (first `version = "..."` in the root manifest)."""
     with open(os.path.join(ROOT, "Cargo.toml"), encoding="utf-8") as handle:
@@ -48,7 +46,6 @@ def workspace_version():
     if not match:
         raise SystemExit("cannot determine workspace version from root Cargo.toml")
     return match.group(1)
-
 
 def main():
     out_path = (
@@ -103,7 +100,6 @@ def main():
             os.path.relpath(out_path, ROOT), len(packages)
         )
     )
-
 
 if __name__ == "__main__":
     main()

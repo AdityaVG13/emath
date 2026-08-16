@@ -1,4 +1,4 @@
-//!: claim-language linter.
+//! Claim-language linter.
 //!
 //! Documentation and generated README text cannot use wording stronger
 //! than the current evidence supports. Each statement is scored against

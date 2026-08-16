@@ -1,10 +1,9 @@
 //! Semantic admission (Phase 1): syntax tree → typed neutral SIR.
 //!
 //! Orchestrates field checks, constructor/invariant admission, definition
-//! typing, goal elaboration and plan construction, mirroring the frozen
-//! `CompilerSession` surface from `implementation/PUBLIC_API_INVENTORY.md`.
-//! Everything outside the Phase 1 subset receives a typed capability
-//! refusal; nothing is silently dropped.
+//! typing, goal elaboration and plan construction, mirroring the public
+//! `CompilerSession` surface. Everything outside the Phase 1 subset
+//! receives a typed capability refusal; nothing is silently dropped.
 
 #![forbid(unsafe_code)]
 

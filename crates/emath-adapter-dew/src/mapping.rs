@@ -1,4 +1,4 @@
-//!: source mapping.
+//! Source mapping.
 //!
 //! Maintains the mapping from SIR/EMIR nodes through Dew expression
 //! nodes to generated symbols/spans. Entries are deterministic and

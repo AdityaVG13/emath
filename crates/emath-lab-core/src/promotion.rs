@@ -1,4 +1,4 @@
-//!: promotion policy engine.
+//! Promotion policy engine.
 //!
 //! Maps gate verdict + paired statistics + memory/energy evidence to one
 //! of six outcomes (promote, shadow, canary, retain, demote, quarantine)

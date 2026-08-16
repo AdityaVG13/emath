@@ -1,4 +1,4 @@
-//!: goal schema.
+//! Goal schema.
 //!
 //! Full goal schema: core kinds plus a custom-goal envelope, inputs and
 //! outputs, accuracy, evidence, budget, target, determinism and fallback

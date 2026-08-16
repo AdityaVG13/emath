@@ -1,4 +1,4 @@
-//!: differential oracle.
+//! Differential oracle.
 //!
 //! Compares the emath reference interpreter against the Dew backend
 //! path over boundary cases (NaN/Inf, signed zero, extremes, domain

@@ -1,4 +1,4 @@
-//!: frozen experiment manifest.
+//! Frozen experiment manifest.
 //!
 //! Freezes workload corpus partitions, environment, baseline/candidate
 //! artifact identities, metric set, statistical protocol, thresholds,

@@ -1,4 +1,4 @@
-//!: domains.
+//! Domains.
 //!
 //! Value domains: intervals, finite sets, boxes, unions and unrestricted
 //! fields. Deterministic membership and canonicalization; violations use

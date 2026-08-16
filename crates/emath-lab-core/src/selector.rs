@@ -1,4 +1,4 @@
-//!: runtime selector.
+//! Runtime selector.
 //!
 //! Dispatches each request between baseline, candidate and canary routes
 //! under the frozen promotion decision, with correctness guards,

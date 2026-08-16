@@ -1,4 +1,4 @@
-//!: units and dimensions.
+//! Units and dimensions.
 //!
 //! Dimension vectors, canonical SI-style encoding, scale factors and
 //! affine units. Affine units (offsets, e.g. Celsius) may only add/subtract

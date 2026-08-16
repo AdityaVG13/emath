@@ -1,4 +1,5 @@
-//! Stable diagnostics with typed codes (see `implementation/ERROR_CODES.md`).
+//! Stable diagnostics with typed codes (see the diagnostics contract in
+//! `language/spec/11_DIAGNOSTICS_AND_TOOLING_CONTRACT.md`).
 
 use crate::span::Span;
 use std::fmt;
