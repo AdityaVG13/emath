@@ -1,0 +1,16 @@
+[package]
+name = "emath-holes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "V7 g5 meaning holes and finite synthesis: hole graph, table synthesis, continuations."
+
+[dependencies]
+emath-term = { path = "../emath-term" }
+emath-world-ir = { path = "../emath-world-ir" }
+emath-calibration = { path = "../emath-calibration" }
+emath-law-check = { path = "../emath-law-check" }
+
+[lints]
+workspace = true
