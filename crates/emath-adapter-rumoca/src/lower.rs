@@ -1,4 +1,4 @@
-//!: emath-to-DAE lowering with structural analysis.
+//! Emath-to-DAE lowering with structural analysis.
 //!
 //! Lowering is deterministic: parameters, variables and states are
 //! canonicalized, equations are causally ordered by their matched unknown,

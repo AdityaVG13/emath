@@ -1,4 +1,4 @@
-//! core: open declaration framework.
+//! Core: open declaration framework.
 //!
 //! `Hir` collects every section family, attribute, generic parameter,
 //! documentation and extension payload with provenance spans. Section
@@ -125,7 +125,7 @@ pub struct OpenField {
     pub source: Span,
 }
 
-/// The open declaration ( core).
+/// The open declaration (core).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct OpenDecl {
     pub name: String,

@@ -1,4 +1,4 @@
-//!: representation planning.
+//! Representation planning.
 //!
 //! Conversion nodes carry cost and exact relation evidence; cyclic
 //! conversion paths are refused (`E-PROV-517`) and lossy conversions that

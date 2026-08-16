@@ -1,4 +1,4 @@
-//!: independent artifact checker.
+//! Independent artifact checker.
 //!
 //! Verifies a generated package purely from the retained artifacts: file
 //! inventory and content identity, manifest identity recomputation,

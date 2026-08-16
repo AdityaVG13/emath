@@ -1,4 +1,4 @@
-//!: drift monitoring.
+//! Drift monitoring.
 //!
 //! Monitors input, quality, error, latency, memory, fallback and
 //! provider-health drift against a frozen expectation. Every alert is

@@ -1,4 +1,4 @@
-//!: translation validation.
+//! Translation validation.
 //!
 //! For the supported EMIR/Rust subset, the validator compares the source
 //! relation to the semantics recovered from the generated crate, emits an

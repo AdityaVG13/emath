@@ -1,4 +1,4 @@
-//!: Modelica subset import.
+//! Modelica subset import.
 //!
 //! `import_modelica` produces retained foreign-model declarations with
 //! adapter identity. The source text is preserved verbatim: there is no

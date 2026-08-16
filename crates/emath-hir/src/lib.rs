@@ -1,5 +1,5 @@
 //! Resolved declaration representation (`CRATE_MAP` Tier 1 `emath-hir`):
-//! the open declaration framework ( core), scoped notation
+//! the open declaration framework (core), scoped notation
 //! and bootstrap-syntax migration.
 //!
 //! This crate is the compiler glue between the syntax tree and the

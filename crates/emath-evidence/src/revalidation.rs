@@ -1,4 +1,4 @@
-//!: revalidation.
+//! Revalidation.
 //!
 //! Evidence goes stale when the source, compiler, provider, checker,
 //! target or assumptions change. A sweep marks affected records for

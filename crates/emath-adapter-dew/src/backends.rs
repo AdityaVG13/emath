@@ -1,4 +1,4 @@
-//!: breadth backends.
+//! Breadth backends.
 //!
 //! - Rust source backend: deterministic Rust fragments with per-node
 //!   source anchors and a bounded syntax sanity check.

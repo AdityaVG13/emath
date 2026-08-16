@@ -1,6 +1,6 @@
-//! core: scoped notation.
+//! Core: scoped notation.
 //!
-//! Imports an operator declaration (`` surface) into a
+//! Imports an operator declaration (surface) into a
 //! scoped notation table with precedence/fixity, alias resolution,
 //! arity checks and ambiguity detection. Rendering follows canonical
 //! rules (`infix`/`prefix`/`postfix` place the data operand).

@@ -1,4 +1,4 @@
-//!: build-script API.
+//! Build-script API.
 //!
 //! `locked_build_script` runs the artifact pipeline from a build.rs with
 //! rerun tracking, strict `$OUT_DIR` isolation and a locked network mode:

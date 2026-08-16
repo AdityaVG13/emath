@@ -3,8 +3,8 @@
 # Lowering: crates/emath-adapter-rumoca lowers the equivalent structural
 # model into a causal DAE plan (matching + tearing provenance) and executes
 # a deterministic forward-Euler simulation through the runtime Outcome/
-# Budget contract. The kind `dynamic-model` is documented by
-# implementation/schemas/dynamic-model-kind-v1.schema.json; full text
+# Budget contract. The kind `dynamic-model` is documented by the custom-kind
+# schema contract (`language/spec/07_CUSTOM_KINDS_SCHEMA_AND_LOWERING.md`); full-text
 # parsing arrives with the lossless parser, until then
 # the structural model is the producer API.
 emath custom <MassSpring> as dynamic-model:

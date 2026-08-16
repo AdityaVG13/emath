@@ -49,4 +49,4 @@ The LSP exposes typed hover, go-to-definition, semantic references, diagnostics,
 
 ## CLI
 
-Core commands are specified in `docs/CLI_REFERENCE.md` and include `new`, `fmt`, `check`, `explain`, `plan`, `build`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor` and fork/provider tooling.
+Core commands include `new`, `fmt`, `check`, `explain`, `plan`, `build`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor` and fork/provider tooling.

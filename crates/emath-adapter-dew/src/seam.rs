@@ -1,4 +1,4 @@
-//!: minimal fork seam.
+//! Minimal fork seam.
 //!
 //! The adapter exposes a stable adapter-facing API and never edits Dew
 //! expression internals. Every patch to the fork is categorized in the

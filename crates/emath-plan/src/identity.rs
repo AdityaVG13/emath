@@ -1,4 +1,4 @@
-//!: plan identity and cache.
+//! Plan identity and cache.
 //!
 //! The canonical plan identity binds goal, policy, provider set and target.
 //! The cache holds plans by identity; a changed provider/descriptor

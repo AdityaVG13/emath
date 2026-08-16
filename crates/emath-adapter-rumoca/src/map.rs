@@ -1,4 +1,4 @@
-//!: semantic mapping table.
+//! Semantic mapping table.
 //!
 //! Every Modelica/Rumoca construct emath may encounter is classified as
 //! exact, refinement, lossy, unsupported or presentation-only, with a

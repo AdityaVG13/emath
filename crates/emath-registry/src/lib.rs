@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Package/provider registry slice (P11).
+//! Package/provider registry slice.
 //!
 //! A std-only, deterministic index/lock model:
 //!

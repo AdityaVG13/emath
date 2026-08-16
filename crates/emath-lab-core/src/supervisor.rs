@@ -1,4 +1,4 @@
-//!: automatic demotion.
+//! Automatic demotion.
 //!
 //! The supervisor watches monitored observations through the drift
 //! monitor; on any drift alert a promoted/canary candidate is demoted to

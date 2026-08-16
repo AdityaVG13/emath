@@ -1,4 +1,4 @@
-//!: evidence-level policy.
+//! Evidence-level policy.
 //!
 //! Maps an E0–E5 requirement to the admissible producer/checker
 //! combinations per claim class. The same claim class admits stricter

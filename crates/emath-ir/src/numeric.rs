@@ -1,4 +1,4 @@
-//!: numeric tower.
+//! Numeric tower.
 //!
 //! Exact vs machine representations are distinguished explicitly; promotion
 //! and conversion costs are deterministic. A promotion that cannot be

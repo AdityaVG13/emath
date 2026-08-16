@@ -163,7 +163,7 @@ pub fn build_text(
     )
 }
 
-///: artifact pipeline over an already-elaborated package
+/// Artifact pipeline over an already-elaborated package
 /// (programmatic models and macro-expanded sources use this exact path:
 /// same schema/sema/plan/artifact flow as `.emath` text).
 pub fn build_package(

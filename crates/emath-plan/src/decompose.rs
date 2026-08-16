@@ -1,4 +1,4 @@
-//!: goal decomposition.
+//! Goal decomposition.
 //!
 //! Rules split a goal into a subgoal DAG with source anchors; every child
 //! must preserve the parent's requirements (never strengthen evidence or

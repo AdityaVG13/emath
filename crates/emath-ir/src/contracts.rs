@@ -1,4 +1,4 @@
-//!: provider representation contracts.
+//! Provider representation contracts.
 //!
 //! Exact-relation guarantees between a provider representation and the SIR
 //! canonical form, with a conversion cost budget and a typed failure code.

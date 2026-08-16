@@ -3,7 +3,7 @@
 //! A kind schema declares which sections are required, optional or
 //! repeatable, the payload policy for each section (`single`, `field`,
 //! `command`), defaults, and a static predicate over the declaration.
-//! Lowering (`` full) is not in this crate; the schema is
+//! Lowering (full) is not in this crate; the schema is
 //! the admission surface the builder and the compiler share.
 
 use std::collections::BTreeMap;

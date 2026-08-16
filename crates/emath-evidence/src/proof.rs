@@ -1,4 +1,4 @@
-//!: proof-provider path.
+//! Proof-provider path.
 //!
 //! Theorem-proving kernels (`lean-4`, `frankenlean` or other backends) plug in
 //! as *optional* E3 producers/checkers. Ordinary compilation never

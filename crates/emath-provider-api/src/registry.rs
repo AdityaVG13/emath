@@ -1,4 +1,4 @@
-//!: provider registry.
+//! Provider registry.
 //!
 //! Loads static, sandboxed, external-process and remote descriptors under
 //! an isolation policy and an optional implementation lock. Denied and

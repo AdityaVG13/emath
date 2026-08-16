@@ -370,7 +370,7 @@ impl ModelBuilder for BuilderModel {
             },
         };
 
-        // Constructor admission (: the builder must not
+        // Constructor admission (the builder must not
         // bypass schema or constructor admission). Policies require a
         // public `new`; functions cannot carry constructors.
         let is_policy = self.kind == Some(KindRef::Policy);
@@ -759,7 +759,7 @@ impl BuilderModel {
         Ok((id, ty))
     }
 
-    /// The kind schema this model builds against (: the
+    /// The kind schema this model builds against (the
     /// builder shares the same kind schema as the compiler; a generic
     /// requirement is rendered into the schema predicate).
     #[must_use]

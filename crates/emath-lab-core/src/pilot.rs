@@ -1,4 +1,4 @@
-//!: real host pilot.
+//! Real host pilot.
 //!
 //! A deterministic cache-router host integrating the selector, drift
 //! monitor and receipts end to end, with meaningful application metrics:

@@ -1,4 +1,4 @@
-//! P03-1: versioned provider seam.
+//! Versioned provider seam.
 //!
 //! Adapters are versioned and identity-checked before their output is
 //! trusted. Provider output is untrusted until checked; drift or identity

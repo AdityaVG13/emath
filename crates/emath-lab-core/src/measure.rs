@@ -1,4 +1,4 @@
-//!: measurement harness.
+//! Measurement harness.
 //!
 //! Latency, throughput, startup, allocations, peak/retained memory, binary
 //! size, energy, device cost and application metrics. The harness itself is

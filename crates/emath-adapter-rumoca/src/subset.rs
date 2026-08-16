@@ -1,4 +1,4 @@
-//!: first emath dynamic-model subset contract.
+//! First emath dynamic-model subset contract.
 //!
 //! The subset covers parameters and state, scalar/vector quantities,
 //! equations and derivatives, initial values, components and connections,

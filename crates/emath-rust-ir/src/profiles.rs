@@ -1,4 +1,4 @@
-//!: generated crate profiles.
+//! Generated crate profiles.
 //!
 //! Profiles: library, binary, `no_std`, `wasm/component`, FFI, provider
 //! plugin and host patch/candidate. Each profile determines the manifest

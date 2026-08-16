@@ -1,4 +1,4 @@
-//!: DAE plan and simulation providers.
+//! DAE plan and simulation providers.
 //!
 //! Causalization and simulation are provider outputs, not universal SIR
 //! meaning. Both run through the runtime Outcome/Budget/Continuation

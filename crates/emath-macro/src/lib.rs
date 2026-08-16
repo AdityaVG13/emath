@@ -1,4 +1,4 @@
-//!: `emath!` procedural macro.
+//! `emath!` procedural macro.
 //!
 //! Small-source convenience: `emath! { "... .emath source ..." }` lowers an
 //! inline source literal to the *same* compiler path. The macro parses its

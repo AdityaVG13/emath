@@ -1,4 +1,4 @@
-//!: provider lifting.
+//! Provider lifting.
 //!
 //! When no provider serves an operator/subset, the planner emits a Rust
 //! provider trait (opaque handle) plus a parametric artifact: the same

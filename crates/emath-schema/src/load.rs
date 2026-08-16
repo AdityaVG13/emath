@@ -1,4 +1,4 @@
-//!: kind package loading.
+//! Kind package loading.
 //!
 //! Resolves kind identity/version from package locks, verifies the
 //! content identity against the canonical schema, refuses incompatible

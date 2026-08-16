@@ -1,4 +1,4 @@
-//!: evidence IR.
+//! Evidence IR.
 //!
 //! Claims, assumptions, producer/checker roles, evidence kinds,
 //! freshness, falsifiers and verdicts. A record whose computation is

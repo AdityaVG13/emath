@@ -26,6 +26,7 @@ AGENTS.md
 /architecture/
 /bootstrap/
 /forks/
+!/forks/UPSTREAM_LOCK.json
 /history/
 /legal/
 /licenses/

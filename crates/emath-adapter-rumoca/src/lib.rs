@@ -1,4 +1,4 @@
-//! Rumoca structural-model adapter (P03): provider seam and neutral IR.
+//! Rumoca structural-model adapter: provider seam and neutral IR.
 //!
 //! Phase 3 reuses Rumoca's Modelica compiler phases while mapping results
 //! into provider-neutral emath IR. This crate is the adapter seam: the

@@ -1,4 +1,4 @@
-//!: Dew neutral expression mapping.
+//! Dew neutral expression mapping.
 //!
 //! Exact scalar mapping over the strict-Float64 subset (bit-exact
 //! literals, IEEE-754 strict arithmetic, conditionals, one-to-one
