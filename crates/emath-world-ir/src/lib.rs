@@ -2,6 +2,7 @@
 
 //! Provider-neutral World IR and meaning-hole structures.
 
+pub mod builtin;
 pub mod translation;
 
 use emath_term::{Signature, SymbolId};
@@ -203,6 +204,10 @@ impl WorldIr {
     }
 
     /// Renders a deterministic seed canonical form.
+    ///
+    /// The name is a display-only alias and is excluded from content
+    /// identity (spec 07): a `WorldId` binds semantic content, not
+    /// incidental labels.
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut carriers = self.carriers.clone();
@@ -216,8 +221,8 @@ impl WorldIr {
         let mut capabilities = self.capabilities.clone();
         capabilities.sort();
         format!(
-            "world:v{}:{}:{carriers:?}:{symbols:?}:{operators:?}:{:?}:{laws:?}:{:?}:{capabilities:?}",
-            self.version, self.name, self.constructors, self.holes
+            "world:v{}:{carriers:?}:{symbols:?}:{operators:?}:{:?}:{laws:?}:{:?}:{capabilities:?}",
+            self.version, self.constructors, self.holes
         )
     }
 }
