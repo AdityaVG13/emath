@@ -3,6 +3,9 @@
 # bv (beads viewer) local config and caches
 .bv/
 
+# bead store is local-only (issue tracking; not part of the shipped repo)
+/.beads/
+
 # internal planning docs (not for public release)
 /internal/
 
