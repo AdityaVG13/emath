@@ -34,10 +34,7 @@ AGENTS.md
 /internal/
 /implementation/
 /validation/*
-!/validation/semantic-genesis/
-/validation/semantic-genesis/*
-!/validation/semantic-genesis/replay/
-!/validation/semantic-genesis/replay/**
+!/validation/.gitkeep
 
 # legacy root planning docs (kept locally, not shipped)
 00_MASTER_INDEX.md
