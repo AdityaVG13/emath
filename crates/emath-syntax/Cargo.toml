@@ -8,8 +8,7 @@ rust-version.workspace = true
 [dependencies]
 emath-core = { workspace = true }
 emath-source = { workspace = true }
-emath-term = { path = "../emath-term" }
-emath-world-ir = { path = "../emath-world-ir" }
+emath-genesis = { path = "../emath-genesis" }
 
 [lints]
 workspace = true

@@ -1,18 +1,24 @@
 //! G1: bounded parse forest and signature inference for genesis bodies.
 //!
-//! The forest enumerates structural parses of a body expression under a
+//! Moved wholesale from `emath-syntax` (world-side fence, pass 5): the
+//! forest enumerates structural parses of a body expression under a
 //! deterministic grammar: atoms, parenthesized groups, prefix application
 //! (`op(...)`) and infix composition, with no precedence. All enumeration is
 //! bounded by [`ForestLimits`]; budget exhaustion and unparseable input are
 //! reported as typed recovery holes, never panics. Every emitted artifact
-//! (canonical JSON, FNV-1a64 ids) is byte-identical across runs.
+//! (canonical JSON, FNV-1a64 ids) is byte-identical across runs. Stable
+//! diagnostic codes are unchanged (`E-SYN-2xx`; never repurposed).
+//!
+//! The world-side stage consumes the genesis body string produced by the
+//! G0 parser in `emath-syntax` (`genesis::parse_genesis` -> `body_text`);
+//! it never touches the syntax parse tree. `emath-syntax` re-exports this
+//! module at its root (`pub use emath_genesis::forest;`) for the CLI.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use emath_core::fnv1a64_bytes;
 use emath_term::{Signature, SymbolId, Term, VariableId};
-use emath_world_ir::Fixity;
+use emath_world_ir::{fnv1a64, Fixity};
 
 /// Budget for the bounded parse forest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -301,7 +307,7 @@ pub fn build_forest_named(body: &str, world_name: &str, limits: &ForestLimits) -
         hints: state.hints,
         parse_id: 0,
     };
-    forest.parse_id = fnv1a64_bytes(forest.json_without_id().as_bytes());
+    forest.parse_id = fnv1a64(forest.json_without_id().as_bytes());
     forest
 }
 
@@ -353,7 +359,7 @@ pub fn infer_signature_named(
         world_name: world_name.to_string(),
         signature_id: 0,
     };
-    inference.signature_id = fnv1a64_bytes(inference.json_without_id().as_bytes());
+    inference.signature_id = fnv1a64(inference.json_without_id().as_bytes());
     Ok(inference)
 }
 

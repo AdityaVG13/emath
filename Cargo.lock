@@ -338,9 +338,8 @@ name = "emath-syntax"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-genesis",
  "emath-source",
- "emath-term",
- "emath-world-ir",
 ]
 
 [[package]]
