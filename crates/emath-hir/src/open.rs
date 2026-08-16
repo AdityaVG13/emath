@@ -176,7 +176,7 @@ impl OpenDecl {
         attributes.dedup_by(|a, b| a.name == b.name && a.source == b.source);
 
         let sections: Vec<OpenSection> = decl
-            .sections
+            .sections_vec()
             .iter()
             .map(|section| OpenSection {
                 name: section.name.clone(),
@@ -193,8 +193,8 @@ impl OpenDecl {
             generics,
             attributes,
             sections,
-            payloads: declare_payloads(&decl.sections),
-            docs: collect_docs(&decl.sections),
+            payloads: declare_payloads(&decl.sections_vec()),
+            docs: collect_docs(&decl.sections_vec()),
         }
     }
 
