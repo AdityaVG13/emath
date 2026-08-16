@@ -7,7 +7,7 @@
 //! become plural `inputs`/`outputs`, and inline constructors are lifted
 //! into a `constructors:` section.
 
-use emath_syntax::tree::Declaration;
+use emath_core::tree::Declaration;
 
 /// One migration concern.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,7 +74,7 @@ pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
         s.suite
             .statements
             .iter()
-            .any(|stmt| matches!(&stmt.kind, emath_syntax::tree::StmtKind::FnDecl { .. }))
+            .any(|stmt| matches!(&stmt.kind, emath_core::tree::StmtKind::FnDecl { .. }))
     }) && !sections.contains(&"constructors".to_string())
     {
         sections.push("constructors".into());

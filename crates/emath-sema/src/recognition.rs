@@ -17,11 +17,11 @@
 //! open there.
 
 use crate::admit::SemanticTrace;
-use emath_core::Diagnostics;
-use emath_ir::{ImportEntry, ImportSelection};
-use emath_syntax::tree::{
+use emath_core::tree::{
     Declaration, Expr, ExprKind, Item, Stmt, StmtKind, TypeExpr, TypeKind, UseTree,
 };
+use emath_core::Diagnostics;
+use emath_ir::{ImportEntry, ImportSelection};
 use std::collections::BTreeMap;
 
 /// Declaration kinds admitted by this front-end.
@@ -377,7 +377,7 @@ pub struct V6FrontEnd {
 
 /// Collect the `emath kind` definitions declared in the file.
 #[must_use]
-pub fn collect_kind_defs(tree: &emath_syntax::tree::SyntaxTree) -> BTreeMap<String, KindDef> {
+pub fn collect_kind_defs(tree: &emath_core::tree::SyntaxTree) -> BTreeMap<String, KindDef> {
     let mut defs = BTreeMap::new();
     for item in &tree.items {
         let Item::Declaration(decl) = item else {
@@ -409,7 +409,7 @@ pub fn collect_kind_defs(tree: &emath_syntax::tree::SyntaxTree) -> BTreeMap<Stri
     defs
 }
 
-fn schema_rules_from_section(section: &emath_syntax::tree::Section) -> Vec<SchemaRule> {
+fn schema_rules_from_section(section: &emath_core::tree::Section) -> Vec<SchemaRule> {
     let mut rules = Vec::new();
     for stmt in &section.suite.statements {
         match &stmt.kind {
@@ -452,7 +452,7 @@ fn require_head(expr: &Expr) -> Option<SchemaRule> {
 
 /// Admit the file-level front-end items (`package`, `use`).
 pub fn admit_front_end(
-    tree: &emath_syntax::tree::SyntaxTree,
+    tree: &emath_core::tree::SyntaxTree,
     diagnostics: &mut Diagnostics,
     trace: &mut SemanticTrace,
 ) -> V6FrontEnd {
@@ -785,7 +785,7 @@ fn validate_body(
     }
 }
 
-fn format_section_trace(section: &emath_syntax::tree::Section) -> String {
+fn format_section_trace(section: &emath_core::tree::Section) -> String {
     match &section.generic {
         Some(generic) => format!("{} {generic}", section.name),
         None => section.name.clone(),
@@ -813,7 +813,7 @@ fn generic_allowed(rule: &SectionRule, generic: Option<&str>) -> bool {
 }
 
 fn admit_section(
-    section: &emath_syntax::tree::Section,
+    section: &emath_core::tree::Section,
     rule: &SectionRule,
     decl: &Declaration,
     diagnostics: &mut Diagnostics,
@@ -864,7 +864,7 @@ fn admit_stmt<R: ShapeRule>(
     decl: &Declaration,
     diagnostics: &mut Diagnostics,
     trace: &mut SemanticTrace,
-    section: Option<&emath_syntax::tree::Section>,
+    section: Option<&emath_core::tree::Section>,
 ) {
     if !rule
         .statement_shapes()
@@ -993,7 +993,7 @@ fn shape_accepts(shape: StmtShapeKind, stmt: &Stmt) -> bool {
 fn admit_fn_head(
     head: &str,
     name: &str,
-    suite: Option<&emath_syntax::tree::Suite>,
+    suite: Option<&emath_core::tree::Suite>,
     decl: &Declaration,
     diagnostics: &mut Diagnostics,
     trace: &mut SemanticTrace,
@@ -1068,17 +1068,17 @@ fn admit_fn_statement(
     }
 }
 
-fn place_text(place: &emath_syntax::tree::Place) -> String {
+fn place_text(place: &emath_core::tree::Place) -> String {
     place.segments.join(".")
 }
 
-fn argument_text(argument: &emath_syntax::tree::CommandArgument) -> String {
+fn argument_text(argument: &emath_core::tree::CommandArgument) -> String {
     match argument {
-        emath_syntax::tree::CommandArgument::Expr(expr) => expr_text(expr),
-        emath_syntax::tree::CommandArgument::Assignment { name, value } => {
+        emath_core::tree::CommandArgument::Expr(expr) => expr_text(expr),
+        emath_core::tree::CommandArgument::Assignment { name, value } => {
             format!("{name} = {}", expr_text(value))
         }
-        emath_syntax::tree::CommandArgument::List(items) => format!(
+        emath_core::tree::CommandArgument::List(items) => format!(
             "[{}]",
             items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
         ),

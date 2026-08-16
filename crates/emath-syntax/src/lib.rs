@@ -9,6 +9,10 @@
 //! Semantic Genesis adds two modules: [`genesis`] parses `emath custom`
 //! world declarations (G0) and [`forest`] builds the bounded parse forest and
 //! infers the world signature (G1).
+//!
+//! The syntax tree is owned by `emath-core` (`emath_core::tree`); this crate
+//! re-exports it and implements the kernel [`emath_core::parse::SourceParser`]
+//! seam so that `emath-sema` can admit without depending on this crate.
 
 #![forbid(unsafe_code)]
 
@@ -63,4 +67,25 @@ pub fn parse_lossless(text: &str, file: FileId, limits: &Limits) -> LosslessPars
 #[must_use]
 pub fn format_lossless(parse: &LosslessParse) -> String {
     formatter::format(&parse.tree, &parse.comments)
+}
+
+/// The `.emath` parser as a kernel [`emath_core::parse::SourceParser`]
+/// implementation, injected into `emath-sema` sessions at runtime.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SyntaxParser;
+
+impl emath_core::parse::SourceParser for SyntaxParser {
+    fn parse(&self, text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics) {
+        parser::parse(text, file, limits)
+    }
+}
+
+/// Install [`SyntaxParser`] as the process-wide default source parser.
+//
+// Hosts that construct `CompilerSession` values which parse must call this
+// once per process before their first parse (the CLI and LSP do so at
+// startup). Idempotent.
+pub fn install_source_parser() {
+    static PARSER: std::sync::OnceLock<SyntaxParser> = std::sync::OnceLock::new();
+    emath_core::parse::register_source_parser(PARSER.get_or_init(|| SyntaxParser));
 }

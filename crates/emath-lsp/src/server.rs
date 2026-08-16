@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use emath_core::Severity;
 use emath_sema::session::CompilerSession;
+use emath_syntax::install_source_parser;
 
 use crate::json::JsonValue;
 use crate::protocol::{write_error, write_notification, write_response, RpcMessage};
@@ -56,6 +57,9 @@ impl ServerState {
     /// Creates a fresh server state with default limits.
     #[must_use]
     pub fn new() -> Self {
+        // The compiler session parses documents; install the parser backend
+        // once per process so diagnostics never hit the E-SYN-120 refusal.
+        install_source_parser();
         Self {
             documents: BTreeMap::new(),
             shutdown: false,

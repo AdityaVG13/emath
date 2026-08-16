@@ -27,6 +27,7 @@ use emath_core::{content_id_of_str, Diagnostics, SchemaId};
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ResolutionPlan};
 use emath_rust_backend::{BackendInput, BackendOutput};
 use emath_sema::session::CompilerSession;
+use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -126,6 +127,10 @@ pub fn build_text(
     target_dir: impl AsRef<Path>,
     options: BuildOptions,
 ) -> Result<BuildReport, BuildError> {
+    // The session parses `.emath` text, so the source-parser backend must
+    // be installed for every host that builds (CLI, build scripts,
+    // builders). Idempotent.
+    install_source_parser();
     let target_dir = target_dir.as_ref();
     std::fs::create_dir_all(target_dir).map_err(|error| {
         BuildError::Io(format!("cannot create {}: {error}", target_dir.display()))
