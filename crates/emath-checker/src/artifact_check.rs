@@ -9,10 +9,12 @@
 use std::collections::BTreeMap;
 
 use emath_artifact::{
-    required_artifact_paths, ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap,
+    evidence_bundle_from_json, manifest_from_json, plan_from_json, required_artifact_paths,
+    source_map_from_json, ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap,
 };
-use emath_core::{fnv1a64_bytes, ContentId};
+use emath_core::ContentId;
 use emath_ir::ClaimVerdict;
+use std::path::Path;
 
 use crate::{identity_of, CheckerError};
 
@@ -30,7 +32,7 @@ pub struct ProviderLockRecord {
 /// One flagged problem.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactCheckIssue {
-    /// Stable code (`E-EVID-101`..`E-EVID-111`).
+    /// Stable code (`E-EVID-101`..`E-EVID-114`).
     pub code: &'static str,
     /// Message.
     pub message: String,
@@ -103,8 +105,15 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
         ));
     }
 
-    // 2. Required artifact paths present (inventory completeness).
+    // 2. Required artifact paths present (inventory completeness). The
+    //    manifest is excluded from its own `files` map (its fingerprint is
+    //    self-referential), so its presence is enforced by the caller that
+    //    reads it from disk (`check_artifact_dir`) rather than by this
+    //    inventory map, exactly like `manifest_identity` ignores it.
     for path in required_artifact_paths() {
+        if *path == "emath/artifact-manifest.json" {
+            continue;
+        }
         if !input.files.contains_key(*path) {
             issues.push(issue(
                 "E-EVID-105",
@@ -114,6 +123,14 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
     }
 
     // 3. Declared manifest files exist and hash to their declared ids.
+    //    An empty `files` object would disable fingerprinting, so it is
+    //    refused outright.
+    if input.manifest.files.is_empty() {
+        issues.push(issue(
+            "E-EVID-109",
+            "manifest declares no files; content-identity fingerprinting disabled",
+        ));
+    }
     let mut declared: Vec<(&String, &ContentId)> = input.manifest.files.iter().collect();
     declared.sort_by(|left, right| left.0.cmp(right.0));
     for (path, declared_id) in declared {
@@ -204,7 +221,7 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
     }
     if input.source_map.source_package != input.manifest.source_package {
         issues.push(issue(
-            "E-EVID-110",
+            "E-EVID-112",
             "source map does not reference the manifest's source package",
         ));
     }
@@ -245,44 +262,13 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
 }
 
 /// Deterministic manifest-body identity (excludes `artifact_id` itself).
+///
+/// The one identity: delegates to
+/// [`emath_artifact::manifest_identity`] so the publisher and the
+/// independent checker share a single function.
 #[must_use]
 pub fn independent_manifest_identity(manifest: &ArtifactManifest) -> ContentId {
-    let mut files: Vec<(String, &ContentId)> = manifest
-        .files
-        .iter()
-        .map(|(p, id)| (p.clone(), id))
-        .collect();
-    files.sort_by(|left, right| left.0.cmp(&right.0));
-    let file_token: Vec<String> = files
-        .iter()
-        .map(|(path, id)| format!("{path}={}", id.0))
-        .collect();
-    let mut providers = manifest.providers.clone();
-    providers.sort_by(|left, right| left.id.cmp(&right.id));
-    let provider_token: Vec<String> = providers
-        .iter()
-        .map(|p| {
-            format!(
-                "{}@{}:{}-{}",
-                p.id, p.version, p.implementation.0, manifest.numeric_profile
-            )
-        })
-        .collect();
-    let body = format!(
-        "artifact:v1:{}:{}:{}:{}:{}:{}:[{}]:[{}]:{}:{}:{}",
-        manifest.schema.0,
-        manifest.source_package.0,
-        manifest.class.as_str(),
-        manifest.compiler.0,
-        manifest.target.family,
-        manifest.target.triple.as_deref().unwrap_or("-"),
-        file_token.join(";"),
-        provider_token.join(";"),
-        manifest.source_map.0,
-        manifest.resolution_plan.0,
-        manifest.evidence_bundle.0,
-    );
-    ContentId(format!("fnv1a64:{:016x}", fnv1a64_bytes(body.as_bytes())))
+    emath_artifact::manifest_identity(manifest)
 }
 
 fn issue(code: &'static str, message: impl Into<String>) -> ArtifactCheckIssue {
@@ -298,4 +284,149 @@ pub fn first_error(report: &ArtifactCheckReport) -> Option<CheckerError> {
     report
         .first()
         .map(|found| CheckerError::new(found.code, found.message.clone()))
+}
+
+/// Check an artifact directory on disk: `<root>/emath/<artifact-id>/` as
+/// published by `emath build`. This is the CLI's single
+/// independent verification entry point, so write-only artifacts are no
+/// longer possible: every durable document is parsed and every declared
+/// file is read with strict UTF-8 and no symlink following.
+///
+/// Errors are refused outright:
+/// - `E-EVID-105` document missing (required artifact path absent);
+/// - `E-EVID-108` document does not conform to its schema (unparseable);
+/// - `E-EVID-113` a required or declared path is a symlink;
+/// - `E-EVID-114` a document or declared file is not valid UTF-8.
+pub fn check_artifact_dir(root: &Path) -> Result<ArtifactCheckReport, CheckerError> {
+    let requirement = |path: &'static str| {
+        let full = root.join(path);
+        if full
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return Err(CheckerError::new(
+                "E-EVID-113",
+                format!("required artifact path is a symlink: {path}"),
+            ));
+        }
+        let bytes = std::fs::read(&full).map_err(|_| {
+            CheckerError::new(
+                "E-EVID-105",
+                format!("required artifact path missing: {path}"),
+            )
+        })?;
+        let text = String::from_utf8(bytes).map_err(|_| {
+            CheckerError::new(
+                "E-EVID-114",
+                format!("artifact document is not valid UTF-8: {path}"),
+            )
+        })?;
+        Ok::<String, CheckerError>(text)
+    };
+    let manifest_json = requirement("emath/artifact-manifest.json")?;
+    let manifest = manifest_from_json(&manifest_json).map_err(|error| {
+        CheckerError::new(
+            "E-EVID-108",
+            format!("emath/artifact-manifest.json does not conform to emath.artifact.v1: {error}"),
+        )
+    })?;
+    let source_map =
+        source_map_from_json(&requirement("emath/source-map.json")?).map_err(|error| {
+            CheckerError::new(
+                "E-EVID-108",
+                format!("emath/source-map.json does not conform to emath.source-map.v1: {error}"),
+            )
+        })?;
+    let plan = plan_from_json(&requirement("emath/resolution-plan.json")?).map_err(|error| {
+        CheckerError::new(
+            "E-EVID-108",
+            format!(
+                "emath/resolution-plan.json does not conform to emath.resolution-plan.v1: {error}"
+            ),
+        )
+    })?;
+    let evidence = evidence_bundle_from_json(&requirement("emath/evidence-bundle.json")?).map_err(
+        |error| {
+            CheckerError::new(
+                "E-EVID-108",
+                format!(
+                    "emath/evidence-bundle.json does not conform to emath.evidence-bundle.v1: {error}"
+                ),
+            )
+        },
+    )?;
+    let mut files = BTreeMap::new();
+    for path in required_artifact_paths() {
+        if *path == "emath/artifact-manifest.json" {
+            continue;
+        }
+        let full = root.join(path);
+        if full
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return Err(CheckerError::new(
+                "E-EVID-113",
+                format!("required artifact path is a symlink: {path}"),
+            ));
+        }
+        let bytes = std::fs::read(&full).map_err(|_| {
+            CheckerError::new(
+                "E-EVID-105",
+                format!("required artifact path missing: {path}"),
+            )
+        })?;
+        let text = String::from_utf8(bytes).map_err(|_| {
+            CheckerError::new(
+                "E-EVID-114",
+                format!("declared artifact file is not valid UTF-8: {path}"),
+            )
+        })?;
+        files.insert((*path).to_string(), text);
+    }
+    for path in manifest.files.keys() {
+        if files.contains_key(path) {
+            continue;
+        }
+        let full = root.join(path);
+        if !full.exists() {
+            continue; // reported by the E-EVID-109 inventory check below
+        }
+        if full
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return Err(CheckerError::new(
+                "E-EVID-113",
+                format!("declared artifact path is a symlink: {path}"),
+            ));
+        }
+        let bytes = std::fs::read(&full).map_err(|_| {
+            CheckerError::new(
+                "E-EVID-105",
+                format!("declared artifact path missing: {path}"),
+            )
+        })?;
+        let text = String::from_utf8(bytes).map_err(|_| {
+            CheckerError::new(
+                "E-EVID-114",
+                format!("declared artifact file is not valid UTF-8: {path}"),
+            )
+        })?;
+        files.insert(path.clone(), text);
+    }
+    // CLI verification has no separate frozen goal record: the manifest's
+    // source package is the admitted identity the artifact claims to
+    // implement, so a self-scoped round trip is the honest baseline.
+    let goal_identity = manifest.source_package.clone();
+    let input = ArtifactInput {
+        manifest,
+        source_map,
+        plan,
+        evidence,
+        files,
+        provider_locks: Vec::new(),
+        goal_identity,
+    };
+    Ok(check_artifact(&input, &ArtifactCheckConfig::default()))
 }

@@ -17,7 +17,7 @@ pub use deps::{
 pub use script::{locked_build_script, ScriptError, ScriptLock, ScriptReport};
 
 use emath_artifact::{
-    plan_to_record, publish, required_artifact_paths, stage, verify_artifact,
+    manifest_identity, plan_to_record, publish, required_artifact_paths, stage, verify_artifact,
     write_artifact_manifest, write_evidence_bundle, write_resolution_plan, write_source_map,
     ArtifactClass, ArtifactError, ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap,
     SourceMapEntry, StagedFile, ARTIFACT_MANIFEST_SCHEMA, EVIDENCE_BUNDLE_SCHEMA,
@@ -206,24 +206,25 @@ pub fn build_package(
         crate_name: &crate_name,
         package_id: &package_id,
     };
-    let mut artifact = compose_artifact(&meta, package, plans, &output, diagnostics, verify_ok)?;
+    let artifact = compose_artifact(&meta, package, plans, &output, diagnostics, verify_ok)?;
 
-    // Stage: provisional manifest, then final with the real artifact id.
-    let mut provisional = artifact.clone();
-    provisional.manifest.artifact_id = emath_core::ContentId(String::new());
-    let provisional_files = stage_files(&output, &artifact, &provisional.manifest);
-    let provisional_staging = stage(&provisional_files, None)?;
-    let artifact_id = provisional_staging.artifact_id.clone();
-    artifact.manifest.artifact_id = artifact_id.clone();
-    let final_files = stage_files(&output, &artifact, &artifact.manifest);
-    let final_staging = stage(&final_files, None)?;
-    if final_staging.artifact_id != artifact_id {
+    // The one identity is the manifest-body hash (`manifest_identity`),
+    // frozen over the *resolved* manifest (every file fingerprint and
+    // referenced-document id filled in), so the independent checker
+    // recomputes the exact same value from the published document
+    // The content fingerprint computed by `stage` only names
+    // the staging union and is never advertised as the artifact identity.
+    let mut manifest = artifact.manifest.clone();
+    let manifest_files = stage_files(&output, &artifact, &mut manifest);
+    let staging = stage(&manifest_files, None)?;
+    let artifact_id = manifest.artifact_id.clone();
+    if manifest_identity(&manifest) != artifact_id {
         return Err(BuildError::Io(
-            "internal: artifact identity changed across manifest staging".to_string(),
+            "internal: artifact identity did not recompute after manifest staging".to_string(),
         ));
     }
-    let destination = publish(target_dir, &artifact_id, &final_files)?;
-    verify_artifact(&destination, &final_staging)?;
+    let destination = publish(target_dir, &artifact_id, &manifest_files)?;
+    verify_artifact(&destination, &staging)?;
 
     Ok(BuildReport {
         artifact_dir: destination,
@@ -403,7 +404,7 @@ fn anchor_label_symbol(label: &str) -> Option<String> {
 fn stage_files(
     output: &BackendOutput,
     artifact: &ComposedArtifact,
-    manifest: &ArtifactManifest,
+    manifest: &mut ArtifactManifest,
 ) -> Vec<StagedFile> {
     let mut files: Vec<StagedFile> = output
         .files
@@ -424,22 +425,36 @@ fn stage_files(
         relative_path: "emath/resolution-plan.json".to_string(),
         bytes: plan_text.as_bytes().to_vec(),
     });
-    let evidence_text = write_evidence_bundle(&artifact.evidence);
-    files.push(StagedFile {
-        relative_path: "emath/evidence-bundle.json".to_string(),
-        bytes: evidence_text.as_bytes().to_vec(),
-    });
 
     // ids for the documents the manifest references
     let source_map_id = content_id_of_str(&source_map_text);
     let plan_id = content_id_of_str(&plan_text);
+
+    // The evidence bundle's own ids are content-derived at stage time:
+    // `resolution_plan` points at the plan document, `bundle_id` is a hash
+    // of the bundle body (with the id itself unfilled), so the durable
+    // document is self-describing and never carries an empty id field
+    // (the checker reads every document back).
+    let mut evidence = artifact.evidence.clone();
+    if evidence.resolution_plan.0.is_empty() {
+        evidence.resolution_plan = plan_id.clone();
+    }
+    if evidence.bundle_id.0.is_empty() {
+        evidence.bundle_id = emath_core::ContentId(String::new());
+        let body = write_evidence_bundle(&evidence);
+        evidence.bundle_id = content_id_of_str(&body);
+    }
+    let evidence_text = write_evidence_bundle(&evidence);
+    files.push(StagedFile {
+        relative_path: "emath/evidence-bundle.json".to_string(),
+        bytes: evidence_text.as_bytes().to_vec(),
+    });
     let evidence_id = content_id_of_str(&evidence_text);
 
     // The manifest references every other file by fingerprint. The manifest
     // itself is excluded from its own `files` map (self-referential ids are
     // unstable), so this resolves in one pass.
-    let mut resolved = manifest.clone();
-    resolved.files = output
+    manifest.files = output
         .files
         .iter()
         .map(|(path, text)| (path.clone(), content_id_of_str(text)))
@@ -456,10 +471,14 @@ fn stage_files(
             evidence_id.clone(),
         )))
         .collect();
-    resolved.source_map = source_map_id;
-    resolved.resolution_plan = plan_id;
-    resolved.evidence_bundle = evidence_id;
-    let final_manifest_text = write_artifact_manifest(&resolved);
+    manifest.source_map = source_map_id;
+    manifest.resolution_plan = plan_id;
+    manifest.evidence_bundle = evidence_id;
+    // Freeze the one artifact identity over this resolved body: it
+    // excludes `artifact_id` itself and the manifest's own entry, so the
+    // parsed-back document recomputes to the identical value.
+    manifest.artifact_id = manifest_identity(manifest);
+    let final_manifest_text = write_artifact_manifest(manifest);
     files.push(StagedFile {
         relative_path: "emath/artifact-manifest.json".to_string(),
         bytes: final_manifest_text.as_bytes().to_vec(),
@@ -480,6 +499,21 @@ fn serialize_plans(plans: &[PlanRecord]) -> String {
 
 /// Write the generated crate into `dir` and run `cargo test --quiet`.
 fn verify_crate(dir: &Path, output: &BackendOutput) -> Result<(), String> {
+    // Mock-free honesty (E-TLT-012): refuse to report "tests passed" for a
+    // crate with no `#[test]` functions. A spec without a `tests:` section
+    // must drop `--verify` instead of trusting a vacuous `cargo test`.
+    let test_file_count = output
+        .files
+        .values()
+        .filter(|text| text.contains("#[test]"))
+        .count();
+    if test_file_count == 0 {
+        return Err(
+            "E-TLT-012: generated crate has no `#[test]` tests; --verify refuses an empty \
+test surface (add a `tests:` section to the spec, or drop --verify)"
+                .to_string(),
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
     for (path, text) in &output.files {

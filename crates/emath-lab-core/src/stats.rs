@@ -42,11 +42,11 @@ pub struct StatisticalProtocol {
 }
 
 impl StatisticalProtocol {
-    /// Validates the protocol configuration (`E-HOST-003`).
+    /// Validates the protocol configuration (`E-HOST-012`).
     pub fn validate(&self) -> Result<(), LabError> {
         if self.repetitions < self.min_repetitions {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-012",
                 format!(
                     "repetitions {} below protocol minimum {}",
                     self.repetitions, self.min_repetitions
@@ -55,14 +55,14 @@ impl StatisticalProtocol {
         }
         if self.warmup_repetitions >= self.repetitions {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-012",
                 "warmup repetitions must be less than repetitions",
             ));
         }
         if let OutlierPolicy::MadTrim { factor } = self.outlier {
             if factor <= 0.0 || !factor.is_finite() {
                 return Err(LabError::new(
-                    "E-HOST-003",
+                    "E-HOST-012",
                     "MAD trim factor must be positive and finite",
                 ));
             }
@@ -140,7 +140,7 @@ pub fn evaluate_paired(
         ));
     }
     let warmup = usize::try_from(protocol.warmup_repetitions)
-        .map_err(|_| LabError::new("E-HOST-003", "warmup repetitions do not fit usize"))?;
+        .map_err(|_| LabError::new("E-HOST-012", "warmup repetitions do not fit usize"))?;
     if observations.len() <= warmup {
         return Err(LabError::new(
             "E-HOST-006",
@@ -158,7 +158,7 @@ pub fn evaluate_paired(
     let outliers_removed = cull_outliers(protocol.outlier, &mut observations);
     let samples_used = observations.len();
     let min_repetitions = usize::try_from(protocol.min_repetitions)
-        .map_err(|_| LabError::new("E-HOST-003", "min_repetitions does not fit usize"))?;
+        .map_err(|_| LabError::new("E-HOST-012", "min_repetitions does not fit usize"))?;
     if samples_used < min_repetitions {
         return Err(LabError::new(
             "E-HOST-006",

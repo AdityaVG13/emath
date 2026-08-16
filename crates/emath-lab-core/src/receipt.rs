@@ -50,9 +50,10 @@ pub struct DecisionReceipt {
 
 impl DecisionReceipt {
     /// Canonical receipt body (everything except `receipt_id`), sorted
-    /// deterministically; the recompute/identity input.
-    #[must_use]
-    pub fn canonical(&self) -> String {
+    /// deterministically; the recompute/identity input. A manifest that
+    /// does not parse is refused (`E-HOST-011`), never hashed as `null`
+    /// (a truncated receipt must not seal as valid).
+    pub fn canonical(&self) -> Result<String, LabError> {
         let mut hashes = self.artifact_hashes.clone();
         hashes.sort_by(|left, right| left.0.cmp(&right.0));
         let hash_token: Vec<String> = hashes
@@ -66,10 +67,16 @@ impl DecisionReceipt {
             ),
             None => "-".to_string(),
         };
-        format!(
+        let manifest = json::parse(&self.manifest_json).map_err(|error| {
+            LabError::new(
+                "E-HOST-011",
+                format!("receipt manifest does not parse: {}", error.message),
+            )
+        })?;
+        Ok(format!(
             "receipt:v1:{}:{}:{}:[{}]:{}:{}:{}:{}:{}:{}:{}:{}:{}:[{}]",
             self.experiment_id.0,
-            json::write(&json::parse(&self.manifest_json).unwrap_or(JsonValue::Null)),
+            json::write(&manifest),
             self.raw_retained,
             self.gate_checks
                 .iter()
@@ -95,23 +102,21 @@ impl DecisionReceipt {
             self.command,
             self.environment_token,
             hash_token.join(";"),
-        )
-    }
-
-    /// FNV-1a64 identity of the canonical receipt body.
-    #[must_use]
-    pub fn identify(&self) -> ContentId {
-        ContentId(format!(
-            "fnv1a64:{:016x}",
-            fnv1a64_bytes(self.canonical().as_bytes())
         ))
     }
 
+    /// FNV-1a64 identity of the canonical receipt body.
+    pub fn identify(&self) -> Result<ContentId, LabError> {
+        Ok(ContentId(format!(
+            "fnv1a64:{:016x}",
+            fnv1a64_bytes(self.canonical()?.as_bytes())
+        )))
+    }
+
     /// Seals the receipt: computes and stores its identity.
-    #[must_use]
-    pub fn seal(mut self) -> Self {
-        self.receipt_id = self.identify();
-        self
+    pub fn seal(mut self) -> Result<Self, LabError> {
+        self.receipt_id = self.identify()?;
+        Ok(self)
     }
 
     /// Independently recomputes the decision from the stored evidence and
@@ -141,10 +146,16 @@ impl DecisionReceipt {
         }
     }
 
-    /// Deterministic canonical JSON for audit.
-    #[must_use]
-    pub fn to_json(&self) -> String {
-        json::write(&JsonValue::Object(vec![
+    /// Deterministic canonical JSON for audit; a manifest that does not
+    /// parse is refused instead of serialized as `null`.
+    pub fn to_json(&self) -> Result<String, LabError> {
+        let manifest = json::parse(&self.manifest_json).map_err(|error| {
+            LabError::new(
+                "E-HOST-011",
+                format!("receipt manifest does not parse: {}", error.message),
+            )
+        })?;
+        Ok(json::write(&JsonValue::Object(vec![
             (
                 "receipt_id".into(),
                 JsonValue::String(self.receipt_id.0.clone()),
@@ -153,10 +164,7 @@ impl DecisionReceipt {
                 "experiment_id".into(),
                 JsonValue::String(self.experiment_id.0.clone()),
             ),
-            (
-                "manifest".into(),
-                json::parse(&self.manifest_json).unwrap_or(JsonValue::Null),
-            ),
+            ("manifest".into(), manifest),
             (
                 "outcome".into(),
                 JsonValue::String(self.decision.outcome.as_str().into()),
@@ -170,7 +178,7 @@ impl DecisionReceipt {
                 "environment".into(),
                 JsonValue::String(self.environment_token.clone()),
             ),
-        ]))
+        ])))
     }
 }
 

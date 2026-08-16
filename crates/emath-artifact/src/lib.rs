@@ -1,14 +1,15 @@
 //! Artifact emission: deterministic JSON writers for the four durable
 //! schemas (`emath.artifact.v1`, `emath.source-map.v1`,
 //! `emath.resolution-plan.v1`, `emath.evidence-bundle.v1`), staging and
-//! atomic publish with tamper detection, and an independent checker that
+//! atomic publish with content-identity verification, and an independent checker that
 //! never calls generator internals.
 
 #![forbid(unsafe_code)]
 
-use emath_core::{bootstrap_content_id, content_id_of_str, ContentId, SchemaId};
+use emath_core::{bootstrap_content_id, content_id_of_str, fnv1a64_bytes, ContentId, SchemaId};
 use emath_ir::{
-    EvidenceClaim, EvidenceLevel, PlanNodeDef, PlanOperation, ResolutionPlan, TargetProfile,
+    ClaimVerdict, EvidenceClaim, EvidenceLevel, PlanNodeDef, PlanOperation, ResolutionPlan,
+    TargetProfile,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -38,6 +39,22 @@ impl ArtifactClass {
             Self::Exploration => "exploration",
             Self::Continuation => "continuation",
             Self::Diagnostic => "diagnostic",
+        }
+    }
+}
+
+impl std::str::FromStr for ArtifactClass {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "native" => Ok(Self::Native),
+            "hybrid" => Ok(Self::Hybrid),
+            "parametric" => Ok(Self::Parametric),
+            "exploration" => Ok(Self::Exploration),
+            "continuation" => Ok(Self::Continuation),
+            "diagnostic" => Ok(Self::Diagnostic),
+            _ => Err(()),
         }
     }
 }
@@ -130,6 +147,53 @@ pub fn required_artifact_paths() -> &'static [&'static str] {
     ]
 }
 
+/// The one artifact identity: a deterministic hash of the
+/// manifest body, excluding `artifact_id` itself and the manifest's own
+/// content-id entry (both are self-referential: the manifest records its
+/// own id and its own fingerprint). This function is the only identity
+/// the publisher records and the only identity the independent checker
+/// recomputes (`E-EVID-102`).
+#[must_use]
+pub fn manifest_identity(manifest: &ArtifactManifest) -> ContentId {
+    let mut files: Vec<(String, &ContentId)> = manifest
+        .files
+        .iter()
+        .filter(|(path, _)| *path != "emath/artifact-manifest.json")
+        .map(|(path, id)| (path.clone(), id))
+        .collect();
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let file_token: Vec<String> = files
+        .iter()
+        .map(|(path, id)| format!("{path}={}", id.0))
+        .collect();
+    let mut providers = manifest.providers.clone();
+    providers.sort_by(|left, right| left.id.cmp(&right.id));
+    let provider_token: Vec<String> = providers
+        .iter()
+        .map(|p| {
+            format!(
+                "{}@{}:{}-{}",
+                p.id, p.version, p.implementation.0, manifest.numeric_profile
+            )
+        })
+        .collect();
+    let body = format!(
+        "artifact:v1:{}:{}:{}:{}:{}:{}:[{}]:[{}]:{}:{}:{}",
+        manifest.schema.0,
+        manifest.source_package.0,
+        manifest.class.as_str(),
+        manifest.compiler.0,
+        manifest.target.family,
+        manifest.target.triple.as_deref().unwrap_or("-"),
+        file_token.join(";"),
+        provider_token.join(";"),
+        manifest.source_map.0,
+        manifest.resolution_plan.0,
+        manifest.evidence_bundle.0,
+    );
+    ContentId(format!("fnv1a64:{:016x}", fnv1a64_bytes(body.as_bytes())))
+}
+
 fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -203,9 +267,12 @@ impl JsonObject {
     }
 }
 
+/// Serialize an id field; an unresolved (empty) id still must produce a
+/// valid JSON string, otherwise `"field": ` would be emitted and no
+/// reader could ever parse the document (documents are read back).
 fn content_id_or_empty(id: &ContentId) -> String {
     if id.0.is_empty() {
-        String::new()
+        quote("")
     } else {
         quote(&id.0)
     }
@@ -216,7 +283,7 @@ fn content_id_or_empty(id: &ContentId) -> String {
 ///
 /// This is the reader for the deterministic in-tree writer above: it
 /// accepts exactly the writer's shape (a string-string object) and refuses
-/// anything else, so a corrupted manifest cannot silently disable tamper
+/// anything else, so a corrupted manifest cannot silently disable content-identity verification
 /// checks. Used by the independent artifact checker
 /// (`emath artifact check <dir>`).
 pub fn manifest_files_declared(
@@ -332,6 +399,454 @@ fn parse_json_string(bytes: &[u8], start: usize) -> Option<(String, usize)> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Reader side: the writer's documents are parsed back with the
+// same std-only discipline, so the CLI and checker never rely on
+// write-only artifacts.
+// ---------------------------------------------------------------------------
+
+/// Minimal JSON value tree accepted by [`parse_json_document`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum JsonValue {
+    /// String literal.
+    Str(String),
+    /// Numeric literal (kept verbatim).
+    Num(String),
+    /// Boolean literal.
+    Bool(bool),
+    /// `null`.
+    Null,
+    /// Object (insertion order preserved).
+    Obj(Vec<(String, JsonValue)>),
+    /// Array.
+    Arr(Vec<JsonValue>),
+}
+
+impl JsonValue {
+    fn field(&self, name: &str) -> Result<&JsonValue, ArtifactError> {
+        match self {
+            Self::Obj(entries) => entries
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value)
+                .ok_or_else(|| ArtifactError::ManifestMalformed(format!("missing `{name}`"))),
+            _ => Err(ArtifactError::ManifestMalformed(
+                "not an object".to_string(),
+            )),
+        }
+    }
+
+    fn string_field(&self, name: &str) -> Result<String, ArtifactError> {
+        match self.field(name)? {
+            Self::Str(value) => Ok(value.clone()),
+            _ => Err(ArtifactError::ManifestMalformed(format!(
+                "`{name}` is not a string"
+            ))),
+        }
+    }
+
+    fn optional_string_field(&self, name: &str) -> Result<Option<String>, ArtifactError> {
+        if self.obj_has(name)? {
+            Ok(Some(self.string_field(name)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn obj_has(&self, name: &str) -> Result<bool, ArtifactError> {
+        match self {
+            Self::Obj(entries) => Ok(entries.iter().any(|(key, _)| key == name)),
+            _ => Err(ArtifactError::ManifestMalformed(
+                "not an object".to_string(),
+            )),
+        }
+    }
+
+    fn int_field(&self, name: &str) -> Result<u64, ArtifactError> {
+        match self.field(name)? {
+            Self::Num(value) => value.parse::<u64>().map_err(|_| {
+                ArtifactError::ManifestMalformed(format!("`{name}` is not an integer"))
+            }),
+            _ => Err(ArtifactError::ManifestMalformed(format!(
+                "`{name}` is not a number"
+            ))),
+        }
+    }
+
+    fn strings_field(&self, name: &str) -> Result<Vec<String>, ArtifactError> {
+        match self.field(name)? {
+            Self::Arr(items) => items
+                .iter()
+                .map(|item| match item {
+                    Self::Str(value) => Ok(value.clone()),
+                    _ => Err(ArtifactError::ManifestMalformed(format!(
+                        "`{name}` array has a non-string entry"
+                    ))),
+                })
+                .collect(),
+            _ => Err(ArtifactError::ManifestMalformed(format!(
+                "`{name}` is not an array"
+            ))),
+        }
+    }
+
+    fn content_id_field(&self, name: &str) -> Result<ContentId, ArtifactError> {
+        Ok(ContentId(self.string_field(name)?))
+    }
+}
+
+/// Parse one deterministic writer document into a value tree. Accepts the
+/// writer's grammar (RFC 8259 subset: objects, arrays, strings, integers,
+/// booleans and `null`); anything else is a typed refusal.
+pub fn parse_json_document(text: &str) -> Result<JsonValue, ArtifactError> {
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    let value = parse_json_value(bytes, &mut index)
+        .ok_or_else(|| ArtifactError::ManifestMalformed("cannot parse JSON".to_string()))?;
+    skip_json_ws(bytes, &mut index);
+    if index != bytes.len() {
+        return Err(ArtifactError::ManifestMalformed(
+            "trailing content after JSON document".to_string(),
+        ));
+    }
+    Ok(value)
+}
+
+fn parse_json_value(bytes: &[u8], index: &mut usize) -> Option<JsonValue> {
+    skip_json_ws(bytes, index);
+    match bytes.get(*index) {
+        Some(&b'{') => parse_json_object(bytes, index).map(JsonValue::Obj),
+        Some(&b'[') => parse_json_array(bytes, index).map(JsonValue::Arr),
+        Some(&b'"') => parse_json_string(bytes, *index).map(|(value, next)| {
+            *index = next;
+            JsonValue::Str(value)
+        }),
+        Some(&b't')
+            if bytes.get(*index + 1) == Some(&b'r')
+                && bytes.get(*index + 2) == Some(&b'u')
+                && bytes.get(*index + 3) == Some(&b'e') =>
+        {
+            *index += 4;
+            Some(JsonValue::Bool(true))
+        }
+        Some(&b'f')
+            if bytes.get(*index + 1) == Some(&b'a')
+                && bytes.get(*index + 2) == Some(&b'l')
+                && bytes.get(*index + 3) == Some(&b's')
+                && bytes.get(*index + 4) == Some(&b'e') =>
+        {
+            *index += 5;
+            Some(JsonValue::Bool(false))
+        }
+        Some(&b'n')
+            if bytes.get(*index + 1) == Some(&b'u')
+                && bytes.get(*index + 2) == Some(&b'l')
+                && bytes.get(*index + 3) == Some(&b'l') =>
+        {
+            *index += 4;
+            Some(JsonValue::Null)
+        }
+        Some(&(b'-' | b'0'..=b'9')) => {
+            let start = *index;
+            while bytes
+                .get(*index)
+                .is_some_and(|byte| matches!(byte, b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E'))
+            {
+                *index += 1;
+            }
+            Some(JsonValue::Num(
+                std::str::from_utf8(&bytes[start..*index]).ok()?.to_string(),
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn parse_json_object(bytes: &[u8], index: &mut usize) -> Option<Vec<(String, JsonValue)>> {
+    *index += 1; // '{'
+    let mut entries = Vec::new();
+    loop {
+        skip_json_ws(bytes, index);
+        match bytes.get(*index)? {
+            b'}' => {
+                *index += 1;
+                return Some(entries);
+            }
+            b'"' => {}
+            _ => return None,
+        }
+        let (key, next) = parse_json_string(bytes, *index)?;
+        *index = next;
+        skip_json_ws(bytes, index);
+        if bytes.get(*index) != Some(&b':') {
+            return None;
+        }
+        *index += 1;
+        let value = parse_json_value(bytes, index)?;
+        entries.push((key, value));
+        skip_json_ws(bytes, index);
+        match bytes.get(*index)? {
+            b',' => *index += 1,
+            b'}' => {
+                *index += 1;
+                return Some(entries);
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn parse_json_array(bytes: &[u8], index: &mut usize) -> Option<Vec<JsonValue>> {
+    *index += 1; // '['
+    let mut items = Vec::new();
+    loop {
+        skip_json_ws(bytes, index);
+        if bytes.get(*index) == Some(&b']') {
+            *index += 1;
+            return Some(items);
+        }
+        items.push(parse_json_value(bytes, index)?);
+        skip_json_ws(bytes, index);
+        match bytes.get(*index)? {
+            b',' => *index += 1,
+            b']' => {
+                *index += 1;
+                return Some(items);
+            }
+            _ => return None,
+        }
+    }
+}
+
+/// Parse a manifest per `emath.artifact.v1` (field shape of
+/// [`write_artifact_manifest`]).
+pub fn manifest_from_json(json: &str) -> Result<ArtifactManifest, ArtifactError> {
+    let root = parse_json_document(json)?;
+    let class = root.string_field("class")?;
+    let class = class
+        .parse::<ArtifactClass>()
+        .map_err(|()| ArtifactError::ManifestMalformed("unknown artifact class".to_string()))?;
+    let level = root.string_field("evidence_level")?;
+    let level = level
+        .parse::<EvidenceLevel>()
+        .map_err(|()| ArtifactError::ManifestMalformed("unknown evidence level".to_string()))?;
+    let target = root.field("target")?;
+    let triple = match target.field("triple")? {
+        JsonValue::Null => None,
+        JsonValue::Str(value) if value.is_empty() => None,
+        JsonValue::Str(value) => Some(value.clone()),
+        _ => {
+            return Err(ArtifactError::ManifestMalformed(
+                "bad target triple".to_string(),
+            ))
+        }
+    };
+    let providers = match root.field("providers")? {
+        JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| {
+                Ok(emath_ir::ProviderRef {
+                    id: item.string_field("id")?,
+                    version: item.string_field("version")?,
+                    implementation: item.content_id_field("implementation")?,
+                })
+            })
+            .collect::<Result<Vec<_>, ArtifactError>>()?,
+        _ => {
+            return Err(ArtifactError::ManifestMalformed(
+                "bad providers".to_string(),
+            ))
+        }
+    };
+    let files = match root.field("files")? {
+        JsonValue::Obj(entries) => entries
+            .iter()
+            .map(|(path, id)| match id {
+                JsonValue::Str(value) => Ok((path.clone(), ContentId(value.clone()))),
+                _ => Err(ArtifactError::ManifestMalformed(
+                    "bad file content id".to_string(),
+                )),
+            })
+            .collect::<Result<BTreeMap<_, _>, ArtifactError>>()?,
+        _ => return Err(ArtifactError::ManifestMalformed("bad files".to_string())),
+    };
+    Ok(ArtifactManifest {
+        schema: SchemaId(root.string_field("schema")?),
+        artifact_id: root.content_id_field("artifact_id")?,
+        class,
+        source_package: root.content_id_field("source_package")?,
+        compiler: root.content_id_field("compiler")?,
+        target: TargetProfile {
+            family: target.string_field("family")?,
+            triple,
+            features: target.strings_field("features")?,
+        },
+        numeric_profile: root.string_field("numeric_profile")?,
+        providers,
+        evidence_level: level,
+        public_exports: root.strings_field("public_exports")?,
+        assumptions: root.strings_field("assumptions")?,
+        files,
+        source_map: root.content_id_field("source_map")?,
+        resolution_plan: root.content_id_field("resolution_plan")?,
+        evidence_bundle: root.content_id_field("evidence_bundle")?,
+    })
+}
+
+/// Parse a source map per `emath.source-map.v1` (field shape of
+/// [`write_source_map`]); empty `plan_node`/`generated_symbol` strings
+/// round-trip as `None`.
+pub fn source_map_from_json(json: &str) -> Result<SourceMap, ArtifactError> {
+    let root = parse_json_document(json)?;
+    let entries = match root.field("entries")? {
+        JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| {
+                Ok(SourceMapEntry {
+                    source_file: item.string_field("source_file")?,
+                    source_start: item.int_field("source_start")?,
+                    source_end: item.int_field("source_end")?,
+                    semantic_node: item.string_field("semantic_node")?,
+                    plan_node: item
+                        .optional_string_field("plan_node")?
+                        .filter(|value| !value.is_empty()),
+                    generated_file: item.string_field("generated_file")?,
+                    generated_start: item.int_field("generated_start")?,
+                    generated_end: item.int_field("generated_end")?,
+                    generated_symbol: item
+                        .optional_string_field("generated_symbol")?
+                        .filter(|value| !value.is_empty()),
+                })
+            })
+            .collect::<Result<Vec<_>, ArtifactError>>()?,
+        _ => return Err(ArtifactError::ManifestMalformed("bad entries".to_string())),
+    };
+    Ok(SourceMap {
+        schema: SchemaId(root.string_field("schema")?),
+        source_package: root.content_id_field("source_package")?,
+        entries,
+    })
+}
+
+/// Parse a resolution plan per `emath.resolution-plan.v1` (schema and
+/// plan identity are the checked surface).
+pub fn plan_from_json(json: &str) -> Result<PlanRecord, ArtifactError> {
+    let root = parse_json_document(json)?;
+    let operations = match root.field("operations")? {
+        JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| {
+                let fallback = match item.field("fallback")? {
+                    JsonValue::Null => None,
+                    JsonValue::Num(value) => Some(value.parse::<u32>().map_err(|_| {
+                        ArtifactError::ManifestMalformed("bad fallback".to_string())
+                    })?),
+                    _ => {
+                        return Err(ArtifactError::ManifestMalformed("bad fallback".to_string()));
+                    }
+                };
+                let dependencies = match item.field("dependencies")? {
+                    JsonValue::Arr(items) => items
+                        .iter()
+                        .map(|dep| match dep {
+                            JsonValue::Num(value) => value.parse::<u32>().map_err(|_| {
+                                ArtifactError::ManifestMalformed("bad dependency".to_string())
+                            }),
+                            _ => Err(ArtifactError::ManifestMalformed(
+                                "bad dependency".to_string(),
+                            )),
+                        })
+                        .collect::<Result<Vec<_>, ArtifactError>>()?,
+                    _ => {
+                        return Err(ArtifactError::ManifestMalformed(
+                            "bad dependencies".to_string(),
+                        ));
+                    }
+                };
+                Ok(OperationRecord {
+                    node: item
+                        .int_field("node")?
+                        .try_into()
+                        .map_err(|_| ArtifactError::ManifestMalformed("bad node".to_string()))?,
+                    operation: item.string_field("operation")?,
+                    dependencies,
+                    fallback,
+                })
+            })
+            .collect::<Result<Vec<_>, ArtifactError>>()?,
+        _ => {
+            return Err(ArtifactError::ManifestMalformed(
+                "bad operations".to_string(),
+            ))
+        }
+    };
+    Ok(PlanRecord {
+        schema: SchemaId(root.string_field("schema")?),
+        plan_id: root.content_id_field("plan_id")?,
+        goal: root
+            .int_field("goal")?
+            .try_into()
+            .map_err(|_| ArtifactError::ManifestMalformed("goal does not fit u32".to_string()))?,
+        policy: root.string_field("policy")?,
+        artifact_class: root.string_field("artifact_class")?,
+        operations,
+        excluded_candidates: Vec::new(),
+    })
+}
+
+/// Parse an evidence bundle per `emath.evidence-bundle.v1`; empty
+/// `checker`/`fresh_until` strings round-trip as `None`.
+pub fn evidence_bundle_from_json(json: &str) -> Result<EvidenceBundleRecord, ArtifactError> {
+    let root = parse_json_document(json)?;
+    let claims = match root.field("claims")? {
+        JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| {
+                let verdict = item
+                    .string_field("verdict")?
+                    .parse::<ClaimVerdict>()
+                    .map_err(|()| ArtifactError::ManifestMalformed("bad verdict".to_string()))?;
+                let checker = item
+                    .optional_string_field("checker")?
+                    .filter(|value| !value.is_empty());
+                let fresh_until = item
+                    .optional_string_field("fresh_until")?
+                    .filter(|value| !value.is_empty());
+                let level = item
+                    .string_field("level")?
+                    .parse::<EvidenceLevel>()
+                    .map_err(|()| {
+                        ArtifactError::ManifestMalformed("bad claim level".to_string())
+                    })?;
+                Ok(EvidenceClaim {
+                    id: item.string_field("id")?,
+                    statement: item.string_field("statement")?,
+                    class: item.string_field("class")?,
+                    scope: item.string_field("scope")?,
+                    assumptions: item.strings_field("assumptions")?,
+                    producer: item.string_field("producer")?,
+                    checker,
+                    verdict,
+                    level,
+                    falsifiers: item.strings_field("falsifiers")?,
+                    artifacts: item.strings_field("artifacts")?,
+                    fresh_until,
+                })
+            })
+            .collect::<Result<Vec<_>, ArtifactError>>()?,
+        _ => return Err(ArtifactError::ManifestMalformed("bad claims".to_string())),
+    };
+    Ok(EvidenceBundleRecord {
+        schema: SchemaId(root.string_field("schema")?),
+        bundle_id: root.content_id_field("bundle_id")?,
+        source_package: root.content_id_field("source_package")?,
+        resolution_plan: root.content_id_field("resolution_plan")?,
+        claims,
+        artifact_paths: root.strings_field("artifact_paths")?,
+        reproduction: root.strings_field("reproduction")?,
+    })
+}
+
 fn target_json(target: &TargetProfile) -> String {
     let triple = match &target.triple {
         Some(value) => quote(value),
@@ -354,6 +869,7 @@ pub fn write_artifact_manifest(manifest: &ArtifactManifest) -> String {
             let mut out = JsonWriter::object();
             out.string("id", &p.id);
             out.string("version", &p.version);
+            out.field("implementation", &content_id_or_empty(&p.implementation));
             out.finish()
         })
         .collect::<Vec<_>>()
@@ -597,10 +1113,10 @@ impl Staging {
 pub enum ArtifactError {
     MissingRequiredPath(String),
     UnstagedFile(String),
-    PublishTargetExists(PathBuf),
     StateDirMissing(PathBuf),
     VerificationMismatch(String),
     ManifestMalformed(String),
+    InvalidStagedPath(String),
 }
 
 impl std::fmt::Display for ArtifactError {
@@ -608,11 +1124,6 @@ impl std::fmt::Display for ArtifactError {
         match self {
             Self::MissingRequiredPath(path) => write!(f, "missing required artifact path `{path}`"),
             Self::UnstagedFile(path) => write!(f, "file was not staged: `{path}`"),
-            Self::PublishTargetExists(path) => write!(
-                f,
-                "refusing to overwrite existing artifact directory `{}`",
-                path.display()
-            ),
             Self::StateDirMissing(path) => write!(
                 f,
                 "artifact state directory is missing: `{}`",
@@ -624,16 +1135,42 @@ impl std::fmt::Display for ArtifactError {
             Self::ManifestMalformed(detail) => {
                 write!(f, "artifact manifest is malformed: {detail}")
             }
+            Self::InvalidStagedPath(path) => {
+                write!(f, "refusing unsafe staged path `{path}`")
+            }
         }
     }
 }
 
 impl std::error::Error for ArtifactError {}
 
+/// Whether `path` exists and is a symlink (publish and verify
+/// refuse to follow links, so a link cannot smuggle files in or out of
+/// the artifact destination).
+fn path_is_symlink(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+}
+
+/// Refuses absolute staged paths and `..` traversal components: every
+/// staged path must stay inside the artifact destination.
+fn check_relative_path(relative_path: &str) -> Result<(), ArtifactError> {
+    let path = std::path::Path::new(relative_path);
+    if path.is_absolute() {
+        return Err(ArtifactError::InvalidStagedPath(relative_path.to_string()));
+    }
+    for component in path.components() {
+        if component == std::path::Component::ParentDir {
+            return Err(ArtifactError::InvalidStagedPath(relative_path.to_string()));
+        }
+    }
+    Ok(())
+}
+
 /// Stage files: compute ids, check the required set, derive the artifact id.
 pub fn stage(files: &[StagedFile], path_filter: Option<&Path>) -> Result<Staging, ArtifactError> {
     let mut ids = BTreeMap::new();
     for file in files {
+        check_relative_path(&file.relative_path)?;
         if let Some(filter) = path_filter {
             if Path::new(&file.relative_path).starts_with(filter) {
                 ids.insert(
@@ -676,6 +1213,11 @@ pub fn stage(files: &[StagedFile], path_filter: Option<&Path>) -> Result<Staging
 pub fn verify_artifact(root: &Path, expected: &Staging) -> Result<(), ArtifactError> {
     for required in required_artifact_paths() {
         let path = root.join(required);
+        if path_is_symlink(&path) {
+            return Err(ArtifactError::VerificationMismatch(format!(
+                "`{required}` is a symlink"
+            )));
+        }
         if !path.is_file() {
             return Err(ArtifactError::MissingRequiredPath((*required).to_string()));
         }
@@ -691,7 +1233,7 @@ pub fn verify_artifact(root: &Path, expected: &Staging) -> Result<(), ArtifactEr
             .ok_or_else(|| ArtifactError::UnstagedFile((*required).to_string()))?;
         if actual != *expected_id {
             return Err(ArtifactError::VerificationMismatch(format!(
-                "`{required}` fingerprint changed (tamper detected)"
+                "`{required}` fingerprint changed (content-identity mismatch)"
             )));
         }
     }
@@ -699,8 +1241,8 @@ pub fn verify_artifact(root: &Path, expected: &Staging) -> Result<(), ArtifactEr
 }
 
 /// Publish: create `target/emath/<artifact-id>` and write the staged files.
-/// The directory is created fresh and never overwritten; verification runs
-/// before and after the write.
+/// The destination is created atomically (temporary sibling dir, post-write
+/// verification, rename); verification runs before and after the write.
 pub fn publish(
     target_dir: &Path,
     artifact_id: &ContentId,
@@ -711,45 +1253,83 @@ pub fn publish(
     }
     let staging = stage(files, None)?;
     let destination = target_dir.join("emath").join(&artifact_id.0);
+    if path_is_symlink(target_dir) || path_is_symlink(&target_dir.join("emath")) {
+        return Err(ArtifactError::VerificationMismatch(
+            "refusing to publish through a symlinked state directory".to_string(),
+        ));
+    }
     if destination.exists() {
         // Idempotent republish: same artifact id means the content identity
-        // is fixed; re-verify instead of overwriting. A differing artifact
-        // under a matching id is tamper, not a rebuild.
+        // is fixed; re-verify instead of overwriting. A verification
+        // failure here is tamper/corruption, not a rebuild collision: the
+        // typed mismatch is returned, never collapsed into "target exists".
         if verify_artifact(&destination, &staging).is_ok() {
             return Ok(destination);
         }
-        return Err(ArtifactError::PublishTargetExists(destination.clone()));
-    }
-    std::fs::create_dir_all(&destination).map_err(|error| {
-        ArtifactError::VerificationMismatch(format!(
-            "cannot create `{}`: {error}",
+        return Err(ArtifactError::VerificationMismatch(format!(
+            "existing artifact at `{}` failed content-identity verification (tampered or corrupted; not a rebuild)",
             destination.display()
-        ))
-    })?;
+        )));
+    }
+    // Atomic publish: everything is written under a temporary sibling
+    // directory and renamed into place only after post-write verification
+    // succeeds. A failure or crash leaves no destination directory and a
+    // retry starts from a clean slate.
+    let emath_root = target_dir.join("emath");
+    let staging_dir = emath_root.join(format!(".tmp-{}", artifact_id.0));
+    let _ = std::fs::remove_dir_all(&staging_dir);
+    if let Err(error) = std::fs::create_dir_all(&staging_dir) {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        return Err(ArtifactError::VerificationMismatch(format!(
+            "cannot create staging `{}`: {error}",
+            staging_dir.display(),
+        )));
+    }
     for file in files {
         // We stage the union; only write files that belong to the artifact.
         let Some(id) = staging.content_id(&file.relative_path) else {
+            let _ = std::fs::remove_dir_all(&staging_dir);
             return Err(ArtifactError::UnstagedFile(file.relative_path.clone()));
         };
         let _ = id;
-        let path = destination.join(&file.relative_path);
+        let path = staging_dir.join(&file.relative_path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
+                let _ = std::fs::remove_dir_all(&staging_dir);
                 ArtifactError::VerificationMismatch(format!(
                     "cannot create `{}`: {error}",
-                    parent.display()
+                    parent.display(),
                 ))
             })?;
         }
+        if path_is_symlink(&path) {
+            let _ = std::fs::remove_dir_all(&staging_dir);
+            return Err(ArtifactError::VerificationMismatch(format!(
+                "refusing to write through symlink `{}`",
+                path.display(),
+            )));
+        }
         std::fs::write(&path, &file.bytes).map_err(|error| {
+            let _ = std::fs::remove_dir_all(&staging_dir);
             ArtifactError::VerificationMismatch(format!(
                 "cannot write `{}`: {error}",
-                path.display()
+                path.display(),
             ))
         })?;
     }
-    // Post-write verification: a tampered intermediate cannot slip through.
-    verify_artifact(&destination, &staging)?;
+    // Post-write verification: a mismatched intermediate cannot slip
+    // through to the published tree.
+    if let Err(error) = verify_artifact(&staging_dir, &staging) {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        return Err(error);
+    }
+    if let Err(error) = std::fs::rename(&staging_dir, &destination) {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        return Err(ArtifactError::VerificationMismatch(format!(
+            "cannot commit `{}`: {error}",
+            destination.display(),
+        )));
+    }
     Ok(destination)
 }
 

@@ -79,7 +79,7 @@ impl Selector {
     ) -> Result<Self, LabError> {
         if canary_interval == 0 && outcome == PromotionOutcome::Canary {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-013",
                 "canary outcome requires a positive canary interval",
             ));
         }

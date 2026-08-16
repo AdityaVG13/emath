@@ -159,7 +159,6 @@ impl CachePilot {
 
     /// Consumes the pilot state into a sealed decision receipt.
     /// The experiment/protocol evidence comes from the caller.
-    #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn into_receipt(
         self,
@@ -174,7 +173,7 @@ impl CachePilot {
         command: String,
         environment_token: String,
         artifact_hashes: Vec<(String, emath_core::ContentId)>,
-    ) -> DecisionReceipt {
+    ) -> Result<DecisionReceipt, crate::error::LabError> {
         crate::receipt::DecisionReceipt {
             receipt_id: emath_core::ContentId("pending".into()),
             experiment_id,

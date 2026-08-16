@@ -170,6 +170,7 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
     if parametric {
         config.policy = "deterministic-planner.v1:parametric".to_string();
     }
+    let mut any_unplanned = false;
     for goal in &result.package.goals {
         let mut goal = goal.clone();
         if parametric {
@@ -195,6 +196,7 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
                 disposition,
                 inspection,
             } => {
+                any_unplanned = true;
                 if json {
                     println!("{}", inspection.to_json());
                 }
@@ -216,6 +218,7 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
                 disposition,
                 inspection,
             } => {
+                any_unplanned = true;
                 if json {
                     println!("{}", inspection.to_json());
                 }
@@ -227,6 +230,10 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
                 );
             }
         }
+    }
+    if any_unplanned {
+        // A goal that could not be planned must not exit 0 (silent success).
+        return EXIT_REFUSED;
     }
     EXIT_OK
 }
@@ -274,28 +281,54 @@ pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
     }
 }
 
-/// `artifact check <dir>`: re-verify fingerprints from the published
-/// artifact directory (`<dir>/emath/<artifact-id>`).
+/// `artifact check <dir>`: independent verification of every published
+/// artifact under `<dir>/emath/<artifact-id>` via `emath-checker`
+/// (one identity, one checker; empty state dirs are refused).
 pub fn artifact_check(dir: &Path) -> u8 {
     let artifact_root = dir.join("emath");
     if !artifact_root.is_dir() {
-        eprintln!("error: no `emath/` state directory under {}", dir.display());
+        eprintln!(
+            "error: E-EVID-105: no `emath/` state directory under {}",
+            dir.display()
+        );
         return EXIT_USAGE;
     }
     let Ok(entries) = std::fs::read_dir(&artifact_root) else {
-        eprintln!("error: cannot list {}", artifact_root.display());
+        eprintln!(
+            "error: E-TLT-005: cannot list artifact state directory {}",
+            artifact_root.display()
+        );
         return EXIT_USAGE;
     };
-    let mut ok = true;
+    let mut artifact_ids = Vec::new();
     for entry in entries.flatten() {
-        let id = entry.file_name().to_string_lossy().into_owned();
-        if !entry.path().is_dir() {
-            continue;
+        if entry.path().is_dir() {
+            artifact_ids.push(entry.file_name().to_string_lossy().into_owned());
         }
-        match verify_one_artifact(&entry.path()) {
-            Ok(()) => println!("artifact {id}: verified"),
-            Err(detail) => {
-                eprintln!("artifact {id}: FAILED: {detail}");
+    }
+    artifact_ids.sort_unstable();
+    if artifact_ids.is_empty() {
+        eprintln!(
+            "error: E-EVID-105: no published artifacts under {}",
+            artifact_root.display()
+        );
+        return EXIT_REFUSED;
+    }
+    let mut ok = true;
+    for id in artifact_ids {
+        let root = artifact_root.join(&id);
+        match emath_checker::check_artifact_dir(&root) {
+            Ok(report) if report.valid() => {
+                println!("artifact {id}: verified ({} files)", report.files_verified);
+            }
+            Ok(report) => {
+                for issue in &report.issues {
+                    eprintln!("artifact {id}: {}: {}", issue.code, issue.message);
+                }
+                ok = false;
+            }
+            Err(error) => {
+                eprintln!("artifact {id}: FAILED: {error}");
                 ok = false;
             }
         }
@@ -305,32 +338,6 @@ pub fn artifact_check(dir: &Path) -> u8 {
     } else {
         EXIT_REFUSED
     }
-}
-
-/// Independent fingerprint verification against the *declared* manifest:
-/// every file the manifest lists must exist on disk with its declared
-/// content id, and every required path must be present. (The recomputed
-/// manifest identity, E-EVID-102, lives in `emath-checker`.)
-fn verify_one_artifact(root: &std::path::Path) -> Result<(), String> {
-    let manifest_path = root.join("emath/artifact-manifest.json");
-    let manifest_bytes = std::fs::read(&manifest_path).map_err(|error| error.to_string())?;
-    let manifest_json = String::from_utf8(manifest_bytes).map_err(|error| error.to_string())?;
-    let declared = emath_artifact::manifest_files_declared(&manifest_json)
-        .map_err(|error| error.to_string())?;
-    for (path, declared_id) in &declared {
-        let bytes = std::fs::read(root.join(path))
-            .map_err(|error| format!("cannot read `{path}`: {error}"))?;
-        let actual = emath_core::bootstrap_content_id(&bytes);
-        if actual.0 != *declared_id {
-            return Err(format!("`{path}` fingerprint changed (tamper detected)"));
-        }
-    }
-    for required in emath_artifact::required_artifact_paths() {
-        if !root.join(required).is_file() {
-            return Err(format!("missing required path `{required}`"));
-        }
-    }
-    Ok(())
 }
 
 /// `architecture`: provider-neutral pipeline description.

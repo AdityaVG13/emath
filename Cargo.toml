@@ -43,6 +43,8 @@ members = [
   "crates/emath-plugin-sdk",
   "tests/emath-term",
  "tests/emath-ir",
+  "tests/emath-",
+  "tests/emath-artifact",
   "examples/demo-host",
   "examples/demo-host-independent",
   "examples/provider-skeleton",

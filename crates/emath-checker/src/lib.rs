@@ -6,7 +6,7 @@
 //! evidence bundle, file content, provider locks) and content identity.
 //!
 //! Stable codes (`E-EVID-*`, evidence/checker area):
-//! - `E-EVID-101` tampered file content (hash mismatch);
+//! - `E-EVID-101` content-identity mismatch (bootstrap hash);
 //! - `E-EVID-102` artifact identity does not recompute;
 //! - `E-EVID-103` evidence/goal scope mismatch (wrong goal or source);
 //! - `E-EVID-104` stale certificate (freshness window passed);
@@ -17,6 +17,9 @@
 //! - `E-EVID-109` file-inventory mismatch (undeclared/missing entry);
 //! - `E-EVID-110` source-map mismatch;
 //! - `E-EVID-111` provider lock mismatch;
+//! - `E-EVID-112` source map does not reference the manifest's package;
+//! - `E-EVID-113` required/declared artifact path is a symlink;
+//! - `E-EVID-114` artifact document or declared file is not valid UTF-8;
 //! - `E-EVID-201` claim language stronger than the available evidence;
 //! - `E-EVID-301` translation mismatch (no equivalence witness);
 //! - `E-EVID-302` witness cannot be independently verified.
@@ -29,8 +32,8 @@ pub mod negative;
 pub mod translation;
 
 pub use artifact_check::{
-    check_artifact, ArtifactCheckConfig, ArtifactCheckIssue, ArtifactCheckReport, ArtifactInput,
-    ProviderLockRecord,
+    check_artifact, check_artifact_dir, ArtifactCheckConfig, ArtifactCheckIssue,
+    ArtifactCheckReport, ArtifactInput, ProviderLockRecord,
 };
 pub use claimlint::{lint_claims, ClaimLinter, LintIssue};
 pub use negative::{

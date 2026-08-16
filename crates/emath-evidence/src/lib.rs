@@ -24,7 +24,7 @@
 //! - `E-EVID-405` assumption already registered under a different class;
 //! - `E-EVID-501` unknown evidence record id;
 //! - `E-EVID-502` duplicate append-only revocation marker;
-//! - `E-EVID-503` content-identity mismatch (tamper);
+//! - `E-EVID-503` content-identity mismatch (bootstrap identity);
 //! - `E-EVID-504` double supersession (append-only conflict);
 //! - `E-EVID-505` stale record refused for promotion;
 //! - `E-EVID-506` proof provider unavailable (optional path refusal);
