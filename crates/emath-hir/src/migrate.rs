@@ -41,7 +41,7 @@ pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
     }
 
     let mut sections: Vec<String> = Vec::new();
-    for section in &decl.sections {
+    for section in decl.sections_vec() {
         let mapped = match section.name.as_str() {
             "request" => {
                 issues.push(MigrationIssue {
@@ -70,7 +70,7 @@ pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
             sections.push(mapped);
         }
     }
-    if decl.sections.iter().any(|s| {
+    if decl.sections_vec().iter().any(|s| {
         s.suite
             .statements
             .iter()
