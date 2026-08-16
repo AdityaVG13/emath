@@ -141,6 +141,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-holes"
+version = "0.1.0"
+dependencies = [
+ "emath-calibration",
+ "emath-law-check",
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-ir"
 version = "0.1.0"
 dependencies = [
@@ -155,11 +165,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-lsp"
+name = "emath-law-check"
 version = "0.1.0"
 dependencies = [
- "emath-core",
- "emath-sema",
+ "emath-calibration",
+ "emath-portfolio",
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]
@@ -181,13 +193,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-plugin-sdk"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
 name = "emath-portfolio"
 version = "0.1.0"
 dependencies = [
@@ -201,13 +206,6 @@ dependencies = [
  "emath-core",
  "emath-ir",
  "emath-runtime",
-]
-
-[[package]]
-name = "emath-registry"
-version = "0.1.0"
-dependencies = [
- "emath-core",
 ]
 
 [[package]]
