@@ -15,6 +15,10 @@ A `.emath` program can describe:
 
 emath resolves that intent through interchangeable providers, generates one or more implementations, validates them, and packages the result as ordinary Rust software.
 
+## Contributing
+
+We are more than happy to welcome contributions. Before you start, please reach out to the author ([Adithya](https://x.com/adityavg13)) first so we can make sure we're all on the same page.
+
 ## What emath is not
 
 - It is not merely a computer algebra system.
@@ -23,18 +27,6 @@ emath resolves that intent through interchangeable providers, generates one or m
 - It is not a theorem prover pretending every theorem is executable.
 - It is not one giant vendored workspace of unrelated repositories.
 - It is not an AI code generator whose output is accepted without deterministic checking.
-
-## Status
-
-This is a **work-in-progress prototype** (v0.1.0). It is built in vertical slices; every slice ships with a real consumer, negative controls, and retained evidence. Details: `BUILD_STATUS.md`, `HANDOFF.md`, `ROADMAP.md`, `CONTRIBUTING.md`.
-
-### What works today
-
-- **Phase 1 vertical slice:** a `.emath` policy declaration compiles into a checked constructor, a score method, and a standalone zero-dependency Rust crate with an evidence manifest and source map. The gate (`cargo fmt --all -- --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `scripts/validate.sh`) is green.
-- **Semantic Genesis G0–G3:** the glyph world interface — arbitrary Unicode glyphs as identifiers, bounded parse forests, signature inference, a neutral `Term` IR, and deterministic parametric Rust artifact generation producing free-symbolic, Boolean, and modular-17 worlds with a wrong-world negative control.
-- **Capstones:** `cargo xtask demo cache-policy` and `cargo xtask demo semantic-genesis` both pass locally.
-
-Not release-proof yet: content identity is still the FNV-1a bootstrap id (replaced before stable publication), and providers, the frontier engine, and most of the language breadth are still planned.
 
 ## Quickstart
 
@@ -58,7 +50,7 @@ Exit criteria: both demos reach their final `ok` lines; the command exits 0. Det
 
 ## Example
 
-The target language looks like this (illustrative; the implemented subset today is smaller — see `BUILD_STATUS.md` and `tests/valid/`):
+The target language looks like this (illustrative; the implemented subset today is smaller — see `tests/valid/`):
 
 ```emath
 emath policy CachePriority:
@@ -138,9 +130,19 @@ Planned (per `implementation/CLI_REFERENCE.md`): `new`, `fmt`, `explain`, `run`,
 
 ## The provider model
 
-emath owns its language, semantic IR, goals, evidence model, artifact format, and runtime outcome contract.
+emath is built on the shoulders of giants. The numerical and symbolic
+computing ecosystem has already solved many hard problems, and we have no
+intention of rewriting that work. When a capability already exists in an
+established engine, emath does not reimplement or absorb it — nor does its
+internals become part of emath. Instead, adapters bridge to those engines and
+let emath hand work to them as ordinary crates.
 
-Providers contribute implementations:
+emath owns what makes it distinct: its language, semantic IR, goals, evidence
+model, artifact format, and runtime outcome contract. For anything that is
+already done well elsewhere, emath calls out to it through an adapter rather
+than duplicating it. We build our own thing on top of theirs.
+
+Available and planned adapters:
 
 ```text
 Dew                 expression optimization, Rust codegen, JIT, GPU backends
@@ -153,7 +155,9 @@ FrankenLean         optional theorem and proof evidence
 native providers    exact arithmetic, intervals, search, basic numerics
 ```
 
-Providers are pinned dependencies behind adapters (Phase 2+). They do not define emath's public semantics. No upstream fork type appears in emath's stable public IR.
+Providers are pinned dependencies behind adapters (Phase 2+). They do not
+define emath's public semantics, and no upstream internals appear in emath's
+stable public IR.
 
 ## Why Rust
 
