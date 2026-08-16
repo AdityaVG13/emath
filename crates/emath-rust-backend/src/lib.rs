@@ -239,6 +239,10 @@ impl BackendInput<'_> {
                     }],
                 }));
 
+                let article = match name.chars().next() {
+                    Some('A' | 'E' | 'I' | 'O' | 'U' | 'a' | 'e' | 'i' | 'o' | 'u') => "an",
+                    _ => "a",
+                };
                 methods.push(FnDef {
                     name: escape_ident(&constructor.name),
                     generics: vec![],
@@ -249,7 +253,7 @@ impl BackendInput<'_> {
                     },
                     body: Stmt::Block(Block { statements }),
                     doc: vec![format!(
-                        "Construct a `{name}`; every `require` invariant is checked."
+                        "Construct {article} `{name}`; every `require` invariant is checked."
                     )],
                     visibility: if constructor.is_public {
                         Visibility::Public

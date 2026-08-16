@@ -16,7 +16,7 @@ pub enum ConfigError {
 }
 
 impl AffinePolicy {
-    /// Construct a `AffinePolicy`; every `require` invariant is checked.
+    /// Construct an `AffinePolicy`; every `require` invariant is checked.
     pub fn new(scale: f64, bias: f64) -> Result<Self, ConfigError> {
         {
             let __ok0 = !{
