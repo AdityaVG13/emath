@@ -1,1 +1,13 @@
 /target
+
+# bv (beads viewer) local config and caches
+.bv/
+
+# internal planning docs (not for public release)
+/internal/
+
+# docs queue: untracked until curated (user review in progress)
+docs/
+
+# agent contract is local-only
+AGENTS.md
