@@ -1,0 +1,9 @@
+# expect: E-UNIT-001 dimensional mismatch
+emath custom <Bad> as function:
+    inputs:
+        time: Duration
+        length: Length
+    outputs:
+        result: Length
+    definitions:
+        result = time + length

@@ -19,3 +19,14 @@ by crate as \`tests/emath-<crate>/\`.
   \`emath test\` refuse a generated crate with no \`#[test]\` tests
   (E-TLT-012), so \`tests:\` sections in specs are the mock-free assurance
   for generated code, backed by the \`scripts/validate.sh\` capstones.
+
+## \`.emath\` fixtures
+
+- \`tests/valid/\` contains \`.emath\` sources expected to parse/admit at the
+  appropriate phase. \`stateful.emath\` is the phase-1 vertical-slice spec
+  compiled by \`scripts/validate.sh\`, \`scripts/reproducible_lane.sh\`, the
+  \`demo-host\` build script, and \`cargo xtask demo cache-policy\`.
+- \`tests/invalid/\` names the required diagnostic in its first comment and is
+  exercised by the negative controls in \`scripts/validate.sh\`. These are
+  strategy fixtures until the full parser is implemented; Phase 1 copies
+  supported fixtures into executable tests.

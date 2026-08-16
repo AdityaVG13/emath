@@ -1,0 +1,4 @@
+# expect: E-KIND-100 custom kind refused by admission
+emath custom <Recursive> as kind:
+    lower:
+        declaration = custom <Recursive> as Recursive

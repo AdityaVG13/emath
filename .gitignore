@@ -32,8 +32,7 @@ AGENTS.md
 /methodology/
 /phases/
 /internal/
-/implementation/*
-!/implementation/tests/
+/implementation/
 /validation/*
 !/validation/semantic-genesis/
 /validation/semantic-genesis/*

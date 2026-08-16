@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn main() {
     let spec = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("../../implementation/tests/valid/stateful.emath");
+        .join("../../tests/valid/stateful.emath");
     assert!(spec.is_file(), "missing spec: {}", spec.display());
     emath_build::emit_rerun_if_changed(&spec);
 
