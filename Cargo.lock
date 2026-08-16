@@ -225,6 +225,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-schema"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-sema"
 version = "0.1.0"
 dependencies = [
