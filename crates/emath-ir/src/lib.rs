@@ -26,9 +26,10 @@ pub use domains::{branch_point, BranchConvention, Domain, DomainError, Interval}
 pub use evidence::{ClaimVerdict, EvidenceBundle, EvidenceClaim};
 pub use expression::{BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, UnaryOp};
 pub use goal::{
-    CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExcludedCandidate, Export,
-    FallbackPolicy, Goal, GoalKind, GoalRequirements, NumericProfile, PlanNodeDef, PlanOperation,
-    ProviderRef, ResolutionPlan, SafetyProfile, TargetProfile,
+    build_goal, native_plan, CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy,
+    ExcludedCandidate, Export, FallbackPolicy, Goal, GoalKind, GoalRequirements, NumericProfile,
+    PlanNodeDef, PlanOperation, ProviderRef, RequestSpec, ResolutionPlan, SafetyProfile,
+    TargetProfile,
 };
 pub use ids::{DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
 pub use kind_schema::{
