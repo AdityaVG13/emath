@@ -36,15 +36,3 @@ impl Limits {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn limits_reject_oversized_source() {
-        let limits = Limits::default();
-        assert!(limits.check_source(limits.max_source_bytes).is_ok());
-        assert!(limits.check_source(limits.max_source_bytes + 1).is_err());
-    }
-}

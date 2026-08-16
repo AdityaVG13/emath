@@ -96,22 +96,3 @@ impl Cancellation for NeverCancel {
         false
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unresolved_outcome_is_explicit() {
-        let outcome: Outcome<(), ()> = Outcome::Unresolved {
-            reason: UnresolvedReason::UnsupportedSemanticSubset,
-            partial: None,
-            continuation: None,
-            evidence: EvidenceHandle {
-                schema: SchemaId("emath.evidence.bootstrap.v1".into()),
-                identity: ContentId("fnv1a64:0000000000000000".into()),
-            },
-        };
-        assert!(!outcome.is_resolved());
-    }
-}

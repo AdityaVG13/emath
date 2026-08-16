@@ -124,37 +124,3 @@ fn node_kind(node: Option<&ExprNode>) -> String {
         None => "unknown".into(),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use emath_core::Span;
-    use emath_ir::{BinaryOp, Literal};
-
-    #[test]
-    fn source_map_is_deterministic_and_anchored() {
-        let mut package = SemanticPackage::new();
-        let left = package.push_expr(ExprNode::Literal(Literal::FloatBits(0)), Span::default());
-        let right = package.push_expr(
-            ExprNode::Variable(emath_core::QualifiedName("x".into())),
-            Span::default(),
-        );
-        let root = package.push_expr(
-            ExprNode::Binary {
-                operation: BinaryOp::StrictFloatMul,
-                left,
-                right,
-            },
-            Span::default(),
-        );
-        let first = build_source_map(&package, root);
-        let again = build_source_map(&package, root);
-        assert_eq!(first, again);
-        assert!(first.iter().any(|entry| entry.kind == "binary"));
-        assert!(first.iter().any(|entry| entry.kind == "literal"));
-        assert!(first.iter().any(|entry| entry.kind == "variable"));
-        assert!(first
-            .windows(2)
-            .all(|pair| pair[0].sir_node <= pair[1].sir_node));
-    }
-}

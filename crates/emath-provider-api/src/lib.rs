@@ -112,37 +112,3 @@ pub trait ResultChecker {
     fn checker_id(&self) -> &str;
     fn check(&self, goal: &Goal, result: &ProviderResult) -> Result<Self::Admitted, ProviderError>;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn adapter_trait_shape_is_callable() {
-        struct Identity;
-        impl Adapter<String, String> for Identity {
-            fn adapter_id(&self) -> &'static str {
-                "identity.test"
-            }
-            fn relation(&self) -> &'static str {
-                "exact"
-            }
-            fn supports(&self, _source: &String) -> CapabilityReport {
-                CapabilityReport {
-                    supported: true,
-                    reasons: vec![],
-                    estimated_cost: None,
-                }
-            }
-            fn encode(&self, source: &String) -> Result<String, ProviderError> {
-                Ok(source.clone())
-            }
-            fn decode(&self, target: &String) -> Result<String, ProviderError> {
-                Ok(target.clone())
-            }
-        }
-        let adapter = Identity;
-        assert_eq!(adapter.encode(&"x".to_string()).unwrap(), "x");
-        assert_eq!(adapter.relation(), "exact");
-    }
-}

@@ -171,4 +171,4 @@ The core toolchain is Rust-first. Optional providers may use other implementatio
 
 ## License
 
-The intended emath-owned code license is `MIT OR Apache-2.0`. Provider and corpus licenses remain independently tracked and reproduced in release bundles. See `legal/THIRD_PARTY_INVENTORY.md`.
+The emath-owned code license is Apache-2.0 (`LICENSE`). Provider and corpus licenses remain independently tracked and reproduced in release bundles.

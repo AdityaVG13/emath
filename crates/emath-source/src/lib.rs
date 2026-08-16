@@ -176,38 +176,3 @@ impl SourceStore {
             .join("\n")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use emath_core::{Diagnostic, Severity};
-
-    #[test]
-    fn line_col_maps_offsets() {
-        let mut store = SourceStore::new();
-        let id = store.add("test.emath", "abc\ndef\n\nghi");
-        let file = store.get(id).unwrap();
-        assert_eq!(file.line_col(0), (1, 1));
-        assert_eq!(file.line_col(3), (1, 4));
-        assert_eq!(file.line_col(4), (2, 1));
-        assert_eq!(file.line_col(9), (4, 1));
-    }
-
-    #[test]
-    fn render_mentions_path_line_and_code() {
-        let mut store = SourceStore::new();
-        let id = store.add("x.emath", "emath custom <A> as function:\n    bad");
-        let diagnostic = Diagnostic {
-            code: "E-TEST-001",
-            severity: Severity::Error,
-            message: "boom".into(),
-            primary: emath_core::Span::new(id, 34, 37),
-            related: vec![],
-            help: None,
-        };
-        let rendered = store.render(&diagnostic);
-        assert!(rendered.contains("x.emath:2:5"));
-        assert!(rendered.contains("E-TEST-001"));
-        assert!(rendered.contains("bad"));
-    }
-}

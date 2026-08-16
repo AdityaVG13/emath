@@ -11,3 +11,42 @@ docs/
 
 # agent contract is local-only
 AGENTS.md
+
+# legacy planning / reference material (kept locally, not shipped)
+/architecture/
+/bootstrap/
+/forks/
+/history/
+/legal/
+/licenses/
+/methodology/
+/phases/
+/internal/
+/implementation/*
+!/implementation/tests/
+/validation/*
+!/validation/semantic-genesis/
+/validation/semantic-genesis/*
+!/validation/semantic-genesis/replay/
+!/validation/semantic-genesis/replay/**
+
+# legacy root planning docs (kept locally, not shipped)
+00_MASTER_INDEX.md
+BUILD_STATUS.md
+BUNDLE_MANIFEST.json
+CHANGELOG_SEMANTIC_GENESIS.md
+commands.txt
+DECISION_LOG.md
+env.json
+HANDOFF.md
+MASTER_IMPLEMENTATION_SPEC.md
+MASTER_STRATEGY.md
+MIGRATION_RECEIPT.json
+NOTICE
+PUBLISHING.md
+RELEASE_NOTES.md
+ROADMAP.md
+SOURCE_HASHES.sha256
+START_HERE.md
+TASK_CLOSURE.json
+TREE.txt
