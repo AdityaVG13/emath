@@ -57,6 +57,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-artifact-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-artifact",
+ "emath-checker",
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-build"
 version = "0.1.0"
 dependencies = [
@@ -107,6 +117,7 @@ dependencies = [
  "emath-adapter-rumoca",
  "emath-artifact",
  "emath-build",
+ "emath-checker",
  "emath-core",
  "emath-genesis",
  "emath-goal",
@@ -354,6 +365,20 @@ version = "0.1.0"
 dependencies = [
  "emath-term",
  "emath-world-ir",
+]
+
+[[package]]
+name = "emath--tests"
+version = "0.1.0"
+dependencies = [
+ "emath-adapter-dew",
+ "emath-adapter-rumoca",
+ "emath-core",
+ "emath-evidence",
+ "emath-ir",
+ "emath-plugin-sdk",
+ "emath-provider-api",
+ "emath-runtime",
 ]
 
 [[package]]
