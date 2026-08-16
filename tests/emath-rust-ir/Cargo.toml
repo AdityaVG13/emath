@@ -1,0 +1,8 @@
+[package]
+name = "emath-rust-ir-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+emath-rust-ir = { path = "../../crates/emath-rust-ir" }

@@ -1,0 +1,4 @@
+emath custom <Alias> as function:
+
+    definitions:
+        type Vec3 = List[Float64]

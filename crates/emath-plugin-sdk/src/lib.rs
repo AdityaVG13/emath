@@ -150,6 +150,36 @@ pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginEr
             ));
         }
     }
+    // A capability that touches a resource class requires the matching
+    // granted permission: "fs-read" in permissions is
+    // enforced against fs-class capabilities, "network" against
+    // network-class ones. A declared permission is only as good as the
+    // gate that enforces it.
+    for capability in &descriptor.capabilities {
+        let required = if capability == "fs-read" || capability.starts_with("fs:") {
+            Some("fs-read")
+        } else if capability == "network" || capability.starts_with("net:") {
+            Some("network")
+        } else {
+            None
+        };
+        if let Some(required) = required {
+            if !descriptor
+                .sandbox
+                .permissions
+                .iter()
+                .any(|permission| permission == required)
+            {
+                return Err(PluginError::new(
+                    "E-PLG-002",
+                    format!(
+                        "plugin `{}` declares capability `{capability}` without the `{required}` permission",
+                        descriptor.id
+                    ),
+                ));
+            }
+        }
+    }
     if descriptor.sandbox.network
         && !descriptor
             .sandbox
@@ -187,8 +217,12 @@ pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginEr
 /// Phase 1 has no component runtime, so every execution is a typed refusal
 /// (`E-PLG-001`); the signature is the stable surface the Phase 2+ runtime
 /// will implement. Output never bypasses [`admit`].
-pub fn execute(descriptor: &PluginDescriptor, _input: &[u8]) -> Result<PluginOutput, PluginError> {
-    admit(descriptor, Trust::Local)?;
+pub fn execute(
+    descriptor: &PluginDescriptor,
+    _input: &[u8],
+    trust: Trust,
+) -> Result<PluginOutput, PluginError> {
+    admit(descriptor, trust)?;
     Err(PluginError::new(
         "E-PLG-001",
         format!(

@@ -1,0 +1,5 @@
+emath custom <Alias> as function:
+
+    requests:
+        evaluate <y>(w: ):
+            produce rust.library

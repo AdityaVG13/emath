@@ -38,6 +38,20 @@ impl ClaimVerdict {
     }
 }
 
+impl std::str::FromStr for ClaimVerdict {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "pass" => Ok(Self::Pass),
+            "fail" => Ok(Self::Fail),
+            "inconclusive" => Ok(Self::Inconclusive),
+            "not-run" => Ok(Self::NotRun),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvidenceBundle {
     pub schema: SchemaId,

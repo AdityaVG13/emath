@@ -516,7 +516,7 @@ impl StructuralModel {
                 Err(_) => true,
             } {
                 issues.push(ModelIssue {
-                    code: "E-UNIT-102",
+                    code: "E-UNIT-103",
                     message: format!("event `{}` condition is not dimensionless", event.name),
                 });
             }

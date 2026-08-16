@@ -47,15 +47,13 @@ pub const PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
 /// Provider identities known to the constellation but not installed in
 /// Phase 1; they are excluded with reasons in every plan.
 pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
-    ("dew", "adapter not installed until Phase 2"),
-    ("rumoca", "adapter not installed until Phase 3"),
-    ("wrenfold", "optional symbolic provider, not installed"),
-    ("frankenjax", "adapter not installed until Phase 7"),
-    ("frankennumpy", "adapter not installed until Phase 7"),
-    ("frankenscipy", "adapter not installed until Phase 7"),
-    ("frankensim", "adapter not installed until Phase 7"),
-    ("frankenlean", "adapter not installed until Phase 7"),
-    ("frankenengine", "adapter not installed until Phase 7"),
+    ("phase2.expression", "adapter not installed until Phase 2"),
+    ("phase3.structural", "adapter not installed until Phase 3"),
+    (
+        "phase4.symbolic",
+        "optional symbolic provider, not installed",
+    ),
+    ("phase7.adapter", "adapter not installed until Phase 7"),
 ];
 
 /// Build the deterministic native plan for a goal.
@@ -139,7 +137,7 @@ pub fn native_plan(goal: GoalId, artifact_class: &str) -> ResolutionPlan {
             budget: None,
         },
     );
-    let plan_bytes = canonical_plan(&nodes, admit, artifact_class);
+    let plan_bytes = canonical_plan(&nodes, admit, artifact_class, &goal.0.to_string());
     ResolutionPlan {
         schema: SchemaId(PLAN_SCHEMA.into()),
         plan_id: ContentId(plan_bytes),
@@ -162,9 +160,13 @@ fn canonical_plan(
     nodes: &BTreeMap<PlanNodeId, PlanNodeDef>,
     root: PlanNodeId,
     artifact_class: &str,
+    goal_id: &str,
 ) -> String {
     let mut out = String::new();
     out.push_str("emath.plan.v1\n");
+    out.push_str("goal ");
+    out.push_str(goal_id);
+    out.push('\n');
     out.push_str(artifact_class);
     out.push('\n');
     let root_line = format!("root {}\n", root.0);

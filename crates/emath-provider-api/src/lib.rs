@@ -7,7 +7,7 @@
 //!
 //! Phase 1 ships no concrete providers; the native path is wired directly
 //! through the sema/plan layers. This API is frozen as the adapter seam for
-//! Phase 2+ providers (Dew, Rumoca, Franken*).
+//! Phase 2+ adapters (expression, structural, tensor, numerics, simulation, proof, runtime).
 
 #![forbid(unsafe_code)]
 

@@ -63,3 +63,43 @@ impl AffinePolicy {
         }
     }
 }
+
+/// Example test: `score_is_seven`.
+#[allow(clippy::float_cmp)]
+#[test]
+fn score_is_seven() {
+    {
+        let bias = 4.0;
+        let scale = 1.0;
+        let x = 3.0;
+        let affine_policy = AffinePolicy::new(scale, bias)
+            .expect("constructor invariants must hold for this example");
+        let actual = affine_policy.score(x);
+        let score = actual;
+        assert!({
+            let __e0 = score;
+            let __e1 = 7.0;
+            __e0 == __e1
+        });
+    }
+}
+
+/// Example test: `fractional_score`.
+#[allow(clippy::float_cmp)]
+#[test]
+fn fractional_score() {
+    {
+        let bias = 0.5;
+        let scale = 2.0;
+        let x = 1.5;
+        let affine_policy = AffinePolicy::new(scale, bias)
+            .expect("constructor invariants must hold for this example");
+        let actual = affine_policy.score(x);
+        let score = actual;
+        assert!({
+            let __e0 = score;
+            let __e1 = 3.5;
+            __e0 == __e1
+        });
+    }
+}

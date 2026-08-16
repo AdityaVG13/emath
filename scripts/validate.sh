@@ -5,17 +5,32 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-echo "== fmt =="
-cargo fmt --all -- --check
+TMP_DIR="${TMPDIR:-/tmp}/emath-validate-$$"
+mkdir -p "$TMP_DIR"
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
 
-echo "== test =="
-cargo test --workspace
+echo "== compile/lint lanes run in CI, not here =="
+echo "(fmt / cargo test / clippy run as separate CI jobs and via the AGENTS.md
+validation commands; re-running cargo test here would double the vacuous
+execution that this gate exists to kill.)"
 
-echo "== clippy =="
-cargo clippy --workspace --all-targets -- -D warnings
+echo "== fork-type identity gate (AGENTS.md rule 1) =="
+if grep -rniE '(^|[^a-z0-9_.-])(dew|rumoca|wrenfold|franken|modelica)([^a-z0-9_.-]|$)' \
+    crates/emath-core crates/emath-ir crates/emath-goal crates/emath-plan \
+    crates/emath-sema crates/emath-runtime crates/emath-provider-api \
+    crates/emath-artifact examples/provider-skeleton/src/main.rs \
+    >"$TMP_DIR/fork-grep.txt"; then
+    echo "FAIL: upstream fork-type identifier leaked into a Phase 1 crate or schema:" >&2
+    cat "$TMP_DIR/fork-grep.txt" >&2
+    exit 1
+fi
+echo "no fork-type identifiers in Phase 1 crates or durable schemas"
 
 echo "== artifact determinism =="
-ARTIFACT_DIR="${TMPDIR:-/tmp}/emath-validate-$$"
+ARTIFACT_DIR="$TMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"
 cargo run -q -p emath-cli -- build implementation/tests/valid/stateful.emath \
     --out "$ARTIFACT_DIR" --verify >/dev/null
@@ -23,20 +38,32 @@ LIB="$(find "$ARTIFACT_DIR/emath" -name lib.rs -path '*/src/lib.rs' | head -n1)"
 if ! diff -u examples/generated/affine-policy-rs/src/lib.rs "$LIB" >/dev/null; then
     echo "FAIL: regenerated src/lib.rs differs from the committed generated crate" >&2
     diff -u examples/generated/affine-policy-rs/src/lib.rs "$LIB" >&2 || true
-    rm -rf "$ARTIFACT_DIR"
     exit 1
 fi
-rm -rf "$ARTIFACT_DIR"
 echo "generated crate is byte-identical to committed copy"
 
 echo "== negative controls =="
-for fixture in implementation/tests/invalid/*.emath; do
-    if cargo run -q -p emath-cli -- check "$fixture" >/dev/null 2>&1; then
+# Each invalid fixture must be refused AND carry its documented code, so a
+# regression that swaps the diagnostic (or admits the fixture) fails here.
+assert_invalid() {
+    local fixture="$1"
+    local expected="$2"
+    local output
+    if output="$(cargo run -q -p emath-cli -- check "$fixture" 2>&1)"; then
         echo "FAIL: invalid fixture admitted: $fixture" >&2
         exit 1
     fi
-done
-echo "all invalid fixtures refused"
+    if ! printf '%s\n' "$output" | grep -q -- "$expected"; then
+        echo "FAIL: $fixture did not emit the documented code $expected" >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+}
+assert_invalid implementation/tests/invalid/duplicate_output.emath "E-NAME-020"
+assert_invalid implementation/tests/invalid/missing_state_assignment.emath "E-CTOR-030"
+assert_invalid implementation/tests/invalid/recursive_kind.emath "E-KIND-100"
+assert_invalid implementation/tests/invalid/unit_mismatch.emath "E-UNIT-001"
+echo "all invalid fixtures refused with the documented codes"
 
 echo "== semantic genesis capstone =="
 cargo run -q -p xtask -- demo semantic-genesis >/dev/null
@@ -47,17 +74,15 @@ cargo run -q -p xtask -- demo cache-policy >/dev/null
 echo "cache-policy: build + host promotion + negative control ok"
 
 echo "== semantic genesis generated crate identity =="
-SG_DIR="${TMPDIR:-/tmp}/emath-validate-sg-$$"
+SG_DIR="$TMP_DIR/sg"
 mkdir -p "$SG_DIR"
 cargo run -q -p emath-cli -- compile --parametric language/examples/01_arbitrary_glyphs.emath \
     --out "$SG_DIR" >/dev/null
 if ! diff -r --exclude=Cargo.lock --exclude=target --exclude=manifest.json --exclude=source-map.json \
     "$SG_DIR" examples/generated/semantic-genesis-worlds >/dev/null; then
     echo "FAIL: regenerated semantic-genesis crate differs from the committed copy" >&2
-    rm -rf "$SG_DIR"
     exit 1
 fi
-rm -rf "$SG_DIR"
 echo "semantic-genesis crate is byte-identical to committed copy"
 
 echo "== semantic genesis generated crate fmt =="

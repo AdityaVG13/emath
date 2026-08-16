@@ -153,7 +153,21 @@ pub fn promote(left: NumericType, right: NumericType) -> Result<NumericType, Num
 fn promote_integers(left: NumericType, right: NumericType) -> Result<NumericType, NumericError> {
     let signed = left.signed || right.signed;
     let bits = left.bits.max(right.bits);
-    if left.signed != right.signed && bits >= 64 {
+    if left.signed != right.signed {
+        // Mixed-sign promotion must be exact: the result is the wider side
+        // when it can represent the whole narrow side; equal widths cannot
+        // represent both ranges and are refused at any width.
+        let (unsigned_bits, signed_bits) = if left.signed {
+            (right.bits, left.bits)
+        } else {
+            (left.bits, right.bits)
+        };
+        if unsigned_bits > signed_bits {
+            return Ok(NumericType::integer(false, unsigned_bits));
+        }
+        if signed_bits > unsigned_bits {
+            return Ok(NumericType::integer(true, signed_bits));
+        }
         return Err(NumericError {
             code: "E-TYPE-311",
             message: format!(

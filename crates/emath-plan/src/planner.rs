@@ -114,6 +114,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
             .sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1))),
         TieBreak::IdLexicographic => candidates.sort_by(|left, right| left.1.cmp(&right.1)),
     }
+    let total_candidates = candidates.len();
     candidates.truncate(config.max_candidates);
     if candidates.is_empty() {
         let reasons: Vec<String> = verdicts
@@ -149,10 +150,9 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
             inspection,
         };
     }
-    // Budget check: candidate set larger than the retained horizon means the
-    // planner cannot explore everything deterministically.
-    let horizon = registry.len().max(config.max_candidates);
-    if horizon > config.max_candidates && verdicts.len() > config.max_candidates {
+    // Budget check: more compatible candidates than the retention horizon
+    // means the planner cannot explore everything deterministically.
+    if total_candidates > config.max_candidates {
         let continuation = format!(
             "{}:resume:candidates>{}",
             config.policy, config.max_candidates
@@ -184,7 +184,14 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
                 .any(|rep| rep.encode_cost > 0)
         })
     });
-    let (plan, checks) = build_plan(goal.id, &provider_id, config);
+    let (mut plan, checks) = build_plan(goal.id, &provider_id, config);
+    plan.excluded_candidates = exclusions
+        .iter()
+        .map(|(provider, code, detail)| ExcludedCandidate {
+            provider: provider.clone(),
+            reason: format!("{code}: {detail}"),
+        })
+        .collect();
     let inspection = PlanInspection {
         policy: config.policy.clone(),
         candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
@@ -194,7 +201,6 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
         budget: None,
         artifact_class: plan.artifact_class.clone(),
     };
-    let mut plan = plan;
     plan.artifact_class = disposition_for_plan(has_conversions).name().into();
     PlanningOutcome::Selected {
         inspection: PlanInspection {
@@ -295,7 +301,7 @@ fn build_plan(
             budget: None,
         },
     );
-    let identity = plan_identity_here(config, provider_id, &nodes.len().to_string());
+    let identity = plan_identity_here(config, provider_id, goal, &nodes.len().to_string());
     let plan = ResolutionPlan {
         schema: SchemaId("emath.resolution-plan.v1".into()),
         plan_id: identity,
@@ -310,9 +316,14 @@ fn build_plan(
 }
 
 /// Deterministic plan identity seed (see identity.rs for the full binding).
-fn plan_identity_here(config: &PlannerConfig, provider_id: &str, node_count: &str) -> ContentId {
+fn plan_identity_here(
+    config: &PlannerConfig,
+    provider_id: &str,
+    goal: GoalId,
+    node_count: &str,
+) -> ContentId {
     plan_identity(
-        "goal:seed",
+        &goal.0.to_string(),
         &config.policy,
         &[provider_id.to_string()],
         &format!("nodes-{node_count}"),
@@ -337,13 +348,18 @@ fn estimate_cost(registry: &ProviderRegistry, provider_id: &str) -> u8 {
 /// Builds the excluded-candidates trace with stable reasons.
 #[must_use]
 pub fn excluded_trace(goal: &Goal, registry: &ProviderRegistry) -> Vec<ExcludedCandidate> {
-    let _ = goal;
-    registry
-        .ids()
-        .iter()
-        .map(|id| ExcludedCandidate {
-            provider: id.clone(),
-            reason: "candidate not selected (deterministic planner)".into(),
+    filter_goal(goal, registry)
+        .into_iter()
+        .filter_map(|verdict| match verdict.compatibility {
+            Compatibility::Excluded { reasons } => Some(ExcludedCandidate {
+                provider: verdict.provider,
+                reason: reasons
+                    .iter()
+                    .map(|reason| format!("{}: {}", reason.code, reason.detail))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            }),
+            Compatibility::Compatible => None,
         })
         .collect()
 }

@@ -350,6 +350,9 @@ impl BackendInput<'_> {
                 }
                 let instance_name = snake_case(declaration.name.leaf());
                 let instance: Expr = if let Some(constructor) = declaration.constructors.first() {
+                    // The generated API is `Struct::new(params) -> Result<Self,
+                    // ConfigError>`, so the instance is an associated-call
+                    // followed by `expect`.
                     let args: Vec<Expr> = constructor
                         .parameters
                         .iter()
@@ -362,7 +365,10 @@ impl BackendInput<'_> {
                         .collect::<Result<_, _>>()?;
                     Expr::MethodCall {
                         receiver: Box::new(Expr::Call {
-                            path: vec![declaration.name.leaf().to_string()],
+                            path: vec![
+                                declaration.name.leaf().to_string(),
+                                constructor.name.clone(),
+                            ],
                             args,
                         }),
                         method: "expect".to_string(),
@@ -416,17 +422,20 @@ impl BackendInput<'_> {
                 let expect_program = lower_definition(package, test.expect, &expect_names, &[])
                     .map_err(BackendError::Lowering)?;
                 add_obligations(&expect_program, &mut assumptions);
-                statements.push(Stmt::Expr(Expr::Call {
-                    path: vec!["assert_eq".to_string()],
-                    args: vec![
-                        Expr::Var("actual".to_string()),
-                        value_expr(&expect_program, &expect_names, &[])?,
-                    ],
+                // The `expect` expression is a Boolean comparison; assert it
+                // with a real macro invocation (rendered via `Expr::Macro`).
+                statements.push(Stmt::Expr(Expr::Macro {
+                    name: "assert".to_string(),
+                    args: vec![value_expr(&expect_program, &expect_names, &[])?],
                 }));
                 items.push(Item::Test(TestDef {
                     name: test_name,
                     body: Stmt::Block(Block { statements }),
                     doc: vec![format!("Example test: `{}`.", test.name)],
+                    // Strict-f64 example tests compare exact float values; the
+                    // workspace lints `-D clippy::float_cmp` would otherwise
+                    // deny the generated assertion.
+                    attrs: vec!["#[allow(clippy::float_cmp)]".to_string()],
                 }));
             }
         }

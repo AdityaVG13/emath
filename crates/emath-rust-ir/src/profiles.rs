@@ -6,7 +6,7 @@
 //! unsafe code (`E-CODEGEN-002`); unknown profiles are typed refusals
 //! (`E-CODEGEN-003`).
 
-use crate::ast::{FnDef, Item, Module, Stmt};
+use crate::ast::{FnDef, Item, Module};
 use crate::render::coverage_gaps;
 
 /// Generated crate profile.
@@ -91,11 +91,12 @@ impl CrateProfile {
     /// in safe profiles, and every public item covered by an anchor.
     #[must_use]
     pub fn validate(self, module: &Module) -> Vec<ProfileProblem> {
+        let _ = self;
         let mut problems = Vec::new();
-        if self.requires_std() {
-            for id in module.items.iter().filter_map(unsafe_item) {
-                problems.push(ProfileProblem::UnsafeInSafeProfile(id));
-            }
+        // Every profile bans unsafe code (E-CODEGEN-002), including
+        // `no_std`: no_std forbids `unsafe` just as strictly.
+        for id in module.items.iter().filter_map(unsafe_item) {
+            problems.push(ProfileProblem::UnsafeInSafeProfile(id));
         }
         for gap in coverage_gaps(module) {
             problems.push(ProfileProblem::SourceMapGap(gap));
@@ -160,11 +161,7 @@ pub fn parse_profile(name: &str) -> Result<CrateProfile, &'static str> {
     }
 }
 
-/// Fn bodies that use `unsafe` blocks (statement-level scan).
-#[allow(dead_code)]
-fn uses_unsafe(stmt: &Stmt) -> bool {
-    match stmt {
-        Stmt::Block(block) => block.statements.iter().any(uses_unsafe),
-        Stmt::Let { .. } | Stmt::Return(_) | Stmt::Expr(_) => false,
-    }
-}
+// NOTE: the AST has no statement-level unsafe construct (Stmt is Block/
+// Let/Return/Expr only), so `unsafe` is only expressible via item
+// attributes, which `unsafe_item` already scans for every profile. A
+// statement-level scanner was removed instead of kept as a dead stub.

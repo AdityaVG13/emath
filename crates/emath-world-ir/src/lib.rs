@@ -220,16 +220,61 @@ impl WorldIr {
         laws.sort();
         let mut capabilities = self.capabilities.clone();
         capabilities.sort();
+        let mut constructors = self.constructors.clone();
+        constructors.sort();
+        let mut holes = self.holes.clone();
+        holes.sort_by_key(|hole| hole.id);
+        let holes_canon: Vec<String> = holes
+            .iter()
+            .map(|hole| {
+                format!(
+                    "{}:{}:{}:{}",
+                    hole.id.0,
+                    hole_kind_name(hole.kind),
+                    hole.constraints.join(","),
+                    hole_state_name(hole.state),
+                )
+            })
+            .collect();
         format!(
-            "world:v{}:{carriers:?}:{symbols:?}:{operators:?}:{:?}:{laws:?}:{:?}:{capabilities:?}",
-            self.version, self.constructors, self.holes
-        )
+            "world:v{}:sig:{:?}:{carriers:?}:{symbols:?}:{operators:?}:c:{constructors:?}:{laws:?}:h:{holes_canon:?}:{capabilities:?}",
+            self.version, self.signature
+            )
     }
 }
 
 /// Deterministic seed FNV-1a64 content identity (replaced by the canonical
 /// cryptographic identity service before stable publication).
 #[must_use]
+fn hole_kind_name(kind: MeaningHoleKind) -> &'static str {
+    match kind {
+        MeaningHoleKind::Fixity => "fixity",
+        MeaningHoleKind::Precedence => "precedence",
+        MeaningHoleKind::Arity => "arity",
+        MeaningHoleKind::Carrier => "carrier",
+        MeaningHoleKind::Type => "type",
+        MeaningHoleKind::OperatorDefinition => "operator-definition",
+        MeaningHoleKind::ConstantDefinition => "constant-definition",
+        MeaningHoleKind::Constructor => "constructor",
+        MeaningHoleKind::Law => "law",
+        MeaningHoleKind::VariableValue => "variable-value",
+        MeaningHoleKind::Goal => "goal",
+        MeaningHoleKind::Provider => "provider",
+        MeaningHoleKind::Evidence => "evidence",
+    }
+}
+fn hole_state_name(state: MeaningHoleState) -> &'static str {
+    match state {
+        MeaningHoleState::Open => "open",
+        MeaningHoleState::Proposed => "proposed",
+        MeaningHoleState::Solved => "solved",
+        MeaningHoleState::Ambiguous => "ambiguous",
+        MeaningHoleState::Contradictory => "contradictory",
+        MeaningHoleState::Deferred => "deferred",
+        MeaningHoleState::BudgetExhausted => "budget-exhausted",
+    }
+}
+
 pub fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in bytes {

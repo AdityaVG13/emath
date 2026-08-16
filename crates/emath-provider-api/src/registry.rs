@@ -83,12 +83,22 @@ impl ProviderRegistry {
         isolation: ProviderIsolation,
         table: CapabilityTable,
     ) -> Result<(), RegistryError> {
-        if !self.config.allows(isolation) {
+        // Policy is enforced on the table-advertised isolation, never on a
+        // caller-supplied argument: a table cannot sneak remote behind a
+        // static-only policy by claiming otherwise.
+        if isolation != table.isolation {
+            return Err(RegistryError {
+            code: "E-PROV-510",
+            message: format!("registration `{}` denied: isolation claim `{}` contradicts advertised table isolation `{}`", id, isolation.name(), table.isolation.name()),
+        });
+        }
+        if !self.config.allows(table.isolation) {
             return Err(RegistryError {
                 code: "E-PROV-510",
                 message: format!(
-                    "registration `{id}` denied by policy: isolation `{}` not allowed",
-                    isolation.name()
+                    "registration `{}` denied by policy: advertised isolation `{}` not allowed",
+                    id,
+                    table.isolation.name()
                 ),
             });
         }
@@ -109,7 +119,8 @@ impl ProviderRegistry {
                 message: format!("registration `{id}` rejected: descriptor invalid"),
             });
         }
-        self.descriptors.insert(id.to_string(), (isolation, table));
+        self.descriptors
+            .insert(id.to_string(), (table.isolation, table));
         Ok(())
     }
 

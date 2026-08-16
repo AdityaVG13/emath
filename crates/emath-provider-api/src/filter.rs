@@ -186,8 +186,10 @@ impl CapabilitySpec {
     #[must_use]
     pub fn serves_kind(&self, goal: &Goal) -> bool {
         let kind = goal.kind.as_str();
-        self.name == format!("{kind}.{}", goal.requirements.produce)
-            || self.name.starts_with(&format!("{kind}."))
+        // A capability serves a goal only when its produce matches exactly;
+        // a bare `kind` capability spans every produce of the kind. The
+        // prefix fallback made `evaluate.*` serve every evaluate goal.
+        self.name == format!("{kind}.{}", goal.requirements.produce) || self.name == kind
     }
 
     /// Whether this capability serves a target family.

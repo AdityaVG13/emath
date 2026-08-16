@@ -20,6 +20,7 @@ SPEC="implementation/tests/valid/stateful.emath"
 test -f "$SPEC"
 
 BASE="${TMPDIR:-/tmp}/emath-lane-$$"
+trap 'rm -rf "$BASE"' EXIT
 A="$BASE/tree-a"
 B="$BASE/tree-b"
 mkdir -p "$A" "$B"
@@ -87,5 +88,4 @@ if ! diff -u legal/SBOM.json "$TMP_SBOM" >/dev/null; then
 fi
 echo "ok: SBOM regeneration byte-identical"
 
-rm -rf "$BASE"
 echo "reproducible lane: green"

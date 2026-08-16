@@ -230,10 +230,16 @@ impl Emitter {
                 Ok(self.push(EmirOp::ConstF64(*bits), span))
             }
             ExprNode::Literal(Literal::Integer(text)) => {
-                let value: f64 = text
+                let parsed: f64 = text
                     .replace('_', "")
                     .parse()
                     .map_err(|_| format!("invalid integer literal `{text}`"))?;
+                if !parsed.is_finite() {
+                    return Err(format!(
+                        "integer literal `{text}` exceeds the strict-f64 finite range"
+                    ));
+                }
+                let value: f64 = parsed;
                 Ok(self.push(EmirOp::ConstF64(value.to_bits()), span))
             }
             ExprNode::Literal(Literal::Bool(on)) => {
@@ -351,10 +357,60 @@ impl Emitter {
         args: &[EmirExprRef],
         span: Span,
     ) -> Result<EmirValue, String> {
-        debug_assert!(
-            args.len() <= 2,
-            "Phase 1 builtins take at most two operands"
+        // Arity is enforced in every build, debug or release (bug-hunt
+        // residual: debug_assert let empty/1-arg unary calls through to an
+        // indexing panic and silently dropped extras in release).
+        let unary = matches!(
+            function,
+            "exp"
+                | "ln"
+                | "log"
+                | "sqrt"
+                | "sin"
+                | "cos"
+                | "tan"
+                | "tanh"
+                | "abs"
+                | "floor"
+                | "ceil"
+                | "is_finite"
+                | "core::math::exp"
+                | "core::math::ln"
+                | "core::math::log"
+                | "core::math::sqrt"
+                | "core::math::sin"
+                | "core::math::cos"
+                | "core::math::tan"
+                | "core::math::tanh"
+                | "core::math::abs"
+                | "core::math::floor"
+                | "core::math::ceil"
+                | "core::math::is_finite"
         );
+        let binary = matches!(
+            function,
+            "min"
+                | "max"
+                | "atan2"
+                | "pow"
+                | "core::math::min"
+                | "core::math::max"
+                | "core::math::atan2"
+                | "core::math::pow"
+        );
+        let expected = match (unary, binary) {
+            (true, false) => Some(1),
+            (false, true) => Some(2),
+            _ => None,
+        };
+        if let Some(expected) = expected {
+            if args.len() != expected {
+                return Err(format!(
+                    "`{function}` expects {expected} operand(s), got {}",
+                    args.len()
+                ));
+            }
+        }
         match function {
             "exp" | "core::math::exp" => {
                 let v = self.emit(package, args[0])?;

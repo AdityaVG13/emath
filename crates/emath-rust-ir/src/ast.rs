@@ -81,6 +81,7 @@ pub struct TestDef {
     pub name: String,
     pub body: Stmt,
     pub doc: Vec<String>,
+    pub attrs: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -134,6 +135,11 @@ pub enum Expr {
     },
     /// `A::B` path expression (enum unit variants, constants).
     Path(Vec<String>),
+    /// `name!(args)` macro invocation.
+    Macro {
+        name: String,
+        args: Vec<Expr>,
+    },
     Str(String),
     Field {
         receiver: Box<Expr>,

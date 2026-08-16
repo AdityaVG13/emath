@@ -79,13 +79,14 @@ impl OptimizationEvidence {
     /// Whether a rewrite may be promoted: certified or trusted, or
     /// gated on per-artifact differential validation.
     #[must_use]
-    pub fn may_promote(&self, rewrite: &str) -> bool {
+    pub fn may_promote(&self, rewrite: &str, differential_verified: bool) -> bool {
         self.certificates.iter().any(|name| name == rewrite)
             || self.trusted_rules.iter().any(|name| name == rewrite)
-            || self
+            || (self
                 .requires_differential
                 .iter()
                 .any(|name| name == rewrite)
+                && differential_verified)
     }
 }
 
@@ -118,13 +119,7 @@ pub fn provide_capability() -> DewCapability {
             "matvec".into(),
             "scale".into(),
         ],
-        backends: vec![
-            Backend::RustSource,
-            Backend::TokenStream,
-            Backend::JitCranelift,
-            Backend::Accelerator(AcceleratorTarget::Wgsl),
-            Backend::Accelerator(AcceleratorTarget::Glsl),
-        ],
+        backends: vec![Backend::RustSource, Backend::TokenStream],
         deterministic: true,
         no_claim: NoClaimBoundary {
             uncertified_optimizations: vec![
@@ -138,6 +133,9 @@ pub fn provide_capability() -> DewCapability {
                 "opencl".into(),
                 "jit-x86-sse2".into(),
                 "jit-aarch64-neon".into(),
+                "jit-cranelift".into(),
+                "wgsl".into(),
+                "glsl".into(),
                 "accelerator-shader-anytype".into(),
             ],
         },

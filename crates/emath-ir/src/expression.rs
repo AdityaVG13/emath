@@ -247,7 +247,22 @@ impl ExprNode {
                     exprs[index.index()].collect_free(exprs, seen, out);
                 }
             }
-            Self::Binder { body, .. } => exprs[body.index()].collect_free(exprs, seen, out),
+            Self::Binder {
+                variables, body, ..
+            } => {
+                // Bound names come into scope left-to-right: each variable's
+                // domain may mention earlier bound names; the body sees all
+                // of them. Bound names are never reported as free.
+                let mut bound = std::collections::BTreeSet::new();
+                for variable in variables {
+                    exprs[variable.domain.index()].collect_free(exprs, seen, out);
+                    bound.insert(variable.name.clone());
+                }
+                for name in &bound {
+                    seen.insert(name.clone());
+                }
+                exprs[body.index()].collect_free(exprs, seen, out);
+            }
             Self::Literal(_) => {}
         }
     }

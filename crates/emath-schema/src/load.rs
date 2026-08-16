@@ -45,18 +45,19 @@ impl VersionPolicy {
     #[must_use]
     pub fn accepts(self, found: &str, required: &str) -> bool {
         match self {
-            Self::SemverMajor => major_of(found) == major_of(required),
+            // Unparseable versions never satisfy a SemverMajor gate:
+            // `nightly`/`local` are not "compatible with any major".
+            Self::SemverMajor => match (major_of(found), major_of(required)) {
+                (Some(found), Some(required)) => found == required,
+                _ => false,
+            },
             Self::Exact => found == required,
         }
     }
 }
 
-fn major_of(version: &str) -> u64 {
-    version
-        .split('.')
-        .next()
-        .and_then(|part| part.parse().ok())
-        .unwrap_or(u64::MAX)
+fn major_of(version: &str) -> Option<u64> {
+    version.split('.').next().and_then(|part| part.parse().ok())
 }
 
 /// One kind resolution refusal.
