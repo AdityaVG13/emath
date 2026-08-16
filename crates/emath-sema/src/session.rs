@@ -2,10 +2,10 @@
 //! artifact emission) lives in `emath-build`.
 
 use crate::admit::{check_tree, CheckResult};
+use emath_core::parse::source_parser;
+use emath_core::tree::{CommandArgument, ExprKind, Section, StmtKind};
 use emath_core::{limits::Limits, Diagnostics, FileId, SourceStore, Span};
 use emath_ir::{build_goal, native_plan, RequestSpec, SemanticPackage};
-use emath_syntax::parse_str;
-use emath_syntax::tree::{CommandArgument, ExprKind, Section, StmtKind};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -94,8 +94,17 @@ impl CompilerSession {
     }
 
     /// Parse a source string (no admission).
-    pub fn parse_text(&self, text: &str) -> (emath_syntax::tree::SyntaxTree, Diagnostics) {
-        parse_str(text)
+    pub fn parse_text(&self, text: &str) -> (emath_core::tree::SyntaxTree, Diagnostics) {
+        match parse_through(text) {
+            Ok(pair) => pair,
+            Err(diagnostics) => (
+                emath_core::tree::SyntaxTree {
+                    source: Span::default(),
+                    items: Vec::new(),
+                },
+                diagnostics,
+            ),
+        }
     }
 
     /// `check`: parse + semantic admission.
@@ -109,7 +118,16 @@ impl CompilerSession {
                 trace: crate::admit::SemanticTrace::default(),
             };
         };
-        let (tree, parse_diagnostics) = parse_str(&source_file.text);
+        let (tree, parse_diagnostics) = match parse_through(&source_file.text) {
+            Ok(pair) => pair,
+            Err(diagnostics) => {
+                return CheckResult {
+                    package: SemanticPackage::new(),
+                    diagnostics,
+                    trace: crate::admit::SemanticTrace::default(),
+                };
+            }
+        };
         let mut result = check_tree(&tree, &());
         result.diagnostics.extend_from(&parse_diagnostics);
         result
@@ -137,7 +155,17 @@ impl CompilerSession {
             };
         };
         let text = source_file.text.clone();
-        let (tree, parse_diagnostics) = parse_str(&text);
+        let (tree, parse_diagnostics) = match parse_through(&text) {
+            Ok(pair) => pair,
+            Err(diagnostics) => {
+                return PlanResult {
+                    package: SemanticPackage::new(),
+                    requests: Vec::new(),
+                    plans: Vec::new(),
+                    diagnostics,
+                };
+            }
+        };
         let mut check = check_tree(&tree, &());
         check.diagnostics.extend_from(&parse_diagnostics);
         let mut diagnostics = check.diagnostics;
@@ -148,14 +176,14 @@ impl CompilerSession {
         let declarations = package.declarations.clone();
         for declaration in &declarations {
             // Recover this declaration's sections from the syntax tree.
-            let sections: Vec<emath_syntax::tree::Section> = tree
+            let sections: Vec<emath_core::tree::Section> = tree
                 .items
                 .iter()
                 .filter_map(|item| match item {
                     // Declarations are admitted by the front-end; goal
                     // elaboration remains a custom (`emath custom`) path
                     // until the intent-compiler lane lands.
-                    emath_syntax::tree::Item::Declaration(d)
+                    emath_core::tree::Item::Declaration(d)
                         if d.item_kind == "custom" && d.name == declaration.name.leaf() =>
                     {
                         Some(d.sections_vec())
@@ -305,7 +333,7 @@ pub fn elaborate_requests(
     requests
 }
 
-fn read_produce(suite: &emath_syntax::tree::Suite) -> String {
+fn read_produce(suite: &emath_core::tree::Suite) -> String {
     for stmt in &suite.statements {
         if let StmtKind::Command { head, argument } = &stmt.kind {
             if head.first().is_some_and(|h| h == "produce") {
@@ -321,4 +349,20 @@ fn read_produce(suite: &emath_syntax::tree::Suite) -> String {
         }
     }
     String::new()
+}
+/// Parse through the installed source-parser backend.
+///
+/// Returns a typed refusal (E-SYN-120) when no backend is installed; hosts
+/// wire `emath_syntax::install_source_parser` once per process at startup.
+fn parse_through(text: &str) -> Result<(emath_core::tree::SyntaxTree, Diagnostics), Diagnostics> {
+    let Some(parser) = source_parser() else {
+        let mut diagnostics = Diagnostics::new();
+        diagnostics.error(
+            "E-SYN-120",
+            "source parser backend not installed: call emath_syntax::install_source_parser once per process before parsing",
+            Span::default(),
+        );
+        return Err(diagnostics);
+    };
+    Ok(parser.parse(text, FileId(0), &Limits::default()))
 }

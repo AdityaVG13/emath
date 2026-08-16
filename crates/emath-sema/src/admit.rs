@@ -1,15 +1,15 @@
 //! The Phase 1 admission pass: syntax → typed neutral SIR with stable
 //! diagnostics and a source-to-SIR trace.
 
+use emath_core::tree::{
+    BinaryOp as SynBinOp, Expr, ExprKind, Section, StmtKind, SyntaxTree, TypeExpr,
+    TypeKind as SynTypeKind, UnaryOp as SynUnOp,
+};
 use emath_core::{Diagnostics, QualifiedName, Span};
 use emath_ir::constructor::{Constructor, Field, TestCase, Visibility};
 use emath_ir::goal::CompileSpec;
 use emath_ir::{
     Declaration, ExprId, ExprNode, Literal, NumericProfile, SafetyProfile, TypeId, TypeNode,
-};
-use emath_syntax::tree::{
-    BinaryOp as SynBinOp, Expr, ExprKind, Section, StmtKind, SyntaxTree, TypeExpr,
-    TypeKind as SynTypeKind, UnaryOp as SynUnOp,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -624,7 +624,7 @@ type AdmitResult = (
 
 /// Admit one declaration into SIR. Returns (declaration, test cases, type
 /// arena, expression arena, trace, diagnostics).
-pub fn admit_declaration(decl: &emath_syntax::tree::Declaration) -> AdmitResult {
+pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
     let mut admitter = Admitter::new();
     let kind_label = decl.as_kind.clone();
     let is_policy = kind_label == "policy";
@@ -810,7 +810,7 @@ pub fn admit_declaration(decl: &emath_syntax::tree::Declaration) -> AdmitResult 
                 } = &stmt.kind
                 {
                     if name != "new"
-                        || !matches!(visibility, Some(emath_syntax::tree::Visibility::Public))
+                        || !matches!(visibility, Some(emath_core::tree::Visibility::Public))
                     {
                         admitter.error(
                             "E-CTOR-036",
@@ -1128,9 +1128,9 @@ impl Admitter {
 
 fn admit_constructor(
     admitter: &mut Admitter,
-    params: &[emath_syntax::tree::Param],
+    params: &[emath_core::tree::Param],
     ret: Option<&TypeExpr>,
-    suite: Option<&emath_syntax::tree::Suite>,
+    suite: Option<&emath_core::tree::Suite>,
     source: Span,
 ) -> Constructor {
     let mut parameters = Vec::new();
@@ -1343,7 +1343,7 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
         };
         let key = head.first().map_or("", String::as_str);
         let value_text = match argument {
-            Some(emath_syntax::tree::CommandArgument::Expr(expr)) => match &expr.kind {
+            Some(emath_core::tree::CommandArgument::Expr(expr)) => match &expr.kind {
                 ExprKind::Path { segments, .. } => Some(segments.join(".")),
                 _ => None,
             },
@@ -1429,8 +1429,8 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
     // Front-end: package identity and `use` imports. External file
     // imports remain a Phase 2 refusal (E-PKG-050).
     let has_recognition_items = tree.items.iter().any(|item| match item {
-        emath_syntax::tree::Item::Package { .. } | emath_syntax::tree::Item::Use { .. } => true,
-        emath_syntax::tree::Item::Declaration(decl) => decl.item_kind != "custom",
+        emath_core::tree::Item::Package { .. } | emath_core::tree::Item::Use { .. } => true,
+        emath_core::tree::Item::Declaration(decl) => decl.item_kind != "custom",
     });
     let recognition = if has_recognition_items {
         let front_end = crate::recognition::admit_front_end(tree, &mut diagnostics, &mut trace);
@@ -1443,7 +1443,7 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
 
     let mut declaration_id = 0_u32;
     for item in &tree.items {
-        let emath_syntax::tree::Item::Declaration(decl) = item else {
+        let emath_core::tree::Item::Declaration(decl) = item else {
             continue;
         };
         if let Some(kind_defs) = &recognition {

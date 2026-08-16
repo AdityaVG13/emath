@@ -176,7 +176,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-syntax",
 ]
 
 [[package]]
@@ -227,6 +226,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-sema",
+ "emath-syntax",
 ]
 
 [[package]]
@@ -324,7 +324,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-syntax",
 ]
 
 [[package]]

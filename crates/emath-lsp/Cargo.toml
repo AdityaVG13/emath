@@ -11,3 +11,4 @@ workspace = true
 [dependencies]
 emath-core = { path = "../emath-core" }
 emath-sema = { path = "../emath-sema" }
+emath-syntax = { path = "../emath-syntax" }

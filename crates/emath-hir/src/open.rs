@@ -8,9 +8,9 @@
 
 use std::collections::BTreeMap;
 
+use emath_core::tree::{Declaration, GenericParam, Section};
 use emath_core::{Diagnostics, Span};
 use emath_ir::kind_schema::{KindSchema, RepeatPolicy};
-use emath_syntax::tree::{Declaration, GenericParam, Section};
 
 /// Section family classification.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -390,8 +390,8 @@ fn declare_payloads(sections: &[Section]) -> BTreeMap<String, OpenPayload> {
                 OpenPayload::Suite
             } else {
                 match section.suite.statements[0].kind {
-                    emath_syntax::tree::StmtKind::FieldDecl { .. } => OpenPayload::Fields,
-                    emath_syntax::tree::StmtKind::Command { .. } => OpenPayload::Commands,
+                    emath_core::tree::StmtKind::FieldDecl { .. } => OpenPayload::Fields,
+                    emath_core::tree::StmtKind::Command { .. } => OpenPayload::Commands,
                     _ => OpenPayload::Suite,
                 }
             };
@@ -406,15 +406,14 @@ fn collect_docs(sections: &[Section]) -> BTreeMap<String, Vec<String>> {
         let mut lines = Vec::new();
         for stmt in &section.suite.statements {
             match &stmt.kind {
-                emath_syntax::tree::StmtKind::Command { head, .. }
+                emath_core::tree::StmtKind::Command { head, .. }
                     if head.first().is_some_and(|w| w == "doc") =>
                 {
                     lines.push(head.iter().skip(1).cloned().collect::<Vec<_>>().join(" "));
                 }
-                emath_syntax::tree::StmtKind::Section(inner) if inner.name == "doc" => {
+                emath_core::tree::StmtKind::Section(inner) if inner.name == "doc" => {
                     for inner_stmt in &inner.suite.statements {
-                        if let emath_syntax::tree::StmtKind::Command { head, .. } = &inner_stmt.kind
-                        {
+                        if let emath_core::tree::StmtKind::Command { head, .. } = &inner_stmt.kind {
                             lines.push(head.join(" "));
                         }
                     }

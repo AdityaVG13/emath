@@ -8,11 +8,14 @@ pub mod diagnostic;
 pub mod hash;
 pub mod id;
 pub mod limits;
+pub mod parse;
 pub mod source;
 pub mod span;
+pub mod tree;
 
 pub use diagnostic::{Diagnostic, Diagnostics, Severity};
 pub use hash::{bootstrap_content_id, content_id_of_str, fnv1a64_bytes};
 pub use id::{ContentId, FileId, QualifiedName, SchemaId};
+pub use parse::{register_source_parser, source_parser, SourceParser};
 pub use source::{SourceFile, SourceStore};
 pub use span::Span;
