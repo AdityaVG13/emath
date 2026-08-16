@@ -897,9 +897,16 @@ impl Parser {
             return None;
         };
         self.advance();
-        // `extern operator semantic_distance<D: Nat>(...)` generics.
+        // `extern operator semantic_distance<D: Nat>(...)` generics:
+        // OperatorDecl carries no generic parameters and Phase 1 has no
+        // generic-operator semantics. Refuse loudly (E-TYPE-112) instead of
+        // parsing and discarding the generic parameter list.
         if matches!(self.peek(), TokenKind::Lt) {
-            let _ = self.parse_generic_params();
+            self.error_here(
+                "E-TYPE-112",
+                "generic extern operator declarations are outside the Phase 1 subset",
+            );
+            return None;
         }
         self.parse_params_after_name()
             .map(|(params, ret)| (name, params, ret))
@@ -1051,7 +1058,15 @@ impl Parser {
                     self.eat(&TokenKind::Gt);
                 }
                 let args = if matches!(self.peek(), TokenKind::LParen) {
-                    self.parse_arguments()
+                    // Broken argument lists must not be recorded as section
+                    // heads with `args: None` (silent drop); refuse the
+                    // whole statement instead.
+                    if let Some(args) = self.parse_arguments() {
+                        Some(args)
+                    } else {
+                        self.error_here("E-SYN-101", "malformed argument list in section head");
+                        return None;
+                    }
                 } else {
                     None
                 };
@@ -1080,14 +1095,15 @@ impl Parser {
                 };
                 self.advance();
                 if self.eat(&TokenKind::Eq) {
-                    let _ = self.parse_type_expr()?;
-                    Some(self.stmt(
-                        start,
-                        StmtKind::Command {
-                            head: vec!["type".to_string(), alias],
-                            argument: None,
-                        },
-                    ))
+                    // `type Alias = RHS`: Phase 1 defines no alias semantics,
+                    // and the tree would record only Command["type", alias]
+                    // with `argument: None`, silently dropping the RHS.
+                    // Refuse loudly (E-TYPE-111) per the no-silent-accept rule.
+                    self.error_here(
+                        "E-TYPE-111",
+                        "type aliases (type X = T) are outside the Phase 1 subset",
+                    );
+                    None
                 } else if self.eat(&TokenKind::Colon) {
                     let suite = self.parse_suite()?;
                     Some(self.stmt(
@@ -1169,7 +1185,12 @@ impl Parser {
                 return None;
             }
             let args = if matches!(self.peek(), TokenKind::LParen) {
-                self.parse_arguments()
+                if let Some(args) = self.parse_arguments() {
+                    Some(args)
+                } else {
+                    self.error_here("E-SYN-101", "malformed argument list in section head");
+                    return None;
+                }
             } else {
                 None
             };
@@ -2024,19 +2045,15 @@ impl Parser {
                         self.advance();
                     }
                     _ => {
-                        // `fn` type: fn(params) -> T (parsed and discarded)
-                        self.advance();
-                        let _ = self.parse_params_after_name();
-                        if self.eat(&TokenKind::Arrow) {
-                            let _ = self.parse_type_expr();
-                        }
-                        return Some(TypeExpr {
-                            kind: TypeKind::Path {
-                                segments: vec!["fn".into()],
-                                generic_args: vec![],
-                            },
-                            source: start.cover(self.last_span()),
-                        });
+                        // `fn` type: function types are outside the Phase 1
+                        // strict subset. Refuse loudly (E-TYPE-110) instead of
+                        // recording a lossy Path(["fn"]) with the inner
+                        // signature discarded.
+                        self.error_here(
+                            "E-TYPE-110",
+                            "function types (fn(params) -> T) are outside the Phase 1 subset",
+                        );
+                        return None;
                     }
                 }
                 while matches!(self.peek(), TokenKind::PathSep) {

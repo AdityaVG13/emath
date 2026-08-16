@@ -364,6 +364,9 @@ fn render_item(code: &mut Code, item: &Item) {
         Item::Test(def) => {
             let start = code.buf.len();
             render_doc(code, &def.doc);
+            for attribute in &def.attrs {
+                code.line(attribute);
+            }
             code.line("#[test]");
             code.line(&format!("fn {}() {{", escape_ident(&def.name)));
             code.indent += 1;
@@ -462,6 +465,28 @@ fn render_stmt(code: &mut Code, stmt: &Stmt, tail: bool) {
     match stmt {
         Stmt::Block(block) => render_block(code, block),
         Stmt::Let { pattern, value } => {
+            // A method chain on a call receiver (e.g. `AffinePolicy::new(..)`
+            // followed by `.expect(..)`) is laid out the way rustfmt lays it
+            // out: receiver on the `let` line, chain head on the next line.
+            if let Expr::MethodCall {
+                receiver,
+                method,
+                args,
+            } = &**value
+            {
+                if let Expr::Call { .. } = &**receiver {
+                    let args = args.iter().map(render_expr).collect::<Vec<_>>().join(", ");
+                    code.line(&format!(
+                        "let {} = {}",
+                        escape_ident(pattern),
+                        render_expr(receiver)
+                    ));
+                    code.indent += 1;
+                    code.line(&format!(".{}({});", escape_ident(method), args));
+                    code.indent -= 1;
+                    return;
+                }
+            }
             if let Some((prefix, block)) = block_value(value) {
                 render_block_expr(
                     code,
@@ -481,6 +506,20 @@ fn render_stmt(code: &mut Code, stmt: &Stmt, tail: bool) {
             code.line(&format!("return {};", render_expr(value)));
         }
         Stmt::Expr(expr) => {
+            // Macro invocations are always statements (e.g. `assert!(...)`)
+            // and keep their semicolon even as the block tail.
+            if let Expr::Macro { name, args } = expr {
+                // A macro carrying a single block argument (an `assert!` on a block expression) is laid out under the macro parens exactly as rustfmt does.
+                if let [Expr::Block(stmt)] = args.as_slice() {
+                    if let Stmt::Block(block) = &**stmt {
+                        render_block_expr(code, block, &format!("{name}!("), ");");
+                        return;
+                    }
+                }
+                let args = args.iter().map(render_expr).collect::<Vec<_>>().join(", ");
+                code.line(&format!("{name}!({args});"));
+                return;
+            }
             // `if` statements never take a trailing semicolon and their
             // blocks are indented line-by-line (rustfmt-stable output).
             if let Expr::IfElse {
@@ -579,6 +618,10 @@ pub fn render_expr(expr: &Expr) -> String {
             .map(|segment| escape_ident(segment))
             .collect::<Vec<_>>()
             .join("::"),
+        Expr::Macro { name, args } => {
+            let args = args.iter().map(render_expr).collect::<Vec<_>>().join(", ");
+            format!("{name}!({args})")
+        }
         Expr::Str(text) => {
             let mut out = String::with_capacity(text.len() + 2);
             out.push('"');

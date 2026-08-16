@@ -68,6 +68,19 @@ pub fn elaborate_requests(
                         "`evaluate` requires `produce rust.library` in Phase 1",
                         request.source,
                     );
+                    continue;
+                }
+                if produce != "rust.library" {
+                    // Accepting an arbitrary produce target would silently
+                    // admit an unimplemented export surface; refuse.
+                    diagnostics.error(
+                        "E-GOAL-042",
+                        format!(
+                            "produce target `{produce}` is outside the Phase 1 subset (`rust.library` only)"
+                        ),
+                        request.source,
+                    );
+                    continue;
                 }
                 requests.push(RequestSpec {
                     kind: "evaluate".into(),

@@ -1,0 +1,11 @@
+[package]
+name = "emath-plan-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+emath-core = { path = "../../crates/emath-core" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-plan = { path = "../../crates/emath-plan" }
+emath-provider-api = { path = "../../crates/emath-provider-api" }

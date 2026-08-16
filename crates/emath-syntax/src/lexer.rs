@@ -132,6 +132,19 @@ impl Lexer<'_> {
         // parens) the next token starts a fresh indentation context; further
         // tokens on the same line continue the current context.
         let mut at_line_start = true;
+        if self.bytes.len() >= 3
+            && self.bytes[0] == 0xEF
+            && self.bytes[1] == 0xBB
+            && self.bytes[2] == 0xBF
+        {
+            self.error(
+                "E-SYN-113",
+                "UTF-8 BOM is rejected at the start of a source file",
+                0,
+            );
+            self.pos = 3;
+        }
+
         while self.pos < self.bytes.len() {
             let line_start = self.pos;
             if self.peek() == Some(b'\n') {
@@ -263,6 +276,14 @@ impl Lexer<'_> {
                     self.pos += 1;
                 }
                 let text = &self.source[start..self.pos];
+                if !text.is_ascii() {
+                    self.diagnostics.warning(
+                "E-SYN-114",
+                "identifier contains non-ASCII characters; confusable Unicode lookalikes are a quality hazard",
+                self.span(start),
+                    );
+                }
+
                 if let Some(keyword) = Keyword::from_ident(text) {
                     self.push(TokenKind::Keyword(keyword), start);
                 } else {

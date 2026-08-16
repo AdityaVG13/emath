@@ -126,11 +126,19 @@ impl CompilerSession {
     /// `plan`: elaborate requests into GIR and build deterministic native
     /// resolution plans.
     pub fn plan(&mut self, file: FileId) -> PlanResult {
-        let text = self
-            .store
-            .get(file)
-            .map(|f| f.text.clone())
-            .unwrap_or_default();
+        let Some(source_file) = self.store.get(file) else {
+            // Missing source must be a typed refusal, not an empty-source
+            // plan that silently passes admission (E-PKG-080).
+            let mut diagnostics = Diagnostics::new();
+            diagnostics.error("E-PKG-080", "source file was never loaded", Span::default());
+            return PlanResult {
+                package: SemanticPackage::new(),
+                requests: Vec::new(),
+                plans: Vec::new(),
+                diagnostics,
+            };
+        };
+        let text = source_file.text.clone();
         let (tree, parse_diagnostics) = parse_str(&text);
         let mut check = check_tree(&tree, &());
         check.diagnostics.extend_from(&parse_diagnostics);

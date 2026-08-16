@@ -35,7 +35,7 @@ pub enum SubsetFeature {
 /// Subset refusal with a stable `E-KIND-3xx` code.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubsetIssue {
-    /// Stable code (`E-KIND-310`/`E-KIND-311`).
+    /// Stable code (`E-KIND-310`/`E-KIND-311`/`E-KIND-312`).
     pub code: &'static str,
     /// Message.
     pub message: String,
@@ -75,7 +75,7 @@ pub fn check(model: &StructuralModel) -> Vec<SubsetIssue> {
     for event in &model.events {
         if !event.continuous {
             issues.push(SubsetIssue {
-                code: "E-KIND-310",
+                code: "E-KIND-312",
                 message: format!(
                     "event `{}` is discrete; Phase 1 subset accepts basic continuous events only",
                     event.name

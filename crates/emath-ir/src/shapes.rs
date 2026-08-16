@@ -70,6 +70,10 @@ impl Shape {
         if self.conforms(other) {
             return true;
         }
+        // Rank-0 operands never broadcast implicitly (documented policy).
+        if self.rank() == 0 || other.rank() == 0 {
+            return false;
+        }
         // Same rank: extents must agree pairwise or one side must be 1.
         if self.rank() == other.rank() {
             return self
@@ -145,8 +149,8 @@ impl Shape {
             self.extents
                 .iter()
                 .map(|extent| match extent {
-                    Extent::Fixed(size) => size.to_string(),
-                    Extent::Symbolic(name) => name.clone(),
+                    Extent::Fixed(size) => format!("f{size}"),
+                    Extent::Symbolic(name) => format!("s{name}"),
                 })
                 .collect::<Vec<_>>()
                 .join(",")

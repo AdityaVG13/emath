@@ -1,0 +1,5 @@
+emath custom <Ops> as function:
+
+    definitions:
+        extern operator semantic_distance<D: Nat>(a: Float64, b: Float64) -> Float64:
+            result = a - b

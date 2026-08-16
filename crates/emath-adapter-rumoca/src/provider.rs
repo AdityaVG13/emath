@@ -33,6 +33,18 @@ pub fn provide_dae_plan(model: &StructuralModel, budget: &Budget) -> Outcome<Dae
             evidence,
         };
     }
+    let issues = model.validate();
+    if !issues.is_empty() {
+        return Outcome::Failed(LowerError {
+            code: "E-PROV-237",
+            message: format!(
+                "provider model refused by validation gate: {} issue(s); first: {}: {}",
+                issues.len(),
+                issues[0].code,
+                issues[0].message
+            ),
+        });
+    }
     match crate::lower::lower(model) {
         Ok(plan) => {
             let identity = ContentId(format!("fnv1a64:{:016x}", plan.content_identity()));
@@ -144,7 +156,7 @@ impl SimulationResult {
 /// Simulation failure.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimError {
-    /// Stable code (`E-PROV-230`..`E-PROV-234`).
+    /// Stable code (`E-PROV-230`..`E-PROV-235`).
     pub code: &'static str,
     /// Message.
     pub message: String,
@@ -172,6 +184,18 @@ pub fn simulate(
         identity: ContentId(DEFAULT_SEAL.into()),
     };
 
+    let issues = model.validate();
+    if !issues.is_empty() {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-237",
+            message: format!(
+                "provider model refused by validation gate: {} issue(s); first: {}: {}",
+                issues.len(),
+                issues[0].code,
+                issues[0].message
+            ),
+        });
+    }
     // Budget preflight: evaluation count and output size are both bounded.
     let point_bytes = u64::try_from(std::mem::size_of::<SimPoint>()).unwrap_or(64);
     let per_step = u64::try_from(plan.equations.len().max(1)).unwrap_or(1);
@@ -184,6 +208,34 @@ pub fn simulate(
             continuation: Some(continuation()),
             evidence: evidence(),
         };
+    }
+
+    // Plan shape preflight (bug-hunt residual): a simulation requires at
+    // least two states (position/velocity fixture), a derivative row for
+    // every state and a finite positive step. Malformed plans fail closed
+    // under `E-PROV-235` instead of indexing past the end of states.
+    if plan.states.len() < 2 {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-235",
+            message: format!(
+                "DaePlan has {} state(s); simulation requires at least two",
+                plan.states.len()
+            ),
+        });
+    }
+    if !config.dt.is_finite() || config.dt <= 0.0 {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-235",
+            message: format!("invalid time step `dt={}`", config.dt),
+        });
+    }
+    for state in &plan.states {
+        if !plan.derivatives.iter().any(|entry| entry.state == *state) {
+            return Outcome::Failed(SimError {
+                code: "E-PROV-235",
+                message: format!("missing derivative row for state `{state}`"),
+            });
+        }
     }
 
     // Parameter completeness is checked before any stepping.
@@ -230,8 +282,9 @@ pub fn simulate(
     let mut points = Vec::with_capacity(usize::try_from(config.steps).unwrap_or(0) + 1);
     points.push(SimPoint {
         t: 0.0,
-        position: states.get(&plan.states[0].clone()).copied().unwrap_or(0.0),
-        velocity: states.get(&plan.states[1].clone()).copied().unwrap_or(0.0),
+        // Preflight guarantees at least two states, all present in states.
+        position: states[&plan.states[0].clone()],
+        velocity: states[&plan.states[1].clone()],
     });
     let mut t = 0.0;
     let mut max_lte: f64 = 0.0;
@@ -264,9 +317,24 @@ pub fn simulate(
                 EqExpr::Var(name) => {
                     if let Some(slot) = states.get_mut(name) {
                         *slot = value;
+                    } else {
+                        // Non-state variables (e.g. outputs) were silently
+                        // dropped before; refuse loudly (E-PROV-236).
+                        return Outcome::Failed(SimError {
+                            code: "E-PROV-236",
+                            message: format!(
+                                "assignment to non-state variable '{name}' is not supported"
+                            ),
+                        });
                     }
                 }
-                _ => {}
+                _ => {
+                    return Outcome::Failed(SimError {
+                        code: "E-PROV-236",
+                        message: "equation LHS is not an assignable variable or der reference"
+                            .into(),
+                    });
+                }
             }
         }
 

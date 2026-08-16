@@ -1,0 +1,10 @@
+emath custom <Square> as function:
+
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = x * x

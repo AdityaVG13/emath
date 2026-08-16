@@ -41,6 +41,8 @@ members = [
   "crates/emath-lsp",
   "crates/emath-registry",
   "crates/emath-plugin-sdk",
+  "tests/emath-term",
+ "tests/emath-ir",
   "examples/demo-host",
   "examples/demo-host-independent",
   "examples/provider-skeleton",

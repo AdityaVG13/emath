@@ -489,6 +489,21 @@ fn verify_crate(dir: &Path, output: &BackendOutput) -> Result<(), String> {
         }
         std::fs::write(target, text).map_err(|error| error.to_string())?;
     }
+    // E-TLT-012: `--verify` promises a real test surface. A generated crate
+    // with no `#[test]` functions would make `cargo test` vacuous; refuse it
+    // instead of pretending coverage.
+    let mut test_count = 0_usize;
+    for (path, text) in &output.files {
+        if std::path::Path::new(path)
+            .extension()
+            .is_some_and(|ext| ext == "rs")
+        {
+            test_count += text.matches("#[test]").count();
+        }
+    }
+    if test_count == 0 {
+        return Err("E-TLT-012: generated crate has no `#[test]` tests; --verify refuses an empty test surface (add a `tests:` section to the spec, or drop --verify)".to_string());
+    }
     let result = std::process::Command::new("cargo")
         .arg("test")
         .arg("--quiet")

@@ -517,8 +517,8 @@ fn map_type(ty: &TypeExpr, diagnostics: &mut Diagnostics) -> Option<TypeNode> {
         "Bool" => Some(TypeNode::Bool),
         "Self" => Some(TypeNode::Other(QualifiedName("Self".into()))),
         "Length" | "Time" | "Duration" | "Velocity" | "Mass" | "Damping" | "Stiffness"
-        | "Force" | "Temperature" | "Information" | "Token" | "Byte" | "MiB" | "Probability"
-        | "Nat" | "Int" | "Rational" | "m" | "s" | "K" | "kg" | "N" | "Hz" | "W" => {
+        | "Force" | "Temperature" | "Information" | "Token" | "Byte" | "MiB" | "m" | "s" | "K"
+        | "kg" | "N" | "Hz" | "W" => {
             diagnostics.error(
                 "E-UNIT-001",
                 format!(
@@ -549,7 +549,11 @@ fn map_type(ty: &TypeExpr, diagnostics: &mut Diagnostics) -> Option<TypeNode> {
         | "NodeId"
         | "CacheCandidate"
         | "Route"
-        | "Witness" => {
+        | "Witness"
+        | "Nat"
+        | "Int"
+        | "Rational"
+        | "Probability" => {
             diagnostics.error(
                 E_UNSUPPORTED_TYPE,
                 format!(
@@ -885,6 +889,11 @@ pub fn admit_declaration(decl: &emath_syntax::tree::Declaration) -> AdmitResult 
     if let Some(section) = by_name.get("exports") {
         for stmt in &section.suite.statements {
             let StmtKind::Command { head, .. } = &stmt.kind else {
+                admitter.error(
+                    "E-SYN-101",
+                    "exports must be `public <kind> <name>` commands",
+                    stmt.source,
+                );
                 continue;
             };
             let mut words = head.iter().map(String::as_str);
@@ -1325,6 +1334,11 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
     };
     for stmt in &section.suite.statements {
         let StmtKind::Command { head, argument } = &stmt.kind else {
+            admitter.error(
+                "E-SYN-101",
+                "compile directives must be commands (e.g. `target rust`)",
+                stmt.source,
+            );
             continue;
         };
         let key = head.first().map_or("", String::as_str);

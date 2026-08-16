@@ -39,6 +39,12 @@ fn walk(
     symbol: &str,
     entries: &mut Vec<SourceMapEntry>,
 ) {
+    // A node id that is absent from the package cannot be mapped: it is
+    // skipped instead of recorded as a success entry;
+    // map_expression refuses the same situation with E-PROV-030.
+    let Some(node) = package.expr(id) else {
+        return;
+    };
     let span: Span = package.expr_span(id);
     let kind = node_kind(package.expr(id));
     entries.push(SourceMapEntry {
@@ -48,8 +54,8 @@ fn walk(
         span: (span.start, span.end),
         kind,
     });
-    match package.expr(id) {
-        Some(ExprNode::Unary { value, .. }) => {
+    match node {
+        ExprNode::Unary { value, .. } => {
             walk(
                 package,
                 *value,
@@ -58,7 +64,7 @@ fn walk(
                 entries,
             );
         }
-        Some(ExprNode::Binary { left, right, .. }) => {
+        ExprNode::Binary { left, right, .. } => {
             walk(package, *left, &format!("{dew_path}.left"), symbol, entries);
             walk(
                 package,
@@ -68,11 +74,11 @@ fn walk(
                 entries,
             );
         }
-        Some(ExprNode::If {
+        ExprNode::If {
             condition,
             then_value,
             else_value,
-        }) => {
+        } => {
             walk(
                 package,
                 *condition,
@@ -95,7 +101,7 @@ fn walk(
                 entries,
             );
         }
-        Some(ExprNode::Call { arguments, .. }) => {
+        ExprNode::Call { arguments, .. } => {
             for (index, argument) in arguments.iter().enumerate() {
                 walk(
                     package,
@@ -121,6 +127,6 @@ fn node_kind(node: Option<&ExprNode>) -> String {
         Some(ExprNode::Record { .. }) => "record".into(),
         Some(ExprNode::Index { .. }) => "index".into(),
         Some(ExprNode::Binder { .. }) => "binder".into(),
-        None => "unknown".into(),
+        None => "missing".into(),
     }
 }

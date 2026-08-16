@@ -84,6 +84,22 @@ impl EvidenceLevel {
     }
 }
 
+impl std::str::FromStr for EvidenceLevel {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "E0" => Ok(Self::E0),
+            "E1" => Ok(Self::E1),
+            "E2" => Ok(Self::E2),
+            "E3" => Ok(Self::E3),
+            "E4" => Ok(Self::E4),
+            "E5" => Ok(Self::E5),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExactnessPolicy {
     Exact,

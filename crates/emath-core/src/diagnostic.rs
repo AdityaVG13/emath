@@ -104,6 +104,9 @@ impl Diagnostics {
     pub fn error(&mut self, code: &'static str, message: impl Into<String>, primary: Span) {
         self.push(Diagnostic::error(code, message, primary));
     }
+    pub fn warning(&mut self, code: &'static str, message: impl Into<String>, primary: Span) {
+        self.push(Diagnostic::warning(code, message, primary));
+    }
 
     pub fn extend_from(&mut self, other: &Diagnostics) {
         for item in &other.items {

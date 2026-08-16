@@ -59,6 +59,10 @@ pub fn find_conversion_path(
     let mut frontier: VecDeque<(String, Vec<ConversionNode>)> = VecDeque::new();
     frontier.push_back((from.to_string(), vec![]));
     let mut visited: Vec<String> = vec![from.to_string()];
+    // Exact goals keep looking past a first lossy hit; the refusal fires only
+    // when every reachable path into the target is lossy. The target is never
+    // marked visited so a later conserving path can still land on it.
+    let mut first_lossy: Option<Vec<ConversionNode>> = None;
     while let Some((current, path)) = frontier.pop_front() {
         for conversion in conversions {
             if conversion.from != current {
@@ -68,30 +72,32 @@ pub fn find_conversion_path(
             if visited.contains(&next) {
                 continue; // cycle prevention: a representation is visited once
             }
-            visited.push(next.clone());
             let mut extended = path.clone();
             extended.push(ConversionNode {
                 conversion: conversion.clone(),
                 step: extended.len(),
             });
             if next == to {
-                // Exact goals refuse any lossy edge in the path.
-                if matches!(exactness, ExactnessPolicy::Exact)
-                    && extended
-                        .iter()
-                        .any(|node| is_lossy(node.conversion.exact_relation))
-                {
-                    return Err(RepresentationError {
-                        code: "E-PROV-515",
-                        message: format!(
-                            "lossy conversion path {from} -> {to} not authorized by exact goal"
-                        ),
-                    });
+                let lossy = extended
+                    .iter()
+                    .any(|node| is_lossy(node.conversion.exact_relation));
+                if !matches!(exactness, ExactnessPolicy::Exact) || !lossy {
+                    return Ok(extended);
                 }
-                return Ok(extended);
+                if first_lossy.is_none() {
+                    first_lossy = Some(extended);
+                }
+                continue;
             }
+            visited.push(next.clone());
             frontier.push_back((next, extended));
         }
+    }
+    if first_lossy.is_some() {
+        return Err(RepresentationError {
+            code: "E-PROV-515",
+            message: format!("lossy conversion path {from} -> {to} not authorized by exact goal"),
+        });
     }
     Err(RepresentationError {
         code: "E-PROV-517",

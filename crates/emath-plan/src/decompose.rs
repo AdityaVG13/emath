@@ -44,7 +44,9 @@ pub struct DecompositionRule {
 #[must_use]
 pub fn requirements_preserved(parent: &GoalRequirements, child: &GoalRequirements) -> bool {
     evidence_rank(child.evidence) <= evidence_rank(parent.evidence)
-        && exactness_rank(&child.exactness) <= exactness_rank(&parent.exactness)
+        // Exactness is never strengthened: higher rank is looser, so the
+        // child must be at least as loose as the parent.
+        && exactness_rank(&child.exactness) >= exactness_rank(&parent.exactness)
         && child.determinism == parent.determinism
 }
 

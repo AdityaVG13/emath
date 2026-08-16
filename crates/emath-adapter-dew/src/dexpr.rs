@@ -251,17 +251,17 @@ fn map_call(
         .unwrap_or(&function.0)
         .to_string();
     let mapped = match leaf.as_str() {
-        "is_finite" => single(package, arguments)?.map(|arg| DewExpr::IsFinite(Box::new(arg))),
-        "exp" => single(package, arguments)?.map(|arg| DewExpr::Exp(Box::new(arg))),
-        "ln" | "log" => single(package, arguments)?.map(|arg| DewExpr::Ln(Box::new(arg))),
-        "sqrt" => single(package, arguments)?.map(|arg| DewExpr::Sqrt(Box::new(arg))),
-        "sin" => single(package, arguments)?.map(|arg| DewExpr::Sin(Box::new(arg))),
-        "cos" => single(package, arguments)?.map(|arg| DewExpr::Cos(Box::new(arg))),
-        "tan" => single(package, arguments)?.map(|arg| DewExpr::Tan(Box::new(arg))),
-        "tanh" => single(package, arguments)?.map(|arg| DewExpr::Tanh(Box::new(arg))),
-        "abs" => single(package, arguments)?.map(|arg| DewExpr::Abs(Box::new(arg))),
-        "floor" => single(package, arguments)?.map(|arg| DewExpr::Floor(Box::new(arg))),
-        "ceil" => single(package, arguments)?.map(|arg| DewExpr::Ceil(Box::new(arg))),
+        "is_finite" => Some(DewExpr::IsFinite(Box::new(single(package, arguments)?))),
+        "exp" => Some(DewExpr::Exp(Box::new(single(package, arguments)?))),
+        "ln" | "log" => Some(DewExpr::Ln(Box::new(single(package, arguments)?))),
+        "sqrt" => Some(DewExpr::Sqrt(Box::new(single(package, arguments)?))),
+        "sin" => Some(DewExpr::Sin(Box::new(single(package, arguments)?))),
+        "cos" => Some(DewExpr::Cos(Box::new(single(package, arguments)?))),
+        "tan" => Some(DewExpr::Tan(Box::new(single(package, arguments)?))),
+        "tanh" => Some(DewExpr::Tanh(Box::new(single(package, arguments)?))),
+        "abs" => Some(DewExpr::Abs(Box::new(single(package, arguments)?))),
+        "floor" => Some(DewExpr::Floor(Box::new(single(package, arguments)?))),
+        "ceil" => Some(DewExpr::Ceil(Box::new(single(package, arguments)?))),
         "min" | "max" | "atan2" | "pow" => {
             let pair = pair(package, arguments)?;
             Some(match leaf.as_str() {
@@ -283,14 +283,15 @@ fn map_call(
     })
 }
 
-fn single(
-    package: &SemanticPackage,
-    arguments: &[ExprId],
-) -> Result<Option<DewExpr>, MappingIssue> {
+fn single(package: &SemanticPackage, arguments: &[ExprId]) -> Result<DewExpr, MappingIssue> {
     if arguments.len() != 1 {
-        return Ok(None);
+        return Err(MappingIssue {
+            code: "E-PROV-030",
+            node: arguments.first().copied().unwrap_or(ExprId(0)),
+            detail: "unary function requires exactly one argument".into(),
+        });
     }
-    map_expression(package, arguments[0]).map(Some)
+    map_expression(package, arguments[0])
 }
 
 fn pair(

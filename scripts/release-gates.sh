@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# emath 1.0 release gates — deterministic local gate runner.
+# emath 1.0 release gates — deterministic LOCAL gate runner.
 #
-# Runs the four standard lanes and prints a per-lane report. Exits 0 only
-# when every lane passes. Std-only: requires a Rust toolchain (rustfmt,
-# clippy) and Python 3 (used by scripts/validate.sh).
+# Optional convenience aggregate over the four standard lanes; CI runs those
+# lanes as separate jobs, so this script is not wired into CI.
+# Std-only: requires a Rust toolchain (rustfmt, clippy). Python is only used
+# by scripts/reproducible_lane.sh (make_sbom.py), never by validate.sh.
 set -u
 
 cd "$(dirname "$0")/.." || exit 1

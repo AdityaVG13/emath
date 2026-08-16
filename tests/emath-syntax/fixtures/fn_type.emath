@@ -1,0 +1,4 @@
+emath custom <Obs> as function:
+
+    inputs:
+        cb: fn(x: Float64) -> Float64

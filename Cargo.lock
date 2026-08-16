@@ -187,6 +187,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-ir-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-lab-core"
 version = "0.1.0"
 dependencies = [
@@ -332,6 +340,13 @@ dependencies = [
 [[package]]
 name = "emath-term"
 version = "0.1.0"
+
+[[package]]
+name = "emath-term-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+]
 
 [[package]]
 name = "emath-tuning"

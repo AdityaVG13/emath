@@ -79,28 +79,39 @@ pub enum Domain {
 
 impl Domain {
     /// Constructs a finite set, sorting and deduplicating entries.
+    // Exact equality is the documented infinities fast path; tolerance is
+    // applied only to finite members (inf - inf is NaN, not epsilon).
     #[must_use]
+    #[allow(clippy::float_cmp)]
     pub fn finite_set(mut values: Vec<f64>) -> Self {
+        // NaN is not a real value and must never be a set member; infinities
+        // are deduplicated alongside tolerance-equal values.
+        values.retain(|value| !value.is_nan());
         values.sort_by(|left, right| f64_cmp(*left, *right));
         values.dedup_by(|a, b| {
             let difference = *a - *b;
-            difference.abs() <= EPSILON
+            *a == *b || difference.abs() <= EPSILON
         });
         Self::FiniteSet(values)
     }
 
     /// Membership check.
+    // Exact equality covers infinities (see `finite_set`); the epsilon
+    // clause then handles near-equal finite members.
     #[must_use]
+    #[allow(clippy::float_cmp)]
     pub fn contains(&self, value: f64) -> bool {
         match self {
             Self::Interval(interval) => interval.contains(value),
             Self::FiniteSet(values) => values.iter().any(|candidate| {
-                let difference = candidate - value;
-                difference.abs() <= EPSILON
+                // Exact equality covers infinities (inf - inf is NaN and
+                // tolerance alone would reject the set's own members).
+                *candidate == value || (*candidate - value).abs() <= EPSILON
             }),
-            Self::Box(axes) => axes.iter().all(|axis| axis.contains(value)),
+            Self::Box(axes) => !axes.is_empty() && axes.iter().all(|axis| axis.contains(value)),
             Self::Union(parts) => parts.iter().any(|part| part.contains(value)),
-            Self::Field => true,
+            // The field is the real axis; NaN is not a real number.
+            Self::Field => !value.is_nan(),
         }
     }
 
@@ -121,12 +132,20 @@ impl Domain {
     pub fn lower_bound(&self) -> f64 {
         match self {
             Self::Interval(interval) => interval.low,
-            Self::FiniteSet(values) => values.first().copied().unwrap_or(f64::NEG_INFINITY),
-            Self::Box(axes) => axes.first().map_or(f64::NEG_INFINITY, |axis| axis.low),
+            // NaN marks "no member" so an empty set never masquerades as
+            // an unbounded field.
+            Self::FiniteSet(values) => values.first().copied().unwrap_or(f64::NAN),
+            Self::Box(axes) if axes.is_empty() => f64::NAN,
+            // A scalar inside the box must satisfy every axis, so the
+            // lower bound is the maximum axis low.
+            Self::Box(axes) => axes
+                .iter()
+                .map(|axis| axis.low)
+                .fold(f64::NEG_INFINITY, f64::max),
             Self::Union(parts) => parts
                 .iter()
                 .map(Self::lower_bound)
-                .fold(f64::NEG_INFINITY, f64::max),
+                .fold(f64::INFINITY, f64::min),
             Self::Field => f64::NEG_INFINITY,
         }
     }
@@ -150,7 +169,12 @@ impl Domain {
             Self::Box(axes) => format!(
                 "dom:v1:box:{}",
                 axes.iter()
-                    .map(|axis| { format!("{:e}..{:e}", axis.low, axis.high) })
+                    .map(|axis| {
+                        format!(
+                            "{:e}..{:e}:{}:{}",
+                            axis.low, axis.high, axis.low_open, axis.high_open
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(",")
             ),
@@ -248,12 +272,16 @@ impl Domain {
     pub fn upper_bound(&self) -> f64 {
         match self {
             Self::Interval(interval) => interval.high,
-            Self::FiniteSet(values) => values.last().copied().unwrap_or(f64::INFINITY),
-            Self::Box(axes) => axes.first().map_or(f64::INFINITY, |axis| axis.high),
+            Self::FiniteSet(values) => values.last().copied().unwrap_or(f64::NAN),
+            Self::Box(axes) if axes.is_empty() => f64::NAN,
+            Self::Box(axes) => axes
+                .iter()
+                .map(|axis| axis.high)
+                .fold(f64::INFINITY, f64::min),
             Self::Union(parts) => parts
                 .iter()
                 .map(Self::upper_bound)
-                .fold(f64::INFINITY, f64::min),
+                .fold(f64::NEG_INFINITY, f64::max),
             Self::Field => f64::INFINITY,
         }
     }

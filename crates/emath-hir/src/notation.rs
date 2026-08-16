@@ -34,7 +34,9 @@ pub struct NotationEntry {
     pub binds: String,
     pub fixity: Fixity,
     pub precedence: u8,
-    pub arity: u8,
+    /// Declared arity; `None` when the bound function's arity is unknown.
+    /// Unknown arity must not be enforced as a guessed 2.
+    pub arity: Option<u8>,
     pub scope: String,
 }
 
@@ -190,7 +192,7 @@ pub fn mount_notation(
             binds: canonical_binds,
             fixity,
             precedence,
-            arity: arity.unwrap_or(2),
+            arity,
             scope: "prelude".into(),
         });
     }
@@ -202,12 +204,15 @@ pub fn mount_notation(
 /// (deferred to sema).
 #[must_use]
 pub fn check_use_arity(entry: &NotationEntry, used: usize) -> Option<NotationIssue> {
-    (usize::from(entry.arity) != used).then(|| NotationIssue {
+    let Some(arity) = entry.arity else {
+        return None; // unknown arity: no enforcement
+    };
+    (usize::from(arity) != used).then(|| NotationIssue {
         code: "E-NAME-021",
         symbol: entry.symbol.clone(),
         detail: format!(
-            "`{}` expects {} operand(s), found {used}",
-            entry.symbol, entry.arity
+            "`{}` expects {arity} operand(s), found {used}",
+            entry.symbol
         ),
     })
 }
