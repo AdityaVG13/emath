@@ -211,6 +211,127 @@ fn content_id_or_empty(id: &ContentId) -> String {
     }
 }
 
+/// Parse the `files` inventory of a serialized artifact manifest
+/// (`emath.artifact.v1`) into `path -> declared content id`.
+///
+/// This is the reader for the deterministic in-tree writer above: it
+/// accepts exactly the writer's shape (a string-string object) and refuses
+/// anything else, so a corrupted manifest cannot silently disable tamper
+/// checks. Used by the independent artifact checker
+/// (`emath artifact check <dir>`).
+pub fn manifest_files_declared(
+    manifest_json: &str,
+) -> Result<BTreeMap<String, String>, ArtifactError> {
+    let bytes = manifest_json.as_bytes();
+    let malformed = |detail: &str| ArtifactError::ManifestMalformed(detail.to_string());
+    let key = b"\"files\"";
+    let Some(relative) = find_subslice(bytes, key) else {
+        return Err(malformed("missing `files` field"));
+    };
+    let mut index = relative + key.len();
+    skip_json_ws(bytes, &mut index);
+    if bytes.get(index) != Some(&b':') {
+        return Err(malformed("`files` field has no colon"));
+    }
+    index += 1;
+    skip_json_ws(bytes, &mut index);
+    if bytes.get(index) != Some(&b'{') {
+        return Err(malformed("`files` field is not an object"));
+    }
+    index += 1;
+    let mut files = BTreeMap::new();
+    loop {
+        skip_json_ws(bytes, &mut index);
+        match bytes.get(index) {
+            Some(b'}') => break,
+            Some(b',') => {
+                index += 1;
+                continue;
+            }
+            Some(b'"') => {}
+            _ => return Err(malformed("unexpected token in `files` object")),
+        }
+        let Some((path, next)) = parse_json_string(bytes, index) else {
+            return Err(malformed("malformed path string in `files` object"));
+        };
+        index = next;
+        skip_json_ws(bytes, &mut index);
+        if bytes.get(index) != Some(&b':') {
+            return Err(malformed("path entry has no colon"));
+        }
+        index += 1;
+        skip_json_ws(bytes, &mut index);
+        let Some((id, next)) = parse_json_string(bytes, index) else {
+            return Err(malformed("malformed content-id string in `files` object"));
+        };
+        index = next;
+        files.insert(path, id);
+    }
+    Ok(files)
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn skip_json_ws(bytes: &[u8], index: &mut usize) {
+    while bytes
+        .get(*index)
+        .is_some_and(|byte| matches!(byte, b' ' | b'\n' | b'\r' | b'\t'))
+    {
+        *index += 1;
+    }
+}
+
+/// Decode one JSON string literal (the writer's own escaping rules:
+/// `\"`, `\\`, `\n`, `\r`, `\t`, `\uXXXX`).
+fn parse_json_string(bytes: &[u8], start: usize) -> Option<(String, usize)> {
+    let mut out = String::new();
+    let mut index = start;
+    if bytes.get(index) != Some(&b'"') {
+        return None;
+    }
+    index += 1;
+    loop {
+        match bytes.get(index)? {
+            b'"' => return Some((out, index + 1)),
+            b'\\' => {
+                match bytes.get(index + 1)? {
+                    b'"' => out.push('"'),
+                    b'\\' => out.push('\\'),
+                    b'n' => out.push('\n'),
+                    b'r' => out.push('\r'),
+                    b't' => out.push('\t'),
+                    b'u' => {
+                        let digits = &bytes[index + 2..index + 6];
+                        if digits.len() < 4 {
+                            return None;
+                        }
+                        let text = std::str::from_utf8(digits).ok()?;
+                        let code = u32::from_str_radix(text, 16).ok()?;
+                        out.push(char::from_u32(code)?);
+                        index += 4;
+                    }
+                    _ => return None,
+                }
+                index += 2;
+            }
+            _ => {
+                let run_start = index;
+                while let Some(byte) = bytes.get(index) {
+                    if matches!(byte, b'"' | b'\\') {
+                        break;
+                    }
+                    index += 1;
+                }
+                out.push_str(std::str::from_utf8(&bytes[run_start..index]).ok()?);
+            }
+        }
+    }
+}
+
 fn target_json(target: &TargetProfile) -> String {
     let triple = match &target.triple {
         Some(value) => quote(value),
@@ -479,6 +600,7 @@ pub enum ArtifactError {
     PublishTargetExists(PathBuf),
     StateDirMissing(PathBuf),
     VerificationMismatch(String),
+    ManifestMalformed(String),
 }
 
 impl std::fmt::Display for ArtifactError {
@@ -498,6 +620,9 @@ impl std::fmt::Display for ArtifactError {
             ),
             Self::VerificationMismatch(detail) => {
                 write!(f, "artifact verification failed: {detail}")
+            }
+            Self::ManifestMalformed(detail) => {
+                write!(f, "artifact manifest is malformed: {detail}")
             }
         }
     }
@@ -753,6 +878,68 @@ mod tests {
         let mine = write_artifact_manifest(&manifest);
         let again = write_artifact_manifest(&manifest);
         assert_eq!(mine, again);
+    }
+
+    #[test]
+    fn manifest_files_declared_round_trips_writer_shape() {
+        let files = BTreeMap::from([
+            ("Cargo.toml".to_string(), content_id_of_text("manifest")),
+            (
+                "src/lib.rs".to_string(),
+                content_id_of_text("#![forbid(unsafe_code)]"),
+            ),
+            (
+                "emath/source-map.json".to_string(),
+                content_id_of_text("source-map"),
+            ),
+            // Escaping must survive the round trip.
+            (
+                "src/weird \"quoted\" \\ path.rs".to_string(),
+                content_id_of_text("escaped"),
+            ),
+        ]);
+        let manifest = ArtifactManifest {
+            schema: SchemaId(ARTIFACT_MANIFEST_SCHEMA.to_string()),
+            artifact_id: content_id_of_text("artifact"),
+            class: ArtifactClass::Native,
+            source_package: content_id_of_text("package"),
+            compiler: content_id_of_text("compiler"),
+            target: TargetProfile {
+                family: "rust".to_string(),
+                triple: None,
+                features: vec!["std".to_string()],
+            },
+            numeric_profile: "strict-f64".to_string(),
+            providers: Vec::new(),
+            evidence_level: EvidenceLevel::E4,
+            public_exports: vec!["new".to_string()],
+            assumptions: Vec::new(),
+            files,
+            source_map: content_id_of_text("sm"),
+            resolution_plan: content_id_of_text("plan"),
+            evidence_bundle: content_id_of_text("ev"),
+        };
+        let text = write_artifact_manifest(&manifest);
+        let parsed = manifest_files_declared(&text).unwrap();
+        assert_eq!(parsed.len(), 4);
+        assert_eq!(
+            parsed.get("emath/source-map.json").unwrap(),
+            &content_id_of_text("source-map").0
+        );
+        assert_eq!(
+            parsed.get("src/weird \"quoted\" \\ path.rs").unwrap(),
+            &content_id_of_text("escaped").0
+        );
+    }
+
+    #[test]
+    fn manifest_files_declared_refuses_malformed_bodies() {
+        assert!(matches!(
+            manifest_files_declared("{\"schema\":\"emath.artifact.v1\"}"),
+            Err(ArtifactError::ManifestMalformed(_))
+        ));
+        assert!(manifest_files_declared("not json").is_err());
+        assert!(manifest_files_declared("{\"files\": [1,2,3]}").is_err());
     }
 
     #[test]

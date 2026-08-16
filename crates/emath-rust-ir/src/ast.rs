@@ -13,6 +13,8 @@ pub enum Item {
     Test(TestDef),
     /// Inherent implementation block.
     Impl(ImplDef),
+    /// Trait definition.
+    Trait(TraitDef),
     /// Raw attribute-only lines such as `#![forbid(unsafe_code)]`.
     RawAttribute(String),
     /// Doc comment lines.
@@ -22,13 +24,25 @@ pub enum Item {
 #[derive(Clone, Debug)]
 pub struct ImplDef {
     pub target: String,
+    pub generics: Vec<String>,
     pub methods: Vec<FnDef>,
     pub doc: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
+pub struct TraitDef {
+    pub name: String,
+    pub generics: Vec<String>,
+    /// Method signatures (name, params, return type) without bodies.
+    pub methods: Vec<(String, Vec<Param>, Ty)>,
+    pub doc: Vec<String>,
+    pub visibility: Visibility,
+}
+
+#[derive(Clone, Debug)]
 pub struct StructDef {
     pub name: String,
+    pub generics: Vec<String>,
     pub fields: Vec<(String, Ty)>,
     pub derives: Vec<String>,
     pub doc: Vec<String>,
@@ -53,6 +67,7 @@ pub struct EnumVariant {
 #[derive(Clone, Debug)]
 pub struct FnDef {
     pub name: String,
+    pub generics: Vec<String>,
     pub params: Vec<Param>,
     pub ret: Ty,
     pub body: Stmt,

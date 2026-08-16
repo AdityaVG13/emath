@@ -4,9 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Dew expression backend adapter: capability census, exact scalar mirror mapping, source mapping, differential oracle, optimization-evidence policy (V5 P02)."
 
 [dependencies]
-emath-core = { path = "../emath-core" }
-emath-ir = { path = "../emath-ir" }
-emath-exec-ir = { path = "../emath-exec-ir" }
+emath-core = { workspace = true }
+emath-ir = { workspace = true }
+
+[lints]
+workspace = true

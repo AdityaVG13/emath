@@ -26,8 +26,16 @@ name = "emath-adapter-dew"
 version = "0.1.0"
 dependencies = [
  "emath-core",
- "emath-exec-ir",
  "emath-ir",
+]
+
+[[package]]
+name = "emath-adapter-rumoca"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+ "emath-runtime",
 ]
 
 [[package]]
@@ -69,6 +77,7 @@ dependencies = [
 name = "emath-builder"
 version = "0.1.0"
 dependencies = [
+ "emath-build",
  "emath-core",
  "emath-ir",
  "emath-sema",
@@ -83,9 +92,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-checker"
+version = "0.1.0"
+dependencies = [
+ "emath-artifact",
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-cli"
 version = "0.1.0"
 dependencies = [
+ "emath-adapter-rumoca",
  "emath-artifact",
  "emath-build",
  "emath-core",
@@ -94,6 +113,7 @@ dependencies = [
  "emath-ir",
  "emath-plan",
  "emath-portfolio",
+ "emath-provider-api",
  "emath-rust-backend",
  "emath-sema",
  "emath-source",
@@ -106,6 +126,14 @@ dependencies = [
 [[package]]
 name = "emath-core"
 version = "0.1.0"
+
+[[package]]
+name = "emath-evidence"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+]
 
 [[package]]
 name = "emath-exec-ir"
@@ -137,6 +165,7 @@ name = "emath-hir"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-ir",
  "emath-syntax",
 ]
 
@@ -175,6 +204,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-macro"
+version = "0.1.0"
+dependencies = [
+ "emath-builder",
+]
+
+[[package]]
 name = "emath-meaning-provider-api"
 version = "0.1.0"
 dependencies = [
@@ -186,9 +222,11 @@ dependencies = [
 name = "emath-plan"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-core",
  "emath-goal",
  "emath-ir",
+ "emath-provider-api",
  "emath-runtime",
 ]
 
@@ -230,6 +268,14 @@ name = "emath-rust-ir"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+]
+
+[[package]]
+name = "emath-schema"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
 ]
 
 [[package]]

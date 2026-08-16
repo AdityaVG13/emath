@@ -1,8 +1,11 @@
-//! Deterministic Rust renderer with byte-range anchors.
+//! Deterministic Rust renderer with byte-range anchors, deterministic file
+//! partitioning and content-based identity (independent of absolute paths).
 
 use crate::ast::{
     escape_ident, BinOp, Block, Expr, Item, Module, Param, Stmt, Ty, UnOp, Visibility,
 };
+use emath_core::{fnv1a64_bytes, ContentId};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Anchor {
@@ -15,6 +18,172 @@ pub struct Anchor {
 pub struct RenderResult {
     pub code: String,
     pub anchors: Vec<Anchor>,
+}
+
+/// A generated file set: the crate root plus deterministic submodules.
+/// File names are derived from module names, never from host paths.
+#[derive(Clone, Debug, Default)]
+pub struct FileSet {
+    pub root: Module,
+    /// Submodules keyed by module name (sorted at render time).
+    pub modules: BTreeMap<String, Module>,
+}
+
+impl FileSet {
+    /// A file set with only the crate root.
+    #[must_use]
+    pub fn root_only(root: Module) -> Self {
+        Self {
+            root,
+            modules: BTreeMap::new(),
+        }
+    }
+
+    /// Content identity of one generated file: path-independent (only the
+    /// relative path and bytes contribute, never absolute host paths).
+    #[must_use]
+    pub fn file_identity(relative_path: &str, contents: &str) -> ContentId {
+        let mut payload = String::new();
+        payload.push_str("file:v1:");
+        payload.push_str(relative_path);
+        payload.push('\n');
+        payload.push_str(contents);
+        ContentId(format!(
+            "fnv1a64:{:016x}",
+            fnv1a64_bytes(payload.as_bytes())
+        ))
+    }
+}
+
+/// Renders the file set partitioned into deterministic per-file contents:
+/// `src/lib.rs` (module declarations + crate-root items) plus
+/// `src/<module>.rs` per submodule. Both the byte content and the relative
+/// file name (never absolute host paths) determine the identity.
+#[must_use]
+pub fn render_file_set_partitioned(file_set: &FileSet) -> BTreeMap<String, String> {
+    let mut files = BTreeMap::new();
+    // Root: crate items plus `pub mod` declarations in sorted order.
+    let mut code = Code {
+        buf: String::new(),
+        indent: 0,
+        anchors: Vec::new(),
+    };
+    for (index, name) in file_set.modules.keys().enumerate() {
+        if index > 0 {
+            code.blank();
+        }
+        code.line(&format!("pub mod {name};"));
+    }
+    if !file_set.modules.is_empty() && !file_set.root.items.is_empty() {
+        code.blank();
+    }
+    for (index, item) in file_set.root.items.iter().enumerate() {
+        if index > 0
+            && !matches!(
+                file_set.root.items[index - 1],
+                Item::DocComment(_) | Item::RawAttribute(_)
+            )
+        {
+            code.blank();
+        }
+        render_item(&mut code, item);
+    }
+    files.insert("src/lib.rs".to_string(), code.buf);
+    for (name, module) in &file_set.modules {
+        let mut module_code = Code {
+            buf: String::new(),
+            indent: 0,
+            anchors: Vec::new(),
+        };
+        for (index, item) in module.items.iter().enumerate() {
+            if index > 0
+                && !matches!(
+                    module.items[index - 1],
+                    Item::DocComment(_) | Item::RawAttribute(_)
+                )
+            {
+                module_code.blank();
+            }
+            render_item(&mut module_code, item);
+        }
+        files.insert(format!("src/{name}.rs"), module_code.buf);
+    }
+    files
+}
+
+/// Renders a file set into a single `RenderResult`; anchors carry the
+/// relative file name so the source map is complete across partitions
+/// (`lib.rs:fn x`, `src/solver.rs:struct Y`).
+#[must_use]
+pub fn render_file_set(file_set: &FileSet) -> RenderResult {
+    let partitioned = render_file_set_partitioned(file_set);
+    let mut out = String::new();
+    let mut anchors = Vec::new();
+    for (relative_path, contents) in &partitioned {
+        let mut offset = 0u64;
+        let prefix = format!("%F {relative_path} %\n");
+        out.push_str(&prefix);
+        offset += u64::try_from(prefix.len()).unwrap_or(u64::MAX);
+        out.push_str(contents);
+        // Reconstruct anchors for this file by rendering it standalone.
+        let standalone = if relative_path == "src/lib.rs" {
+            render_module(&file_set.root)
+        } else {
+            let name = relative_path
+                .strip_prefix("src/")
+                .and_then(|path| path.strip_suffix(".rs"))
+                .unwrap_or("module");
+            let module = file_set.modules.get(name).cloned().unwrap_or_default();
+            render_module(&module)
+        };
+        for anchor in &standalone.anchors {
+            anchors.push(Anchor {
+                label: format!("{relative_path}:{}", anchor.label),
+                start: u32::try_from(offset + u64::from(anchor.start)).unwrap_or(u32::MAX),
+                end: u32::try_from(offset + u64::from(anchor.end)).unwrap_or(u32::MAX),
+            });
+        }
+    }
+    RenderResult { code: out, anchors }
+}
+
+/// Anchor coverage: every public function/struct/enum/trait must carry a
+/// byte-range anchor. Returns the labels of items missing anchors
+/// (`E-CODEGEN-004` source-map gap).
+#[must_use]
+pub fn coverage_gaps(module: &Module) -> Vec<String> {
+    let mut missing = Vec::new();
+    for item in &module.items {
+        match item {
+            Item::Struct(def) => {
+                if def.visibility == Visibility::Public {
+                    missing.push(format!("struct {}", def.name));
+                }
+            }
+            Item::Enum(def) => {
+                if def.visibility == Visibility::Public {
+                    missing.push(format!("enum {}", def.name));
+                }
+            }
+            Item::Fn(def) => {
+                if def.visibility == Visibility::Public {
+                    missing.push(format!("fn {}", def.name));
+                }
+            }
+            Item::Trait(def) => {
+                if def.visibility == Visibility::Public {
+                    missing.push(format!("trait {}", def.name));
+                }
+            }
+            Item::Impl(_) | Item::Test(_) | Item::RawAttribute(_) | Item::DocComment(_) => {}
+        }
+    }
+    // Subtract covered anchors.
+    let result = render_module(module);
+    for anchor in &result.anchors {
+        missing.retain(|label| label != &anchor.label);
+    }
+    missing
 }
 
 struct Code {
@@ -103,7 +272,8 @@ fn render_item(code: &mut Code, item: &Item) {
                 Visibility::Public => "pub ",
                 Visibility::Private => "",
             };
-            code.line(&format!("{visibility}struct {} {{", def.name));
+            let generics = render_generics(&def.generics);
+            code.line(&format!("{visibility}struct {}{generics} {{", def.name));
             code.indent += 1;
             for (name, ty) in &def.fields {
                 code.line(&format!("{}: {},", escape_ident(name), render_ty(ty)));
@@ -153,8 +323,9 @@ fn render_item(code: &mut Code, item: &Item) {
                 .map(render_param)
                 .collect::<Vec<_>>()
                 .join(", ");
+            let generics = render_generics(&def.generics);
             code.line(&format!(
-                "{visibility}fn {}({params}) -> {} {{",
+                "{visibility}fn {}{generics}({params}) -> {} {{",
                 escape_ident(&def.name),
                 render_ty(&def.ret)
             ));
@@ -163,6 +334,32 @@ fn render_item(code: &mut Code, item: &Item) {
             code.indent -= 1;
             code.line("}");
             code.anchor(&format!("fn {}", def.name), start);
+        }
+        Item::Trait(def) => {
+            let start = code.buf.len();
+            render_doc(code, &def.doc);
+            let visibility = match def.visibility {
+                Visibility::Public => "pub ",
+                Visibility::Private => "",
+            };
+            let generics = render_generics(&def.generics);
+            code.line(&format!("{visibility}trait {}{generics} {{", def.name));
+            code.indent += 1;
+            for (name, params, ret) in &def.methods {
+                let params = params
+                    .iter()
+                    .map(render_param)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                code.line(&format!(
+                    "fn {}({params}) -> {};",
+                    escape_ident(name),
+                    render_ty(ret)
+                ));
+            }
+            code.indent -= 1;
+            code.line("}");
+            code.anchor(&format!("trait {}", def.name), start);
         }
         Item::Test(def) => {
             let start = code.buf.len();
@@ -178,7 +375,8 @@ fn render_item(code: &mut Code, item: &Item) {
         Item::Impl(def) => {
             let start = code.buf.len();
             render_doc(code, &def.doc);
-            code.line(&format!("impl {} {{", def.target));
+            let generics = render_generics(&def.generics);
+            code.line(&format!("impl{generics} {} {{", def.target));
             code.indent += 1;
             for method in &def.methods {
                 render_doc(code, &method.doc);
@@ -195,8 +393,9 @@ fn render_item(code: &mut Code, item: &Item) {
                     .map(render_param)
                     .collect::<Vec<_>>()
                     .join(", ");
+                let method_generics = render_generics(&method.generics);
                 code.line(&format!(
-                    "{visibility}fn {}({params}) -> {} {{",
+                    "{visibility}fn {}{method_generics}({params}) -> {} {{",
                     escape_ident(&method.name),
                     render_ty(&method.ret)
                 ));
@@ -209,6 +408,16 @@ fn render_item(code: &mut Code, item: &Item) {
             code.line("}");
             code.anchor(&format!("impl {}", def.target), start);
         }
+    }
+}
+
+/// Renders a generic parameter list `<A, B>` (empty list renders nothing).
+#[must_use]
+pub fn render_generics(generics: &[String]) -> String {
+    if generics.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", generics.join(", "))
     }
 }
 
@@ -479,6 +688,7 @@ mod tests {
             items: vec![
                 Item::Struct(StructDef {
                     name: "AffinePolicy".into(),
+                    generics: vec![],
                     fields: vec![("scale".into(), Ty::F64), ("bias".into(), Ty::F64)],
                     derives: vec!["Clone".into(), "Debug".into()],
                     doc: vec!["An affine policy.".into()],
@@ -486,6 +696,7 @@ mod tests {
                 }),
                 Item::Fn(FnDef {
                     name: "score".into(),
+                    generics: vec![],
                     params: vec![Param {
                         name: "x".into(),
                         ty: Ty::F64,
@@ -533,5 +744,164 @@ mod tests {
             right: Box::new(Expr::F64(0x4000_0000_0000_0000)),
         });
         assert_eq!(rendered, "x.powf(2.0)");
+    }
+
+    #[test]
+    fn generics_render_deterministically() {
+        let module = Module {
+            items: vec![
+                Item::Struct(StructDef {
+                    name: "Pair".into(),
+                    generics: vec!["T".into()],
+                    fields: vec![
+                        ("first".into(), Ty::Named("T".into())),
+                        ("second".into(), Ty::Named("T".into())),
+                    ],
+                    derives: vec![],
+                    doc: vec![],
+                    visibility: Visibility::Public,
+                }),
+                Item::Trait(crate::ast::TraitDef {
+                    name: "Evaluate".into(),
+                    generics: vec!["Input".into()],
+                    methods: vec![(
+                        "value".to_string(),
+                        vec![Param {
+                            name: "x".into(),
+                            ty: Ty::Named("Input".into()),
+                        }],
+                        Ty::F64,
+                    )],
+                    doc: vec![],
+                    visibility: Visibility::Public,
+                }),
+            ],
+        };
+        let first = render_module(&module);
+        let second = render_module(&module);
+        assert_eq!(first.code, second.code);
+        assert!(first.code.contains("pub struct Pair<T> {"));
+        assert!(first.code.contains("pub trait Evaluate<Input> {"));
+        assert!(first.code.contains("fn value(x: Input) -> f64;"));
+        assert!(first
+            .anchors
+            .iter()
+            .any(|anchor| anchor.label == "trait Evaluate"));
+    }
+
+    #[test]
+    fn file_sets_partition_deterministically() {
+        let module = Module {
+            items: vec![Item::Fn(FnDef {
+                name: "score".into(),
+                generics: vec![],
+                params: vec![Param {
+                    name: "x".into(),
+                    ty: Ty::F64,
+                }],
+                ret: Ty::F64,
+                body: Stmt::Expr(Expr::Var("x".into())),
+                doc: vec![],
+                visibility: Visibility::Public,
+                attrs: vec![],
+            })],
+        };
+        let file_set = FileSet {
+            root: Module { items: vec![] },
+            modules: BTreeMap::from([
+                ("solver".to_string(), module.clone()),
+                ("io".to_string(), module.clone()),
+            ]),
+        };
+        let first = render_file_set_partitioned(&file_set);
+        let second = render_file_set_partitioned(&file_set);
+        assert_eq!(first, second);
+        assert!(first.contains_key("src/lib.rs"));
+        assert!(first.contains_key("src/solver.rs"));
+        assert!(first["src/lib.rs"].contains("pub mod io;"));
+        assert!(first["src/lib.rs"].contains("pub mod solver;"));
+    }
+
+    #[test]
+    fn identity_is_path_independent() {
+        let module = Module {
+            items: vec![Item::Fn(FnDef {
+                name: "score".into(),
+                generics: vec![],
+                params: vec![],
+                ret: Ty::F64,
+                body: Stmt::Expr(Expr::F64(0x3ff0_0000_0000_0000)),
+                doc: vec![],
+                visibility: Visibility::Public,
+                attrs: vec![],
+            })],
+        };
+        let partitions = render_file_set_partitioned(&FileSet {
+            root: module.clone(),
+            modules: BTreeMap::new(),
+        });
+        let contents = partitions.get("src/lib.rs").unwrap();
+        // Identity depends only on relative path + bytes, never the host cwd.
+        let identity = FileSet::file_identity("src/lib.rs", contents);
+        assert_eq!(FileSet::file_identity("src/lib.rs", contents), identity);
+        assert_ne!(FileSet::file_identity("src/other.rs", contents), identity);
+        assert_eq!(
+            FileSet::file_identity("src/lib.rs", "x"),
+            FileSet::file_identity("src/lib.rs", "x")
+        );
+        let _ = module;
+    }
+
+    #[test]
+    fn coverage_gaps_catch_uncovered_public_items() {
+        // A module with only a doc comment has no items to render: the gap
+        // detector must still behave (renders to an empty anchor set).
+        let module = Module {
+            items: vec![Item::DocComment("orphan".into())],
+        };
+        assert!(coverage_gaps(&module).is_empty());
+        // Every rendered pub fn is covered.
+        let covered = Module {
+            items: vec![Item::Fn(FnDef {
+                name: "score".into(),
+                generics: vec![],
+                params: vec![],
+                ret: Ty::F64,
+                body: Stmt::Expr(Expr::F64(0x3ff0_0000_0000_0000)),
+                doc: vec![],
+                visibility: Visibility::Public,
+                attrs: vec![],
+            })],
+        };
+        assert!(coverage_gaps(&covered).is_empty());
+    }
+
+    #[test]
+    fn file_set_render_anchors_carry_file_names() {
+        let module = Module {
+            items: vec![Item::Fn(FnDef {
+                name: "score".into(),
+                generics: vec![],
+                params: vec![],
+                ret: Ty::F64,
+                body: Stmt::Expr(Expr::F64(0x3ff0_0000_0000_0000)),
+                doc: vec![],
+                visibility: Visibility::Public,
+                attrs: vec![],
+            })],
+        };
+        let file_set = FileSet {
+            root: module.clone(),
+            modules: BTreeMap::from([("aux".to_string(), module)]),
+        };
+        let rendered = render_file_set(&file_set);
+        assert!(rendered
+            .anchors
+            .iter()
+            .any(|anchor| anchor.label == "src/lib.rs:fn score"));
+        assert!(rendered
+            .anchors
+            .iter()
+            .any(|anchor| anchor.label == "src/aux.rs:fn score"));
     }
 }

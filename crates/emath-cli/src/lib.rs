@@ -7,9 +7,12 @@
 
 mod genesis_cmd;
 
-use emath_artifact::{verify_artifact, StagedFile, Staging};
 use emath_build::{build_file, BuildOptions};
 use emath_core::Diagnostics;
+use emath_plan::{
+    emit_provider_trait, lift_missing, plan as run_planner, PlannerConfig, PlanningOutcome,
+};
+use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::session::CompilerSession;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -144,7 +147,133 @@ pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
     }
 }
 
-/// `artifact <dir> check`: re-verify fingerprints from the published
+/// `planner <file.emath> [--json] [--parametric]`: run the deterministic
+/// planner over the (empty by default) provider registry and print the
+/// machine inspection: candidates, exclusions with reasons, selected plan,
+/// checks, budget and artifact disposition. With `--parametric`, goals are
+/// inspected under the parametric fallback, lifting missing providers to a
+/// compilable Rust trait.
+pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let Ok(package) = session.load_package(path) else {
+        eprintln!("error: cannot read {}", path.display());
+        return EXIT_USAGE;
+    };
+    let result = session.plan(package.file);
+    if result.diagnostics.has_errors() {
+        print_diagnostics(&result.diagnostics);
+        return EXIT_REFUSED;
+    }
+    let registry = ProviderRegistry::new(RegistryConfig::static_only());
+    let mut config = PlannerConfig::default();
+    if parametric {
+        config.policy = "deterministic-planner.v1:parametric".to_string();
+    }
+    for goal in &result.package.goals {
+        let mut goal = goal.clone();
+        if parametric {
+            goal.requirements.fallback = emath_ir::FallbackPolicy::Parametric;
+        }
+        let outcome = run_planner(&goal, &registry, &config);
+        match &outcome {
+            PlanningOutcome::Selected { plan, inspection } => {
+                if json {
+                    println!("{}", inspection.to_json());
+                }
+                println!(
+                    "plan goal={} disposition={} candidates={} root={} checks={}",
+                    goal.target,
+                    plan.artifact_class,
+                    inspection.candidate_count(),
+                    plan.root.index(),
+                    inspection.checks.join(",")
+                );
+            }
+            PlanningOutcome::NoEligible {
+                reasons,
+                disposition,
+                inspection,
+            } => {
+                if json {
+                    println!("{}", inspection.to_json());
+                }
+                for reason in reasons {
+                    println!("excluded: {reason}");
+                }
+                println!(
+                    "disposition goal={} class={}",
+                    goal.target,
+                    disposition.name()
+                );
+                if *disposition == emath_plan::ArtifactDisposition::Parametric {
+                    let spec = lift_missing(&goal.target, &["unknown-operator".to_string()]);
+                    println!("{}", emit_provider_trait(&spec));
+                }
+            }
+            PlanningOutcome::Exhausted {
+                continuation,
+                disposition,
+                inspection,
+            } => {
+                if json {
+                    println!("{}", inspection.to_json());
+                }
+                println!(
+                    "exhausted goal={} class={} continuation={}",
+                    goal.target,
+                    disposition.name(),
+                    continuation
+                );
+            }
+        }
+    }
+    EXIT_OK
+}
+
+/// `import modelica <file.mo> [--json]`: retain a Modelica subset source as
+/// foreign-model declarations with adapter identity. No source rewrite.
+pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("error: cannot read {}: {error}", path.display());
+            return EXIT_USAGE;
+        }
+    };
+    match emath_adapter_rumoca::import::import_modelica(&source) {
+        Ok(declarations) => {
+            if json {
+                let mut object = emath_artifact::JsonWriter::object();
+                object.string("command", "import modelica");
+                object.int("declarations", declarations.len() as u64);
+                let mut names = String::new();
+                for declaration in &declarations {
+                    let entry = format!("{} ", declaration.name);
+                    names.push_str(&entry);
+                }
+                object.string("models", &names);
+                println!("{}", object.finish());
+            }
+            for declaration in &declarations {
+                println!(
+                    "foreign {} adapter={} parameters={} equations={} identity={:016x}",
+                    declaration.name,
+                    declaration.adapter,
+                    declaration.parameters.join(","),
+                    declaration.equations,
+                    declaration.content_identity()
+                );
+            }
+            EXIT_OK
+        }
+        Err(error) => {
+            eprintln!("error: {} {}", error.code, error.message);
+            EXIT_REFUSED
+        }
+    }
+}
+
+/// `artifact check <dir>`: re-verify fingerprints from the published
 /// artifact directory (`<dir>/emath/<artifact-id>`).
 pub fn artifact_check(dir: &Path) -> u8 {
     let artifact_root = dir.join("emath");
@@ -162,20 +291,6 @@ pub fn artifact_check(dir: &Path) -> u8 {
         if !entry.path().is_dir() {
             continue;
         }
-        let mut files = Vec::new();
-        for root in required_local(&entry.path()) {
-            let Ok(bytes) = std::fs::read(&root) else {
-                eprintln!("error: unreadable {}", root.display());
-                ok = false;
-                continue;
-            };
-            files.push(StagedFile {
-                relative_path: root
-                    .strip_prefix(entry.path())
-                    .map_or_else(|_| "?".to_string(), |p| p.to_string_lossy().into_owned()),
-                bytes,
-            });
-        }
         match verify_one_artifact(&entry.path()) {
             Ok(()) => println!("artifact {id}: verified"),
             Err(detail) => {
@@ -191,28 +306,30 @@ pub fn artifact_check(dir: &Path) -> u8 {
     }
 }
 
-fn required_local(root: &std::path::Path) -> Vec<PathBuf> {
-    emath_artifact::required_artifact_paths()
-        .iter()
-        .map(|p| root.join(p))
-        .collect()
-}
-
+/// Independent fingerprint verification against the *declared* manifest:
+/// every file the manifest lists must exist on disk with its declared
+/// content id, and every required path must be present. (The recomputed
+/// manifest identity, E-EVID-102, lives in `emath-checker`.)
 fn verify_one_artifact(root: &std::path::Path) -> Result<(), String> {
-    let mut files = Vec::new();
-    for path in required_local(root) {
-        let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-        files.push(StagedFile {
-            relative_path: path
-                .strip_prefix(root)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            bytes,
-        });
+    let manifest_path = root.join("emath/artifact-manifest.json");
+    let manifest_bytes = std::fs::read(&manifest_path).map_err(|error| error.to_string())?;
+    let manifest_json = String::from_utf8(manifest_bytes).map_err(|error| error.to_string())?;
+    let declared = emath_artifact::manifest_files_declared(&manifest_json)
+        .map_err(|error| error.to_string())?;
+    for (path, declared_id) in &declared {
+        let bytes = std::fs::read(root.join(path))
+            .map_err(|error| format!("cannot read `{path}`: {error}"))?;
+        let actual = emath_core::bootstrap_content_id(&bytes);
+        if actual.0 != *declared_id {
+            return Err(format!("`{path}` fingerprint changed (tamper detected)"));
+        }
     }
-    let staging: Staging =
-        emath_artifact::stage(&files, None).map_err(|error| error.to_string())?;
-    verify_artifact(root, &staging).map_err(|error| error.to_string())
+    for required in emath_artifact::required_artifact_paths() {
+        if !root.join(required).is_file() {
+            return Err(format!("missing required path `{required}`"));
+        }
+    }
+    Ok(())
 }
 
 /// `architecture`: provider-neutral pipeline description.
@@ -235,11 +352,18 @@ usage:
       parse + admit, no codegen
   emath plan <file.emath> [--json]
       admit + goals + deterministic native resolution plan
+  emath planner <file.emath> [--json] [--parametric]
+      deterministic planner inspection: candidates, exclusions, selected
+      plan, checks, budget, disposition; --parametric lifts missing
+      providers to a compilable Rust trait (Phase 6)
   emath build <file.emath> --out <dir> [--verify] [--json]
       full pipeline; publishes artifact under <dir>/emath/<artifact-id>
       --verify runs `cargo test` on the staged crate before publish
-  emath artifact <dir> check
+  emath artifact check <dir>
       re-verify every published artifact's fingerprints (independent checker)
+  emath import modelica <file.mo> [--json]
+      retain a Modelica subset source as foreign-model declarations with
+      adapter identity (no silent source rewrite)
   emath parse --forest <file.emath> [--out <dir>]
       genesis glyphs + bounded parse forest (parse-forest.json)
   emath signature <file.emath> [--out <dir>]
@@ -283,6 +407,23 @@ pub fn run(args: &[String]) -> u8 {
             match path {
                 Some(path) => plan(&path, json),
                 None => usage("plan <file.emath> [--json]"),
+            }
+        }
+        "planner" => {
+            let mut path = None;
+            let mut json = false;
+            let mut parametric = false;
+            for arg in &args[1..] {
+                match arg.as_str() {
+                    "--json" => json = true,
+                    "--parametric" => parametric = true,
+                    other if other.starts_with('-') => {}
+                    other => path = Some(PathBuf::from(other)),
+                }
+            }
+            match path {
+                Some(path) => planner_cmd(&path, json, parametric),
+                None => usage("planner <file.emath> [--json] [--parametric]"),
             }
         }
         "build" => {
@@ -367,11 +508,19 @@ pub fn run(args: &[String]) -> u8 {
                 usage("portfolio show PORTFOLIO_ID --dir <dir>")
             }
         }
+        "import" => {
+            if args.get(1).is_some_and(|sub| sub == "modelica") && args.len() >= 3 {
+                let json = args[2..].iter().any(|arg| arg == "--json");
+                import_modelica_cmd(&PathBuf::from(&args[2]), json)
+            } else {
+                usage("import modelica <file.mo> [--json]")
+            }
+        }
         "artifact" => {
             if args.get(1).is_some_and(|c| c == "check") && args.len() >= 3 {
                 artifact_check(&PathBuf::from(&args[2]))
             } else {
-                usage("artifact <dir> check")
+                usage("artifact check <dir>")
             }
         }
         "architecture" => architecture(),
@@ -517,5 +666,84 @@ mod tests {
     fn file_id_is_typed() {
         let file = emath_core::FileId(0);
         assert_eq!(file.0, 0);
+    }
+
+    #[test]
+    fn planner_inspects_and_lifts_parametric() {
+        let dir =
+            std::env::temp_dir().join(format!("emath-cli-test-planner-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("planner.emath");
+        std::fs::write(
+            &file,
+            "emath custom <PlannerDemo> as function:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = x * x
+    requests:
+        evaluate <y>:
+            produce rust.library
+",
+        )
+        .unwrap();
+        assert_eq!(
+            run(&["planner".to_string(), file.display().to_string()]),
+            EXIT_OK
+        );
+        assert_eq!(
+            run(&[
+                "planner".to_string(),
+                file.display().to_string(),
+                "--json".to_string(),
+                "--parametric".to_string()
+            ]),
+            EXIT_OK
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_modelica_retains_foreign_declaration() {
+        let dir = std::env::temp_dir().join(format!("emath-cli-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("mass_spring.mo");
+        std::fs::write(
+            &file,
+            "model MassSpring\n  parameter Real m = 1;\n  Real x;\nequation\n  der(x) = 0;\nend MassSpring;\n",
+        )
+        .unwrap();
+        assert_eq!(
+            run(&[
+                "import".to_string(),
+                "modelica".to_string(),
+                file.display().to_string()
+            ]),
+            EXIT_OK
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_modelica_unsupported_construct_refused() {
+        let dir = std::env::temp_dir().join(format!("emath-cli-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("sampled.mo");
+        std::fs::write(
+            &file,
+            "model Sampled\n  Real x;\nequation\n  x = sample(0, 1);\nend Sampled;\n",
+        )
+        .unwrap();
+        assert_eq!(
+            run(&[
+                "import".to_string(),
+                "modelica".to_string(),
+                file.display().to_string()
+            ]),
+            EXIT_REFUSED
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

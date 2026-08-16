@@ -1247,6 +1247,7 @@ fn admit_constructor(
         preconditions,
         assignments,
         postconditions,
+        defaults: BTreeMap::new(),
         error_type,
         is_public: true,
         source,

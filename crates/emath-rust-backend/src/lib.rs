@@ -117,6 +117,7 @@ impl BackendInput<'_> {
             ));
             items.push(Item::Struct(StructDef {
                 name: name.clone(),
+                generics: vec![],
                 fields: state_names.iter().cloned().zip(state_types).collect(),
                 derives: vec!["Clone".to_string(), "Debug".to_string()],
                 doc: Vec::new(),
@@ -240,6 +241,7 @@ impl BackendInput<'_> {
 
                 methods.push(FnDef {
                     name: escape_ident(&constructor.name),
+                    generics: vec![],
                     params,
                     ret: Ty::Result {
                         ok: Box::new(Ty::SelfType),
@@ -301,6 +303,7 @@ impl BackendInput<'_> {
                 evaluate_targets.push(target.clone());
                 methods.push(FnDef {
                     name: escape_ident(&target),
+                    generics: vec![],
                     params,
                     ret: Ty::F64,
                     body,
@@ -319,6 +322,7 @@ impl BackendInput<'_> {
             if !methods.is_empty() {
                 items.push(Item::Impl(ImplDef {
                     target: declaration.name.leaf().to_string(),
+                    generics: vec![],
                     methods,
                     doc: Vec::new(),
                 }));
