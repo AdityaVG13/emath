@@ -1,4 +1,4 @@
-//! Profile-validation witnesses for: no_std refuses unsafe code
+//! Profile-validation witnesses: no_std refuses unsafe code
 //! exactly like every other profile (E-CODEGEN-002).
 
 use emath_rust_ir::ast::{Block, FnDef, Item, Module, Stmt, Ty, Visibility};

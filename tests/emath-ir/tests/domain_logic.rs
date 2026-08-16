@@ -1,4 +1,4 @@
-//! Negative/positive witnesses for domain, numeric, shape and
+//! Negative/positive witnesses for the domain, numeric, shape and
 //! binder-logic fixes (wrong answers with no panic).
 
 use emath_core::QualifiedName;

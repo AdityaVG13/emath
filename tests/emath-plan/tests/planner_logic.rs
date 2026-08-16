@@ -1,4 +1,4 @@
-//! Planner/filter witnesses for: budget exhaustion by compatible
+//! Planner/filter witnesses: budget exhaustion by compatible
 //! count, produce-exact capability matching, requirement polarity and
 //! lossy-path BFS continuation.
 

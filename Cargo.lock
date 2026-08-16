@@ -360,15 +360,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-tuning"
-version = "0.1.0"
-dependencies = [
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
-name = "emath--tests"
+name = "emath-trust-gates"
 version = "0.1.0"
 dependencies = [
  "emath-adapter-dew",
@@ -379,6 +371,14 @@ dependencies = [
  "emath-plugin-sdk",
  "emath-provider-api",
  "emath-runtime",
+]
+
+[[package]]
+name = "emath-tuning"
+version = "0.1.0"
+dependencies = [
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]

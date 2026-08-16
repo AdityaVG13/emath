@@ -1,0 +1,15 @@
+[package]
+name = "emath-trust-gates"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+emath-adapter-dew = { path = "../../crates/emath-adapter-dew" }
+emath-adapter-rumoca = { path = "../../crates/emath-adapter-rumoca" }
+emath-core = { path = "../../crates/emath-core" }
+emath-evidence = { path = "../../crates/emath-evidence" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-plugin-sdk = { path = "../../crates/emath-plugin-sdk" }
+emath-provider-api = { path = "../../crates/emath-provider-api" }
+emath-runtime = { path = "../../crates/emath-runtime" }
