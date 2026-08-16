@@ -1,4 +1,6 @@
-# emath CI: lint / test / validate on push and pull_request.
+# emath CI: lint / test / validate. Run manually via workflow_dispatch so it
+# does not burn budget on every commit; project maintainers can also re-enable
+# automatic triggers here if desired.
 #
 # Landmark split (mock-free honesty):
 #   - lint      fmt + clippy (no cargo test here)
@@ -17,8 +19,7 @@
 name: CI
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always

@@ -1,0 +1,49 @@
+emath custom <AffinePolicy> as policy:
+    inputs:
+        x: Float64
+
+    outputs:
+        score: Float64
+
+    state:
+        scale: Float64
+        bias: Float64
+
+    constructors:
+        public fn new(scale: Float64, bias: Float64) -> Result<Self, ConfigError>:
+            require scale >= 0
+            require is_finite(scale)
+            require is_finite(bias)
+
+            Self:
+                scale = scale
+                bias = bias
+
+    definitions:
+        score = state.scale * x + state.bias
+
+    requests:
+        evaluate <score>:
+            produce rust.library
+
+    exports:
+        public constructor new
+        public function score
+
+    tests:
+        example score_is_seven:
+            given x = 3.0
+            given scale = 1.0
+            given bias = 4.0
+            expect score == 7.0
+        example fractional_score:
+            given x = 1.5
+            given scale = 2.0
+            given bias = 0.5
+            expect score == 3.5
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+        safety forbid-unsafe

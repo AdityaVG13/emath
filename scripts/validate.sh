@@ -32,7 +32,7 @@ echo "no fork-type identifiers in Phase 1 crates or durable schemas"
 echo "== artifact determinism =="
 ARTIFACT_DIR="$TMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"
-cargo run -q -p emath-cli -- build implementation/tests/valid/stateful.emath \
+cargo run -q -p emath-cli -- build tests/valid/stateful.emath \
     --out "$ARTIFACT_DIR" --verify >/dev/null
 LIB="$(find "$ARTIFACT_DIR/emath" -name lib.rs -path '*/src/lib.rs' | head -n1)"
 if ! diff -u examples/generated/affine-policy-rs/src/lib.rs "$LIB" >/dev/null; then
@@ -59,10 +59,10 @@ assert_invalid() {
         exit 1
     fi
 }
-assert_invalid implementation/tests/invalid/duplicate_output.emath "E-NAME-020"
-assert_invalid implementation/tests/invalid/missing_state_assignment.emath "E-CTOR-030"
-assert_invalid implementation/tests/invalid/recursive_kind.emath "E-KIND-100"
-assert_invalid implementation/tests/invalid/unit_mismatch.emath "E-UNIT-001"
+assert_invalid tests/invalid/duplicate_output.emath "E-NAME-020"
+assert_invalid tests/invalid/missing_state_assignment.emath "E-CTOR-030"
+assert_invalid tests/invalid/recursive_kind.emath "E-KIND-100"
+assert_invalid tests/invalid/unit_mismatch.emath "E-UNIT-001"
 echo "all invalid fixtures refused with the documented codes"
 
 echo "== semantic genesis capstone =="
