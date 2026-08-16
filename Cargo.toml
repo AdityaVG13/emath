@@ -22,6 +22,7 @@ members = [
   "crates/emath-evidence",
   "crates/emath-hir",
   "crates/emath-schema",
+  "crates/emath-adapter-dew",
   "crates/emath-cli",
   "crates/emath-term",
   "crates/emath-world-ir",
@@ -66,6 +67,7 @@ emath-checker = { path = "crates/emath-checker" }
 emath-evidence = { path = "crates/emath-evidence" }
 emath-hir = { path = "crates/emath-hir" }
 emath-schema = { path = "crates/emath-schema" }
+emath-adapter-dew = { path = "crates/emath-adapter-dew" }
 emath-cli = { path = "crates/emath-cli" }
 emath-term = { path = "crates/emath-term" }
 emath-world-ir = { path = "crates/emath-world-ir" }
