@@ -7,6 +7,10 @@ tests/*/target/
 .zerostack/
 .scratch-*/
 
+# skill-loop progress + module-coupling-topology campaign books
+.skill-loop*
+/.module-coupling-topology/
+
 # bv (beads viewer) local config and caches
 .bv/
 
