@@ -1,51 +1,32 @@
-use core::units::*
+# 09_dynamic_mass_spring — Phase 3 acceptance demo model (mass-spring).
+#
+# Lowering: crates/emath-adapter-rumoca lowers the equivalent structural
+# model into a causal DAE plan (matching + tearing provenance) and executes
+# a deterministic forward-Euler simulation through the runtime Outcome/
+# Budget contract. The kind `dynamic-model` is documented by
+# implementation/schemas/dynamic-model-kind-v1.schema.json; full text
+# parsing arrives with the lossless parser, until then
+# the structural model is the producer API.
+emath custom <MassSpring> as dynamic-model:
+    kinds:
+        continuous time
 
-emath custom <MassSpringDamper> as dynamic_model:
-    inputs:
-        force: Force
-
-    outputs:
-        position: Length
-        velocity: Velocity
+    parameters:
+        m: Float64          # kg
+        c: Float64          # kg/s
+        k: Float64          # kg/s^2
 
     state:
-        mass: Positive<Mass>
-        damping: NonNegative<Damping>
-        stiffness: NonNegative<Stiffness>
-        position: Length = 0 m
-        velocity: Velocity = 0 m/s
+        x: Float64          # m
+        v: Float64          # m/s
 
-    constructors:
-        public fn new(
-            mass: Mass,
-            damping: Damping,
-            stiffness: Stiffness,
-        ) -> Result<Self, ConfigError>:
-            require mass > 0 kg
-            require damping >= 0 N*s/m
-            require stiffness >= 0 N/m
-
-            Self:
-                mass = mass
-                damping = damping
-                stiffness = stiffness
-                position = 0 m
-                velocity = 0 m/s
+    initial:
+        x = 1
+        v = 0
 
     equations:
-        derivative(position) == velocity
-        state.mass * derivative(velocity) == force - state.damping * velocity - state.stiffness * position
+        der(x) = v
+        m * der(v) = -c * v - k * x
 
-    requests:
-        simulate <equations>:
-            over Time = Interval(0 s, 10 s)
-            outputs [position, velocity]
-            require error <= 1e-6
-
-    strategies:
-        prefer [rumoca::structural, numerical::adaptive_ode]
-        fallback parametric
-
-    compile:
-        target rust
-        profile library
+    accepts:
+        answer: structural-plan + simulation-trajectory

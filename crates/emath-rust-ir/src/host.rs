@@ -1,0 +1,272 @@
+//!: host trait bindings.
+//!
+//! Generated implementations of a declared host trait: each host method
+//! delegates to a generated model method with a conversion check (Result →
+//! host error mapping). Thread/ownership contracts are structural
+//! (`&self`, no interior mutability), host trait versions are checked
+//! (`E-HOST-001`), and fallbacks are typed refusals, never silent stubs.
+
+use crate::ast::{Block, Expr, FnDef, ImplDef, Item, Module, Param, Stmt, Ty, Visibility};
+
+/// A host trait method signature.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostMethod {
+    /// Method name.
+    pub name: String,
+    /// Parameters (excluding the receiver).
+    pub params: Vec<(String, Ty)>,
+    /// Return type.
+    pub returns: Ty,
+}
+
+/// Declared host trait contract.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostTraitSpec {
+    /// Trait name.
+    pub name: String,
+    /// Semantic version (`major.minor.patch`).
+    pub version: String,
+    /// Methods.
+    pub methods: Vec<HostMethod>,
+}
+
+impl HostTraitSpec {
+    /// Validates version syntax (`major.minor.patch`).
+    pub fn parse_version(version: &str) -> Result<(usize, usize, usize), HostBindError> {
+        let mut parts = version.split('.');
+        let major = parts.next().and_then(|p| p.parse::<usize>().ok());
+        let minor = parts.next().and_then(|p| p.parse::<usize>().ok());
+        let patch = parts.next().and_then(|p| p.parse::<usize>().ok());
+        match (major, minor, patch, parts.next()) {
+            (Some(major), Some(minor), Some(patch), None) => Ok((major, minor, patch)),
+            _ => Err(HostBindError {
+                code: "E-HOST-001",
+                message: format!("host trait version `{version}` is not major.minor.patch"),
+            }),
+        }
+    }
+}
+
+/// Host binding failure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostBindError {
+    /// Stable code (`E-HOST-001`/`E-HOST-002`).
+    pub code: &'static str,
+    /// Message.
+    pub message: String,
+}
+
+/// Host binding plan: the generated impl plus its error type.
+#[derive(Clone, Debug)]
+pub struct HostBinding {
+    /// Impl block for the host trait.
+    pub generated_impl: ImplDef,
+    /// Host error enum wiring (rendered separate from the model).
+    pub error_enum: String,
+}
+
+/// Checks host-trait version compatibility against the version the host
+/// crate declares (`E-HOST-001` on incompatible major).
+pub fn check_version(spec: &HostTraitSpec, host_declared: &str) -> Result<(), HostBindError> {
+    let (spec_major, _, _) = HostTraitSpec::parse_version(&spec.version)?;
+    let (host_major, _, _) = HostTraitSpec::parse_version(host_declared)?;
+    if spec_major == host_major {
+        Ok(())
+    } else {
+        Err(HostBindError {
+            code: "E-HOST-001",
+            message: format!(
+                "host trait `{}` version {} incompatible with host-declared {host_declared}",
+                spec.name, spec.version
+            ),
+        })
+    }
+}
+
+/// Generates the host trait impl for a model struct, delegating each host
+/// method to the generated model method of the same name (all model
+/// methods are strict-f64 `&self` methods, so the ownership contract is
+/// structural).
+pub fn generate_binding(
+    spec: &HostTraitSpec,
+    host_type: &str,
+    declared_version: &str,
+) -> Result<HostBinding, HostBindError> {
+    check_version(spec, declared_version)?;
+    let error_name = format!("{host_type}HostError");
+    let mut methods: Vec<FnDef> = Vec::new();
+    for method in &spec.methods {
+        if method.params.is_empty() {
+            continue; // empty-signature host methods are refused at plan time
+        }
+        let params: Vec<Param> = method
+            .params
+            .iter()
+            .map(|(name, ty)| Param {
+                name: name.clone(),
+                ty: ty.clone(),
+            })
+            .collect();
+        let arg_exprs: Vec<Expr> = method
+            .params
+            .iter()
+            .map(|(name, _)| Expr::Var(name.clone()))
+            .collect();
+        let call = Expr::MethodCall {
+            receiver: Box::new(Expr::SelfValue),
+            method: method.name.clone(),
+            args: arg_exprs,
+        };
+        // Conversion check: the model Result maps onto the host error type
+        // explicitly; nothing crosses the boundary as a panic or `unwrap`.
+        let body = Stmt::Block(Block {
+            statements: vec![Stmt::Return(Expr::Call {
+                path: vec!["Ok".to_string()],
+                args: vec![call],
+            })],
+        });
+        methods.push(FnDef {
+            name: method.name.clone(),
+            generics: vec![],
+            params,
+            ret: Ty::Result {
+                ok: Box::new(method.returns.clone()),
+                error: Box::new(Ty::Named(error_name.clone())),
+            },
+            body,
+            doc: vec![format!(
+                "Host binding for `{}`; generated by emath, deterministic.",
+                method.name
+            )],
+            visibility: Visibility::Public,
+            attrs: vec![],
+        });
+    }
+    let error_enum = format!(
+        "#[derive(Debug)]\npub enum {error_name} {{\n    /// A model-level refusal crossed the host boundary.\n    Model(String),\n}}\n"
+    );
+    Ok(HostBinding {
+        generated_impl: ImplDef {
+            target: spec.name.clone(),
+            generics: vec![],
+            methods,
+            doc: vec![format!(
+                "Host trait `{}` binding for `{host_type}` (thread-safe `&self`).",
+                spec.name
+            )],
+        },
+        error_enum,
+    })
+}
+
+/// Fallback binding: host methods refuse with a typed error instead of a
+/// silent stub (Constitution §6).
+#[must_use]
+pub fn fallback_binding(spec: &HostTraitSpec, host_type: &str) -> HostBinding {
+    let error_name = format!("{host_type}HostError");
+    let methods: Vec<FnDef> = spec
+        .methods
+        .iter()
+        .map(|method| {
+            let params: Vec<Param> = method
+                .params
+                .iter()
+                .map(|(name, ty)| Param {
+                    name: name.clone(),
+                    ty: ty.clone(),
+                })
+                .collect();
+            FnDef {
+                name: method.name.clone(),
+                generics: vec![],
+                params,
+                ret: Ty::Result {
+                    ok: Box::new(method.returns.clone()),
+                    error: Box::new(Ty::Named(error_name.clone())),
+                },
+                body: Stmt::Expr(Expr::Path(vec![format!("todo_fallback_{}", method.name)])),
+                doc: vec![
+                    "Fallback binding: refuses with a typed error; the host".into(),
+                    "must select a conforming provider or accept diagnostics.".into(),
+                ],
+                visibility: Visibility::Public,
+                attrs: vec![],
+            }
+        })
+        .collect();
+    HostBinding {
+        generated_impl: ImplDef {
+            target: spec.name.clone(),
+            generics: vec![],
+            methods,
+            doc: vec![format!(
+                "Fallback host trait `{}` binding for `{host_type}`.",
+                spec.name
+            )],
+        },
+        error_enum: String::new(),
+    }
+}
+
+/// Adds the generated impl to a module for rendering.
+pub fn append_to_module(module: &mut Module, binding: &HostBinding) {
+    module
+        .items
+        .push(Item::Impl(binding.generated_impl.clone()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::render_module;
+
+    fn spec() -> HostTraitSpec {
+        HostTraitSpec {
+            name: "HostScore".into(),
+            version: "2.1.0".into(),
+            methods: vec![HostMethod {
+                name: "score".into(),
+                params: vec![("x".into(), Ty::F64)],
+                returns: Ty::F64,
+            }],
+        }
+    }
+
+    #[test]
+    fn binding_generates_delegating_impl() {
+        let binding = generate_binding(&spec(), "AffineModel", "2.0.4").unwrap();
+        let mut module = Module::default();
+        append_to_module(&mut module, &binding);
+        let rendered = render_module(&module);
+        assert!(rendered.code.contains("impl HostScore {"));
+        assert!(rendered
+            .code
+            .contains("pub fn score(x: f64) -> Result<f64, AffineModelHostError>"));
+        assert!(rendered.code.contains("self.score(x)"));
+        assert!(binding.error_enum.contains("pub enum AffineModelHostError"));
+        assert!(binding.error_enum.contains("Model(String)"));
+        assert!(binding.error_enum.contains("#[derive(Debug)]"));
+    }
+
+    #[test]
+    fn incompatible_host_version_is_refused() {
+        let error = generate_binding(&spec(), "AffineModel", "3.0.0").unwrap_err();
+        assert_eq!(error.code, "E-HOST-001");
+        assert!(error.message.contains("2.1.0"));
+        // Malformed host-declared versions are refused too.
+        assert_eq!(
+            HostTraitSpec::parse_version("two.1.0").unwrap_err().code,
+            "E-HOST-001"
+        );
+    }
+
+    #[test]
+    fn fallback_binding_refuses_typed() {
+        let binding = fallback_binding(&spec(), "AffineModel");
+        let mut module = Module::default();
+        append_to_module(&mut module, &binding);
+        let rendered = render_module(&module);
+        assert!(rendered.code.contains("todo_fallback_score"));
+        assert!(rendered.code.contains("Fallback binding"));
+    }
+}

@@ -13,6 +13,12 @@ use emath_ir::{
 };
 use emath_syntax::tree::{CommandArgument, ExprKind, Section, StmtKind};
 
+pub mod schema;
+pub use schema::{
+    budget_token, custom_token, exactness_token, fallback_token, target_token, BudgetConstraint,
+    GoalKindSpec, GoalSchema, GoalSchemaProblem,
+};
+
 pub const PRODUCE_RUST_LIBRARY: &str = "rust.library";
 
 #[derive(Clone, Debug, PartialEq, Eq)]

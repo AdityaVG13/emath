@@ -1,8 +1,67 @@
-//! Laboratory core: experiment manifests, observations and promotion
-//! policies for the Phase 10 laboratory. Types only; the lab harness that
-//! consumes them arrives with the Phase 10 milestone.
+//! Laboratory core: experiment manifests, quality gates, measurement,
+//! statistical protocol and promotion policy engine for the Phase 10
+//! laboratory. Everything is std-only and deterministic; wall-clock timing
+//! enters only as injected raw samples.
+//!
+//! - `` `manifest::LabManifest` — frozen experiment manifest;
+//! - `` `gate::QualityGate` — correctness/evidence before
+//!   performance;
+//! - `` `measure` — measurement harness with deterministic
+//!   summaries and explicit energy/cost models;
+//! - `` `stats::StatisticalProtocol` — warmup, repetitions,
+//!   randomization, paired comparison, MAD outlier policy, raw retention;
+//! - `` `promotion::decide` — promote/shadow/canary/retain/
+//!   demote/quarantine with typed reasons;
+//! - `` `selector::Selector` — runtime dispatch with guards,
+//!   telemetry and deoptimization;
+//! - `` `drift::DriftMonitor` — typed drift alerts
+//!   (`E-HOST-010`);
+//! - `` `receipt::DecisionReceipt` — independently
+//!   recomputable decision receipts;
+//! - `` `adversarial` — detectors for changed inputs,
+//!   benchmark cheating, asymmetric warmup, missing failures, poisoned
+//!   calibration and non-comparable builds;
+//! - `` `pilot::CachePilot` — cache-router host with
+//!   hit rate/latency/correctness metrics;
+//! - `` `candidate::{CandidateLoop, ParetoArchive}` —
+//!   gate-gated generation loop; the proposer never promotes;
+//! - `` `supervisor::Supervisor` — automatic demotion on
+//!   injected drift.
 
 #![forbid(unsafe_code)]
+
+pub mod adversarial;
+pub mod candidate;
+pub mod drift;
+pub mod error;
+pub mod gate;
+pub mod json;
+pub mod manifest;
+pub mod measure;
+pub mod pilot;
+pub mod promotion;
+pub mod receipt;
+pub mod selector;
+pub mod stats;
+pub mod supervisor;
+
+pub use adversarial::{require_comparable, run_all, AdversarialCheck, RunFacts};
+pub use candidate::{dominates, Candidate, CandidateLoop, ParetoArchive};
+pub use drift::{DriftAlert, DriftBand, DriftKind, DriftMonitor};
+pub use error::LabError;
+pub use gate::{GateCheck, GateCheckKind, GateVerdict, QualityGate};
+pub use manifest::LabManifest;
+pub use measure::{DerivedMetric, HarnessReport, Measurement, MeasurementKind, Summary};
+pub use pilot::{CachePilot, ServeResult};
+pub use promotion::{decide, EnginePolicy, PromotionDecision, PromotionOutcome, PromotionReason};
+pub use receipt::DecisionReceipt;
+pub use selector::{Route, Selector, Telemetry};
+pub use stats::{
+    evaluate_paired, OutlierPolicy, PairedObservation, PairedResult, StatisticalProtocol,
+};
+pub use supervisor::{Supervisor, TickOutcome};
+// Note: `supervisor::Observation` is not re-exported at the root: the
+// legacy numeric `Observation` (P05 seed) owns that name.
 
 use emath_core::{ContentId, Span};
 use std::collections::BTreeMap;

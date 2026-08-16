@@ -1,30 +1,49 @@
-//! Dew expression and code-generation adapter (V5 Phase 2).
+//! Dew breadth-backend adapter.
 //!
-//! Adapts Dew's mature expression/code-generation machinery without letting
-//! Dew types enter emath's durable IRs. This crate is the adapter seam: it
-//! owns a mirror of the Dew scalar surface, the exact-strict-Float64
-//! mapping (equivalence relation and typed refusals), source mapping from
-//! SIR/EMIR through Dew nodes to generated symbols, a differential oracle,
-//! and the optimization-evidence policy for promoted rewrites.
+//! Reuses Dew's expression/code-generation machinery through a stable
+//! adapter seam (`seam`) while preserving emath semantics and
+//! artifacts. Like the Rumoca adapter, no upstream type appears here;
+//! Dew is referenced only by provider identity string.
 //!
-//! Phase 1 scope: the fork itself is not
-//! vendored; the crate freezes the adapter-facing contract so a vendored
-//! backend can be dropped in later without touching emath-core/emath-ir.
+//! - [`capability`]: machine capability descriptor,
+//!   no-claim boundary and optimization-evidence classification.
+//! - [`seam`]: versioned adapter-facing API with a
+//!   patch ledger.
+//! - [`dexpr`]: exact scalar mapping and explicit
+//!   linear-algebra mapping with shape/layout conversions; unsupported
+//!   emath nodes are refused before Dew execution.
+//! - [`backends`]: Rust source and token
+//!   stream backends, the Cranelift JIT capability with fallback, and
+//!   the accelerator inventory (WGSL/GLSL/CUDA/HIP/OpenCL) with
+//!   explicit target/numeric semantics and device transfer plans.
+//! - [`mapping`]: SIR -> Dew -> generated symbol/span
+//!   source map with deterministic anchors.
+//! - [`oracle`]: differential oracle over boundary
+//!   cases; negative semantic-drift fixtures are detected.
 
 #![forbid(unsafe_code)]
 
-pub mod census;
+pub mod backends;
+pub mod capability;
+pub mod dexpr;
 pub mod mapping;
-pub mod mirror;
 pub mod oracle;
-pub mod policy;
+pub mod seam;
 
-pub use census::{BackendTarget, DewCapabilityCensus, ForkPatchPolicy, PatchCategory};
-pub use mapping::{MappingResult, SirNodePosition, SourceMapper, UnsupportedKind};
-pub use mirror::{
-    DewMirrorProgram, DewOp, DewProgramError, MapResult, SIMPLE_UNARY_MAP, STRICT_BINARY_MAP,
+pub use backends::{
+    accelerator_inventory, jit_capability, render_rust_fragment, render_tokens, AcceleratorTarget,
+    BackendSelection, DeviceTransferPlan, JitCapability, JitTarget, RustFragment, TokenStream,
 };
+pub use capability::{
+    provide_capability, select_backend, Backend, DewCapability, NoClaimBoundary,
+    OptimizationEvidence,
+};
+pub use dexpr::{
+    map_expression, map_linear, CmpOp, DewExpr, Layout, LinearOp, MappingIssue, Shape,
+};
+pub use mapping::{build_source_map, SourceMapEntry};
 pub use oracle::{
-    ComparePolicy, DifferentialOracle, OracleCase, OracleOutcome, OracleReport, F64_BIT_MODE,
+    detect_drift, differential_scan, run_boundary_cases, DifferentialFinding, MutantDrift,
+    ScanCase, ScanProfile,
 };
-pub use policy::{EvidenceTier, OptimizationEvidencePolicy, RewriteProposal};
+pub use seam::{AdapterSeam, PatchLedger, PatchOutcome, ProviderVersion, SeamError};
