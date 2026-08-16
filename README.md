@@ -24,6 +24,24 @@ emath resolves that intent through interchangeable providers, generates one or m
 - It is not one giant vendored workspace of unrelated repositories.
 - It is not an AI code generator whose output is accepted without deterministic checking.
 
+## What emath does, and how Factory / Droid builds it
+
+emath turns mathematical intent into runnable code through a deterministic
+pipeline: source → typed semantic IR → mathematical goals → a resolution plan
+→ generated Rust → Cargo artifact → verified host integration. Every stage
+is reproducible: deterministic output, byte-comparable across runs, with
+`emath check`, `emath build --verify`, and an independent artifact check
+acting as hard gates. Nothing produced by the toolchain is trusted on
+assertion alone; it must pass those checks, just as `fmt`, `test`, and
+`clippy` must stay green for a change to land.
+
+Droid is doing the work to build out emath. An autonomous agent works
+directly over the repository: designing features, writing the compiler and
+its crates, running the demos and validation suite, and driving changes to
+completion. The deterministic pipeline is exactly why that works: the output
+is reproducible and gated, so the agent can iterate until the evidence says
+the change is real, and the gates keep the work honest.
+
 ## Quickstart
 
 **Prerequisites:** a stable Rust toolchain (`rustup default stable`; the repo pins stable via `rust-toolchain.toml` and needs the `rustfmt` and `clippy` components). That is all: the workspace has zero third-party dependencies and the demos are std-only.
