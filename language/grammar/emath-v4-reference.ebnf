@@ -1,4 +1,4 @@
-(* emath surface grammar — design grammar, version 4/open-1 *)
+(* emath surface grammar: design grammar, version 4/open-1 *)
 
 source_file      = { newline | item } ;
 

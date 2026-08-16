@@ -1,4 +1,4 @@
-# 09_dynamic_mass_spring — Phase 3 acceptance demo model (mass-spring).
+# 09_dynamic_mass_spring: Phase 3 acceptance demo model (mass-spring).
 #
 # Lowering: crates/emath-adapter-rumoca lowers the equivalent structural
 # model into a causal DAE plan (matching + tearing provenance) and executes

@@ -215,7 +215,7 @@ impl Parser {
         }
     }
 
-    /// `package examples.square` — package identity line.
+    /// `package examples.square`: package identity line.
     fn parse_package_item(&mut self) -> Option<Item> {
         let start = self.current_span();
         self.advance(); // `package`
@@ -254,7 +254,7 @@ impl Parser {
         loop {
             match self.peek() {
                 TokenKind::Ident(name) => {
-                    // `use std.units.{A, B}` — stop before a brace group.
+                    // `use std.units.{A, B}`: stop before a brace group.
                     if matches!(self.peek_at(1), TokenKind::LBrace) {
                         break;
                     }
@@ -1170,7 +1170,7 @@ impl Parser {
             return None;
         };
 
-        // `evaluate <score>:` section heads — but not comparisons
+        // `evaluate <score>:` section heads: but not comparisons
         // (`a < b < c`): the matching `>` must be followed by `:` or `(`.
         if matches!(self.peek_at(1), TokenKind::Lt) && self.lookahead_matches_lt_angle_head() {
             self.advance(); // name
@@ -1273,7 +1273,7 @@ impl Parser {
             }
         }
 
-        // `candidate(candidate: &CacheCandidate) -> f64:` call or fn? — a
+        // `candidate(candidate: &CacheCandidate) -> f64:` call or fn?: a
         // single ident + `(` that scans as a params header is a fn decl;
         // otherwise it is an expression statement.
         if matches!(self.peek_at(1), TokenKind::LParen) && self.looks_like_params_header() {
@@ -1418,7 +1418,7 @@ impl Parser {
             }
         }
 
-        // assignments with indexed targets: `norm[b, t] = ...` — but
+        // assignments with indexed targets: `norm[b, t] = ...`: but
         // `minimize [a, b]` / `order [x, y]` are commands with a list
         // argument, so a `[` without `=` falls through to the command tail.
         if matches!(self.peek_at(1), TokenKind::LBracket) {
@@ -1635,7 +1635,7 @@ impl Parser {
     /// parameter list (`ident : type`) or `->` follows the closing paren.
     fn looks_like_params_header(&mut self) -> bool {
         // A `name(arg-list)` is a function declaration when the parens hold
-        // a typed parameter (`ident : Type`) — or when `->` follows the
+        // a typed parameter (`ident : Type`), or when `->` follows the
         // closing paren (`define score(candidate) -> Real:`). A bare call
         // (`solve minimize(dot(...))`) is an expression.
         let mut depth: u32 = 0;
@@ -1708,7 +1708,7 @@ impl Parser {
         loop {
             if let TokenKind::Ident(next) = self.peek().clone() {
                 // Stop before operators, comparisons, generics, calls, or a
-                // following `<` — those start an argument expression
+                // following `<`: those start an argument expression
                 // (`when x >= 0`, `error max_absolute <= 2e-8`,
                 // `Tensor<Float32, [D]>`).
                 if matches!(

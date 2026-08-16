@@ -297,7 +297,7 @@ impl ServerState {
                                 ("kind".into(), JsonValue::String("markdown".into())),
                                 (
                                     "value".into(),
-                                    JsonValue::String(format!("**{keyword}** — {explanation}")),
+                                    JsonValue::String(format!("**{keyword}**: {explanation}")),
                                 ),
                             ]
                             .into(),

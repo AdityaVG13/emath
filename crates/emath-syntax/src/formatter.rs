@@ -486,7 +486,7 @@ fn binder_kind_str(kind: BinderKind) -> &'static str {
     }
 }
 
-/// `forall x in 0..B, t in 0..T` — the binder head has no parens; the
+/// `forall x in 0..B, t in 0..T`: the binder head has no parens; the
 /// grammar's binder list is comma-separated after the keyword.
 fn format_binder_head(out: &mut String, kind: BinderKind, binders: &[Binder]) {
     out.push_str(binder_kind_str(kind));

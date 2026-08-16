@@ -10,7 +10,7 @@ pub struct SyntaxTree {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Item {
-    /// `package examples.square` — the package identity line.
+    /// `package examples.square`: the package identity line.
     Package {
         path: Vec<String>,
         source: Span,

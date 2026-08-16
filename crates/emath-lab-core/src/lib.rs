@@ -3,29 +3,29 @@
 //! laboratory. Everything is std-only and deterministic; wall-clock timing
 //! enters only as injected raw samples.
 //!
-//! - `` `manifest::LabManifest` — frozen experiment manifest;
-//! - `` `gate::QualityGate` — correctness/evidence before
+//! - `` `manifest::LabManifest`: frozen experiment manifest;
+//! - `` `gate::QualityGate`: correctness/evidence before
 //!   performance;
-//! - `` `measure` — measurement harness with deterministic
+//! - `` `measure`: measurement harness with deterministic
 //!   summaries and explicit energy/cost models;
-//! - `` `stats::StatisticalProtocol` — warmup, repetitions,
+//! - `` `stats::StatisticalProtocol`: warmup, repetitions,
 //!   randomization, paired comparison, MAD outlier policy, raw retention;
-//! - `` `promotion::decide` — promote/shadow/canary/retain/
+//! - `` `promotion::decide`: promote/shadow/canary/retain/
 //!   demote/quarantine with typed reasons;
-//! - `` `selector::Selector` — runtime dispatch with guards,
+//! - `` `selector::Selector`: runtime dispatch with guards,
 //!   telemetry and deoptimization;
-//! - `` `drift::DriftMonitor` — typed drift alerts
+//! - `` `drift::DriftMonitor`: typed drift alerts
 //!   (`E-HOST-010`);
-//! - `` `receipt::DecisionReceipt` — independently
+//! - `` `receipt::DecisionReceipt`: independently
 //!   recomputable decision receipts;
-//! - `` `adversarial` — detectors for changed inputs,
+//! - `` `adversarial`: detectors for changed inputs,
 //!   benchmark cheating, asymmetric warmup, missing failures, poisoned
 //!   calibration and non-comparable builds;
-//! - `` `pilot::CachePilot` — cache-router host with
+//! - `` `pilot::CachePilot`: cache-router host with
 //!   hit rate/latency/correctness metrics;
-//! - `` `candidate::{CandidateLoop, ParetoArchive}` —
+//! - `` `candidate::{CandidateLoop, ParetoArchive}`:
 //!   gate-gated generation loop; the proposer never promotes;
-//! - `` `supervisor::Supervisor` — automatic demotion on
+//! - `` `supervisor::Supervisor`: automatic demotion on
 //!   injected drift.
 
 #![forbid(unsafe_code)]

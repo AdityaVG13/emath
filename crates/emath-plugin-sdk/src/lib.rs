@@ -8,15 +8,15 @@
 //!
 //! - [`PluginDescriptor`] (schema `emath.plugin.v1`) with a canonical JSON
 //!   rendering and FNV-1a64 content id;
-//! - [`admit`] — the sandbox/fuel/permission gate. Untrusted descriptors
+//! - [`admit`]: the sandbox/fuel/permission gate. Untrusted descriptors
 //!   must declare positive fuel; `network` requires the `network`
 //!   permission; every capability must be inside `allowed_capabilities`.
 //!   Refusals are typed (`E-PLG-002`, `E-PLG-003`) and deterministic;
-//! - [`execute`] — the harness entry. The Phase 1 subset has no component
+//! - [`execute`]: the harness entry. The Phase 1 subset has no component
 //!   runtime, so execution is a typed refusal (`E-PLG-001`); the shape of
 //!   the call (`descriptor, input -> output`) is the stable contract that
 //!   the Phase 2+ runtime will fill;
-//! - [`compatible`] — interface-core compatibility check.
+//! - [`compatible`]: interface-core compatibility check.
 //!
 //! No network, no component host, std-only.
 
@@ -67,7 +67,7 @@ pub enum Trust {
     Untrusted,
 }
 
-/// A plugin result (bytes) — the runtime contract.
+/// A plugin result (bytes): the runtime contract.
 pub type PluginOutput = Vec<u8>;
 
 /// A typed plugin error; codes are stable (E-PLG-0xx).

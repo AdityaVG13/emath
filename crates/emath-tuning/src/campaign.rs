@@ -3,14 +3,14 @@
 //! One campaign selects or rejects a candidate meaning (per the
 //! tuning exit criterion). Promotion requires, in order:
 //!
-//! 1. semantic admission — the candidate passed the held-out challenge and
+//! 1. semantic admission: the candidate passed the held-out challenge and
 //!    does not touch preserved (declared-law) symbols;
-//! 2. evidence threshold — enough evidence units;
-//! 3. resource envelope — measured host metrics are within bounds;
-//! 4. protected host metrics — objectives score the candidate against
+//! 2. evidence threshold: enough evidence units;
+//! 3. resource envelope: measured host metrics are within bounds;
+//! 4. protected host metrics: objectives score the candidate against
 //!    cache hit rate (maximize) and token cost / p95 latency (minimize);
-//! 5. fallback availability — a strict baseline world exists to deopt to;
-//! 6. deterministic receipt — the outcome carries a content identity over
+//! 5. fallback availability: a strict baseline world exists to deopt to;
+//! 6. deterministic receipt: the outcome carries a content identity over
 //!    its canonical form.
 
 use crate::JointCandidate;

@@ -1,7 +1,7 @@
 //!: Modelica subset import.
 //!
 //! `import_modelica` produces retained foreign-model declarations with
-//! adapter identity. The source text is preserved verbatim — there is no
+//! adapter identity. The source text is preserved verbatim: there is no
 //! silent source rewrite; every recognized construct is classified through
 //! the semantic mapping table, and unsupported constructs are typed
 //! refusals.

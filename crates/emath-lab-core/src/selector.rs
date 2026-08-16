@@ -71,7 +71,7 @@ pub struct Selector {
 impl Selector {
     /// Builds a selector from the gate verdict and the promotion decision.
     /// A promote/canary outcome with a closed gate is refused
-    /// (`E-HOST-005`) — the guard exists from construction.
+    /// (`E-HOST-005`): the guard exists from construction.
     pub fn new(
         gate: GateVerdict,
         outcome: PromotionOutcome,

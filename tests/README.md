@@ -10,7 +10,7 @@ by crate as \`tests/emath-<crate>/\`.
   \`cargo clippy --workspace --all-targets -- -D warnings\`).
 - \`tests/emath-<crate>/\` crates are workspace members that exercise the
   PUBLIC API only, run by \`cargo test --workspace\`. Behavioral tests,
-  round-trips, and negative controls live here on purpose — this is their
+  round-trips, and negative controls live here on purpose: this is their
   landing zone.
 - A test that only reaches private internals is deleted, not moved; either
   exercise via the public surface or drop it.
