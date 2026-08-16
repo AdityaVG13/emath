@@ -1,6 +1,7 @@
 //! Goal IR (GIR): provider-independent requested work.
 
 use crate::ids::{EvidenceClaimId, ExprId, GoalId, PlanNodeId};
+use crate::package::SemanticPackage;
 use emath_core::{ContentId, SchemaId, Span};
 use std::collections::BTreeMap;
 
@@ -250,4 +251,205 @@ pub struct ProviderRef {
 pub struct ExcludedCandidate {
     pub provider: String,
     pub reason: String,
+}
+
+/// Required `produce` string for the Phase 1 native export surface.
+pub const PRODUCE_RUST_LIBRARY: &str = "rust.library";
+
+/// Policy name for the deterministic v1 native plan.
+pub const POLICY: &str = "native-deterministic.v1";
+
+/// Schema id of the v1 resolution plan.
+pub const PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
+
+/// Provider identities known to the constellation but not installed in
+/// Phase 1; they are excluded with reasons in every plan.
+pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
+    ("phase2.expression", "adapter not installed until Phase 2"),
+    ("phase3.structural", "adapter not installed until Phase 3"),
+    (
+        "phase4.symbolic",
+        "optional symbolic provider, not installed",
+    ),
+    ("phase7.adapter", "adapter not installed until Phase 7"),
+];
+
+/// One elaborated `evaluate` request recovered from the `requests:` section.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestSpec {
+    pub kind: String,
+    pub target: String,
+    pub produce: String,
+    pub source: Span,
+}
+
+/// Build GIR for one request into the package arena.
+pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal {
+    let target_expr = package
+        .declarations
+        .iter()
+        .find(|d| d.definitions.contains_key(&request.target))
+        .and_then(|d| d.definitions.get(&request.target))
+        .copied();
+    let id = GoalId(u32::try_from(package.goals.len()).unwrap_or(u32::MAX));
+    let goal = Goal {
+        id,
+        kind: GoalKind::Evaluate,
+        target: request.target.clone(),
+        expression: target_expr,
+        requirements: GoalRequirements {
+            evidence: EvidenceLevel::E1,
+            exactness: ExactnessPolicy::Exact,
+            determinism: DeterminismPolicy::Required,
+            target: TargetProfile {
+                family: "rust-library".into(),
+                triple: None,
+                features: vec![],
+            },
+            fallback: FallbackPolicy::NativeOnly,
+            produce: if request.produce.is_empty() {
+                PRODUCE_RUST_LIBRARY.to_string()
+            } else {
+                request.produce.clone()
+            },
+        },
+        source: request.source,
+    };
+    package.push_goal(goal.clone());
+    goal
+}
+
+/// Build the deterministic native plan for a goal.
+#[must_use]
+pub fn native_plan(goal: GoalId, artifact_class: &str) -> ResolutionPlan {
+    let mut nodes = BTreeMap::new();
+    let lower = PlanNodeId(0);
+    let execute = PlanNodeId(1);
+    let check = PlanNodeId(2);
+    let package = PlanNodeId(3);
+    let admit = PlanNodeId(4);
+    nodes.insert(
+        lower,
+        PlanNodeDef {
+            id: lower,
+            operation: PlanOperation::Lower,
+            dependencies: vec![],
+            provider: Some(ProviderRef {
+                id: "emath.native".into(),
+                version: "0.1.0".into(),
+                implementation: ContentId("fnv1a64:0000000000000000".into()),
+            }),
+            checks: vec![],
+            fallback: None,
+            budget: Some("compile:1".into()),
+        },
+    );
+    nodes.insert(
+        execute,
+        PlanNodeDef {
+            id: execute,
+            operation: PlanOperation::Execute,
+            dependencies: vec![lower],
+            provider: Some(ProviderRef {
+                id: "emath.native".into(),
+                version: "0.1.0".into(),
+                implementation: ContentId("fnv1a64:0000000000000000".into()),
+            }),
+            checks: vec![],
+            fallback: None,
+            budget: Some("compile:1".into()),
+        },
+    );
+    nodes.insert(
+        check,
+        PlanNodeDef {
+            id: check,
+            operation: PlanOperation::Check,
+            dependencies: vec![execute],
+            provider: Some(ProviderRef {
+                id: "emath.native".into(),
+                version: "0.1.0".into(),
+                implementation: ContentId("fnv1a64:0000000000000000".into()),
+            }),
+            checks: vec![EvidenceClaimId(0)],
+            fallback: None,
+            budget: None,
+        },
+    );
+    nodes.insert(
+        package,
+        PlanNodeDef {
+            id: package,
+            operation: PlanOperation::Package,
+            dependencies: vec![check],
+            provider: None,
+            checks: vec![],
+            fallback: None,
+            budget: None,
+        },
+    );
+    nodes.insert(
+        admit,
+        PlanNodeDef {
+            id: admit,
+            operation: PlanOperation::Admit,
+            dependencies: vec![package],
+            provider: None,
+            checks: vec![EvidenceClaimId(0)],
+            fallback: None,
+            budget: None,
+        },
+    );
+    let plan_bytes = canonical_plan(&nodes, admit, artifact_class, &goal.0.to_string());
+    ResolutionPlan {
+        schema: SchemaId(PLAN_SCHEMA.into()),
+        plan_id: ContentId(plan_bytes),
+        goal,
+        policy: POLICY.to_string(),
+        artifact_class: artifact_class.to_string(),
+        nodes,
+        root: admit,
+        excluded_candidates: EXCLUDED_PROVIDERS
+            .iter()
+            .map(|(provider, reason)| ExcludedCandidate {
+                provider: (*provider).to_string(),
+                reason: (*reason).to_string(),
+            })
+            .collect(),
+    }
+}
+
+fn canonical_plan(
+    nodes: &BTreeMap<PlanNodeId, PlanNodeDef>,
+    root: PlanNodeId,
+    artifact_class: &str,
+    goal_id: &str,
+) -> String {
+    let mut out = String::new();
+    out.push_str("emath.plan.v1\n");
+    out.push_str("goal ");
+    out.push_str(goal_id);
+    out.push('\n');
+    out.push_str(artifact_class);
+    out.push('\n');
+    let root_line = format!("root {}\n", root.0);
+    out.push_str(&root_line);
+    for (id, node) in nodes {
+        let head = format!(
+            "{} {} {}",
+            id.0,
+            node.operation.name(),
+            node.dependencies.len()
+        );
+        out.push_str(&head);
+        let tail = node
+            .dependencies
+            .iter()
+            .map(|dep| format!(" {}", dep.0))
+            .collect::<Vec<_>>()
+            .concat();
+        out.push_str(&tail);
+        out.push('\n');
+    }
+    out
 }

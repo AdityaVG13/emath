@@ -2,12 +2,10 @@
 //! artifact emission) lives in `emath-build`.
 
 use crate::admit::{check_tree, CheckResult};
-use emath_core::{limits::Limits, Diagnostics, FileId, Span};
-use emath_goal::{build_goal, elaborate_requests, RequestSpec};
-use emath_ir::SemanticPackage;
-use emath_plan::native_plan;
-use emath_source::SourceStore;
+use emath_core::{limits::Limits, Diagnostics, FileId, SourceStore, Span};
+use emath_ir::{build_goal, native_plan, RequestSpec, SemanticPackage};
 use emath_syntax::parse_str;
+use emath_syntax::tree::{CommandArgument, ExprKind, Section, StmtKind};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -201,4 +199,126 @@ impl CompilerSession {
             diagnostics,
         }
     }
+}
+
+/// Extract the `requests:` section into request specs and validate targets
+/// against the admitted declaration (`E-GOAL-041`/`E-GOAL-042`/`E-GOAL-043`).
+///
+/// Lives in the session (its only consumer; the crate docs list goal
+/// elaboration as an orchestrated admission responsibility) rather than in
+/// `emath-goal`, keeping the admission crate's import surface on
+/// core/ir/syntax only.
+pub fn elaborate_requests(
+    package: &SemanticPackage,
+    declaration_name: &str,
+    sections: &[Section],
+    diagnostics: &mut Diagnostics,
+) -> Vec<RequestSpec> {
+    let mut requests = Vec::new();
+    let Some(section) = sections.iter().find(|s| s.name == "requests") else {
+        return requests;
+    };
+    for stmt in &section.suite.statements {
+        let StmtKind::Section(request) = &stmt.kind else {
+            diagnostics.error(
+                "E-SYN-101",
+                "unexpected statement inside `requests:`",
+                stmt.source,
+            );
+            continue;
+        };
+        match request.name.as_str() {
+            "evaluate" => {
+                let target = request.generic.clone().unwrap_or_default();
+                if target.is_empty() {
+                    diagnostics.error(
+                        "E-GOAL-041",
+                        "`evaluate` requires a target in `<...>`",
+                        request.head_source,
+                    );
+                    continue;
+                }
+                let produce = read_produce(&request.suite);
+                if produce.is_empty() {
+                    diagnostics.error(
+                        "E-GOAL-042",
+                        "`evaluate` requires `produce rust.library` in Phase 1",
+                        request.source,
+                    );
+                    continue;
+                }
+                if produce != "rust.library" {
+                    // Accepting an arbitrary produce target would silently
+                    // admit an unimplemented export surface; refuse.
+                    diagnostics.error(
+                        "E-GOAL-042",
+                        format!(
+                            "produce target `{produce}` is outside the Phase 1 subset (`rust.library` only)"
+                        ),
+                        request.source,
+                    );
+                    continue;
+                }
+                requests.push(RequestSpec {
+                    kind: "evaluate".into(),
+                    target,
+                    produce,
+                    source: request.source,
+                });
+            }
+            other => {
+                diagnostics.error(
+                    "E-GOAL-043",
+                    format!(
+                        "request kind `{other}` is outside the Phase 1 subset (supported: evaluate)"
+                    ),
+                    request.source,
+                );
+            }
+        }
+    }
+    // targets must be outputs or definitions
+    let declared: Vec<&String> = package
+        .declarations
+        .iter()
+        .find(|d| d.name.leaf() == declaration_name)
+        .map(|d| {
+            d.outputs
+                .iter()
+                .map(|f| &f.name)
+                .chain(d.definitions.keys())
+                .collect()
+        })
+        .unwrap_or_default();
+    for request in &requests {
+        if !declared.contains(&&request.target) {
+            diagnostics.error(
+                "E-GOAL-041",
+                format!(
+                    "request target `{}` is not an output or definition",
+                    request.target
+                ),
+                request.source,
+            );
+        }
+    }
+    requests
+}
+
+fn read_produce(suite: &emath_syntax::tree::Suite) -> String {
+    for stmt in &suite.statements {
+        if let StmtKind::Command { head, argument } = &stmt.kind {
+            if head.first().is_some_and(|h| h == "produce") {
+                if let Some(CommandArgument::Expr(expr)) = argument {
+                    if let ExprKind::Path { segments, .. } = &expr.kind {
+                        return segments.join(".");
+                    }
+                }
+                if head.len() > 1 {
+                    return head[1..].join(".");
+                }
+            }
+        }
+    }
+    String::new()
 }

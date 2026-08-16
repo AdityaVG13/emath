@@ -168,7 +168,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-syntax",
 ]
 
 [[package]]
@@ -324,10 +323,7 @@ name = "emath-sema"
 version = "0.1.0"
 dependencies = [
  "emath-core",
- "emath-goal",
  "emath-ir",
- "emath-plan",
- "emath-source",
  "emath-syntax",
 ]
 
