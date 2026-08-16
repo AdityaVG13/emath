@@ -2,7 +2,11 @@
 //! (SIR package + GIR goals) that `.emath` text admission produces, without
 //! a source file. Hosts and the lab use this to compose models in Rust.
 //!
-//! Phase 1 supports the strict-f64 subset with one declaration.
+//! Phase 1 supports the strict-f64 subset with one declaration. The
+//! constructor surface admits overloads, factories,
+//! delegation, defaults, derived fields, postconditions and typed
+//! errors without bypassing schema or constructor admission
+//!.
 
 #![forbid(unsafe_code)]
 
@@ -15,6 +19,7 @@ use emath_ir::{
     FallbackPolicy, Goal, GoalKind, GoalRequirements, Literal, NumericProfile, SafetyProfile,
     SemanticPackage, TargetProfile, TypeId, TypeNode,
 };
+use std::collections::BTreeSet;
 
 /// Synthetic span for programmatically-built nodes (no source file).
 const OWNER: Span = Span {
@@ -76,10 +81,18 @@ pub struct BuilderModel {
     pub name: String,
     pub kind: Option<KindRef>,
     pub generic: Option<String>,
+    /// Generic requirement predicate ( generic
+    /// requirements), rendered into the kind schema.
+    pub generic_requirement: Option<String>,
     pub inputs: Vec<(String, TypeKind)>,
     pub outputs: Vec<(String, TypeKind)>,
     pub state: Vec<(String, TypeKind)>,
-    pub constructor: Option<ConstructorModel>,
+    /// Constructor set: the first is the primary (`new`); further
+    /// entries are overloads/factories.
+    pub constructors: Vec<ConstructorModel>,
+    /// Derived fields: computed after construction from state; lowered
+    /// as definitions ( derived fields).
+    pub derived: Vec<(String, Expression)>,
     pub definitions: Vec<(String, Expression)>,
     pub goals: Vec<GoalModel>,
     pub tests: Vec<TestModel>,
@@ -92,12 +105,28 @@ pub enum TypeKind {
     Bool,
 }
 
+/// One constructor ( subset in the builder: overloads,
+/// factories, delegation, defaults, derived fields, postconditions,
+/// typed errors).
 #[derive(Clone, Debug, Default)]
 pub struct ConstructorModel {
+    /// Constructor name; the primary must be `new`, overloads may
+    /// declare further names.
+    pub name: String,
+    pub is_public: bool,
     pub parameters: Vec<(String, TypeKind)>,
+    /// Default values for parameters that may be omitted at call sites.
+    pub defaults: Vec<(String, Expression)>,
     pub preconditions: Vec<Expression>,
+    /// State assignments.
     pub assignments: Vec<(String, Expression)>,
+    /// Postconditions (`ensure` surface).
+    pub postconditions: Vec<Expression>,
+    /// Typed error (`Result<Self, T>` surface).
     pub error_type: String,
+    /// Delegation: forward the body to this already-declared
+    /// constructor (factory surface).
+    pub delegate: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -171,6 +200,8 @@ pub trait ModelBuilder: Sized {
     #[must_use]
     fn generic(self, parameter: impl Into<String>) -> Self;
     #[must_use]
+    fn generic_requirement(self, predicate: impl Into<String>) -> Self;
+    #[must_use]
     fn input(self, name: impl Into<String>, ty: TypeKind) -> Self;
     #[must_use]
     fn output(self, name: impl Into<String>, ty: TypeKind) -> Self;
@@ -180,6 +211,8 @@ pub trait ModelBuilder: Sized {
     fn constructor(self, constructor: ConstructorModel) -> Self;
     #[must_use]
     fn define(self, name: impl Into<String>, expression: Expression) -> Self;
+    #[must_use]
+    fn derive(self, name: impl Into<String>, expression: Expression) -> Self;
     #[must_use]
     fn goal(self, goal: GoalModel) -> Self;
     #[must_use]
@@ -207,6 +240,11 @@ impl ModelBuilder for BuilderModel {
         self
     }
 
+    fn generic_requirement(mut self, predicate: impl Into<String>) -> Self {
+        self.generic_requirement = Some(predicate.into());
+        self
+    }
+
     fn input(mut self, name: impl Into<String>, ty: TypeKind) -> Self {
         self.inputs.push((name.into(), ty));
         self
@@ -223,12 +261,17 @@ impl ModelBuilder for BuilderModel {
     }
 
     fn constructor(mut self, constructor: ConstructorModel) -> Self {
-        self.constructor = Some(constructor);
+        self.constructors.push(constructor);
         self
     }
 
     fn define(mut self, name: impl Into<String>, expression: Expression) -> Self {
         self.definitions.push((name.into(), expression));
+        self
+    }
+
+    fn derive(mut self, name: impl Into<String>, expression: Expression) -> Self {
+        self.derived.push((name.into(), expression));
         self
     }
 
@@ -298,6 +341,18 @@ impl ModelBuilder for BuilderModel {
             env.push((name.clone(), ty));
             definitions.insert(name.clone(), id);
         }
+        // Derived fields are computed after construction
+        // from state; they must be outputs and lower as definitions.
+        for (name, expression) in &self.derived {
+            if !outputs.iter().any(|output| &output.name == name) {
+                return Err(BuilderError(format!(
+                    "derived field `{name}` is not an output (E-NAME-024)"
+                )));
+            }
+            let (id, ty) = Self::lower_expr(&mut package, expression, &env, float64, boolean)?;
+            env.push((name.clone(), ty));
+            definitions.insert(name.clone(), id);
+        }
         let compile_spec = match &self.compile {
             Some(compile) => CompileSpec {
                 target: compile.target.clone(),
@@ -315,16 +370,58 @@ impl ModelBuilder for BuilderModel {
             },
         };
 
-        let constructor = match &self.constructor {
-            Some(model) => Some(Self::lower_constructor(
+        // Constructor admission (: the builder must not
+        // bypass schema or constructor admission). Policies require a
+        // public `new`; functions cannot carry constructors.
+        let is_policy = self.kind == Some(KindRef::Policy);
+        if is_policy && self.constructors.is_empty() {
+            return Err(BuilderError(
+                "policy declarations require a `constructors:` section with a public `new` \
+                 (E-CTOR-031)"
+                    .into(),
+            ));
+        }
+        if !is_policy && !self.constructors.is_empty() {
+            return Err(BuilderError(
+                "function declarations cannot have constructors in this subphase (E-KIND-010)"
+                    .into(),
+            ));
+        }
+        let all_names: Vec<String> = self
+            .constructors
+            .iter()
+            .map(|model| {
+                if model.name.is_empty() {
+                    "new".to_string()
+                } else {
+                    model.name.clone()
+                }
+            })
+            .collect();
+        if all_names.first().is_some_and(|first| first != "new") {
+            return Err(BuilderError(
+                "the primary constructor must be named `new` (E-CTOR-036)".into(),
+            ));
+        }
+        if all_names.first().is_some_and(|first| first == "new")
+            && all_names.iter().filter(|name| *name == "new").count() > 1
+        {
+            return Err(BuilderError(
+                "multiple constructors named `new` (E-CTOR-034)".into(),
+            ));
+        }
+        let mut constructors: Vec<emath_ir::Constructor> = Vec::new();
+        for model in &self.constructors {
+            constructors.push(Self::lower_constructor(
                 model,
                 &mut package,
+                &state,
+                &all_names,
                 float64,
                 boolean,
                 OWNER,
-            )?),
-            None => None,
-        };
+            )?);
+        }
 
         let tests: Vec<emath_ir::TestCase> = self
             .tests
@@ -402,7 +499,7 @@ impl ModelBuilder for BuilderModel {
             inputs,
             outputs,
             state,
-            constructors: constructor.into_iter().collect(),
+            constructors,
             definitions,
             invariants,
             goals: goal_ids,
@@ -418,49 +515,160 @@ impl ModelBuilder for BuilderModel {
 }
 
 impl BuilderModel {
+    /// Lower one constructor model, enforcing its admission contract:
+    /// boolean requirements (E-CTOR-032), no state reads while
+    /// constructing (E-CTOR-033), exact state coverage (E-CTOR-030 /
+    /// E-CTOR-035), defaults for declared parameters only
+    /// (E-CTOR-039), typed errors, postconditions, and delegation to
+    /// declared constructors only (E-CTOR-037 / E-CTOR-038).
     fn lower_constructor(
         model: &ConstructorModel,
         package: &mut SemanticPackage,
+        state_fields: &[Field],
+        all_names: &[String],
         float64: TypeId,
         boolean: TypeId,
         owner: Span,
     ) -> Result<emath_ir::Constructor, BuilderError> {
+        let name = if model.name.is_empty() {
+            "new".to_string()
+        } else {
+            model.name.clone()
+        };
         let ground = |ty: TypeKind| match ty {
             TypeKind::Float64 => float64,
             TypeKind::Bool => boolean,
         };
-        let parameters: Vec<Field> = model
-            .parameters
-            .iter()
-            .map(|(name, ty)| Field {
-                name: name.clone(),
+        let mut parameters = Vec::new();
+        let mut param_names = BTreeSet::new();
+        for (param, ty) in &model.parameters {
+            if !param_names.insert(param.clone()) {
+                return Err(BuilderError(format!(
+                    "duplicate constructor parameter `{param}` (E-CTOR-034)"
+                )));
+            }
+            parameters.push(Field {
+                name: param.clone(),
                 ty: ground(*ty),
                 visibility: Visibility::Public,
                 source: owner,
-            })
-            .collect();
+            });
+        }
         let params: Vec<(String, TypeId)> =
             parameters.iter().map(|f| (f.name.clone(), f.ty)).collect();
+
+        let mut defaults = std::collections::BTreeMap::new();
+        for (target, value) in &model.defaults {
+            if !param_names.contains(target) {
+                return Err(BuilderError(format!(
+                    "default for undeclared parameter `{target}` (E-CTOR-039)"
+                )));
+            }
+            if defaults.contains_key(target) {
+                return Err(BuilderError(format!(
+                    "duplicate default for parameter `{target}`"
+                )));
+            }
+            if contains_state_reference(value) {
+                return Err(BuilderError(format!(
+                    "a default value cannot read `state.{target}` (E-CTOR-033)"
+                )));
+            }
+            let (id, _) = Self::lower_expr(package, value, &[], float64, boolean)?;
+            defaults.insert(target.clone(), id);
+        }
+
         let mut preconditions = Vec::new();
         for expression in &model.preconditions {
+            if !is_boolean(expression) {
+                return Err(BuilderError(
+                    "`require` must be a Boolean expression (E-CTOR-032)".into(),
+                ));
+            }
             let (id, _) = Self::lower_expr(package, expression, &params, float64, boolean)?;
             preconditions.push(id);
         }
+        let mut postconditions = Vec::new();
+        for expression in &model.postconditions {
+            if !is_boolean(expression) {
+                return Err(BuilderError(
+                    "`ensure` must be a Boolean expression (E-CTOR-032)".into(),
+                ));
+            }
+            let (id, _) = Self::lower_expr(package, expression, &params, float64, boolean)?;
+            postconditions.push(id);
+        }
+        let error_type = if model.error_type.is_empty() {
+            None
+        } else {
+            Some(package.push_type(TypeNode::Other(QualifiedName(model.error_type.clone()))))
+        };
+        let is_public = model.is_public || name == "new";
+
+        // Delegation (factory surface): the target constructor performs
+        // the body; local assignments are refused.
+        if let Some(target) = &model.delegate {
+            if !all_names.iter().any(|known| known == target) {
+                return Err(BuilderError(format!(
+                    "constructor `{name}` delegates to unknown `{target}` (E-CTOR-037)"
+                )));
+            }
+            if !model.assignments.is_empty() {
+                return Err(BuilderError(format!(
+                    "delegating constructor `{name}` cannot assign state directly (E-CTOR-038)"
+                )));
+            }
+            return Ok(emath_ir::Constructor {
+                name,
+                parameters,
+                preconditions,
+                assignments: std::collections::BTreeMap::new(),
+                postconditions,
+                defaults,
+                error_type,
+                is_public,
+                source: owner,
+            });
+        }
+
+        // Exact state coverage, one assignment per field.
         let mut assignments = std::collections::BTreeMap::new();
         for (target, expression) in &model.assignments {
+            if !state_fields.iter().any(|field| &field.name == target) {
+                return Err(BuilderError(format!(
+                    "`{target}` is not a state field (E-CTOR-033)"
+                )));
+            }
+            if assignments.contains_key(target) {
+                return Err(BuilderError(format!(
+                    "duplicate assignment for state field `{target}` (E-CTOR-035)"
+                )));
+            }
+            if contains_state_reference(expression) {
+                return Err(BuilderError(format!(
+                    "constructor cannot read `state.{target}` while constructing (E-CTOR-033)"
+                )));
+            }
             let (id, _) = Self::lower_expr(package, expression, &params, float64, boolean)?;
             assignments.insert(target.clone(), id);
         }
+        for field in state_fields {
+            if !assignments.contains_key(&field.name) {
+                return Err(BuilderError(format!(
+                    "missing state assignment for `{}` (E-CTOR-030)",
+                    field.name
+                )));
+            }
+        }
         Ok(emath_ir::Constructor {
-            name: "new".into(),
+            name,
             parameters,
             preconditions,
             assignments,
-            postconditions: Vec::new(),
-            error_type: Some(
-                package.push_type(TypeNode::Other(QualifiedName(model.error_type.clone()))),
-            ),
-            is_public: true,
+            postconditions,
+            defaults,
+            error_type,
+            is_public,
             source: owner,
         })
     }
@@ -552,6 +760,42 @@ impl BuilderModel {
         };
         Ok((id, ty))
     }
+
+    /// The kind schema this model builds against (: the
+    /// builder shares the same kind schema as the compiler; a generic
+    /// requirement is rendered into the schema predicate).
+    #[must_use]
+    pub fn kind_schema(&self) -> emath_ir::KindSchema {
+        let mut schema = match self.kind {
+            Some(KindRef::Policy) => emath_ir::KindSchema::core_policy(),
+            _ => emath_ir::KindSchema::core_function(),
+        };
+        if let Some(requirement) = &self.generic_requirement {
+            schema.set_predicate(requirement.clone());
+        }
+        schema
+    }
+}
+
+/// Whether a builder expression is Boolean (constraint or bool literal).
+#[must_use]
+pub fn is_boolean(expression: &Expression) -> bool {
+    matches!(expression, Expression::Constraint(..) | Expression::Bool(_))
+}
+
+/// Whether a builder expression reads `state.<name>` (forbidden while
+/// constructing: E-CTOR-033).
+#[must_use]
+pub fn contains_state_reference(expression: &Expression) -> bool {
+    match expression {
+        Expression::Symbol(name) => name.starts_with("state."),
+        Expression::Float(_) | Expression::Int(_) | Expression::Bool(_) => false,
+        Expression::Unary(_, inner) => contains_state_reference(inner),
+        Expression::Binary(_, left, right) | Expression::Constraint(_, left, right) => {
+            contains_state_reference(left) || contains_state_reference(right)
+        }
+        Expression::Call(_, args) => args.iter().any(contains_state_reference),
+    }
 }
 
 /// Rust-side mirror of `CompilerPolicy` for laboratory use.
@@ -619,10 +863,13 @@ mod tests {
             .state("scale", TypeKind::Float64)
             .state("bias", TypeKind::Float64)
             .constructor(ConstructorModel {
+                name: "new".into(),
+                is_public: true,
                 parameters: vec![
                     ("scale".into(), TypeKind::Float64),
                     ("bias".into(), TypeKind::Float64),
                 ],
+                defaults: vec![],
                 preconditions: vec![Expression::Constraint(
                     CmpOp::Ge,
                     Box::new(Expression::Symbol("scale".into())),
@@ -632,7 +879,9 @@ mod tests {
                     ("scale".into(), Expression::Symbol("scale".into())),
                     ("bias".into(), Expression::Symbol("bias".into())),
                 ],
+                postconditions: vec![],
                 error_type: "ConfigError".into(),
+                delegate: None,
             })
             .define(
                 "score",
@@ -669,6 +918,170 @@ mod tests {
     fn builder_errors_on_empty_name() {
         let error = BuilderModel::custom("").build().unwrap_err();
         assert!(error.0.contains("empty"));
+    }
+
+    /// Policy model without a constructor (refusal tests add their own).
+    fn policy_base() -> BuilderModel {
+        BuilderModel::custom("RobustPolicy")
+            .kind(KindRef::Policy)
+            .input("x", TypeKind::Float64)
+            .output("score", TypeKind::Float64)
+            .state("scale", TypeKind::Float64)
+            .state("bias", TypeKind::Float64)
+            .define(
+                "score",
+                Expression::Binary(
+                    BinaryOp::Add,
+                    Box::new(Expression::Symbol("state.scale".into())),
+                    Box::new(Expression::Symbol("state.bias".into())),
+                ),
+            )
+            .goal(GoalModel {
+                kind: "evaluate".into(),
+                target: "score".into(),
+                produce: "rust.library".into(),
+            })
+    }
+
+    fn full_policy_model() -> BuilderModel {
+        policy_base().constructor(ConstructorModel {
+            name: "new".into(),
+            is_public: true,
+            parameters: vec![
+                ("scale".into(), TypeKind::Float64),
+                ("bias".into(), TypeKind::Float64),
+            ],
+            defaults: vec![],
+            preconditions: vec![],
+            assignments: vec![
+                ("scale".into(), Expression::Symbol("scale".into())),
+                ("bias".into(), Expression::Symbol("bias".into())),
+            ],
+            postconditions: vec![],
+            error_type: "ConfigError".into(),
+            delegate: None,
+        })
+    }
+
+    #[test]
+    fn overloads_and_factory_delegation_are_admitted() {
+        let model = full_policy_model().constructor(ConstructorModel {
+            name: "warm".into(),
+            is_public: true,
+            parameters: vec![("warmth".into(), TypeKind::Float64)],
+            defaults: vec![("warmth".into(), Expression::Float(1.0))],
+            preconditions: vec![Expression::Constraint(
+                CmpOp::Ge,
+                Box::new(Expression::Symbol("warmth".into())),
+                Box::new(Expression::Int(0)),
+            )],
+            assignments: vec![],
+            postconditions: vec![],
+            error_type: "ConfigError".into(),
+            delegate: Some("new".into()),
+        });
+        let package = model.build().unwrap();
+        let constructors = &package.declarations[0].constructors;
+        assert_eq!(constructors.len(), 2);
+        assert_eq!(constructors[1].name, "warm");
+        assert!(constructors[1].defaults.contains_key("warmth"));
+        assert!(constructors[1].assignments.is_empty());
+        assert_eq!(constructors[1].preconditions.len(), 1);
+    }
+
+    #[test]
+    fn missing_state_assignment_is_refused() {
+        let model = policy_base().constructor(ConstructorModel {
+            name: "new".into(),
+            is_public: true,
+            parameters: vec![("scale".into(), TypeKind::Float64)],
+            defaults: vec![],
+            preconditions: vec![],
+            assignments: vec![("scale".into(), Expression::Symbol("scale".into()))],
+            postconditions: vec![],
+            error_type: "ConfigError".into(),
+            delegate: None,
+        });
+        let error = model.build().unwrap_err();
+        assert!(error.0.contains("E-CTOR-030"), "{error}");
+    }
+
+    #[test]
+    fn duplicate_state_assignment_is_refused() {
+        let model = policy_base().constructor(ConstructorModel {
+            name: "new".into(),
+            is_public: true,
+            parameters: vec![
+                ("scale".into(), TypeKind::Float64),
+                ("bias".into(), TypeKind::Float64),
+            ],
+            defaults: vec![],
+            preconditions: vec![],
+            assignments: vec![
+                ("scale".into(), Expression::Symbol("scale".into())),
+                ("scale".into(), Expression::Symbol("bias".into())),
+                ("bias".into(), Expression::Symbol("bias".into())),
+            ],
+            postconditions: vec![],
+            error_type: "ConfigError".into(),
+            delegate: None,
+        });
+        let error = model.build().unwrap_err();
+        assert!(error.0.contains("E-CTOR-035"), "{error}");
+    }
+
+    #[test]
+    fn state_reads_during_construction_are_refused() {
+        let model = policy_base().constructor(ConstructorModel {
+            name: "new".into(),
+            is_public: true,
+            parameters: vec![
+                ("scale".into(), TypeKind::Float64),
+                ("bias".into(), TypeKind::Float64),
+            ],
+            defaults: vec![],
+            preconditions: vec![],
+            assignments: vec![
+                ("scale".into(), Expression::Symbol("state.scale".into())),
+                ("bias".into(), Expression::Symbol("bias".into())),
+            ],
+            postconditions: vec![],
+            error_type: "ConfigError".into(),
+            delegate: None,
+        });
+        let error = model.build().unwrap_err();
+        assert!(error.0.contains("E-CTOR-033"), "{error}");
+    }
+
+    #[test]
+    fn derived_fields_must_be_outputs() {
+        let model = full_policy_model().derive("secret", Expression::Symbol("state.scale".into()));
+        let error = model.build().unwrap_err();
+        assert!(error.0.contains("E-NAME-024"), "{error}");
+    }
+
+    #[test]
+    fn derived_fields_lower_as_definitions() {
+        let package = full_policy_model()
+            .derive(
+                "score",
+                Expression::Binary(
+                    BinaryOp::Add,
+                    Box::new(Expression::Symbol("state.scale".into())),
+                    Box::new(Expression::Symbol("state.bias".into())),
+                ),
+            )
+            .build()
+            .unwrap();
+        assert!(package.declarations[0].definitions.contains_key("score"));
+    }
+
+    #[test]
+    fn kind_schema_carries_the_generic_requirement() {
+        let model = full_policy_model().generic_requirement("decl.state.is_empty()");
+        let schema = model.kind_schema();
+        assert_eq!(schema.name(), "policy");
+        assert!(schema.canonical().contains("decl.state.is_empty()"));
     }
 
     #[test]

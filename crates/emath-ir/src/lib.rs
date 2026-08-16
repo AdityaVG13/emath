@@ -11,7 +11,9 @@ pub mod evidence;
 pub mod expression;
 pub mod goal;
 pub mod ids;
+pub mod kind_schema;
 pub mod numeric;
+pub mod operator;
 pub mod package;
 pub mod shapes;
 pub mod type_system;
@@ -29,7 +31,12 @@ pub use goal::{
     ProviderRef, ResolutionPlan, SafetyProfile, TargetProfile,
 };
 pub use ids::{DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
+pub use kind_schema::{
+    core_function_schema, core_policy_schema, CoreKind, KindSchema, PayloadPolicy, RepeatPolicy,
+    SectionSchema,
+};
 pub use numeric::{cast_cost, promote, tower_rows, NumKind, NumericError, NumericType};
+pub use operator::{canonical_operator, DeclaredOperator, Fixity};
 pub use package::{Declaration, PackageIdentity, SemanticPackage};
 pub use shapes::{Extent, Shape, ShapeError, SparseLayout};
 pub use type_system::{

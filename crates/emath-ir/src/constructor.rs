@@ -5,7 +5,8 @@ use emath_core::Span;
 use std::collections::BTreeMap;
 
 /// Constructor authority: parameters, preconditions, assignments,
-/// postconditions, error type and construction failure variants.
+/// postconditions, defaults, error type and construction failure
+/// variants ( subset).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Constructor {
     pub name: String,
@@ -13,6 +14,8 @@ pub struct Constructor {
     pub preconditions: Vec<ExprId>,
     pub assignments: BTreeMap<String, ExprId>,
     pub postconditions: Vec<ExprId>,
+    /// Default values for parameters that may be omitted at call sites.
+    pub defaults: BTreeMap<String, ExprId>,
     pub error_type: Option<TypeId>,
     pub is_public: bool,
     pub source: Span,
