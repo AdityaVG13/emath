@@ -177,6 +177,11 @@ impl KindSchema {
         self.sections.get(name)
     }
 
+    /// Removes a section (used by restricted lowering renames).
+    pub fn remove_section(&mut self, name: &str) {
+        self.sections.remove(name);
+    }
+
     /// Sections in deterministic order.
     #[must_use]
     pub fn sections(&self) -> Vec<(&str, &SectionSchema)> {
@@ -193,6 +198,11 @@ impl KindSchema {
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Sets the schema name (schema-language `kind <name>`).
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
     }
 
     /// Deterministic identity over the schema (schema mutation moves
