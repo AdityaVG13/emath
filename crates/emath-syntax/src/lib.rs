@@ -9,9 +9,9 @@
 //! Semantic Genesis: [`genesis`] parses `emath custom` world declarations
 //! (G0). The G1 world/forest stage (bounded parse forest + signature
 //! inference over `emath-term`/`emath-world-ir` values) lives in
-//! `emath-genesis` since the world-side fence; this crate re-exports its
-//! [`forest`] module at the root for the CLI:
-//! `pub use emath_genesis::forest;`.
+//! `emath-genesis` since the world-side fence; the CLI consumes it
+//! directly (`emath_genesis::forest`), so this crate carries no
+//! emath-genesis dependency.
 //!
 //! The syntax tree is owned by `emath-core` (`emath_core::tree`); this crate
 //! re-exports it and implements the kernel [`emath_core::parse::SourceParser`]
@@ -19,7 +19,6 @@
 
 #![forbid(unsafe_code)]
 
-pub use emath_genesis::forest;
 pub mod formatter;
 pub mod genesis;
 pub mod lexer;

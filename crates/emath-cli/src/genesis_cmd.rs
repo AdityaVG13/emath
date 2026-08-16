@@ -8,9 +8,9 @@
 
 use super::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::limits::Limits;
-use emath_genesis::free_symbolic_world;
+use emath_genesis::{forest, free_symbolic_world};
 use emath_portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
-use emath_syntax::{forest, genesis as genesis_syntax};
+use emath_syntax::genesis as genesis_syntax;
 use emath_term::{Signature, Term};
 use emath_world_ir::{
     fnv1a64, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr,
