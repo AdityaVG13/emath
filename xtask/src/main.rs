@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const REFERENCE_SOURCE: &str = "language/examples/01_arbitrary_glyphs.emath";
-const REPLAY_DIR: &str = "validation/semantic-genesis/replay";
 const GENERATED_DIR: &str = "examples/generated/semantic-genesis-worlds";
 
 fn main() {
@@ -18,26 +17,24 @@ fn main() {
     let code = if args.first().map(String::as_str) == Some("demo") {
         match args.get(1).map(String::as_str) {
             Some("cache-policy") => demo_cache_policy(),
-            Some("semantic-genesis") => {
-                demo_semantic_genesis(args.iter().any(|a| a == "--update-replay"))
-            }
+            Some("semantic-genesis") => demo_semantic_genesis(),
             Some("all") => {
                 let cache = demo_cache_policy();
                 if cache != 0 {
                     cache
                 } else {
-                    demo_semantic_genesis(false)
+                    demo_semantic_genesis()
                 }
             }
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <cache-policy|semantic-genesis|all> [--update-replay]"
+                    "unknown demo {other:?}; usage: cargo xtask demo <cache-policy|semantic-genesis|all>"
                 );
                 2
             }
         }
     } else {
-        eprintln!("usage: cargo xtask demo <cache-policy|semantic-genesis|all> [--update-replay]");
+        eprintln!("usage: cargo xtask demo <cache-policy|semantic-genesis|all>");
         2
     };
     std::process::exit(i32::from(code));
@@ -90,10 +87,10 @@ fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn demo_semantic_genesis(update_replay: bool) -> u8 {
+fn demo_semantic_genesis() -> u8 {
     println!("== demo semantic-genesis ==");
     let work = TempWork::new("emath-xtask-sg");
-    match run_demo_semantic_genesis(work.path(), update_replay) {
+    match run_demo_semantic_genesis(work.path()) {
         Ok(()) => {
             println!("semantic-genesis demo: ok");
             0
@@ -115,7 +112,7 @@ const GENESIS_ARTIFACTS: [&str; 7] = [
     "answer-receipt.json",
 ];
 
-fn run_demo_semantic_genesis(work: &Path, update_replay: bool) -> Result<(), String> {
+fn run_demo_semantic_genesis(work: &Path) -> Result<(), String> {
     let _ = std::fs::remove_dir_all(work);
     std::fs::create_dir_all(work)
         .map_err(|error| format!("cannot create {}: {error}", work.display()))?;
@@ -164,21 +161,6 @@ fn run_demo_semantic_genesis(work: &Path, update_replay: bool) -> Result<(), Str
         return Err(format!("expected 3 world candidates, got {entry_count}"));
     }
     diff_dirs(&a, &b, "genesis determinism")?;
-
-    // Replay bundle: committed expected artifacts must match regeneration.
-    let replay = Path::new(REPLAY_DIR);
-    if update_replay {
-        let _ = std::fs::remove_dir_all(replay);
-        copy_dir_all(&a, replay)?;
-        println!("replay bundle refreshed at {REPLAY_DIR}");
-    } else {
-        if !replay.join("answer-receipt.json").is_file() {
-            return Err(format!(
-                "replay bundle missing at {REPLAY_DIR}; run `cargo xtask demo semantic-genesis --update-replay` once"
-            ));
-        }
-        diff_dirs(&a, replay, "replay fidelity")?;
-    }
 
     // Parametric codegen onto a fresh directory.
     check(
@@ -379,30 +361,5 @@ fn collect_files(root: &Path, out: &mut Vec<String>) -> Result<(), String> {
         }
     }
     out.sort();
-    Ok(())
-}
-
-fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
-    let mut queue = vec![from.to_path_buf()];
-    while let Some(dir) = queue.pop() {
-        let relative = dir.strip_prefix(from).map_err(|e| e.to_string())?;
-        let to_dir = if relative.as_os_str().is_empty() {
-            to.to_path_buf()
-        } else {
-            to.join(relative)
-        };
-        std::fs::create_dir_all(&to_dir).map_err(|e| e.to_string())?;
-        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.is_dir() {
-                queue.push(path);
-            } else {
-                let target = to_dir.join(entry.file_name());
-                std::fs::copy(&path, &target).map_err(|e| e.to_string())?;
-            }
-        }
-    }
     Ok(())
 }

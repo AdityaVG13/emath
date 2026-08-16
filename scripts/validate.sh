@@ -67,7 +67,7 @@ echo "all invalid fixtures refused with the documented codes"
 
 echo "== semantic genesis capstone =="
 cargo run -q -p xtask -- demo semantic-genesis >/dev/null
-echo "semantic-genesis: determinism, replay fidelity, wrong-world rejection ok"
+echo "semantic-genesis: determinism, wrong-world rejection ok"
 
 echo "== cache-policy capstone =="
 cargo run -q -p xtask -- demo cache-policy >/dev/null
