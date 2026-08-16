@@ -39,14 +39,14 @@ $ cargo xtask demo all
 
 `cargo xtask demo all` runs both capstones; each prints `ok` and exits 0 on success:
 
-- **cache-policy** — the Phase 1 vertical slice: compiles `tests/valid/stateful.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
-- **semantic-genesis** — the G0–G3 pipeline: parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
+- **cache-policy**: the Phase 1 vertical slice: compiles `tests/valid/stateful.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
+- **semantic-genesis**: the G0–G3 pipeline: parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
 
 Exit criteria: both demos reach their final `ok` lines; the command exits 0. Detailed evidence boundary: `BUILD_STATUS.md`; implementation notes: `HANDOFF.md`; depth: `docs/` and `phases/PHASE_01_EMATH_OWNED_VERTICAL_SLICE.md`.
 
 ## Example
 
-The target language looks like this (illustrative; the implemented subset today is smaller — see `tests/valid/`):
+The target language looks like this (illustrative; the implemented subset today is smaller: see `tests/valid/`):
 
 ```emath
 emath policy CachePriority:
@@ -86,7 +86,7 @@ emath policy CachePriority:
             method score = score
 ```
 
-The implemented vertical slice covers a scalar subset: a declaration with validated `state`, one checked constructor, scalar `define`d methods, `tests:` blocks, and `host rust` export — compiled and verified end to end as `examples/generated/affine-policy-rs`.
+The implemented vertical slice covers a scalar subset: a declaration with validated `state`, one checked constructor, scalar `define`d methods, `tests:` blocks, and `host rust` export: compiled and verified end to end as `examples/generated/affine-policy-rs`.
 
 ## Core composition
 
@@ -129,7 +129,7 @@ Planned (per `implementation/CLI_REFERENCE.md`): `new`, `fmt`, `explain`, `run`,
 emath is built on the shoulders of giants. The numerical and symbolic
 computing ecosystem has already solved many hard problems, and we have no
 intention of rewriting that work. When a capability already exists in an
-established engine, emath does not reimplement or absorb it — nor does its
+established engine, emath does not reimplement or absorb it, nor does its
 internals become part of emath. Instead, adapters bridge to those engines and
 let emath hand work to them as ordinary crates.
 

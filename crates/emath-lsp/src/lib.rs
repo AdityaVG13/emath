@@ -8,7 +8,7 @@
 //! - `initialize` capabilities with incremental text synchronization;
 //! - `textDocument/didOpen` / `didChange` with incremental edits and
 //!   publishDiagnostics computed by the real compiler session
-//!   (`emath_sema::CompilerSession::check_owned`) — LSP and CLI agree on
+//!   (`emath_sema::CompilerSession::check_owned`): LSP and CLI agree on
 //!   diagnostics because they share the same admission path;
 //! - skeleton `completion` (Phase 1 grammar keywords), `hover` (keyword
 //!   documentation) and `signatureHelp` (null response);

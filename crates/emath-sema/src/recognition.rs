@@ -39,11 +39,11 @@ pub const RECOGNIZED_KINDS: &[&str] = &[
 /// Custom-kind schema rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SchemaRule {
-    /// `require section <name>` — the application must declare the section.
+    /// `require section <name>`: the application must declare the section.
     RequireSection(String),
-    /// `allow section <name>` — the application may declare the section.
+    /// `allow section <name>`: the application may declare the section.
     AllowSection(String),
-    /// `require exactly_one <name>` — exactly one such section.
+    /// `require exactly_one <name>`: exactly one such section.
     RequireExactlyOneSection(String),
 }
 
@@ -479,7 +479,7 @@ pub fn admit_front_end(
                 let selection = match tree {
                     UseTree::All => ImportSelection::All,
                     UseTree::Named(names) if names.is_empty() && path.len() >= 2 => {
-                        // `use std.numeric.Real` — the parser keeps the
+                        // `use std.numeric.Real`: the parser keeps the
                         // single imported name in the path.
                         let name = path.pop().unwrap_or_default();
                         ImportSelection::Named(vec![(name, None)])

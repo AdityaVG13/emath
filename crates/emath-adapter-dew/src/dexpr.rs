@@ -4,7 +4,7 @@
 //! literals, IEEE-754 strict arithmetic, conditionals, one-to-one
 //! function naming) and explicit linear-algebra mapping for fixed
 //! vectors/matrices with shape and layout conversions. Unsupported
-//! emath nodes are refused (`E-PROV-030`) before Dew execution —
+//! emath nodes are refused (`E-PROV-030`) before Dew execution:
 //! nothing is silently accepted (gate 2).
 
 use emath_core::QualifiedName;

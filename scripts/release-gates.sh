@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# emath 1.0 release gates — deterministic LOCAL gate runner.
+# emath 1.0 release gates: deterministic LOCAL gate runner.
 #
 # Optional convenience aggregate over the four standard lanes; CI runs those
 # lanes as separate jobs, so this script is not wired into CI.

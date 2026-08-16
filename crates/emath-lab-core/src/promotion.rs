@@ -1,7 +1,7 @@
 //!: promotion policy engine.
 //!
 //! Maps gate verdict + paired statistics + memory/energy evidence to one
-//! of six outcomes — promote, shadow, canary, retain, demote, quarantine —
+//! of six outcomes (promote, shadow, canary, retain, demote, quarantine)
 //! with a typed reason for every non-promote path. Hard invariants: a
 //! candidate that fails the quality gate is never promoted, and a metric
 //! regression retains the baseline (or demotes a promoted candidate)
