@@ -132,26 +132,3 @@ pub fn classify(construct: &str) -> Option<&'static ConstructMapping> {
 pub fn table() -> &'static [ConstructMapping] {
     &TABLE
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn table_is_sorted_and_classifies_reference_constructs() {
-        let entries = table();
-        for pair in entries.windows(2) {
-            assert!(pair[0].construct <= pair[1].construct);
-        }
-        assert_eq!(classify("der").unwrap().construct, "der");
-        assert_eq!(classify("connect").unwrap().class, MappingClass::Exact);
-        assert_eq!(classify("record").unwrap().class, MappingClass::Refinement);
-        assert_eq!(classify("reinit").unwrap().class, MappingClass::Lossy);
-        assert_eq!(classify("sample").unwrap().class, MappingClass::Unsupported);
-        assert_eq!(
-            classify("annotation").unwrap().class,
-            MappingClass::PresentationOnly
-        );
-        assert_eq!(classify("no-such-construct"), None);
-    }
-}

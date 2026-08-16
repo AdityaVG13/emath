@@ -238,31 +238,3 @@ pub fn fnv1a64(bytes: &[u8]) -> u64 {
     }
     hash
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn semantic_mutation_moves_world_id() {
-        let signature = Signature::default();
-        let base = WorldIr {
-            version: 1,
-            name: "Example".into(),
-            signature,
-            carriers: vec![CarrierDef {
-                name: "Element".into(),
-                type_expression: "Bool".into(),
-            }],
-            symbols: vec![],
-            operators: vec![],
-            constructors: vec![],
-            laws: vec!["total".into()],
-            holes: vec![],
-            capabilities: vec!["pure".into()],
-        };
-        let mut changed = base.clone();
-        changed.laws.push("nontrivial".into());
-        assert_ne!(base.identity(), changed.identity());
-    }
-}

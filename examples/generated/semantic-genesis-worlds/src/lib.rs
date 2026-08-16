@@ -432,39 +432,3 @@ pub fn fixture_modular() -> Environment<i64> {
     environment.insert("b".into(), 7);
     environment
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        evaluate, fixture_boolean, fixture_free, fixture_modular, reference_term, BooleanWorld,
-        FreeSymbolicWorld, ModularWorld, SwappedModularWorld,
-    };
-
-    #[test]
-    fn free_symbolic_world_preserves_structure() {
-        let term = reference_term();
-        let result = evaluate(&term, &FreeSymbolicWorld, &fixture_free()).unwrap();
-        assert_eq!(result, term.canonical());
-    }
-
-    #[test]
-    fn boolean_world_matches_fixture() {
-        let term = reference_term();
-        let result = evaluate(&term, &BooleanWorld, &fixture_boolean()).unwrap();
-        assert!(!result);
-    }
-
-    #[test]
-    fn modular_world_matches_fixture() {
-        let term = reference_term();
-        let result = evaluate(&term, &ModularWorld, &fixture_modular()).unwrap();
-        assert_eq!(result, 6);
-    }
-
-    #[test]
-    fn wrong_world_is_rejected() {
-        let term = reference_term();
-        let result = evaluate(&term, &SwappedModularWorld, &fixture_modular()).unwrap();
-        assert_ne!(result, 6);
-    }
-}

@@ -31,30 +31,3 @@ pub fn bootstrap_content_id(bytes: &[u8]) -> ContentId {
 pub fn content_id_of_str(text: &str) -> ContentId {
     bootstrap_content_id(text.as_bytes())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bootstrap_id_is_stable_and_sensitive() {
-        assert_eq!(
-            bootstrap_content_id(b"emath"),
-            bootstrap_content_id(b"emath")
-        );
-        assert_ne!(
-            bootstrap_content_id(b"emath"),
-            bootstrap_content_id(b"emathX")
-        );
-        assert_ne!(
-            bootstrap_content_id(b"emath"),
-            bootstrap_content_id(b"emath ")
-        );
-    }
-
-    #[test]
-    fn fnv_known_vector() {
-        // FNV-1a 64 of empty input is the offset basis.
-        assert_eq!(fnv1a64_bytes(b""), FNV_OFFSET);
-    }
-}

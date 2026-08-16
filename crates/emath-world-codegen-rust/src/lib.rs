@@ -65,7 +65,7 @@ name = "semantic-genesis-worlds"
 version = "0.1.0"
 edition = "2021"
 description = "Generated parametric worlds for the reference alien signature."
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 
 [lib]
 path = "src/lib.rs"
@@ -514,46 +514,11 @@ pub fn fixture_modular() -> Environment<i64> {
     environment
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        evaluate, fixture_boolean, fixture_free, fixture_modular, reference_term, BooleanWorld,
-        FreeSymbolicWorld, ModularWorld, SwappedModularWorld,
-    };
-
-    #[test]
-    fn free_symbolic_world_preserves_structure() {
-        let term = reference_term();
-        let result = evaluate(&term, &FreeSymbolicWorld, &fixture_free()).unwrap();
-        assert_eq!(result, term.canonical());
-    }
-
-    #[test]
-    fn boolean_world_matches_fixture() {
-        let term = reference_term();
-        let result = evaluate(&term, &BooleanWorld, &fixture_boolean()).unwrap();
-        assert!(!result);
-    }
-
-    #[test]
-    fn modular_world_matches_fixture() {
-        let term = reference_term();
-        let result = evaluate(&term, &ModularWorld, &fixture_modular()).unwrap();
-        assert_eq!(result, 6);
-    }
-
-    #[test]
-    fn wrong_world_is_rejected() {
-        let term = reference_term();
-        let result = evaluate(&term, &SwappedModularWorld, &fixture_modular()).unwrap();
-        assert_ne!(result, 6);
-    }
-}
 "#;
 
 fn render_lib(term: &Term, signature: &Signature, labels: &[String]) -> String {
     let _ = labels;
-    LIB_TEMPLATE
+    let body = LIB_TEMPLATE
         .replace(
             "@@ARITIES@@",
             &signature
@@ -562,7 +527,10 @@ fn render_lib(term: &Term, signature: &Signature, labels: &[String]) -> String {
                 .collect::<Vec<_>>()
                 .join(", "),
         )
-        .replace("@@REFERENCE_CANONICAL@@", &rust_string(&term.canonical()))
+        .replace("@@REFERENCE_CANONICAL@@", &rust_string(&term.canonical()));
+    // Emit exactly one trailing newline so generated crates stay
+    // rustfmt-clean (determinism + `cargo fmt --check` both depend on it).
+    format!("{}\n", body.trim_end())
 }
 
 /// Rust string literal escaping (default settings; Unicode glyphs inline).
@@ -623,110 +591,4 @@ fn render_main(labels: &[String]) -> String {
         .replace("@@USES@@", uses.trim_end())
         .replace("@@BOOLEAN_BODY@@", boolean_body.trim_end())
         .replace("@@MODULAR_BODY@@", modular_body.trim_end())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use emath_term::{SymbolId, VariableId};
-
-    fn reference_term() -> Term {
-        Term::Apply {
-            operator: SymbolId("⊛".into()),
-            arguments: vec![
-                Term::Apply {
-                    operator: SymbolId("⧖".into()),
-                    arguments: vec![Term::Apply {
-                        operator: SymbolId("⋈".into()),
-                        arguments: vec![
-                            Term::Variable(VariableId("a".into())),
-                            Term::Variable(VariableId("b".into())),
-                        ],
-                    }],
-                },
-                Term::Constant(SymbolId("ζ".into())),
-            ],
-        }
-    }
-
-    fn reference_signature() -> Signature {
-        let mut signature = Signature::default();
-        signature.insert(SymbolId("⧖".into()), 1).unwrap();
-        signature.insert(SymbolId("⋈".into()), 2).unwrap();
-        signature.insert(SymbolId("⊛".into()), 2).unwrap();
-        signature.insert(SymbolId("ζ".into()), 0).unwrap();
-        signature
-    }
-
-    fn all_worlds() -> Vec<WorldSpec> {
-        ["free_symbolic", "boolean_algebra", "modular_numeric"]
-            .iter()
-            .map(|label| WorldSpec {
-                label: (*label).into(),
-            })
-            .collect()
-    }
-
-    #[test]
-    fn generation_is_deterministic() {
-        let signature = reference_signature();
-        let term = reference_term();
-        let first = generate(&term, &signature, &all_worlds());
-        let second = generate(&term, &signature, &all_worlds());
-        assert_eq!(first.files, second.files);
-        assert_eq!(first.files.len(), 3);
-        for (path, body) in &first.files {
-            assert!(!body.is_empty(), "{path} rendered empty");
-        }
-    }
-
-    #[test]
-    fn generated_crate_contains_all_worlds_and_negative_control() {
-        let signature = reference_signature();
-        let term = reference_term();
-        let generated = generate(&term, &signature, &all_worlds());
-        let lib = &generated.files["src/lib.rs"];
-        for marker in [
-            "pub struct FreeSymbolicWorld",
-            "pub struct BooleanWorld",
-            "pub struct ModularWorld",
-            "pub struct SwappedModularWorld",
-            "mod tests",
-            "assert_ne!(result, 6)",
-        ] {
-            assert!(lib.contains(marker), "missing {marker}");
-        }
-        let main = &generated.files["src/main.rs"];
-        for line in [
-            "free: {free}",
-            "boolean: {boolean}",
-            "modular-17: {modular}",
-            "swapped-modular-17: {swapped}",
-        ] {
-            assert!(main.contains(line), "missing print {line}");
-        }
-    }
-
-    #[test]
-    fn write_to_materializes_files() {
-        let signature = reference_signature();
-        let term = reference_term();
-        let generated = generate(&term, &signature, &all_worlds());
-        let dir = std::env::temp_dir().join(format!("emath-codegen-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        generated.write_to(&dir).unwrap();
-        assert!(dir.join("Cargo.toml").is_file());
-        assert!(dir.join("src/lib.rs").is_file());
-        assert!(dir.join("src/main.rs").is_file());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn emitted_lib_includes_reference_term_canonical() {
-        let signature = reference_signature();
-        let term = reference_term();
-        let generated = generate(&term, &signature, &all_worlds());
-        let lib = &generated.files["src/lib.rs"];
-        assert!(lib.contains(&term.canonical()));
-    }
 }

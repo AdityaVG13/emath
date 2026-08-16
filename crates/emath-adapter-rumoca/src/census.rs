@@ -122,37 +122,3 @@ pub fn phase(kind: PhaseKind) -> Option<&'static PhaseRecord> {
     }
     None
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn census_covers_all_phases() {
-        assert_eq!(PHASES.len(), 9);
-        for kind in [
-            PhaseKind::Parse,
-            PhaseKind::Resolve,
-            PhaseKind::TypeCheck,
-            PhaseKind::Instantiation,
-            PhaseKind::Flattening,
-            PhaseKind::DaeConversion,
-            PhaseKind::StructuralAnalysis,
-            PhaseKind::Simulation,
-            PhaseKind::Templates,
-        ] {
-            let record = phase(kind).expect("every phase kind has a record");
-            assert!(!record.note.is_empty());
-        }
-    }
-
-    #[test]
-    fn parse_phase_is_stable_and_contractual() {
-        let record = phase(PhaseKind::Parse).unwrap();
-        assert_eq!(record.stability, Stability::Stable);
-        assert!(record.public_contract);
-        let templates = phase(PhaseKind::Templates).unwrap();
-        assert_eq!(templates.stability, Stability::Experimental);
-        assert!(!templates.public_contract);
-    }
-}

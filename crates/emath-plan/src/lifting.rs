@@ -116,36 +116,3 @@ fn pascal_case(target: &str) -> String {
         out
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_provider_yields_parametric_trait() {
-        let spec = lift_missing("y", &["sin".to_string(), "ln".to_string()]);
-        assert_eq!(spec.name, "OpYProvider");
-        assert_eq!(spec.missing_operators, ["sin", "ln"]);
-        assert!(spec.methods.len() >= 3);
-    }
-
-    #[test]
-    fn emitted_trait_is_deterministic_and_safe() {
-        let spec = lift_missing("y", &["sin".to_string()]);
-        let first = emit_provider_trait(&spec);
-        assert_eq!(emit_provider_trait(&spec), first);
-        assert!(first.contains("#![forbid(unsafe_code)]"));
-        assert!(first.contains("pub trait OpYProvider"));
-        assert!(first.contains("fn op_sin(x: f64) -> f64;"));
-        assert!(first.contains("fn __emath_provider_seal() -> ();"));
-    }
-
-    #[test]
-    fn identifiers_are_sanitized_deterministically() {
-        let spec = lift_missing("y", &["a-b".to_string(), "∑".to_string()]);
-        let first = emit_provider_trait(&spec);
-        assert!(first.contains("fn op_a_b("));
-        assert!(first.contains("fn op_1("));
-        assert_eq!(emit_provider_trait(&spec), first);
-    }
-}

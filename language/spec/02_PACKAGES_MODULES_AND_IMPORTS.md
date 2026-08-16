@@ -9,7 +9,7 @@
 name = "example"
 version = "0.1.0"
 edition = "2026"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 
 [sources]
 root = "src/lib.emath"

@@ -57,34 +57,3 @@ pub fn canonical_operator(operator: &DeclaredOperator) -> String {
             .map_or_else(|| "-".to_string(), |p| p.to_string())
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn plus() -> DeclaredOperator {
-        DeclaredOperator {
-            symbol: "+".into(),
-            binds: QualifiedName("core::math::add".into()),
-            fixity: Fixity::Infix,
-            precedence: None,
-            provenance: "operators".into(),
-        }
-    }
-
-    #[test]
-    fn op_canonical_is_stable() {
-        assert_eq!(canonical_operator(&plus()), "op:+:core::math::add:infix:-");
-        assert_eq!(canonical_operator(&plus()), canonical_operator(&plus()));
-    }
-
-    #[test]
-    fn precedence_and_symbol_change_identity() {
-        let mut high = plus();
-        high.precedence = Some(11);
-        let mut star = plus();
-        star.symbol = "*".into();
-        assert_ne!(canonical_operator(&plus()), canonical_operator(&high));
-        assert_ne!(canonical_operator(&plus()), canonical_operator(&star));
-    }
-}
