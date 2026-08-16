@@ -1,4 +1,4 @@
-//! Finite synthesis of operator tables (spec 8 / g5 exit).
+//! Finite synthesis of operator tables.
 //!
 //! Enumeration is deterministic over `carrier^(n²)` in lexicographic
 //! input-pair order; every candidate table is validated against the
@@ -254,7 +254,7 @@ pub fn solve_op_hole(
 }
 
 /// Convenience: builds a satisfiable law set (identity + commutativity +
-/// idempotence) for the g5 acceptance story.
+/// idempotence) for the acceptance story.
 #[must_use]
 pub fn satisfiable_or_table_laws(operator: &SymbolId) -> Vec<SynthesisLaw> {
     vec![

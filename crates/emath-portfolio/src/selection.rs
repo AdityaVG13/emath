@@ -1,4 +1,4 @@
-//! Portfolio selection modes (spec 11): user-selected, policy-selected,
+//! Portfolio selection modes: user-selected, policy-selected,
 //! host-experiment-selected, authority-threshold-selected,
 //! lowest-cost-satisfying, or a Pareto portfolio with no single winner.
 //!

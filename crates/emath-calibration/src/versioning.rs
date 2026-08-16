@@ -1,4 +1,4 @@
-//! Deterministic world versioning (spec 12): a world invalidated by
+//! Deterministic world versioning: a world invalidated by
 //! future examples becomes a new version or a semantic delta, never a
 //! silent redefinition.
 

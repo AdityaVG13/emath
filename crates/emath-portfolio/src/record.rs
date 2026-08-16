@@ -1,4 +1,4 @@
-//! Full candidate record (spec 11): every axis a portfolio selection can
+//! Full candidate record: every axis a portfolio selection can
 //! consider, plus explicit disqualifications.
 
 use emath_world_ir::{fnv1a64, WorldId};
@@ -32,7 +32,7 @@ pub struct Disqualification {
     pub detail: String,
 }
 
-/// The full portfolio candidate record (spec 11, "Candidate record").
+/// The full portfolio candidate record ("Candidate record").
 ///
 /// `identity` is an FNV-1a64 content identity over the canonical form, so
 /// portfolio generation and replay are deterministic.

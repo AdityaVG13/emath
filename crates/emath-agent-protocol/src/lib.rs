@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! V7 g9 — Agent-native meaning proposals (spec 18).
+//! Agent-native meaning proposals.
 //!
 //! Agents may propose parse hypotheses, signatures, carriers, operator
 //! meanings, laws, constructors, world deltas, selection policies, and

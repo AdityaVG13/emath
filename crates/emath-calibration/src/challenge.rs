@@ -1,4 +1,4 @@
-//! Held-out challenge (spec 12): a candidate is not credited for
+//! Held-out challenge: a candidate is not credited for
 //! held-out performance if it saw those examples during construction.
 
 use crate::fitting::{evaluate, ExampleRecord, FittedTable};

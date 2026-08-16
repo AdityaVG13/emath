@@ -1,5 +1,5 @@
 //! Finite-carrier operator-table fitting and per-partition example
-//! records (spec 12).
+//! records.
 
 use std::collections::BTreeMap;
 

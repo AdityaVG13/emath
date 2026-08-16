@@ -1,4 +1,4 @@
-//! Deterministic example partitions (spec 12: construction / validation /
+//! Deterministic example partitions (construction / validation /
 //! held-out / adversarial).
 
 use emath_term::SymbolId;

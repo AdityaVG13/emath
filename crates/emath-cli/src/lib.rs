@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod genesis_cmd;
+mod tooling_cmd;
 
 use emath_build::{build_file, BuildOptions};
 use emath_core::Diagnostics;
@@ -380,6 +381,35 @@ usage:
       print one interpretation portfolio artifact
   emath architecture
       describe the provider-neutral pipeline
+  emath new <name> --out <dir>
+      deterministic project scaffold (emath-package.toml + src/main.emath)
+  emath fmt <file.emath>
+      canonical-form check (full formatter is Phase 4)
+  emath explain <file.emath> [<symbol>]
+      plan-level goal/provider explanation
+  emath run <file.emath> --out <dir>
+      build then execute the generated crate
+  emath test <file.emath> --out <dir>
+      build + run the generated crate's tests (--verify pipeline)
+  emath bench <file.emath>
+      typed refusal: benchmark harness is Phase 4+ (E-TLT-004)
+  emath verify <artifact-dir>
+      independent artifact re-verification
+  emath inspect <artifact-dir>
+      print committed artifact manifests
+  emath diff <a.emath> <b.emath>
+      fingerprint comparison of parse-admitted sources
+  emath doctor
+      toolchain presence checks (rustc, cargo, rustfmt, clippy)
+  emath vendor --out <dir>
+      offline dependency snapshot (zero third-party deps)
+  emath provider list|inspect <id>|test <id>
+      built-in provider descriptors; typed refusal for planned providers
+  emath fork status|sync [--dry-run]
+      upstream pin status; network sync refused offline (E-TLT-006)
+  emath agent check|plan|build <file.emath> [--out <dir>]
+      structured emath.agent.v1 envelope over the same admission/plan/build
+      paths as the interactive commands (agents cannot bypass checks)
   emath help
       this text
 
@@ -524,6 +554,10 @@ pub fn run(args: &[String]) -> u8 {
             }
         }
         "architecture" => architecture(),
+        "new" | "fmt" | "explain" | "run" | "test" | "bench" | "verify" | "inspect" | "diff"
+        | "doctor" | "vendor" | "provider" | "fork" | "agent" => {
+            tooling_cmd::tooling_dispatch(command, &args[1..])
+        }
         "help" | "--help" | "-h" => {
             print!("{}", help_text());
             EXIT_OK
