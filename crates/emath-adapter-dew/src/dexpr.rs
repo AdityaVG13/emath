@@ -393,48 +393,61 @@ pub fn map_linear(op: LinearOp, left: &DewExpr, right: &DewExpr) -> Result<DewEx
             rows: matrix.rows,
             cols: matrix.cols,
         }),
+        // Non-matrix operands are scalars in the strict-f64 subset.
         _ => None,
     };
-    let (Some(left_shape), Some(right_shape)) = (shape_of(left), shape_of(right)) else {
-        return Err(MappingIssue {
-            code: "E-PROV-033",
-            node: ExprId(0),
-            detail: "linear algebra requires fixed matrix/vector operands".into(),
-        });
-    };
+    let left_shape = shape_of(left);
+    let right_shape = shape_of(right);
     let compatible = match op {
         // dot: vector . vector
         LinearOp::Dot => {
-            left_shape.is_vector() && right_shape.is_vector() && left_shape == right_shape
+            let (Some(left), Some(right)) = (left_shape, right_shape) else {
+                return Err(shape_mismatch(op, left_shape, right_shape));
+            };
+            left.is_vector() && right.is_vector() && left == right
         }
         // matvec: m x n . n x 1
         LinearOp::MatVec => {
-            !left_shape.is_vector()
-                && right_shape.is_vector()
-                && left_shape.cols == right_shape.rows
+            let (Some(left), Some(right)) = (left_shape, right_shape) else {
+                return Err(shape_mismatch(op, left_shape, right_shape));
+            };
+            !left.is_vector() && right.is_vector() && left.cols == right.rows
         }
         // elementwise add: same shape
-        LinearOp::MatAdd => left_shape.same(right_shape),
-        // scale: scalar . any
-        LinearOp::Scale => left_shape.is_vector() && left_shape == Shape::vector(1),
+        LinearOp::MatAdd => {
+            let (Some(left), Some(right)) = (left_shape, right_shape) else {
+                return Err(shape_mismatch(op, left_shape, right_shape));
+            };
+            left.same(right)
+        }
+        // scale: exactly one side is a matrix, the other a scalar.
+        // (matrix . matrix and scalar . scalar are refused: Dew scale
+        // semantics are not claimed for them.)
+        LinearOp::Scale => left_shape.is_some() != right_shape.is_some(),
     };
     if !compatible {
-        return Err(MappingIssue {
-            code: "E-PROV-033",
-            node: ExprId(0),
-            detail: format!(
-                "shape mismatch for `{}`: {:?} and {:?}",
-                op.as_str(),
-                left_shape,
-                right_shape
-            ),
-        });
+        return Err(shape_mismatch(op, left_shape, right_shape));
     }
     Ok(DewExpr::Linear(
         op,
         Box::new(left.clone()),
         Box::new(right.clone()),
     ))
+}
+
+/// Deterministic `E-PROV-033` shape-mismatch issue. Non-matrix operands
+/// render as `<scalar>`.
+fn shape_mismatch(op: LinearOp, left: Option<Shape>, right: Option<Shape>) -> MappingIssue {
+    MappingIssue {
+        code: "E-PROV-033",
+        node: ExprId(0),
+        detail: format!(
+            "shape mismatch for `{}`: left={}, right={}",
+            op.as_str(),
+            left.map_or_else(|| "<scalar>".to_string(), |s| s.rows.to_string()),
+            right.map_or_else(|| "<scalar>".to_string(), |s| s.rows.to_string()),
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -589,6 +602,30 @@ mod tests {
         // mismatched dot is refused.
         let issue = map_linear(LinearOp::Dot, &vector(2), &vector(3)).unwrap_err();
         assert_eq!(issue.code, "E-PROV-033");
+    }
+
+    #[test]
+    fn scale_admits_scalar_times_matrix_in_either_order() {
+        let scalar = DewExpr::Float64Bits(2);
+        let matrix_2x2 = DewExpr::Matrix(DewMatrix {
+            rows: 2,
+            cols: 2,
+            data: vec![DewExpr::Float64Bits(0); 4],
+            layout: Layout::RowMajor,
+        });
+        // scalar . matrix is admitted.
+        let left = map_linear(LinearOp::Scale, &scalar, &matrix_2x2).unwrap();
+        assert!(matches!(left, DewExpr::Linear(LinearOp::Scale, ..)));
+        // matrix . scalar is admitted.
+        let right = map_linear(LinearOp::Scale, &matrix_2x2, &scalar).unwrap();
+        assert!(matches!(right, DewExpr::Linear(LinearOp::Scale, ..)));
+        // matrix . matrix and scalar . scalar are refused: Dew scale
+        // semantics are not claimed for those.
+        let both_matrices = map_linear(LinearOp::Scale, &matrix_2x2, &matrix_2x2).unwrap_err();
+        assert_eq!(both_matrices.code, "E-PROV-033");
+        let both_scalars = map_linear(LinearOp::Scale, &scalar, &scalar).unwrap_err();
+        assert_eq!(both_scalars.code, "E-PROV-033");
+        assert!(both_scalars.detail.contains("<scalar>"));
     }
 
     #[test]
