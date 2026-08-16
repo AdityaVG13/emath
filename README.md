@@ -15,10 +15,6 @@ A `.emath` program can describe:
 
 emath resolves that intent through interchangeable providers, generates one or more implementations, validates them, and packages the result as ordinary Rust software.
 
-## Contributing
-
-We are more than happy to welcome contributions. Before you start, please reach out to the author ([Adithya](https://x.com/adityavg13)) first so we can make sure we're all on the same page.
-
 ## What emath is not
 
 - It is not merely a computer algebra system.
@@ -172,6 +168,10 @@ Rust provides:
 - a suitable language for implementing the compiler itself.
 
 The core toolchain is Rust-first. Optional providers may use other implementation languages behind stable adapters.
+
+## Contributing
+
+We are more than happy to welcome contributions. Before you start, please reach out to the author ([Aditya](https://x.com/adityavg13)) first so we can make sure we're all on the same page.
 
 ## License
 
