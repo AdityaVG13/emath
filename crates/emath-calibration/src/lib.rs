@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! V7 g8 — Semantic calibration (spec 12).
+//! Semantic calibration.
 //!
 //! Behavioral examples constrain candidate worlds. This crate delivers:
 //!
@@ -35,7 +35,7 @@ pub fn example_id(operator: &SymbolId, inputs: &[String], output: &str) -> u64 {
     fnv1a64(format!("example:{}:{}:{}", operator.0, inputs.join(","), output).as_bytes())
 }
 
-/// A calibrated world portfolio record (spec 12, "Result"): the fitted
+/// A calibrated world portfolio record ("Result"): the fitted
 /// table, its per-partition example record, the held-out challenge
 /// outcome, and a deterministic version.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 //! Bootstrap recursive-descent parser for the `.emath` surface.
 //!
-//! Covers the full structural grammar of the V5 corpus (sections, generics,
+//! Covers the full structural grammar of the corpus (sections, generics,
 //! records, commands, precedence expressions, binders, quantity literals,
 //! chained comparisons, continuation lines). Phase 1 semantics admits a
 //! subset; the parser itself accepts the documented surface. Never panics;
@@ -146,7 +146,7 @@ impl Parser {
         let save = self.pos;
         self.skip_newlines();
         // Same-level operator continuation (`y = a` newline `* b`), used
-        // by V6 multi-line definitions where the operator lines sit at
+        // by multi-line definitions where the operator lines sit at
         // the same indentation as the expression start.
         if is_continuation_operator(self.peek()) {
             return true;
@@ -215,7 +215,7 @@ impl Parser {
         }
     }
 
-    /// `package examples.square` — V6 package identity line.
+    /// `package examples.square` — package identity line.
     fn parse_package_item(&mut self) -> Option<Item> {
         let start = self.current_span();
         self.advance(); // `package`
@@ -271,7 +271,7 @@ impl Parser {
                     self.advance();
                     tree = Some(UseTree::All);
                 }
-                // V6 uses dotted paths (`use std.numeric.Real`).
+                // Uses dotted paths (`use std.numeric.Real`).
                 TokenKind::PathSep | TokenKind::Dot => {
                     self.advance();
                 }
@@ -327,8 +327,8 @@ impl Parser {
     }
 
     /// Declaration heads (both dialects):
-    /// - V5 legacy: `emath custom <Name<Params>> as kind:` `suite`
-    /// - V6: `emath function Square<T: Real>:`, `emath record CacheCandidate:`,
+    /// - Legacy: `emath custom <Name<Params>> as kind:` `suite`
+    /// - Current: `emath function Square<T: Real>:`, `emath record CacheCandidate:`,
     ///   `emath RankingPolicy FreshnessScore:` (custom-kind use)
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.current_span();
@@ -403,7 +403,7 @@ impl Parser {
     }
 
     /// Top-level `extern operator name<Generics>(params) -> Ret:` `suite`
-    /// (V6 `09_parametric_provider`). Becomes a declaration of kind
+    /// (`09_parametric_provider`). Becomes a declaration of kind
     /// `extern` / `operator` so the rest of the pipeline sees one shape.
     fn parse_extern_item(&mut self) -> Option<Declaration> {
         let start = self.current_span();
@@ -553,7 +553,7 @@ impl Parser {
             }
             TokenKind::Keyword(Keyword::Invariant) => {
                 if self.peek_at(1) == &TokenKind::Colon {
-                    // `invariant:` V6 section head
+                    // `invariant:` section head
                     self.advance();
                     self.advance();
                     let suite = self.parse_suite()?;
@@ -1192,7 +1192,7 @@ impl Parser {
         }
 
         // Two-word section heads: `goal rust:`, `tune score:`,
-        // `lower declaration:`, `dispatch authority:` (V6).
+        // `lower declaration:`, `dispatch authority:`.
         if matches!(self.peek_at(1), TokenKind::Ident(_))
             && matches!(self.peek_at(2), TokenKind::Colon)
         {
@@ -1277,7 +1277,7 @@ impl Parser {
             ));
         }
 
-        // Full-expression statements and equations (V6 `equation:` /
+        // Full-expression statements and equations (`equation:` /
         // `constraint:` sections): `mass * derivative(velocity) = rhs`,
         // `a * a + b * b = c * c`, `a < b < c`. Trigger: the token after
         // the leading ident is an operator or a call paren, or a dotted /
@@ -1423,7 +1423,7 @@ impl Parser {
             self.pos = save;
         }
 
-        // Dotted section head: `core.policy:` (V6 `lower declaration:`).
+        // Dotted section head: `core.policy:` (`lower declaration:`).
         // If it is not a section, fall through to the shared
         // segments handling (does not double-consume).
         if matches!(self.peek_at(1), TokenKind::Dot | TokenKind::PathSep) {

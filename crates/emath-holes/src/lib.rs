@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! V7 g5 — Meaning holes and finite synthesis (spec 8).
+//! Meaning holes and finite synthesis.
 //!
 //! An underconstrained construct is a meaning hole. This crate delivers
 //! a deterministic hole graph (stable ids, kinds, states, dependencies,
@@ -14,7 +14,7 @@
 //!   state (the next graph) plus a receipt; failed proposals never
 //!   mutate the authoritative graph.
 //!
-//! The g5 exit is covered: operator tables satisfying declared finite
+//! The synthesis exit is covered: operator tables satisfying declared finite
 //! laws are synthesized, and a seeded impossible law set (two distinct
 //! identities for the same operator) is rejected exhaustively.
 

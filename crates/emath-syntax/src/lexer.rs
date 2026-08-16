@@ -34,7 +34,7 @@ pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnost
 }
 
 /// Lex the whole source into layout-aware tokens and retain every comment
-/// with its span ( lossless tokenization / ).
+/// with its span (lossless tokenization / canonical formatting).
 #[must_use]
 pub fn lex_with_comments(
     source: &str,

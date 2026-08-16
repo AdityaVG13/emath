@@ -1,7 +1,7 @@
 //! Host campaigns: promotion of candidate meanings under protected metrics.
 //!
-//! One campaign selects or rejects a candidate meaning (see g10 exit
-//! criterion). Promotion requires, in order:
+//! One campaign selects or rejects a candidate meaning (per the
+//! tuning exit criterion). Promotion requires, in order:
 //!
 //! 1. semantic admission — the candidate passed the held-out challenge and
 //!    does not touch preserved (declared-law) symbols;

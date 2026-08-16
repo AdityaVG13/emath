@@ -1,9 +1,9 @@
-//! V6 intent-compiler HIR (docs/06 + docs/26).
+//! Intent-compiler HIR (docs/06 + docs/26).
 //!
 //! The HIR layer between lossless syntax and the neutral IR: name
 //! resolution, declaration kinds, constructors and goals, with source
 //! spans retained. IDs are stable content-derived handles, not vector
-//! positions (V6 IR rule), so renaming a declaration changes its id and
+//! positions (IR rule), so renaming a declaration changes its id and
 //! downstream ids deterministically.
 //!
 //! The `IntentGraph` records declarations, goals and definitions as nodes
@@ -17,7 +17,7 @@ use emath_core::{content_id_of_str, ContentId, Span};
 use emath_syntax::tree::{Declaration, ExprKind, Item, StmtKind, SyntaxTree, TypeKind, UseTree};
 use std::collections::BTreeMap;
 
-/// V6 `PackageId`: content-derived from the package identity string.
+/// `PackageId`: content-derived from the package identity string.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PackageId(pub ContentId);
 
@@ -28,7 +28,7 @@ impl PackageId {
     }
 }
 
-/// V6 `DeclarationId`: content-derived from (package, name, declaration
+/// `DeclarationId`: content-derived from (package, name, declaration
 /// body), independent of source position.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DeclarationId(pub ContentId);
@@ -48,14 +48,14 @@ impl DeclarationId {
     }
 }
 
-/// V6 `HirDeclarationKind`: what the `.emath` declaration is.
+/// `HirDeclarationKind`: what the `.emath` declaration is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HirDeclarationKind {
     /// `... as policy:` — stateful declaration with constructors/goals.
     Policy,
     /// `... as function:` — pure mapping declaration.
     Function,
-    /// `... as world:` — V7 semantic-genesis world declaration.
+    /// `... as world:` — semantic-genesis world declaration.
     World,
     /// Custom kind declared via the kind schema (P04-005).
     Custom,
@@ -451,7 +451,7 @@ pub struct IntentEdge {
     pub kind: IntentEdgeKind,
 }
 
-/// V6 `IntentGraph`: declaration/goal/definition nodes with reference
+/// `IntentGraph`: declaration/goal/definition nodes with reference
 /// edges, built deterministically from an `HirPackage`.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct IntentGraph {
