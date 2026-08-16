@@ -1,4 +1,4 @@
-//! witnesses: staged paths cannot escape the artifact destination,
+//! Witnesses: staged paths cannot escape the artifact destination,
 //! and publish is atomic (a failure leaves no destination directory).
 
 use emath_artifact::{publish, stage, verify_artifact, ArtifactError, StagedFile};

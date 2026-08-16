@@ -9,8 +9,8 @@
 #![forbid(unsafe_code)]
 
 pub mod admit;
+pub mod recognition;
 pub mod session;
-pub mod v6;
 
 pub use admit::{CheckResult, SemanticTrace, TraceEntry};
 pub use session::{

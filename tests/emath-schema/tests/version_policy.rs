@@ -1,4 +1,4 @@
-//! Version-policy witnesses for: unparseable versions must never
+//! Version-policy witnesses: unparseable versions must never
 //! satisfy a SemverMajor gate.
 
 use emath_schema::VersionPolicy;

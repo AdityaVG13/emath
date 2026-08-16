@@ -1,4 +1,4 @@
-//! Canonical content identity negative tests (bug-hunt ``).
+//! Canonical content identity negative tests.
 //!
 //! Two packages that differ only in the type of a single declaration input
 //! must produce distinct content identity. On the degenerated identity the

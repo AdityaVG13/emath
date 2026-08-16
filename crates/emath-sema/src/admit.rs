@@ -1428,15 +1428,15 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
 
     // Front-end: package identity and `use` imports. External file
     // imports remain a Phase 2 refusal (E-PKG-050).
-    let has_v6_items = tree.items.iter().any(|item| match item {
+    let has_recognition_items = tree.items.iter().any(|item| match item {
         emath_syntax::tree::Item::Package { .. } | emath_syntax::tree::Item::Use { .. } => true,
         emath_syntax::tree::Item::Declaration(decl) => decl.item_kind != "custom",
     });
-    let v6 = if has_v6_items {
-        let front_end = crate::v6::admit_front_end(tree, &mut diagnostics, &mut trace);
+    let recognition = if has_recognition_items {
+        let front_end = crate::recognition::admit_front_end(tree, &mut diagnostics, &mut trace);
         package.package_path = front_end.package_path;
         package.imports = front_end.imports;
-        Some(crate::v6::collect_kind_defs(tree))
+        Some(crate::recognition::collect_kind_defs(tree))
     } else {
         None
     };
@@ -1446,9 +1446,9 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
         let emath_syntax::tree::Item::Declaration(decl) = item else {
             continue;
         };
-        if let Some(kind_defs) = &v6 {
+        if let Some(kind_defs) = &recognition {
             if decl.item_kind != "custom" {
-                crate::v6::admit_declaration(
+                crate::recognition::admit_declaration(
                     decl,
                     kind_defs,
                     &mut package,
