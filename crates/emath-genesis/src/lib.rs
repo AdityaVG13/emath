@@ -1,6 +1,15 @@
 #![forbid(unsafe_code)]
 
 //! Minimal Semantic Genesis evaluator and built-in example worlds.
+//!
+//! Hosts the G1 world-side stage (moved from `emath-syntax`, world-side
+//! fence): [`forest`] builds the bounded parse forest over a genesis body
+//! expression and infers the world signature, constructing `emath-term` /
+//! `emath-world-ir` values directly. `emath-syntax` keeps the G0
+//! `emath custom` section parser and re-exports this module at its root for
+//! the CLI.
+
+pub mod forest;
 
 use std::collections::BTreeMap;
 use std::fmt;
