@@ -7,7 +7,6 @@
 
 mod genesis_cmd;
 
-use emath_artifact::{verify_artifact, StagedFile, Staging};
 use emath_build::{build_file, BuildOptions};
 use emath_core::Diagnostics;
 use emath_plan::{
@@ -274,7 +273,7 @@ pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
     }
 }
 
-/// `artifact <dir> check`: re-verify fingerprints from the published
+/// `artifact check <dir>`: re-verify fingerprints from the published
 /// artifact directory (`<dir>/emath/<artifact-id>`).
 pub fn artifact_check(dir: &Path) -> u8 {
     let artifact_root = dir.join("emath");
@@ -292,20 +291,6 @@ pub fn artifact_check(dir: &Path) -> u8 {
         if !entry.path().is_dir() {
             continue;
         }
-        let mut files = Vec::new();
-        for root in required_local(&entry.path()) {
-            let Ok(bytes) = std::fs::read(&root) else {
-                eprintln!("error: unreadable {}", root.display());
-                ok = false;
-                continue;
-            };
-            files.push(StagedFile {
-                relative_path: root
-                    .strip_prefix(entry.path())
-                    .map_or_else(|_| "?".to_string(), |p| p.to_string_lossy().into_owned()),
-                bytes,
-            });
-        }
         match verify_one_artifact(&entry.path()) {
             Ok(()) => println!("artifact {id}: verified"),
             Err(detail) => {
@@ -321,28 +306,30 @@ pub fn artifact_check(dir: &Path) -> u8 {
     }
 }
 
-fn required_local(root: &std::path::Path) -> Vec<PathBuf> {
-    emath_artifact::required_artifact_paths()
-        .iter()
-        .map(|p| root.join(p))
-        .collect()
-}
-
+/// Independent fingerprint verification against the *declared* manifest:
+/// every file the manifest lists must exist on disk with its declared
+/// content id, and every required path must be present. (The recomputed
+/// manifest identity, E-EVID-102, lives in `emath-checker`.)
 fn verify_one_artifact(root: &std::path::Path) -> Result<(), String> {
-    let mut files = Vec::new();
-    for path in required_local(root) {
-        let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-        files.push(StagedFile {
-            relative_path: path
-                .strip_prefix(root)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            bytes,
-        });
+    let manifest_path = root.join("emath/artifact-manifest.json");
+    let manifest_bytes = std::fs::read(&manifest_path).map_err(|error| error.to_string())?;
+    let manifest_json = String::from_utf8(manifest_bytes).map_err(|error| error.to_string())?;
+    let declared = emath_artifact::manifest_files_declared(&manifest_json)
+        .map_err(|error| error.to_string())?;
+    for (path, declared_id) in &declared {
+        let bytes = std::fs::read(root.join(path))
+            .map_err(|error| format!("cannot read `{path}`: {error}"))?;
+        let actual = emath_core::bootstrap_content_id(&bytes);
+        if actual.0 != *declared_id {
+            return Err(format!("`{path}` fingerprint changed (tamper detected)"));
+        }
     }
-    let staging: Staging =
-        emath_artifact::stage(&files, None).map_err(|error| error.to_string())?;
-    verify_artifact(root, &staging).map_err(|error| error.to_string())
+    for required in emath_artifact::required_artifact_paths() {
+        if !root.join(required).is_file() {
+            return Err(format!("missing required path `{required}`"));
+        }
+    }
+    Ok(())
 }
 
 /// `architecture`: provider-neutral pipeline description.
@@ -372,7 +359,7 @@ usage:
   emath build <file.emath> --out <dir> [--verify] [--json]
       full pipeline; publishes artifact under <dir>/emath/<artifact-id>
       --verify runs `cargo test` on the staged crate before publish
-  emath artifact <dir> check
+  emath artifact check <dir>
       re-verify every published artifact's fingerprints (independent checker)
   emath import modelica <file.mo> [--json]
       retain a Modelica subset source as foreign-model declarations with
@@ -533,7 +520,7 @@ pub fn run(args: &[String]) -> u8 {
             if args.get(1).is_some_and(|c| c == "check") && args.len() >= 3 {
                 artifact_check(&PathBuf::from(&args[2]))
             } else {
-                usage("artifact <dir> check")
+                usage("artifact check <dir>")
             }
         }
         "architecture" => architecture(),
