@@ -67,7 +67,14 @@ pub const CERTIFY_THE_CERTIFIER: [UnsoundFixture; 7] = [
 /// output carrying none of them passes the gate (it is not *provably*
 /// unsound by the corpus).
 pub fn reject_unsound_certifier_output(certificate: &[u8]) -> Result<(), EvidenceError> {
-    let text = std::str::from_utf8(certificate).unwrap_or("");
+    // Binary or non-UTF-8 payloads are not certificates: the earlier
+    // empty-fallback let them pass the corpus unchecked.
+    let text = std::str::from_utf8(certificate).map_err(|_| {
+        EvidenceError::new(
+            "E-EVID-507",
+            "certifier output is not valid UTF-8; refusing as untrusted payload",
+        )
+    })?;
     for fixture in &CERTIFY_THE_CERTIFIER {
         if text.contains(fixture.pattern) {
             return Err(EvidenceError::new(

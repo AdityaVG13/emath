@@ -1,0 +1,11 @@
+[package]
+name = "emath-artifact-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+emath-artifact = { path = "../../crates/emath-artifact" }
+emath-checker = { path = "../../crates/emath-checker" }
+emath-core = { path = "../../crates/emath-core" }
+emath-ir = { path = "../../crates/emath-ir" }

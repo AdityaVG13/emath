@@ -45,8 +45,8 @@ fn main() {
 
 fn demo_cache_policy() -> u8 {
     println!("== demo cache-policy ==");
-    let work = temp_dir("emath-xtask-cache");
-    match run_demo_cache_policy(&work) {
+    let work = TempWork::new("emath-xtask-cache");
+    match run_demo_cache_policy(work.path()) {
         Ok(()) => {
             println!("cache-policy demo: ok");
             0
@@ -92,8 +92,8 @@ fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
 
 fn demo_semantic_genesis(update_replay: bool) -> u8 {
     println!("== demo semantic-genesis ==");
-    let work = temp_dir("emath-xtask-sg");
-    match run_demo_semantic_genesis(&work, update_replay) {
+    let work = TempWork::new("emath-xtask-sg");
+    match run_demo_semantic_genesis(work.path(), update_replay) {
         Ok(()) => {
             println!("semantic-genesis demo: ok");
             0
@@ -308,8 +308,24 @@ fn require_bytes(path: &Path, what: &str) -> Result<(), String> {
     }
 }
 
-fn temp_dir(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("{label}-{}", std::process::id()))
+/// RAII temp workdir: `$TMPDIR/<label>-<pid>` is removed on drop, so demo
+/// runs never leak `emath-xtask-*` directories.
+struct TempWork(PathBuf);
+
+impl TempWork {
+    fn new(label: &str) -> Self {
+        Self(std::env::temp_dir().join(format!("{label}-{}", std::process::id())))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempWork {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn diff_dirs(left: &Path, right: &Path, what: &str) -> Result<(), String> {

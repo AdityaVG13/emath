@@ -10,7 +10,7 @@ use crate::ArtifactCheckConfig;
 /// Kind of seeded negative control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NegativeControlKind {
-    /// One file's content was tampered with.
+    /// One file's content was altered.
     TamperedContent,
     /// A certificate freshness window was left in the past.
     StaleCertificate,
@@ -102,7 +102,7 @@ pub fn run_negative_controls(
 }
 
 /// Seeds the given artifacts.
-/// - tampered: flips one byte of `src/lib.rs`.
+/// - altered: flips one byte of `src/lib.rs`.
 /// - stale: moves every certificate freshness window into the past.
 /// - wrong-goal: re-scopes the evidence bundle to another goal.
 /// - incomplete: removes `src/lib.rs`.

@@ -181,14 +181,14 @@ impl Default for EnginePolicy {
 }
 
 impl EnginePolicy {
-    /// Validates the policy (`E-HOST-003`).
+    /// Validates the policy (`E-HOST-015`).
     pub fn validate(&self) -> Result<(), LabError> {
         if !self.promote_min_median_ratio.is_finite()
             || self.promote_min_median_ratio <= 0.0
             || self.promote_min_median_ratio >= 1.0
         {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-015",
                 "promote_min_median_ratio must be in (0.0, 1.0)",
             ));
         }
@@ -197,31 +197,31 @@ impl EnginePolicy {
             || self.canary_min_median_ratio > 1.0
         {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-015",
                 "canary_min_median_ratio must be in (0.0, 1.0]",
             ));
         }
         if self.canary_min_median_ratio < self.promote_min_median_ratio {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-015",
                 "canary_min_median_ratio must be >= promote_min_median_ratio",
             ));
         }
         if !self.max_median_regression.is_finite() || self.max_median_regression < 1.0 {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-015",
                 "max_median_regression must be >= 1.0",
             ));
         }
         if !self.max_p99_regression.is_finite() || self.max_p99_regression < 1.0 {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-015",
                 "max_p99_regression must be >= 1.0",
             ));
         }
         if !self.max_memory_regression.is_finite() || self.max_memory_regression < 1.0 {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-015",
                 "max_memory_regression must be >= 1.0",
             ));
         }

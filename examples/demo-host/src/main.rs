@@ -5,7 +5,10 @@
 
 include!(concat!(env!("OUT_DIR"), "/affine_policy.rs"));
 
-use emath_artifact::{required_artifact_paths, stage, verify_artifact, StagedFile};
+use emath_artifact::{
+    manifest_from_json, manifest_identity, required_artifact_paths, stage, verify_artifact,
+    StagedFile,
+};
 
 fn main() {
     let artifact_id = env!("EMATH_ARTIFACT_ID");
@@ -31,12 +34,20 @@ fn main() {
         refused.unwrap_err()
     );
 
-    // Independent artifact verification: re-read and re-fingerprint the
-    // published artifact under OUT_DIR.
+    // Independent artifact verification: re-read the published manifest
+    // and recompute the one artifact identity from it, then
+    // re-fingerprint every required file under OUT_DIR.
     let out_dir = env!("OUT_DIR");
     let root = std::path::Path::new(out_dir)
         .join("emath")
         .join(artifact_id);
+    let manifest_json = std::fs::read_to_string(root.join("emath/artifact-manifest.json"))
+        .expect("artifact manifest exists");
+    let manifest = manifest_from_json(&manifest_json).expect("artifact manifest parses");
+    assert!(
+        manifest_identity(&manifest).0 == artifact_id,
+        "artifact identity mismatch: manifest recomputation vs published id"
+    );
     let mut files = Vec::new();
     for relative in required_artifact_paths() {
         let bytes = std::fs::read(root.join(relative)).expect("artifact file exists");
@@ -46,10 +57,6 @@ fn main() {
         });
     }
     let staging = stage(&files, None).expect("required artifact set is complete");
-    assert!(
-        staging.artifact_id.0 == artifact_id,
-        "artifact identity mismatch: staged vs manifest"
-    );
     verify_artifact(&root, &staging).expect("artifact fingerprints verified");
     println!("artifact verified ({} files)", files.len());
 

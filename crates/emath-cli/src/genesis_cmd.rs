@@ -572,7 +572,10 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
     };
     let source_map = {
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.source-map.v1");
+        // World-codegen provenance, not the durable artifact source map:
+        // these entries carry (generated, source, kind) labels, not the
+        // byte-range + source_package shape of `emath.source-map.v1`.
+        object.string("schema", "emath.generated-crate-source-map.v1");
         object.string("source", &path_to_string(path));
         let mut entries = String::from("[");
         for (index, rel) in generated.files.keys().enumerate() {

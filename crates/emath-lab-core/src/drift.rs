@@ -55,11 +55,11 @@ pub struct DriftBand {
 }
 
 impl DriftBand {
-    /// Validates the band (`E-HOST-003`).
+    /// Validates the band (`E-HOST-014`).
     pub fn validate(&self) -> Result<(), LabError> {
         if !self.relative_tolerance.is_finite() || self.relative_tolerance <= 0.0 {
             return Err(LabError::new(
-                "E-HOST-003",
+                "E-HOST-014",
                 format!(
                     "drift band tolerance must be positive for {}",
                     self.kind.as_str()
@@ -114,7 +114,7 @@ pub struct DriftMonitor {
 }
 
 impl DriftMonitor {
-    /// Builds a monitor; every band must be valid (`E-HOST-003`).
+    /// Builds a monitor; every band must be valid (`E-HOST-014`).
     pub fn new(bands: Vec<DriftBand>) -> Result<Self, LabError> {
         for band in &bands {
             band.validate()?;

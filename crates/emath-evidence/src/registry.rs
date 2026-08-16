@@ -101,6 +101,18 @@ impl CertificateRegistry {
                 ),
             ));
         }
+        // A contract that admits no claim class registers nothing ("E-EVID-403"):
+        // empty admits would make later lookups vacuously pass.
+        if contract.admits.is_empty() {
+            return Err(EvidenceError::new(
+                "E-EVID-403",
+                format!(
+                    "contract for {} v{} does not admit any claim class",
+                    contract.kind.as_str(),
+                    contract.version
+                ),
+            ));
+        }
         self.contracts.insert(key, contract);
         Ok(())
     }

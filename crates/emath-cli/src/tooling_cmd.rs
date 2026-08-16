@@ -41,14 +41,18 @@ const PROVIDERS: [(&str, &str, &str); 6] = [
         "artifact verification + negative controls",
         "implemented",
     ),
-    ("dew.rust", "expression optimization / codegen", "planned"),
     (
-        "rumoca.structural",
+        "phase2.expression",
+        "expression optimization / codegen",
+        "planned",
+    ),
+    (
+        "phase3.structural",
         "equations, flattening, DAE analysis",
         "planned",
     ),
-    ("wrenfold.symbolic", "differential oracle", "planned"),
-    ("franken.numerical", "solvers and optimization", "planned"),
+    ("phase4.symbolic", "differential oracle", "planned"),
+    ("phase5.numerics", "solvers and optimization", "planned"),
 ];
 
 /// Dispatch for all tooling subcommands added by the P11 slice.
@@ -131,7 +135,9 @@ fn is_valid_name(name: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
 }
 
-/// `fmt <file>`: canonical-form check (the full formatter is Phase 4).
+/// `fmt <file>`: canonical-form check via the real lossless formatter.
+/// The file is canonical only when the formatter round-trips it byte for
+/// byte; anything less is a refusal with a diff preview, never a fake ok.
 fn fmt_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
         return usage("fmt <file.emath>");
@@ -146,8 +152,28 @@ fn fmt_cmd(args: &[String]) -> u8 {
     if result.diagnostics.has_errors() {
         return EXIT_REFUSED;
     }
-    println!("fmt: {file}: canonical form (no changes; full formatter is Phase 4)");
-    EXIT_OK
+    let limits = emath_core::limits::Limits::default();
+    let lossless = emath_syntax::parse_lossless(&package.text, package.file, &limits);
+    let canonical = emath_syntax::formatter::format(&lossless.tree, &lossless.comments);
+    if canonical == package.text {
+        println!("fmt: {file}: canonical form (lossless round-trip)");
+        EXIT_OK
+    } else {
+        eprintln!("fmt: {file}: NOT canonical; expected lossless formatter output");
+        for (line_no, (expected, actual)) in canonical
+            .lines()
+            .zip(package.text.lines())
+            .enumerate()
+            .filter(|(_, (expected, actual))| expected != actual)
+            .take(10)
+        {
+            eprintln!(
+                "  line {}: expected `{expected}`, found `{actual}`",
+                line_no + 1
+            );
+        }
+        EXIT_REFUSED
+    }
 }
 
 /// `explain <file> [<symbol>]`: plan-level explanation of goals.
@@ -283,7 +309,9 @@ fn verify_cmd(args: &[String]) -> u8 {
     artifact_check(&PathBuf::from(dir))
 }
 
-/// `inspect <dir>`: print the committed artifact manifest.
+/// `inspect <dir>`: print the committed artifact manifest. Reads exactly
+/// the file `emath build` writes (`<dir>/emath/<id>/emath/artifact-manifest.json`)
+/// and refuses non-UTF-8 manifests instead of substituting lossy text
 fn inspect_cmd(args: &[String]) -> u8 {
     let Some(dir) = first_positional(args) else {
         return usage("inspect <artifact-dir>");
@@ -302,15 +330,24 @@ fn inspect_cmd(args: &[String]) -> u8 {
         if !entry.path().is_dir() {
             continue;
         }
-        let manifest = entry.path().join("manifest.json");
-        let Ok(bytes) = std::fs::read(&manifest) else {
+        let manifest = entry.path().join("emath/artifact-manifest.json");
+        let bytes = match std::fs::read(&manifest) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                eprintln!(
+                    "error: E-TLT-005: cannot read manifest at {}: {error}",
+                    manifest.display()
+                );
+                return EXIT_REFUSED;
+            }
+        };
+        let Ok(text) = String::from_utf8(bytes) else {
             eprintln!(
-                "error: E-TLT-005: missing manifest at {}",
+                "error: E-EVID-114: manifest is not valid UTF-8 at {}",
                 manifest.display()
             );
             return EXIT_REFUSED;
         };
-        let text = String::from_utf8_lossy(&bytes);
         println!("artifact {}:", entry.file_name().to_string_lossy());
         println!("{text}");
         inspected += 1;
@@ -366,9 +403,10 @@ fn fingerprint(file: &str) -> Result<emath_core::ContentId, ()> {
         eprintln!("error: cannot read {file}");
         return Err(());
     };
-    Ok(emath_core::content_id_of_str(&String::from_utf8_lossy(
-        &bytes,
-    )))
+    // Content identity binds the bytes, not a lossy decode: non-UTF-8
+    // sources must stay visibly distinct instead of being silently
+    // approximated.
+    Ok(emath_core::bootstrap_content_id(&bytes))
 }
 
 /// `doctor`: toolchain presence checks.
@@ -426,7 +464,20 @@ fn vendor_cmd(args: &[String]) -> u8 {
         );
         return EXIT_USAGE;
     };
-    let text = String::from_utf8_lossy(&bytes);
+    if bytes.is_empty() {
+        eprintln!(
+            "error: E-TLT-007: upstream lock is empty at {}",
+            lock.display()
+        );
+        return EXIT_USAGE;
+    }
+    let Ok(text) = String::from_utf8(bytes) else {
+        eprintln!(
+            "error: E-TLT-007: upstream lock is not valid UTF-8 at {}",
+            lock.display()
+        );
+        return EXIT_USAGE;
+    };
     let entry_count = text.matches("      \"id\": \"").count();
     let mut object = JsonWriter::object();
     object.string("schema", "emath.vendor.v1");
@@ -470,7 +521,7 @@ fn provider_cmd(args: &[String]) -> u8 {
             let Some((_, capability, status)) =
                 PROVIDERS.iter().find(|(candidate, _, _)| candidate == id)
             else {
-                eprintln!("error: E-PROV-001: unknown provider `{id}`");
+                eprintln!("error: E-TLT-016: unknown provider `{id}`");
                 return EXIT_USAGE;
             };
             let mut object = JsonWriter::object();
@@ -487,20 +538,15 @@ fn provider_cmd(args: &[String]) -> u8 {
             };
             let Some((_, _, status)) = PROVIDERS.iter().find(|(candidate, _, _)| candidate == id)
             else {
-                eprintln!("error: E-PROV-001: unknown provider `{id}`");
+                eprintln!("error: E-TLT-016: unknown provider `{id}`");
                 return EXIT_USAGE;
             };
-            if *status == "implemented" {
-                println!(
-                    "provider {id}: negative control suite: ok (deterministic artifact control)"
-                );
-                EXIT_OK
-            } else {
-                eprintln!(
-                    "error: E-PROV-002: provider `{id}` is not yet available in the Phase 1 subset"
-                );
-                EXIT_REFUSED
-            }
+            let _ = (status, id);
+            // No in-CLI negative-control battery exists. Printing "suite:
+            // ok" without running anything would be a fake success; refuse
+            // with a typed code instead (same pattern as bench E-TLT-004).
+            eprintln!("error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath-adapter-rumoca in the workspace");
+            EXIT_REFUSED
         }
         _ => usage("provider list|inspect <id>|test <id>"),
     }
@@ -519,7 +565,20 @@ fn fork_cmd(args: &[String]) -> u8 {
         );
         return EXIT_USAGE;
     };
-    let text = String::from_utf8_lossy(&bytes);
+    if bytes.is_empty() {
+        eprintln!(
+            "error: E-TLT-007: upstream lock is empty at {}",
+            lock.display()
+        );
+        return EXIT_USAGE;
+    }
+    let Ok(text) = String::from_utf8(bytes) else {
+        eprintln!(
+            "error: E-TLT-007: upstream lock is not valid UTF-8 at {}",
+            lock.display()
+        );
+        return EXIT_USAGE;
+    };
     match sub.as_str() {
         "status" => {
             for id in lock_ids(&text) {
@@ -636,7 +695,10 @@ fn agent_cmd(args: &[String]) -> u8 {
                 file,
                 PathBuf::from(out),
                 BuildOptions {
-                    verify_generated_crate: false,
+                    // The agent surface cannot bypass artifact checks: a
+                    // generated crate with no #[test] tests is refused
+                    // (E-TLT-012) exactly like `emath test`.
+                    verify_generated_crate: true,
                 },
             ) {
                 Ok(report) => {

@@ -426,27 +426,25 @@ impl ModelBuilder for BuilderModel {
         let tests: Vec<emath_ir::TestCase> = self
             .tests
             .iter()
-            .map(|test| {
+            .map(|test| -> Result<_, BuilderError> {
                 let mut given = std::collections::BTreeMap::new();
                 let mut given_env: Vec<(String, TypeId)> = Vec::new();
                 for (name, expression) in &test.given {
                     let (id, ty) =
-                        Self::lower_expr(&mut package, expression, &given_env, float64, boolean)
-                            .unwrap();
+                        Self::lower_expr(&mut package, expression, &given_env, float64, boolean)?;
                     given.insert(name.clone(), id);
                     given_env.push((name.clone(), ty));
                 }
                 let (expect, _) =
-                    Self::lower_expr(&mut package, &test.expect, &given_env, float64, boolean)
-                        .unwrap();
-                emath_ir::TestCase {
+                    Self::lower_expr(&mut package, &test.expect, &given_env, float64, boolean)?;
+                Ok(emath_ir::TestCase {
                     name: test.name.clone(),
                     given,
                     expect,
                     source: OWNER,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         let goals: Vec<Goal> = self
             .goals

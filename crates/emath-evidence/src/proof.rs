@@ -64,6 +64,9 @@ pub fn verify_proof_optional(
     record: &EvidenceRecord,
     certificate: &[u8],
 ) -> Result<ProofVerdict, EvidenceError> {
+    // Every claimed proof passes the certify-the-certifier corpus (and the UTF-8    // gate)
+    // before any kernel sees it ("E-EVID-507").
+    crate::certify::reject_unsound_certifier_output(certificate)?;
     match provider {
         Some(kernel) => kernel.verify(record, certificate),
         None => Err(EvidenceError::new(

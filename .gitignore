@@ -1,5 +1,12 @@
 /target
 
+# standalone test-crate build artifacts (not workspace members)
+tests/*/target/
+
+# zero tool caches and disposable agent scratch workspaces
+.zerostack/
+.scratch-*/
+
 # bv (beads viewer) local config and caches
 .bv/
 
