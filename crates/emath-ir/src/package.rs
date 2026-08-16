@@ -37,7 +37,7 @@ pub struct Declaration {
     pub source: Span,
 }
 
-/// One admitted import (`use` front-end, V6).
+/// One admitted import (`use` front-end).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportEntry {
     /// Dotted library path (`std.units`).
@@ -83,9 +83,9 @@ impl ImportSelection {
 #[derive(Clone, Debug, Default)]
 pub struct SemanticPackage {
     pub identity: Option<PackageIdentity>,
-    /// `package <dotted>` identity declared by the V6 front-end.
+    /// `package <dotted>` identity declared by the front-end.
     pub package_path: Option<Vec<String>>,
-    /// Admitted imports (V6 front-end).
+    /// Admitted imports (front-end).
     pub imports: Vec<ImportEntry>,
     pub declarations: Vec<Declaration>,
     pub types: Vec<TypeNode>,

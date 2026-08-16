@@ -6,7 +6,7 @@
 //! bounded source/token/nesting limits, and recovery at statement
 //! boundaries. This crate is provider-free.
 //!
-//! V7 Semantic Genesis adds two modules: [`genesis`] parses `emath custom`
+//! Semantic Genesis adds two modules: [`genesis`] parses `emath custom`
 //! world declarations (G0) and [`forest`] builds the bounded parse forest and
 //! infers the world signature (G1).
 
@@ -36,7 +36,7 @@ pub fn parse_str(text: &str) -> (SyntaxTree, Diagnostics) {
     parser::parse(text, FileId(0), &Limits::default())
 }
 
-/// The lossless parse result: the tree plus every
+/// The lossless parse result (/002): the tree plus every
 /// retained comment with its span, for formatting round-trips.
 #[derive(Clone, Debug)]
 pub struct LosslessParse {
@@ -59,7 +59,7 @@ pub fn parse_lossless(text: &str, file: FileId, limits: &Limits) -> LosslessPars
 }
 
 /// Format the lossless parse canonically: idempotent, comment-preserving,
-/// parse-stable.
+/// parse-stable .
 #[must_use]
 pub fn format_lossless(parse: &LosslessParse) -> String {
     formatter::format(&parse.tree, &parse.comments)

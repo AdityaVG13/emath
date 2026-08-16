@@ -1,4 +1,4 @@
-//!: differential oracle.
+//! Differential oracle.
 //!
 //! For every mapped expression the oracle compares the emath reference
 //! interpreter (over EMIR) against the Dew mirror interpreter (over the

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "V6 intent-compiler HIR: HirPackage, content-derived declaration IDs, IntentGraph over declarations/goals/definitions (V6 docs 06 + 26)."
+description = "Intent-compiler HIR: HirPackage, content-derived declaration IDs, IntentGraph over declarations, goals, and definitions."
 
 [dependencies]
 emath-core = { path = "../emath-core" }

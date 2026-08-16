@@ -193,7 +193,7 @@ impl AgentProposal {
                 .all(|authority| PROPOSAL_AUTHORITIES.contains(&authority.as_str()))
     }
 
-    /// Bridge to the g10 joint-tuning surface.
+    /// Bridge to the joint-tuning surface.
     #[must_use]
     pub fn to_joint_candidate(
         &self,

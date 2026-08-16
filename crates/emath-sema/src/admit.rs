@@ -1411,7 +1411,7 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
     let mut trace = SemanticTrace::default();
     let mut package = emath_ir::SemanticPackage::new();
 
-    // V6 front-end: package identity and `use` imports. External file
+    // Front-end: package identity and `use` imports. External file
     // imports remain a Phase 2 refusal (E-PKG-050).
     let has_v6_items = tree.items.iter().any(|item| match item {
         emath_syntax::tree::Item::Package { .. } | emath_syntax::tree::Item::Use { .. } => true,

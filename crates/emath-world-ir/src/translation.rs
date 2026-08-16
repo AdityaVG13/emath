@@ -1,5 +1,5 @@
 //! Cross-world translation: morphisms, preservation obligations, evidence,
-//! and strict/fast execution portfolios with deoptimization (V7 g11).
+//! and strict/fast execution portfolios with deoptimization.
 
 use crate::{fnv1a64, WorldId, WorldIr};
 use emath_term::SymbolId;

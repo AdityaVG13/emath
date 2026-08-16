@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "V7 g6 independent world checker: law obligations, minimized counterexamples, scoped authority, answer receipts."
+description = "Independent world checker: law obligations, minimized counterexamples, scoped authority, answer receipts."
 
 [dependencies]
 emath-term = { path = "../emath-term" }

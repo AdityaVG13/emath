@@ -117,7 +117,7 @@ pub struct EvidenceBundleRecord {
 }
 
 /// Paths required for a Phase 1 artifact (`PUBLIC_API_INVENTORY.md` and the
-/// V5 seed agree on this set).
+/// imported seed agree on this set).
 #[must_use]
 pub fn required_artifact_paths() -> &'static [&'static str] {
     &[

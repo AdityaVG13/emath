@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Deterministic interpretation portfolios (spec 11).
+//! Deterministic interpretation portfolios.
 
 pub mod lock;
 pub mod record;

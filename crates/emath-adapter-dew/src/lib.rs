@@ -1,4 +1,4 @@
-//! Dew expression and code-generation adapter (V5 Phase 2).
+//! Dew expression and code-generation adapter.
 //!
 //! Adapts Dew's mature expression/code-generation machinery without letting
 //! Dew types enter emath's durable IRs. This crate is the adapter seam: it

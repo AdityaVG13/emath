@@ -1,6 +1,6 @@
-//!: source mapping from SIR/EMIR through Dew nodes to
+//! Source mapping from SIR/EMIR through Dew nodes to
 //! generated symbols, plus typed refusals for non-admitted construct
-//! classes ( equivalence boundary).
+//! classes (equivalence boundary).
 
 use emath_ir::{BinaryOp, ExprNode, UnaryOp};
 
