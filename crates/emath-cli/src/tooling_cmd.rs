@@ -226,8 +226,7 @@ fn run_cmd(args: &[String]) -> u8 {
     };
     let out = flag_value("--out", args)
         .or_else(|| flag_value("-o", args))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target/emath"));
+        .map_or_else(|| PathBuf::from("target/emath"), PathBuf::from);
     let report = match build_file(
         &file,
         &out,
@@ -252,9 +251,13 @@ fn run_cmd(args: &[String]) -> u8 {
         .unwrap_or(&report.artifact_id.0);
     let run_dir = std::env::temp_dir().join(format!("emath-run-{hash}"));
     let _ = std::fs::remove_dir_all(&run_dir);
-    if let Err(error) = std::fs::create_dir_all(run_dir.join("src"))
-        .and_then(|()| std::fs::copy(report.artifact_dir.join("Cargo.toml"), run_dir.join("Cargo.toml")).map(|_| ()))
-    {
+    if let Err(error) = std::fs::create_dir_all(run_dir.join("src")).and_then(|()| {
+        std::fs::copy(
+            report.artifact_dir.join("Cargo.toml"),
+            run_dir.join("Cargo.toml"),
+        )
+        .map(|_| ())
+    }) {
         eprintln!("error: cannot stage generated crate for execution: {error}");
         return EXIT_USAGE;
     }
@@ -306,8 +309,7 @@ fn test_cmd(args: &[String]) -> u8 {
     };
     let out = flag_value("--out", args)
         .or_else(|| flag_value("-o", args))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target/emath"));
+        .map_or_else(|| PathBuf::from("target/emath"), PathBuf::from);
     match build_file(
         &file,
         out,
