@@ -32,12 +32,12 @@ echo "no fork-type identifiers in Phase 1 crates or durable schemas"
 echo "== artifact determinism =="
 ARTIFACT_DIR="$TMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"
-cargo run -q -p emath-cli -- build tests/valid/affine_policy.emath \
+cargo run -q -p emath-cli -- build tests/valid/affine_scorer.emath \
     --out "$ARTIFACT_DIR" --verify >/dev/null
 LIB="$(find "$ARTIFACT_DIR/emath" -name lib.rs -path '*/src/lib.rs' | head -n1)"
-if ! diff -u examples/generated/affine-policy/src/lib.rs "$LIB" >/dev/null; then
+if ! diff -u examples/generated/affine-scorer/src/lib.rs "$LIB" >/dev/null; then
     echo "FAIL: regenerated src/lib.rs differs from the committed generated crate" >&2
-    diff -u examples/generated/affine-policy/src/lib.rs "$LIB" >&2 || true
+    diff -u examples/generated/affine-scorer/src/lib.rs "$LIB" >&2 || true
     exit 1
 fi
 echo "generated crate is byte-identical to committed copy"
@@ -69,9 +69,9 @@ echo "== semantic genesis capstone =="
 cargo run -q -p xtask -- demo semantic-genesis >/dev/null
 echo "semantic-genesis: determinism, wrong-world rejection ok"
 
-echo "== cache-policy capstone =="
-cargo run -q -p xtask -- demo cache-policy >/dev/null
-echo "cache-policy: build + host promotion + negative control ok"
+echo "== affine-scorer capstone =="
+cargo run -q -p xtask -- demo affine-scorer >/dev/null
+echo "affine-scorer: build + host promotion + negative control ok"
 
 echo "== semantic genesis generated crate identity =="
 SG_DIR="$TMP_DIR/sg"

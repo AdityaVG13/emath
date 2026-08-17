@@ -327,7 +327,7 @@ impl Parser {
     }
 
     /// Declaration head (unified form): `emath <kind> <Name<Params>>:`
-    /// (`emath function Square<T: Real>:`, `emath policy AffinePolicy:`,
+    /// (`emath function Square<T: Real>:`, `emath policy AffineScorer:`,
     /// `emath record CacheCandidate:`, `emath ScoringPolicyKind SimpleScore:`
     /// user-kind use, or a built-in kind). `emath custom Name:` is the bare
     /// custom-kind form (world files, unclassified declarations). The

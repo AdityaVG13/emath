@@ -1,9 +1,9 @@
-//! Demo host: integrates the generated `AffinePolicy` crate at build time
+//! Demo host: integrates the generated `AffineScorer` crate at build time
 //! (build.rs runs the full emath pipeline) and promotes the artifact
 //! through the protected host surface: construct via the checked
 //! constructor, evaluate, and verify the artifact fingerprints.
 
-include!(concat!(env!("OUT_DIR"), "/affine_policy.rs"));
+include!(concat!(env!("OUT_DIR"), "/affine_scorer.rs"));
 
 use emath_artifact::{
     manifest_from_json, manifest_identity, required_artifact_paths, stage, verify_artifact,
@@ -15,16 +15,16 @@ fn main() {
     println!("artifact: {artifact_id}");
 
     // Construct through the generated constructor (invariants enforced).
-    let policy = AffinePolicy::new(2.0, 1.0).expect("preconditions hold");
-    let score = policy.score(3.0);
-    println!("AffinePolicy::new(2.0, 1.0).score(3.0) = {score}");
+    let scorer = AffineScorer::new(2.0, 1.0).expect("preconditions hold");
+    let score = scorer.score(3.0);
+    println!("AffineScorer::new(2.0, 1.0).score(3.0) = {score}");
     assert!(
         (score - 7.0).abs() < 1e-9,
         "score must equal state.scale * x + state.bias, got {score}"
     );
 
     // Negative control: invalid construction must be refused at runtime.
-    let refused = AffinePolicy::new(-1.0, 0.5);
+    let refused = AffineScorer::new(-1.0, 0.5);
     assert!(
         refused.is_err(),
         "scale >= 0 must be enforced by the constructor"

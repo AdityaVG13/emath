@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 # The generated crate is a committed artifact (byte-identical to the
 # pipeline output; `scripts/validate.sh` re-generates and diffs it).
-affine-policy = { path = "../generated/affine-policy" }
+affine-scorer = { path = "../generated/affine-scorer" }
 
 [lints]
 workspace = true

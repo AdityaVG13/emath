@@ -1,4 +1,4 @@
-emath policy AffinePolicy:
+emath policy AffineScorer:
     inputs:
         x: Float64
 
