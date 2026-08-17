@@ -7,7 +7,7 @@
 //! section inputs exactly-one fields
 //! section outputs exactly-one fields
 //! section definitions exactly-one suite
-//! section requests at-most-one commands
+//! section goals at-most-one commands
 //! section experiments repeatable suite
 //! default compile = rust/library/strict-f64
 //! predicate decl.outputs.is_nonempty()

@@ -274,7 +274,7 @@ pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
     ("phase7.adapter", "adapter not installed until Phase 7"),
 ];
 
-/// One elaborated `evaluate` request recovered from the `requests:` section.
+/// One elaborated `evaluate` request recovered from the `goals:` section.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestSpec {
     pub kind: String,

@@ -1,5 +1,5 @@
 emath function Alias:
 
-    requests:
+    goals:
         evaluate <y>(w: ):
             produce rust.library

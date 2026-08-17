@@ -21,8 +21,8 @@ pub enum SectionFamily {
     Behavior,
     /// Construction (`constructors`, `factories`).
     Construction,
-    /// Requests (`requests`, `exports`).
-    Requests,
+    /// Goals (`goals`, `exports`).
+    Goals,
     /// Evidence, tests and benchmarks.
     Evidence,
     /// Configuration (`compile`, `policy`).
@@ -39,7 +39,7 @@ impl SectionFamily {
             Self::Data => "data",
             Self::Behavior => "behavior",
             Self::Construction => "construction",
-            Self::Requests => "requests",
+            Self::Goals => "goals",
             Self::Evidence => "evidence",
             Self::Config => "config",
             Self::Extension => "extension",
@@ -359,7 +359,8 @@ fn family_of(name: &str) -> SectionFamily {
         }
         "definitions" | "equations" | "invariants" | "constraints" => SectionFamily::Behavior,
         "constructors" | "factories" | "delegates" => SectionFamily::Construction,
-        "requests" | "exports" | "imports" => SectionFamily::Requests,
+        // `requests` is the pre-0.3 spelling; migrated sources use `goals`.
+        "goals" | "requests" | "exports" | "imports" => SectionFamily::Goals,
         "tests" | "benchmarks" | "certificates" | "examples" => SectionFamily::Evidence,
         "compile" | "policy" | "profiles" => SectionFamily::Config,
         _ => SectionFamily::Extension,

@@ -229,7 +229,7 @@ impl CompilerSession {
     }
 }
 
-/// Extract the `requests:` section into request specs and validate targets
+/// Extract the `goals:` section into request specs and validate targets
 /// against the admitted declaration (`E-GOAL-041`/`E-GOAL-042`/`E-GOAL-043`).
 ///
 /// Lives in the session (its only consumer; the crate docs list goal
@@ -243,14 +243,14 @@ pub fn elaborate_requests(
     diagnostics: &mut Diagnostics,
 ) -> Vec<RequestSpec> {
     let mut requests = Vec::new();
-    let Some(section) = sections.iter().find(|s| s.name == "requests") else {
+    let Some(section) = sections.iter().find(|s| s.name == "goals") else {
         return requests;
     };
     for stmt in &section.suite.statements {
         let StmtKind::Section(request) = &stmt.kind else {
             diagnostics.error(
                 "E-SYN-101",
-                "unexpected statement inside `requests:`",
+                "unexpected statement inside `goals:`",
                 stmt.source,
             );
             continue;

@@ -8,7 +8,7 @@ emath function Square:
     definitions:
         y = x * x
 
-    requests:
+    goals:
         evaluate <y>:
             produce rust.library
 

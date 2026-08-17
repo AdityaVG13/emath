@@ -22,7 +22,7 @@ emath policy AffinePolicy:
     definitions:
         score = state.scale * x + state.bias
 
-    requests:
+    goals:
         evaluate <score>:
             produce rust.library
 
