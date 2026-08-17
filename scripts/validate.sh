@@ -372,7 +372,7 @@ if ! printf '%s\n' "$PLAN_OUT" | grep -q "plan goal=y disposition=native"; then
     lane_done "planner" "planning" "failed" "no native plan for square"
     exit 1
 fi
-if ! printf '%s\n' "$PLAN_OUT" | grep -q "checks=sir-checker.v1"; then
+if ! printf '%s\n' "$PLAN_OUT" | grep -q "checks=sir-checker"; then
     echo "FAIL: planner plan lacks the checker binding" >&2
     printf '%s\n' "$PLAN_OUT" >&2
     lane_done "planner" "planning" "failed" "no checker binding on square plan"
@@ -575,7 +575,7 @@ cargo run -q -p emath-cli -- compile --parametric language/examples/01_arbitrary
 # committed copy predates them and (b) the world-codegen provenance map
 # embeds the absolute source path. They are pinned instead by the
 # per-shape parse-back lane below (one schema id per writer shape:
-# emath.generated-crate-manifest.v1 / emath.generated-crate-source-map.v1,
+# emath.generated-crate-manifest / emath.generated-crate-source-map,
 # never the durable artifact ids). Everything else under the diff is
 # byte-compared.
 if ! diff -r --exclude=Cargo.lock --exclude=target --exclude=manifest.json --exclude=source-map.json \
@@ -604,16 +604,16 @@ COMMITTED = sys.argv[2]
 manifest = json.load(open(os.path.join(GEN, "manifest.json")))
 source_map = json.load(open(os.path.join(GEN, "source-map.json")))
 
-assert manifest["schema"] == "emath.generated-crate-manifest.v1", (
+assert manifest["schema"] == "emath.generated-crate-manifest", (
     f"manifest schema id drifted: {manifest['schema']}"
 )
-assert source_map["schema"] == "emath.generated-crate-source-map.v1", (
+assert source_map["schema"] == "emath.generated-crate-source-map", (
     f"source-map schema id drifted: {source_map['schema']}"
 )
-assert "emath.source-map.v1" not in json.dumps(source_map), (
+assert "emath.source-map" not in json.dumps(source_map), (
     "genesis provenance must never claim the durable artifact source-map id"
 )
-assert "emath.resolution-plan.v1" not in json.dumps(manifest), (
+assert "emath.resolution-plan" not in json.dumps(manifest), (
     "genesis manifest must never claim the durable resolution-plan id"
 )
 
