@@ -145,7 +145,7 @@ impl Shape {
     #[must_use]
     pub fn canonical(&self) -> String {
         format!(
-            "shape:v1:[{}]",
+            "shape:[{}]",
             self.extents
                 .iter()
                 .map(|extent| match extent {

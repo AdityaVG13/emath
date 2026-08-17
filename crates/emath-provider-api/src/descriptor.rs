@@ -173,13 +173,13 @@ impl CapabilityTable {
         problems
     }
 
-    /// Versioned canonical encoding (`descriptor:v1:`).
+    /// Versioned canonical encoding (`descriptor:`).
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut capabilities: Vec<&CapabilitySpec> = self.capabilities.iter().collect();
         capabilities.sort_by(|left, right| left.name.cmp(&right.name));
         format!(
-            "descriptor:v1:{}:{}:{}",
+            "descriptor:{}:{}:{}",
             self.isolation.name(),
             lock_token(&self.lock),
             capabilities

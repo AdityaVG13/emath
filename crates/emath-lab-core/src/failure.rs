@@ -15,7 +15,7 @@ use crate::json::{self, JsonValue};
 use emath_core::{ContentId, fnv1a64_bytes};
 
 /// Schema id of the failure bundle.
-pub const FAILURE_BUNDLE_SCHEMA: &str = "emath.failure-bundle.v1";
+pub const FAILURE_BUNDLE_SCHEMA: &str = "emath.failure-bundle";
 
 /// JSON pointer locating the failure inside the bundle document.
 pub const TRUE_DIVERGENCE_POINTER: &str = "/failure/true-divergence";
@@ -160,7 +160,7 @@ mod tests {
 
         let doc = bundle.to_json();
         assert!(doc.contains("\"bundle_id\""));
-        assert!(doc.contains("\"schema\":\"emath.failure-bundle.v1\""));
+        assert!(doc.contains("\"schema\":\"emath.failure-bundle\""));
         assert!(doc.contains("\"jsonptr\":\"/failure/true-divergence\""));
     }
 
@@ -173,14 +173,14 @@ mod tests {
         let two = true_divergence_bundle(&subject, &oracle, &[alert]);
         assert_eq!(one.bundle_id, two.bundle_id, "deterministic emission");
 
-        let other_oracle = EngineIdentity::oracle("emath-spec-oracle-v2");
+        let other_oracle = EngineIdentity::oracle("emath-spec-oracle-alt");
         let three = true_divergence_bundle(&subject, &other_oracle, &[]);
         // Different oracle identity must not produce the same bundle for
         // the same alerts; identity separation is part of the document.
         let mut alerts_doc = one.to_json();
         alerts_doc.push_str(&three.to_json());
         assert_ne!(one.bundle_id, three.bundle_id);
-        assert!(alerts_doc.contains("spec-oracle-v2"));
+        assert!(alerts_doc.contains("spec-oracle-alt"));
     }
 
     #[test]

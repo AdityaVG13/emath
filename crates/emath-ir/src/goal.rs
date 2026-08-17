@@ -256,17 +256,17 @@ pub struct ExcludedCandidate {
 /// Required `produce` string for the Phase 1 native export surface.
 pub const PRODUCE_RUST_LIBRARY: &str = "rust.library";
 
-/// Policy name for the deterministic v1 native plan.
-pub const POLICY: &str = "native-deterministic.v1";
+/// Policy name for the deterministic native plan.
+pub const POLICY: &str = "native-deterministic";
 
-/// Schema id of the v1 resolution plan *document* (written by
+/// Schema id of the resolution plan *document* (written by
 /// `emath_artifact::write_resolution_plan`).
 ///
 /// This is deliberately **not** the plan identity preimage: the plan's
-/// content id hashes a `plan:v1:` payload built by [`plan_identity`],
+/// content id hashes a `plan:` payload built by [`plan_identity`],
 /// not this schema string. The two-layer split (identity preimage vs
 /// JSON `$schema`) is stable; do not merge them.
-pub const PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
+pub const PLAN_SCHEMA: &str = "emath.resolution-plan";
 
 /// Provider identities known to the constellation but not installed in
 /// Phase 1; they are excluded with reasons in every plan.
@@ -331,7 +331,7 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
 /// Content identity of a resolution plan.
 ///
 /// The identity layer is independent of the JSON `$schema` layer: the
-/// payload is prefixed `plan:v1:` (see [`PLAN_SCHEMA`] for the document
+/// payload is prefixed `plan:` (see [`PLAN_SCHEMA`] for the document
 /// id), so a document's identity never depends on its schema-id string.
 #[must_use]
 pub fn plan_identity(
@@ -341,7 +341,7 @@ pub fn plan_identity(
     target: &str,
 ) -> ContentId {
     let mut payload = String::new();
-    payload.push_str("plan:v1:");
+    payload.push_str("plan:");
     payload.push_str(goal_canonical);
     payload.push('\n');
     payload.push_str(policy);
@@ -474,13 +474,13 @@ mod tests {
     #[test]
     fn plan_identity_is_insensitive_to_provider_permutation() {
         let one = plan_identity(
-            "goal:v1",
+            "goal",
             "policy",
             &["b".to_string(), "a".to_string(), "c".to_string()],
             "rust-library",
         );
         let two = plan_identity(
-            "goal:v1",
+            "goal",
             "policy",
             &["c".to_string(), "b".to_string(), "a".to_string()],
             "rust-library",
@@ -490,9 +490,9 @@ mod tests {
 
     #[test]
     fn plan_identity_detects_provider_set_change() {
-        let base = plan_identity("goal:v1", "policy", &["a".to_string()], "rust-library");
+        let base = plan_identity("goal", "policy", &["a".to_string()], "rust-library");
         let added = plan_identity(
-            "goal:v1",
+            "goal",
             "policy",
             &["a".to_string(), "b".to_string()],
             "rust-library",
@@ -500,15 +500,15 @@ mod tests {
         assert_ne!(base, added);
     }
 
-    /// The identity layer (`plan:v1:` payload) and the JSON `$schema`
-    /// layer (`emath.resolution-plan.v1`) are deliberately split; the
+    /// The identity layer (`plan:` payload) and the JSON `$schema`
+    /// layer (`emath.resolution-plan`) are deliberately split; the
     /// payload format is pinned here so neither layer can silently
     /// converge on the other's string.
     #[test]
     fn plan_identity_payload_and_json_schema_are_distinct_layers() {
         let providers = ["z".to_string(), "a".to_string()];
-        let id = plan_identity("goal:v1", "policy", &providers, "rust-library");
-        let mut payload = String::from("plan:v1:goal:v1\npolicy\n");
+        let id = plan_identity("goal", "policy", &providers, "rust-library");
+        let mut payload = String::from("plan:goal\npolicy\n");
         payload.push_str("a\nz\nrust-library");
         assert_eq!(
             id,
@@ -516,15 +516,15 @@ mod tests {
                 "fnv1a64:{:016x}",
                 emath_core::fnv1a64_bytes(payload.as_bytes())
             )),
-            "plan identity must hash the `plan:v1:` payload (sorted providers, trailing target)"
+            "plan identity must hash the `plan:` payload (sorted providers, trailing target)"
         );
         assert_eq!(
-            payload, "plan:v1:goal:v1\npolicy\na\nz\nrust-library",
+            payload, "plan:goal\npolicy\na\nz\nrust-library",
             "payload format pin"
         );
         assert_ne!(
-            PLAN_SCHEMA, "plan:v1",
-            "JSON `$schema` id must stay emath.resolution-plan.v1, distinct from the identity prefix"
+            PLAN_SCHEMA, "plan",
+            "JSON `$schema` id must stay emath.resolution-plan, distinct from the identity prefix"
         );
     }
 }

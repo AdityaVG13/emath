@@ -188,11 +188,7 @@ impl EvidenceStore {
             .iter()
             .map(|(id, sources)| format!("{id}<-[{}]", sources.join(",")))
             .collect();
-        format!(
-            "store:v1:[{}];[{}]",
-            records.join(";"),
-            provenance.join(";")
-        )
+        format!("store:[{}];[{}]", records.join(";"), provenance.join(";"))
     }
 
     /// Content address of a record (FNV-1a of its canonical token).

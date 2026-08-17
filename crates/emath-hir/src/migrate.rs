@@ -33,10 +33,10 @@ pub struct Migrated {
 #[must_use]
 pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
     let mut issues = Vec::new();
-    if bump == "v4" {
+    if bump == "legacy" {
         issues.push(MigrationIssue {
             code: "E-MIGR-001",
-            detail: "bootstrap schema v4 written; regenerate with the stable edition".into(),
+            detail: "legacy bootstrap schema written; regenerate with the stable edition".into(),
         });
     }
 
@@ -89,7 +89,7 @@ pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
         as_kind: decl.as_kind.clone(),
         schema: format!(
             "emath.bootstrap.{}",
-            if bump.is_empty() { "v3" } else { bump }
+            if bump.is_empty() { "legacy" } else { bump }
         ),
         sections,
         issues,

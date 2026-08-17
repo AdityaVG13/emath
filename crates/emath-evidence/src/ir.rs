@@ -208,7 +208,7 @@ impl EvidenceRecord {
             .map(|falsifier| format!("{}:{}", falsifier.id, falsifier.kind.as_str()))
             .collect();
         format!(
-            "record:v1:{}:{}:{}:{}:{}:{}:{}:{}:[{}]:{}",
+            "record:{}:{}:{}:{}:{}:{}:{}:{}:[{}]:{}",
             self.claim.id,
             self.kind.as_str(),
             self.producer.id,

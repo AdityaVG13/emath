@@ -24,7 +24,7 @@ impl ProviderRepresentationContract {
     #[must_use]
     pub fn canonical(&self) -> String {
         format!(
-            "contract:v1:{}:{}:{}:{}:{}",
+            "contract:{}:{}:{}:{}:{}",
             self.representation,
             self.family,
             self.exact_relation,

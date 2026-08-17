@@ -1,4 +1,4 @@
-//! Canonical semantic bytes for identity (schema `emath.sir.v1`).
+//! Canonical semantic bytes for identity (schema `emath.sir`).
 //!
 //! Deterministic text encoding: schema prefix, sorted collections, numeric
 //! spellings preserved from source. Presentation fields (spans, display
@@ -13,7 +13,7 @@ use crate::package::SemanticPackage;
 use crate::types::TypeNode;
 use emath_core::{ContentId, QualifiedName};
 
-const SCHEMA: &str = "emath.sir.v1";
+const SCHEMA: &str = "emath.sir";
 
 fn exactness_canonical(policy: &ExactnessPolicy) -> String {
     match policy {

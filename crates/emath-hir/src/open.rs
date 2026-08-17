@@ -232,7 +232,7 @@ impl OpenDecl {
             .map(|(name, payload)| format!("{name}={}", payload_token(*payload)))
             .collect();
         format!(
-            "open-decl:v1:{}:{}:[{}]:[{}]",
+            "open-decl:{}:{}:[{}]:[{}]",
             self.name,
             self.as_kind,
             sections.join(";"),
