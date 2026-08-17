@@ -1,7 +1,7 @@
 use core::logic::*
 use core::integer::*
 
-emath custom <FiniteCounterexampleSearch<Limit: Nat>> as conjecture_search:
+emath conjecture_search FiniteCounterexampleSearch<Limit: Nat>:
     generics:
         Limit: Nat
 

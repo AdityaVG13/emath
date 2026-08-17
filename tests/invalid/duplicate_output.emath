@@ -1,5 +1,5 @@
 # expect: E-NAME-020 duplicate field
-emath custom <Bad> as function:
+emath function Bad:
     outputs:
         y: Float64
         y: Float64

@@ -1,7 +1,7 @@
 use core::tensor::*
 use core::math::{Float32, Nat}
 
-emath custom <NormalizedProjection<B: Nat, T: Nat, D: Nat, O: Nat>> as tensor_program:
+emath tensor_program NormalizedProjection<B: Nat, T: Nat, D: Nat, O: Nat>:
     inputs:
         x: Tensor<Float32, [B, T, D]>
         weight: Matrix<Float32, D, O>

@@ -3,7 +3,7 @@ use core::field::*
 use core::units::{m, s, K}
 use franken::simulation::{Mesh, Material}
 
-emath custom <HeatDiffusion2D> as pde_model:
+emath pde_model HeatDiffusion2D:
     domains:
         domain Ω = Box([0 m, 1 m], [0 m, 1 m])
         domain Time = Interval(0 s, 10 s)

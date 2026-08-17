@@ -1,4 +1,4 @@
-emath custom <Ops> as function:
+emath function Ops:
 
     definitions:
         extern operator semantic_distance<D: Nat>(a: Float64, b: Float64) -> Float64:

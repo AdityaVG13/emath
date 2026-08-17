@@ -1,6 +1,6 @@
 /// Blank external-provider interface.
 
-emath custom <MyProvider> as interface:
+emath interface MyProvider:
     extern fn operation(input: Input) -> Result<Output, ProviderError>
 
     provider:

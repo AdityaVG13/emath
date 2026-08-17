@@ -1,4 +1,4 @@
-emath custom <MyFunction> as function:
+emath function MyFunction:
     inputs:
         x: Real
 

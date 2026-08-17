@@ -3,7 +3,7 @@
 ## Kind declaration
 
 ```emath
-emath custom <ScoringPolicyKind> as kind:
+emath kind ScoringPolicyKind:
     extends model
 
     schema:

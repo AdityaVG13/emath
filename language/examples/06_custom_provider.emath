@@ -1,7 +1,7 @@
 use core::tensor::{Vector}
 use core::math::{Float32, Probability, Nat}
 
-emath custom <SemanticSimilarity<D: Nat>> as interface:
+emath interface SemanticSimilarity<D: Nat>:
     extern operator similarity(
         left: Vector<Float32, D>,
         right: Vector<Float32, D>,
@@ -22,7 +22,7 @@ emath custom <SemanticSimilarity<D: Nat>> as interface:
         implementation <cosine>:
             normalize(dot(left, right))
 
-emath custom <SimilarityGate<D: Nat>> as function:
+emath function SimilarityGate<D: Nat>:
     inputs:
         provider: SemanticSimilarity<D>
         left: Vector<Float32, D>

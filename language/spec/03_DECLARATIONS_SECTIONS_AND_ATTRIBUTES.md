@@ -4,11 +4,11 @@
 
 ```emath
 @deterministic
-emath custom <AdaptivePolicy<T, N>> as policy:
+emath policy AdaptivePolicy<T, N>:
     ...
 ```
 
-The head contains attributes, declaration form, qualified name/generics and kind.
+The head contains attributes, declaration form, qualified name/generics and kind, named directly as `emath <kind> <Name<Parameters>>:`.
 
 ## Section model
 
@@ -42,7 +42,7 @@ Unknown attributes are rejected unless admitted through a package namespace or e
 Generic parameters may range over types, dimensions, shapes, units, domains, constants, providers and capabilities:
 
 ```emath
-emath custom <Kernel<T: Real, N: Nat, U: Unit>> as function:
+emath function Kernel<T: Real, N: Nat, U: Unit>:
 ```
 
 Generic constraints enter SIR and generated Rust bounds or runtime checks according to what can be expressed statically.

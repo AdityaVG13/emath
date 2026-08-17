@@ -1,5 +1,5 @@
 # expect: E-CTOR-030 missing state assignment
-emath custom <Bad> as policy:
+emath policy Bad:
     state:
         scale: Float64
     constructors:

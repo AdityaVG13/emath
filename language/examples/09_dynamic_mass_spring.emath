@@ -7,7 +7,7 @@
 # schema contract (`language/spec/07_CUSTOM_KINDS_SCHEMA_AND_LOWERING.md`); full-text
 # parsing arrives with the lossless parser, until then
 # the structural model is the producer API.
-emath custom <MassSpring> as dynamic-model:
+emath dynamic_model MassSpring:
     kinds:
         continuous time
 

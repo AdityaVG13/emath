@@ -1,4 +1,4 @@
-emath custom <Alias> as function:
+emath function Alias:
 
     requests:
         evaluate <y>(w: ):

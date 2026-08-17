@@ -1,4 +1,4 @@
-emath custom <CapacityPlan<N: Nat>> as optimization:
+emath optimization CapacityPlan<N: Nat>:
     inputs:
         demand: Vector<NonNegative<Real>, N>
         cost: Vector<NonNegative<Real>, N>

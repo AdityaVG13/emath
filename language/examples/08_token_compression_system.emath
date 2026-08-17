@@ -2,7 +2,7 @@ use core::graph::*
 use core::math::*
 use core::units::{Token, Byte, Duration}
 
-emath custom <CompressionPlanner<ArtifactCount: Nat>> as policy_system:
+emath policy_system CompressionPlanner<ArtifactCount: Nat>:
     types:
         record Artifact:
             id: ArtifactId

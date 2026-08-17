@@ -13,7 +13,7 @@ use emath_core::limits::Limits;
 /// Parsed `emath custom` genesis file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenesisFile {
-    /// World name from `emath custom <Name>:`.
+    /// World name from `emath custom Name:`.
     pub world_name: String,
     /// Trimmed body expression, glyph-preserved for the forest stage.
     pub body_text: String,
@@ -90,7 +90,7 @@ pub fn parse_genesis(text: &str, limits: &Limits) -> Result<GenesisFile, Vec<Gen
     let mut keep_pareto: Option<u32> = None;
     let mut answer = String::new();
 
-    // Declaration header: `emath custom <Name>:`.
+    // Declaration header: `emath custom Name:`.
     let header_index = lines
         .iter()
         .position(|(_, content)| content.starts_with("emath custom"));
@@ -100,13 +100,13 @@ pub fn parse_genesis(text: &str, limits: &Limits) -> Result<GenesisFile, Vec<Gen
             Some(name) => world_name = name,
             None => errors.push(GenesisError::new(
                 "E-SYN-201",
-                format!("line {line}: malformed header, expected `emath custom <Name>:`"),
+                format!("line {line}: malformed header, expected `emath custom Name:`"),
             )),
         }
     } else {
         errors.push(GenesisError::new(
             "E-SYN-201",
-            "missing `emath custom <Name>:` declaration header",
+            "missing `emath custom Name:` declaration header",
         ));
     }
 
@@ -217,14 +217,13 @@ pub fn parse_genesis(text: &str, limits: &Limits) -> Result<GenesisFile, Vec<Gen
     }
 }
 
-/// Parses `emath custom <Name>:`.
+/// Parses `emath custom Name:` (unified declaration-head spelling).
 fn parse_header(content: &str) -> Option<String> {
     let tail = content.strip_prefix("emath custom ")?.strip_suffix(':')?;
-    let name = tail.strip_prefix('<')?.strip_suffix('>')?;
-    if name.is_empty() {
+    if tail.is_empty() {
         return None;
     }
-    Some(name.to_string())
+    Some(tail.to_string())
 }
 
 /// Parses `pareto <u32>`.

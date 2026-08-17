@@ -1,4 +1,4 @@
-emath custom <AffinePolicy> as policy:
+emath policy AffinePolicy:
     inputs:
         x: Float64
 

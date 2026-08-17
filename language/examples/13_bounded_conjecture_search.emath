@@ -1,4 +1,4 @@
-emath custom <CounterexampleSearch<N: Nat>> as conjecture_search:
+emath conjecture_search CounterexampleSearch<N: Nat>:
     generics:
         N: Nat
 

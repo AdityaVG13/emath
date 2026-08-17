@@ -1,6 +1,6 @@
 /// A declaration kind defined entirely in `.emath`.
 
-emath custom <ScoringPolicyKind> as kind:
+emath kind ScoringPolicyKind:
     extends model
 
     schema:
@@ -26,7 +26,7 @@ emath custom <ScoringPolicyKind> as kind:
         model.evidence = section.evidence or []
         model.host = section.host or []
 
-emath custom <SimpleScore> as ScoringPolicyKind:
+emath ScoringPolicyKind SimpleScore:
     inputs:
         x: Real
         y: Real

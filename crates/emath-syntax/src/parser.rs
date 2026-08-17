@@ -326,10 +326,13 @@ impl Parser {
         })
     }
 
-    /// Declaration heads (both dialects):
-    /// - Legacy: `emath custom <Name<Params>> as kind:` `suite`
-    /// - Current: `emath function Square<T: Real>:`, `emath record CacheCandidate:`,
-    ///   `emath RankingPolicy FreshnessScore:` (custom-kind use)
+    /// Declaration head (unified form): `emath <kind> <Name<Params>>:`
+    /// (`emath function Square<T: Real>:`, `emath policy AffinePolicy:`,
+    /// `emath record CacheCandidate:`, `emath ScoringPolicyKind SimpleScore:`
+    /// user-kind use, or a built-in kind). `emath custom Name:` is the bare
+    /// custom-kind form (world files, unclassified declarations). The
+    /// legacy `emath custom <Name<Params>> as kind:` spelling is gone; every
+    /// kind is named directly after `emath`.
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.current_span();
         self.advance(); // `emath`
@@ -345,50 +348,30 @@ impl Parser {
             }
         };
         self.advance();
-        // Legacy `emath custom <Name>`: the name is angle-bracketed and the
-        // outer `>` is closed after any inner generics.
-        let legacy_bracketed = self.eat(&TokenKind::Lt);
-        let name = if legacy_bracketed {
-            let TokenKind::Ident(name) = self.peek().clone() else {
-                self.error_here("E-SYN-101", "expected a declaration name after `<`");
-                return None;
-            };
-            self.advance();
-            name
-        } else {
-            let TokenKind::Ident(name) = self.peek().clone() else {
-                self.error_here("E-SYN-101", "expected a declaration name");
-                return None;
-            };
-            self.advance();
-            name
+        let TokenKind::Ident(name) = self.peek().clone() else {
+            self.error_here("E-SYN-101", "expected a declaration name");
+            return None;
         };
+        self.advance();
         let generics = if matches!(self.peek(), TokenKind::Lt) {
             self.parse_generic_params()
         } else {
             Vec::new()
         };
-        if legacy_bracketed && !self.eat(&TokenKind::Gt) {
-            self.error_here("E-SYN-102", "expected `>` to close the declaration name");
-            return None;
-        }
-        let mut as_kind = String::new();
-        if self.eat_keyword(Keyword::As) {
-            match self.peek().clone() {
-                TokenKind::Ident(kind) => {
-                    as_kind = kind;
-                    self.advance();
-                }
-                _ => {
-                    self.error_here("E-SYN-110", "expected a kind name after `as`");
-                }
-            }
-        }
         if !self.eat(&TokenKind::Colon) {
             self.error_here("E-SYN-111", "expected `:` after the declaration head");
             return None;
         }
         let suite = self.parse_suite()?;
+        // Phase 1 elaboration (admission, goal extraction, codegen) runs off
+        // the `custom` compat lane keyed by `as_kind`, so every kind spelled
+        // in the unified surface is canonicalized to that representation;
+        // `emath custom Name:` keeps an empty `as_kind`.
+        let (item_kind, as_kind) = if item_kind == "custom" {
+            (item_kind, String::new())
+        } else {
+            ("custom".to_string(), item_kind)
+        };
         Some(Declaration {
             name,
             generics,

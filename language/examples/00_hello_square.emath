@@ -1,4 +1,4 @@
-emath custom <Square> as function:
+emath function Square:
     inputs:
         x: Float64
 

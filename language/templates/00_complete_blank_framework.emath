@@ -2,7 +2,7 @@
 /// Delete unused sections. A custom kind schema determines which sections are valid.
 
 @edition("2026")
-emath custom <Name<T, N>> as model:
+emath model Name<T, N>:
     about:
         summary: ""
         version: "0.1.0"

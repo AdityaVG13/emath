@@ -1,7 +1,7 @@
 /// Full blank `.emath` declaration template.
 /// Delete unused sections. Add plugin-defined sections freely after importing their schemas.
 
-emath custom <Name<GenericParameters>> as model:
+emath model Name<GenericParameters>:
     about:
         summary: ""
         version: "0.1.0"

@@ -1,6 +1,6 @@
 /// Blank resolver declaration. Complex planning behavior is implemented by a plugin.
 
-emath resolver <MyResolver>:
+emath resolver MyResolver:
     accepts:
         # goal pattern
 

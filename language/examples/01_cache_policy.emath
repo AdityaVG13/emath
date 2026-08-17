@@ -2,7 +2,7 @@ use core::math::{Real, Probability, NonNegative, exp}
 use core::units::{Duration, Bytes, MiB}
 use host::cache_core::{CacheCandidate, Policy}
 
-emath custom <AdaptiveCachePolicy> as policy:
+emath policy AdaptiveCachePolicy:
     about:
         summary: "Dimension-safe cache scoring policy with generated derivatives and host adapter."
 

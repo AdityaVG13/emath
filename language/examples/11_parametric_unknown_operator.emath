@@ -1,4 +1,4 @@
-emath custom <UnknownOperator> as function:
+emath function UnknownOperator:
     inputs:
         x: Float64
     outputs:

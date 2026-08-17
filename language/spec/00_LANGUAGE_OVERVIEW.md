@@ -5,12 +5,16 @@
 The language is designed around a readable declaration envelope:
 
 ```emath
-emath custom <Name<GenericParameters>> as Kind:
+emath Kind Name<GenericParameters>:
     section:
         content
 ```
 
-`custom` means the declaration is constructed using a named kind schema. Built-in shorthand forms may exist later, but they lower to the same declaration model.
+The declaration head names the kind directly (`emath policy AffinePolicy:`,
+`emath function Square<T: Real>:`, `emath kind ScoringPolicyKind:`, or a
+user kind). `emath custom Name:` declares a custom or not-yet-classified
+kind (for example a genesis world). Every spelling lowers to the same
+kind-schema-validated declaration model.
 
 ## 2. Language layers
 

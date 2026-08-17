@@ -1,6 +1,6 @@
 /// Blank compilation/validation/promotion pipeline.
 
-emath pipeline <ReleasePipeline>:
+emath pipeline ReleasePipeline:
     stages:
         check
         plan

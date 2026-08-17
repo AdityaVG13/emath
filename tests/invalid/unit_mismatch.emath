@@ -1,5 +1,5 @@
 # expect: E-UNIT-001 dimensional mismatch
-emath custom <Bad> as function:
+emath function Bad:
     inputs:
         time: Duration
         length: Length

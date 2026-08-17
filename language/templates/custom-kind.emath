@@ -1,6 +1,6 @@
 /// Blank declarative custom-kind template.
 
-emath custom <MyKind> as kind:
+emath kind MyKind:
     extends model
 
     schema:
