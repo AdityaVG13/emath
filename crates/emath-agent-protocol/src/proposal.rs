@@ -2,7 +2,7 @@
 
 use emath_term::SymbolId;
 use emath_tuning::{ExecutionDelta, JointCandidate, WorldDelta};
-use emath_world_ir::{fnv1a64, translation::EvidenceHandle, WorldId};
+use emath_world_ir::{WorldId, fnv1a64, translation::EvidenceHandle};
 
 /// Proposal-scoped authorities granted by schema admission alone.
 pub const PROPOSAL_AUTHORITIES: [&str; 2] = ["propose", "revise"];

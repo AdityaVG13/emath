@@ -214,6 +214,23 @@ impl WorldIr {
         carriers.sort_by(|a, b| a.name.cmp(&b.name));
         let mut symbols = self.symbols.clone();
         symbols.sort_by(|a, b| a.id.cmp(&b.id));
+        let symbols_canon: Vec<String> = symbols
+            .iter()
+            .map(|symbol| {
+                // The display glyph/name is presentation-only and excluded
+                // from identity: a symbol binds id, fixity, precedence and
+                // type scheme, never its label.
+                format!(
+                    "{}:{:?}:{}:{}",
+                    symbol.id.0,
+                    symbol.fixity,
+                    symbol
+                        .precedence
+                        .map_or_else(|| "-".to_string(), |p| p.to_string()),
+                    symbol.type_scheme
+                )
+            })
+            .collect();
         let mut operators = self.operators.clone();
         operators.sort_by(|a, b| a.symbol.cmp(&b.symbol));
         let mut laws = self.laws.clone();
@@ -237,9 +254,9 @@ impl WorldIr {
             })
             .collect();
         format!(
-            "world:v{}:sig:{:?}:{carriers:?}:{symbols:?}:{operators:?}:c:{constructors:?}:{laws:?}:h:{holes_canon:?}:{capabilities:?}",
+            "world:v{}:sig:{:?}:{carriers:?}:{symbols_canon:?}:{operators:?}:c:{constructors:?}:{laws:?}:h:{holes_canon:?}:{capabilities:?}",
             self.version, self.signature
-            )
+        )
     }
 }
 

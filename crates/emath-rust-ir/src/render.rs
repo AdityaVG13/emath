@@ -2,9 +2,9 @@
 //! partitioning and content-based identity (independent of absolute paths).
 
 use crate::ast::{
-    escape_ident, BinOp, Block, Expr, Item, Module, Param, Stmt, Ty, UnOp, Visibility,
+    BinOp, Block, Expr, Item, Module, Param, Stmt, Ty, UnOp, Visibility, escape_ident,
 };
-use emath_core::{fnv1a64_bytes, ContentId};
+use emath_core::{ContentId, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

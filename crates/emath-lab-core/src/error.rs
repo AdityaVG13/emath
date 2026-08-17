@@ -9,7 +9,13 @@
 //! - `E-HOST-008` incomparable experiment (mismatched protocol or inputs);
 //! - `E-HOST-009` raw samples not retained as declared;
 //! - `E-HOST-010` drift detected (input/quality/latency/memory/health);
-//! - `E-HOST-011` decision receipt cannot be recomputed independently.
+//! - `E-HOST-011` decision receipt cannot be recomputed independently;
+//! - `E-HOST-012` invalid statistical protocol configuration;
+//! - `E-HOST-013` invalid canary routing configuration;
+//! - `E-HOST-014` invalid drift band tolerance;
+//! - `E-HOST-015` invalid engine policy;
+//! - `E-HOST-016` refuse self-comparison: subject and oracle of a
+//!   comparison must be distinct engine identities.
 //!
 //! `E-HOST-001`/`E-HOST-002` are owned by the host-binding layer
 //! (`emath-rust-ir`).

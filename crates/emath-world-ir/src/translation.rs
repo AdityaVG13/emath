@@ -1,7 +1,7 @@
 //! Cross-world translation: morphisms, preservation obligations, evidence,
 //! and strict/fast execution portfolios with deoptimization.
 
-use crate::{fnv1a64, WorldId, WorldIr};
+use crate::{WorldId, WorldIr, fnv1a64};
 use emath_term::SymbolId;
 
 /// Relation claimed by a world morphism.

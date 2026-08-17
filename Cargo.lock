@@ -122,6 +122,7 @@ dependencies = [
  "emath-genesis",
  "emath-goal",
  "emath-ir",
+ "emath-lab-core",
  "emath-plan",
  "emath-portfolio",
  "emath-provider-api",
@@ -158,6 +159,7 @@ dependencies = [
 name = "emath-genesis"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-term",
  "emath-world-ir",
 ]
@@ -234,6 +236,7 @@ name = "emath-macro"
 version = "0.1.0"
 dependencies = [
  "emath-builder",
+ "emath-syntax",
 ]
 
 [[package]]
@@ -324,6 +327,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-syntax",
 ]
 
 [[package]]
@@ -349,7 +353,9 @@ version = "0.1.0"
 name = "emath-term-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-lab-core",
  "emath-term",
+ "semantic-genesis-worlds",
 ]
 
 [[package]]

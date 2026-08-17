@@ -184,7 +184,20 @@ pub fn fallback_binding(spec: &HostTraitSpec, host_type: &str) -> HostBinding {
                     ok: Box::new(method.returns.clone()),
                     error: Box::new(Ty::Named(error_name.clone())),
                 },
-                body: Stmt::Expr(Expr::Path(vec![format!("todo_fallback_{}", method.name)])),
+                // Typed refusal: the fallback binding never pretends to
+                // implement the method (Constitution §6).
+                body: Stmt::Block(Block {
+                    statements: vec![Stmt::Return(Expr::Call {
+                        path: vec!["Err".to_string()],
+                        args: vec![Expr::Call {
+                            path: vec![error_name.clone(), "Fallback".to_string()],
+                            args: vec![Expr::Str(format!(
+                                "fallback binding: host does not provide `{}`",
+                                method.name
+                            ))],
+                        }],
+                    })],
+                }),
                 doc: vec![
                     "Fallback binding: refuses with a typed error; the host".into(),
                     "must select a conforming provider or accept diagnostics.".into(),
@@ -204,7 +217,16 @@ pub fn fallback_binding(spec: &HostTraitSpec, host_type: &str) -> HostBinding {
                 spec.name
             )],
         },
-        error_enum: String::new(),
+        error_enum: format!(
+            "#[derive(Debug)]\
+pub enum {error_name} {{\
+    /// A model-level refusal crossed the host boundary.\
+    Model(String),\
+    /// The fallback binding refused: the host did not provide this method.\
+    Fallback(String),\
+}}\
+"
+        ),
     }
 }
 

@@ -59,7 +59,7 @@ enum Mode {
 
 /// Parses a genesis source into a [`GenesisFile`].
 ///
-/// `limits` bounds source size and line count; every violation yields a typed
+/// `limits` bounds source size and token budget; every violation yields a typed
 /// error instead of a panic. Returns `Err` with all recovered errors when any
 /// section is malformed.
 pub fn parse_genesis(text: &str, limits: &Limits) -> Result<GenesisFile, Vec<GenesisError>> {
@@ -71,13 +71,22 @@ pub fn parse_genesis(text: &str, limits: &Limits) -> Result<GenesisFile, Vec<Gen
         ));
     }
 
-    let lines: Vec<(usize, &str)> = text
-        .lines()
-        .take(limits.max_tokens)
-        .enumerate()
-        .map(|(index, line)| (index + 1, line.trim()))
-        .filter(|(_, content)| !content.is_empty())
-        .collect();
+    // `max_tokens` is a token budget, not a line count: scanning stops as
+    // soon as the budget is spent, so pathological input cannot blow past it.
+    let mut tokens_left = limits.max_tokens;
+    let mut lines: Vec<(usize, &str)> = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let content = line.trim();
+        if content.is_empty() {
+            continue;
+        }
+        let count = content.split_whitespace().count();
+        if count > tokens_left {
+            break;
+        }
+        tokens_left -= count;
+        lines.push((index + 1, content));
+    }
 
     let mut world_name = String::new();
     let mut mode = Mode::Top;
@@ -255,5 +264,36 @@ fn parse_answer_clause(content: &str) -> Option<String> {
         None
     } else {
         Some(name.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn max_tokens_is_a_token_budget_not_a_line_count() {
+        let source = "emath custom W:
+  body:
+  a b c d e f
+  answer:
+  return r";
+        let admitted = parse_genesis(source, &Limits::default());
+        assert!(
+            admitted.is_ok(),
+            "full-budget parse must admit the fixture; errors: {admitted:?}"
+        );
+        // The same file carries 15 tokens; a budget of 8 must cut the scan
+        // before `answer:`, so the missing-answer refusal fires. A line
+        // count of 5 would keep everything and admit.
+        let limits = Limits {
+            max_tokens: 8,
+            ..Limits::default()
+        };
+        let refused = parse_genesis(source, &limits);
+        assert!(
+            refused.is_err(),
+            "token budget must stop the scan before `answer:`, got {refused:?}"
+        );
     }
 }

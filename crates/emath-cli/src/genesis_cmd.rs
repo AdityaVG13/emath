@@ -8,12 +8,15 @@
 
 use super::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::limits::Limits;
-use emath_genesis::{forest, free_symbolic_world};
+use emath_genesis::{
+    BooleanAlienWorld, Environment, FreeTermWorld, ModularAlienWorld, evaluate, forest,
+    free_symbolic_world,
+};
 use emath_portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
 use emath_syntax::genesis as genesis_syntax;
-use emath_term::{Signature, Term};
+use emath_term::{Signature, Term, VariableId};
 use emath_world_ir::{
-    fnv1a64, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr,
+    Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr, fnv1a64,
 };
 use std::fmt::Write as _;
 use std::fs;
@@ -50,6 +53,10 @@ pub fn analyze(path: &Path) -> Result<Analysis, String> {
     }
     let forest_limits = forest::ForestLimits {
         max_nodes: 65_536,
+        // `keep: pareto N` is a portfolio budget, never a parser cap: a
+        // small budget used to throttle derivation retention and leave
+        // the body unparseable (ambiguity 0). Parsing always runs at the
+        // admission default.
         max_alternatives: 128,
         max_depth: 128,
     };
@@ -270,35 +277,86 @@ pub fn signature_cmd(path: &Path, out: Option<&PathBuf>) -> u8 {
     EXIT_OK
 }
 
+/// Evaluates `analysis.term` in `world` with the same fixture valuations
+/// the parametric lane (`compile --parametric`) generates, so a genesis
+/// receipt can never contradict it.
+///
+/// Returns `(answer, valuation_label)`: when the term evaluates (its
+/// free variables are covered by the fixture), the answer is the
+/// evaluated value and the label names the fixture; otherwise the answer
+/// is the term's structural canonical form and the label is
+/// `structural`. Answers are never fabricated constants: the old
+/// hardcoded `6`/`false` invented meaning out of thin air and stamped it
+/// `tested`.
+fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static str) {
+    let canonical = analysis.term.canonical();
+    let free_env: Environment<Term> = [
+        (
+            VariableId("a".to_string()),
+            Term::Variable(VariableId("a".to_string())),
+        ),
+        (
+            VariableId("b".to_string()),
+            Term::Variable(VariableId("b".to_string())),
+        ),
+    ]
+    .into();
+    let boolean_env: Environment<bool> = [
+        (VariableId("a".to_string()), true),
+        (VariableId("b".to_string()), false),
+    ]
+    .into();
+    let modular_env: Environment<i64> = [
+        (VariableId("a".to_string()), 4),
+        (VariableId("b".to_string()), 7),
+    ]
+    .into();
+    match world.name.as_str() {
+        "free_symbolic" => match evaluate(&analysis.term, &FreeTermWorld, &free_env) {
+            Ok(value) => (value.canonical(), "fixture_free"),
+            Err(_) => (canonical, "structural"),
+        },
+        "Boolean_algebra" => match evaluate(&analysis.term, &BooleanAlienWorld, &boolean_env) {
+            Ok(value) => (value.to_string(), "fixture_boolean"),
+            Err(_) => (canonical, "structural"),
+        },
+        "modular_numeric" => match evaluate(&analysis.term, &ModularAlienWorld, &modular_env) {
+            Ok(value) => (value.to_string(), "fixture_modular"),
+            Err(_) => (canonical, "structural"),
+        },
+        _ => (canonical, "structural"),
+    }
+}
+
+/// Honest portfolio for the built-in seed worlds: every candidate is a
+/// real evaluation (or the structural term) with its valuation disclosed
+/// in the provenance, and authority is Structural — no checker ran, so
+/// nothing is stamped `tested` from `checker_receipts: []`.
 fn portfolio(analysis: &Analysis, worlds: &[WorldIr]) -> InterpretationPortfolio {
-    let fixture_answer = |label: &str| -> String {
-        match label {
-            "free_symbolic" => analysis.term.canonical(),
-            "Boolean_algebra" => "false".into(),
-            _ => "6".into(),
-        }
-    };
     let candidates = worlds
         .iter()
         .map(|world| {
             let label = world.name.as_str();
-            let (authority, cost, complexity, evidence, utility) = match label {
-                "free_symbolic" => (Authority::Structural, 1.0, 2.0, 0.0, 2.0),
-                "Boolean_algebra" => (Authority::Tested, 3.0, 1.0, 1.0, 4.0),
-                _ => (Authority::Tested, 4.0, 2.0, 1.0, 5.0),
+            let (answer, valuation) = evaluated_answer(analysis, world);
+            let (cost, complexity, utility) = match label {
+                "free_symbolic" => (1.0, 2.0, 2.0),
+                "Boolean_algebra" => (3.0, 1.0, 4.0),
+                _ => (4.0, 2.0, 5.0),
             };
             InterpretationCandidate {
                 world_id: world.identity(),
                 name: label.into(),
-                answer: fixture_answer(label),
-                authority,
+                answer,
+                authority: Authority::Structural,
                 score: ScoreVector {
                     cost,
                     complexity,
-                    evidence,
+                    // No checker ran: evidence stays zero and the
+                    // receipt's checker_receipts list stays empty.
+                    evidence: 0.0,
                     utility,
                 },
-                provenance: "builtin-seed".into(),
+                provenance: format!("builtin-seed;valuation={valuation}"),
             }
         })
         .collect();
@@ -319,7 +377,29 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         return EXIT_USAGE;
     }
     let worlds = builtin_worlds(&analysis.inference.signature);
-    let portfolio = portfolio(&analysis, &worlds);
+    let mut raw_portfolio = portfolio(&analysis, &worlds);
+    // Honor `keep: pareto N`: the portfolio holds at most the N
+    // policy-best candidates. A smaller budget must change the artifact
+    // instead of silently presenting the full tie set as one winner.
+    if let Some(budget) = analysis.file.keep_pareto {
+        if budget == 0 {
+            eprintln!("error: E-GEN-093: `keep: pareto 0` keeps no candidates");
+            return EXIT_REFUSED;
+        }
+        let kept = raw_portfolio
+            .candidates()
+            .iter()
+            .take(usize::try_from(budget).unwrap_or(usize::MAX))
+            .cloned()
+            .collect::<Vec<_>>();
+        raw_portfolio = InterpretationPortfolio::new(kept);
+    }
+    let portfolio = raw_portfolio;
+    // An explicit `answer: return interpretation_portfolio` asks for the
+    // whole portfolio as the answer; without it, the single best
+    // candidate is the answer. Either way authority stays Structural:
+    // `checker_receipts` is empty and no `tested` stamp is invented.
+    let portfolio_request = analysis.file.answer.contains("interpretation_portfolio");
 
     let free_term = {
         let mut object = emath_artifact::JsonWriter::object();
@@ -436,15 +516,50 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         admission.push('\n');
     }
 
-    let selected = portfolio
-        .candidates()
-        .first()
-        .expect("portfolio is nonempty");
+    let kept = portfolio.candidates();
+    let selected = kept.first();
+    let result_string = if portfolio_request {
+        kept.iter()
+            .map(|candidate| format!("{}:{}", candidate.name, candidate.answer))
+            .collect::<Vec<_>>()
+            .join(";")
+    } else {
+        selected.map_or_else(String::new, |candidate| candidate.answer.clone())
+    };
+    let answer_anchor = if portfolio_request {
+        let portfolio_id = fnv1a64(
+            kept.iter()
+                .map(|candidate| format!("{}", candidate.world_id.0))
+                .collect::<Vec<_>>()
+                .join("|")
+                .as_bytes(),
+        );
+        format!("{portfolio_id:016x}")
+    } else {
+        selected
+            .map(|candidate| format!("{:016x}", candidate.world_id.0))
+            .unwrap_or_default()
+    };
     let answer_id = format!(
         "{:016x}",
-        fnv1a64(format!("{}-{}", analysis.parse_id, selected.world_id.0).as_bytes())
+        fnv1a64(format!("{}-{answer_anchor}", analysis.parse_id).as_bytes())
     );
-    let world_id_hex = format!("{:016x}", selected.world_id.0);
+    let valuation = if portfolio_request {
+        kept.iter()
+            .map(|candidate| format!("{}={}", candidate.name, valuation_label(candidate)))
+            .collect::<Vec<_>>()
+            .join(";")
+    } else {
+        selected.map_or_else(
+            || "structural".to_string(),
+            |candidate| valuation_label(candidate).to_string(),
+        )
+    };
+    let answer_authority = kept
+        .iter()
+        .map(|candidate| candidate.authority)
+        .max()
+        .unwrap_or(Authority::Structural);
     let answer_receipt = {
         let mut object = emath_artifact::JsonWriter::object();
         object.string("schema", "emath.answer-receipt.v1");
@@ -452,15 +567,15 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         object.int("source_hash", analysis.source_hash);
         object.int("parse_id", analysis.parse_id);
         object.int("signature_id", analysis.signature_id);
-        object.string("world_id", &world_id_hex);
-        object.string("valuation", "{}");
+        object.string("world_id", &answer_anchor);
+        object.string("valuation", &valuation);
         object.strings("provider_locks", &completed);
         object.strings("checker_receipts", &[]);
         object.int("artifact_hash", 0);
         object.string("target", &path_to_string(path));
-        object.string("result", &selected.answer);
+        object.string("result", &result_string);
         object.int("trace_hash", fnv1a64(admission.as_bytes()));
-        object.string("authority", authority_str(selected.authority));
+        object.string("authority", authority_str(answer_authority));
         object.finish()
     };
 
@@ -484,15 +599,30 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         println!("world {} {:016x}", world.name, world.identity().0);
     }
     println!(
-        "genesis {}: parse {} signature {} term {:016x} portfolio {} candidate {}",
+        "genesis {}: parse {} signature {} term {:016x} portfolio {} kept {} answer {}",
         path_to_string(path),
         analysis.parse_id,
         analysis.signature_id,
         analysis.term_id,
         fnv1a64(portfolio_json.as_bytes()),
-        selected.name
+        kept.len(),
+        if portfolio_request {
+            "interpretation_portfolio".to_string()
+        } else {
+            kept.first().map_or_else(String::new, |c| c.name.clone())
+        }
     );
     EXIT_OK
+}
+
+/// Valuation label disclosed on a candidate's provenance
+/// (`builtin-seed;valuation=<label>`), or `structural` when only the
+/// canonical term backs the answer.
+fn valuation_label(candidate: &InterpretationCandidate) -> &str {
+    candidate
+        .provenance
+        .rsplit_once('=')
+        .map_or("structural", |(_, label)| label)
 }
 
 fn authority_str(authority: Authority) -> &'static str {
@@ -537,14 +667,48 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
         .iter()
         .map(|label| label.to_ascii_lowercase())
         .collect::<Vec<_>>();
-    let specs = spec_labels
+    // SURF-0008: codegen emits a fixed per-label interpretation, so the
+    // analyzed WorldIr operator semantics are handed to the generator;
+    // it refuses (E-GEN-094) any map it cannot honor instead of
+    // silently dropping the unused WorldIr.
+    let worlds = builtin_worlds(&analysis.inference.signature);
+    let specs = world_labels
         .iter()
-        .map(|label| emath_world_codegen_rust::WorldSpec {
-            label: label.clone(),
+        .map(|label| {
+            let lower = label.to_ascii_lowercase();
+            let operators = worlds
+                .iter()
+                .find(|world| world.name == *label)
+                .map(|world| {
+                    world
+                        .operators
+                        .iter()
+                        .filter_map(|operator| match &operator.semantics {
+                            emath_world_ir::OperatorSemantics::DeclaredExpression(meaning) => {
+                                Some((operator.symbol.0.clone(), meaning.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            emath_world_codegen_rust::WorldSpec {
+                label: lower,
+                operators,
+            }
         })
         .collect::<Vec<_>>();
-    let generated =
-        emath_world_codegen_rust::generate(&analysis.term, &analysis.inference.signature, &specs);
+    let generated = match emath_world_codegen_rust::generate(
+        &analysis.term,
+        &analysis.inference.signature,
+        &specs,
+    ) {
+        Ok(generated) => generated,
+        Err(refusal) => {
+            eprintln!("error: {}: {}", refusal.code, refusal.message);
+            return EXIT_REFUSED;
+        }
+    };
     if let Err(error) = generated.write_to(out) {
         eprintln!("error: cannot write generated crate: {error}");
         return EXIT_USAGE;
@@ -570,28 +734,10 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
         object.object_field("files", &files_str);
         object.finish()
     };
-    let source_map = {
-        let mut object = emath_artifact::JsonWriter::object();
-        // World-codegen provenance, not the durable artifact source map:
-        // these entries carry (generated, source, kind) labels, not the
-        // byte-range + source_package shape of `emath.source-map.v1`.
-        object.string("schema", "emath.generated-crate-source-map.v1");
-        object.string("source", &path_to_string(path));
-        let mut entries = String::from("[");
-        for (index, rel) in generated.files.keys().enumerate() {
-            if index > 0 {
-                entries.push(',');
-            }
-            let _ = write!(
-                entries,
-                "{{\"generated\":\"{rel}\",\"source\":\"{}\",\"kind\":\"parametric-world\"}}",
-                path_to_string(path)
-            );
-        }
-        entries.push(']');
-        object.object_field("entries", &entries);
-        object.finish()
-    };
+    let source_map = emath_artifact::write_generated_crate_source_map(
+        &path_to_string(path),
+        &generated.files.keys().cloned().collect::<Vec<_>>(),
+    );
     for (name, body) in [
         ("manifest.json", &manifest),
         ("source-map.json", &source_map),

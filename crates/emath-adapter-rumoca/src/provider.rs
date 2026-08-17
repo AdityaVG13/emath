@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use emath_core::{fnv1a64_bytes, ContentId, SchemaId};
+use emath_core::{ContentId, SchemaId, fnv1a64_bytes};
 use emath_runtime::{Budget, ContinuationHandle, EvidenceHandle, Outcome, UnresolvedReason};
 
 use crate::lower::{DaePlan, LowerError};
@@ -196,11 +196,15 @@ pub fn simulate(
             ),
         });
     }
-    // Budget preflight: evaluation count and output size are both bounded.
+    // Budget preflight: steps, evaluation count, memory footprint, output
+    // size and work units are all bounded; a hungry run is never started.
     let point_bytes = u64::try_from(std::mem::size_of::<SimPoint>()).unwrap_or(64);
     let per_step = u64::try_from(plan.equations.len().max(1)).unwrap_or(1);
-    if config.steps.saturating_mul(per_step) > budget.evaluations
+    if config.steps > budget.iterations
+        || config.steps.saturating_mul(per_step) > budget.evaluations
+        || config.steps.saturating_mul(point_bytes) > budget.memory_bytes
         || config.steps.saturating_mul(point_bytes) > budget.output_bytes
+        || u128::from(config.steps).saturating_mul(u128::from(per_step)) > budget.work_units
     {
         return Outcome::Unresolved {
             reason: UnresolvedReason::BudgetExhausted,
@@ -219,6 +223,17 @@ pub fn simulate(
             code: "E-PROV-235",
             message: format!(
                 "DaePlan has {} state(s); simulation requires at least two",
+                plan.states.len()
+            ),
+        });
+    }
+    // The fixture-time recorder represents at most two states; a larger
+    // plan is refused instead of silently dropping every extra state.
+    if plan.states.len() > 2 {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-238",
+            message: format!(
+                "DaePlan has {} states; the 2-state recorder cannot represent it",
                 plan.states.len()
             ),
         });
@@ -419,5 +434,142 @@ fn eval(
             Ok(eval(base, parameters, states, derivatives)?.powi(*exponent))
         }
         EqExpr::Neg(inner) => Ok(-eval(inner, parameters, states, derivatives)?),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lower::lower;
+    use crate::structural::{EqExpr, Equation, StructuralModel, Unit, VariableDecl, VariableKind};
+    use emath_ir::TypeNode;
+    use emath_runtime::{Budget, Outcome, UnresolvedReason};
+    use std::collections::BTreeMap;
+
+    fn two_state_model() -> StructuralModel {
+        StructuralModel {
+            variables: vec![
+                VariableDecl {
+                    name: "x".into(),
+                    kind: VariableKind::State,
+                    unit: Unit::seconds(),
+                    ty: TypeNode::Float64,
+                },
+                VariableDecl {
+                    name: "y".into(),
+                    kind: VariableKind::State,
+                    unit: Unit::seconds(),
+                    ty: TypeNode::Float64,
+                },
+            ],
+            equations: vec![
+                Equation {
+                    lhs: EqExpr::Der("x".into()),
+                    rhs: EqExpr::constant(0.0),
+                    origin: "fixture".into(),
+                },
+                Equation {
+                    lhs: EqExpr::Der("y".into()),
+                    rhs: EqExpr::constant(0.0),
+                    origin: "fixture".into(),
+                },
+            ],
+            ..StructuralModel::default()
+        }
+    }
+
+    #[test]
+    fn tiny_memory_budget_refuses_simulation() {
+        // Budget.memory_bytes must be consulted: a footprint below the
+        // trace size refuses up front instead of running.
+        let model = two_state_model();
+        let plan = lower(&model).expect("two-state model lowers");
+        let outcome = simulate(
+            &model,
+            &plan,
+            &BTreeMap::new(),
+            &SimulationConfig {
+                dt: 0.001,
+                steps: 5,
+                error_estimate: false,
+            },
+            &Budget {
+                memory_bytes: 1,
+                ..Budget::default()
+            },
+        );
+        assert!(
+            matches!(
+                outcome,
+                Outcome::Unresolved {
+                    reason: UnresolvedReason::BudgetExhausted,
+                    ..
+                }
+            ),
+            "a memory footprint below the trace size must refuse, got {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn three_state_plan_refused_by_two_state_recorder() {
+        // The fixture-time recorder represents at most two states; a
+        // 3-state plan must be refused under E-PROV-238 instead of
+        // silently dropping state three from the recorded trajectory.
+        let model = StructuralModel {
+            variables: vec![
+                VariableDecl {
+                    name: "x".into(),
+                    kind: VariableKind::State,
+                    unit: Unit::seconds(),
+                    ty: TypeNode::Float64,
+                },
+                VariableDecl {
+                    name: "y".into(),
+                    kind: VariableKind::State,
+                    unit: Unit::seconds(),
+                    ty: TypeNode::Float64,
+                },
+                VariableDecl {
+                    name: "z".into(),
+                    kind: VariableKind::State,
+                    unit: Unit::seconds(),
+                    ty: TypeNode::Float64,
+                },
+            ],
+            equations: vec![
+                Equation {
+                    lhs: EqExpr::Der("x".into()),
+                    rhs: EqExpr::constant(0.0),
+                    origin: "fixture".into(),
+                },
+                Equation {
+                    lhs: EqExpr::Der("y".into()),
+                    rhs: EqExpr::constant(0.0),
+                    origin: "fixture".into(),
+                },
+                Equation {
+                    lhs: EqExpr::Der("z".into()),
+                    rhs: EqExpr::constant(0.0),
+                    origin: "fixture".into(),
+                },
+            ],
+            ..StructuralModel::default()
+        };
+        let plan = lower(&model).expect("three-state model lowers");
+        let outcome = simulate(
+            &model,
+            &plan,
+            &BTreeMap::new(),
+            &SimulationConfig {
+                dt: 0.001,
+                steps: 5,
+                error_estimate: false,
+            },
+            &Budget::default(),
+        );
+        match outcome {
+            Outcome::Failed(error) => assert_eq!(error.code, "E-PROV-238"),
+            other => panic!("three-state plan must be refused, got {other:?}"),
+        }
     }
 }

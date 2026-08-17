@@ -34,7 +34,9 @@ pub mod adversarial;
 pub mod candidate;
 pub mod drift;
 pub mod error;
+pub mod failure;
 pub mod gate;
+pub mod identity;
 pub mod json;
 pub mod manifest;
 pub mod measure;
@@ -42,22 +44,28 @@ pub mod pilot;
 pub mod promotion;
 pub mod receipt;
 pub mod selector;
+pub mod sha256;
 pub mod stats;
 pub mod supervisor;
 
-pub use adversarial::{require_comparable, run_all, AdversarialCheck, RunFacts};
-pub use candidate::{dominates, Candidate, CandidateLoop, ParetoArchive};
+pub use adversarial::{AdversarialCheck, RunFacts, require_comparable, run_all};
+pub use candidate::{Candidate, CandidateLoop, ParetoArchive, dominates};
 pub use drift::{DriftAlert, DriftBand, DriftKind, DriftMonitor};
 pub use error::LabError;
+pub use failure::{
+    FAILURE_BUNDLE_SCHEMA, FailureBundle, TRUE_DIVERGENCE_POINTER, true_divergence_bundle,
+};
 pub use gate::{GateCheck, GateCheckKind, GateVerdict, QualityGate};
+pub use identity::{EngineIdentity, EngineRole};
 pub use manifest::LabManifest;
 pub use measure::{DerivedMetric, HarnessReport, Measurement, MeasurementKind, Summary};
 pub use pilot::{CachePilot, ServeResult};
-pub use promotion::{decide, EnginePolicy, PromotionDecision, PromotionOutcome, PromotionReason};
+pub use promotion::{EnginePolicy, PromotionDecision, PromotionOutcome, PromotionReason, decide};
 pub use receipt::DecisionReceipt;
 pub use selector::{Route, Selector, Telemetry};
+pub use sha256::{digest, hex};
 pub use stats::{
-    evaluate_paired, OutlierPolicy, PairedObservation, PairedResult, StatisticalProtocol,
+    OutlierPolicy, PairedObservation, PairedResult, StatisticalProtocol, evaluate_paired,
 };
 pub use supervisor::{Supervisor, TickOutcome};
 // Note: `supervisor::Observation` is not re-exported at the root: the

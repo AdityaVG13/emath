@@ -354,13 +354,21 @@ impl ModelBuilder for BuilderModel {
             definitions.insert(name.clone(), id);
         }
         let compile_spec = match &self.compile {
-            Some(compile) => CompileSpec {
-                target: compile.target.clone(),
-                profile: compile.profile.clone(),
-                numeric: NumericProfile::StrictF64,
-                safety: SafetyProfile::ForbidUnsafe,
-                unresolved: None,
-            },
+            Some(compile) => {
+                if compile.target != "rust" || compile.profile != "library" {
+                    return Err(BuilderError(format!(
+                        "compile spec `{}/{}` outside Phase 1 subset (E-CODEGEN-012)",
+                        compile.target, compile.profile
+                    )));
+                }
+                CompileSpec {
+                    target: compile.target.clone(),
+                    profile: compile.profile.clone(),
+                    numeric: NumericProfile::StrictF64,
+                    safety: SafetyProfile::ForbidUnsafe,
+                    unresolved: None,
+                }
+            }
             None => CompileSpec {
                 target: "rust".into(),
                 profile: "library".into(),
@@ -474,7 +482,11 @@ impl ModelBuilder for BuilderModel {
             .collect();
 
         // Attach tests and goals to the package and the declaration.
+        // Both attach by id (like the admit lane): a builder model's
+        // tests must surface on `declaration.tests` so identity and the
+        // generated `#[test]` functions see them.
         let goal_start = package.goals.len();
+        let test_start = package.tests.len();
         package.tests.extend(tests);
         package.goals.extend(goals);
         let goal_ids: Vec<emath_ir::GoalId> = package
@@ -482,6 +494,15 @@ impl ModelBuilder for BuilderModel {
             .iter()
             .skip(goal_start)
             .map(|goal| goal.id)
+            .collect();
+        // A TestId is the test's arena position (TestCase carries no id
+        // field; the package index is the stable id).
+        let test_ids: Vec<emath_ir::TestId> = package
+            .tests
+            .iter()
+            .enumerate()
+            .skip(test_start)
+            .map(|(index, _)| emath_ir::TestId(u32::try_from(index).unwrap_or(u32::MAX)))
             .collect();
 
         let declaration = Declaration {
@@ -501,7 +522,7 @@ impl ModelBuilder for BuilderModel {
             definitions,
             invariants,
             goals: goal_ids,
-            tests: Vec::new(),
+            tests: test_ids,
             exports: Vec::new(),
             compile_spec,
             source: OWNER,
@@ -884,4 +905,77 @@ pub fn build_from_source(
         target_dir,
         emath_build::BuildOptions::default(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builder_model_tests_surface_on_declaration_tests() {
+        // Attach-by-id repair (l2pb.4): a builder model's `tests:` must
+        // surface on `declaration.tests`, the same attachment the admit
+        // lane uses, so identity and generated `#[test]` functions see
+        // them. A span-based fallback would drop them (builder spans are
+        // all `OWNER`).
+        let package = BuilderModel::custom("Counter")
+            .input("x", TypeKind::Float64)
+            .output("y", TypeKind::Float64)
+            .define("y", Expression::Symbol("x".to_string()))
+            .goal(GoalModel {
+                kind: "evaluate".to_string(),
+                target: "y".to_string(),
+                produce: "rust.library".to_string(),
+            })
+            .test(TestModel {
+                name: "demo".to_string(),
+                given: vec![("x".to_string(), Expression::Float(1.0))],
+                expect: Expression::Symbol("x".to_string()),
+            })
+            .build()
+            .expect("function builder model must lower");
+        let declaration = package
+            .declarations
+            .first()
+            .expect("builder lowers one declaration");
+        assert_eq!(
+            declaration.tests.len(),
+            1,
+            "declaration.tests must carry the builder model's tests"
+        );
+        let test = package
+            .tests
+            .get(declaration.tests[0].index())
+            .expect("declaration test id must resolve into package.tests");
+        assert_eq!(test.name, "demo");
+        assert_eq!(test.given.len(), 1);
+    }
+
+    #[test]
+    fn builder_model_goals_surface_on_declaration_goals() {
+        // The same attach-by-id repair for goals: the evaluate goal the
+        // model declares must be reachable from the declaration.
+        let package = BuilderModel::custom("Counter")
+            .input("x", TypeKind::Float64)
+            .output("y", TypeKind::Float64)
+            .define("y", Expression::Symbol("x".to_string()))
+            .goal(GoalModel {
+                kind: "evaluate".to_string(),
+                target: "y".to_string(),
+                produce: "rust.library".to_string(),
+            })
+            .build()
+            .expect("function builder model must lower");
+        let declaration = package
+            .declarations
+            .first()
+            .expect("builder lowers one declaration");
+        assert_eq!(declaration.goals.len(), 1);
+        let goal = package
+            .goals
+            .get(declaration.goals[0].index())
+            .expect("declaration goal id must resolve into package.goals");
+        assert_eq!(goal.target, "y");
+        assert_eq!(goal.kind.as_str(), "evaluate");
+    }
 }

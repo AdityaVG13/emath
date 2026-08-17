@@ -9,14 +9,14 @@
 use std::collections::BTreeMap;
 
 use emath_artifact::{
-    evidence_bundle_from_json, manifest_from_json, plan_from_json, required_artifact_paths,
-    source_map_from_json, ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap,
+    ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap, evidence_bundle_from_json,
+    manifest_from_json, plan_from_json, required_artifact_paths, source_map_from_json,
 };
 use emath_core::ContentId;
 use emath_ir::ClaimVerdict;
 use std::path::Path;
 
-use crate::{identity_of, CheckerError};
+use crate::{CheckerError, identity_of};
 
 /// Frozen provider lock as recorded by the build environment.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -292,12 +292,19 @@ pub fn first_error(report: &ArtifactCheckReport) -> Option<CheckerError> {
 /// longer possible: every durable document is parsed and every declared
 /// file is read with strict UTF-8 and no symlink following.
 ///
-/// Errors are refused outright:
-/// - `E-EVID-105` document missing (required artifact path absent);
+/// Reads a staged artifact directory into the in-memory input the
+/// independent checker consumes. This is the single constructor bridge
+/// between disk and `ArtifactInput`; the negative-control battery
+/// (`negative::run_standard_battery`) seeds from inputs built this way,
+/// so the honest baseline is always a real staged tree.
+///
+/// Document-level failures are typed refusals:
+///
+/// - `E-EVID-105` a required artifact path is missing;
 /// - `E-EVID-108` document does not conform to its schema (unparseable);
 /// - `E-EVID-113` a required or declared path is a symlink;
 /// - `E-EVID-114` a document or declared file is not valid UTF-8.
-pub fn check_artifact_dir(root: &Path) -> Result<ArtifactCheckReport, CheckerError> {
+pub fn artifact_input_from_dir(root: &Path) -> Result<ArtifactInput, CheckerError> {
     let requirement = |path: &'static str| {
         let full = root.join(path);
         if full
@@ -419,7 +426,7 @@ pub fn check_artifact_dir(root: &Path) -> Result<ArtifactCheckReport, CheckerErr
     // source package is the admitted identity the artifact claims to
     // implement, so a self-scoped round trip is the honest baseline.
     let goal_identity = manifest.source_package.clone();
-    let input = ArtifactInput {
+    Ok(ArtifactInput {
         manifest,
         source_map,
         plan,
@@ -427,6 +434,17 @@ pub fn check_artifact_dir(root: &Path) -> Result<ArtifactCheckReport, CheckerErr
         files,
         provider_locks: Vec::new(),
         goal_identity,
-    };
+    })
+}
+
+/// Independent artifact checker over a staged directory.
+///
+/// Document-level failures are typed refusals:
+/// - `E-EVID-105` a required artifact path is missing;
+/// - `E-EVID-108` document does not conform to its schema (unparseable);
+/// - `E-EVID-113` a required or declared path is a symlink;
+/// - `E-EVID-114` a document or declared file is not valid UTF-8.
+pub fn check_artifact_dir(root: &Path) -> Result<ArtifactCheckReport, CheckerError> {
+    let input = artifact_input_from_dir(root)?;
     Ok(check_artifact(&input, &ArtifactCheckConfig::default()))
 }

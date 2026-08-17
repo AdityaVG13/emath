@@ -5,13 +5,13 @@
 
 #![forbid(unsafe_code)]
 
-mod genesis_cmd;
+pub mod genesis_cmd;
 mod tooling_cmd;
 
-use emath_build::{build_file, BuildOptions};
+use emath_build::{BuildOptions, build_file};
 use emath_core::Diagnostics;
 use emath_plan::{
-    emit_provider_trait, lift_missing, plan as run_planner, PlannerConfig, PlanningOutcome,
+    PlannerConfig, PlanningOutcome, emit_provider_trait, lift_missing, plan as run_planner,
 };
 use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::session::CompilerSession;
@@ -37,10 +37,29 @@ pub fn check(path: &Path, json: bool) -> u8 {
     let (diagnostics, package_id) = run_check(&path);
     print_diagnostics(&diagnostics);
     if json {
+        let items = diagnostics.items();
+        let mut body = Vec::new();
+        for item in items {
+            let mut entry = emath_artifact::JsonWriter::object();
+            entry.string("code", item.code);
+            entry.string(
+                "severity",
+                match item.severity {
+                    emath_core::Severity::Error => "error",
+                    emath_core::Severity::Warning => "warning",
+                    emath_core::Severity::Note => "note",
+                },
+            );
+            entry.string("message", &item.message);
+            body.push(entry.finish().trim_end().to_string());
+        }
         let mut out = emath_artifact::JsonWriter::object();
         out.string("command", "check");
         out.bool("admitted", !diagnostics.has_errors());
-        out.int("diagnostics", diagnostics.len() as u64);
+        // The diagnostics array carries codes and messages, not counts:
+        // a checker lane must be able to assert the exact E-* code the
+        // CLI refused with.
+        out.object_field("diagnostics", &format!("[\n{}\n  ]", body.join(",\n")));
         out.string("package", &package_id);
         println!("{}", out.finish());
     }
@@ -166,7 +185,12 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
         print_diagnostics(&result.diagnostics);
         return EXIT_REFUSED;
     }
-    let registry = ProviderRegistry::new(RegistryConfig::static_only());
+    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+    // The in-tree static native lane (provider list: `native.rust`
+    // implemented) is the Phase 1 `evaluate.rust.library` producer. An
+    // empty registry would make every goal unplanned and the command a
+    // dead refusal; register the real capability so supported goals plan.
+    register_native_rust(&mut registry);
     let mut config = PlannerConfig::default();
     if parametric {
         config.policy = "deterministic-planner.v1:parametric".to_string();
@@ -237,6 +261,43 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
         return EXIT_REFUSED;
     }
     EXIT_OK
+}
+
+/// Registers the Phase 1 in-tree static `native.rust` capability
+/// (`evaluate.rust.library` → f64, exact, deterministic, E2 ceiling) so
+/// the generic planner serves the same goals the native pipeline plans.
+/// This mirrors the `provider list` status table, never a new capability.
+fn register_native_rust(registry: &mut ProviderRegistry) {
+    use emath_ir::EvidenceLevel;
+    use emath_provider_api::{
+        CapabilitySpec, CapabilityTable, ProviderIsolation, ProviderLock, RepresentationSpec,
+    };
+    let table = CapabilityTable {
+        capabilities: vec![CapabilitySpec {
+            // Exact produce match (`evaluate.rust.library`), not a prefix:
+            // a bare `evaluate` capability would serve every evaluate goal
+            // and hide unplanned produce targets (CONF-0028).
+            name: "evaluate.rust.library".into(),
+            // The pipeline's native goals target family `rust-library`
+            // (contains "rust"); serves both spellings via substring.
+            semantic_subset: "rust-library".into(),
+            representations: vec![RepresentationSpec {
+                name: "f64".into(),
+                exact_relation: "bit-identical".into(),
+                encode_cost: 0,
+            }],
+            exactness: vec!["exact".into()],
+            failure_modes: vec![],
+            checker_bindings: vec!["sir-checker.v1".into()],
+        }],
+        isolation: ProviderIsolation::Static,
+        lock: ProviderLock::Unlocked,
+        maximum_evidence: EvidenceLevel::E2,
+        deterministic: true,
+    };
+    registry
+        .register("native.rust", ProviderIsolation::Static, table)
+        .expect("static native capability registration must succeed");
 }
 
 /// `import modelica <file.mo> [--json]`: retain a Modelica subset source as
@@ -334,16 +395,82 @@ pub fn artifact_check(dir: &Path) -> u8 {
             }
         }
     }
-    if ok {
-        EXIT_OK
-    } else {
-        EXIT_REFUSED
+    if ok { EXIT_OK } else { EXIT_REFUSED }
+}
+
+/// `artifact battery <dir>`: run the seeded negative-control battery
+/// (`emath_checker::run_standard_battery`) over every published artifact
+/// under `<dir>/emath/<artifact-id>`. Each seed (tampered, stale,
+/// wrong-goal, incomplete, unsupported) must be refused with the code the
+/// checker assigns for that kind; an escape is an admitted dishonest
+/// artifact and refuses the command. This is the CI-visible battery lane:
+/// it runs against the real staged build output, not a fixture.
+pub fn artifact_battery(dir: &Path) -> u8 {
+    let artifact_root = dir.join("emath");
+    if !artifact_root.is_dir() {
+        eprintln!(
+            "error: E-EVID-105: no `emath/` state directory under {}",
+            dir.display()
+        );
+        return EXIT_USAGE;
     }
+    let Ok(entries) = std::fs::read_dir(&artifact_root) else {
+        eprintln!(
+            "error: E-TLT-005: cannot list artifact state directory {}",
+            artifact_root.display()
+        );
+        return EXIT_USAGE;
+    };
+    let mut artifact_ids = Vec::new();
+    for entry in entries.flatten() {
+        if entry.path().is_dir() {
+            artifact_ids.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    artifact_ids.sort_unstable();
+    if artifact_ids.is_empty() {
+        eprintln!(
+            "error: E-EVID-105: no published artifacts under {}",
+            artifact_root.display()
+        );
+        return EXIT_REFUSED;
+    }
+    let mut ok = true;
+    for id in artifact_ids {
+        let root = artifact_root.join(&id);
+        match emath_checker::artifact_input_from_dir(&root) {
+            Ok(input) => {
+                let run = emath_checker::run_standard_battery(&input);
+                for control in &run.refused {
+                    println!("artifact {id}: control refused ({control})");
+                }
+                for (control, detail) in &run.escaped {
+                    eprintln!("artifact {id}: control ESCAPED ({control}): {detail}");
+                }
+                if run.all_refused() {
+                    println!(
+                        "artifact {id}: battery clean ({} controls, {})",
+                        run.refused.len() + run.escaped.len(),
+                        run.refused.join(", ")
+                    );
+                } else {
+                    ok = false;
+                }
+            }
+            Err(error) => {
+                eprintln!("artifact {id}: battery FAILED: {error}");
+                ok = false;
+            }
+        }
+    }
+    if ok { EXIT_OK } else { EXIT_REFUSED }
 }
 
 /// `architecture`: provider-neutral pipeline description.
 pub fn architecture() -> u8 {
-    println!(".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion");
+    println!(
+        ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion"
+    );
     println!(
         "provider-neutral required paths: {:?}",
         emath_artifact::required_artifact_paths()
@@ -370,7 +497,12 @@ usage:
       (default out: target/emath) --verify runs `cargo test` on the
       staged crate before publish
   emath artifact check <dir>
-      re-verify every published artifact's fingerprints (independent checker)
+      re-verify every published artifact with the independent checker
+      (emath-checker: identity, source map, plan, evidence, claims)
+  emath artifact battery <dir>
+      seeded negative-control battery over every published artifact:
+      tampered/stale/wrong-goal/incomplete/unsupported must be refused
+      with the checker's expected E-EVID-* code, or the command fails
   emath import modelica <file.mo> [--json]
       retain a Modelica subset source as foreign-model declarations with
       adapter identity (no silent source rewrite)
@@ -485,7 +617,7 @@ pub fn run(args: &[String]) -> u8 {
                     "--verify" => verify = true,
                     "--json" => json = true,
                     other if other.starts_with('-') => {
-                        return usage("build <file.emath> [--out <dir>] [--verify] [--json]")
+                        return usage("build <file.emath> [--out <dir>] [--verify] [--json]");
                     }
                     other => path = Some(PathBuf::from(other)),
                 }
@@ -566,8 +698,10 @@ pub fn run(args: &[String]) -> u8 {
         "artifact" => {
             if args.get(1).is_some_and(|c| c == "check") && args.len() >= 3 {
                 artifact_check(&PathBuf::from(&args[2]))
+            } else if args.get(1).is_some_and(|c| c == "battery") && args.len() >= 3 {
+                artifact_battery(&PathBuf::from(&args[2]))
             } else {
-                usage("artifact check <dir>")
+                usage("artifact check|battery <dir>")
             }
         }
         "architecture" => architecture(),

@@ -5,7 +5,7 @@
 //! policy. The schema validates itself (`E-GOAL-011`..`E-GOAL-013`) and
 //! carries a versioned canonical encoding for plan identity.
 
-use emath_core::{fnv1a64_bytes, ContentId, SchemaId};
+use emath_core::{ContentId, SchemaId, fnv1a64_bytes};
 use emath_ir::{
     DeterminismPolicy, EvidenceLevel, ExactnessPolicy, FallbackPolicy, Goal, GoalKind,
     TargetProfile,

@@ -3,7 +3,7 @@
 //! capability contract without faking support (Constitution §6: never
 //! silently accept what you do not implement).
 
-use emath_core::{bootstrap_content_id, ContentId, SchemaId};
+use emath_core::{ContentId, SchemaId, bootstrap_content_id};
 use emath_ir::Goal;
 use emath_provider_api::{
     CapabilityReason, CapabilityReport, CostEstimate, Provider, ProviderDescriptor, ProviderError,

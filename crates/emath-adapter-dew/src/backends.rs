@@ -212,20 +212,23 @@ pub fn admit_target(
 /// Deterministic per-node Rust fragment generation for the scalar
 /// subset. Anchors are monotone `(node, symbol)` pairs; the fragment
 /// is syntax-sanity-checked (balanced delimiters).
-pub fn render_rust_fragment(expr: &DewExpr) -> RustFragment {
+pub fn render_rust_fragment(expr: &DewExpr) -> Result<RustFragment, String> {
     let mut stmts = Vec::new();
     let mut anchors = Vec::new();
     let mut next = 0usize;
-    let result = emit(expr, &mut stmts, &mut anchors, &mut next);
+    let result = emit(expr, &mut stmts, &mut anchors, &mut next)?;
     let text = format!(
         "fn dew_fragment() -> f64 {{\n    {}\n    {result}\n}}",
         stmts.join("\n    ")
     );
-    RustFragment {
+    if !syntax_sane(&text) {
+        return Err("E-PROV-030: generated Rust fragment fails the syntax sanity gate".to_string());
+    }
+    Ok(RustFragment {
         text,
         anchors,
         result,
-    }
+    })
 }
 
 /// Emits statements for the expression and returns the result symbol.
@@ -234,29 +237,47 @@ fn emit(
     stmts: &mut Vec<String>,
     anchors: &mut Vec<(usize, String)>,
     next: &mut usize,
-) -> String {
+) -> Result<String, String> {
     let name = format!("v{next}");
     *next += 1;
     let stmt = match expr {
         DewExpr::Float64Bits(bits) => format!("let {name}: f64 = f64::from_bits({bits:#018x});"),
         DewExpr::Bool(value) => format!("let {name}: bool = {value};"),
-        DewExpr::Int(text) => format!("let {name}: f64 = {text}.0 as f64;"),
-        DewExpr::Var(name_var) => format!("let {name}: f64 = {name_var};"),
-        DewExpr::Add(left, right) => two_operands(stmts, anchors, next, &name, "+", left, right),
-        DewExpr::Sub(left, right) => two_operands(stmts, anchors, next, &name, "-", left, right),
-        DewExpr::Mul(left, right) => two_operands(stmts, anchors, next, &name, "*", left, right),
-        DewExpr::Div(left, right) => two_operands(stmts, anchors, next, &name, "/", left, right),
+        DewExpr::Int(text) => {
+            let parsed: f64 = text
+                .replace('_', "")
+                .parse()
+                .map_err(|_| format!("E-PROV-030: integer literal `{text}` is not a finite f64"))?;
+            if !parsed.is_finite() {
+                return Err(format!(
+                    "E-PROV-030: integer literal `{text}` exceeds the strict-f64 finite range"
+                ));
+            }
+            format!("let {name}: f64 = {text}.0 as f64;")
+        }
+        DewExpr::Var(name_var) => {
+            if !ident_sane(name_var) {
+                return Err(format!(
+                    "E-PROV-030: variable name `{name_var}` is not a safe Rust identifier"
+                ));
+            }
+            format!("let {name}: f64 = {name_var};")
+        }
+        DewExpr::Add(left, right) => two_operands(stmts, anchors, next, &name, "+", left, right)?,
+        DewExpr::Sub(left, right) => two_operands(stmts, anchors, next, &name, "-", left, right)?,
+        DewExpr::Mul(left, right) => two_operands(stmts, anchors, next, &name, "*", left, right)?,
+        DewExpr::Div(left, right) => two_operands(stmts, anchors, next, &name, "/", left, right)?,
         DewExpr::Pow(left, right) => {
-            let l = emit(left, stmts, anchors, next);
-            let r = emit(right, stmts, anchors, next);
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
             format!("let {name}: f64 = {l}.powf({r});")
         }
         DewExpr::Neg(value) => {
-            let inner = emit(value, stmts, anchors, next);
+            let inner = emit(value, stmts, anchors, next)?;
             format!("let {name}: f64 = -{inner};")
         }
         DewExpr::Abs(value) => {
-            let inner = emit(value, stmts, anchors, next);
+            let inner = emit(value, stmts, anchors, next)?;
             format!("let {name}: f64 = {inner}.abs();")
         }
         DewExpr::If {
@@ -264,20 +285,96 @@ fn emit(
             then_value,
             else_value,
         } => {
-            let cond = emit(condition, stmts, anchors, next);
-            let then_name = emit(then_value, stmts, anchors, next);
-            let else_name = emit(else_value, stmts, anchors, next);
+            let cond = emit(condition, stmts, anchors, next)?;
+            let then_name = emit(then_value, stmts, anchors, next)?;
+            let else_name = emit(else_value, stmts, anchors, next)?;
             format!("let {name}: f64 = if {cond} {{ {then_name} }} else {{ {else_name} }};")
         }
-        // Non-scalar nodes must have been refused before reaching the
-        // backend; render a visible stub instead of invalid code.
-        _ => {
-            format!("let {name}: f64 = 0.0; // refused: outside scalar backend")
+        DewExpr::Sqrt(value) => unary_call(stmts, anchors, next, &name, ".sqrt()", value)?,
+        DewExpr::Exp(value) => unary_call(stmts, anchors, next, &name, ".exp()", value)?,
+        DewExpr::Ln(value) => unary_call(stmts, anchors, next, &name, ".ln()", value)?,
+        DewExpr::Sin(value) => unary_call(stmts, anchors, next, &name, ".sin()", value)?,
+        DewExpr::Cos(value) => unary_call(stmts, anchors, next, &name, ".cos()", value)?,
+        DewExpr::Tan(value) => unary_call(stmts, anchors, next, &name, ".tan()", value)?,
+        DewExpr::Tanh(value) => unary_call(stmts, anchors, next, &name, ".tanh()", value)?,
+        DewExpr::Floor(value) => unary_call(stmts, anchors, next, &name, ".floor()", value)?,
+        DewExpr::Ceil(value) => unary_call(stmts, anchors, next, &name, ".ceil()", value)?,
+        DewExpr::Min(left, right) => {
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
+            format!("let {name}: f64 = {l}.min({r});")
+        }
+        DewExpr::Max(left, right) => {
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
+            format!("let {name}: f64 = {l}.max({r});")
+        }
+        DewExpr::Atan2(left, right) => {
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
+            format!("let {name}: f64 = {l}.atan2({r});")
+        }
+        DewExpr::And(left, right) => {
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
+            format!("let {name}: f64 = if ({l} != 0.0) && ({r} != 0.0) {{ 1.0 }} else {{ 0.0 }};")
+        }
+        DewExpr::Or(left, right) => {
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
+            format!("let {name}: f64 = if ({l} != 0.0) || ({r} != 0.0) {{ 1.0 }} else {{ 0.0 }};")
+        }
+        DewExpr::Cmp(op, left, right) => {
+            let l = emit(left, stmts, anchors, next)?;
+            let r = emit(right, stmts, anchors, next)?;
+            let operator = match op {
+                crate::dexpr::CmpOp::Eq => "==",
+                crate::dexpr::CmpOp::Ne => "!=",
+                crate::dexpr::CmpOp::Lt => "<",
+                crate::dexpr::CmpOp::Le => "<=",
+                crate::dexpr::CmpOp::Gt => ">",
+                crate::dexpr::CmpOp::Ge => ">=",
+            };
+            format!("let {name}: f64 = if {l} {operator} {r} {{ 1.0 }} else {{ 0.0 }};")
+        }
+        // Boolean-typed nodes cannot live in the f64-shaped fragment
+        // (`fn dew_fragment() -> f64`); the evaluator types them `Bool`.
+        // Refuse with a typed code instead of coercing them silently.
+        DewExpr::Not(_) | DewExpr::IsFinite(_) => {
+            return Err(
+                "E-PROV-030: boolean-typed node is outside the scalar strict-f64 Rust \
+                 fragment backend and is refused"
+                    .into(),
+            );
+        }
+        // Non-scalar nodes are refused with a typed code: emitting a
+        // numeric placeholder (`0.0`) would let a refused shape pass as
+        // computed output. `map_expression` refuses before the backend,
+        // and the backend re-refuses as defense in depth.
+        DewExpr::Matrix(_) | DewExpr::Linear(..) => {
+            return Err(
+                "E-PROV-030: non-scalar linear-algebra node is outside the scalar strict-f64 \
+                 Rust backend and is refused (never stubbed)"
+                    .into(),
+            );
         }
     };
     stmts.push(stmt);
     anchors.push((anchors.len(), name.clone()));
-    name
+    Ok(name)
+}
+
+/// Emits one operand, then a method call applied to it.
+fn unary_call(
+    stmts: &mut Vec<String>,
+    anchors: &mut Vec<(usize, String)>,
+    next: &mut usize,
+    name: &str,
+    call: &str,
+    value: &DewExpr,
+) -> Result<String, String> {
+    let inner = emit(value, stmts, anchors, next)?;
+    Ok(format!("let {name}: f64 = {inner}{call};"))
 }
 
 fn two_operands(
@@ -288,10 +385,10 @@ fn two_operands(
     operator: &str,
     left: &DewExpr,
     right: &DewExpr,
-) -> String {
-    let l = emit(left, stmts, anchors, next);
-    let r = emit(right, stmts, anchors, next);
-    format!("let {name}: f64 = {l} {operator} {r};")
+) -> Result<String, String> {
+    let l = emit(left, stmts, anchors, next)?;
+    let r = emit(right, stmts, anchors, next)?;
+    Ok(format!("let {name}: f64 = {l} {operator} {r};"))
 }
 
 /// Bounded syntax sanity check: balanced brackets and no stray
@@ -310,6 +407,19 @@ pub fn syntax_sane(text: &str) -> bool {
         }
     }
     depth == 0
+}
+
+/// Whether `name` is a safe Rust identifier (ASCII alphanumeric or
+/// underscore, not starting with a digit). Variables are spliced into
+/// generated Rust; anything else is refused, never emitted.
+#[must_use]
+pub fn ident_sane(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Token-stream generation over the same fragment (identical joined
@@ -336,4 +446,75 @@ pub fn render_tokens(fragment: &RustFragment) -> TokenStream {
         });
     }
     tokens
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dexpr::{DewExpr, DewMatrix, Layout, LinearOp};
+
+    #[test]
+    fn oversized_integer_literal_is_refused() {
+        let expr = DewExpr::Int(format!("400{}", "0".repeat(400)) + &"0".repeat(400));
+        let err = render_rust_fragment(&expr).unwrap_err();
+        assert!(err.contains("E-PROV-030"), "{err}");
+    }
+
+    #[test]
+    fn non_scalar_node_is_refused_never_stubbed_to_zero() {
+        // A linear-algebra node under the scalar backend must be a typed
+        // refusal: a `0.0` placeholder would smuggle a refused shape past
+        // as computed output.
+        let matrix = DewExpr::Matrix(DewMatrix {
+            rows: 2,
+            cols: 1,
+            data: vec![DewExpr::Float64Bits(1.0f64.to_bits())],
+            layout: Layout::RowMajor,
+        });
+        let linear = DewExpr::Linear(
+            LinearOp::Scale,
+            Box::new(matrix.clone()),
+            Box::new(DewExpr::Float64Bits(2.0f64.to_bits())),
+        );
+        let err = render_rust_fragment(&linear).unwrap_err();
+        assert!(err.contains("E-PROV-030"), "{err}");
+        assert!(
+            !err.contains("0.0"),
+            "refusal must not carry a numeric placeholder: {err}"
+        );
+        let err = render_rust_fragment(&matrix).unwrap_err();
+        assert!(err.contains("E-PROV-030"), "{err}");
+    }
+
+    #[test]
+    fn unsafe_identifier_is_refused() {
+        let expr = DewExpr::Var("x-y".into());
+        let err = render_rust_fragment(&expr).unwrap_err();
+        assert!(err.contains("E-PROV-030"), "{err}");
+    }
+
+    #[test]
+    fn valid_expression_renders_fragment() {
+        let expr = DewExpr::Var("temperature".into());
+        let fragment = render_rust_fragment(&expr).expect("valid expression renders");
+        assert!(
+            fragment.text.contains("let v0: f64 = temperature;"),
+            "{}",
+            fragment.text
+        );
+        assert_eq!(fragment.anchors.len(), 1);
+    }
+
+    #[test]
+    fn syntax_sane_rejects_incomplete_statement() {
+        assert!(syntax_sane("let x: f64 = 1.0;"));
+        assert!(!syntax_sane("let {x: f64 = 1.0;"));
+        assert!(!syntax_sane("(let x: f64 = 1.0"));
+    }
+
+    #[test]
+    fn ident_sane_rejects_hyphenated_name() {
+        assert!(ident_sane("x"));
+        assert!(ident_sane("_private"));
+        assert!(!ident_sane("x-y"));
+    }
 }

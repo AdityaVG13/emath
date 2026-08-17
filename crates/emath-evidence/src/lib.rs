@@ -41,23 +41,23 @@ pub mod registry;
 pub mod revalidation;
 pub mod store;
 
-pub use certify::{reject_unsound_certifier_output, UnsoundFixture, CERTIFY_THE_CERTIFIER};
+pub use certify::{CERTIFY_THE_CERTIFIER, UnsoundFixture, reject_unsound_certifier_output};
 pub use ir::{
-    can_become_resolved, CheckerRole, EvidenceKind, EvidenceRecord, Falsifier, FalsifierKind,
-    Freshness, Independence, ProducerRole,
+    CheckerRole, EvidenceKind, EvidenceRecord, Falsifier, FalsifierKind, Freshness, Independence,
+    ProducerRole, can_become_resolved,
 };
-pub use ledger::{premise_class_token, Assumption, AssumptionLedger, PremiseClass};
-pub use policy::{admissible_combos, requirement_for, satisfied_by, EvidenceEntry, EvidencePolicy};
-pub use proof::{verify_proof_optional, ProofProvider, ProofVerdict, ProofVerdictKind};
+pub use ledger::{Assumption, AssumptionLedger, PremiseClass, premise_class_token};
+pub use policy::{EvidenceEntry, EvidencePolicy, admissible_combos, requirement_for, satisfied_by};
+pub use proof::{ProofProvider, ProofVerdict, ProofVerdictKind, verify_proof_optional};
 pub use registry::{
-    admits_claim_class, lookup_contract, register_contract, CertificateKind, CertificateRegistry,
-    CheckerContract,
+    CertificateKind, CertificateRegistry, CheckerContract, admits_claim_class, lookup_contract,
+    register_contract,
 };
 pub use revalidation::{
-    require_promotable, revalidation_sweep, RevalidationConfig, RevalidationReport,
-    RevalidationTrigger,
+    RevalidationConfig, RevalidationReport, RevalidationTrigger, require_promotable,
+    revalidation_sweep,
 };
-pub use store::{store_address, EvidenceStore};
+pub use store::{EvidenceStore, store_address};
 
 /// Shared evidence failure with a stable code.
 #[derive(Clone, Debug, PartialEq, Eq)]

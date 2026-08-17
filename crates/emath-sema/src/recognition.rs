@@ -17,12 +17,118 @@
 //! open there.
 
 use crate::admit::SemanticTrace;
+use emath_core::Diagnostics;
 use emath_core::tree::{
     Declaration, Expr, ExprKind, Item, Stmt, StmtKind, TypeExpr, TypeKind, UseTree,
 };
-use emath_core::Diagnostics;
 use emath_ir::{ImportEntry, ImportSelection};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use emath_core::tree::{Section, Stmt, StmtKind}; // re-imported: tree items already above
+
+    fn span() -> emath_core::Span {
+        emath_core::Span {
+            file: emath_core::FileId(0),
+            start: 0,
+            end: 1,
+        }
+    }
+
+    fn equation_section() -> Section {
+        Section {
+            name: "equation".to_string(),
+            generic: None,
+            args: None,
+            suite: emath_core::tree::Suite {
+                statements: vec![Stmt {
+                    kind: StmtKind::Equation {
+                        left: Expr {
+                            kind: ExprKind::Bool(true),
+                            source: span(),
+                        },
+                        right: Expr {
+                            kind: ExprKind::Bool(true),
+                            source: span(),
+                        },
+                    },
+                    source: span(),
+                }],
+                source: span(),
+            },
+            source: span(),
+            head_source: span(),
+        }
+    }
+
+    fn application(body: Vec<Stmt>) -> Declaration {
+        Declaration {
+            name: "Water".to_string(),
+            generics: Vec::new(),
+            item_kind: "Liquid".to_string(),
+            as_kind: "Liquid".to_string(),
+            attributes: Vec::new(),
+            body,
+            signature: None,
+            source: span(),
+            head_source: span(),
+        }
+    }
+
+    fn kind_defs() -> BTreeMap<String, KindDef> {
+        let mut defs = BTreeMap::new();
+        defs.insert(
+            "Liquid".to_string(),
+            KindDef {
+                name: "Liquid".to_string(),
+                extends: None,
+                schema: vec![SchemaRule::RequireSection("equation".to_string())],
+            },
+        );
+        defs
+    }
+
+    fn admit(tree_decl: &Declaration) -> emath_core::Diagnostics {
+        let mut package = emath_ir::SemanticPackage::new();
+        let mut diagnostics = emath_core::Diagnostics::new();
+        let mut trace = crate::admit::SemanticTrace::default();
+        admit_declaration(
+            tree_decl,
+            &kind_defs(),
+            &mut package,
+            &mut diagnostics,
+            &mut trace,
+        );
+        diagnostics
+    }
+
+    #[test]
+    fn required_equation_section_is_admitted_not_contradicted() {
+        let decl = application(vec![Stmt {
+            kind: StmtKind::Section(equation_section()),
+            source: span(),
+        }]);
+        let diagnostics = admit(&decl);
+        assert!(
+            diagnostics.is_empty(),
+            "application with the required equation section must admit cleanly, got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn missing_required_equation_section_yields_single_e_kind_003() {
+        let decl = application(Vec::new());
+        let diagnostics = admit(&decl);
+        let codes: Vec<&str> = diagnostics.errors().map(|d| d.code).collect();
+        assert_eq!(
+            codes,
+            vec!["E-KIND-003"],
+            "one honest refusal, no contradiction"
+        );
+    }
+}
 
 /// Declaration kinds admitted by this front-end.
 pub const RECOGNIZED_KINDS: &[&str] = &[
@@ -135,7 +241,7 @@ trait ShapeRule {
 
 /// One section rule for a declaration kind.
 struct SectionRule {
-    name: &'static str,
+    name: String,
     /// `None` = any generic allowed; `Some(&[])` = no generic allowed.
     generics: Option<&'static [&'static str]>,
     statement_shapes: &'static [StmtShapeKind],
@@ -197,7 +303,7 @@ fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
             goal_sec(),
             sec("evidence", EVIDENCE_STMTS),
             SectionRule {
-                name: "host",
+                name: "host".to_string(),
                 generics: Some(&["rust"]),
                 statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
                 command_first_words: &["host", "rust", "package", "baseline", "candidate"],
@@ -210,7 +316,7 @@ fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
             },
             cmd_sec("fallback", FALLBACK_FIRST_WORDS),
             SectionRule {
-                name: "tune",
+                name: "tune".to_string(),
                 generics: None,
                 statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
                 command_first_words: &["baseline"],
@@ -263,7 +369,7 @@ fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
         "experiment" => vec![
             cmd_sec("subject", &[]),
             SectionRule {
-                name: "host",
+                name: "host".to_string(),
                 generics: Some(&[]),
                 statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
                 command_first_words: &["rust", "baseline", "candidate"],
@@ -278,7 +384,7 @@ fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
         "kind" => vec![
             sec("schema", SCHEMA_STMTS),
             SectionRule {
-                name: "lower",
+                name: "lower".to_string(),
                 generics: None,
                 statement_shapes: ASSIGN_STMTS,
                 command_first_words: &[],
@@ -300,7 +406,7 @@ fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
 
 fn sec(name: &'static str, shapes: &'static [StmtShapeKind]) -> SectionRule {
     SectionRule {
-        name,
+        name: name.to_string(),
         generics: Some(&[]),
         statement_shapes: shapes,
         command_first_words: &[],
@@ -311,7 +417,7 @@ fn sec(name: &'static str, shapes: &'static [StmtShapeKind]) -> SectionRule {
 
 fn cmd_sec(name: &'static str, first_words: &'static [&'static str]) -> SectionRule {
     SectionRule {
-        name,
+        name: name.to_string(),
         generics: Some(&[]),
         statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
         command_first_words: first_words,
@@ -322,7 +428,7 @@ fn cmd_sec(name: &'static str, first_words: &'static [&'static str]) -> SectionR
 
 fn cmds_sec(name: &'static str, first_words: &'static [&'static str]) -> SectionRule {
     SectionRule {
-        name,
+        name: name.to_string(),
         generics: None,
         statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
         command_first_words: first_words,
@@ -333,7 +439,7 @@ fn cmds_sec(name: &'static str, first_words: &'static [&'static str]) -> Section
 
 fn ctor_sec() -> SectionRule {
     SectionRule {
-        name: "constructor",
+        name: "constructor".to_string(),
         generics: Some(&[]),
         statement_shapes: CONSTRUCTOR_STMTS,
         command_first_words: &[],
@@ -344,7 +450,7 @@ fn ctor_sec() -> SectionRule {
 
 fn define_sec() -> SectionRule {
     SectionRule {
-        name: "define",
+        name: "define".to_string(),
         generics: Some(&[]),
         statement_shapes: ASSIGN_STMTS,
         command_first_words: &[],
@@ -355,7 +461,7 @@ fn define_sec() -> SectionRule {
 
 fn goal_sec() -> SectionRule {
     SectionRule {
-        name: "goal",
+        name: "goal".to_string(),
         generics: None,
         statement_shapes: &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny],
         command_first_words: GOAL_FIRST_WORDS,
@@ -640,8 +746,37 @@ fn admit_kind_application(
 /// Kind applications inherit the schema of their kind definition, with the
 /// full section vocabulary available for the schema to allow.
 fn sections_for_application(def: &KindDef) -> Vec<SectionRule> {
-    let _ = def;
-    function_sections_for_application()
+    let mut rules = function_sections_for_application();
+    let mut names: BTreeSet<String> = rules.iter().map(|rule| rule.name.clone()).collect();
+    for schema_rule in &def.schema {
+        let name = match schema_rule {
+            SchemaRule::RequireSection(name)
+            | SchemaRule::RequireExactlyOneSection(name)
+            | SchemaRule::AllowSection(name) => name,
+        };
+        if !names.insert(name.clone()) {
+            continue;
+        }
+        let rule = match name.as_str() {
+            "equation" => sec("equation", EQUATION_STMTS),
+            "constraint" => sec("constraint", CONSTRAINT_STMTS),
+            "evidence" => sec("evidence", EVIDENCE_STMTS),
+            "witness" => sec("witness", EVIDENCE_STMTS),
+            "invariant" => sec("invariant", EXPR_STMTS),
+            "protect" => sec("protect", EXPR_STMTS),
+            "host" => cmd_sec("host", &["rust"]),
+            other => SectionRule {
+                name: other.to_string(),
+                generics: None,
+                statement_shapes: EXPR_STMTS,
+                command_first_words: &[],
+                fn_heads: &[],
+                nested: &[],
+            },
+        };
+        rules.push(rule);
+    }
+    rules
 }
 
 fn function_sections_for_application() -> Vec<SectionRule> {

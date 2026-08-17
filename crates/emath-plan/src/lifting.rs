@@ -110,9 +110,5 @@ fn pascal_case(target: &str) -> String {
             upper_next = true;
         }
     }
-    if out.is_empty() {
-        "O".to_string()
-    } else {
-        out
-    }
+    if out.is_empty() { "O".to_string() } else { out }
 }

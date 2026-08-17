@@ -1,9 +1,19 @@
-//! Differential oracle.
+//! Boundary-case and mutation harness for the reference evaluator.
 //!
-//! Compares the emath reference interpreter against the Dew backend
-//! path over boundary cases (NaN/Inf, signed zero, extremes, domain
-//! edges) per the strict-f64 numeric profile. Negative semantic-drift
-//! fixtures (mutants) are detected, never masked.
+//! Phase 1 consumes no upstream Dew engine, so there is no
+//! cross-engine differential lane in-tree. What this module honestly
+//! provides:
+//!
+//! - a boundary scan of the reference evaluator over NaN/Inf, signed
+//!   zero, extremes and domain edges (`scan_reference_boundaries`):
+//!   a case where the evaluator is undefined (`None`, e.g. a
+//!   non-scalar node) is a finding, never a silent pass;
+//! - injected semantic-drift detection (`detect_drift`): a mutated
+//!   evaluation path must diverge from the reference at some boundary
+//!   case, so the negative fixture is never masked.
+//!
+//! The evaluator is never compared against itself to fabricate a
+//! differential pass.
 
 use std::collections::BTreeMap;
 
@@ -183,18 +193,10 @@ fn eval(
         DewExpr::Max(left, right) => two(left, right, env, drift, f64::max),
         DewExpr::Atan2(left, right) => two(left, right, env, drift, f64::atan2),
         DewExpr::And(left, right) => two(left, right, env, drift, |l, r| {
-            if l != 0.0 && r != 0.0 {
-                1.0
-            } else {
-                0.0
-            }
+            if l != 0.0 && r != 0.0 { 1.0 } else { 0.0 }
         }),
         DewExpr::Or(left, right) => two(left, right, env, drift, |l, r| {
-            if l != 0.0 || r != 0.0 {
-                1.0
-            } else {
-                0.0
-            }
+            if l != 0.0 || r != 0.0 { 1.0 } else { 0.0 }
         }),
         DewExpr::Cmp(op, left, right) => two(left, right, env, drift, |l, r| {
             // IEEE-754 comparisons are exact by definition, so this
@@ -265,8 +267,13 @@ fn bits(value: EvalValue) -> u64 {
     }
 }
 
-/// Runs the boundary battery for the variable `variable`: the
-/// reference interpreter vs the backend path.
+/// Runs the boundary battery for the variable `variable`.
+///
+/// With `drift == None` the reference evaluator is scanned alone: an
+/// undefined case (`None`, e.g. a non-scalar node) is a finding, never
+/// a silent pass. With `drift == Some(mutant)` the mutated path is
+/// compared against the reference: divergence and underdefinition are
+/// both findings. The evaluator is never compared against itself.
 #[must_use]
 pub fn run_boundary_cases(
     expr: &DewExpr,
@@ -281,13 +288,35 @@ pub fn run_boundary_cases(
         let reference = eval(expr, &env, None);
         let backend = eval(expr, &env, drift);
         match (&reference, &backend) {
-            (Some(expected), Some(actual)) if bits(*expected) != bits(*actual) => {
+            (None, _) => findings.push(DifferentialFinding {
+                case: case.as_str(),
+                variable: variable.to_string(),
+                reference_bits: 0,
+                backend_bits: 0,
+                detail: format!(
+                    "reference evaluator undefined at boundary case {}",
+                    case.as_str()
+                ),
+            }),
+            (Some(_), None) if drift.is_some() => findings.push(DifferentialFinding {
+                case: case.as_str(),
+                variable: variable.to_string(),
+                reference_bits: 0,
+                backend_bits: 0,
+                detail: format!("backend path undefined at boundary case {}", case.as_str()),
+            }),
+            (Some(expected), Some(actual))
+                if drift.is_some() && bits(*expected) != bits(*actual) =>
+            {
                 findings.push(DifferentialFinding {
                     case: case.as_str(),
                     variable: variable.to_string(),
                     reference_bits: bits(*expected),
                     backend_bits: bits(*actual),
-                    detail: format!("case {} reference differs from backend path", case.as_str()),
+                    detail: format!(
+                        "case {} mutated path differs from the reference",
+                        case.as_str()
+                    ),
                 });
             }
             _ => {}
@@ -296,8 +325,8 @@ pub fn run_boundary_cases(
     findings
 }
 
-/// Convenience entry for the drift fixture: scan a candidate backend
-/// path and report the first divergence, if any.
+/// Convenience entry for the drift fixture: scan a mutated backend path
+/// and report the first divergence, if any.
 #[must_use]
 pub fn detect_drift(
     expr: &DewExpr,
@@ -309,8 +338,77 @@ pub fn detect_drift(
         .next()
 }
 
-/// Clean-backend scan used by conformance checks.
+/// Boundary scan of the reference evaluator alone (no second engine):
+/// a case where the evaluator returns `None` is reported as a finding,
+/// never passed as a differential pass.
 #[must_use]
-pub fn differential_scan(expr: &DewExpr, variable: &str) -> Vec<DifferentialFinding> {
+pub fn scan_reference_boundaries(expr: &DewExpr, variable: &str) -> Vec<DifferentialFinding> {
     run_boundary_cases(expr, variable, &ScanProfile::default(), None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dexpr::{DewMatrix, Layout};
+
+    fn scalar_expr() -> DewExpr {
+        DewExpr::Add(
+            Box::new(DewExpr::Var("x".into())),
+            Box::new(DewExpr::Float64Bits(1.0f64.to_bits())),
+        )
+    }
+
+    fn matrix_expr() -> DewExpr {
+        DewExpr::Matrix(DewMatrix {
+            rows: 1,
+            cols: 1,
+            data: vec![DewExpr::Float64Bits(1.0f64.to_bits())],
+            layout: Layout::RowMajor,
+        })
+    }
+
+    #[test]
+    fn scalar_boundary_scan_has_no_findings() {
+        let findings = scan_reference_boundaries(&scalar_expr(), "x");
+        assert!(
+            findings.is_empty(),
+            "scalar expression must scan clean over every boundary case, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn non_scalar_node_reports_boundary_gaps_not_false_passes() {
+        // A matrix node under the scalar evaluator is undefined at every
+        // case; the scan reports each one instead of passing vacuously.
+        let findings = scan_reference_boundaries(&matrix_expr(), "x");
+        assert_eq!(findings.len(), ScanCase::all().len());
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.detail.contains("undefined")),
+            "every finding must name the undefined evaluator, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn injected_drift_is_detected_over_the_reference() {
+        // The negative fixture: a mutated `+` path (`AddAsSub`) must
+        // diverge from the reference at some boundary case; a fixture
+        // that never diverges would be a masked mutant.
+        let finding = detect_drift(&scalar_expr(), "x", MutantDrift::AddAsSub)
+            .expect("drift fixture must diverge at a boundary case");
+        assert!(
+            finding.reference_bits != finding.backend_bits,
+            "drift detection must surface differing bits"
+        );
+    }
+
+    #[test]
+    fn no_mutation_means_no_divergence_findings() {
+        let findings = run_boundary_cases(&scalar_expr(), "x", &ScanProfile::default(), None);
+        assert!(
+            findings.is_empty(),
+            "a clean scalar must not produce divergence findings"
+        );
+    }
 }

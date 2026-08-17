@@ -5,7 +5,7 @@
 //! Comments: `#` and `//` and `///` to end of line.
 
 use crate::token::{Comment, Keyword, Token, TokenKind};
-use emath_core::{limits::Limits, Diagnostics, FileId, Span};
+use emath_core::{Diagnostics, FileId, Span, limits::Limits};
 
 /// Lex the whole source into layout-aware tokens (comments skipped).
 #[must_use]
@@ -277,11 +277,25 @@ impl Lexer<'_> {
                 }
                 let text = &self.source[start..self.pos];
                 if !text.is_ascii() {
-                    self.diagnostics.warning(
-                "E-SYN-114",
-                "identifier contains non-ASCII characters; confusable Unicode lookalikes are a quality hazard",
-                self.span(start),
-                    );
+                    // NFC identity (spec `01_LEXICAL_LAYOUT_AND_SOURCE`):
+                    // an identifier built from combining diacritic marks
+                    // is canonically non-NFC by construction and cannot
+                    // be re-normalized without a Unicode table. Refuse
+                    // it (E-SYN-115) instead of admitting an identity
+                    // the pipeline cannot verify.
+                    if text.chars().any(|ch| matches!(ch, '\u{0300}'..='\u{036F}')) {
+                        self.error(
+                            "E-SYN-115",
+                            "identifier contains a combining mark; source must be NFC",
+                            start,
+                        );
+                    } else {
+                        self.diagnostics.warning(
+                            "E-SYN-114",
+                            "identifier contains non-ASCII characters; confusable Unicode lookalikes are a quality hazard",
+                            self.span(start),
+                        );
+                    }
                 }
 
                 if let Some(keyword) = Keyword::from_ident(text) {

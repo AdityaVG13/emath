@@ -30,4 +30,4 @@ pub use challenge::{
     AdmissionRefusal, AgentFeedback, ChallengeLoop, ChallengeOutcome, CheckerSuite, NamedCheck,
     RevisionRequest, WorldCandidateRef,
 };
-pub use proposal::{AgentProposal, ProposalKind, EXECUTION_AUTHORITIES, PROPOSAL_AUTHORITIES};
+pub use proposal::{AgentProposal, EXECUTION_AUTHORITIES, PROPOSAL_AUTHORITIES, ProposalKind};

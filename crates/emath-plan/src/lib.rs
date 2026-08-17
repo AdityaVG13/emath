@@ -21,14 +21,14 @@ pub mod registry_helpers;
 pub mod representations;
 
 pub use decompose::{
-    decompose, requirements_preserved, DecompositionRule, SubgoalDag, SubgoalNode,
+    DecompositionRule, SubgoalDag, SubgoalNode, decompose, requirements_preserved,
 };
 pub use dispositions::{
-    disposition_exhausted, disposition_for_plan, disposition_without_plan, ArtifactDisposition,
+    ArtifactDisposition, disposition_exhausted, disposition_for_plan, disposition_without_plan,
 };
 pub use fallback::{FallbackGraph, FallbackNode};
-pub use identity::{plan_identity, provider_set_fingerprint, PlanCache, ProviderFingerprint};
+pub use identity::{PlanCache, ProviderFingerprint, plan_identity, provider_set_fingerprint};
 pub use inspect::PlanInspection;
-pub use lifting::{emit_provider_trait, lift_missing, LiftedMethod, ProviderTraitSpec};
-pub use planner::{plan, PlannerConfig, PlanningOutcome, TieBreak};
-pub use representations::{find_conversion_path, Conversion, ConversionNode, RepresentationError};
+pub use lifting::{LiftedMethod, ProviderTraitSpec, emit_provider_trait, lift_missing};
+pub use planner::{PlannerConfig, PlanningOutcome, TieBreak, plan};
+pub use representations::{Conversion, ConversionNode, RepresentationError, find_conversion_path};

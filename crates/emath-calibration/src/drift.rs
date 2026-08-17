@@ -3,7 +3,7 @@
 //! created and dependent artifacts are re-evaluated.
 
 use emath_term::SymbolId;
-use emath_world_ir::{fnv1a64, WorldId};
+use emath_world_ir::{WorldId, fnv1a64};
 
 use crate::fitting::FittedTable;
 use crate::versioning::WorldVersion;

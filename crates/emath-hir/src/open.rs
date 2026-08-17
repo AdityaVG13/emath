@@ -255,7 +255,7 @@ impl SectionManifest {
     }
 
     /// Admits the declared sections against the schema. Unknown
-    /// sections are refused (`E-KIND-010`); duplicate sections are
+    /// sections are refused (`E-KIND-016`); duplicate sections are
     /// refused (`E-SYN-103`); repeat/payload policies are checked with
     /// stable codes. Ordered refusals; no side effects.
     #[must_use]
@@ -265,7 +265,7 @@ impl SectionManifest {
         for (index, name) in self.declared.iter().enumerate() {
             let Some(schema) = self.schema.section(name) else {
                 let violation = SectionViolation {
-                    code: "E-KIND-010",
+                    code: "E-KIND-016",
                     reason: SectionViolationReason::UnknownSection,
                     detail: format!(
                         "section `{name}` is not part of kind `{}`",
@@ -434,5 +434,55 @@ fn payload_token(payload: OpenPayload) -> &'static str {
         OpenPayload::Suite => "suite",
         OpenPayload::Fields => "fields",
         OpenPayload::Commands => "commands",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Unknown sections are schema violations of the HIR manifest
+    /// (`E-KIND-016`), not the sema function-constructors refusal
+    /// (`E-KIND-010`): one code, one predicate.
+    #[test]
+    fn unknown_section_emits_ekind016_not_ekind010() {
+        let schema = KindSchema::core_function();
+        let manifest = SectionManifest::new(
+            schema,
+            vec![
+                "inputs".into(),
+                "outputs".into(),
+                "definitions".into(),
+                "not_a_section".into(),
+            ],
+        );
+        let mut diagnostics = Diagnostics::new();
+        let violations = manifest.check(&mut diagnostics);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].code, "E-KIND-016");
+        assert!(matches!(
+            violations[0].reason,
+            SectionViolationReason::UnknownSection
+        ));
+        assert!(
+            diagnostics.items().iter().all(|d| d.code != "E-KIND-010"),
+            "E-KIND-010 must stay the sema function-constructors predicate"
+        );
+    }
+
+    /// Missing required sections still emit `E-KIND-011` after the
+    /// unknown-section split.
+    #[test]
+    fn missing_required_emits_ekind011() {
+        let schema = KindSchema::core_function();
+        let manifest = SectionManifest::new(schema, vec!["inputs".into()]);
+        let mut diagnostics = Diagnostics::new();
+        let violations = manifest.check(&mut diagnostics);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.code == "E-KIND-011"
+                    && v.reason == SectionViolationReason::MissingRequired)
+        );
     }
 }

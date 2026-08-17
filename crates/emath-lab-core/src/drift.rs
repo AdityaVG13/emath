@@ -174,4 +174,24 @@ impl DriftMonitor {
     pub fn clear(&mut self) {
         self.alerts.clear();
     }
+
+    /// A `true-divergence` failure bundle over the fired alerts, or
+    /// `None` while the monitor has not drifted. A bundle is emitted
+    /// only on observed divergence; never pre-emptively.
+    #[must_use]
+    pub fn failure_bundle(
+        &self,
+        subject: &crate::identity::EngineIdentity,
+        oracle: &crate::identity::EngineIdentity,
+    ) -> Option<crate::failure::FailureBundle> {
+        if self.drifted() {
+            Some(crate::failure::true_divergence_bundle(
+                subject,
+                oracle,
+                &self.alerts,
+            ))
+        } else {
+            None
+        }
+    }
 }

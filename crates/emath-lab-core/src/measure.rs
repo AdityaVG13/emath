@@ -54,6 +54,11 @@ impl MeasurementKind {
     }
 }
 
+/// Keep-gate quarantine threshold: a cell with coefficient of variation
+/// above 5% is too noisy to support any comparison claim and is
+/// quarantined instead of being read as an honest baseline.
+pub const QUARANTINE_CV_PCT: f64 = 5.0;
+
 /// Deterministic summary of raw samples.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Summary {
@@ -71,6 +76,19 @@ pub struct Summary {
     pub p90: f64,
     /// 99th percentile.
     pub p99: f64,
+    /// Coefficient of variation in percent (`stddev / mean * 100`);
+    /// cells above [`QUARANTINE_CV_PCT`] are quarantined.
+    pub cv_pct: f64,
+}
+
+impl Summary {
+    /// Whether the cell is too noisy for comparison claims
+    /// (`cv_pct > QUARANTINE_CV_PCT`; a zero mean has no relative
+    /// spread and is never quarantined).
+    #[must_use]
+    pub fn quarantined(&self) -> bool {
+        self.mean > 0.0 && self.cv_pct > QUARANTINE_CV_PCT
+    }
 }
 
 /// One measured quantity with raw samples.
@@ -113,15 +131,38 @@ impl Measurement {
         }
         let mut sorted = self.samples.clone();
         sorted.sort_unstable();
+        let mean_value = mean(&sorted);
+        let cv_pct = Self::coefficient_of_variation_pct(&sorted, mean_value);
         Ok(Summary {
             count: sorted.len() as u64,
             min: *sorted.first().expect("non-empty checked above"),
             max: *sorted.last().expect("non-empty checked above"),
-            mean: mean(&sorted),
-            median: percentile(&sorted, 0.5),
-            p90: percentile(&sorted, 0.90),
-            p99: percentile(&sorted, 0.99),
+            mean: mean_value,
+            median: percentile(&sorted, 0.5).expect("non-empty checked above"),
+            p90: percentile(&sorted, 0.90).expect("non-empty checked above"),
+            p99: percentile(&sorted, 0.99).expect("non-empty checked above"),
+            cv_pct,
         })
+    }
+
+    /// Population coefficient of variation in percent. A zero mean has no
+    /// relative spread (`0.0`); exactness is not claimed for the f64
+    /// spread ratio.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)] // ns counts -> f64 deviations; exact below 2^53
+    pub fn coefficient_of_variation_pct(values: &[u64], mean_value: f64) -> f64 {
+        if values.len() < 2 || mean_value == 0.0 {
+            return 0.0;
+        }
+        let variance = values
+            .iter()
+            .map(|value| {
+                let deviation = *value as f64 - mean_value;
+                deviation * deviation
+            })
+            .sum::<f64>()
+            / values.len() as f64;
+        variance.sqrt() / mean_value * 100.0
     }
 
     /// Throughput from a frozen operation count and total elapsed
@@ -229,5 +270,45 @@ impl HarnessReport {
         } else {
             Some(candidate_peak as f64 / baseline_peak as f64)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Measurement, MeasurementKind, QUARANTINE_CV_PCT};
+
+    fn summarized(samples: &[u64]) -> super::Summary {
+        Measurement {
+            metric_id: "test".into(),
+            kind: MeasurementKind::LatencyNs,
+            unit: "ns".into(),
+            samples: samples.to_vec(),
+        }
+        .summarize()
+        .expect("non-empty samples summarize")
+    }
+
+    /// Keep-gate `cv_pct`: a wide-spread cell (mean 110, sd ~8.16) crosses
+    /// the 5% quarantine threshold; a tight cell stays eligible.
+    #[allow(clippy::float_cmp)]
+    #[test]
+    fn cv_pct_quarantines_noisy_cells() {
+        let noisy = summarized(&[100, 110, 120]);
+        assert!(noisy.cv_pct > QUARANTINE_CV_PCT, "{}", noisy.cv_pct);
+        assert!(noisy.quarantined(), "noisy cell must quarantine");
+        let tight = summarized(&[100, 101, 99, 100, 102, 101]);
+        assert!(tight.cv_pct < QUARANTINE_CV_PCT, "{}", tight.cv_pct);
+        assert!(!tight.quarantined(), "tight cell must stay eligible");
+    }
+
+    /// Degenerate cases never quarantine and never divide by zero.
+    #[allow(clippy::float_cmp)]
+    #[test]
+    fn degenerate_samples_have_zero_cv() {
+        assert_eq!(summarized(&[42]).cv_pct, 0.0);
+        assert!(!summarized(&[42]).quarantined());
+        let zero_mean = summarized(&[0, 0, 0]);
+        assert_eq!(zero_mean.cv_pct, 0.0);
+        assert!(!zero_mean.quarantined());
     }
 }

@@ -61,6 +61,9 @@ pub struct NoClaimBoundary {
     pub uncertified_optimizations: Vec<String>,
     /// Backends that are not implemented.
     pub unimplemented_backends: Vec<String>,
+    /// Operator families with a mapping API (`map_linear`) but no
+    /// admitted execution backend: never claimed as served.
+    pub unimplemented_operators: Vec<String>,
 }
 
 /// Optimization evidence classification.
@@ -96,7 +99,7 @@ pub fn provide_capability() -> DewCapability {
     DewCapability {
         identity: "emath.adapter.dew".into(),
         version: "0.1.0".into(),
-        domains: vec!["scalar-strict-f64".into(), "fixed-linear-algebra".into()],
+        domains: vec!["scalar-strict-f64".into()],
         operators: vec![
             "add".into(),
             "sub".into(),
@@ -115,9 +118,6 @@ pub fn provide_capability() -> DewCapability {
             "cmp".into(),
             "logical".into(),
             "if".into(),
-            "dot".into(),
-            "matvec".into(),
-            "scale".into(),
         ],
         backends: vec![Backend::RustSource, Backend::TokenStream],
         deterministic: true,
@@ -137,6 +137,12 @@ pub fn provide_capability() -> DewCapability {
                 "wgsl".into(),
                 "glsl".into(),
                 "accelerator-shader-anytype".into(),
+            ],
+            unimplemented_operators: vec![
+                "dot".into(),
+                "matvec".into(),
+                "scale".into(),
+                "matadd".into(),
             ],
         },
         optimization: OptimizationEvidence {
@@ -172,12 +178,51 @@ pub fn capability_token(capability: &DewCapability) -> String {
     let mut operators = capability.operators.clone();
     operators.sort_unstable();
     format!(
-        "dew-cap:v1:{}:{}:[{}]:[{}]:[{}]:{}",
+        "dew-cap:v1:{}:{}:[{}]:[{}]:[{}]:[{}]:{}",
         capability.identity,
         capability.version,
         backends.join(","),
         operators.join(","),
         capability.no_claim.unimplemented_backends.join(","),
+        capability.no_claim.unimplemented_operators.join(","),
         capability.deterministic
     )
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jit_backend_not_in_advertised_inventory() {
+        let capability = provide_capability();
+        let error = select_backend(&capability, Backend::JitCranelift).unwrap_err();
+        assert!(error.contains("E-PROV-031"), "got {error:?}");
+    }
+
+    #[test]
+    fn census_does_not_claim_linear_operators_for_scalar_backends() {
+        // The advertised operators must all be served by the advertised
+        // backends; the linear-algebra families exist as mapping APIs
+        // only (`map_linear`) and are listed under the no-claim boundary,
+        // never in the operators inventory.
+        let capability = provide_capability();
+        for operator in &capability.operators {
+            assert!(
+                !matches!(operator.as_str(), "dot" | "matvec" | "scale" | "matadd"),
+                "linear operator `{operator}` must not be claimed by scalar backends"
+            );
+        }
+        assert!(
+            capability
+                .no_claim
+                .unimplemented_operators
+                .contains(&"dot".to_string()),
+            "unimplemented linear operators must be disclosed in the no-claim boundary"
+        );
+        assert_eq!(
+            capability.domains,
+            vec!["scalar-strict-f64".to_string()],
+            "only the served domain is claimed"
+        );
+    }
 }

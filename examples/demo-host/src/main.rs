@@ -6,8 +6,8 @@
 include!(concat!(env!("OUT_DIR"), "/affine_scorer.rs"));
 
 use emath_artifact::{
-    manifest_from_json, manifest_identity, required_artifact_paths, stage, verify_artifact,
-    StagedFile,
+    StagedFile, manifest_from_json, manifest_identity, required_artifact_paths, stage,
+    verify_artifact,
 };
 
 fn main() {
@@ -32,6 +32,18 @@ fn main() {
     println!(
         "negative control: new(-1.0, 0.5) refused: {:?}",
         refused.unwrap_err()
+    );
+
+    // Postcondition gate: scale = 0.0 passes every `require` but violates
+    // `ensure scale > 0`, so the constructor must refuse after field init.
+    let post_refused = AffineScorer::new(0.0, 1.0);
+    assert!(
+        matches!(post_refused, Err(ConfigError::FailedPostcondition)),
+        "ensure scale > 0 must be enforced, got {post_refused:?}"
+    );
+    println!(
+        "postcondition negative control: new(0.0, 1.0) refused: {:?}",
+        post_refused.unwrap_err()
     );
 
     // Independent artifact verification: re-read the published manifest

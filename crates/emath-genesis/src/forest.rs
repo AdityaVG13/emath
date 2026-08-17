@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use emath_term::{Signature, SymbolId, Term, VariableId};
-use emath_world_ir::{fnv1a64, Fixity};
+use emath_world_ir::{Fixity, fnv1a64};
 
 /// Budget for the bounded parse forest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,7 +247,12 @@ impl ForestState<'_> {
                     for (term, next_end) in self.parse_exprs(tokens, end + 1, depth) {
                         let mut extended = arguments.clone();
                         extended.push(term);
-                        queue.push((extended, next_end));
+                        if queue.len() < self.limits.max_alternatives && self.claim(extended.len())
+                        {
+                            queue.push((extended, next_end));
+                        } else {
+                            self.record_once("alternative-budget");
+                        }
                     }
                 }
                 _ => {}
@@ -682,5 +687,43 @@ fn fixity_name(fixity: Fixity) -> &'static str {
         Fixity::Infix => "infix",
         Fixity::Postfix => "postfix",
         Fixity::Function => "function",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn application_argument_queue_is_bounded() {
+        // Six comma-separated arguments, each with a highly ambiguous
+        // split: the extension queue multiplies by `max_alternatives` per
+        // comma and must be capped instead of exploding (the 128^n blast).
+        let limits = ForestLimits {
+            max_nodes: 4096,
+            max_alternatives: 16,
+            max_depth: 64,
+        };
+        let started = Instant::now();
+        let forest = build_forest(
+            "f(a b c d e, a b c d e, a b c d e, a b c d e, a b c d e, a b c d e)",
+            &limits,
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "application-argument queue must stay bounded"
+        );
+        assert!(
+            forest.node_count() <= limits.max_nodes,
+            "node budget must hold: {} > {}",
+            forest.node_count(),
+            limits.max_nodes
+        );
+        assert!(
+            !forest.holes().is_empty(),
+            "ambiguous application must exceed a budget, got {} nodes",
+            forest.node_count()
+        );
     }
 }

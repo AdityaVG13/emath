@@ -26,7 +26,7 @@ pub mod parser;
 pub mod token;
 pub mod tree;
 
-use emath_core::{limits::Limits, Diagnostics, FileId};
+use emath_core::{Diagnostics, FileId, limits::Limits};
 use token::Comment;
 use tree::SyntaxTree;
 

@@ -1,7 +1,7 @@
 //! Held-out challenge: a candidate is not credited for
 //! held-out performance if it saw those examples during construction.
 
-use crate::fitting::{evaluate, ExampleRecord, FittedTable};
+use crate::fitting::{ExampleRecord, FittedTable, evaluate};
 use crate::partition::{ExampleKind, PartitionedExamples};
 
 /// Outcome of a held-out challenge for one fitted table.

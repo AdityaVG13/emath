@@ -511,14 +511,22 @@ impl StructuralModel {
             }
         }
         for event in &self.events {
-            if match event.condition.dimensions(&environment) {
-                Ok(dimensions) => !dimensions.is_dimensionless(),
-                Err(_) => true,
-            } {
-                issues.push(ModelIssue {
-                    code: "E-UNIT-103",
-                    message: format!("event `{}` condition is not dimensionless", event.name),
-                });
+            match event.condition.dimensions(&environment) {
+                Err(error) => {
+                    // Keep the dimension-analysis refusal (`E-UNIT-100`/
+                    // `E-UNIT-101`) instead of collapsing into `E-UNIT-103`.
+                    issues.push(ModelIssue {
+                        code: error.code,
+                        message: format!("event `{}` condition: {}", event.name, error.message),
+                    });
+                }
+                Ok(dimensions) if !dimensions.is_dimensionless() => {
+                    issues.push(ModelIssue {
+                        code: "E-UNIT-103",
+                        message: format!("event `{}` condition is not dimensionless", event.name),
+                    });
+                }
+                Ok(_) => {}
             }
         }
         issues

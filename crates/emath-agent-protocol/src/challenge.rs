@@ -9,7 +9,7 @@
 //! and benchmark gates).
 
 use emath_portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
-use emath_world_ir::{fnv1a64, WorldId};
+use emath_world_ir::{WorldId, fnv1a64};
 
 use crate::proposal::AgentProposal;
 

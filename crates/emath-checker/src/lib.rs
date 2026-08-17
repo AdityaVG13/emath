@@ -32,16 +32,16 @@ pub mod negative;
 pub mod translation;
 
 pub use artifact_check::{
-    check_artifact, check_artifact_dir, ArtifactCheckConfig, ArtifactCheckIssue,
-    ArtifactCheckReport, ArtifactInput, ProviderLockRecord,
+    ArtifactCheckConfig, ArtifactCheckIssue, ArtifactCheckReport, ArtifactInput,
+    ProviderLockRecord, artifact_input_from_dir, check_artifact, check_artifact_dir,
 };
-pub use claimlint::{lint_claims, ClaimLinter, LintIssue};
+pub use claimlint::{ClaimLinter, LintIssue, lint_claims};
 pub use negative::{
-    run_negative_controls, seed_incomplete, seed_stale, seed_tampered, seed_unsupported,
-    seed_wrong_goal, ControlRun, NegativeControl, NegativeControlKind,
+    ControlRun, NegativeControl, NegativeControlKind, run_negative_controls, run_standard_battery,
+    seed_incomplete, seed_stale, seed_tampered, seed_unsupported, seed_wrong_goal,
 };
 pub use translation::{
-    check_witness, validate_translation, EquivalenceWitness, TranslationRelation, TranslationSample,
+    EquivalenceWitness, TranslationRelation, TranslationSample, check_witness, validate_translation,
 };
 
 use emath_core::ContentId;

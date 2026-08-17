@@ -20,11 +20,11 @@ pub mod fitting;
 pub mod partition;
 pub mod versioning;
 
-pub use challenge::{hold_out_challenge, HeldOutChallenge, HeldOutResult};
-pub use drift::{drift, SemanticDrift};
-pub use fitting::{evaluate, fit_table, ExampleRecord, FitFailure, FittedTable};
+pub use challenge::{HeldOutChallenge, HeldOutResult, hold_out_challenge};
+pub use drift::{SemanticDrift, drift};
+pub use fitting::{ExampleRecord, FitFailure, FittedTable, evaluate, fit_table};
 pub use partition::{CalibrationExample, ExampleKind, PartitionedExamples};
-pub use versioning::{WorldVersion, VERSION_SEED};
+pub use versioning::{VERSION_SEED, WorldVersion};
 
 use emath_term::SymbolId;
 use emath_world_ir::fnv1a64;

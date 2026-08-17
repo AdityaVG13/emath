@@ -11,6 +11,6 @@
 
 pub mod schema;
 pub use schema::{
-    budget_token, custom_token, exactness_token, fallback_token, target_token, BudgetConstraint,
-    GoalKindSpec, GoalSchema, GoalSchemaProblem,
+    BudgetConstraint, GoalKindSpec, GoalSchema, GoalSchemaProblem, budget_token, custom_token,
+    exactness_token, fallback_token, target_token,
 };

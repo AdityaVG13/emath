@@ -6,7 +6,7 @@
 //! the goal's fallback policy (`E-RES-100`, `E-GOAL-201`).
 
 use crate::dispositions::{
-    disposition_exhausted, disposition_for_plan, disposition_without_plan, ArtifactDisposition,
+    ArtifactDisposition, disposition_exhausted, disposition_for_plan, disposition_without_plan,
 };
 use crate::identity::plan_identity;
 use crate::inspect::PlanInspection;
@@ -15,7 +15,7 @@ use emath_ir::{
     EvidenceClaimId, ExcludedCandidate, Goal, GoalId, PlanNodeDef, PlanNodeId, PlanOperation,
     ProviderRef, ResolutionPlan,
 };
-use emath_provider_api::{filter_goal, Compatibility, ProviderRegistry};
+use emath_provider_api::{Compatibility, ProviderRegistry, filter_goal};
 use std::collections::BTreeMap;
 
 /// Planner configuration.
@@ -185,6 +185,31 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
         })
     });
     let (mut plan, checks) = build_plan(goal.id, &provider_id, config);
+    // Node budget: a plan DAG larger than `max_nodes` is a typed refusal
+    // (E-RES-100), never a silently oversized artifact.
+    if plan.nodes.len() > config.max_nodes {
+        let continuation = format!("{}:resume:nodes>{}", config.policy, config.max_nodes);
+        let inspection = PlanInspection {
+            policy: config.policy.clone(),
+            candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
+            exclusions,
+            selected_plan_id: None,
+            checks,
+            budget: Some(format!(
+                "E-RES-100: {} plan nodes exceed the {} node budget",
+                plan.nodes.len(),
+                config.max_nodes
+            )),
+            artifact_class: disposition_exhausted(&goal.requirements.fallback)
+                .name()
+                .into(),
+        };
+        return PlanningOutcome::Exhausted {
+            continuation,
+            disposition: disposition_exhausted(&goal.requirements.fallback),
+            inspection,
+        };
+    }
     plan.excluded_candidates = exclusions
         .iter()
         .map(|(provider, code, detail)| ExcludedCandidate {
@@ -362,4 +387,93 @@ pub fn excluded_trace(goal: &Goal, registry: &ProviderRegistry) -> Vec<ExcludedC
             Compatibility::Compatible => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use emath_ir::{
+        DeterminismPolicy, EvidenceLevel, ExactnessPolicy, FallbackPolicy, Goal, GoalId, GoalKind,
+        GoalRequirements, TargetProfile,
+    };
+    use emath_provider_api::{
+        CapabilitySpec, CapabilityTable, ProviderIsolation, ProviderLock, ProviderRegistry,
+        RegistryConfig, RepresentationSpec,
+    };
+
+    fn goal_with_produce(produce: &str) -> Goal {
+        let mut goal = Goal {
+            id: GoalId(1),
+            kind: GoalKind::Evaluate,
+            target: "y".into(),
+            expression: None,
+            requirements: GoalRequirements {
+                evidence: EvidenceLevel::E1,
+                exactness: ExactnessPolicy::Exact,
+                determinism: DeterminismPolicy::Required,
+                target: TargetProfile {
+                    family: "rust".into(),
+                    triple: None,
+                    features: vec![],
+                },
+                fallback: FallbackPolicy::Diagnostic,
+                produce: String::new(),
+            },
+            source: emath_core::Span::default(),
+        };
+        goal.requirements.produce = produce.to_string();
+        goal
+    }
+
+    fn provider_table(name: &str) -> CapabilityTable {
+        CapabilityTable {
+            capabilities: vec![CapabilitySpec {
+                name: name.to_string(),
+                semantic_subset: "rust".into(),
+                representations: vec![RepresentationSpec {
+                    name: "f64".into(),
+                    exact_relation: "bit-identical".into(),
+                    encode_cost: 0,
+                }],
+                exactness: vec!["exact".into()],
+                failure_modes: vec![],
+                checker_bindings: vec!["sir-checker.v1".into()],
+            }],
+            isolation: ProviderIsolation::Static,
+            lock: ProviderLock::Unlocked,
+            maximum_evidence: EvidenceLevel::E2,
+            deterministic: true,
+        }
+    }
+
+    #[test]
+    fn node_budget_refuses_oversized_plan_dag() {
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        registry
+            .register(
+                "p1",
+                ProviderIsolation::Static,
+                provider_table("evaluate.target"),
+            )
+            .expect("sample registration must succeed");
+        let outcome = plan(
+            &goal_with_produce("target"),
+            &registry,
+            &PlannerConfig {
+                max_nodes: 0,
+                ..PlannerConfig::default()
+            },
+        );
+        match &outcome {
+            PlanningOutcome::Exhausted { inspection, .. } => assert!(
+                inspection
+                    .budget
+                    .as_deref()
+                    .unwrap_or_default()
+                    .contains("E-RES-100"),
+                "E-RES-100 must be issued in the exhausted inspection: {outcome:?}"
+            ),
+            other => panic!("max_nodes=0 must exhaust, got {other:?}"),
+        }
+    }
 }
