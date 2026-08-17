@@ -390,8 +390,9 @@ usage:
       print one interpretation portfolio artifact
   emath architecture
       describe the provider-neutral pipeline
-  emath new <name> --out <dir>
-      deterministic project scaffold (emath-package.toml + src/main.emath)
+  emath new <name> [--out <dir>]
+      deterministic project scaffold (emath-package.toml + src/main.emath;
+      default dir: ./<name>)
   emath fmt <file.emath>
       canonical-form check (full formatter is Phase 4)
   emath explain <file.emath> [<symbol>]
