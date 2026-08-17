@@ -30,13 +30,13 @@ PLANNED_TOKENS = ("LoadRequest", "GoalRequest", "BuildRequest")
 
 ISSUED_BULLET = re.compile(r"^- `(E-[A-Z]+-[0-9]{3})`")
 CODE_RE = re.compile(r"\bE-[A-Z]+-\d{3}\b")
-# Files whose claim strings the gate refuses (gauntlet-d1 contract set).
+# Files whose claim strings the gate refuses. AGENTS.md is local-only
+# (gitignored) and the session docs are not shipped, so each entry is
+# skipped when missing on a clean clone.
 DOC_SET = [
     "AGENTS.md",
     "implementation/ERROR_CODES.md",
     "implementation/CLI_REFERENCE.md",
-    "BUILD_STATUS.md",
-    "HANDOFF.md",
     "implementation/CRATE_MAP.md",
     "implementation/PUBLIC_API_INVENTORY.md",
 ]

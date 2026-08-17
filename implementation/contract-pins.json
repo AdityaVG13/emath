@@ -5,6 +5,14 @@
   "bumps": [
     {
       "date": "2026-08-17",
+      "note": "public-surface trim: session docs (BUILD_STATUS, HANDOFF) and the machine perf store (.bench-history) untracked; release scripts pruned from scripts/; pinned set narrowed to the four shipped contract docs; schema ids unversioned"
+    },
+    {
+      "date": "2026-08-17",
+      "note": "unversion sweep: ERROR_CODES + CLI_REFERENCE re-pinned after schema ids lost version suffixes (E-EVID-108/110 lines, E-MIGR-001 legacy tag, emath.agent), annex re-spliced"
+    },
+    {
+      "date": "2026-08-17",
       "note": "HANDOFF re-pin after trailing-whitespace fix (diff --cached --check), pre-push"
     },
     {
@@ -25,10 +33,8 @@
     }
   ],
   "files": {
-    "HANDOFF.md": "968c26e64b1fda0313c9c84be717b11c57abcde858b3a2e1cdd830521680e781",
-    "BUILD_STATUS.md": "d5c19e6669a47312a3cc39bb03cea63d67b0514ebc9e73e379a5771f5795fb32",
-    "implementation/ERROR_CODES.md": "fe83c93d936fef1d2aa906d268e15aadf6162db4261f96442f7e9831633bef8c",
-    "implementation/CLI_REFERENCE.md": "4ae4d5e50a4800446c7fe95cda76f19be1b2863cecb901443bb444b15f7b7623",
+    "implementation/ERROR_CODES.md": "1197553a35403768224b3d65a91bd23573fe4260e81d1e5b10ddcefe5832ca98",
+    "implementation/CLI_REFERENCE.md": "972c764a90a05b6719099da6f4ad5e4f949ddaef4b98aa5efff4075a914bc688",
     "implementation/CRATE_MAP.md": "0377469b7b37b8dcae1ce51bdba8e75d93a95e93c36d4987eb62d522dd75c82d",
     "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"
   }

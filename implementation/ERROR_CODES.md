@@ -62,7 +62,7 @@ Genesis (`crates/emath-cli/src/genesis_cmd.rs`):
 
 HIR migration (`crates/emath-hir/src/migrate.rs`):
 
-- `E-MIGR-001` — declaration carried a bootstrap `v4` schema tag; the
+- `E-MIGR-001` — declaration carried a legacy bootstrap schema tag; the
   stable edition must regenerate it (V3/Phase1 examples gate).
 - `E-MIGR-002` — section renamed by migration (`request:` →
   `requests:` with a nested block; `input:` → `inputs:`; `output:` →
@@ -173,7 +173,7 @@ Syntax (`crates/emath-syntax/src/lexer.rs`, `crates/emath-syntax/src/parser.rs`)
 Schema registry (`crates/emath-schema/src/registry.rs`):
 
 - `E-SCHEMA-001` — unknown schema name: the thirteen canonical
-  `emath.<name>.v1` registry entries are fixed; any other name is a
+  `emath.<name>` registry entries are fixed; any other name is a
   typed refusal instead of a guessed document.
 
 Providers (`crates/emath-adapter-rumoca/src/provider.rs`,
@@ -240,7 +240,7 @@ Evidence (`crates/emath-evidence/src`, `crates/emath-checker/src`):
   body under the independent checker.
 - `E-EVID-103` — evidence bundle is not scoped to the frozen
   goal/source package.
-- `E-EVID-110` — source-map schema is not `emath.source-map.v1`.
+- `E-EVID-110` — source-map schema is not `emath.source-map`.
 - `E-EVID-111` — provider lock record missing or not matching the
   manifest's provider dependency.
 - `E-EVID-112` — source map does not reference the manifest's source
@@ -404,7 +404,7 @@ Units/shapes/domains (`crates/emath-ir`, `crates/emath-adapter-rumoca`):
 - `E-EVID-105` — required artifact file is missing.
 - `E-EVID-106` — claim class is not supported by any checker.
 - `E-EVID-107` — resolved claim has no checker bound.
-- `E-EVID-108` — manifest schema is not `emath.artifact.v1`.
+- `E-EVID-108` — manifest schema is not `emath.artifact`.
 - `E-EVID-109` — manifest declares no files, or declares a path with no
   file present.
 - `E-EVID-113` — required/declared artifact path is a symlink (refused).
@@ -620,7 +620,7 @@ Not yet documented at generation time: **0**.
 | `E-EVID-105` | crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs<br>crates/emath-checker/src/negative.rs<br>crates/emath-cli/src/lib.rs | `required artifact file missing: {path}`<br>`required artifact path missing: {path}` |
 | `E-EVID-106` | crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs<br>crates/emath-checker/src/negative.rs | `E-EVID-106` |
 | `E-EVID-107` | crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs | `resolved claim {} has no checker` |
-| `E-EVID-108` | crates/emath-artifact/src/lib.rs<br>crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs | `E-EVID-108`<br>`emath/artifact-manifest.json does not conform to emath.artifact.v1: {error}` |
+| `E-EVID-108` | crates/emath-artifact/src/lib.rs<br>crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs | `E-EVID-108`<br>`emath/artifact-manifest.json does not conform to emath.artifact: {error}` |
 | `E-EVID-109` | crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs | `E-EVID-109`<br>`manifest declares {path} but no such file exists` |
 | `E-EVID-110` | crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs | `E-EVID-110` |
 | `E-EVID-111` | crates/emath-checker/src/artifact_check.rs<br>crates/emath-checker/src/lib.rs<br>crates/emath-evidence/src/lib.rs | `provider {} has no lock record`<br>`E-EVID-111` |
