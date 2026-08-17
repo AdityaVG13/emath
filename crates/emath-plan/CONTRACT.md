@@ -1,0 +1,54 @@
+# emath-plan CONTRACT.md
+
+## Purpose and layer
+
+- Tier 2 (semantics) per `implementation/CRATE_MAP.md`.
+- Deterministic resolution planning (Phase 1 bootstrap plus Phase 6 planner machinery).
+- Hosts the provider-facing planner surface: decomposition rules, representation planning, fallback graphs, provider lifting, total dispositions, inspection, and plan identity/cache.
+- The canonical v1 native plan constructor (`native_plan`) lives in `emath-ir`, which owns `ResolutionPlan` and plan-node types.
+- Depends on `emath-artifact`, `emath-core`, `emath-goal`, `emath-ir`, `emath-provider-api`, `emath-runtime`.
+
+## Public types and semantics
+
+- `plan` / `PlannerConfig` / `PlanningOutcome` / `TieBreak` — the deterministic planner over a goal and provider registry, producing a total `PlanningOutcome`.
+- `PlanningOutcome` — `Selected { plan, inspection }`, `NoEligible { reasons, disposition, inspection }`, or `Exhausted { continuation, disposition, inspection }`.
+- `PlannerConfig` — bounded candidate retention (`max_candidates`), node budget (`max_nodes`), tie-break rule, and policy name that binds to plan identity.
+- `ArtifactDisposition` / `disposition_for_plan` / `disposition_without_plan` / `disposition_exhausted` — total disposition machinery.
+- `DecompositionRule` / `SubgoalDag` / `SubgoalNode` / `decompose` / `requirements_preserved` — decomposition and requirement preservation.
+- `FallbackGraph` / `FallbackNode`, `Conversion` / `ConversionNode` / `RepresentationError` / `find_conversion_path`, `ProviderTraitSpec` / `LiftedMethod` / `emit_provider_trait` / `lift_missing`, `plan_identity` / `PlanCache` / `ProviderFingerprint` / `provider_set_fingerprint`, `PlanInspection` (not exhaustive).
+
+## Invariants
+
+- Candidate ordering and tie-breaks are deterministic (`CostAscendingId` or `IdLexicographic`); every exclusion is retained with its reason.
+- No eligible candidate yields `NoEligible` with `E-GOAL-201: no eligible plan`; budget exhaustion yields an `Exhausted` continuation or diagnostic per the goal's fallback policy.
+- Planner policy name binds to plan identity.
+
+## Error model
+
+- No `emath_core::Diagnostics`; planning is a total function returning `PlanningOutcome` variants carrying stable reasons (`E-GOAL-201`, `E-RES-100`).
+- `RepresentationError` is a dedicated error type in `representations` for conversion-path finding.
+
+## Determinism class
+
+- Deterministic resolution planning: ordered rules, bounded candidate retention, explicit pruning, and deterministic tie-breaks; `plan` is deterministic over its inputs.
+
+## Cancellation behavior
+
+- Not applicable; std-only synchronous crate, no cancellation surface.
+
+## Unsafe boundary
+
+- None; workspace lint forbids `unsafe_code`.
+
+## Feature flags
+
+- None.
+
+## Conformance tests
+
+- No `crates/emath-plan/tests/` directory on disk; conformance is unit-level in the `planner.rs` `#[cfg(test)]` module: `node_budget_refuses_oversized_plan_dag`.
+
+## No-claim boundaries
+
+- No external providers are installed in Phase 1; planning covers native dispositions only.
+- Does not own or construct the canonical `ResolutionPlan`; that resides in `emath-ir`.
