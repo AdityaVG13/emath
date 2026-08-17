@@ -217,15 +217,17 @@ fn explain_cmd(args: &[String]) -> u8 {
     EXIT_OK
 }
 
-/// `run <file> --out <dir>`: build then execute the generated crate.
+/// `run <file> [--out <dir>]`: build then execute the generated crate.
+/// Library crates have no binary; their example tests are the runnable
+/// surface, so `emath run` executes them (crate mains run as binaries).
 fn run_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
-        return usage("run <file.emath> --out <dir>");
+        return usage("run <file.emath> [--out <dir>]");
     };
-    let Some(out) = flag_value("--out", args).or_else(|| flag_value("-o", args)) else {
-        return usage("run <file.emath> --out <dir>");
-    };
-    let out = PathBuf::from(out);
+    let out = flag_value("--out", args)
+        .or_else(|| flag_value("-o", args))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("target/emath"));
     let report = match build_file(
         &file,
         &out,
@@ -239,11 +241,46 @@ fn run_cmd(args: &[String]) -> u8 {
             return classify_build_error(&error);
         }
     };
-    let manifest = report.artifact_dir.join("Cargo.toml");
+    // The published artifact directory is named by its content id
+    // (`fnv1a64:<hash>`); cargo rejects the colon in a manifest path, so
+    // stage a colon-free copy under the temp dir and execute that.
+    let hash = report
+        .artifact_id
+        .0
+        .split(':')
+        .next_back()
+        .unwrap_or(&report.artifact_id.0);
+    let run_dir = std::env::temp_dir().join(format!("emath-run-{hash}"));
+    let _ = std::fs::remove_dir_all(&run_dir);
+    if let Err(error) = std::fs::create_dir_all(run_dir.join("src"))
+        .and_then(|()| std::fs::copy(report.artifact_dir.join("Cargo.toml"), run_dir.join("Cargo.toml")).map(|_| ()))
+    {
+        eprintln!("error: cannot stage generated crate for execution: {error}");
+        return EXIT_USAGE;
+    }
+    let src_dir = report.artifact_dir.join("src");
+    if let Ok(entries) = std::fs::read_dir(&src_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            std::fs::copy(entry.path(), run_dir.join("src").join(&name)).ok();
+        }
+    }
+    let manifest = run_dir.join("Cargo.toml");
+    let library_crate = !run_dir.join("src/main.rs").exists();
     let mut command = Command::new("cargo");
-    command
-        .args(["run", "--quiet", "--manifest-path"])
-        .arg(&manifest);
+    if library_crate {
+        println!(
+            "run: artifact {} crate `{}` is a library; executing its example tests",
+            report.artifact_id.0, report.crate_name
+        );
+        command
+            .args(["test", "--quiet", "--manifest-path"])
+            .arg(&manifest);
+    } else {
+        command
+            .args(["run", "--quiet", "--manifest-path"])
+            .arg(&manifest);
+    }
     let output = match command.output() {
         Ok(output) => output,
         Err(error) => {
@@ -251,6 +288,7 @@ fn run_cmd(args: &[String]) -> u8 {
             return EXIT_USAGE;
         }
     };
+    let _ = std::fs::remove_dir_all(&run_dir);
     print!("{}", String::from_utf8_lossy(&output.stdout));
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     if output.status.success() {
@@ -261,17 +299,18 @@ fn run_cmd(args: &[String]) -> u8 {
     }
 }
 
-/// `test <file> --out <dir>`: build and run the generated crate's tests.
+/// `test <file> [--out <dir>]`: build and run the generated crate's tests.
 fn test_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
-        return usage("test <file.emath> --out <dir>");
+        return usage("test <file.emath> [--out <dir>]");
     };
-    let Some(out) = flag_value("--out", args).or_else(|| flag_value("-o", args)) else {
-        return usage("test <file.emath> --out <dir>");
-    };
+    let out = flag_value("--out", args)
+        .or_else(|| flag_value("-o", args))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("target/emath"));
     match build_file(
         &file,
-        PathBuf::from(out),
+        out,
         BuildOptions {
             verify_generated_crate: true,
         },
