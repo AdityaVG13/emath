@@ -27,11 +27,13 @@ docs/
 # agent contract is local-only
 AGENTS.md
 
-# legacy planning / reference material (kept locally, not shipped)
+# legacy planning / reference material (kept locally, not shipped).
+# forks/ is fully internal: lock rows, provider plans and integration
+# documents never ship (previously only UPSTREAM_LOCK.json was
+# force-tracked; it is now untracked too).
 /architecture/
 /bootstrap/
 /forks/
-!/forks/UPSTREAM_LOCK.json
 /history/
 /legal/
 /licenses/
