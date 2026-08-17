@@ -13,10 +13,12 @@ pub struct AffineScorer {
 pub enum ConfigError {
     /// A constructor `require` invariant did not hold.
     FailedPrecondition,
+    /// A constructor `ensure`/`invariant` did not hold after field init.
+    FailedPostcondition,
 }
 
 impl AffineScorer {
-    /// Construct an `AffineScorer`; every `require` invariant is checked.
+    /// Construct an `AffineScorer`; every `require` and `ensure` invariant is checked.
     pub fn new(scale: f64, bias: f64) -> Result<Self, ConfigError> {
         {
             let __ok0 = !{
@@ -45,6 +47,16 @@ impl AffineScorer {
             if __ok2 {
                 {
                     return Err(ConfigError::FailedPrecondition);
+                }
+            }
+            let __post_ok0 = !{
+                let __e0 = scale;
+                let __e1 = 0.0;
+                __e0 > __e1
+            };
+            if __post_ok0 {
+                {
+                    return Err(ConfigError::FailedPostcondition);
                 }
             }
             Ok(Self { scale, bias })

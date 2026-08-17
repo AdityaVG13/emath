@@ -53,9 +53,9 @@ exclude = ["bootstrap", "implementation/rust-next", "artifacts"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
-rust-version = "1.74"
+rust-version = "1.85"
 
 [workspace.dependencies]
 emath-core = { path = "crates/emath-core" }
@@ -93,6 +93,18 @@ emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
+
+# Keep-gate measurement profile (gauntlet-06): claims under the keep-gate
+# harness use `cargo bench --profile release-perf`, never `--release`.
+# Frame-pointer claims additionally use `RUSTFLAGS="-C
+# force-frame-pointers=yes"` so profilers get real stacks.
+[profile.release-perf]
+inherits = "release"
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = "line-tables-only"
+strip = false
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
