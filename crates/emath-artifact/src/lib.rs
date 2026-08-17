@@ -6,7 +6,7 @@
 
 #![forbid(unsafe_code)]
 
-use emath_core::{bootstrap_content_id, content_id_of_str, fnv1a64_bytes, ContentId, SchemaId};
+use emath_core::{ContentId, SchemaId, bootstrap_content_id, content_id_of_str, fnv1a64_bytes};
 use emath_ir::{
     ClaimVerdict, EvidenceClaim, EvidenceLevel, PlanNodeDef, PlanOperation, ResolutionPlan,
     TargetProfile,
@@ -16,7 +16,21 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 pub const ARTIFACT_MANIFEST_SCHEMA: &str = "emath.artifact.v1";
+/// Durable artifact source map (byte-range + `source_package` shape; see
+/// [`write_source_map`]). One shape, one id: the world-codegen provenance
+/// map emitted by semantic-genesis compilation uses its own id,
+/// [`GENERATED_CRATE_SOURCE_MAP_SCHEMA`], whose entries carry
+/// `(generated, source, kind)` labels, never this shape.
 pub const SOURCE_MAP_SCHEMA: &str = "emath.source-map.v1";
+/// World-codegen provenance map written next to a generated world crate
+/// (see [`write_generated_crate_source_map`]). Distinct from
+/// [`SOURCE_MAP_SCHEMA`]; the two documents must never share an id.
+pub const GENERATED_CRATE_SOURCE_MAP_SCHEMA: &str = "emath.generated-crate-source-map.v1";
+/// JSON `$schema` id of the durable resolution-plan document
+/// ([`write_resolution_plan`]). The plan's identity preimage is a
+/// different layer: `plan_identity` hashes a `plan:v1:` payload, not this
+/// document id (see `emath_ir::goal::plan_identity`); the split is
+/// deliberate and documented.
 pub const RESOLUTION_PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
 pub const EVIDENCE_BUNDLE_SCHEMA: &str = "emath.evidence-bundle.v1";
 
@@ -82,6 +96,8 @@ pub struct ArtifactManifest {
 /// One `emath.source-map.v1` entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceMapEntry {
+    /// Source file id (index into the session source store).
+    pub file: u32,
     pub source_file: String,
     pub source_start: u64,
     pub source_end: u64,
@@ -423,7 +439,8 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
-    fn field(&self, name: &str) -> Result<&JsonValue, ArtifactError> {
+    /// Look up an object field by name (typed parse-back support).
+    pub fn field(&self, name: &str) -> Result<&JsonValue, ArtifactError> {
         match self {
             Self::Obj(entries) => entries
                 .iter()
@@ -436,7 +453,8 @@ impl JsonValue {
         }
     }
 
-    fn string_field(&self, name: &str) -> Result<String, ArtifactError> {
+    /// Read a string field (typed parse-back support).
+    pub fn string_field(&self, name: &str) -> Result<String, ArtifactError> {
         match self.field(name)? {
             Self::Str(value) => Ok(value.clone()),
             _ => Err(ArtifactError::ManifestMalformed(format!(
@@ -462,7 +480,8 @@ impl JsonValue {
         }
     }
 
-    fn int_field(&self, name: &str) -> Result<u64, ArtifactError> {
+    /// Read an integer field (typed parse-back support).
+    pub fn int_field(&self, name: &str) -> Result<u64, ArtifactError> {
         match self.field(name)? {
             Self::Num(value) => value.parse::<u64>().map_err(|_| {
                 ArtifactError::ManifestMalformed(format!("`{name}` is not an integer"))
@@ -638,7 +657,7 @@ pub fn manifest_from_json(json: &str) -> Result<ArtifactManifest, ArtifactError>
         _ => {
             return Err(ArtifactError::ManifestMalformed(
                 "bad target triple".to_string(),
-            ))
+            ));
         }
     };
     let providers = match root.field("providers")? {
@@ -655,7 +674,7 @@ pub fn manifest_from_json(json: &str) -> Result<ArtifactManifest, ArtifactError>
         _ => {
             return Err(ArtifactError::ManifestMalformed(
                 "bad providers".to_string(),
-            ))
+            ));
         }
     };
     let files = match root.field("files")? {
@@ -703,6 +722,9 @@ pub fn source_map_from_json(json: &str) -> Result<SourceMap, ArtifactError> {
             .iter()
             .map(|item| {
                 Ok(SourceMapEntry {
+                    file: u32::try_from(item.int_field("file")?).map_err(|_| {
+                        ArtifactError::ManifestMalformed("`file` is not a u32".to_string())
+                    })?,
                     source_file: item.string_field("source_file")?,
                     source_start: item.int_field("source_start")?,
                     source_end: item.int_field("source_end")?,
@@ -777,7 +799,18 @@ pub fn plan_from_json(json: &str) -> Result<PlanRecord, ArtifactError> {
         _ => {
             return Err(ArtifactError::ManifestMalformed(
                 "bad operations".to_string(),
-            ))
+            ));
+        }
+    };
+    let excluded_candidates = match root.field("excluded_candidates")? {
+        JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| Ok((item.string_field("provider")?, item.string_field("reason")?)))
+            .collect::<Result<Vec<_>, ArtifactError>>()?,
+        _ => {
+            return Err(ArtifactError::ManifestMalformed(
+                "bad excluded_candidates".to_string(),
+            ));
         }
     };
     Ok(PlanRecord {
@@ -790,7 +823,7 @@ pub fn plan_from_json(json: &str) -> Result<PlanRecord, ArtifactError> {
         policy: root.string_field("policy")?,
         artifact_class: root.string_field("artifact_class")?,
         operations,
-        excluded_candidates: Vec::new(),
+        excluded_candidates,
     })
 }
 
@@ -930,6 +963,7 @@ pub fn write_source_map(source_map: &SourceMap) -> String {
         .iter()
         .map(|entry| {
             let mut out = JsonWriter::object();
+            out.int("file", u64::from(entry.file));
             out.string("source_file", &entry.source_file);
             out.int("source_start", entry.source_start);
             out.int("source_end", entry.source_end);
@@ -951,6 +985,99 @@ pub fn write_source_map(source_map: &SourceMap) -> String {
         .join(",\n    ");
     object.field("entries", &format!("[\n    {entries}\n  ]"));
     object.finish()
+}
+
+/// Write a world-codegen provenance source map
+/// (`emath.generated-crate-source-map.v1`). Each entry carries
+/// `(generated, source, kind)` labels; this is the provenance document
+/// emitted next to a generated world crate, never the durable artifact
+/// source map ([`write_source_map`] shape). `files` must be in
+/// deterministic emission order (callers pass sorted keys).
+pub fn write_generated_crate_source_map(source: &str, files: &[String]) -> String {
+    let mut object = JsonWriter::object();
+    // World-codegen provenance, not the durable artifact source map:
+    // these entries carry (generated, source, kind) labels, not the
+    // byte-range + source_package shape of `emath.source-map.v1`.
+    object.string("schema", GENERATED_CRATE_SOURCE_MAP_SCHEMA);
+    object.string("source", source);
+    let mut entries = String::from("[");
+    for (index, rel) in files.iter().enumerate() {
+        if index > 0 {
+            entries.push(',');
+        }
+        let _ = write!(
+            entries,
+            "{{\"generated\":\"{rel}\",\"source\":\"{source}\",\"kind\":\"parametric-world\"}}"
+        );
+    }
+    entries.push(']');
+    object.object_field("entries", &entries);
+    object.finish()
+}
+
+/// One world-codegen provenance entry (`{generated, source, kind}`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GeneratedCrateSourceMapEntry {
+    /// Relative path inside the generated crate.
+    pub generated: String,
+    /// Source document the entry was derived from.
+    pub source: String,
+    /// Codegen kind (currently always `parametric-world`).
+    pub kind: String,
+}
+
+/// Parsed world-codegen provenance source map
+/// (`emath.generated-crate-source-map.v1`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GeneratedCrateSourceMap {
+    /// Schema id (`GENERATED_CRATE_SOURCE_MAP_SCHEMA`).
+    pub schema: SchemaId,
+    /// Source document the map was derived from.
+    pub source: String,
+    /// Provenance entries in emission order.
+    pub entries: Vec<GeneratedCrateSourceMapEntry>,
+}
+
+/// Parse a generated-crate provenance source map per
+/// `emath.generated-crate-source-map.v1`. Any other schema id is refused
+/// (`E-EVID-108` class shape refusal): genesis bytes must never load as
+/// the durable artifact source map.
+pub fn generated_crate_source_map_from_json(
+    json: &str,
+) -> Result<GeneratedCrateSourceMap, ArtifactError> {
+    let root = parse_json_document(json)?;
+    let schema = SchemaId(root.string_field("schema")?);
+    if schema.0 != GENERATED_CRATE_SOURCE_MAP_SCHEMA {
+        return Err(ArtifactError::ManifestMalformed(format!(
+            "schema is {}, expected {GENERATED_CRATE_SOURCE_MAP_SCHEMA}",
+            schema.0
+        )));
+    }
+    let source = root.string_field("source")?;
+    let entries = match root.field("entries")? {
+        JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| {
+                let kind = item.string_field("kind")?;
+                if kind != "parametric-world" {
+                    return Err(ArtifactError::ManifestMalformed(format!(
+                        "generated-crate source-map entry kind is `{kind}`, expected `parametric-world`"
+                    )));
+                }
+                Ok(GeneratedCrateSourceMapEntry {
+                    generated: item.string_field("generated")?,
+                    source: item.string_field("source")?,
+                    kind,
+                })
+            })
+            .collect::<Result<Vec<_>, ArtifactError>>()?,
+        _ => return Err(ArtifactError::ManifestMalformed("bad entries".to_string())),
+    };
+    Ok(GeneratedCrateSourceMap {
+        schema,
+        source,
+        entries,
+    })
 }
 
 /// Serialize a resolution plan per `emath.resolution-plan.v1`.

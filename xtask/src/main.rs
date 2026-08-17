@@ -82,6 +82,9 @@ fn run_demo_affine_scorer(work: &Path) -> Result<(), String> {
     )?;
     let host_out = String::from_utf8(host.stdout).map_err(|error| error.to_string())?;
     require(&host_out, "host integration ok", "demo-host final line")?;
+    // Derived oracle, not a magic constant: the committed generated crate
+    // is `AffineScorer::new(2.0, 1.0)` from tests/valid/affine_scorer.emath,
+    // so score(3.0) = 2.0*3.0 + 1.0 = 7.0 by the published definitions.
     require(&host_out, "score(3.0) = 7", "demo-host score print")?;
     require(&host_out, "negative control", "demo-host negative control")?;
     Ok(())
@@ -246,13 +249,21 @@ fn run_demo_semantic_genesis(work: &Path) -> Result<(), String> {
     if modular != "6" {
         return Err(format!("modular-17 result wrong: {modular}"));
     }
-    if swapped == "6" {
-        return Err(format!("wrong world not rejected: swapped = {swapped}"));
+    // Derived oracle, not a magic constant: with a=4, b=7, ζ=3 and
+    // modular-17 arithmetic, the term ⊛(⧖(⋈(a, b)), ζ) is
+    // ⋈(4,7)=11 → ⧖(11)=121 mod 17=2 → ⊛(2,3)=6 under the modular world,
+    // and ⋈(4,7)=28 mod 17=11 → ⧖(11)=2 → ⊛(2,3)=2+3=5 under the swapped
+    // world (+ ↔ ×). The negative control must produce exactly 5; a
+    // wrong world (or a no-op swap mutant) collides with the oracle 6.
+    if swapped != "5" {
+        return Err(format!(
+            "wrong world not rejected: swapped = {swapped}, expected 5"
+        ));
     }
     println!("free: {free}");
     println!("boolean: {boolean}");
     println!("modular-17: {modular}");
-    println!("swapped-modular-17: {swapped} (rejected)");
+    println!("swapped-modular-17: {swapped} (distinct oracle pin; no-op swap rejected)");
     Ok(())
 }
 

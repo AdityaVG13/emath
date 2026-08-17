@@ -13,7 +13,7 @@ use crate::tree::{
     DeclarationSignature, Expr, ExprKind, GenericParam, Item, Param, Place, Section, Stmt,
     StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UnaryOp, UseTree, Visibility,
 };
-use emath_core::{limits::Limits, Diagnostics, FileId, Span};
+use emath_core::{Diagnostics, FileId, Span, limits::Limits};
 
 const MAX_EXPR_DEPTH: usize = 128;
 
@@ -336,9 +336,9 @@ impl Parser {
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.current_span();
         self.advance(); // `emath`
-                        // The declaration kind is the next word (`custom`,
-                        // `function`, `policy`, `record`, `model`, `kind`,
-                        // `search`, `experiment`, `type`, or a user kind).
+        // The declaration kind is the next word (`custom`,
+        // `function`, `policy`, `record`, `model`, `kind`,
+        // `search`, `experiment`, `type`, or a user kind).
         let item_kind = match self.peek().clone() {
             TokenKind::Ident(item_kind) => item_kind,
             TokenKind::Keyword(Keyword::Custom) => "custom".to_string(),
@@ -1330,11 +1330,19 @@ impl Parser {
                 return None;
             }
             let suite = self.parse_suite()?;
+            let generic = if target.is_empty() {
+                // `implement <path> :` without a `for` target: record the
+                // path alone (no trailing separator poisoning the
+                // round-trip generic).
+                segments.join("::")
+            } else {
+                format!("{}::{}", segments.join("::"), target)
+            };
             return Some(self.stmt(
                 start,
                 StmtKind::Section(Section {
                     name: "implement".into(),
-                    generic: Some(format!("{}::{}", segments.join("::"), target)),
+                    generic: Some(generic),
                     args: None,
                     suite,
                     source: start.cover(self.last_span()),
@@ -1720,9 +1728,18 @@ impl Parser {
             if matches!(self.peek(), TokenKind::Dot | TokenKind::PathSep)
                 && matches!(self.peek_at(1), TokenKind::Ident(_))
             {
+                // SURF-0013: keep the joined path as ONE segment so the
+                // spelling survives the tree (`produce rust.library` keeps
+                // its dot; command heads render back byte-identically).
+                let separator = if matches!(self.peek(), TokenKind::PathSep) {
+                    "::"
+                } else {
+                    "."
+                };
                 self.advance();
                 if let TokenKind::Ident(next) = self.peek().clone() {
-                    segments.push(next);
+                    let last = segments.pop().unwrap_or_default();
+                    segments.push(format!("{last}{separator}{next}"));
                     via_dot = true;
                     self.advance();
                     continue;
@@ -2523,11 +2540,23 @@ impl Parser {
             if self.eat(&TokenKind::Comma) {
                 continue;
             }
-            // keyword-style argument `round = nearest`
-            if let TokenKind::Ident(_) = self.peek() {
+            // Keyword-style argument `round = nearest`: the AST call
+            // node is positional-only, so a named argument cannot be
+            // represented without silently dropping its name; refuse it
+            // (E-SYN-121) instead of stripping it (SURF-0011).
+            if let TokenKind::Ident(name) = self.peek().clone() {
                 if matches!(self.peek_at(1), TokenKind::Eq) {
+                    self.error_here(
+                        "E-SYN-121",
+                        format!(
+                            "named call argument `{name} = ...` is outside the Phase 1 subset \
+                             (calls are positional-only)"
+                        ),
+                    );
                     self.advance();
                     self.advance();
+                    args.push(self.parse_expr()?);
+                    continue;
                 }
             }
             args.push(self.parse_expr()?);

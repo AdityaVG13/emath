@@ -2,7 +2,7 @@
 
 use crate::ids::{EvidenceClaimId, ExprId, GoalId, PlanNodeId};
 use crate::package::SemanticPackage;
-use emath_core::{ContentId, SchemaId, Span};
+use emath_core::{ContentId, SchemaId, Span, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -259,7 +259,13 @@ pub const PRODUCE_RUST_LIBRARY: &str = "rust.library";
 /// Policy name for the deterministic v1 native plan.
 pub const POLICY: &str = "native-deterministic.v1";
 
-/// Schema id of the v1 resolution plan.
+/// Schema id of the v1 resolution plan *document* (written by
+/// `emath_artifact::write_resolution_plan`).
+///
+/// This is deliberately **not** the plan identity preimage: the plan's
+/// content id hashes a `plan:v1:` payload built by [`plan_identity`],
+/// not this schema string. The two-layer split (identity preimage vs
+/// JSON `$schema`) is stable; do not merge them.
 pub const PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
 
 /// Provider identities known to the constellation but not installed in
@@ -317,6 +323,40 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
     };
     package.push_goal(goal.clone());
     goal
+}
+
+/// Canonical plan identity: binds goal schema, policy, provider set
+/// (sorted ids) and target family. The provider set is hashed sorted, so
+/// a permutation of provider ids never changes a plan identity.
+/// Content identity of a resolution plan.
+///
+/// The identity layer is independent of the JSON `$schema` layer: the
+/// payload is prefixed `plan:v1:` (see [`PLAN_SCHEMA`] for the document
+/// id), so a document's identity never depends on its schema-id string.
+#[must_use]
+pub fn plan_identity(
+    goal_canonical: &str,
+    policy: &str,
+    providers: &[String],
+    target: &str,
+) -> ContentId {
+    let mut payload = String::new();
+    payload.push_str("plan:v1:");
+    payload.push_str(goal_canonical);
+    payload.push('\n');
+    payload.push_str(policy);
+    payload.push('\n');
+    let mut sorted: Vec<&String> = providers.iter().collect();
+    sorted.sort();
+    for provider in sorted {
+        payload.push_str(provider);
+        payload.push('\n');
+    }
+    payload.push_str(target);
+    ContentId(format!(
+        "fnv1a64:{:016x}",
+        fnv1a64_bytes(payload.as_bytes())
+    ))
 }
 
 /// Build the deterministic native plan for a goal.
@@ -400,10 +440,18 @@ pub fn native_plan(goal: GoalId, artifact_class: &str) -> ResolutionPlan {
             budget: None,
         },
     );
-    let plan_bytes = canonical_plan(&nodes, admit, artifact_class, &goal.0.to_string());
+    // Identity via `plan_identity`: FNV over the sorted provider set
+    // (plus goal/policy/target), not over raw canonical text that omitted
+    // them.
+    let plan_id = plan_identity(
+        &goal.0.to_string(),
+        POLICY,
+        &["emath.native".to_string()],
+        artifact_class,
+    );
     ResolutionPlan {
         schema: SchemaId(PLAN_SCHEMA.into()),
-        plan_id: ContentId(plan_bytes),
+        plan_id,
         goal,
         policy: POLICY.to_string(),
         artifact_class: artifact_class.to_string(),
@@ -419,37 +467,64 @@ pub fn native_plan(goal: GoalId, artifact_class: &str) -> ResolutionPlan {
     }
 }
 
-fn canonical_plan(
-    nodes: &BTreeMap<PlanNodeId, PlanNodeDef>,
-    root: PlanNodeId,
-    artifact_class: &str,
-    goal_id: &str,
-) -> String {
-    let mut out = String::new();
-    out.push_str("emath.plan.v1\n");
-    out.push_str("goal ");
-    out.push_str(goal_id);
-    out.push('\n');
-    out.push_str(artifact_class);
-    out.push('\n');
-    let root_line = format!("root {}\n", root.0);
-    out.push_str(&root_line);
-    for (id, node) in nodes {
-        let head = format!(
-            "{} {} {}",
-            id.0,
-            node.operation.name(),
-            node.dependencies.len()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_identity_is_insensitive_to_provider_permutation() {
+        let one = plan_identity(
+            "goal:v1",
+            "policy",
+            &["b".to_string(), "a".to_string(), "c".to_string()],
+            "rust-library",
         );
-        out.push_str(&head);
-        let tail = node
-            .dependencies
-            .iter()
-            .map(|dep| format!(" {}", dep.0))
-            .collect::<Vec<_>>()
-            .concat();
-        out.push_str(&tail);
-        out.push('\n');
+        let two = plan_identity(
+            "goal:v1",
+            "policy",
+            &["c".to_string(), "b".to_string(), "a".to_string()],
+            "rust-library",
+        );
+        assert_eq!(one, two);
     }
-    out
+
+    #[test]
+    fn plan_identity_detects_provider_set_change() {
+        let base = plan_identity("goal:v1", "policy", &["a".to_string()], "rust-library");
+        let added = plan_identity(
+            "goal:v1",
+            "policy",
+            &["a".to_string(), "b".to_string()],
+            "rust-library",
+        );
+        assert_ne!(base, added);
+    }
+
+    /// The identity layer (`plan:v1:` payload) and the JSON `$schema`
+    /// layer (`emath.resolution-plan.v1`) are deliberately split; the
+    /// payload format is pinned here so neither layer can silently
+    /// converge on the other's string.
+    #[test]
+    fn plan_identity_payload_and_json_schema_are_distinct_layers() {
+        let providers = ["z".to_string(), "a".to_string()];
+        let id = plan_identity("goal:v1", "policy", &providers, "rust-library");
+        let mut payload = String::from("plan:v1:goal:v1\npolicy\n");
+        payload.push_str("a\nz\nrust-library");
+        assert_eq!(
+            id,
+            ContentId(format!(
+                "fnv1a64:{:016x}",
+                emath_core::fnv1a64_bytes(payload.as_bytes())
+            )),
+            "plan identity must hash the `plan:v1:` payload (sorted providers, trailing target)"
+        );
+        assert_eq!(
+            payload, "plan:v1:goal:v1\npolicy\na\nz\nrust-library",
+            "payload format pin"
+        );
+        assert_ne!(
+            PLAN_SCHEMA, "plan:v1",
+            "JSON `$schema` id must stay emath.resolution-plan.v1, distinct from the identity prefix"
+        );
+    }
 }

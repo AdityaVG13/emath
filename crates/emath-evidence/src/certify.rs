@@ -9,8 +9,8 @@
 //! Stable codes:
 //! - `E-EVID-507` unsound certifier output rejected by the corpus gate.
 
-use crate::registry::CertificateKind;
 use crate::EvidenceError;
+use crate::registry::CertificateKind;
 
 /// A known-unsound certifier output, with the hole it hides.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

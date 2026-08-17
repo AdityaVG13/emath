@@ -88,9 +88,14 @@ impl ProviderRegistry {
         // static-only policy by claiming otherwise.
         if isolation != table.isolation {
             return Err(RegistryError {
-            code: "E-PROV-510",
-            message: format!("registration `{}` denied: isolation claim `{}` contradicts advertised table isolation `{}`", id, isolation.name(), table.isolation.name()),
-        });
+                code: "E-PROV-510",
+                message: format!(
+                    "registration `{}` denied: isolation claim `{}` contradicts advertised table isolation `{}`",
+                    id,
+                    isolation.name(),
+                    table.isolation.name()
+                ),
+            });
         }
         if !self.config.allows(table.isolation) {
             return Err(RegistryError {

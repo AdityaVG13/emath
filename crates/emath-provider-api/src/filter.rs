@@ -94,6 +94,28 @@ pub fn filter_goal(goal: &Goal, registry: &ProviderRegistry) -> Vec<ProviderVerd
                         provenance: provenance.clone(),
                     });
                 }
+                ExactnessPolicy::Bounded { .. } | ExactnessPolicy::CheckedNumeric
+                    if !offers_any(table, "exact") && !offers_any(table, "bounded") =>
+                {
+                    reasons.push(ExclusionReason {
+                        code: "E-PROV-515",
+                        detail:
+                            "goal requires bounded or checked numeric results but provider offers none".into(),
+                        provenance: provenance.clone(),
+                    });
+                }
+                ExactnessPolicy::AnyExplicit
+                    if !(offers_any(table, "exact")
+                        || offers_any(table, "bounded")
+                        || offers_any(table, "estimate")) =>
+                {
+                    reasons.push(ExclusionReason {
+                        code: "E-PROV-515",
+                        detail:
+                            "goal accepts any explicit result but provider declares no exactness".into(),
+                        provenance: provenance.clone(),
+                    });
+                }
                 _ => {}
             }
             // Evidence and checkers.
@@ -196,5 +218,106 @@ impl CapabilitySpec {
     #[must_use]
     pub fn targets_family(&self, family: &str) -> bool {
         self.semantic_subset.contains(family) || self.semantic_subset == "*"
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::descriptor::{CapabilitySpec, CapabilityTable, RepresentationSpec};
+    use crate::registry::{ProviderRegistry, RegistryConfig};
+    use emath_core::Span;
+    use emath_ir::{
+        DeterminismPolicy, EvidenceLevel, ExactnessPolicy, FallbackPolicy, Goal, GoalId, GoalKind,
+        GoalRequirements, TargetProfile,
+    };
+
+    fn registry_with_exactness(tokens: Vec<String>) -> ProviderRegistry {
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        registry
+            .register(
+                "provider-a",
+                crate::descriptor::ProviderIsolation::Static,
+                CapabilityTable {
+                    capabilities: vec![CapabilitySpec {
+                        name: "evaluate".into(),
+                        semantic_subset: "host".into(),
+                        representations: vec![RepresentationSpec {
+                            name: "native".into(),
+                            exact_relation: "identity".into(),
+                            encode_cost: 0,
+                        }],
+                        exactness: tokens,
+                        failure_modes: vec![],
+                        checker_bindings: vec![],
+                    }],
+                    ..CapabilityTable::default()
+                },
+            )
+            .expect("static registration admitted");
+        registry
+    }
+
+    fn goal_with_exactness(exactness: ExactnessPolicy) -> Goal {
+        Goal {
+            id: GoalId(0),
+            kind: GoalKind::Evaluate,
+            target: "x".into(),
+            expression: None,
+            requirements: GoalRequirements {
+                evidence: EvidenceLevel::E0,
+                exactness,
+                determinism: DeterminismPolicy::Unspecified,
+                target: TargetProfile {
+                    family: "host".into(),
+                    triple: None,
+                    features: vec![],
+                },
+                produce: "rust.library".into(),
+                fallback: FallbackPolicy::NativeOnly,
+            },
+            source: Span::default(),
+        }
+    }
+
+    fn verdict_for(exactness: ExactnessPolicy, tokens: Vec<String>) -> Compatibility {
+        let verdicts = filter_goal(
+            &goal_with_exactness(exactness),
+            &registry_with_exactness(tokens),
+        );
+        let verdict = verdicts
+            .iter()
+            .find(|verdict| verdict.provider == "provider-a")
+            .expect("candidate present");
+        verdict.compatibility.clone()
+    }
+
+    #[test]
+    fn estimate_only_provider_serves_estimate_goal() {
+        assert!(verdict_for(ExactnessPolicy::Estimate, vec!["estimate".into()]).is_compatible());
+    }
+
+    #[test]
+    fn estimate_only_provider_excluded_for_bounded_goal() {
+        let excluded = verdict_for(
+            ExactnessPolicy::Bounded {
+                tolerance_literal: "1e-3".into(),
+            },
+            vec!["estimate".into()],
+        );
+        let reasons = match excluded {
+            Compatibility::Excluded { reasons } => reasons,
+            Compatibility::Compatible => panic!("estimate-only provider must be excluded"),
+        };
+        assert!(reasons.iter().any(|reason| reason.code == "E-PROV-515"));
+    }
+
+    #[test]
+    fn undeclared_exactness_provider_excluded_for_any_explicit_goal() {
+        let excluded = verdict_for(ExactnessPolicy::AnyExplicit, vec![]);
+        let reasons = match excluded {
+            Compatibility::Excluded { reasons } => reasons,
+            Compatibility::Compatible => panic!("undeclared exactness must be excluded"),
+        };
+        assert!(reasons.iter().any(|reason| reason.code == "E-PROV-515"));
     }
 }

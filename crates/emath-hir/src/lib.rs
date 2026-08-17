@@ -14,9 +14,9 @@ pub mod migrate;
 pub mod notation;
 pub mod open;
 
-pub use migrate::{migrate_declaration, MigrationIssue};
+pub use migrate::{MigrationIssue, migrate_declaration};
 pub use notation::{
-    check_use_arity, mount_notation, NotationContext, NotationEntry, NotationIssue, UseKind,
+    NotationContext, NotationEntry, NotationIssue, UseKind, check_use_arity, mount_notation,
 };
 pub use open::{
     Hierarchy, NotationSet, OpenAttr, OpenDecl, OpenField, OpenPayload, SectionFamily,

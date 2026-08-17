@@ -8,7 +8,7 @@
 
 use emath_core::fnv1a64_bytes;
 
-use crate::map::{classify, MappingClass};
+use crate::map::{MappingClass, classify};
 
 /// A retained foreign-model declaration.
 #[derive(Clone, Debug, PartialEq, Eq)]

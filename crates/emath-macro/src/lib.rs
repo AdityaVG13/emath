@@ -26,6 +26,17 @@ pub fn emath(input: TokenStream) -> TokenStream {
     let text = input.to_string();
     match emath_builder::macro_expand(&text) {
         Ok(expansion) => {
+            // Compile-time honesty: the literal must be valid `.emath`
+            // source, not just a quoted string (rustdoc: malformed input
+            // fails compilation with E-CODEGEN-011).
+            let (_, parse_diagnostics) = emath_syntax::parse_str(&expansion.source);
+            if parse_diagnostics.has_errors() {
+                let first = parse_diagnostics.errors().next().map_or_else(
+                    || "source does not parse".to_string(),
+                    |d| d.message.clone(),
+                );
+                return compile_error(&format!("E-CODEGEN-011: {first}"));
+            }
             let source = proc_macro::Literal::string(&expansion.source);
             let identity = proc_macro::Literal::string(&expansion.identity);
             format!("::emath_builder::MacroExpansion::from_literals({source}, {identity})")

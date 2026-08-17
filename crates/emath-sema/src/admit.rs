@@ -18,6 +18,74 @@ pub const E_UNKNOWN_VARIABLE: &str = "E-TYPE-002";
 pub const E_UNKNOWN_FUNCTION: &str = "E-TYPE-003";
 pub const E_UNSUPPORTED_TYPE: &str = "E-TYPE-010";
 
+/// Sections the Phase 1 admission pass consumes; any other section is
+/// refused with `E-SEC-101` instead of being silently dropped.
+const PHASE1_SECTIONS: &[&str] = &[
+    "inputs",
+    "outputs",
+    "state",
+    "definitions",
+    "constructors",
+    "goals",
+    "exports",
+    "tests",
+    "compile",
+];
+
+/// Folds a declaration name for confusable-collision detection (spec
+/// `01_LEXICAL_LAYOUT_AND_SOURCE.md`: confusable lint for public
+/// declarations). Glyphs visually identical to Latin letters map to their
+/// Latin equivalent; everything else is identity (ASCII folds
+/// byte-for-byte). Two names that fold alike are distinguishable only by
+/// lookalike glyphs, so admission refuses the second as `E-NAME-024`.
+///
+/// Seed set (Latin/Cyrillic/Greek lookalikes; not a full Unicode
+/// confusables table, which would require external data).
+#[must_use]
+pub fn confusable_fold(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars() {
+        out.push(match ch {
+            // Cyrillic lowercase lookalikes.
+            '\u{0430}' | '\u{03B1}' => 'a', // а, α
+            '\u{0435}' => 'e',              // е
+            '\u{043A}' | '\u{03BA}' => 'k', // к, κ
+            '\u{043C}' | '\u{03BC}' => 'm', // м, μ
+            '\u{043D}' => 'h',              // н
+            '\u{043E}' | '\u{03BF}' => 'o', // о, ο
+            '\u{0440}' | '\u{03C1}' => 'p', // р, ρ
+            '\u{0441}' => 'c',              // с
+            '\u{0442}' | '\u{03C4}' => 't', // т, τ
+            '\u{0443}' => 'y',              // у
+            '\u{0445}' | '\u{03C7}' => 'x', // х, χ
+            '\u{0455}' => 's',              // ѕ
+            '\u{0456}' | '\u{03B9}' => 'i', // і, ι
+            '\u{0458}' => 'j',              // ј
+            // Cyrillic uppercase lookalikes.
+            '\u{0410}' => 'A',              // А
+            '\u{0415}' => 'E',              // Е
+            '\u{041A}' | '\u{039A}' => 'K', // К, Κ
+            '\u{041C}' | '\u{039C}' => 'M', // М, Μ
+            '\u{041D}' => 'H',              // Н
+            '\u{041E}' | '\u{039F}' => 'O', // О, Ο
+            '\u{0420}' | '\u{03A1}' => 'P', // Р, Ρ
+            '\u{0421}' => 'C',              // С
+            '\u{0422}' | '\u{03A4}' => 'T', // Т, Τ
+            '\u{0423}' => 'Y',              // У
+            '\u{0425}' | '\u{03A7}' => 'X', // Х, Χ
+            '\u{0405}' => 'S',              // Ѕ
+            '\u{0406}' | '\u{0399}' => 'I', // І, Ι
+            '\u{0408}' => 'J',              // Ј
+            // Greek lowercase lookalikes.
+            '\u{03BD}' => 'v', // ν
+            // Greek uppercase lookalikes.
+            '\u{039D}' => 'N', // Ν
+            other => other,
+        });
+    }
+    out
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TraceEntry {
     pub phase: String,
@@ -646,6 +714,22 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
         }
     }
 
+    // Phase 1 whitelist: a section outside the subset is a typed refusal,
+    // never a silent drop (AGENTS.md rule 6).
+    for section in decl.sections() {
+        if !PHASE1_SECTIONS.contains(&section.name.as_str()) {
+            admitter.error(
+                "E-SEC-101",
+                format!(
+                    "section `{}` is outside the Phase 1 subset (known: {})",
+                    section.name,
+                    PHASE1_SECTIONS.join(", ")
+                ),
+                section.head_source,
+            );
+        }
+    }
+
     // Fields: inputs, outputs, state.
     let mut fields_infer: BTreeMap<String, Infer> = BTreeMap::new();
     let mut fields_by_section: BTreeMap<&str, Vec<Field>> = BTreeMap::new();
@@ -988,7 +1072,9 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                         {
                             admitter.error(
                                 "E-NAME-026",
-                                format!("`given` name `{name}` is not an input or constructor parameter"),
+                                format!(
+                                    "`given` name `{name}` is not an input or constructor parameter"
+                                ),
                                 inner.source,
                             );
                             continue;
@@ -1411,7 +1497,7 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
 }
 
 /// Parse the whole file and admit every declaration (used by the session).
-pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
+pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut diagnostics = Diagnostics::new();
     let mut trace = SemanticTrace::default();
     let mut package = emath_ir::SemanticPackage::new();
@@ -1432,6 +1518,8 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
     };
 
     let mut declaration_id = 0_u32;
+    let mut seen_declaration_names: BTreeSet<String> = BTreeSet::new();
+    let mut seen_folded_declaration_names: BTreeMap<String, String> = BTreeMap::new();
     for item in &tree.items {
         let emath_core::tree::Item::Declaration(decl) = item else {
             continue;
@@ -1448,6 +1536,45 @@ pub fn check_tree(tree: &SyntaxTree, _unknown_sections: &()) -> CheckResult {
                 continue;
             }
         }
+        // Duplicate declaration names are a typed refusal (E-NAME-022):
+        // two `custom <Foo>` declarations would collide in generated
+        // Rust, so the second is never admitted.
+        if !seen_declaration_names.insert(decl.name.clone()) {
+            diagnostics.error(
+                "E-NAME-022",
+                format!("duplicate declaration name `{}`", decl.name),
+                decl.head_source,
+            );
+            continue;
+        }
+        // `_` is not a valid Rust type name and cannot be escaped; a
+        // declaration named `_` is refused up front (E-NAME-023).
+        if decl.name == "_" {
+            diagnostics.error(
+                "E-NAME-023",
+                "declaration name `_` is reserved and cannot be a Rust type",
+                decl.head_source,
+            );
+            continue;
+        }
+        // Confusable identity (spec `01_LEXICAL_LAYOUT_AND_SOURCE`): a
+        // declaration name that differs from an already-seen one only by
+        // lookalike glyphs (Latin `o` vs Cyrillic `о`) is refused
+        // (E-NAME-024) — the public API would present two visually
+        // indistinguishable names.
+        let folded = confusable_fold(&decl.name);
+        if let Some(existing) = seen_folded_declaration_names.get(&folded) {
+            diagnostics.error(
+                "E-NAME-024",
+                format!(
+                    "declaration name `{}` is confusable with `{existing}` and is refused",
+                    decl.name
+                ),
+                decl.head_source,
+            );
+            continue;
+        }
+        seen_folded_declaration_names.insert(folded, decl.name.clone());
         if decl.item_kind != "custom" {
             diagnostics.error(
                 "E-KIND-001",

@@ -10,6 +10,7 @@ use crate::constructor::{Field, Visibility};
 use crate::expression::{ExprNode, Literal};
 use crate::goal::{DeterminismPolicy, ExactnessPolicy, FallbackPolicy};
 use crate::package::SemanticPackage;
+use crate::types::TypeNode;
 use emath_core::{ContentId, QualifiedName};
 
 const SCHEMA: &str = "emath.sir.v1";
@@ -26,12 +27,100 @@ fn exactness_canonical(policy: &ExactnessPolicy) -> String {
     }
 }
 
+/// Structural type encoding for identity. The display name collapses
+/// distinct type nodes (`Record("m")` vs `Other("m")` both display as
+/// `m`), so identity must encode the node structurally and never discard
+/// the node kind. Numeric aliases Real/Float64/f64 intentionally share
+/// `TypeNode::Float64` (one node, one identity).
+fn encode_type(out: &mut String, ty: &TypeNode) {
+    match ty {
+        TypeNode::Bool => out.push_str("bool"),
+        TypeNode::Nat => out.push_str("nat"),
+        TypeNode::Int => out.push_str("int"),
+        TypeNode::Rational => out.push_str("rational"),
+        TypeNode::Float64 => out.push_str("float64"),
+        TypeNode::Refinement { base, predicate } => {
+            out.push_str("refinement:");
+            out.push_str(predicate);
+            out.push(':');
+            encode_type(out, base);
+        }
+        TypeNode::Interval(inner) => {
+            out.push_str("interval:");
+            encode_type(out, inner);
+        }
+        TypeNode::Complex(inner) => {
+            out.push_str("complex:");
+            encode_type(out, inner);
+        }
+        TypeNode::Vector { element, extent } => {
+            out.push_str("vector:");
+            encode_type(out, element);
+            out.push(':');
+            out.push_str(extent.as_deref().unwrap_or("-"));
+        }
+        TypeNode::Matrix {
+            element,
+            rows,
+            cols,
+        } => {
+            out.push_str("matrix:");
+            encode_type(out, element);
+            out.push(':');
+            out.push_str(rows.as_deref().unwrap_or("-"));
+            out.push(':');
+            out.push_str(cols.as_deref().unwrap_or("-"));
+        }
+        TypeNode::Tensor { element, shape } => {
+            out.push_str("tensor:");
+            encode_type(out, element);
+            out.push(':');
+            out.push_str(&shape.join("x"));
+        }
+        TypeNode::Record(name) => {
+            out.push_str("record:");
+            out.push_str(&name.0);
+        }
+        TypeNode::Variant(name) => {
+            out.push_str("variant:");
+            out.push_str(&name.0);
+        }
+        TypeNode::Result { ok, error } => {
+            out.push_str("result:");
+            encode_type(out, ok);
+            out.push(':');
+            encode_type(out, error);
+        }
+        TypeNode::OptionType(inner) => {
+            out.push_str("option:");
+            encode_type(out, inner);
+        }
+        TypeNode::Opaque {
+            name,
+            provider_contract,
+        } => {
+            out.push_str("opaque:");
+            out.push_str(&name.0);
+            out.push(':');
+            out.push_str(provider_contract.as_ref().map_or("-", |s| &s.0));
+        }
+        TypeNode::UnitRef { name } => {
+            out.push_str("unit-ref:");
+            out.push_str(name);
+        }
+        TypeNode::Other(name) => {
+            out.push_str("other:");
+            out.push_str(&name.0);
+        }
+    }
+}
+
 fn encode_field(out: &mut String, package: &SemanticPackage, field: &Field, tag: &str) {
     out.push_str(tag);
     out.push(' ');
     out.push_str(&field.name);
     out.push(' ');
-    out.push_str(&package.types[field.ty.index()].display_name());
+    encode_type(out, &package.types[field.ty.index()]);
     out.push(' ');
     out.push_str(match field.visibility {
         Visibility::Public => "public",
@@ -315,7 +404,7 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
                 }
                 if let Some(error_ty) = constructor.error_type {
                     out.push_str("error-type ");
-                    out.push_str(&package.types[error_ty.index()].display_name());
+                    encode_type(&mut out, &package.types[error_ty.index()]);
                     out.push('\n');
                 }
                 out.push_str(if constructor.is_public {
@@ -353,4 +442,63 @@ pub fn canonical_expr(package: &SemanticPackage, id: crate::ids::ExprId) -> Cont
     out.push_str("expr\n");
     encode_expr(&mut out, &package.exprs, id);
     emath_core::hash::bootstrap_content_id(out.as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::goal::CompileSpec;
+    use crate::ids::DeclarationId;
+    use crate::package::Declaration;
+    use emath_core::Span;
+    use std::collections::BTreeMap;
+
+    fn package_with_input_type(ty: TypeNode) -> ContentId {
+        let mut package = SemanticPackage::new();
+        let type_id = package.push_type(ty);
+        package.declarations.push(Declaration {
+            id: DeclarationId(0),
+            name: QualifiedName::single("linear"),
+            kind: QualifiedName::single("function"),
+            kind_label: "function".to_string(),
+            inputs: vec![Field {
+                name: "x".to_string(),
+                ty: type_id,
+                visibility: Visibility::Public,
+                source: Span::default(),
+            }],
+            outputs: Vec::new(),
+            state: Vec::new(),
+            constructors: Vec::new(),
+            definitions: BTreeMap::new(),
+            invariants: Vec::new(),
+            goals: Vec::new(),
+            tests: Vec::new(),
+            exports: Vec::new(),
+            compile_spec: CompileSpec::default(),
+            source: Span::default(),
+        });
+        canonical_package(&package)
+    }
+
+    #[test]
+    fn bool_and_float64_inputs_produce_distinct_identities() {
+        // Two functions that differ only by `x: Float64` vs `x: Bool`
+        // must get different ContentIds (success criterion).
+        let float64 = package_with_input_type(TypeNode::Float64);
+        let boolean = package_with_input_type(TypeNode::Bool);
+        assert_ne!(float64, boolean);
+    }
+
+    #[test]
+    fn record_and_opaque_do_not_collide_in_identity() {
+        // display_name() renders both as `m`; structural identity must
+        // still discriminate the node kinds.
+        let record = package_with_input_type(TypeNode::Record(QualifiedName::single("m")));
+        let opaque = package_with_input_type(TypeNode::Opaque {
+            name: QualifiedName::single("m"),
+            provider_contract: None,
+        });
+        assert_ne!(record, opaque);
+    }
 }

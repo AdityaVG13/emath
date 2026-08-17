@@ -11,21 +11,22 @@ pub mod deps;
 pub mod script;
 
 pub use deps::{
-    check_declared, plan_dependencies, requests_for, CargoDependency, DepError, DepPlan, DepPolicy,
-    DepRequest, DepSource, RuntimeKind, TargetKind,
+    CargoDependency, DepError, DepPlan, DepPolicy, DepRequest, DepSource, RuntimeKind, TargetKind,
+    check_declared, plan_dependencies, requests_for,
 };
-pub use script::{locked_build_script, ScriptError, ScriptLock, ScriptReport};
+pub use script::{ScriptError, ScriptLock, ScriptReport, locked_build_script};
 
 use emath_artifact::{
-    manifest_identity, plan_to_record, publish, required_artifact_paths, stage, verify_artifact,
-    write_artifact_manifest, write_evidence_bundle, write_resolution_plan, write_source_map,
-    ArtifactClass, ArtifactError, ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap,
-    SourceMapEntry, StagedFile, ARTIFACT_MANIFEST_SCHEMA, EVIDENCE_BUNDLE_SCHEMA,
-    SOURCE_MAP_SCHEMA,
+    ARTIFACT_MANIFEST_SCHEMA, ArtifactClass, ArtifactError, ArtifactManifest,
+    EVIDENCE_BUNDLE_SCHEMA, EvidenceBundleRecord, PlanRecord, SOURCE_MAP_SCHEMA, SourceMap,
+    SourceMapEntry, StagedFile, manifest_identity, plan_to_record, publish,
+    required_artifact_paths, stage, verify_artifact, write_artifact_manifest,
+    write_evidence_bundle, write_resolution_plan, write_source_map,
 };
-use emath_core::{content_id_of_str, Diagnostics, SchemaId};
+use emath_core::{Diagnostics, SchemaId, content_id_of_str};
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ResolutionPlan};
 use emath_rust_backend::{BackendInput, BackendOutput};
+use emath_rust_ir::profiles::CrateProfile;
 use emath_sema::session::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
@@ -196,6 +197,17 @@ pub fn build_package(
         .generate()
         .map_err(|error| BuildError::Backend(error.to_string()))?;
 
+    // Profile validation on the build path: the generated module must be
+    // safe (E-CODEGEN-002) and every public item source-anchored
+    // (E-CODEGEN-004) before any artifact is staged.
+    let profile = CrateProfile::Library;
+    if let Some(problem) = profile.validate(&output.module).first() {
+        return Err(BuildError::Backend(format!(
+            "generated module failed profile validation: {}: {problem:?}",
+            problem.code()
+        )));
+    }
+
     // --- verification lane -----------------------------------------------
     let verify_ok = if options.verify_generated_crate {
         match verify_crate(&target_dir.join("verify"), &output) {
@@ -286,6 +298,10 @@ fn compose_artifact(
         .map_or(EvidenceLevel::E1, |goal| goal.requirements.evidence);
     let public_exports: Vec<String> = declaration.exports.iter().map(|e| e.name.clone()).collect();
 
+    // Live build source map: every entry carries the source FileId, the
+    // semantic node anchor and the plan node it came from, so the map
+    // round-trips through the checker with FileId and generated ranges.
+    let plan_node: Option<String> = plans.first().map(|plan| plan.root.0.to_string());
     let source_map = SourceMap {
         schema: SchemaId(SOURCE_MAP_SCHEMA.to_string()),
         source_package: meta.package_id.clone(),
@@ -293,11 +309,12 @@ fn compose_artifact(
             .anchors
             .iter()
             .map(|anchor| SourceMapEntry {
+                file: declaration.source.file.0,
                 source_file: meta.source_name.to_string(),
                 source_start: u64::from(declaration.source.start),
                 source_end: u64::from(declaration.source.end),
                 semantic_node: anchor.label.clone(),
-                plan_node: None,
+                plan_node: plan_node.clone(),
                 generated_file: anchor.file.clone(),
                 generated_start: u64::from(anchor.start),
                 generated_end: u64::from(anchor.end),
@@ -503,6 +520,57 @@ fn serialize_plans(plans: &[PlanRecord]) -> String {
 }
 
 /// Write the generated crate into `dir` and run `cargo test --quiet`.
+/// Runs a command under a wall-clock budget: a child still running after
+/// `timeout` is killed and reported as a typed `E-RES-120` failure, so
+/// cargo can never block a session forever on a generated crate.
+pub fn run_cargo_timed(
+    mut command: std::process::Command,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    use std::io::Read;
+    let mut child = command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("cannot spawn cargo: {error}"))?;
+    let mut stdout = child.stdout.take().expect("stdout must be piped");
+    let mut stderr = child.stderr.take().expect("stderr must be piped");
+    let stdout_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stderr.read_to_end(&mut buf);
+        buf
+    });
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if started.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(error) => return Err(format!("cannot wait on cargo: {error}")),
+        }
+    };
+    let stdout = stdout_thread.join().unwrap_or_default();
+    let stderr = stderr_thread.join().unwrap_or_default();
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
 fn verify_crate(dir: &Path, output: &BackendOutput) -> Result<(), String> {
     // Mock-free honesty (E-TLT-012): refuse to report "tests passed" for a
     // crate with no `#[test]` functions. A spec without a `tests:` section
@@ -543,11 +611,9 @@ test surface (add a `tests:` section to the spec, or drop --verify)"
     if test_count == 0 {
         return Err("E-TLT-012: generated crate has no `#[test]` tests; --verify refuses an empty test surface (add a `tests:` section to the spec, or drop --verify)".to_string());
     }
-    let result = std::process::Command::new("cargo")
-        .arg("test")
-        .arg("--quiet")
-        .current_dir(dir)
-        .output()
+    let mut command = std::process::Command::new("cargo");
+    command.arg("test").arg("--quiet").current_dir(dir);
+    let result = run_cargo_timed(command, std::time::Duration::from_secs(600))
         .map_err(|error| format!("cannot spawn cargo: {error}"))?;
     if !result.status.success() {
         let stdout = String::from_utf8_lossy(&result.stdout);

@@ -8,7 +8,7 @@
 //! id strings only.
 
 use crate::descriptor::ProviderLock;
-use emath_core::{fnv1a64_bytes, ContentId};
+use emath_core::{ContentId, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
 /// Provider maturity level (Phase 7 ladder).
@@ -177,12 +177,13 @@ impl MaturityRegistry {
             .record_compatible(format!("lock-{}", provider.maturity.name()));
         if provider.maturity != MaturityLevel::P0 {
             return Err(ConstellationError {
-         code: "E-PROV-524",
-         message: format!(
-             "provider `{}` registers maturity {} without proofs; census entries start at P0 and climb via promote",
-             provider.id, provider.maturity.name()
-         ),
-     });
+                code: "E-PROV-524",
+                message: format!(
+                    "provider `{}` registers maturity {} without proofs; census entries start at P0 and climb via promote",
+                    provider.id,
+                    provider.maturity.name()
+                ),
+            });
         }
         self.entries.insert(provider.id.clone(), provider);
         Ok(())
@@ -360,41 +361,108 @@ pub fn compose_chain(chain: &[String], registry: &MaturityRegistry) -> Compositi
 pub fn default_constellation() -> MaturityRegistry {
     let mut registry = MaturityRegistry::default();
     for (wave, id, summary, boundary, maturity, owner) in [
-        ('A', "phase4.symbolic", "symbolic: conversion subset, simplification/CSE, derivatives/Jacobians", vec!["no proof checking", "no interval arithmetic", "no DAE structural analysis"], MaturityLevel::P0, "backends"),
-        ('B', "phase2.expression", "expression: rust source/tokens, optional JIT/accelerator targets (not yet implemented)", vec!["no tensor derivatives", "no ODE solvers"], MaturityLevel::P0, "execution"),
-        ('C', "phase3.structural", "structural: neutral DAE subset instantiation/flattening, DAE/structural analysis", vec!["no symbolic integration", "no proof transport"], MaturityLevel::P1, "structural"),
-        ('D', "phase4.tensor.jax", "tensor: dtype/shape representations, tracing, JVP/VJP/Jacobian/Hessian", vec!["no certified numerics", "no FEEC meshes"], MaturityLevel::P0, "tensor"),
-        ('D', "phase4.tensor.ndarray", "tensor: ndarray ops, broadcasting, dtype promotion", vec!["no autodiff transforms", "no sparse solvers"], MaturityLevel::P0, "tensor"),
-        ('E', "phase5.numerics", "numerical: root solving, quadrature, ODE/BVP, linear/sparse solvers, optimization, special functions", vec!["no symbolic manipulation", "no proof checking"], MaturityLevel::P0, "numerics"),
-        ('F', "phase6.simulation", "simulation: typed operators, FEEC/mesh/physics models, interval/certified numerics", vec!["no general autodiff", "no remote execution"], MaturityLevel::P0, "simulation"),
-        ('G', "phase7.proof", "proof: statement/proof transport, kernel checking, theorem/certificate evidence", vec!["no numerical execution", "no tensor ops"], MaturityLevel::P0, "proof"),
-        ('H', "phase7.runtime", "runtime evidence: deterministic replay, signed evidence, guarded execution/promotion", vec!["no math semantics", "no codegen"], MaturityLevel::P0, "runtime"),
+        (
+            'A',
+            "phase4.symbolic",
+            "symbolic: conversion subset, simplification/CSE, derivatives/Jacobians",
+            vec![
+                "no proof checking",
+                "no interval arithmetic",
+                "no DAE structural analysis",
+            ],
+            MaturityLevel::P0,
+            "backends",
+        ),
+        (
+            'B',
+            "phase2.expression",
+            "expression: rust source/tokens, optional JIT/accelerator targets (not yet implemented)",
+            vec!["no tensor derivatives", "no ODE solvers"],
+            MaturityLevel::P0,
+            "execution",
+        ),
+        (
+            'C',
+            "phase3.structural",
+            "structural: neutral DAE subset instantiation/flattening, DAE/structural analysis",
+            vec!["no symbolic integration", "no proof transport"],
+            MaturityLevel::P1,
+            "structural",
+        ),
+        (
+            'D',
+            "phase4.tensor.jax",
+            "tensor: dtype/shape representations, tracing, JVP/VJP/Jacobian/Hessian",
+            vec!["no certified numerics", "no FEEC meshes"],
+            MaturityLevel::P0,
+            "tensor",
+        ),
+        (
+            'D',
+            "phase4.tensor.ndarray",
+            "tensor: ndarray ops, broadcasting, dtype promotion",
+            vec!["no autodiff transforms", "no sparse solvers"],
+            MaturityLevel::P0,
+            "tensor",
+        ),
+        (
+            'E',
+            "phase5.numerics",
+            "numerical: root solving, quadrature, ODE/BVP, linear/sparse solvers, optimization, special functions",
+            vec!["no symbolic manipulation", "no proof checking"],
+            MaturityLevel::P0,
+            "numerics",
+        ),
+        (
+            'F',
+            "phase6.simulation",
+            "simulation: typed operators, FEEC/mesh/physics models, interval/certified numerics",
+            vec!["no general autodiff", "no remote execution"],
+            MaturityLevel::P0,
+            "simulation",
+        ),
+        (
+            'G',
+            "phase7.proof",
+            "proof: statement/proof transport, kernel checking, theorem/certificate evidence",
+            vec!["no numerical execution", "no tensor ops"],
+            MaturityLevel::P0,
+            "proof",
+        ),
+        (
+            'H',
+            "phase7.runtime",
+            "runtime evidence: deterministic replay, signed evidence, guarded execution/promotion",
+            vec!["no math semantics", "no codegen"],
+            MaturityLevel::P0,
+            "runtime",
+        ),
     ] {
-registry
-    .register(ConstellationProvider {
-        id: id.to_string(),
-        wave,
-        capability_summary: summary.to_string(),
-        no_claim_boundary: boundary.into_iter().map(String::from).collect(),
-        maturity: MaturityLevel::P0,
-        disabled: false,
-        lock: ProviderLock::Unlocked,
-        promotion_owner: owner.to_string(),
-    })
-    .expect("census registration must succeed");
-// Claims above P0 climb the ladder with the full criteria set;
-// register() itself no longer accepts proof-free maturity claims.
-if maturity != MaturityLevel::P0 {
-    let mut proofs: Vec<String> = Vec::new();
-    let mut level = MaturityLevel::P0;
-    while level < maturity {
-        proofs.extend(level.next_criteria().iter().copied().map(String::from));
-        level = next_level(level).expect("bounded above P5");
-    }
-    registry
-        .promote(id, maturity, &proofs)
-        .expect("default census promotion must succeed");
-}
+        registry
+            .register(ConstellationProvider {
+                id: id.to_string(),
+                wave,
+                capability_summary: summary.to_string(),
+                no_claim_boundary: boundary.into_iter().map(String::from).collect(),
+                maturity: MaturityLevel::P0,
+                disabled: false,
+                lock: ProviderLock::Unlocked,
+                promotion_owner: owner.to_string(),
+            })
+            .expect("census registration must succeed");
+        // Claims above P0 climb the ladder with the full criteria set;
+        // register() itself no longer accepts proof-free maturity claims.
+        if maturity != MaturityLevel::P0 {
+            let mut proofs: Vec<String> = Vec::new();
+            let mut level = MaturityLevel::P0;
+            while level < maturity {
+                proofs.extend(level.next_criteria().iter().copied().map(String::from));
+                level = next_level(level).expect("bounded above P5");
+            }
+            registry
+                .promote(id, maturity, &proofs)
+                .expect("default census promotion must succeed");
+        }
     }
     registry
 }

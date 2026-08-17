@@ -3,7 +3,7 @@
 
 use std::io::{Read, Write};
 
-use crate::json::{parse_request, JsonValue};
+use crate::json::{JsonValue, parse_request};
 
 /// A decoded JSON-RPC message.
 #[derive(Debug, Clone, PartialEq)]

@@ -1,7 +1,7 @@
 //! Full candidate record: every axis a portfolio selection can
 //! consider, plus explicit disqualifications.
 
-use emath_world_ir::{fnv1a64, WorldId};
+use emath_world_ir::{WorldId, fnv1a64};
 
 use crate::{Authority, ScoreVector};
 

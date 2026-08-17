@@ -9,9 +9,9 @@
 use crate::error::LabError;
 use crate::gate::{GateCheck, QualityGate};
 use crate::json::{self, JsonValue};
-use crate::promotion::{decide, EnginePolicy, PromotionDecision, PromotionReason};
+use crate::promotion::{EnginePolicy, PromotionDecision, PromotionReason, decide};
 use crate::stats::{PairedResult, StatisticalProtocol};
-use emath_core::{fnv1a64_bytes, ContentId};
+use emath_core::{ContentId, fnv1a64_bytes};
 
 /// Full decision receipt.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,16 +78,24 @@ impl DecisionReceipt {
             self.experiment_id.0,
             json::write(&manifest),
             self.raw_retained,
-            self.gate_checks
-                .iter()
-                .map(|check| format!(
-                    "{}={}({})",
-                    check.label,
-                    if check.passes { "pass" } else { "fail" },
-                    check.code.unwrap_or("-")
-                ))
-                .collect::<Vec<String>>()
-                .join(";"),
+            {
+                // Gate checks are a set-like collection: sort by label so
+                // the canonical receipt is invariant under check order.
+                let mut gate_checks = self.gate_checks.clone();
+                gate_checks.sort_by(|left, right| left.label.cmp(&right.label));
+                gate_checks
+                    .iter()
+                    .map(|check| {
+                        format!(
+                            "{}={}({})",
+                            check.label,
+                            if check.passes { "pass" } else { "fail" },
+                            check.code.unwrap_or("-")
+                        )
+                    })
+                    .collect::<Vec<String>>()
+                    .join(";")
+            },
             self.protocol.seed,
             paired_token,
             self.memory_ratio

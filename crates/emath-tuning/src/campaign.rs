@@ -15,7 +15,7 @@
 
 use crate::JointCandidate;
 use emath_term::SymbolId;
-use emath_world_ir::{fnv1a64, WorldId};
+use emath_world_ir::{WorldId, fnv1a64};
 
 /// A named host metric measurement (integer-valued, e.g. tokens, ms, permille).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +48,11 @@ impl ResourceEnvelope {
     }
 
     /// Whether the measured metrics all stay within the envelope.
+    ///
+    /// Admission is fail-closed: a bounded metric with no measurement is
+    /// never treated as in-bounds, so an envelope with `max_tokens` set
+    /// and `token_cost` omitted refuses instead of admitting on a hole
+    /// the host never measured.
     #[must_use]
     pub fn admits(&self, metrics: &[HostMetric]) -> bool {
         let hit_ok = metrics
@@ -57,11 +62,11 @@ impl ResourceEnvelope {
         let tokens_ok = metrics
             .iter()
             .find(|metric| metric.name == "token_cost")
-            .map_or(true, |metric| metric.value <= self.max_tokens);
+            .is_some_and(|metric| metric.value <= self.max_tokens);
         let latency_ok = metrics
             .iter()
             .find(|metric| metric.name == "p95_latency")
-            .map_or(true, |metric| metric.value <= self.max_p95_latency_ms);
+            .is_some_and(|metric| metric.value <= self.max_p95_latency_ms);
         hit_ok && tokens_ok && latency_ok
     }
 }
@@ -370,4 +375,79 @@ fn rejection_reason(
         reasons.push("fallback:unavailable".to_string());
     }
     reasons.join(",")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HostMetric, ResourceEnvelope};
+
+    fn envelope() -> ResourceEnvelope {
+        ResourceEnvelope {
+            max_tokens: 1000,
+            max_p95_latency_ms: 500,
+            min_cache_hit_rate_permille: 950,
+        }
+    }
+
+    #[test]
+    fn admits_fails_closed_on_missing_cost_or_latency() {
+        let envelope = envelope();
+        // `token_cost` omitted: never in-bounds by absence.
+        let without_tokens = vec![
+            HostMetric {
+                name: "p95_latency".into(),
+                value: 10,
+            },
+            HostMetric {
+                name: "cache_hit_rate".into(),
+                value: 980,
+            },
+        ];
+        assert!(!envelope.admits(&without_tokens));
+        // `p95_latency` omitted: same.
+        let without_latency = vec![
+            HostMetric {
+                name: "token_cost".into(),
+                value: 10,
+            },
+            HostMetric {
+                name: "cache_hit_rate".into(),
+                value: 980,
+            },
+        ];
+        assert!(!envelope.admits(&without_latency));
+        // `cache_hit_rate` omission was already fail-closed; pinned here
+        // so the three bound metrics share one rule.
+        let without_hit = vec![
+            HostMetric {
+                name: "token_cost".into(),
+                value: 10,
+            },
+            HostMetric {
+                name: "p95_latency".into(),
+                value: 10,
+            },
+        ];
+        assert!(!envelope.admits(&without_hit));
+    }
+
+    #[test]
+    fn admits_at_the_bounds_with_all_three_measured() {
+        let envelope = envelope();
+        let metrics = vec![
+            HostMetric {
+                name: "token_cost".into(),
+                value: envelope.max_tokens,
+            },
+            HostMetric {
+                name: "p95_latency".into(),
+                value: envelope.max_p95_latency_ms,
+            },
+            HostMetric {
+                name: "cache_hit_rate".into(),
+                value: envelope.min_cache_hit_rate_permille,
+            },
+        ];
+        assert!(envelope.admits(&metrics), "measured at the bounds admits");
+    }
 }

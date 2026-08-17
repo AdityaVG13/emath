@@ -15,7 +15,9 @@
 //! - [`execute`]: the harness entry. The Phase 1 subset has no component
 //!   runtime, so execution is a typed refusal (`E-PLG-001`); the shape of
 //!   the call (`descriptor, input -> output`) is the stable contract that
-//!   the Phase 2+ runtime will fill;
+//!   the Phase 2+ runtime will fill. Execution re-enforces positive fuel
+//!   under every trust class (`E-PLG-002`), so `Trust::Local` can never
+//!   admit an unmetered plugin onto an execution path;
 //! - [`compatible`]: interface-core compatibility check.
 //!
 //! No network, no component host, std-only.
@@ -32,8 +34,9 @@ pub const INTERFACE_CORE: &str = "emath.plugin.interface.v1";
 /// Sandbox policy attached to a plugin descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SandboxPolicy {
-    /// Fuel budget: `None` means "unmetered" (only admitted for
-    /// [`Trust::Local`] plugins).
+    /// Fuel budget: `None` means "unmetered". [`admit`] tolerates an
+    /// unmetered [`Trust::Local`] descriptor, but [`execute`] requires
+    /// positive fuel under every trust class (`E-PLG-002`).
     pub fuel: Option<u64>,
     /// Granted permissions (e.g. `"network"`, `"fs-read"`).
     pub permissions: Vec<String>,
@@ -61,7 +64,8 @@ pub struct PluginDescriptor {
 /// Trust classification of a plugin source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Trust {
-    /// First-party / locally audited; unmetered sandbox allowed.
+    /// First-party / locally audited; admission tolerates an unmetered
+    /// sandbox (execution still requires positive fuel).
     Local,
     /// Third-party; must declare positive fuel.
     Untrusted,
@@ -216,13 +220,28 @@ pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginEr
 ///
 /// Phase 1 has no component runtime, so every execution is a typed refusal
 /// (`E-PLG-001`); the signature is the stable surface the Phase 2+ runtime
-/// will implement. Output never bypasses [`admit`].
+/// will implement. Output never bypasses [`admit`] — and the fuel gate is
+/// re-enforced here under every trust class: claiming [`Trust::Local`]
+/// cannot skip it, so a fuel-less descriptor hits `E-PLG-002` before
+/// `E-PLG-001`. Phase 2 cannot inherit a gate-less execution path.
 pub fn execute(
     descriptor: &PluginDescriptor,
     _input: &[u8],
     trust: Trust,
 ) -> Result<PluginOutput, PluginError> {
     admit(descriptor, trust)?;
+    match descriptor.sandbox.fuel {
+        Some(fuel) if fuel > 0 => {}
+        _ => {
+            return Err(PluginError::new(
+                "E-PLG-002",
+                format!(
+                    "plugin `{}` cannot execute without positive fuel",
+                    descriptor.id
+                ),
+            ));
+        }
+    }
     Err(PluginError::new(
         "E-PLG-001",
         format!(

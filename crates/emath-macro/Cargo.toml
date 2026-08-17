@@ -10,6 +10,7 @@ proc-macro = true
 
 [dependencies]
 emath-builder = { workspace = true }
+emath-syntax = { workspace = true }
 
 [lints]
 workspace = true

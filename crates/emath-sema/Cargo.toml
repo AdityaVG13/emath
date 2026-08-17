@@ -9,5 +9,10 @@ rust-version.workspace = true
 emath-core = { workspace = true }
 emath-ir = { workspace = true }
 
+[dev-dependencies]
+# The session tests install the syntax parser backend once per process
+# (dev-only; the kernel seam stays untouched in production builds).
+emath-syntax = { workspace = true }
+
 [lints]
 workspace = true

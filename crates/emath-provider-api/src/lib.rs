@@ -96,14 +96,14 @@ pub trait Adapter<Source, Target> {
 }
 
 pub use constellation::{
-    compose_chain, default_constellation, CompositionOutcome, ConstellationError,
-    ConstellationLock, ConstellationProvider, MaturityLevel, MaturityRegistry, VersionEntry,
+    CompositionOutcome, ConstellationError, ConstellationLock, ConstellationProvider,
+    MaturityLevel, MaturityRegistry, VersionEntry, compose_chain, default_constellation,
 };
 pub use descriptor::{
-    capability_token, lock_token, CapabilitySpec, CapabilityTable, DescriptorProblem,
-    ProviderIsolation, ProviderLock, RepresentationSpec,
+    CapabilitySpec, CapabilityTable, DescriptorProblem, ProviderIsolation, ProviderLock,
+    RepresentationSpec, capability_token, lock_token,
 };
-pub use filter::{filter_goal, Compatibility, ExclusionReason, ProviderVerdict};
+pub use filter::{Compatibility, ExclusionReason, ProviderVerdict, filter_goal};
 pub use registry::{ProviderRegistry, RegistryConfig, RegistryError};
 
 /// Only `Admitted` results may satisfy a goal with authority.

@@ -1,9 +1,13 @@
 //! Compiler-phase census for the Rumoca provider seam.
 //!
-//! Documents the provider compiler phases that emath models flow through,
-//! with their stability posture and whether emath relies on the public
-//! contract. Deterministic, static, and provider-free (phase names are
-//! neutral Modelica-compiler phase names, not fork types).
+//! Documents the Modelica compiler phases and what Phase 1 actually
+//! provides for each. Honesty contract: Phase 1 consumes **no upstream
+//! Rumoca fork** — every posture describes an in-tree native stand-in
+//! (subset string scanner, validation gate, native causalizer and
+//! forward-Euler simulator), so no phase is marked `Stable` and no phase
+//! is consumed through an upstream `public_contract`. Deterministic,
+//! static, and provider-free (phase names are neutral Modelica-compiler
+//! phase names, not fork types).
 
 /// Rust-units subset of upstream compiler phases.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -53,60 +57,64 @@ pub struct PhaseRecord {
 }
 
 /// Canonical census table (stable order, never sorted at runtime).
+///
+/// Phase 1 consumes no upstream Rumoca fork: the in-tree adapter drives
+/// native stand-ins only, so no phase is `Stable` and none is marked
+/// `public_contract`.
 pub const PHASES: [PhaseRecord; 9] = [
     PhaseRecord {
         kind: PhaseKind::Parse,
-        stability: Stability::Stable,
-        public_contract: true,
-        note: "textual parse of the Modelica subset",
+        stability: Stability::Developmental,
+        public_contract: false,
+        note: "Modelica subset string scanner (retained declarations); no upstream parser",
     },
     PhaseRecord {
         kind: PhaseKind::Resolve,
-        stability: Stability::Stable,
-        public_contract: true,
-        note: "name resolution and visibility",
+        stability: Stability::Experimental,
+        public_contract: false,
+        note: "no name resolver in Phase 1",
     },
     PhaseRecord {
         kind: PhaseKind::TypeCheck,
-        stability: Stability::Stable,
-        public_contract: true,
-        note: "type and unit checking",
+        stability: Stability::Developmental,
+        public_contract: false,
+        note: "structural model validation gate (units, duplicate names)",
     },
     PhaseRecord {
         kind: PhaseKind::Instantiation,
-        stability: Stability::Stable,
-        public_contract: true,
-        note: "model instantiation with modifiers",
+        stability: Stability::Experimental,
+        public_contract: false,
+        note: "no model instantiation in Phase 1",
     },
     PhaseRecord {
         kind: PhaseKind::Flattening,
-        stability: Stability::Stable,
-        public_contract: true,
-        note: "hierarchical flattening",
+        stability: Stability::Experimental,
+        public_contract: false,
+        note: "no hierarchical flattening in Phase 1",
     },
     PhaseRecord {
         kind: PhaseKind::DaeConversion,
-        stability: Stability::Stable,
-        public_contract: true,
-        note: "equation/differential conversion",
+        stability: Stability::Developmental,
+        public_contract: false,
+        note: "native causalization/lowering (provider emath-native-causalizer)",
     },
     PhaseRecord {
         kind: PhaseKind::StructuralAnalysis,
         stability: Stability::Developmental,
         public_contract: false,
-        note: "causalization, matching and tearing",
+        note: "native matching/ordering inside the causalizer; no upstream engine",
     },
     PhaseRecord {
         kind: PhaseKind::Simulation,
         stability: Stability::Developmental,
         public_contract: false,
-        note: "numerical simulation execution",
+        note: "native forward-Euler simulator (provider emath-native-euler)",
     },
     PhaseRecord {
         kind: PhaseKind::Templates,
         stability: Stability::Experimental,
         public_contract: false,
-        note: "template/modifier expansion",
+        note: "no template/modifier expansion in Phase 1",
     },
 ];
 
@@ -121,4 +129,44 @@ pub fn phase(kind: PhaseKind) -> Option<&'static PhaseRecord> {
         index += 1;
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PHASES, PhaseKind, Stability, phase};
+
+    #[test]
+    fn no_phase_claims_upstream_stability_or_public_contract() {
+        // Phase 1 has native stand-ins only; a phase marked Stable or
+        // public_contract would claim an upstream Rumoca engine that is
+        // not consumed.
+        for record in &PHASES {
+            assert_ne!(
+                record.stability,
+                Stability::Stable,
+                "phase {:?} must not claim Stable without an upstream engine",
+                record.kind
+            );
+            assert!(
+                !record.public_contract,
+                "phase {:?} must not claim a public upstream contract",
+                record.kind
+            );
+        }
+    }
+
+    #[test]
+    fn census_phase_lookup_round_trips() {
+        for record in &PHASES {
+            assert_eq!(
+                phase(record.kind),
+                Some(record),
+                "phase lookup must find every census row"
+            );
+        }
+        assert_eq!(
+            phase(PhaseKind::Resolve).unwrap().note,
+            "no name resolver in Phase 1"
+        );
+    }
 }

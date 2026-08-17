@@ -10,11 +10,11 @@ pub mod profiles;
 pub mod render;
 
 pub use host::{
-    append_to_module, check_version, fallback_binding, generate_binding, HostBindError,
-    HostBinding, HostMethod, HostTraitSpec,
+    HostBindError, HostBinding, HostMethod, HostTraitSpec, append_to_module, check_version,
+    fallback_binding, generate_binding,
 };
-pub use profiles::{parse_profile, CrateProfile, ProfileProblem};
+pub use profiles::{CrateProfile, ProfileProblem, parse_profile};
 pub use render::{
-    coverage_gaps, render_file_set, render_file_set_partitioned, render_generics, render_module,
-    Anchor, FileSet, RenderResult,
+    Anchor, FileSet, RenderResult, coverage_gaps, render_file_set, render_file_set_partitioned,
+    render_generics, render_module,
 };

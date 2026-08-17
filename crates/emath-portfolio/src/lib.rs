@@ -6,9 +6,9 @@ pub mod lock;
 pub mod record;
 pub mod selection;
 
-pub use lock::{replay_identity, PortfolioLock};
+pub use lock::{PortfolioLock, replay_identity};
 pub use record::{CandidateRecord, Disqualification, ExampleEvaluation, LawVerdict};
-pub use selection::{select, SelectionOutcome, SelectionPolicy, SelectionWeights};
+pub use selection::{SelectionOutcome, SelectionPolicy, SelectionWeights, select};
 
 use emath_world_ir::WorldId;
 

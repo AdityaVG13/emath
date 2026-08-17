@@ -10,7 +10,7 @@
 use crate::error::LabError;
 use crate::json::{self, JsonValue};
 use crate::stats::StatisticalProtocol;
-use emath_core::{fnv1a64_bytes, ContentId};
+use emath_core::{ContentId, fnv1a64_bytes};
 
 /// Workload partition role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -71,11 +71,15 @@ impl EnvironmentPin {
     /// Deterministic environment token.
     #[must_use]
     pub fn token(&self) -> String {
+        // Features are a set-like collection: sort before hashing so the
+        // token is invariant under feature order.
+        let mut features = self.features.clone();
+        features.sort();
         format!(
             "{}@{}#{}:{}",
             self.toolchain,
             self.target_triple,
-            self.features.join("+"),
+            features.join("+"),
             self.host
         )
     }

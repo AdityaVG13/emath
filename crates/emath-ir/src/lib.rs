@@ -22,27 +22,27 @@ pub mod units;
 
 pub use constructor::{Constructor, Field, TestCase, Visibility};
 pub use contracts::{ContractRegistry, ProviderRepresentationContract};
-pub use domains::{branch_point, BranchConvention, Domain, DomainError, Interval};
+pub use domains::{BranchConvention, Domain, DomainError, Interval, branch_point};
 pub use evidence::{ClaimVerdict, EvidenceBundle, EvidenceClaim};
 pub use expression::{BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, UnaryOp};
 pub use goal::{
-    build_goal, native_plan, CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy,
-    ExcludedCandidate, Export, FallbackPolicy, Goal, GoalKind, GoalRequirements, NumericProfile,
-    PlanNodeDef, PlanOperation, ProviderRef, RequestSpec, ResolutionPlan, SafetyProfile,
-    TargetProfile,
+    CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExcludedCandidate, Export,
+    FallbackPolicy, Goal, GoalKind, GoalRequirements, NumericProfile, PlanNodeDef, PlanOperation,
+    ProviderRef, RequestSpec, ResolutionPlan, SafetyProfile, TargetProfile, build_goal,
+    native_plan, plan_identity,
 };
 pub use ids::{DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
 pub use kind_schema::{
-    core_function_schema, core_policy_schema, CoreKind, KindSchema, PayloadPolicy, RepeatPolicy,
-    SectionSchema,
+    CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
+    core_policy_schema,
 };
-pub use numeric::{cast_cost, promote, tower_rows, NumKind, NumericError, NumericType};
-pub use operator::{canonical_operator, DeclaredOperator, Fixity};
+pub use numeric::{NumKind, NumericError, NumericType, cast_cost, promote, tower_rows};
+pub use operator::{DeclaredOperator, Fixity, canonical_operator};
 pub use package::{Declaration, ImportEntry, ImportSelection, PackageIdentity, SemanticPackage};
 pub use shapes::{Extent, Shape, ShapeError, SparseLayout};
 pub use type_system::{
-    canonical_of, render, unify, DischargeStatus, InferenceError, SchemeBody, SchemeField,
-    TypeConstraints, TypeExpr, TypeScheme, TypeVar,
+    DischargeStatus, InferenceError, SchemeBody, SchemeField, TypeConstraints, TypeExpr,
+    TypeScheme, TypeVar, canonical_of, render, unify,
 };
 pub use types::TypeNode;
-pub use units::{check_compatible, Unit, UnitDim, UnitError};
+pub use units::{Unit, UnitDim, UnitError, check_compatible};

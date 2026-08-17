@@ -5,35 +5,14 @@
 //! fingerprint (versions, evidence ceilings, determinism) changes the
 //! identity, so stale entries are detected and never served.
 
-use emath_core::{fnv1a64_bytes, ContentId};
+use emath_core::{ContentId, fnv1a64_bytes};
 use emath_ir::ResolutionPlan;
 use std::collections::BTreeMap;
 
-/// Canonical plan identity: binds goal schema, planner policy, provider
-/// set (sorted ids) and target family.
-#[must_use]
-pub fn plan_identity(
-    goal_canonical: &str,
-    policy: &str,
-    providers: &[String],
-    target: &str,
-) -> ContentId {
-    let mut payload = String::new();
-    payload.push_str("plan:v1:");
-    payload.push_str(goal_canonical);
-    payload.push('\n');
-    payload.push_str(policy);
-    payload.push('\n');
-    for provider in providers {
-        payload.push_str(provider);
-        payload.push('\n');
-    }
-    payload.push_str(target);
-    ContentId(format!(
-        "fnv1a64:{:016x}",
-        fnv1a64_bytes(payload.as_bytes())
-    ))
-}
+/// Canonical plan identity (implemented in `emath-ir`, which owns the
+/// plan types): binds goal schema, planner policy, provider set (sorted
+/// ids) and target family.
+pub use emath_ir::plan_identity;
 
 /// One fingerprint row per provider (versioned, evidence, determinism).
 #[derive(Clone, Debug, PartialEq, Eq)]

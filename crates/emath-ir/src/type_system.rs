@@ -238,12 +238,28 @@ pub fn unify(
             unify(store, &l1, &r1)?;
             unify(store, &l2, &r2)
         }
-        (TypeExpr::Refined(base1, predicate, _), TypeExpr::Refined(base2, predicate2, _)) => {
+        (
+            TypeExpr::Refined(base1, predicate, discharge1),
+            TypeExpr::Refined(base2, predicate2, discharge2),
+        ) => {
             if predicate != predicate2 {
                 return Err(InferenceError {
                     code: "E-TYPE-312",
                     message: format!(
                         "refinement predicates `{predicate}` and `{predicate2}` differ"
+                    ),
+                });
+            }
+            // Discharge is part of the type's meaning: a statically
+            // verified refinement must not unify with an
+            // external-assumption one.
+            if discharge1 != discharge2 {
+                return Err(InferenceError {
+                    code: "E-TYPE-312",
+                    message: format!(
+                        "refinement discharge `{}` and `{}` differ",
+                        discharge1.name(),
+                        discharge2.name()
                     ),
                 });
             }

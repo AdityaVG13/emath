@@ -72,6 +72,9 @@ pub enum PromotionReason {
     EnergyOverBudget { joules: f64, budget: f64 },
     /// Candidate meets the promotion target.
     MeetsTarget { median_ratio: f64 },
+    /// Currently-promoted candidate that did not regress kept the
+    /// promoted route instead of being taken off-air.
+    RetainedPromotion { median_ratio: f64 },
     /// Candidate is fit for a canary cohort.
     CanaryCohort { median_ratio: f64 },
     /// Not below target yet; shadow for more evidence.
@@ -97,6 +100,7 @@ impl PromotionReason {
             | Self::MemoryRegression { .. }
             | Self::EnergyOverBudget { .. } => Some("E-HOST-007"),
             Self::MeetsTarget { .. }
+            | Self::RetainedPromotion { .. }
             | Self::CanaryCohort { .. }
             | Self::NeedsMoreData { .. }
             | Self::TooSlow { .. }
@@ -135,6 +139,9 @@ impl PromotionReason {
             }
             Self::MeetsTarget { median_ratio } => {
                 format!("median ratio {median_ratio} meets promotion target")
+            }
+            Self::RetainedPromotion { median_ratio } => {
+                format!("already promoted; median ratio {median_ratio} retains the promoted route")
             }
             Self::CanaryCohort { median_ratio } => {
                 format!("median ratio {median_ratio} qualifies for canary")
@@ -250,7 +257,8 @@ impl PromotionDecision {
 ///
 /// `memory_ratio` is candidate/baseline peak memory; `energy` is
 /// `(joules_used, budget_joules)`. `currently_promoted` selects
-/// demote-vs-retain on regression.
+/// demote-vs-retain on regression and keep-promoted on a non-regressed
+/// incumbent: a still-faster candidate is never taken off-air.
 #[must_use]
 pub fn decide(
     policy: &EnginePolicy,
@@ -336,6 +344,16 @@ pub fn decide(
             reason: PromotionReason::MeetsTarget { median_ratio },
         };
     }
+    if currently_promoted {
+        // Demote only ever fires on regression (checked above). A
+        // promoted candidate between targets is still faster than the
+        // baseline; canary/shadow are baseline-entry paths, and the old
+        // fall-through mislabeled it TooSlow and routed the baseline.
+        return PromotionDecision {
+            outcome: PromotionOutcome::Promote,
+            reason: PromotionReason::RetainedPromotion { median_ratio },
+        };
+    }
     if !currently_promoted && median_ratio <= policy.canary_min_median_ratio {
         return PromotionDecision {
             outcome: PromotionOutcome::Canary,
@@ -364,5 +382,81 @@ fn regression_decision(reason: PromotionReason, currently_promoted: bool) -> Pro
             PromotionOutcome::Retain
         },
         reason,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EnginePolicy, PromotionOutcome, PromotionReason, decide};
+    use crate::gate::{GateCheck, GateCheckKind, QualityGate};
+    use crate::selector::{Route, Selector};
+    use crate::stats::PairedResult;
+
+    fn open_gate() -> crate::gate::GateVerdict {
+        QualityGate::evaluate(vec![GateCheck::pass(
+            "correctness",
+            GateCheckKind::Correctness,
+        )])
+    }
+
+    fn paired(median_ratio: f64) -> PairedResult {
+        PairedResult {
+            samples_used: 3,
+            outliers_removed: 0,
+            median_baseline_ns: 100.0,
+            median_candidate_ns: 100.0 * median_ratio,
+            median_ratio,
+            p99_ratio: median_ratio,
+            wins: 2,
+            losses: 1,
+            ties: 0,
+            raw_retained: true,
+            paired: true,
+            seed: 1,
+        }
+    }
+
+    #[test]
+    fn currently_promoted_non_regressed_stays_on_the_promoted_route() {
+        // median_ratio 0.97: still 3% faster than the baseline, between
+        // the canary (0.99) and promote (0.95) targets. The incumbent
+        // must not be taken off-air and mislabeled TooSlow.
+        let policy = EnginePolicy::default();
+        let decision = decide(&policy, &open_gate(), Some(&paired(0.97)), None, None, true);
+        assert_eq!(decision.outcome, PromotionOutcome::Promote);
+        assert_eq!(
+            decision.reason,
+            PromotionReason::RetainedPromotion { median_ratio: 0.97 }
+        );
+        // And the runtime selector keeps serving the candidate route.
+        let mut selector =
+            Selector::new(open_gate(), decision.outcome, 16).expect("valid selector");
+        assert_eq!(selector.dispatch(1), Route::Candidate);
+        assert_eq!(selector.dispatch(9), Route::Candidate);
+    }
+
+    #[test]
+    fn regressed_promoted_candidate_is_demoted_not_retained() {
+        let policy = EnginePolicy::default();
+        let decision = decide(&policy, &open_gate(), Some(&paired(1.06)), None, None, true);
+        assert_eq!(decision.outcome, PromotionOutcome::Demote);
+        assert!(matches!(
+            decision.reason,
+            PromotionReason::MedianRegression { .. }
+        ));
+    }
+
+    #[test]
+    fn not_promoted_candidate_between_targets_goes_canary() {
+        let policy = EnginePolicy::default();
+        let decision = decide(
+            &policy,
+            &open_gate(),
+            Some(&paired(0.97)),
+            None,
+            None,
+            false,
+        );
+        assert_eq!(decision.outcome, PromotionOutcome::Canary);
     }
 }

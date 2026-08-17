@@ -14,7 +14,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use emath_core::{content_id_of_str, ContentId};
+use emath_core::{ContentId, content_id_of_str};
 
 use crate::{EvidenceError, EvidenceKind, EvidenceRecord};
 

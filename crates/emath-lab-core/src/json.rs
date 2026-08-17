@@ -297,7 +297,7 @@ impl Parser<'_> {
                     return Err(JsonError::at(
                         "invalid hex digit in \\u escape",
                         self.position,
-                    ))
+                    ));
                 }
             };
             codepoint = codepoint * 16 + digit;

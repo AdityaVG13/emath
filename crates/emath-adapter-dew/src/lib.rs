@@ -18,8 +18,10 @@
 //!   explicit target/numeric semantics and device transfer plans.
 //! - [`mapping`]: SIR -> Dew -> generated symbol/span
 //!   source map with deterministic anchors.
-//! - [`oracle`]: differential oracle over boundary
-//!   cases; negative semantic-drift fixtures are detected.
+//! - [`oracle`]: boundary-case scan of the reference
+//!   evaluator and injected semantic-drift (mutation) detection; no
+//!   cross-engine differential lane exists in Phase 1 (no upstream
+//!   engine is consumed).
 
 #![forbid(unsafe_code)]
 
@@ -31,19 +33,20 @@ pub mod oracle;
 pub mod seam;
 
 pub use backends::{
-    accelerator_inventory, jit_capability, render_rust_fragment, render_tokens, AcceleratorTarget,
-    BackendSelection, DeviceTransferPlan, JitCapability, JitTarget, RustFragment, TokenStream,
+    AcceleratorTarget, BackendSelection, DeviceTransferPlan, JitCapability, JitTarget,
+    RustFragment, TokenStream, accelerator_inventory, jit_capability, render_rust_fragment,
+    render_tokens,
 };
 pub use capability::{
-    provide_capability, select_backend, Backend, DewCapability, NoClaimBoundary,
-    OptimizationEvidence,
+    Backend, DewCapability, NoClaimBoundary, OptimizationEvidence, provide_capability,
+    select_backend,
 };
 pub use dexpr::{
-    map_expression, map_linear, CmpOp, DewExpr, Layout, LinearOp, MappingIssue, Shape,
+    CmpOp, DewExpr, Layout, LinearOp, MappingIssue, Shape, map_expression, map_linear,
 };
-pub use mapping::{build_source_map, SourceMapEntry};
+pub use mapping::{SourceMapEntry, build_source_map};
 pub use oracle::{
-    detect_drift, differential_scan, run_boundary_cases, DifferentialFinding, MutantDrift,
-    ScanCase, ScanProfile,
+    DifferentialFinding, MutantDrift, ScanCase, ScanProfile, detect_drift, run_boundary_cases,
+    scan_reference_boundaries,
 };
 pub use seam::{AdapterSeam, PatchLedger, PatchOutcome, ProviderVersion, SeamError};

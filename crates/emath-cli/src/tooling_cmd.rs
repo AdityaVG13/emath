@@ -11,11 +11,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use emath_artifact::JsonWriter;
-use emath_build::{build_file, BuildOptions};
+use emath_build::{BuildOptions, build_file, run_cargo_timed};
 use emath_core::content_id_of_str;
 use emath_sema::session::CompilerSession;
 
-use crate::{artifact_check, print_diagnostics, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, artifact_check, print_diagnostics};
 
 /// Relative path of the committed upstream lock file (repo layout).
 const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
@@ -30,7 +30,14 @@ fn upstream_lock_path() -> PathBuf {
 }
 
 /// Built-in provider descriptors: (id, capability, status).
-const PROVIDERS: [(&str, &str, &str); 6] = [
+///
+/// The status table must agree with the in-tree reality: the adapter
+/// crates ship std-only native stand-ins (`dew.scalar`, `native.causal`,
+/// `native.euler`, the `import modelica` subset scanner), while the
+/// upstream engine lanes (Dew JIT/GPU, the full Rumoca compiler,
+/// Wrenfold, Franken*) stay explicitly `planned` — never presented as
+/// implemented.
+const PROVIDERS: [(&str, &str, &str); 10] = [
     (
         "native.rust",
         "scalar codegen + checked constructors",
@@ -42,16 +49,40 @@ const PROVIDERS: [(&str, &str, &str); 6] = [
         "implemented",
     ),
     (
+        "dew.scalar",
+        "scalar strict-f64 mapping; Rust source + token backends (in-tree, std-only)",
+        "implemented",
+    ),
+    (
+        "native.causal",
+        "neutral DAE plan: structural gate + native lowering",
+        "implemented",
+    ),
+    (
+        "native.euler",
+        "forward-Euler simulation of causal DAE plans",
+        "implemented",
+    ),
+    (
+        "rumoca.subset-import",
+        "Modelica subset scanner -> retained declarations (no upstream parse)",
+        "implemented",
+    ),
+    (
         "phase2.expression",
-        "expression optimization / codegen",
+        "upstream Dew engine: optimization, JIT, GPU backends",
         "planned",
     ),
     (
         "phase3.structural",
-        "equations, flattening, DAE analysis",
+        "upstream Rumoca engine: full parse, flattening, DAE analysis",
         "planned",
     ),
-    ("phase4.symbolic", "differential oracle", "planned"),
+    (
+        "phase4.symbolic",
+        "cross-engine differential corpus against a real Dew/Rumoca checkout",
+        "planned",
+    ),
     ("phase5.numerics", "solvers and optimization", "planned"),
 ];
 
@@ -284,7 +315,7 @@ fn run_cmd(args: &[String]) -> u8 {
             .args(["run", "--quiet", "--manifest-path"])
             .arg(&manifest);
     }
-    let output = match command.output() {
+    let output = match run_cargo_timed(command, std::time::Duration::from_secs(600)) {
         Ok(output) => output,
         Err(error) => {
             eprintln!("error: cannot execute generated crate: {error}");
@@ -331,13 +362,17 @@ fn test_cmd(args: &[String]) -> u8 {
     }
 }
 
-/// `bench <file>`: typed refusal (benchmark harness is Phase 4+).
+/// `bench <file>`: typed refusal. The keep-gate harness exists
+/// (`cargo bench --profile release-perf --bench comprehensive_bench`,
+/// history under `.bench-history/`), but a candidate-vs-baseline CLI
+/// comparison still requires the keep-gate ruleset (Phase 4+); this
+/// command must never `EXIT_OK` with empty output.
 fn bench_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
         return usage("bench <file.emath>");
     };
     eprintln!(
-        "error: E-TLT-004: benchmarking `{file}` requires the Phase 4+ benchmark harness (emath-lab-core scaffold exists)"
+        "error: E-TLT-004: benchmarking `{file}` is not a Phase 1 CLI comparison; measure via `cargo bench --profile release-perf --bench comprehensive_bench` (keep-gate history in .bench-history/)"
     );
     EXIT_REFUSED
 }
@@ -473,11 +508,7 @@ fn doctor_cmd(args: &[String]) -> u8 {
             ok = false;
         }
     }
-    if ok {
-        EXIT_OK
-    } else {
-        EXIT_REFUSED
-    }
+    if ok { EXIT_OK } else { EXIT_REFUSED }
 }
 
 fn probe_program(command: &str) -> Option<String> {
@@ -586,7 +617,9 @@ fn provider_cmd(args: &[String]) -> u8 {
             // No in-CLI negative-control battery exists. Printing "suite:
             // ok" without running anything would be a fake success; refuse
             // with a typed code instead (same pattern as bench E-TLT-004).
-            eprintln!("error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath-adapter-rumoca in the workspace");
+            eprintln!(
+                "error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath-adapter-rumoca in the workspace"
+            );
             EXIT_REFUSED
         }
         _ => usage("provider list|inspect <id>|test <id>"),
@@ -635,7 +668,9 @@ fn fork_cmd(args: &[String]) -> u8 {
                 );
                 EXIT_OK
             } else {
-                eprintln!("error: E-TLT-006: network/source sync is disabled in Phase 1 (offline-first); use --dry-run");
+                eprintln!(
+                    "error: E-TLT-006: network/source sync is disabled in Phase 1 (offline-first); use --dry-run"
+                );
                 EXIT_REFUSED
             }
         }
@@ -688,11 +723,7 @@ fn agent_cmd(args: &[String]) -> u8 {
             }
             object.string("diagnostics_text", &lines);
             println!("{}", object.finish());
-            if admitted {
-                EXIT_OK
-            } else {
-                EXIT_REFUSED
-            }
+            if admitted { EXIT_OK } else { EXIT_REFUSED }
         }
         "plan" => {
             let Some(file) = file else {
@@ -767,7 +798,16 @@ fn agent_cmd(args: &[String]) -> u8 {
 fn run_check(path: &str) -> (emath_core::Diagnostics, String) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
-        return (emath_core::Diagnostics::new(), String::new());
+        // CONF-0026: a load failure must be a typed refusal (E-PKG-080),
+        // never an empty-diagnostics "admitted: true" success. This
+        // mirrors the interactive `check` path in lib.rs.
+        let mut diagnostics = emath_core::Diagnostics::new();
+        diagnostics.error(
+            "E-PKG-080",
+            "cannot read source file",
+            emath_core::Span::default(),
+        );
+        return (diagnostics, String::new());
     };
     let result = session.check(package.file);
     (result.diagnostics, result.package.content_id().0)
