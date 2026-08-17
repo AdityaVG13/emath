@@ -1,4 +1,4 @@
-(* emath Semantic Genesis grammar addendum: design grammar, V7 *)
+(* emath Semantic Genesis grammar addendum: design grammar *)
 
 genesis-declaration = "emath", ( "custom", "<", identifier, ">" | kind, identifier ), ":", newline, genesis-section* ;
 

@@ -1,5 +1,5 @@
 {
-  "schema": "emath.upstream-lock.v1",
+  "schema": "emath.upstream-lock",
   "generated_at": "2026-08-15",
   "policy": "Commits are immutable reproducibility inputs. Branches are metadata only.",
   "repositories": [
