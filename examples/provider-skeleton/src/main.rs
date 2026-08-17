@@ -22,7 +22,7 @@ impl NativePlaceholderSkeleton {
     fn new() -> Self {
         Self {
             descriptor: ProviderDescriptor {
-                schema: SchemaId("emath.provider.v1".to_string()),
+                schema: SchemaId("emath.provider".to_string()),
                 id: PROVIDER_ID.to_string(),
                 version: PROVIDER_VERSION.to_string(),
                 implementation: bootstrap_content_id(b"provider-skeleton/native-placeholder"),
@@ -108,7 +108,7 @@ fn main() {
     );
     let outcome = provider.execute(
         &emath_ir::ResolutionPlan {
-            schema: SchemaId("emath.resolution-plan.v1".to_string()),
+            schema: SchemaId("emath.resolution-plan".to_string()),
             plan_id: ContentId(String::new()),
             goal: emath_ir::GoalId(0),
             policy: "native".to_string(),

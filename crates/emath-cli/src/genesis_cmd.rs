@@ -403,14 +403,14 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
 
     let free_term = {
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.free-term.v1");
+        object.string("schema", "emath.free-term");
         object.int("term_id", analysis.term_id);
         object.string("canonical", &analysis.term.canonical());
         object.finish()
     };
     let meaning_problem = {
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.meaning-problem.v1");
+        object.string("schema", "emath.meaning-problem");
         object.string("world_name", &analysis.file.world_name);
         object.int("signature_id", analysis.signature_id);
         object.int("term_id", analysis.term_id);
@@ -420,7 +420,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
     };
     let portfolio_json = {
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.interpretation-portfolio.v1");
+        object.string("schema", "emath.interpretation-portfolio");
         object.int(
             "portfolio_id",
             fnv1a64(
@@ -477,7 +477,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
             let receipt = format!("{:016x}", fnv1a64(world.canonical().as_bytes()));
             let body = {
                 let mut object = emath_artifact::JsonWriter::object();
-                object.string("schema", "emath.world-candidate.v1");
+                object.string("schema", "emath.world-candidate");
                 let id_hex = format!("{world_id:016x}");
                 object.string("world_id", &id_hex);
                 object.string("name", label);
@@ -492,7 +492,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
             }
             admission.push_str(&jsonl(
                 seq,
-                "emath.world-admission.v1",
+                "emath.world-admission",
                 "admitted",
                 "ok",
                 label,
@@ -506,7 +506,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
             };
             admission.push_str(&jsonl(
                 seq,
-                "emath.world-admission.v1",
+                "emath.world-admission",
                 "deferred",
                 code,
                 label,
@@ -562,7 +562,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         .unwrap_or(Authority::Structural);
     let answer_receipt = {
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.answer-receipt.v1");
+        object.string("schema", "emath.answer-receipt");
         object.string("answer_id", &answer_id);
         object.int("source_hash", analysis.source_hash);
         object.int("parse_id", analysis.parse_id);
@@ -715,7 +715,7 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
     }
     let manifest = {
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.generated-crate-manifest.v1");
+        object.string("schema", "emath.generated-crate-manifest");
         object.string("crate_name", &generated.crate_name);
         object.string("source", &path_to_string(path));
         object.int("source_hash", analysis.source_hash);

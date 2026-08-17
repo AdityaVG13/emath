@@ -30,7 +30,7 @@ pub fn sample_registry() -> ProviderRegistry {
                 exactness: exactness.iter().map(|token| (*token).to_string()).collect(),
                 failure_modes: vec![],
                 checker_bindings: if checker {
-                    vec!["sir-checker.v1".into()]
+                    vec!["sir-checker".into()]
                 } else {
                     vec![]
                 },

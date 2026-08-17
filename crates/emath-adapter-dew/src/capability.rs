@@ -178,7 +178,7 @@ pub fn capability_token(capability: &DewCapability) -> String {
     let mut operators = capability.operators.clone();
     operators.sort_unstable();
     format!(
-        "dew-cap:v1:{}:{}:[{}]:[{}]:[{}]:[{}]:{}",
+        "dew-cap:{}:{}:[{}]:[{}]:[{}]:[{}]:{}",
         capability.identity,
         capability.version,
         backends.join(","),

@@ -193,7 +193,7 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
     register_native_rust(&mut registry);
     let mut config = PlannerConfig::default();
     if parametric {
-        config.policy = "deterministic-planner.v1:parametric".to_string();
+        config.policy = "deterministic-planner:parametric".to_string();
     }
     let mut any_unplanned = false;
     for goal in &result.package.goals {
@@ -288,7 +288,7 @@ fn register_native_rust(registry: &mut ProviderRegistry) {
             }],
             exactness: vec!["exact".into()],
             failure_modes: vec![],
-            checker_bindings: vec!["sir-checker.v1".into()],
+            checker_bindings: vec!["sir-checker".into()],
         }],
         isolation: ProviderIsolation::Static,
         lock: ProviderLock::Unlocked,
@@ -552,7 +552,7 @@ usage:
   emath fork status|sync [--dry-run]
       upstream pin status; network sync refused offline (E-TLT-006)
   emath agent check|plan|build <file.emath> [--out <dir>]
-      structured emath.agent.v1 envelope over the same admission/plan/build
+      structured emath.agent envelope over the same admission/plan/build
       paths as the interactive commands (agents cannot bypass checks)
   emath help
       this text

@@ -21,8 +21,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-const SCHEMA: &str = "emath.keep-gate.v1";
-const GUARD_SCHEMA: &str = "emath.keep-gate-guard.v1";
+const SCHEMA: &str = "emath.keep-gate";
+const GUARD_SCHEMA: &str = "emath.keep-gate-guard";
 /// Warmup runs discarded before sampling.
 const WARMUP_RUNS: usize = 2;
 /// Minimum samples before the time target can stop a family.
@@ -240,7 +240,7 @@ fn cell_artifact_json(config: &FamilyConfig) -> Result<Vec<Sample>, String> {
     let cell = move || {
         let start = Instant::now();
         let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.generated-crate-manifest.v1");
+        object.string("schema", "emath.generated-crate-manifest");
         object.string("crate_name", "bench-cell");
         object.string("source", &glyphs_rel);
         object.strings(
@@ -261,7 +261,7 @@ fn cell_artifact_json(config: &FamilyConfig) -> Result<Vec<Sample>, String> {
         Ok(Sample {
             ns,
             identity_bytes: identity,
-            identity_label: "generated-crate-manifest.v1 + source-map.v1 JSON bytes".into(),
+            identity_label: "generated-crate-manifest + source-map JSON bytes".into(),
             golden_match: None,
             detail: "emath_artifact JSON writers emit the genesis manifest + source map".into(),
         })
