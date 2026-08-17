@@ -44,6 +44,31 @@ the change is real, and the gates keep the work honest.
 
 ## Quickstart
 
+The shortest path from nothing to a running program:
+
+```console
+$ emath new hello
+$ emath run hello/src/main.emath
+```
+
+`emath new hello` writes a manifest and one source file
+(`src/main.emath`):
+
+```emath
+emath function Greeter:
+    inputs:
+        x: Float64
+    definitions:
+        y = x
+```
+
+Declare only what you need: `outputs:`, `goals:`, `exports:`, and
+`compile:` are optional. Definitions are the surface; an omitted
+`goals:` section evaluates every definition and `emath run` admits,
+builds, publishes under `target/emath`, and executes the example tests
+(`emath test <file>` reports them, `emath build <file> [--out <dir>]`
+publishes without running).
+
 **Prerequisites:** a stable Rust toolchain (`rustup default stable`; the repo pins stable via `rust-toolchain.toml` and needs the `rustfmt` and `clippy` components). That is all: the workspace has zero third-party dependencies and the demos are std-only.
 
 **First build:** allow a few minutes for a debug build of the workspace (subsequent runs are incremental).
