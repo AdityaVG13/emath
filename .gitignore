@@ -48,8 +48,6 @@ AGENTS.md
 !/implementation/ERROR_CODES.md
 !/implementation/CLI_REFERENCE.md
 !/implementation/contract-pins.json
-!/BUILD_STATUS.md
-!/HANDOFF.md
 # python bytecode from the gate scripts
 __pycache__/
 
@@ -78,3 +76,8 @@ SOURCE_HASHES.sha256
 START_HERE.md
 TASK_CLOSURE.json
 TREE.txt
+
+# pinned session docs: re-includes must follow the ignore rules above
+# (last matching pattern wins)
+!/BUILD_STATUS.md
+!/HANDOFF.md

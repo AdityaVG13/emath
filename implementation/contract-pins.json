@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "algorithm": "sha256",
+  "label": "contract docs",
+  "bumps": [
+    {
+      "date": "2026-08-18",
+      "note": "Rust 2024 edition migration + CONTRACT.md campaign: HANDOFF/BUILD_STATUS gained the migration/campaign record; ERROR_CODES annex re-spliced after rustfmt-2024 reflow (E-NAME-026 / E-PROV-510 snippet windows)"
+    },
+    {
+      "date": "2026-08-18",
+      "note": "initial pin: gauntlet-08 doc gates (CRATE_MAP + inventory rewritten), gauntlet-d1 issued-list completion (135 entries), contract-pins loader added"
+    },
+    {
+      "date": "2026-08-18",
+      "note": "HANDOFF d1 contract section reworded so the audit text itself never quotes the forbidden claim strings (self-reference tripped the scanner)"
+    },
+    {
+      "date": "2026-08-17",
+      "note": "AGENTS.md operating-contract update: HANDOFF gained the contract-delta/tuning section; BUILD_STATUS gained the DSR/targeted-tests operating-contract note"
+    }
+  ],
+  "files": {
+    "HANDOFF.md": "bc361ea3cf2fef9ac9638113d4589e4ff392e225886a7a7a816e0db4ba537eb0",
+    "BUILD_STATUS.md": "d5c19e6669a47312a3cc39bb03cea63d67b0514ebc9e73e379a5771f5795fb32",
+    "implementation/ERROR_CODES.md": "fe83c93d936fef1d2aa906d268e15aadf6162db4261f96442f7e9831633bef8c",
+    "implementation/CLI_REFERENCE.md": "4ae4d5e50a4800446c7fe95cda76f19be1b2863cecb901443bb444b15f7b7623",
+    "implementation/CRATE_MAP.md": "0377469b7b37b8dcae1ce51bdba8e75d93a95e93c36d4987eb62d522dd75c82d",
+    "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"
+  }
+}
