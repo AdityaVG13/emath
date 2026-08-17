@@ -55,7 +55,7 @@ fn provider_table(name: &str) -> CapabilityTable {
             }],
             exactness: vec!["exact".into()],
             failure_modes: vec![],
-            checker_bindings: vec!["sir-checker.v1".into()],
+            checker_bindings: vec!["sir-checker".into()],
         }],
         isolation: ProviderIsolation::Static,
         lock: ProviderLock::Unlocked,

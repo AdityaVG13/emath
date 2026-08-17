@@ -1,11 +1,11 @@
-//! Parse-forest schema conformance: the `emath.parse-forest.v1` document
+//! Parse-forest schema conformance: the `emath.parse-forest` document
 //! written by `ParseForest::canonical_json` must parse back against its
 //! own schema shape, and no other schema id may claim the document.
 
 use emath_artifact::parse_json_document;
 use emath_genesis::forest::{ForestLimits, build_forest};
 
-const FOREST_SCHEMA: &str = "emath.parse-forest.v1";
+const FOREST_SCHEMA: &str = "emath.parse-forest";
 
 fn parse_back(doc: &str) -> emath_artifact::JsonValue {
     parse_json_document(doc).expect("canonical_json must parse as JSON")
@@ -58,10 +58,10 @@ fn forest_document_is_rejected_by_artifact_source_map_reader() {
     let doc = forest.canonical_json();
     assert!(
         emath_artifact::source_map_from_json(&doc).is_err(),
-        "emath.parse-forest.v1 bytes must not load as emath.source-map.v1"
+        "emath.parse-forest bytes must not load as emath.source-map"
     );
     assert!(
-        !doc.contains("emath.source-map.v1"),
+        !doc.contains("emath.source-map"),
         "the forest document must claim its own schema id"
     );
 }
@@ -74,7 +74,7 @@ fn forest_and_artifact_schema_ids_are_disjoint() {
     let root = parse_back(&doc);
     assert_ne!(
         root.string_field("schema").unwrap(),
-        "emath.source-map.v1",
+        "emath.source-map",
         "forest bytes must never claim the artifact source-map id"
     );
 }
