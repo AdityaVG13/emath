@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "affine-policy-rs"
+name = "affine-policy"
 version = "0.1.0"
 
 [[package]]
@@ -18,7 +18,7 @@ dependencies = [
 name = "demo-host-independent"
 version = "0.1.0"
 dependencies = [
- "affine-policy-rs",
+ "affine-policy",
 ]
 
 [[package]]
