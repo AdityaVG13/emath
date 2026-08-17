@@ -2,7 +2,19 @@
 
 ## Goal structure
 
-The `goals:` section names the work the compiler must perform:
+The `goals:` section names the work the compiler must perform. It is
+optional: when a declaration omits it, every definition is an
+`evaluate` goal producing `rust.library` (the compiler asks for the
+whole surface). Declaring `goals:` selects just the work you want:
+
+```emath
+goals:
+    evaluate <score>:
+        produce rust.library
+```
+
+Advanced goals carry policy; a goal names the work and policy, not a
+hard-coded algorithm:
 
 ```emath
 goals:
@@ -12,8 +24,6 @@ goals:
         require evidence >= E2
         produce rust.library
 ```
-
-A goal names the work and policy, not a hard-coded algorithm.
 
 ## Core goals
 
