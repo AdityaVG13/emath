@@ -27,13 +27,17 @@ docs/
 # agent contract is local-only
 AGENTS.md
 
-# legacy planning / reference material (kept locally, not shipped).
-# forks/ is fully internal: lock rows, provider plans and integration
-# documents never ship (previously only UPSTREAM_LOCK.json was
-# force-tracked; it is now untracked too).
+# legacy planning / reference material (kept locally, not shipped)
 /architecture/
 /bootstrap/
-/forks/
+# forks/ contents are gitignored (plans, integration docs, patch
+# ledgers stay local-only) except the upstream lock, which is the one
+# shipped fork artifact: `emath vendor` / `emath fork status|sync`
+# read it at runtime (E-TLT-007 when missing), so fresh clones need it
+# present. `/forks/*` (not `/forks/`) so the re-include below works.
+/forks/*
+# all forks/ material except the lock:
+!/forks/UPSTREAM_LOCK.json
 /history/
 /legal/
 /licenses/
