@@ -1,0 +1,17 @@
+# expect: E-SYN-101 non-command statement inside `exports:`
+emath policy ExportsJunk:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    state:
+        s: Float64
+    constructors:
+        public fn new(s: Float64) -> Result<Self, ConfigError>:
+            Self:
+                s = s
+    definitions:
+        y = state.s * x
+    exports:
+        public function y
+        stray: Float64

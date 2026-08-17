@@ -1,0 +1,4 @@
+# expect: E-KIND-100 declaration type outside the Phase 1 subset
+emath model M:
+    inputs:
+        x: Float64

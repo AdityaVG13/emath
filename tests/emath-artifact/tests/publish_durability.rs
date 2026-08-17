@@ -1,7 +1,7 @@
 //! Witnesses: staged paths cannot escape the artifact destination,
 //! and publish is atomic (a failure leaves no destination directory).
 
-use emath_artifact::{publish, stage, verify_artifact, ArtifactError, StagedFile};
+use emath_artifact::{ArtifactError, StagedFile, publish, stage, verify_artifact};
 use std::path::{Path, PathBuf};
 
 fn staging_dir() -> PathBuf {

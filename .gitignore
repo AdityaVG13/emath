@@ -37,7 +37,24 @@ AGENTS.md
 /methodology/
 /phases/
 /internal/
-/implementation/
+/implementation/*
+# gauntlet-08 gate pins: CRATE_MAP and PUBLIC_API_INVENTORY are checked
+# against HEAD by scripts/validate.sh and must never be covered by an
+# ignore rule (policy lane: `git check-ignore` must be false).
+!/implementation/CRATE_MAP.md
+!/implementation/PUBLIC_API_INVENTORY.md
+# gauntlet docs pinned by scripts/check_doc_pins.py (contract-pins.json);
+# they must ship with the gate, not stay local-only.
+!/implementation/ERROR_CODES.md
+!/implementation/CLI_REFERENCE.md
+!/implementation/contract-pins.json
+!/BUILD_STATUS.md
+!/HANDOFF.md
+# python bytecode from the gate scripts
+__pycache__/
+
+# papercuts tool session log (agent scratch, not repo material)
+/.papercuts.jsonl
 /validation/*
 !/validation/.gitkeep
 

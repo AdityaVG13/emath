@@ -1,0 +1,19 @@
+# expect: E-SEC-101 section outside the Phase 1 subset
+emath policy UnknownSection:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    state:
+        s: Float64
+    constructors:
+        public fn new(s: Float64) -> Result<Self, ConfigError>:
+            Self:
+                s = s
+    definitions:
+        y = state.s * x
+    goals:
+        evaluate <y>:
+            produce rust.library
+    tune:
+        prefer speed

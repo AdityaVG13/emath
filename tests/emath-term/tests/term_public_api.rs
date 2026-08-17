@@ -32,6 +32,20 @@ fn canonical_round_trip_is_byte_exact() {
 }
 
 #[test]
+fn canonical_round_trip_tolerates_trailing_whitespace() {
+    // CONF-0004/0016: `parse_canonical(canonical(t)) == t` must also
+    // hold for the canonical string padded with trailing whitespace
+    // (the oracle parser skips it). The generated SG copy is pinned to
+    // match in `term_oracle_differential.rs`.
+    let term = sample_term();
+    let canonical = term.canonical();
+    let padded = format!("{canonical}  \n\t ");
+    let parsed = Term::parse_canonical(&padded).expect("trailing whitespace is tolerated");
+    assert_eq!(parsed, term);
+    assert_eq!(parsed.canonical(), canonical);
+}
+
+#[test]
 fn malformed_or_trailing_canonical_is_refused() {
     assert!(matches!(
         Term::parse_canonical("apply("),

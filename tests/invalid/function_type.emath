@@ -1,0 +1,8 @@
+# expect: E-TYPE-110 function types are outside the Phase 1 subset
+emath function FnType:
+    inputs:
+        f: fn(Float64) -> Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = f(1.0)

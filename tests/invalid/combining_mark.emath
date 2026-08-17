@@ -1,0 +1,8 @@
+# expect: E-SYN-115 identifier carries a combining mark
+emath function café:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = x
