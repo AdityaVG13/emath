@@ -137,7 +137,7 @@ pub fn resolve_kind(
     })
 }
 
-/// One locked kind entry (shaped after `emath.lock.v1` packages).
+/// One locked kind entry (shaped after `emath.lock` packages).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KindLockEntry {
     /// Package the kind is declared in.

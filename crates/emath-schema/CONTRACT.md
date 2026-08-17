@@ -19,7 +19,7 @@ registry, and kind package loading. Output is the shared
   canonical schema registry access.
 - `SchemaError`, `UnknownSchemaError`: registry error types.
 - Version constants: `VERSION`, `REGISTRY_VERSION`, `SCHEMAS_VERSION`,
-  `SCHEMA_VERSION`, `SCHEMA_SPEC_VERSION`, `SCHEMA_NAMES`.
+  `SCHEMA_VERSION`, `SCHEMA_NAMES`.
 - Modules: `lang`, `load`, `lower`, `registry`.
 
 ## Invariants

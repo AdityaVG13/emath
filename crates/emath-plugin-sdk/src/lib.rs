@@ -6,7 +6,7 @@
 //! A plugin is a component with a declared capability set and a sandbox
 //! policy. This crate provides:
 //!
-//! - [`PluginDescriptor`] (schema `emath.plugin.v1`) with a canonical JSON
+//! - [`PluginDescriptor`] (schema `emath.plugin`) with a canonical JSON
 //!   rendering and FNV-1a64 content id;
 //! - [`admit`]: the sandbox/fuel/permission gate. Untrusted descriptors
 //!   must declare positive fuel; `network` requires the `network`
@@ -27,9 +27,9 @@ use std::fmt::Write as _;
 use emath_core::content_id_of_str;
 
 /// Descriptor document schema.
-pub const PLUGIN_SCHEMA: &str = "emath.plugin.v1";
-/// The single interface core version this SDK slice speaks.
-pub const INTERFACE_CORE: &str = "emath.plugin.interface.v1";
+pub const PLUGIN_SCHEMA: &str = "emath.plugin";
+/// The single interface core this SDK slice speaks.
+pub const INTERFACE_CORE: &str = "emath.plugin.interface";
 
 /// Sandbox policy attached to a plugin descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -46,14 +46,14 @@ pub struct SandboxPolicy {
     pub allowed_capabilities: Vec<String>,
 }
 
-/// A plugin descriptor (`emath.plugin.v1`).
+/// A plugin descriptor (`emath.plugin`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PluginDescriptor {
     /// Stable plugin id.
     pub id: String,
     /// Provider kind served by this plugin.
     pub kind: String,
-    /// Interface core version.
+    /// Interface core id.
     pub interface_core: String,
     /// Declared capabilities (each must be sandbox-allowed).
     pub capabilities: Vec<String>,
@@ -116,7 +116,7 @@ impl PluginDescriptor {
         });
         out.push_str(r#","permissions":["#);
         push_strings(&self.sandbox.permissions, &mut out);
-        out.push_str(r#"]},"schema":"emath.plugin.v1"}"#);
+        out.push_str(r#"]},"schema":"emath.plugin"}"#);
         out
     }
 

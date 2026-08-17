@@ -25,9 +25,9 @@ use std::fmt::Write as _;
 use emath_core::fnv1a64_bytes;
 
 /// Index document schema id.
-pub const INDEX_SCHEMA: &str = "emath.registry-index.v1";
+pub const INDEX_SCHEMA: &str = "emath.registry-index";
 /// Lock document schema id.
-pub const LOCK_SCHEMA: &str = "emath.registry-lock.v1";
+pub const LOCK_SCHEMA: &str = "emath.registry-lock";
 
 /// One pinned version record.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -75,7 +75,7 @@ impl IndexSnapshot {
     /// Renders the deterministic canonical JSON (sorted keys throughout).
     #[must_use]
     pub fn canonical_json(&self) -> String {
-        let mut out = String::from(r#"{"schema":"emath.registry-index.v1","packages":{"#);
+        let mut out = String::from(r#"{"schema":"emath.registry-index","packages":{"#);
         for (name, versions) in &self.packages {
             json_string(name, &mut out);
             out.push_str(":{");
@@ -196,7 +196,7 @@ impl RegistryLock {
     #[must_use]
     pub fn canonical_json(&self) -> String {
         let mut out = format!(
-            r#"{{"schema":"emath.registry-lock.v1","snapshot_id":"{}","pins":{{"#,
+            r#"{{"schema":"emath.registry-lock","snapshot_id":"{}","pins":{{"#,
             self.snapshot_id
         );
         for (name, version) in &self.pins {
