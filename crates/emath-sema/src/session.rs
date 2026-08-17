@@ -244,6 +244,26 @@ pub fn elaborate_requests(
 ) -> Vec<RequestSpec> {
     let mut requests = Vec::new();
     let Some(section) = sections.iter().find(|s| s.name == "goals") else {
+        // Ergonomics default: with no `goals:` section, every definition is
+        // an evaluate goal (`produce rust.library`). Declaring `goals:`
+        // selects the subset you want; definitions stay queryable either
+        // way. The request carries the declaration head as its source so
+        // goal ownership attaches to the declaration.
+        let Some(declaration) = package
+            .declarations
+            .iter()
+            .find(|d| d.name.leaf() == declaration_name)
+        else {
+            return requests;
+        };
+        for target in declaration.definitions.keys() {
+            requests.push(RequestSpec {
+                kind: "evaluate".into(),
+                target: target.clone(),
+                produce: "rust.library".into(),
+                source: declaration.source,
+            });
+        }
         return requests;
     };
     for stmt in &section.suite.statements {
