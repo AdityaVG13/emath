@@ -8,7 +8,7 @@ emath function MyFunction:
     definitions:
         y = x
 
-    requests:
+    goals:
         evaluate <y>:
             produce rust.library
 

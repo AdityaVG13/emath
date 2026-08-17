@@ -47,7 +47,7 @@ emath policy_system CompressionPlanner<ArtifactCount: Nat>:
             minimize plan.expected_latency
             maximize recovery_margin(plan)
 
-    requests:
+    goals:
         optimize <plan>:
             produce rust.library
             require feasible-certificate

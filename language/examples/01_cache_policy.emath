@@ -38,7 +38,7 @@ emath policy AdaptiveCachePolicy:
             * exp(-(state.gamma * candidate.age))
             / (1 + state.memory_penalty * candidate.bytes / 1 MiB)
 
-    requests:
+    goals:
         evaluate <score>:
             produce rust.library
 

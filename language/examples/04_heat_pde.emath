@@ -25,7 +25,7 @@ emath pde_model HeatDiffusion2D:
         temperature at time.start == initial_temperature
         temperature on boundary(Ω) == boundary_temperature
 
-    requests:
+    goals:
         solve <temperature>:
             over Time
             produce rust.library

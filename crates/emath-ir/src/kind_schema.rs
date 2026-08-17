@@ -110,7 +110,7 @@ impl KindSchema {
                     },
                 ),
                 (
-                    "requests".into(),
+                    "goals".into(),
                     SectionSchema {
                         repeat: RepeatPolicy::AtMostOne,
                         payload: PayloadPolicy::Commands,

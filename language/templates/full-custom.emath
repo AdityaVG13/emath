@@ -90,7 +90,7 @@ emath model Name<GenericParameters>:
     events:
         # event ThresholdCrossed(value: Real)
 
-    requests:
+    goals:
         # evaluate <y>:
         #     produce rust.library
         #

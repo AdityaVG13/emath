@@ -15,7 +15,7 @@ emath optimization CapacityPlan<N: Nat>:
     objectives:
         minimize sum i in 0..N: cost[i] * allocation[i]
 
-    requests:
+    goals:
         optimize <objectives>:
             subject_to constraints
             require certificate primal_dual

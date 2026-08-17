@@ -18,7 +18,7 @@ A section is a named structured payload:
 inputs:
     x: Real
 
-requests:
+goals:
     evaluate <score>:
         produce rust.library
 ```

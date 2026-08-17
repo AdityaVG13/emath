@@ -30,7 +30,7 @@ emath policy AdaptiveCachePolicy:
             * exp(-(state.gamma * age))
             / (1 + bytes / 1 MiB)
 
-    requests:
+    goals:
         evaluate <score>:
             produce rust.library
         differentiate <score>:

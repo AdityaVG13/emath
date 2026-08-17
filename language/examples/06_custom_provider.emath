@@ -35,6 +35,6 @@ emath function SimilarityGate<D: Nat>:
     definitions:
         admit = provider.similarity(left, right) >= threshold
 
-    requests:
+    goals:
         evaluate <admit>:
             produce rust.library

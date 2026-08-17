@@ -1,9 +1,11 @@
 # Goals, Requests, Strategies and Resolution
 
-## Request structure
+## Goal structure
+
+The `goals:` section names the work the compiler must perform:
 
 ```emath
-requests:
+goals:
     differentiate <score>:
         wrt [state.alpha, state.gamma]
         order 1
@@ -11,7 +13,7 @@ requests:
         produce rust.library
 ```
 
-A request names a goal and policy, not a hard-coded algorithm.
+A goal names the work and policy, not a hard-coded algorithm.
 
 ## Core goals
 

@@ -39,7 +39,7 @@ inputs, outputs, state, constants
 constructors, functions, definitions, equations, relations
 constraints, invariants, objectives
 transitions, events
-requests, strategies, evidence, budgets
+goals, strategies, evidence, budgets
 compile, exports, host, tests, benchmarks
 extensions
 ```
@@ -52,12 +52,12 @@ A kind schema decides which sections are required, optional, repeatable, mutuall
 definitions:
     score = state.scale * x + state.bias
 
-requests:
+goals:
     evaluate <score>:
         produce rust.library
 ```
 
-The definition states meaning. The request asks the compiler to perform work. This separation allows multiple algorithms and evidence levels without rewriting the mathematical definition.
+The definition states meaning. The goal asks the compiler to perform work. This separation allows multiple algorithms and evidence levels without rewriting the mathematical definition.
 
 ## 5. Values and relations
 

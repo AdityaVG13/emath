@@ -38,7 +38,7 @@ emath graph_algorithm ToolRouteGraph<NodeCount: Nat>:
         path ends_at goal
         path is_simple
 
-    requests:
+    goals:
         solve <route>:
             using shortest_path
             produce rust.library

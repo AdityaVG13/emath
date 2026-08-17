@@ -25,7 +25,7 @@ emath conjecture_search FiniteCounterexampleSearch<Limit: Nat>:
     outputs:
         witness: Option<Witness>
 
-    requests:
+    goals:
         search <witness>:
             find first w where counterexample(w)
             produce rust.binary

@@ -19,7 +19,7 @@ emath tensor_program NormalizedProjection<B: Nat, T: Nat, D: Nat, O: Nat>:
         forall b in 0..B, t in 0..T:
             abs(sum j in 0..O: y[b, t, j]^2 - 1) <= 1e-5
 
-    requests:
+    goals:
         evaluate <y>:
             produce rust.library
 

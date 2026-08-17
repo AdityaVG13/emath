@@ -103,7 +103,7 @@ emath model Name<T, N>:
     events:
         # event ThresholdCrossed(value: Real)
 
-    requests:
+    goals:
         # evaluate <y>:
         #     produce rust.library
         #

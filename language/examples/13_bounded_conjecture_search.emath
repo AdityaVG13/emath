@@ -12,7 +12,7 @@ emath conjecture_search CounterexampleSearch<N: Nat>:
         conjecture = forall object in objects_up_to(bound): property(object)
         counterexample(witness) = object_valid(witness) and not property(witness)
 
-    requests:
+    goals:
         search <witness>:
             where counterexample(witness)
             budget iterations = 10_000_000

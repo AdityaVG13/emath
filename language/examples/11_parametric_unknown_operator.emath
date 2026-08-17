@@ -5,6 +5,6 @@ emath function UnknownOperator:
         y: Float64
     definitions:
         y = x * x
-    requests:
+    goals:
         evaluate <y>:
             produce rust.library

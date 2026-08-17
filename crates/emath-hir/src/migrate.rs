@@ -3,7 +3,7 @@
 //! The bootstrap parser stays behind a compatibility tool, not the
 //! production compiler. `migrate_declaration` rewrites a bootstrap-era
 //! declaration into the open framework carrying its bootstrap schema:
-//! `request` sections become `requests`, `input`/`output` singletons
+//! `request` sections become `goals`, `input`/`output` singletons
 //! become plural `inputs`/`outputs`, and inline constructors are lifted
 //! into a `constructors:` section.
 
@@ -46,9 +46,9 @@ pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
             "request" => {
                 issues.push(MigrationIssue {
                     code: "E-MIGR-002",
-                    detail: "`request:` moved to `requests:` with a nested block".into(),
+                    detail: "`request:` moved to `goals:` with a nested block".into(),
                 });
-                "requests".to_string()
+                "goals".to_string()
             }
             "input" => {
                 issues.push(MigrationIssue {
