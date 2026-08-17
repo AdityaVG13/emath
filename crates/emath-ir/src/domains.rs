@@ -250,7 +250,7 @@ pub fn branch_point(domain: &Domain, convention: BranchConvention) -> Option<f64
                 _ => domain.upper_bound(),
             };
             if f64::is_finite(low) && f64::is_finite(high) {
-                Some((low + high) / 2.0)
+                Some(f64::midpoint(low, high))
             } else {
                 None
             }
@@ -258,7 +258,7 @@ pub fn branch_point(domain: &Domain, convention: BranchConvention) -> Option<f64
         BranchConvention::Canonical => {
             if let Domain::Interval(interval) = domain {
                 if f64::is_finite(interval.low) && f64::is_finite(interval.high) {
-                    return Some((interval.low + interval.high) / 2.0);
+                    return Some(f64::midpoint(interval.low, interval.high));
                 }
             }
             branch_point(domain, BranchConvention::Lower)

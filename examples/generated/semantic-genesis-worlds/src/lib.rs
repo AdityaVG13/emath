@@ -60,6 +60,7 @@ impl Term {
             pos: 0,
         };
         let term = parser.parse_term()?;
+        parser.skip_whitespace();
         if parser.pos != parser.bytes.len() {
             return Err(format!("trailing content at {}", parser.pos));
         }
@@ -102,6 +103,15 @@ impl CanonicalParser<'_> {
 
     fn malformed(&self) -> String {
         format!("malformed canonical at {}", self.pos)
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self
+            .peek()
+            .is_some_and(|b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r')
+        {
+            self.pos += 1;
+        }
     }
 
     fn parse_term(&mut self) -> Result<Term, String> {
@@ -431,4 +441,57 @@ pub fn fixture_modular() -> Environment<i64> {
     environment.insert("a".into(), 4);
     environment.insert("b".into(), 7);
     environment
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    /// The swap transform is not a no-op mutation. The demo term
+    /// `⊛(⧖(⋈(a, b)), ζ)` evaluates to 6 under the modular world and to
+    /// 5 under the swapped world (⋈ becomes `*`, ⊛ becomes `+`, ζ = 3,
+    /// a = 4, b = 7). A mutant that delegates the swapped world to the
+    /// modular world returns 6 here and is killed.
+    #[test]
+    fn swapped_world_is_not_a_noop_mutation() {
+        let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
+            .expect("canonical parses");
+        let env = fixture_modular();
+        let modular = evaluate(&term, &ModularWorld, &env).expect("modular evaluates");
+        let swapped = evaluate(&term, &SwappedModularWorld, &env).expect("swapped evaluates");
+        assert_eq!(modular, 6, "⋈ adds, ⧖ squares, ⊛ multiplies (mod 17)");
+        assert_eq!(
+            swapped, 5,
+            "⋈ multiplies, ⊛ adds after the swap — no-op mutants return 6"
+        );
+        assert_ne!(modular, swapped);
+    }
+
+    /// Nested-shape kill: the swap must hold on every operator path, not
+    /// just the demo shape. `⋈(⧖(a), ⧖(b))` is 14 modular (16 + 15) vs 2
+    /// swapped (16 * 15 mod 17).
+    #[test]
+    fn swap_mutation_is_killed_on_other_operator_paths() {
+        let term = Term::parse_canonical("apply(⋈,apply(⧖,var(a)),apply(⧖,var(b)))")
+            .expect("canonical parses");
+        let env = fixture_modular();
+        let modular = evaluate(&term, &ModularWorld, &env).expect("modular evaluates");
+        let swapped = evaluate(&term, &SwappedModularWorld, &env).expect("swapped evaluates");
+        assert_eq!(modular, 14);
+        assert_eq!(swapped, 2);
+        assert_ne!(modular, swapped);
+    }
+
+    /// Metamorphic determinism: the dual-run comparison is seed-free and
+    /// deterministic (the seed contract records `consumes_rng: false`),
+    /// so repeated evaluation must agree exactly.
+    #[test]
+    fn dual_run_is_deterministic() {
+        let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
+            .expect("canonical parses");
+        let env = fixture_modular();
+        let first = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
+        let second = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
+        assert_eq!(first, second, "dual-run evaluation must be deterministic");
+    }
 }

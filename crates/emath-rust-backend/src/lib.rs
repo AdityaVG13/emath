@@ -8,11 +8,11 @@
 
 #![forbid(unsafe_code)]
 
-use emath_exec_ir::{lower_definition, lower_requirement, EmirOp, EmirProgram, EmirValue};
+use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, lower_definition, lower_requirement};
 use emath_ir::{GoalKind, SemanticPackage, TypeId, TypeNode};
 use emath_rust_ir::ast::{
-    escape_ident, snake_case, BinOp, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item,
-    Module, Param, Stmt, StructDef, TestDef, Ty, UnOp, Visibility,
+    BinOp, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item, Module, Param, RUST_KEYWORDS,
+    Stmt, StructDef, TestDef, Ty, UnOp, Visibility, escape_ident, snake_case,
 };
 use emath_rust_ir::render::render_module;
 use std::collections::BTreeMap;
@@ -32,13 +32,17 @@ pub struct BackendAnchor {
     pub end: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct BackendOutput {
     /// Relative path → file content (includes `Cargo.toml` and `src/lib.rs`).
     pub files: BTreeMap<String, String>,
     pub anchors: Vec<BackendAnchor>,
     /// Domain obligations surfaced from lowering, first-encounter order.
     pub assumptions: Vec<String>,
+    /// The generated module, so the build path can run
+    /// `CrateProfile::validate` (`E-CODEGEN-002`/`E-CODEGEN-004`) on the
+    /// exact items that were rendered.
+    pub module: Module,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +101,10 @@ impl BackendInput<'_> {
 
         for declaration in &package.declarations {
             let name = declaration.name.leaf().to_string();
+            // The declaration name becomes Rust source: keywords and
+            // reserved identifiers are escaped (`type` -> `type_`), never
+            // emitted raw.
+            let struct_name = escape_ident(&name);
             let state_names: Vec<String> =
                 declaration.state.iter().map(|f| f.name.clone()).collect();
             let input_names: Vec<String> =
@@ -116,7 +124,7 @@ impl BackendInput<'_> {
                 "Generated deterministically by emath Phase 1; do not edit.".to_string(),
             ));
             items.push(Item::Struct(StructDef {
-                name: name.clone(),
+                name: struct_name.clone(),
                 generics: vec![],
                 fields: state_names.iter().cloned().zip(state_types).collect(),
                 derives: vec!["Clone".to_string(), "Debug".to_string()],
@@ -140,12 +148,23 @@ impl BackendInput<'_> {
                     ));
                     items.push(Item::Enum(EnumDef {
                         name: error_name.clone(),
-                        variants: vec![EnumVariant {
-                            name: "FailedPrecondition".to_string(),
-                            doc: vec![
-                                "A constructor `require` invariant did not hold.".to_string(),
-                            ],
-                        }],
+                        variants: {
+                            let mut variants = vec![EnumVariant {
+                                name: "FailedPrecondition".to_string(),
+                                doc: vec![
+                                    "A constructor `require` invariant did not hold.".to_string(),
+                                ],
+                            }];
+                            if !constructor.postconditions.is_empty() {
+                                variants.push(EnumVariant {
+                                    name: "FailedPostcondition".to_string(),
+                                    doc: vec![
+                                        "A constructor `ensure`/`invariant` did not hold after field init.".to_string(),
+                                    ],
+                                });
+                            }
+                            variants
+                        },
                         derives: vec![
                             "Clone".to_string(),
                             "Debug".to_string(),
@@ -231,6 +250,36 @@ impl BackendInput<'_> {
                         value_expr(&program, &param_names, &[])?,
                     ));
                 }
+                // Postconditions (`ensure` / `invariant`) hold after field
+                // init: each is checked before the value escapes the
+                // constructor, mirroring the `require` gate above.
+                for (index, postcondition) in constructor.postconditions.iter().enumerate() {
+                    let program = lower_requirement(package, *postcondition, &param_names)
+                        .map_err(BackendError::Lowering)?;
+                    add_obligations(&program, &mut assumptions);
+                    let check_name = format!("__post_ok{index}");
+                    let negated = Expr::Un {
+                        op: UnOp::Not,
+                        value: Box::new(value_expr(&program, &param_names, &[])?),
+                    };
+                    statements.push(Stmt::Let {
+                        pattern: check_name.clone(),
+                        value: Box::new(negated),
+                    });
+                    statements.push(Stmt::Expr(Expr::IfElse {
+                        condition: Box::new(Expr::Var(check_name)),
+                        then: Box::new(Stmt::Block(Block {
+                            statements: vec![Stmt::Return(Expr::Call {
+                                path: vec!["Err".to_string()],
+                                args: vec![Expr::Path(vec![
+                                    error_name.clone(),
+                                    "FailedPostcondition".to_string(),
+                                ])],
+                            })],
+                        })),
+                        else_value: Box::new(Stmt::Block(Block::default())),
+                    }));
+                }
                 statements.push(Stmt::Expr(Expr::Call {
                     path: vec!["Ok".to_string()],
                     args: vec![Expr::StructLiteral {
@@ -253,7 +302,7 @@ impl BackendInput<'_> {
                     },
                     body: Stmt::Block(Block { statements }),
                     doc: vec![format!(
-                        "Construct {article} `{name}`; every `require` invariant is checked."
+                        "Construct {article} `{name}`; every `require` and `ensure` invariant is checked."
                     )],
                     visibility: if constructor.is_public {
                         Visibility::Public
@@ -266,10 +315,13 @@ impl BackendInput<'_> {
             let _ = name;
 
             // --- evaluation methods ----------------------------------------
-            let mut goals: Vec<&emath_ir::Goal> = package
+            // Goals attach by their declared ids on the declaration, never
+            // by span geometry (an overlapping offset in another file must
+            // not cross-attach a goal).
+            let mut goals: Vec<&emath_ir::Goal> = declaration
                 .goals
                 .iter()
-                .filter(|goal| declaration.source.contains(goal.source.start))
+                .filter_map(|goal_id| package.goals.get(goal_id.index()))
                 .filter(|goal| goal.kind == GoalKind::Evaluate)
                 .collect();
             for goal in &goals {
@@ -326,7 +378,7 @@ impl BackendInput<'_> {
 
             if !methods.is_empty() {
                 items.push(Item::Impl(ImplDef {
-                    target: declaration.name.leaf().to_string(),
+                    target: struct_name.clone(),
                     generics: vec![],
                     methods,
                     doc: Vec::new(),
@@ -334,11 +386,12 @@ impl BackendInput<'_> {
             }
 
             // --- tests ------------------------------------------------------
-            for test in package
-                .tests
-                .iter()
-                .filter(|test| declaration.source.contains(test.source.start))
-            {
+            // Tests attach by their declared ids on the declaration, never
+            // by span geometry.
+            for test_id in &declaration.tests {
+                let Some(test) = package.tests.get(test_id.index()) else {
+                    continue;
+                };
                 let test_name = snake_case(&test.name);
                 let given_names: Vec<String> = test.given.keys().cloned().collect();
                 let mut statements: Vec<Stmt> = Vec::new();
@@ -370,10 +423,7 @@ impl BackendInput<'_> {
                         .collect::<Result<_, _>>()?;
                     Expr::MethodCall {
                         receiver: Box::new(Expr::Call {
-                            path: vec![
-                                declaration.name.leaf().to_string(),
-                                constructor.name.clone(),
-                            ],
+                            path: vec![struct_name.clone(), constructor.name.clone()],
                             args,
                         }),
                         method: "expect".to_string(),
@@ -383,12 +433,12 @@ impl BackendInput<'_> {
                     }
                 } else {
                     Expr::StructLiteral {
-                        name: declaration.name.leaf().to_string(),
+                        name: struct_name.clone(),
                         fields: Vec::new(),
                     }
                 };
                 statements.push(Stmt::Let {
-                    pattern: instance_name.clone(),
+                    pattern: escape_ident(&instance_name),
                     value: Box::new(instance),
                 });
                 let Some(target) = evaluate_targets.first() else {
@@ -447,7 +497,8 @@ impl BackendInput<'_> {
             }
         }
 
-        let rendered = render_module(&Module { items });
+        let module = Module { items };
+        let rendered = render_module(&module);
         anchors.extend(rendered.anchors.into_iter().map(|anchor| BackendAnchor {
             label: anchor.label,
             file: "src/lib.rs".to_string(),
@@ -462,6 +513,7 @@ impl BackendInput<'_> {
             files,
             anchors,
             assumptions,
+            module,
         })
     }
 
@@ -472,7 +524,7 @@ impl BackendInput<'_> {
              [package]\n\
              name = \"{}\"\n\
              version = \"{}\"\n\
-             edition = \"2021\"\n\
+             edition = \"2024\"\n\
              description = \"Generated from an .emath declaration (strict-f64 native).\"\n\
              license = \"MIT OR Apache-2.0\"\n\
              \n\
@@ -530,6 +582,11 @@ fn sanitize_crate_name(name: &str) -> String {
     }
     if out.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
         out.insert_str(0, "emath_");
+    }
+    // A Rust keyword as a crate name does not compile; escape it with the
+    // same `_` suffix the identifier path uses (`type` -> `type_`).
+    if RUST_KEYWORDS.contains(&out.as_str()) {
+        out.push('_');
     }
     out
 }
@@ -721,5 +778,115 @@ fn comparison(op: BinOp, left: EmirValue, right: EmirValue, program: &EmirProgra
         op,
         left: Box::new(operand(program, left)),
         right: Box::new(operand(program, right)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use emath_core::{QualifiedName, Span};
+    use emath_ir::{Declaration, DeclarationId, Field};
+
+    /// A minimal package: one declaration `named` with an `x: Float64`
+    /// input, nothing else. Enough to exercise struct emission, which is
+    /// where declaration names become Rust source.
+    fn package_for(named: &str) -> SemanticPackage {
+        let mut package = SemanticPackage::new();
+        package.types.push(TypeNode::Float64);
+        package.declarations.push(Declaration {
+            id: DeclarationId(0),
+            name: QualifiedName(named.to_string()),
+            kind: QualifiedName("policy".to_string()),
+            kind_label: "policy".to_string(),
+            inputs: vec![Field {
+                name: "x".to_string(),
+                ty: TypeId(0),
+                visibility: emath_ir::Visibility::Public,
+                source: Span::default(),
+            }],
+            outputs: Vec::new(),
+            state: Vec::new(),
+            constructors: Vec::new(),
+            definitions: BTreeMap::new(),
+            invariants: Vec::new(),
+            goals: Vec::new(),
+            tests: Vec::new(),
+            exports: Vec::new(),
+            compile_spec: emath_ir::CompileSpec::default(),
+            source: Span::default(),
+        });
+        package
+    }
+
+    #[test]
+    fn keyword_declaration_name_is_escaped_in_generated_rust() {
+        // `type` is a Rust keyword; the generated struct must be `type_`
+        // so the crate compiles (`emath custom <type>` negative control
+        // from the l2pb.4 repair).
+        let package = package_for("type");
+        let output = BackendInput {
+            package: &package,
+            crate_name: "type".to_string(),
+            version: "0.1.0".to_string(),
+        }
+        .generate()
+        .expect("keyword-named declaration must generate");
+        let struct_items: Vec<&StructDef> = output
+            .module
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Struct(struct_def) => Some(struct_def),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            struct_items.iter().all(|def| def.name != "type"),
+            "raw keyword must never be emitted: {struct_items:?}"
+        );
+        assert!(
+            struct_items.iter().any(|def| def.name == "type_"),
+            "expected escaped struct `type_`, got {struct_items:?}"
+        );
+        let rendered = render_module(&output.module).code;
+        assert!(
+            rendered.contains("struct type_"),
+            "rendered module must name the escaped struct, got:\n{rendered}"
+        );
+        assert!(
+            output
+                .module
+                .items
+                .iter()
+                .all(|item| !matches!(item, Item::Struct(def) if def.name == "type")),
+            "no unescaped keyword struct may reach the output"
+        );
+    }
+
+    #[test]
+    fn keyword_crate_name_is_escaped_in_manifest() {
+        // Cargo package names may be keywords, but the generated crate
+        // must keep a sane rust-identifier crate name for `lib.rs`
+        // (`extern crate`/name collisions in dev builds).
+        let package = package_for("Demo");
+        let output = BackendInput {
+            package: &package,
+            crate_name: "fn".to_string(),
+            version: "0.1.0".to_string(),
+        }
+        .generate()
+        .expect("keyword crate name must generate");
+        let manifest = output
+            .files
+            .get("Cargo.toml")
+            .expect("generate must emit a manifest");
+        assert!(
+            manifest.contains("name = \"fn_\""),
+            "keyword crate name must be escaped in the manifest, got:\n{manifest}"
+        );
+        assert!(
+            !manifest.contains("name = \"fn\""),
+            "unescaped keyword crate name must not reach the manifest"
+        );
     }
 }

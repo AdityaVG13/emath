@@ -7,8 +7,8 @@
 //! (`E-HOST-003` structural errors, `E-HOST-006` insufficient evidence,
 //! `E-HOST-008` incomparable inputs).
 
-use crate::error::LabError;
 use crate::Sampler;
+use crate::error::LabError;
 
 /// Outlier policy for paired samples.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,14 +112,18 @@ pub struct PairedResult {
 
 /// Evaluates the paired comparison under the protocol.
 ///
-/// Sequence: warmup drop, optional deterministic shuffle, MAD cull,
-/// per-pair ratio statistics. Zero-duration samples make ratios undefined
-/// and are refused (`E-HOST-008`).
+/// Sequence: identity separation (`subject != oracle`, `E-HOST-016`),
+/// warmup drop, optional deterministic shuffle, MAD cull, per-pair ratio
+/// statistics. Zero-duration samples make ratios undefined and are
+/// refused (`E-HOST-008`).
 #[allow(clippy::cast_precision_loss)] // ns counts -> ratios; below 2^53 the cast is exact
 pub fn evaluate_paired(
+    subject: &crate::identity::EngineIdentity,
+    oracle: &crate::identity::EngineIdentity,
     protocol: &StatisticalProtocol,
     mut observations: Vec<PairedObservation>,
 ) -> Result<PairedResult, LabError> {
+    subject.require_distinct(oracle, "evaluate_paired")?;
     protocol.validate()?;
     if !protocol.paired {
         return Err(LabError::new(
@@ -195,10 +199,10 @@ pub fn evaluate_paired(
     Ok(PairedResult {
         samples_used: samples_used as u64,
         outliers_removed,
-        median_baseline_ns: percentile(&baselines, 0.5),
-        median_candidate_ns: percentile(&candidates, 0.5),
-        median_ratio: percentile_f64(&ratios, 0.5),
-        p99_ratio: percentile_f64(&ratios, 0.99),
+        median_baseline_ns: percentile(&baselines, 0.5)?,
+        median_candidate_ns: percentile(&candidates, 0.5)?,
+        median_ratio: percentile_f64(&ratios, 0.5)?,
+        p99_ratio: percentile_f64(&ratios, 0.99)?,
         wins,
         losses,
         ties,
@@ -225,7 +229,7 @@ fn shuffle(observations: &mut [PairedObservation], seed: u64) {
     clippy::cast_sign_loss
 )]
 fn next_index(sampler: &mut Sampler, n: usize) -> usize {
-    let scaled = (sampler.next_unit() + 1.0) / 2.0 * n as f64;
+    let scaled = f64::midpoint(sampler.next_unit(), 1.0) * n as f64;
     let index = scaled as usize;
     index.min(n - 1)
 }
@@ -241,12 +245,14 @@ fn cull_outliers(policy: OutlierPolicy, observations: &mut Vec<PairedObservation
         .iter()
         .map(|sample| sample.baseline_ns)
         .collect();
-    let median = percentile(&baselines, 0.5);
+    // Non-empty by construction: the caller refuses when no samples
+    // survive warmup before culling ever runs.
+    let median = percentile(&baselines, 0.5).expect("baselines non-empty before cull");
     let deviations: Vec<f64> = baselines
         .iter()
         .map(|baseline| (*baseline as f64 - median).abs())
         .collect();
-    let mad = percentile_f64(&deviations, 0.5);
+    let mad = percentile_f64(&deviations, 0.5).expect("deviations non-empty before cull");
     if mad == 0.0 {
         return 0; // degenerate spread: nothing to trim against
     }
@@ -266,19 +272,25 @@ pub fn mean(values: &[u64]) -> f64 {
 
 /// Linear-interpolated percentile of u64 samples.
 ///
-/// `position` always lies in `[0, len - 1]`, so the truncating/sign casts
-/// of the index bounds are exact.
-#[must_use]
+/// An empty sample set is a typed refusal (`E-HOST-006`), never an index
+/// underflow; otherwise `position` lies in `[0, len - 1]`, so the
+/// truncating/sign casts of the index bounds are exact.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-pub fn percentile(values: &[u64], p: f64) -> f64 {
+pub fn percentile(values: &[u64], p: f64) -> Result<f64, LabError> {
     let mut sorted = values.to_vec();
     sorted.sort_unstable();
+    if sorted.is_empty() {
+        return Err(LabError::new(
+            "E-HOST-006",
+            "percentile of an empty sample set",
+        ));
+    }
     if sorted.len() == 1 {
-        return sorted[0] as f64;
+        return Ok(sorted[0] as f64);
     }
     let position = (sorted.len() - 1) as f64 * p.clamp(0.0, 1.0);
     let lower_index = position.floor() as usize;
@@ -286,24 +298,30 @@ pub fn percentile(values: &[u64], p: f64) -> f64 {
     let fraction = position - lower_index as f64;
     let lower = sorted[lower_index] as f64;
     let upper = sorted[upper_index] as f64;
-    lower + (upper - lower) * fraction
+    Ok(lower + (upper - lower) * fraction)
 }
 
 /// Linear-interpolated percentile of f64 ratios.
 ///
-/// `position` always lies in `[0, len - 1]`, so the truncating/sign casts
-/// of the index bounds are exact.
-#[must_use]
+/// An empty sample set is a typed refusal (`E-HOST-006`), never an index
+/// underflow; otherwise `position` lies in `[0, len - 1]`, so the
+/// truncating/sign casts of the index bounds are exact.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-pub fn percentile_f64(values: &[f64], p: f64) -> f64 {
+pub fn percentile_f64(values: &[f64], p: f64) -> Result<f64, LabError> {
     let mut sorted = values.to_vec();
     sorted.sort_unstable_by(f64::total_cmp);
+    if sorted.is_empty() {
+        return Err(LabError::new(
+            "E-HOST-006",
+            "percentile of an empty sample set",
+        ));
+    }
     if sorted.len() == 1 {
-        return sorted[0];
+        return Ok(sorted[0]);
     }
     let position = (sorted.len() - 1) as f64 * p.clamp(0.0, 1.0);
     let lower_index = position.floor() as usize;
@@ -311,5 +329,37 @@ pub fn percentile_f64(values: &[f64], p: f64) -> f64 {
     let fraction = position - lower_index as f64;
     let lower = sorted[lower_index];
     let upper = sorted[upper_index];
-    lower + (upper - lower) * fraction
+    Ok(lower + (upper - lower) * fraction)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{percentile, percentile_f64};
+
+    #[test]
+    fn empty_percentile_is_e_host_006_not_an_index_panic() {
+        let err = percentile(&[], 0.5).unwrap_err();
+        assert_eq!(err.code, "E-HOST-006");
+        let err = percentile_f64(&[], 0.5).unwrap_err();
+        assert_eq!(err.code, "E-HOST-006");
+    }
+
+    // The expected values below are exact by construction (integer casts,
+    // whole f64 literals, and a midpoint of two integers), so bitwise
+    // equality is the honest assertion.
+    #[allow(clippy::float_cmp)]
+    #[test]
+    fn single_sample_percentile_is_the_sample() {
+        assert_eq!(percentile(&[42], 0.5).unwrap(), 42.0);
+        assert_eq!(percentile_f64(&[1.5], 0.99).unwrap(), 1.5);
+    }
+
+    #[allow(clippy::float_cmp)]
+    #[test]
+    fn interpolated_percentile_of_two_samples() {
+        // Median of {10, 20} is the midpoint; p0/p100 are the extrema.
+        assert_eq!(percentile(&[10, 20], 0.5).unwrap(), 15.0);
+        assert_eq!(percentile(&[10, 20], 0.0).unwrap(), 10.0);
+        assert_eq!(percentile(&[10, 20], 1.0).unwrap(), 20.0);
+    }
 }

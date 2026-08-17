@@ -2,7 +2,7 @@
 [package]
 name = "semantic-genesis-worlds"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Generated parametric worlds for the reference alien signature."
 license = "Apache-2.0"
 

@@ -60,9 +60,9 @@ pub fn check(model: &StructuralModel) -> Vec<SubsetIssue> {
         }
     }
     for component in &model.components {
-        if crate::map::classify(component_kind_construct(component.kind)).map_or(true, |mapping| {
-            mapping.class == crate::map::MappingClass::Unsupported
-        }) {
+        if crate::map::classify(component_kind_construct(component.kind))
+            .is_none_or(|mapping| mapping.class == crate::map::MappingClass::Unsupported)
+        {
             issues.push(SubsetIssue {
                 code: "E-KIND-311",
                 message: format!(

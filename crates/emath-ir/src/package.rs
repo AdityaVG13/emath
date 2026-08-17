@@ -179,7 +179,7 @@ impl SemanticPackage {
         self.identity = Some(PackageIdentity {
             name,
             version: "0.1.0".to_string(),
-            edition: "2021".to_string(),
+            edition: "2024".to_string(),
             content,
         });
     }
