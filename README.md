@@ -130,7 +130,8 @@ Implemented today:
 ```console
 emath check                       semantic admission
 emath plan                        deterministic resolution plan
-emath build --out <dir> --verify  generate + verify Cargo artifact
+emath build [--out <dir>]       generate + verify Cargo artifact
+                                  (default out: target/emath)
 emath artifact check              independent artifact validation
 emath parse --forest              G0/G1: glyphs → bounded parse forest
 emath signature                   signature/fixity inference
