@@ -4,7 +4,7 @@
 //! artifact identities, metric set, statistical protocol, thresholds,
 //! kill rules and fallback behaviour before any measurement or promotion
 //! decision. The manifest self-validates (`E-HOST-003`/`E-HOST-004`),
-//! has a versioned canonical encoding (`lab:v1:...`) for identity and a
+//! has a versioned canonical encoding (`lab:...`) for identity and a
 //! deterministic canonical JSON form for audit/receipt replay.
 
 use crate::error::LabError;
@@ -255,7 +255,7 @@ pub struct FallbackPlan {
 /// Frozen experiment manifest.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LabManifest {
-    /// Schema token (`lab:v1`).
+    /// Schema token (`lab`).
     pub schema: String,
     /// Experiment identity.
     pub experiment_id: ContentId,
@@ -293,8 +293,8 @@ impl LabManifest {
     #[must_use]
     pub fn validate(&self) -> Vec<LabProblem> {
         let mut problems = Vec::new();
-        if self.schema != "lab:v1" {
-            problems.push(problem("E-HOST-003", "schema must be lab:v1"));
+        if self.schema != "lab" {
+            problems.push(problem("E-HOST-003", "schema must be lab"));
         }
         if self.partitions.is_empty() {
             problems.push(problem(
@@ -396,7 +396,7 @@ impl LabManifest {
         problems
     }
 
-    /// Versioned canonical encoding (`lab:v1:...`); identity input.
+    /// Versioned canonical encoding (`lab:...`); identity input.
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut partitions: Vec<&CorpusPartition> = self.partitions.iter().collect();
@@ -443,7 +443,7 @@ impl LabManifest {
             .collect();
         let thresholds = &self.thresholds;
         format!(
-            "lab:v1:{}:{}:{}:{}:{}:[{}]:[{}]:[{}]:{}:{}:{}:{}",
+            "lab:{}:{}:{}:{}:{}:[{}]:[{}]:[{}]:{}:{}:{}:{}",
             self.experiment_id.0,
             if self.frozen { "frozen" } else { "draft" },
             self.baseline.token(),

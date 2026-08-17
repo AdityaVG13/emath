@@ -228,7 +228,7 @@ impl KindSchema {
             .map(|(name, value)| format!("{name}={value}"))
             .collect();
         format!(
-            "kind-schema:v1:{}:[{}]:[{}]:{}",
+            "kind-schema:{}:[{}]:[{}]:{}",
             self.name,
             sections.join(";"),
             defaults.join(";"),

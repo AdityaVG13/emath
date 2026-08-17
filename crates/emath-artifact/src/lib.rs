@@ -1,6 +1,6 @@
 //! Artifact emission: deterministic JSON writers for the four durable
-//! schemas (`emath.artifact.v1`, `emath.source-map.v1`,
-//! `emath.resolution-plan.v1`, `emath.evidence-bundle.v1`), staging and
+//! schemas (`emath.artifact`, `emath.source-map`,
+//! `emath.resolution-plan`, `emath.evidence-bundle`), staging and
 //! atomic publish with content-identity verification, and an independent checker that
 //! never calls generator internals.
 
@@ -15,24 +15,24 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-pub const ARTIFACT_MANIFEST_SCHEMA: &str = "emath.artifact.v1";
+pub const ARTIFACT_MANIFEST_SCHEMA: &str = "emath.artifact";
 /// Durable artifact source map (byte-range + `source_package` shape; see
 /// [`write_source_map`]). One shape, one id: the world-codegen provenance
 /// map emitted by semantic-genesis compilation uses its own id,
 /// [`GENERATED_CRATE_SOURCE_MAP_SCHEMA`], whose entries carry
 /// `(generated, source, kind)` labels, never this shape.
-pub const SOURCE_MAP_SCHEMA: &str = "emath.source-map.v1";
+pub const SOURCE_MAP_SCHEMA: &str = "emath.source-map";
 /// World-codegen provenance map written next to a generated world crate
 /// (see [`write_generated_crate_source_map`]). Distinct from
 /// [`SOURCE_MAP_SCHEMA`]; the two documents must never share an id.
-pub const GENERATED_CRATE_SOURCE_MAP_SCHEMA: &str = "emath.generated-crate-source-map.v1";
+pub const GENERATED_CRATE_SOURCE_MAP_SCHEMA: &str = "emath.generated-crate-source-map";
 /// JSON `$schema` id of the durable resolution-plan document
 /// ([`write_resolution_plan`]). The plan's identity preimage is a
-/// different layer: `plan_identity` hashes a `plan:v1:` payload, not this
+/// different layer: `plan_identity` hashes a `plan:` payload, not this
 /// document id (see `emath_ir::goal::plan_identity`); the split is
 /// deliberate and documented.
-pub const RESOLUTION_PLAN_SCHEMA: &str = "emath.resolution-plan.v1";
-pub const EVIDENCE_BUNDLE_SCHEMA: &str = "emath.evidence-bundle.v1";
+pub const RESOLUTION_PLAN_SCHEMA: &str = "emath.resolution-plan";
+pub const EVIDENCE_BUNDLE_SCHEMA: &str = "emath.evidence-bundle";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArtifactClass {
@@ -73,7 +73,7 @@ impl std::str::FromStr for ArtifactClass {
     }
 }
 
-/// `emath.artifact.v1`
+/// `emath.artifact`
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArtifactManifest {
     pub schema: SchemaId,
@@ -93,7 +93,7 @@ pub struct ArtifactManifest {
     pub evidence_bundle: ContentId,
 }
 
-/// One `emath.source-map.v1` entry.
+/// One `emath.source-map` entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceMapEntry {
     /// Source file id (index into the session source store).
@@ -109,7 +109,7 @@ pub struct SourceMapEntry {
     pub generated_symbol: Option<String>,
 }
 
-/// `emath.source-map.v1`
+/// `emath.source-map`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceMap {
     pub schema: SchemaId,
@@ -117,7 +117,7 @@ pub struct SourceMap {
     pub entries: Vec<SourceMapEntry>,
 }
 
-/// `emath.resolution-plan.v1` (provider-free Phase 1 mirror of GIR plan).
+/// `emath.resolution-plan` (provider-free Phase 1 mirror of GIR plan).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlanRecord {
     pub schema: SchemaId,
@@ -137,7 +137,7 @@ pub struct OperationRecord {
     pub fallback: Option<u32>,
 }
 
-/// `emath.evidence-bundle.v1`
+/// `emath.evidence-bundle`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvidenceBundleRecord {
     pub schema: SchemaId,
@@ -194,7 +194,7 @@ pub fn manifest_identity(manifest: &ArtifactManifest) -> ContentId {
         })
         .collect();
     let body = format!(
-        "artifact:v1:{}:{}:{}:{}:{}:{}:[{}]:[{}]:{}:{}:{}",
+        "artifact:{}:{}:{}:{}:{}:{}:[{}]:[{}]:{}:{}:{}",
         manifest.schema.0,
         manifest.source_package.0,
         manifest.class.as_str(),
@@ -295,7 +295,7 @@ fn content_id_or_empty(id: &ContentId) -> String {
 }
 
 /// Parse the `files` inventory of a serialized artifact manifest
-/// (`emath.artifact.v1`) into `path -> declared content id`.
+/// (`emath.artifact`) into `path -> declared content id`.
 ///
 /// This is the reader for the deterministic in-tree writer above: it
 /// accepts exactly the writer's shape (a string-string object) and refuses
@@ -637,7 +637,7 @@ fn parse_json_array(bytes: &[u8], index: &mut usize) -> Option<Vec<JsonValue>> {
     }
 }
 
-/// Parse a manifest per `emath.artifact.v1` (field shape of
+/// Parse a manifest per `emath.artifact` (field shape of
 /// [`write_artifact_manifest`]).
 pub fn manifest_from_json(json: &str) -> Result<ArtifactManifest, ArtifactError> {
     let root = parse_json_document(json)?;
@@ -712,7 +712,7 @@ pub fn manifest_from_json(json: &str) -> Result<ArtifactManifest, ArtifactError>
     })
 }
 
-/// Parse a source map per `emath.source-map.v1` (field shape of
+/// Parse a source map per `emath.source-map` (field shape of
 /// [`write_source_map`]); empty `plan_node`/`generated_symbol` strings
 /// round-trip as `None`.
 pub fn source_map_from_json(json: &str) -> Result<SourceMap, ArtifactError> {
@@ -750,7 +750,7 @@ pub fn source_map_from_json(json: &str) -> Result<SourceMap, ArtifactError> {
     })
 }
 
-/// Parse a resolution plan per `emath.resolution-plan.v1` (schema and
+/// Parse a resolution plan per `emath.resolution-plan` (schema and
 /// plan identity are the checked surface).
 pub fn plan_from_json(json: &str) -> Result<PlanRecord, ArtifactError> {
     let root = parse_json_document(json)?;
@@ -827,7 +827,7 @@ pub fn plan_from_json(json: &str) -> Result<PlanRecord, ArtifactError> {
     })
 }
 
-/// Parse an evidence bundle per `emath.evidence-bundle.v1`; empty
+/// Parse an evidence bundle per `emath.evidence-bundle`; empty
 /// `checker`/`fresh_until` strings round-trip as `None`.
 pub fn evidence_bundle_from_json(json: &str) -> Result<EvidenceBundleRecord, ArtifactError> {
     let root = parse_json_document(json)?;
@@ -892,7 +892,7 @@ fn target_json(target: &TargetProfile) -> String {
     out.finish()
 }
 
-/// Serialize a manifest per `emath.artifact.v1`. Deterministic: files are
+/// Serialize a manifest per `emath.artifact`. Deterministic: files are
 /// iterated in `BTreeMap` order.
 pub fn write_artifact_manifest(manifest: &ArtifactManifest) -> String {
     let providers = manifest
@@ -919,7 +919,7 @@ pub fn write_artifact_manifest(manifest: &ArtifactManifest) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     let mut out = JsonWriter::object();
-    out.string("schema", "emath.artifact.v1");
+    out.string("schema", "emath.artifact");
     out.field("artifact_id", &content_id_or_empty(&manifest.artifact_id));
     out.string("class", manifest.class.as_str());
     out.field(
@@ -946,10 +946,10 @@ pub fn write_artifact_manifest(manifest: &ArtifactManifest) -> String {
     out.finish()
 }
 
-/// Serialize a source map per `emath.source-map.v1`.
+/// Serialize a source map per `emath.source-map`.
 pub fn write_source_map(source_map: &SourceMap) -> String {
     let mut object = JsonWriter::object();
-    object.field("schema", &quote("emath.source-map.v1"));
+    object.field("schema", &quote("emath.source-map"));
     object.field(
         "source_package",
         &content_id_or_empty(&source_map.source_package),
@@ -988,7 +988,7 @@ pub fn write_source_map(source_map: &SourceMap) -> String {
 }
 
 /// Write a world-codegen provenance source map
-/// (`emath.generated-crate-source-map.v1`). Each entry carries
+/// (`emath.generated-crate-source-map`). Each entry carries
 /// `(generated, source, kind)` labels; this is the provenance document
 /// emitted next to a generated world crate, never the durable artifact
 /// source map ([`write_source_map`] shape). `files` must be in
@@ -997,7 +997,7 @@ pub fn write_generated_crate_source_map(source: &str, files: &[String]) -> Strin
     let mut object = JsonWriter::object();
     // World-codegen provenance, not the durable artifact source map:
     // these entries carry (generated, source, kind) labels, not the
-    // byte-range + source_package shape of `emath.source-map.v1`.
+    // byte-range + source_package shape of `emath.source-map`.
     object.string("schema", GENERATED_CRATE_SOURCE_MAP_SCHEMA);
     object.string("source", source);
     let mut entries = String::from("[");
@@ -1027,7 +1027,7 @@ pub struct GeneratedCrateSourceMapEntry {
 }
 
 /// Parsed world-codegen provenance source map
-/// (`emath.generated-crate-source-map.v1`).
+/// (`emath.generated-crate-source-map`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneratedCrateSourceMap {
     /// Schema id (`GENERATED_CRATE_SOURCE_MAP_SCHEMA`).
@@ -1039,7 +1039,7 @@ pub struct GeneratedCrateSourceMap {
 }
 
 /// Parse a generated-crate provenance source map per
-/// `emath.generated-crate-source-map.v1`. Any other schema id is refused
+/// `emath.generated-crate-source-map`. Any other schema id is refused
 /// (`E-EVID-108` class shape refusal): genesis bytes must never load as
 /// the durable artifact source map.
 pub fn generated_crate_source_map_from_json(
@@ -1080,7 +1080,7 @@ pub fn generated_crate_source_map_from_json(
     })
 }
 
-/// Serialize a resolution plan per `emath.resolution-plan.v1`.
+/// Serialize a resolution plan per `emath.resolution-plan`.
 pub fn plan_to_record(plan: &ResolutionPlan) -> PlanRecord {
     let operations = plan
         .nodes
@@ -1162,7 +1162,7 @@ pub fn write_resolution_plan(plan: &PlanRecord) -> String {
         .collect::<Vec<_>>()
         .join(",\n    ");
     let mut object = JsonWriter::object();
-    object.field("schema", &quote("emath.resolution-plan.v1"));
+    object.field("schema", &quote("emath.resolution-plan"));
     object.field("plan_id", &content_id_or_empty(&plan.plan_id));
     object.int("goal", u64::from(plan.goal));
     object.string("policy", &plan.policy);
@@ -1189,7 +1189,7 @@ fn claim_json(claim: &EvidenceClaim) -> String {
     out.finish()
 }
 
-/// Serialize an evidence bundle per `emath.evidence-bundle.v1`.
+/// Serialize an evidence bundle per `emath.evidence-bundle`.
 pub fn write_evidence_bundle(bundle: &EvidenceBundleRecord) -> String {
     let claims = bundle
         .claims
@@ -1198,7 +1198,7 @@ pub fn write_evidence_bundle(bundle: &EvidenceBundleRecord) -> String {
         .collect::<Vec<_>>()
         .join(",\n    ");
     let mut object = JsonWriter::object();
-    object.field("schema", &quote("emath.evidence-bundle.v1"));
+    object.field("schema", &quote("emath.evidence-bundle"));
     object.field("bundle_id", &content_id_or_empty(&bundle.bundle_id));
     object.field(
         "source_package",

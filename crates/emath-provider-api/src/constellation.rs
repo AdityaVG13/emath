@@ -327,7 +327,7 @@ pub enum CompositionOutcome {
 /// Composes a provider chain into a deterministic artifact identity,
 /// without provider types leaking: only ids and lock versions contribute.
 pub fn compose_chain(chain: &[String], registry: &MaturityRegistry) -> CompositionOutcome {
-    let mut payload = String::from("chain:v1");
+    let mut payload = String::from("chain");
     for id in chain {
         let Some(provider) = registry.entries.get(id) else {
             return CompositionOutcome::Parametric {

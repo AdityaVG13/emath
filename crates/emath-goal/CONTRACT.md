@@ -19,7 +19,7 @@
 
 - A schema validates itself; every validation problem carries a stable code (`E-GOAL-011` to `E-GOAL-013`).
 - Outputs must be non-empty; duplicate output names are rejected; a budget limit without a work unit is rejected.
-- `canonical` produces a versioned `goal:v1:...` encoding, and `identity` derives an FNV-1a64 `ContentId` from it.
+- `canonical` produces the stable `goal:...` encoding, and `identity` derives an FNV-1a64 `ContentId` from it.
 - `custom_token` sorts custom-envelope fields deterministically.
 
 ## Error model

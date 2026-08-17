@@ -74,7 +74,7 @@ impl DecisionReceipt {
             )
         })?;
         Ok(format!(
-            "receipt:v1:{}:{}:{}:[{}]:{}:{}:{}:{}:{}:{}:{}:{}:{}:[{}]",
+            "receipt:{}:{}:{}:[{}]:{}:{}:{}:{}:{}:{}:{}:{}:{}:[{}]",
             self.experiment_id.0,
             json::write(&manifest),
             self.raw_retained,

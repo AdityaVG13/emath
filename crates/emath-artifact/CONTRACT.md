@@ -8,13 +8,13 @@ Artifact emission: deterministic JSON writers for the four durable schemas, stag
 
 Frequently re-exported types (not exhaustive):
 
-- `ArtifactManifest`, `ArtifactClass` (`emath.artifact.v1`): the manifest with files, providers, target, evidence level and linked document ids.
-- `SourceMap`, `SourceMapEntry` (`emath.source-map.v1`): byte-range + `source_package` shape.
-- `PlanRecord`, `OperationRecord` (`emath.resolution-plan.v1`): provider-free Phase 1 mirror of the GIR plan.
-- `EvidenceBundleRecord` (`emath.evidence-bundle.v1`): claims, artifact paths, reproduction steps.
+- `ArtifactManifest`, `ArtifactClass` (`emath.artifact`): the manifest with files, providers, target, evidence level and linked document ids.
+- `SourceMap`, `SourceMapEntry` (`emath.source-map`): byte-range + `source_package` shape.
+- `PlanRecord`, `OperationRecord` (`emath.resolution-plan`): provider-free Phase 1 mirror of the GIR plan.
+- `EvidenceBundleRecord` (`emath.evidence-bundle`): claims, artifact paths, reproduction steps.
 - `StagedFile`, `Staging`: staging with per-file bootstrap content ids and derived artifact id (`stage`).
 - `JsonWriter`/`JsonObject`, `JsonValue`, `parse_json_document`, `manifest_files_declared`: the single std-only deterministic JSON writer and its parse-back reader.
-- `GeneratedCrateSourceMap`, `GeneratedCrateSourceMapEntry` (`emath.generated-crate-source-map.v1`): world-codegen provenance map, distinct from the durable source map.
+- `GeneratedCrateSourceMap`, `GeneratedCrateSourceMapEntry` (`emath.generated-crate-source-map`): world-codegen provenance map, distinct from the durable source map.
 - `ArtifactError`: typed failure (variant list below).
 
 ## Invariants

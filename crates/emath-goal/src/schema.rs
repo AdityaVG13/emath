@@ -153,11 +153,11 @@ impl GoalSchema {
         problems
     }
 
-    /// Versioned canonical encoding (`goal:v1:...`); the plan-identity input.
+    /// Versioned canonical encoding (`goal:...`); the plan-identity input.
     #[must_use]
     pub fn canonical(&self) -> String {
         format!(
-            "goal:v1:{}:[{}]:[{}]:{}:{}:{}:{}:{}:{}:{}:{}",
+            "goal:{}:[{}]:[{}]:{}:{}:{}:{}:{}:{}:{}:{}",
             self.kind.name(),
             self.inputs.join(","),
             self.outputs.join(","),

@@ -44,7 +44,7 @@ impl FileSet {
     #[must_use]
     pub fn file_identity(relative_path: &str, contents: &str) -> ContentId {
         let mut payload = String::new();
-        payload.push_str("file:v1:");
+        payload.push_str("file:");
         payload.push_str(relative_path);
         payload.push('\n');
         payload.push_str(contents);

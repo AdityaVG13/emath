@@ -155,11 +155,11 @@ impl Domain {
     pub fn canonical(&self) -> String {
         match self {
             Self::Interval(interval) => format!(
-                "dom:v1:interval:{:e}:{:e}:{}:{}",
+                "dom:interval:{:e}:{:e}:{}:{}",
                 interval.low, interval.high, interval.low_open, interval.high_open
             ),
             Self::FiniteSet(values) => format!(
-                "dom:v1:set:{}",
+                "dom:set:{}",
                 values
                     .iter()
                     .map(|value| format!("{value:e}"))
@@ -167,7 +167,7 @@ impl Domain {
                     .join(",")
             ),
             Self::Box(axes) => format!(
-                "dom:v1:box:{}",
+                "dom:box:{}",
                 axes.iter()
                     .map(|axis| {
                         format!(
@@ -179,14 +179,14 @@ impl Domain {
                     .join(",")
             ),
             Self::Union(parts) => format!(
-                "dom:v1:union:{}",
+                "dom:union:{}",
                 parts
                     .iter()
                     .map(Self::canonical)
                     .collect::<Vec<_>>()
                     .join("|")
             ),
-            Self::Field => "dom:v1:field".to_string(),
+            Self::Field => "dom:field".to_string(),
         }
     }
 

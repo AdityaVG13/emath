@@ -158,7 +158,7 @@ impl Unit {
         self.dims == other.dims
     }
 
-    /// Canonical encoding (`v1`-versioned).
+    /// Canonical encoding.
     ///
     /// Dimension signature leads: unit identity is dimension-first, so a
     /// changed display label alone never changes the identity as long as
@@ -166,7 +166,7 @@ impl Unit {
     #[must_use]
     pub fn canonical(&self) -> String {
         format!(
-            "unit:v1:{}:{:e}:{:e}:{}",
+            "unit:{}:{:e}:{:e}:{}",
             self.dims.render(),
             self.scale,
             self.offset,
