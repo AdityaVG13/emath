@@ -66,9 +66,11 @@ PUBLISHED_SRC="$(find "$A/emath" -path '*/src/lib.rs' | head -1)"
 test -n "$PUBLISHED_SRC"
 cp "$PUBLISHED_SRC" "$PUBLISHED_SRC.bak"
 echo "// tampered by $0" >>"$PUBLISHED_SRC"
-if cargo run -q -p emath-cli -- artifact check "$A" >/dev/null 2>&1; then
+TAMPER_OUT="$(cargo run -q -p emath-cli -- artifact check "$A" 2>&1 || true)"
+if ! printf '%s\n' "$TAMPER_OUT" | grep -q "E-EVID-101"; then
     mv "$PUBLISHED_SRC.bak" "$PUBLISHED_SRC"
-    echo "FAIL: independent artifact check admitted a tampered crate" >&2
+    echo "FAIL: tampered crate admitted or refused with the wrong code (expected E-EVID-101)" >&2
+    printf '%s\n' "$TAMPER_OUT" >&2
     exit 1
 fi
 mv "$PUBLISHED_SRC.bak" "$PUBLISHED_SRC"

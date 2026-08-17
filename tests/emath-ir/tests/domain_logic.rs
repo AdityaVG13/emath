@@ -3,8 +3,8 @@
 
 use emath_core::QualifiedName;
 use emath_ir::{
-    branch_point, promote, BinderKind, BinderVariable, BranchConvention, Domain, ExprId, ExprNode,
-    Interval, NumericType, Shape,
+    BinderKind, BinderVariable, BranchConvention, Domain, ExprId, ExprNode, Interval, NumericType,
+    Shape, branch_point, promote,
 };
 
 #[test]

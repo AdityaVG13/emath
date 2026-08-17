@@ -9,6 +9,11 @@ rust-version.workspace = true
 name = "emath"
 path = "src/main.rs"
 
+[[bench]]
+name = "comprehensive_bench"
+harness = false
+path = "benches/keep_gate.rs"
+
 [dependencies]
 emath-adapter-rumoca = { workspace = true }
 emath-artifact = { workspace = true }
@@ -28,6 +33,11 @@ emath-syntax = { workspace = true }
 emath-term = { workspace = true }
 emath-world-codegen-rust = { workspace = true }
 emath-world-ir = { workspace = true }
+
+[dev-dependencies]
+# Keep-gate harness only (benches/keep_gate.rs): measurement summaries,
+# cv_pct quarantine and the identity= SHA-256 primitive.
+emath-lab-core = { workspace = true }
 
 [lints]
 workspace = true

@@ -6,23 +6,23 @@
 //! table, the maturity ladder, the Dew capability inventory and the plugin
 //! permission gate.
 
-use emath_adapter_dew::capability::{provide_capability, Backend, OptimizationEvidence};
+use emath_adapter_dew::capability::{Backend, OptimizationEvidence, provide_capability};
 use emath_adapter_dew::map_expression;
 use emath_adapter_rumoca::{
-    provide_dae_plan, Dimensions, EqExpr, Equation, LowerError, StructuralModel, Unit,
-    VariableDecl, VariableKind,
+    Dimensions, EqExpr, Equation, LowerError, StructuralModel, Unit, VariableDecl, VariableKind,
+    provide_dae_plan,
 };
 use emath_core::{QualifiedName, Span};
 use emath_evidence::{
-    reject_unsound_certifier_output, verify_proof_optional, CertificateKind, CertificateRegistry,
-    CheckerContract, EvidenceKind, EvidenceRecord, Freshness, ProducerRole,
+    CertificateKind, CertificateRegistry, CheckerContract, EvidenceKind, EvidenceRecord, Freshness,
+    ProducerRole, reject_unsound_certifier_output, verify_proof_optional,
 };
 use emath_ir::package::SemanticPackage;
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ExprNode, Literal, TypeNode};
-use emath_plugin_sdk::{admit, execute, PluginDescriptor, SandboxPolicy, Trust};
+use emath_plugin_sdk::{PluginDescriptor, SandboxPolicy, Trust, admit, execute};
 use emath_provider_api::{
-    default_constellation, CapabilityTable, ConstellationProvider, MaturityLevel,
-    ProviderIsolation, ProviderLock, ProviderRegistry, RegistryConfig,
+    CapabilityTable, ConstellationProvider, MaturityLevel, ProviderIsolation, ProviderLock,
+    ProviderRegistry, RegistryConfig, default_constellation,
 };
 use emath_runtime::{Budget, Outcome};
 
@@ -291,4 +291,41 @@ fn plugin_execute_routes_through_the_gates() {
     let descriptor = plugin(vec!["fs-read"], vec![]);
     let err = execute(&descriptor, b"input", Trust::Local).unwrap_err();
     assert_eq!(err.code, "E-PLG-002");
+}
+
+/// A descriptor whose sandbox declares no fuel budget at all.
+fn plugin_unmeasured(capabilities: Vec<&str>, permissions: Vec<&str>) -> PluginDescriptor {
+    let mut descriptor = plugin(capabilities, permissions);
+    descriptor.sandbox.fuel = None;
+    descriptor
+}
+
+#[test]
+fn plugin_execute_untrusted_without_fuel_is_e_plg_002() {
+    let descriptor = plugin_unmeasured(vec!["fs-read"], vec!["fs-read"]);
+    let err = execute(&descriptor, b"input", Trust::Untrusted).unwrap_err();
+    assert_eq!(err.code, "E-PLG-002");
+}
+
+#[test]
+fn plugin_execute_local_cannot_skip_the_fuel_gate() {
+    // The bead's seam: this descriptor would pass a `Trust::Local` admit
+    // (unmetered is tolerated at admission), so the old execute reported
+    // E-PLG-001 as if the only problem were a missing runtime. Execution
+    // must re-enforce the fuel gate — E-PLG-002 before E-PLG-001 — or
+    // Phase 2 inherits an unmetered execution path.
+    let descriptor = plugin_unmeasured(vec!["fs-read"], vec!["fs-read"]);
+    assert!(admit(&descriptor, Trust::Local).is_ok());
+    let err = execute(&descriptor, b"input", Trust::Local).unwrap_err();
+    assert_eq!(err.code, "E-PLG-002");
+}
+
+#[test]
+fn plugin_execute_with_positive_fuel_reaches_the_runtime_refusal() {
+    // With fuel declared and permissions satisfied, execution proceeds to
+    // the Phase 1 no-runtime refusal (E-PLG-001) — the fuel gate did not
+    // over-refuse.
+    let descriptor = plugin(vec!["fs-read"], vec!["fs-read"]);
+    let err = execute(&descriptor, b"input", Trust::Untrusted).unwrap_err();
+    assert_eq!(err.code, "E-PLG-001");
 }
