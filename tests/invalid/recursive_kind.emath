@@ -1,4 +1,4 @@
-# expect: E-KIND-100 custom kind refused by admission
-emath custom <Recursive> as kind:
+# expect: E-KIND-100 kind declaration outside the Phase 1 subset
+emath kind Recursive:
     lower:
-        declaration = custom <Recursive> as Recursive
+        declaration = Recursive

@@ -1,4 +1,4 @@
-emath custom <Alias> as function:
+emath function Alias:
 
     definitions:
         type Vec3 = List[Float64]
