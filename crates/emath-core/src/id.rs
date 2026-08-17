@@ -4,7 +4,7 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FileId(pub u32);
 
-/// Identifier of a durable schema version (for example `emath.artifact.v1`).
+/// Identifier of a durable schema (for example `emath.artifact`).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SchemaId(pub String);
 

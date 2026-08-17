@@ -10,7 +10,7 @@ pub const VERSION_SEED: u64 = 0x5eed_0007;
 /// A deterministic world version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldVersion {
-    /// Stable label, e.g. `v1`.
+    /// Stable label (world version name).
     pub label: String,
     /// FNV-1a64 over (seed, label, claim).
     pub stamp: u64,

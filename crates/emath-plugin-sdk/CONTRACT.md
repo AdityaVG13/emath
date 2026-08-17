@@ -8,7 +8,7 @@ network, no component host. Depends on `emath-core` (FNV-1a64 content id).
 
 ## Public types and semantics
 
-- `PluginDescriptor` (schema `emath.plugin.v1`): id, kind, interface core,
+- `PluginDescriptor` (schema `emath.plugin`): id, kind, interface core,
   declared capabilities, sandbox policy. Canonical JSON rendering
   (`canonical_json`) and FNV-1a64 content id (`content_id`).
 - `SandboxPolicy`: fuel (`None` = unmetered), granted permissions, network

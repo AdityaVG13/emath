@@ -79,7 +79,7 @@ pub fn calibrate(
         (kind, record)
     })
     .collect();
-    let version = WorldVersion::stamped("v1", &table.canonical());
+    let version = WorldVersion::stamped("stable", &table.canonical());
     Ok(CalibrationRecord {
         table,
         challenge,

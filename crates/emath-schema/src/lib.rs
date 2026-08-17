@@ -31,8 +31,8 @@ pub use lower::{
     LowerOp, LoweringIssue, MAX_LOWER_OPS, apply_lowering, is_bound, validate_lowered,
 };
 pub use registry::{
-    REGISTRY_VERSION, SCHEMA_NAMES, SCHEMA_SPEC_VERSION, SCHEMA_VERSION, SCHEMAS_VERSION,
-    SchemaError, UnknownSchemaError, VERSION, all_schema_names, example_json, example_json_bytes,
+    REGISTRY_VERSION, SCHEMA_NAMES, SCHEMA_VERSION, SCHEMAS_VERSION, SchemaError,
+    UnknownSchemaError, VERSION, all_schema_names, example_json, example_json_bytes,
     example_json_string, is_known_schema, schema_json, schema_json_bytes, schema_json_string,
     schema_names, write_example_json, write_schema_json,
 };

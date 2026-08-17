@@ -1,8 +1,8 @@
 // crate root forbids unsafe
 //! Thirteen-schema registry.
 //!
-//! Canonical semantic-genesis artifact formats versioned as
-//! `emath.<name>.v1`. The registry is std-only, dependency-free and
+//! Canonical semantic-genesis artifact formats named
+//! `emath.<name>`. The registry is std-only, dependency-free and
 //! byte-stable: every entry emits deterministic JSON bytes and a
 //! matching example. Unknown names return a stable typed error
 //! (`E-SCHEMA-001`). The order of [`SCHEMA_NAMES`] is the fixed
@@ -10,8 +10,6 @@
 
 /// Stable schema document version.
 pub const SCHEMA_VERSION: &str = "1.0.0";
-/// Stable schema spec discriminator (v1 line).
-pub const SCHEMA_SPEC_VERSION: &str = "v1";
 /// Registry version (same as schema version, kept for compatibility).
 pub const REGISTRY_VERSION: &str = "1.0.0";
 /// Version constants plural alias (required by assignment).
@@ -21,22 +19,22 @@ pub const VERSION: &str = "1.0.0";
 
 /// Fixed registry order — thirteen stable names.
 ///
-/// Each name is the canonical `$id` (`emath.<name>.v1`). The order is
+/// Each name is the canonical `$id` (`emath.<name>`). The order is
 /// the admission order and must not change.
 pub const SCHEMA_NAMES: [&str; 13] = [
-    "emath.source-artifact.v1",
-    "emath.parse-forest.v1",
-    "emath.symbol-signature.v1",
-    "emath.term-ir.v1",
-    "emath.world-ir.v1",
-    "emath.world-morphism.v1",
-    "emath.meaning-lock.v1",
-    "emath.agent-world-proposal.v1",
-    "emath.answer-receipt.v1",
-    "emath.continuation.v1",
-    "emath.interpretation-portfolio.v1",
-    "emath.math-layout-graph.v1",
-    "emath.provenance-receipt.v1",
+    "emath.source-artifact",
+    "emath.parse-forest",
+    "emath.symbol-signature",
+    "emath.term-ir",
+    "emath.world-ir",
+    "emath.world-morphism",
+    "emath.meaning-lock",
+    "emath.agent-world-proposal",
+    "emath.answer-receipt",
+    "emath.continuation",
+    "emath.interpretation-portfolio",
+    "emath.math-layout-graph",
+    "emath.provenance-receipt",
 ];
 
 /// Typed refusal for an unknown schema name.
@@ -122,9 +120,7 @@ fn json_escape(input: &str, out: &mut String) {
 }
 
 fn short_name(id: &str) -> &str {
-    id.strip_prefix("emath.")
-        .and_then(|s| s.strip_suffix(".v1"))
-        .unwrap_or(id)
+    id.strip_prefix("emath.").unwrap_or(id)
 }
 
 fn build_schema_json(name: &str) -> Vec<u8> {
@@ -270,7 +266,6 @@ mod tests {
         assert_eq!(REGISTRY_VERSION, "1.0.0");
         assert_eq!(SCHEMAS_VERSION, "1.0.0");
         assert_eq!(VERSION, "1.0.0");
-        assert_eq!(SCHEMA_SPEC_VERSION, "v1");
     }
 
     #[test]
@@ -351,7 +346,7 @@ mod tests {
 
     #[test]
     fn unknown_names_return_stable_typed_error() {
-        let unknown = "emath.unknown.v1";
+        let unknown = "emath.unknown";
         let err = schema_json(unknown).unwrap_err();
         assert_eq!(err.code(), "E-SCHEMA-001");
         assert_eq!(err.code, "E-SCHEMA-001");
@@ -360,12 +355,7 @@ mod tests {
         let err2 = example_json(unknown).unwrap_err();
         assert_eq!(err2.code(), "E-SCHEMA-001");
         assert_eq!(err2.name(), unknown);
-        for bad in [
-            "",
-            "unknown",
-            "emath.parse-forest.v2",
-            "EMATH.PARSE-FOREST.V1",
-        ] {
+        for bad in ["", "unknown", "emath.parse-forest.x", "EMATH.PARSE-FOREST"] {
             assert!(schema_json(bad).is_err(), "should refuse {bad}");
             assert!(example_json(bad).is_err(), "should refuse {bad}");
             let e = schema_json(bad).unwrap_err();
@@ -394,7 +384,7 @@ mod tests {
         for name in schema_names() {
             assert!(is_known_schema(name));
         }
-        assert!(!is_known_schema("emath.unknown.v1"));
+        assert!(!is_known_schema("emath.unknown"));
         assert!(!is_known_schema(""));
     }
 }
