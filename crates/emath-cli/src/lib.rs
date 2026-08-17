@@ -108,7 +108,8 @@ pub fn plan(path: &PathBuf, json: bool) -> u8 {
     }
 }
 
-/// `build <file> --out <dir> [--verify] [--json]`.
+/// `build <file> [--out <dir>] [--verify] [--json]` (default out:
+/// `target/emath` under the working directory).
 pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
     let options = BuildOptions {
         verify_generated_crate: verify,
@@ -364,9 +365,10 @@ usage:
       deterministic planner inspection: candidates, exclusions, selected
       plan, checks, budget, disposition; --parametric lifts missing
       providers to a compilable Rust trait (Phase 6)
-  emath build <file.emath> --out <dir> [--verify] [--json]
+  emath build <file.emath> [--out <dir>] [--verify] [--json]
       full pipeline; publishes artifact under <dir>/emath/<artifact-id>
-      --verify runs `cargo test` on the staged crate before publish
+      (default out: target/emath) --verify runs `cargo test` on the
+      staged crate before publish
   emath artifact check <dir>
       re-verify every published artifact's fingerprints (independent checker)
   emath import modelica <file.mo> [--json]
@@ -480,15 +482,20 @@ pub fn run(args: &[String]) -> u8 {
                     "--verify" => verify = true,
                     "--json" => json = true,
                     other if other.starts_with('-') => {
-                        return usage("build <file.emath> --out <dir> [--verify] [--json]")
+                        return usage("build <file.emath> [--out <dir>] [--verify] [--json]")
                     }
                     other => path = Some(PathBuf::from(other)),
                 }
                 index += 1;
             }
-            match (path, out) {
-                (Some(spec), Some(out)) => build(&spec, &out, verify, json),
-                _ => usage("build <file.emath> --out <dir> [--verify] [--json]"),
+            match path {
+                Some(spec) => {
+                    // One-command quick run: `emath build <file>` publishes
+                    // under target/emath relative to the working directory.
+                    let out = out.unwrap_or_else(|| PathBuf::from("target/emath"));
+                    build(&spec, &out, verify, json)
+                }
+                None => usage("build <file.emath> [--out <dir>] [--verify] [--json]"),
             }
         }
         "parse" => {
