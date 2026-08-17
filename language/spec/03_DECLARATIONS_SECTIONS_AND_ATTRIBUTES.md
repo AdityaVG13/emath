@@ -12,7 +12,10 @@ The head contains attributes, declaration form, qualified name/generics and kind
 
 ## Section model
 
-A section is a named structured payload:
+A section is a named structured payload. Declare only what you need:
+`outputs:`, `goals:`, `exports:`, and `compile:` are optional. Definitions
+are the surface — an omitted `outputs:` section exposes every definition —
+and an omitted `goals:` section evaluates every definition (see spec 08):
 
 ```emath
 inputs:

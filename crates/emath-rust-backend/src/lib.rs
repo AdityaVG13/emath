@@ -318,7 +318,8 @@ impl BackendInput<'_> {
             }
             if goals.len() > 1 {
                 return Err(BackendError::NoEvaluateGoal(
-                    "Phase 1 supports one evaluate goal per declaration".to_string(),
+                    "multiple evaluate goals per declaration are outside the Phase 1 subset; declare one `goals:` target or split the declaration"
+                        .to_string(),
                 ));
             }
             goals.clear();
@@ -410,18 +411,20 @@ impl BackendInput<'_> {
                         args: eval_args,
                     }),
                 });
-                // Bind each output to the evaluated result so `expect`
-                // expressions can reference outputs by name.
+                // Bind each definition to the evaluated result so `expect`
+                // expressions can reference definitions by name. Definitions
+                // are the surface; declared `outputs:` are a selection of
+                // them (Phase 1: one evaluate goal per declaration).
                 let mut expect_names: Vec<String> = given_names.clone();
-                for output in &declaration.outputs {
-                    if given_names.contains(&output.name) {
+                for definition in declaration.definitions.keys() {
+                    if given_names.contains(definition) {
                         continue;
                     }
                     statements.push(Stmt::Let {
-                        pattern: escape_ident(&output.name),
+                        pattern: escape_ident(definition),
                         value: Box::new(Expr::Var("actual".to_string())),
                     });
-                    expect_names.push(output.name.clone());
+                    expect_names.push(definition.clone());
                 }
                 let expect_program = lower_definition(package, test.expect, &expect_names, &[])
                     .map_err(BackendError::Lowering)?;

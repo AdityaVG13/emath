@@ -746,16 +746,6 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                 continue;
             }
             let name = &target.segments[0];
-            if !outputs_raw.iter().any(|o| &o.name == name) {
-                admitter.error(
-                    "E-NAME-024",
-                    format!(
-                        "definition of `{name}` is not an output (Phase 1 defines outputs only)"
-                    ),
-                    target.source,
-                );
-                continue;
-            }
             if definitions.contains_key(name) {
                 admitter.error(
                     E_DUPLICATE_FIELD,
