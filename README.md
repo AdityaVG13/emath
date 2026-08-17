@@ -104,7 +104,7 @@ emath policy CachePriority:
             method score = score
 ```
 
-The implemented vertical slice covers a scalar subset: a declaration with validated `state`, one checked constructor, scalar `define`d methods, `tests:` blocks, and `host rust` export: compiled and verified end to end as `examples/generated/affine-policy-rs`.
+The implemented vertical slice covers a scalar subset: a declaration with validated `state`, one checked constructor, scalar `define`d methods, `tests:` blocks, and `host rust` export: compiled and verified end to end as `examples/generated/affine-policy`.
 
 ## Core composition
 

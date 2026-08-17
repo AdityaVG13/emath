@@ -35,9 +35,9 @@ mkdir -p "$ARTIFACT_DIR"
 cargo run -q -p emath-cli -- build tests/valid/affine_policy.emath \
     --out "$ARTIFACT_DIR" --verify >/dev/null
 LIB="$(find "$ARTIFACT_DIR/emath" -name lib.rs -path '*/src/lib.rs' | head -n1)"
-if ! diff -u examples/generated/affine-policy-rs/src/lib.rs "$LIB" >/dev/null; then
+if ! diff -u examples/generated/affine-policy/src/lib.rs "$LIB" >/dev/null; then
     echo "FAIL: regenerated src/lib.rs differs from the committed generated crate" >&2
-    diff -u examples/generated/affine-policy-rs/src/lib.rs "$LIB" >&2 || true
+    diff -u examples/generated/affine-policy/src/lib.rs "$LIB" >&2 || true
     exit 1
 fi
 echo "generated crate is byte-identical to committed copy"

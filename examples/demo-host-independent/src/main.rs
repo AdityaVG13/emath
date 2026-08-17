@@ -2,7 +2,7 @@
 //! normal Cargo path dependency, with no build-time pipeline. The committed
 //! bytes must equal regeneration output (validated by `scripts/validate.sh`).
 
-use affine_policy_rs::AffinePolicy;
+use affine_policy::AffinePolicy;
 
 fn main() {
     let policy = AffinePolicy::new(0.5, -2.0).expect("preconditions hold");
