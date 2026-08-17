@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
-/// `AffinePolicy`: a `policy` declaration generated from `.emath`.
+/// `AffineScorer`: a `policy` declaration generated from `.emath`.
 /// Generated deterministically by emath Phase 1; do not edit.
 #[derive(Clone, Debug)]
-pub struct AffinePolicy {
+pub struct AffineScorer {
     scale: f64,
     bias: f64,
 }
@@ -15,8 +15,8 @@ pub enum ConfigError {
     FailedPrecondition,
 }
 
-impl AffinePolicy {
-    /// Construct an `AffinePolicy`; every `require` invariant is checked.
+impl AffineScorer {
+    /// Construct an `AffineScorer`; every `require` invariant is checked.
     pub fn new(scale: f64, bias: f64) -> Result<Self, ConfigError> {
         {
             let __ok0 = !{
@@ -72,9 +72,9 @@ fn score_is_seven() {
         let bias = 4.0;
         let scale = 1.0;
         let x = 3.0;
-        let affine_policy = AffinePolicy::new(scale, bias)
+        let affine_scorer = AffineScorer::new(scale, bias)
             .expect("constructor invariants must hold for this example");
-        let actual = affine_policy.score(x);
+        let actual = affine_scorer.score(x);
         let score = actual;
         assert!({
             let __e0 = score;
@@ -92,9 +92,9 @@ fn fractional_score() {
         let bias = 0.5;
         let scale = 2.0;
         let x = 1.5;
-        let affine_policy = AffinePolicy::new(scale, bias)
+        let affine_scorer = AffineScorer::new(scale, bias)
             .expect("constructor invariants must hold for this example");
-        let actual = affine_policy.score(x);
+        let actual = affine_scorer.score(x);
         let score = actual;
         assert!({
             let __e0 = score;

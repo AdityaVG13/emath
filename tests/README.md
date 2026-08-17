@@ -23,9 +23,9 @@ by crate as \`tests/emath-<crate>/\`.
 ## \`.emath\` fixtures
 
 - \`tests/valid/\` contains \`.emath\` sources expected to parse/admit at the
-  appropriate phase. \`affine_policy.emath\` is the phase-1 vertical-slice
+  appropriate phase. \`affine_scorer.emath\` is the phase-1 vertical-slice
   spec compiled by \`scripts/validate.sh\`, \`scripts/reproducible_lane.sh\`,
-  the \`demo-host\` build script, and \`cargo xtask demo cache-policy\`;
+  the \`demo-host\` build script, and \`cargo xtask demo affine-scorer\`;
   \`square.emath\` is the minimal function example.
 - \`tests/invalid/\` names the required diagnostic in its first comment and is
   exercised by the negative controls in \`scripts/validate.sh\`. These are

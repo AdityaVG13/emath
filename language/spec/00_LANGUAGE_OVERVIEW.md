@@ -10,7 +10,7 @@ emath Kind Name<GenericParameters>:
         content
 ```
 
-The declaration head names the kind directly (`emath policy AffinePolicy:`,
+The declaration head names the kind directly (`emath policy AffineScorer:`,
 `emath function Square<T: Real>:`, `emath kind ScoringPolicyKind:`, or a
 user kind). `emath custom Name:` declares a custom or not-yet-classified
 kind (for example a genesis world). Every spelling lowers to the same

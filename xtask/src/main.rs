@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! emath capstone demos: `cargo xtask demo cache-policy` and
+//! emath capstone demos: `cargo xtask demo affine-scorer` and
 //! `cargo xtask demo semantic-genesis`.
 //!
 //! Both demos run the real compiler pipeline through the `emath` CLI and
@@ -16,46 +16,46 @@ fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let code = if args.first().map(String::as_str) == Some("demo") {
         match args.get(1).map(String::as_str) {
-            Some("cache-policy") => demo_cache_policy(),
+            Some("affine-scorer") => demo_affine_scorer(),
             Some("semantic-genesis") => demo_semantic_genesis(),
             Some("all") => {
-                let cache = demo_cache_policy();
-                if cache != 0 {
-                    cache
+                let slice = demo_affine_scorer();
+                if slice != 0 {
+                    slice
                 } else {
                     demo_semantic_genesis()
                 }
             }
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <cache-policy|semantic-genesis|all>"
+                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|all>"
                 );
                 2
             }
         }
     } else {
-        eprintln!("usage: cargo xtask demo <cache-policy|semantic-genesis|all>");
+        eprintln!("usage: cargo xtask demo <affine-scorer|semantic-genesis|all>");
         2
     };
     std::process::exit(i32::from(code));
 }
 
-fn demo_cache_policy() -> u8 {
-    println!("== demo cache-policy ==");
-    let work = TempWork::new("emath-xtask-cache");
-    match run_demo_cache_policy(work.path()) {
+fn demo_affine_scorer() -> u8 {
+    println!("== demo affine-scorer ==");
+    let work = TempWork::new("emath-xtask-affine");
+    match run_demo_affine_scorer(work.path()) {
         Ok(()) => {
-            println!("cache-policy demo: ok");
+            println!("affine-scorer demo: ok");
             0
         }
         Err(error) => {
-            eprintln!("cache-policy demo FAILED: {error}");
+            eprintln!("affine-scorer demo FAILED: {error}");
             1
         }
     }
 }
 
-fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
+fn run_demo_affine_scorer(work: &Path) -> Result<(), String> {
     let _ = std::fs::remove_dir_all(work);
     std::fs::create_dir_all(work)
         .map_err(|error| format!("cannot create {}: {error}", work.display()))?;
@@ -68,7 +68,7 @@ fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
             "emath-cli",
             "--",
             "build",
-            "tests/valid/affine_policy.emath",
+            "tests/valid/affine_scorer.emath",
             "--out",
             &work.display().to_string(),
             "--verify",

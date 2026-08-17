@@ -1,4 +1,4 @@
-emath policy AffinePolicy:
+emath policy AffineScorer:
     inputs:
         x: Float64
 
@@ -29,18 +29,6 @@ emath policy AffinePolicy:
     exports:
         public constructor new
         public function score
-
-    tests:
-        example score_is_seven:
-            given x = 3.0
-            given scale = 1.0
-            given bias = 4.0
-            expect score == 7.0
-        example fractional_score:
-            given x = 1.5
-            given scale = 2.0
-            given bias = 0.5
-            expect score == 3.5
 
     compile:
         target rust

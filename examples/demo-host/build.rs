@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn main() {
     let spec = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("../../tests/valid/affine_policy.emath");
+        .join("../../tests/valid/affine_scorer.emath");
     assert!(spec.is_file(), "missing spec: {}", spec.display());
     emath_build::emit_rerun_if_changed(&spec);
 
@@ -24,7 +24,7 @@ fn main() {
         .filter(|line| !line.trim_start().starts_with("#!["))
         .collect::<Vec<_>>()
         .join("\n");
-    fs::write(out_dir.join("affine_policy.rs"), stripped).expect("write host copy");
+    fs::write(out_dir.join("affine_scorer.rs"), stripped).expect("write host copy");
 
     // Hand the artifact id to the host via an env var for runtime reporting.
     println!("cargo:rustc-env=EMATH_ARTIFACT_ID={}", report.artifact_id.0);

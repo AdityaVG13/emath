@@ -46,30 +46,30 @@ One name travels through the whole pipeline; every mapping below is
 deterministic and pinned by `scripts/validate.sh` (byte-identical
 regeneration of the committed generated crate).
 
-| Stage | Rule | Example (`affine_policy.emath`) |
+| Stage | Rule | Example (`affine_scorer.emath`) |
 |---|---|---|
-| Source file | snake_case of the program name | `affine_policy.emath` |
-| Declaration | `emath <kind> <Name<Params>>:` | `emath policy AffinePolicy:` |
-| Package identity | first declaration's leaf name (set by `seal`) | `AffinePolicy` |
-| Generated crate | identity sanitized for Cargo: ASCII alphanumerics, `-`, `_`, lowercased | `affinepolicy` |
+| Source file | snake_case of the program name | `affine_scorer.emath` |
+| Declaration | `emath <kind> <Name<Params>>:` | `emath policy AffineScorer:` |
+| Package identity | first declaration's leaf name (set by `seal`) | `AffineScorer` |
+| Generated crate | identity sanitized for Cargo: ASCII alphanumerics, `-`, `_`, lowercased | `affinescorer` |
 | Module | Phase 1 emits the single declaration at the crate root; module boundaries arrive with the package/module loader | crate root |
-| Rust type | declaration name, verbatim | `pub struct AffinePolicy` |
+| Rust type | declaration name, verbatim | `pub struct AffineScorer` |
 | Error type | fixed name | `ConfigError` |
 | Constructor | `public fn new(...)` becomes an associated fn returning `Result<Self, ConfigError>` with every `require` checked | `pub fn new(scale: f64, bias: f64) -> Result<Self, ConfigError>` |
 | Exported definition | `exports:` name, verbatim (identifier-escaped when needed) | `pub fn score(&self, x: f64) -> f64` |
 | Host method | `host rust: implement <Trait>` `method <name>` maps to the trait method | `fn score(...)` in the `impl` |
 | Test fn | `example <name>` → `snake_case(name)` | `#[test] fn score_is_seven()` |
 | Test locals | `given`/`expect` names keep their source spelling | `let x = 3.0;` |
-| Instance binding | `snake_case(declaration name)` | `let affine_policy = AffinePolicy::new(...)` |
+| Instance binding | `snake_case(declaration name)` | `let affine_scorer = AffineScorer::new(...)` |
 
 Notes:
 
 - Curated committed examples keep a human-readable kebab-case crate name
-  (`examples/generated/affine-policy`, `name = "affine-policy"`). They are
+  (`examples/generated/affine-scorer`, `name = "affine-scorer"`). They are
   byte-identical to fresh pipeline output in `src/lib.rs`; the artifact's
   `Cargo.toml` is always pipeline-generated from the identity above.
 - Semantic-genesis worlds emit the fixed crate `semantic-genesis-worlds`.
 - File naming is part of the contract: valid fixtures live under
-  `tests/valid/<program>.emath` (`tests/valid/affine_policy.emath`,
+  `tests/valid/<program>.emath` (`tests/valid/affine_scorer.emath`,
   `tests/valid/square.emath`); invalid fixtures are named by the diagnostic
   they pin.

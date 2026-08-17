@@ -465,7 +465,7 @@ fn render_stmt(code: &mut Code, stmt: &Stmt, tail: bool) {
     match stmt {
         Stmt::Block(block) => render_block(code, block),
         Stmt::Let { pattern, value } => {
-            // A method chain on a call receiver (e.g. `AffinePolicy::new(..)`
+            // A method chain on a call receiver (e.g. `AffineScorer::new(..)`
             // followed by `.expect(..)`) is laid out the way rustfmt lays it
             // out: receiver on the `let` line, chain head on the next line.
             if let Expr::MethodCall {
