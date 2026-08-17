@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SPEC="tests/valid/stateful.emath"
+SPEC="tests/valid/affine_policy.emath"
 test -f "$SPEC"
 
 BASE="${TMPDIR:-/tmp}/emath-lane-$$"

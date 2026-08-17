@@ -32,7 +32,7 @@ echo "no fork-type identifiers in Phase 1 crates or durable schemas"
 echo "== artifact determinism =="
 ARTIFACT_DIR="$TMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"
-cargo run -q -p emath-cli -- build tests/valid/stateful.emath \
+cargo run -q -p emath-cli -- build tests/valid/affine_policy.emath \
     --out "$ARTIFACT_DIR" --verify >/dev/null
 LIB="$(find "$ARTIFACT_DIR/emath" -name lib.rs -path '*/src/lib.rs' | head -n1)"
 if ! diff -u examples/generated/affine-policy-rs/src/lib.rs "$LIB" >/dev/null; then

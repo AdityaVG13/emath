@@ -57,7 +57,7 @@ $ cargo xtask demo all
 
 `cargo xtask demo all` runs both capstones; each prints `ok` and exits 0 on success:
 
-- **cache-policy**: the Phase 1 vertical slice: compiles `tests/valid/stateful.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
+- **cache-policy**: the Phase 1 vertical slice: compiles `tests/valid/affine_policy.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
 - **semantic-genesis**: the G0–G3 pipeline: parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
 
 Exit criteria: both demos reach their final `ok` lines; the command exits 0. The language contract, evidence boundaries, and CLI surface are spelled out in `language/spec/` (start with `language/spec/00_LANGUAGE_OVERVIEW.md`); the test surface is documented in `tests/README.md`; security notes live in `SECURITY.md`.
