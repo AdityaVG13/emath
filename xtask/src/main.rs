@@ -68,7 +68,7 @@ fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
             "emath-cli",
             "--",
             "build",
-            "tests/valid/stateful.emath",
+            "tests/valid/affine_policy.emath",
             "--out",
             &work.display().to_string(),
             "--verify",
