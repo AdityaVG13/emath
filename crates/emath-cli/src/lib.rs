@@ -396,10 +396,12 @@ usage:
       canonical-form check (full formatter is Phase 4)
   emath explain <file.emath> [<symbol>]
       plan-level goal/provider explanation
-  emath run <file.emath> --out <dir>
-      build then execute the generated crate
-  emath test <file.emath> --out <dir>
-      build + run the generated crate's tests (--verify pipeline)
+  emath run <file.emath> [--out <dir>]
+      build then execute the generated crate (default out: target/emath;
+      library crates execute their example tests)
+  emath test <file.emath> [--out <dir>]
+      build + run the generated crate's tests (--verify pipeline;
+      default out: target/emath)
   emath bench <file.emath>
       typed refusal: benchmark harness is Phase 4+ (E-TLT-004)
   emath verify <artifact-dir>
