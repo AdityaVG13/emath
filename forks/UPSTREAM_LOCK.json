@@ -1,0 +1,142 @@
+{
+  "schema": "emath.upstream-lock",
+  "generated_at": "2026-08-17",
+  "policy": "Commits are immutable reproducibility inputs. Branches are metadata only. This file is the shipped upstream lock (the one tracked fork artifact); all other forks/ material is local-only.",
+  "repositories": [
+    {
+      "id": "rumoca",
+      "repository": "https://github.com/CogniPilot/rumoca.git",
+      "branch": "main",
+      "commit": "5bafcd90f3410654f258fded7783ca493c3f4a77",
+      "license": "Apache-2.0",
+      "role": "structural compiler substrate",
+      "required": "core"
+    },
+    {
+      "id": "dew",
+      "repository": "https://github.com/rhi-zone/dew.git",
+      "branch": "master",
+      "commit": "0dd40dd1c374cb05d26e0d5c2b0746a217bf93ab",
+      "license": "MIT OR Apache-2.0",
+      "role": "expression/codegen/JIT substrate",
+      "required": "core"
+    },
+    {
+      "id": "wrenfold",
+      "repository": "https://github.com/wrenfold/wrenfold.git",
+      "branch": "main",
+      "commit": "67fec54f206486cbe4a722397f5cda9ebf3bed6d",
+      "license": "MIT",
+      "role": "optional symbolic provider and differential oracle",
+      "required": "optional"
+    },
+    {
+      "id": "modelica-standard-library",
+      "repository": "https://github.com/modelica/ModelicaStandardLibrary.git",
+      "branch": "master",
+      "commit": "b756f9deed7d7f348cc0bb702b4e5b8eb83affed",
+      "license": "BSD-3-Clause",
+      "role": "Modelica compatibility and scientific corpus",
+      "required": "conformance"
+    },
+    {
+      "id": "frankensim",
+      "repository": "https://github.com/Dicklesworthstone/frankensim.git",
+      "branch": "main",
+      "commit": "1a09afc017e337e0168f53efd85adfb20b1e9733",
+      "license": "custom; user approved for project",
+      "role": "simulation/operator/certified numerics provider",
+      "required": "optional"
+    },
+    {
+      "id": "frankenjax",
+      "repository": "https://github.com/Dicklesworthstone/frankenjax.git",
+      "branch": "main",
+      "commit": "ca09461736e38a76f65423e8681ac681335a6858",
+      "license": "custom; user approved for project",
+      "role": "tensor/AD/transform provider",
+      "required": "optional"
+    },
+    {
+      "id": "franken-numpy",
+      "repository": "https://github.com/Dicklesworthstone/franken_numpy.git",
+      "branch": "main",
+      "commit": "44ea328323168d5297c6a557f2cd43a22dc591dc",
+      "license": "custom; user approved for project",
+      "role": "array/dtype semantics provider",
+      "required": "optional"
+    },
+    {
+      "id": "frankenscipy",
+      "repository": "https://github.com/Dicklesworthstone/frankenscipy.git",
+      "branch": "main",
+      "commit": "7f22817b722330478f2a14f1626b45e9746b52c7",
+      "license": "custom; user approved for project",
+      "role": "numerical solver provider",
+      "required": "optional"
+    },
+    {
+      "id": "franken-lean",
+      "repository": "https://github.com/Dicklesworthstone/franken_lean.git",
+      "branch": "main",
+      "commit": "9e469e9ae18f9912e8c8163bd5aceaac15426d6b",
+      "license": "custom; user approved for project",
+      "role": "proof/kernel evidence provider",
+      "required": "optional"
+    },
+    {
+      "id": "franken-engine",
+      "repository": "https://github.com/Dicklesworthstone/franken_engine.git",
+      "branch": "main",
+      "commit": "c946a83278f4cc542a822d9720cfa5fc57c78c8a",
+      "license": "custom; user approved for project",
+      "role": "runtime/replay/evidence/promotion provider",
+      "required": "optional"
+    },
+    {
+      "id": "asupersync",
+      "repository": "https://github.com/Dicklesworthstone/asupersync.git",
+      "branch": "main",
+      "commit": "f0270d53c65d48696f79e6860370ffdc8fe735fd",
+      "license": "custom; user approved for project",
+      "role": "async runtime doctrine (tokio replacement); structured concurrency",
+      "required": "optional"
+    },
+    {
+      "id": "frankensqlite",
+      "repository": "https://github.com/Dicklesworthstone/frankensqlite.git",
+      "branch": "main",
+      "commit": "e705df6960d8a22bb19d12a36d6534116b4b4cd5",
+      "license": "custom; user approved for project",
+      "role": "storage doctrine (SQLite replacement); MVCC + compatibility modes",
+      "required": "optional"
+    },
+    {
+      "id": "frankengraphdb",
+      "repository": "https://github.com/Dicklesworthstone/frankengraphdb.git",
+      "branch": "main",
+      "commit": "26b579de45a8d9ff439298982beda8e3b1e40217",
+      "license": "custom; user approved for project",
+      "role": "provenance/evidence graph (goal -> plan -> artifact)",
+      "required": "optional"
+    },
+    {
+      "id": "frankensearch",
+      "repository": "https://github.com/Dicklesworthstone/frankensearch.git",
+      "branch": "main",
+      "commit": "33ef37a4c663535b832ae057b5c36296215e41f4",
+      "license": "custom; user approved for project",
+      "role": "artifact corpus search (hybrid lexical + semantic)",
+      "required": "optional"
+    },
+    {
+      "id": "franken-networkx",
+      "repository": "https://github.com/Dicklesworthstone/franken_networkx.git",
+      "branch": "main",
+      "commit": "17f7e18e943ebde8f6b54c2284518d6576adda6e",
+      "license": "custom; user approved for project",
+      "role": "deterministic graph-algorithm parity surface (optional profile)",
+      "required": "optional"
+    }
+  ]
+}
