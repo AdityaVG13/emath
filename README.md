@@ -166,7 +166,11 @@ emath world show / portfolio show introspection
 emath architecture / help         stable docs entry
 ```
 
-Planned (see `language/spec/11_DIAGNOSTICS_AND_TOOLING_CONTRACT.md`): `new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `migrate`, `doctor`, `vendor`, `provider list|inspect|test`.
+Also implemented: `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed
+refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`,
+`vendor`, `provider list|inspect|test`, `fork status|sync`, `agent
+check|plan|build`, and `import modelica`. Planned
+(see `language/spec/11_DIAGNOSTICS_AND_TOOLING_CONTRACT.md`): `migrate`.
 
 ## The provider model
 
@@ -182,22 +186,25 @@ model, artifact format, and runtime outcome contract. For anything that is
 already done well elsewhere, emath calls out to it through an adapter rather
 than duplicating it. We build our own thing on top of theirs.
 
-Available and planned adapters:
+Adapters, honest status (Phase 1 is std-only; no upstream engine is
+consumed yet — the in-tree adapter crates ship native stand-ins):
 
 ```text
-Dew                 expression optimization, Rust codegen, JIT, GPU backends
-Rumoca              component models, equations, flattening, DAE analysis
-Wrenfold            optional symbolic oracle and code-generation reference
-FrankenJAX          tensors, automatic differentiation, transforms
-FrankenSciPy        numerical solvers, optimization, integration
-FrankenSim          operator graphs, kernels, certified numerical paths
-FrankenLean         optional theorem and proof evidence
-native providers    exact arithmetic, intervals, search, basic numerics
+Dew (in-tree)          scalar strict-f64 mapping + Rust source/token backends
+Rumoca (in-tree)       Modelica subset scan + native structural/DAE/Euler
+Wrenfold               planned (Phase 2+ symbolic oracle adapter)
+FrankenJAX             planned (tensors, autodiff, transforms)
+FrankenSciPy           planned (solvers, optimization, integration)
+FrankenSim             planned (operator graphs, kernels, certified numerics)
+FrankenLean            planned (theorem and proof evidence)
+native providers       exact arithmetic, intervals, search, basic numerics
 ```
 
-Providers are pinned dependencies behind adapters (Phase 2+). They do not
-define emath's public semantics, and no upstream internals appear in emath's
-stable public IR.
+Upstream engines (Dew JIT/GPU, the full Rumoca compiler, Wrenfold,
+Franken*) are pinned dependencies behind adapters in Phase 2+ — never
+presented as implemented before then. They do not define emath's public
+semantics, and no upstream internals appear in emath's stable public IR.
+See `emath provider list` for the machine-readable status table.
 
 ## Why Rust
 
