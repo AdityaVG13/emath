@@ -44,7 +44,7 @@ pub fn fake_source() -> String {
 
 pub fn fresh_manifest() -> ArtifactManifest {
     ArtifactManifest {
-        schema: SchemaId("emath.artifact.v1".into()),
+        schema: SchemaId("emath.artifact".into()),
         artifact_id: ContentId("unset".into()),
         class: ArtifactClass::Native,
         source_package: source_package(),
@@ -75,7 +75,7 @@ pub fn write_fake_artifact(root: &std::path::Path, source: &str) {
     std::fs::create_dir_all(root.join("emath")).expect("create emath dir");
 
     let source_map = SourceMap {
-        schema: SchemaId("emath.source-map.v1".into()),
+        schema: SchemaId("emath.source-map".into()),
         source_package: source_package(),
         entries: vec![SourceMapEntry {
             file: 0,
@@ -93,7 +93,7 @@ pub fn write_fake_artifact(root: &std::path::Path, source: &str) {
     let source_map_text = write_source_map(&source_map);
 
     let plan = PlanRecord {
-        schema: SchemaId("emath.resolution-plan.v1".into()),
+        schema: SchemaId("emath.resolution-plan".into()),
         plan_id: content_id_of_str("emath-checker-identity/plan"),
         goal: 0,
         policy: "native-everything".to_string(),
@@ -109,7 +109,7 @@ pub fn write_fake_artifact(root: &std::path::Path, source: &str) {
     let plan_text = write_resolution_plan(&plan);
 
     let evidence = EvidenceBundleRecord {
-        schema: SchemaId("emath.evidence-bundle.v1".into()),
+        schema: SchemaId("emath.evidence-bundle".into()),
         bundle_id: content_id_of_str("emath-checker-identity/evidence"),
         source_package: source_package(),
         resolution_plan: content_id_of_str(&plan_text),

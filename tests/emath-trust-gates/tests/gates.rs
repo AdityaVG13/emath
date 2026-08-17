@@ -261,7 +261,7 @@ fn plugin(capabilities: Vec<&str>, permissions: Vec<&str>) -> PluginDescriptor {
     PluginDescriptor {
         id: "plugin-1".to_string(),
         kind: "evaluate".to_string(),
-        interface_core: "emath.plugin.v1".to_string(),
+        interface_core: "emath.plugin.interface".to_string(),
         capabilities: capabilities.into_iter().map(str::to_string).collect(),
         sandbox: SandboxPolicy {
             fuel: Some(1000),

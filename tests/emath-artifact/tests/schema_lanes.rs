@@ -11,7 +11,7 @@ use emath_core::{SchemaId, content_id_of_str};
 
 fn sample_source_map() -> SourceMap {
     SourceMap {
-        schema: SchemaId("emath.source-map.v1".into()),
+        schema: SchemaId("emath.source-map".into()),
         source_package: content_id_of_str("schema-lanes-source"),
         entries: vec![SourceMapEntry {
             file: 0,
@@ -34,7 +34,7 @@ fn sample_source_map() -> SourceMap {
 fn artifact_source_map_round_trips_against_its_own_schema() {
     let map = sample_source_map();
     let doc = write_source_map(&map);
-    assert!(doc.contains("\"schema\": \"emath.source-map.v1\""));
+    assert!(doc.contains("\"schema\": \"emath.source-map\""));
     let parsed = source_map_from_json(&doc).expect("artifact source map must parse back");
     assert_eq!(parsed, map);
 }
@@ -46,14 +46,14 @@ fn artifact_source_map_round_trips_against_its_own_schema() {
 fn generated_crate_source_map_round_trips_and_cross_load_is_refused() {
     let files = vec!["Cargo.toml".to_string(), "src/lib.rs".to_string()];
     let doc = write_generated_crate_source_map("/tmp/genesis/example.emath", &files);
-    assert!(doc.contains("\"schema\": \"emath.generated-crate-source-map.v1\""));
+    assert!(doc.contains("\"schema\": \"emath.generated-crate-source-map\""));
     assert!(doc.contains("\"kind\":\"parametric-world\""));
 
     let parsed = emath_artifact::generated_crate_source_map_from_json(&doc)
         .expect("generated-crate map must parse back per its own schema");
     assert_eq!(
         parsed.schema,
-        SchemaId("emath.generated-crate-source-map.v1".into())
+        SchemaId("emath.generated-crate-source-map".into())
     );
     assert_eq!(parsed.source, "/tmp/genesis/example.emath");
     assert_eq!(
@@ -94,10 +94,10 @@ fn cross_schema_loading_is_refused_both_directions() {
 #[test]
 fn resolution_plan_round_trips_against_its_own_schema() {
     let plan = PlanRecord {
-        schema: SchemaId("emath.resolution-plan.v1".into()),
+        schema: SchemaId("emath.resolution-plan".into()),
         plan_id: content_id_of_str("schema-lanes-plan"),
         goal: 0,
-        policy: "native-deterministic.v1".to_string(),
+        policy: "native-deterministic".to_string(),
         artifact_class: "native".to_string(),
         operations: vec![OperationRecord {
             node: 0,
@@ -108,7 +108,7 @@ fn resolution_plan_round_trips_against_its_own_schema() {
         excluded_candidates: vec![("phase2.expression".to_string(), "not installed".to_string())],
     };
     let doc = write_resolution_plan(&plan);
-    assert!(doc.contains("\"schema\": \"emath.resolution-plan.v1\""));
+    assert!(doc.contains("\"schema\": \"emath.resolution-plan\""));
     let parsed = emath_artifact::plan_from_json(&doc).expect("plan must parse back");
     assert_eq!(parsed, plan);
 }
