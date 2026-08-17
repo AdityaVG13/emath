@@ -95,11 +95,11 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
     let mut files_verified = 0_u64;
 
     // 1. Manifest schema PIN.
-    if input.manifest.schema.0 != "emath.artifact.v1" {
+    if input.manifest.schema.0 != "emath.artifact" {
         issues.push(issue(
             "E-EVID-108",
             format!(
-                "manifest schema is {}, expected emath.artifact.v1",
+                "manifest schema is {}, expected emath.artifact",
                 input.manifest.schema.0
             ),
         ));
@@ -210,11 +210,11 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
     }
 
     // 6. Source-map consistency.
-    if input.source_map.schema.0 != "emath.source-map.v1" {
+    if input.source_map.schema.0 != "emath.source-map" {
         issues.push(issue(
             "E-EVID-110",
             format!(
-                "source-map schema is {}, expected emath.source-map.v1",
+                "source-map schema is {}, expected emath.source-map",
                 input.source_map.schema.0
             ),
         ));
@@ -334,21 +334,21 @@ pub fn artifact_input_from_dir(root: &Path) -> Result<ArtifactInput, CheckerErro
     let manifest = manifest_from_json(&manifest_json).map_err(|error| {
         CheckerError::new(
             "E-EVID-108",
-            format!("emath/artifact-manifest.json does not conform to emath.artifact.v1: {error}"),
+            format!("emath/artifact-manifest.json does not conform to emath.artifact: {error}"),
         )
     })?;
     let source_map =
         source_map_from_json(&requirement("emath/source-map.json")?).map_err(|error| {
             CheckerError::new(
                 "E-EVID-108",
-                format!("emath/source-map.json does not conform to emath.source-map.v1: {error}"),
+                format!("emath/source-map.json does not conform to emath.source-map: {error}"),
             )
         })?;
     let plan = plan_from_json(&requirement("emath/resolution-plan.json")?).map_err(|error| {
         CheckerError::new(
             "E-EVID-108",
             format!(
-                "emath/resolution-plan.json does not conform to emath.resolution-plan.v1: {error}"
+                "emath/resolution-plan.json does not conform to emath.resolution-plan: {error}"
             ),
         )
     })?;
@@ -357,7 +357,7 @@ pub fn artifact_input_from_dir(root: &Path) -> Result<ArtifactInput, CheckerErro
             CheckerError::new(
                 "E-EVID-108",
                 format!(
-                    "emath/evidence-bundle.json does not conform to emath.evidence-bundle.v1: {error}"
+                    "emath/evidence-bundle.json does not conform to emath.evidence-bundle: {error}"
                 ),
             )
         },

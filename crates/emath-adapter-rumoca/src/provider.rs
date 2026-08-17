@@ -18,7 +18,7 @@ use crate::structural::{EqExpr, StructuralModel};
 pub fn provide_dae_plan(model: &StructuralModel, budget: &Budget) -> Outcome<DaePlan, LowerError> {
     let evaluations = u64::try_from(model.equations.len()).unwrap_or(u64::MAX);
     let evidence = EvidenceHandle {
-        schema: SchemaId("emath.structural-plan.v1".into()),
+        schema: SchemaId("emath.structural-plan".into()),
         identity: ContentId("fnv1a64:0000000000000000".into()),
     };
     if evaluations > budget.evaluations {
@@ -26,7 +26,7 @@ pub fn provide_dae_plan(model: &StructuralModel, budget: &Budget) -> Outcome<Dae
             reason: UnresolvedReason::BudgetExhausted,
             partial: None,
             continuation: Some(ContinuationHandle {
-                schema: SchemaId("emath.structural-plan.v1".into()),
+                schema: SchemaId("emath.structural-plan".into()),
                 identity: ContentId("fnv1a64:0000000000000000".into()),
                 provider_id: "emath-native-causalizer".into(),
             }),
@@ -51,7 +51,7 @@ pub fn provide_dae_plan(model: &StructuralModel, budget: &Budget) -> Outcome<Dae
             Outcome::Resolved {
                 value: plan,
                 evidence: EvidenceHandle {
-                    schema: SchemaId("emath.structural-plan.v1".into()),
+                    schema: SchemaId("emath.structural-plan".into()),
                     identity,
                 },
             }
@@ -175,12 +175,12 @@ pub fn simulate(
     budget: &Budget,
 ) -> Outcome<SimulationResult, SimError> {
     let continuation = || ContinuationHandle {
-        schema: SchemaId("emath.simulation.v1".into()),
+        schema: SchemaId("emath.simulation".into()),
         identity: ContentId(DEFAULT_SEAL.into()),
         provider_id: "emath-native-euler".into(),
     };
     let evidence = || EvidenceHandle {
-        schema: SchemaId("emath.simulation.v1".into()),
+        schema: SchemaId("emath.simulation".into()),
         identity: ContentId(DEFAULT_SEAL.into()),
     };
 
@@ -387,7 +387,7 @@ pub fn simulate(
     Outcome::Resolved {
         value: sealed,
         evidence: EvidenceHandle {
-            schema: SchemaId("emath.simulation.v1".into()),
+            schema: SchemaId("emath.simulation".into()),
             identity,
         },
     }

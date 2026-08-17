@@ -238,7 +238,7 @@ fn emit(
     anchors: &mut Vec<(usize, String)>,
     next: &mut usize,
 ) -> Result<String, String> {
-    let name = format!("v{next}");
+    let name = format!("t{next}");
     *next += 1;
     let stmt = match expr {
         DewExpr::Float64Bits(bits) => format!("let {name}: f64 = f64::from_bits({bits:#018x});"),
@@ -497,7 +497,7 @@ mod tests {
         let expr = DewExpr::Var("temperature".into());
         let fragment = render_rust_fragment(&expr).expect("valid expression renders");
         assert!(
-            fragment.text.contains("let v0: f64 = temperature;"),
+            fragment.text.contains("let t0: f64 = temperature;"),
             "{}",
             fragment.text
         );

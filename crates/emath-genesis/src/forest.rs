@@ -445,13 +445,13 @@ impl ParseForest {
         self.holes.clone()
     }
 
-    /// Deterministic `parse-forest.json` body (`emath.parse-forest.v1`).
+    /// Deterministic `parse-forest.json` body (`emath.parse-forest`).
     #[must_use]
     pub fn canonical_json(&self) -> String {
         let mut out = String::new();
         let _ = write!(
             out,
-            "{{\"schema\":\"emath.parse-forest.v1\",\"world_name\":\"{}\",\"body\":\"{}\",\"parse_id\":{},\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
+            "{{\"schema\":\"emath.parse-forest\",\"world_name\":\"{}\",\"body\":\"{}\",\"parse_id\":{},\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
             json_escape(&self.world_name),
             json_escape(&self.body),
             self.parse_id,
@@ -491,7 +491,7 @@ impl ParseForest {
         let mut out = String::new();
         let _ = write!(
             out,
-            "{{\"schema\":\"emath.parse-forest.v1\",\"world_name\":\"{}\",\"body\":\"{}\",\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
+            "{{\"schema\":\"emath.parse-forest\",\"world_name\":\"{}\",\"body\":\"{}\",\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
             json_escape(&self.world_name),
             json_escape(&self.body),
             self.ambiguity_count,
@@ -522,13 +522,13 @@ impl ParseForest {
 }
 
 impl SignatureInference {
-    /// Deterministic `signature.json` body (`emath.signature.v1`).
+    /// Deterministic `signature.json` body (`emath.signature`).
     #[must_use]
     pub fn canonical_json(&self) -> String {
         let mut out = String::new();
         let _ = write!(
             out,
-            "{{\"schema\":\"emath.signature.v1\",\"world_name\":\"{}\",\"signature_id\":{},\"arities\":{{",
+            "{{\"schema\":\"emath.signature\",\"world_name\":\"{}\",\"signature_id\":{},\"arities\":{{",
             json_escape(&self.world_name),
             self.signature_id
         );
@@ -583,7 +583,7 @@ impl SignatureInference {
         let mut out = String::new();
         let _ = write!(
             out,
-            "{{\"schema\":\"emath.signature.v1\",\"world_name\":\"{}\",\"arities\":{{",
+            "{{\"schema\":\"emath.signature\",\"world_name\":\"{}\",\"arities\":{{",
             json_escape(&self.world_name)
         );
         for (index, (symbol, arity)) in self.signature.iter().enumerate() {

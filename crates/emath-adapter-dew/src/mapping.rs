@@ -27,7 +27,7 @@ pub struct SourceMapEntry {
 #[must_use]
 pub fn build_source_map(package: &SemanticPackage, root: ExprId) -> Vec<SourceMapEntry> {
     let mut entries = Vec::new();
-    walk(package, root, "root", "v0", &mut entries);
+    walk(package, root, "root", "t0", &mut entries);
     entries.sort_by_key(|entry| (entry.sir_node, entry.dew_path.clone()));
     entries
 }

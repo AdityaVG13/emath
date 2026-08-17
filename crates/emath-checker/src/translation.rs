@@ -153,7 +153,7 @@ pub fn check_witness(
 #[must_use]
 pub fn witness_identity(witness: &EquivalenceWitness) -> emath_core::ContentId {
     identity_of(&format!(
-        "witness:v1:{}:{}",
+        "witness:{}:{}",
         witness.relation_footprint, witness.sample_footprint
     ))
 }

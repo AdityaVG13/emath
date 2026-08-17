@@ -37,7 +37,7 @@ impl Default for PlannerConfig {
             max_candidates: 8,
             max_nodes: 16,
             tie_break: TieBreak::CostAscendingId,
-            policy: "deterministic-planner.v1".to_string(),
+            policy: "deterministic-planner".to_string(),
         }
     }
 }
@@ -328,7 +328,7 @@ fn build_plan(
     );
     let identity = plan_identity_here(config, provider_id, goal, &nodes.len().to_string());
     let plan = ResolutionPlan {
-        schema: SchemaId("emath.resolution-plan.v1".into()),
+        schema: SchemaId("emath.resolution-plan".into()),
         plan_id: identity,
         goal,
         policy: config.policy.clone(),
@@ -337,7 +337,7 @@ fn build_plan(
         root: admit,
         excluded_candidates: Vec::new(),
     };
-    (plan, vec!["sir-checker.v1".to_string()])
+    (plan, vec!["sir-checker".to_string()])
 }
 
 /// Deterministic plan identity seed (see identity.rs for the full binding).
@@ -437,7 +437,7 @@ mod tests {
                 }],
                 exactness: vec!["exact".into()],
                 failure_modes: vec![],
-                checker_bindings: vec!["sir-checker.v1".into()],
+                checker_bindings: vec!["sir-checker".into()],
             }],
             isolation: ProviderIsolation::Static,
             lock: ProviderLock::Unlocked,
