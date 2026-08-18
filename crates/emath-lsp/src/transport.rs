@@ -106,10 +106,16 @@ impl fmt::Display for TransportError {
         match self {
             Self::Io(error) => write!(f, "transport io error: {error}"),
             Self::Frame(message) => write!(f, "transport frame error: {message}"),
-            Self::BodyTooLarge { length, max } => {
-                write!(f, "frame body {length} bytes exceeds the {max} byte limit")
-            }
-            Self::Cancelled => f.write_str("transport cancelled"),
+            Self::BodyTooLarge { length, max } => write!(
+                f,
+                "frame body {length} bytes exceeds the {max}-byte ({} MiB) per-frame cap; \
+                 the Content-Length header is refused before any allocation",
+                max / (1024 * 1024)
+            ),
+            Self::Cancelled => f.write_str(
+                "transport cancelled: the owning region was aborted or closed; \
+                 no further frames are processed",
+            ),
         }
     }
 }
