@@ -8,7 +8,15 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Async-runtime lane for the tokio → asupersync cutover (pass 2).
+# Optional by design: the default build stays std-only and dependency-free;
+# this feature is the single gate under which emath-lsp may pull the pinned
+# asupersync git revision and expose the Cx/lab runtime entry (`lab` module).
+async-runtime = ["dep:asupersync"]
+
 [dependencies]
 emath-core = { path = "../emath-core" }
 emath-sema = { path = "../emath-sema" }
 emath-syntax = { path = "../emath-syntax" }
+asupersync = { workspace = true, optional = true, features = ["test-internals"] }
