@@ -15,6 +15,7 @@ use emath_build::{BuildOptions, build_file, generated_crate_target_dir, run_carg
 use emath_core::content_id_of_str;
 use emath_sema::session::CompilerSession;
 
+use crate::catalog;
 use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, artifact_check, print_diagnostics};
 
 /// Relative path of the committed upstream lock file (repo layout).
@@ -227,6 +228,36 @@ fn explain_cmd(args: &[String]) -> u8 {
     if result.diagnostics.has_errors() {
         return EXIT_REFUSED;
     }
+    let json = catalog::wants_json(args);
+    if json {
+        let mut object = JsonWriter::object();
+        object.string("schema", "emath.explain");
+        object.string("file", &file);
+        object.int("goals", result.package.goals.len() as u64);
+        object.int("plans", result.plans.len() as u64);
+        let mut goals = Vec::new();
+        for goal in &result.package.goals {
+            goals.push(format!("{} {}", goal.kind.as_str(), goal.target));
+        }
+        object.strings("goals", &goals);
+        let mut plans = Vec::new();
+        for plan in &result.plans {
+            plans.push(format!(
+                "{} policy={} class={}",
+                plan.plan_id.0, plan.policy, plan.artifact_class
+            ));
+        }
+        object.strings("plans", &plans);
+        if let Some(symbol) = symbol {
+            object.string("symbol", &symbol);
+            object.string(
+                "symbol_note",
+                "declaration indexing is Phase 4+; goals are the available evidence",
+            );
+        }
+        println!("{}", object.finish());
+        return EXIT_OK;
+    }
     for goal in &result.package.goals {
         println!(
             "explain: goal `{} {}` -> deterministic native plan",
@@ -413,6 +444,7 @@ fn inspect_cmd(args: &[String]) -> u8 {
         return EXIT_USAGE;
     };
     let mut inspected = 0;
+    let mut manifests = Vec::new();
     for entry in entries.flatten() {
         if !entry.path().is_dir() {
             continue;
@@ -435,13 +467,25 @@ fn inspect_cmd(args: &[String]) -> u8 {
             );
             return EXIT_REFUSED;
         };
-        println!("artifact {}:", entry.file_name().to_string_lossy());
-        println!("{text}");
+        if catalog::wants_json(args) {
+            manifests.push(text);
+        } else {
+            println!("artifact {}:", entry.file_name().to_string_lossy());
+            println!("{text}");
+        }
         inspected += 1;
     }
     if inspected == 0 {
         eprintln!("error: E-TLT-005: no artifacts under {}", root.display());
         EXIT_USAGE
+    } else if catalog::wants_json(args) {
+        let mut object = JsonWriter::object();
+        object.string("schema", "emath.inspect");
+        object.string("dir", &dir.display().to_string());
+        object.int("count", inspected as u64);
+        object.object_field("manifests", &format!("[\n{}\n  ]", manifests.join(",\n")));
+        println!("{}", object.finish());
+        EXIT_OK
     } else {
         EXIT_OK
     }
@@ -460,15 +504,22 @@ fn diff_cmd(args: &[String]) -> u8 {
     let id_b = fingerprint(b);
     match (id_a, id_b) {
         (Ok(id_a), Ok(id_b)) => {
-            println!("diff: {a} {}", id_a.0);
-            println!("diff: {b} {}", id_b.0);
-            if id_a == id_b {
-                println!("diff: identical");
-                EXIT_OK
+            let identical = id_a == id_b;
+            if catalog::wants_json(args) {
+                let mut object = JsonWriter::object();
+                object.string("schema", "emath.diff");
+                object.string("a", a);
+                object.string("a_id", &id_a.0);
+                object.string("b", b);
+                object.string("b_id", &id_b.0);
+                object.bool("identical", identical);
+                println!("{}", object.finish());
             } else {
-                println!("diff: differ");
-                EXIT_REFUSED
+                println!("diff: {a} {}", id_a.0);
+                println!("diff: {b} {}", id_b.0);
+                println!("diff: {}", if identical { "identical" } else { "differ" });
             }
+            if identical { EXIT_OK } else { EXIT_REFUSED }
         }
         (Err(()), _) | (_, Err(())) => EXIT_REFUSED,
     }
@@ -511,13 +562,39 @@ fn doctor_cmd(args: &[String]) -> u8 {
         ("clippy", "cargo clippy --version"),
     ];
     let mut ok = true;
+    let mut rows = Vec::new();
     for (name, probe) in checks {
-        if let Some(version) = probe_program(probe) {
-            println!("doctor: {name}: ok ({version})");
-        } else {
-            println!("doctor: {name}: MISSING");
-            ok = false;
+        match probe_program(probe) {
+            Some(version) => {
+                if catalog::wants_json(args) {
+                    let mut row = JsonWriter::object();
+                    row.string("name", name);
+                    row.bool("ok", true);
+                    row.string("version", &version);
+                    rows.push(row.finish().trim().to_string());
+                } else {
+                    println!("doctor: {name}: ok ({version})");
+                }
+            }
+            None => {
+                if catalog::wants_json(args) {
+                    let mut row = JsonWriter::object();
+                    row.string("name", name);
+                    row.bool("ok", false);
+                    rows.push(row.finish().trim().to_string());
+                } else {
+                    println!("doctor: {name}: MISSING");
+                }
+                ok = false;
+            }
         }
+    }
+    if catalog::wants_json(args) {
+        let mut object = JsonWriter::object();
+        object.string("schema", "emath.doctor");
+        object.bool("ok", ok);
+        object.object_field("checks", &format!("[\n{}\n  ]", rows.join(",\n")));
+        println!("{}", object.finish());
     }
     if ok { EXIT_OK } else { EXIT_REFUSED }
 }
@@ -592,8 +669,23 @@ fn provider_cmd(args: &[String]) -> u8 {
     };
     match sub.as_str() {
         "list" => {
-            for (id, capability, status) in PROVIDERS {
-                println!("provider {id}: {capability} [{status}]");
+            if catalog::wants_json(args) {
+                let mut rows = Vec::new();
+                for (id, capability, status) in PROVIDERS {
+                    let mut row = JsonWriter::object();
+                    row.string("id", id);
+                    row.string("capability", capability);
+                    row.string("status", status);
+                    rows.push(row.finish().trim().to_string());
+                }
+                let mut object = JsonWriter::object();
+                object.string("schema", "emath.provider-list");
+                object.object_field("providers", &format!("[\n{}\n  ]", rows.join(",\n")));
+                println!("{}", object.finish());
+            } else {
+                for (id, capability, status) in PROVIDERS {
+                    println!("provider {id}: {capability} [{status}]");
+                }
             }
             EXIT_OK
         }
@@ -605,6 +697,9 @@ fn provider_cmd(args: &[String]) -> u8 {
                 PROVIDERS.iter().find(|(candidate, _, _)| candidate == id)
             else {
                 eprintln!("error: E-TLT-016: unknown provider `{id}`");
+                if let Some(hint) = suggest_provider(id) {
+                    eprintln!("did you mean `emath provider inspect {hint}`?");
+                }
                 return EXIT_USAGE;
             };
             let mut object = JsonWriter::object();
@@ -666,8 +761,20 @@ fn fork_cmd(args: &[String]) -> u8 {
     };
     match sub.as_str() {
         "status" => {
-            for id in lock_ids(&text) {
-                println!("fork {id}: pinned (lock {})", content_id_of_str(&text).0);
+            let ids = lock_ids(&text);
+            let lock_id = content_id_of_str(&text).0;
+            if catalog::wants_json(args) {
+                let mut object = JsonWriter::object();
+                object.string("schema", "emath.fork-status");
+                object.string("lock_id", &lock_id);
+                object.int("pins", ids.len() as u64);
+                object.strings("ids", &ids);
+                object.bool("offline", true);
+                println!("{}", object.finish());
+            } else {
+                for id in ids {
+                    println!("fork {id}: pinned (lock {lock_id})");
+                }
             }
             EXIT_OK
         }
@@ -708,11 +815,12 @@ fn lock_ids(text: &str) -> Vec<String> {
 /// it renders the same session/build results as the interactive commands.
 fn agent_cmd(args: &[String]) -> u8 {
     let Some(sub) = args.first() else {
-        return usage("agent check|plan|build <file.emath> [--out <dir>]");
+        return usage("agent check|plan|build|triage <file.emath> [--out <dir>]");
     };
     let positional = positional_args(&args[1..]);
     let file = positional.first();
     match sub.as_str() {
+        "triage" => agent_triage_cmd(file, args),
         "check" => {
             let Some(file) = file else {
                 return usage("agent check <file.emath>");
@@ -803,7 +911,7 @@ fn agent_cmd(args: &[String]) -> u8 {
                 }
             }
         }
-        _ => usage("agent check|plan|build <file.emath> [--out <dir>]"),
+        _ => usage("agent check|plan|build|triage <file.emath> [--out <dir>]"),
     }
 }
 
@@ -824,6 +932,85 @@ fn run_check(path: &str) -> (emath_core::Diagnostics, String) {
     };
     let result = session.check(package.file);
     (result.diagnostics, result.package.content_id().0)
+}
+
+fn agent_triage_cmd(file: Option<&String>, _args: &[String]) -> u8 {
+    let Some(file) = file else {
+        return usage("agent triage <file.emath>");
+    };
+    let checks = [
+        ("rustc", "rustc --version"),
+        ("cargo", "cargo --version"),
+        ("rustfmt", "rustfmt --version"),
+        ("clippy", "cargo clippy --version"),
+    ];
+    let mut doctor_ok = true;
+    let mut doctor_rows = Vec::new();
+    for (name, probe) in checks {
+        let mut row = JsonWriter::object();
+        row.string("name", name);
+        if let Some(version) = probe_program(probe) {
+            row.bool("ok", true);
+            row.string("version", &version);
+        } else {
+            row.bool("ok", false);
+            doctor_ok = false;
+        }
+        doctor_rows.push(row.finish().trim().to_string());
+    }
+    let (diagnostics, package_id) = run_check(file);
+    let admitted = !diagnostics.has_errors();
+    let mut diag_rows = Vec::new();
+    for item in diagnostics.items() {
+        let mut row = JsonWriter::object();
+        row.string("code", item.code);
+        row.string("message", &item.message);
+        diag_rows.push(row.finish().trim().to_string());
+    }
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let (goals, plans) = match session.load_package(file) {
+        Ok(package) => {
+            let result = session.plan(package.file);
+            (result.package.goals.len() as u64, result.plans.len() as u64)
+        }
+        Err(_) => (0, 0),
+    };
+    let mut object = JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "triage");
+    object.string("file", file);
+    object.bool("doctor_ok", doctor_ok);
+    object.object_field("doctor", &format!("[\n{}\n  ]", doctor_rows.join(",\n")));
+    object.bool("admitted", admitted);
+    object.string("package", &package_id);
+    object.object_field("diagnostics", &format!("[\n{}\n  ]", diag_rows.join(",\n")));
+    object.int("goals", goals);
+    object.int("plans", plans);
+    println!("{}", object.finish());
+    if admitted && doctor_ok {
+        EXIT_OK
+    } else {
+        EXIT_REFUSED
+    }
+}
+
+fn suggest_provider(unknown: &str) -> Option<&'static str> {
+    let mut best: Option<(&'static str, usize)> = None;
+    for (id, _, _) in PROVIDERS {
+        if id == unknown {
+            return Some(id);
+        }
+        let distance = id
+            .chars()
+            .zip(unknown.chars())
+            .filter(|(a, b)| a != b)
+            .count()
+            + id.len().abs_diff(unknown.len());
+        if distance <= 4 && best.is_none_or(|(_, current)| distance < current) {
+            best = Some((id, distance));
+        }
+    }
+    best.map(|(id, _)| id)
 }
 
 /// Maps a build error to the conventional exit class.
