@@ -1,0 +1,28 @@
+[package]
+name = "emath-provenance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# frankengraphdb evidence-graph lane (CUTOVER_PLAN.md §5.3 / §9.11). Optional
+# by design, mirroring the fsqlite/asupersync doctrine: the consumer decides
+# whether to pull the pinned fgdb git revision and the asupersync runtime that
+# drives it. The default build stays std-only with zero third-party deps.
+graphdb = ["dep:fgdb", "dep:fgdb-types", "dep:fgdb-delta-types", "dep:asupersync"]
+
+[dependencies]
+# Same-rev asupersync that frankengraphdb pins internally, NOT the workspace
+# pin (f0270d53...): fgdb's CommitCx wraps a capability Cx from ITS asupersync
+# instance, and two crate instances are distinct types, so they must be driven
+# from the same rev. Declared inline (a second `asupersync` workspace key
+# would collide with the f0270d53 entry); Cargo unifies this dep with fgdb's
+# own (same name + git source + rev) into one compiled instance.
+asupersync = { git = "https://github.com/Dicklesworthstone/asupersync", rev = "c17e51931f3223d55bd4961ff13eb3c5c4022fdf", default-features = false, optional = true }
+fgdb = { workspace = true, optional = true }
+fgdb-types = { workspace = true, optional = true }
+fgdb-delta-types = { workspace = true, optional = true }

@@ -160,6 +160,57 @@ dependencies = [
 [[package]]
 name = "asupersync"
 version = "0.4.7"
+source = "git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf#c17e51931f3223d55bd4961ff13eb3c5c4022fdf"
+dependencies = [
+ "aes-gcm",
+ "base64",
+ "bincode-next",
+ "chacha20poly1305",
+ "crc32fast",
+ "crossbeam-queue",
+ "franken-decision 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "franken-evidence 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "franken-kernel 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "futures-lite",
+ "getrandom 0.4.3",
+ "hashbrown 0.17.1",
+ "hex",
+ "hmac",
+ "js-sys",
+ "libc",
+ "memchr",
+ "nix",
+ "nkeys",
+ "parking_lot",
+ "pin-project",
+ "polling",
+ "prost",
+ "rmp-serde",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2 0.11.0",
+ "signal-hook",
+ "slab",
+ "smallvec",
+ "socket2",
+ "subtle",
+ "sysinfo",
+ "tempfile",
+ "thiserror",
+ "unicode-normalization",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "windows-sys",
+ "xattr",
+ "zeroize",
+]
+
+[[package]]
+name = "asupersync"
+version = "0.4.7"
 source = "git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd#f0270d53c65d48696f79e6860370ffdc8fe735fd"
 dependencies = [
  "aes-gcm",
@@ -168,9 +219,9 @@ dependencies = [
  "chacha20poly1305",
  "crc32fast",
  "crossbeam-queue",
- "franken-decision 0.4.7",
- "franken-evidence 0.4.7",
- "franken-kernel 0.4.7",
+ "franken-decision 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
+ "franken-evidence 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
+ "franken-kernel 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
  "futures-lite",
  "getrandom 0.4.3",
  "hashbrown 0.17.1",
@@ -876,7 +927,7 @@ dependencies = [
 name = "emath-lsp"
 version = "0.1.0"
 dependencies = [
- "asupersync 0.4.7",
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
  "emath-core",
  "emath-sema",
  "emath-syntax",
@@ -922,6 +973,16 @@ name = "emath-portfolio"
 version = "0.1.0"
 dependencies = [
  "emath-world-ir",
+]
+
+[[package]]
+name = "emath-provenance"
+version = "0.1.0"
+dependencies = [
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "fgdb",
+ "fgdb-delta-types",
+ "fgdb-types",
 ]
 
 [[package]]
@@ -992,7 +1053,7 @@ dependencies = [
 name = "emath-store"
 version = "0.1.0"
 dependencies = [
- "asupersync 0.4.7",
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
  "emath-artifact",
  "emath-core",
  "emath-ir",
@@ -1079,6 +1140,76 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
+name = "fgdb"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+dependencies = [
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "fgdb-chronicle",
+ "fgdb-crypto",
+ "fgdb-delta-types",
+ "fgdb-strata",
+ "fgdb-types",
+]
+
+[[package]]
+name = "fgdb-bigint"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+
+[[package]]
+name = "fgdb-chronicle"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+dependencies = [
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "fgdb-crypto",
+ "fgdb-types",
+]
+
+[[package]]
+name = "fgdb-codec"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+dependencies = [
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "fgdb-types",
+]
+
+[[package]]
+name = "fgdb-crypto"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+
+[[package]]
+name = "fgdb-delta-types"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+dependencies = [
+ "fgdb-bigint",
+ "fgdb-types",
+]
+
+[[package]]
+name = "fgdb-strata"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+dependencies = [
+ "fgdb-codec",
+ "fgdb-crypto",
+ "fgdb-delta-types",
+ "fgdb-types",
+]
+
+[[package]]
+name = "fgdb-types"
+version = "0.0.1"
+source = "git+https://github.com/Dicklesworthstone/frankengraphdb.git?rev=26b579de45a8d9ff439298982beda8e3b1e40217#26b579de45a8d9ff439298982beda8e3b1e40217"
+dependencies = [
+ "asupersync 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+]
+
+[[package]]
 name = "fiat-crypto"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1110,10 +1241,20 @@ dependencies = [
 [[package]]
 name = "franken-decision"
 version = "0.4.7"
+source = "git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf#c17e51931f3223d55bd4961ff13eb3c5c4022fdf"
+dependencies = [
+ "franken-evidence 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "franken-kernel 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf)",
+ "serde",
+]
+
+[[package]]
+name = "franken-decision"
+version = "0.4.7"
 source = "git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd#f0270d53c65d48696f79e6860370ffdc8fe735fd"
 dependencies = [
- "franken-evidence 0.4.7",
- "franken-kernel 0.4.7",
+ "franken-evidence 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
+ "franken-kernel 0.4.7 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=f0270d53c65d48696f79e6860370ffdc8fe735fd)",
  "serde",
 ]
 
@@ -1122,6 +1263,15 @@ name = "franken-evidence"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d01fabec5c859c6607f07a0a6b362396c2c6028d63571939f4f6eea6b474a15"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "franken-evidence"
+version = "0.4.7"
+source = "git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf#c17e51931f3223d55bd4961ff13eb3c5c4022fdf"
 dependencies = [
  "serde",
  "serde_json",
@@ -1141,6 +1291,14 @@ name = "franken-kernel"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14dcddbb62c252d9837a20147fad802229ff0231663f61433d3fb96a764c3fb9"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "franken-kernel"
+version = "0.4.7"
+source = "git+https://github.com/Dicklesworthstone/asupersync?rev=c17e51931f3223d55bd4961ff13eb3c5c4022fdf#c17e51931f3223d55bd4961ff13eb3c5c4022fdf"
 dependencies = [
  "serde",
 ]
