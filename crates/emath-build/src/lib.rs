@@ -32,6 +32,18 @@ use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Persistent cargo target dir for generated crates (`$CWD/target/emath-cargo/<key>`).
+/// Incremental rustc survives across `emath run` / `--verify` because those
+/// paths wipe their source staging dirs after each invocation.
+#[must_use]
+pub fn generated_crate_target_dir(key: &str) -> PathBuf {
+    let mut dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    dir.push("target");
+    dir.push("emath-cargo");
+    dir.push(key.replace(['/', ':'], "-"));
+    dir
+}
+
 pub const COMPILER_DESCRIPTOR: &str = concat!("emath-phase1/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -519,7 +531,8 @@ fn serialize_plans(plans: &[PlanRecord]) -> String {
     out
 }
 
-/// Write the generated crate into `dir` and run `cargo test --quiet`.
+/// Write the generated crate into `dir` and run `cargo test --quiet`
+/// without the rustdoc/doctest pass (`--lib --bins --tests`).
 /// Runs a command under a wall-clock budget: a child still running after
 /// `timeout` is killed and reported as a typed `E-RES-120` failure, so
 /// cargo can never block a session forever on a generated crate.
@@ -545,23 +558,38 @@ pub fn run_cargo_timed(
         let _ = stderr.read_to_end(&mut buf);
         buf
     });
-    let started = std::time::Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if started.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
-                    ));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(25));
-            }
-            Err(error) => return Err(format!("cannot wait on cargo: {error}")),
+    // Blocking wait: the previous 25 ms try_wait poll added up to a full
+    // quantum after cargo exited (material now that warm `emath run` is ~32 ms).
+    // A helper thread sends SIGTERM via `kill <pid>` on timeout; `Child::wait`
+    // then unblocks. `kill` is std-only (no `unsafe`) and exists on the
+    // Phase 1 hosts (macOS / Linux).
+    let pid = child.id();
+    let timed_out = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let timed_out_kill = timed_out.clone();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let killer = std::thread::spawn(move || {
+        if done_rx.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            timed_out_kill.store(true, std::sync::atomic::Ordering::SeqCst);
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+    });
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(error) => {
+            let _ = done_tx.send(());
+            let _ = killer.join();
+            return Err(format!("cannot wait on cargo: {error}"));
         }
     };
+    let _ = done_tx.send(());
+    let _ = killer.join();
+    if timed_out.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(format!(
+            "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
+        ));
+    }
     let stdout = stdout_thread.join().unwrap_or_default();
     let stderr = stderr_thread.join().unwrap_or_default();
     Ok(std::process::Output {
@@ -611,8 +639,15 @@ test surface (add a `tests:` section to the spec, or drop --verify)"
     if test_count == 0 {
         return Err("E-TLT-012: generated crate has no `#[test]` tests; --verify refuses an empty test surface (add a `tests:` section to the spec, or drop --verify)".to_string());
     }
+    let key = output
+        .files
+        .get("src/lib.rs")
+        .map_or_else(|| "verify".to_string(), |text| content_id_of_str(text).0);
     let mut command = std::process::Command::new("cargo");
-    command.arg("test").arg("--quiet").current_dir(dir);
+    command
+        .args(["test", "--quiet", "--lib", "--bins", "--tests"])
+        .env("CARGO_TARGET_DIR", generated_crate_target_dir(&key))
+        .current_dir(dir);
     let result = run_cargo_timed(command, std::time::Duration::from_secs(600))
         .map_err(|error| format!("cannot spawn cargo: {error}"))?;
     if !result.status.success() {
