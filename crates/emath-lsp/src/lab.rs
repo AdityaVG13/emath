@@ -1,7 +1,7 @@
 //! Lab-runtime entry proving the asupersync `Cx` lane (feature-gated).
 //!
 //! Foundation artifact for the tokio → asupersync cutover (pass 2,
-//! forks/franken/CUTOVER_PLAN.md §9.6). The default build stays std-only:
+//! `forks/franken/CUTOVER_PLAN.md` §9.6). The default build stays std-only:
 //! this module and its dependency only exist behind the `async-runtime`
 //! feature. Production server logic is NOT migrated here — the blocking
 //! `run()` loop in `lib.rs` is untouched; transport lands in pass 3.
@@ -24,7 +24,7 @@ where
 {
     asupersync::test_utils::run_test(move || async move {
         let cx = Cx::current().expect("test runtime Cx must be installed by block_on");
-        f(cx).await
+        f(cx).await;
     });
 }
 

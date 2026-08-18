@@ -15,10 +15,10 @@
 //! - typed refusal for unknown methods (`-32601`), deterministic writes.
 //!
 //! No network, filesystem watch, or third-party dependencies in the default
-//! build. The optional `async-runtime` feature (FrankenStack asupersync
-//! cutover) adds the `lab` module, a Cx/lab-runtime entry for deterministic
+//! build. The optional `async-runtime` feature (`FrankenStack` asupersync
+//! cutover) adds the `lab` module, a `Cx`/`lab-runtime` entry for deterministic
 //! tests, and the async `transport` lane (pass 3: stdio JSON-RPC framing on
-//! Cx); the blocking run loop below is not touched by them.
+//! `Cx`); the blocking run loop below is not touched by them.
 
 pub mod json;
 pub mod protocol;
