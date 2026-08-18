@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use emath_artifact::JsonWriter;
-use emath_build::{BuildOptions, build_file, run_cargo_timed};
+use emath_build::{BuildOptions, build_file, generated_crate_target_dir, run_cargo_timed};
 use emath_core::content_id_of_str;
 use emath_sema::session::CompilerSession;
 
@@ -307,13 +307,24 @@ fn run_cmd(args: &[String]) -> u8 {
             "run: artifact {} crate `{}` is a library; executing its example tests",
             report.artifact_id.0, report.crate_name
         );
+        // Skip rustdoc/doctests: generated libs have example `#[test]`s, not
+        // doc-tests. Bare `cargo test` also launches rustdoc (`running 0 tests`).
         command
-            .args(["test", "--quiet", "--manifest-path"])
-            .arg(&manifest);
+            .args([
+                "test",
+                "--lib",
+                "--bins",
+                "--tests",
+                "--quiet",
+                "--manifest-path",
+            ])
+            .arg(&manifest)
+            .env("CARGO_TARGET_DIR", generated_crate_target_dir(hash));
     } else {
         command
             .args(["run", "--quiet", "--manifest-path"])
-            .arg(&manifest);
+            .arg(&manifest)
+            .env("CARGO_TARGET_DIR", generated_crate_target_dir(hash));
     }
     let output = match run_cargo_timed(command, std::time::Duration::from_secs(600)) {
         Ok(output) => output,
