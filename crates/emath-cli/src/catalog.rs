@@ -32,6 +32,8 @@ pub const COMMANDS: &[&str] = &[
     "agent",
     "help",
     "version",
+    "capabilities",
+    "robot-docs",
 ];
 
 /// One-line usage after `emath` for a known command.
@@ -160,8 +162,78 @@ pub fn command_help_text(command: &str) -> Option<String> {
     let usage = command_usage(command)?;
     let summary = command_summary(command)?;
     Some(format!(
-        "emath {usage}\n{summary}\n\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\nrun `emath help` for the full command list\n"
+        "emath {usage}\n{summary}\n\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\nrun `emath help` for the full command list, or `emath capabilities --json` for the machine contract\n"
     ))
+}
+
+/// Machine contract. `emath capabilities` and `emath capabilities --json`
+/// emit the same deterministic document.
+#[must_use]
+pub fn capabilities_json() -> String {
+    let mut commands = Vec::new();
+    for name in COMMANDS {
+        let mut entry = emath_artifact::JsonWriter::object();
+        entry.string("name", name);
+        entry.string("usage", command_usage(name).unwrap_or(name));
+        entry.string("summary", command_summary(name).unwrap_or(""));
+        let indented = entry
+            .finish()
+            .trim()
+            .lines()
+            .map(|line| format!("    {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        commands.push(indented);
+    }
+    let mut codes = emath_artifact::JsonWriter::object();
+    codes.string("0", "ok");
+    codes.string("1", "refused or admission/build diagnostics");
+    codes.string("2", "usage or io error");
+    let mut out = emath_artifact::JsonWriter::object();
+    out.string("schema", "emath.capabilities");
+    out.string("tool", "emath");
+    out.string("version", env!("CARGO_PKG_VERSION"));
+    out.string("contract", "emath-cli Phase 1 + Semantic Genesis G0-G3");
+    out.object_field("exit_codes", codes.finish().trim());
+    out.strings("env_vars", &[]);
+    out.object_field("commands", &format!("[\n{}\n  ]", commands.join(",\n")));
+    out.finish()
+}
+
+/// Paste-ready handbook for agents. No timestamps, no host paths.
+#[must_use]
+pub fn robot_docs_guide() -> String {
+    format!(
+        "\
+emath agent handbook
+====================
+
+Identity
+  {}
+  First command to try: emath capabilities --json
+  Human help: emath help [<command>]   or   emath <command> --help
+
+Exit codes (stable)
+  0  success
+  1  refused / admission or build diagnostics (look for E-* codes)
+  2  usage or io error (stderr names the exact next command)
+
+Canonical agent loop
+  1. emath capabilities --json
+  2. emath check <file.emath> --json
+  3. emath plan <file.emath> --json
+  4. emath build <file.emath> --json            # default out: target/emath
+  5. emath agent check|plan|build <file.emath>  # same paths; cannot bypass checks
+
+Rules
+  - Never invent a passing test surface: empty tests are E-TLT-012.
+  - bench is a typed refusal (E-TLT-004). Measure via cargo bench --profile release-perf --bench comprehensive_bench.
+  - fork sync is offline-refused (E-TLT-006); use --dry-run.
+  - Typos print `did you mean` on stderr; do not grep a catalog dump.
+  - JSON is deterministic (in-tree writer). stdout is data; stderr is diagnostics.
+",
+        version_text()
+    )
 }
 
 fn edit_distance(left: &str, right: &str) -> usize {
@@ -213,5 +285,24 @@ mod tests {
             assert!(command_summary(command).is_some(), "{command} summary");
             assert!(command_help_text(command).is_some(), "{command} help");
         }
+    }
+
+    #[test]
+    fn capabilities_json_names_schema_and_exit_codes() {
+        let body = capabilities_json();
+        assert!(
+            body.contains("\"schema\": \"emath.capabilities\""),
+            "{body}"
+        );
+        assert!(body.contains("\"name\": \"check\""), "{body}");
+        assert!(body.contains("\"name\": \"capabilities\""), "{body}");
+        assert!(body.contains("\"0\": \"ok\""), "{body}");
+    }
+
+    #[test]
+    fn robot_docs_names_capabilities() {
+        let body = robot_docs_guide();
+        assert!(body.contains("emath capabilities --json"), "{body}");
+        assert!(body.contains("Exit codes"), "{body}");
     }
 }

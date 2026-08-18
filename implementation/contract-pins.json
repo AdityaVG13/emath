@@ -5,6 +5,10 @@
   "bumps": [
     {
       "date": "2026-08-18",
+      "note": "CLI_REFERENCE: capabilities --json and robot-docs guide (agent-ergonomics self-doc)"
+    },
+    {
+      "date": "2026-08-18",
       "note": "CLI_REFERENCE: help <command>, --version, agent build default --out (agent-ergonomics first-try)"
     },
     {
@@ -42,7 +46,7 @@
   ],
   "files": {
     "implementation/ERROR_CODES.md": "463ef57a4c4bf080a2fbbdab3a5b3ce7ab5e32f33644dbd694700cbb45e5ffc2",
-    "implementation/CLI_REFERENCE.md": "05be247fe94f6b859910cac37d13a1110f1b9bb3c68319a57557bd0fd4bba8e8",
+    "implementation/CLI_REFERENCE.md": "b83e4c87b3f17f31e2139a0cda3ffcd8d7d6bf88619e5b50de73c26584726c66",
     "implementation/CRATE_MAP.md": "0377469b7b37b8dcae1ce51bdba8e75d93a95e93c36d4987eb62d522dd75c82d",
     "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"
   }
