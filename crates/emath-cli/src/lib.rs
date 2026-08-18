@@ -559,6 +559,10 @@ usage:
       this text, or one-command usage (`emath <command> --help` is the same)
   emath version | --version | -V
       print the emath-cli crate version (no git SHA)
+  emath capabilities [--json]
+      machine contract: commands, flags, exit codes (JSON always)
+  emath robot-docs [guide]
+      paste-ready agent handbook
 
 exit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error
 "
@@ -577,6 +581,11 @@ pub fn run(args: &[String]) -> u8 {
             println!("{}", catalog::version_text());
             return EXIT_OK;
         }
+        "capabilities" => {
+            print!("{}", catalog::capabilities_json());
+            return EXIT_OK;
+        }
+        "robot-docs" => return robot_docs_cmd(&args[1..]),
         _ => {}
     }
     if catalog::wants_help(&args[1..]) {
@@ -727,6 +736,21 @@ pub fn run(args: &[String]) -> u8 {
     }
 }
 
+fn robot_docs_cmd(args: &[String]) -> u8 {
+    match args.first().map(String::as_str) {
+        None | Some("guide") | Some("--guide") => {
+            print!("{}", catalog::robot_docs_guide());
+            EXIT_OK
+        }
+        Some(other) => {
+            eprintln!("error: unknown robot-docs topic `{other}`");
+            eprintln!("did you mean `emath robot-docs guide`?");
+            eprintln!("try: emath help robot-docs");
+            EXIT_USAGE
+        }
+    }
+}
+
 fn help_cmd(args: &[String]) -> u8 {
     match args.first().map(String::as_str) {
         None | Some("--help") | Some("-h") => {
@@ -853,5 +877,14 @@ mod cli_ergonomics_tests {
         assert_eq!(run(&args("chek")), EXIT_USAGE);
         assert_eq!(run(&args("buld")), EXIT_USAGE);
         assert_eq!(run(&args("zzzzzzzz")), EXIT_USAGE);
+    }
+
+    #[test]
+    fn capabilities_and_robot_docs_exit_ok() {
+        assert_eq!(run(&args("capabilities")), EXIT_OK);
+        assert_eq!(run(&args("capabilities --json")), EXIT_OK);
+        assert_eq!(run(&args("robot-docs")), EXIT_OK);
+        assert_eq!(run(&args("robot-docs guide")), EXIT_OK);
+        assert_eq!(run(&args("robot-docs waffle")), EXIT_USAGE);
     }
 }
