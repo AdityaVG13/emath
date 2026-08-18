@@ -23,6 +23,7 @@ members = [
   "crates/emath-checker",
   "crates/emath-evidence",
   "crates/emath-schema",
+  "crates/emath-store",
   "crates/emath-cli",
   "crates/emath-term",
   "crates/emath-world-ir",
@@ -101,6 +102,13 @@ emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
 # so this entry must not be marked optional (Cargo rejects that at workspace
 # level).
 asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "f0270d53c65d48696f79e6860370ffdc8fe735fd", default-features = false }
+# frankensqlite evidence-state engine (CUTOVER_PLAN.md §5.2/§9.10, pass 1):
+# fsqlite facade (frankensqlite workspace) at exact-commit pin
+# e705df6960d8a22bb19d12a36d6534116b4b4cd5 (v0.3.4 release). Optional for the
+# workspace; the consumer (emath-store sqlite-store feature) decides
+# optionality, so this entry must not be marked optional (Cargo rejects that at
+# workspace level).
+fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev = "e705df6960d8a22bb19d12a36d6534116b4b4cd5", default-features = false }
 
 # Keep-gate measurement profile (gauntlet-06): claims under the keep-gate
 # harness use `cargo bench --profile release-perf`, never `--release`.

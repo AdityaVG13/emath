@@ -1,0 +1,26 @@
+[package]
+name = "emath-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# frankensqlite evidence-state lane (CUTOVER_PLAN.md §5.2 / §9.10). Optional by
+# design, mirroring the asupersync doctrine: consumers decide whether to pull
+# the pinned fsqlite git revision and the asupersync runtime that drives it.
+# The default build stays std-only + first-party-only (emath-core / emath-ir /
+# emath-artifact for the manifest schema) with zero third-party deps.
+sqlite-store = ["dep:fsqlite", "dep:asupersync"]
+
+[dependencies]
+emath-artifact = { path = "../emath-artifact" }
+fsqlite = { workspace = true, optional = true, default-features = false, features = ["native"] }
+asupersync = { workspace = true, optional = true }
+
+[dev-dependencies]
+emath-core = { path = "../emath-core" }
+emath-ir = { path = "../emath-ir" }
