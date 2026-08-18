@@ -21,6 +21,8 @@ tests/*/target/
 
 # internal planning docs (not for public release)
 /internal/
+# agent ergonomics audit (local-only, not shipped)
+/agent_ergonomics_audit/
 
 # local working docs (product notes, curated queues); the shipped spec
 # lives under language/ and the public contract docs under implementation/
