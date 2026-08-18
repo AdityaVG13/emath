@@ -69,7 +69,7 @@ builds, publishes under `target/emath`, and executes the example tests
 (`emath test <file>` reports them, `emath build <file> [--out <dir>]`
 publishes without running).
 
-**Prerequisites:** a stable Rust toolchain (`rustup default stable`; the repo pins stable via `rust-toolchain.toml` and needs the `rustfmt` and `clippy` components). That is all: the workspace has zero third-party dependencies and the demos are std-only.
+**Prerequisites:** a nightly Rust toolchain. emath runs on nightly Rust: the repo pins `nightly-2026-08-04` via `rust-toolchain.toml` (with the `rustfmt` and `clippy` components), and rustup follows it automatically on first build — stable is not supported. That is all: the workspace has zero third-party dependencies and the demos are std-only.
 
 **First build:** allow a few minutes for a debug build of the workspace (subsequent runs are incremental).
 
