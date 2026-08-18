@@ -1,20 +1,22 @@
 //! Async stdio JSON-RPC transport on the asupersync `Cx` (feature-gated).
 //!
-//! Pass 3 of the tokio to asupersync cutover: the async transport lane over
-//! `asupersync::io` traits. It mirrors the blocking framing in `crate::protocol`
-//! byte-for-byte (identical `Content-Length` headers and the same exit-code
-//! contract as `crate::run`), so the blocking and async lanes are indistinguishable
-//! on the wire. The blocking run loop, protocol, JSON, and server-state modules
-//! are untouched by this pass.
+//! Pass 3 (framing) + pass 4 (transport hardening) of the tokio to
+//! asupersync cutover: the async transport lane over `asupersync::io` traits.
+//! It mirrors the blocking framing in `crate::protocol` byte-for-byte
+//! (identical `Content-Length` headers and the same exit-code contract as
+//! `crate::run`), so the blocking and async lanes are indistinguishable on the
+//! wire. The blocking run loop, protocol, JSON, and server-state modules are
+//! untouched by this pass.
 //!
 //! # Region ownership
 //!
 //! The whole message loop runs as one unit owned by the caller's region; the
 //! caller typically wraps it in a region-owned task (`asupersync::Cx::spawn` +
 //! `asupersync::runtime::TaskHandle`). The loop checkpoints before every frame
-//! read and before every dispatch, so an upstream cancellation (region close /
-//! `abort`) is acknowledged at message boundaries and in-flight frame I/O is
-//! dropped; EOF shuts the loop down cleanly. Per-message `Scope` isolation needs
+//! read, before every dispatch, and before every write, so an upstream
+//! cancellation (region close / `abort`) is acknowledged at message boundaries
+//! and in-flight frame I/O is dropped; EOF shuts the loop down cleanly.
+//! Per-message `Scope` isolation needs
 //! shared handler state (an actor / `Arc<Mutex>` refactor of
 //! `crate::server::ServerState`) because `Cx::spawn` takes `Send + 'static'
 //! closures, so it is deferred to the state-ownership step; the sync handler
@@ -39,6 +41,30 @@
 //! - verbatim writes: `write_all` is not fully drop-cancel-safe (a dropped
 //!   future may leave partial output), matching the crate's documented
 //!   semantics; the transport writes whole frames from the sync handler buffer.
+//!
+//! # Bounded-resource hardening (pass 4)
+//!
+//! - Frame bodies are capped at [`MAX_FRAME_BODY`] (16 MiB): `read_frame`
+//!   refuses an oversized `Content-Length` with the typed
+//!   [`TransportError::BodyTooLarge`] **before** any allocation, and `serve`
+//!   answers with a `-32700` response and exit code `1`, mirroring how the
+//!   blocking lane refuses an over-long header line. The blocking
+//!   `protocol::read_message` stays uncapped; this bound is async-lane-only.
+//! - Writes are bounded and check-flushed: one frame's output is written and
+//!   flushed before the next frame is read, and `write_all`/`flush` failures
+//!   surface as typed [`TransportError::Io`] rather than being swallowed.
+//! - Optional host [`Control`] (bounded `mpsc`): `Transport::with_control`
+//!   polls the receiver at message boundaries; [`Control::Shutdown`] exits
+//!   `serve` with code `0` after the in-flight frame's responses are written
+//!   and flushed (at most one frame of slack: it is honored between frames,
+//!   never mid-`read_exact`). A host that must break a blocked read closes
+//!   the reader or aborts the owning region (the existing cancel path); EOF
+//!   beats a queued control signal.
+//! - Per-message wall-clock budgets are a documented seam, not wired: the
+//!   pinned asupersync rev has no generic future-timeout combinator, and `Cx`
+//!   budgets are region-scoped, so whatever deadline/poll-quota the caller's
+//!   region carries is already enforced by `cx.checkpoint()` at every boundary
+//!   (`TransportError::Cancelled`).
 
 use std::fmt;
 use std::io;
@@ -48,11 +74,18 @@ use crate::protocol::{RpcMessage, write_error};
 use crate::server::ServerState;
 
 use asupersync::Cx;
+use asupersync::channel::mpsc::{self, RecvError};
 use asupersync::io::ext::{AsyncReadExt, AsyncWriteExt};
 use asupersync::io::{AsyncRead, AsyncWrite};
 
 /// Maximum header line length, matching the blocking protocol.
 const MAX_HEADER_LINE: usize = 4096;
+
+/// Maximum framed body length in bytes: the async lane's per-frame memory
+/// bound. A `Content-Length` beyond this is refused with
+/// [`TransportError::BodyTooLarge`] before any allocation, so a hostile
+/// client cannot force unbounded buffering.
+const MAX_FRAME_BODY: usize = 16 * 1024 * 1024;
 
 /// Error surface of the async transport lane.
 #[derive(Debug)]
@@ -61,6 +94,9 @@ pub enum TransportError {
     Io(io::Error),
     /// Malformed LSP framing or JSON (the `-32700` parse-error class).
     Frame(String),
+    /// `Content-Length` body exceeds [`MAX_FRAME_BODY`]; refused before
+    /// allocation so a hostile client cannot force unbounded buffering.
+    BodyTooLarge { length: usize, max: usize },
     /// Cooperative cancellation observed at a checkpoint.
     Cancelled,
 }
@@ -70,6 +106,9 @@ impl fmt::Display for TransportError {
         match self {
             Self::Io(error) => write!(f, "transport io error: {error}"),
             Self::Frame(message) => write!(f, "transport frame error: {message}"),
+            Self::BodyTooLarge { length, max } => {
+                write!(f, "frame body {length} bytes exceeds the {max} byte limit")
+            }
             Self::Cancelled => f.write_str("transport cancelled"),
         }
     }
@@ -79,7 +118,7 @@ impl std::error::Error for TransportError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(error) => Some(error),
-            Self::Frame(_) | Self::Cancelled => None,
+            Self::Frame(_) | Self::BodyTooLarge { .. } | Self::Cancelled => None,
         }
     }
 }
@@ -88,7 +127,9 @@ impl std::error::Error for TransportError {
 ///
 /// `Ok(None)` at a clean EOF before any header byte, `Ok(Some(body))` with
 /// the exact body bytes otherwise. Header rules (CR stripping, 4096-byte
-/// line cap, missing-length errors) mirror `crate::protocol::read_message`.
+/// line cap, missing-length errors) mirror `crate::protocol::read_message`;
+/// a body longer than [`MAX_FRAME_BODY`] is refused with
+/// [`TransportError::BodyTooLarge`] before any allocation (async-lane cap).
 pub async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, TransportError>
 where
     R: AsyncRead + Unpin,
@@ -115,6 +156,12 @@ where
     }
     let length =
         length.ok_or_else(|| TransportError::Frame("missing Content-Length header".to_owned()))?;
+    if length > MAX_FRAME_BODY {
+        return Err(TransportError::BodyTooLarge {
+            length,
+            max: MAX_FRAME_BODY,
+        });
+    }
     let mut body = vec![0u8; length];
     reader
         .read_exact(&mut body)
@@ -177,18 +224,44 @@ where
     writer.flush().await.map_err(TransportError::Io)
 }
 
+/// Host control signal for the transport loop.
+///
+/// Carried on an optional bounded [`mpsc`] receiver
+/// (`Transport::with_control`). A [`Control::Shutdown`] stops [`serve`]
+/// cleanly at a message boundary with exit code `0`, independent of the LSP
+/// `shutdown`/`exit` handshake.
+///
+/// [`serve`]: Transport::serve
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Control {
+    /// Stop the loop after the in-flight frame completes.
+    Shutdown,
+}
+
 /// Async transport owner: an in-memory (or future real-stdio) reader/writer
-/// pair over the asupersync `io` traits.
+/// pair over the asupersync `io` traits, with optional host control.
 pub struct Transport<R, W> {
     reader: R,
     writer: W,
+    control: Option<mpsc::Receiver<Control>>,
 }
 
 impl<R, W> Transport<R, W> {
     /// Creates a transport over an async reader/writer pair.
     #[must_use]
     pub fn new(reader: R, writer: W) -> Self {
-        Self { reader, writer }
+        Self::with_control(reader, writer, None)
+    }
+
+    /// Creates a transport that also polls an optional host control channel
+    /// at message boundaries (see [`Control`]).
+    #[must_use]
+    pub fn with_control(reader: R, writer: W, control: Option<mpsc::Receiver<Control>>) -> Self {
+        Self {
+            reader,
+            writer,
+            control,
+        }
     }
 }
 
@@ -197,19 +270,32 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    /// Runs the async message loop until EOF, `exit`, or cancellation.
+    /// Runs the async message loop until EOF, `exit`, control, or
+    /// cancellation.
     ///
     /// Returns the same exit-code contract as `crate::run`: `0` when
-    /// `shutdown` preceded the terminal event, `1` otherwise. A framing or
-    /// JSON parse error writes a `-32700` error response (id `null`) and
-    /// returns `1`, mirroring the blocking lane.
+    /// `shutdown` preceded the terminal event, `1` otherwise. A framing,
+    /// oversized-frame, or JSON parse error writes a `-32700` error response
+    /// (id `null`) and returns `1`, mirroring the blocking lane. A host
+    /// [`Control::Shutdown`] returns `0` after the in-flight frame's
+    /// responses have been written and flushed.
     pub async fn serve(&mut self, cx: &Cx) -> Result<u8, TransportError> {
         let mut state = ServerState::new();
         loop {
+            // Frame boundary: acknowledge cancellation and any region budget
+            // (deadline / poll quota) before touching the reader.
             cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
             let body = match read_frame(&mut self.reader).await {
                 Ok(body) => body,
                 Err(TransportError::Frame(message)) => {
+                    cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
+                    write_parse_error(&mut self.writer, &message).await?;
+                    return Ok(1);
+                }
+                Err(TransportError::BodyTooLarge { length, max }) => {
+                    cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
+                    let message =
+                        format!("frame body length {length} exceeds the {max} byte limit");
                     write_parse_error(&mut self.writer, &message).await?;
                     return Ok(1);
                 }
@@ -221,6 +307,7 @@ where
             let text = match String::from_utf8(body) {
                 Ok(text) => text,
                 Err(_) => {
+                    cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
                     write_parse_error(&mut self.writer, "body is not utf-8").await?;
                     return Ok(1);
                 }
@@ -228,6 +315,7 @@ where
             let (id, method, params) = match parse_request(&text) {
                 Ok(parts) => parts,
                 Err(message) => {
+                    cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
                     write_parse_error(&mut self.writer, &message).await?;
                     return Ok(1);
                 }
@@ -242,7 +330,34 @@ where
                 return Ok(1);
             }
             if !framed.is_empty() {
+                cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
                 write_verbatim(&mut self.writer, &framed).await?;
+            }
+            // Message boundary after the in-flight frame: a host control
+            // signal stops the loop once its responses are flushed.
+            if self.control_shutdown().await? {
+                return Ok(0);
+            }
+        }
+    }
+
+    /// Polls the optional host control channel at a message boundary.
+    ///
+    /// `Ok(true)` when [`Control::Shutdown`] was received: the writer is
+    /// flushed so frames produced before the stop are delivered and the loop
+    /// exits `0`. An empty channel, a dropped sender, or no receiver all mean
+    /// `Ok(false)` — the control channel is optional by design.
+    async fn control_shutdown(&mut self) -> Result<bool, TransportError> {
+        let Some(control) = self.control.as_mut() else {
+            return Ok(false);
+        };
+        match control.try_recv() {
+            Ok(Control::Shutdown) => {
+                self.writer.flush().await.map_err(TransportError::Io)?;
+                Ok(true)
+            }
+            Err(RecvError::Empty) | Err(RecvError::Disconnected) | Err(RecvError::Cancelled) => {
+                Ok(false)
             }
         }
     }
@@ -475,6 +590,182 @@ mod tests {
             let task = cx.spawn(|task_cx| async move { transport.serve(&task_cx).await });
             assert!(task.is_ok(), "spawn must be admitted in a live region");
             drop(task.expect("checked above"));
+        });
+    }
+
+    /// Writer whose `poll_write` always fails; proves typed writer-error
+    /// propagation.
+    struct FailingWriter;
+
+    impl AsyncWrite for FailingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "sink down")))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    /// Writer that accepts bytes but fails on `flush`; proves flush errors
+    /// surface instead of being dropped.
+    struct FlushFailingWriter;
+
+    impl AsyncWrite for FlushFailingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "flush down")))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[test]
+    fn read_frame_refuses_oversized_content_length() {
+        // A header alone claiming more than MAX_FRAME_BODY must be refused
+        // with the typed error before any body is read (no allocation). Fails
+        // if the cap is missing: read_frame would then try to read the body
+        // and report `Frame("short body")` on the immediate EOF instead.
+        run(|_cx| async move {
+            let wire: &[u8] = b"Content-Length: 17000000\r\n\r\n";
+            let mut cursor = wire;
+            match read_frame(&mut cursor).await {
+                Err(TransportError::BodyTooLarge { length, max }) => {
+                    assert_eq!(length, 17_000_000);
+                    assert_eq!(max, MAX_FRAME_BODY);
+                }
+                other => panic!("expected BodyTooLarge, got {other:?}"),
+            }
+        });
+    }
+
+    #[test]
+    fn serve_refuses_oversized_frame_with_parse_error_and_exit_one() {
+        // Wire-level contract: an oversized frame is a protocol failure
+        // answered with a -32700 error (id null) and exit code 1, mirroring
+        // how the blocking lane treats an over-long header line. Fails if
+        // the cap is bypassed (no -32700 message citing the limit).
+        run(|cx| async move {
+            let mut input = Vec::new();
+            input.extend_from_slice(
+                format!("Content-Length: {}\r\n\r\n", MAX_FRAME_BODY + 1).as_bytes(),
+            );
+            let mut transport = Transport::new(&input[..], Vec::new());
+            let code = transport
+                .serve(&cx)
+                .await
+                .expect("serve must not error on refusal");
+            assert_eq!(code, 1, "oversized frame is an abnormal exit");
+            let output = transport.writer;
+            let mut cursor = &output[..];
+            let body = read_frame(&mut cursor)
+                .await
+                .expect("error frame must be readable")
+                .expect("one frame expected");
+            let payload = response_json(body);
+            assert_eq!(payload.get_int("id"), None, "parse error id must be null");
+            let error = payload.get("error").expect("error object");
+            assert_eq!(error.get_int("code"), Some(-32700));
+            let message = error.get_str("message").expect("error message").to_owned();
+            assert!(
+                message.contains("exceeds"),
+                "message must cite the cap: {message}"
+            );
+            assert!(
+                read_frame(&mut cursor).await.expect("clean EOF").is_none(),
+                "no frame may follow the refusal"
+            );
+        });
+    }
+
+    #[test]
+    fn control_shutdown_exits_zero_after_flushing_in_flight_frame() {
+        // Host stop via the optional mpsc control channel: with a signal
+        // queued before serve, the loop processes exactly one frame
+        // (initialize), flushes its response, then exits 0 without reading
+        // further input. Fails if control is ignored (serve would run through
+        // shutdown + EOF and emit two responses) or treated as an error.
+        run(|cx| async move {
+            let (tx, rx) = mpsc::channel::<Control>(1);
+            let mut input = Vec::new();
+            write_frame(&mut input, INITIALIZE.as_bytes())
+                .await
+                .expect("frame initialize");
+            write_frame(&mut input, SHUTDOWN.as_bytes())
+                .await
+                .expect("frame shutdown");
+            tx.try_send(Control::Shutdown)
+                .expect("capacity-1 channel admits the control signal");
+            let mut transport = Transport::with_control(&input[..], Vec::new(), Some(rx));
+            let code = transport.serve(&cx).await.expect("serve must not error");
+            assert_eq!(code, 0, "host control stop is a clean exit");
+            let output = transport.writer;
+            let mut cursor = &output[..];
+            let first = read_frame(&mut cursor)
+                .await
+                .expect("response frame")
+                .expect("a response is expected");
+            assert_eq!(
+                response_json(first).get_int("id"),
+                Some(1),
+                "the in-flight initialize response must be flushed"
+            );
+            assert!(
+                read_frame(&mut cursor).await.expect("clean EOF").is_none(),
+                "no frame may follow the control stop (shutdown frame unread)"
+            );
+        });
+    }
+
+    #[test]
+    fn writer_error_propagates_as_typed_io_error() {
+        // A failing sink must surface as `TransportError::Io`, not be
+        // swallowed into a fake `Ok(1)` exit code. Fails if the write path
+        // ignores `write_all` errors.
+        run(|cx| async move {
+            let mut input = Vec::new();
+            write_frame(&mut input, INITIALIZE.as_bytes())
+                .await
+                .expect("frame initialize");
+            let mut transport = Transport::new(&input[..], FailingWriter);
+            match transport.serve(&cx).await {
+                Err(TransportError::Io(_)) => {}
+                other => panic!("expected typed Io error, got {other:?}"),
+            }
+        });
+    }
+
+    #[test]
+    fn writer_flush_error_surfaces() {
+        // A writer that accepts bytes but fails `flush` must still surface
+        // `TransportError::Io`. Fails if the flush result is dropped.
+        run(|cx| async move {
+            let mut input = Vec::new();
+            write_frame(&mut input, INITIALIZE.as_bytes())
+                .await
+                .expect("frame initialize");
+            let mut transport = Transport::new(&input[..], FlushFailingWriter);
+            match transport.serve(&cx).await {
+                Err(TransportError::Io(_)) => {}
+                other => panic!("expected typed Io error, got {other:?}"),
+            }
         });
     }
 }
