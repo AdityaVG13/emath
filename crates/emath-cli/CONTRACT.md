@@ -2,7 +2,7 @@
 
 ## Purpose and layer
 - Command-line application (CRATE_MAP tier: sema/build/lab-core).
-- Commands: `check`, `plan`, `planner`, `build`, `artifact check/battery`, `import modelica`, `architecture`, plus Semantic Genesis (`parse`, `signature`, `genesis`, `compile --parametric`, `world show`, `portfolio show`) and tooling commands (`new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`, `fork`, `agent`).
+- Commands: `check`, `plan`, `planner`, `build`, `artifact check/battery`, `import modelica`, `architecture`, plus Semantic Genesis (`parse`, `signature`, `genesis`, `compile --parametric`, `world show`, `portfolio show`) and tooling commands (`new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`, `fork`, `agent`, `help [<command>]`, `version`).
 - Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error (`EXIT_OK`, `EXIT_REFUSED`, `EXIT_USAGE`).
 - `run(&[String]) -> u8` is the testable entry behind `main`; the generated crate builds an agent envelope (`emath.agent`) over the same admission/plan/build paths as interactive commands.
 - Registers the in-tree static `native.rust` capability so the generic planner serves the same goals as the native pipeline.

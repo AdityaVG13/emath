@@ -771,9 +771,11 @@ fn agent_cmd(args: &[String]) -> u8 {
             let Some(file) = file else {
                 return usage("agent build <file.emath> --out <dir>");
             };
-            let Some(out) = flag_value("--out", args).or_else(|| flag_value("-o", args)) else {
-                return usage("agent build <file.emath> --out <dir>");
-            };
+            // Same default as `emath build` / `emath run` so the first
+            // guessed agent invocation does not fail on a missing --out.
+            let out = flag_value("--out", args)
+                .or_else(|| flag_value("-o", args))
+                .unwrap_or_else(|| "target/emath".to_string());
             match build_file(
                 file,
                 PathBuf::from(out),
@@ -853,7 +855,9 @@ fn flag_value(flag: &str, args: &[String]) -> Option<String> {
 }
 
 fn usage(message: &str) -> u8 {
+    eprintln!("error: missing or invalid arguments for this command");
     eprintln!("usage: emath {message}");
-    eprintln!("run `emath help` for the full command list");
+    let command = message.split_whitespace().next().unwrap_or("help");
+    eprintln!("try: emath help {command}");
     EXIT_USAGE
 }
