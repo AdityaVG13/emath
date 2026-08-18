@@ -236,6 +236,71 @@ Rules
     )
 }
 
+pub fn flags_for(command: &str) -> &'static [&'static str] {
+    match command {
+        "check" | "plan" | "architecture" | "explain" | "inspect" | "diff" | "doctor"
+        | "capabilities" => &["--json", "--help", "-h"],
+        "planner" => &["--json", "--parametric", "--help", "-h"],
+        "build" | "run" | "test" | "new" | "vendor" => {
+            &["--json", "--out", "-o", "--verify", "--help", "-h"]
+        }
+        "parse" => &["--forest", "--out", "-o", "--help", "-h"],
+        "signature" | "genesis" => &["--out", "-o", "--help", "-h"],
+        "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
+        "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
+        "import" => &["--json", "--help", "-h"],
+        "artifact" | "verify" => &["--help", "-h"],
+        "provider" => &["--json", "--help", "-h"],
+        "fork" => &["--dry-run", "--json", "--help", "-h"],
+        "agent" => &["--out", "-o", "--json", "--help", "-h"],
+        "robot-docs" => &["guide", "--guide", "--help", "-h"],
+        _ => &["--help", "-h"],
+    }
+}
+
+fn flag_takes_value(flag: &str) -> bool {
+    matches!(flag, "--out" | "-o" | "--dir" | "--world")
+}
+
+/// Refuse unknown flags instead of silently ignoring them.
+pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<u8> {
+    let known = flags_for(command);
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if arg == "--" {
+            break;
+        }
+        if arg.starts_with('-') && arg != "-" && !known.contains(&arg) {
+            eprintln!("error: unknown flag `{arg}` for `emath {command}`");
+            if let Some(hint) = suggest_flag(arg, known) {
+                eprintln!("did you mean `{hint}`?");
+            }
+            if let Some(usage) = command_usage(command) {
+                eprintln!("usage: emath {usage}");
+            }
+            eprintln!("try: emath help {command}");
+            return Some(2);
+        }
+        if flag_takes_value(arg) {
+            index += 1;
+        }
+        index += 1;
+    }
+    None
+}
+
+fn suggest_flag(unknown: &str, known: &'static [&'static str]) -> Option<&'static str> {
+    let mut best: Option<(&'static str, usize)> = None;
+    for flag in known {
+        let distance = edit_distance(unknown, flag);
+        if distance <= 3 && best.is_none_or(|(_, current)| distance < current) {
+            best = Some((flag, distance));
+        }
+    }
+    best.map(|(flag, _)| flag)
+}
+
 fn edit_distance(left: &str, right: &str) -> usize {
     let left: Vec<char> = left.chars().collect();
     let right: Vec<char> = right.chars().collect();
@@ -304,5 +369,10 @@ mod tests {
         let body = robot_docs_guide();
         assert!(body.contains("emath capabilities --json"), "{body}");
         assert!(body.contains("Exit codes"), "{body}");
+    }
+
+    #[test]
+    fn jason_suggests_json() {
+        assert_eq!(suggest_flag("--jason", flags_for("check")), Some("--json"));
     }
 }

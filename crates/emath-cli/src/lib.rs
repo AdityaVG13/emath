@@ -599,6 +599,9 @@ pub fn run(args: &[String]) -> u8 {
     if catalog::wants_help(&args[1..]) {
         return print_command_help(command);
     }
+    if let Some(code) = catalog::reject_unknown_flags(command, &args[1..]) {
+        return code;
+    }
     match command.as_str() {
         "check" => {
             let (path, json) = parse_file_args(&args[1..]);
@@ -902,5 +905,11 @@ mod cli_ergonomics_tests {
         assert_eq!(run(&args("doctor --json")), EXIT_OK);
         assert_eq!(run(&args("provider list --json")), EXIT_OK);
         assert_eq!(run(&args("agent triage --help")), EXIT_OK);
+    }
+
+    #[test]
+    fn unknown_flag_is_usage() {
+        assert_eq!(run(&args("check --jason file.emath")), EXIT_USAGE);
+        assert_eq!(run(&args("plan --jason file.emath")), EXIT_USAGE);
     }
 }
