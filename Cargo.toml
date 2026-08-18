@@ -93,6 +93,14 @@ emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
+# FrankenStack base infrastructure (CUTOVER_PLAN.md §1/§9): asupersync
+# replaces tokio. Optional + feature-gated: Phase 1 ships std-only with zero
+# mandatory third-party deps. Exact-commit pin mirrors UPSTREAM_LOCK.json
+# row 11; never move to a floating version.
+# Optionality is decided per consumer (emath-lsp gate: async-runtime feature),
+# so this entry must not be marked optional (Cargo rejects that at workspace
+# level).
+asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "f0270d53c65d48696f79e6860370ffdc8fe735fd", default-features = false }
 
 # Keep-gate measurement profile (gauntlet-06): claims under the keep-gate
 # harness use `cargo bench --profile release-perf`, never `--release`.
