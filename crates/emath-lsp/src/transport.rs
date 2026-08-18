@@ -774,4 +774,251 @@ mod tests {
             }
         });
     }
+
+    /// Runs `serve` on the given wire bytes and returns `(exit_code, output)`.
+    async fn serve_bytes(cx: &Cx, wire: &[u8]) -> (u8, Vec<u8>) {
+        let mut transport = Transport::new(wire, Vec::new());
+        let code = transport
+            .serve(cx)
+            .await
+            .expect("framing refusal must not error, only exit 1");
+        (code, transport.writer)
+    }
+
+    /// Asserts `wire` is exactly one `-32700` parse-error frame (id null).
+    async fn assert_parse_error_frame(wire: &[u8]) {
+        let mut cursor = wire;
+        let body = read_frame(&mut cursor)
+            .await
+            .expect("error frame must be readable")
+            .expect("one frame expected");
+        let payload = response_json(body);
+        assert_eq!(payload.get_int("id"), None, "parse error id must be null");
+        let error = payload.get("error").expect("error object");
+        assert_eq!(error.get_int("code"), Some(-32700));
+    }
+
+    #[test]
+    fn serve_refuses_invalid_content_length_with_parse_error() {
+        // Negative control: a non-numeric `Content-Length` value (the garbage
+        // case) must be refused by the async lane with a -32700 response and
+        // exit code 1, mirroring the blocking `protocol::read_message`'s
+        // "invalid Content-Length" path. Fails if the lane accepts it or exits
+        // with the wrong code.
+        run(|cx| async move {
+            let (code, output) = serve_bytes(&cx, b"Content-Length: xyz\r\n\r\n").await;
+            assert_eq!(code, 1, "invalid Content-Length is an abnormal exit");
+            assert_parse_error_frame(&output).await;
+        });
+    }
+
+    #[test]
+    fn serve_refuses_eof_mid_header_with_parse_error() {
+        // Negative control: EOF inside a header line (before the terminating
+        // blank line) must be Frame("unexpected EOF inside header") and thus a
+        // -32700 + exit 1, matching the blocking lane's identical path. Fails
+        // if EOF mid-header is mistaken for a clean EOF (which would exit the
+        // loop without an error).
+        run(|cx| async move {
+            let (code, output) = serve_bytes(&cx, b"Content-Length: ").await;
+            assert_eq!(code, 1, "EOF mid-header is an abnormal exit");
+            assert_parse_error_frame(&output).await;
+        });
+    }
+
+    #[test]
+    fn serve_refuses_short_body_with_parse_error() {
+        // Negative control: a valid header declaring more body bytes than are
+        // present maps to Frame("short body") -> -32700 + exit 1, exactly the
+        // blocking lane's `read_exact` failure mode. Fails if the lane
+        // fabricates a frame or exits 0.
+        run(|cx| async move {
+            let (code, output) = serve_bytes(&cx, b"Content-Length: 20\r\n\r\nhello").await;
+            assert_eq!(code, 1, "short body is an abnormal exit");
+            assert_parse_error_frame(&output).await;
+        });
+    }
+
+    #[test]
+    fn read_frame_accepts_header_case_and_whitespace_variants() {
+        // Parity: the header grammar the blocking lane accepts (case-insensitive
+        // Content-Length, trimmed value, CR-stripped lines) must be accepted
+        // byte-for-byte by the async lane too. Each case returns the exact body
+        // bytes. Fails if the async lane is stricter than the blocking lane (an
+        // asymmetry would be a wire mismatch).
+        run(|_cx| async move {
+            let cases: &[(&str, &[u8])] = &[
+                ("Content-Length: 5\r\n\r\nhello", b"hello"),
+                ("content-length: 5\r\n\r\nhello", b"hello"),
+                ("CONTENT-LENGTH: 5\r\n\r\nhello", b"hello"),
+                // Whitespace around the trimmed value, as the blocking lane
+                // accepts via `value.trim()`.
+                ("Content-Length:   5   \r\n\r\nhello", b"hello"),
+                // A foreign header before Content-Length must be ignored in
+                // both lanes (only Content-Length is honored).
+                ("X-Custom: abc\r\nContent-Length: 5\r\n\r\nhello", b"hello"),
+            ];
+            for (wire, expected) in cases {
+                let mut cursor: &[u8] = wire.as_bytes();
+                let body = read_frame(&mut cursor)
+                    .await
+                    .expect("variant must be accepted")
+                    .expect("one frame expected");
+                assert_eq!(&body, expected, "acceptance parity for {wire:?}");
+            }
+        });
+    }
+
+    #[test]
+    fn read_frame_refuses_oversized_header_line() {
+        // Negative control: a header line longer than the 4096-byte cap (both
+        // lanes share MAX_HEADER_LINE) must be refused as a framing error, not
+        // buffered unboundedly. Fails if the line cap is removed or raised
+        // (unbounded header buffering).
+        let long = format!("X-Pad: {}\r\n\r\n", "a".repeat(5000));
+        run(|_cx| async move {
+            let wire: &[u8] = long.as_bytes();
+            let mut cursor = wire;
+            match read_frame(&mut cursor).await {
+                Err(TransportError::Frame(message)) => {
+                    assert!(
+                        message.contains("header line too long"),
+                        "cap message expected: {message}"
+                    );
+                }
+                other => panic!("expected Frame(header line too long), got {other:?}"),
+            }
+        });
+    }
+
+    #[test]
+    fn serve_partial_second_frame_yields_clean_error_no_partial_output() {
+        // Cancellation/interleaving hygiene AND negative control: after a valid
+        // first frame the stream breaks mid-second-frame (a shorter body than
+        // its header declares, then EOF). The server must answer the first
+        // frame, then emit exactly one complete -32700 error frame — never a
+        // partial/clipped second response — and exit 1. Fails if a partial
+        // frame leaks into `writer` or the wire is unparseable.
+        run(|cx| async move {
+            let mut input = Vec::new();
+            write_frame(&mut input, INITIALIZE.as_bytes())
+                .await
+                .expect("frame initialize");
+            // Second frame header declares 100 body bytes but only 3 arrive.
+            input.extend_from_slice(b"Content-Length: 100\r\n\r\nabc");
+            let (code, output) = serve_bytes(&cx, &input[..]).await;
+            assert_eq!(code, 1, "broken second frame is an abnormal exit");
+            let mut cursor = &output[..];
+            let first = read_frame(&mut cursor)
+                .await
+                .expect("first response must be a complete frame")
+                .expect("a first frame is expected");
+            assert_eq!(response_json(first).get_int("id"), Some(1));
+            let second = read_frame(&mut cursor)
+                .await
+                .expect("error frame must be a complete frame")
+                .expect("the parse-error frame is expected");
+            assert_eq!(response_json(second).get_int("id"), None);
+            assert!(
+                read_frame(&mut cursor).await.expect("clean EOF").is_none(),
+                "no partial/stray bytes may follow the error frame"
+            );
+        });
+    }
+
+    #[test]
+    fn region_close_drains_mid_body_pending_read() {
+        // Cancellation forensics: the reader pends partway through a declared
+        // body (header consumed, `read_exact` blocked awaiting the remaining
+        // bytes that never arrive). Region close must cancel and drain that
+        // in-flight body read without hanging — the documented non-drop-cancel-
+        // safe `read_exact` seam. Fails (hangs) if the pending body read is not
+        // cancelled on region close.
+        run(|cx| async move {
+            let mut transport = Transport::new(
+                PendAfterReader {
+                    // Header declares 10 body bytes; only 5 arrive, then pend.
+                    data: b"Content-Length: 10\r\n\r\nhello".to_vec(),
+                    pos: 0,
+                },
+                Vec::new(),
+            );
+            let task = cx.spawn(|task_cx| async move { transport.serve(&task_cx).await });
+            assert!(task.is_ok(), "spawn must be admitted in a live region");
+            drop(task.expect("checked above"));
+        });
+    }
+
+    #[test]
+    fn serve_is_deterministic_identical_input_identical_output() {
+        // Determinism contract: running the exact same byte stream through two
+        // fresh, independent `Transport` instances must yield byte-identical
+        // output frames AND the identical exit code. Fails on any per-run
+        // nondeterminism (e.g. HashMap ordering in response render, a cached
+        // clock, or ambient RNG leaking into output).
+        run(|cx| async move {
+            let mut input = Vec::new();
+            write_frame(&mut input, INITIALIZE.as_bytes())
+                .await
+                .expect("frame initialize");
+            write_frame(&mut input, SHUTDOWN.as_bytes())
+                .await
+                .expect("frame shutdown");
+            write_frame(&mut input, EXIT.as_bytes())
+                .await
+                .expect("frame exit");
+            let (code1, wire1) = serve_bytes(&cx, &input[..]).await;
+            let (code2, wire2) = serve_bytes(&cx, &input[..]).await;
+            assert_eq!(code1, code2, "exit code must be deterministic");
+            assert_eq!(wire1, wire2, "output frames must be byte-identical");
+            assert!(!wire1.is_empty(), "responses must actually be produced");
+        });
+    }
+
+    #[test]
+    fn serve_dispatches_sequentially_with_strict_single_flight_order() {
+        // Concurrency hygiene: two response-producing requests are dispatched
+        // strictly in input order, each written as a complete single-flight
+        // frame (write_all + flush before the next read). Rebuilding the
+        // expected wire as `write_frame(body1) ++ write_frame(body2)` must be
+        // byte-identical to the actual output — no interleaving, no padding, no
+        // clipped frame. Fails if two frames ever interleave their bytes or a
+        // frame is emitted non-canonically.
+        run(|cx| async move {
+            let mut input = Vec::new();
+            write_frame(&mut input, INITIALIZE.as_bytes())
+                .await
+                .expect("frame initialize");
+            write_frame(&mut input, SHUTDOWN.as_bytes())
+                .await
+                .expect("frame shutdown");
+            let (code, output) = serve_bytes(&cx, &input[..]).await;
+            assert_eq!(code, 0, "shutdown before EOF yields exit code 0");
+            let mut cursor = &output[..];
+            let body1 = read_frame(&mut cursor)
+                .await
+                .expect("first frame")
+                .expect("a first frame is expected");
+            assert_eq!(response_json(body1.clone()).get_int("id"), Some(1));
+            let body2 = read_frame(&mut cursor)
+                .await
+                .expect("second frame")
+                .expect("a second frame is expected");
+            assert_eq!(response_json(body2.clone()).get_int("id"), Some(2));
+            assert!(
+                read_frame(&mut cursor).await.expect("clean EOF").is_none(),
+                "no third frame"
+            );
+            // Strict single-flight: the frames must be exactly adjacent with
+            // canonical headers and nothing in between.
+            let mut expected = Vec::new();
+            write_frame(&mut expected, &body1)
+                .await
+                .expect("re-header body1");
+            write_frame(&mut expected, &body2)
+                .await
+                .expect("re-header body2");
+            assert_eq!(output, expected, "frames must be non-interleaved, in order");
+        });
+    }
 }
