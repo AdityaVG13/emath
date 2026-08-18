@@ -4,6 +4,10 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-08-18",
+      "note": "CLI_REFERENCE: help <command>, --version, agent build default --out (agent-ergonomics first-try)"
+    },
+    {
       "date": "2026-08-19",
       "note": "ERROR_CODES annex re-spliced: 243 emitted codes current (asupersync-cutover annex regenerations produced no new E-codes; E-LSP surface unchanged)"
     },
@@ -38,7 +42,7 @@
   ],
   "files": {
     "implementation/ERROR_CODES.md": "463ef57a4c4bf080a2fbbdab3a5b3ce7ab5e32f33644dbd694700cbb45e5ffc2",
-    "implementation/CLI_REFERENCE.md": "972c764a90a05b6719099da6f4ad5e4f949ddaef4b98aa5efff4075a914bc688",
+    "implementation/CLI_REFERENCE.md": "05be247fe94f6b859910cac37d13a1110f1b9bb3c68319a57557bd0fd4bba8e8",
     "implementation/CRATE_MAP.md": "0377469b7b37b8dcae1ce51bdba8e75d93a95e93c36d4987eb62d522dd75c82d",
     "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"
   }

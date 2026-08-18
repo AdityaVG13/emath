@@ -49,7 +49,9 @@ deterministic sorted-key JSON via the in-tree writer.
 
 | Command | Behavior |
 | --- | --- |
-| `emath agent check\|plan\|build <file> [--out <dir>]` | `emath.agent` over the same session/build paths; an agent cannot bypass admission, planning, or artifact checks |
+| `emath agent check\|plan\|build <file> [--out <dir>]` | `emath.agent` over the same session/build paths; `build` defaults `--out` to `target/emath`; an agent cannot bypass admission, planning, or artifact checks |
+| `emath help [<command>]` / `emath <command> --help` | full catalog, or one-command usage; unknown tokens print `did you mean` |
+| `emath version` / `--version` / `-V` | crate version line (`emath <semver>`), no git SHA |
 
 ## LSP
 

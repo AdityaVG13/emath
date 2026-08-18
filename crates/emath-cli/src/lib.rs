@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod catalog;
 pub mod genesis_cmd;
 mod tooling_cmd;
 
@@ -554,8 +555,10 @@ usage:
   emath agent check|plan|build <file.emath> [--out <dir>]
       structured emath.agent envelope over the same admission/plan/build
       paths as the interactive commands (agents cannot bypass checks)
-  emath help
-      this text
+  emath help [<command>]
+      this text, or one-command usage (`emath <command> --help` is the same)
+  emath version | --version | -V
+      print the emath-cli crate version (no git SHA)
 
 exit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error
 "
@@ -568,6 +571,17 @@ pub fn run(args: &[String]) -> u8 {
         print!("{}", help_text());
         return EXIT_OK;
     };
+    match command.as_str() {
+        "help" | "--help" | "-h" => return help_cmd(&args[1..]),
+        "version" | "--version" | "-V" => {
+            println!("{}", catalog::version_text());
+            return EXIT_OK;
+        }
+        _ => {}
+    }
+    if catalog::wants_help(&args[1..]) {
+        return print_command_help(command);
+    }
     match command.as_str() {
         "check" => {
             let (path, json) = parse_file_args(&args[1..]);
@@ -709,16 +723,39 @@ pub fn run(args: &[String]) -> u8 {
         | "doctor" | "vendor" | "provider" | "fork" | "agent" => {
             tooling_cmd::tooling_dispatch(command, &args[1..])
         }
-        "help" | "--help" | "-h" => {
+        other => unknown_command(other),
+    }
+}
+
+fn help_cmd(args: &[String]) -> u8 {
+    match args.first().map(String::as_str) {
+        None | Some("--help") | Some("-h") => {
             print!("{}", help_text());
             EXIT_OK
         }
-        other => {
-            eprintln!("error: unknown command `{other}`");
-            print!("{}", help_text());
-            EXIT_USAGE
-        }
+        Some(command) => print_command_help(command),
     }
+}
+
+fn print_command_help(command: &str) -> u8 {
+    match catalog::command_help_text(command) {
+        Some(text) => {
+            print!("{text}");
+            EXIT_OK
+        }
+        None => unknown_command(command),
+    }
+}
+
+fn unknown_command(other: &str) -> u8 {
+    eprintln!("error: unknown command `{other}`");
+    if let Some(hint) = catalog::suggest_command(other) {
+        eprintln!("did you mean `emath {hint}`?");
+        eprintln!("try: emath help {hint}");
+    } else {
+        eprintln!("try: emath help");
+    }
+    EXIT_USAGE
 }
 
 /// Shared arg scan for genesis commands: positional file, `--out`, `--world`.
@@ -764,8 +801,10 @@ fn parse_file_args(args: &[String]) -> (Option<PathBuf>, bool) {
 }
 
 fn usage(message: &str) -> u8 {
+    eprintln!("error: missing or invalid arguments for this command");
     eprintln!("usage: emath {message}");
-    eprintln!("run `emath help` for the full command list");
+    let command = message.split_whitespace().next().unwrap_or("help");
+    eprintln!("try: emath help {command}");
     EXIT_USAGE
 }
 
@@ -777,4 +816,42 @@ pub(crate) fn write_json(out: &mut impl Write, fields: &[(&str, String)]) -> std
         object.string(name, value);
     }
     write!(out, "{}", object.finish())
+}
+
+#[cfg(test)]
+mod cli_ergonomics_tests {
+    use super::*;
+
+    fn args(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn bare_and_help_exit_ok() {
+        assert_eq!(run(&[]), EXIT_OK);
+        assert_eq!(run(&args("help")), EXIT_OK);
+        assert_eq!(run(&args("--help")), EXIT_OK);
+        assert_eq!(run(&args("-h")), EXIT_OK);
+    }
+
+    #[test]
+    fn version_aliases_exit_ok() {
+        assert_eq!(run(&args("version")), EXIT_OK);
+        assert_eq!(run(&args("--version")), EXIT_OK);
+        assert_eq!(run(&args("-V")), EXIT_OK);
+    }
+
+    #[test]
+    fn command_help_is_first_try() {
+        assert_eq!(run(&args("check --help")), EXIT_OK);
+        assert_eq!(run(&args("help check")), EXIT_OK);
+        assert_eq!(run(&args("agent --help")), EXIT_OK);
+    }
+
+    #[test]
+    fn unknown_command_is_usage() {
+        assert_eq!(run(&args("chek")), EXIT_USAGE);
+        assert_eq!(run(&args("buld")), EXIT_USAGE);
+        assert_eq!(run(&args("zzzzzzzz")), EXIT_USAGE);
+    }
 }
