@@ -111,7 +111,7 @@
 
 ## Conformance tests
 
-In-crate `#[cfg(test)]` modules (no `tests/` dir on disk). 17 tests:
+In-crate `#[cfg(test)]` modules (no `tests/` dir on disk). 26 tests:
 
 `server.rs`:
 - `range_offsets_use_utf8_byte_characters_on_glyph_lines`
@@ -130,6 +130,15 @@ In-crate `#[cfg(test)]` modules (no `tests/` dir on disk). 17 tests:
 - `control_shutdown_exits_zero_after_flushing_in_flight_frame`
 - `writer_error_propagates_as_typed_io_error`
 - `writer_flush_error_surfaces`
+- `serve_refuses_invalid_content_length_with_parse_error`
+- `serve_refuses_eof_mid_header_with_parse_error`
+- `serve_refuses_short_body_with_parse_error`
+- `read_frame_accepts_header_case_and_whitespace_variants`
+- `read_frame_refuses_oversized_header_line`
+- `serve_partial_second_frame_yields_clean_error_no_partial_output`
+- `region_close_drains_mid_body_pending_read`
+- `serve_is_deterministic_identical_input_identical_output`
+- `serve_dispatches_sequentially_with_strict_single_flight_order`
 
 `lab.rs`:
 - `region_task_completes`
