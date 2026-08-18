@@ -1,0 +1,38 @@
+[package]
+name = "emath-search"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# frankensearch artifact-corpus search lane (CUTOVER_PLAN.md §5.4 / §9.12).
+# Optional by design, mirroring the fsqlite/asupersync doctrine: the consumer
+# decides whether to pull the pinned frankensearch git revision and the
+# asupersync runtime that drives it. The default build stays std-only with
+# zero third-party deps.
+#
+# Feature set chosen at this pass: `hash` (deterministic, offline hash-control
+# embedder) + `quill` (native BM25 lexical backend). Deliberately NOT the
+# skill's recommended `hybrid` feature: `hybrid` pulls model2vec/fastembed
+# (tokenizers + ORT binary acquisition) and its auto-detect tries model
+# discovery — out of scope for an offline deterministic spike. The engine's
+# TwoTierSearcher + RRF fusion surface is what the skill mandates, and that is
+# what this crate drives; the semantic model tiers are a documented no-claim
+# (see CONTRACT.md).
+search = ["dep:frankensearch", "dep:asupersync"]
+
+[dependencies]
+# Same version-range asupersync that frankensearch declares internally
+# (crates.io ">=0.4.4, <0.5"): frankensearch is NOT internally git-pinned like
+# frankengraphdb — it resolves asupersync from crates.io, so the fgdb-style
+# inline-git-rev unification does not apply here. Declaring the same crates.io
+# range makes Cargo unify our Runtime/Cx with frankensearch's into one
+# compiled instance (resolved to the workspace-locked crates.io 0.4.x; the git
+# pins f0270d53... / c17e51931... stay in OTHER crates' graphs and never cross
+# this boundary). Verified via `cargo tree -i asupersync`.
+asupersync = { version = ">=0.4.4, <0.5", default-features = false, optional = true }
+frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "33ef37a4c663535b832ae057b5c36296215e41f4", default-features = false, features = ["hash", "quill"], optional = true }
