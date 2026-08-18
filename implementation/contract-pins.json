@@ -4,6 +4,10 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced: 243 emitted codes current (asupersync-cutover annex regenerations produced no new E-codes; E-LSP surface unchanged)"
+    },
+    {
       "date": "2026-08-17",
       "note": "public-surface trim: session docs (BUILD_STATUS, HANDOFF) and the machine perf store (.bench-history) untracked; release scripts pruned from scripts/; pinned set narrowed to the four shipped contract docs; schema ids unversioned"
     },
@@ -33,7 +37,7 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "1197553a35403768224b3d65a91bd23573fe4260e81d1e5b10ddcefe5832ca98",
+    "implementation/ERROR_CODES.md": "463ef57a4c4bf080a2fbbdab3a5b3ce7ab5e32f33644dbd694700cbb45e5ffc2",
     "implementation/CLI_REFERENCE.md": "972c764a90a05b6719099da6f4ad5e4f949ddaef4b98aa5efff4075a914bc688",
     "implementation/CRATE_MAP.md": "0377469b7b37b8dcae1ce51bdba8e75d93a95e93c36d4987eb62d522dd75c82d",
     "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"

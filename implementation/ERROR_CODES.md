@@ -581,7 +581,7 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **243 unique codes** from 168 rust files.
+Emissions: **243 unique codes** from 170 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |

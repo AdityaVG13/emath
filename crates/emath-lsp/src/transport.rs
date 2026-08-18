@@ -18,7 +18,7 @@
 //! and in-flight frame I/O is dropped; EOF shuts the loop down cleanly.
 //! Per-message `Scope` isolation needs
 //! shared handler state (an actor / `Arc<Mutex>` refactor of
-//! `crate::server::ServerState`) because `Cx::spawn` takes `Send + 'static'
+//! `crate::server::ServerState`) because `Cx::spawn` takes `Send + 'static`
 //! closures, so it is deferred to the state-ownership step; the sync handler
 //! itself is indivisible and mid-handler cancellation is a documented seam.
 //!
@@ -310,13 +310,10 @@ where
             let Some(body) = body else {
                 return Ok(u8::from(!state.shutdown));
             };
-            let text = match String::from_utf8(body) {
-                Ok(text) => text,
-                Err(_) => {
-                    cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
-                    write_parse_error(&mut self.writer, "body is not utf-8").await?;
-                    return Ok(1);
-                }
+            let Some(text) = String::from_utf8(body).ok() else {
+                cx.checkpoint().map_err(|_| TransportError::Cancelled)?;
+                write_parse_error(&mut self.writer, "body is not utf-8").await?;
+                return Ok(1);
             };
             let (id, method, params) = match parse_request(&text) {
                 Ok(parts) => parts,
@@ -362,9 +359,7 @@ where
                 self.writer.flush().await.map_err(TransportError::Io)?;
                 Ok(true)
             }
-            Err(RecvError::Empty) | Err(RecvError::Disconnected) | Err(RecvError::Cancelled) => {
-                Ok(false)
-            }
+            Err(RecvError::Empty | RecvError::Disconnected | RecvError::Cancelled) => Ok(false),
         }
     }
 }
@@ -635,7 +630,7 @@ mod tests {
         }
 
         fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "flush down")))
+            Poll::Ready(Err(io::Error::other("flush down")))
         }
 
         fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
