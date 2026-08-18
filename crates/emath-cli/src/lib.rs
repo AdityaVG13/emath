@@ -467,15 +467,23 @@ pub fn artifact_battery(dir: &Path) -> u8 {
     if ok { EXIT_OK } else { EXIT_REFUSED }
 }
 
-/// `architecture`: provider-neutral pipeline description.
-pub fn architecture() -> u8 {
-    println!(
-        ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion"
-    );
-    println!(
-        "provider-neutral required paths: {:?}",
-        emath_artifact::required_artifact_paths()
-    );
+/// `architecture [--json]`: provider-neutral pipeline description.
+pub fn architecture(json: bool) -> u8 {
+    let pipeline = ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion";
+    let paths: Vec<String> = emath_artifact::required_artifact_paths()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    if json {
+        let mut object = emath_artifact::JsonWriter::object();
+        object.string("schema", "emath.architecture");
+        object.string("pipeline", pipeline);
+        object.strings("required_paths", &paths);
+        println!("{}", object.finish());
+    } else {
+        println!("{pipeline}");
+        println!("provider-neutral required paths: {paths:?}");
+    }
     EXIT_OK
 }
 
@@ -521,7 +529,7 @@ usage:
       print one world candidate artifact
   emath portfolio show PORTFOLIO_ID --dir <dir>
       print one interpretation portfolio artifact
-  emath architecture
+  emath architecture [--json]
       describe the provider-neutral pipeline
   emath new <name> [--out <dir>]
       deterministic project scaffold (emath-package.toml + src/main.emath;
@@ -552,7 +560,7 @@ usage:
       built-in provider descriptors; typed refusal for planned providers
   emath fork status|sync [--dry-run]
       upstream pin status; network sync refused offline (E-TLT-006)
-  emath agent check|plan|build <file.emath> [--out <dir>]
+  emath agent check|plan|build|triage <file.emath> [--out <dir>]
       structured emath.agent envelope over the same admission/plan/build
       paths as the interactive commands (agents cannot bypass checks)
   emath help [<command>]
@@ -727,7 +735,7 @@ pub fn run(args: &[String]) -> u8 {
                 usage("artifact check|battery <dir>")
             }
         }
-        "architecture" => architecture(),
+        "architecture" => architecture(catalog::wants_json(&args[1..])),
         "new" | "fmt" | "explain" | "run" | "test" | "bench" | "verify" | "inspect" | "diff"
         | "doctor" | "vendor" | "provider" | "fork" | "agent" => {
             tooling_cmd::tooling_dispatch(command, &args[1..])
@@ -886,5 +894,13 @@ mod cli_ergonomics_tests {
         assert_eq!(run(&args("robot-docs")), EXIT_OK);
         assert_eq!(run(&args("robot-docs guide")), EXIT_OK);
         assert_eq!(run(&args("robot-docs waffle")), EXIT_USAGE);
+    }
+
+    #[test]
+    fn read_side_json_and_triage_help_exit_ok() {
+        assert_eq!(run(&args("architecture --json")), EXIT_OK);
+        assert_eq!(run(&args("doctor --json")), EXIT_OK);
+        assert_eq!(run(&args("provider list --json")), EXIT_OK);
+        assert_eq!(run(&args("agent triage --help")), EXIT_OK);
     }
 }
