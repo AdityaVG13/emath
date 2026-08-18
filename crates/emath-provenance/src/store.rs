@@ -3,7 +3,7 @@
 //! The engine (`fgdb` + asupersync) is async-native for open/create/write and
 //! sync for reads, so the `Database` and the asupersync runtime live on a
 //! dedicated worker thread with a large stack; `ProvenanceStore` is a channel
-//! proxy over that worker (emath-store sqlite facade precedent, CUTOVER_PLAN
+//! proxy over that worker (emath-store sqlite facade precedent, `CUTOVER_PLAN`
 //! §9.10). Single-writer by design (one owner per graph directory); see
 //! CONTRACT.md. All public methods are blocking.
 
@@ -83,7 +83,7 @@ impl ProvenanceStore {
         let worker = std::thread::Builder::new()
             .name("emath-provenance".into())
             .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || worker_entry(&worker_path, request_rx, open_tx))
+            .spawn(move || worker_entry(&worker_path, request_rx, &open_tx))
             .map_err(|error| ProvenanceError::Open(format!("worker thread: {error}")))?;
         match open_rx.recv() {
             Ok(Ok(())) => Ok(Self {
@@ -199,7 +199,7 @@ impl Adjacency for FlatAdj {
 fn worker_entry(
     path: &Path,
     request_rx: mpsc::Receiver<Op>,
-    open_tx: mpsc::Sender<Result<(), ProvenanceError>>,
+    open_tx: &mpsc::Sender<Result<(), ProvenanceError>>,
 ) {
     let runtime = match RuntimeBuilder::current_thread().build() {
         Ok(runtime) => runtime,
@@ -274,24 +274,34 @@ fn open_or_create(
     let should_create = match std::fs::symlink_metadata(path) {
         Ok(metadata) if !metadata.is_dir() => {
             return Err(ProvenanceError::Open(format!(
-                "{path:?} exists and is not a directory",
+                "{} exists and is not a directory",
+                path.display(),
             )));
         }
         Ok(_) => std::fs::read_dir(path)
-            .map_err(|error| ProvenanceError::Open(format!("read_dir {path:?}: {error}")))?
+            .map_err(|error| {
+                ProvenanceError::Open(format!("read_dir {}: {error}", path.display()))
+            })?
             .next()
             .is_none(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-        Err(error) => return Err(ProvenanceError::Open(format!("stat {path:?}: {error}"))),
+        Err(error) => {
+            return Err(ProvenanceError::Open(format!(
+                "stat {}: {error}",
+                path.display()
+            )));
+        }
     };
     if should_create {
         runtime
-            .block_on(Database::create(&cx, path, keys))
-            .map_err(|error| ProvenanceError::Open(format!("create at {path:?}: {error:?}")))
+            .block_on(Database::create(cx, path, keys))
+            .map_err(|error| {
+                ProvenanceError::Open(format!("create at {}: {error}", path.display()))
+            })
     } else {
         runtime
-            .block_on(Database::open(&cx, path, keys))
-            .map_err(|error| ProvenanceError::Open(format!("open at {path:?}: {error:?}")))
+            .block_on(Database::open(cx, path, keys))
+            .map_err(|error| ProvenanceError::Open(format!("open at {}: {error}", path.display())))
     }
 }
 
@@ -307,17 +317,17 @@ fn insert_edge_drive(
     src: NodeId,
     dst: NodeId,
 ) -> Result<EdgeId, ProvenanceError> {
-    let view = db.pinned_read_view().map_err(map_read)?;
+    let view = db.pinned_read_view().map_err(|e| map_read(&e))?;
     if view
         .vertex(VId(u128::from(src.0)))
-        .map_err(map_read)?
+        .map_err(|e| map_read(&e))?
         .is_none()
     {
         return Err(ProvenanceError::MissingNode(src));
     }
     if view
         .vertex(VId(u128::from(dst.0)))
-        .map_err(map_read)?
+        .map_err(|e| map_read(&e))?
         .is_none()
     {
         return Err(ProvenanceError::MissingNode(dst));
@@ -335,7 +345,7 @@ fn insert_edge_drive(
         vec![],
     );
     runtime
-        .block_on(db.write(&cx, batch))
+        .block_on(db.write(cx, batch))
         .map(|_| id)
         .map_err(map_write)
 }
@@ -346,10 +356,10 @@ fn lineage_drive(
     seed: NodeId,
     max_depth: usize,
 ) -> Result<Lineage, ProvenanceError> {
-    let view = db.pinned_read_view().map_err(map_read)?;
+    let view = db.pinned_read_view().map_err(|e| map_read(&e))?;
     if view
         .vertex(VId(u128::from(seed.0)))
-        .map_err(map_read)?
+        .map_err(|e| map_read(&e))?
         .is_none()
     {
         return Err(ProvenanceError::MissingNode(seed));
@@ -364,8 +374,10 @@ fn lineage_drive(
 
 /// Persisted kind of a node (its vertex label).
 fn node_kind_drive(db: &Database, id: NodeId) -> Result<Option<NodeKind>, ProvenanceError> {
-    let view = db.pinned_read_view().map_err(map_read)?;
-    let row = view.vertex(VId(u128::from(id.0))).map_err(map_read)?;
+    let view = db.pinned_read_view().map_err(|e| map_read(&e))?;
+    let row = view
+        .vertex(VId(u128::from(id.0)))
+        .map_err(|e| map_read(&e))?;
     Ok(row.and_then(|vertex| {
         vertex
             .labels
@@ -379,22 +391,38 @@ fn node_kind_drive(db: &Database, id: NodeId) -> Result<Option<NodeKind>, Proven
 /// for this spike's identity range).
 fn snapshot_adjacency(view: &fgdb::EmbeddedReadView) -> Result<FlatAdj, ProvenanceError> {
     let mut edges = Vec::new();
-    for record in view.edges().map_err(map_read)? {
+    for record in view.edges().map_err(|e| map_read(&e))? {
         let kind = EdgeKind::from_relation(record.entry.relation.0).ok_or_else(|| {
             ProvenanceError::Query(format!("unknown relation {}", record.entry.relation.0))
         })?;
         edges.push(AuthoredEdge {
-            id: EdgeId(record.entry.eid.0 as u64),
+            id: edge_from_u128(record.entry.eid.0)?,
             kind,
-            src: NodeId(record.entry.src.0 as u64),
-            dst: NodeId(record.entry.dst.0 as u64),
+            src: node_from_u128(record.entry.src.0)?,
+            dst: node_from_u128(record.entry.dst.0)?,
         });
     }
     Ok(FlatAdj { edges })
 }
 
-fn map_read(error: fgdb::ReadError) -> ProvenanceError {
+fn map_read(error: &fgdb::ReadError) -> ProvenanceError {
     ProvenanceError::Query(format!("{error:?}"))
+}
+
+/// Lossless u128 → u64 node id for the spike's identity range (ids are
+/// u64-origin; the engine widens to u128). Refuses overflow instead of
+/// truncating.
+fn node_from_u128(v: u128) -> Result<NodeId, ProvenanceError> {
+    u64::try_from(v)
+        .map(NodeId)
+        .map_err(|_| ProvenanceError::Query(format!("node id exceeds u64: {v}")))
+}
+
+/// Lossless u128 → u64 edge id; see `node_from_u128`.
+fn edge_from_u128(e: u128) -> Result<EdgeId, ProvenanceError> {
+    u64::try_from(e)
+        .map(EdgeId)
+        .map_err(|_| ProvenanceError::Query(format!("edge id exceeds u64: {e}")))
 }
 
 /// Map fgdb write refusals onto the crate error model. The engine's
@@ -404,13 +432,20 @@ fn map_write(error: fgdb::WriteError) -> ProvenanceError {
     match error {
         fgdb::WriteError::AlreadyLive { elem } | fgdb::WriteError::IdentitySpent { elem } => {
             match elem {
-                ElementId::Vertex(vid) => ProvenanceError::DuplicateNode(NodeId(vid.0 as u64)),
-                ElementId::Edge(eid) => ProvenanceError::DuplicateEdge(EdgeId(eid.0 as u64)),
+                ElementId::Vertex(vid) => match node_from_u128(vid.0) {
+                    Ok(id) => ProvenanceError::DuplicateNode(id),
+                    Err(error) => error,
+                },
+                ElementId::Edge(eid) => match edge_from_u128(eid.0) {
+                    Ok(id) => ProvenanceError::DuplicateEdge(id),
+                    Err(error) => error,
+                },
             }
         }
-        fgdb::WriteError::DanglingEndpoint { endpoint, .. } => {
-            ProvenanceError::MissingNode(NodeId(endpoint.0 as u64))
-        }
+        fgdb::WriteError::DanglingEndpoint { endpoint, .. } => match node_from_u128(endpoint.0) {
+            Ok(id) => ProvenanceError::MissingNode(id),
+            Err(error) => error,
+        },
         fgdb::WriteError::EmptyBatch => {
             ProvenanceError::Query("engine refused an empty batch".into())
         }

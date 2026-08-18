@@ -4,6 +4,10 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced: catalog.rs CLI work added E-TLT-004/006 emission rows; new feature-gated infra crates (store/provenance/search) raise rust-file count (170\u2192180); codes still 243, surface unchanged CRATE_MAP re-pinned (Tier 8 infra adapters: emath-store/provenance/search)"
+    },
+    {
       "date": "2026-08-18",
       "note": "CLI_REFERENCE: --json on remaining read-side commands + agent triage mega-command"
     },
@@ -49,9 +53,9 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "463ef57a4c4bf080a2fbbdab3a5b3ce7ab5e32f33644dbd694700cbb45e5ffc2",
+    "implementation/ERROR_CODES.md": "39efbb76a8bb502e08f52046d905400809058f72e772b0c62ef2eb52c2669844",
     "implementation/CLI_REFERENCE.md": "8feafad3fed1e5e57613baa8c4e0b939a3e0f35ad67d177bacb9a54809180b30",
-    "implementation/CRATE_MAP.md": "0377469b7b37b8dcae1ce51bdba8e75d93a95e93c36d4987eb62d522dd75c82d",
+    "implementation/CRATE_MAP.md": "71c2fd836624c65509cf845ac88520ff9ec7b265b4d419835f8797893ab7e9c5",
     "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"
   }
 }

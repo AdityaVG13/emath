@@ -1,6 +1,6 @@
 //! Typed error model for emath-search.
 //!
-//! No E-* codes are introduced; ERROR_CODES.md is untouched. Engine failures
+//! No E-* codes are introduced; `ERROR_CODES.md` is untouched. Engine failures
 //! are mapped onto this enum (frankensearch's `SearchError` stays behind the
 //! facade; see `engine.rs`).
 

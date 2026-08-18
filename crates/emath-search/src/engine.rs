@@ -3,7 +3,7 @@
 //! frankensearch is asupersync-native (no tokio verified at the pinned rev):
 //! `IndexBuilder::build` and `TwoTierSearcher::search_collect` are async and
 //! require `&Cx`. Mirroring the emath-store / emath-provenance worker-thread
-//! precedent (CUTOVER_PLAN §9.10 / §9.11), the engine + an asupersync runtime
+//! precedent (`CUTOVER_PLAN` §9.10 / §9.11), the engine + an asupersync runtime
 //! live on a dedicated worker thread with a large stack; `CorpusSearch` is a
 //! channel proxy over that worker. All public methods are blocking. The
 //! engine's result ordering is authoritative — this crate never re-sorts
@@ -17,6 +17,7 @@
 //! deterministic) with the native Quill BM25 lexical arm; the semantic model
 //! tiers are documented no-claims (CONTRACT.md).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -181,7 +182,7 @@ impl CorpusSearch {
         let worker = thread::Builder::new()
             .name("emath-search".into())
             .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || worker_entry(&worker_path, request_rx, ready_tx))
+            .spawn(move || worker_entry(&worker_path, request_rx, &ready_tx))
             .map_err(|error| SearchError::Open {
                 path: path.display().to_string(),
                 reason: format!("worker thread: {error}"),
@@ -291,7 +292,7 @@ struct SearcherState {
 fn worker_entry(
     path: &Path,
     request_rx: mpsc::Receiver<Op>,
-    ready_tx: mpsc::Sender<Result<(), SearchError>>,
+    ready_tx: &mpsc::Sender<Result<(), SearchError>>,
 ) {
     let runtime = match RuntimeBuilder::current_thread().build() {
         Ok(runtime) => runtime,
@@ -319,11 +320,11 @@ fn worker_entry(
                 let _ = reply.send(result);
             }
             Op::Open { reply } => {
-                let result = open_drive(&mut worker).map(|_| ());
+                let result = open_drive(&mut worker);
                 let _ = reply.send(result);
             }
             Op::Search { query, k, reply } => {
-                let result = search_drive(&mut worker, &query, k);
+                let result = search_drive(&worker, &query, k);
                 let _ = reply.send(result);
             }
             Op::Reindex { docs, reply } => {
@@ -361,7 +362,7 @@ fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, 
             id: doc.fs_doc_id().expect("validated composite id"),
             content: doc.text.clone(),
             title: None,
-            metadata: Default::default(),
+            metadata: HashMap::default(),
         })
         .collect();
 
@@ -414,7 +415,7 @@ fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, 
 fn open_drive(worker: &mut Worker) -> Result<(), SearchError> {
     let vectors = Arc::new(
         TwoTierIndex::open(&worker.path, index_config())
-            .map_err(|error| map_open(worker, error))?,
+            .map_err(|error| map_open(worker, &error))?,
     );
     let fast = Arc::new(HashEmbedder::default_256());
     let mut searcher = TwoTierSearcher::new(vectors.clone(), fast.clone(), index_config())
@@ -491,7 +492,6 @@ fn remove_drive(path: &Path) -> Result<(), SearchError> {
 
 fn map_hit(result: &ScoredResult) -> Hit {
     let (kind, id) = from_fs_doc_id(&result.doc_id)
-        .map(|(kind, id)| (kind, id))
         .unwrap_or_else(|| (String::new(), result.doc_id.to_string()));
     Hit {
         doc_id: result.doc_id.to_string(),
@@ -508,7 +508,7 @@ fn map_hit(result: &ScoredResult) -> Hit {
     }
 }
 
-fn map_open(worker: &Worker, error: FsError) -> SearchError {
+fn map_open(worker: &Worker, error: &FsError) -> SearchError {
     SearchError::Open {
         path: worker.path.display().to_string(),
         reason: format!("{error}"),
@@ -693,7 +693,10 @@ mod tests {
                 .expect("old gone")
                 .is_empty()
         );
-        assert!(search.search("surface codes", 10).expect("new hit").len() == 1);
+        assert_eq!(
+            search.search("surface codes", 10).expect("new hit").len(),
+            1
+        );
     }
 
     #[test]
@@ -726,9 +729,8 @@ mod tests {
     #[test]
     fn open_missing_index_errors() {
         let dir = scratch_dir("missing");
-        let error = match CorpusSearch::open(&dir) {
-            Ok(_) => return assert!(false, "open must fail on a missing index"),
-            Err(error) => error,
+        let Err(error) = CorpusSearch::open(&dir) else {
+            panic!("open must fail on a missing index");
         };
         assert!(matches!(error, SearchError::Open { .. }));
     }
