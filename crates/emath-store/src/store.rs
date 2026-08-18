@@ -32,7 +32,7 @@ pub struct ArtifactRecord {
 pub struct EvidenceRow {
     /// Claim text (checker-style, e.g. "content-id=fnv1a64:...").
     pub claim: String,
-    /// One of schema::VALID_CLAIM_STATUSES.
+    /// One of `schema::VALID_CLAIM_STATUSES`.
     pub status: String,
     /// Deterministic ordering key, supplied by the caller (never wall-clock).
     pub seq: i64,
@@ -64,7 +64,7 @@ impl fmt::Display for StoreError {
 
 impl std::error::Error for StoreError {}
 
-/// One data-driven operation for Store::transaction. Ops run as one atomic
+/// One data-driven operation for `Store::transaction`. Ops run as one atomic
 /// unit on the engine worker; any error rolls all of them back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreOp {
@@ -83,7 +83,7 @@ pub enum StoreOp {
         artifact_id: String,
         /// Claim text.
         claim: String,
-        /// One of schema::VALID_CLAIM_STATUSES.
+        /// One of `schema::VALID_CLAIM_STATUSES`.
         status: String,
         /// Deterministic ordering key.
         seq: i64,
@@ -151,7 +151,7 @@ impl Store {
         let worker = std::thread::Builder::new()
             .name("emath-store".to_string())
             .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || worker_entry(&worker_path, request_rx, open_tx))
+            .spawn(move || worker_entry(&worker_path, request_rx, &open_tx))
             .map_err(|error| StoreError::Open(format!("worker thread: {error}")))?;
         match open_rx.recv() {
             Ok(Ok(())) => Ok(Self {
@@ -175,9 +175,9 @@ impl Store {
     }
 
     /// Insert (or keep) one evidence row for an existing artifact. The status
-    /// must be one of schema::VALID_CLAIM_STATUSES; other values are rejected
-    /// with StoreError::Query before SQL runs (the CHECK constraint is a
-    /// backstop). Rows are keyed on (artifact_id, claim, seq), so re-inserting
+    /// must be one of `schema::VALID_CLAIM_STATUSES`; other values are rejected
+    /// with `StoreError::Query` before SQL runs (the CHECK constraint is a
+    /// backstop). Rows are keyed on `(artifact_id, claim, seq)`, so re-inserting
     /// an identical row is a no-op.
     pub fn add_evidence(
         &self,
@@ -195,7 +195,7 @@ impl Store {
         expect_ok(response)
     }
 
-    /// Return all evidence rows for artifact_id, ordered by (seq, claim).
+    /// Return all evidence rows for `artifact_id`, ordered by (`seq`, `claim`).
     /// Deterministic: order never depends on wall-clock or insertion order.
     pub fn evidence_for(&self, artifact_id: &str) -> Result<Vec<EvidenceRow>, StoreError> {
         let response = self.call(Op::EvidenceFor {
@@ -262,7 +262,7 @@ fn expect_ok(response: Response) -> Result<(), StoreError> {
 fn worker_entry(
     path: &str,
     request_rx: mpsc::Receiver<Request>,
-    open_tx: mpsc::Sender<Result<(), StoreError>>,
+    open_tx: &mpsc::Sender<Result<(), StoreError>>,
 ) {
     let runtime = match asupersync::runtime::RuntimeBuilder::current_thread().build() {
         Ok(runtime) => runtime,
@@ -501,10 +501,10 @@ fn run_batch(
     connection: &Connection,
     ops: &[StoreOp],
 ) -> Result<(), StoreError> {
-    engine_exec(runtime, connection, "BEGIN").map_err(transaction_context)?;
+    engine_exec(runtime, connection, "BEGIN").map_err(|e| transaction_context(&e))?;
     let outcome = run_ops(runtime, connection, ops);
     match outcome {
-        Ok(()) => engine_exec(runtime, connection, "COMMIT").map_err(transaction_context),
+        Ok(()) => engine_exec(runtime, connection, "COMMIT").map_err(|e| transaction_context(&e)),
         Err(error) => {
             let _ = engine_exec(runtime, connection, "ROLLBACK");
             Err(error)
@@ -520,7 +520,7 @@ fn run_ops(
     for op in ops {
         match op {
             StoreOp::PutArtifact { id, kind, path } => {
-                op_put_artifact(runtime, connection, id, kind, path)?
+                op_put_artifact(runtime, connection, id, kind, path)?;
             }
             StoreOp::AddEvidence {
                 artifact_id,
@@ -533,7 +533,7 @@ fn run_ops(
     Ok(())
 }
 
-fn transaction_context(error: StoreError) -> StoreError {
+fn transaction_context(error: &StoreError) -> StoreError {
     StoreError::Transaction(error.to_string())
 }
 

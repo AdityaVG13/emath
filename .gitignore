@@ -6,6 +6,8 @@ tests/*/target/
 # zero tool caches and disposable agent scratch workspaces
 .zerostack/
 .scratch-*/
+# ubs/ast-grep scanner caches (created under crates/ when scanning)
+**/.asgrep/
 
 # skill-loop progress + module-coupling-topology campaign books
 .skill-loop*

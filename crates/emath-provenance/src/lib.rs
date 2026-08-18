@@ -1,6 +1,6 @@
 //! Provenance/evidence lineage model (goal → plan → artifact), spike pass 2.
 //!
-//! Feature-gated adapter crate (CUTOVER_PLAN.md §5.3 / §9.11): the default
+//! Feature-gated adapter crate (`CUTOVER_PLAN.md` §5.3 / §9.11): the default
 //! build is std-only with zero third-party dependencies and only first-party
 //! code. The `graphdb` feature adds the pinned frankengraphdb `fgdb` facade
 //! plus the same-rev asupersync runtime that drives it, exposing a blocking
@@ -130,11 +130,11 @@ pub trait Adjacency {
 /// ascending by [`NodeId`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Lineage {
-    /// Ancestor goal nodes (children of PlanOf edges).
+    /// Ancestor goal nodes (children of `PlanOf` edges).
     pub goals: Vec<NodeId>,
-    /// Ancestor plan nodes (children of ArtifactOf edges).
+    /// Ancestor plan nodes (children of `ArtifactOf` edges).
     pub plans: Vec<NodeId>,
-    /// Ancestor artifact nodes (children of EvidenceOf edges).
+    /// Ancestor artifact nodes (children of `EvidenceOf` edges).
     pub artifacts: Vec<NodeId>,
     /// Ancestor evidence nodes (currently only ever the seed itself; kept for
     /// symmetry with the kind model).
@@ -173,7 +173,7 @@ impl Lineage {
 }
 
 /// Provenance store errors. Internal to this crate; no E-* codes are
-/// introduced (ERROR_CODES.md is untouched).
+/// introduced (`ERROR_CODES.md` is untouched).
 #[derive(Debug)]
 pub enum ProvenanceError {
     /// A node with this id already exists in the graph.
@@ -236,8 +236,8 @@ pub fn lineage_closure<A: Adjacency + ?Sized>(
             .push((edge.dst, edge.kind));
     }
     let mut result = Lineage::default();
-    let mut seen: HashSet<NodeId> = HashSet::new();
-    seen.insert(seed);
+    let mut visited: HashSet<NodeId> = HashSet::new();
+    visited.insert(seed);
     // max_depth counts ancestor hops: 0 visits nothing, 1 visits direct
     // parents, 2 adds grandparents, and so on.
     if max_depth == 0 {
@@ -245,7 +245,7 @@ pub fn lineage_closure<A: Adjacency + ?Sized>(
     }
     let mut frontier: Vec<(NodeId, EdgeKind)> = Vec::new();
     for (dst, kind) in outgoing.get(&seed).into_iter().flatten() {
-        if seen.insert(*dst) {
+        if visited.insert(*dst) {
             result.push(kind.dst_kind(), *dst);
             frontier.push((*dst, *kind));
         }
@@ -255,7 +255,7 @@ pub fn lineage_closure<A: Adjacency + ?Sized>(
         let mut next: Vec<(NodeId, EdgeKind)> = Vec::new();
         for (node, _) in &frontier {
             for (dst, kind) in outgoing.get(node).into_iter().flatten() {
-                if seen.insert(*dst) {
+                if visited.insert(*dst) {
                     result.push(kind.dst_kind(), *dst);
                     next.push((*dst, *kind));
                 }

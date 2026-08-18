@@ -91,6 +91,17 @@ intent, not an implemented surface.
 | `emath-tuning` | `crates/emath-tuning` | semantic and joint tuning | portfolio |
 | `emath-plugin-sdk` | `crates/emath-plugin-sdk` | plugin SDK slice: descriptors, sandbox policy decisions | provider-api |
 
+### Tier 8 — infrastructure adapters (feature-gated)
+
+| Crate | Path | Responsibility | May depend on |
+|---|---|---|---|
+| `emath-store` | `crates/emath-store` | evidence/artifact state store (frankensqlite, `sqlite-store` feature) | core/ir |
+| `emath-provenance` | `crates/emath-provenance` | goal → plan → artifact lineage graph (frankengraphdb, `graphdb` feature) | ir |
+| `emath-search` | `crates/emath-search` | artifact corpus hybrid search (frankensearch, `search` feature) | ir |
+
+Feature-gated: each crate's default build is std-only; the upstream engine
+(Dicklesworthstone franken*) arrives only behind the named feature.
+
 ## Non-crate workspace members
 
 | Member | Path | Responsibility |

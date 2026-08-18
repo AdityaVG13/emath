@@ -11,7 +11,7 @@ pub const EVIDENCE_TABLE: &str = "evidence";
 /// evidence table holds per-artifact claim rows. Row order is explicit
 /// (seq), never wall-clock. The status CHECK closes the value set to the
 /// three documented states.
-pub const SCHEMA_SQL: &str = r#"CREATE TABLE IF NOT EXISTS artifacts (
+pub const SCHEMA_SQL: &str = r"CREATE TABLE IF NOT EXISTS artifacts (
   id   TEXT PRIMARY KEY,
   kind TEXT NOT NULL,
   path TEXT NOT NULL
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS evidence (
   status      TEXT NOT NULL CHECK (status IN ('ok', 'fail', 'pending')),
   seq         INTEGER NOT NULL,
   PRIMARY KEY (artifact_id, claim, seq)
-);"#;
+);";
 
 /// Evidence claim status: claim verified.
 pub const CLAIM_STATUS_OK: &str = "ok";
@@ -35,7 +35,7 @@ pub const CLAIM_STATUS_PENDING: &str = "pending";
 pub const VALID_CLAIM_STATUSES: [&str; 3] =
     [CLAIM_STATUS_OK, CLAIM_STATUS_FAIL, CLAIM_STATUS_PENDING];
 
-/// True iff `status` is one of VALID_CLAIM_STATUSES.
+/// True iff `status` is one of `VALID_CLAIM_STATUSES`.
 #[must_use]
 pub fn valid_claim_status(status: &str) -> bool {
     VALID_CLAIM_STATUSES.contains(&status)

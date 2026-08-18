@@ -581,7 +581,7 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **243 unique codes** from 170 rust files.
+Emissions: **243 unique codes** from 180 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
@@ -798,13 +798,13 @@ Not yet documented at generation time: **0**.
 | `E-SYN-209` | crates/emath-syntax/src/genesis.rs | `line {line}: duplicate `body:` section`<br>`line {line}: duplicate `answer:` section` |
 | `E-SYN-210` | crates/emath-genesis/src/forest.rs | `E-SYN-210` |
 | `E-SYN-211` | crates/emath-genesis/src/forest.rs | `E-SYN-211` |
-| `E-TLT-004` | crates/emath-cli/src/lib.rs<br>crates/emath-cli/src/tooling_cmd.rs | `error: E-TLT-004: benchmarking `{file}` is not a Phase 1 CLI comparison; measure via `cargo bench --profile re`<br>`error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath` |
+| `E-TLT-004` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/lib.rs<br>crates/emath-cli/src/tooling_cmd.rs | `bench`<br>`error: E-TLT-004: benchmarking `{file}` is not a Phase 1 CLI comparison; measure via `cargo bench --profile re` |
 | `E-TLT-005` | crates/emath-cli/src/lib.rs<br>crates/emath-cli/src/tooling_cmd.rs | `error: E-TLT-005: cannot list artifact state directory {}`<br>`error: E-TLT-005: no `emath/` state directory under {}` |
-| `E-TLT-006` | crates/emath-cli/src/lib.rs<br>crates/emath-cli/src/tooling_cmd.rs | `error: E-TLT-006: network/source sync is disabled in Phase 1 (offline-first); use --dry-run` |
+| `E-TLT-006` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/lib.rs<br>crates/emath-cli/src/tooling_cmd.rs | `fork`<br>`error: E-TLT-006: network/source sync is disabled in Phase 1 (offline-first); use --dry-run` |
 | `E-TLT-007` | crates/emath-cli/src/tooling_cmd.rs | `error: E-TLT-007: upstream lock missing at {}`<br>`error: E-TLT-007: upstream lock is empty at {}` |
 | `E-TLT-010` | crates/emath-cli/src/tooling_cmd.rs | `error: invalid package name `{name}` (E-TLT-010)` |
-| `E-TLT-011` | crates/emath-cli/src/tooling_cmd.rs | `error: refusing to overwrite existing project at {} (E-TLT-011)` |
-| `E-TLT-012` | crates/emath-build/src/lib.rs<br>crates/emath-cli/src/tooling_cmd.rs | `tests passed`<br>`E-TLT-012: generated crate has no `#[test]` tests; --verify refuses an empty test surface (add a `tests:` sect` |
+| `E-TLT-011` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/tooling_cmd.rs | `new`<br>`error: refusing to overwrite existing project at {} (E-TLT-011)` |
+| `E-TLT-012` | crates/emath-build/src/lib.rs<br>crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/tooling_cmd.rs | `tests passed`<br>`E-TLT-012: generated crate has no `#[test]` tests; --verify refuses an empty test surface (add a `tests:` sect` |
 | `E-TLT-013` | crates/emath-cli/src/tooling_cmd.rs | `error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath` |
 | `E-TLT-016` | crates/emath-cli/src/tooling_cmd.rs | `error: E-TLT-016: unknown provider `{id}`` |
 | `E-TYPE-001` | crates/emath-sema/src/admit.rs | `unknown type `{other}`` |
