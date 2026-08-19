@@ -1,13 +1,18 @@
 #![forbid(unsafe_code)]
 
-//! emath capstone demos: `cargo xtask demo affine-scorer` and
-//! `cargo xtask demo semantic-genesis`.
+//! emath capstone demos: `cargo xtask demo affine-scorer`,
+//! `cargo xtask demo semantic-genesis`, and
+//! `cargo xtask demo holes-synthesis`.
 //!
-//! Both demos run the real compiler pipeline through the `emath` CLI and
-//! verify deterministic artifacts plus negative controls. Std-only.
+//! The compiler demos run the real pipeline through the `emath` CLI and
+//! verify deterministic artifacts plus negative controls. The holes
+//! demo runs finite table synthesis in-process. Std-only.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use emath_holes::{SynthesisLaw, impossible_identity_laws, synthesize_tables};
+use emath_term::SymbolId;
 
 const REFERENCE_SOURCE: &str = "language/examples/01_arbitrary_glyphs.emath";
 const GENERATED_DIR: &str = "examples/generated/semantic-genesis-worlds";
@@ -18,6 +23,7 @@ fn main() {
         match args.get(1).map(String::as_str) {
             Some("affine-scorer") => demo_affine_scorer(),
             Some("semantic-genesis") => demo_semantic_genesis(),
+            Some("holes-synthesis") => demo_holes_synthesis(),
             Some("all") => {
                 let slice = demo_affine_scorer();
                 if slice != 0 {
@@ -28,13 +34,13 @@ fn main() {
             }
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|all>"
+                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|all>"
                 );
                 2
             }
         }
     } else {
-        eprintln!("usage: cargo xtask demo <affine-scorer|semantic-genesis|all>");
+        eprintln!("usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|all>");
         2
     };
     std::process::exit(i32::from(code));
@@ -105,7 +111,8 @@ fn demo_semantic_genesis() -> u8 {
     }
 }
 
-const GENESIS_ARTIFACTS: [&str; 7] = [
+const GENESIS_ARTIFACTS: [&str; 9] = [
+    "source-artifact.json",
     "parse-forest.json",
     "signature.json",
     "free-term.json",
@@ -113,6 +120,7 @@ const GENESIS_ARTIFACTS: [&str; 7] = [
     "interpretation-portfolio.json",
     "world-admission.jsonl",
     "answer-receipt.json",
+    "csa-baseline.json",
 ];
 
 fn run_demo_semantic_genesis(work: &Path) -> Result<(), String> {
@@ -163,7 +171,70 @@ fn run_demo_semantic_genesis(work: &Path) -> Result<(), String> {
     if entry_count != 3 {
         return Err(format!("expected 3 world candidates, got {entry_count}"));
     }
+    // G4 exit gate: the interpretation portfolio carries at least five
+    // world classes, each with a deterministic identity.
+    let portfolio = std::fs::read_to_string(a.join("interpretation-portfolio.json"))
+        .map_err(|error| error.to_string())?;
+    let world_count = portfolio.matches("\"world_id\"").count();
+    if world_count < 5 {
+        return Err(format!(
+            "expected at least 5 portfolio world classes, got {world_count}"
+        ));
+    }
     diff_dirs(&a, &b, "genesis determinism")?;
+
+    // SG-09 receipt closure: independently re-extract every bound field
+    // from the answer receipt and recompute the receipt identity. The
+    // preimage below must stay in sync with the emitter in
+    // crates/emath-cli/src/genesis_cmd.rs.
+    let receipt = std::fs::read_to_string(a.join("answer-receipt.json"))
+        .map_err(|error| error.to_string())?;
+    let receipt_preimage = |result: &str| -> Result<String, String> {
+        Ok(format!(
+            "receipt:v2:{}:{}:{}:{}:{}:{}:{}:{result}:{}:{}:{}:{}:{}",
+            json_str(&receipt, "answer_id")?,
+            json_u64(&receipt, "source_hash")?,
+            json_u64(&receipt, "parse_id")?,
+            json_u64(&receipt, "signature_id")?,
+            json_u64(&receipt, "term_id")?,
+            json_str(&receipt, "world_id")?,
+            json_str(&receipt, "valuation")?,
+            json_str(&receipt, "artifact_hash")?,
+            json_str(&receipt, "portfolio_hash")?,
+            json_str(&receipt, "trace_hash")?,
+            json_str(&receipt, "authority")?,
+            json_u64(&receipt, "vm_steps")?,
+        ))
+    };
+    let bound_result = json_str(&receipt, "result")?;
+    let recomputed = format!(
+        "{:016x}",
+        emath_world_ir::fnv1a64(receipt_preimage(&bound_result)?.as_bytes())
+    );
+    let receipt_id = json_str(&receipt, "receipt_id")?;
+    if receipt_id != recomputed {
+        return Err(format!(
+            "answer receipt does not self-verify: receipt_id {receipt_id} != recomputed {recomputed}"
+        ));
+    }
+    if json_str(&receipt, "artifact_hash")? == "0000000000000000" {
+        return Err("answer receipt binds no code artifact (artifact_hash is 0)".to_string());
+    }
+    // Tamper negative control: a receipt whose result field was altered
+    // must fail recomputation instead of passing silently.
+    let tampered = format!(
+        "{:016x}",
+        emath_world_ir::fnv1a64(receipt_preimage("tampered-result")?.as_bytes())
+    );
+    if tampered == receipt_id {
+        return Err("tampered receipt still verified; receipt binding is broken".to_string());
+    }
+    println!("answer receipt self-verifies: {receipt_id} (tamper control refused)");
+
+    // VM answers the generated Rust must reproduce (SG-09 differential).
+    let vm_free = portfolio_answer(&portfolio, "free_symbolic")?;
+    let vm_boolean = portfolio_answer(&portfolio, "Boolean_algebra")?;
+    let vm_modular = portfolio_answer(&portfolio, "modular_numeric")?;
 
     // Parametric codegen onto a fresh directory.
     check(
@@ -187,16 +258,18 @@ fn run_demo_semantic_genesis(work: &Path) -> Result<(), String> {
         "src/main.rs",
         "manifest.json",
         "source-map.json",
+        "hole-manifest.json",
     ] {
         require_bytes(&generated.join(name), "generated file")?;
     }
     // The committed generated crate must be byte-identical (the CLI-only
-    // manifest/source-map artifacts are not part of the committed crate).
+    // manifest/source-map/hole-manifest artifacts are not part of the
+    // committed crate).
     diff_dirs_excluding(
         &generated,
         Path::new(GENERATED_DIR),
         "committed generated crate fidelity",
-        &["manifest.json", "source-map.json"],
+        &["manifest.json", "source-map.json", "hole-manifest.json"],
     )?;
 
     // Generated crate tests: fixtures + wrong-world negative control.
@@ -260,10 +333,127 @@ fn run_demo_semantic_genesis(work: &Path) -> Result<(), String> {
             "wrong world not rejected: swapped = {swapped}, expected 5"
         ));
     }
+    // SG-09 VM/Rust differential: the generated Rust must reproduce the
+    // semantic VM's own answers from the interpretation portfolio, not
+    // merely the static oracle pins above.
+    for (world, vm_answer, rust_answer) in [
+        ("free_symbolic", &vm_free, &free),
+        ("Boolean_algebra", &vm_boolean, &boolean),
+        ("modular_numeric", &vm_modular, &modular),
+    ] {
+        if vm_answer != rust_answer {
+            return Err(format!(
+                "VM/Rust differential failed for {world}: VM answered {vm_answer}, generated Rust answered {rust_answer}"
+            ));
+        }
+    }
     println!("free: {free}");
     println!("boolean: {boolean}");
     println!("modular-17: {modular}");
     println!("swapped-modular-17: {swapped} (distinct oracle pin; no-op swap rejected)");
+    println!("vm/rust differential: 3 worlds agree with the semantic VM");
+    Ok(())
+}
+
+/// Extracts a string field `"name": "value"` from single-object JSON
+/// written by the emath-artifact writer (no escaped quotes in the values
+/// this verifier reads).
+fn json_str(json: &str, name: &str) -> Result<String, String> {
+    let needle = format!("\"{name}\": \"");
+    let start = json
+        .find(&needle)
+        .ok_or_else(|| format!("missing string field {name}"))?
+        + needle.len();
+    let end = json[start..]
+        .find('"')
+        .ok_or_else(|| format!("unterminated string field {name}"))?;
+    Ok(json[start..start + end].to_string())
+}
+
+/// Extracts an integer field `"name": value` from single-object JSON.
+fn json_u64(json: &str, name: &str) -> Result<u64, String> {
+    let needle = format!("\"{name}\": ");
+    let start = json
+        .find(&needle)
+        .ok_or_else(|| format!("missing int field {name}"))?
+        + needle.len();
+    let digits: String = json[start..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits
+        .parse::<u64>()
+        .map_err(|error| format!("field {name} is not a u64: {error}"))
+}
+
+/// The recorded VM answer for `world` inside the interpretation
+/// portfolio's inline candidate array.
+fn portfolio_answer(portfolio: &str, world: &str) -> Result<String, String> {
+    let needle = format!("\"name\":\"{world}\",\"answer\":\"");
+    let start = portfolio
+        .find(&needle)
+        .ok_or_else(|| format!("portfolio has no candidate named {world}"))?
+        + needle.len();
+    let end = portfolio[start..]
+        .find('"')
+        .ok_or_else(|| format!("unterminated answer for {world}"))?;
+    Ok(portfolio[start..start + end].to_string())
+}
+
+fn demo_holes_synthesis() -> u8 {
+    println!("== demo holes-synthesis ==");
+    match run_demo_holes_synthesis() {
+        Ok(()) => {
+            println!("holes-synthesis demo: ok");
+            0
+        }
+        Err(error) => {
+            eprintln!("holes-synthesis demo FAILED: {error}");
+            1
+        }
+    }
+}
+
+fn run_demo_holes_synthesis() -> Result<(), String> {
+    let op = SymbolId("op".to_string());
+    let carrier = ["0".to_string(), "1".to_string()];
+    let budget = 2_u64.pow(4);
+    let monoid = [
+        SynthesisLaw::Identity(op.clone(), SymbolId("0".to_string())),
+        SynthesisLaw::Associative(op.clone()),
+        SynthesisLaw::Commutative(op.clone()),
+    ];
+    let found = synthesize_tables(&op, &carrier, &monoid, budget)
+        .map_err(|error| format!("monoid synthesis refused: {error:?}"))?;
+    println!(
+        "holes-synthesis: commutative-monoid candidates={} exhaustive={} examined={}",
+        found.tables.len(),
+        found.exhaustive,
+        found.examined
+    );
+    if found.tables.is_empty() || !found.exhaustive {
+        return Err(format!(
+            "expected exhaustive commutative-monoid tables, got candidates={} exhaustive={}",
+            found.tables.len(),
+            found.exhaustive
+        ));
+    }
+
+    let rejected = synthesize_tables(&op, &carrier, &impossible_identity_laws(&op), budget)
+        .map_err(|error| format!("impossible-identity synthesis refused: {error:?}"))?;
+    println!(
+        "holes-synthesis: impossible-identity rejected candidates={} exhaustive={} examined={}",
+        rejected.tables.len(),
+        rejected.exhaustive,
+        rejected.examined
+    );
+    if !rejected.tables.is_empty() || !rejected.exhaustive {
+        return Err(format!(
+            "expected exhaustive reject of two identities, got candidates={} exhaustive={}",
+            rejected.tables.len(),
+            rejected.exhaustive
+        ));
+    }
     Ok(())
 }
 
