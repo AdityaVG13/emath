@@ -27,6 +27,10 @@ framework under its bootstrap schema.
 - HIR carries provenance for attributes, generics, docs and payloads.
 - Scoped notation is mounted onto the HIR before SIR construction.
 - Migration produces an open declaration under the bootstrap schema only.
+- `requests:` is not a Goals-family alias. Live `request:` / `requests:`
+  sections are unknown to the kind schema and refused with `E-KIND-016`
+  plus a `goals:` migration hint. Bootstrap `request:` is rewritten to
+  `goals:` by `migrate_declaration` (`E-MIGR-002`).
 
 ## Error model
 
@@ -54,6 +58,8 @@ None.
 ## Conformance tests
 
 - `tests/registry_complete.rs`: integration test present on disk.
+- `open.rs`: `requests_section_is_refused_with_goals_migration_hint`.
+- `migrate.rs`: `migrate_maps_singular_request_to_goals`.
 
 ## No-claim boundaries
 

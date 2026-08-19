@@ -16,7 +16,11 @@ registry, and kind package loading. Output is the shared
   `LoweringIssue`, `MAX_LOWER_OPS`: restricted lowering into core HIR.
 - `is_known_schema`, `schema_names`, `all_schema_names`, `schema_json`,
   `example_json`, `write_schema_json`, `write_example_json`: thirteen
-  canonical schema registry access.
+  canonical schema registry access. Each `$id` emits its own JSON Schema
+  document (not a shared stub). Closed-world ids encode the in-tree
+  emitter's top-level `properties` / `required`; ids with no JSON
+  emitter are an open envelope (`schema` const, `additionalProperties:
+  true`).
 - `SchemaError`, `UnknownSchemaError`: registry error types.
 - Version constants: `VERSION`, `REGISTRY_VERSION`, `SCHEMAS_VERSION`,
   `SCHEMA_VERSION`, `SCHEMA_NAMES`.
@@ -31,7 +35,14 @@ registry, and kind package loading. Output is the shared
 - Kind package loading fails on missing kinds, checksum mismatch, incompatible
   schema versions and recursive expansion, bounded by `MAX_EXPANSION_DEPTH`
   and `MAX_LOWER_OPS`.
-- Unknown schema names are typed refusals.
+- Unknown schema names are typed refusals (`E-SCHEMA-001`).
+- Closed-world registry ids (`emath.source-artifact`,
+  `emath.parse-forest`, `emath.answer-receipt`,
+  `emath.interpretation-portfolio`) set `additionalProperties: false`
+  and list the emitter's field names and JSON types. Optional
+  `$schema` is admitted on instances so examples can round-trip `$id`.
+- The other nine ids have no in-tree JSON document with that `$id`;
+  their schemas are envelope-only and must not invent fields.
 
 ## Error model
 
@@ -42,7 +53,8 @@ Typed issue enums `SchemaIssue`, `ResolveIssue`, `LoweringIssue` plus
 ## Determinism class
 
 Deterministic JSON schema and example writers; stable version constants for
-the registry.
+the registry. Closed-world documents are distinct from each other and from
+the envelope template even after `$id` / title / description are ignored.
 
 ## Cancellation behavior
 
@@ -60,10 +72,23 @@ None.
 ## Conformance tests
 
 No `tests/` directory present. Inline `#[cfg(test)]` unit tests live in the
-`src` modules and validate the registry complete set (not enumerated).
+`src` modules. Registry tests cover thirteen-name order, pairwise-distinct
+documents, emitter field names for source-artifact / parse-forest /
+answer-receipt, envelope no-invention, `$id` example round-trip,
+determinism, and `E-SCHEMA-001`.
 
 ## No-claim boundaries
 
-Registry and lowering cover the five canonical/known schema set (thirteen
-canonical schemas) only; arbitrary user-defined kinds beyond these are not
-certified.
+Registry and lowering cover the thirteen canonical schema ids only;
+arbitrary user-defined kinds beyond these are not certified.
+
+No JSON emitter in this tree for: `emath.symbol-signature` (genesis writes
+`emath.signature`), `emath.term-ir` (durable document is `emath.free-term`;
+`TERM_IR_SCHEMA` versions the canonical text encoding), `emath.world-ir`
+and `emath.world-morphism` (canonical text forms, not JSON documents),
+`emath.meaning-lock`, `emath.agent-world-proposal` (genesis writes
+`emath.world-candidate`), `emath.continuation` (Rust `ContinuationHandle`,
+not a JSON document), `emath.math-layout-graph`,
+`emath.provenance-receipt` (13th registry id; the bead's "plus examples"
+are the per-id `example_json` writers, not a 13th artifact name). These
+nine are disclosed envelope-only.

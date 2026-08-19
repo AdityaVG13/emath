@@ -51,7 +51,12 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-None on disk currently. No `tests/` directory and no inline `#[cfg(test)]` module in `lib.rs`.
+Four lib tests, one per EMATH-08-001..004 module:
+
+- `ir::tests::incomplete_computation_cannot_become_resolved_evidence` — a complete Pass record is resolved evidence; incomplete or non-Pass records are refused with `E-EVID-404`; the canonical token is stable and changes when freshness changes.
+- `ledger::tests::reclassifying_an_assumption_is_refused` — M/N/S/E/H assumptions record in id order; re-registering the same id under a different class is `E-EVID-405`; identical re-registration is a no-op.
+- `policy::tests::bars_get_stronger_with_level` — E0 is satisfied by any producer with no checker; E1–E5 are exact bars (measurement never meets E5; E5 is formal proof plus an independent checker); lower-level evidence does not satisfy a higher requirement.
+- `registry::tests::certificate_registry_lookup_and_refusal` — unknown kind/version is `E-EVID-401`, duplicate versioned contract is `E-EVID-402`, empty `admits` is `E-EVID-403`; a registered contract admits only its declared classes.
 
 ## No-claim boundaries
 

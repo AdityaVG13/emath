@@ -4,7 +4,7 @@
 
 - Tier 2 (semantics) per `implementation/CRATE_MAP.md`.
 - Deterministic resolution planning (Phase 1 bootstrap plus Phase 6 planner machinery).
-- Hosts the provider-facing planner surface: decomposition rules, representation planning, fallback graphs, provider lifting, total dispositions, inspection, and plan identity/cache.
+- Hosts the provider-facing planner surface: the resolution algebra, decomposition rules, representation planning, fallback graphs, provider lifting, total dispositions, inspection, and plan identity/cache.
 - The canonical native plan constructor (`native_plan`) lives in `emath-ir`, which owns `ResolutionPlan` and plan-node types.
 - Depends on `emath-artifact`, `emath-core`, `emath-goal`, `emath-ir`, `emath-provider-api`, `emath-runtime`.
 
@@ -16,6 +16,8 @@
 - `ArtifactDisposition` / `disposition_for_plan` / `disposition_without_plan` / `disposition_exhausted` — total disposition machinery.
 - `DecompositionRule` / `SubgoalDag` / `SubgoalNode` / `decompose` / `requirements_preserved` — decomposition and requirement preservation.
 - `FallbackGraph` / `FallbackNode`, `Conversion` / `ConversionNode` / `RepresentationError` / `find_conversion_path`, `ProviderTraitSpec` / `LiftedMethod` / `emit_provider_trait` / `lift_missing`, `plan_identity` / `PlanCache` / `ProviderFingerprint` / `provider_set_fingerprint`, `PlanInspection` (not exhaustive).
+- `algebra`: `QState` (residual resolution question over five facets mirroring `E-PROV-512`..`E-PROV-516`), `Step` (capability as a partial transformation; `Id`, `Serial`, `Parallel`, `Alt`, `Fallback`, `Portfolio`), `Application`, `Lifted`, and the `serial`/`parallel`/`fallback` helpers. `Step::apply` is partial; `Step::apply_total` lifts to a total application whose failure is an explicit refusal with retained reasons. Candidate selection in `plan` is expressed through `Step::Alt` over capability steps.
+- `PlanInspection::explain` — deterministic human-readable plan explanation (selected candidate, tie-break order, every exclusion with stable code, checks, budget, disposition).
 
 ## Invariants
 
@@ -46,7 +48,7 @@
 
 ## Conformance tests
 
-- No `crates/emath-plan/tests/` directory on disk; conformance is unit-level in the `planner.rs` `#[cfg(test)]` module: `node_budget_refuses_oversized_plan_dag`.
+- No `crates/emath-plan/tests/` directory on disk; conformance is unit-level: `planner.rs` (`node_budget_refuses_oversized_plan_dag`) and `algebra.rs` law tests (serial associativity, identity neutrality, alternative left-bias, parallel state commutativity, lifting totality, fallback degradation marking). The standalone `tests/emath-plan` package exercises the algebra-driven selection end to end.
 
 ## No-claim boundaries
 

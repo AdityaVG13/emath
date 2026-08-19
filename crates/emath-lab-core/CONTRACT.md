@@ -45,6 +45,7 @@
   - measure: `cv_pct_quarantines_noisy_cells`, `degenerate_samples_have_zero_cv`.
   - promotion: `currently_promoted_non_regressed_stays_on_the_promoted_route`, `regressed_promoted_candidate_is_demoted_not_retained`, `not_promoted_candidate_between_targets_goes_canary`.
   - sha256: `nist_vectors_match`, `digest_is_deterministic`.
+  - candidate: `dominance_requires_no_worse_everywhere_and_strictly_better_somewhere`, `archive_keeps_only_the_non_dominated_front`, `gate_refused_candidate_never_enters_the_archive` (a closed evidence gate refuses with `E-HOST-005` and the Pareto archive stays empty).
 
 ## No-claim boundaries
 - The keep-gate SHA-256 is an identity primitive, not release cryptographic hardening.
