@@ -14,3 +14,6 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+emath-holes.workspace = true
+emath-term.workspace = true
+emath-world-ir.workspace = true
