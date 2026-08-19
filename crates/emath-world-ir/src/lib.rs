@@ -7,6 +7,15 @@ pub mod translation;
 
 use emath_term::{Signature, SymbolId};
 
+/// JSON `$schema` id of the World IR document family.
+pub const WORLD_IR_SCHEMA: &str = "emath.world-ir";
+/// World IR schema version. Bump on any change to [`WorldIr`]'s layout or
+/// to the canonical form in [`WorldIr::canonical`]; consumers refuse
+/// versions they do not know. Provider-native types never appear in the
+/// schema: provider references are string ids only
+/// ([`OperatorSemantics::ProviderBinding`]).
+pub const WORLD_IR_VERSION: u32 = 1;
+
 /// Content identity placeholder for an admitted world.
 ///
 /// Production emath should replace the demonstration FNV identity with its
@@ -171,7 +180,10 @@ pub struct MeaningHole {
     pub state: MeaningHoleState,
 }
 
-/// Provider-neutral mathematical world.
+/// Provider-neutral mathematical world: the executable interpretation
+/// environment with the seven contract components — carriers, symbols,
+/// signature, meanings (operators), constructors, laws and effects —
+/// plus explicit holes and declared capabilities.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldIr {
     /// World schema version.
@@ -190,6 +202,10 @@ pub struct WorldIr {
     pub constructors: Vec<String>,
     /// Canonical laws.
     pub laws: Vec<String>,
+    /// Declared effect names (constitution C10: effects are declared
+    /// capabilities, never ambient). An empty list means the world's
+    /// operations are pure.
+    pub effects: Vec<String>,
     /// Open holes.
     pub holes: Vec<MeaningHole>,
     /// Declared capability names.
@@ -235,6 +251,8 @@ impl WorldIr {
         operators.sort_by(|a, b| a.symbol.cmp(&b.symbol));
         let mut laws = self.laws.clone();
         laws.sort();
+        let mut effects = self.effects.clone();
+        effects.sort();
         let mut capabilities = self.capabilities.clone();
         capabilities.sort();
         let mut constructors = self.constructors.clone();
@@ -254,7 +272,7 @@ impl WorldIr {
             })
             .collect();
         format!(
-            "world:v{}:sig:{:?}:{carriers:?}:{symbols_canon:?}:{operators:?}:c:{constructors:?}:{laws:?}:h:{holes_canon:?}:{capabilities:?}",
+            "world:v{}:sig:{:?}:{carriers:?}:{symbols_canon:?}:{operators:?}:c:{constructors:?}:{laws:?}:e:{effects:?}:h:{holes_canon:?}:{capabilities:?}",
             self.version, self.signature
         )
     }

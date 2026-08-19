@@ -1,0 +1,11 @@
+[package]
+name = "emath-holes-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-holes = { path = "../../crates/emath-holes" }
+emath-calibration = { path = "../../crates/emath-calibration" }
+emath-term = { path = "../../crates/emath-term" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }

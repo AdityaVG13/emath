@@ -1,0 +1,10 @@
+[package]
+name = "emath-tuning-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-tuning = { path = "../../crates/emath-tuning" }
+emath-term = { path = "../../crates/emath-term" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }

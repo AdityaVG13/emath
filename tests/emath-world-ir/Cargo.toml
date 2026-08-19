@@ -1,0 +1,9 @@
+[package]
+name = "emath-world-ir-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-world-ir = { path = "../../crates/emath-world-ir" }
+emath-term = { path = "../../crates/emath-term" }

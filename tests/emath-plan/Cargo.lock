@@ -20,7 +20,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-syntax",
 ]
 
 [[package]]
@@ -66,32 +65,4 @@ name = "emath-runtime"
 version = "0.1.0"
 dependencies = [
  "emath-core",
-]
-
-[[package]]
-name = "emath-source"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
-name = "emath-syntax"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-source",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
-name = "emath-term"
-version = "0.1.0"
-
-[[package]]
-name = "emath-world-ir"
-version = "0.1.0"
-dependencies = [
- "emath-term",
 ]

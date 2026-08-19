@@ -1,0 +1,10 @@
+[package]
+name = "emath-genesis-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-genesis = { path = "../../crates/emath-genesis" }
+emath-term = { path = "../../crates/emath-term" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }

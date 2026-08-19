@@ -1,0 +1,11 @@
+[package]
+name = "emath-agent-protocol-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-agent-protocol = { path = "../../crates/emath-agent-protocol" }
+emath-portfolio = { path = "../../crates/emath-portfolio" }
+emath-tuning = { path = "../../crates/emath-tuning" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }

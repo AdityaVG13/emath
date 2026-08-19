@@ -1,0 +1,8 @@
+[package]
+name = "emath-build-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-build = { path = "../../crates/emath-build" }

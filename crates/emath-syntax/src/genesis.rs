@@ -266,34 +266,3 @@ fn parse_answer_clause(content: &str) -> Option<String> {
         Some(name.to_string())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn max_tokens_is_a_token_budget_not_a_line_count() {
-        let source = "emath custom W:
-  body:
-  a b c d e f
-  answer:
-  return r";
-        let admitted = parse_genesis(source, &Limits::default());
-        assert!(
-            admitted.is_ok(),
-            "full-budget parse must admit the fixture; errors: {admitted:?}"
-        );
-        // The same file carries 15 tokens; a budget of 8 must cut the scan
-        // before `answer:`, so the missing-answer refusal fires. A line
-        // count of 5 would keep everything and admit.
-        let limits = Limits {
-            max_tokens: 8,
-            ..Limits::default()
-        };
-        let refused = parse_genesis(source, &limits);
-        assert!(
-            refused.is_err(),
-            "token budget must stop the scan before `answer:`, got {refused:?}"
-        );
-    }
-}

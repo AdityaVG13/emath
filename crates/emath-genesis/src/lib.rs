@@ -9,7 +9,16 @@
 //! `emath custom` section parser and re-exports this module at its root for
 //! the CLI.
 
+pub mod csa;
 pub mod forest;
+pub mod specialization;
+pub mod vm;
+
+pub use csa::{CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, OnePointWorld, SeededCsaWorld};
+pub use specialization::{SpecializationCache, SpecializationChallenge, SpecializationStats};
+pub use vm::{
+    VM_SCHEMA, VM_SCHEMA_VERSION, VmBudget, VmContinuation, VmOutcome, VmTrace, resume, run,
+};
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -131,6 +140,7 @@ pub fn free_symbolic_world(name: &str, signature: Signature) -> WorldIr {
         operators,
         constructors: vec!["Term::Variable/Constant/Apply".into()],
         laws: vec!["structural-totality".into()],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["pure".into()],
     }

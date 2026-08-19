@@ -1,0 +1,11 @@
+[package]
+name = "emath-sema-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-sema = { path = "../../crates/emath-sema" }
+emath-core = { path = "../../crates/emath-core" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-syntax = { path = "../../crates/emath-syntax" }
