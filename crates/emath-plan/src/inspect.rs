@@ -31,6 +31,49 @@ impl PlanInspection {
         self.candidates.len()
     }
 
+    /// Renders a deterministic human-readable plan explanation: why the
+    /// selected candidate won, why every excluded candidate was refused
+    /// (stable code + detail), which checks are planned and which artifact
+    /// disposition applies.
+    #[must_use]
+    pub fn explain(&self) -> String {
+        let mut lines: Vec<String> = Vec::new();
+        lines.push(format!("policy: {}", self.policy));
+        match &self.selected_plan_id {
+            Some(id) => lines.push(format!("selected: {id}")),
+            None => lines.push("selected: none".to_string()),
+        }
+        if self.candidates.is_empty() {
+            lines.push("candidates: none".to_string());
+        } else {
+            lines.push(format!(
+                "candidates ({}), in deterministic tie-break order:",
+                self.candidates.len()
+            ));
+            for (rank, candidate) in self.candidates.iter().enumerate() {
+                lines.push(format!("  {}. {candidate}", rank + 1));
+            }
+        }
+        if self.exclusions.is_empty() {
+            lines.push("exclusions: none".to_string());
+        } else {
+            lines.push(format!("exclusions ({}):", self.exclusions.len()));
+            for (provider, code, detail) in &self.exclusions {
+                lines.push(format!("  {provider}: {code}: {detail}"));
+            }
+        }
+        if self.checks.is_empty() {
+            lines.push("checks: none".to_string());
+        } else {
+            lines.push(format!("checks: {}", self.checks.join(", ")));
+        }
+        if let Some(budget) = &self.budget {
+            lines.push(format!("budget: {budget}"));
+        }
+        lines.push(format!("disposition: {}", self.artifact_class));
+        lines.join("\n")
+    }
+
     /// Renders the inspection as deterministic JSON.
     #[must_use]
     pub fn to_json(&self) -> String {

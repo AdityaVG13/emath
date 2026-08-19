@@ -9,7 +9,8 @@ use emath_core::{Diagnostics, QualifiedName, Span};
 use emath_ir::constructor::{Constructor, Field, TestCase, Visibility};
 use emath_ir::goal::CompileSpec;
 use emath_ir::{
-    Declaration, ExprId, ExprNode, Literal, NumericProfile, SafetyProfile, TypeId, TypeNode,
+    Declaration, ExprId, ExprNode, KindSchema, Literal, NumericProfile, RepeatPolicy,
+    SafetyProfile, TypeId, TypeNode,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -696,6 +697,11 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
     let mut admitter = Admitter::new();
     let kind_label = decl.as_kind.clone();
     let is_policy = kind_label == "policy";
+    let schema = if is_policy {
+        KindSchema::core_policy()
+    } else {
+        KindSchema::core_function()
+    };
 
     // Section collection with duplicate detection (E-SYN-103).
     let mut by_name: BTreeMap<&str, &Section> = BTreeMap::new();
@@ -714,9 +720,32 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
         }
     }
 
+    // Kind schema is the required/optional source of truth (`E-KIND-011`).
+    for (name, section_schema) in schema.sections() {
+        if section_schema.repeat == RepeatPolicy::ExactlyOne && !by_name.contains_key(name) {
+            admitter.error(
+                "E-KIND-011",
+                format!("kind `{}` requires section `{name}`", schema.name()),
+                decl.head_source,
+            );
+        }
+    }
+
     // Phase 1 whitelist: a section outside the subset is a typed refusal,
-    // never a silent drop (AGENTS.md rule 6).
+    // never a silent drop (AGENTS.md rule 6). `request:` / `requests:`
+    // are the pre-`goals:` spellings; refuse with a migration hint.
     for section in decl.sections() {
+        if matches!(section.name.as_str(), "request" | "requests") {
+            admitter.error(
+                "E-SEC-101",
+                format!(
+                    "section `{}:` was renamed to `goals:`; use `goals:`",
+                    section.name
+                ),
+                section.head_source,
+            );
+            continue;
+        }
         if !PHASE1_SECTIONS.contains(&section.name.as_str()) {
             admitter.error(
                 "E-SEC-101",
@@ -792,7 +821,8 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
     }
 
     let inputs = fields_by_section.get("inputs").cloned().unwrap_or_default();
-    let outputs_raw = fields_by_section
+    let outputs_omitted = !by_name.contains_key("outputs");
+    let mut outputs_raw = fields_by_section
         .get("outputs")
         .cloned()
         .unwrap_or_default();
@@ -865,6 +895,17 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                 format!("output `{}` has no definition", output.name),
                 output.source,
             );
+        }
+    }
+    if outputs_omitted && schema.default_for("outputs") == Some("definitions") {
+        let ty = admitter.type_id(TypeNode::Float64);
+        for name in definitions.keys() {
+            outputs_raw.push(Field {
+                name: name.clone(),
+                ty,
+                visibility: Visibility::Public,
+                source: decl.source,
+            });
         }
     }
     admitter.definitions = definitions.clone();

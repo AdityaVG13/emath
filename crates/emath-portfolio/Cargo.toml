@@ -10,3 +10,6 @@ workspace = true
 
 [dependencies]
 emath-world-ir = { path = "../emath-world-ir" }
+
+[dev-dependencies]
+emath-term = { path = "../emath-term" }

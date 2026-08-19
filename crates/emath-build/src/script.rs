@@ -5,8 +5,8 @@
 //! any dependency source that would need network access while locked is a
 //! typed refusal (`E-CODEGEN-008`). Diagnostics are deterministic.
 
-use crate::deps::{DepPolicy, DepSource, plan_dependencies};
-use crate::{BuildOptions, build_file};
+use crate::deps::{plan_dependencies, DepPolicy, DepSource};
+use crate::{build_file, BuildOptions};
 use std::path::{Path, PathBuf};
 
 /// Lock configuration for a build script invocation.

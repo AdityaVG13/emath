@@ -16,17 +16,6 @@ use fsqlite::{Connection, SqliteValue};
 
 use crate::schema::{self, SCHEMA_SQL};
 
-/// One artifact row.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ArtifactRecord {
-    /// Stable artifact id (the manifest-relative file path for verify rows).
-    pub id: String,
-    /// Artifact kind (e.g. "file" for manifest file entries).
-    pub kind: String,
-    /// Path recorded on the row.
-    pub path: String,
-}
-
 /// One evidence row in deterministic order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvidenceRow {
@@ -92,26 +81,10 @@ pub enum StoreOp {
 
 /// Engine operation dispatched to the worker thread.
 enum Op {
-    PutArtifact {
-        id: String,
-        kind: String,
-        path: String,
-    },
-    AddEvidence {
-        artifact_id: String,
-        claim: String,
-        status: String,
-        seq: i64,
-    },
-    EvidenceFor {
-        artifact_id: String,
-    },
-    Verify {
-        manifest_json: String,
-    },
-    Batch {
-        ops: Vec<StoreOp>,
-    },
+    Write(StoreOp),
+    EvidenceFor { artifact_id: String },
+    Verify { manifest_json: String },
+    Batch { ops: Vec<StoreOp> },
 }
 
 /// Request envelope: one op plus its reply channel.
@@ -166,11 +139,11 @@ impl Store {
     /// Insert (or keep) one artifact row. Idempotent: re-inserting an
     /// existing id is a no-op.
     pub fn put_artifact(&self, id: &str, kind: &str, path: &str) -> Result<(), StoreError> {
-        let response = self.call(Op::PutArtifact {
+        let response = self.call(Op::Write(StoreOp::PutArtifact {
             id: id.to_string(),
             kind: kind.to_string(),
             path: path.to_string(),
-        })?;
+        }))?;
         expect_ok(response)
     }
 
@@ -186,12 +159,12 @@ impl Store {
         status: &str,
         seq: i64,
     ) -> Result<(), StoreError> {
-        let response = self.call(Op::AddEvidence {
+        let response = self.call(Op::Write(StoreOp::AddEvidence {
             artifact_id: artifact_id.to_string(),
             claim: claim.to_string(),
             status: status.to_string(),
             seq,
-        })?;
+        }))?;
         expect_ok(response)
     }
 
@@ -316,18 +289,7 @@ fn worker_main(
 /// Run one op against the engine.
 fn dispatch(runtime: &asupersync::runtime::Runtime, connection: &Connection, op: Op) -> Response {
     match op {
-        Op::PutArtifact { id, kind, path } => {
-            match op_put_artifact(runtime, connection, &id, &kind, &path) {
-                Ok(()) => Response::Ok,
-                Err(error) => Response::Error(error),
-            }
-        }
-        Op::AddEvidence {
-            artifact_id,
-            claim,
-            status,
-            seq,
-        } => match op_add_evidence(runtime, connection, &artifact_id, &claim, &status, seq) {
+        Op::Write(write) => match apply_store_op(runtime, connection, &write) {
             Ok(()) => Response::Ok,
             Err(error) => Response::Error(error),
         },
@@ -512,23 +474,31 @@ fn run_batch(
     }
 }
 
+fn apply_store_op(
+    runtime: &asupersync::runtime::Runtime,
+    connection: &Connection,
+    op: &StoreOp,
+) -> Result<(), StoreError> {
+    match op {
+        StoreOp::PutArtifact { id, kind, path } => {
+            op_put_artifact(runtime, connection, id, kind, path)
+        }
+        StoreOp::AddEvidence {
+            artifact_id,
+            claim,
+            status,
+            seq,
+        } => op_add_evidence(runtime, connection, artifact_id, claim, status, *seq),
+    }
+}
+
 fn run_ops(
     runtime: &asupersync::runtime::Runtime,
     connection: &Connection,
     ops: &[StoreOp],
 ) -> Result<(), StoreError> {
     for op in ops {
-        match op {
-            StoreOp::PutArtifact { id, kind, path } => {
-                op_put_artifact(runtime, connection, id, kind, path)?;
-            }
-            StoreOp::AddEvidence {
-                artifact_id,
-                claim,
-                status,
-                seq,
-            } => op_add_evidence(runtime, connection, artifact_id, claim, status, *seq)?,
-        }
+        apply_store_op(runtime, connection, op)?;
     }
     Ok(())
 }
@@ -542,7 +512,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use emath_artifact::{ArtifactClass, ArtifactManifest, write_artifact_manifest};
+    use emath_artifact::{write_artifact_manifest, ArtifactClass, ArtifactManifest};
     use emath_core::{ContentId, SchemaId};
     use emath_ir::{EvidenceLevel, TargetProfile};
 

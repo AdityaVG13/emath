@@ -23,6 +23,6 @@ pub mod synth;
 
 pub use graph::{HoleGraph, HoleState, MeaningHole, MeaningHoleKind};
 pub use synth::{
-    Continuation, SolveReceipt, SynthesisError, SynthesisLaw, SynthesisRun, solve_op_hole,
-    synthesize_tables,
+    Continuation, SolveReceipt, SynthesisError, SynthesisLaw, SynthesisRun, check_laws,
+    impossible_identity_laws, satisfiable_or_table_laws, solve_op_hole, synthesize_tables,
 };

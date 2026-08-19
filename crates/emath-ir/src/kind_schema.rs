@@ -96,9 +96,10 @@ impl KindSchema {
                 (
                     "outputs".into(),
                     SectionSchema {
-                        repeat: RepeatPolicy::ExactlyOne,
+                        // Optional: omitted section is lifted from definitions.
+                        repeat: RepeatPolicy::AtMostOne,
                         payload: PayloadPolicy::Fields,
-                        has_default: false,
+                        has_default: true,
                     },
                 ),
                 (
@@ -142,7 +143,10 @@ impl KindSchema {
                     },
                 ),
             ]),
-            defaults: BTreeMap::from([("compile".into(), "rust/library/strict-f64".into())]),
+            defaults: BTreeMap::from([
+                ("compile".into(), "rust/library/strict-f64".into()),
+                ("outputs".into(), "definitions".into()),
+            ]),
             predicate: None,
         }
     }

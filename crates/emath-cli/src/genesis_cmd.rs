@@ -9,15 +9,17 @@
 use super::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::limits::Limits;
 use emath_genesis::{
-    BooleanAlienWorld, Environment, FreeTermWorld, ModularAlienWorld, evaluate, forest,
-    free_symbolic_world,
+    BooleanAlienWorld, CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, Environment,
+    FreeTermWorld, ModularAlienWorld, OnePointWorld, SeededCsaWorld, VM_SCHEMA, VM_SCHEMA_VERSION,
+    VmBudget, VmOutcome, forest, free_symbolic_world, run as vm_run,
 };
 use emath_portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
 use emath_syntax::genesis as genesis_syntax;
-use emath_term::{Signature, Term, VariableId};
+use emath_term::{Signature, TERM_IR_VERSION, Term, VariableId};
 use emath_world_ir::{
     Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr, fnv1a64,
 };
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,6 +35,8 @@ pub struct Analysis {
     pub term: Term,
     pub term_id: u64,
     pub source_hash: u64,
+    /// Raw UTF-8 source, byte-exact, for the sealed source artifact.
+    pub source: String,
 }
 
 /// Reads, parses, and structurally analyzes a genesis source file.
@@ -99,6 +103,7 @@ pub fn analyze(path: &Path) -> Result<Analysis, String> {
         inference,
         term_id: fnv1a64(term.canonical().as_bytes()),
         term,
+        source,
     })
 }
 
@@ -161,6 +166,8 @@ fn declared_world(label: &str, signature: &Signature, semantics: &[(&str, &str)]
             type_expression: match label {
                 "Boolean_algebra" => "Bool".into(),
                 "modular_numeric" => "Z_17".into(),
+                "one_point" => "One".into(),
+                "csa_seeded" => "U64".into(),
                 _ => "FreeTerm".into(),
             },
         }],
@@ -168,15 +175,29 @@ fn declared_world(label: &str, signature: &Signature, semantics: &[(&str, &str)]
         operators,
         constructors: vec!["Element -> Constant/Apply".into()],
         laws: vec!["total".into(), "deterministic".into()],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["pure".into()],
     }
 }
 
-/// Admitted built-in world labels in this G0–G3 slice.
-const ADMITTED_WORLDS: [&str; 3] = ["free_symbolic", "Boolean_algebra", "modular_numeric"];
+/// Admitted built-in world labels (G4 gate: at least five world classes
+/// with deterministic identities in the portfolio).
+const ADMITTED_WORLDS: [&str; 5] = [
+    "free_symbolic",
+    "Boolean_algebra",
+    "modular_numeric",
+    "one_point",
+    "csa_seeded",
+];
 
-/// Builds the three admitted `WorldIr` candidates for `signature`.
+/// Worlds with a Rust codegen lowering (`compile --parametric`). The
+/// one-point and seeded-CSA totality witnesses are portfolio candidates
+/// only: the generator has no lowering for them and must refuse rather
+/// than emit an unhonored map.
+const COMPILED_WORLDS: [&str; 3] = ["free_symbolic", "Boolean_algebra", "modular_numeric"];
+
+/// Builds the five admitted `WorldIr` candidates for `signature`.
 pub fn builtin_worlds(signature: &Signature) -> Vec<WorldIr> {
     let mut worlds = vec![free_symbolic_world("free_symbolic", signature.clone())];
     worlds.push(declared_world(
@@ -194,6 +215,32 @@ pub fn builtin_worlds(signature: &Signature) -> Vec<WorldIr> {
             ("⊛", "(x*y) mod 17"),
         ],
     ));
+    // The degenerate one-point algebra: every symbol means the single
+    // carrier point (ADR-003 totality witness, never intended meaning).
+    worlds.push(declared_world(
+        "one_point",
+        signature,
+        &[("ζ", "•"), ("⋈", "•"), ("⧖", "•"), ("⊛", "•")],
+    ));
+    // The canonical seeded algebra: total, deterministic, seed-keyed
+    // FNV-1a mixing over u64 (emath.csa v1, baseline seed).
+    worlds.push(declared_world(
+        "csa_seeded",
+        signature,
+        &[
+            ("ζ", "fnv1a(seed, const:ζ)"),
+            ("⋈", "fnv1a(seed, apply:⋈, args)"),
+            ("⧖", "fnv1a(seed, apply:⧖, args)"),
+            ("⊛", "fnv1a(seed, apply:⊛, args)"),
+        ],
+    ));
+    debug_assert!(
+        worlds
+            .iter()
+            .map(|world| world.name.as_str())
+            .eq(ADMITTED_WORLDS),
+        "builtin worlds must match the admitted-world roster"
+    );
     worlds
 }
 
@@ -281,14 +328,19 @@ pub fn signature_cmd(path: &Path, out: Option<&PathBuf>) -> u8 {
 /// the parametric lane (`compile --parametric`) generates, so a genesis
 /// receipt can never contradict it.
 ///
-/// Returns `(answer, valuation_label)`: when the term evaluates (its
-/// free variables are covered by the fixture), the answer is the
-/// evaluated value and the label names the fixture; otherwise the answer
-/// is the term's structural canonical form and the label is
-/// `structural`. Answers are never fabricated constants: the old
-/// hardcoded `6`/`false` invented meaning out of thin air and stamped it
-/// `tested`.
-fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static str) {
+/// Returns `(answer, valuation_label, vm_steps)`: when the term evaluates
+/// (its free variables are covered by the fixture), the answer is the
+/// evaluated value, the label names the fixture and the step count is
+/// the semantic VM's metered frame count; otherwise the answer is the
+/// term's structural canonical form, the label is `structural` and the
+/// step count is zero (no execution happened). Answers are never
+/// fabricated constants: the old hardcoded `6`/`false` invented meaning
+/// out of thin air and stamped it `tested`.
+///
+/// Evaluation runs on the explicit-stack semantic VM (`emath.vm`, v1)
+/// under the seed budget; a suspension (budget exhausted) is treated as
+/// a structural answer, never a fabricated one.
+fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static str, u64) {
     let canonical = analysis.term.canonical();
     let free_env: Environment<Term> = [
         (
@@ -311,20 +363,61 @@ fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static s
         (VariableId("b".to_string()), 7),
     ]
     .into();
+    let budget = VmBudget::seed_default();
     match world.name.as_str() {
-        "free_symbolic" => match evaluate(&analysis.term, &FreeTermWorld, &free_env) {
-            Ok(value) => (value.canonical(), "fixture_free"),
-            Err(_) => (canonical, "structural"),
+        "free_symbolic" => match vm_run(&analysis.term, &FreeTermWorld, &free_env, &budget) {
+            Ok(VmOutcome::Complete { value, steps, .. }) => {
+                (value.canonical(), "fixture_free", steps)
+            }
+            Ok(VmOutcome::Suspended(_)) | Err(_) => (canonical, "structural", 0),
         },
-        "Boolean_algebra" => match evaluate(&analysis.term, &BooleanAlienWorld, &boolean_env) {
-            Ok(value) => (value.to_string(), "fixture_boolean"),
-            Err(_) => (canonical, "structural"),
-        },
-        "modular_numeric" => match evaluate(&analysis.term, &ModularAlienWorld, &modular_env) {
-            Ok(value) => (value.to_string(), "fixture_modular"),
-            Err(_) => (canonical, "structural"),
-        },
-        _ => (canonical, "structural"),
+        "Boolean_algebra" => {
+            match vm_run(&analysis.term, &BooleanAlienWorld, &boolean_env, &budget) {
+                Ok(VmOutcome::Complete { value, steps, .. }) => {
+                    (value.to_string(), "fixture_boolean", steps)
+                }
+                Ok(VmOutcome::Suspended(_)) | Err(_) => (canonical, "structural", 0),
+            }
+        }
+        "modular_numeric" => {
+            match vm_run(&analysis.term, &ModularAlienWorld, &modular_env, &budget) {
+                Ok(VmOutcome::Complete { value, steps, .. }) => {
+                    (value.to_string(), "fixture_modular", steps)
+                }
+                Ok(VmOutcome::Suspended(_)) | Err(_) => (canonical, "structural", 0),
+            }
+        }
+        "one_point" => {
+            // The one-point carrier IS the unit type: a zero-sized-value
+            // map is the honest environment for a one-point algebra.
+            #[allow(clippy::zero_sized_map_values)]
+            let env: Environment<()> = analysis
+                .inference
+                .variables
+                .iter()
+                .map(|variable| (variable.clone(), ()))
+                .collect();
+            match vm_run(&analysis.term, &OnePointWorld, &env, &budget) {
+                Ok(VmOutcome::Complete { steps, .. }) => ("•".to_string(), "one_point", steps),
+                Ok(VmOutcome::Suspended(_)) | Err(_) => (canonical, "structural", 0),
+            }
+        }
+        "csa_seeded" => {
+            let csa = SeededCsaWorld::baseline();
+            let env: Environment<u64> = analysis
+                .inference
+                .variables
+                .iter()
+                .map(|variable| (variable.clone(), csa.variable_value(&variable.0)))
+                .collect();
+            match vm_run(&analysis.term, &csa, &env, &budget) {
+                Ok(VmOutcome::Complete { value, steps, .. }) => {
+                    (format!("{value:016x}"), "csa_baseline_seed", steps)
+                }
+                Ok(VmOutcome::Suspended(_)) | Err(_) => (canonical, "structural", 0),
+            }
+        }
+        _ => (canonical, "structural", 0),
     }
 }
 
@@ -332,15 +425,27 @@ fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static s
 /// real evaluation (or the structural term) with its valuation disclosed
 /// in the provenance, and authority is Structural — no checker ran, so
 /// nothing is stamped `tested` from `checker_receipts: []`.
-fn portfolio(analysis: &Analysis, worlds: &[WorldIr]) -> InterpretationPortfolio {
+///
+/// Also returns the semantic-VM step count per world name so the answer
+/// receipt can report the metered cost of the evaluation it certifies.
+fn portfolio(
+    analysis: &Analysis,
+    worlds: &[WorldIr],
+) -> (InterpretationPortfolio, BTreeMap<String, u64>) {
+    let mut vm_steps = BTreeMap::new();
     let candidates = worlds
         .iter()
         .map(|world| {
             let label = world.name.as_str();
-            let (answer, valuation) = evaluated_answer(analysis, world);
+            let (answer, valuation, steps) = evaluated_answer(analysis, world);
+            vm_steps.insert(label.to_string(), steps);
             let (cost, complexity, utility) = match label {
                 "free_symbolic" => (1.0, 2.0, 2.0),
                 "Boolean_algebra" => (3.0, 1.0, 4.0),
+                // Totality witnesses rank below the interpreting worlds:
+                // they answer everything but claim no intended meaning.
+                "one_point" => (0.5, 0.5, 1.0),
+                "csa_seeded" => (2.0, 3.0, 1.5),
                 _ => (4.0, 2.0, 5.0),
             };
             InterpretationCandidate {
@@ -360,7 +465,7 @@ fn portfolio(analysis: &Analysis, worlds: &[WorldIr]) -> InterpretationPortfolio
             }
         })
         .collect();
-    InterpretationPortfolio::new(candidates)
+    (InterpretationPortfolio::new(candidates), vm_steps)
 }
 
 /// `genesis <file> --out <dir>`: full analysis artifact set.
@@ -377,7 +482,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         return EXIT_USAGE;
     }
     let worlds = builtin_worlds(&analysis.inference.signature);
-    let mut raw_portfolio = portfolio(&analysis, &worlds);
+    let (mut raw_portfolio, vm_steps) = portfolio(&analysis, &worlds);
     // Honor `keep: pareto N`: the portfolio holds at most the N
     // policy-best candidates. A smaller budget must change the artifact
     // instead of silently presenting the full tie set as one winner.
@@ -404,6 +509,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
     let free_term = {
         let mut object = emath_artifact::JsonWriter::object();
         object.string("schema", "emath.free-term");
+        object.int("schema_version", u64::from(TERM_IR_VERSION));
         object.int("term_id", analysis.term_id);
         object.string("canonical", &analysis.term.canonical());
         object.finish()
@@ -560,26 +666,146 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         .map(|candidate| candidate.authority)
         .max()
         .unwrap_or(Authority::Structural);
+    // Metered VM cost of the evaluation the receipt certifies: the
+    // selected candidate's step count, or the sum across the kept set
+    // when the whole portfolio is the answer. Zero means the answer is
+    // structural (no execution happened).
+    let receipt_vm_steps = if portfolio_request {
+        kept.iter()
+            .map(|candidate| vm_steps.get(&candidate.name).copied().unwrap_or(0))
+            .sum::<u64>()
+    } else {
+        selected
+            .and_then(|candidate| vm_steps.get(&candidate.name).copied())
+            .unwrap_or(0)
+    };
+    // SG-09 code binding: hash the exact crate `compile --parametric`
+    // renders for the default compiled worlds, so the receipt binds the
+    // code lane the demo challenges against these VM answers. A codegen
+    // refusal binds the explicit no-code value 0 — disclosed, never a
+    // fabricated identity.
+    let artifact_hash = {
+        let labels = COMPILED_WORLDS
+            .iter()
+            .map(|label| (*label).to_string())
+            .collect::<Vec<_>>();
+        let specs = codegen_specs(&worlds, &labels);
+        emath_world_codegen_rust::generate(&analysis.term, &analysis.inference.signature, &specs)
+            .map_or(0, |generated| {
+                let rows = generated
+                    .files
+                    .iter()
+                    .map(|(rel, body)| format!("{rel}:{:016x}", fnv1a64(body.as_bytes())))
+                    .collect::<Vec<_>>();
+                fnv1a64(rows.join(";").as_bytes())
+            })
+    };
+    let portfolio_hash = fnv1a64(portfolio_json.as_bytes());
+    let trace_hash = fnv1a64(admission.as_bytes());
+    let authority_label = authority_str(answer_authority);
+    // SG-09 receipt identity (No Naked Answer, ADR-004): FNV-1a64 over the
+    // documented preimage below, binding source, parse, signature, term,
+    // world, valuation, result, code, portfolio, trace, authority, and VM
+    // cost. An independent verifier (xtask demo semantic-genesis)
+    // re-extracts every bound field and recomputes this id; a tampered
+    // field breaks the recomputation. Keep the preimage in sync with the
+    // verifier in xtask/src/main.rs.
+    let receipt_id = fnv1a64(
+        format!(
+            "receipt:v2:{answer_id}:{}:{}:{}:{}:{answer_anchor}:{valuation}:{result_string}:{artifact_hash:016x}:{portfolio_hash:016x}:{trace_hash:016x}:{authority_label}:{receipt_vm_steps}",
+            analysis.source_hash, analysis.parse_id, analysis.signature_id, analysis.term_id
+        )
+        .as_bytes(),
+    );
     let answer_receipt = {
         let mut object = emath_artifact::JsonWriter::object();
         object.string("schema", "emath.answer-receipt");
+        object.int("schema_version", 2);
+        object.string("receipt_id", &format!("{receipt_id:016x}"));
         object.string("answer_id", &answer_id);
         object.int("source_hash", analysis.source_hash);
         object.int("parse_id", analysis.parse_id);
         object.int("signature_id", analysis.signature_id);
+        object.int("term_id", analysis.term_id);
         object.string("world_id", &answer_anchor);
         object.string("valuation", &valuation);
         object.strings("provider_locks", &completed);
         object.strings("checker_receipts", &[]);
-        object.int("artifact_hash", 0);
+        object.string("artifact_hash", &format!("{artifact_hash:016x}"));
+        object.string("portfolio_hash", &format!("{portfolio_hash:016x}"));
         object.string("target", &path_to_string(path));
         object.string("result", &result_string);
-        object.int("trace_hash", fnv1a64(admission.as_bytes()));
-        object.string("authority", authority_str(answer_authority));
+        object.string("trace_hash", &format!("{trace_hash:016x}"));
+        object.string("authority", authority_label);
+        object.string("vm_schema", &format!("{VM_SCHEMA}.v{VM_SCHEMA_VERSION}"));
+        object.int("vm_steps", receipt_vm_steps);
+        object.finish()
+    };
+
+    // CSA totality baseline (ADR-003): one reproducible concrete value for
+    // the admitted term under the canonical seeded algebra, evaluated on
+    // the semantic VM and labeled so it can never be read as intended
+    // meaning. CSA is total, so a failure here is a defect worth refusing
+    // on, never something to paper over with a fabricated value.
+    let csa_baseline = {
+        let csa = SeededCsaWorld::baseline();
+        let csa_env: Environment<u64> = analysis
+            .inference
+            .variables
+            .iter()
+            .map(|variable| (variable.clone(), csa.variable_value(&variable.0)))
+            .collect();
+        let (value, steps) = match vm_run(&analysis.term, &csa, &csa_env, &VmBudget::seed_default())
+        {
+            Ok(VmOutcome::Complete { value, steps, .. }) => (value, steps),
+            Ok(VmOutcome::Suspended(_)) | Err(_) => {
+                eprintln!("error: E-GEN-094: CSA baseline evaluation failed on a total world");
+                return EXIT_REFUSED;
+            }
+        };
+        let mut object = emath_artifact::JsonWriter::object();
+        object.string("schema", CSA_SCHEMA);
+        object.int("schema_version", u64::from(CSA_SCHEMA_VERSION));
+        object.int("seed", csa.seed);
+        object.int("term_id", analysis.term_id);
+        object.string("value", &format!("{value:016x}"));
+        object.int("vm_steps", steps);
+        object.string("meaning_claim", CSA_MEANING_CLAIM);
+        object.finish()
+    };
+
+    // Sealed source artifact (G0/SG-03): the raw bytes' identity plus the
+    // byte-exact glyph stream of the semantic body, so every downstream
+    // id chains back to one sealed document instead of a loose file read.
+    let source_artifact = {
+        let glyphs = analysis
+            .file
+            .body_text
+            .chars()
+            .map(|glyph| glyph.to_string())
+            .collect::<Vec<_>>();
+        let mut object = emath_artifact::JsonWriter::object();
+        object.string("schema", "emath.source-artifact");
+        object.int("schema_version", 1);
+        object.string("source", &path_to_string(path));
+        object.int("source_hash", analysis.source_hash);
+        object.int(
+            "byte_len",
+            u64::try_from(analysis.source.len()).unwrap_or(u64::MAX),
+        );
+        object.string("world_name", &analysis.file.world_name);
+        object.string("body_text", &analysis.file.body_text);
+        object.int(
+            "glyph_count",
+            u64::try_from(glyphs.len()).unwrap_or(u64::MAX),
+        );
+        object.strings("glyphs", &glyphs);
+        object.int("parse_id", analysis.parse_id);
         object.finish()
     };
 
     let files = [
+        ("source-artifact.json", &source_artifact),
         ("parse-forest.json", &analysis.parse_forest_json),
         ("signature.json", &analysis.signature_json),
         ("free-term.json", &free_term),
@@ -587,6 +813,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         ("interpretation-portfolio.json", &portfolio_json),
         ("world-admission.jsonl", &admission),
         ("answer-receipt.json", &answer_receipt),
+        ("csa-baseline.json", &csa_baseline),
     ];
     for (name, body) in files {
         let target = out.join(name);
@@ -604,7 +831,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         analysis.parse_id,
         analysis.signature_id,
         analysis.term_id,
-        fnv1a64(portfolio_json.as_bytes()),
+        portfolio_hash,
         kept.len(),
         if portfolio_request {
             "interpretation_portfolio".to_string()
@@ -639,43 +866,17 @@ fn path_to_string(path: &Path) -> String {
 }
 
 /// `compile --parametric <file> --out <dir>`: emit the generated crate.
-pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
-    let analysis = match analyze(path) {
-        Ok(analysis) => analysis,
-        Err(error) => {
-            eprintln!("error: {error}");
-            return EXIT_REFUSED;
-        }
-    };
-    let world_labels = if worlds.is_empty() {
-        ADMITTED_WORLDS
-            .iter()
-            .map(|label| (*label).to_string())
-            .collect::<Vec<_>>()
-    } else {
-        for label in worlds {
-            if !ADMITTED_WORLDS.contains(&label.as_str()) {
-                eprintln!("error: E-GEN-092: unknown world `{label}`");
-                return EXIT_REFUSED;
-            }
-        }
-        worlds.to_vec()
-    };
-    // Generator labels are lowercase stable IDs; surface labels may be
-    // authored as `Boolean_algebra` in explore clauses.
-    let spec_labels = world_labels
-        .iter()
-        .map(|label| label.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    // SURF-0008: codegen emits a fixed per-label interpretation, so the
-    // analyzed WorldIr operator semantics are handed to the generator;
-    // it refuses (E-GEN-094) any map it cannot honor instead of
-    // silently dropping the unused WorldIr.
-    let worlds = builtin_worlds(&analysis.inference.signature);
-    let specs = world_labels
+/// Codegen world specs for `labels`. SURF-0008: codegen emits a fixed
+/// per-label interpretation, so each analyzed `WorldIr`'s declared
+/// operator meanings are handed to the generator; it refuses (E-GEN-094)
+/// any map it cannot honor instead of silently dropping the `WorldIr`.
+fn codegen_specs(
+    worlds: &[WorldIr],
+    labels: &[String],
+) -> Vec<emath_world_codegen_rust::WorldSpec> {
+    labels
         .iter()
         .map(|label| {
-            let lower = label.to_ascii_lowercase();
             let operators = worlds
                 .iter()
                 .find(|world| world.name == *label)
@@ -693,11 +894,43 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
                 })
                 .unwrap_or_default();
             emath_world_codegen_rust::WorldSpec {
-                label: lower,
+                label: label.to_ascii_lowercase(),
                 operators,
             }
         })
+        .collect()
+}
+
+pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
+    let analysis = match analyze(path) {
+        Ok(analysis) => analysis,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return EXIT_REFUSED;
+        }
+    };
+    let world_labels = if worlds.is_empty() {
+        COMPILED_WORLDS
+            .iter()
+            .map(|label| (*label).to_string())
+            .collect::<Vec<_>>()
+    } else {
+        for label in worlds {
+            if !COMPILED_WORLDS.contains(&label.as_str()) {
+                eprintln!("error: E-GEN-092: unknown world `{label}`");
+                return EXIT_REFUSED;
+            }
+        }
+        worlds.to_vec()
+    };
+    // Generator labels are lowercase stable IDs; surface labels may be
+    // authored as `Boolean_algebra` in explore clauses.
+    let spec_labels = world_labels
+        .iter()
+        .map(|label| label.to_ascii_lowercase())
         .collect::<Vec<_>>();
+    let worlds = builtin_worlds(&analysis.inference.signature);
+    let specs = codegen_specs(&worlds, &world_labels);
     let generated = match emath_world_codegen_rust::generate(
         &analysis.term,
         &analysis.inference.signature,
@@ -716,6 +949,11 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
     let manifest = {
         let mut object = emath_artifact::JsonWriter::object();
         object.string("schema", "emath.generated-crate-manifest");
+        object.int("schema_version", 1);
+        object.int(
+            "world_abi_version",
+            u64::from(emath_world_codegen_rust::WORLD_ABI_VERSION),
+        );
         object.string("crate_name", &generated.crate_name);
         object.string("source", &path_to_string(path));
         object.int("source_hash", analysis.source_hash);
@@ -738,9 +976,46 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
         &path_to_string(path),
         &generated.files.keys().cloned().collect::<Vec<_>>(),
     );
+    // Hole manifest (SG-05/G3): in the parametric lane every signature
+    // symbol's meaning is an open parameter supplied by a `World`
+    // implementation. One deterministic entry per symbol, sorted by id.
+    let hole_manifest = {
+        let mut object = emath_artifact::JsonWriter::object();
+        object.string("schema", "emath.hole-manifest");
+        object.int("schema_version", 1);
+        object.int("term_id", analysis.term_id);
+        object.int("signature_id", analysis.signature_id);
+        let mut symbols: Vec<(String, usize)> = analysis
+            .inference
+            .signature
+            .iter()
+            .map(|(symbol, arity)| (symbol.0.clone(), *arity))
+            .collect();
+        symbols.sort();
+        let mut entries = String::from("[");
+        for (index, (symbol, arity)) in symbols.iter().enumerate() {
+            if index > 0 {
+                entries.push(',');
+            }
+            let kind = if *arity == 0 {
+                "constant-definition"
+            } else {
+                "operator-definition"
+            };
+            let _ = write!(
+                entries,
+                "{{\"hole_id\":\"{:016x}\",\"symbol\":\"{symbol}\",\"arity\":{arity},\"kind\":\"{kind}\",\"state\":\"open\",\"constraint\":\"meaning supplied by a World implementation\"}}",
+                fnv1a64(format!("hole:{symbol}:{arity}").as_bytes()),
+            );
+        }
+        entries.push(']');
+        object.object_field("holes", &entries);
+        object.finish()
+    };
     for (name, body) in [
         ("manifest.json", &manifest),
         ("source-map.json", &source_map),
+        ("hole-manifest.json", &hole_manifest),
     ] {
         let target = out.join(name);
         if let Err(error) = fs::write(&target, body) {

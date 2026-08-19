@@ -19,12 +19,12 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 
-use asupersync::Budget;
 use asupersync::runtime::{Runtime, RuntimeBuilder};
+use asupersync::Budget;
 use frankensearch::quill::{QuillConfig, RootBoundQuillSearchIndex};
 use frankensearch::{
     Cx, Embedder, EmbedderStack, HashEmbedder, IndexBuilder, IndexableDocument, LexicalRead,
@@ -32,9 +32,9 @@ use frankensearch::{
     TwoTierSearcher,
 };
 
-use crate::ArtifactDoc;
 use crate::corpus::from_fs_doc_id;
 use crate::error::SearchError;
+use crate::ArtifactDoc;
 
 /// Worker stack: frankensearch build/search futures recurse deeply while
 /// polling, so the engine runs on a large-stack thread, never on the caller's
@@ -71,10 +71,6 @@ enum Op {
         k: usize,
         reply: mpsc::Sender<Result<Vec<Hit>, SearchError>>,
     },
-    Reindex {
-        docs: Vec<ArtifactDoc>,
-        reply: mpsc::Sender<Result<IndexStats, SearchError>>,
-    },
     RemoveIndex {
         reply: mpsc::Sender<Result<(), SearchError>>,
     },
@@ -89,9 +85,10 @@ pub struct CorpusSearch {
 }
 
 impl CorpusSearch {
-    /// Create a fresh index at `path` from `docs`: drop any previous index
-    /// artifacts, build via the engine's `IndexBuilder`, then open the
-    /// searcher (with the Quill lexical arm when the build wrote one).
+    /// Create a fresh index at `path` from `docs`. Refuses a non-empty
+    /// directory that is not an emath-search index (missing
+    /// `emath-search.index` marker). Opens the searcher (with the Quill
+    /// lexical arm when the build wrote one).
     pub fn create(path: impl AsRef<Path>, docs: &[ArtifactDoc]) -> Result<Self, SearchError> {
         let mut handle = Self::spawn(path)?;
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -128,11 +125,12 @@ impl CorpusSearch {
         }
     }
 
-    /// Rebuild the index at this handle's directory from `docs` (drop + build
-    /// + reopen). Existing search states are replaced.
+    /// Rebuild the index at this handle's directory from `docs`. The new
+    /// tree is built aside; a failed rebuild leaves the previous on-disk
+    /// index and the live searcher unchanged.
     pub fn reindex(&self, docs: &[ArtifactDoc]) -> Result<IndexStats, SearchError> {
         let (reply_tx, reply_rx) = mpsc::channel();
-        self.send_op(Op::Reindex {
+        self.send_op(Op::Build {
             docs: docs.to_vec(),
             reply: reply_tx,
         })
@@ -140,8 +138,9 @@ impl CorpusSearch {
         reply_rx.recv().map_err(|_| SearchError::WorkerDown)?
     }
 
-    /// Remove all index artifacts under this handle's directory (the
-    /// directory itself is left in place). Subsequent searches return
+    /// Remove index artifacts under this handle's directory when the
+    /// directory is empty or carries the emath-search marker. The directory
+    /// itself is left in place. Subsequent searches return
     /// [`SearchError::NotReady`] until a create/reindex.
     pub fn remove_index(&self) -> Result<(), SearchError> {
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -279,12 +278,7 @@ struct Worker {
     runtime: Runtime,
     cx: Cx,
     path: PathBuf,
-    searcher: Option<SearcherState>,
-}
-
-/// Open searcher held by the worker.
-struct SearcherState {
-    searcher: TwoTierSearcher,
+    searcher: Option<TwoTierSearcher>,
 }
 
 /// Worker thread entry: build the runtime, report readiness, then serve ops
@@ -327,24 +321,24 @@ fn worker_entry(
                 let result = search_drive(&worker, &query, k);
                 let _ = reply.send(result);
             }
-            Op::Reindex { docs, reply } => {
-                let result = (|| {
-                    remove_drive(&worker.path)?;
-                    build_drive(&mut worker, &docs)
-                })();
-                let _ = reply.send(result);
-            }
             Op::RemoveIndex { reply } => {
-                let result = remove_drive(&worker.path);
-                worker.searcher = None;
+                let result = remove_owned_index(&worker.path);
+                if result.is_ok() {
+                    worker.searcher = None;
+                }
                 let _ = reply.send(result);
             }
         }
     }
 }
 
-/// Build state, and note on `Build` op: it both builds and reopens so the
-/// handle is immediately searchable. Errors leave any previous state intact.
+/// Marker written after a successful install. `create` / `reindex` /
+/// `remove_index` refuse to wipe a directory that is neither empty nor
+/// marked, so a wrong path cannot delete a project tree.
+const INDEX_MARKER: &str = "emath-search.index";
+
+/// Build the new tree in a sibling directory. The live index and searcher
+/// stay put until the staging tree is marked and swapped in.
 fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, SearchError> {
     if docs.is_empty() {
         return Err(SearchError::InvalidArgument {
@@ -352,9 +346,13 @@ fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, 
             reason: "corpus must be non-empty (engine refuses zero-document builds)".into(),
         });
     }
-    // Drop stale artifacts so a re-create over an existing directory starts
-    // from a clean slate (deterministic reindex).
-    remove_drive(&worker.path)?;
+    recover_leftovers(&worker.path)?;
+    ensure_index_dir_usable(&worker.path)?;
+    let staging = staging_dir(&worker.path);
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|error| SearchError::Query {
+        reason: format!("create staging {}: {error}", staging.display()),
+    })?;
 
     let documents: Vec<IndexableDocument> = docs
         .iter()
@@ -366,34 +364,20 @@ fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, 
         })
         .collect();
 
-    let builder = IndexBuilder::new(&worker.path)
+    let builder = IndexBuilder::new(&staging)
         .with_embedder_stack(control_stack())
         .with_config(index_config())
         .add_documents(documents);
-    let stats = worker
-        .runtime
-        .block_on(builder.build(&worker.cx))
-        .map_err(map_fs_error)?;
-
-    // Reopen so the handle is searchable immediately.
-    // We need the built stats; open_drive sets the searcher state.
-    open_drive(worker)?;
-
-    let lexical = stats.lexical.as_ref().map(|receipt| LexicalArmStats {
-        backend: receipt.backend,
-        path: receipt.path.display().to_string(),
-        attempted: receipt.attempted,
-        indexed: receipt.indexed,
-        errors: receipt.errors.clone(),
-    });
-    let result = IndexStats {
-        source_count: stats.source_count,
-        doc_count: stats.doc_count,
-        error_count: stats.error_count,
-        quality_indexed: stats.quality_indexed,
-        lexical,
+    let stats = match worker.runtime.block_on(builder.build(&worker.cx)) {
+        Ok(stats) => stats,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(map_fs_error(error));
+        }
     };
+
     if stats.error_count > 0 {
+        let _ = std::fs::remove_dir_all(&staging);
         return Err(SearchError::Build {
             report: format!(
                 "{} of {} documents failed to embed: {}",
@@ -408,7 +392,34 @@ fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, 
             ),
         });
     }
-    Ok(result)
+
+    if let Err(error) = write_marker(&staging) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    if let Err(error) = install_ready_index(&worker.path, &staging) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    if let Err(error) = open_drive(worker) {
+        worker.searcher = None;
+        return Err(error);
+    }
+
+    let lexical = stats.lexical.as_ref().map(|receipt| LexicalArmStats {
+        backend: receipt.backend,
+        path: receipt.path.display().to_string(),
+        attempted: receipt.attempted,
+        indexed: receipt.indexed,
+        errors: receipt.errors.clone(),
+    });
+    Ok(IndexStats {
+        source_count: stats.source_count,
+        doc_count: stats.doc_count,
+        error_count: stats.error_count,
+        quality_indexed: stats.quality_indexed,
+        lexical,
+    })
 }
 
 /// Open the index at the worker's directory into fresh searcher state.
@@ -442,13 +453,13 @@ fn open_drive(worker: &mut Worker) -> Result<(), SearchError> {
         searcher = searcher.with_lexical(read);
     }
 
-    worker.searcher = Some(SearcherState { searcher });
+    worker.searcher = Some(searcher);
     Ok(())
 }
 
 /// Run a query against the open searcher. `NotReady` when no index is open.
 fn search_drive(worker: &Worker, query: &str, k: usize) -> Result<Vec<Hit>, SearchError> {
-    let state = worker
+    let searcher = worker
         .searcher
         .as_ref()
         .ok_or_else(|| SearchError::NotReady {
@@ -456,14 +467,165 @@ fn search_drive(worker: &Worker, query: &str, k: usize) -> Result<Vec<Hit>, Sear
         })?;
     let (results, _metrics) = worker
         .runtime
-        .block_on(state.searcher.search_collect(&worker.cx, query, k))
+        .block_on(searcher.search_collect(&worker.cx, query, k))
         .map_err(map_fs_error)?;
     Ok(results.iter().map(map_hit).collect())
 }
 
-/// Remove every artifact under the index directory (the directory itself is
-/// left in place).
-fn remove_drive(path: &Path) -> Result<(), SearchError> {
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    match path.file_name() {
+        Some(name) => {
+            let mut file = name.to_os_string();
+            file.push(suffix);
+            match path.parent() {
+                Some(parent) if !parent.as_os_str().is_empty() => parent.join(file),
+                _ => PathBuf::from(file),
+            }
+        }
+        None => {
+            let mut fallback = path.as_os_str().to_os_string();
+            fallback.push(suffix);
+            PathBuf::from(fallback)
+        }
+    }
+}
+
+fn staging_dir(path: &Path) -> PathBuf {
+    sibling(path, ".emath-search-staging")
+}
+
+fn backup_dir(path: &Path) -> PathBuf {
+    sibling(path, ".emath-search-backup")
+}
+
+fn recover_leftovers(dest: &Path) -> Result<(), SearchError> {
+    let _ = std::fs::remove_dir_all(staging_dir(dest));
+    recover_stranded_backup(dest)
+}
+
+fn recover_stranded_backup(dest: &Path) -> Result<(), SearchError> {
+    let backup = backup_dir(dest);
+    if !backup.exists() {
+        return Ok(());
+    }
+    if dest.join(INDEX_MARKER).is_file() {
+        let _ = std::fs::remove_dir_all(&backup);
+        return Ok(());
+    }
+    if dest_missing_or_empty(dest)? {
+        if dest.exists() {
+            std::fs::remove_dir_all(dest).map_err(|error| SearchError::Query {
+                reason: format!(
+                    "clear empty dest {} before restoring backup: {error}",
+                    dest.display()
+                ),
+            })?;
+        }
+        return std::fs::rename(&backup, dest).map_err(|error| SearchError::Query {
+            reason: format!(
+                "restore stranded index {} -> {}: {error}",
+                backup.display(),
+                dest.display()
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn dest_missing_or_empty(path: &Path) -> Result<bool, SearchError> {
+    match std::fs::read_dir(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(SearchError::Query {
+            reason: format!("read dest {}: {error}", path.display()),
+        }),
+        Ok(entries) => Ok(entries.count() == 0),
+    }
+}
+
+fn install_ready_index(dest: &Path, staging: &Path) -> Result<(), SearchError> {
+    let backup = backup_dir(dest);
+    if dest.join(INDEX_MARKER).is_file() {
+        std::fs::rename(dest, &backup).map_err(|error| SearchError::Query {
+            reason: format!(
+                "park live index {} -> {}: {error}",
+                dest.display(),
+                backup.display()
+            ),
+        })?;
+        if let Err(error) = std::fs::rename(staging, dest) {
+            if backup.exists() {
+                let _ = std::fs::remove_dir_all(dest);
+                let _ = std::fs::rename(&backup, dest);
+            }
+            return Err(SearchError::Query {
+                reason: format!(
+                    "install staging {} -> {}: {error}",
+                    staging.display(),
+                    dest.display()
+                ),
+            });
+        }
+        let _ = std::fs::remove_dir_all(&backup);
+        return Ok(());
+    }
+    if dest.exists() {
+        std::fs::remove_dir_all(dest).map_err(|error| SearchError::Query {
+            reason: format!("clear empty dest {}: {error}", dest.display()),
+        })?;
+    }
+    std::fs::rename(staging, dest).map_err(|error| SearchError::Query {
+        reason: format!(
+            "install staging {} -> {}: {error}",
+            staging.display(),
+            dest.display()
+        ),
+    })
+}
+
+fn index_dir_is_usable(path: &Path) -> Result<bool, SearchError> {
+    match std::fs::read_dir(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(SearchError::Query {
+            reason: format!("read dir {}: {error}", path.display()),
+        }),
+        Ok(entries) => {
+            let mut empty = true;
+            let mut marked = false;
+            for entry in entries {
+                let entry = entry.map_err(|error| SearchError::Query {
+                    reason: format!("read dir entry {}: {error}", path.display()),
+                })?;
+                empty = false;
+                if entry.file_name() == INDEX_MARKER {
+                    marked = true;
+                }
+            }
+            Ok(empty || marked)
+        }
+    }
+}
+
+fn ensure_index_dir_usable(path: &Path) -> Result<(), SearchError> {
+    if index_dir_is_usable(path)? {
+        Ok(())
+    } else {
+        Err(SearchError::InvalidArgument {
+            field: "path",
+            reason: format!(
+                "{} is not an emath-search index (missing {INDEX_MARKER}); refusing to overwrite",
+                path.display()
+            ),
+        })
+    }
+}
+
+fn write_marker(path: &Path) -> Result<(), SearchError> {
+    std::fs::write(path.join(INDEX_MARKER), b"emath-search\n").map_err(|error| SearchError::Query {
+        reason: format!("write marker {}: {error}", path.display()),
+    })
+}
+
+fn clear_dir(path: &Path) -> Result<(), SearchError> {
     match std::fs::read_dir(path) {
         Ok(entries) => {
             for entry in entries {
@@ -488,6 +650,11 @@ fn remove_drive(path: &Path) -> Result<(), SearchError> {
             reason: format!("read dir {}: {error}", path.display()),
         }),
     }
+}
+
+fn remove_owned_index(path: &Path) -> Result<(), SearchError> {
+    ensure_index_dir_usable(path)?;
+    clear_dir(path)
 }
 
 fn map_hit(result: &ScoredResult) -> Hit {
@@ -676,23 +843,19 @@ mod tests {
         let dir = scratch_dir("reindex");
         let search = CorpusSearch::create(&dir, &corpus()).expect("create");
         assert!(!search.search("borrow checker", 10).expect("old").is_empty());
-        let replaced: Vec<ArtifactDoc> = vec![
-            ArtifactDoc::new(
-                "9",
-                "artifact",
-                None,
-                "quantum error correction surface codes",
-            )
-            .unwrap(),
-        ];
+        let replaced: Vec<ArtifactDoc> = vec![ArtifactDoc::new(
+            "9",
+            "artifact",
+            None,
+            "quantum error correction surface codes",
+        )
+        .unwrap()];
         let stats = search.reindex(&replaced).expect("reindex");
         assert_eq!(stats.source_count, 1);
-        assert!(
-            search
-                .search("borrow checker", 10)
-                .expect("old gone")
-                .is_empty()
-        );
+        assert!(search
+            .search("borrow checker", 10)
+            .expect("old gone")
+            .is_empty());
         assert_eq!(
             search.search("surface codes", 10).expect("new hit").len(),
             1
@@ -709,12 +872,10 @@ mod tests {
             Err(SearchError::NotReady { .. })
         ));
         search.reindex(&corpus()).expect("rebuild");
-        assert!(
-            !search
-                .search("borrow", 5)
-                .expect("after rebuild")
-                .is_empty()
-        );
+        assert!(!search
+            .search("borrow", 5)
+            .expect("after rebuild")
+            .is_empty());
     }
 
     #[test]
@@ -733,5 +894,76 @@ mod tests {
             panic!("open must fail on a missing index");
         };
         assert!(matches!(error, SearchError::Open { .. }));
+    }
+
+    #[test]
+    fn stranded_backup_is_restored_not_wiped() {
+        let dir = scratch_dir("strand");
+        {
+            let search = CorpusSearch::create(&dir, &corpus()).expect("create");
+            assert!(!search.search("borrow checker", 10).expect("hit").is_empty());
+        }
+        let backup = super::sibling(&dir, ".emath-search-backup");
+        std::fs::rename(&dir, &backup).expect("park as stranded backup");
+        let search = CorpusSearch::create(&dir, &corpus()).expect("recover stranded backup");
+        assert!(!search
+            .search("borrow checker", 10)
+            .expect("search after recover")
+            .is_empty());
+        assert!(
+            !backup.exists(),
+            "backup must be consumed, not deleted first"
+        );
+    }
+
+    #[test]
+    fn leftover_backup_does_not_wipe_foreign_dest() {
+        let dir = scratch_dir("foreign-backup");
+        {
+            let _search = CorpusSearch::create(&dir, &corpus()).expect("create");
+        }
+        let backup = super::sibling(&dir, ".emath-search-backup");
+        std::fs::rename(&dir, &backup).expect("park");
+        std::fs::create_dir_all(&dir).expect("foreign dest");
+        let sentinel = dir.join("please-keep-me");
+        std::fs::write(&sentinel, b"keep").expect("sentinel");
+        assert!(matches!(
+            CorpusSearch::create(&dir, &corpus()),
+            Err(SearchError::InvalidArgument { field: "path", .. })
+        ));
+        assert!(sentinel.exists(), "foreign dest must survive");
+        assert!(backup.exists(), "backup must survive a foreign dest");
+    }
+
+    #[test]
+    fn trailing_slash_path_stages_beside_dest() {
+        let dir = scratch_dir("slash");
+        let slashed = PathBuf::from(format!("{}/", dir.display()));
+        let staging = super::sibling(&slashed, ".emath-search-staging");
+        assert!(
+            !staging.starts_with(&dir),
+            "staging {} must not live inside dest {}",
+            staging.display(),
+            dir.display()
+        );
+        let search = CorpusSearch::create(&slashed, &corpus()).expect("create with trailing slash");
+        assert!(!search
+            .search("borrow checker", 10)
+            .expect("search")
+            .is_empty());
+        assert!(dir.join("emath-search.index").is_file());
+    }
+
+    #[test]
+    fn create_refuses_foreign_directory() {
+        let dir = scratch_dir("foreign");
+        std::fs::create_dir_all(&dir).expect("scratch");
+        let sentinel = dir.join("please-keep-me");
+        std::fs::write(&sentinel, b"keep").expect("sentinel");
+        assert!(matches!(
+            CorpusSearch::create(&dir, &corpus()),
+            Err(SearchError::InvalidArgument { field: "path", .. })
+        ));
+        assert!(sentinel.exists(), "foreign file must survive");
     }
 }
