@@ -1,0 +1,9 @@
+[package]
+name = "emath-evidence-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-evidence = { path = "../../crates/emath-evidence" }
+emath-ir = { path = "../../crates/emath-ir" }

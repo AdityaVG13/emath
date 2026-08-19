@@ -1,0 +1,20 @@
+[package]
+name = "emath-cli-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-cli = { path = "../../crates/emath-cli" }
+emath-core = { path = "../../crates/emath-core" }
+emath-lab-core = { path = "../../crates/emath-lab-core" }
+emath-sema = { path = "../../crates/emath-sema" }
+emath-syntax = { path = "../../crates/emath-syntax" }
+emath-artifact = { path = "../../crates/emath-artifact" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }
+emath-world-codegen-rust = { path = "../../crates/emath-world-codegen-rust" }
+
+[[bench]]
+name = "comprehensive_bench"
+harness = false
+path = "benches/keep_gate.rs"

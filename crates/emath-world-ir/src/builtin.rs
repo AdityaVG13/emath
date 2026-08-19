@@ -22,9 +22,25 @@ pub enum WorldClass {
     IntegerRing,
     /// Cyclic group Z/3 with declared laws.
     CyclicGroup,
+    /// Square matrices with non-commutative multiplication.
+    Matrix,
+    /// Finite directed graphs under union.
+    Graph,
 }
 
 impl WorldClass {
+    /// All built-in classes in stable order.
+    pub const ALL: [Self; 8] = [
+        Self::FreeTerm,
+        Self::FiniteTable,
+        Self::CommutativeMonoid,
+        Self::BooleanLattice,
+        Self::IntegerRing,
+        Self::CyclicGroup,
+        Self::Matrix,
+        Self::Graph,
+    ];
+
     /// Deterministic canonical name.
     #[must_use]
     pub fn canonical(self) -> &'static str {
@@ -35,6 +51,8 @@ impl WorldClass {
             Self::BooleanLattice => "boolean-lattice",
             Self::IntegerRing => "integer-ring",
             Self::CyclicGroup => "cyclic-group",
+            Self::Matrix => "matrix",
+            Self::Graph => "graph",
         }
     }
 }
@@ -68,6 +86,8 @@ pub fn builtin_worlds() -> Vec<BuiltinWorld> {
         boolean_lattice_world(),
         integer_ring_world(),
         cyclic_group_world(),
+        matrix_world(),
+        graph_world(),
     ]
 }
 
@@ -86,7 +106,8 @@ fn variable_signature() -> Signature {
     // symbols; worlds declare semantics through operators and laws.
     let mut signature = Signature::default();
     for id in [
-        "ζ", "⋈", "⊙", "∧", "∨", "¬", "⊤", "⊥", "+", "×", "-", "⊕", "⊖", "0", "1", "2",
+        "ζ", "⋈", "⊙", "∧", "∨", "¬", "⊤", "⊥", "+", "×", "-", "⊕", "⊖", "0", "1", "2", "⊞", "⊠",
+        "I", "O", "∪", "ø",
     ] {
         signature
             .insert(SymbolId(id.to_string()), arity(id))
@@ -97,7 +118,7 @@ fn variable_signature() -> Signature {
 
 fn arity(id: &str) -> usize {
     match id {
-        "ζ" | "⊤" | "⊥" | "0" | "1" | "2" => 0,
+        "ζ" | "⊤" | "⊥" | "0" | "1" | "2" | "I" | "O" | "ø" => 0,
         "¬" | "-" | "⊖" => 1,
         _ => 2,
     }
@@ -130,6 +151,7 @@ fn free_term_world() -> BuiltinWorld {
         ],
         constructors: vec!["free term mode: no reduction laws".to_string()],
         laws: vec![],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["term".to_string()],
     };
@@ -188,6 +210,7 @@ fn finite_table_world() -> BuiltinWorld {
         ],
         constructors: vec!["Fin3.new(x: 0|1|2) -> Fin3".to_string()],
         laws: vec!["forall x y z. x ⊙ (y ⊙ z) == (x ⊙ y) ⊙ z".to_string()],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["finite".to_string(), "table".to_string()],
     };
@@ -229,6 +252,7 @@ fn commutative_monoid_world() -> BuiltinWorld {
             "forall x y. x ⋈ y == y ⋈ x".to_string(),
             "forall x y z. (x ⋈ y) ⋈ z == x ⋈ (y ⋈ z)".to_string(),
         ],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["commutative".to_string(), "associative".to_string()],
     };
@@ -307,6 +331,7 @@ fn boolean_lattice_world() -> BuiltinWorld {
             "forall x. x ∧ ⊥ == ⊥".to_string(),
             "forall x. x ∨ ⊤ == ⊤".to_string(),
         ],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["lattice".to_string(), "idempotent".to_string()],
     };
@@ -371,6 +396,7 @@ fn integer_ring_world() -> BuiltinWorld {
             "forall x. x + (-x) == 0".to_string(),
             "forall x y z. x × (y + z) == (x × y) + (x × z)".to_string(),
         ],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["ring".to_string(), "distributive".to_string()],
     };
@@ -445,11 +471,120 @@ fn cyclic_group_world() -> BuiltinWorld {
             "forall x. x ⊕ (⊖ x) == 0".to_string(),
             "forall x y z. (x ⊕ y) ⊕ z == x ⊕ (y ⊕ z)".to_string(),
         ],
+        effects: vec![],
         holes: vec![],
         capabilities: vec!["group".to_string(), "cyclic".to_string()],
     };
     BuiltinWorld {
         class: WorldClass::CyclicGroup,
+        world,
+    }
+}
+
+fn matrix_world() -> BuiltinWorld {
+    let world = WorldIr {
+        version: 1,
+        name: "matrix-2x2".to_string(),
+        signature: variable_signature(),
+        carriers: vec![CarrierDef {
+            name: "Mat2".to_string(),
+            type_expression: "2×2 integer matrices".to_string(),
+        }],
+        symbols: vec![
+            symbol("O", Fixity::Constant, None, "Mat2"),
+            symbol("I", Fixity::Constant, None, "Mat2"),
+            symbol("⊞", Fixity::Infix, Some(50), "Mat2 × Mat2 → Mat2"),
+            symbol("⊠", Fixity::Infix, Some(60), "Mat2 × Mat2 → Mat2"),
+        ],
+        operators: vec![
+            OperatorDef {
+                symbol: SymbolId("O".to_string()),
+                semantics: OperatorSemantics::DeclaredExpression("[[0,0],[0,0]]".to_string()),
+                origin: MeaningOrigin::Declared,
+            },
+            OperatorDef {
+                symbol: SymbolId("I".to_string()),
+                semantics: OperatorSemantics::DeclaredExpression("[[1,0],[0,1]]".to_string()),
+                origin: MeaningOrigin::Declared,
+            },
+            OperatorDef {
+                symbol: SymbolId("⊞".to_string()),
+                semantics: OperatorSemantics::DeclaredExpression("entrywise addition".to_string()),
+                origin: MeaningOrigin::Declared,
+            },
+            OperatorDef {
+                symbol: SymbolId("⊠".to_string()),
+                semantics: OperatorSemantics::DeclaredExpression(
+                    "matrix multiplication".to_string(),
+                ),
+                origin: MeaningOrigin::Declared,
+            },
+        ],
+        constructors: vec!["Mat2.new(a: Int, b: Int, c: Int, d: Int) -> Mat2".to_string()],
+        // Deliberately no ⊠-commutativity law: matrix multiplication is
+        // not commutative, and claiming it would be a wrong law the
+        // finite checker must be able to refute on a counterexample.
+        laws: vec![
+            "forall a. a ⊞ O == a".to_string(),
+            "forall a b. a ⊞ b == b ⊞ a".to_string(),
+            "forall a. a ⊠ I == a".to_string(),
+            "forall a. I ⊠ a == a".to_string(),
+            "forall a b c. (a ⊠ b) ⊠ c == a ⊠ (b ⊠ c)".to_string(),
+            "forall a b c. a ⊠ (b ⊞ c) == (a ⊠ b) ⊞ (a ⊠ c)".to_string(),
+        ],
+        effects: vec![],
+        holes: vec![],
+        capabilities: vec!["matrix".to_string(), "noncommutative".to_string()],
+    };
+    BuiltinWorld {
+        class: WorldClass::Matrix,
+        world,
+    }
+}
+
+fn graph_world() -> BuiltinWorld {
+    let world = WorldIr {
+        version: 1,
+        name: "graph-union".to_string(),
+        signature: variable_signature(),
+        carriers: vec![CarrierDef {
+            name: "Graph".to_string(),
+            type_expression: "finite directed graphs".to_string(),
+        }],
+        symbols: vec![
+            symbol("ø", Fixity::Constant, None, "Graph"),
+            symbol("∪", Fixity::Infix, Some(40), "Graph × Graph → Graph"),
+        ],
+        operators: vec![
+            OperatorDef {
+                symbol: SymbolId("ø".to_string()),
+                semantics: OperatorSemantics::DeclaredExpression("empty graph".to_string()),
+                origin: MeaningOrigin::Declared,
+            },
+            OperatorDef {
+                symbol: SymbolId("∪".to_string()),
+                semantics: OperatorSemantics::DeclaredExpression(
+                    "vertex and edge set union".to_string(),
+                ),
+                origin: MeaningOrigin::Declared,
+            },
+        ],
+        constructors: vec![
+            "Graph.empty() -> Graph".to_string(),
+            "Graph.edge(from: Vertex, to: Vertex) -> Graph".to_string(),
+        ],
+        laws: vec![
+            "forall g. g ∪ ø == g".to_string(),
+            "forall g. g ∪ g == g".to_string(),
+            "forall g h. g ∪ h == h ∪ g".to_string(),
+            "forall g h k. (g ∪ h) ∪ k == g ∪ (h ∪ k)".to_string(),
+        ],
+        effects: vec![],
+        holes: vec![],
+        capabilities: vec!["graph".to_string(), "idempotent".to_string()],
+    };
+    BuiltinWorld {
+        class: WorldClass::Graph,
         world,
     }
 }

@@ -42,6 +42,27 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// Locate the `emath` binary. The keep-gate bench moved into the
+/// `tests/emath-cli` package, which has no `[[bin]]`, so Cargo no longer
+/// defines `CARGO_BIN_EXE_emath` for it; resolve the workspace binary by
+/// profile instead (env var first for direct/legacy invocations).
+fn emath_bin() -> PathBuf {
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_emath") {
+        return PathBuf::from(path);
+    }
+    let exe = if cfg!(windows) { "emath.exe" } else { "emath" };
+    let target = std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| root().join("target"));
+    for profile in ["release-perf", "release", "debug"] {
+        let candidate = target.join(profile).join(exe);
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    target.join("debug").join(exe)
+}
+
 /// One measured cell result.
 struct Sample {
     /// Wall-clock nanoseconds of the cell run.
@@ -189,9 +210,18 @@ fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sam
         let analysis = emath_cli::genesis_cmd::analyze(&glyphs)
             .map_err(|error| format!("genesis analyze refused: {error}"))?;
         let worlds = emath_cli::genesis_cmd::builtin_worlds(&analysis.inference.signature);
+        // Portfolio witnesses (`one_point`, `csa_seeded`) have no lowering;
+        // generate() refuses them with E-GEN-094. Time the compiled trio only.
         let specs = worlds
             .iter()
-            .map(|world| {
+            .filter_map(|world| {
+                let label = world.name.to_ascii_lowercase();
+                if !matches!(
+                    label.as_str(),
+                    "free_symbolic" | "boolean_algebra" | "modular_numeric"
+                ) {
+                    return None;
+                }
                 let operators = world
                     .operators
                     .iter()
@@ -202,12 +232,15 @@ fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sam
                         _ => None,
                     })
                     .collect::<Vec<_>>();
-                emath_world_codegen_rust::WorldSpec {
-                    label: world.name.to_ascii_lowercase(),
-                    operators,
-                }
+                Some(emath_world_codegen_rust::WorldSpec { label, operators })
             })
             .collect::<Vec<_>>();
+        if specs.len() != 3 {
+            return Err(format!(
+                "expected 3 compiled worlds, got {}",
+                specs.len()
+            ));
+        }
         let generated = emath_world_codegen_rust::generate(
             &analysis.term,
             &analysis.inference.signature,
@@ -313,7 +346,7 @@ fn cell_genesis_replay(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>
 /// cli8p family (MT8 analog): 8 parallel `emath check` subprocesses on
 /// 8 disjoint files per sample. Real processes, not in-process MVCC.
 fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String> {
-    let bin = env!("CARGO_BIN_EXE_emath");
+    let bin = emath_bin();
     let files = [
         "tests/valid/square.emath",
         "tests/valid/affine_scorer.emath",
@@ -329,7 +362,7 @@ fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
         let children = files
             .iter()
             .map(|file| {
-                Command::new(bin)
+                Command::new(&bin)
                     .arg("check")
                     .arg(root.join(file))
                     .stdout(std::process::Stdio::null())
@@ -386,6 +419,12 @@ fn elapsed_ns(start: Instant) -> u64 {
 }
 
 fn git_sha() -> String {
+    if let Ok(value) = std::env::var("EMATH_KEEP_GATE_GIT_SHA") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
     let output = Command::new("git")
         .args(["rev-parse", "HEAD"])
         .output()
@@ -396,6 +435,86 @@ fn git_sha() -> String {
     } else {
         output
     }
+}
+
+/// Host identity for a run. Volatile: never part of keep-gate byte-compare.
+fn hostname() -> String {
+    for key in ["HOSTNAME", "HOST"] {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+/// Machine fingerprint recorded beside the gate metrics. Timing and host
+/// fields stay out of identity comparison (`compare.volatile`).
+#[allow(clippy::cast_precision_loss)]
+fn machine_object() -> lab::json::JsonValue {
+    use lab::json::JsonValue;
+    let cpu_count = std::thread::available_parallelism()
+        .map(|count| count.get() as f64)
+        .unwrap_or(0.0);
+    JsonValue::Object(vec![
+        ("os".into(), JsonValue::String(std::env::consts::OS.into())),
+        ("arch".into(), JsonValue::String(std::env::consts::ARCH.into())),
+        ("family".into(), JsonValue::String(std::env::consts::FAMILY.into())),
+        ("cpu_count".into(), JsonValue::Number(cpu_count)),
+        ("hostname".into(), JsonValue::String(hostname())),
+    ])
+}
+
+/// Fields a byte-compare of keep-gate JSON must skip (run provenance + timing).
+fn volatile_field_names() -> lab::json::JsonValue {
+    use lab::json::JsonValue;
+    JsonValue::Array(
+        [
+            "git_sha",
+            "timestamp_unix",
+            "machine",
+            "samples",
+            "summary",
+        ]
+        .into_iter()
+        .map(|name| JsonValue::String(name.into()))
+        .collect(),
+    )
+}
+
+/// Fields that pin a keep-gate cell: schema, family, profile, identity SHA.
+fn gate_field_names() -> lab::json::JsonValue {
+    use lab::json::JsonValue;
+    JsonValue::Array(
+        ["schema", "family", "profile", "identity"]
+            .into_iter()
+            .map(|name| JsonValue::String(name.into()))
+            .collect(),
+    )
+}
+
+fn compare_object() -> lab::json::JsonValue {
+    use lab::json::JsonValue;
+    JsonValue::Object(vec![
+        ("gate".into(), gate_field_names()),
+        ("volatile".into(), volatile_field_names()),
+    ])
+}
+
+/// Echo a written artifact so remote `rch exec` logs can reconstruct it locally.
+fn emit_written_file(path: &Path, rendered: &str) {
+    let name = path
+        .file_name()
+        .map_or_else(|| "unknown".into(), |name| name.to_string_lossy().into_owned());
+    println!("keep-gate-file {name}");
+    println!("{rendered}");
+    println!("keep-gate-file-end");
 }
 
 /// Writes `.bench-history/<family>.latest.json` and returns the family
@@ -432,6 +551,8 @@ fn write_history(
         ("cell".into(), JsonValue::String(detail.into())),
         ("git_sha".into(), JsonValue::String(git_sha())),
         ("timestamp_unix".into(), JsonValue::Number(now_unix_f64())),
+        ("machine".into(), machine_object()),
+        ("compare".into(), compare_object()),
         ("samples".into(), JsonValue::Array(raw)),
         ("summary".into(), summary_object(&summary)),
         (
@@ -456,8 +577,10 @@ fn write_history(
     std::fs::create_dir_all(history_dir)
         .map_err(|error| format!("cannot create {}: {error}", history_dir.display()))?;
     let target = history_dir.join(format!("{family}.latest.json"));
-    std::fs::write(&target, lab::json::write(&document))
+    let rendered = lab::json::write(&document);
+    std::fs::write(&target, &rendered)
         .map_err(|error| format!("cannot write {}: {error}", target.display()))?;
+    emit_written_file(&target, &rendered);
     let status = if summary.quarantined() {
         "quarantined"
     } else {
@@ -495,10 +618,41 @@ fn write_guard(history_dir: &Path) -> Result<(), String> {
         ("phase1_std_only".into(), JsonValue::Bool(true)),
         ("git_sha".into(), JsonValue::String(git_sha())),
         ("timestamp_unix".into(), JsonValue::Number(now_unix_f64())),
+        ("machine".into(), machine_object()),
+        (
+            "compare".into(),
+            JsonValue::Object(vec![
+                (
+                    "gate".into(),
+                    JsonValue::Array(
+                        [
+                            "schema",
+                            "deterministic_codegen",
+                            "phase1_std_only",
+                        ]
+                        .into_iter()
+                        .map(|name| JsonValue::String(name.into()))
+                        .collect(),
+                    ),
+                ),
+                (
+                    "volatile".into(),
+                    JsonValue::Array(
+                        ["git_sha", "timestamp_unix", "machine"]
+                            .into_iter()
+                            .map(|name| JsonValue::String(name.into()))
+                            .collect(),
+                    ),
+                ),
+            ]),
+        ),
     ]);
     let target = history_dir.join("guard.json");
-    std::fs::write(&target, lab::json::write(&document))
-        .map_err(|error| format!("cannot write {}: {error}", target.display()))
+    let rendered = lab::json::write(&document);
+    std::fs::write(&target, &rendered)
+        .map_err(|error| format!("cannot write {}: {error}", target.display()))?;
+    emit_written_file(&target, &rendered);
+    Ok(())
 }
 
 fn main() {

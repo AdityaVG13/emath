@@ -8,7 +8,15 @@
 
 use emath_term::{Signature, Term};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::Path;
+
+/// Version of the generated world ABI surface (the generic `World` trait
+/// plus the declaration-specific `SpecializedWorld` trait and its
+/// dispatcher). Bump on any change to the emitted trait shapes or
+/// dispatch semantics: every generated crate embeds this constant so a
+/// consumer can pin the ABI it compiled against.
+pub const WORLD_ABI_VERSION: u32 = 1;
 
 /// A world whose implementation is generated.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,6 +167,9 @@ const LIB_TEMPLATE: &str = r#"#![forbid(unsafe_code)]
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Write as _;
+
+/// Version of the world ABI this crate was generated against.
+pub const WORLD_ABI_VERSION: u32 = @@ABI_VERSION@@;
 
 /// Canonical first-order term (self-contained model).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -411,6 +422,8 @@ where
     }
 }
 
+@@SPECIALIZED@@
+
 /// The reference term this crate evaluates.
 ///
 /// Canonical: @@REFERENCE_CANONICAL@@
@@ -595,59 +608,6 @@ pub fn fixture_modular() -> Environment<i64> {
     environment
 }
 
-#[cfg(test)]
-mod contract_tests {
-    use super::*;
-
-    /// The swap transform is not a no-op mutation. The demo term
-    /// `⊛(⧖(⋈(a, b)), ζ)` evaluates to 6 under the modular world and to
-    /// 5 under the swapped world (⋈ becomes `*`, ⊛ becomes `+`, ζ = 3,
-    /// a = 4, b = 7). A mutant that delegates the swapped world to the
-    /// modular world returns 6 here and is killed.
-    #[test]
-    fn swapped_world_is_not_a_noop_mutation() {
-        let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
-            .expect("canonical parses");
-        let env = fixture_modular();
-        let modular = evaluate(&term, &ModularWorld, &env).expect("modular evaluates");
-        let swapped = evaluate(&term, &SwappedModularWorld, &env).expect("swapped evaluates");
-        assert_eq!(modular, 6, "⋈ adds, ⧖ squares, ⊛ multiplies (mod 17)");
-        assert_eq!(
-            swapped, 5,
-            "⋈ multiplies, ⊛ adds after the swap — no-op mutants return 6"
-        );
-        assert_ne!(modular, swapped);
-    }
-
-    /// Nested-shape kill: the swap must hold on every operator path, not
-    /// just the demo shape. `⋈(⧖(a), ⧖(b))` is 14 modular (16 + 15) vs 2
-    /// swapped (16 * 15 mod 17).
-    #[test]
-    fn swap_mutation_is_killed_on_other_operator_paths() {
-        let term = Term::parse_canonical("apply(⋈,apply(⧖,var(a)),apply(⧖,var(b)))")
-            .expect("canonical parses");
-        let env = fixture_modular();
-        let modular = evaluate(&term, &ModularWorld, &env).expect("modular evaluates");
-        let swapped = evaluate(&term, &SwappedModularWorld, &env).expect("swapped evaluates");
-        assert_eq!(modular, 14);
-        assert_eq!(swapped, 2);
-        assert_ne!(modular, swapped);
-    }
-
-    /// Metamorphic determinism: the dual-run comparison is seed-free and
-    /// deterministic (the seed contract records `consumes_rng: false`),
-    /// so repeated evaluation must agree exactly.
-    #[test]
-    fn dual_run_is_deterministic() {
-        let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
-            .expect("canonical parses");
-        let env = fixture_modular();
-        let first = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
-        let second = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
-        assert_eq!(first, second, "dual-run evaluation must be deterministic");
-    }
-}
-
 "#;
 
 fn render_lib(term: &Term, signature: &Signature, labels: &[String]) -> String {
@@ -661,10 +621,155 @@ fn render_lib(term: &Term, signature: &Signature, labels: &[String]) -> String {
                 .collect::<Vec<_>>()
                 .join(", "),
         )
+        .replace("@@ABI_VERSION@@", &WORLD_ABI_VERSION.to_string())
+        .replace("@@SPECIALIZED@@", render_specialized(signature).trim_end())
         .replace("@@REFERENCE_CANONICAL@@", &rust_string(&term.canonical()));
     // Emit exactly one trailing newline so generated crates stay
     // rustfmt-clean (determinism + `cargo fmt --check` both depend on it).
     format!("{}\n", body.trim_end())
+}
+
+/// Renders the declaration-specific ABI: a `SpecializedWorld` trait with
+/// one method per declared symbol at its exact arity (wrong-arity direct
+/// calls are compile errors), a blanket delegation from the generic
+/// `World` trait, and an `evaluate_specialized` dispatcher that refuses
+/// unknown symbols and wrong runtime arities with typed errors. Methods
+/// are named `sym_<index>` in canonical signature order (glyph symbols
+/// are not valid Rust identifiers); each carries a doc comment naming
+/// its glyph and arity.
+fn render_specialized(signature: &Signature) -> String {
+    let entries: Vec<(String, usize)> = signature
+        .iter()
+        .map(|(symbol, arity)| (symbol.0.clone(), *arity))
+        .collect();
+    let params = |arity: usize| -> String {
+        (0..arity).fold(String::new(), |mut text, position| {
+            let _ = write!(text, ", a{position}: Self::Value");
+            text
+        })
+    };
+    let mut out = String::new();
+    out.push_str(
+        "/// Declaration-specific evaluator ABI derived from the source signature:\n\
+         /// one method per declared symbol at its exact arity, so a wrong-arity\n\
+         /// direct call is a compile error instead of a runtime refusal.\n\
+         pub trait SpecializedWorld {\n    \
+         /// Runtime value.\n    \
+         type Value: Clone + fmt::Display;\n    \
+         /// Evaluation error.\n    \
+         type Error: fmt::Display + fmt::Debug;\n",
+    );
+    for (index, (symbol, arity)) in entries.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "\n    /// `{symbol}` (arity {arity}).\n    \
+             fn sym_{index}(&self{}) -> Result<Self::Value, Self::Error>;",
+            params(*arity)
+        );
+    }
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "/// Every generic world satisfies the specialized ABI by delegation, so\n\
+         /// the two surfaces can never disagree on semantics.\n\
+         impl<W: World> SpecializedWorld for W {\n    \
+         type Value = W::Value;\n    \
+         type Error = W::Error;\n",
+    );
+    for (index, (symbol, arity)) in entries.iter().enumerate() {
+        let call = if *arity == 0 {
+            format!("self.constant(\"{symbol}\")")
+        } else {
+            let arguments = (0..*arity)
+                .map(|position| format!("a{position}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("self.apply(\"{symbol}\", vec![{arguments}])")
+        };
+        let _ = writeln!(
+            out,
+            "\n    fn sym_{index}(&self{}) -> Result<Self::Value, Self::Error> {{\n        \
+             {call}\n    }}",
+            params(*arity)
+        );
+    }
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "/// Evaluates a term through the declaration-specific ABI. Symbols\n\
+         /// outside the declared signature and wrong runtime arities are typed\n\
+         /// refusals, never fallthroughs.\n\
+         pub fn evaluate_specialized<W: SpecializedWorld>(\n    \
+         term: &Term,\n    \
+         world: &W,\n    \
+         environment: &Environment<W::Value>,\n\
+         ) -> Result<W::Value, W::Error>\n\
+         where\n    \
+         W::Error: From<EvalError>,\n\
+         {\n    \
+         match term {\n        \
+         Term::Variable(name) => environment\n            \
+         .get(name)\n            \
+         .cloned()\n            \
+         .ok_or_else(|| EvalError::MissingVariable(name.clone()).into()),\n        \
+         Term::Constant(symbol) => dispatch_specialized(world, symbol, Vec::new()),\n        \
+         Term::Apply {\n            \
+         operator,\n            \
+         arguments,\n        \
+         } => {\n            \
+         let mut values = Vec::with_capacity(arguments.len());\n            \
+         for argument in arguments {\n                \
+         values.push(evaluate_specialized(argument, world, environment)?);\n            \
+         }\n            \
+         dispatch_specialized(world, operator, values)\n        \
+         }\n    \
+         }\n\
+         }\n\n",
+    );
+
+    out.push_str(
+        "/// Maps a declared symbol to its specialized method, checking runtime\n\
+         /// arity before the typed call.\n\
+         fn dispatch_specialized<W: SpecializedWorld>(\n    \
+         world: &W,\n    \
+         symbol: &str,\n    \
+         mut values: Vec<W::Value>,\n\
+         ) -> Result<W::Value, W::Error>\n\
+         where\n    \
+         W::Error: From<EvalError>,\n\
+         {\n    \
+         match symbol {\n",
+    );
+    for (index, (symbol, arity)) in entries.iter().enumerate() {
+        let mut arm = format!(
+            "        \"{symbol}\" => {{\n            if values.len() != {arity} {{\n                \
+             return Err(EvalError::Arity {{\n                    \
+             symbol: symbol.into(),\n                    \
+             expected: {arity},\n                    \
+             actual: values.len(),\n                }}\n                .into());\n            }}\n"
+        );
+        let mut arguments = Vec::new();
+        for position in (0..*arity).rev() {
+            let _ = writeln!(
+                arm,
+                "            let a{position} = values.pop().expect(\"arity checked\");"
+            );
+            arguments.push(format!("a{position}"));
+        }
+        arguments.reverse();
+        let _ = writeln!(
+            arm,
+            "            world.sym_{index}({})\n        }}",
+            arguments.join(", ")
+        );
+        out.push_str(&arm);
+    }
+    out.push_str(
+        "        _ => Err(EvalError::UnknownSymbol(symbol.into()).into()),\n    \
+         }\n\
+         }\n",
+    );
+    out
 }
 
 /// Rust string literal escaping (default settings; Unicode glyphs inline).
@@ -749,126 +854,3 @@ pub const SWAP_SEED_CONTRACT: SeedContract = SeedContract {
     transform: "genesis-world-swap",
     consumes_rng: false,
 };
-
-#[cfg(test)]
-mod seed_contract_tests {
-    use super::*;
-
-    /// Template honesty: the emitted runtime contract tests must be part
-    /// of the generated lib (a mutant deleting `contract_tests` silently
-    /// weakens the differential pin). The seed contract itself
-    /// (`consumes_rng: false`) is enforced by the generated runtime
-    /// tests and the xtask oracle pin; restating its literal value here
-    /// would be a test that passes by construction.
-    #[test]
-    fn generated_lib_carries_the_contract_tests() {
-        assert!(LIB_TEMPLATE.contains("mod contract_tests"));
-        assert!(LIB_TEMPLATE.contains("swapped_world_is_not_a_noop_mutation"));
-        assert!(LIB_TEMPLATE.contains("dual_run_is_deterministic"));
-    }
-}
-
-#[cfg(test)]
-mod unused_worldir_tests {
-    use super::*;
-
-    fn reference_signature() -> Signature {
-        let mut signature = Signature::default();
-        for (symbol, arity) in [("ζ", 0usize), ("⋈", 2), ("⧖", 1), ("⊛", 2)] {
-            signature
-                .insert(emath_term::SymbolId(symbol.to_string()), arity)
-                .expect("fresh symbol inserts");
-        }
-        signature
-    }
-
-    fn reference_term() -> Term {
-        Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
-            .expect("canonical parses")
-    }
-
-    fn modular_spec(operators: &[(&str, &str)]) -> WorldSpec {
-        WorldSpec {
-            label: "modular_numeric".to_string(),
-            operators: operators
-                .iter()
-                .map(|&(symbol, meaning)| (symbol.to_string(), meaning.to_string()))
-                .collect(),
-        }
-    }
-
-    /// A non-default operator map (SURF-0008: analyzed `WorldIr` codegen
-    /// does not consult) must be refused: emitting the crate anyway
-    /// would silently disagree with the genesis analysis.
-    #[test]
-    fn unused_worldir_with_a_non_default_operator_map_is_refused() {
-        let refusal = generate(
-            &reference_term(),
-            &reference_signature(),
-            &[modular_spec(&[
-                ("ζ", "3"),
-                ("⋈", "(x-y) mod 17"),
-                ("⧖", "(x*x) mod 17"),
-                ("⊛", "(x*y) mod 17"),
-            ])],
-        )
-        .expect_err("non-default ⋈ semantics must be refused");
-        assert_eq!(refusal.code, "E-GEN-094");
-        assert!(refusal.message.contains("⋈"), "{}", refusal.message);
-        assert!(refusal.message.contains("modular_numeric"));
-    }
-
-    /// An operator outside the hardcoded per-label set is a silent-drop
-    /// candidate and must be refused as well.
-    #[test]
-    fn unused_worldir_with_an_extra_operator_is_refused() {
-        let refusal = generate(
-            &reference_term(),
-            &reference_signature(),
-            &[modular_spec(&[
-                ("ζ", "3"),
-                ("⋈", "(x+y) mod 17"),
-                ("⧖", "(x*x) mod 17"),
-                ("⊛", "(x*y) mod 17"),
-                ("✳", "(x*y) mod 19"),
-            ])],
-        )
-        .expect_err("extra undeclared operator must be refused");
-        assert_eq!(refusal.code, "E-GEN-094");
-        assert!(refusal.message.contains("✳"), "{}", refusal.message);
-    }
-
-    /// The empty/default operator map keeps today's label-only success
-    /// path byte-identical: the refusal only fires on divergence.
-    #[test]
-    fn unused_worldir_default_operator_maps_still_generate() {
-        let package = generate(
-            &reference_term(),
-            &reference_signature(),
-            &[
-                WorldSpec {
-                    label: "free_symbolic".to_string(),
-                    operators: vec![],
-                },
-                WorldSpec {
-                    label: "boolean_algebra".to_string(),
-                    operators: vec![
-                        ("ζ".to_string(), "true".to_string()),
-                        ("⋈".to_string(), "xor".to_string()),
-                        ("⧖".to_string(), "not".to_string()),
-                        ("⊛".to_string(), "and".to_string()),
-                    ],
-                },
-                modular_spec(&[
-                    ("ζ", "3"),
-                    ("⋈", "(x+y) mod 17"),
-                    ("⧖", "(x*x) mod 17"),
-                    ("⊛", "(x*y) mod 17"),
-                ]),
-            ],
-        )
-        .expect("default operator maps must keep generating");
-        assert!(package.files["src/lib.rs"].contains("reference_term"));
-        assert!(package.files["Cargo.toml"].contains("semantic-genesis-worlds"));
-    }
-}

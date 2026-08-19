@@ -3,8 +3,12 @@
 //! Phase 1 planner: ordered rules, bounded candidate retention, explicit
 //! pruning and deterministic tie-breaks. Every exclusion is retained with
 //! its reason; an exhausted budget yields a continuation/diagnostic per
-//! the goal's fallback policy (`E-RES-100`, `E-GOAL-201`).
+//! the goal's fallback policy (`E-RES-100`, `E-GOAL-201`). Candidate
+//! selection is expressed in the resolution algebra (`algebra`): retained
+//! candidates and exclusions become capability steps, and the ordered
+//! alternative over them is applied to the full Q-state.
 
+use crate::algebra::{Lifted, QState, Step};
 use crate::dispositions::{
     ArtifactDisposition, disposition_exhausted, disposition_for_plan, disposition_without_plan,
 };
@@ -116,40 +120,60 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
     }
     let total_candidates = candidates.len();
     candidates.truncate(config.max_candidates);
-    if candidates.is_empty() {
-        let reasons: Vec<String> = verdicts
-            .iter()
-            .map(|verdict| match &verdict.compatibility {
-                Compatibility::Excluded { reasons } => reasons
-                    .iter()
-                    .map(|reason| format!("{}: {}", reason.code, reason.detail))
-                    .collect::<Vec<_>>()
-                    .join("; "),
-                Compatibility::Compatible => String::new(),
-            })
-            .filter(|reason| !reason.is_empty())
-            .collect();
-        let inspection = PlanInspection {
-            policy: config.policy.clone(),
-            candidates: vec![],
-            exclusions: exclusions.clone(),
-            selected_plan_id: None,
-            checks: vec![],
-            budget: None,
-            artifact_class: disposition_without_plan(&goal.requirements.fallback)
-                .name()
-                .into(),
-        };
-        return PlanningOutcome::NoEligible {
-            reasons: if reasons.is_empty() {
-                vec!["E-GOAL-201: no eligible plan".to_string()]
-            } else {
-                reasons
-            },
-            disposition: disposition_without_plan(&goal.requirements.fallback),
-            inspection,
-        };
-    }
+    // Selection through the resolution algebra: every retained candidate is
+    // a fully-discharging capability step, every exclusion an inapplicable
+    // one; the ordered alternative (left bias = deterministic tie-break
+    // order) lifted to a total application decides between selection and
+    // typed refusal.
+    let mut arms: Vec<Step> = candidates
+        .iter()
+        .map(|(_, id)| Step::compatible(id))
+        .collect();
+    arms.extend(exclusions.iter().map(|(provider, code, detail)| {
+        Step::refused(provider, vec![format!("{code}: {detail}")])
+    }));
+    let selection = Step::Alt(arms).apply_total(&QState::full());
+    let application = match selection {
+        Lifted::Applied(application) => application,
+        Lifted::Refused { .. } => {
+            let reasons: Vec<String> = verdicts
+                .iter()
+                .map(|verdict| match &verdict.compatibility {
+                    Compatibility::Excluded { reasons } => reasons
+                        .iter()
+                        .map(|reason| format!("{}: {}", reason.code, reason.detail))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                    Compatibility::Compatible => String::new(),
+                })
+                .filter(|reason| !reason.is_empty())
+                .collect();
+            let inspection = PlanInspection {
+                policy: config.policy.clone(),
+                candidates: vec![],
+                exclusions: exclusions.clone(),
+                selected_plan_id: None,
+                checks: vec![],
+                budget: None,
+                artifact_class: disposition_without_plan(&goal.requirements.fallback)
+                    .name()
+                    .into(),
+            };
+            return PlanningOutcome::NoEligible {
+                reasons: if reasons.is_empty() {
+                    vec!["E-GOAL-201: no eligible plan".to_string()]
+                } else {
+                    reasons
+                },
+                disposition: disposition_without_plan(&goal.requirements.fallback),
+                inspection,
+            };
+        }
+    };
+    debug_assert!(
+        application.state.is_resolved(),
+        "a compatible candidate discharges every facet"
+    );
     // Budget check: more compatible candidates than the retention horizon
     // means the planner cannot explore everything deterministically.
     if total_candidates > config.max_candidates {
@@ -174,8 +198,13 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
             inspection,
         };
     }
-    // Select the first deterministic candidate and build the plan DAG.
-    let (_, provider_id) = candidates[0].clone();
+    // The algebra's left-biased alternative selected the first deterministic
+    // candidate; build its plan DAG.
+    let provider_id = application
+        .trace
+        .first()
+        .expect("an applied alternative always traces its provider")
+        .clone();
     let has_conversions = registry.get(&provider_id).is_some_and(|table| {
         table.capabilities.iter().any(|capability| {
             capability
@@ -389,91 +418,4 @@ pub fn excluded_trace(goal: &Goal, registry: &ProviderRegistry) -> Vec<ExcludedC
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use emath_ir::{
-        DeterminismPolicy, EvidenceLevel, ExactnessPolicy, FallbackPolicy, Goal, GoalId, GoalKind,
-        GoalRequirements, TargetProfile,
-    };
-    use emath_provider_api::{
-        CapabilitySpec, CapabilityTable, ProviderIsolation, ProviderLock, ProviderRegistry,
-        RegistryConfig, RepresentationSpec,
-    };
-
-    fn goal_with_produce(produce: &str) -> Goal {
-        let mut goal = Goal {
-            id: GoalId(1),
-            kind: GoalKind::Evaluate,
-            target: "y".into(),
-            expression: None,
-            requirements: GoalRequirements {
-                evidence: EvidenceLevel::E1,
-                exactness: ExactnessPolicy::Exact,
-                determinism: DeterminismPolicy::Required,
-                target: TargetProfile {
-                    family: "rust".into(),
-                    triple: None,
-                    features: vec![],
-                },
-                fallback: FallbackPolicy::Diagnostic,
-                produce: String::new(),
-            },
-            source: emath_core::Span::default(),
-        };
-        goal.requirements.produce = produce.to_string();
-        goal
-    }
-
-    fn provider_table(name: &str) -> CapabilityTable {
-        CapabilityTable {
-            capabilities: vec![CapabilitySpec {
-                name: name.to_string(),
-                semantic_subset: "rust".into(),
-                representations: vec![RepresentationSpec {
-                    name: "f64".into(),
-                    exact_relation: "bit-identical".into(),
-                    encode_cost: 0,
-                }],
-                exactness: vec!["exact".into()],
-                failure_modes: vec![],
-                checker_bindings: vec!["sir-checker".into()],
-            }],
-            isolation: ProviderIsolation::Static,
-            lock: ProviderLock::Unlocked,
-            maximum_evidence: EvidenceLevel::E2,
-            deterministic: true,
-        }
-    }
-
-    #[test]
-    fn node_budget_refuses_oversized_plan_dag() {
-        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
-        registry
-            .register(
-                "p1",
-                ProviderIsolation::Static,
-                provider_table("evaluate.target"),
-            )
-            .expect("sample registration must succeed");
-        let outcome = plan(
-            &goal_with_produce("target"),
-            &registry,
-            &PlannerConfig {
-                max_nodes: 0,
-                ..PlannerConfig::default()
-            },
-        );
-        match &outcome {
-            PlanningOutcome::Exhausted { inspection, .. } => assert!(
-                inspection
-                    .budget
-                    .as_deref()
-                    .unwrap_or_default()
-                    .contains("E-RES-100"),
-                "E-RES-100 must be issued in the exhausted inspection: {outcome:?}"
-            ),
-            other => panic!("max_nodes=0 must exhaust, got {other:?}"),
-        }
-    }
-}
+// Planner tests moved to `tests/emath-plan/tests/planner.rs`.

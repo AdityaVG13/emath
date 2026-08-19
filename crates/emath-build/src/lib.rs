@@ -8,22 +8,24 @@
 #![forbid(unsafe_code)]
 
 pub mod deps;
+pub mod metrics;
 pub mod script;
 
 pub use deps::{
-    CargoDependency, DepError, DepPlan, DepPolicy, DepRequest, DepSource, RuntimeKind, TargetKind,
-    check_declared, plan_dependencies, requests_for,
+    check_declared, plan_dependencies, requests_for, CargoDependency, DepError, DepPlan, DepPolicy,
+    DepRequest, DepSource, RuntimeKind, TargetKind,
 };
-pub use script::{ScriptError, ScriptLock, ScriptReport, locked_build_script};
+pub use metrics::{MetricsCollector, BENCHMARK_RECEIPT_SCHEMA, BENCHMARK_RECEIPT_VERSION};
+pub use script::{locked_build_script, ScriptError, ScriptLock, ScriptReport};
 
 use emath_artifact::{
-    ARTIFACT_MANIFEST_SCHEMA, ArtifactClass, ArtifactError, ArtifactManifest,
-    EVIDENCE_BUNDLE_SCHEMA, EvidenceBundleRecord, PlanRecord, SOURCE_MAP_SCHEMA, SourceMap,
-    SourceMapEntry, StagedFile, manifest_identity, plan_to_record, publish,
-    required_artifact_paths, stage, verify_artifact, write_artifact_manifest,
-    write_evidence_bundle, write_resolution_plan, write_source_map,
+    manifest_identity, plan_to_record, publish, required_artifact_paths, stage, verify_artifact,
+    write_artifact_manifest, write_evidence_bundle, write_resolution_plan, write_source_map,
+    ArtifactClass, ArtifactError, ArtifactManifest, EvidenceBundleRecord, PlanRecord, SourceMap,
+    SourceMapEntry, StagedFile, ARTIFACT_MANIFEST_SCHEMA, EVIDENCE_BUNDLE_SCHEMA,
+    SOURCE_MAP_SCHEMA,
 };
-use emath_core::{Diagnostics, SchemaId, content_id_of_str};
+use emath_core::{content_id_of_str, Diagnostics, SchemaId};
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ResolutionPlan};
 use emath_rust_backend::{BackendInput, BackendOutput};
 use emath_rust_ir::profiles::CrateProfile;
@@ -149,9 +151,15 @@ pub fn build_text(
         BuildError::Io(format!("cannot create {}: {error}", target_dir.display()))
     })?;
 
+    let mut collector = MetricsCollector::new();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let file = session.load_text(name, text.to_string());
+    let check_started = std::time::Instant::now();
     let plan_result = session.plan(file);
+    collector.record_duration_ns(
+        "check_plan",
+        u64::try_from(check_started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+    );
     let diagnostics = plan_result.diagnostics;
 
     let mut refusal_codes: Vec<String> = diagnostics
@@ -171,14 +179,55 @@ pub fn build_text(
         return Err(BuildError::AdmittedWithErrors(refusal_codes));
     }
 
-    build_package(
+    collector.record_count("plan_count", plan_result.plans.len() as u64);
+    collector.record_count(
+        "diagnostics",
+        diagnostics.items().len() as u64,
+    );
+    let artifact_started = std::time::Instant::now();
+    let report = build_package(
         &package,
         name,
         &diagnostics,
         &plan_result.plans,
         target_dir,
         options,
-    )
+    )?;
+    collector.record_duration_ns(
+        "artifact_pipeline",
+        u64::try_from(artifact_started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+    );
+    collector.record_count("compile_success", 1);
+    collector.record_count("artifact_bytes", published_artifact_bytes(&report.artifact_dir));
+
+    // Benchmark receipt: sibling of the published artifact directory, never
+    // inside it (the artifact's staged file set is identity-verified).
+    let receipt = collector.benchmark_receipt(name, &report.artifact_id.0);
+    let receipt_path = target_dir.join("benchmark-receipt.json");
+    std::fs::write(&receipt_path, receipt).map_err(|error| {
+        BuildError::Io(format!("cannot write {}: {error}", receipt_path.display()))
+    })?;
+    Ok(report)
+}
+
+/// Total bytes of the published artifact files (recursive).
+fn published_artifact_bytes(artifact_dir: &Path) -> u64 {
+    fn walk(dir: &Path, total: &mut u64) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, total);
+            } else if let Ok(meta) = entry.metadata() {
+                *total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    let mut total = 0;
+    walk(artifact_dir, &mut total);
+    total
 }
 
 /// Artifact pipeline over an already-elaborated package
@@ -541,9 +590,14 @@ pub fn run_cargo_timed(
     timeout: std::time::Duration,
 ) -> Result<std::process::Output, String> {
     use std::io::Read;
+    // Stay in the terminal's foreground group so Ctrl-C / SIGTERM reach
+    // cargo and rustc. On timeout, kill cargo's children first (rustc),
+    // then cargo: Child::kill alone leaves the compiler holding
+    // CARGO_TARGET_DIR.
     let mut child = command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null())
         .spawn()
         .map_err(|error| format!("cannot spawn cargo: {error}"))?;
     let mut stdout = child.stdout.take().expect("stdout must be piped");
@@ -558,38 +612,30 @@ pub fn run_cargo_timed(
         let _ = stderr.read_to_end(&mut buf);
         buf
     });
-    // Blocking wait: the previous 25 ms try_wait poll added up to a full
-    // quantum after cargo exited (material now that warm `emath run` is ~32 ms).
-    // A helper thread sends SIGTERM via `kill <pid>` on timeout; `Child::wait`
-    // then unblocks. `kill` is std-only (no `unsafe`) and exists on the
-    // Phase 1 hosts (macOS / Linux).
-    let pid = child.id();
-    let timed_out = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let timed_out_kill = timed_out.clone();
-    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
-    let killer = std::thread::spawn(move || {
-        if done_rx.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
-            timed_out_kill.store(true, std::sync::atomic::Ordering::SeqCst);
-            let _ = std::process::Command::new("kill")
-                .arg(pid.to_string())
-                .status();
-        }
-    });
-    let status = match child.wait() {
-        Ok(status) => status,
-        Err(error) => {
-            let _ = done_tx.send(());
-            let _ = killer.join();
-            return Err(format!("cannot wait on cargo: {error}"));
+    // Own the child through try_wait so a timeout kill cannot race a reap
+    // (no pid reuse). Only report E-RES-120 when the child was still live.
+    // Sleep is capped at 5 ms so a finished cargo is reaped without the old
+    // 25 ms poll tax.
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                kill_timed_child(&mut child);
+                let _ = child.wait();
+                let _ = stdout_thread.join();
+                let _ = stderr_thread.join();
+                return Err(format!(
+                    "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
+                ));
+            }
+            Ok(None) => {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
+            }
+            Err(error) => return Err(format!("cannot wait on cargo: {error}")),
         }
     };
-    let _ = done_tx.send(());
-    let _ = killer.join();
-    if timed_out.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err(format!(
-            "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
-        ));
-    }
     let stdout = stdout_thread.join().unwrap_or_default();
     let stderr = stderr_thread.join().unwrap_or_default();
     Ok(std::process::Output {
@@ -597,6 +643,24 @@ pub fn run_cargo_timed(
         stdout,
         stderr,
     })
+}
+
+fn kill_timed_child(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        // try_wait already proved this pid is still our child. Kill rustc
+        // (and other direct children) first; then SIGKILL cargo. A new
+        // process group would orphan the same tree on Ctrl-C.
+        let pid = child.id();
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-P", &pid.to_string()])
+            .status();
+        let _ = child.kill();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
 }
 
 fn verify_crate(dir: &Path, output: &BackendOutput) -> Result<(), String> {

@@ -3,11 +3,19 @@
 //! Moved wholesale from `emath-syntax` (world-side fence, pass 5): the
 //! forest enumerates structural parses of a body expression under a
 //! deterministic grammar: atoms, parenthesized groups, prefix application
-//! (`op(...)`) and infix composition, with no precedence. All enumeration is
-//! bounded by [`ForestLimits`]; budget exhaustion and unparseable input are
-//! reported as typed recovery holes, never panics. Every emitted artifact
-//! (canonical JSON, FNV-1a64 ids) is byte-identical across runs. Stable
-//! diagnostic codes are unchanged (`E-SYN-2xx`; never repurposed).
+//! (`op(...)`), infix composition, and postfix application for a trailing
+//! operator (`a op` at a scope close), with no precedence. All enumeration
+//! is bounded by [`ForestLimits`]; budget exhaustion and unparseable input
+//! are reported as typed recovery holes, never panics. Every emitted
+//! artifact (canonical JSON, FNV-1a64 ids) is byte-identical across runs.
+//! Stable diagnostic codes are unchanged (`E-SYN-2xx`; never repurposed).
+//!
+//! Ranking policy (deterministic, SGK-G1-006): candidates are kept in
+//! grammar-production insertion order, deduplicated by (canonical form,
+//! end position), and capped by `max_alternatives` with a typed
+//! `alternative-budget` hole. The forest never scores or guesses between
+//! survivors: one complete parse is the answer, several are refused as
+//! ambiguous (`E-SYN-211`), none as unparseable (`E-SYN-210`).
 //!
 //! The world-side stage consumes the genesis body string produced by the
 //! G0 parser in `emath-syntax` (`genesis::parse_genesis` -> `body_text`);
@@ -83,6 +91,7 @@ pub struct SignatureInference {
 struct Hint {
     prefix: bool,
     infix: bool,
+    postfix: bool,
 }
 
 /// Mutable enumeration state, bounded by [`ForestLimits`].
@@ -123,6 +132,10 @@ impl ForestState<'_> {
         }
         self.nodes_used += count;
         true
+    }
+
+    fn hint_postfix(&mut self, symbol: &str) {
+        self.hints.entry(symbol.to_string()).or_default().postfix = true;
     }
 
     fn hint(&mut self, symbol: &str, prefix: bool, infix: bool) {
@@ -193,7 +206,11 @@ impl ForestState<'_> {
             }
         }
         // Infix composition: extend every derivation whose end position holds
-        // an operator with all derivations of its right operand.
+        // an operator with all derivations of its right operand. When the
+        // operator is trailing (its right side closes the scope), the only
+        // hypothesis is postfix application `op(left)`. The postfix guard is
+        // syntactic (scope close), never budget-dependent, so exhaustion can
+        // not invent a postfix parse.
         let mut index = 0;
         while index < results.len() {
             let (left, end) = results[index].clone();
@@ -202,15 +219,30 @@ impl ForestState<'_> {
                 .map(String::as_str)
                 .filter(|token| is_operator_token(token))
             {
-                let rights = self.parse_exprs(tokens, end + 1, depth + 1);
-                for (right, right_end) in rights {
+                let scope_closes = matches!(
+                    tokens.get(end + 1).map(String::as_str),
+                    None | Some(")" | ",")
+                );
+                if scope_closes {
                     if self.claim(1) {
-                        self.hint(operator, false, true);
+                        self.hint_postfix(operator);
                         let term = Term::Apply {
                             operator: SymbolId(operator.to_string()),
-                            arguments: vec![left.clone(), right],
+                            arguments: vec![left.clone()],
                         };
-                        self.insert_candidate(&mut results, term, right_end);
+                        self.insert_candidate(&mut results, term, end + 1);
+                    }
+                } else {
+                    let rights = self.parse_exprs(tokens, end + 1, depth + 1);
+                    for (right, right_end) in rights {
+                        if self.claim(1) {
+                            self.hint(operator, false, true);
+                            let term = Term::Apply {
+                                operator: SymbolId(operator.to_string()),
+                                arguments: vec![left.clone(), right],
+                            };
+                            self.insert_candidate(&mut results, term, right_end);
+                        }
                     }
                 }
             }
@@ -342,11 +374,15 @@ pub fn infer_signature_named(
             .insert(symbol.clone(), *arity)
             .expect("each symbol is inserted exactly once");
     }
+    // Deterministic fixity-hypothesis priority: infix > prefix > postfix >
+    // constant. A symbol seen in several positions resolves to the highest
+    // hypothesis so re-runs can never disagree.
     let mut fixities = BTreeMap::new();
     for symbol in arities.keys() {
         let fixity = match forest.hints.get(&symbol.0) {
             Some(hint) if hint.infix => Fixity::Infix,
             Some(hint) if hint.prefix => Fixity::Prefix,
+            Some(hint) if hint.postfix => Fixity::Postfix,
             _ => Fixity::Constant,
         };
         fixities.insert(symbol.clone(), fixity);
@@ -687,43 +723,5 @@ fn fixity_name(fixity: Fixity) -> &'static str {
         Fixity::Infix => "infix",
         Fixity::Postfix => "postfix",
         Fixity::Function => "function",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Instant;
-
-    #[test]
-    fn application_argument_queue_is_bounded() {
-        // Six comma-separated arguments, each with a highly ambiguous
-        // split: the extension queue multiplies by `max_alternatives` per
-        // comma and must be capped instead of exploding (the 128^n blast).
-        let limits = ForestLimits {
-            max_nodes: 4096,
-            max_alternatives: 16,
-            max_depth: 64,
-        };
-        let started = Instant::now();
-        let forest = build_forest(
-            "f(a b c d e, a b c d e, a b c d e, a b c d e, a b c d e, a b c d e)",
-            &limits,
-        );
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(10),
-            "application-argument queue must stay bounded"
-        );
-        assert!(
-            forest.node_count() <= limits.max_nodes,
-            "node budget must hold: {} > {}",
-            forest.node_count(),
-            limits.max_nodes
-        );
-        assert!(
-            !forest.holes().is_empty(),
-            "ambiguous application must exceed a budget, got {} nodes",
-            forest.node_count()
-        );
     }
 }

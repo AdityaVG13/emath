@@ -6,3 +6,7 @@ publish = false
 
 [dependencies]
 emath-schema = { path = "../../crates/emath-schema" }
+
+# Standalone package (own lockfile): opt out of the repository workspace so
+# `cargo test` works from this directory.
+[workspace]

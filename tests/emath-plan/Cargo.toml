@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+# Standalone package (own lockfile): opt out of the repository workspace so
+# `cargo test` works from this directory.
+[workspace]
+
 [dependencies]
 emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }

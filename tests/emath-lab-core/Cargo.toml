@@ -1,0 +1,9 @@
+[package]
+name = "emath-lab-core-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-lab-core = { path = "../../crates/emath-lab-core" }
+emath-core = { path = "../../crates/emath-core" }

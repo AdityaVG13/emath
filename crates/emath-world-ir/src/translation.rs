@@ -31,6 +31,17 @@ impl PreservationRelation {
             Self::ObservationalEquivalence => "observational-equivalence",
         }
     }
+
+    /// Whether this relation transports interpretive authority unchanged.
+    ///
+    /// Matches the portfolio's conservative authority cap: `Exact` and
+    /// `Refinement` transport authority; `Approximation`, `Simulation`,
+    /// and `ObservationalEquivalence` only guarantee weaker agreement, so
+    /// answers produced through them degrade to structural authority.
+    #[must_use]
+    pub fn transports_authority(self) -> bool {
+        matches!(self, Self::Exact | Self::Refinement)
+    }
 }
 
 /// Mapping between the carrier of the source world and the carrier of the
@@ -203,6 +214,15 @@ pub enum DeoptReason {
         /// Evidence scope.
         scope: String,
     },
+    /// The caller requires full authority but a used symbol's obligation
+    /// only preserves a weaker relation, so the fast answer would carry
+    /// degraded authority.
+    AuthorityDegraded {
+        /// First symbol whose relation does not transport authority.
+        symbol: SymbolId,
+        /// Canonical name of the offending relation.
+        relation: &'static str,
+    },
 }
 
 impl DeoptReason {
@@ -216,6 +236,9 @@ impl DeoptReason {
             Self::DomainViolation { domain } => format!("domain:{domain}"),
             Self::EvidenceMissing { evidence, scope } => {
                 format!("evidence:{evidence:x}:{scope}")
+            }
+            Self::AuthorityDegraded { symbol, relation } => {
+                format!("authority:{}:{relation}", symbol.0)
             }
         }
     }
@@ -393,6 +416,57 @@ impl StrictFastPortfolio {
         evidence_valid: bool,
     ) -> (WorldId, Option<DeoptReason>) {
         match self.try_fast(used_symbols, inputs_in_domain, evidence_valid) {
+            Ok(id) => (id, None),
+            Err(reason) => (self.strict.identity(), Some(reason)),
+        }
+    }
+
+    /// Authority-aware fast-path admission.
+    ///
+    /// Like [`Self::try_fast`], but when the caller requires full
+    /// authority (an authoritative answer, not best-effort), the fast
+    /// path is additionally refused if any used symbol's preservation
+    /// obligation does not transport authority — the answer would silently
+    /// degrade to structural authority. A symbol with no obligation at
+    /// all already deoptimizes through the applicability guard.
+    pub fn try_fast_with_authority(
+        &self,
+        used_symbols: &[SymbolId],
+        inputs_in_domain: bool,
+        evidence_valid: bool,
+        require_full_authority: bool,
+    ) -> Result<WorldId, DeoptReason> {
+        if require_full_authority {
+            for symbol in used_symbols {
+                if let Some(relation) = self.strict_to_fast.relation_for(symbol)
+                    && !relation.transports_authority()
+                {
+                    return Err(DeoptReason::AuthorityDegraded {
+                        symbol: symbol.clone(),
+                        relation: relation.canonical(),
+                    });
+                }
+            }
+        }
+        self.try_fast(used_symbols, inputs_in_domain, evidence_valid)
+    }
+
+    /// Authority-aware world selection: fast when guards hold *and* the
+    /// required authority is preserved, otherwise the strict world.
+    #[must_use]
+    pub fn select_world_with_authority(
+        &self,
+        used_symbols: &[SymbolId],
+        inputs_in_domain: bool,
+        evidence_valid: bool,
+        require_full_authority: bool,
+    ) -> (WorldId, Option<DeoptReason>) {
+        match self.try_fast_with_authority(
+            used_symbols,
+            inputs_in_domain,
+            evidence_valid,
+            require_full_authority,
+        ) {
             Ok(id) => (id, None),
             Err(reason) => (self.strict.identity(), Some(reason)),
         }

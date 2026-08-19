@@ -9,7 +9,7 @@
 #![forbid(unsafe_code)]
 
 use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, lower_definition, lower_requirement};
-use emath_ir::{GoalKind, SemanticPackage, TypeId, TypeNode};
+use emath_ir::{ConstructionReceipt, GoalKind, SemanticPackage, TypeId, TypeNode};
 use emath_rust_ir::ast::{
     BinOp, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item, Module, Param, RUST_KEYWORDS,
     Stmt, StructDef, TestDef, Ty, UnOp, Visibility, escape_ident, snake_case,
@@ -43,6 +43,9 @@ pub struct BackendOutput {
     /// `CrateProfile::validate` (`E-CODEGEN-002`/`E-CODEGEN-004`) on the
     /// exact items that were rendered.
     pub module: Module,
+    /// One construction receipt per generated constructor: the obligation
+    /// matrix (class + kind per obligation) the emitted code discharges.
+    pub receipts: Vec<ConstructionReceipt>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,6 +98,7 @@ impl BackendInput<'_> {
         let mut anchors: Vec<BackendAnchor> = Vec::new();
         let mut assumptions: Vec<String> = Vec::new();
         let mut emitted_error_types: Vec<String> = Vec::new();
+        let mut receipts: Vec<ConstructionReceipt> = Vec::new();
 
         items.push(Item::RawAttribute("#![forbid(unsafe_code)]".to_string()));
         items.push(Item::RawAttribute("#![allow(dead_code)]".to_string()));
@@ -140,6 +144,9 @@ impl BackendInput<'_> {
                 return Err(BackendError::MultipleConstructors(name));
             }
             if let Some(constructor) = declaration.constructors.first() {
+                // The receipt records the exact obligation matrix the
+                // emitted constructor discharges (all runtime in Phase 1).
+                receipts.push(constructor.receipt(&name));
                 let error_name = self.error_type_name(constructor.error_type).to_string();
                 if !emitted_error_types.contains(&error_name) {
                     emitted_error_types.push(error_name.clone());
@@ -514,6 +521,7 @@ impl BackendInput<'_> {
             anchors,
             assumptions,
             module,
+            receipts,
         })
     }
 
@@ -781,112 +789,4 @@ fn comparison(op: BinOp, left: EmirValue, right: EmirValue, program: &EmirProgra
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use emath_core::{QualifiedName, Span};
-    use emath_ir::{Declaration, DeclarationId, Field};
-
-    /// A minimal package: one declaration `named` with an `x: Float64`
-    /// input, nothing else. Enough to exercise struct emission, which is
-    /// where declaration names become Rust source.
-    fn package_for(named: &str) -> SemanticPackage {
-        let mut package = SemanticPackage::new();
-        package.types.push(TypeNode::Float64);
-        package.declarations.push(Declaration {
-            id: DeclarationId(0),
-            name: QualifiedName(named.to_string()),
-            kind: QualifiedName("policy".to_string()),
-            kind_label: "policy".to_string(),
-            inputs: vec![Field {
-                name: "x".to_string(),
-                ty: TypeId(0),
-                visibility: emath_ir::Visibility::Public,
-                source: Span::default(),
-            }],
-            outputs: Vec::new(),
-            state: Vec::new(),
-            constructors: Vec::new(),
-            definitions: BTreeMap::new(),
-            invariants: Vec::new(),
-            goals: Vec::new(),
-            tests: Vec::new(),
-            exports: Vec::new(),
-            compile_spec: emath_ir::CompileSpec::default(),
-            source: Span::default(),
-        });
-        package
-    }
-
-    #[test]
-    fn keyword_declaration_name_is_escaped_in_generated_rust() {
-        // `type` is a Rust keyword; the generated struct must be `type_`
-        // so the crate compiles (`emath custom <type>` negative control
-        // from the l2pb.4 repair).
-        let package = package_for("type");
-        let output = BackendInput {
-            package: &package,
-            crate_name: "type".to_string(),
-            version: "0.1.0".to_string(),
-        }
-        .generate()
-        .expect("keyword-named declaration must generate");
-        let struct_items: Vec<&StructDef> = output
-            .module
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                Item::Struct(struct_def) => Some(struct_def),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            struct_items.iter().all(|def| def.name != "type"),
-            "raw keyword must never be emitted: {struct_items:?}"
-        );
-        assert!(
-            struct_items.iter().any(|def| def.name == "type_"),
-            "expected escaped struct `type_`, got {struct_items:?}"
-        );
-        let rendered = render_module(&output.module).code;
-        assert!(
-            rendered.contains("struct type_"),
-            "rendered module must name the escaped struct, got:\n{rendered}"
-        );
-        assert!(
-            output
-                .module
-                .items
-                .iter()
-                .all(|item| !matches!(item, Item::Struct(def) if def.name == "type")),
-            "no unescaped keyword struct may reach the output"
-        );
-    }
-
-    #[test]
-    fn keyword_crate_name_is_escaped_in_manifest() {
-        // Cargo package names may be keywords, but the generated crate
-        // must keep a sane rust-identifier crate name for `lib.rs`
-        // (`extern crate`/name collisions in dev builds).
-        let package = package_for("Demo");
-        let output = BackendInput {
-            package: &package,
-            crate_name: "fn".to_string(),
-            version: "0.1.0".to_string(),
-        }
-        .generate()
-        .expect("keyword crate name must generate");
-        let manifest = output
-            .files
-            .get("Cargo.toml")
-            .expect("generate must emit a manifest");
-        assert!(
-            manifest.contains("name = \"fn_\""),
-            "keyword crate name must be escaped in the manifest, got:\n{manifest}"
-        );
-        assert!(
-            !manifest.contains("name = \"fn\""),
-            "unescaped keyword crate name must not reach the manifest"
-        );
-    }
-}
+// (test module relocated to tests/emath-rust-backend)

@@ -1,0 +1,10 @@
+[package]
+name = "emath-exec-ir-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-exec-ir = { path = "../../crates/emath-exec-ir" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-core = { path = "../../crates/emath-core" }

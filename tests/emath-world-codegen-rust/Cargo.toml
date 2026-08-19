@@ -1,0 +1,10 @@
+[package]
+name = "emath-world-codegen-rust-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-world-codegen-rust = { path = "../../crates/emath-world-codegen-rust" }
+emath-term = { path = "../../crates/emath-term" }
+semantic-genesis-worlds = { path = "../../examples/generated/semantic-genesis-worlds" }

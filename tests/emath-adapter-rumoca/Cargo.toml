@@ -1,0 +1,10 @@
+[package]
+name = "emath-adapter-rumoca-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-adapter-rumoca = { path = "../../crates/emath-adapter-rumoca" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-runtime = { path = "../../crates/emath-runtime" }

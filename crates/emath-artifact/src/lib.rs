@@ -6,7 +6,7 @@
 
 #![forbid(unsafe_code)]
 
-use emath_core::{ContentId, SchemaId, bootstrap_content_id, content_id_of_str, fnv1a64_bytes};
+use emath_core::{bootstrap_content_id, content_id_of_str, fnv1a64_bytes, ContentId, SchemaId};
 use emath_ir::{
     ClaimVerdict, EvidenceClaim, EvidenceLevel, PlanNodeDef, PlanOperation, ResolutionPlan,
     TargetProfile,
@@ -16,6 +16,10 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 pub const ARTIFACT_MANIFEST_SCHEMA: &str = "emath.artifact";
+/// Artifact manifest document version (manifest v1). Bump on any change
+/// to the manifest layout or to the identity preimage in
+/// [`manifest_identity`]; consumers refuse versions they do not know.
+pub const ARTIFACT_MANIFEST_VERSION: u32 = 1;
 /// Durable artifact source map (byte-range + `source_package` shape; see
 /// [`write_source_map`]). One shape, one id: the world-codegen provenance
 /// map emitted by semantic-genesis compilation uses its own id,
@@ -34,9 +38,14 @@ pub const GENERATED_CRATE_SOURCE_MAP_SCHEMA: &str = "emath.generated-crate-sourc
 pub const RESOLUTION_PLAN_SCHEMA: &str = "emath.resolution-plan";
 pub const EVIDENCE_BUNDLE_SCHEMA: &str = "emath.evidence-bundle";
 
+/// The seven total-artifact-protocol classes. Compilation is total over
+/// this set: every accepted intent resolves to an artifact of some class,
+/// and resolution monotonicity requires that adding providers or budgets
+/// never destroys a class that was previously reachable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArtifactClass {
     Native,
+    Portfolio,
     Hybrid,
     Parametric,
     Exploration,
@@ -45,9 +54,21 @@ pub enum ArtifactClass {
 }
 
 impl ArtifactClass {
+    /// All seven classes in stable protocol order.
+    pub const ALL: [Self; 7] = [
+        Self::Native,
+        Self::Portfolio,
+        Self::Hybrid,
+        Self::Parametric,
+        Self::Exploration,
+        Self::Continuation,
+        Self::Diagnostic,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Native => "native",
+            Self::Portfolio => "portfolio",
             Self::Hybrid => "hybrid",
             Self::Parametric => "parametric",
             Self::Exploration => "exploration",
@@ -63,6 +84,7 @@ impl std::str::FromStr for ArtifactClass {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "native" => Ok(Self::Native),
+            "portfolio" => Ok(Self::Portfolio),
             "hybrid" => Ok(Self::Hybrid),
             "parametric" => Ok(Self::Parametric),
             "exploration" => Ok(Self::Exploration),
@@ -149,8 +171,19 @@ pub struct EvidenceBundleRecord {
     pub reproduction: Vec<String>,
 }
 
+/// The four metadata documents every artifact package carries regardless
+/// of class: the durable manifest, source map, resolution plan and
+/// evidence bundle.
+const METADATA_PATHS: [&str; 4] = [
+    "emath/artifact-manifest.json",
+    "emath/source-map.json",
+    "emath/resolution-plan.json",
+    "emath/evidence-bundle.json",
+];
+
 /// Paths required for a Phase 1 artifact (`PUBLIC_API_INVENTORY.md` and the
-/// imported seed agree on this set).
+/// imported seed agree on this set). Alias for the native-class package
+/// contents; per-class inventories live on [`required_paths_for_class`].
 #[must_use]
 pub fn required_artifact_paths() -> &'static [&'static str] {
     &[
@@ -161,6 +194,23 @@ pub fn required_artifact_paths() -> &'static [&'static str] {
         "emath/resolution-plan.json",
         "emath/evidence-bundle.json",
     ]
+}
+
+/// Package contents per artifact class. Code-bearing classes (native,
+/// portfolio, hybrid, parametric, continuation) ship a Cargo crate plus
+/// the four metadata documents; exploration and diagnostic artifacts are
+/// metadata-only (they record what was searched or refused, not runnable
+/// code).
+#[must_use]
+pub fn required_paths_for_class(class: ArtifactClass) -> &'static [&'static str] {
+    match class {
+        ArtifactClass::Native
+        | ArtifactClass::Portfolio
+        | ArtifactClass::Hybrid
+        | ArtifactClass::Parametric
+        | ArtifactClass::Continuation => required_artifact_paths(),
+        ArtifactClass::Exploration | ArtifactClass::Diagnostic => &METADATA_PATHS,
+    }
 }
 
 /// The one artifact identity: a deterministic hash of the
@@ -263,6 +313,24 @@ impl JsonObject {
             items.push(quote(value));
         }
         self.field(name, &format!("[{}]", items.join(", ")))
+    }
+
+    /// Array of already-serialized JSON objects. `items` are `finish()` bodies
+    /// (or other object texts); this crate owns the array brackets so callers
+    /// do not concatenate JSON by hand.
+    pub fn objects(&mut self, name: &str, items: &[String]) -> &mut Self {
+        if items.is_empty() {
+            return self.field(name, "[]");
+        }
+        let mut body = String::from("[\n");
+        for (index, item) in items.iter().enumerate() {
+            if index > 0 {
+                body.push_str(",\n");
+            }
+            body.push_str(item.trim());
+        }
+        body.push_str("\n  ]");
+        self.field(name, &body)
     }
 
     pub fn int(&mut self, name: &str, value: u64) -> &mut Self {
@@ -1465,3 +1533,5 @@ pub fn publish(
 pub fn content_id_of_text(text: &str) -> ContentId {
     content_id_of_str(text)
 }
+
+// Artifact-class protocol tests moved to `tests/emath-artifact/tests/artifact_class.rs`.

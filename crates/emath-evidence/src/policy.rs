@@ -90,8 +90,27 @@ impl EvidencePolicy {
 fn standard_table() -> BTreeMap<String, Vec<EvidenceEntry>> {
     let mut table = BTreeMap::new();
     for class in ["correctness", "equivalence", "performance", "safety"] {
-        // E0: any claim, no checker.
-        table.insert(format!("E0:{class}"), vec![]);
+        // E0: any claim, no checker. The exact bar is every producer
+        // kind with `Independence::None`; an empty vec would make
+        // `satisfied_by` never hold.
+        table.insert(
+            format!("E0:{class}"),
+            [
+                EvidenceKind::FormalProof,
+                EvidenceKind::Residual,
+                EvidenceKind::Interval,
+                EvidenceKind::Witness,
+                EvidenceKind::Differential,
+                EvidenceKind::Measurement,
+                EvidenceKind::Structural,
+            ]
+            .into_iter()
+            .map(|producer| EvidenceEntry {
+                producer,
+                checker: Independence::None,
+            })
+            .collect(),
+        );
         // E1: self-reported measurement, no checker.
         table.insert(
             format!("E1:{class}"),

@@ -10,6 +10,8 @@ pub const COMMANDS: &[&str] = &[
     "parse",
     "signature",
     "genesis",
+    "eval",
+    "repl",
     "compile",
     "world",
     "portfolio",
@@ -47,6 +49,8 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "parse" => "parse --forest <file.emath> [--out <dir>]",
         "signature" => "signature <file.emath> [--out <dir>]",
         "genesis" => "genesis <file.emath> --out <dir>",
+        "eval" => "eval <file.emath> [--world <name>] [--json]",
+        "repl" => "repl <file.emath>",
         "compile" => "compile --parametric <file.emath> --out <dir> [--world LABEL]",
         "world" => "world show WORLD_ID --dir <dir>",
         "portfolio" => "portfolio show PORTFOLIO_ID --dir <dir>",
@@ -66,7 +70,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "vendor" => "vendor --out <dir>",
         "provider" => "provider list|inspect <id>|test <id> [--json]",
         "fork" => "fork status|sync [--dry-run] [--json]",
-        "agent" => "agent check|plan|build|triage <file.emath> [--out <dir>]",
+        "agent" => "agent check|plan|build|triage|propose <file> [--out <dir>]",
         "help" => "help [<command>]",
         "version" | "--version" | "-V" => "version",
         "capabilities" => "capabilities [--json]",
@@ -86,6 +90,8 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "parse" => "genesis glyphs + bounded parse forest",
         "signature" => "arity/fixity/type-variable signature inference",
         "genesis" => "world interpretation + portfolio + answer receipt",
+        "eval" => "evaluate the admitted term on the semantic VM (value + world + vm_steps)",
+        "repl" => "interactive eval session over the same admission and VM path",
         "compile" => "parametric generated crate for an admitted world",
         "world" => "print one world candidate artifact",
         "portfolio" => "print one interpretation portfolio artifact",
@@ -176,14 +182,7 @@ pub fn capabilities_json() -> String {
         entry.string("name", name);
         entry.string("usage", command_usage(name).unwrap_or(name));
         entry.string("summary", command_summary(name).unwrap_or(""));
-        let indented = entry
-            .finish()
-            .trim()
-            .lines()
-            .map(|line| format!("    {line}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        commands.push(indented);
+        commands.push(entry.finish());
     }
     let mut codes = emath_artifact::JsonWriter::object();
     codes.string("0", "ok");
@@ -196,7 +195,7 @@ pub fn capabilities_json() -> String {
     out.string("contract", "emath-cli Phase 1 + Semantic Genesis G0-G3");
     out.object_field("exit_codes", codes.finish().trim());
     out.strings("env_vars", &[]);
-    out.object_field("commands", &format!("[\n{}\n  ]", commands.join(",\n")));
+    out.objects("commands", &commands);
     out.finish()
 }
 
@@ -239,21 +238,18 @@ Rules
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     match command {
         "check" | "plan" | "architecture" | "explain" | "inspect" | "diff" | "doctor"
-        | "capabilities" => &["--json", "--help", "-h"],
+        | "capabilities" | "import" | "provider" => &["--json", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
-        "build" | "run" | "test" | "new" | "vendor" => {
-            &["--json", "--out", "-o", "--verify", "--help", "-h"]
+        "build" => &["--json", "--out", "-o", "--verify", "--help", "-h"],
+        "run" | "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
+            &["--out", "-o", "--help", "-h"]
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
-        "signature" | "genesis" => &["--out", "-o", "--help", "-h"],
+        "eval" => &["--world", "--json", "--help", "-h"],
         "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
         "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
-        "import" => &["--json", "--help", "-h"],
-        "artifact" | "verify" => &["--help", "-h"],
-        "provider" => &["--json", "--help", "-h"],
         "fork" => &["--dry-run", "--json", "--help", "-h"],
-        "agent" => &["--out", "-o", "--json", "--help", "-h"],
-        "robot-docs" => &["guide", "--guide", "--help", "-h"],
+        "robot-docs" => &["--guide", "--help", "-h"],
         _ => &["--help", "-h"],
     }
 }
@@ -317,62 +313,4 @@ fn edit_distance(left: &str, right: &str) -> usize {
         std::mem::swap(&mut previous, &mut current);
     }
     previous[right.len()]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn typo_chek_suggests_check() {
-        assert_eq!(suggest_command("chek"), Some("check"));
-    }
-
-    #[test]
-    fn typo_buld_suggests_build() {
-        assert_eq!(suggest_command("buld"), Some("build"));
-    }
-
-    #[test]
-    fn typo_verson_suggests_version() {
-        assert_eq!(suggest_command("verson"), Some("version"));
-    }
-
-    #[test]
-    fn nonsense_has_no_suggestion() {
-        assert_eq!(suggest_command("zzzzzzzz"), None);
-    }
-
-    #[test]
-    fn every_catalogued_command_has_usage_and_summary() {
-        for command in COMMANDS {
-            assert!(command_usage(command).is_some(), "{command} usage");
-            assert!(command_summary(command).is_some(), "{command} summary");
-            assert!(command_help_text(command).is_some(), "{command} help");
-        }
-    }
-
-    #[test]
-    fn capabilities_json_names_schema_and_exit_codes() {
-        let body = capabilities_json();
-        assert!(
-            body.contains("\"schema\": \"emath.capabilities\""),
-            "{body}"
-        );
-        assert!(body.contains("\"name\": \"check\""), "{body}");
-        assert!(body.contains("\"name\": \"capabilities\""), "{body}");
-        assert!(body.contains("\"0\": \"ok\""), "{body}");
-    }
-
-    #[test]
-    fn robot_docs_names_capabilities() {
-        let body = robot_docs_guide();
-        assert!(body.contains("emath capabilities --json"), "{body}");
-        assert!(body.contains("Exit codes"), "{body}");
-    }
-
-    #[test]
-    fn jason_suggests_json() {
-        assert_eq!(suggest_flag("--jason", flags_for("check")), Some("--json"));
-    }
 }

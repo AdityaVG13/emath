@@ -1,11 +1,13 @@
 //! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, and the
-//! Semantic Genesis commands (`parse`, `signature`, `genesis`, `compile
-//! --parametric`, `world show`, `portfolio show`).
+//! Semantic Genesis commands (`parse`, `signature`, `genesis`, `eval`, `repl`,
+//! `compile --parametric`, `world show`, `portfolio show`).
 //! Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error.
 
 #![forbid(unsafe_code)]
 
+mod agent_cmd;
 pub mod catalog;
+mod eval_cmd;
 pub mod genesis_cmd;
 mod tooling_cmd;
 
@@ -60,7 +62,7 @@ pub fn check(path: &Path, json: bool) -> u8 {
         // The diagnostics array carries codes and messages, not counts:
         // a checker lane must be able to assert the exact E-* code the
         // CLI refused with.
-        out.object_field("diagnostics", &format!("[\n{}\n  ]", body.join(",\n")));
+        out.objects("diagnostics", &body);
         out.string("package", &package_id);
         println!("{}", out.finish());
     }
@@ -71,7 +73,7 @@ pub fn check(path: &Path, json: bool) -> u8 {
     }
 }
 
-fn run_check(path: &PathBuf) -> (Diagnostics, String) {
+pub(crate) fn run_check(path: &Path) -> (Diagnostics, String) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         let mut diagnostics = Diagnostics::new();
@@ -487,94 +489,26 @@ pub fn architecture(json: bool) -> u8 {
     EXIT_OK
 }
 
-/// `help` output.
+/// `help` output. Generated from the command catalog so usage and summary
+/// cannot drift from `emath help <command>` / `emath capabilities --json`.
 pub fn help_text() -> String {
-    "\
-emath compiler (Phase 1 + Semantic Genesis G0-G3)
-
-usage:
-  emath check <file.emath> [--json]
-      parse + admit, no codegen
-  emath plan <file.emath> [--json]
-      admit + goals + deterministic native resolution plan
-  emath planner <file.emath> [--json] [--parametric]
-      deterministic planner inspection: candidates, exclusions, selected
-      plan, checks, budget, disposition; --parametric lifts missing
-      providers to a compilable Rust trait (Phase 6)
-  emath build <file.emath> [--out <dir>] [--verify] [--json]
-      full pipeline; publishes artifact under <dir>/emath/<artifact-id>
-      (default out: target/emath) --verify runs `cargo test` on the
-      staged crate before publish
-  emath artifact check <dir>
-      re-verify every published artifact with the independent checker
-      (emath-checker: identity, source map, plan, evidence, claims)
-  emath artifact battery <dir>
-      seeded negative-control battery over every published artifact:
-      tampered/stale/wrong-goal/incomplete/unsupported must be refused
-      with the checker's expected E-EVID-* code, or the command fails
-  emath import modelica <file.mo> [--json]
-      retain a Modelica subset source as foreign-model declarations with
-      adapter identity (no silent source rewrite)
-  emath parse --forest <file.emath> [--out <dir>]
-      genesis glyphs + bounded parse forest (parse-forest.json)
-  emath signature <file.emath> [--out <dir>]
-      arity/fixity/type-variable signature inference (signature.json)
-  emath genesis <file.emath> --out <dir>
-      full analysis: forest, signature, free term, meaning problem,
-      world candidates + admission log, portfolio, answer receipt
-  emath compile --parametric <file.emath> --out <dir> [--world LABEL]
-      emit the parametric generated crate (free_symbolic, boolean_algebra,
-      modular_numeric) + manifest + source map
-  emath world show WORLD_ID --dir <dir>
-      print one world candidate artifact
-  emath portfolio show PORTFOLIO_ID --dir <dir>
-      print one interpretation portfolio artifact
-  emath architecture [--json]
-      describe the provider-neutral pipeline
-  emath new <name> [--out <dir>]
-      deterministic project scaffold (emath-package.toml + src/main.emath;
-      default dir: ./<name>)
-  emath fmt <file.emath>
-      canonical-form check (full formatter is Phase 4)
-  emath explain <file.emath> [<symbol>]
-      plan-level goal/provider explanation
-  emath run <file.emath> [--out <dir>]
-      build then execute the generated crate (default out: target/emath;
-      library crates execute their example tests)
-  emath test <file.emath> [--out <dir>]
-      build + run the generated crate's tests (--verify pipeline;
-      default out: target/emath)
-  emath bench <file.emath>
-      typed refusal: benchmark harness is Phase 4+ (E-TLT-004)
-  emath verify <artifact-dir>
-      independent artifact re-verification
-  emath inspect <artifact-dir>
-      print committed artifact manifests
-  emath diff <a.emath> <b.emath>
-      fingerprint comparison of parse-admitted sources
-  emath doctor
-      toolchain presence checks (rustc, cargo, rustfmt, clippy)
-  emath vendor --out <dir>
-      offline dependency snapshot (zero third-party deps)
-  emath provider list|inspect <id>|test <id>
-      built-in provider descriptors; typed refusal for planned providers
-  emath fork status|sync [--dry-run]
-      upstream pin status; network sync refused offline (E-TLT-006)
-  emath agent check|plan|build|triage <file.emath> [--out <dir>]
-      structured emath.agent envelope over the same admission/plan/build
-      paths as the interactive commands (agents cannot bypass checks)
-  emath help [<command>]
-      this text, or one-command usage (`emath <command> --help` is the same)
-  emath version | --version | -V
-      print the emath-cli crate version (no git SHA)
-  emath capabilities [--json]
-      machine contract: commands, flags, exit codes (JSON always)
-  emath robot-docs [guide]
-      paste-ready agent handbook
-
-exit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error
-"
-    .to_string()
+    let mut out = String::from("emath compiler (Phase 1 + Semantic Genesis G0-G3)\n\nusage:\n");
+    for command in catalog::COMMANDS {
+        let Some(usage) = catalog::command_usage(command) else {
+            continue;
+        };
+        let Some(summary) = catalog::command_summary(command) else {
+            continue;
+        };
+        out.push_str("  emath ");
+        out.push_str(usage);
+        out.push('\n');
+        out.push_str("      ");
+        out.push_str(summary);
+        out.push('\n');
+    }
+    out.push_str("\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\n");
+    out
 }
 
 /// Entry used by main; keeps the CLI testable.
@@ -586,14 +520,20 @@ pub fn run(args: &[String]) -> u8 {
     match command.as_str() {
         "help" | "--help" | "-h" => return help_cmd(&args[1..]),
         "version" | "--version" | "-V" => {
-            println!("{}", catalog::version_text());
-            return EXIT_OK;
+            return catalog_read_cmd("version", &args[1..], || {
+                println!("{}", catalog::version_text());
+                EXIT_OK
+            });
         }
         "capabilities" => {
-            print!("{}", catalog::capabilities_json());
-            return EXIT_OK;
+            return catalog_read_cmd("capabilities", &args[1..], || {
+                print!("{}", catalog::capabilities_json());
+                EXIT_OK
+            });
         }
-        "robot-docs" => return robot_docs_cmd(&args[1..]),
+        "robot-docs" => {
+            return catalog_read_cmd("robot-docs", &args[1..], || robot_docs_cmd(&args[1..]));
+        }
         _ => {}
     }
     if catalog::wants_help(&args[1..]) {
@@ -689,6 +629,8 @@ pub fn run(args: &[String]) -> u8 {
                 _ => usage("genesis <file.emath> --out <dir>"),
             }
         }
+        "eval" => eval_cmd::dispatch_eval(&args[1..]),
+        "repl" => eval_cmd::dispatch_repl(&args[1..]),
         "compile" => {
             let (path, out, worlds) = parse_genesis_args(&args[1..]);
             let parametric = args[1..].iter().any(|arg| arg == "--parametric");
@@ -747,9 +689,19 @@ pub fn run(args: &[String]) -> u8 {
     }
 }
 
+fn catalog_read_cmd(command: &str, args: &[String], emit: impl FnOnce() -> u8) -> u8 {
+    if catalog::wants_help(args) {
+        return print_command_help(command);
+    }
+    if let Some(code) = catalog::reject_unknown_flags(command, args) {
+        return code;
+    }
+    emit()
+}
+
 fn robot_docs_cmd(args: &[String]) -> u8 {
     match args.first().map(String::as_str) {
-        None | Some("guide") | Some("--guide") => {
+        None | Some("guide" | "--guide") => {
             print!("{}", catalog::robot_docs_guide());
             EXIT_OK
         }
@@ -764,7 +716,7 @@ fn robot_docs_cmd(args: &[String]) -> u8 {
 
 fn help_cmd(args: &[String]) -> u8 {
     match args.first().map(String::as_str) {
-        None | Some("--help") | Some("-h") => {
+        None | Some("--help" | "-h") => {
             print!("{}", help_text());
             EXIT_OK
         }
@@ -835,7 +787,7 @@ fn parse_file_args(args: &[String]) -> (Option<PathBuf>, bool) {
     (path, json)
 }
 
-fn usage(message: &str) -> u8 {
+pub(crate) fn usage(message: &str) -> u8 {
     eprintln!("error: missing or invalid arguments for this command");
     eprintln!("usage: emath {message}");
     let command = message.split_whitespace().next().unwrap_or("help");
@@ -851,65 +803,4 @@ pub(crate) fn write_json(out: &mut impl Write, fields: &[(&str, String)]) -> std
         object.string(name, value);
     }
     write!(out, "{}", object.finish())
-}
-
-#[cfg(test)]
-mod cli_ergonomics_tests {
-    use super::*;
-
-    fn args(line: &str) -> Vec<String> {
-        line.split_whitespace().map(str::to_string).collect()
-    }
-
-    #[test]
-    fn bare_and_help_exit_ok() {
-        assert_eq!(run(&[]), EXIT_OK);
-        assert_eq!(run(&args("help")), EXIT_OK);
-        assert_eq!(run(&args("--help")), EXIT_OK);
-        assert_eq!(run(&args("-h")), EXIT_OK);
-    }
-
-    #[test]
-    fn version_aliases_exit_ok() {
-        assert_eq!(run(&args("version")), EXIT_OK);
-        assert_eq!(run(&args("--version")), EXIT_OK);
-        assert_eq!(run(&args("-V")), EXIT_OK);
-    }
-
-    #[test]
-    fn command_help_is_first_try() {
-        assert_eq!(run(&args("check --help")), EXIT_OK);
-        assert_eq!(run(&args("help check")), EXIT_OK);
-        assert_eq!(run(&args("agent --help")), EXIT_OK);
-    }
-
-    #[test]
-    fn unknown_command_is_usage() {
-        assert_eq!(run(&args("chek")), EXIT_USAGE);
-        assert_eq!(run(&args("buld")), EXIT_USAGE);
-        assert_eq!(run(&args("zzzzzzzz")), EXIT_USAGE);
-    }
-
-    #[test]
-    fn capabilities_and_robot_docs_exit_ok() {
-        assert_eq!(run(&args("capabilities")), EXIT_OK);
-        assert_eq!(run(&args("capabilities --json")), EXIT_OK);
-        assert_eq!(run(&args("robot-docs")), EXIT_OK);
-        assert_eq!(run(&args("robot-docs guide")), EXIT_OK);
-        assert_eq!(run(&args("robot-docs waffle")), EXIT_USAGE);
-    }
-
-    #[test]
-    fn read_side_json_and_triage_help_exit_ok() {
-        assert_eq!(run(&args("architecture --json")), EXIT_OK);
-        assert_eq!(run(&args("doctor --json")), EXIT_OK);
-        assert_eq!(run(&args("provider list --json")), EXIT_OK);
-        assert_eq!(run(&args("agent triage --help")), EXIT_OK);
-    }
-
-    #[test]
-    fn unknown_flag_is_usage() {
-        assert_eq!(run(&args("check --jason file.emath")), EXIT_USAGE);
-        assert_eq!(run(&args("plan --jason file.emath")), EXIT_USAGE);
-    }
 }

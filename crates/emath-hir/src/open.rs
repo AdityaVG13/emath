@@ -264,13 +264,16 @@ impl SectionManifest {
         let mut seen: BTreeMap<String, usize> = BTreeMap::new();
         for (index, name) in self.declared.iter().enumerate() {
             let Some(schema) = self.schema.section(name) else {
+                let detail = renamed_goals_hint(name).unwrap_or_else(|| {
+                    format!(
+                        "section `{name}` is not part of kind `{}`",
+                        self.schema.name()
+                    )
+                });
                 let violation = SectionViolation {
                     code: "E-KIND-016",
                     reason: SectionViolationReason::UnknownSection,
-                    detail: format!(
-                        "section `{name}` is not part of kind `{}`",
-                        self.schema.name()
-                    ),
+                    detail,
                     index,
                 };
                 diagnostics.error(violation.code, violation.detail.clone(), Span::default());
@@ -359,8 +362,7 @@ fn family_of(name: &str) -> SectionFamily {
         }
         "definitions" | "equations" | "invariants" | "constraints" => SectionFamily::Behavior,
         "constructors" | "factories" | "delegates" => SectionFamily::Construction,
-        // `requests` is the pre-0.3 spelling; migrated sources use `goals`.
-        "goals" | "requests" | "exports" | "imports" => SectionFamily::Goals,
+        "goals" | "exports" | "imports" => SectionFamily::Goals,
         "tests" | "benchmarks" | "certificates" | "examples" => SectionFamily::Evidence,
         "compile" | "policy" | "profiles" => SectionFamily::Config,
         _ => SectionFamily::Extension,
@@ -429,60 +431,18 @@ fn collect_docs(sections: &[Section]) -> BTreeMap<String, Vec<String>> {
     docs
 }
 
+/// Live `request:` / `requests:` spellings are not Goals-family aliases.
+/// The migrator rewrites bootstrap `request:` to `goals:`; the compiler
+/// refuses the old names with this hint (`E-KIND-016` / `E-SEC-101`).
+fn renamed_goals_hint(name: &str) -> Option<String> {
+    matches!(name, "request" | "requests")
+        .then(|| format!("section `{name}:` was renamed to `goals:`; use `goals:`"))
+}
+
 fn payload_token(payload: OpenPayload) -> &'static str {
     match payload {
         OpenPayload::Suite => "suite",
         OpenPayload::Fields => "fields",
         OpenPayload::Commands => "commands",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Unknown sections are schema violations of the HIR manifest
-    /// (`E-KIND-016`), not the sema function-constructors refusal
-    /// (`E-KIND-010`): one code, one predicate.
-    #[test]
-    fn unknown_section_emits_ekind016_not_ekind010() {
-        let schema = KindSchema::core_function();
-        let manifest = SectionManifest::new(
-            schema,
-            vec![
-                "inputs".into(),
-                "outputs".into(),
-                "definitions".into(),
-                "not_a_section".into(),
-            ],
-        );
-        let mut diagnostics = Diagnostics::new();
-        let violations = manifest.check(&mut diagnostics);
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].code, "E-KIND-016");
-        assert!(matches!(
-            violations[0].reason,
-            SectionViolationReason::UnknownSection
-        ));
-        assert!(
-            diagnostics.items().iter().all(|d| d.code != "E-KIND-010"),
-            "E-KIND-010 must stay the sema function-constructors predicate"
-        );
-    }
-
-    /// Missing required sections still emit `E-KIND-011` after the
-    /// unknown-section split.
-    #[test]
-    fn missing_required_emits_ekind011() {
-        let schema = KindSchema::core_function();
-        let manifest = SectionManifest::new(schema, vec!["inputs".into()]);
-        let mut diagnostics = Diagnostics::new();
-        let violations = manifest.check(&mut diagnostics);
-        assert!(
-            violations
-                .iter()
-                .any(|v| v.code == "E-KIND-011"
-                    && v.reason == SectionViolationReason::MissingRequired)
-        );
     }
 }

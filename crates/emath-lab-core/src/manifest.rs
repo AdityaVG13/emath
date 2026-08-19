@@ -1,11 +1,12 @@
 //! Frozen experiment manifest.
 //!
-//! Freezes workload corpus partitions, environment, baseline/candidate
-//! artifact identities, metric set, statistical protocol, thresholds,
-//! kill rules and fallback behaviour before any measurement or promotion
-//! decision. The manifest self-validates (`E-HOST-003`/`E-HOST-004`),
-//! has a versioned canonical encoding (`lab:...`) for identity and a
-//! deterministic canonical JSON form for audit/receipt replay.
+//! Campaign identity is frozen before measurement: subject (candidate),
+//! baseline, generator, workload partitions (protocol stages A–E),
+//! environment, metrics, protection envelope (thresholds, kill rules,
+//! fallback), seed and budget. The manifest self-validates
+//! (`E-HOST-003`/`E-HOST-004`), has a versioned canonical encoding
+//! (`lab:...`) for identity and a deterministic canonical JSON form for
+//! audit/receipt replay.
 
 use crate::error::LabError;
 use crate::json::{self, JsonValue};
@@ -37,6 +38,18 @@ impl PartitionKind {
             Self::Validation => "validation",
             Self::Holdout => "holdout",
             Self::Stress => "stress",
+        }
+    }
+
+    /// Experiment-protocol stage (A–E) occupied by this partition.
+    #[must_use]
+    pub const fn stage(self) -> char {
+        match self {
+            Self::Training => 'A',
+            Self::Calibration => 'B',
+            Self::Validation => 'C',
+            Self::Holdout => 'D',
+            Self::Stress => 'E',
         }
     }
 }
@@ -275,6 +288,10 @@ pub struct LabManifest {
     pub fallback: FallbackPlan,
     /// Frozen environment.
     pub environment: EnvironmentPin,
+    /// Candidate generator identity (rewrite family, search method, …).
+    pub generator: String,
+    /// Deterministic campaign seed (frozen before measurement).
+    pub seed: u64,
     /// Whether the manifest is frozen (dedicated decision gate).
     pub frozen: bool,
 }
@@ -310,6 +327,12 @@ impl LabManifest {
         partition_names.sort_unstable();
         if partition_names.windows(2).any(|pair| pair[0] == pair[1]) {
             problems.push(problem("E-HOST-003", "duplicate partition name"));
+        }
+        if self.generator.is_empty() {
+            problems.push(problem(
+                "E-HOST-003",
+                "manifest requires a generator identity",
+            ));
         }
         if self.metrics.is_empty() {
             problems.push(problem(
@@ -443,11 +466,13 @@ impl LabManifest {
             .collect();
         let thresholds = &self.thresholds;
         format!(
-            "lab:{}:{}:{}:{}:{}:[{}]:[{}]:[{}]:{}:{}:{}:{}",
+            "lab:{}:{}:{}:{}:{}:{}:{}:[{}]:[{}]:[{}]:{}:{}:{}:{}",
             self.experiment_id.0,
             if self.frozen { "frozen" } else { "draft" },
             self.baseline.token(),
             self.candidate.token(),
+            self.generator,
+            self.seed,
             self.environment.token(),
             partition_token.join(";"),
             metric_token.join(";"),
@@ -480,6 +505,11 @@ impl LabManifest {
             ("frozen".into(), JsonValue::Bool(self.frozen)),
             ("baseline".into(), artifact_json(&self.baseline)),
             ("candidate".into(), artifact_json(&self.candidate)),
+            (
+                "generator".into(),
+                JsonValue::String(self.generator.clone()),
+            ),
+            ("seed".into(), json_count(self.seed)),
             (
                 "partitions".into(),
                 JsonValue::Array(
@@ -630,6 +660,8 @@ impl LabManifest {
         let frozen = expect_bool(field(object, "frozen")?, "frozen")?;
         let baseline = artifact_from_json(field(object, "baseline")?, "baseline")?;
         let candidate = artifact_from_json(field(object, "candidate")?, "candidate")?;
+        let generator = expect_string(field(object, "generator")?, "generator")?.to_string();
+        let seed = expect_u64(field(object, "seed")?, "seed")?;
         let partitions = expect_array(field(object, "partitions")?, "partitions")?
             .iter()
             .map(|entry| {
@@ -748,6 +780,8 @@ impl LabManifest {
             kill_rules,
             fallback,
             environment,
+            generator,
+            seed,
             frozen,
         };
         if let Some(problem) = manifest.validate().into_iter().next() {

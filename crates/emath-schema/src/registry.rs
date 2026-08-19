@@ -4,8 +4,10 @@
 //! Canonical semantic-genesis artifact formats named
 //! `emath.<name>`. The registry is std-only, dependency-free and
 //! byte-stable: every entry emits deterministic JSON bytes and a
-//! matching example. Unknown names return a stable typed error
-//! (`E-SCHEMA-001`). The order of [`SCHEMA_NAMES`] is the fixed
+//! matching example. Closed-world entries encode the in-tree JSON
+//! emitter's top-level fields; ids with no JSON emitter get an open
+//! envelope (`schema` const only). Unknown names return a stable typed
+//! error (`E-SCHEMA-001`). The order of [`SCHEMA_NAMES`] is the fixed
 //! registry order.
 
 /// Stable schema document version.
@@ -103,6 +105,7 @@ fn find_index(name: &str) -> Option<usize> {
 }
 
 fn json_escape(input: &str, out: &mut String) {
+    use std::fmt::Write as _;
     for ch in input.chars() {
         match ch {
             '"' => out.push_str("\\\""),
@@ -111,7 +114,6 @@ fn json_escape(input: &str, out: &mut String) {
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             c if c.is_control() => {
-                use std::fmt::Write as _;
                 let _ = write!(out, "\\u{:04x}", c as u32);
             }
             c => out.push(c),
@@ -123,69 +125,603 @@ fn short_name(id: &str) -> &str {
     id.strip_prefix("emath.").unwrap_or(id)
 }
 
-fn build_schema_json(name: &str) -> Vec<u8> {
+#[derive(Clone, Copy)]
+enum JsonType {
+    String,
+    Integer,
+    Number,
+}
+
+impl JsonType {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::Integer => "integer",
+            Self::Number => "number",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FieldDef {
+    name: &'static str,
+    value: ValueSpec,
+    required: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ValueSpec {
+    Const(&'static str),
+    Type(JsonType),
+    StringArray,
+    Object {
+        fields: &'static [FieldDef],
+        additional: bool,
+    },
+    ObjectArray {
+        fields: &'static [FieldDef],
+        additional: bool,
+    },
+}
+
+#[derive(Clone, Copy)]
+struct ClosedSpec {
+    description: &'static str,
+    fields: &'static [FieldDef],
+}
+
+/// Optional JSON Schema instance annotation. Real genesis emitters omit
+/// it; examples include it so `$schema` round-trips to `$id`.
+const SCHEMA_ANNOTATION: FieldDef = FieldDef {
+    name: "$schema",
+    value: ValueSpec::Type(JsonType::String),
+    required: false,
+};
+
+const ENVELOPE_DESCRIPTION: &str =
+    "No in-tree JSON emitter for this $id; envelope records the schema const only.";
+
+const HOLE_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "id",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "reason",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+];
+
+const SCORE_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "cost",
+        value: ValueSpec::Type(JsonType::Number),
+        required: true,
+    },
+    FieldDef {
+        name: "complexity",
+        value: ValueSpec::Type(JsonType::Number),
+        required: true,
+    },
+    FieldDef {
+        name: "evidence",
+        value: ValueSpec::Type(JsonType::Number),
+        required: true,
+    },
+    FieldDef {
+        name: "utility",
+        value: ValueSpec::Type(JsonType::Number),
+        required: true,
+    },
+];
+
+const CANDIDATE_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "world_id",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "name",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "answer",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "authority",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "score",
+        value: ValueSpec::Object {
+            fields: SCORE_FIELDS,
+            additional: false,
+        },
+        required: true,
+    },
+    FieldDef {
+        name: "provenance",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+];
+
+const SOURCE_ARTIFACT_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "schema",
+        value: ValueSpec::Const("emath.source-artifact"),
+        required: true,
+    },
+    FieldDef {
+        name: "schema_version",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "source",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "source_hash",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "byte_len",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "world_name",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "body_text",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "glyph_count",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "glyphs",
+        value: ValueSpec::StringArray,
+        required: true,
+    },
+    FieldDef {
+        name: "parse_id",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+];
+
+const PARSE_FOREST_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "schema",
+        value: ValueSpec::Const("emath.parse-forest"),
+        required: true,
+    },
+    FieldDef {
+        name: "world_name",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "body",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "parse_id",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "ambiguity_count",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "node_count",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "holes",
+        value: ValueSpec::ObjectArray {
+            fields: HOLE_FIELDS,
+            additional: false,
+        },
+        required: true,
+    },
+    FieldDef {
+        name: "canonical_term",
+        value: ValueSpec::Type(JsonType::String),
+        required: false,
+    },
+    FieldDef {
+        name: "recovery",
+        value: ValueSpec::Const("bounded-holes"),
+        required: true,
+    },
+];
+
+const ANSWER_RECEIPT_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "schema",
+        value: ValueSpec::Const("emath.answer-receipt"),
+        required: true,
+    },
+    FieldDef {
+        name: "schema_version",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "receipt_id",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "answer_id",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "source_hash",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "parse_id",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "signature_id",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "term_id",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "world_id",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "valuation",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "provider_locks",
+        value: ValueSpec::StringArray,
+        required: true,
+    },
+    FieldDef {
+        name: "checker_receipts",
+        value: ValueSpec::StringArray,
+        required: true,
+    },
+    FieldDef {
+        name: "artifact_hash",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "portfolio_hash",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "target",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "result",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "trace_hash",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "authority",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "vm_schema",
+        value: ValueSpec::Type(JsonType::String),
+        required: true,
+    },
+    FieldDef {
+        name: "vm_steps",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+];
+
+const PORTFOLIO_FIELDS: &[FieldDef] = &[
+    FieldDef {
+        name: "schema",
+        value: ValueSpec::Const("emath.interpretation-portfolio"),
+        required: true,
+    },
+    FieldDef {
+        name: "portfolio_id",
+        value: ValueSpec::Type(JsonType::Integer),
+        required: true,
+    },
+    FieldDef {
+        name: "candidates",
+        value: ValueSpec::ObjectArray {
+            fields: CANDIDATE_FIELDS,
+            additional: false,
+        },
+        required: true,
+    },
+];
+
+fn closed_spec(name: &str) -> Option<ClosedSpec> {
+    match name {
+        "emath.source-artifact" => Some(ClosedSpec {
+            description: "Sealed genesis source artifact (emath-cli genesis_cmd).",
+            fields: SOURCE_ARTIFACT_FIELDS,
+        }),
+        "emath.parse-forest" => Some(ClosedSpec {
+            description: "Bounded parse forest (emath-genesis ParseForest::canonical_json).",
+            fields: PARSE_FOREST_FIELDS,
+        }),
+        "emath.answer-receipt" => Some(ClosedSpec {
+            description: "SG-09 answer receipt (emath-cli genesis_cmd).",
+            fields: ANSWER_RECEIPT_FIELDS,
+        }),
+        "emath.interpretation-portfolio" => Some(ClosedSpec {
+            description: "Interpretation portfolio (emath-cli genesis_cmd).",
+            fields: PORTFOLIO_FIELDS,
+        }),
+        _ => None,
+    }
+}
+
+fn push_indent(out: &mut String, level: usize) {
+    for _ in 0..level {
+        out.push_str("  ");
+    }
+}
+
+fn write_properties<'a, I>(out: &mut String, fields: I, indent: usize)
+where
+    I: Iterator<Item = &'a FieldDef>,
+{
+    push_indent(out, indent);
+    out.push_str("\"properties\": {\n");
+    let mut first = true;
+    for field in fields {
+        if !first {
+            out.push_str(",\n");
+        }
+        first = false;
+        push_indent(out, indent + 1);
+        out.push('"');
+        json_escape(field.name, out);
+        out.push_str("\": ");
+        write_value_spec(out, &field.value, indent + 1);
+    }
+    out.push('\n');
+    push_indent(out, indent);
+    out.push('}');
+}
+
+fn write_required<'a, I>(out: &mut String, fields: I, indent: usize)
+where
+    I: Iterator<Item = &'a FieldDef>,
+{
+    push_indent(out, indent);
+    out.push_str("\"required\": [\n");
+    let mut first = true;
+    for field in fields.filter(|field| field.required) {
+        if !first {
+            out.push_str(",\n");
+        }
+        first = false;
+        push_indent(out, indent + 1);
+        out.push('"');
+        json_escape(field.name, out);
+        out.push('"');
+    }
+    out.push('\n');
+    push_indent(out, indent);
+    out.push(']');
+}
+
+fn write_object_shape(out: &mut String, fields: &[FieldDef], additional: bool, indent: usize) {
+    push_indent(out, indent);
+    out.push_str("\"type\": \"object\",\n");
+    write_properties(out, fields.iter(), indent);
+    out.push_str(",\n");
+    write_required(out, fields.iter(), indent);
+    out.push_str(",\n");
+    push_indent(out, indent);
+    out.push_str("\"additionalProperties\": ");
+    out.push_str(if additional { "true" } else { "false" });
+    out.push('\n');
+}
+
+fn write_value_spec(out: &mut String, spec: &ValueSpec, indent: usize) {
+    out.push_str("{\n");
+    match spec {
+        ValueSpec::Const(value) => {
+            push_indent(out, indent + 1);
+            out.push_str("\"const\": \"");
+            json_escape(value, out);
+            out.push_str("\"\n");
+        }
+        ValueSpec::Type(json_type) => {
+            push_indent(out, indent + 1);
+            out.push_str("\"type\": \"");
+            out.push_str(json_type.as_str());
+            out.push_str("\"\n");
+        }
+        ValueSpec::StringArray => {
+            push_indent(out, indent + 1);
+            out.push_str("\"type\": \"array\",\n");
+            push_indent(out, indent + 1);
+            out.push_str("\"items\": {\n");
+            push_indent(out, indent + 2);
+            out.push_str("\"type\": \"string\"\n");
+            push_indent(out, indent + 1);
+            out.push_str("}\n");
+        }
+        ValueSpec::Object { fields, additional } => {
+            write_object_shape(out, fields, *additional, indent + 1);
+        }
+        ValueSpec::ObjectArray { fields, additional } => {
+            push_indent(out, indent + 1);
+            out.push_str("\"type\": \"array\",\n");
+            push_indent(out, indent + 1);
+            out.push_str("\"items\": {\n");
+            write_object_shape(out, fields, *additional, indent + 2);
+            push_indent(out, indent + 1);
+            out.push_str("}\n");
+        }
+    }
+    push_indent(out, indent);
+    out.push('}');
+}
+
+fn write_schema_header(out: &mut String, name: &str, description: &str) {
     let short = short_name(name);
-    let mut out = String::new();
     out.push_str("{\n");
     out.push_str("  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n");
     out.push_str("  \"$id\": \"");
-    json_escape(name, &mut out);
+    json_escape(name, out);
     out.push_str("\",\n");
     out.push_str("  \"title\": \"");
-    json_escape(short, &mut out);
+    json_escape(short, out);
     out.push_str("\",\n");
     out.push_str("  \"type\": \"object\",\n");
     out.push_str("  \"version\": \"");
-    json_escape(SCHEMA_VERSION, &mut out);
+    json_escape(SCHEMA_VERSION, out);
     out.push_str("\",\n");
-    out.push_str("  \"description\": \"Canonical JSON schema for ");
-    json_escape(name, &mut out);
+    out.push_str("  \"description\": \"");
+    json_escape(description, out);
     out.push_str("\",\n");
+}
+
+fn build_closed_schema_json(name: &str, spec: &ClosedSpec) -> Vec<u8> {
+    let mut out = String::new();
+    write_schema_header(&mut out, name, spec.description);
+    write_properties(
+        &mut out,
+        std::iter::once(&SCHEMA_ANNOTATION).chain(spec.fields.iter()),
+        1,
+    );
+    out.push_str(",\n");
+    write_required(
+        &mut out,
+        std::iter::once(&SCHEMA_ANNOTATION).chain(spec.fields.iter()),
+        1,
+    );
+    out.push_str(",\n");
+    out.push_str("  \"additionalProperties\": false\n}\n");
+    out.into_bytes()
+}
+
+fn build_envelope_schema_json(name: &str) -> Vec<u8> {
+    let mut out = String::new();
+    write_schema_header(&mut out, name, ENVELOPE_DESCRIPTION);
     out.push_str("  \"properties\": {\n");
+    out.push_str("    \"$schema\": {\n");
+    out.push_str("      \"type\": \"string\"\n");
+    out.push_str("    },\n");
     out.push_str("    \"schema\": {\n");
     out.push_str("      \"const\": \"");
     json_escape(name, &mut out);
     out.push_str("\"\n");
-    out.push_str("    },\n");
-    out.push_str("    \"version\": {\n");
-    out.push_str("      \"const\": \"");
-    json_escape(SCHEMA_VERSION, &mut out);
-    out.push_str("\"\n");
-    out.push_str("    },\n");
-    out.push_str("    \"payload\": {\n");
-    out.push_str("      \"type\": \"object\"\n");
     out.push_str("    }\n");
     out.push_str("  },\n");
     out.push_str("  \"required\": [\n");
-    out.push_str("    \"schema\",\n");
-    out.push_str("    \"version\"\n");
+    out.push_str("    \"schema\"\n");
     out.push_str("  ],\n");
-    out.push_str("  \"additionalProperties\": false\n");
-    out.push_str("}\n");
+    out.push_str("  \"additionalProperties\": true\n}\n");
     out.into_bytes()
 }
 
+fn build_schema_json(name: &str) -> Vec<u8> {
+    match closed_spec(name) {
+        Some(spec) => build_closed_schema_json(name, &spec),
+        None => build_envelope_schema_json(name),
+    }
+}
+
+fn write_example_value(out: &mut String, spec: &ValueSpec) {
+    match spec {
+        ValueSpec::Const(value) => {
+            out.push('"');
+            json_escape(value, out);
+            out.push('"');
+        }
+        ValueSpec::Type(JsonType::String) => out.push_str("\"example\""),
+        ValueSpec::Type(JsonType::Integer | JsonType::Number) => out.push('0'),
+        ValueSpec::StringArray | ValueSpec::ObjectArray { .. } => out.push_str("[]"),
+        ValueSpec::Object { fields, .. } => {
+            out.push_str("{\n");
+            let mut first = true;
+            for field in fields.iter().filter(|field| field.required) {
+                if !first {
+                    out.push_str(",\n");
+                }
+                first = false;
+                out.push_str("    \"");
+                json_escape(field.name, out);
+                out.push_str("\": ");
+                write_example_value(out, &field.value);
+            }
+            out.push_str("\n  }");
+        }
+    }
+}
+
 fn build_example_json(name: &str) -> Vec<u8> {
-    let short = short_name(name);
     let mut out = String::new();
-    out.push_str("{\n");
-    out.push_str("  \"$schema\": \"");
+    out.push_str("{\n  \"$schema\": \"");
     json_escape(name, &mut out);
-    out.push_str("\",\n");
-    out.push_str("  \"schema\": \"");
+    out.push_str("\",\n  \"schema\": \"");
     json_escape(name, &mut out);
-    out.push_str("\",\n");
-    out.push_str("  \"version\": \"");
-    json_escape(SCHEMA_VERSION, &mut out);
-    out.push_str("\",\n");
-    out.push_str("  \"title\": \"");
-    json_escape(short, &mut out);
-    out.push_str("\",\n");
-    out.push_str("  \"example\": \"");
-    json_escape(short, &mut out);
-    out.push_str("-example\",\n");
-    out.push_str("  \"payload\": {}\n");
-    out.push_str("}\n");
+    out.push('"');
+    if let Some(spec) = closed_spec(name) {
+        for field in spec
+            .fields
+            .iter()
+            .filter(|field| field.required && field.name != "schema")
+        {
+            out.push_str(",\n  \"");
+            json_escape(field.name, &mut out);
+            out.push_str("\": ");
+            write_example_value(&mut out, &field.value);
+        }
+    }
+    out.push_str("\n}\n");
     out.into_bytes()
 }
 
@@ -240,151 +776,4 @@ pub fn example_json_string(name: &str) -> Result<String, SchemaError> {
     Ok(String::from_utf8(bytes).expect("example json is utf8"))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn registry_enumerates_thirteen_in_fixed_order() {
-        let names = schema_names();
-        assert_eq!(
-            names.len(),
-            13,
-            "registry must contain exactly thirteen schemas"
-        );
-        assert_eq!(names, &SCHEMA_NAMES, "fixed order must equal SCHEMA_NAMES");
-        assert_eq!(schema_names(), names);
-        let mut seen = std::collections::BTreeSet::new();
-        for n in names {
-            assert!(seen.insert(*n), "duplicate name {n}");
-        }
-    }
-
-    #[test]
-    fn version_constants_stable() {
-        assert_eq!(SCHEMA_VERSION, "1.0.0");
-        assert_eq!(REGISTRY_VERSION, "1.0.0");
-        assert_eq!(SCHEMAS_VERSION, "1.0.0");
-        assert_eq!(VERSION, "1.0.0");
-    }
-
-    #[test]
-    fn every_entry_emits_deterministic_valid_json_and_matching_example() {
-        for name in schema_names() {
-            let schema = schema_json(name).expect("known schema");
-            let example = example_json(name).expect("known example");
-            assert_eq!(
-                schema,
-                schema_json(name).unwrap(),
-                "schema not byte-stable for {name}",
-            );
-            assert_eq!(
-                example,
-                example_json(name).unwrap(),
-                "example not byte-stable for {name}",
-            );
-            assert!(
-                schema.starts_with(b"{"),
-                "schema must start with {{ for {name}",
-            );
-            assert!(
-                schema.ends_with(b"\n"),
-                "schema must end with newline for {name}",
-            );
-            assert!(
-                example.starts_with(b"{"),
-                "example must start with {{ for {name}",
-            );
-            let schema_str = String::from_utf8(schema.clone()).unwrap();
-            let example_str = String::from_utf8(example.clone()).unwrap();
-            assert!(
-                schema_str.contains(name),
-                "schema json must contain its id {name}",
-            );
-            assert!(
-                schema_str.contains(SCHEMA_VERSION),
-                "schema must contain version"
-            );
-            assert!(
-                schema_str.contains("\"$schema\""),
-                "schema must contain $schema"
-            );
-            assert!(
-                example_str.contains(name),
-                "example must contain its schema id {name}",
-            );
-            assert!(
-                example_str.contains(SCHEMA_VERSION),
-                "example must contain version"
-            );
-            assert!(
-                example_str.contains("\"$schema\""),
-                "example must contain $schema"
-            );
-            assert!(
-                example_str.contains(&format!("\"$schema\": \"{name}\"")),
-                "example $schema must equal schema $id for {name}",
-            );
-            assert_eq!(schema, schema_json_bytes(name).unwrap());
-            assert_eq!(example, example_json_bytes(name).unwrap());
-            let mut buf = Vec::new();
-            write_schema_json(name, &mut buf).unwrap();
-            assert_eq!(buf, schema);
-            let mut buf2 = Vec::new();
-            write_example_json(name, &mut buf2).unwrap();
-            assert_eq!(buf2, example);
-            assert_eq!(
-                schema_json_string(name).unwrap().as_bytes(),
-                schema.as_slice()
-            );
-            assert_eq!(
-                example_json_string(name).unwrap().as_bytes(),
-                example.as_slice()
-            );
-        }
-    }
-
-    #[test]
-    fn unknown_names_return_stable_typed_error() {
-        let unknown = "emath.unknown";
-        let err = schema_json(unknown).unwrap_err();
-        assert_eq!(err.code(), "E-SCHEMA-001");
-        assert_eq!(err.code, "E-SCHEMA-001");
-        assert_eq!(err.name(), unknown);
-        assert_eq!(err.name, unknown);
-        let err2 = example_json(unknown).unwrap_err();
-        assert_eq!(err2.code(), "E-SCHEMA-001");
-        assert_eq!(err2.name(), unknown);
-        for bad in ["", "unknown", "emath.parse-forest.x", "EMATH.PARSE-FOREST"] {
-            assert!(schema_json(bad).is_err(), "should refuse {bad}");
-            assert!(example_json(bad).is_err(), "should refuse {bad}");
-            let e = schema_json(bad).unwrap_err();
-            assert_eq!(e.code, SchemaError::CODE);
-        }
-        let display = format!("{err}");
-        assert!(display.contains(unknown));
-        assert!(display.contains("E-SCHEMA-001"));
-        let _: &dyn std::error::Error = &err;
-    }
-
-    #[test]
-    fn byte_stable_across_writers() {
-        for name in schema_names() {
-            let a = schema_json(name).unwrap();
-            let b = build_schema_json(name);
-            assert_eq!(a, b);
-            let c = example_json(name).unwrap();
-            let d = build_example_json(name);
-            assert_eq!(c, d);
-        }
-    }
-
-    #[test]
-    fn is_known_schema_matches_registry() {
-        for name in schema_names() {
-            assert!(is_known_schema(name));
-        }
-        assert!(!is_known_schema("emath.unknown"));
-        assert!(!is_known_schema(""));
-    }
-}
+// Registry tests moved to `tests/emath-schema/tests/registry.rs`.

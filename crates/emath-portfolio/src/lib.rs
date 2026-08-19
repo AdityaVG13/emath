@@ -11,6 +11,12 @@ pub use record::{CandidateRecord, Disqualification, ExampleEvaluation, LawVerdic
 pub use selection::{SelectionOutcome, SelectionPolicy, SelectionWeights, select};
 
 use emath_world_ir::WorldId;
+use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
+
+/// Interpretation-portfolio schema version (durable id
+/// `emath.interpretation-portfolio` lives in the schema registry). Bump on
+/// any change to the portfolio document layout.
+pub const PORTFOLIO_SCHEMA_VERSION: u32 = 1;
 
 /// Meaning authority for a candidate result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -82,5 +88,53 @@ impl InterpretationPortfolio {
     #[must_use]
     pub fn candidates(&self) -> &[InterpretationCandidate] {
         &self.candidates
+    }
+}
+
+/// Admits a candidate translated along `morphism` into the target world.
+///
+/// The result carries [`WorldMorphism::target`], keeps the base score, and
+/// records [`WorldMorphism::identity`] in provenance. Authority is capped by
+/// the morphism's preservation relation: `Exact` and `Refinement` transport
+/// checked meaning, so they keep the base authority; `Approximation`,
+/// `Simulation`, and `ObservationalEquivalence` only guarantee a weaker
+/// agreement, so they degrade to [`Authority::Structural`]. When obligations
+/// disagree, any non-transporting relation wins (the cap is conservative).
+#[must_use]
+pub fn translated_candidate(
+    morphism: &WorldMorphism,
+    base: &InterpretationCandidate,
+    answer: String,
+) -> InterpretationCandidate {
+    InterpretationCandidate {
+        world_id: morphism.target,
+        name: base.name.clone(),
+        answer,
+        authority: capped_authority(morphism, base.authority),
+        score: base.score,
+        provenance: morphism_provenance(base, morphism),
+    }
+}
+
+fn capped_authority(morphism: &WorldMorphism, base: Authority) -> Authority {
+    let transports = morphism.operator_obligations.iter().all(|obligation| {
+        matches!(
+            obligation.relation,
+            PreservationRelation::Exact | PreservationRelation::Refinement
+        )
+    });
+    if transports {
+        base
+    } else {
+        Authority::Structural
+    }
+}
+
+fn morphism_provenance(base: &InterpretationCandidate, morphism: &WorldMorphism) -> String {
+    let handle = format!("morphism:{:x}", morphism.identity());
+    if base.provenance.is_empty() {
+        handle
+    } else {
+        format!("{}:{handle}", base.provenance)
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "emath-law-check-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-law-check = { path = "../../crates/emath-law-check" }
+emath-calibration = { path = "../../crates/emath-calibration" }
+emath-term = { path = "../../crates/emath-term" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }
