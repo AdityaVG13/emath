@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod algebra;
 pub mod decompose;
 pub mod dispositions;
 pub mod fallback;
@@ -20,6 +21,7 @@ pub mod planner;
 pub mod registry_helpers;
 pub mod representations;
 
+pub use algebra::{Application, Facet, Lifted, QState, Step, fallback, parallel, serial};
 pub use decompose::{
     DecompositionRule, SubgoalDag, SubgoalNode, decompose, requirements_preserved,
 };

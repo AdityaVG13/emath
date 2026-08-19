@@ -16,7 +16,7 @@ use emath_core::content_id_of_str;
 use emath_sema::session::CompilerSession;
 
 use crate::catalog;
-use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, artifact_check, print_diagnostics};
+use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, artifact_check, print_diagnostics, usage};
 
 /// Relative path of the committed upstream lock file (repo layout).
 const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
@@ -103,7 +103,7 @@ pub fn tooling_dispatch(command: &str, args: &[String]) -> u8 {
         "vendor" => vendor_cmd(args),
         "provider" => provider_cmd(args),
         "fork" => fork_cmd(args),
-        "agent" => agent_cmd(args),
+        "agent" => crate::agent_cmd::agent_cmd(args),
         _ => EXIT_USAGE,
     }
 }
@@ -443,7 +443,7 @@ fn inspect_cmd(args: &[String]) -> u8 {
         );
         return EXIT_USAGE;
     };
-    let mut inspected = 0;
+    let mut inspected: u64 = 0;
     let mut manifests = Vec::new();
     for entry in entries.flatten() {
         if !entry.path().is_dir() {
@@ -482,8 +482,8 @@ fn inspect_cmd(args: &[String]) -> u8 {
         let mut object = JsonWriter::object();
         object.string("schema", "emath.inspect");
         object.string("dir", &dir.display().to_string());
-        object.int("count", inspected as u64);
-        object.object_field("manifests", &format!("[\n{}\n  ]", manifests.join(",\n")));
+        object.int("count", inspected);
+        object.objects("manifests", &manifests);
         println!("{}", object.finish());
         EXIT_OK
     } else {
@@ -547,54 +547,62 @@ fn fingerprint(file: &str) -> Result<emath_core::ContentId, ()> {
     Ok(emath_core::bootstrap_content_id(&bytes))
 }
 
-/// `doctor`: toolchain presence checks.
-fn doctor_cmd(args: &[String]) -> u8 {
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        println!(
-            "doctor: checks rustc, cargo, rustfmt and clippy presence; exits 0 when all found"
-        );
-        return EXIT_OK;
-    }
-    let checks = [
+pub(crate) struct DoctorProbe {
+    pub(crate) name: &'static str,
+    pub(crate) ok: bool,
+    pub(crate) version: Option<String>,
+}
+
+pub(crate) fn doctor_probes() -> Vec<DoctorProbe> {
+    [
         ("rustc", "rustc --version"),
         ("cargo", "cargo --version"),
         ("rustfmt", "rustfmt --version"),
         ("clippy", "cargo clippy --version"),
-    ];
-    let mut ok = true;
-    let mut rows = Vec::new();
-    for (name, probe) in checks {
-        match probe_program(probe) {
-            Some(version) => {
-                if catalog::wants_json(args) {
-                    let mut row = JsonWriter::object();
-                    row.string("name", name);
-                    row.bool("ok", true);
-                    row.string("version", &version);
-                    rows.push(row.finish().trim().to_string());
-                } else {
-                    println!("doctor: {name}: ok ({version})");
-                }
-            }
-            None => {
-                if catalog::wants_json(args) {
-                    let mut row = JsonWriter::object();
-                    row.string("name", name);
-                    row.bool("ok", false);
-                    rows.push(row.finish().trim().to_string());
-                } else {
-                    println!("doctor: {name}: MISSING");
-                }
-                ok = false;
-            }
-        }
-    }
+    ]
+    .into_iter()
+    .map(|(name, probe)| match probe_program(probe) {
+        Some(version) => DoctorProbe {
+            name,
+            ok: true,
+            version: Some(version),
+        },
+        None => DoctorProbe {
+            name,
+            ok: false,
+            version: None,
+        },
+    })
+    .collect()
+}
+
+/// `doctor`: toolchain presence checks.
+fn doctor_cmd(args: &[String]) -> u8 {
+    let probes = doctor_probes();
+    let ok = probes.iter().all(|probe| probe.ok);
     if catalog::wants_json(args) {
+        let mut rows = Vec::new();
+        for probe in &probes {
+            let mut row = JsonWriter::object();
+            row.string("name", probe.name);
+            row.bool("ok", probe.ok);
+            if let Some(version) = &probe.version {
+                row.string("version", version);
+            }
+            rows.push(row.finish());
+        }
         let mut object = JsonWriter::object();
         object.string("schema", "emath.doctor");
         object.bool("ok", ok);
-        object.object_field("checks", &format!("[\n{}\n  ]", rows.join(",\n")));
+        object.objects("checks", &rows);
         println!("{}", object.finish());
+    } else {
+        for probe in &probes {
+            match &probe.version {
+                Some(version) => println!("doctor: {}: ok ({version})", probe.name),
+                None => println!("doctor: {}: MISSING", probe.name),
+            }
+        }
     }
     if ok { EXIT_OK } else { EXIT_REFUSED }
 }
@@ -676,11 +684,11 @@ fn provider_cmd(args: &[String]) -> u8 {
                     row.string("id", id);
                     row.string("capability", capability);
                     row.string("status", status);
-                    rows.push(row.finish().trim().to_string());
+                    rows.push(row.finish());
                 }
                 let mut object = JsonWriter::object();
                 object.string("schema", "emath.provider-list");
-                object.object_field("providers", &format!("[\n{}\n  ]", rows.join(",\n")));
+                object.objects("providers", &rows);
                 println!("{}", object.finish());
             } else {
                 for (id, capability, status) in PROVIDERS {
@@ -810,190 +818,6 @@ fn lock_ids(text: &str) -> Vec<String> {
     ids
 }
 
-/// `agent check|plan|build <file> ...`: structured envelope over the real
-/// pipeline. The agent surface cannot bypass admission or artifact checks:
-/// it renders the same session/build results as the interactive commands.
-fn agent_cmd(args: &[String]) -> u8 {
-    let Some(sub) = args.first() else {
-        return usage("agent check|plan|build|triage <file.emath> [--out <dir>]");
-    };
-    let positional = positional_args(&args[1..]);
-    let file = positional.first();
-    match sub.as_str() {
-        "triage" => agent_triage_cmd(file, args),
-        "check" => {
-            let Some(file) = file else {
-                return usage("agent check <file.emath>");
-            };
-            let (diagnostics, package_id) = run_check(file);
-            let admitted = !diagnostics.has_errors();
-            let mut object = JsonWriter::object();
-            object.string("schema", "emath.agent");
-            object.string("command", "check");
-            object.bool("admitted", admitted);
-            object.string("package", &package_id);
-            object.int("diagnostics", diagnostics.len() as u64);
-            let mut lines = String::new();
-            for item in diagnostics.items() {
-                lines.push_str(item.code);
-                lines.push_str(": ");
-                lines.push_str(&item.message);
-                lines.push_str("; ");
-            }
-            object.string("diagnostics_text", &lines);
-            println!("{}", object.finish());
-            if admitted { EXIT_OK } else { EXIT_REFUSED }
-        }
-        "plan" => {
-            let Some(file) = file else {
-                return usage("agent plan <file.emath>");
-            };
-            let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-            let Ok(package) = session.load_package(file) else {
-                eprintln!("error: cannot read {file}");
-                return EXIT_USAGE;
-            };
-            let result = session.plan(package.file);
-            let mut object = JsonWriter::object();
-            object.string("schema", "emath.agent");
-            object.string("command", "plan");
-            object.bool("admitted", !result.diagnostics.has_errors());
-            object.int("goals", result.package.goals.len() as u64);
-            object.int("plans", result.plans.len() as u64);
-            let mut goals = String::new();
-            for goal in &result.package.goals {
-                goals.push_str(goal.kind.as_str());
-                goals.push(' ');
-                goals.push_str(goal.target.as_str());
-                goals.push(' ');
-            }
-            object.string("goals", &goals);
-            println!("{}", object.finish());
-            if result.diagnostics.has_errors() {
-                EXIT_REFUSED
-            } else {
-                EXIT_OK
-            }
-        }
-        "build" => {
-            let Some(file) = file else {
-                return usage("agent build <file.emath> --out <dir>");
-            };
-            // Same default as `emath build` / `emath run` so the first
-            // guessed agent invocation does not fail on a missing --out.
-            let out = flag_value("--out", args)
-                .or_else(|| flag_value("-o", args))
-                .unwrap_or_else(|| "target/emath".to_string());
-            match build_file(
-                file,
-                PathBuf::from(out),
-                BuildOptions {
-                    // The agent surface cannot bypass artifact checks: a
-                    // generated crate with no #[test] tests is refused
-                    // (E-TLT-012) exactly like `emath test`.
-                    verify_generated_crate: true,
-                },
-            ) {
-                Ok(report) => {
-                    let mut object = JsonWriter::object();
-                    object.string("schema", "emath.agent");
-                    object.string("command", "build");
-                    object.string("artifact_id", &report.artifact_id.0);
-                    object.string("package_id", &report.package_id.0);
-                    object.string("crate", &report.crate_name);
-                    object.string("artifact_dir", &report.artifact_dir.display().to_string());
-                    println!("{}", object.finish());
-                    EXIT_OK
-                }
-                Err(error) => {
-                    eprintln!("error: {error}");
-                    classify_build_error(&error)
-                }
-            }
-        }
-        _ => usage("agent check|plan|build|triage <file.emath> [--out <dir>]"),
-    }
-}
-
-/// Mirrors `crate::run_check` for the agent envelope (same admission path).
-fn run_check(path: &str) -> (emath_core::Diagnostics, String) {
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let Ok(package) = session.load_package(path) else {
-        // CONF-0026: a load failure must be a typed refusal (E-PKG-080),
-        // never an empty-diagnostics "admitted: true" success. This
-        // mirrors the interactive `check` path in lib.rs.
-        let mut diagnostics = emath_core::Diagnostics::new();
-        diagnostics.error(
-            "E-PKG-080",
-            "cannot read source file",
-            emath_core::Span::default(),
-        );
-        return (diagnostics, String::new());
-    };
-    let result = session.check(package.file);
-    (result.diagnostics, result.package.content_id().0)
-}
-
-fn agent_triage_cmd(file: Option<&String>, _args: &[String]) -> u8 {
-    let Some(file) = file else {
-        return usage("agent triage <file.emath>");
-    };
-    let checks = [
-        ("rustc", "rustc --version"),
-        ("cargo", "cargo --version"),
-        ("rustfmt", "rustfmt --version"),
-        ("clippy", "cargo clippy --version"),
-    ];
-    let mut doctor_ok = true;
-    let mut doctor_rows = Vec::new();
-    for (name, probe) in checks {
-        let mut row = JsonWriter::object();
-        row.string("name", name);
-        if let Some(version) = probe_program(probe) {
-            row.bool("ok", true);
-            row.string("version", &version);
-        } else {
-            row.bool("ok", false);
-            doctor_ok = false;
-        }
-        doctor_rows.push(row.finish().trim().to_string());
-    }
-    let (diagnostics, package_id) = run_check(file);
-    let admitted = !diagnostics.has_errors();
-    let mut diag_rows = Vec::new();
-    for item in diagnostics.items() {
-        let mut row = JsonWriter::object();
-        row.string("code", item.code);
-        row.string("message", &item.message);
-        diag_rows.push(row.finish().trim().to_string());
-    }
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let (goals, plans) = match session.load_package(file) {
-        Ok(package) => {
-            let result = session.plan(package.file);
-            (result.package.goals.len() as u64, result.plans.len() as u64)
-        }
-        Err(_) => (0, 0),
-    };
-    let mut object = JsonWriter::object();
-    object.string("schema", "emath.agent");
-    object.string("command", "triage");
-    object.string("file", file);
-    object.bool("doctor_ok", doctor_ok);
-    object.object_field("doctor", &format!("[\n{}\n  ]", doctor_rows.join(",\n")));
-    object.bool("admitted", admitted);
-    object.string("package", &package_id);
-    object.object_field("diagnostics", &format!("[\n{}\n  ]", diag_rows.join(",\n")));
-    object.int("goals", goals);
-    object.int("plans", plans);
-    println!("{}", object.finish());
-    if admitted && doctor_ok {
-        EXIT_OK
-    } else {
-        EXIT_REFUSED
-    }
-}
-
 fn suggest_provider(unknown: &str) -> Option<&'static str> {
     let mut best: Option<(&'static str, usize)> = None;
     for (id, _, _) in PROVIDERS {
@@ -1014,7 +838,7 @@ fn suggest_provider(unknown: &str) -> Option<&'static str> {
 }
 
 /// Maps a build error to the conventional exit class.
-fn classify_build_error(error: &dyn std::fmt::Display) -> u8 {
+pub(crate) fn classify_build_error(error: &dyn std::fmt::Display) -> u8 {
     let text = error.to_string();
     if text.contains("admission refused") {
         EXIT_REFUSED
@@ -1023,7 +847,7 @@ fn classify_build_error(error: &dyn std::fmt::Display) -> u8 {
     }
 }
 
-fn positional_args(args: &[String]) -> Vec<String> {
+pub(crate) fn positional_args(args: &[String]) -> Vec<String> {
     args.iter()
         .filter(|arg| !arg.starts_with('-'))
         .cloned()
@@ -1034,17 +858,9 @@ fn first_positional(args: &[String]) -> Option<String> {
     positional_args(args).first().cloned()
 }
 
-fn flag_value(flag: &str, args: &[String]) -> Option<String> {
+pub(crate) fn flag_value(flag: &str, args: &[String]) -> Option<String> {
     args.iter()
         .position(|arg| arg == flag)
         .and_then(|index| args.get(index + 1))
         .cloned()
-}
-
-fn usage(message: &str) -> u8 {
-    eprintln!("error: missing or invalid arguments for this command");
-    eprintln!("usage: emath {message}");
-    let command = message.split_whitespace().next().unwrap_or("help");
-    eprintln!("try: emath help {command}");
-    EXIT_USAGE
 }

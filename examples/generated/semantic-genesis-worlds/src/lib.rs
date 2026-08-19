@@ -8,6 +8,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Write as _;
 
+/// Version of the world ABI this crate was generated against.
+pub const WORLD_ABI_VERSION: u32 = 1;
+
 /// Canonical first-order term (self-contained model).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Term {
@@ -259,6 +262,145 @@ where
     }
 }
 
+/// Declaration-specific evaluator ABI derived from the source signature:
+/// one method per declared symbol at its exact arity, so a wrong-arity
+/// direct call is a compile error instead of a runtime refusal.
+pub trait SpecializedWorld {
+    /// Runtime value.
+    type Value: Clone + fmt::Display;
+    /// Evaluation error.
+    type Error: fmt::Display + fmt::Debug;
+
+    /// `ζ` (arity 0).
+    fn sym_0(&self) -> Result<Self::Value, Self::Error>;
+
+    /// `⊛` (arity 2).
+    fn sym_1(&self, a0: Self::Value, a1: Self::Value) -> Result<Self::Value, Self::Error>;
+
+    /// `⋈` (arity 2).
+    fn sym_2(&self, a0: Self::Value, a1: Self::Value) -> Result<Self::Value, Self::Error>;
+
+    /// `⧖` (arity 1).
+    fn sym_3(&self, a0: Self::Value) -> Result<Self::Value, Self::Error>;
+}
+
+/// Every generic world satisfies the specialized ABI by delegation, so
+/// the two surfaces can never disagree on semantics.
+impl<W: World> SpecializedWorld for W {
+    type Value = W::Value;
+    type Error = W::Error;
+
+    fn sym_0(&self) -> Result<Self::Value, Self::Error> {
+        self.constant("ζ")
+    }
+
+    fn sym_1(&self, a0: Self::Value, a1: Self::Value) -> Result<Self::Value, Self::Error> {
+        self.apply("⊛", vec![a0, a1])
+    }
+
+    fn sym_2(&self, a0: Self::Value, a1: Self::Value) -> Result<Self::Value, Self::Error> {
+        self.apply("⋈", vec![a0, a1])
+    }
+
+    fn sym_3(&self, a0: Self::Value) -> Result<Self::Value, Self::Error> {
+        self.apply("⧖", vec![a0])
+    }
+}
+
+/// Evaluates a term through the declaration-specific ABI. Symbols
+/// outside the declared signature and wrong runtime arities are typed
+/// refusals, never fallthroughs.
+pub fn evaluate_specialized<W: SpecializedWorld>(
+    term: &Term,
+    world: &W,
+    environment: &Environment<W::Value>,
+) -> Result<W::Value, W::Error>
+where
+    W::Error: From<EvalError>,
+{
+    match term {
+        Term::Variable(name) => environment
+            .get(name)
+            .cloned()
+            .ok_or_else(|| EvalError::MissingVariable(name.clone()).into()),
+        Term::Constant(symbol) => dispatch_specialized(world, symbol, Vec::new()),
+        Term::Apply {
+            operator,
+            arguments,
+        } => {
+            let mut values = Vec::with_capacity(arguments.len());
+            for argument in arguments {
+                values.push(evaluate_specialized(argument, world, environment)?);
+            }
+            dispatch_specialized(world, operator, values)
+        }
+    }
+}
+
+/// Maps a declared symbol to its specialized method, checking runtime
+/// arity before the typed call.
+fn dispatch_specialized<W: SpecializedWorld>(
+    world: &W,
+    symbol: &str,
+    mut values: Vec<W::Value>,
+) -> Result<W::Value, W::Error>
+where
+    W::Error: From<EvalError>,
+{
+    match symbol {
+        "ζ" => {
+            if values.len() != 0 {
+                return Err(EvalError::Arity {
+                    symbol: symbol.into(),
+                    expected: 0,
+                    actual: values.len(),
+                }
+                .into());
+            }
+            world.sym_0()
+        }
+        "⊛" => {
+            if values.len() != 2 {
+                return Err(EvalError::Arity {
+                    symbol: symbol.into(),
+                    expected: 2,
+                    actual: values.len(),
+                }
+                .into());
+            }
+            let a1 = values.pop().expect("arity checked");
+            let a0 = values.pop().expect("arity checked");
+            world.sym_1(a0, a1)
+        }
+        "⋈" => {
+            if values.len() != 2 {
+                return Err(EvalError::Arity {
+                    symbol: symbol.into(),
+                    expected: 2,
+                    actual: values.len(),
+                }
+                .into());
+            }
+            let a1 = values.pop().expect("arity checked");
+            let a0 = values.pop().expect("arity checked");
+            world.sym_2(a0, a1)
+        }
+        "⧖" => {
+            if values.len() != 1 {
+                return Err(EvalError::Arity {
+                    symbol: symbol.into(),
+                    expected: 1,
+                    actual: values.len(),
+                }
+                .into());
+            }
+            let a0 = values.pop().expect("arity checked");
+            world.sym_3(a0)
+        }
+        _ => Err(EvalError::UnknownSymbol(symbol.into()).into()),
+    }
+}
+
 /// The reference term this crate evaluates.
 ///
 /// Canonical: "apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))"
@@ -493,5 +635,51 @@ mod contract_tests {
         let first = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
         let second = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
         assert_eq!(first, second, "dual-run evaluation must be deterministic");
+    }
+}
+
+#[cfg(test)]
+mod specialized_abi_tests {
+    use super::*;
+
+    /// Differential pin: the declaration-specific ABI must agree with the
+    /// generic ABI on the reference term (both dispatch into the same
+    /// world semantics; a divergence would mean the generated dispatcher
+    /// mis-mapped a symbol or an arity).
+    #[test]
+    fn specialized_abi_agrees_with_generic_evaluation() {
+        let term = reference_term();
+        let env = fixture_modular();
+        let generic = evaluate(&term, &ModularWorld, &env).expect("generic evaluates");
+        let specialized =
+            evaluate_specialized(&term, &ModularWorld, &env).expect("specialized evaluates");
+        assert_eq!(generic, specialized);
+    }
+
+    /// The specialized dispatcher refuses symbols outside the declared
+    /// signature instead of guessing.
+    #[test]
+    fn specialized_dispatch_refuses_unknown_operators() {
+        let term = Term::Apply {
+            operator: "✳".into(),
+            arguments: vec![],
+        };
+        let env = fixture_modular();
+        let error = evaluate_specialized(&term, &ModularWorld, &env).expect_err("unknown refused");
+        assert!(matches!(error, EvalError::UnknownSymbol(_)));
+    }
+
+    /// A wrong runtime arity through the generic term shape is a typed
+    /// refusal in the specialized dispatcher (compile-time safety only
+    /// covers direct method calls).
+    #[test]
+    fn specialized_dispatch_refuses_wrong_arity() {
+        let term = Term::Apply {
+            operator: "⧖".into(),
+            arguments: vec![Term::Variable("a".into()), Term::Variable("b".into())],
+        };
+        let env = fixture_modular();
+        let error = evaluate_specialized(&term, &ModularWorld, &env).expect_err("arity refused");
+        assert!(matches!(error, EvalError::Arity { .. }));
     }
 }
