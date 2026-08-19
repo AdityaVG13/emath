@@ -65,7 +65,7 @@ HIR migration (`crates/emath-hir/src/migrate.rs`):
 - `E-MIGR-001` — declaration carried a legacy bootstrap schema tag; the
   stable edition must regenerate it (V3/Phase1 examples gate).
 - `E-MIGR-002` — section renamed by migration (`request:` →
-  `requests:` with a nested block; `input:` → `inputs:`; `output:` →
+  `goals:` with a nested block; `input:` → `inputs:`; `output:` →
   `outputs:`).
 - `E-MIGR-003` — inline constructor lifted into a `constructors:`
   section by migration.
@@ -120,6 +120,8 @@ Admission (`crates/emath-sema/src/admit.rs`):
 - `E-SEC-101` — section outside the Phase 1 subset (`inputs`,
   `outputs`, `state`, `definitions`, `constructors`, `goals`,
   `exports`, `tests`, `compile`); refused instead of silently dropped.
+  The pre-`goals:` spellings `request:` and `requests:` refuse with a
+  migration hint to `goals:`.
 
 Session (`crates/emath-sema/src/session.rs`):
 
@@ -257,13 +259,15 @@ Kinds (`crates/emath-schema/src/load.rs`, `crates/emath-sema/src/admit.rs`,
   Phase 1 (semantic admission in `admit.rs`; the builder embeds the same
   predicate verbatim). One predicate, one code; the HIR manifest schema
   violations use their own codes (`E-KIND-011`, `E-KIND-016`).
-- `E-KIND-011` — HIR section manifest is missing a
-  `RepeatPolicy::ExactlyOne` section required by the kind schema
-  (`SectionManifest::check`).
+- `E-KIND-011` — kind schema is missing a
+  `RepeatPolicy::ExactlyOne` section (`SectionManifest::check` and
+  semantic admission in `admit.rs`). `outputs:` is `AtMostOne` on the
+  core function schema, so omitting it is not this refusal.
 - `E-KIND-016` — HIR section manifest declares a section that is not part
   of the kind schema (`SectionViolationReason::UnknownSection`). Split from
   `E-KIND-010` so unknown-section (schema conformance) and
-  constructors/state (Phase 1 subset) are never the same code.
+  constructors/state (Phase 1 subset) are never the same code. Live
+  `request:` / `requests:` use this code with a `goals:` migration hint.
 - `E-KIND-032` — schema load refuses a kind whose expansion would recurse.
 - `E-KIND-100` — `emath custom <K> as kind` is refused by admission: the
   Phase 1 grammar only accepts `item_kind == "kind"`, so the documented
@@ -679,7 +683,7 @@ Not yet documented at generation time: **0**.
 | `E-KIND-002` | crates/emath-sema/src/admit.rs | `E-KIND-002` |
 | `E-KIND-003` | crates/emath-sema/src/recognition.rs | `E-KIND-003` |
 | `E-KIND-010` | crates/emath-builder/src/lib.rs<br>crates/emath-hir/src/open.rs<br>crates/emath-hir/tests/registry_complete.rs<br>crates/emath-sema/src/admit.rs | `function declarations cannot have constructors in this subphase (E-KIND-010)`<br>`E-KIND-010` |
-| `E-KIND-011` | crates/emath-hir/src/open.rs | `kind `{}` requires section `{name}``<br>`E-KIND-011` |
+| `E-KIND-011` | crates/emath-hir/src/open.rs<br>crates/emath-sema/src/admit.rs | `kind `{}` requires section `{name}``<br>`E-KIND-011` |
 | `E-KIND-012` | crates/emath-schema/src/lang.rs | `E-KIND-012`<br>`unknown repeat policy `{other}`` |
 | `E-KIND-013` | crates/emath-schema/src/lang.rs | `duplicate section spec `{name}`` |
 | `E-KIND-014` | crates/emath-schema/src/lang.rs | `duplicate default for section `{section}``<br>`E-KIND-014` |

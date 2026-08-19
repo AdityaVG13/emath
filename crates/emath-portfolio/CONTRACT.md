@@ -9,8 +9,10 @@
 
 - InterpretationPortfolio: deterministic candidate collection, sorted by a stable policy; new sorts and candidates exposes the order.
 - InterpretationCandidate: world id, name, canonical answer, scoped Authority, score vector, provenance summary.
+- translated_candidate(morphism, base, answer): admits a candidate into the morphism target world, records the morphism identity in provenance, and caps authority by the morphism's preservation relation.
 - Authority enum: Structural, Tested, Certified, Proved.
 - ScoreVector: multi-objective cost, complexity, evidence, utility (f64); lower cost/complexity and higher evidence/utility preferred.
+- PORTFOLIO_SCHEMA_VERSION (1): version constant for the portfolio document layout (durable id emath.interpretation-portfolio lives in the schema registry).
 - Re-exports from submodules: select, SelectionOutcome, SelectionPolicy, SelectionWeights; CandidateRecord, Disqualification, ExampleEvaluation, LawVerdict; replay_identity, PortfolioLock. (not exhaustive.)
 
 ## Invariants
@@ -18,6 +20,7 @@
 - Portfolio order is deterministic by policy: authority descending, utility descending, cost ascending, complexity ascending, then world id ascending.
 - f64 comparisons use total_cmp, giving a total order over finite and NaN values alike.
 - Pareto semantics are kept: candidates are retained rather than dropped on conflicting objectives.
+- translated_candidate never raises authority. Exact and refinement relations keep the base authority; approximation, simulation, and observational-equivalence degrade it to Structural. When obligations disagree, any degrading relation wins.
 
 ## Error model
 
@@ -41,7 +44,7 @@
 
 ## Conformance tests
 
-- None listed: no tests/ directory and no #[cfg(test)] module declared in lib.rs.
+- lib.rs unit tests: stable-policy ordering (authority > utility > cost) and world-identity tie-breaking; exit-gate translation keeps both source and target worlds and deopts on a failed fast-path guard; approximation caps Tested to Structural while exact preserves it.
 
 ## No-claim boundaries
 

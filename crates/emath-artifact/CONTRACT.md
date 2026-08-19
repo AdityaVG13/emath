@@ -8,7 +8,8 @@ Artifact emission: deterministic JSON writers for the four durable schemas, stag
 
 Frequently re-exported types (not exhaustive):
 
-- `ArtifactManifest`, `ArtifactClass` (`emath.artifact`): the manifest with files, providers, target, evidence level and linked document ids.
+- `ArtifactManifest`, `ArtifactClass` (`emath.artifact`, manifest v1 via `ARTIFACT_MANIFEST_VERSION`): the manifest with files, providers, target, evidence level and linked document ids. `ArtifactClass` is the seven-class total-artifact protocol (native, portfolio, hybrid, parametric, exploration, continuation, diagnostic; `ArtifactClass::ALL`), with stable string tokens that round-trip.
+- `required_paths_for_class`: package contents per class — code-bearing classes ship a Cargo crate plus the four metadata documents; exploration and diagnostic artifacts are metadata-only. `required_artifact_paths` stays the native-class alias.
 - `SourceMap`, `SourceMapEntry` (`emath.source-map`): byte-range + `source_package` shape.
 - `PlanRecord`, `OperationRecord` (`emath.resolution-plan`): provider-free Phase 1 mirror of the GIR plan.
 - `EvidenceBundleRecord` (`emath.evidence-bundle`): claims, artifact paths, reproduction steps.
@@ -24,6 +25,7 @@ Frequently re-exported types (not exhaustive):
 - Publish is atomic: verified pre- and post-write under a temporary sibling directory, renamed into place, never overwriting a verified existing artifact.
 - Symlinks, absolute staged paths and `..` traversal are refused; symlinks cannot smuggle files in or out.
 - The generated-crate source map must never share an id with the durable artifact source map; other schemas are refused on parse-back (E-EVID-108 class shape refusal).
+- Resolution monotonicity: adding providers or enlarging budgets must never destroy an artifact class that was previously reachable (regression pinned in `emath-plan` planner tests).
 
 ## Error model
 
@@ -47,7 +49,8 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-None on disk currently. No `tests/` directory and no inline `#[cfg(test)]` module in `lib.rs`.
+- `lib.rs` `artifact_class_tests`: seven-class token round-trip, per-class package inventories, manifest schema/version pin.
+- Workspace-level integration suites live in `tests/emath-artifact` (publish durability, schema lanes, checker identity, battery seed).
 
 ## No-claim boundaries
 

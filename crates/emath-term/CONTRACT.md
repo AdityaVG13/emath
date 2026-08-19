@@ -14,6 +14,7 @@
 - `TermError` — structural validation error (`UnknownSymbol`, `ArityMismatch`, `ConflictingArity`).
 - `CanonicalError` — parse error from `Term::parse_canonical` (`Malformed`, `Trailing`).
 - `Term::canonical` and `Term::parse_canonical` — deterministic structural form independent of glyph fixity, with byte-exact round-trip.
+- `TERM_IR_SCHEMA` (`emath.term-ir`) / `TERM_IR_VERSION` (1) — version constants for the canonical text encoding; consumers refuse versions they do not know. The `free-term.json` artifact discloses `schema_version` from this constant.
 
 ## Invariants
 

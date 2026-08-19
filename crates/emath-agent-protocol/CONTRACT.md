@@ -41,7 +41,10 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- None on disk: no `tests/` directory and no `#[cfg(test)]` module in `src/`.
+- `src/challenge.rs` `#[cfg(test)]`:
+  - admission refuses an execution-authority claim with `capability:authority-not-admitted`
+  - admission refuses an incomplete schema (missing base worlds) with `schema:incomplete`
+  - a valid proposal runs to a `WorldCandidate` whose proposal identity and candidate identity are deterministic across two constructions of the same envelope
 
 ## No-claim boundaries
 - A slice of the planned governance surface, not the full production admission service.

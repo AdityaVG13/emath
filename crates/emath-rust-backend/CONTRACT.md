@@ -7,7 +7,7 @@ Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (
 ## Public types and semantics
 
 - `BackendInput { package, crate_name, version }`: input to `generate()`.
-- `BackendOutput { files, anchors, assumptions, module }`: relative path to file content (including `Cargo.toml` and `src/lib.rs`), source-map anchors, surfaced domain obligations, and the rendered module for `CrateProfile::validate`.
+- `BackendOutput { files, anchors, assumptions, module, receipts }`: relative path to file content (including `Cargo.toml` and `src/lib.rs`), source-map anchors, surfaced domain obligations, the rendered module for `CrateProfile::validate`, and one `ConstructionReceipt` per generated constructor (the obligation matrix the emitted code discharges).
 - `BackendAnchor`: byte-range anchor into generated `src/lib.rs`.
 - `BackendError`: typed backend failure (variant list below).
 

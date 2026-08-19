@@ -12,6 +12,7 @@
 - `BuildError`: enum over ReadFailed, AdmittedWithErrors(String codes), Backend, VerifyFailed, Artifact, Io.
 - Dependency policy (module `deps`): `DepPolicy`, `DepPlan`, `DepRequest`, `CargoDependency`, `DepError`, `DepSource`, `RuntimeKind`, `TargetKind`; entry points `check_declared`, `plan_dependencies`, `requests_for`.
 - Build script support (module `script`): `ScriptLock`, `ScriptReport`, `ScriptError`, `locked_build_script`.
+- Metrics (module `metrics`): `MetricsCollector` (named phase durations + counters, accumulating), `BENCHMARK_RECEIPT_SCHEMA` (`emath.benchmark-receipt`), `BENCHMARK_RECEIPT_VERSION` (1). `build_text` records `check_plan` / `artifact_pipeline` durations and `plan_count` / `diagnostics` / `compile_success` / `artifact_bytes` counters, and writes `benchmark-receipt.json` next to the publish tree (never inside the identity-verified artifact package). The receipt format is deterministic (fixed schema/version, sorted `duration_ns.*` / `count.*` keys); the recorded durations are measurements and vary run to run. Receipts are evidence objects and never escalate authority.
 - `COMPILER_DESCRIPTOR`: compiler identity string (`emath-phase1/<version>`).
 - (not exhaustive: free functions `build_file`, `build_text`, `build_package`, `run_cargo_timed`.)
 
@@ -41,7 +42,8 @@
 - None: no `[features]` in Cargo.toml.
 
 ## Conformance tests
-- None: no `tests/` directory and no `#[cfg(test)]` module on disk. The dependency and script modules carry no in-crate unit tests.
+- `run_cargo_timed`: a live child past the budget is SIGKILL'd after its direct children (cargo, then rustc) and reported as `E-RES-120`; a child that already exited is not reported as a timeout. The child stays in the terminal process group so Ctrl-C reaches it.
+- `metrics`: receipt format byte-stable for the same recorded values (sorted keys, schema/version pinned); collectors accumulate re-entered phases and counters.
 
 ## No-claim boundaries
 - Provider registry and provider-specific planning live upstream (`emath-plan`, `emath-provider-api`); `build` does not choose providers.

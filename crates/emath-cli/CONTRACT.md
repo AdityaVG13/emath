@@ -19,6 +19,7 @@
 - The `native.rust` registry entry is an exact-capability declaration, not a new capability or prefix match.
 - A goal that cannot be planned must not exit 0 (silent success); unplanned goals force `EXIT_REFUSED`.
 - CLI output is deterministic and documented (`help_text`); JSON diagnostics carry codes and messages so checker lanes can assert the exact E-* code.
+- No Naked Answer (ADR-004, SG-09): `genesis` writes `answer-receipt.json` (schema `emath.answer-receipt` v2) before printing any answer, and a write failure refuses before the answer line. The receipt binds source, parse, signature, term, world, valuation, result, code (`artifact_hash` over the rendered parametric crate; explicit 0 = no code artifact), portfolio, trace, authority, and VM cost, and carries `receipt_id` (FNV-1a64 over the documented preimage in `genesis_cmd.rs`). `cargo xtask demo semantic-genesis` independently recomputes `receipt_id`, refuses a zero `artifact_hash`, runs a tampered-result negative control, and challenges the generated Rust against the VM's portfolio answers (VM/Rust differential).
 
 ## Error model
 - No dedicated error enum: command functions return exit codes and print structured diagnostics to stdout (`print_diagnostics`) or stderr (`error: ...`). Build/planner/checker failures surface with their typed E-* codes via the stderr message text.

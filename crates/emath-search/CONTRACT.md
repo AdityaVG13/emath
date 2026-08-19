@@ -32,16 +32,21 @@ Always available (std-only, zero third-party deps):
 Feature `search` only (blocking facade, emath-store / emath-provenance
 worker-thread precedent):
 
-- CorpusSearch::create(path, docs) — drop stale artifacts, build via the
-  engine's IndexBuilder, open the searcher. Empty corpus -> InvalidArgument
-  (the engine refuses zero-document builds).
+- CorpusSearch::create(path, docs) — build via the engine's IndexBuilder
+  in a sibling staging directory, then swap onto `path` and write
+  `emath-search.index`. Empty corpus -> InvalidArgument (the engine
+  refuses zero-document builds). A non-empty directory without the marker
+  is InvalidArgument (never wiped).
 - CorpusSearch::open(path) — open an existing index; typed Open error when
   none is present.
-- CorpusSearch::reindex(docs) — drop + build + reopen (replaces the corpus;
-  old documents stop matching).
-- CorpusSearch::remove_index() — delete index artifacts under the directory
-  (the directory itself remains); search then returns NotReady until a
-  create/reindex.
+- CorpusSearch::reindex(docs) — same as create: build aside, swap when the
+  new tree is marked. A failed rebuild leaves the previous on-disk index
+  and the live searcher unchanged. A leftover `.emath-search-backup` from
+  a crashed swap is restored only when dest is missing or empty; an
+  unmarked non-empty dest is never wiped.
+- CorpusSearch::remove_index() — delete index artifacts only when the
+  directory is empty or marked `emath-search.index` (the directory itself
+  remains); search then returns NotReady until a create/reindex.
 - CorpusSearch::search(query, k) -> Vec<Hit> — blocking; trimmed query must
   be non-empty; k == 0 returns an empty vector without touching the engine.
   Result order is the ENGINE's authoritative order — this crate never
@@ -126,7 +131,9 @@ not this crate.)
   independent builds -> identical result sequences (ids + bit-exact scores);
   reopen-preserves-results; reindex-replaces-corpus (old docs gone, new hit);
   remove_index -> NotReady until rebuild; empty-corpus refusal; open-missing
-  index -> Open error.
+  index -> Open error; create refuses a foreign (unmarked) directory;
+  a stranded `.emath-search-backup` is restored rather than deleted;
+  rebuilds build aside and swap only a marked tree.
 
 ## No-claim boundaries
 

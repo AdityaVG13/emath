@@ -8,12 +8,17 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
 ## Public types and semantics
 
 - `Constructor`, `Field`, `TestCase`, `Visibility`: constructor structure.
+- `ObligationClass` (static/runtime/solver/certificate/deferred), `ObligationKind` (precondition/postcondition), `ConstructionObligation`, `ConstructionReceipt`: the constructor obligation taxonomy. `Constructor::obligation_matrix` classifies every textual `require`/`ensure`/`invariant` (all `Runtime` in Phase 1); `Constructor::receipt` produces the receipt; `ConstructionReceipt::compose` merges delegate obligations first and never drops one; only `Deferred` obligations remain open after construction; `ConstructionReceipt::identity` is a deterministic content id.
+- `mig`: `Mig` / `MigNode` / `MigEdge` / `MigNodeKind` / `MigEdgeKind` — the mathematical intent graph (schema `emath.mig.v1`), derived deterministically from a `SemanticPackage`. Every semantic plane is represented by node kinds (definition, construction, goal, evidence, execution, evolution); every non-declaration node is owned by a declaration node (spine property). `Mig::identity` excludes presentation-only changes by construction (no spans enter the derivation; expression content enters via span-free `canonical_expr`).
+- `layers`: `IrLayer` — the ten-layer IR stack registry (syntax, HIR, MIG, SIR, GIR, resolution, EIR, evidence, Rust IR, artifact) with durable schema base ids (matching strings already written into artifacts), explicit schema versions, `versioned_schema()` ids and owning crates.
 - `ExprNode`, `Literal`, `BinaryOp`, `UnaryOp`, `BinderKind`,
   `BinderVariable`: neutral expression trees.
 - `Goal`, `GoalKind`, `GoalRequirements`, `RequestSpec`, `ResolutionPlan`,
   `PlanNodeDef`, `PlanOperation`, `CompileSpec`: goal and resolution planning.
 - `KindSchema`, `SectionSchema`, `CoreKind`, `PayloadPolicy`, `RepeatPolicy`:
   kind/type schema representations shared by compiler and builder.
+  `KindSchema::core_function` treats `outputs:` as `AtMostOne` with default
+  `definitions` (omitted outputs expose every definition).
 - `TypeScheme`, `TypeExpr`, `TypeConstraints`, `TypeVar`, `TypeNode`,
   `SchemeBody`, `SchemeField`: type representation and `unify` / `canonical_of`
   / `render`.
@@ -30,6 +35,8 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
 - IR is neutral and provider-free: no upstream type may appear.
 - Canonical forms exist for expressions, operators and goals (round-trip).
 - Same type set shared across compiler and builder admission.
+- Core function/policy kind schemas are the admission source of truth for
+  which sections are required vs optional.
 
 ## Error model
 
