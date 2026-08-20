@@ -90,9 +90,9 @@
 - No claim that generated Rust is compiled or executed in the browser. `run` is the Tier-0 interpreter (strict-f64), not the compiled crate.
 - No claim that every language example admits. Curated embeds are the
   language/examples sources that check with zero errors
-  (`00_hello_square`, `00_stateful_affine_scorer`,
-  `11_parametric_unknown_operator`) plus one intentional diagnostics demo.
-  `01_cache_policy` and `02_tensor_program` exist but do not admit on this
+  (`hello-square`, `stateful-affine-scorer`,
+  `parametric-unknown-operator`) plus one intentional diagnostics demo.
+  `cache-policy` and `tensor-program` exist but do not admit on this
   pipeline, so they are not embedded.
 - Bare-expression wrap is playground-only. A `.emath` file without an
   `emath …:` header is still refused by the CLI / `emath-syntax` parser.

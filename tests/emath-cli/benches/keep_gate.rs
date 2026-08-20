@@ -34,7 +34,7 @@ const TARGET_ELAPSED: Duration = Duration::from_secs(5);
 /// History dir under the workspace root.
 const HISTORY_REL: &str = ".bench-history";
 /// Reference genesis source used by the codegen cells.
-const GLYPHS_REL: &str = "language/examples/01_arbitrary_glyphs.emath";
+const GLYPHS_REL: &str = "language/examples/arbitrary-glyphs.emath";
 /// Committed generated golden for the identity comparison.
 const SG_GENERATED_LIB_REL: &str = "examples/generated/semantic-genesis-worlds/src/lib.rs";
 
@@ -350,12 +350,12 @@ fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
     let files = [
         "tests/valid/square.emath",
         "tests/valid/affine_scorer.emath",
-        "language/examples/00_hello_square.emath",
-        "language/examples/00_stateful_affine_scorer.emath",
-        "language/examples/11_parametric_unknown_operator.emath",
-        "language/examples/01_cache_policy.emath",
-        "language/examples/02_tensor_program.emath",
-        "language/examples/03_graph_router.emath",
+        "language/examples/hello-square.emath",
+        "language/examples/stateful-affine-scorer.emath",
+        "language/examples/parametric-unknown-operator.emath",
+        "language/examples/cache-policy.emath",
+        "language/examples/tensor-program.emath",
+        "language/examples/graph-router.emath",
     ];
     let cell = move || {
         let start = Instant::now();
