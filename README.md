@@ -1,8 +1,8 @@
 # emath
 
-> **Write the mathematics you mean. emath builds what you can run.**
+> **Write known math. Invent new math. Compile both.**
 
-**emath** is a Rust-first language, compiler, and optimization lab for turning mathematical intent into executable, inspectable Cargo components.
+**emath** is a Rust-first language, compiler, and optimization lab for turning mathematical intent into executable, inspectable Cargo components. Write the mathematics you mean — settled, half-formed, or invented this morning — and emath builds what you can run.
 
 A `.emath` program can describe:
 
@@ -23,6 +23,42 @@ emath resolves that intent through interchangeable providers, generates one or m
 - It is not a theorem prover pretending every theorem is executable.
 - It is not one giant vendored workspace of unrelated repositories.
 - It is not an AI code generator whose output is accepted without deterministic checking.
+
+## More than a compiler
+
+The door is wide open by design. Any finite mathematical structure that is
+structurally well-formed admits — textbook math, a jumbled formula, an idea
+for a problem nobody has posed yet. The same glyphs can carry many
+legitimate meanings, so emath represents interpretation as data: candidate
+*worlds*, chosen deterministically and kept as a portfolio rather than
+collapsed into an unlabeled guess. The validation suite runs one spec
+through three worlds today: `free_symbolic → apply`, `Boolean_algebra →
+false`, `modular_numeric → 6`.
+
+You may not get the answer you wanted back. You always get *an* answer,
+honestly labeled — a value, a canonical term, or a refusal with a name —
+and what to do with that information is yours to decide. That freedom is
+the point, and it serves three lanes at once:
+
+- **Production software.** A `.emath` goal becomes an ordinary, verified
+  Cargo artifact your Rust code links against.
+- **Teaching and exploration.** Write a declaration, run it in the browser
+  playground, change a value, watch the output move. The compilation is
+  the lesson.
+- **Open problems.** An unproven conjecture cannot be checked in a proof
+  assistant until the proof exists. emath compiles it today into
+  evidence-producing machinery: counterexample hunts, finite verdicts with
+  certified bounds, byte-reproducible forever. The artifact is the
+  progress. Nobody solves a Riemann-class problem by feeding it to a
+  compiler — but someone might solve one with what this compiler lets
+  them build, run, and see.
+
+One line emath will not cross: **compiling is not proving.** The pipeline
+guarantees the artifact is exactly what you asked for, never that the idea
+is true. When the Lean adapter ships (FrankenLean, planned), kernel-checked
+proofs become the strongest evidence emath can attach — hired help, not
+the boss: a Lean verdict enters the same evidence pipeline as everything
+else, and nothing is accepted merely because the prover said so.
 
 ## What emath does, and how Factory / Droid builds it
 
@@ -62,8 +98,9 @@ emath function Greeter:
         y = x
 ```
 
-Declare only what you need: `outputs:`, `goals:`, `exports:`, and
-`compile:` are optional. Definitions are the surface; an omitted
+Declare only what you need: `inputs:`, `outputs:`, `goals:`, `exports:`, and
+`compile:` are optional. A bare input name (`x`) defaults to `Float64`.
+Definitions are the surface; an omitted
 `goals:` section evaluates every definition and `emath run` admits,
 builds, publishes under `target/emath`, and executes the example tests
 (`emath test <file>` reports them, `emath build <file> [--out <dir>]`
@@ -164,6 +201,7 @@ emath genesis --out <dir>         semantic genesis analysis pipeline
 emath compile --parametric --out  deterministic generated crate
 emath world show / portfolio show introspection
 emath architecture / help         stable docs entry
+emath serve                       localhost web playground (Ctrl-C to stop)
 ```
 
 Also implemented: `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed
@@ -171,6 +209,36 @@ refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`,
 `vendor`, `provider list|inspect|test`, `fork status|sync`, `agent
 check|plan|build`, and `import modelica`. Planned
 (see `language/spec/11_DIAGNOSTICS_AND_TOOLING_CONTRACT.md`): `migrate`.
+
+## Web playground
+
+After a source checkout, build the browser pane and WASM engine, then serve them locally:
+
+```console
+$ cargo xtask build-web
+$ emath serve
+```
+
+`cargo run -p emath-cli -- serve` is the same. The command prints `http://127.0.0.1:7878/` (or the `--port` you pass) and opens a browser; Ctrl-C stops the server. Use `--no-open` to skip the browser, and `--dist PATH` or `EMATH_WEB_DIST` to point at a built `web/dist`.
+
+Everything in the pane executes in-page through a C-ABI WASM build of the
+compiler — no server round-trips, no cargo, nothing leaves the machine:
+
+- **Check / Plan / Intent Graph / Generate Rust / Format** — the same
+  deterministic pipeline as the CLI, on every keystroke's worth of source.
+- **Run** — executes example tests through a strict-f64 interpreter over the
+  lowered execution IR, honestly labeled `interpreted-strict-f64`. The
+  compiled-Rust tier (`emath run` / `emath test`) remains the native lane;
+  agreement between the two tiers is checked differentially, not assumed.
+- **Worked examples** — an `example` with only `given` bindings (no
+  `expect`) is not an error: it computes and displays the values, claiming
+  nothing. `given x = 4` on a `y = x * x` declaration shows `y = 16`.
+  Add an `expect` and it becomes a test with a pass/fail verdict.
+
+Edit the source, hit Run, watch the values move. That loop is the point.
+A lone expression or assignment in the pane (`y = x * x`, `3 * 7 + 1`)
+is wrapped to a declaration — the wrapped text is shown, not hidden —
+and declared inputs appear as fields you can wiggle without editing source.
 
 ## The provider model
 

@@ -33,6 +33,7 @@ members = [
   "crates/emath-law-check",
   "crates/emath-holes",
   "crates/emath-genesis",
+  "crates/emath-layout",
   "crates/emath-meaning-provider-api",
   "crates/emath-portfolio",
   "crates/emath-world-codegen-rust",
@@ -42,6 +43,7 @@ members = [
   "crates/emath-plugin-sdk",
   "crates/emath-provenance",
   "crates/emath-search",
+  "crates/emath-wasm",
   "tests/emath-adapter-dew",
   "tests/emath-adapter-rumoca",
   "tests/emath-agent-protocol",
@@ -118,10 +120,12 @@ emath-calibration = { path = "crates/emath-calibration" }
 emath-law-check = { path = "crates/emath-law-check" }
 emath-holes = { path = "crates/emath-holes" }
 emath-genesis = { path = "crates/emath-genesis" }
+emath-layout = { path = "crates/emath-layout" }
 emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
+emath-wasm = { path = "crates/emath-wasm" }
 # FrankenStack base infrastructure (CUTOVER_PLAN.md §1/§9): asupersync
 # replaces tokio. Optional + feature-gated: Phase 1 ships std-only with zero
 # mandatory third-party deps. Exact-commit pin mirrors UPSTREAM_LOCK.json
