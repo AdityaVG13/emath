@@ -6,6 +6,7 @@
 
 use crate::ArtifactCheckConfig;
 use crate::artifact_check::{ArtifactInput, check_artifact};
+use crate::translation::{TranslationRelation, TranslationSample};
 
 /// Kind of seeded negative control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +169,25 @@ pub fn seed_unsupported(input: &ArtifactInput) -> NegativeControl {
         id: "unsupported-claim".into(),
         kind: NegativeControlKind::UnsupportedClaim,
         artifact,
+    }
+}
+
+/// Seeds a claimed derivative result that disagrees with a retained
+/// evaluate relation.
+///
+/// Phase 1 has no differentiate producer. The planted sample keeps the
+/// relation label and inputs and substitutes `claimed_output`. The
+/// translation validator must refuse that row with `E-EVID-301`. The
+/// full wrong-derivative control lands with the differentiate goal.
+#[must_use]
+pub fn seed_wrong_derivative(
+    relation: &TranslationRelation,
+    claimed_output: f64,
+) -> TranslationSample {
+    TranslationSample {
+        label: relation.label.clone(),
+        inputs: relation.inputs.clone(),
+        outputs: vec![claimed_output],
     }
 }
 
