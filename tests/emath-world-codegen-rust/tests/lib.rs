@@ -153,6 +153,14 @@ mod unused_worldir_tests {
         )
         .expect("default operator maps must keep generating");
         assert!(package.files["src/lib.rs"].contains("reference_term"));
+        assert!(
+            package.files["src/lib.rs"].contains("mod contract_tests"),
+            "generated lib must embed contract_tests (swap negative control)",
+        );
+        assert!(
+            package.files["src/lib.rs"].contains("mod specialized_abi_tests"),
+            "generated lib must embed specialized_abi_tests",
+        );
         assert!(package.files["Cargo.toml"].contains("semantic-genesis-worlds"));
     }
 }
