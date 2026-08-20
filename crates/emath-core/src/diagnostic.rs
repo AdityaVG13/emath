@@ -1,5 +1,5 @@
 //! Stable diagnostics with typed codes (see the diagnostics contract in
-//! `language/spec/diagnostics-and-tooling-contract.md`).
+//! `language/reference/diagnostics-and-tooling-contract.md`).
 
 use crate::span::Span;
 use std::fmt;

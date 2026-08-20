@@ -165,7 +165,7 @@ fn untyped_head_args_format_without_infer() {
 
 #[test]
 fn cache_policy_example_parses_as_one_declaration() {
-    let text = include_str!("../../../language/examples/cache-policy.emath");
+    let text = include_str!("../../../language/examples/integration/cache-policy.emath");
     let (tree, diagnostics) = parse_str(text);
     let names: Vec<String> = tree
         .items

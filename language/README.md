@@ -1,16 +1,20 @@
 # emath Language Assets
 
-Normative specification, examples, grammar, templates, and standard-library
+Normative reference, grammar, examples, templates, and standard-library
 contracts for the emath language.
 
 | Directory | Purpose |
 |-----------|---------|
-| [`spec/`](spec/README.md) | Normative semantic specification, 16 chapters; the index there carries the canonical chapter order. |
-| [`grammar/`](grammar/) | EBNF grammar definitions (design grammar + language reference). |
-| [`examples/`](examples/README.md) | Cross-domain example programs with a curated reading order. |
+| [`reference/`](reference/README.md) | Normative semantic specification, 16 chapters; the index there carries the canonical chapter order. |
+| [`grammar/`](grammar/README.md) | EBNF grammars: authoritative surface grammar, genesis addendum, and authoritative-vs-archived version notes. |
+| [`examples/`](examples/README.md) | Cross-domain example programs, grouped by category, with a curated reading order. |
 | [`templates/`](templates/README.md) | Project, declaration, and provider scaffolds. |
-| [`stdlib/`](stdlib/) | Initial standard library and provider contracts. |
+| [`stdlib/`](stdlib/README.md) | Standard library package catalog and provider contracts. |
 
-Start with [`spec/overview.md`](spec/overview.md) (Chapter 1), then follow the
-chapter index. Examples illustrate intended semantics; the phase documents
-state when each becomes executable.
+**Authority:** when the reference and the grammar disagree, the reference
+chapters in [`reference/`](reference/README.md) are normative; grammar files
+are the machine-checkable surface model that follows them.
+
+Start with [`reference/overview.md`](reference/overview.md) (Chapter 1), then
+follow the chapter index. Examples illustrate intended semantics; the phase
+documents state when each becomes executable.
