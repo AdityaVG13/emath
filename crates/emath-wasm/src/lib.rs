@@ -935,4 +935,357 @@ emath function square(x: Float64) -> Float64:
         assert!(json.contains("missing input `x`"), "{json}");
         assert!(json.contains("\"_pane\""), "{json}");
     }
+
+    fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
+        let mut given_map = BTreeMap::new();
+        let mut given_pairs = Vec::new();
+        for (k, v) in given {
+            given_map.insert(k.to_string(), *v);
+            given_pairs.push((*k, format_f64(*v)));
+        }
+        let prepared = prepare_source(source);
+        let (mut session, file) = session_from_source(&prepared.source);
+        let result = session.check(file);
+        assert!(
+            !result.diagnostics.has_errors(),
+            "check errors: {:?}",
+            result.diagnostics.items()
+        );
+        let native_report = run_package_with_given(&result.package, Some(&given_map));
+
+        let given_str_refs: Vec<(&str, &str)> =
+            given_pairs.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        let wasm_json = run_envelope(source, Some(&given_str_refs));
+        assert!(wasm_json.contains("\"ok\": true"), "wasm failed: {wasm_json}");
+
+        let doc = parse_json_document(&wasm_json).expect("valid wasm json");
+        let decls = match doc.field("declarations").expect("declarations") {
+            JsonValue::Arr(list) => list,
+            _ => panic!("declarations must be array"),
+        };
+
+        assert_eq!(decls.len(), native_report.declarations.len());
+        for (decl_json, decl_native) in decls.iter().zip(&native_report.declarations) {
+            let tests_json = match decl_json.field("tests").expect("tests") {
+                JsonValue::Arr(list) => list,
+                _ => panic!("tests must be array"),
+            };
+            assert_eq!(tests_json.len(), decl_native.tests.len());
+            for (test_json, test_native) in tests_json.iter().zip(&decl_native.tests) {
+                let defs_json = match test_json.field("definitions").expect("definitions") {
+                    JsonValue::Obj(map) => map,
+                    _ => panic!("definitions must be object"),
+                };
+                for (key, native_val) in &test_native.definitions {
+                    let json_val = defs_json
+                        .iter()
+                        .find(|(k, _)| k == key)
+                        .map(|(_, v)| v)
+                        .expect("definition key present");
+                    match native_val {
+                        Value::F64(expected) => {
+                            let parsed: f64 = match json_val {
+                                JsonValue::Num(num_str) => num_str.parse().expect("valid f64"),
+                                JsonValue::Str(s) => {
+                                    s.parse().expect("valid non-finite f64 string")
+                                }
+                                _ => panic!("unexpected json value for f64"),
+                            };
+                            if expected.is_nan() {
+                                assert!(parsed.is_nan(), "expected NaN for `{key}`");
+                            } else {
+                                assert_eq!(
+                                    parsed.to_bits(),
+                                    expected.to_bits(),
+                                    "bit mismatch for `{key}`: wasm={parsed} ({:#x}) vs native={expected} ({:#x})",
+                                    parsed.to_bits(),
+                                    expected.to_bits()
+                                );
+                            }
+                        }
+                        Value::Bool(expected) => {
+                            let parsed = match json_val {
+                                JsonValue::Bool(b) => *b,
+                                _ => panic!("unexpected json value for bool"),
+                            };
+                            assert_eq!(parsed, *expected, "bool mismatch for `{key}`");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parity_transcendentals_bit_exact() {
+        let source = "\
+emath function Transcendentals:
+    inputs:
+        x: Float64
+
+    outputs:
+        s: Float64
+        c: Float64
+        e: Float64
+        sq: Float64
+        l: Float64
+        t: Float64
+        th: Float64
+        composite: Float64
+
+    definitions:
+        s = sin(x)
+        c = cos(x)
+        e = exp(x)
+        sq = sqrt(x)
+        l = ln(x)
+        t = tan(x)
+        th = tanh(x)
+        composite = exp(-0.1 * x) * sin(x) + sqrt(cos(x) * cos(x) + sin(x) * sin(x)) + ln(x + 1.0)
+";
+        for &x in &[
+            0.123456789,
+            0.25,
+            0.5,
+            1.0,
+            2.0,
+            std::f64::consts::PI / 3.0,
+            std::f64::consts::E,
+            10.0,
+        ] {
+            assert_native_wasm_parity(source, &[("x", x)]);
+        }
+    }
+
+    #[test]
+    fn parity_polynomials_bit_exact() {
+        let source = "\
+emath function Polynomials:
+    inputs:
+        x: Float64
+
+    outputs:
+        quad: Float64
+        cubic: Float64
+        poly: Float64
+
+    definitions:
+        quad = 3.0 * (x ^ 2.0) + 5.0 * x - 2.0
+        cubic = x ^ 3.0 - 4.0 * (x ^ 2.0) + 7.0 * x - 15.0
+        poly = 2.0 * (x * x * x) - 3.0 * (x * x) + 4.0 * x - 5.0
+";
+        for &x in &[-10.5, -2.0, -0.5, 0.0, 1.0, 2.5, 3.5, 100.25] {
+            assert_native_wasm_parity(source, &[("x", x)]);
+        }
+    }
+
+    #[test]
+    fn parity_rational_functions_bit_exact() {
+        let source = "\
+emath function Rational:
+    inputs:
+        x: Float64
+
+    outputs:
+        r1: Float64
+        r2: Float64
+
+    definitions:
+        r1 = (2.0 * x + 1.0) / (x * x + 4.0)
+        r2 = (x ^ 3.0 - 2.0 * x + 1.0) / (x ^ 2.0 + 1.0)
+";
+        for &x in &[-5.0, -2.0, -1.0, 0.0, 0.5, 1.0, 2.0, 10.0] {
+            assert_native_wasm_parity(source, &[("x", x)]);
+        }
+    }
+
+    #[test]
+    fn parity_conditionals_bit_exact() {
+        let source = "\
+emath function Conditionals:
+    inputs:
+        x: Float64
+
+    outputs:
+        c1: Float64
+        c2: Float64
+        c3: Float64
+
+    definitions:
+        c1 = if x > 0.0: x * 2.0 else: -x * 3.0
+        c2 = if x >= 1.0: sqrt(x) else: x * x
+        c3 = if sin(x) > 0.0: cos(x) else: exp(x)
+";
+        for &x in &[-3.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 4.0] {
+            assert_native_wasm_parity(source, &[("x", x)]);
+        }
+    }
+
+    #[test]
+    fn parity_stateful_affine_transforms_bit_exact() {
+        let source = "\
+emath policy AffineTransform:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    state:
+        scale: Float64
+        bias: Float64
+
+    constructors:
+        public fn new(scale: Float64, bias: Float64) -> Result<Self, ConfigError>:
+            require scale >= 0.0
+            require is_finite(scale)
+            require is_finite(bias)
+
+            Self:
+                scale = scale
+                bias = bias
+
+    definitions:
+        y = state.scale * x + state.bias
+";
+        let test_cases = &[
+            (2.5, 1.25, 3.0),
+            (0.0, -5.0, 10.0),
+            (10.0, 100.0, -2.5),
+            (1.0, 0.0, 42.0),
+            (0.5, 0.25, -1.5),
+        ];
+        for &(scale, bias, x) in test_cases {
+            assert_native_wasm_parity(
+                source,
+                &[("scale", scale), ("bias", bias), ("x", x)],
+            );
+        }
+    }
+
+    #[test]
+    fn parity_plan_and_mig_determinism_and_hashes() {
+        let models = &[
+            HELLO_SQUARE,
+            AFFINE_SCORER,
+            PARAMETRIC_UNKNOWN,
+            TUTORIAL_01_QUICKSTART,
+            TUTORIAL_02_PLOTTER,
+            TUTORIAL_03_MATH_INTENT,
+        ];
+
+        for &source in models {
+            let initial_plan = run_op("plan", source);
+            let initial_mig = run_op("mig", source);
+
+            assert!(initial_plan.contains("\"ok\": true"), "{initial_plan}");
+            assert!(initial_mig.contains("\"ok\": true"), "{initial_mig}");
+
+            let mig_doc = parse_json_document(&initial_mig).expect("valid mig json");
+            let canonical_str = mig_doc
+                .string_field("canonical")
+                .expect("canonical string field");
+            let identity_str = mig_doc
+                .string_field("identity")
+                .expect("identity string field");
+            assert!(!canonical_str.is_empty());
+            assert!(!identity_str.is_empty());
+
+            // Verify idempotence and exact string match across multiple runs
+            for _ in 0..10 {
+                let plan = run_op("plan", source);
+                let mig = run_op("mig", source);
+                assert_eq!(plan, initial_plan, "plan json must be deterministic");
+                assert_eq!(mig, initial_mig, "mig json must be deterministic");
+            }
+        }
+    }
+
+    #[test]
+    fn parity_diagnostic_codes_and_structures() {
+        let cases = &[
+            // Syntax error (unclosed parens)
+            (
+                "emath function BadSyntax:\n    definitions:\n        y = (3.0 * x\n",
+                "E-SYN-102",
+            ),
+            // Undefined variable name error
+            (
+                "emath function BadName:\n    inputs:\n        x: Float64\n    definitions:\n        y = nonexistent_variable\n",
+                "E-TYPE-002",
+            ),
+            // Duplicate declaration error
+            (
+                "emath function Dup:\n    definitions:\n        y = 1.0\nemath function Dup:\n    definitions:\n        y = 2.0\n",
+                "E-NAME-022",
+            ),
+            // Reserved identifier error
+            (
+                "emath function _:\n    definitions:\n        y = 1.0\n",
+                "E-NAME-023",
+            ),
+            // Type error (incompatible argument to unary/binary op)
+            (
+                "emath function BadType:\n    inputs:\n        x: Float64\n    definitions:\n        y = sin(x > 0.0)\n",
+                "E-TYPE-012",
+            ),
+            // Dimension/Unit compatibility error
+            (
+                "emath function BadUnit:\n    inputs:\n        x: Float64\n    definitions:\n        y = 1.0 m + 2.0 s\n",
+                "E-UNIT-101",
+            ),
+            // Bare source type default note
+            (
+                "y = x * x\n",
+                "N-TYPE-001",
+            ),
+        ];
+
+        for (source, expected_code_prefix) in cases {
+            let prepared = prepare_source(source);
+            let (mut session, file) = session_from_source(&prepared.source);
+            let native_result = session.check(file);
+
+            let wasm_json = run_op("check", source);
+            assert!(wasm_json.contains("\"ok\": true"), "{wasm_json}");
+
+            let wasm_doc = parse_json_document(&wasm_json).expect("valid wasm json");
+            let diags = match wasm_doc.field("diagnostics").expect("diagnostics field") {
+                JsonValue::Arr(list) => list,
+                _ => panic!("diagnostics must be array"),
+            };
+
+            assert_eq!(
+                diags.len(),
+                native_result.diagnostics.items().len(),
+                "diagnostic count mismatch for source: {source}"
+            );
+
+            for (wasm_diag, native_diag) in
+                diags.iter().zip(native_result.diagnostics.items())
+            {
+                let code = wasm_diag.string_field("code").expect("code string");
+                let message = wasm_diag
+                    .string_field("message")
+                    .expect("message string");
+                let severity = wasm_diag
+                    .string_field("severity")
+                    .expect("severity string");
+
+                assert_eq!(code, native_diag.code);
+                assert_eq!(message, native_diag.message);
+                let native_sev_str = match native_diag.severity {
+                    Severity::Error => "error",
+                    Severity::Warning => "warning",
+                    Severity::Note => "note",
+                };
+                assert_eq!(severity, native_sev_str);
+            }
+
+            assert!(
+                wasm_json.contains(expected_code_prefix),
+                "expected prefix `{expected_code_prefix}` in wasm json: {wasm_json}"
+            );
+        }
+    }
 }
