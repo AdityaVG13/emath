@@ -1,21 +1,24 @@
 //! Rust backend: EMIR → deterministic Rust via the rust-ir AST.
 //!
-//! Phase 1 generates one crate per admission: a struct per declaration, a
-//! constructor with enforced invariants, an evaluation method per
-//! `evaluate <target>` goal, and `#[test]` functions for the `tests:`
-//! section. Everything is std-only, `#![forbid(unsafe_code)]`, and
-//! byte-deterministic.
+//! Phase 1 generates one crate per admission: a struct plus constructor
+//! for stateful declarations, a free function (not a method on an empty
+//! struct) when there is no state and no constructors, an evaluation
+//! item per `evaluate <target>` goal, and `#[test]` functions for the
+//! `tests:` section. Everything is std-only, `#![forbid(unsafe_code)]`,
+//! and byte-deterministic.
 
 #![forbid(unsafe_code)]
 
-use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, lower_definition, lower_requirement};
-use emath_ir::{ConstructionReceipt, GoalKind, SemanticPackage, TypeId, TypeNode};
+use emath_exec_ir::{
+    definition_order, lower_definition, lower_requirement, EmirOp, EmirProgram, EmirValue,
+};
+use emath_ir::{ConstructionReceipt, ExprId, ExprNode, GoalKind, SemanticPackage, TypeId, TypeNode};
 use emath_rust_ir::ast::{
-    BinOp, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item, Module, Param, RUST_KEYWORDS,
-    Stmt, StructDef, TestDef, Ty, UnOp, Visibility, escape_ident, snake_case,
+    escape_ident, snake_case, BinOp, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item,
+    Module, Param, Stmt, StructDef, TestDef, Ty, UnOp, Visibility, RUST_KEYWORDS,
 };
 use emath_rust_ir::render::render_module;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
 pub struct BackendInput<'a> {
@@ -113,13 +116,25 @@ impl BackendInput<'_> {
                 declaration.state.iter().map(|f| f.name.clone()).collect();
             let input_names: Vec<String> =
                 declaration.inputs.iter().map(|f| f.name.clone()).collect();
+            let stateless = declaration.state.is_empty() && declaration.constructors.is_empty();
+            let has_evaluate = declaration.goals.iter().any(|goal_id| {
+                package
+                    .goals
+                    .get(goal_id.index())
+                    .is_some_and(|goal| goal.kind == GoalKind::Evaluate)
+            });
+            // No state and no constructors: emit a free function instead of
+            // a method on an empty struct. A stateless declaration with
+            // nothing to evaluate still keeps a unit struct so the
+            // declaration name remains a Rust identifier.
+            let emit_free_fn = stateless && has_evaluate;
 
-            // --- struct ----------------------------------------------------
-            let state_types: Vec<Ty> = declaration
-                .state
-                .iter()
-                .map(|f| self.rust_ty(f.ty, &name))
-                .collect::<Result<_, _>>()?;
+            let mut used_names = BTreeSet::new();
+            for expr in declaration.definitions.values().copied() {
+                collect_var_names(package, expr, &mut used_names);
+            }
+            emit_host_structs(&mut items, declaration, package, &used_names, &name)?;
+
             items.push(Item::DocComment(format!(
                 "`{name}`: a `{}` declaration generated from `.emath`.",
                 declaration.kind_label
@@ -127,14 +142,21 @@ impl BackendInput<'_> {
             items.push(Item::DocComment(
                 "Generated deterministically by emath Phase 1; do not edit.".to_string(),
             ));
-            items.push(Item::Struct(StructDef {
-                name: struct_name.clone(),
-                generics: vec![],
-                fields: state_names.iter().cloned().zip(state_types).collect(),
-                derives: vec!["Clone".to_string(), "Debug".to_string()],
-                doc: Vec::new(),
-                visibility: Visibility::Public,
-            }));
+            if !emit_free_fn {
+                let state_types: Vec<Ty> = declaration
+                    .state
+                    .iter()
+                    .map(|f| self.rust_ty(f.ty, &name))
+                    .collect::<Result<_, _>>()?;
+                items.push(Item::Struct(StructDef {
+                    name: struct_name.clone(),
+                    generics: vec![],
+                    fields: state_names.iter().cloned().zip(state_types).collect(),
+                    derives: vec!["Clone".to_string(), "Debug".to_string()],
+                    doc: Vec::new(),
+                    visibility: Visibility::Public,
+                }));
+            }
 
             let mut methods: Vec<FnDef> = Vec::new();
             let mut evaluate_targets: Vec<String> = Vec::new();
@@ -320,6 +342,7 @@ impl BackendInput<'_> {
                 });
             }
             let _ = name;
+            let _ = &struct_name;
 
             // --- evaluation methods ----------------------------------------
             // Goals attach by their declared ids on the declaration, never
@@ -333,16 +356,47 @@ impl BackendInput<'_> {
                 .collect();
             for goal in &goals {
                 let target = goal.target.clone();
-                let Some(expr) = declaration.definitions.get(&target).copied() else {
+                if !declaration.definitions.contains_key(&target) {
+                    return Err(BackendError::UnknownTarget(target));
+                }
+                let order = definition_order(package, declaration);
+                let Some(end) = order.iter().position(|(name, _)| *name == &target) else {
                     return Err(BackendError::UnknownTarget(target));
                 };
-                let program = lower_definition(package, expr, &input_names, &state_names)
-                    .map_err(BackendError::Lowering)?;
-                add_obligations(&program, &mut assumptions);
-                let mut params = vec![Param {
-                    name: "self".to_string(),
-                    ty: Ty::Ref(Box::new(Ty::SelfType)),
-                }];
+                let chain = &order[..=end];
+                let mut available = input_names.clone();
+                let mut body_stmts = Vec::new();
+                for (def_name, def_expr) in chain {
+                    let def_name = *def_name;
+                    let def_expr = *def_expr;
+                    let used = {
+                        let mut names = BTreeSet::new();
+                        collect_var_names(package, def_expr, &mut names);
+                        names
+                    };
+                    let lowering_inputs = expand_host_inputs(&available, &used);
+                    let program = lower_definition(package, def_expr, &lowering_inputs, &state_names)
+                        .map_err(BackendError::Lowering)?;
+                    add_obligations(&program, &mut assumptions);
+                    let value = value_expr(&program, &lowering_inputs, &state_names)?;
+                    if def_name == &target {
+                        body_stmts.push(Stmt::Expr(value));
+                    } else {
+                        body_stmts.push(Stmt::Let {
+                            pattern: escape_ident(def_name),
+                            value: Box::new(value),
+                        });
+                        available.push(def_name.clone());
+                    }
+                }
+                let mut params = if emit_free_fn {
+                    Vec::new()
+                } else {
+                    vec![Param {
+                        name: "self".to_string(),
+                        ty: Ty::Ref(Box::new(Ty::SelfType)),
+                    }]
+                };
                 for input in &input_names {
                     let ty = declaration
                         .inputs
@@ -357,11 +411,7 @@ impl BackendInput<'_> {
                     });
                 }
                 let body = Stmt::Block(Block {
-                    statements: vec![Stmt::Expr(value_expr(
-                        &program,
-                        &input_names,
-                        &state_names,
-                    )?)],
+                    statements: body_stmts,
                 });
                 evaluate_targets.push(target.clone());
                 methods.push(FnDef {
@@ -383,7 +433,11 @@ impl BackendInput<'_> {
             }
             goals.clear();
 
-            if !methods.is_empty() {
+            if emit_free_fn {
+                for method in methods {
+                    items.push(Item::Fn(method));
+                }
+            } else if !methods.is_empty() {
                 items.push(Item::Impl(ImplDef {
                     target: struct_name.clone(),
                     generics: vec![],
@@ -413,41 +467,6 @@ impl BackendInput<'_> {
                     });
                     seen.push(given_name.clone());
                 }
-                let instance_name = snake_case(declaration.name.leaf());
-                let instance: Expr = if let Some(constructor) = declaration.constructors.first() {
-                    // The generated API is `Struct::new(params) -> Result<Self,
-                    // ConfigError>`, so the instance is an associated-call
-                    // followed by `expect`.
-                    let args: Vec<Expr> = constructor
-                        .parameters
-                        .iter()
-                        .map(|p| {
-                            if !given_names.contains(&p.name) {
-                                return Err(BackendError::MissingGiven(p.name.clone()));
-                            }
-                            Ok(Expr::Var(escape_ident(&p.name)))
-                        })
-                        .collect::<Result<_, _>>()?;
-                    Expr::MethodCall {
-                        receiver: Box::new(Expr::Call {
-                            path: vec![struct_name.clone(), constructor.name.clone()],
-                            args,
-                        }),
-                        method: "expect".to_string(),
-                        args: vec![Expr::Str(
-                            "constructor invariants must hold for this example".to_string(),
-                        )],
-                    }
-                } else {
-                    Expr::StructLiteral {
-                        name: struct_name.clone(),
-                        fields: Vec::new(),
-                    }
-                };
-                statements.push(Stmt::Let {
-                    pattern: escape_ident(&instance_name),
-                    value: Box::new(instance),
-                });
                 let Some(target) = evaluate_targets.first() else {
                     return Err(BackendError::NoEvaluateGoal(
                         declaration.name.leaf().to_string(),
@@ -460,13 +479,57 @@ impl BackendInput<'_> {
                     }
                     eval_args.push(Expr::Var(escape_ident(&input.name)));
                 }
-                statements.push(Stmt::Let {
-                    pattern: "actual".to_string(),
-                    value: Box::new(Expr::MethodCall {
+                let eval_call = if emit_free_fn {
+                    Expr::Call {
+                        path: vec![escape_ident(target)],
+                        args: eval_args,
+                    }
+                } else {
+                    let instance_name = snake_case(declaration.name.leaf());
+                    let instance: Expr = if let Some(constructor) = declaration.constructors.first()
+                    {
+                        // The generated API is `Struct::new(params) -> Result<Self,
+                        // ConfigError>`, so the instance is an associated-call
+                        // followed by `expect`.
+                        let args: Vec<Expr> = constructor
+                            .parameters
+                            .iter()
+                            .map(|p| {
+                                if !given_names.contains(&p.name) {
+                                    return Err(BackendError::MissingGiven(p.name.clone()));
+                                }
+                                Ok(Expr::Var(escape_ident(&p.name)))
+                            })
+                            .collect::<Result<_, _>>()?;
+                        Expr::MethodCall {
+                            receiver: Box::new(Expr::Call {
+                                path: vec![struct_name.clone(), constructor.name.clone()],
+                                args,
+                            }),
+                            method: "expect".to_string(),
+                            args: vec![Expr::Str(
+                                "constructor invariants must hold for this example".to_string(),
+                            )],
+                        }
+                    } else {
+                        Expr::StructLiteral {
+                            name: struct_name.clone(),
+                            fields: Vec::new(),
+                        }
+                    };
+                    statements.push(Stmt::Let {
+                        pattern: escape_ident(&instance_name),
+                        value: Box::new(instance),
+                    });
+                    Expr::MethodCall {
                         receiver: Box::new(Expr::Var(instance_name)),
                         method: escape_ident(target),
                         args: eval_args,
-                    }),
+                    }
+                };
+                statements.push(Stmt::Let {
+                    pattern: "actual".to_string(),
+                    value: Box::new(eval_call),
                 });
                 // Bind each definition to the evaluated result so `expect`
                 // expressions can reference definitions by name. Definitions
@@ -483,19 +546,37 @@ impl BackendInput<'_> {
                     });
                     expect_names.push(definition.clone());
                 }
-                let expect_program = lower_definition(package, test.expect, &expect_names, &[])
-                    .map_err(BackendError::Lowering)?;
-                add_obligations(&expect_program, &mut assumptions);
-                // The `expect` expression is a Boolean comparison; assert it
-                // with a real macro invocation (rendered via `Expr::Macro`).
-                statements.push(Stmt::Expr(Expr::Macro {
-                    name: "assert".to_string(),
-                    args: vec![value_expr(&expect_program, &expect_names, &[])?],
-                }));
+                if let Some(expect) = test.expect {
+                    let expect_program = lower_definition(package, expect, &expect_names, &[])
+                        .map_err(BackendError::Lowering)?;
+                    add_obligations(&expect_program, &mut assumptions);
+                    // The `expect` expression is a Boolean comparison; assert it
+                    // with a real macro invocation (rendered via `Expr::Macro`).
+                    statements.push(Stmt::Expr(Expr::Macro {
+                        name: "assert".to_string(),
+                        args: vec![value_expr(&expect_program, &expect_names, &[])?],
+                    }));
+                } else {
+                    // Worked example: execute the computation, assert nothing.
+                    let unused = declaration
+                        .definitions
+                        .keys()
+                        .find(|definition| !given_names.contains(definition))
+                        .cloned()
+                        .unwrap_or_else(|| "actual".to_string());
+                    statements.push(Stmt::Let {
+                        pattern: "_".to_string(),
+                        value: Box::new(Expr::Var(escape_ident(&unused))),
+                    });
+                }
                 items.push(Item::Test(TestDef {
                     name: test_name,
                     body: Stmt::Block(Block { statements }),
-                    doc: vec![format!("Example test: `{}`.", test.name)],
+                    doc: vec![if test.expect.is_some() {
+                        format!("Example test: `{}`.", test.name)
+                    } else {
+                        format!("Worked example: `{}`.", test.name)
+                    }],
                     // Strict-f64 example tests compare exact float values; the
                     // workspace lints `-D clippy::float_cmp` would otherwise
                     // deny the generated assertion.
@@ -551,9 +632,25 @@ impl BackendInput<'_> {
                 "unknown type id in `{owner}`"
             )));
         };
+        self.rust_node(node, owner)
+    }
+
+    fn rust_node(&self, node: &TypeNode, owner: &str) -> Result<Ty, BackendError> {
         match node {
             TypeNode::Float64 => Ok(Ty::F64),
             TypeNode::Bool => Ok(Ty::Bool),
+            TypeNode::Refinement { base, .. } => self.rust_node(base, owner),
+            TypeNode::UnitRef { .. } => Ok(Ty::F64),
+            TypeNode::Opaque { name, .. } => {
+                let leaf = name.leaf();
+                if leaf.is_empty() {
+                    Err(BackendError::UnsupportedType(format!(
+                        "anonymous host type in `{owner}`"
+                    )))
+                } else {
+                    Ok(Ty::Named(escape_ident(leaf)))
+                }
+            }
             other => Err(BackendError::UnsupportedType(format!(
                 "`{}` in `{owner}`",
                 other.display_name()
@@ -684,7 +781,14 @@ fn op_expr(
             let name = names
                 .get(*index as usize)
                 .ok_or_else(|| BackendError::Lowering("load-input out of range".into()))?;
-            Ok(Expr::Var(escape_ident(name)))
+            if let Some((base, field)) = name.split_once('.') {
+                Ok(Expr::Field {
+                    receiver: Box::new(Expr::Var(escape_ident(base))),
+                    field: field.to_string(),
+                })
+            } else {
+                Ok(Expr::Var(escape_ident(name)))
+            }
         }
         EmirOp::LoadState(index) => {
             let name = states
@@ -764,6 +868,139 @@ fn op_expr(
             else_value: Box::new(Stmt::Expr(operand(program, *else_value))),
         }),
     }
+}
+
+fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut BTreeSet<String>) {
+    let Some(expr) = package.expr(id) else {
+        return;
+    };
+    match expr {
+        ExprNode::Literal(_) => {}
+        ExprNode::Variable(name) => {
+            out.insert(name.0.clone());
+        }
+        ExprNode::Call { arguments, .. } => {
+            for argument in arguments {
+                collect_var_names(package, *argument, out);
+            }
+        }
+        ExprNode::Unary { value, .. } => collect_var_names(package, *value, out),
+        ExprNode::Binary { left, right, .. } => {
+            collect_var_names(package, *left, out);
+            collect_var_names(package, *right, out);
+        }
+        ExprNode::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            collect_var_names(package, *condition, out);
+            collect_var_names(package, *then_value, out);
+            collect_var_names(package, *else_value, out);
+        }
+        ExprNode::Record { fields, .. } => {
+            for value in fields.values() {
+                collect_var_names(package, *value, out);
+            }
+        }
+        ExprNode::Index { value, indices } => {
+            collect_var_names(package, *value, out);
+            for index in indices {
+                collect_var_names(package, *index, out);
+            }
+        }
+        ExprNode::Binder { body, .. } => collect_var_names(package, *body, out),
+    }
+}
+
+fn expand_host_inputs(inputs: &[String], used: &BTreeSet<String>) -> Vec<String> {
+    let mut names = Vec::new();
+    for input in inputs {
+        let prefix = format!("{input}.");
+        let mut fields: Vec<String> = used
+            .iter()
+            .filter(|name| name.starts_with(&prefix))
+            .cloned()
+            .collect();
+        if fields.is_empty() {
+            names.push(input.clone());
+        } else {
+            fields.sort();
+            names.extend(fields);
+        }
+    }
+    names
+}
+
+fn emit_host_structs(
+    items: &mut Vec<Item>,
+    declaration: &emath_ir::Declaration,
+    package: &SemanticPackage,
+    used: &BTreeSet<String>,
+    owner: &str,
+) -> Result<(), BackendError> {
+    let mut emitted = BTreeSet::new();
+    for input in &declaration.inputs {
+        let Some(TypeNode::Opaque { name, .. }) = package.ty(input.ty) else {
+            continue;
+        };
+        let type_name = name.leaf();
+        if type_name.is_empty() || !emitted.insert(type_name.to_string()) {
+            continue;
+        }
+        let prefix = format!("{}.", input.name);
+        let fields: Vec<(String, Ty)> = used
+            .iter()
+            .filter_map(|name| name.strip_prefix(&prefix))
+            .filter(|field| !field.is_empty() && !field.contains('.'))
+            .map(|field| (field.to_string(), Ty::F64))
+            .collect();
+        if fields.is_empty() {
+            return Err(BackendError::UnsupportedType(format!(
+                "host type `{type_name}` on `{owner}` has no accessed fields"
+            )));
+        }
+        items.push(Item::DocComment(format!(
+            "Host-deferred `{type_name}`: field types inferred from uses in `{owner}`."
+        )));
+        let struct_name = escape_ident(type_name);
+        items.push(Item::Struct(StructDef {
+            name: struct_name.clone(),
+            generics: vec![],
+            fields: fields.clone(),
+            derives: vec!["Clone".to_string(), "Debug".to_string()],
+            doc: Vec::new(),
+            visibility: Visibility::Public,
+        }));
+        items.push(Item::Impl(ImplDef {
+            target: struct_name.clone(),
+            generics: vec![],
+            methods: vec![FnDef {
+                name: "new".to_string(),
+                generics: vec![],
+                params: fields
+                    .iter()
+                    .map(|(field, ty)| Param {
+                        name: field.clone(),
+                        ty: ty.clone(),
+                    })
+                    .collect(),
+                ret: Ty::Named(struct_name),
+                body: Stmt::Expr(Expr::StructLiteral {
+                    name: "Self".to_string(),
+                    fields: fields
+                        .iter()
+                        .map(|(field, _)| (field.clone(), Expr::Var(field.clone())))
+                        .collect(),
+                }),
+                doc: vec!["Construct a host-deferred record from accessed fields.".to_string()],
+                visibility: Visibility::Public,
+                attrs: Vec::new(),
+            }],
+            doc: Vec::new(),
+        }));
+    }
+    Ok(())
 }
 
 fn unary_method(method: &str, value: EmirValue, program: &EmirProgram) -> Expr {
