@@ -15,6 +15,8 @@
 - `EmirProgram` — one lowered definition: linear op list, result value, input/state counts, obligations; `print` renders it deterministically.
 - `EmirExprRef` — alias for `emath_ir::ExprId`.
 - Functions: `lower_requirement` (constructor precondition) and `lower_definition` (definition expression).
+- `interp`: `Value` (`F64`/`Bool`), `EvalFault`, `evaluate(program, inputs, state)` — single forward pass, typed registers, no panics.
+- `runner`: `run_package` / `run_package_with_given` / `run_declaration` — constructor requires → Self state → definitions → example given/expect verdicts (`RunReport`). A declaration with no inputs evaluates definitions against an empty `given`. Definitions may reference earlier definition names in source order (let-binding semantics, recovered from expression spans; matches admission). `TestVerdict::Computed` is a worked example (`expect` omitted): values are recorded, no pass/fail claim. A declaration with no tests still emits a synthetic `_pane` worked run when every input is bound; `run_package_with_given` adds that `_pane` entry (or a typed `missing input \`name\`` refusal) in addition to source examples. `RunSummary` counts `{tests, passed, failed, refused, computed}`.
 
 ## Invariants
 
@@ -33,6 +35,7 @@
 ## Determinism class
 
 - Lowering produces a deterministic linear op list for a given package and inputs; `EmirProgram::print` output is byte-deterministic.
+- Interpretation is bit-exact IEEE-754 binary64 for arithmetic/comparisons/`min`/`max`/`abs`/`floor`/`ceil`/`is_finite`/boolean ops. Transcendentals follow platform libm (same class as generated Rust / Tier 1).
 
 ## Cancellation behavior
 
@@ -48,9 +51,10 @@
 
 ## Conformance tests
 
-- No `crates/emath-exec-ir/tests/` directory on disk; conformance is unit-level in the `#[cfg(test)]` module: `call_with_wrong_arity_is_refused`, `oversized_integer_literal_is_refused`.
+- Integration tests in `tests/emath-exec-ir`: `call_with_wrong_arity_is_refused`, `oversized_integer_literal_is_refused`.
+- Interpreter/runner unit tests in `src/interp.rs` and `src/runner.rs`: op spot checks (add/pow/select/is_finite/div-by-zero/eq-NaN/type-confusion) and programmatic Square / constructor-refused / expect-less worked-example packages.
 
 ## No-claim boundaries
 
 - Admits only the strict-f64 subset (item kinds that lower to finite f64 ops); exact arithmetic and unlisted function names are refused.
-- No type/rounding refinement, no stateful evaluation; this crate only produces op lists, it does not execute them.
+- Domain obligations are assumptions, not runtime checks. The interpreter does not compile or invoke cargo; it is not a substitute for the Tier-1 generated crate on transcendental bit-identity across libm implementations.
