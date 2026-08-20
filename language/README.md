@@ -6,7 +6,7 @@ contracts for the emath language.
 | Directory | Purpose |
 |-----------|---------|
 | [`reference/`](reference/README.md) | Normative semantic specification, 16 chapters; the index there carries the canonical chapter order. |
-| [`grammar/`](grammar/README.md) | EBNF grammars: authoritative surface grammar, genesis addendum, and authoritative-vs-archived version notes. |
+| [`grammar/`](grammar/README.md) | EBNF grammars: authoritative surface grammar and genesis addendum; authority and supersession notes in the grammar README. |
 | [`examples/`](examples/README.md) | Cross-domain example programs, grouped by category, with a curated reading order. |
 | [`templates/`](templates/README.md) | Project, declaration, and provider scaffolds. |
 | [`stdlib/`](stdlib/README.md) | Standard library package catalog and provider contracts. |
