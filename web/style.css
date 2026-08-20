@@ -115,6 +115,10 @@ main {
   min-height: 0;
 }
 
+main.layout-swapped {
+  flex-direction: row-reverse;
+}
+
 .editor-pane,
 .output-pane {
   flex: 1;
@@ -125,6 +129,11 @@ main {
 
 .editor-pane {
   border-right: 1px solid var(--border);
+}
+
+main.layout-swapped .editor-pane {
+  border-right: 0;
+  border-left: 1px solid var(--border);
 }
 
 #editor,
@@ -142,6 +151,8 @@ main {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9rem;
   line-height: 1.45;
+  tab-size: 4;
+  -moz-tab-size: 4;
 }
 
 #inputs-panel {
