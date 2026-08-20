@@ -9,15 +9,50 @@
 //! `emath custom` section parser and re-exports this module at its root for
 //! the CLI.
 
+pub mod analogue;
+pub mod binder;
 pub mod csa;
 pub mod forest;
 pub mod specialization;
+pub mod synth;
+pub mod meaning_provider;
+pub mod morphism;
 pub mod vm;
+pub mod tuning;
 
+pub use analogue::{
+    ANALOGUE_NO_CLAIM, ANALOGUE_SCHEMA, ANALOGUE_VERSION, AnalogueDomain, AnalogueError,
+    AnalogueReceipt, AnalogueRequest, AnalogueSample, AnalogueVerdict, analogue_id,
+};
+pub use binder::{
+    BINDER_SCHEMA, BINDER_VERSION, BinderBudget, BinderDomain, BinderError, BinderFamily,
+    BinderKind, BinderTerm, ScopedBinder, binder_id,
+};
 pub use csa::{CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, OnePointWorld, SeededCsaWorld};
 pub use specialization::{SpecializationCache, SpecializationChallenge, SpecializationStats};
+pub use synth::{
+    MAX_CARRIER_SIZE, SYNTH_SCHEMA, SYNTH_VERSION, LawViolation, OpTable, SynthBudget, SynthError,
+    SynthExample, SynthLaw, SynthReceipt, SynthRequest, check_table, synth_id,
+};
+pub use meaning_provider::{
+    admit, challenge, proposal_id, AdmissionStatus, AgentProposal, ChallengeRefusal,
+    ChallengeStatus, MeaningChecker, MeaningReceipt, MeaningVerdict, ProviderError,
+    QuarantinedCandidate, CheckedCandidate, AUTHORITY_NONE, AUTHORITY_STRUCTURAL_CHECKED,
+    PROVIDER_SCHEMA, PROVIDER_VERSION, REQUIRED_CAPABILITY,
+};
+pub use morphism::{
+    MAX_ISO_CANDIDATES, MAX_ISO_SEARCH_SIZE, MORPHISM_SCHEMA, MORPHISM_VERSION, DedupeGroup,
+    DedupeReceipt, DroppedDuplicate, InvariantReport, LawPortfolioVerdict, MorphismError,
+    MorphismViolation, QuotientReceipt, WorldMorphism, dedupe, find_isomorphism, mine_invariants,
+    morphism_id, quotient, verify,
+};
 pub use vm::{
     VM_SCHEMA, VM_SCHEMA_VERSION, VmBudget, VmContinuation, VmOutcome, VmTrace, resume, run,
+};
+pub use tuning::{
+    candidate_id, classify, semantic_dna, tune, tuning_id, CandidateStatus, Disqualification,
+    HostExample, ImplVariant, ProtectedObjective, TuningBudget, TuningError, TuningReceipt,
+    TuningRequest, IMPL_VARIANT_COUNT, TUNING_SCHEMA, TUNING_VERSION,
 };
 
 use std::collections::BTreeMap;
