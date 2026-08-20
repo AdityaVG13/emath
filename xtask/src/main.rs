@@ -997,7 +997,7 @@ fn build_web() -> u8 {
     let wasm_dest = dist.join("emath.wasm");
     if let Err(error) = std::fs::copy(&wasm_src, &wasm_dest) {
         eprintln!(
-            "build-web: cannot copy {} → {}: {error}",
+            "build-web: cannot copy {} -> {}: {error}",
             wasm_src.display(),
             wasm_dest.display()
         );
@@ -1008,7 +1008,7 @@ fn build_web() -> u8 {
         if src.is_file() {
             if let Err(error) = std::fs::copy(&src, dist.join(name)) {
                 eprintln!(
-                    "build-web: cannot copy {} → {}: {error}",
+                    "build-web: cannot copy {} -> {}: {error}",
                     src.display(),
                     dist.join(name).display()
                 );
@@ -1029,14 +1029,59 @@ fn build_web() -> u8 {
                 names.push(entry.path());
             }
             names.sort();
+            let mut budget_failed = false;
             for path in names {
-                let size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
-                println!("  {}  {size} bytes", path.display());
+                let raw_size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
+                match compute_gzip_size(&path) {
+                    Ok(gzip_size) => {
+                        println!(
+                            "  {}  {raw_size} bytes (raw) / {gzip_size} bytes (gzip)",
+                            path.display()
+                        );
+                        if path.file_name().and_then(|n| n.to_str()) == Some("emath.wasm") {
+                            const MAX_RAW_BYTES: u64 = 2 * 1024 * 1024; // 2.0 MB
+                            const MAX_GZIP_BYTES: u64 = 500 * 1024; // 500 KB
+                            if raw_size > MAX_RAW_BYTES {
+                                eprintln!(
+                                    "build-web: error: emath.wasm raw size {raw_size} exceeds budget of {MAX_RAW_BYTES} bytes"
+                                );
+                                budget_failed = true;
+                            }
+                            if gzip_size > MAX_GZIP_BYTES {
+                                eprintln!(
+                                    "build-web: error: emath.wasm gzip size {gzip_size} exceeds budget of {MAX_GZIP_BYTES} bytes"
+                                );
+                                budget_failed = true;
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        println!(
+                            "  {}  {raw_size} bytes (raw) / gzip check skipped ({error})",
+                            path.display()
+                        );
+                    }
+                }
+            }
+            if budget_failed {
+                return 1;
             }
         }
         Err(error) => eprintln!("build-web: cannot list {}: {error}", dist.display()),
     }
     0
+}
+
+fn compute_gzip_size(path: &Path) -> Result<u64, String> {
+    let output = Command::new("gzip")
+        .args(["-9", "-c"])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("failed to spawn gzip: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("gzip failed with exit status {:?}", output.status.code()));
+    }
+    u64::try_from(output.stdout.len()).map_err(|_| "gzip output size exceeds u64".to_string())
 }
 
 fn cargo_run(args: &[&str]) -> Output {
