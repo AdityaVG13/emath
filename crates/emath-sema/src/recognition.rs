@@ -740,6 +740,9 @@ fn package_entry(decl: &Declaration, kind: &str) -> emath_ir::Declaration {
         tests: Vec::new(),
         exports: Vec::new(),
         compile_spec: emath_ir::goal::CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
         source: decl.source,
     }
 }
@@ -913,11 +916,16 @@ fn admit_stmt<R: ShapeRule>(
     }
     match &stmt.kind {
         StmtKind::FieldDecl { name, ty, .. } => {
-            trace.record(
-                "recognize:field",
-                format!("{}: {}", name, type_text(ty)),
-                Some(stmt.source),
-            );
+            let detail = match &ty.kind {
+                TypeKind::Path { segments, generic_args }
+                    if generic_args.is_empty()
+                        && segments.last().map(String::as_str) == Some("Infer") =>
+                {
+                    name.clone()
+                }
+                _ => format!("{}: {}", name, type_text(ty)),
+            };
+            trace.record("recognize:field", detail, Some(stmt.source));
         }
         StmtKind::Assign { target, value } => {
             trace.record(

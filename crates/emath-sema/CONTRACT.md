@@ -25,12 +25,24 @@
 - Declarations distinguishable only by lookalike glyphs are refused (`E-NAME-024`); duplicate names (`E-NAME-022`) and `_` names (`E-NAME-023`) are refused.
 - Session limits reach the lexer through the installed parser backend (`E-SYN-108`).
 - Request targets must be outputs or definitions of the declaration (`E-GOAL-041`); produce targets outside `rust.library` are refused (`E-GOAL-042`); request kinds other than `evaluate` are refused (`E-GOAL-043`).
-- Kind schema is the required/optional source of truth: omitted `outputs:` is admitted (`AtMostOne`, default `definitions`) and those definitions are lifted onto the output surface and evaluated. Missing `ExactlyOne` sections refuse with `E-KIND-011`.
+- Kind schema is the required/optional source of truth: omitted `inputs:` is admitted (`AtMostOne`; a constant-only declaration) and omitted `outputs:` is admitted (`AtMostOne`, default `definitions`) and those definitions are lifted onto the output surface and evaluated. Untyped `inputs:` names default to `Float64` and emit note `N-TYPE-001`. Later `definitions:` may reference earlier definition names. Missing `ExactlyOne` sections refuse with `E-KIND-011`.
+- Stateless `emath function name(args) -> T:` head-args lower into the same Field IR as an `inputs:` section. `-> T` declares one output named after the declaration (so `square = x * x` satisfies the binding). Untyped head-args default to `Float64` with `N-TYPE-001`. Mixing head-args with `inputs:` or `-> T` with `outputs:` is `E-SYN-122`. Head-args on a stateful or non-function declaration are `E-SYN-123`.
 - Live `request:` / `requests:` sections refuse with `E-SEC-101` and a `goals:` migration hint.
+- Numeric model selection: omitted `numeric:` defaults to `strict-f64`.
+  `numeric interval-f64` is an explicit alternate. Unknown models refuse
+  with `E-NUM-001`. `precision` / `error-limit` demands the selected model
+  cannot honor refuse with `E-NUM-002` / `E-NUM-003`. `representation Real`
+  without a named model is `E-NUM-004` (no silent `Real` → `f64` map).
+- Known unit types (`Duration`, `MiB`, `Per<Duration>`, …) and quantity
+  literals (`1 s`) admit; unknown units are `E-UNIT-104`, ill-formed
+  `Per<>` is `E-UNIT-105`, dimensional mismatch is `E-UNIT-101`.
+- Declared `Vector`/`Matrix`/`Tensor` shapes and compile `domain lo..hi`
+  are checked: empty/zero extents are `E-SHAPE-004`, inverted intervals
+  are `E-DOM-002`.
 
 ## Error model
 
-- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`.
+- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004`, `E-DOM-002`.
 - `E-SYN-120` is a typed refusal when the parser backend is not installed; hosts call `emath_syntax::install_source_parser` once per process.
 
 ## Determinism class
@@ -52,9 +64,12 @@
 
 ## Conformance tests
 
-- No `crates/emath-sema/tests/` directory on disk; conformance is unit-level in `session.rs` and `recognition.rs` `#[cfg(test)]` modules: `tiny_session_token_budget_refuses_parse`, `duplicate_declaration_name_is_refused_with_e_name_022`, `underscore_declaration_name_is_refused_with_e_name_023`, `confusable_lookalike_declaration_is_refused_with_e_name_024`, `names_that_are_not_lookalikes_are_not_refused`, `goals_attach_to_their_own_declaration_by_id_not_span`, `omitted_outputs_section_admits_and_evaluates`.
+- No `crates/emath-sema/tests/` directory on disk; conformance is unit-level in `session.rs` and `recognition.rs` `#[cfg(test)]` modules plus `tests/emath-sema`: existing session tests and `tests/numeric.rs` (default `strict-f64`, explicit `interval-f64`, `E-NUM-*` / `E-UNIT-*` / `E-SHAPE-004` / `E-DOM-002` refusals, units e2e).
 
 ## No-claim boundaries
 
-- Phase 1 admits only the strict-f64 subset and the `evaluate`/`rust.library` goal shape; exact arithmetic, arbitrary produce targets, and non-evaluate request kinds are refused.
+- Phase 1 admits the default `strict-f64` numeric model and an explicit
+  `interval-f64` alternate; those models are computation descriptors, never
+  claims about real-number semantics. Exact real arithmetic, arbitrary
+  produce targets, and non-evaluate request kinds are refused.
 - The build step (backend plus artifact emission) lives in `emath-build`, not here.

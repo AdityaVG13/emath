@@ -1,7 +1,11 @@
 //! `emath-sema` compiler-session tests (migrated from
 //! `crates/emath-sema/src/session.rs`).
 
+use std::collections::BTreeSet;
+
 use emath_core::limits::Limits;
+use emath_core::Severity;
+use emath_ir::{Mig, MigNodeKind};
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
@@ -230,4 +234,420 @@ fn omitted_outputs_section_admits_and_evaluates() {
     assert_eq!(plan.requests[0].target, "y");
     assert_eq!(plan.requests[0].produce, "rust.library");
     assert!(!plan.plans.is_empty(), "evaluate goal must plan");
+}
+
+#[test]
+fn omitted_inputs_section_admits_constant_definitions() {
+    // Kind schema: `inputs:` is AtMostOne. A constant-only declaration
+    // with only `definitions:` must admit and lift those definitions
+    // onto the output surface. An undeclared name still refuses
+    // (E-TYPE-002); omitting inputs must not swallow name errors.
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let text = "emath function TwentyOne:\n    definitions:\n        y = 3 * 7\n";
+    let file = session.load_text("twenty-one", text);
+    let plan = session.plan(file);
+    let codes: Vec<&str> = plan
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "omitted `inputs:` must admit, got {codes:?}"
+    );
+    assert_eq!(plan.package.declarations.len(), 1);
+    let declaration = &plan.package.declarations[0];
+    assert!(
+        declaration.inputs.is_empty(),
+        "constant-only declaration must have no inputs"
+    );
+    assert!(
+        declaration.outputs.iter().any(|field| field.name == "y"),
+        "omitted `outputs:` must expose definition `y`"
+    );
+    assert_eq!(plan.requests.len(), 1);
+    assert_eq!(plan.requests[0].kind, "evaluate");
+    assert_eq!(plan.requests[0].target, "y");
+
+    let unknown = session.check_owned(
+        "unknown-without-inputs",
+        "emath function Bad:\n    definitions:\n        y = missing\n",
+    );
+    assert!(
+        unknown
+            .diagnostics
+            .errors()
+            .any(|diagnostic| diagnostic.code == "E-TYPE-002"),
+        "unknown variable must still refuse when `inputs:` is omitted, got {:?}",
+        unknown
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn untyped_input_name_defaults_to_float64() {
+    // Bare `inputs: x` defaults to Float64 and records that default as
+    // note N-TYPE-001. An explicit `x: Float64` admits the same shape
+    // without the note.
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let bare =
+        "emath function Square:\n    inputs:\n        x\n    definitions:\n        y = x * x\n";
+    let typed =
+        "emath function Square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
+    let bare_result = session.check_owned("bare-input", bare);
+    let typed_result = session.check_owned("typed-input", typed);
+    assert!(
+        !bare_result.diagnostics.has_errors(),
+        "bare input name must admit, got {:?}",
+        bare_result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !typed_result.diagnostics.has_errors(),
+        "annotated input must admit, got {:?}",
+        typed_result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+    let bare_decl = &bare_result.package.declarations[0];
+    let typed_decl = &typed_result.package.declarations[0];
+    assert_eq!(bare_decl.inputs.len(), 1);
+    assert_eq!(typed_decl.inputs.len(), 1);
+    assert_eq!(bare_decl.inputs[0].name, "x");
+    assert_eq!(typed_decl.inputs[0].name, "x");
+    let bare_ty = bare_result
+        .package
+        .types
+        .get(bare_decl.inputs[0].ty.index())
+        .expect("bare input type");
+    let typed_ty = typed_result
+        .package
+        .types
+        .get(typed_decl.inputs[0].ty.index())
+        .expect("typed input type");
+    assert_eq!(bare_ty, typed_ty);
+    assert!(
+        matches!(bare_ty, emath_ir::TypeNode::Float64),
+        "bare input must resolve to Float64, got {bare_ty:?}"
+    );
+    assert!(
+        bare_result.diagnostics.items().iter().any(|diagnostic| {
+            diagnostic.code == "N-TYPE-001"
+                && diagnostic.severity == Severity::Note
+                && diagnostic.message.contains("Float64")
+        }),
+        "defaulted input must emit note N-TYPE-001, got {:?}",
+        bare_result.diagnostics.items()
+    );
+    assert!(
+        typed_result
+            .diagnostics
+            .items()
+            .iter()
+            .all(|diagnostic| diagnostic.code != "N-TYPE-001"),
+        "explicit Float64 must not emit the default note"
+    );
+}
+
+#[test]
+fn head_args_square_admits_and_matches_inputs_form() {
+    // Head-args are identity-equivalent to the same names in `inputs:`.
+    // `-> Float64` declares an output named after the declaration, so
+    // `square = x * x` binds that output (not a silent unused `-> T`).
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let head = "\
+emath function square(x: Float64) -> Float64:
+    definitions:
+        square = x * x
+";
+    let section = "\
+emath function square:
+    inputs:
+        x: Float64
+    outputs:
+        square: Float64
+    definitions:
+        square = x * x
+";
+    let head_result = session.check_owned("head-args-square", head);
+    let section_result = session.check_owned("section-square", section);
+    assert!(
+        !head_result.diagnostics.has_errors(),
+        "head-args square must admit, got {:?}",
+        head_result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !section_result.diagnostics.has_errors(),
+        "inputs: form must admit, got {:?}",
+        section_result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+    let head_decl = &head_result.package.declarations[0];
+    let section_decl = &section_result.package.declarations[0];
+    assert_eq!(head_decl.inputs.len(), 1);
+    assert_eq!(head_decl.inputs[0].name, "x");
+    assert_eq!(section_decl.inputs[0].name, "x");
+    assert!(
+        head_decl.outputs.iter().any(|field| field.name == "square"),
+        "-> T must declare output named after the declaration"
+    );
+    assert!(
+        head_decl.definitions.contains_key("square"),
+        "definition square must admit"
+    );
+    let head_ty = head_result
+        .package
+        .types
+        .get(head_decl.inputs[0].ty.index())
+        .expect("head input type");
+    let section_ty = section_result
+        .package
+        .types
+        .get(section_decl.inputs[0].ty.index())
+        .expect("section input type");
+    assert_eq!(head_ty, section_ty);
+    assert!(matches!(head_ty, emath_ir::TypeNode::Float64));
+}
+
+#[test]
+fn untyped_head_args_default_to_float64() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(
+        "untyped-head-args",
+        "emath function square(x) -> Float64:\n    definitions:\n        square = x * x\n",
+    );
+    assert!(
+        !result.diagnostics.has_errors(),
+        "untyped head-args must admit, got {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        result.diagnostics.items().iter().any(|diagnostic| {
+            diagnostic.code == "N-TYPE-001"
+                && diagnostic.severity == Severity::Note
+                && diagnostic.message.contains("Float64")
+        }),
+        "untyped head-arg must emit N-TYPE-001, got {:?}",
+        result.diagnostics.items()
+    );
+}
+
+#[test]
+fn head_args_mixed_with_inputs_refused() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(
+        "mixed-head-args",
+        "emath function square(x: Float64) -> Float64:\n    inputs:\n        x: Float64\n    definitions:\n        square = x * x\n",
+    );
+    assert!(
+        result
+            .diagnostics
+            .errors()
+            .any(|diagnostic| diagnostic.code == "E-SYN-122"),
+        "mixed head-args + inputs: must refuse E-SYN-122, got {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// The `emath-4yy` exit gate: one source package parses into the
+/// mathematical intent graph with every semantic plane represented.
+const SIX_PLANE_SOURCE: &str = "emath policy SixPlanes:
+    inputs:
+        x: Float64
+
+    outputs:
+        score: Float64
+
+    state:
+        scale: Float64
+
+    constructors:
+        public fn new(scale: Float64) -> Result<Self, ConfigError>:
+            require is_finite(scale)
+
+            Self:
+                scale = scale
+
+    definitions:
+        score = state.scale * x
+
+    goals:
+        evaluate <score>:
+            produce rust.library
+
+    tests:
+        example <unit_scale>:
+            given scale = 1
+            given x = 3
+            expect score == 3
+
+    exports:
+        public constructor new
+        public function score
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+        safety forbid-unsafe
+";
+
+#[test]
+fn one_source_package_parses_into_the_intent_graph_with_every_plane() {
+    // Definition plane: inputs/outputs/state/definitions. Construction
+    // plane: constructor + require obligation + Self assignment. Goal
+    // plane: the evaluate goal. Evidence plane: the example test.
+    // Execution plane: the compile spec. Evolution plane: the exports.
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let file = session.load_text("six-planes", SIX_PLANE_SOURCE);
+    let result = session.plan(file);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "six-plane source must admit, got {codes:?}"
+    );
+
+    let mig = Mig::from_package(&result.package);
+    let kinds: BTreeSet<&'static str> = mig.nodes.iter().map(|node| node.kind.name()).collect();
+    for kind in [
+        MigNodeKind::Declaration,
+        MigNodeKind::Input,
+        MigNodeKind::Output,
+        MigNodeKind::State,
+        MigNodeKind::Definition,
+        MigNodeKind::Constructor,
+        MigNodeKind::Obligation,
+        MigNodeKind::Assignment,
+        MigNodeKind::Goal,
+        MigNodeKind::Test,
+        MigNodeKind::CompileSpec,
+        MigNodeKind::Export,
+    ] {
+        assert!(
+            kinds.contains(kind.name()),
+            "intent graph must represent `{}`, got {kinds:?}",
+            kind.name()
+        );
+    }
+
+    // Snapshot stability: an independent session over the same source
+    // yields a byte-identical intent graph and the same identity.
+    let mut second_session = CompilerSession::new(Limits::default());
+    let second_file = second_session.load_text("six-planes", SIX_PLANE_SOURCE);
+    let second = second_session.plan(second_file);
+    let second_mig = Mig::from_package(&second.package);
+    assert_eq!(mig.canonical(), second_mig.canonical());
+    assert_eq!(mig.identity(), second_mig.identity());
+}
+
+#[test]
+fn expect_less_example_admits_as_worked_example() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let source = "\
+emath function Square:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = x * x
+
+    goals:
+        evaluate <y>:
+            produce rust.library
+
+    tests:
+        example <four_squared>:
+            given x = 4
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+";
+    let result = session.check_owned("worked", source);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        !codes.iter().any(|code| *code == "E-NAME-026"),
+        "expect-less example must not raise E-NAME-026, got {codes:?}"
+    );
+    assert!(
+        codes.is_empty(),
+        "expect-less example must admit, got {codes:?}"
+    );
+    assert_eq!(result.package.tests.len(), 1);
+    assert!(
+        result.package.tests[0].expect.is_none(),
+        "worked example stores expect: None"
+    );
+}
+
+#[test]
+fn empty_example_body_admits_as_worked_example() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let source = "\
+emath function TwentyOne:
+    outputs:
+        y: Float64
+
+    definitions:
+        y = 3 * 7
+
+    tests:
+        example <worked>:
+";
+    let result = session.check_owned("empty-example", source);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "empty example body must admit, got {codes:?}"
+    );
+    assert_eq!(result.package.tests.len(), 1);
+    assert!(result.package.tests[0].given.is_empty());
+    assert!(result.package.tests[0].expect.is_none());
 }

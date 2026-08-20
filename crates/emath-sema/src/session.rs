@@ -5,7 +5,7 @@ use crate::admit::{check_tree, CheckResult};
 use emath_core::parse::source_parser;
 use emath_core::tree::{CommandArgument, ExprKind, Section, StmtKind};
 use emath_core::{limits::Limits, Diagnostics, FileId, SourceStore, Span};
-use emath_ir::{build_goal, native_plan, GoalId, RequestSpec, SemanticPackage};
+use emath_ir::{build_goal, native_plan, GoalId, GoalPayload, RequestSpec, SemanticPackage};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -257,6 +257,7 @@ pub fn elaborate_requests(
                 kind: "evaluate".into(),
                 target: target.clone(),
                 produce: "rust.library".into(),
+                payload: GoalPayload::default(),
                 source: declaration.source,
             });
         }
@@ -307,6 +308,61 @@ pub fn elaborate_requests(
                     kind: "evaluate".into(),
                     target,
                     produce,
+                    payload: GoalPayload::default(),
+                    source: request.source,
+                });
+            }
+            "differentiate" => {
+                let target = request.generic.clone().unwrap_or_default();
+                if target.is_empty() {
+                    diagnostics.error(
+                        "E-GOAL-041",
+                        "`differentiate` requires a target in `<...>`",
+                        request.head_source,
+                    );
+                    continue;
+                }
+                let payload = read_payload(&request.suite);
+                if payload.wrt.is_empty() {
+                    diagnostics.error(
+                        "E-GOAL-044",
+                        "`differentiate` requires `wrt [names]`",
+                        request.source,
+                    );
+                    continue;
+                }
+                requests.push(RequestSpec {
+                    kind: "differentiate".into(),
+                    target,
+                    produce: String::new(),
+                    payload,
+                    source: request.source,
+                });
+            }
+            "benchmark" => {
+                let target = request.generic.clone().unwrap_or_default();
+                if target.is_empty() {
+                    diagnostics.error(
+                        "E-GOAL-041",
+                        "`benchmark` requires a target in `<...>`",
+                        request.head_source,
+                    );
+                    continue;
+                }
+                let payload = read_payload(&request.suite);
+                if payload.against.is_none() {
+                    diagnostics.error(
+                        "E-GOAL-045",
+                        "`benchmark` requires `against <path>`",
+                        request.source,
+                    );
+                    continue;
+                }
+                requests.push(RequestSpec {
+                    kind: "benchmark".into(),
+                    target,
+                    produce: String::new(),
+                    payload,
                     source: request.source,
                 });
             }
@@ -314,7 +370,7 @@ pub fn elaborate_requests(
                 diagnostics.error(
                     "E-GOAL-043",
                     format!(
-                        "request kind `{other}` is outside the Phase 1 subset (supported: evaluate)"
+                        "request kind `{other}` is outside the Phase 1 subset (supported: evaluate, differentiate, benchmark)"
                     ),
                     request.source,
                 );
@@ -365,6 +421,81 @@ fn read_produce(suite: &emath_core::tree::Suite) -> String {
         }
     }
     String::new()
+}
+
+fn read_payload(suite: &emath_core::tree::Suite) -> GoalPayload {
+    let mut payload = GoalPayload::default();
+    for stmt in &suite.statements {
+        let StmtKind::Command { head, argument } = &stmt.kind else {
+            continue;
+        };
+        let Some(word) = head.first() else {
+            continue;
+        };
+        match word.as_str() {
+            "wrt" => payload.wrt = command_names(head, argument.as_ref()),
+            "order" => {
+                payload.order = command_u32(head, argument.as_ref());
+            }
+            "against" => {
+                let path = command_path(head, argument.as_ref());
+                if !path.is_empty() {
+                    payload.against = Some(path);
+                }
+            }
+            "measure" => payload.measure = command_names(head, argument.as_ref()),
+            _ => {}
+        }
+    }
+    payload
+}
+
+fn command_names(head: &[String], argument: Option<&CommandArgument>) -> Vec<String> {
+    match argument {
+        Some(CommandArgument::List(items)) => items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ExprKind::Path { segments, .. } => Some(segments.join(".")),
+                _ => None,
+            })
+            .collect(),
+        Some(CommandArgument::Expr(expr)) => match &expr.kind {
+            ExprKind::Path { segments, .. } => vec![segments.join(".")],
+            ExprKind::List(items) => items
+                .iter()
+                .filter_map(|item| match &item.kind {
+                    ExprKind::Path { segments, .. } => Some(segments.join(".")),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        },
+        None if head.len() > 1 => head[1..].to_vec(),
+        _ => Vec::new(),
+    }
+}
+
+fn command_path(head: &[String], argument: Option<&CommandArgument>) -> String {
+    match argument {
+        Some(CommandArgument::Expr(expr)) => match &expr.kind {
+            ExprKind::Path { segments, .. } => segments.join("::"),
+            _ => String::new(),
+        },
+        None if head.len() > 1 => head[1..].join("::"),
+        _ => String::new(),
+    }
+}
+
+fn command_u32(head: &[String], argument: Option<&CommandArgument>) -> Option<u32> {
+    let text = match argument {
+        Some(CommandArgument::Expr(expr)) => match &expr.kind {
+            ExprKind::Int(text) | ExprKind::Float(text) => text.as_str(),
+            _ => return None,
+        },
+        None => head.get(1).map(String::as_str)?,
+        _ => return None,
+    };
+    text.parse().ok()
 }
 /// Parse through the installed source-parser backend.
 ///

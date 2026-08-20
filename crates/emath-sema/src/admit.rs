@@ -5,12 +5,16 @@ use emath_core::tree::{
     BinaryOp as SynBinOp, Expr, ExprKind, Section, StmtKind, SyntaxTree, TypeExpr,
     TypeKind as SynTypeKind, UnaryOp as SynUnOp,
 };
-use emath_core::{Diagnostics, QualifiedName, Span};
+use emath_core::{Diagnostic, Diagnostics, QualifiedName, SchemaId, Severity, Span};
 use emath_ir::constructor::{Constructor, Field, TestCase, Visibility};
-use emath_ir::goal::CompileSpec;
+use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
+use emath_ir::goal::{CompileSpec, EvidenceLevel};
+use emath_core::tree::CommandArgument;
 use emath_ir::{
-    Declaration, ExprId, ExprNode, KindSchema, Literal, NumericProfile, RepeatPolicy,
-    SafetyProfile, TypeId, TypeNode,
+    Declaration, ExprId, ExprNode, HostBinding, HostMethod, ImportEntry, ImportSelection,
+    KindSchema, Literal, NumericProfile, RepeatPolicy, SafetyProfile, TypeId, TypeNode, Unit,
+    UnitDim, UnitFamily, check_compatible, check_error_limit, check_precision_demand, lookup_unit,
+    parse_numeric_profile, per_unit,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,6 +35,9 @@ const PHASE1_SECTIONS: &[&str] = &[
     "exports",
     "tests",
     "compile",
+    "about",
+    "evidence",
+    "host",
 ];
 
 /// Folds a declaration name for confusable-collision detection (spec
@@ -120,6 +127,25 @@ pub struct CheckResult {
 enum Infer {
     F64,
     Bool,
+    Unit { dims: UnitDim, family: UnitFamily },
+    /// Whole host-imported record. Not a scalar.
+    Opaque,
+    /// Host-deferred field access; numeric use is admitted without fabricating a field type.
+    HostDeferred,
+}
+
+impl Infer {
+    fn from_unit(unit: &Unit) -> Self {
+        if unit.dims == UnitDim::one() {
+            Self::F64
+        } else {
+            Self::Unit {
+                dims: unit.dims,
+                family: unit.family,
+            }
+        }
+    }
+
 }
 
 struct Admitter {
@@ -131,6 +157,7 @@ struct Admitter {
     definitions: BTreeMap<String, ExprId>,
     exprs: Vec<(ExprNode, Span)>,
     types: Vec<TypeNode>,
+    host_types: BTreeSet<String>,
 }
 
 impl Admitter {
@@ -144,6 +171,7 @@ impl Admitter {
             definitions: BTreeMap::new(),
             exprs: Vec::new(),
             types: Vec::new(),
+            host_types: BTreeSet::new(),
         }
     }
 
@@ -167,6 +195,17 @@ impl Admitter {
 
     fn error(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
         self.diagnostics.error(code, message, span);
+    }
+
+    fn note(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
+        self.diagnostics.push(Diagnostic {
+            code,
+            severity: Severity::Note,
+            message: message.into(),
+            primary: span,
+            related: Vec::new(),
+            help: None,
+        });
     }
 
     fn lookup(&self, name: &str) -> Option<Infer> {
@@ -228,19 +267,84 @@ impl Admitter {
                 );
                 None
             }
-            ExprKind::Quantity { .. } => {
-                self.error(
-                    "E-UNIT-001",
-                    "quantity literals (e.g. `1 ms`) are outside the Phase 1 subset (Phase 5)",
-                    expr.source,
-                );
-                None
+            ExprKind::Quantity { value, unit } => {
+                let name = unit.last().map_or("", String::as_str);
+                match lookup_unit(name) {
+                    Ok(looked_up) => {
+                        let inner = match &value.kind {
+                            ExprKind::Int(text) | ExprKind::Float(text) => text.as_str(),
+                            _ => {
+                                self.error(
+                                    "E-UNIT-105",
+                                    "quantity value must be a numeric literal",
+                                    expr.source,
+                                );
+                                return None;
+                            }
+                        };
+                        let parsed = parse_float_constant(inner);
+                        match parsed {
+                            Some(number) if number.is_finite() => {
+                                self.record(
+                                    "sema",
+                                    format!("quantity `{inner} {name}` → {}", looked_up.name),
+                                    expr.source,
+                                );
+                                let id = self.push_expr(
+                                    ExprNode::Literal(Literal::FloatBits(number.to_bits())),
+                                    expr.source,
+                                );
+                                Some((id, Infer::from_unit(&looked_up)))
+                            }
+                            _ => {
+                                self.error(
+                                    "E-TYPE-011",
+                                    format!(
+                                        "non-finite quantity `{inner} {name}` refused under the selected numeric model"
+                                    ),
+                                    expr.source,
+                                );
+                                None
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        self.error(error.code, error.message, expr.source);
+                        None
+                    }
+                }
             }
             ExprKind::Path { segments, .. } => {
                 let name = segments.join(".");
                 if let Some(infer) = self.lookup(&name) {
                     let id = self.push_expr(ExprNode::Variable(QualifiedName(name)), expr.source);
                     return Some((id, infer));
+                }
+                if segments.len() >= 2 {
+                    if matches!(self.lookup(&segments[0]), Some(Infer::Opaque)) {
+                        self.record(
+                            "sema",
+                            format!("host field `{name}` deferred to the host boundary"),
+                            expr.source,
+                        );
+                        let id =
+                            self.push_expr(ExprNode::Variable(QualifiedName(name)), expr.source);
+                        return Some((id, Infer::HostDeferred));
+                    }
+                }
+                if segments.len() == 1 {
+                    if let Ok(unit) = lookup_unit(&segments[0]) {
+                        self.record(
+                            "sema",
+                            format!("unit literal `{}` → {}", segments[0], unit.name),
+                            expr.source,
+                        );
+                        let id = self.push_expr(
+                            ExprNode::Literal(Literal::FloatBits(1.0_f64.to_bits())),
+                            expr.source,
+                        );
+                        return Some((id, Infer::from_unit(&unit)));
+                    }
                 }
                 self.error(
                     E_UNKNOWN_VARIABLE,
@@ -288,7 +392,7 @@ impl Admitter {
                 let mut lowered = Vec::new();
                 for arg in args {
                     let (id, infer) = self.lower_expr(arg)?;
-                    if !matches!(infer, Infer::F64) {
+                    if !matches!(infer, Infer::F64 | Infer::HostDeferred) {
                         self.error(
                             "E-TYPE-012",
                             format!("argument to `{name}` must be Float64"),
@@ -315,7 +419,7 @@ impl Admitter {
             ExprKind::Unary { op, value } => {
                 let (id, infer) = self.lower_expr(value)?;
                 match (op, infer) {
-                    (SynUnOp::Neg, Infer::F64) => {
+                    (SynUnOp::Neg, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred) => {
                         self.record("sema", "negate → strict negate", expr.source);
                         Some((
                             self.push_expr(
@@ -325,10 +429,12 @@ impl Admitter {
                                 },
                                 expr.source,
                             ),
-                            Infer::F64,
+                            infer,
                         ))
                     }
-                    (SynUnOp::Pos, Infer::F64) => Some((id, Infer::F64)),
+                    (SynUnOp::Pos, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred) => {
+                        Some((id, infer))
+                    }
                     (SynUnOp::Not, Infer::Bool) => Some((
                         self.push_expr(
                             ExprNode::Unary {
@@ -356,15 +462,8 @@ impl Admitter {
                                   operation: emath_ir::BinaryOp,
                                   expr: &Expr,
                                   l: ExprId,
-                                  r: ExprId| {
-                    if !matches!(l_infer, Infer::F64) || !matches!(r_infer, Infer::F64) {
-                        admitter.error(
-                            "E-TYPE-012",
-                            format!("operator `{}` requires Float64 operands", operation.name()),
-                            expr.source,
-                        );
-                        return None;
-                    }
+                                  r: ExprId,
+                                  result: Infer| {
                     Some((
                         admitter.push_expr(
                             ExprNode::Binary {
@@ -374,29 +473,47 @@ impl Admitter {
                             },
                             expr.source,
                         ),
-                        Infer::F64,
+                        result,
                     ))
                 };
                 match op {
                     SynBinOp::Add => {
                         self.record("sema", "add → strict f64 add", expr.source);
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatAdd, expr, l, r)
+                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Add, expr, self)?;
+                        arithmetic(self, emath_ir::BinaryOp::StrictFloatAdd, expr, l, r, result)
                     }
                     SynBinOp::Sub => {
                         self.record("sema", "subtract → strict f64 subtract", expr.source);
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatSub, expr, l, r)
+                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Add, expr, self)?;
+                        arithmetic(self, emath_ir::BinaryOp::StrictFloatSub, expr, l, r, result)
                     }
                     SynBinOp::Mul => {
                         self.record("sema", "multiply → strict f64 multiply", expr.source);
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatMul, expr, l, r)
+                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Mul, expr, self)?;
+                        arithmetic(self, emath_ir::BinaryOp::StrictFloatMul, expr, l, r, result)
                     }
                     SynBinOp::Div => {
                         self.record("sema", "divide → strict f64 divide", expr.source);
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatDiv, expr, l, r)
+                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Div, expr, self)?;
+                        arithmetic(self, emath_ir::BinaryOp::StrictFloatDiv, expr, l, r, result)
                     }
                     SynBinOp::Pow => {
                         self.record("sema", "power → strict f64 powf", expr.source);
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatPow, expr, l, r)
+                        if !matches!(
+                            (l_infer, r_infer),
+                            (
+                                Infer::F64 | Infer::HostDeferred,
+                                Infer::F64 | Infer::HostDeferred
+                            )
+                        ) {
+                            self.error(
+                                "E-TYPE-012",
+                                "operator `^` requires dimensionless Float64 operands",
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        arithmetic(self, emath_ir::BinaryOp::StrictFloatPow, expr, l, r, Infer::F64)
                     }
                     SynBinOp::Eq
                     | SynBinOp::Ne
@@ -415,11 +532,11 @@ impl Admitter {
                         if matches!(
                             op,
                             SynBinOp::Lt | SynBinOp::Le | SynBinOp::Gt | SynBinOp::Ge
-                        ) && (!matches!(l_infer, Infer::F64) || !matches!(r_infer, Infer::F64))
+                        ) && !comparable_numeric(l_infer, r_infer)
                         {
                             self.error(
-                                "E-TYPE-012",
-                                "ordered comparisons require Float64 operands",
+                                "E-UNIT-101",
+                                "ordered comparisons require dimensionally compatible numeric operands",
                                 expr.source,
                             );
                             return None;
@@ -563,8 +680,192 @@ fn expr_form_name(kind: &ExprKind) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy)]
+enum NumericCombine {
+    Add,
+    Mul,
+    Div,
+}
+
+fn infer_from_node(node: &TypeNode) -> Infer {
+    match node {
+        TypeNode::Bool => Infer::Bool,
+        TypeNode::UnitRef { name } => unit_infer_from_name(name),
+        TypeNode::Refinement { base, .. } | TypeNode::Interval(base) => infer_from_node(base),
+        TypeNode::Opaque { .. } => Infer::Opaque,
+        _ => Infer::F64,
+    }
+}
+
+fn unit_infer_from_name(name: &str) -> Infer {
+    if let Ok(unit) = lookup_unit(name) {
+        return Infer::from_unit(&unit);
+    }
+    if let Some(inner) = name.strip_prefix("1/") {
+        if let Ok(unit) = lookup_unit(inner) {
+            return Infer::Unit {
+                dims: UnitDim::one().div(unit.dims),
+                family: unit.family,
+            };
+        }
+    }
+    Infer::F64
+}
+
+fn comparable_numeric(left: Infer, right: Infer) -> bool {
+    match (left, right) {
+        (Infer::F64, Infer::F64) => true,
+        (Infer::HostDeferred, Infer::F64)
+        | (Infer::F64, Infer::HostDeferred)
+        | (Infer::HostDeferred, Infer::HostDeferred)
+        | (Infer::HostDeferred, Infer::Unit { .. })
+        | (Infer::Unit { .. }, Infer::HostDeferred) => true,
+        (
+            Infer::Unit {
+                dims: left_dims,
+                family: left_family,
+            },
+            Infer::Unit {
+                dims: right_dims,
+                family: right_family,
+            },
+        ) => left_family == right_family && left_dims == right_dims,
+        _ => false,
+    }
+}
+
+fn combine_numeric(
+    left: Infer,
+    right: Infer,
+    combine: NumericCombine,
+    expr: &Expr,
+    admitter: &mut Admitter,
+) -> Option<Infer> {
+    match (left, right, combine) {
+        (Infer::Opaque, _, _) | (_, Infer::Opaque, _) => {
+            admitter.error(
+                "E-TYPE-012",
+                "opaque host value is not a scalar; access a field",
+                expr.source,
+            );
+            None
+        }
+        (Infer::HostDeferred, Infer::HostDeferred, _) => Some(Infer::F64),
+        (Infer::HostDeferred, Infer::F64, _) | (Infer::F64, Infer::HostDeferred, _) => {
+            Some(Infer::F64)
+        }
+        (Infer::HostDeferred, Infer::Unit { .. }, NumericCombine::Add)
+        | (Infer::Unit { .. }, Infer::HostDeferred, NumericCombine::Add) => {
+            if let Infer::Unit { dims, family } = left {
+                Some(Infer::Unit { dims, family })
+            } else if let Infer::Unit { dims, family } = right {
+                Some(Infer::Unit { dims, family })
+            } else {
+                Some(Infer::F64)
+            }
+        }
+        (Infer::HostDeferred, Infer::Unit { .. }, NumericCombine::Mul | NumericCombine::Div)
+        | (Infer::Unit { .. }, Infer::HostDeferred, NumericCombine::Mul | NumericCombine::Div) => {
+            Some(Infer::F64)
+        }
+        (Infer::F64, Infer::F64, _) => Some(Infer::F64),
+        (Infer::Unit { .. }, Infer::F64, NumericCombine::Add)
+        | (Infer::F64, Infer::Unit { .. }, NumericCombine::Add) => {
+            admitter.error(
+                "E-UNIT-101",
+                "dimension mismatch: cannot add a quantity to a dimensionless value",
+                expr.source,
+            );
+            None
+        }
+        (
+            Infer::Unit {
+                dims: left_dims,
+                family: left_family,
+            },
+            Infer::Unit {
+                dims: right_dims,
+                family: right_family,
+            },
+            NumericCombine::Add,
+        ) => {
+            let dummy_left = Unit::with_family("left".into(), left_dims, 1.0, 0.0, left_family);
+            let dummy_right = Unit::with_family("right".into(), right_dims, 1.0, 0.0, right_family);
+            match check_compatible(&dummy_left, &dummy_right) {
+                Ok(()) => Some(left),
+                Err(error) => {
+                    admitter.error(error.code, error.message, expr.source);
+                    None
+                }
+            }
+        }
+        (Infer::Unit { dims, family }, Infer::F64, NumericCombine::Mul | NumericCombine::Div)
+        | (Infer::F64, Infer::Unit { dims, family }, NumericCombine::Mul) => {
+            Some(Infer::Unit { dims, family })
+        }
+        (Infer::F64, Infer::Unit { dims, family }, NumericCombine::Div) => Some(Infer::Unit {
+            dims: UnitDim::one().div(dims),
+            family,
+        }),
+        (
+            Infer::Unit {
+                dims: left_dims,
+                family: left_family,
+            },
+            Infer::Unit {
+                dims: right_dims,
+                family: right_family,
+            },
+            NumericCombine::Mul,
+        ) => {
+            let dummy_left = Unit::with_family("left".into(), left_dims, 1.0, 0.0, left_family);
+            let dummy_right = Unit::with_family("right".into(), right_dims, 1.0, 0.0, right_family);
+            match dummy_left.mul(&dummy_right) {
+                Ok(product) => Some(Infer::from_unit(&product)),
+                Err(error) => {
+                    admitter.error(error.code, error.message, expr.source);
+                    None
+                }
+            }
+        }
+        (
+            Infer::Unit {
+                dims: left_dims,
+                family: left_family,
+            },
+            Infer::Unit {
+                dims: right_dims,
+                family: right_family,
+            },
+            NumericCombine::Div,
+        ) => {
+            let dummy_left = Unit::with_family("left".into(), left_dims, 1.0, 0.0, left_family);
+            let dummy_right = Unit::with_family("right".into(), right_dims, 1.0, 0.0, right_family);
+            match dummy_left.div(&dummy_right) {
+                Ok(quotient) => Some(Infer::from_unit(&quotient)),
+                Err(error) => {
+                    admitter.error(error.code, error.message, expr.source);
+                    None
+                }
+            }
+        }
+        _ => {
+            admitter.error(
+                "E-TYPE-012",
+                "operator requires numeric operands",
+                expr.source,
+            );
+            None
+        }
+    }
+}
+
 /// Map a surface type to a neutral type node (Phase 1 subset).
-fn map_type(ty: &TypeExpr, diagnostics: &mut Diagnostics) -> Option<TypeNode> {
+fn map_type(
+    ty: &TypeExpr,
+    diagnostics: &mut Diagnostics,
+    host_types: &BTreeSet<String>,
+) -> Option<TypeNode> {
     let SynTypeKind::Path {
         segments,
         generic_args,
@@ -581,31 +882,71 @@ fn map_type(ty: &TypeExpr, diagnostics: &mut Diagnostics) -> Option<TypeNode> {
         return None;
     };
     let leaf = segments.last().map_or("", String::as_str);
+    if host_types.contains(leaf) {
+        return Some(TypeNode::Opaque {
+            name: QualifiedName(leaf.to_string()),
+            provider_contract: Some(SchemaId("emath.host.deferred".into())),
+        });
+    }
     match leaf {
         "Real" | "Float64" | "float64" | "f64" => Some(TypeNode::Float64),
         "Bool" => Some(TypeNode::Bool),
         "Self" => Some(TypeNode::Other(QualifiedName("Self".into()))),
-        "Length" | "Time" | "Duration" | "Velocity" | "Mass" | "Damping" | "Stiffness"
-        | "Force" | "Temperature" | "Information" | "Token" | "Byte" | "MiB" | "m" | "s" | "K"
-        | "kg" | "N" | "Hz" | "W" => {
-            diagnostics.error(
-                "E-UNIT-001",
-                format!(
-                    "type `{leaf}` carries units/refinements outside the Phase 1 subset \
-                     (unit system arrives in Phase 5)"
-                ),
-                ty.source,
-            );
-            None
+        "NonNegative" | "Positive" | "Probability" => {
+            let inner = generic_args
+                .first()
+                .and_then(|arg| map_type(arg, diagnostics, host_types));
+            let base = inner.unwrap_or(TypeNode::Float64);
+            Some(TypeNode::Refinement {
+                base: Box::new(base),
+                predicate: leaf.to_string(),
+            })
+        }
+        "Per" => {
+            if generic_args.len() != 1 {
+                diagnostics.error(
+                    "E-UNIT-105",
+                    "`Per<U>` requires exactly one inner unit",
+                    ty.source,
+                );
+                return None;
+            }
+            let inner_name = match &generic_args[0].kind {
+                SynTypeKind::Path { segments, .. } => segments.last().map_or("", String::as_str),
+                _ => {
+                    diagnostics.error(
+                        "E-UNIT-105",
+                        "`Per<U>` inner argument must be a unit type",
+                        generic_args[0].source,
+                    );
+                    return None;
+                }
+            };
+            match per_unit(inner_name) {
+                Ok(unit) => Some(TypeNode::UnitRef { name: unit.name }),
+                Err(error) => {
+                    diagnostics.error(error.code, error.message, ty.source);
+                    None
+                }
+            }
+        }
+        "Interval" => {
+            let inner = generic_args
+                .first()
+                .and_then(|arg| map_type(arg, diagnostics, host_types))
+                .unwrap_or(TypeNode::Float64);
+            Some(TypeNode::Interval(Box::new(inner)))
+        }
+        "Vector" | "Matrix" | "Tensor" => {
+            map_shape_type(leaf, generic_args, ty, diagnostics, host_types)
+        }
+        "Result" => {
+            let error_name = generic_args
+                .get(1)
+                .map_or_else(|| "ConfigError".to_string(), type_display);
+            Some(TypeNode::Other(QualifiedName(error_name)))
         }
         "Option"
-        | "Vector"
-        | "Matrix"
-        | "Tensor"
-        | "NonNegative"
-        | "Positive"
-        | "Per"
-        | "Interval"
         | "Sequence"
         | "Set"
         | "Array"
@@ -621,25 +962,128 @@ fn map_type(ty: &TypeExpr, diagnostics: &mut Diagnostics) -> Option<TypeNode> {
         | "Witness"
         | "Nat"
         | "Int"
-        | "Rational"
-        | "Probability" => {
+        | "Rational" => {
             diagnostics.error(
                 E_UNSUPPORTED_TYPE,
-                format!(
-                    "type `{leaf}` is outside the Phase 1 subset (Phase 4/5 introduces refinements, shapes and units)"
-                ),
+                format!("type `{leaf}` is outside the Phase 1 subset"),
                 ty.source,
             );
             None
         }
-        "Result" => {
-            let error_name = generic_args
-                .get(1)
-                .map_or_else(|| "ConfigError".to_string(), type_display);
-            Some(TypeNode::Other(QualifiedName(error_name)))
+        other => match lookup_unit(other) {
+            Ok(unit) => Some(TypeNode::UnitRef { name: unit.name }),
+            Err(error) if error.code == "E-UNIT-104" => {
+                diagnostics.error("E-TYPE-001", format!("unknown type `{other}`"), ty.source);
+                None
+            }
+            Err(error) => {
+                diagnostics.error(error.code, error.message, ty.source);
+                None
+            }
+        },
+    }
+}
+
+fn map_shape_type(
+    leaf: &str,
+    generic_args: &[TypeExpr],
+    ty: &TypeExpr,
+    diagnostics: &mut Diagnostics,
+    host_types: &BTreeSet<String>,
+) -> Option<TypeNode> {
+    let element = generic_args
+        .first()
+        .and_then(|arg| map_type(arg, diagnostics, host_types))
+        .unwrap_or(TypeNode::Float64);
+    let extent_args = generic_args.get(1..).unwrap_or(&[]);
+    let mut extents = Vec::new();
+    for arg in extent_args {
+        match &arg.kind {
+            SynTypeKind::List(items) if items.is_empty() => {
+                diagnostics.error(
+                    "E-SHAPE-004",
+                    "declared tensor/vector shape must have rank >= 1",
+                    arg.source,
+                );
+                return None;
+            }
+            SynTypeKind::List(items) => {
+                for item in items {
+                    extents.push(extent_from_type(item, diagnostics)?);
+                }
+            }
+            SynTypeKind::Path { segments, .. } => {
+                let name = segments.last().map_or("", String::as_str);
+                extents.push(emath_ir::Extent::Symbolic(name.to_string()));
+            }
+            _ => {
+                diagnostics.error(
+                    "E-SHAPE-004",
+                    format!("shape extent `{}` is not well-formed", type_display(arg)),
+                    arg.source,
+                );
+                return None;
+            }
         }
-        other => {
-            diagnostics.error("E-TYPE-001", format!("unknown type `{other}`"), ty.source);
+    }
+    if leaf == "Tensor" && extents.is_empty() && extent_args.iter().any(|arg| {
+        matches!(arg.kind, SynTypeKind::List(_))
+    }) {
+        return None;
+    }
+    if !extents.is_empty() {
+        if let Err(error) = emath_ir::Shape::declare(extents.clone()) {
+            diagnostics.error(error.code, error.message, ty.source);
+            return None;
+        }
+    }
+    match leaf {
+        "Vector" => Some(TypeNode::Vector {
+            element: Box::new(element),
+            extent: extents.first().map(|extent| match extent {
+                emath_ir::Extent::Fixed(size) => size.to_string(),
+                emath_ir::Extent::Symbolic(name) => name.clone(),
+            }),
+        }),
+        "Matrix" => Some(TypeNode::Matrix {
+            element: Box::new(element),
+            rows: extents.first().map(|extent| match extent {
+                emath_ir::Extent::Fixed(size) => size.to_string(),
+                emath_ir::Extent::Symbolic(name) => name.clone(),
+            }),
+            cols: extents.get(1).map(|extent| match extent {
+                emath_ir::Extent::Fixed(size) => size.to_string(),
+                emath_ir::Extent::Symbolic(name) => name.clone(),
+            }),
+        }),
+        _ => Some(TypeNode::Tensor {
+            element: Box::new(element),
+            shape: extents
+                .iter()
+                .map(|extent| match extent {
+                    emath_ir::Extent::Fixed(size) => size.to_string(),
+                    emath_ir::Extent::Symbolic(name) => name.clone(),
+                })
+                .collect(),
+        }),
+    }
+}
+
+fn extent_from_type(
+    ty: &TypeExpr,
+    diagnostics: &mut Diagnostics,
+) -> Option<emath_ir::Extent> {
+    match &ty.kind {
+        SynTypeKind::Path { segments, .. } => {
+            let name = segments.last().map_or("", String::as_str);
+            Some(emath_ir::Extent::Symbolic(name.to_string()))
+        }
+        _ => {
+            diagnostics.error(
+                "E-SHAPE-004",
+                format!("shape extent `{}` is not well-formed", type_display(ty)),
+                ty.source,
+            );
             None
         }
     }
@@ -693,8 +1137,12 @@ type AdmitResult = (
 
 /// Admit one declaration into SIR. Returns (declaration, test cases, type
 /// arena, expression arena, trace, diagnostics).
-pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
+pub fn admit_declaration(
+    decl: &emath_core::tree::Declaration,
+    host_types: &BTreeSet<String>,
+) -> AdmitResult {
     let mut admitter = Admitter::new();
+    admitter.host_types = host_types.clone();
     let kind_label = decl.as_kind.clone();
     let is_policy = kind_label == "policy";
     let schema = if is_policy {
@@ -759,34 +1207,85 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
         }
     }
 
-    // Fields: inputs, outputs, state.
+    // Fields: inputs, outputs, state. Head-args lower into the same Field
+    // IR as an `inputs:` section. `-> T` declares a single output named
+    // after the declaration (the example `square = x * x` binds the
+    // declaration name). Mixing the head spelling with the equivalent
+    // section forks identity and is refused.
     let mut fields_infer: BTreeMap<String, Infer> = BTreeMap::new();
     let mut fields_by_section: BTreeMap<&str, Vec<Field>> = BTreeMap::new();
-    let mut insert_field = |admitter: &mut Admitter,
-                            section_name: &'static str,
-                            name: &str,
-                            infer: Infer,
-                            ty_id: TypeId,
-                            span: Span| {
-        if fields_infer.contains_key(name) {
+    let mut outputs_from_head = false;
+    if let Some(signature) = &decl.signature {
+        let stateful = by_name.contains_key("state") || by_name.contains_key("constructors");
+        let refuse_head = kind_label != "function" || stateful;
+        if refuse_head {
             admitter.error(
-                E_DUPLICATE_FIELD,
-                format!("duplicate field `{name}` (declared in section `{section_name}`)"),
-                span,
+                "E-SYN-123",
+                "declaration head arguments are only admitted on stateless `emath function` declarations (no `state:` or `constructors:`)",
+                decl.head_source,
             );
-            return;
         }
-        fields_infer.insert(name.to_string(), infer);
-        fields_by_section
-            .entry(section_name)
-            .or_default()
-            .push(Field {
-                name: name.to_string(),
-                ty: ty_id,
-                visibility: Visibility::Public,
-                source: span,
-            });
-    };
+        if by_name.contains_key("inputs") {
+            admitter.error(
+                "E-SYN-122",
+                "declaration head arguments cannot be mixed with an `inputs:` section; use one spelling",
+                decl.head_source,
+            );
+        }
+        if signature.ret.is_some() && by_name.contains_key("outputs") {
+            admitter.error(
+                "E-SYN-122",
+                "declaration head `->` return type cannot be mixed with an `outputs:` section; use one spelling",
+                decl.head_source,
+            );
+        }
+        let mix_inputs = by_name.contains_key("inputs");
+        let mix_outputs = signature.ret.is_some() && by_name.contains_key("outputs");
+        if !refuse_head && !mix_inputs {
+            for param in &signature.params {
+                if param.by_ref {
+                    admitter.error(
+                        "E-SYN-101",
+                        "by-ref declaration head arguments are outside the Phase 1 subset",
+                        param.source,
+                    );
+                    continue;
+                }
+                if param.default.is_some() {
+                    admitter.error(
+                        "E-SYN-101",
+                        "default values on declaration head arguments are outside the Phase 1 subset",
+                        param.source,
+                    );
+                    continue;
+                }
+                let _ = admit_named_field(
+                    &mut admitter,
+                    &mut fields_infer,
+                    &mut fields_by_section,
+                    "inputs",
+                    &param.name,
+                    &param.ty,
+                    param.source,
+                    true,
+                );
+            }
+        }
+        if !refuse_head && !mix_outputs {
+            if let Some(ret) = &signature.ret {
+                outputs_from_head = admit_named_field(
+                    &mut admitter,
+                    &mut fields_infer,
+                    &mut fields_by_section,
+                    "outputs",
+                    &decl.name,
+                    ret,
+                    ret.source,
+                    false,
+                );
+            }
+        }
+    }
 
     for section_name in ["inputs", "outputs", "state"] {
         if let Some(section) = by_name.get(section_name) {
@@ -799,29 +1298,22 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                     );
                     continue;
                 };
-                let Some(node) = map_type(ty, &mut admitter.diagnostics) else {
-                    continue;
-                };
-                let infer = match &node {
-                    TypeNode::Bool => Infer::Bool,
-                    _ => Infer::F64,
-                };
-                let ty_id = admitter.type_id(node);
-                admitter.record(
-                    "sema",
-                    format!(
-                        "field `{name}` typed as {}",
-                        ty_display(admitter.types.get(ty_id.index()).unwrap())
-                    ),
+                let _ = admit_named_field(
+                    &mut admitter,
+                    &mut fields_infer,
+                    &mut fields_by_section,
+                    section_name,
+                    name,
+                    ty,
                     stmt.source,
+                    section_name == "inputs",
                 );
-                insert_field(&mut admitter, section_name, name, infer, ty_id, stmt.source);
             }
         }
     }
 
     let inputs = fields_by_section.get("inputs").cloned().unwrap_or_default();
-    let outputs_omitted = !by_name.contains_key("outputs");
+    let outputs_omitted = !by_name.contains_key("outputs") && !outputs_from_head;
     let mut outputs_raw = fields_by_section
         .get("outputs")
         .cloned()
@@ -869,18 +1361,27 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                 continue;
             }
             match admitter.lower_expr(value) {
-                Some((id, Infer::F64)) => {
+                Some((id, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred)) => {
                     admitter.record(
                         "sema",
-                        format!("definition `{name}` typed Float64"),
+                        format!("definition `{name}` typed numeric"),
                         value.source,
                     );
                     definitions.insert(name.clone(), id);
+                    // Later definitions may name earlier ones (`b = a * a`).
+                    admitter.definitions.insert(name.clone(), id);
                 }
                 Some((_, Infer::Bool)) => {
                     admitter.error(
                         "E-TYPE-012",
                         format!("definition `{name}` must be Float64 in Phase 1"),
+                        value.source,
+                    );
+                }
+                Some((_, Infer::Opaque)) => {
+                    admitter.error(
+                        "E-TYPE-012",
+                        format!("definition `{name}` must be numeric; opaque host values are not scalars"),
                         value.source,
                     );
                 }
@@ -1041,8 +1542,21 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                     });
                 }
                 "function" => {
+                    let from_diff = name.strip_prefix("gradient_").is_some_and(|target| {
+                        by_name.get("goals").is_some_and(|section| {
+                            section.suite.statements.iter().any(|stmt| {
+                                matches!(
+                                    &stmt.kind,
+                                    StmtKind::Section(goal)
+                                        if goal.name == "differentiate"
+                                            && goal.generic.as_deref() == Some(target)
+                                )
+                            })
+                        })
+                    });
                     if !definitions.contains_key(name)
                         && !outputs_raw.iter().any(|o| o.name == *name)
+                        && !from_diff
                     {
                         admitter.error(
                             "E-NAME-021",
@@ -1121,7 +1635,7 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                             continue;
                         }
                         match admitter.lower_expr(value) {
-                            Some((id, Infer::F64)) => {
+                            Some((id, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred)) => {
                                 given.insert(name.clone(), id);
                             }
                             Some((_, Infer::Bool)) => {
@@ -1131,12 +1645,25 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                                     inner.source,
                                 );
                             }
+                            Some((_, Infer::Opaque)) => {
+                                admitter.error(
+                                    "E-TYPE-012",
+                                    format!("`given {name}` must be Float64; opaque host values are not scalars"),
+                                    inner.source,
+                                );
+                            }
                             None => {}
                         }
                     }
                     StmtKind::Expect(expr) => match admitter.lower_expr(expr) {
                         Some((id, Infer::Bool)) => expect = Some(id),
-                        Some((_, Infer::F64)) => {
+                        Some((
+                            _,
+                            Infer::F64
+                            | Infer::Unit { .. }
+                            | Infer::HostDeferred
+                            | Infer::Opaque,
+                        )) => {
                             admitter.error(
                                 "E-TYPE-012",
                                 "`expect` must be a Boolean comparison",
@@ -1155,17 +1682,6 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
                     }
                 }
             }
-            let Some(expect) = expect else {
-                admitter.error(
-                    "E-NAME-026",
-                    format!(
-                        "example `{}` has no `expect`",
-                        example.generic.clone().unwrap_or_default()
-                    ),
-                    example.source,
-                );
-                continue;
-            };
             if is_policy {
                 // constructor parameters must be supplied by `given` values
                 let constructor_params: Vec<String> = constructors
@@ -1202,6 +1718,10 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
     let output_fields = outputs_raw.clone();
     let state_fields = state.clone();
 
+    let about = admit_about(&mut admitter, by_name.get("about").copied());
+    let evidence = admit_evidence(&mut admitter, by_name.get("evidence").copied());
+    let host = admit_host(&mut admitter, by_name.get("host").copied());
+
     let declaration = Declaration {
         id: emath_ir::DeclarationId(0),
         name: QualifiedName::single(decl.name.clone()),
@@ -1217,6 +1737,9 @@ pub fn admit_declaration(decl: &emath_core::tree::Declaration) -> AdmitResult {
         tests: Vec::new(),
         exports,
         compile_spec,
+        about,
+        evidence,
+        host,
         source: decl.source,
     };
 
@@ -1234,12 +1757,94 @@ fn ty_display(node: &TypeNode) -> String {
     node.display_name()
 }
 
+fn is_infer_marker(ty: &TypeExpr) -> bool {
+    matches!(
+        &ty.kind,
+        SynTypeKind::Path {
+            segments,
+            generic_args,
+        } if generic_args.is_empty() && segments.last().map(String::as_str) == Some("Infer")
+    )
+}
+
+/// Admits one `name: Type` (or untyped `Infer`) field into the structural
+/// maps used for `inputs` / `outputs` / `state`. Untyped names are allowed
+/// only when `allow_infer` is set (bare `inputs:` fields and head-args);
+/// they default to Float64 and emit `N-TYPE-001`.
+fn admit_named_field(
+    admitter: &mut Admitter,
+    fields_infer: &mut BTreeMap<String, Infer>,
+    fields_by_section: &mut BTreeMap<&str, Vec<Field>>,
+    section_name: &'static str,
+    name: &str,
+    ty: &TypeExpr,
+    span: Span,
+    allow_infer: bool,
+) -> bool {
+    let (infer, ty_id) = if is_infer_marker(ty) {
+        if !allow_infer {
+            admitter.error(
+                "E-SYN-101",
+                format!("only `name: Type` declarations are allowed in `{section_name}`"),
+                span,
+            );
+            return false;
+        }
+        let ty_id = admitter.type_id(TypeNode::Float64);
+        admitter.note(
+            "N-TYPE-001",
+            format!("input `{name}` defaulted to Float64"),
+            span,
+        );
+        admitter.record(
+            "sema",
+            format!("field `{name}` typed as Float64 (defaulted)"),
+            span,
+        );
+        (Infer::F64, ty_id)
+    } else {
+        let Some(node) = map_type(ty, &mut admitter.diagnostics, &admitter.host_types) else {
+            return false;
+        };
+        let infer = infer_from_node(&node);
+        let ty_id = admitter.type_id(node);
+        admitter.record(
+            "sema",
+            format!(
+                "field `{name}` typed as {}",
+                ty_display(admitter.types.get(ty_id.index()).unwrap())
+            ),
+            span,
+        );
+        (infer, ty_id)
+    };
+    if fields_infer.contains_key(name) {
+        admitter.error(
+            E_DUPLICATE_FIELD,
+            format!("duplicate field `{name}` (declared in section `{section_name}`)"),
+            span,
+        );
+        return false;
+    }
+    fields_infer.insert(name.to_string(), infer);
+    fields_by_section
+        .entry(section_name)
+        .or_default()
+        .push(Field {
+            name: name.to_string(),
+            ty: ty_id,
+            visibility: Visibility::Public,
+            source: span,
+        });
+    true
+}
+
 impl Admitter {
     fn type_of(&self, id: TypeId) -> Infer {
-        match self.types.get(id.index()) {
-            Some(TypeNode::Bool) => Infer::Bool,
-            _ => Infer::F64,
-        }
+        self.types
+            .get(id.index())
+            .map(infer_from_node)
+            .unwrap_or(Infer::F64)
     }
 }
 
@@ -1261,13 +1866,10 @@ fn admit_constructor(
             );
             continue;
         }
-        let Some(node) = map_type(&param.ty, &mut admitter.diagnostics) else {
+        let Some(node) = map_type(&param.ty, &mut admitter.diagnostics, &admitter.host_types) else {
             continue;
         };
-        let infer = match &node {
-            TypeNode::Bool => Infer::Bool,
-            _ => Infer::F64,
-        };
+        let infer = infer_from_node(&node);
         let ty_id = admitter.type_id(node);
         admitter.params.insert(param.name.clone(), infer);
         parameters.push(Field {
@@ -1283,7 +1885,7 @@ fn admit_constructor(
     let mut postconditions = Vec::new();
     let mut error_type = None;
     if let Some(ret) = ret {
-        if let Some(node) = map_type(ret, &mut admitter.diagnostics) {
+        if let Some(node) = map_type(ret, &mut admitter.diagnostics, &admitter.host_types) {
             error_type = Some(admitter.type_id(node));
         }
     }
@@ -1341,13 +1943,20 @@ fn admit_constructor(
                             continue;
                         }
                         match admitter.lower_expr(value) {
-                            Some((id, Infer::F64)) => {
+                            Some((id, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred)) => {
                                 assignments.insert(name.clone(), id);
                             }
                             Some((_, Infer::Bool)) => {
                                 admitter.error(
                                     "E-TYPE-012",
                                     format!("state field `{name}` must be Float64"),
+                                    value.source,
+                                );
+                            }
+                            Some((_, Infer::Opaque)) => {
+                                admitter.error(
+                                    "E-TYPE-012",
+                                    format!("state field `{name}` must be numeric; opaque host values are not scalars"),
                                     value.source,
                                 );
                             }
@@ -1437,7 +2046,7 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
     let mut spec = CompileSpec {
         target: "rust".into(),
         profile: "library".into(),
-        numeric: NumericProfile::StrictF64,
+        numeric: NumericProfile::default_phase1(),
         safety: SafetyProfile::ForbidUnsafe,
         unresolved: None,
     };
@@ -1460,8 +2069,9 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
         };
         let key = head.first().map_or("", String::as_str);
         let value_text = match argument {
-            Some(emath_core::tree::CommandArgument::Expr(expr)) => match &expr.kind {
+            Some(CommandArgument::Expr(expr)) => match &expr.kind {
                 ExprKind::Path { segments, .. } => Some(segments.join(".")),
+                ExprKind::Int(text) | ExprKind::Float(text) => Some(text.clone()),
                 _ => None,
             },
             _ => None,
@@ -1493,17 +2103,50 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
                 }
                 spec.profile = value_text;
             }
-            "numeric" => {
-                if value_text != "strict-f64" {
-                    admitter.error(
-                        "E-CODEGEN-053",
-                        format!(
-                            "numeric profile `{value_text}` is outside the Phase 1 subset (strict-f64)"
-                        ),
+            "numeric" => match parse_numeric_profile(&value_text) {
+                Ok(profile) => {
+                    spec.numeric = profile;
+                    admitter.record(
+                        "sema",
+                        format!("numeric model `{}`", profile.as_str()),
                         stmt.source,
                     );
                 }
-                spec.numeric = NumericProfile::StrictF64;
+                Err(error) => admitter.error(error.code, error.message, stmt.source),
+            },
+            "precision" => {
+                let Some(bits) = command_u16(argument.as_ref(), &value_text) else {
+                    admitter.error(
+                        "E-NUM-002",
+                        format!("precision demand `{value_text}` is not a bit count"),
+                        stmt.source,
+                    );
+                    continue;
+                };
+                if let Err(error) = check_precision_demand(spec.numeric, bits) {
+                    admitter.error(error.code, error.message, stmt.source);
+                }
+            }
+            "error-limit" => {
+                let Some(limit) = command_f64(argument.as_ref(), &value_text) else {
+                    admitter.error(
+                        "E-NUM-003",
+                        format!("error-limit `{value_text}` is not a finite bound"),
+                        stmt.source,
+                    );
+                    continue;
+                };
+                if let Err(error) = check_error_limit(spec.numeric, limit) {
+                    admitter.error(error.code, error.message, stmt.source);
+                }
+            }
+            "domain" => {
+                if !admit_domain_directive(admitter, argument.as_ref(), stmt.source) {
+                    continue;
+                }
+            }
+            "representation" => {
+                admit_representation(admitter, &mut spec, head, argument.as_ref(), stmt.source);
             }
             "safety" => {
                 if value_text != "forbid-unsafe" {
@@ -1518,11 +2161,21 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
                 spec.safety = SafetyProfile::ForbidUnsafe;
             }
             "unresolved" => {
-                admitter.error(
-                    "E-CODEGEN-055",
-                    "`unresolved <disposition>` is outside the Phase 1 subset (native only)",
-                    stmt.source,
-                );
+                if value_text != "parametric" {
+                    admitter.error(
+                        "E-CODEGEN-055",
+                        format!(
+                            "`unresolved {value_text}` is outside the Phase 1 subset (parametric)"
+                        ),
+                        stmt.source,
+                    );
+                } else {
+                    admitter.record(
+                        "sema",
+                        "compile unresolved parametric: host types stay host-deferred",
+                        stmt.source,
+                    );
+                }
                 spec.unresolved = Some(value_text);
             }
             other => {
@@ -1535,6 +2188,410 @@ fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> Com
         }
     }
     spec
+}
+
+fn command_u16(argument: Option<&CommandArgument>, fallback: &str) -> Option<u16> {
+    command_f64(argument, fallback).and_then(|value| {
+        if value.is_finite() && value >= 0.0 && value == value.trunc() && value <= f64::from(u16::MAX)
+        {
+            Some(value as u16)
+        } else {
+            None
+        }
+    })
+}
+
+fn command_f64(argument: Option<&CommandArgument>, fallback: &str) -> Option<f64> {
+    match argument {
+        Some(CommandArgument::Expr(expr)) => match &expr.kind {
+            ExprKind::Int(text) | ExprKind::Float(text) => parse_float_constant(text),
+            ExprKind::Unary {
+                op: SynUnOp::Neg,
+                value,
+            } => match &value.kind {
+                ExprKind::Int(text) | ExprKind::Float(text) => {
+                    parse_float_constant(text).map(|value| -value)
+                }
+                _ => None,
+            },
+            _ => parse_float_constant(fallback),
+        },
+        _ => parse_float_constant(fallback),
+    }
+}
+
+fn admit_domain_directive(
+    admitter: &mut Admitter,
+    argument: Option<&CommandArgument>,
+    span: Span,
+) -> bool {
+    let Some(CommandArgument::Expr(expr)) = argument else {
+        admitter.error("E-DOM-002", "domain directive requires an interval `lo..hi`", span);
+        return false;
+    };
+    let ExprKind::Range {
+        start: Some(start),
+        end: Some(end),
+        ..
+    } = &expr.kind
+    else {
+        admitter.error(
+            "E-DOM-002",
+            "domain directive requires a bounded interval `lo..hi`",
+            span,
+        );
+        return false;
+    };
+    let (Some(low), Some(high)) = (expr_number(start), expr_number(end)) else {
+        admitter.error(
+            "E-DOM-002",
+            "domain bounds must be numeric literals",
+            span,
+        );
+        return false;
+    };
+    match emath_ir::Interval::checked(low, high) {
+        Ok(_) => true,
+        Err(error) => {
+            admitter.error(error.code, error.message, span);
+            false
+        }
+    }
+}
+
+fn expr_number(expr: &Expr) -> Option<f64> {
+    match &expr.kind {
+        ExprKind::Int(text) | ExprKind::Float(text) => parse_float_constant(text),
+        ExprKind::Unary {
+            op: SynUnOp::Neg,
+            value,
+        } => expr_number(value).map(|value| -value),
+        _ => None,
+    }
+}
+
+fn admit_representation(
+    admitter: &mut Admitter,
+    spec: &mut CompileSpec,
+    head: &[String],
+    argument: Option<&CommandArgument>,
+    span: Span,
+) {
+    let source_name = head.get(1).map(String::as_str).unwrap_or("");
+    let model_name = head.get(2).cloned().or_else(|| match argument {
+        Some(CommandArgument::Expr(expr)) => match &expr.kind {
+            ExprKind::Path { segments, .. } => Some(segments.join(".")),
+            ExprKind::Call { function, .. } => match &function.kind {
+                ExprKind::Path { segments, .. } => Some(segments.join(".")),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    });
+    if source_name == "Real" && model_name.is_none() {
+        admitter.error(
+            "E-NUM-004",
+            "do not map `Real` to `f64` without profile evidence (`representation Real => Float64` or `numeric strict-f64`)",
+            span,
+        );
+        return;
+    }
+    let Some(model_name) = model_name.or_else(|| {
+        if source_name.is_empty() {
+            None
+        } else {
+            Some(source_name.to_string())
+        }
+    }) else {
+        admitter.error(
+            "E-NUM-004",
+            "`representation` requires a named numeric model (Float64 or Interval)",
+            span,
+        );
+        return;
+    };
+    match parse_numeric_profile(&model_name) {
+        Ok(profile) => {
+            spec.numeric = profile;
+            admitter.record(
+                "sema",
+                format!(
+                    "representation evidence: {} → {}",
+                    if source_name.is_empty() {
+                        "declared"
+                    } else {
+                        source_name
+                    },
+                    profile.as_str()
+                ),
+                span,
+            );
+        }
+        Err(error) => admitter.error(error.code, error.message, span),
+    }
+}
+
+fn host_imported_types(imports: &[ImportEntry]) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for import in imports {
+        if import.path.first().map(String::as_str) != Some("host") {
+            continue;
+        }
+        if let ImportSelection::Named(pairs) = &import.selection {
+            for (name, alias) in pairs {
+                names.insert(alias.clone().unwrap_or_else(|| name.clone()));
+            }
+        }
+    }
+    names
+}
+
+fn admit_about(admitter: &mut Admitter, section: Option<&Section>) -> Option<String> {
+    let section = section?;
+    let mut summary = None;
+    for stmt in &section.suite.statements {
+        match &stmt.kind {
+            StmtKind::Command { head, argument } if head.first().map(String::as_str) == Some("summary") => {
+                if let Some(CommandArgument::Expr(expr)) = argument {
+                    if let ExprKind::Str(text) = &expr.kind {
+                        summary = Some(text.clone());
+                        admitter.record("sema", "about summary retained", expr.source);
+                        continue;
+                    }
+                }
+                admitter.error(
+                    "E-SYN-101",
+                    "`about.summary` must be a string literal",
+                    stmt.source,
+                );
+            }
+            _ => {
+                admitter.error(
+                    "E-SYN-101",
+                    "`about:` admits `summary: \"...\"` in Phase 1",
+                    stmt.source,
+                );
+            }
+        }
+    }
+    summary
+}
+
+fn admit_evidence(admitter: &mut Admitter, section: Option<&Section>) -> Vec<EvidenceClaim> {
+    let Some(section) = section else {
+        return Vec::new();
+    };
+    let mut claims = Vec::new();
+    for stmt in &section.suite.statements {
+        let StmtKind::Section(claim) = &stmt.kind else {
+            admitter.error(
+                "E-SYN-101",
+                "expected `claim <name>:` blocks inside `evidence:`",
+                stmt.source,
+            );
+            continue;
+        };
+        if claim.name != "claim" {
+            admitter.error(
+                "E-SYN-101",
+                format!("unknown evidence block `{}`", claim.name),
+                claim.head_source,
+            );
+            continue;
+        }
+        let id = claim.generic.clone().unwrap_or_default();
+        if id.is_empty() {
+            admitter.error(
+                "E-SYN-101",
+                "`claim` requires a name in `<...>`",
+                claim.head_source,
+            );
+            continue;
+        }
+        let mut statement = String::new();
+        let mut class = String::new();
+        for inner in &claim.suite.statements {
+            match &inner.kind {
+                StmtKind::Command { head, argument } if head.first().map(String::as_str) == Some("statement") => {
+                    statement = match argument {
+                        Some(CommandArgument::Expr(expr)) => expr_text(expr),
+                        _ if head.len() > 1 => head[1..].join(" "),
+                        _ => String::new(),
+                    };
+                }
+                StmtKind::Require(expr) => {
+                    class = expr_text(expr);
+                }
+                StmtKind::Command { head, .. } if head.first().map(String::as_str) == Some("require") => {
+                    class = head.get(1).cloned().unwrap_or_default();
+                }
+                _ => {
+                    admitter.error(
+                        "E-SYN-101",
+                        "evidence claims admit `statement ...` and `require ...`",
+                        inner.source,
+                    );
+                }
+            }
+        }
+        admitter.record(
+            "sema",
+            format!("evidence claim `{id}` recorded (verdict not-run)"),
+            claim.head_source,
+        );
+        claims.push(EvidenceClaim {
+            id,
+            statement,
+            class,
+            scope: "declaration".into(),
+            assumptions: Vec::new(),
+            producer: "source".into(),
+            checker: None,
+            verdict: ClaimVerdict::NotRun,
+            level: EvidenceLevel::E1,
+            falsifiers: Vec::new(),
+            artifacts: Vec::new(),
+            fresh_until: None,
+        });
+    }
+    claims
+}
+
+fn admit_host(admitter: &mut Admitter, section: Option<&Section>) -> Vec<HostBinding> {
+    let Some(section) = section else {
+        return Vec::new();
+    };
+    let mut bindings = Vec::new();
+    for stmt in &section.suite.statements {
+        let StmtKind::Section(language) = &stmt.kind else {
+            admitter.error(
+                "E-SYN-101",
+                "expected a language section (`rust:`) inside `host:`",
+                stmt.source,
+            );
+            continue;
+        };
+        for inner in &language.suite.statements {
+            let StmtKind::Section(implement) = &inner.kind else {
+                admitter.error(
+                    "E-SYN-101",
+                    "expected `implement Trait for Type:` inside `host:`",
+                    inner.source,
+                );
+                continue;
+            };
+            if implement.name != "implement" {
+                admitter.error(
+                    "E-SYN-101",
+                    format!("unknown host block `{}`", implement.name),
+                    implement.head_source,
+                );
+                continue;
+            }
+            let generic = implement.generic.clone().unwrap_or_default();
+            let (trait_path, target) = match generic.rsplit_once("::") {
+                Some((trait_path, target)) => (trait_path.to_string(), target.to_string()),
+                None => (generic, String::new()),
+            };
+            let mut methods = Vec::new();
+            for method_stmt in &implement.suite.statements {
+                let StmtKind::FnDecl {
+                    name, params, ret, suite, ..
+                } = &method_stmt.kind
+                else {
+                    admitter.error(
+                        "E-SYN-101",
+                        "expected `method name(...)` inside `implement`",
+                        method_stmt.source,
+                    );
+                    continue;
+                };
+                let mut body = Vec::new();
+                if let Some(suite) = suite {
+                    for body_stmt in &suite.statements {
+                        body.push(stmt_text(body_stmt));
+                    }
+                }
+                methods.push(HostMethod {
+                    name: name.clone(),
+                    params: params
+                        .iter()
+                        .map(|param| {
+                            let ty = type_display(&param.ty);
+                            let ty = if param.by_ref {
+                                format!("&{ty}")
+                            } else {
+                                ty
+                            };
+                            (param.name.clone(), ty)
+                        })
+                        .collect(),
+                    ret: ret.as_ref().map(type_display),
+                    body,
+                });
+            }
+            admitter.record(
+                "sema",
+                format!(
+                    "host binding `{}/{}` retained (trait impl codegen is a Phase 1 no-claim)",
+                    language.name, trait_path
+                ),
+                implement.head_source,
+            );
+            bindings.push(HostBinding {
+                language: language.name.clone(),
+                trait_path,
+                target,
+                methods,
+            });
+        }
+    }
+    bindings
+}
+
+fn expr_text(expr: &Expr) -> String {
+    match &expr.kind {
+        ExprKind::Path { segments, .. } => segments.join("."),
+        ExprKind::Call { function, args } => {
+            format!(
+                "{}({})",
+                expr_text(function),
+                args.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+            )
+        }
+        ExprKind::Str(text) => format!("\"{text}\""),
+        ExprKind::Int(text) | ExprKind::Float(text) => text.clone(),
+        ExprKind::Bool(value) => value.to_string(),
+        _ => "expr".to_string(),
+    }
+}
+
+fn stmt_text(stmt: &emath_core::tree::Stmt) -> String {
+    match &stmt.kind {
+        StmtKind::Command { head, argument } => {
+            let mut text = head.join(" ");
+            if let Some(argument) = argument {
+                text.push(' ');
+                text.push_str(&command_argument_text(argument));
+            }
+            text
+        }
+        _ => "stmt".to_string(),
+    }
+}
+
+fn command_argument_text(argument: &CommandArgument) -> String {
+    match argument {
+        CommandArgument::Expr(expr) => expr_text(expr),
+        CommandArgument::Assignment { name, value } => {
+            format!("{name} = {}", expr_text(value))
+        }
+        CommandArgument::List(items) => format!(
+            "[{}]",
+            items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+        ),
+    }
 }
 
 /// Parse the whole file and admit every declaration (used by the session).
@@ -1557,6 +2614,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     } else {
         None
     };
+    let host_types = host_imported_types(&package.imports);
 
     let mut declaration_id = 0_u32;
     let mut seen_declaration_names: BTreeSet<String> = BTreeSet::new();
@@ -1639,7 +2697,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             continue;
         }
         let (declaration, tests, types, exprs, entries, admit_diagnostics) =
-            admit_declaration(decl);
+            admit_declaration(decl, &host_types);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
         let Some(mut declaration) = declaration else {
