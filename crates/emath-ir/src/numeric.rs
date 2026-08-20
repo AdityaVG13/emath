@@ -226,3 +226,155 @@ pub fn tower_rows() -> String {
     }
     out
 }
+
+/// Computation model selected by `numeric:` / `representation`.
+///
+/// These are computation descriptors, never claims about real-number
+/// semantics. `Real` is not silently `f64`: the Phase 1 default is the
+/// explicit `strict-f64` model when the directive is omitted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NumericProfile {
+    /// IEEE-754 binary64, round-ties-to-even, overflow is error. Phase 1 default.
+    StrictF64,
+    /// Interval enclosure over binary64 endpoints. Explicit only; never a default.
+    IntervalF64,
+}
+
+impl NumericProfile {
+    /// Stable surface name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StrictF64 => "strict-f64",
+            Self::IntervalF64 => "interval-f64",
+        }
+    }
+
+    /// Phase 1 default when `numeric:` is omitted.
+    #[must_use]
+    pub const fn default_phase1() -> Self {
+        Self::StrictF64
+    }
+}
+
+impl Default for NumericProfile {
+    fn default() -> Self {
+        Self::StrictF64
+    }
+}
+
+/// Deterministic behavior descriptor for a selected numeric model.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NumericBehavior {
+    /// Surface name (`strict-f64`, `interval-f64`).
+    pub name: &'static str,
+    /// Rounding mode the model commits to.
+    pub rounding: &'static str,
+    /// Overflow policy the model commits to.
+    pub overflow: &'static str,
+    /// Determinism class token.
+    pub determinism: &'static str,
+    /// Maximum significand bits the model can honor.
+    pub max_precision_bits: u16,
+}
+
+/// Binary64 significand bits (including the implicit 1).
+pub const STRICT_F64_PRECISION_BITS: u16 = 53;
+
+/// Binary64 machine epsilon (`2^-52`).
+pub const STRICT_F64_MACHINE_EPS: f64 = 2.220_446_049_250_313e-16;
+
+/// Parses a numeric-model name. The empty string is the Phase 1 default
+/// (`strict-f64`). Unknown names are typed refusals (`E-NUM-001`).
+pub fn parse_numeric_profile(name: &str) -> Result<NumericProfile, NumericError> {
+    match name {
+        "" | "strict-f64" | "StrictF64" | "Float64" | "float64" | "f64" => {
+            Ok(NumericProfile::StrictF64)
+        }
+        "interval-f64" | "IntervalF64" | "Interval" | "interval" => {
+            Ok(NumericProfile::IntervalF64)
+        }
+        other => Err(NumericError {
+            code: "E-NUM-001",
+            message: format!(
+                "unknown numeric model `{other}` (known: strict-f64, interval-f64)"
+            ),
+        }),
+    }
+}
+
+/// Deterministic behavior descriptor for `profile`.
+#[must_use]
+pub fn numeric_behavior(profile: NumericProfile) -> NumericBehavior {
+    match profile {
+        NumericProfile::StrictF64 => NumericBehavior {
+            name: "strict-f64",
+            rounding: "nearest-even",
+            overflow: "error",
+            determinism: "ieee754-binary64-round-ties-to-even",
+            max_precision_bits: STRICT_F64_PRECISION_BITS,
+        },
+        NumericProfile::IntervalF64 => NumericBehavior {
+            name: "interval-f64",
+            rounding: "outward",
+            overflow: "error",
+            determinism: "binary64-endpoint-interval-outward",
+            max_precision_bits: STRICT_F64_PRECISION_BITS,
+        },
+    }
+}
+
+/// Refuses a precision demand no selected model can honor (`E-NUM-002`).
+pub fn check_precision_demand(
+    profile: NumericProfile,
+    bits: u16,
+) -> Result<(), NumericError> {
+    let behavior = numeric_behavior(profile);
+    if bits == 0 || bits > behavior.max_precision_bits {
+        return Err(NumericError {
+            code: "E-NUM-002",
+            message: format!(
+                "precision demand of {bits} bits cannot be honored by {} (max {} bits)",
+                behavior.name, behavior.max_precision_bits
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Refuses an error-limit demand no selected model can honor (`E-NUM-003`).
+pub fn check_error_limit(
+    profile: NumericProfile,
+    max_abs_error: f64,
+) -> Result<(), NumericError> {
+    if !max_abs_error.is_finite() || max_abs_error < 0.0 {
+        return Err(NumericError {
+            code: "E-NUM-003",
+            message: format!("error-limit `{max_abs_error}` is not a finite non-negative bound"),
+        });
+    }
+    match profile {
+        NumericProfile::StrictF64 => {
+            if max_abs_error == 0.0 || max_abs_error >= STRICT_F64_MACHINE_EPS {
+                Ok(())
+            } else {
+                Err(NumericError {
+                    code: "E-NUM-003",
+                    message: format!(
+                        "strict-f64 cannot honor error-limit {max_abs_error} (tighter than machine epsilon {STRICT_F64_MACHINE_EPS})"
+                    ),
+                })
+            }
+        }
+        NumericProfile::IntervalF64 => {
+            if max_abs_error == 0.0 {
+                Err(NumericError {
+                    code: "E-NUM-003",
+                    message: "interval-f64 cannot honor a zero error-limit (enclosures are not exact reals)".into(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+}

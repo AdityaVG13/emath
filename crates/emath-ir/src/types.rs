@@ -8,7 +8,8 @@ pub enum TypeNode {
     Nat,
     Int,
     Rational,
-    /// Real numbers: IEEE-754 binary64, strict semantics.
+    /// Real under the selected numeric profile (default `strict-f64`).
+    /// Not a claim about real-number arithmetic.
     Float64,
     /// A refinement type `NonNegative<Real>` style; predicate resolved by sema.
     Refinement {

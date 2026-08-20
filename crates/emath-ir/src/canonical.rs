@@ -301,6 +301,34 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
         for field in &declaration.state {
             encode_field(&mut out, package, field, "state");
         }
+        if let Some(about) = &declaration.about {
+            out.push_str("about ");
+            out.push_str(about);
+            out.push('\n');
+        }
+        for claim in &declaration.evidence {
+            out.push_str("claim ");
+            out.push_str(&claim.id);
+            out.push(' ');
+            out.push_str(&claim.statement);
+            out.push(' ');
+            out.push_str(&claim.class);
+            out.push('\n');
+        }
+        for binding in &declaration.host {
+            out.push_str("host ");
+            out.push_str(&binding.language);
+            out.push(' ');
+            out.push_str(&binding.trait_path);
+            out.push(' ');
+            out.push_str(&binding.target);
+            out.push('\n');
+            for method in &binding.methods {
+                out.push_str("host-method ");
+                out.push_str(&method.name);
+                out.push('\n');
+            }
+        }
         for invariant in &declaration.invariants {
             push_str(&mut out, "invariant");
             encode_expr(&mut out, &package.exprs, *invariant);
@@ -334,6 +362,26 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
                 out.push('\n');
                 out.push_str(&goal.requirements.produce);
                 out.push('\n');
+                if !goal.payload.wrt.is_empty() {
+                    out.push_str("wrt ");
+                    out.push_str(&goal.payload.wrt.join(","));
+                    out.push('\n');
+                }
+                if let Some(order) = goal.payload.order {
+                    out.push_str("order ");
+                    out.push_str(&order.to_string());
+                    out.push('\n');
+                }
+                if let Some(against) = &goal.payload.against {
+                    out.push_str("against ");
+                    out.push_str(against);
+                    out.push('\n');
+                }
+                if !goal.payload.measure.is_empty() {
+                    out.push_str("measure ");
+                    out.push_str(&goal.payload.measure.join(","));
+                    out.push('\n');
+                }
                 out.push('\n');
                 out.push_str(goal.requirements.evidence.as_str());
                 out.push('\n');
@@ -425,8 +473,10 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
                         out.push('\n');
                         encode_expr(&mut out, &package.exprs, value);
                     }
-                    out.push_str("expect\n");
-                    encode_expr(&mut out, &package.exprs, test.expect);
+                    if let Some(expect) = test.expect {
+                        out.push_str("expect\n");
+                        encode_expr(&mut out, &package.exprs, expect);
+                    }
                 }
             }
         }

@@ -228,6 +228,14 @@ impl Mig {
             let node = self.push_node(MigNodeKind::Invariant, "invariant", content);
             self.push_edge(owner, MigEdgeKind::Ensures, node);
         }
+        for claim in &declaration.evidence {
+            let node = self.push_node(
+                MigNodeKind::Invariant,
+                format!("claim:{}", claim.id),
+                None,
+            );
+            self.push_edge(owner, MigEdgeKind::Ensures, node);
+        }
         for goal_id in &declaration.goals {
             if let Some(goal) = package.goals.get(goal_id.index()) {
                 let label = format!(
@@ -245,7 +253,7 @@ impl Mig {
         }
         for test_id in &declaration.tests {
             if let Some(test) = package.tests.get(test_id.index()) {
-                let content = Some(canonical_expr(package, test.expect));
+                let content = test.expect.map(|expect| canonical_expr(package, expect));
                 let node = self.push_node(MigNodeKind::Test, test.name.clone(), content);
                 self.push_edge(owner, MigEdgeKind::Tests, node);
             }

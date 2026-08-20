@@ -5,6 +5,8 @@ use crate::package::SemanticPackage;
 use emath_core::{ContentId, SchemaId, Span, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
+pub use crate::numeric::NumericProfile;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Goal {
     pub id: GoalId,
@@ -13,7 +15,22 @@ pub struct Goal {
     pub target: String,
     pub expression: Option<ExprId>,
     pub requirements: GoalRequirements,
+    /// Structured body payload (`wrt`, `order`, `against`, `measure`).
+    pub payload: GoalPayload,
     pub source: Span,
+}
+
+/// Goal-body payload for `differentiate` / `benchmark` (and unused on `evaluate`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GoalPayload {
+    /// `wrt [a, b, c]` names.
+    pub wrt: Vec<String>,
+    /// `order N` for differentiate.
+    pub order: Option<u32>,
+    /// `against path` for benchmark.
+    pub against: Option<String>,
+    /// `measure [a, b]` names.
+    pub measure: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,22 +165,9 @@ impl Default for CompileSpec {
         Self {
             target: String::new(),
             profile: String::new(),
-            numeric: NumericProfile::StrictF64,
+            numeric: NumericProfile::default_phase1(),
             safety: SafetyProfile::ForbidUnsafe,
             unresolved: None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NumericProfile {
-    StrictF64,
-}
-
-impl NumericProfile {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::StrictF64 => "strict-f64",
         }
     }
 }
@@ -280,12 +284,14 @@ pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
     ("phase7.adapter", "adapter not installed until Phase 7"),
 ];
 
-/// One elaborated `evaluate` request recovered from the `goals:` section.
+/// One elaborated request recovered from the `goals:` section.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestSpec {
     pub kind: String,
     pub target: String,
     pub produce: String,
+    /// Structured body payload (`wrt` / `order` / `against` / `measure`).
+    pub payload: GoalPayload,
     pub source: Span,
 }
 
@@ -298,9 +304,26 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
         .and_then(|d| d.definitions.get(&request.target))
         .copied();
     let id = GoalId(u32::try_from(package.goals.len()).unwrap_or(u32::MAX));
+    let kind = match request.kind.as_str() {
+        "evaluate" => GoalKind::Evaluate,
+        "differentiate" => GoalKind::Differentiate,
+        "benchmark" => GoalKind::Benchmark,
+        other => GoalKind::Custom(SchemaId(other.to_string())),
+    };
+    let is_evaluate = matches!(kind, GoalKind::Evaluate);
+    let produce = if request.produce.is_empty() && is_evaluate {
+        PRODUCE_RUST_LIBRARY.to_string()
+    } else {
+        request.produce.clone()
+    };
+    let family = if is_evaluate {
+        "rust-library"
+    } else {
+        "diagnostic"
+    };
     let goal = Goal {
         id,
-        kind: GoalKind::Evaluate,
+        kind,
         target: request.target.clone(),
         expression: target_expr,
         requirements: GoalRequirements {
@@ -308,17 +331,18 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
             exactness: ExactnessPolicy::Exact,
             determinism: DeterminismPolicy::Required,
             target: TargetProfile {
-                family: "rust-library".into(),
+                family: family.into(),
                 triple: None,
                 features: vec![],
             },
-            fallback: FallbackPolicy::NativeOnly,
-            produce: if request.produce.is_empty() {
-                PRODUCE_RUST_LIBRARY.to_string()
+            fallback: if is_evaluate {
+                FallbackPolicy::NativeOnly
             } else {
-                request.produce.clone()
+                FallbackPolicy::Diagnostic
             },
+            produce,
         },
+        payload: request.payload.clone(),
         source: request.source,
     };
     package.push_goal(goal.clone());

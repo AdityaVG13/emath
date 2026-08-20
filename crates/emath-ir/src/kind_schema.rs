@@ -88,7 +88,8 @@ impl KindSchema {
                 (
                     "inputs".into(),
                     SectionSchema {
-                        repeat: RepeatPolicy::ExactlyOne,
+                        // Optional: a constant-only declaration has no inputs.
+                        repeat: RepeatPolicy::AtMostOne,
                         payload: PayloadPolicy::Fields,
                         has_default: false,
                     },
@@ -140,6 +141,30 @@ impl KindSchema {
                         repeat: RepeatPolicy::AtMostOne,
                         payload: PayloadPolicy::Commands,
                         has_default: true,
+                    },
+                ),
+                (
+                    "about".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Commands,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "evidence".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "host".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
                     },
                 ),
             ]),
