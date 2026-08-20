@@ -1,18 +1,40 @@
 #![forbid(unsafe_code)]
 
 //! emath capstone demos: `cargo xtask demo affine-scorer`,
-//! `cargo xtask demo semantic-genesis`, and
-//! `cargo xtask demo holes-synthesis`.
+//! `cargo xtask demo semantic-genesis`, `cargo xtask demo holes-synthesis`,
+//! `cargo xtask demo scoped-binders`, and `cargo xtask demo math-layout`.
 //!
 //! The compiler demos run the real pipeline through the `emath` CLI and
 //! verify deterministic artifacts plus negative controls. The holes
-//! demo runs finite table synthesis in-process. Std-only.
+//! demo runs finite table synthesis in-process; the scoped-binders demo
+//! runs SG-10 binder expansion through the semantic VM and emits a
+//! deterministic receipt; the math-layout demo runs SG-11/SG-12 LaTeX and
+//! PDF-fixture frontends into the shared layout graph. Std-only.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use emath_holes::{SynthesisLaw, impossible_identity_laws, synthesize_tables};
-use emath_term::SymbolId;
+use emath_genesis::{
+    binder_id,
+    vm::{VmBudget, VmOutcome},
+    BinderBudget, BinderDomain, BinderError, BinderFamily, BinderKind, BinderTerm, FreeTermWorld,
+    ScopedBinder, BINDER_SCHEMA, BINDER_VERSION,
+};
+use emath_holes::{impossible_identity_laws, synthesize_tables, SynthesisLaw};
+use emath_layout::{
+    extract, parse_latex, reference_fixture, to_binder_term, LayoutError, PdfPageFixture,
+    PositionedGlyph, LAYOUT_SCHEMA, LAYOUT_VERSION,
+};
+use emath_term::{SymbolId, Term, VariableId};
+use emath_world_ir::fnv1a64;
+
+mod demo_agent_meaning;
+mod demo_finite_analogues;
+mod demo_finite_worlds;
+mod demo_interpretation_portfolio;
+mod demo_joint_tuning;
+mod demo_world_morphisms;
 
 const REFERENCE_SOURCE: &str = "language/examples/01_arbitrary_glyphs.emath";
 const GENERATED_DIR: &str = "examples/generated/semantic-genesis-worlds";
@@ -24,6 +46,15 @@ fn main() {
             Some("affine-scorer") => demo_affine_scorer(),
             Some("semantic-genesis") => demo_semantic_genesis(),
             Some("holes-synthesis") => demo_holes_synthesis(),
+            Some("scoped-binders") => demo_scoped_binders(),
+            Some("math-layout") => demo_math_layout(),
+            Some("interpretation-portfolio") => demo_interpretation_portfolio::run(),
+            Some("finite-analogues") => demo_finite_analogues::demo(),
+            Some("finite-worlds") => demo_finite_worlds::demo(),
+            Some("agent-meaning") => demo_agent_meaning::demo(),
+            Some("world-morphisms") => demo_world_morphisms::demo(),
+            Some("joint-tuning") => demo_joint_tuning::demo(),
+            Some("cache-policy") => demo_cache_policy(),
             Some("all") => {
                 let slice = demo_affine_scorer();
                 if slice != 0 {
@@ -34,16 +65,78 @@ fn main() {
             }
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|all>"
+                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|cache-policy|all>"
                 );
                 2
             }
         }
+    } else if args.first().map(String::as_str) == Some("build-web") {
+        build_web()
+    } else if args.first().map(String::as_str) == Some("check-wasm") {
+        check_wasm()
     } else {
-        eprintln!("usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|all>");
+        eprintln!(
+            "usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|cache-policy|all>"
+        );
+        eprintln!("       cargo xtask build-web");
+        eprintln!("       cargo xtask check-wasm");
         2
     };
     std::process::exit(i32::from(code));
+}
+
+fn demo_cache_policy() -> u8 {
+    println!("== demo cache-policy ==");
+    let work = TempWork::new("emath-xtask-cache-policy");
+    match run_demo_cache_policy(work.path()) {
+        Ok(()) => {
+            println!("cache-policy demo: ok");
+            0
+        }
+        Err(error) => {
+            eprintln!("cache-policy demo FAILED: {error}");
+            1
+        }
+    }
+}
+
+fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
+    let _ = std::fs::remove_dir_all(work);
+    std::fs::create_dir_all(work)
+        .map_err(|error| format!("cannot create {}: {error}", work.display()))?;
+    check(
+        cargo_run(&[
+            "run",
+            "-q",
+            "-p",
+            "emath-cli",
+            "--",
+            "check",
+            "language/examples/01_cache_policy.emath",
+        ]),
+        "cache-policy check",
+    )?;
+    let built = check(
+        cargo_run(&[
+            "run",
+            "-q",
+            "-p",
+            "emath-cli",
+            "--",
+            "build",
+            "language/examples/01_cache_policy.emath",
+            "--out",
+            &work.display().to_string(),
+        ]),
+        "cache-policy build",
+    )?;
+    let stdout = String::from_utf8(built.stdout).map_err(|error| error.to_string())?;
+    require(&stdout, "AdaptiveCachePolicy", "generated crate name")?;
+    require(&stdout, "artifact fnv1a64:", "artifact identity")?;
+    println!("cache-policy admit: ok");
+    println!("cache-policy build: ok");
+    println!("cache-policy host-impl: retained, not emitted (typed no-claim)");
+    Ok(())
 }
 
 fn demo_affine_scorer() -> u8 {
@@ -111,13 +204,14 @@ fn demo_semantic_genesis() -> u8 {
     }
 }
 
-const GENESIS_ARTIFACTS: [&str; 9] = [
+const GENESIS_ARTIFACTS: [&str; 10] = [
     "source-artifact.json",
     "parse-forest.json",
     "signature.json",
     "free-term.json",
     "meaning-problem.json",
     "interpretation-portfolio.json",
+    "g7-portfolio-receipt.txt",
     "world-admission.jsonl",
     "answer-receipt.json",
     "csa-baseline.json",
@@ -455,6 +549,494 @@ fn run_demo_holes_synthesis() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn demo_scoped_binders() -> u8 {
+    println!("== demo scoped-binders ==");
+    let work = TempWork::new("emath-xtask-binders");
+    match run_demo_scoped_binders(work.path()) {
+        Ok(()) => {
+            println!("scoped-binders demo: ok");
+            0
+        }
+        Err(error) => {
+            eprintln!("scoped-binders demo FAILED: {error}");
+            1
+        }
+    }
+}
+
+/// SG-10 production path: builds all six binder kinds across the four
+/// families, expands the expandable ones, evaluates the expansions through
+/// the semantic VM, records the typed refusals, and emits a deterministic
+/// machine-readable receipt with a seeded tamper control.
+fn run_demo_scoped_binders(work: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(work).map_err(|error| format!("create work dir: {error}"))?;
+    emath_genesis::binder::check_version(BINDER_VERSION)
+        .map_err(|error| format!("binder version handshake refused: {error:?}"))?;
+
+    let variable = |name: &str| VariableId(name.to_string());
+    let free = |name: &str| Term::Variable(variable(name));
+    let plus = SymbolId("+".to_string());
+    let times = SymbolId("*".to_string());
+    let make =
+        |kind: BinderKind, family: BinderFamily, domain: BinderDomain, bound: &str, body: Term| {
+            ScopedBinder {
+                kind,
+                family,
+                domain,
+                bound: variable(bound),
+                body: BinderTerm::Leaf(body),
+            }
+        };
+
+    // Expandable binders: structural sum/product/custom, finite-analogue
+    // integral (Riemann-style analogue; no continuum claim).
+    let expandable = [
+        (
+            "sum",
+            make(
+                BinderKind::Sum,
+                BinderFamily::Structural,
+                BinderDomain::FiniteRange { lower: 1, upper: 3 },
+                "x",
+                free("x"),
+            ),
+            plus.clone(),
+        ),
+        (
+            "product",
+            make(
+                BinderKind::Product,
+                BinderFamily::Structural,
+                BinderDomain::FiniteRange { lower: 1, upper: 3 },
+                "x",
+                free("x"),
+            ),
+            times.clone(),
+        ),
+        (
+            "integral-finite-analogue",
+            make(
+                BinderKind::Integral,
+                BinderFamily::FiniteAnalogue,
+                BinderDomain::FiniteRange { lower: 0, upper: 4 },
+                "t",
+                free("t"),
+            ),
+            plus.clone(),
+        ),
+        (
+            "custom-bigjoin",
+            make(
+                BinderKind::Custom("bigjoin".to_string()),
+                BinderFamily::Structural,
+                BinderDomain::FiniteRange { lower: 1, upper: 2 },
+                "k",
+                free("k"),
+            ),
+            plus.clone(),
+        ),
+    ];
+
+    let mut rows: Vec<String> = Vec::new();
+    let environment: emath_genesis::Environment<Term> = BTreeMap::new();
+    for (label, binder, combine) in &expandable {
+        let expanded = binder
+            .expand(combine, BinderBudget::default())
+            .map_err(|error| format!("{label}: expansion refused: {error:?}"))?;
+        let outcome = emath_genesis::run(
+            &expanded,
+            &FreeTermWorld,
+            &environment,
+            &VmBudget { max_steps: 1024 },
+        )
+        .map_err(|error| format!("{label}: vm evaluation failed: {error:?}"))?;
+        let VmOutcome::Complete { value, steps, .. } = outcome else {
+            return Err(format!("{label}: vm suspended on a tiny term"));
+        };
+        rows.push(format!(
+            "expand|{label}|id={:016x}|steps={steps}|vm={}",
+            binder_id(binder),
+            value.canonical()
+        ));
+    }
+
+    // Conventional derivative: expansion is a typed refusal.
+    let derivative = make(
+        BinderKind::Derivative,
+        BinderFamily::Conventional,
+        BinderDomain::Symbolic {
+            anchor: "t".to_string(),
+        },
+        "t",
+        free("t"),
+    );
+    match derivative.expand(&plus, BinderBudget::default()) {
+        Err(BinderError::NotExpandable { kind, family }) => {
+            rows.push(format!(
+                "refuse|derivative|not-expandable|{kind}|{}",
+                family.canonical()
+            ));
+        }
+        other => {
+            return Err(format!(
+                "conventional derivative must refuse, got {other:?}"
+            ))
+        }
+    }
+
+    // Opaque-seeded limit: deterministic seeded identity, seed-sensitive.
+    let limit = make(
+        BinderKind::Limit,
+        BinderFamily::OpaqueSeeded,
+        BinderDomain::Symbolic {
+            anchor: "x->0".to_string(),
+        },
+        "x",
+        free("x"),
+    );
+    let seed_a = limit
+        .opaque_identity(1)
+        .map_err(|error| format!("opaque identity refused: {error:?}"))?;
+    let seed_a_again = limit
+        .opaque_identity(1)
+        .map_err(|error| format!("opaque identity refused: {error:?}"))?;
+    let seed_b = limit
+        .opaque_identity(2)
+        .map_err(|error| format!("opaque identity refused: {error:?}"))?;
+    if seed_a != seed_a_again || seed_a == seed_b {
+        return Err("opaque identity must be seed-deterministic and seed-sensitive".to_string());
+    }
+    rows.push(format!(
+        "opaque|limit|seed1={seed_a:016x}|seed2={seed_b:016x}"
+    ));
+
+    // Budget refusal: 1..=1000 under a budget of 8 instantiations.
+    let big = make(
+        BinderKind::Sum,
+        BinderFamily::Structural,
+        BinderDomain::FiniteRange {
+            lower: 1,
+            upper: 1000,
+        },
+        "x",
+        free("x"),
+    );
+    match big.expand(&plus, BinderBudget { max_terms: 8 }) {
+        Err(BinderError::BudgetExceeded { limit: 8 }) => {
+            rows.push("refuse|sum-1000|budget-exceeded|limit=8".to_string());
+        }
+        other => return Err(format!("budget overrun must refuse, got {other:?}")),
+    }
+
+    // Alpha invariance: renaming the bound variable preserves identity.
+    let alpha = make(
+        BinderKind::Sum,
+        BinderFamily::Structural,
+        BinderDomain::FiniteRange { lower: 1, upper: 3 },
+        "z",
+        free("z"),
+    );
+    if binder_id(&alpha) != binder_id(&expandable[0].1) {
+        return Err("alpha-equivalent binders must share one identity".to_string());
+    }
+    rows.push(format!("alpha|sum|id={:016x}", binder_id(&alpha)));
+
+    // Deterministic machine-readable receipt.
+    let body = rows.join("\n");
+    let receipt_id = fnv1a64(body.as_bytes());
+    let artifact = format!(
+        "{{\"schema\":\"{BINDER_SCHEMA}\",\"version\":{BINDER_VERSION},\"rows\":[{}],\"receipt_id\":\"{receipt_id:016x}\"}}\n",
+        rows.iter()
+            .map(|row| format!("\"{}\"", row.replace('\\', "\\\\").replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let path = work.join("scoped-binders.json");
+    std::fs::write(&path, &artifact).map_err(|error| format!("write receipt: {error}"))?;
+    let reread = std::fs::read_to_string(&path).map_err(|error| format!("reread: {error}"))?;
+    if reread != artifact {
+        return Err("receipt must round-trip byte-exactly".to_string());
+    }
+
+    // Seeded negative control: a tampered receipt body must change the id.
+    let tampered = body.replacen("id=", "id=f", 1);
+    if tampered == body || fnv1a64(tampered.as_bytes()) == receipt_id {
+        return Err("tamper control failed: receipt id did not change".to_string());
+    }
+
+    println!(
+        "scoped-binders: rows={} receipt={receipt_id:016x} artifact={}",
+        rows.len(),
+        path.display()
+    );
+    Ok(())
+}
+
+fn demo_math_layout() -> u8 {
+    println!("== demo math-layout ==");
+    let work = TempWork::new("emath-xtask-layout");
+    match run_demo_math_layout(work.path()) {
+        Ok(()) => {
+            println!("math-layout demo: ok");
+            0
+        }
+        Err(error) => {
+            eprintln!("math-layout demo FAILED: {error}");
+            1
+        }
+    }
+}
+
+/// SG-11/SG-12 production path: parse a mixed LaTeX document, extract the
+/// PDF reference fixture, lower the LaTeX sum through the semantic VM,
+/// record a typed refusal and a retained ambiguity, and emit a
+/// deterministic machine-readable receipt with a seeded tamper control.
+fn run_demo_math_layout(work: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(work).map_err(|error| format!("create work dir: {error}"))?;
+    emath_layout::check_version(LAYOUT_VERSION)
+        .map_err(|error| format!("layout version handshake refused: {error:?}"))?;
+
+    let latex_source = r"Let $\sum_{i=1}^{3} i$ be finite.";
+    let latex_graph =
+        parse_latex(latex_source).map_err(|error| format!("latex parse refused: {error:?}"))?;
+    if latex_graph.source().as_bytes() != latex_source.as_bytes() {
+        return Err("latex source must be preserved byte-exactly".to_string());
+    }
+    let binder_term =
+        to_binder_term(&latex_graph).map_err(|error| format!("latex lower refused: {error:?}"))?;
+    let BinderTerm::Bind(binder) = binder_term else {
+        return Err(format!("expected a sum binder, got {binder_term:?}"));
+    };
+    let expanded = binder
+        .expand(&SymbolId("+".to_string()), BinderBudget::default())
+        .map_err(|error| format!("sum expansion refused: {error:?}"))?;
+    let environment: emath_genesis::Environment<Term> = BTreeMap::new();
+    let outcome = emath_genesis::run(
+        &expanded,
+        &FreeTermWorld,
+        &environment,
+        &VmBudget { max_steps: 1024 },
+    )
+    .map_err(|error| format!("vm evaluation failed: {error:?}"))?;
+    let VmOutcome::Complete { value, steps, .. } = outcome else {
+        return Err("vm suspended on a tiny term".to_string());
+    };
+
+    let mut rows: Vec<String> = Vec::new();
+    rows.push(format!(
+        "latex|sum|graph={:016x}|expand={}|steps={steps}|vm={}",
+        latex_graph.graph_id(),
+        expanded.canonical(),
+        value.canonical()
+    ));
+
+    match parse_latex(r"\foo") {
+        Err(LayoutError::UnknownMacro { name, offset }) => {
+            rows.push(format!("refuse|unknown-macro|{name}|offset={offset}"));
+        }
+        other => return Err(format!("unknown macro must refuse, got {other:?}")),
+    }
+
+    let pdf_graph = extract(&reference_fixture());
+    let supers = pdf_graph
+        .edges()
+        .iter()
+        .filter(|edge| matches!(edge.relation, emath_layout::SpatialRelation::SuperscriptOf))
+        .count();
+    rows.push(format!(
+        "pdf|reference|graph={:016x}|regions={}|supers={supers}",
+        pdf_graph.graph_id(),
+        pdf_graph.formula_regions().count()
+    ));
+
+    let ambiguous = PdfPageFixture {
+        source_label: "demo-ambiguous".to_string(),
+        glyphs: vec![
+            PositionedGlyph {
+                glyph: "x".to_string(),
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 1000,
+                font_size: 1000,
+            },
+            PositionedGlyph {
+                glyph: "2".to_string(),
+                x: 800,
+                y: 300,
+                width: 400,
+                height: 600,
+                font_size: 600,
+            },
+        ],
+    };
+    let amb_graph = extract(&ambiguous);
+    let amb = amb_graph
+        .ambiguities()
+        .first()
+        .ok_or_else(|| "expected a retained ambiguity".to_string())?;
+    rows.push(format!(
+        "ambiguity|node={}|a={}|b={}",
+        amb.node_id.0, amb.reading_a, amb.reading_b
+    ));
+
+    let body = rows.join("\n");
+    let receipt_id = fnv1a64(body.as_bytes());
+    let artifact = format!(
+        "{{\"schema\":\"{LAYOUT_SCHEMA}\",\"version\":{LAYOUT_VERSION},\"rows\":[{}],\"receipt_id\":\"{receipt_id:016x}\"}}\n",
+        rows.iter()
+            .map(|row| format!("\"{}\"", row.replace('\\', "\\\\").replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let path = work.join("math-layout.json");
+    std::fs::write(&path, &artifact).map_err(|error| format!("write receipt: {error}"))?;
+    let reread = std::fs::read_to_string(&path).map_err(|error| format!("reread: {error}"))?;
+    if reread != artifact {
+        return Err("receipt must round-trip byte-exactly".to_string());
+    }
+
+    let tampered = body.replacen("graph=", "graph=f", 1);
+    if tampered == body || fnv1a64(tampered.as_bytes()) == receipt_id {
+        return Err("tamper control failed: receipt id did not change".to_string());
+    }
+
+    println!(
+        "math-layout: rows={} receipt={receipt_id:016x} artifact={}",
+        rows.len(),
+        path.display()
+    );
+    Ok(())
+}
+
+/// rustc-check `emath-wasm` for `wasm32-unknown-unknown` so the target
+/// does not rot. Not a test suite.
+fn check_wasm() -> u8 {
+    println!("== check-wasm ==");
+    let installed = Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .is_some_and(|list| {
+            list.lines()
+                .any(|line| line.trim() == "wasm32-unknown-unknown")
+        });
+    if !installed {
+        eprintln!("check-wasm: rustup target wasm32-unknown-unknown is not installed");
+        eprintln!("            rustup target add wasm32-unknown-unknown");
+        return 1;
+    }
+    let status = Command::new("cargo")
+        .args([
+            "check",
+            "-p",
+            "emath-wasm",
+            "--target",
+            "wasm32-unknown-unknown",
+        ])
+        .status();
+    match status {
+        Ok(status) if status.success() => {
+            println!("check-wasm: emath-wasm wasm32-unknown-unknown ok");
+            0
+        }
+        Ok(_) => {
+            eprintln!(
+                "check-wasm: cargo check -p emath-wasm --target wasm32-unknown-unknown failed"
+            );
+            1
+        }
+        Err(error) => {
+            eprintln!("check-wasm: failed to spawn cargo: {error}");
+            1
+        }
+    }
+}
+
+/// Build `emath-wasm` for `wasm32-unknown-unknown` and stage `web/dist/`.
+fn build_web() -> u8 {
+    println!("== build-web ==");
+    let status = Command::new("cargo")
+        .args([
+            "build",
+            "-p",
+            "emath-wasm",
+            "--target",
+            "wasm32-unknown-unknown",
+            "--release",
+        ])
+        .status();
+    let status = match status {
+        Ok(status) => status,
+        Err(error) => {
+            eprintln!("build-web: failed to spawn cargo: {error}");
+            return 1;
+        }
+    };
+    if !status.success() {
+        eprintln!("build-web: cargo build -p emath-wasm failed");
+        return 1;
+    }
+    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
+    let wasm_src = PathBuf::from(&target_dir)
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("emath_wasm.wasm");
+    if !wasm_src.is_file() {
+        eprintln!("build-web: missing {}", wasm_src.display());
+        return 1;
+    }
+    let dist = PathBuf::from("web/dist");
+    if let Err(error) = std::fs::create_dir_all(&dist) {
+        eprintln!("build-web: cannot create {}: {error}", dist.display());
+        return 1;
+    }
+    let wasm_dest = dist.join("emath.wasm");
+    if let Err(error) = std::fs::copy(&wasm_src, &wasm_dest) {
+        eprintln!(
+            "build-web: cannot copy {} → {}: {error}",
+            wasm_src.display(),
+            wasm_dest.display()
+        );
+        return 1;
+    }
+    for name in ["index.html", "app.js", "style.css"] {
+        let src = PathBuf::from("web").join(name);
+        if src.is_file() {
+            if let Err(error) = std::fs::copy(&src, dist.join(name)) {
+                eprintln!(
+                    "build-web: cannot copy {} → {}: {error}",
+                    src.display(),
+                    dist.join(name).display()
+                );
+                return 1;
+            }
+        } else {
+            eprintln!(
+                "build-web: note: {} not found; skipping (UI half not present yet)",
+                src.display()
+            );
+        }
+    }
+    println!("build-web: wrote {}", dist.display());
+    match std::fs::read_dir(&dist) {
+        Ok(entries) => {
+            let mut names = Vec::new();
+            for entry in entries.flatten() {
+                names.push(entry.path());
+            }
+            names.sort();
+            for path in names {
+                let size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
+                println!("  {}  {size} bytes", path.display());
+            }
+        }
+        Err(error) => eprintln!("build-web: cannot list {}: {error}", dist.display()),
+    }
+    0
 }
 
 fn cargo_run(args: &[&str]) -> Output {
