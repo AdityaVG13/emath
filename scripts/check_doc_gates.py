@@ -2,10 +2,13 @@
 """Gauntlet-08 doc gate: CRATE_MAP <-> workspace, inventory <-> session.
 
 Pins `implementation/CRATE_MAP.md` against the workspace manifest and the
-`crates/` directory (SURF-0003), and `implementation/PUBLIC_API_INVENTORY.md`
-against the `emath-sema` CompilerSession signatures (SURF-0001). The gate
-fails if the docs drift from HEAD; negative controls in `validate.sh` run
-this checker against mutated copies to prove the gate refuses drift.
+non-hidden `crates/` directories (SURF-0003), and
+`implementation/PUBLIC_API_INVENTORY.md` against the `emath-sema`
+CompilerSession signatures (SURF-0001). Hidden directories under
+`crates/` (names starting with `.`, e.g. tool caches like `.asgrep`) are
+not crates and are not mapped. The gate fails if the docs drift from
+HEAD; negative controls in `validate.sh` run this checker against
+mutated copies to prove the gate refuses drift.
 
 Usage:
     check_doc_gates.py [--root ROOT] [--crate-map FILE] [--inventory FILE]
@@ -143,12 +146,16 @@ def main() -> int:
                 f"implemented row name does not match its directory: {name} -> {path}"
             )
 
-    # R2: every directory under crates/ is mapped (no disk-unmapped crates).
+    # R2: every non-hidden directory under crates/ is mapped (no
+    # disk-unmapped crates). Dot-directories are tool caches / editor
+    # state (e.g. crates/.asgrep), not workspace crates.
     if (root / "crates").is_dir():
         mapped_paths = set(implemented.values())
         for child in sorted((root / "crates").iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
             rel = f"crates/{child.name}"
-            if child.is_dir() and rel not in mapped_paths:
+            if rel not in mapped_paths:
                 violations.append(f"crates directory missing from the map: {rel}")
 
     # R3: every workspace member is mapped.
