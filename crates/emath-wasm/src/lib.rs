@@ -198,7 +198,7 @@ fn session_from_source(source: &str) -> (CompilerSession, emath_core::FileId) {
     (session, file)
 }
 
-fn maybe_desugared(object: &mut emath_artifact::JsonObject, desugared: &Option<String>) {
+fn maybe_desugared(object: &mut emath_artifact::JsonObject, desugared: Option<&str>) {
     if let Some(source) = desugared {
         object.string("desugared_source", source);
     }
@@ -314,7 +314,7 @@ fn op_check(source: &str) -> String {
     object.bool("ok", true);
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.strings("declarations", &declaration_names(&result.package));
-    maybe_desugared(&mut object, &prepared.desugared);
+    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
@@ -357,7 +357,7 @@ fn op_plan(source: &str) -> String {
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.objects("requests", &requests);
     object.object_field("plans", plans.finish().trim_end());
-    maybe_desugared(&mut object, &prepared.desugared);
+    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
@@ -372,7 +372,7 @@ fn op_mig(source: &str) -> String {
     object.int("nodes", mig.nodes.len() as u64);
     object.int("edges", mig.edges.len() as u64);
     object.string("identity", &mig.identity().0);
-    maybe_desugared(&mut object, &prepared.desugared);
+    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
@@ -384,7 +384,7 @@ fn op_generate(source: &str) -> String {
         let mut object = JsonWriter::object();
         object.bool("ok", true);
         object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
-        maybe_desugared(&mut object, &prepared.desugared);
+        maybe_desugared(&mut object, prepared.desugared());
         return object.finish();
     }
     let crate_name = crate_name_of(&result.package);
@@ -409,7 +409,7 @@ fn op_generate(source: &str) -> String {
     object.bool("ok", true);
     object.string("crate_name", &crate_name);
     object.objects("files", &files);
-    maybe_desugared(&mut object, &prepared.desugared);
+    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
@@ -422,11 +422,11 @@ fn op_run(payload: &str) -> String {
         let mut object = JsonWriter::object();
         object.bool("ok", true);
         object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
-        maybe_desugared(&mut object, &prepared.desugared);
+        maybe_desugared(&mut object, prepared.desugared());
         return object.finish();
     }
     let report = run_package_with_given(&result.package, envelope.given.as_ref());
-    serialize_run_report(&report, prepared.desugared.as_deref())
+    serialize_run_report(&report, prepared.desugared())
 }
 
 fn op_inputs(source: &str) -> String {
@@ -444,7 +444,7 @@ fn op_inputs(source: &str) -> String {
                 .map(emath_ir::TypeNode::display_name)
                 .unwrap_or_else(|| "Float64".to_string());
             let defaulted = result.diagnostics.items().iter().any(|item| {
-                item.code == "N-TYPE-001" && item.message.contains(&format!("`{}`", field.name))
+                item.code == "N-TYPE-001" && item.message.contains(field.name.as_str())
             });
             let mut entry = JsonWriter::object();
             entry.string("name", &field.name);
@@ -461,7 +461,7 @@ fn op_inputs(source: &str) -> String {
     object.bool("ok", true);
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.objects("declarations", &declarations);
-    maybe_desugared(&mut object, &prepared.desugared);
+    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
