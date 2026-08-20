@@ -24,8 +24,39 @@
 
 use std::ptr;
 use std::slice;
+use std::sync::Once;
 
 use crate::run_op;
+
+static INIT_PANIC_HOOK: Once = Once::new();
+
+/// Install a panic hook that formats panic info cleanly.
+pub fn install_panic_hook() {
+    INIT_PANIC_HOOK.call_once(|| {
+        std::panic::set_hook(Box::new(|info| {
+            let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+                *s
+            } else if let Some(s) = info.payload().downcast_ref::<String>() {
+                s.as_str()
+            } else {
+                "panic payload not a string"
+            };
+            let location = info.location().map_or_else(
+                || "unknown location".to_string(),
+                |l| format!("{}:{}:{}", l.file(), l.line(), l.column()),
+            );
+            eprintln!("emath panic at {location}: {payload}");
+        }));
+    });
+}
+
+/// Optional initialization entry point for the WASM module.
+///
+/// Installs the clean panic hook. Safe to call multiple times.
+#[unsafe(no_mangle)]
+pub extern "C" fn em_init() {
+    install_panic_hook();
+}
 
 /// Allocate `len` bytes of linear memory and return the pointer.
 ///
@@ -71,30 +102,29 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
 /// initialized byte regions in linear memory (module docs invariant 3).
 #[unsafe(no_mangle)]
 pub extern "C" fn em_run(op_ptr: u32, op_len: u32, payload_ptr: u32, payload_len: u32) -> u64 {
+    install_panic_hook();
     let op = match read_utf8(op_ptr, op_len) {
         Ok(op) => op,
-        Err(error) => return pack_json(&crate::error_json(&error)),
+        Err(error) => return pack_json(&crate::error_json(error)),
     };
     let payload = match read_utf8(payload_ptr, payload_len) {
         Ok(payload) => payload,
-        Err(error) => return pack_json(&crate::error_json(&error)),
+        Err(error) => return pack_json(&crate::error_json(error)),
     };
-    pack_json(&run_op(&op, &payload))
+    pack_json(&run_op(op, payload))
 }
 
-fn read_utf8(ptr: u32, len: u32) -> Result<String, String> {
+fn read_utf8<'a>(ptr: u32, len: u32) -> Result<&'a str, &'static str> {
     if len == 0 {
-        return Ok(String::new());
+        return Ok("");
     }
     if ptr == 0 {
-        return Err("invalid UTF-8 input".to_string());
+        return Err("invalid UTF-8 input");
     }
     // SAFETY: host contract (module docs invariant 3): `[ptr, ptr+len)` is
     // a valid initialized region the caller owns for this call.
     let bytes = unsafe { slice::from_raw_parts(ptr as *const u8, len as usize) };
-    std::str::from_utf8(bytes)
-        .map(str::to_owned)
-        .map_err(|_| "invalid UTF-8 input".to_string())
+    std::str::from_utf8(bytes).map_err(|_| "invalid UTF-8 input")
 }
 
 fn pack_json(json: &str) -> u64 {
@@ -109,4 +139,25 @@ fn pack_json(json: &str) -> u64 {
         }
     }
     (u64::from(ptr) << 32) | u64::from(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_em_init() {
+        em_init();
+    }
+
+    #[test]
+    fn test_em_free_zero() {
+        em_free(0, 0);
+    }
+
+    #[test]
+    fn test_read_utf8_empty_and_null() {
+        assert_eq!(read_utf8(0, 0), Ok(""));
+        assert_eq!(read_utf8(0, 10), Err("invalid UTF-8 input"));
+    }
 }

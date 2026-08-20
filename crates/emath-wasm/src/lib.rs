@@ -1,14 +1,16 @@
 //! In-memory emath compiler pipeline for the web demo.
 //!
 //! Safe dispatch lives here and is unit-testable on the host. The tiny C
-//! ABI (`em_alloc` / `em_free` / `em_run`) is confined to [`ffi`].
+//! ABI (`em_alloc` / `em_free` / `em_run` / `em_init`) is confined to [`ffi`].
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
-/// C ABI leaf: `em_alloc`, `em_free`, `em_run`.
+/// C ABI leaf: `em_alloc`, `em_free`, `em_run`, `em_init`.
 #[allow(unsafe_code)]
 pub mod ffi;
+
+pub use ffi::install_panic_hook;
 
 mod desugar;
 

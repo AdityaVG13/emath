@@ -3,14 +3,15 @@
 ## Purpose and layer
 
 - Host-side WASM engine for the in-browser emath demo.
-- Compiles the real compiler pipeline (`emath-syntax` → `emath-sema` → `emath-ir` → `emath-rust-backend`) to `wasm32-unknown-unknown`.
-- Exposes a tiny hand-rolled C ABI (`em_alloc` / `em_free` / `em_run`). No wasm-bindgen, no serde, no filesystem.
+- Compiles the real compiler pipeline (`emath-syntax` -> `emath-sema` -> `emath-ir` -> `emath-rust-backend`) to `wasm32-unknown-unknown`.
+- Exposes a tiny hand-rolled C ABI (`em_alloc` / `em_free` / `em_run` / `em_init`). No wasm-bindgen, no serde, no filesystem.
 
 ## Public types and semantics
 
 - Safe host API: `run_op(op, payload) -> String` returns one JSON object.
 - ABI version constant: `ABI_VERSION = 1`.
 - C ABI (`ffi`):
+  - `em_init()`: initialize runtime environment and clean panic hook.
   - `em_alloc(len) -> ptr`: allocate `len` bytes of linear memory.
   - `em_free(ptr, len)`: reclaim a prior `em_alloc` (or `em_run` response).
   - `em_run(op_ptr, op_len, payload_ptr, payload_len) -> u64`: dispatch; packed as `(ptr as u64) << 32 | (len as u64)`.

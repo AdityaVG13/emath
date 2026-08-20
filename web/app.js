@@ -24,9 +24,12 @@ export function formatDiagnostic(item) {
 }
 
 export function makeEmRun(instance) {
-  const { em_alloc, em_free, em_run, memory } = instance.exports;
+  const { em_alloc, em_free, em_run, em_init, memory } = instance.exports;
   if (typeof em_alloc !== "function" || typeof em_run !== "function") {
     throw new Error("wasm module missing em_alloc/em_run");
+  }
+  if (typeof em_init === "function") {
+    em_init();
   }
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -38,22 +41,29 @@ export function makeEmRun(instance) {
     );
     const opPtr = em_alloc(opBytes.length);
     const payloadPtr = em_alloc(payloadBytes.length);
-    new Uint8Array(memory.buffer, opPtr, opBytes.length).set(opBytes);
-    if (payloadBytes.length > 0) {
-      new Uint8Array(memory.buffer, payloadPtr, payloadBytes.length).set(payloadBytes);
+    let ptr = 0;
+    let len = 0;
+    try {
+      new Uint8Array(memory.buffer, opPtr, opBytes.length).set(opBytes);
+      if (payloadBytes.length > 0) {
+        new Uint8Array(memory.buffer, payloadPtr, payloadBytes.length).set(payloadBytes);
+      }
+      const ret = em_run(opPtr, opBytes.length, payloadPtr, payloadBytes.length);
+      const result = typeof ret === "bigint" ? ret : BigInt(ret);
+      ptr = Number(result >> 32n);
+      len = Number(result & 0xffffffffn);
+      const jsonBytes = new Uint8Array(memory.buffer, ptr, len);
+      const text = decoder.decode(jsonBytes);
+      return JSON.parse(text);
+    } finally {
+      if (typeof em_free === "function") {
+        if (ptr !== 0 || len !== 0) {
+          em_free(ptr, len);
+        }
+        em_free(opPtr, opBytes.length);
+        em_free(payloadPtr, payloadBytes.length);
+      }
     }
-    const ret = em_run(opPtr, opBytes.length, payloadPtr, payloadBytes.length);
-    const result = typeof ret === "bigint" ? ret : BigInt(ret);
-    const ptr = Number(result >> 32n);
-    const len = Number(result & 0xffffffffn);
-    const jsonBytes = new Uint8Array(memory.buffer, ptr, len).slice();
-    const text = decoder.decode(jsonBytes);
-    if (typeof em_free === "function") {
-      em_free(ptr, len);
-      em_free(opPtr, opBytes.length);
-      em_free(payloadPtr, payloadBytes.length);
-    }
-    return JSON.parse(text);
   };
 }
 
