@@ -1,4 +1,5 @@
 /target
+/web/dist/
 
 # standalone test-crate build artifacts (not workspace members)
 tests/*/target/
@@ -106,3 +107,6 @@ START_HERE.md
 TASK_CLOSURE.json
 TREE.txt
 beads_compliance_audit/
+
+# Beads compliance audit dir (managed by /beads-compliance-and-completion-verification skill)
+/beads_compliance_audit/
