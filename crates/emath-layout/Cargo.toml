@@ -1,0 +1,15 @@
+[package]
+name = "emath-layout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Math layout graph with structured LaTeX and PDF-fixture frontends."
+
+[lints]
+workspace = true
+
+[dependencies]
+emath-genesis.workspace = true
+emath-term.workspace = true
+emath-world-ir.workspace = true
