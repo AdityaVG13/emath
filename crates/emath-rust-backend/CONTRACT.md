@@ -2,7 +2,7 @@
 
 ## Purpose and layer
 
-Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). Phase 1 generates one crate per admission: a struct per declaration, a constructor with enforced invariants, an evaluation method per `evaluate <target>` goal, and `#[test]` functions for the `tests:` section. Everything is std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
+Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). Phase 1 generates one crate per admission: a struct plus constructor for stateful declarations, a free function (not a method on an empty struct) when there is no state and no constructors, an evaluation item per `evaluate <target>` goal, and `#[test]` functions for the `tests:` section. Everything is std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
 
 ## Public types and semantics
 
@@ -15,6 +15,7 @@ Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (
 
 - Generated crates are std-only, `#![forbid(unsafe_code)]`, `#![allow(dead_code)]`, and byte-deterministic.
 - Generated manifest emits `edition = "2024"`, sanitized crate name/version; keywords and reserved identifiers are escaped (`type` to `type_`) and never emitted raw.
+- A declaration with no `state` and no constructors emits a free `fn` per evaluate target (no `self`, no unit struct). Worked-example tests call that function directly.
 - Constructors are controlled entry points: every `require` precondition and `ensure`/`invariant` postcondition is checked in generated code before a value escapes.
 - Goals and tests attach by declared ids, never by span geometry.
 - Phase 1 subset: one constructor and one evaluate goal per declaration, strict-f64 types only.
@@ -41,9 +42,10 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-Inline `#[cfg(test)] mod tests` in `lib.rs`:
+Integration tests in `tests/emath-rust-backend`:
 - `keyword_declaration_name_is_escaped_in_generated_rust`
 - `keyword_crate_name_is_escaped_in_manifest`
+- `stateless_declaration_emits_free_function`
 
 ## No-claim boundaries
 

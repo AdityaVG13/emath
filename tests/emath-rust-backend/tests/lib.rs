@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 
 use emath_core::{QualifiedName, Span};
 use emath_ir::{
-    BinaryOp, CompileSpec, Constructor, Declaration, DeclarationId, ExprId, ExprNode, Field,
-    Literal, ObligationClass, ObligationKind, SemanticPackage, TypeId, TypeNode, Visibility,
+    BinaryOp, CompileSpec, Constructor, Declaration, DeclarationId, DeterminismPolicy,
+    EvidenceLevel, ExactnessPolicy, ExprId, ExprNode, FallbackPolicy, Field, Goal, GoalId,
+    GoalKind, GoalPayload, GoalRequirements, Literal, ObligationClass, ObligationKind,
+    SemanticPackage, TargetProfile, TestCase, TypeId, TypeNode, Visibility,
 };
 use emath_rust_backend::BackendInput;
 use emath_rust_ir::ast::{Item, StructDef};
@@ -35,6 +37,9 @@ fn package_for(named: &str) -> SemanticPackage {
         tests: Vec::new(),
         exports: Vec::new(),
         compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
         source: Span::default(),
     });
     package
@@ -174,5 +179,381 @@ fn keyword_crate_name_is_escaped_in_manifest() {
     assert!(
         !manifest.contains("name = \"fn\""),
         "unescaped keyword crate name must not reach the manifest"
+    );
+}
+
+#[test]
+fn expect_less_example_generates_computation_without_assert() {
+    let mut package = SemanticPackage::new();
+    let ty = package.push_type(TypeNode::Float64);
+    let x = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("x")),
+        Span::default(),
+    );
+    let y_def = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::StrictFloatMul,
+            left: x,
+            right: x,
+        },
+        Span::default(),
+    );
+    let four = package.push_expr(
+        ExprNode::Literal(Literal::Integer("4".to_string())),
+        Span::default(),
+    );
+    let mut given = BTreeMap::new();
+    given.insert("x".to_string(), four);
+    let test_id = package.push_test(TestCase {
+        name: "four_squared".to_string(),
+        given,
+        expect: None,
+        source: Span::default(),
+    });
+    let goal_id = package.push_goal(Goal {
+        id: GoalId(0),
+        kind: GoalKind::Evaluate,
+        target: "y".to_string(),
+        expression: Some(y_def),
+        requirements: GoalRequirements {
+            evidence: EvidenceLevel::E1,
+            exactness: ExactnessPolicy::Exact,
+            determinism: DeterminismPolicy::Required,
+            target: TargetProfile {
+                family: "rust-library".to_string(),
+                triple: None,
+                features: Vec::new(),
+            },
+            fallback: FallbackPolicy::NativeOnly,
+            produce: "rust.library".to_string(),
+        },
+        payload: GoalPayload::default(),
+        source: Span::default(),
+    });
+    let mut definitions = BTreeMap::new();
+    definitions.insert("y".to_string(), y_def);
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("Square"),
+        kind: QualifiedName::single("function"),
+        kind_label: "function".to_string(),
+        inputs: vec![Field {
+            name: "x".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        outputs: vec![Field {
+            name: "y".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        state: Vec::new(),
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: vec![goal_id],
+        tests: vec![test_id],
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    let output = BackendInput {
+        package: &package,
+        crate_name: "square".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("worked example must generate");
+    let lib = output
+        .files
+        .get("src/lib.rs")
+        .expect("generated crate has src/lib.rs");
+    assert!(
+        lib.contains("let actual") || lib.contains("fn y"),
+        "worked example must execute the definition, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("let _ ="),
+        "worked example must bind the computed value without asserting, got:\n{lib}"
+    );
+    assert!(
+        !lib.contains("assert!("),
+        "worked example must not assert, got:\n{lib}"
+    );
+}
+
+#[test]
+fn constant_only_declaration_generates_parameterless_method() {
+    let mut package = SemanticPackage::new();
+    let ty = package.push_type(TypeNode::Float64);
+    let three = package.push_expr(
+        ExprNode::Literal(Literal::Integer("3".to_string())),
+        Span::default(),
+    );
+    let seven = package.push_expr(
+        ExprNode::Literal(Literal::Integer("7".to_string())),
+        Span::default(),
+    );
+    let y_def = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::StrictFloatMul,
+            left: three,
+            right: seven,
+        },
+        Span::default(),
+    );
+    let goal_id = package.push_goal(Goal {
+        id: GoalId(0),
+        kind: GoalKind::Evaluate,
+        target: "y".to_string(),
+        expression: Some(y_def),
+        requirements: GoalRequirements {
+            evidence: EvidenceLevel::E1,
+            exactness: ExactnessPolicy::Exact,
+            determinism: DeterminismPolicy::Required,
+            target: TargetProfile {
+                family: "rust-library".to_string(),
+                triple: None,
+                features: Vec::new(),
+            },
+            fallback: FallbackPolicy::NativeOnly,
+            produce: "rust.library".to_string(),
+        },
+        payload: GoalPayload::default(),
+        source: Span::default(),
+    });
+    let mut definitions = BTreeMap::new();
+    definitions.insert("y".to_string(), y_def);
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("TwentyOne"),
+        kind: QualifiedName::single("function"),
+        kind_label: "function".to_string(),
+        inputs: Vec::new(),
+        outputs: vec![Field {
+            name: "y".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        state: Vec::new(),
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: vec![goal_id],
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    let output = BackendInput {
+        package: &package,
+        crate_name: "twenty_one".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("constant-only declaration must generate");
+    let lib = output
+        .files
+        .get("src/lib.rs")
+        .expect("generated crate has src/lib.rs");
+    assert!(
+        lib.contains("fn y()") || lib.contains("fn y(&self)"),
+        "no-input declaration must generate a parameterless evaluator, got:\n{lib}"
+    );
+    assert!(
+        !lib.contains("fn y(&self,") && !lib.contains("fn y(&self ,") && !lib.contains("fn y(,"),
+        "no-input evaluator must not take extra parameters, got:\n{lib}"
+    );
+}
+
+#[test]
+fn stateless_declaration_emits_free_function() {
+    let mut package = SemanticPackage::new();
+    let ty = package.push_type(TypeNode::Float64);
+    let x = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("x")),
+        Span::default(),
+    );
+    let y_def = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::StrictFloatMul,
+            left: x,
+            right: x,
+        },
+        Span::default(),
+    );
+    let goal_id = package.push_goal(Goal {
+        id: GoalId(0),
+        kind: GoalKind::Evaluate,
+        target: "square".to_string(),
+        expression: Some(y_def),
+        requirements: GoalRequirements {
+            evidence: EvidenceLevel::E1,
+            exactness: ExactnessPolicy::Exact,
+            determinism: DeterminismPolicy::Required,
+            target: TargetProfile {
+                family: "rust-library".to_string(),
+                triple: None,
+                features: Vec::new(),
+            },
+            fallback: FallbackPolicy::NativeOnly,
+            produce: "rust.library".to_string(),
+        },
+        payload: GoalPayload::default(),
+        source: Span::default(),
+    });
+    let mut definitions = BTreeMap::new();
+    definitions.insert("square".to_string(), y_def);
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("square"),
+        kind: QualifiedName::single("function"),
+        kind_label: "function".to_string(),
+        inputs: vec![Field {
+            name: "x".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        outputs: vec![Field {
+            name: "square".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        state: Vec::new(),
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: vec![goal_id],
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    let output = BackendInput {
+        package: &package,
+        crate_name: "square".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("stateless square must generate");
+    let lib = output
+        .files
+        .get("src/lib.rs")
+        .expect("generated crate has src/lib.rs");
+    assert!(
+        lib.contains("pub fn square(") && lib.contains("x: f64"),
+        "stateless case must emit a free function, got:\n{lib}"
+    );
+    assert!(
+        !lib.contains("struct square") && !lib.contains("&self"),
+        "stateless case must not emit a unit struct + method, got:\n{lib}"
+    );
+    assert!(
+        output
+            .anchors
+            .iter()
+            .any(|anchor| anchor.label == "fn square"),
+        "source map must anchor the free function, got {:?}",
+        output.anchors
+    );
+}
+
+#[test]
+fn chained_definitions_emit_let_bindings_in_source_order() {
+    let mut package = SemanticPackage::new();
+    let ty = package.push_type(TypeNode::Float64);
+    let file = Span::default().file;
+    let two = package.push_expr(
+        ExprNode::Literal(Literal::Integer("2".to_string())),
+        Span::new(file, 1, 2),
+    );
+    let a_var = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("a")),
+        Span::new(file, 3, 4),
+    );
+    let b_def = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::StrictFloatMul,
+            left: a_var,
+            right: a_var,
+        },
+        Span::new(file, 5, 6),
+    );
+    let goal_id = package.push_goal(Goal {
+        id: GoalId(0),
+        kind: GoalKind::Evaluate,
+        target: "b".to_string(),
+        expression: Some(b_def),
+        requirements: GoalRequirements {
+            evidence: EvidenceLevel::E1,
+            exactness: ExactnessPolicy::Exact,
+            determinism: DeterminismPolicy::Required,
+            target: TargetProfile {
+                family: "rust-library".to_string(),
+                triple: None,
+                features: Vec::new(),
+            },
+            fallback: FallbackPolicy::NativeOnly,
+            produce: "rust.library".to_string(),
+        },
+        payload: GoalPayload::default(),
+        source: Span::default(),
+    });
+    let mut definitions = BTreeMap::new();
+    definitions.insert("a".to_string(), two);
+    definitions.insert("b".to_string(), b_def);
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("Chain"),
+        kind: QualifiedName::single("function"),
+        kind_label: "function".to_string(),
+        inputs: Vec::new(),
+        outputs: vec![Field {
+            name: "b".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        state: Vec::new(),
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: vec![goal_id],
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    let output = BackendInput {
+        package: &package,
+        crate_name: "chain".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("chained definitions must lower");
+    let lib = output
+        .files
+        .get("src/lib.rs")
+        .expect("generated crate has src/lib.rs");
+    assert!(
+        lib.contains("let a =") && lib.contains("pub fn b("),
+        "evaluate b must let-bind earlier definition a, got:\n{lib}"
     );
 }
