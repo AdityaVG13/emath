@@ -1,4 +1,4 @@
-# expect: E-UNIT-001 dimensional mismatch
+# expect: E-UNIT-101 dimensional mismatch
 emath function Bad:
     inputs:
         time: Duration
