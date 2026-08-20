@@ -22,6 +22,7 @@ fn goal_with_produce(produce: &str) -> Goal {
         target: "y".into(),
         expression: None,
         requirements: requirements(ExactnessPolicy::Exact),
+        payload: emath_ir::GoalPayload::default(),
         source: emath_core::Span::default(),
     };
     goal.requirements.produce = produce.to_string();
