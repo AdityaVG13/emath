@@ -27,7 +27,9 @@ tests/*/target/
 
 # local working docs (product notes, curated queues); the shipped spec
 # lives under language/ and the public contract docs under implementation/
-docs/
+docs/*
+!docs/MANUAL.md
+!docs/WHY_NOT_LEAN.md
 
 # agent contract is local-only
 AGENTS.md
