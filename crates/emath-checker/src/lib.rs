@@ -38,7 +38,8 @@ pub use artifact_check::{
 pub use claimlint::{ClaimLinter, LintIssue, lint_claims};
 pub use negative::{
     ControlRun, NegativeControl, NegativeControlKind, run_negative_controls, run_standard_battery,
-    seed_incomplete, seed_stale, seed_tampered, seed_unsupported, seed_wrong_goal,
+    seed_incomplete, seed_stale, seed_tampered, seed_unsupported, seed_wrong_derivative,
+    seed_wrong_goal,
 };
 pub use translation::{
     EquivalenceWitness, TranslationRelation, TranslationSample, check_witness, validate_translation,

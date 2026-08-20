@@ -12,7 +12,7 @@ Frequently re-exported types (not exhaustive):
 
 - `ArtifactInput`, `ArtifactCheckConfig`, `ArtifactCheckIssue`, `ArtifactCheckReport`, `ProviderLockRecord` (module `artifact_check`): `check_artifact`, `check_artifact_dir`, `artifact_input_from_dir`.
 - `ClaimLinter`, `LintIssue` (module `claimlint`): `lint_claims`.
-- `NegativeControl`, `NegativeControlKind`, `ControlRun` (module `negative`): `run_standard_battery`, `run_negative_controls`, `seed_incomplete`, `seed_stale`, `seed_tampered`, `seed_unsupported`, `seed_wrong_goal`.
+- `NegativeControl`, `NegativeControlKind`, `ControlRun` (module `negative`): `run_standard_battery`, `run_negative_controls`, `seed_incomplete`, `seed_stale`, `seed_tampered`, `seed_unsupported`, `seed_wrong_goal`, `seed_wrong_derivative` (Phase 3 planted-value stand-in; refuses via translation `E-EVID-301`, not a differentiate producer).
 - `EquivalenceWitness`, `TranslationRelation`, `TranslationSample` (module `translation`): `validate_translation`, `check_witness`.
 - `CheckerError`: shared failure with a stable `code` and `message`.
 
@@ -47,7 +47,10 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-None on disk currently. No `tests/` directory and no inline `#[cfg(test)]` module in `lib.rs`.
+Integration coverage in `tests/emath-checker`: translation witness recheck,
+`E-EVID-301` / `E-EVID-302` refusals, and
+`seeded_wrong_derivative_is_refused_with_e_evid_301` (Phase 3 planted
+wrong derivative row via `seed_wrong_derivative`).
 
 ## No-claim boundaries
 
