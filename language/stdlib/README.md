@@ -1,6 +1,6 @@
 # emath Standard Library Plan
 
-The standard library is split into semantic contract packages and implementation/provider packages. See `language/spec/12_STANDARD_LIBRARY_CONSTITUTION.md`.
+The standard library is split into semantic contract packages and implementation/provider packages. See `language/spec/standard-library-constitution.md`.
 
 ## Phase 1 core
 

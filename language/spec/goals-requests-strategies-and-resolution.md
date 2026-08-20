@@ -1,4 +1,4 @@
-# Goals, Requests, Strategies and Resolution
+# Chapter 9: Goals, Requests, Strategies and Resolution
 
 ## Goal structure
 

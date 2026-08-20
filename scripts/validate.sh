@@ -568,7 +568,7 @@ echo "demo-host-independent: behavioral asserts gated"
 echo "== semantic genesis generated crate identity =="
 SG_DIR="$TMP_DIR/sg"
 mkdir -p "$SG_DIR"
-cargo run -q -p emath-cli -- compile --parametric language/examples/01_arbitrary_glyphs.emath \
+cargo run -q -p emath-cli -- compile --parametric language/examples/arbitrary-glyphs.emath \
     --out "$SG_DIR" >/dev/null
 # Identity include-set is documented, never silent: `manifest.json`,
 # `source-map.json`, and `hole-manifest.json` are EXCLUDED from the byte
@@ -654,7 +654,7 @@ assert len(entries) == len(files), (
 for entry in entries:
     assert set(entry) == {"generated", "source", "kind"}, f"bad entry shape: {entry!r}"
     assert entry["kind"] == "parametric-world", f"bad kind: {entry!r}"
-    assert os.path.basename(entry["source"]) == "01_arbitrary_glyphs.emath", (
+    assert os.path.basename(entry["source"]) == "arbitrary-glyphs.emath", (
         f"provenance source basename drifted: {entry['source']!r}"
     )
     target = os.path.join(GEN, entry["generated"])
@@ -696,7 +696,7 @@ echo "generated crate is rustfmt-stable"
 echo "== genesis honesty lane =="
 GEN_DIR="$TMP_DIR/genesis"
 mkdir -p "$GEN_DIR"
-cargo run -q -p emath-cli -- genesis language/examples/01_arbitrary_glyphs.emath \
+cargo run -q -p emath-cli -- genesis language/examples/arbitrary-glyphs.emath \
     --out "$GEN_DIR" >/dev/null
 
 # 1. No invented `tested` stamp: authority is structural and the receipt's
@@ -740,7 +740,7 @@ fi
 #    crate and diff its printed values against the receipt answers.
 PARAM_DIR="$TMP_DIR/param"
 mkdir -p "$PARAM_DIR"
-cargo run -q -p emath-cli -- compile --parametric language/examples/01_arbitrary_glyphs.emath \
+cargo run -q -p emath-cli -- compile --parametric language/examples/arbitrary-glyphs.emath \
     --out "$PARAM_DIR" >/dev/null
 PARAM_OUT="$TMP_DIR/param-out.txt"
 (cd "$PARAM_DIR" && cargo run -q) >"$PARAM_OUT"
@@ -775,7 +775,7 @@ echo "genesis receipts agree with compile --parametric values"
 #    three equally-scored winners as a single tested answer.
 GEN1_DIR="$TMP_DIR/genesis-keep1"
 mkdir -p "$GEN1_DIR"
-sed 's/pareto 8/pareto 1/' language/examples/01_arbitrary_glyphs.emath >"$TMP_DIR/keep1.emath"
+sed 's/pareto 8/pareto 1/' language/examples/arbitrary-glyphs.emath >"$TMP_DIR/keep1.emath"
 cargo run -q -p emath-cli -- genesis "$TMP_DIR/keep1.emath" --out "$GEN1_DIR" >/dev/null
 KEEP1_COUNT="$("$PYTHON" -c "import json,sys;print(len(json.load(open(sys.argv[1]))['candidates']))" "$GEN1_DIR/interpretation-portfolio.json")"
 if [ "$KEEP1_COUNT" != "1" ]; then
@@ -794,7 +794,7 @@ fi
 
 # 5. `keep: pareto 0` keeps nothing and is a typed refusal, not an empty
 #    or winner-less artifact.
-sed 's/pareto 8/pareto 0/' language/examples/01_arbitrary_glyphs.emath >"$TMP_DIR/keep0.emath"
+sed 's/pareto 8/pareto 0/' language/examples/arbitrary-glyphs.emath >"$TMP_DIR/keep0.emath"
 if KEEP0_OUT="$(cargo run -q -p emath-cli -- genesis "$TMP_DIR/keep0.emath" --out "$TMP_DIR/genesis-keep0" 2>&1)"; then
     echo "FAIL: keep: pareto 0 genesis succeeded" >&2
     exit 1
@@ -813,7 +813,7 @@ if ! grep -q "policy=portfolio" "$GEN_DIR/g7-portfolio-receipt.txt"; then
     cat "$GEN_DIR/g7-portfolio-receipt.txt" >&2
     exit 1
 fi
-sed 's/interpretation_portfolio/best/' language/examples/01_arbitrary_glyphs.emath >"$TMP_DIR/hidden-winner.emath"
+sed 's/interpretation_portfolio/best/' language/examples/arbitrary-glyphs.emath >"$TMP_DIR/hidden-winner.emath"
 if HIDDEN_OUT="$(cargo run -q -p emath-cli -- genesis "$TMP_DIR/hidden-winner.emath" --out "$TMP_DIR/genesis-hidden" 2>&1)"; then
     echo "FAIL: genesis without interpretation_portfolio collapsed to a single winner" >&2
     printf '%s\n' "$HIDDEN_OUT" >&2

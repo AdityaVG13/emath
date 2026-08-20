@@ -165,7 +165,7 @@ fn untyped_head_args_format_without_infer() {
 
 #[test]
 fn cache_policy_example_parses_as_one_declaration() {
-    let text = include_str!("../../../language/examples/01_cache_policy.emath");
+    let text = include_str!("../../../language/examples/cache-policy.emath");
     let (tree, diagnostics) = parse_str(text);
     let names: Vec<String> = tree
         .items
@@ -193,7 +193,7 @@ fn cache_policy_example_parses_as_one_declaration() {
         .unwrap_or_default();
     assert!(
         !diagnostics.has_errors(),
-        "01_cache_policy.emath must parse; errors={:?} sections={sections:?}",
+        "cache-policy.emath must parse; errors={:?} sections={sections:?}",
         diagnostics
             .errors()
             .map(|error| format!("{}@{}", error.code, error.primary.start))

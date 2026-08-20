@@ -1,4 +1,4 @@
-# Packages, Modules and Imports
+# Chapter 3: Packages, Modules and Imports
 
 ## Package manifest
 

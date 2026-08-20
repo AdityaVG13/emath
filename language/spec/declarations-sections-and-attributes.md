@@ -1,4 +1,4 @@
-# Declarations, Sections and Attributes
+# Chapter 4: Declarations, Sections and Attributes
 
 ## Declaration head
 

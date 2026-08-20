@@ -1,4 +1,4 @@
-# Diagnostics and Tooling Contract
+# Chapter 12: Diagnostics and Tooling Contract
 
 ## Diagnostic structure
 

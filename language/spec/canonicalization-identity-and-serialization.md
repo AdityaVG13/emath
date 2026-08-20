@@ -1,4 +1,4 @@
-# Canonicalization, Identity and Serialization
+# Chapter 11: Canonicalization, Identity and Serialization
 
 ## Source canonicalization
 

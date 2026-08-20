@@ -1,10 +1,10 @@
-# 09_dynamic_mass_spring: Phase 3 acceptance demo model (mass-spring).
+# dynamic-mass-spring: Phase 3 acceptance demo model (mass-spring).
 #
 # Lowering: crates/emath-adapter-rumoca lowers the equivalent structural
 # model into a causal DAE plan (matching + tearing provenance) and executes
 # a deterministic forward-Euler simulation through the runtime Outcome/
 # Budget contract. The kind `dynamic-model` is documented by the custom-kind
-# schema contract (`language/spec/07_CUSTOM_KINDS_SCHEMA_AND_LOWERING.md`); full-text
+# schema contract (`language/spec/custom-kinds-schema-and-lowering.md`); full-text
 # parsing arrives with the lossless parser, until then
 # the structural model is the producer API.
 emath dynamic_model MassSpring:

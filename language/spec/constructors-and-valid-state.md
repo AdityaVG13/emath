@@ -1,4 +1,4 @@
-# Constructors and Valid-State Semantics
+# Chapter 6: Constructors and Valid-State Semantics
 
 ## Purpose
 

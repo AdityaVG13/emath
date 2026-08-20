@@ -30,11 +30,11 @@ use std::sync::OnceLock;
 /// ABI version carried by the `version` op.
 pub const ABI_VERSION: u32 = 1;
 
-const HELLO_SQUARE: &str = include_str!("../../../language/examples/00_hello_square.emath");
+const HELLO_SQUARE: &str = include_str!("../../../language/examples/hello-square.emath");
 const AFFINE_SCORER: &str =
-    include_str!("../../../language/examples/00_stateful_affine_scorer.emath");
+    include_str!("../../../language/examples/stateful-affine-scorer.emath");
 const PARAMETRIC_UNKNOWN: &str =
-    include_str!("../../../language/examples/11_parametric_unknown_operator.emath");
+    include_str!("../../../language/examples/parametric-unknown-operator.emath");
 
 const TUTORIAL_01_QUICKSTART: &str = "\
 # Tutorial 1: Quickstart & Scratchpad

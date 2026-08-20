@@ -1,4 +1,4 @@
-# Language Acceptance Gates
+# Chapter 16: Language Acceptance Gates
 
 The language phase is accepted only when:
 

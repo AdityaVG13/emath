@@ -1,4 +1,4 @@
-# Custom Kinds, Schema and Lowering
+# Chapter 8: Custom Kinds, Schema and Lowering
 
 ## Kind declaration
 

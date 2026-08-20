@@ -1,4 +1,4 @@
-# Lexical, Layout and Source Rules
+# Chapter 2: Lexical, Layout and Source Rules
 
 ## Encoding
 

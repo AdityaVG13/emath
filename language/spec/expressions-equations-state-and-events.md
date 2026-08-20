@@ -1,4 +1,4 @@
-# Expressions, Equations, State and Events
+# Chapter 7: Expressions, Equations, State and Events
 
 ## Expressions
 
