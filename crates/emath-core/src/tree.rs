@@ -47,14 +47,15 @@ pub struct Declaration {
     /// statement form) appear in source order; `sections()` filters the
     /// section statements.
     pub body: Vec<Stmt>,
-    /// Fn-like declaration signature (`extern operator ...(params) -> Ret`).
-    /// `None` for ordinary declarations.
+    /// Fn-like declaration signature: `extern operator ...(params) -> Ret`
+    /// or a stateless `emath function name(args) -> T` head. `None` when
+    /// the declaration uses section `inputs:` / `outputs:` (or omits both).
     pub signature: Option<DeclarationSignature>,
     pub source: Span,
     pub head_source: Span,
 }
 
-/// Fn-like signature carried on an item (e.g. `extern operator`).
+/// Fn-like signature carried on an item (`extern operator` or function head-args).
 #[derive(Clone, Debug, PartialEq)]
 pub struct DeclarationSignature {
     /// Parameter list.
