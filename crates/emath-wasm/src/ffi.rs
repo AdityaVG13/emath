@@ -2,39 +2,40 @@
 //!
 //! # Safety
 //!
-//! This is the only \`unsafe\` module in the crate. Every \`unsafe\` block is
+//! This is the only `unsafe` module in the crate. Every `unsafe` block is
 //! a documented pointer/length pairing with the JS host:
 //!
-//! 1. [\`em_alloc\`] returns either \`0\` (\`len == 0\`) or the start of a
-//!    \`Vec<u8>\` allocation with **capacity == \`len\` exactly** (site-1
-//!    proof: [\`Vec::with_capacity\`] stores the requested capacity verbatim
+//! 1. [`em_alloc`] returns either `0` (`len == 0`) or the start of a
+//!    `Vec<u8>` allocation with **capacity == `len` exactly** (site-1
+//!    proof: [`Vec::with_capacity`] stores the requested capacity verbatim
 //!    (RawVec has no amortized-growth path at allocation time), so
-//!    \`capacity()\` equals \`len\`; pinned by \`test_em_alloc_capacity_exact\`)
-//!    and **length = 0**, leaked via [\`std::mem::forget\`]. The host owns
-//!    that region until [\`em_free\`].
-//! 2. [\`em_free\`] reconstructs that \`Vec\` with \`from_raw_parts(ptr, 0, len)\`
-//!    and drops it. \`ptr\`/\`len\` must match a live allocation from
-//!    [\`em_alloc\`] (including the JSON buffer returned by [\`em_run\`]).
+//!    `capacity()` equals `len`; pinned by `test_em_alloc_capacity_exact`)
+//!    and **length = 0**, leaked via [`std::mem::forget`]. The host owns
+//!    that region until [`em_free`].
+//! 2. [`em_free`] reconstructs that `Vec` with `from_raw_parts(ptr, 0, len)`
+//!    and drops it. `ptr`/`len` must match a live allocation from
+//!    [`em_alloc`] (including the JSON buffer returned by [`em_run`]).
 //!    Double-free or a mismatched length is undefined.
-//! 3. [\`em_run\`] reads \`[op_ptr, op_ptr + op_len)\` and
-//!    \`[payload_ptr, payload_ptr + payload_len)\` as UTF-8. Those slices
+//! 3. [`em_run`] reads `[op_ptr, op_ptr + op_len)` and
+//!    `[payload_ptr, payload_ptr + payload_len)` as UTF-8. Those slices
 //!    must be valid, initialized, and not freed for the duration of the
-//!    call. The packed return value names a fresh [\`em_alloc\`] region
+//!    call. The packed return value names a fresh [`em_alloc`] region
 //!    the host must copy and then free.
 //!
-//! # Why \`#![allow(unsafe_code)]\` stays (edition 2024)
+//! # Why unsafe_code is allowed here (edition 2024)
 //!
-//! The four exported entry points carry \`#[unsafe(no_mangle)]\`. In edition
-//! 2024 an unsafe attribute is itself governed by the \`unsafe_code\` lint,
-//! so nested under \`lib.rs\`'s \`#![deny(unsafe_code)]\` this module needs
-//! the allowance for those attributes alone, before any \`unsafe\` block. The
+//! The four exported entry points carry `#[unsafe(no_mangle)]`. In edition
+//! 2024 an unsafe attribute is itself governed by the `unsafe_code` lint.
+//! `lib.rs` provides the allowance on this leaf module: `#[allow(unsafe_code)]`
+//! on its `pub mod ffi` item (which overrides `lib.rs`'s crate-level
+//! `#![deny(unsafe_code)]` for this child) covers the unsafe attributes and
+//! the `unsafe` blocks below. No inner attribute is needed here. The
 //! allowance cannot be dropped without redesigning symbol export (e.g. a
 //! generated shim crate or linker script), which the web host protocol does
-//! not warrant: every \`unsafe\` block below is a numbered, proof-obligation
-//! site, and \`lib.rs\` confines all of them to this leaf module. Comment
+//! not warrant: every `unsafe` block below is a numbered, proof-obligation
+//! site, and `lib.rs` confines all of them to this leaf module. Comment
 //! only, no code change.
 
-#![allow(unsafe_code)]
 #![allow(clippy::cast_possible_truncation)]
 
 use std::collections::HashSet;
@@ -64,7 +65,7 @@ static INIT_PANIC_HOOK: Once = Once::new();
 static LIVE_ALLOCS: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 fn live_allocs_lock() -> std::sync::MutexGuard<'static, HashSet<u32>> {
-    LIVE_ALLOCS.lock().unwrap_or_else(|e| e.into_inner())
+    LIVE_ALLOCS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Install a panic hook that formats panic info cleanly.
@@ -147,10 +148,10 @@ mod host_alloc {
     }
 }
 
-/// Allocate \`len\` bytes of linear memory and return the pointer.
+/// Allocate `len` bytes of linear memory and return the pointer.
 ///
-/// A zero length returns \`0\`. The host writes into the region, then
-/// either passes it to [\`em_run\`] or frees it with [\`em_free\`].
+/// A zero length returns `0`. The host writes into the region, then
+/// either passes it to [`em_run`] or frees it with [`em_free`].
 ///
 /// Leak-until-`em_free` is the transfer protocol (`mem::forget` inside):
 /// the region stays alive until the host frees it, and the `LIVE_ALLOCS`
@@ -159,8 +160,8 @@ mod host_alloc {
 /// forgetting.
 ///
 /// # Pointer width
-/// - On \`wasm32\`, linear memory pointers are 32-bit, so \`u32\` matches
-///   \`usize\` losslessly.
+/// - On `wasm32`, linear memory pointers are 32-bit, so `u32` matches
+///   `usize` losslessly.
 /// - On 64-bit host builds (unit tests), an internal table routes 32-bit
 ///   IDs to native pointers to avoid 64-to-32-bit truncation.
 #[unsafe(no_mangle)]
@@ -168,9 +169,9 @@ pub extern "C" fn em_alloc(len: u32) -> u32 {
     alloc_region(len).0
 }
 
-/// Build an exact-size region; returns \`(address, capacity)\`.
+/// Build an exact-size region; returns `(address, capacity)`.
 ///
-/// Private seam so \`#[cfg(test)]\` can assert the exact-capacity invariant
+/// Private seam so `#[cfg(test)]` can assert the exact-capacity invariant
 /// (site 1) through the real production construction path.
 fn alloc_region(len: u32) -> (u32, usize) {
     if len == 0 {
@@ -208,12 +209,12 @@ fn alloc_region(len: u32) -> (u32, usize) {
     }
 }
 
-/// Reclaim a region previously returned by [\`em_alloc\`] or [\`em_run\`].
+/// Reclaim a region previously returned by [`em_alloc`] or [`em_run`].
 ///
 /// # Safety (host contract)
 ///
-/// \`ptr\` and \`len\` must be a live pair from [\`em_alloc\`]. \`ptr == 0\` is a
-/// no-op (the \`len == 0\` allocation).
+/// `ptr` and `len` must be a live pair from [`em_alloc`]. `ptr == 0` is a
+/// no-op (the `len == 0` allocation).
 #[unsafe(no_mangle)]
 pub extern "C" fn em_free(ptr: u32, len: u32) {
     if ptr == 0 {
@@ -266,14 +267,14 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     host_alloc::free(ptr, len);
 }
 
-/// Dispatch \`op\` / \`payload\` and return a packed JSON allocation.
+/// Dispatch `op` / `payload` and return a packed JSON allocation.
 ///
-/// The \`u64\` is \`(ptr as u64) << 32 | (len as u64)\`. The host copies
-/// \`[ptr, ptr + len)\` then calls [\`em_free\`]\`(ptr, len)\`.
+/// The `u64` is `(ptr as u64) << 32 | (len as u64)`. The host copies
+/// `[ptr, ptr + len)` then calls [`em_free`]`(ptr, len)`.
 ///
 /// # Safety (host contract)
 ///
-/// \`op_ptr\`/\`op_len\` and \`payload_ptr\`/\`payload_len\` must name valid
+/// `op_ptr`/`op_len` and `payload_ptr`/`payload_len` must name valid
 /// initialized byte regions in linear memory (module docs invariant 3).
 #[unsafe(no_mangle)]
 pub extern "C" fn em_run(op_ptr: u32, op_len: u32, payload_ptr: u32, payload_len: u32) -> u64 {
@@ -343,7 +344,7 @@ fn pack_json(json: &str) -> u64 {
         #[cfg(target_arch = "wasm32")]
         let dst = ptr as *mut u8;
         #[cfg(not(target_arch = "wasm32"))]
-        let dst = host_alloc::resolve(ptr) as *mut u8;
+        let dst = host_alloc::resolve(ptr).cast_mut();
 
         if !dst.is_null() {
             // SAFETY: `ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len)`
@@ -497,7 +498,7 @@ mod tests {
         #[cfg(target_arch = "wasm32")]
         let dst = ptr as *mut u8;
         #[cfg(not(target_arch = "wasm32"))]
-        let dst = host_alloc::resolve(ptr) as *mut u8;
+        let dst = host_alloc::resolve(ptr).cast_mut();
         unsafe {
             std::ptr::copy_nonoverlapping(text.as_ptr(), dst, text.len());
         }
