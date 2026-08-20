@@ -2,16 +2,30 @@
 
 //! Deterministic interpretation portfolios.
 
+pub mod interpretation;
 pub mod lock;
+pub mod meaning_lock;
 pub mod record;
 pub mod selection;
 
-pub use lock::{PortfolioLock, replay_identity};
-pub use record::{CandidateRecord, Disqualification, ExampleEvaluation, LawVerdict};
-pub use selection::{SelectionOutcome, SelectionPolicy, SelectionWeights, select};
+pub use interpretation::{
+    archive, evaluate, rank_candidates, replay, CollapsePolicy, DisqualificationReason,
+    InterpretationPolicy, LedgerEntry, MetricAxis, MetricPolarity, ParetoArchive, PortfolioError,
+    PortfolioReceipt, ReceiptInput, RANKING_KEY_SPEC, RECEIPT_SCHEMA, RECEIPT_VERSION,
+};
+pub use lock::{replay_identity, PortfolioLock};
+pub use meaning_lock::{
+    apply_portfolio_cap, commit_locked_world, refuse_disqualified, LockEntry, LockError, LockKey,
+    MeaningLock, SelectionMethod, DEFAULT_PORTFOLIO_CAP, LOCK_DIR, LOCK_FILE_NAME, LOCK_SCHEMA,
+    LOCK_SCHEMA_VERSION, PROVENANCE_USER_LOCKED, WHOLE_TERM_HOLE,
+};
+pub use record::{
+    CandidateRecord, Disqualification, ExampleEvaluation, GuardFailure, LawVerdict, WorldCandidate,
+};
+pub use selection::{select, SelectionOutcome, SelectionPolicy, SelectionWeights};
 
-use emath_world_ir::WorldId;
 use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
+use emath_world_ir::WorldId;
 
 /// Interpretation-portfolio schema version (durable id
 /// `emath.interpretation-portfolio` lives in the schema registry). Bump on
@@ -19,6 +33,8 @@ use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
 pub const PORTFOLIO_SCHEMA_VERSION: u32 = 1;
 
 /// Meaning authority for a candidate result.
+///
+/// Lattice (never escalate via ranking): Structural < Tested < Certified < Proved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Authority {
     /// Structural preservation only.
@@ -29,6 +45,30 @@ pub enum Authority {
     Certified,
     /// Formally proved in a declared system.
     Proved,
+}
+
+impl Authority {
+    /// Stable wire name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Structural => "structural",
+            Self::Tested => "tested",
+            Self::Certified => "certified",
+            Self::Proved => "proved",
+        }
+    }
+
+    /// Lattice rank: Structural = 0 … Proved = 3.
+    #[must_use]
+    pub const fn lattice_rank(self) -> u8 {
+        match self {
+            Self::Structural => 0,
+            Self::Tested => 1,
+            Self::Certified => 2,
+            Self::Proved => 3,
+        }
+    }
 }
 
 /// Multi-objective score. Lower cost/complexity and higher evidence/utility are preferred.
@@ -59,6 +99,15 @@ pub struct InterpretationCandidate {
     pub score: ScoreVector,
     /// Meaning provenance summary.
     pub provenance: String,
+}
+
+impl InterpretationCandidate {
+    /// Projects this bag member onto G7 with uniform cost so `evaluate`
+    /// cannot silently drop a `keep: pareto N` world.
+    #[must_use]
+    pub fn world_candidate(&self) -> WorldCandidate {
+        WorldCandidate::bag_member(self.world_id.0, "builtin-seed", self.authority)
+    }
 }
 
 /// Deterministic candidate collection.
