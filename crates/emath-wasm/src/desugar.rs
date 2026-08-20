@@ -3,6 +3,8 @@
 //! require an `emath …:` header. The wrap lives only in this crate
 //! (the pane's engine).
 
+use std::borrow::Cow;
+
 const SYNTH_DECL: &str = "Pane";
 const SYNTH_RESULT: &str = "result";
 
@@ -33,23 +35,23 @@ const BUILTINS: &[&str] = &[
 /// Source after the playground wrap, plus the visible desugared text
 /// when wrapping happened.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PreparedSource {
-    pub source: String,
+pub(crate) struct PreparedSource<'a> {
+    pub source: Cow<'a, str>,
     pub desugared: Option<String>,
 }
 
 /// Wrap bare pane text when the first content line is not a declaration header.
 #[must_use]
-pub(crate) fn prepare_source(raw: &str) -> PreparedSource {
+pub(crate) fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
     if !needs_wrap(raw) {
         return PreparedSource {
-            source: raw.to_string(),
+            source: Cow::Borrowed(raw),
             desugared: None,
         };
     }
     let wrapped = wrap_bare(raw);
     PreparedSource {
-        source: wrapped.clone(),
+        source: Cow::Owned(wrapped.clone()),
         desugared: Some(wrapped),
     }
 }

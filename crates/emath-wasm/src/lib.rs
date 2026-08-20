@@ -23,7 +23,9 @@ use emath_ir::Mig;
 use emath_rust_backend::BackendInput;
 use emath_sema::session::CompilerSession;
 use emath_syntax::{format_lossless, install_source_parser, parse_lossless};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 /// ABI version carried by the `version` op.
 pub const ABI_VERSION: u32 = 1;
@@ -171,17 +173,23 @@ fn op_version() -> String {
 }
 
 fn op_examples() -> String {
-    let mut entries = Vec::new();
-    for (name, source) in curated_examples() {
-        let mut entry = JsonWriter::object();
-        entry.string("name", name);
-        entry.string("source", source);
-        entries.push(entry.finish().trim_end().to_string());
-    }
-    let mut object = JsonWriter::object();
-    object.bool("ok", true);
-    object.objects("examples", &entries);
-    object.finish()
+    static CACHED: OnceLock<String> = OnceLock::new();
+    CACHED
+        .get_or_init(|| {
+            let examples = curated_examples();
+            let mut entries = Vec::with_capacity(examples.len());
+            for (name, source) in examples {
+                let mut entry = JsonWriter::object();
+                entry.string("name", name);
+                entry.string("source", source);
+                entries.push(entry.finish().trim_end().to_string());
+            }
+            let mut object = JsonWriter::object();
+            object.bool("ok", true);
+            object.objects("examples", &entries);
+            object.finish()
+        })
+        .clone()
 }
 
 fn session_from_source(source: &str) -> (CompilerSession, emath_core::FileId) {
@@ -196,33 +204,33 @@ fn maybe_desugared(object: &mut emath_artifact::JsonObject, desugared: &Option<S
     }
 }
 
-struct RunPayload {
-    source: String,
+struct RunPayload<'a> {
+    source: Cow<'a, str>,
     given: Option<BTreeMap<String, f64>>,
 }
 
-fn parse_run_payload(payload: &str) -> RunPayload {
+fn parse_run_payload<'a>(payload: &'a str) -> RunPayload<'a> {
     let trimmed = payload.trim_start();
     if !trimmed.starts_with('{') {
         return RunPayload {
-            source: payload.to_string(),
+            source: Cow::Borrowed(payload),
             given: None,
         };
     }
     let Ok(value) = parse_json_document(payload.trim()) else {
         return RunPayload {
-            source: payload.to_string(),
+            source: Cow::Borrowed(payload),
             given: None,
         };
     };
     let Ok(source) = value.string_field("source") else {
         return RunPayload {
-            source: payload.to_string(),
+            source: Cow::Borrowed(payload),
             given: None,
         };
     };
     RunPayload {
-        source,
+        source: Cow::Owned(source),
         given: parse_given_field(&value),
     }
 }
@@ -255,8 +263,9 @@ fn parse_given_field(value: &JsonValue) -> Option<BTreeMap<String, f64>> {
 }
 
 fn diagnostic_objects(diagnostics: &Diagnostics) -> Vec<String> {
-    let mut body = Vec::new();
-    for item in diagnostics.items() {
+    let items = diagnostics.items();
+    let mut body = Vec::with_capacity(items.len());
+    for item in items {
         let mut entry = JsonWriter::object();
         entry.string(
             "severity",
@@ -276,11 +285,11 @@ fn diagnostic_objects(diagnostics: &Diagnostics) -> Vec<String> {
 }
 
 fn declaration_names(package: &emath_ir::SemanticPackage) -> Vec<String> {
-    package
-        .declarations
-        .iter()
-        .map(|declaration| declaration.name.leaf().to_string())
-        .collect()
+    let mut names = Vec::with_capacity(package.declarations.len());
+    for declaration in &package.declarations {
+        names.push(declaration.name.leaf().to_string());
+    }
+    names
 }
 
 fn crate_name_of(package: &emath_ir::SemanticPackage) -> String {
@@ -313,7 +322,7 @@ fn op_plan(source: &str) -> String {
     let prepared = prepare_source(source);
     let (mut session, file) = session_from_source(&prepared.source);
     let result = session.plan(file);
-    let mut requests = Vec::new();
+    let mut requests = Vec::with_capacity(result.requests.len());
     for request in &result.requests {
         let mut entry = JsonWriter::object();
         entry.string("kind", &request.kind);
@@ -321,10 +330,10 @@ fn op_plan(source: &str) -> String {
         entry.string("produce", &request.produce);
         requests.push(entry.finish().trim_end().to_string());
     }
-    let mut plan_items = Vec::new();
+    let mut plan_items = Vec::with_capacity(result.plans.len());
     for plan in &result.plans {
-        let mut steps = Vec::new();
-        let mut providers = Vec::new();
+        let mut steps = Vec::with_capacity(plan.nodes.len());
+        let mut providers = Vec::with_capacity(plan.nodes.len());
         for node in plan.nodes.values() {
             steps.push(node.operation.name().to_string());
             if let Some(provider) = &node.provider {
@@ -389,7 +398,7 @@ fn op_generate(source: &str) -> String {
         Ok(output) => output,
         Err(error) => return error_json(&error.to_string()),
     };
-    let mut files = Vec::new();
+    let mut files = Vec::with_capacity(output.files.len());
     for (path, content) in &output.files {
         let mut entry = JsonWriter::object();
         entry.string("path", path);
@@ -424,9 +433,9 @@ fn op_inputs(source: &str) -> String {
     let prepared = prepare_source(source);
     let (mut session, file) = session_from_source(&prepared.source);
     let result = session.check(file);
-    let mut declarations = Vec::new();
+    let mut declarations = Vec::with_capacity(result.package.declarations.len());
     for declaration in &result.package.declarations {
-        let mut inputs = Vec::new();
+        let mut inputs = Vec::with_capacity(declaration.inputs.len());
         for field in &declaration.inputs {
             let type_name = result
                 .package
@@ -457,11 +466,10 @@ fn op_inputs(source: &str) -> String {
 }
 
 fn serialize_run_report(report: &RunReport, desugared: Option<&str>) -> String {
-    let declarations: Vec<String> = report
-        .declarations
-        .iter()
-        .map(serialize_declaration_run)
-        .collect();
+    let mut declarations = Vec::with_capacity(report.declarations.len());
+    for declaration in &report.declarations {
+        declarations.push(serialize_declaration_run(declaration));
+    }
     let mut summary = JsonWriter::object();
     summary.int("tests", u64::from(report.summary.tests));
     summary.int("passed", u64::from(report.summary.passed));
@@ -480,7 +488,10 @@ fn serialize_run_report(report: &RunReport, desugared: Option<&str>) -> String {
 }
 
 fn serialize_declaration_run(declaration: &DeclarationRun) -> String {
-    let tests: Vec<String> = declaration.tests.iter().map(serialize_test_run).collect();
+    let mut tests = Vec::with_capacity(declaration.tests.len());
+    for test in &declaration.tests {
+        tests.push(serialize_test_run(test));
+    }
     let mut object = JsonWriter::object();
     object.string("name", &declaration.name);
     object.objects("tests", &tests);
