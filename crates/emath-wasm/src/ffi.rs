@@ -37,13 +37,35 @@
 #![allow(unsafe_code)]
 #![allow(clippy::cast_possible_truncation)]
 
+use std::collections::HashSet;
 use std::ptr;
 use std::slice;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::sync::Once;
 
 use crate::run_op;
 
 static INIT_PANIC_HOOK: Once = Once::new();
+
+/// Live-ownership set of every address/id this module has minted via
+/// `em_alloc` (or the host-alloc shim) and has not yet reclaimed via
+/// `em_free`.
+///
+/// This is the load-bearing, locally-enforced half of the `em_free`
+/// soundness invariant: a raw address only reaches `Vec::from_raw_parts`
+/// if it is (a) minted by this module and (b) still owed. Foreign pointers,
+/// double-frees, and stale pointers are rejected as provable no-ops before
+/// any dereference, without trusting the host ABI pledge.
+///
+/// Single-threaded wasm linear memory, so the `Mutex` is uncontended; the
+/// poisoning policy (`unwrap_or_else(Into::into_inner)`) mirrors
+/// `INIT_PANIC_HOOK`'s style and keeps a poisoned set usable after a panic.
+static LIVE_ALLOCS: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+fn live_allocs_lock() -> std::sync::MutexGuard<'static, HashSet<u32>> {
+    LIVE_ALLOCS.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Install a panic hook that formats panic info cleanly.
 pub fn install_panic_hook() {
@@ -95,6 +117,10 @@ mod host_alloc {
         let ptr = buf.as_mut_ptr();
         std::mem::forget(buf);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Register the id before the addr table so em_free's LIVE_ALLOCS gate
+        // and host resolve agree on minted-ness. One guard set, both paths
+        // (shared with the wasm32 alloc_region above).
+        super::live_allocs_lock().insert(id);
         let mut map = ALLOCATIONS.lock().unwrap();
         map.insert(id, (ptr as usize, capacity));
         (id, capacity)
@@ -125,6 +151,12 @@ mod host_alloc {
 ///
 /// A zero length returns \`0\`. The host writes into the region, then
 /// either passes it to [\`em_run\`] or frees it with [\`em_free\`].
+///
+/// Leak-until-`em_free` is the transfer protocol (`mem::forget` inside):
+/// the region stays alive until the host frees it, and the `LIVE_ALLOCS`
+/// entry dies with the process on a `wasm` abort (`panic = abort`), so
+/// there is no cross-invocation accumulation beyond the host's own
+/// forgetting.
 ///
 /// # Pointer width
 /// - On \`wasm32\`, linear memory pointers are 32-bit, so \`u32\` matches
@@ -165,6 +197,9 @@ fn alloc_region(len: u32) -> (u32, usize) {
         // 32-bit); `vec![0; len]` keeps capacity exactly len so `em_free`'s
         // from_raw_parts reconstructs an identical Vec (site 1).
         std::mem::forget(buf);
+        // Minted-and-owed: register the address so em_free's guard accepts it
+        // exactly once. Never registers the len==0 null case (returned above).
+        live_allocs_lock().insert(ptr as u32);
         (ptr as u32, capacity)
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -184,22 +219,43 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     if ptr == 0 {
         return;
     }
+    // Guard (step 0): accept only addresses this module minted and still
+    // owes. A foreign pointer, a double-free, or a stale pointer fails the
+    // membership check and returns here as a provable no-op — before any
+    // dereference. So the `Vec::from_raw_parts` block below runs only on
+    // minted, still-owed addresses, and exactly once per mint.
+    if !live_allocs_lock().remove(&ptr) {
+        return;
+    }
     // SAFETY: `Vec::from_raw_parts(ptr, 0, len)` reconstructs ownership of a
     // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
     //
-    // (1) Valid ownership: `ptr`/`len` is a live pair returned by
-    //     `em_alloc`/`em_run`, still leaked and not double-freed (host ABI
-    //     contract, module invariant 2). Reconstructing it here transfers
-    //     that responsibility back to the Vec, whose drop now frees it.
-    // (2) Capacity coupling: `Vec::with_capacity`/`vec![0; len]` in
-    //     `alloc_region` produced capacity exactly `len` (sized repeat), so
+    // (0) Invariant locally enforced by LIVE_ALLOCS membership (single-
+    //     threaded wasm; Mutex uncontended): this block runs only on
+    //     addresses this module minted and still owes, exactly-once.
+    //     Foreign/double/stale pointers never reach this block.
+    // (1) Valid ownership: `ptr`/`len` is a live pair minted by
+    //     `em_alloc`, still leaked and not double-freed (guard, step 0).
+    //     Reconstructing it here transfers that responsibility back to the
+    //     Vec, whose drop now frees it.
+    // (2) Capacity coupling: `vec![0; len]` in `alloc_region` produced
+    //     capacity exactly `len` (sized repeat), so
     //     `from_raw_parts(ptr, 0, len)`'s cap == len matches the allocator's
     //     footprint; the drop's `free` uses the same size the alloc used.
+    //     This allocator-identity clause is enforced by construction
+    //     (`vec![0; len]` round-trips through the same global allocator the
+    //     drop's `free` reaches), not by the guard.
     // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
     //     the zero-length (null) allocation is never reconstructed here.
     // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
     //     drops the Vec by binding.
-    // Enforced by: the host ABI contract (clauses 1) and `alloc_region`'s
+    // Residual: if the guard and reality disagree (allocator swap, memory
+    //     corruption) such that a registered `ptr`'s backing no longer
+    //     matches `vec![0; len]`'s footprint, `from_raw_parts` can
+    //     panic/UB. The guard CANNOT catch that — it enforces minted-
+    //     and-owed, not the allocator's physical layout; the capacity
+    //     coupling (clause 2) must already be intact.
+    // Enforced by: LIVE_ALLOCS membership (clause 0) plus `alloc_region`'s
     // exact-capacity construction (clauses 2-3). Failure = host feeding a
     // foreign/double/mismatched pair, an ABI violation, not a library bug.
     #[cfg(target_arch = "wasm32")]
@@ -326,6 +382,18 @@ fn pack_json(json: &str) -> u64 {
 mod tests {
     use super::*;
 
+    /// Test seam: current count of minted-and-owed live allocations.
+    ///
+    /// `allow(dead_code)`: this seam is public observation surface for
+    /// debugging/regression scripts, not every test must call it. Safe under
+    /// membership-based tests because `LIVE_ALLOCS` is shared across parallel
+    /// test threads, so absolute counts are only reliable from a harness that
+    /// controls the full set.
+    #[allow(dead_code)]
+    fn live_alloc_count() -> usize {
+        live_allocs_lock().len()
+    }
+
     #[test]
     fn test_em_init() {
         em_init();
@@ -334,6 +402,42 @@ mod tests {
     #[test]
     fn test_em_free_zero() {
         em_free(0, 0);
+        // ptr == 0 never registers (len == 0 mint path returns 0 unregistered).
+        assert!(!live_allocs_lock().contains(&0));
+    }
+
+    #[test]
+    fn test_em_alloc_zero_not_registered() {
+        assert_eq!(em_alloc(0), 0);
+        assert!(!live_allocs_lock().contains(&0), "null never mints a guard entry");
+    }
+
+    #[test]
+    fn test_em_free_double_free_noop() {
+        let p = em_alloc(64);
+        assert_ne!(p, 0);
+        assert!(live_allocs_lock().contains(&p), "alloc mints a guard entry");
+
+        em_free(p, 64);
+        assert!(!live_allocs_lock().contains(&p), "first free reclaims the entry");
+
+        // Second free of the same pair is a provable no-op: no re-deref, no
+        // panic. `p` is our own unique handle (monotonic id), so membership
+        // checks are race-free even alongside parallel tests.
+        em_free(p, 64);
+        assert!(!live_allocs_lock().contains(&p), "double free leaves no residue");
+    }
+
+    #[test]
+    fn test_em_free_unminted_ptr_noop() {
+        // A value this module never minted (arbitrary high handle). Guard
+        // rejects it before any dereference; must not crash. The handle is
+        // not ours and not reachable by concurrent ids, so the containment
+        // check is stable.
+        let unminted = 0xDEAD_BEEF_u32;
+        assert!(!live_allocs_lock().contains(&unminted));
+        em_free(unminted, 16);
+        assert!(!live_allocs_lock().contains(&unminted));
     }
 
     #[test]
