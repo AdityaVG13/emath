@@ -19,9 +19,9 @@
 //! - [`mapping`]: SIR -> Dew -> generated symbol/span
 //!   source map with deterministic anchors.
 //! - [`oracle`]: boundary-case scan of the reference
-//!   evaluator and injected semantic-drift (mutation) detection; no
-//!   cross-engine differential lane exists in Phase 1 (no upstream
-//!   engine is consumed).
+//!   evaluator, injected semantic-drift detection, scalar evaluation
+//!   for the native↔Dew differential lane, and a planted-value
+//!   wrong-result control. No upstream Dew engine is consumed.
 
 #![forbid(unsafe_code)]
 
@@ -46,7 +46,7 @@ pub use dexpr::{
 };
 pub use mapping::{SourceMapEntry, build_source_map};
 pub use oracle::{
-    DifferentialFinding, MutantDrift, ScanCase, ScanProfile, detect_drift, run_boundary_cases,
-    scan_reference_boundaries,
+    DifferentialFinding, EvalValue, MutantDrift, ScanCase, ScanProfile, detect_drift,
+    detect_seeded_wrong_result, evaluate_scalar, run_boundary_cases, scan_reference_boundaries,
 };
 pub use seam::{AdapterSeam, PatchLedger, PatchOutcome, ProviderVersion, SeamError};

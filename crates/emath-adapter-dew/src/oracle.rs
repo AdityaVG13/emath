@@ -13,7 +13,9 @@
 //!   case, so the negative fixture is never masked.
 //!
 //! The evaluator is never compared against itself to fabricate a
-//! differential pass.
+//! differential pass. Cross-engine comparison against the native
+//! exec-ir interpreter lives in `tests/emath-adapter-dew` and uses
+//! [`evaluate_scalar`].
 
 use std::collections::BTreeMap;
 
@@ -137,6 +139,26 @@ impl MutantDrift {
 pub enum EvalValue {
     F64(f64),
     Bool(bool),
+}
+
+impl EvalValue {
+    /// IEEE-754 payload bits (`bool` is 0/1).
+    #[must_use]
+    pub fn bits(self) -> u64 {
+        bits(self)
+    }
+}
+
+/// Evaluates a Dew expression against a scalar environment.
+///
+/// This is the Dew-adapter evaluation path used by the native↔Dew
+/// differential lane. Arithmetic, comparisons, `min`/`max`,
+/// `abs`/`floor`/`ceil`, `is_finite`, and boolean ops are bit-exact
+/// IEEE-754 binary64 -- the same class as the native exec-ir
+/// interpreter. Transcendentals follow platform libm.
+#[must_use]
+pub fn evaluate_scalar(expr: &DewExpr, env: &BTreeMap<String, f64>) -> Option<EvalValue> {
+    eval(expr, env, None)
 }
 
 /// Reference interpreter vs backend-path interpreter difference.
@@ -344,4 +366,43 @@ pub fn detect_drift(
 #[must_use]
 pub fn scan_reference_boundaries(expr: &DewExpr, variable: &str) -> Vec<DifferentialFinding> {
     run_boundary_cases(expr, variable, &ScanProfile::default(), None)
+}
+
+/// Seeded wrong-result control (Phase 3 stand-in for a wrong derivative).
+///
+/// Phase 1 has no differentiate producer. A caller plants a claimed
+/// numeric result; if it disagrees with the reference evaluator at any
+/// boundary case, the oracle reports a finding. This is drift detection
+/// with a planted value, not a derivative engine. The full
+/// wrong-derivative control lands with the differentiate goal.
+#[must_use]
+pub fn detect_seeded_wrong_result(
+    expr: &DewExpr,
+    variable: &str,
+    claimed: f64,
+) -> Option<DifferentialFinding> {
+    let claimed_bits = claimed.to_bits();
+    for case in ScanCase::all() {
+        let mut env = BTreeMap::new();
+        env.insert(variable.to_string(), case.value());
+        let Some(reference) = eval(expr, &env, None) else {
+            continue;
+        };
+        let reference_bits = bits(reference);
+        if reference_bits != claimed_bits {
+            return Some(DifferentialFinding {
+                case: case.as_str(),
+                variable: variable.to_string(),
+                reference_bits,
+                backend_bits: claimed_bits,
+                detail: format!(
+                    "seeded wrong result {:016x} disagrees with reference {:016x} at {}",
+                    claimed_bits,
+                    reference_bits,
+                    case.as_str()
+                ),
+            });
+        }
+    }
+    None
 }
