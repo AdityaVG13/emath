@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>emath</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="wasm-missing" class="banner" hidden>
+    emath.wasm not found — run `cargo xtask build-web`
+  </div>
+  <header>
+    <h1>emath playground</h1>
+    <span id="version"></span>
+    <label>
+      Example
+      <select id="examples"></select>
+    </label>
+    <nav>
+      <button type="button" id="btn-help">Help</button>
+      <button type="button" id="btn-share">Share</button>
+      <button type="button" id="btn-run" title="Ctrl/Cmd+Enter">Run</button>
+      <button type="button" id="btn-check" title="Ctrl/Cmd+Shift+Enter">Check</button>
+      <button type="button" id="btn-plan">Plan</button>
+      <button type="button" id="btn-mig">Intent Graph</button>
+      <button type="button" id="btn-generate">Generate Rust</button>
+      <button type="button" id="btn-format">Format</button>
+    </nav>
+  </header>
+  <main>
+    <section class="editor-pane">
+      <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      <div id="inputs-panel" hidden>
+        <div id="input-fields"></div>
+        <button type="button" id="btn-run-given">Run with these values</button>
+      </div>
+    </section>
+    <section class="output-pane">
+      <div id="desugar-banner" hidden>
+        <details>
+          <summary>desugared to a declaration — click to view</summary>
+          <pre id="desugar-source"></pre>
+        </details>
+      </div>
+      <div class="tabs" role="tablist">
+        <button type="button" data-tab="run">Run</button>
+        <button type="button" data-tab="diagnostics" class="active">Diagnostics</button>
+        <button type="button" data-tab="plan">Plan</button>
+        <button type="button" data-tab="mig">Intent Graph</button>
+        <button type="button" data-tab="generated">Generated</button>
+        <button type="button" data-tab="raw">Raw JSON</button>
+      </div>
+      <div id="panel-run" class="tab-panel">
+        <pre id="out-run"></pre>
+      </div>
+      <div id="panel-diagnostics" class="tab-panel active">
+        <pre id="out-diagnostics"></pre>
+      </div>
+      <div id="panel-plan" class="tab-panel">
+        <pre id="out-plan"></pre>
+      </div>
+      <div id="panel-mig" class="tab-panel">
+        <pre id="out-mig"></pre>
+      </div>
+      <div id="panel-generated" class="tab-panel">
+        <label class="file-pick">
+          File
+          <select id="generated-files"></select>
+        </label>
+        <pre id="out-generated"></pre>
+      </div>
+      <div id="panel-raw" class="tab-panel">
+        <pre id="out-raw"></pre>
+      </div>
+    </section>
+  </main>
+  <div id="legend" class="legend" hidden>
+    <div class="legend-panel" role="dialog" aria-labelledby="legend-title">
+      <header>
+        <h2 id="legend-title">Legend</h2>
+        <input id="legend-search" type="search" placeholder="search sections, ops, codes" autocomplete="off">
+        <button type="button" id="btn-legend-close">Close</button>
+      </header>
+      <div id="legend-body"></div>
+    </div>
+  </div>
+  <footer id="status">idle</footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
