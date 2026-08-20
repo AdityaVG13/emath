@@ -55,9 +55,16 @@ static INIT_PANIC_HOOK: Once = Once::new();
 ///
 /// This is the load-bearing, locally-enforced half of the `em_free`
 /// soundness invariant: a raw address only reaches `Vec::from_raw_parts`
-/// if it is (a) minted by this module and (b) still owed. Foreign pointers,
-/// double-frees, and stale pointers are rejected as provable no-ops before
-/// any dereference, without trusting the host ABI pledge.
+/// if it is (a) minted by this module and (b) still owed. Foreign pointers
+/// and double-frees of addresses with no current membership are rejected as
+/// provable no-ops before any dereference, without trusting the host ABI
+/// pledge. The guard is generation-blind (address-keyed): a stale pointer
+/// whose address a later `em_alloc` reused is indistinguishable from that
+/// new mint and passes membership, so a stray double-free straddling an
+/// address-reusing `em_alloc` can consume the new mint's single free pass
+/// (double-free of live memory). That sequence requires the host to already
+/// be violating the exactly-once contract, so it stays a documented ABI
+/// violation, not a guard-guaranteed no-op.
 ///
 /// Single-threaded wasm linear memory, so the `Mutex` is uncontended; the
 /// poisoning policy (`unwrap_or_else(Into::into_inner)`) mirrors
@@ -221,10 +228,17 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
         return;
     }
     // Guard (step 0): accept only addresses this module minted and still
-    // owes. A foreign pointer, a double-free, or a stale pointer fails the
-    // membership check and returns here as a provable no-op — before any
-    // dereference. So the `Vec::from_raw_parts` block below runs only on
-    // minted, still-owed addresses, and exactly once per mint.
+    // owes. A foreign pointer, a double-free of an address with no current
+    // membership, or a stale pointer whose address was NOT re-minted fails
+    // the membership check and returns here as a provable no-op — before any
+    // dereference. Generation-blind by design: a stale pointer whose address
+    // a later `em_alloc` reused passes membership and is handled as that mint
+    // (the sequence requires the host to already be violating the exactly-
+    // once contract, so it stays a documented ABI violation, not a guard-
+    // guaranteed no-op). So the `Vec::from_raw_parts` block below runs only
+    // on addresses with a current membership record, and at most once per
+    // mint (a stray second call for the same address is a no-op unless a
+    // re-mint intervened).
     if !live_allocs_lock().remove(&ptr) {
         return;
     }
@@ -362,11 +376,14 @@ fn pack_json(json: &str) -> u64 {
             // (3) Readable source / writable dst: `bytes` borrows the call's
             //     `&str`; `dst` is free, writable slack the host expects to be
             //     overwritten (module invariant round-trip).
-            // (4) u32::MAX truncation unreachable: `len` is capped at 1 GiB
-            //     by `u32::try_from(bytes.len())` because wasm linear memory
-            //     is at most 4 GiB, so a real JSON string can never exceed
-            //     that; even at the cap, `copy_len` is bounded by actual
-            //     `bytes.len()`, so no source read past the buffer occurs.
+            // (4) u32::MAX truncation unreachable: `u32::try_from` saturates
+            //     at u32::MAX (4 GiB - 1) on 64-bit hosts; on wasm32 the
+            //     response lives in linear memory (max 4 GiB), so a real JSON
+            //     response can never exceed the cap. A >4 GiB host response
+            //     would truncate `len` and copy into a truncated region — no
+            //     test produces one; documented boundary. Even at the cap,
+            //     `copy_len` is bounded by actual `bytes.len()`, so no source
+            //     read past the buffer occurs.
             // Enforced by: `alloc_region`'s exact-capacity contract (clause 1)
             // and the length guard above (clause 4). Failure = a host that
             // overwrote the fresh region between `em_alloc` and this copy, an
