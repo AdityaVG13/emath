@@ -32,22 +32,102 @@ const AFFINE_SCORER: &str =
 const PARAMETRIC_UNKNOWN: &str =
     include_str!("../../../language/examples/11_parametric_unknown_operator.emath");
 
-const DIAGNOSTICS_DEMO: &str = "\
+const TUTORIAL_01_QUICKSTART: &str = "\
+# Tutorial 1: Quickstart & Scratchpad
+# Declarative mathematical function with test assertions.
+# Press Ctrl+R (or Cmd+Enter) to evaluate the interpreter.
+
+emath function Quickstart:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = 3 * x + 7
+
+    goals:
+        evaluate <y>:
+            produce rust.library
+
+    tests:
+        example <test_four>:
+            given x = 4
+            expect y == 19
+";
+
+const TUTORIAL_02_PLOTTER: &str = "\
+# Tutorial 2: 2D Curve Plotter & Parameters
+# Switch to the 'Plot 2D' tab (Alt+2) to visualize this oscillator curve.
+# Adjust the 'x' slider live while viewing the canvas.
+
+emath function DampedOscillator:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = exp(-0.1 * x) * sin(x)
+
+    goals:
+        evaluate <y>:
+            produce rust.library
+
+    tests:
+        example <origin>:
+            given x = 0
+            expect y == 0
+";
+
+const TUTORIAL_03_MATH_INTENT: &str = "\
+# Tutorial 3: Math Intent & Typography
+# Press Shift+Cmd+Y to toggle Unicode math symbols.
+# Switch to the 'Math Intent' tab (Alt+3) to view LaTeX rendering and export formulas.
+
+emath function AerodynamicDrag:
+    inputs:
+        rho: Float64
+        v: Float64
+        cd: Float64
+        area: Float64
+
+    outputs:
+        drag_force: Float64
+
+    definitions:
+        drag_force = 0.5 * rho * (v * v) * cd * area
+
+    goals:
+        evaluate <drag_force>:
+            produce rust.library
+";
+
+const TUTORIAL_06_DIAGNOSTICS_DEMO: &str = "\
+# Tutorial 6: Diagnostics & Error Recovery
+# Notice the red indicator in the status bar and the Diagnostics tab (Alt+5).
+# Fix the undefined variable below to see diagnostics clear automatically.
+
 emath function DiagnosticsDemo:
     inputs:
         x: Float64
 
     definitions:
-        y = missing_name
+        y = missing_variable
 ";
 
 /// Curated examples served by the `examples` op.
 fn curated_examples() -> &'static [(&'static str, &'static str)] {
     &[
-        ("hello square", HELLO_SQUARE),
-        ("stateful affine scorer", AFFINE_SCORER),
-        ("parametric unknown operator", PARAMETRIC_UNKNOWN),
-        ("diagnostics demo", DIAGNOSTICS_DEMO),
+        ("Tutorial 1: Quickstart & Scratchpad", TUTORIAL_01_QUICKSTART),
+        ("Tutorial 2: 2D Curve Plotter & Parameters", TUTORIAL_02_PLOTTER),
+        ("Tutorial 3: Math Intent & Typography", TUTORIAL_03_MATH_INTENT),
+        ("Tutorial 4: Stateful Scorer & Assertions", AFFINE_SCORER),
+        ("Tutorial 5: Parametric Operator Synthesis", PARAMETRIC_UNKNOWN),
+        ("Tutorial 6: Diagnostics & Error Recovery", TUTORIAL_06_DIAGNOSTICS_DEMO),
+        ("Hello Square (Classic)", HELLO_SQUARE),
     ]
 }
 
@@ -509,7 +589,7 @@ mod tests {
     #[test]
     fn curated_non_demo_examples_admit() {
         for (name, source) in curated_examples() {
-            if *name == "diagnostics demo" {
+            if name.contains("Diagnostics") || *name == "diagnostics demo" {
                 continue;
             }
             let json = run_op("check", source);

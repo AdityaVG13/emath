@@ -1,5 +1,5 @@
 const WASM_URL = "/emath.wasm";
-const WASM_MISSING = "emath.wasm not found — run `cargo xtask build-web`";
+const WASM_MISSING = "emath.wasm not found (run `cargo xtask build-web`)";
 const SOURCE_HASH_PREFIX = "#src=";
 
 const $ = (id) => document.getElementById(id);
@@ -129,7 +129,7 @@ function renderDiagnostics(result) {
   }
   node.replaceChildren();
   if (items.length === 0) {
-    node.textContent = "no diagnostics — package admits";
+    node.textContent = "no diagnostics: package admits";
     return;
   }
   for (const item of items) {
@@ -954,7 +954,7 @@ export function renderLegend(tab = currentLegendTab, query = "") {
       section.className = "legend-section";
       const heading = document.createElement("div");
       heading.className = "legend-section-title";
-      heading.textContent = `${item.category} — ${item.desc}`;
+      heading.textContent = `${item.category}: ${item.desc}`;
       section.appendChild(heading);
 
       const pre = document.createElement("pre");
@@ -1355,7 +1355,7 @@ export function applyPaneLayout(swapped) {
   if (btn) {
     btn.classList.toggle("active", swapped);
     btn.title = swapped
-      ? "Panes swapped (Editor Right, Output Left) — click to reset"
+      ? "Panes swapped (Editor Right, Output Left); click to reset"
       : "Swap editor and output pane positions";
   }
   try {
