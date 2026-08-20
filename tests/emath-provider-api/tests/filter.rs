@@ -55,6 +55,7 @@ fn goal_with_exactness(exactness: ExactnessPolicy) -> Goal {
             produce: "rust.library".into(),
             fallback: FallbackPolicy::NativeOnly,
         },
+        payload: emath_ir::GoalPayload::default(),
         source: Span::default(),
     }
 }

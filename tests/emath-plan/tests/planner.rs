@@ -31,6 +31,7 @@ fn goal_with_produce(produce: &str) -> Goal {
             fallback: FallbackPolicy::Diagnostic,
             produce: String::new(),
         },
+        payload: emath_ir::GoalPayload::default(),
         source: emath_core::Span::default(),
     };
     goal.requirements.produce = produce.to_string();
