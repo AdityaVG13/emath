@@ -207,7 +207,7 @@ assert_invalid() {
 assert_invalid tests/invalid/duplicate_output.emath "E-NAME-020"
 assert_invalid tests/invalid/missing_state_assignment.emath "E-CTOR-030"
 assert_invalid tests/invalid/recursive_kind.emath "E-KIND-100"
-assert_invalid tests/invalid/unit_mismatch.emath "E-UNIT-001"
+assert_invalid tests/invalid/unit_mismatch.emath "E-UNIT-101"
 assert_invalid tests/invalid/model_decl.emath "E-KIND-100"
 assert_invalid tests/invalid/unknown_section.emath "E-SEC-101"
 assert_invalid tests/invalid/exports_junk.emath "E-SYN-101"
@@ -287,8 +287,8 @@ lane_done "fmt" "refusal" "passed" "non-canonical file refused"
 echo "fmt: corpus canonical; non-canonical refused"
 
 echo "== crate map + API inventory gate (gauntlet-08) =="
-# CRATE_MAP must map every workspace member and every crates/ directory
-# to an existing path (SURF-0003); PUBLIC_API_INVENTORY must carry the
+# CRATE_MAP must map every workspace member and every non-hidden crates/
+# directory to an existing path (SURF-0003); PUBLIC_API_INVENTORY must carry the
 # exact CompilerSession signatures (name + receiver) from session.rs
 # (SURF-0001). Request-typed surface stays honestly Partial.
 lane_begin
@@ -570,15 +570,16 @@ SG_DIR="$TMP_DIR/sg"
 mkdir -p "$SG_DIR"
 cargo run -q -p emath-cli -- compile --parametric language/examples/01_arbitrary_glyphs.emath \
     --out "$SG_DIR" >/dev/null
-# Identity include-set is documented, never silent: `manifest.json` and
-# `source-map.json` are EXCLUDED from the byte diff because (a) the
-# committed copy predates them and (b) the world-codegen provenance map
-# embeds the absolute source path. They are pinned instead by the
-# per-shape parse-back lane below (one schema id per writer shape:
-# emath.generated-crate-manifest / emath.generated-crate-source-map,
-# never the durable artifact ids). Everything else under the diff is
+# Identity include-set is documented, never silent: `manifest.json`,
+# `source-map.json`, and `hole-manifest.json` are EXCLUDED from the byte
+# diff because (a) the committed copy predates them and (b) the
+# world-codegen provenance map embeds the absolute source path. They are
+# pinned instead by the per-shape parse-back lane below (one schema id
+# per writer shape: emath.generated-crate-manifest /
+# emath.generated-crate-source-map / emath.hole-manifest, never the
+# durable artifact ids). Everything else under the diff is
 # byte-compared.
-if ! diff -r --exclude=Cargo.lock --exclude=target --exclude=manifest.json --exclude=source-map.json \
+if ! diff -r --exclude=Cargo.lock --exclude=target --exclude=manifest.json --exclude=source-map.json --exclude=hole-manifest.json \
     "$SG_DIR" examples/generated/semantic-genesis-worlds >"$TMP_DIR/sg-diff.txt" 2>&1; then
     echo "FAIL: regenerated semantic-genesis crate differs from the committed copy" >&2
     cat "$TMP_DIR/sg-diff.txt" >&2
@@ -603,6 +604,7 @@ COMMITTED = sys.argv[2]
 
 manifest = json.load(open(os.path.join(GEN, "manifest.json")))
 source_map = json.load(open(os.path.join(GEN, "source-map.json")))
+hole_manifest = json.load(open(os.path.join(GEN, "hole-manifest.json")))
 
 assert manifest["schema"] == "emath.generated-crate-manifest", (
     f"manifest schema id drifted: {manifest['schema']}"
@@ -613,6 +615,32 @@ assert source_map["schema"] == "emath.generated-crate-source-map", (
 assert "emath.source-map" not in json.dumps(source_map), (
     "genesis provenance must never claim the durable artifact source-map id"
 )
+assert hole_manifest["schema"] == "emath.hole-manifest", (
+    f"hole-manifest schema id drifted: {hole_manifest['schema']}"
+)
+assert hole_manifest["schema_version"] == 1, (
+    f"hole-manifest schema_version drifted: {hole_manifest['schema_version']}"
+)
+assert hole_manifest["term_id"] == manifest["term_id"], (
+    "hole-manifest term_id disagrees with the crate manifest"
+)
+assert hole_manifest["signature_id"] == manifest["signature_id"], (
+    "hole-manifest signature_id disagrees with the crate manifest"
+)
+holes = hole_manifest["holes"]
+assert isinstance(holes, list) and len(holes) > 0, f"expected open holes, got {holes!r}"
+hole_ids = [hole["hole_id"] for hole in holes]
+assert len(set(hole_ids)) == len(hole_ids), "hole_ids must be unique"
+for hole in holes:
+    assert set(hole) == {"hole_id", "symbol", "arity", "kind", "state", "constraint"}, (
+        f"bad hole shape: {hole!r}"
+    )
+    assert hole["state"] == "open", f"parametric-lane hole must be open: {hole!r}"
+    assert hole["kind"] in {"constant-definition", "operator-definition"}, (
+        f"bad hole kind: {hole!r}"
+    )
+symbols = [hole["symbol"] for hole in holes]
+assert symbols == sorted(symbols), "hole entries must be symbol-sorted (deterministic order)"
 assert "emath.resolution-plan" not in json.dumps(manifest), (
     "genesis manifest must never claim the durable resolution-plan id"
 )
@@ -648,7 +676,7 @@ assert tree == sorted(manifest["files"]), (
     f"manifest file list {manifest['files']} does not match committed tree {tree}"
 )
 PY
-lane_done "semantic-genesis" "provenance-pin" "passed" "manifest/source-map pinned by per-shape parse-back"
+lane_done "semantic-genesis" "provenance-pin" "passed" "manifest/source-map/hole-manifest pinned by per-shape parse-back"
 echo "genesis provenance docs pinned: schema ids, entry shape, file lists agree"
 
 echo "== semantic genesis generated crate fmt =="
@@ -689,9 +717,10 @@ fi
 
 # 2. `answer: return interpretation_portfolio` is honored: the result
 #    carries one entry per kept candidate, and `keep: pareto 8` keeps all
-#    three admitted worlds (no single-winner collapse).
+#    five admitted worlds (three fixture worlds plus the csa_seeded and
+#    one_point builtin seeds; no single-winner collapse).
 RESULT="$(sed -n 's/.*"result": "\(.*\)".*/\1/p' "$GEN_DIR/answer-receipt.json")"
-for entry in "free_symbolic:apply" "Boolean_algebra:false" "modular_numeric:6"; do
+for entry in "free_symbolic:apply" "Boolean_algebra:false" "modular_numeric:6" "csa_seeded:" "one_point:"; do
     case "$RESULT" in
         *"$entry"*) ;;
         *)
@@ -701,8 +730,8 @@ for entry in "free_symbolic:apply" "Boolean_algebra:false" "modular_numeric:6"; 
     esac
 done
 CANDIDATE_COUNT="$("$PYTHON" -c "import json,sys;print(len(json.load(open(sys.argv[1]))['candidates']))" "$GEN_DIR/interpretation-portfolio.json")"
-if [ "$CANDIDATE_COUNT" != "3" ]; then
-    echo "FAIL: keep: pareto 8 must keep all three candidates, kept $CANDIDATE_COUNT" >&2
+if [ "$CANDIDATE_COUNT" != "5" ]; then
+    echo "FAIL: keep: pareto 8 must keep all five candidates, kept $CANDIDATE_COUNT" >&2
     exit 1
 fi
 
@@ -775,7 +804,27 @@ if ! printf '%s\n' "$KEEP0_OUT" | grep -q "E-GEN-093"; then
     printf '%s\n' "$KEEP0_OUT" >&2
     exit 1
 fi
-echo "genesis honesty: no invented tested meaning, pareto honored"
+if [ ! -f "$GEN_DIR/g7-portfolio-receipt.txt" ]; then
+    echo "FAIL: genesis must write g7-portfolio-receipt.txt" >&2
+    exit 1
+fi
+if ! grep -q "policy=portfolio" "$GEN_DIR/g7-portfolio-receipt.txt"; then
+    echo "FAIL: G7 receipt must record the explicit portfolio policy" >&2
+    cat "$GEN_DIR/g7-portfolio-receipt.txt" >&2
+    exit 1
+fi
+sed 's/interpretation_portfolio/best/' language/examples/01_arbitrary_glyphs.emath >"$TMP_DIR/hidden-winner.emath"
+if HIDDEN_OUT="$(cargo run -q -p emath-cli -- genesis "$TMP_DIR/hidden-winner.emath" --out "$TMP_DIR/genesis-hidden" 2>&1)"; then
+    echo "FAIL: genesis without interpretation_portfolio collapsed to a single winner" >&2
+    printf '%s\n' "$HIDDEN_OUT" >&2
+    exit 1
+fi
+if ! printf '%s\n' "$HIDDEN_OUT" | grep -q "E-GEN-095"; then
+    echo "FAIL: hidden single-winner collapse must refuse with E-GEN-095" >&2
+    printf '%s\n' "$HIDDEN_OUT" >&2
+    exit 1
+fi
+echo "genesis honesty: no invented tested meaning, pareto honored, no hidden winner"
 
 lane_done "validate" "gate" "passed" "all lanes green"
 echo "validate.sh: ok"
