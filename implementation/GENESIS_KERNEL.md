@@ -31,12 +31,13 @@ outcome, never a silent strict fallback (bead `emath-jck`;
 | `free-term.json` | `emath.free-term` |
 | `meaning-problem.json` | `emath.meaning-problem` |
 | `interpretation-portfolio.json` | `emath.interpretation-portfolio` |
+| `g7-portfolio-receipt.txt` | G7 `evaluate` receipt (`replay` input) |
 | `world-admission.jsonl` | `emath.world-admission` |
 | `answer-receipt.json` | `emath.answer-receipt` |
 | `csa-baseline.json` | `emath.csa` |
 | `world-candidates/<id>.json` | `emath.world-candidate` |
 
-The nine files are the `files` array in `genesis_cmd`;
+The ten files are the `files` array in `genesis_cmd`;
 `world-candidates/` is written beside them. Parametric Rust codegen
 is downstream (`compile --parametric`), not inside the kernel.
 

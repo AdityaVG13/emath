@@ -5,6 +5,38 @@
   "bumps": [
     {
       "date": "2026-08-19",
+      "note": "E-GEN-095 hidden-winner refusal; ERROR_CODES annex re-spliced; CLI_REFERENCE genesis G7"
+    },
+    {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced to 259 emitted codes (E-NUM/E-LOCK/E-GOAL-044/045/E-UNIT-104/105/E-SHAPE-004/E-DOM-002); retired stale issued bullets E-UNIT-001 and E-CODEGEN-053; dropped duplicate E-LOCK issued stories. CLI_REFERENCE: emath meaning list|set|unset|explain."
+    },
+    {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced: SG-18 tuning module raises rust-file count; emitted-code surface unchanged"
+    },
+    {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced: SG-15/SG-16 genesis modules raise rust-file count; emitted-code surface unchanged"
+    },
+    {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced: SG-13/SG-14 genesis modules raise rust-file count (202->203); codes still 245, surface unchanged"
+    },
+    {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES annex re-spliced: head-args work issued E-SYN-122/123 (243->245 emitted codes); annex current"
+    },
+    {
+      "date": "2026-08-19",
+      "note": "ERROR_CODES issued-list: drop duplicate E-SYN-122/123 bullets (kept the detailed Syntax-subsection stories)"
+    },
+    {
+      "date": "2026-08-19",
+      "note": "CRATE_MAP + PUBLIC_API_INVENTORY: Tier 9 emath-layout/emath-wasm, complete tests/* workspace members; checker skips hidden crates/ dirs"
+    },
+    {
+      "date": "2026-08-19",
       "note": "ERROR_CODES annex re-spliced: catalog.rs CLI work added E-TLT-004/006 emission rows; new feature-gated infra crates (store/provenance/search) raise rust-file count (170\u2192180); codes still 243, surface unchanged CRATE_MAP re-pinned (Tier 8 infra adapters: emath-store/provenance/search)"
     },
     {
@@ -53,9 +85,9 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "39efbb76a8bb502e08f52046d905400809058f72e772b0c62ef2eb52c2669844",
-    "implementation/CLI_REFERENCE.md": "8feafad3fed1e5e57613baa8c4e0b939a3e0f35ad67d177bacb9a54809180b30",
-    "implementation/CRATE_MAP.md": "71c2fd836624c65509cf845ac88520ff9ec7b265b4d419835f8797893ab7e9c5",
-    "implementation/PUBLIC_API_INVENTORY.md": "7c830df3f34a485a2993882aff4543bdbb77773496841ae4e75871d3b796c293"
+    "implementation/ERROR_CODES.md": "e944413cd4425e3c7df5b34c8451a981823fd7b25bfc1c1abfdbeca6403da1b7",
+    "implementation/CLI_REFERENCE.md": "0e2af33c773bd55eddc8513cc786b587a566175babb951554587824a00a5bbff",
+    "implementation/CRATE_MAP.md": "498d2a34be46bcb054d05a0feca8cb250655701ade6b87029d759db46269ca9f",
+    "implementation/PUBLIC_API_INVENTORY.md": "c73d6c04e7f77f73c48116623c9bdcfb8a09fe90a57c7db2602d88c18ecef806"
   }
 }

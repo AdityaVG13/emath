@@ -4,7 +4,8 @@ Pinned against HEAD by the `crate-map + API inventory` lane in
 `scripts/validate.sh` (gauntlet-08 gate). The gate fails when:
 
 1. an implemented row lacks its directory on disk (or a recorded alias);
-2. a directory under `crates/` is missing from the map;
+2. a non-hidden directory under `crates/` is missing from the map
+   (dot-directories such as `crates/.asgrep` are tool caches, not crates);
 3. a workspace member (from `[workspace] members` in `Cargo.toml`) is
    missing from the map.
 
@@ -102,14 +103,47 @@ intent, not an implemented surface.
 Feature-gated: each crate's default build is std-only; the upstream engine
 (Dicklesworthstone franken*) arrives only behind the named feature.
 
+### Tier 9 — layout and playground frontends
+
+| Crate | Path | Responsibility | May depend on |
+|---|---|---|---|
+| `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/world-ir |
+| `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
+
 ## Non-crate workspace members
 
 | Member | Path | Responsibility |
 |---|---|---|
-| `tests/emath-term` | `tests/emath-term` | term-parse back test suite |
-| `tests/emath-ir` | `tests/emath-ir` | IR canonicalization test suite |
-| `tests/emath-trust-gates` | `tests/emath-trust-gates` | trust gate test suite |
+| `tests/emath-adapter-dew` | `tests/emath-adapter-dew` | Dew adapter public-API test suite |
+| `tests/emath-adapter-rumoca` | `tests/emath-adapter-rumoca` | Rumoca adapter public-API test suite |
+| `tests/emath-agent-protocol` | `tests/emath-agent-protocol` | agent-protocol public-API test suite |
 | `tests/emath-artifact` | `tests/emath-artifact` | artifact test suite |
+| `tests/emath-build` | `tests/emath-build` | build-step public-API test suite |
+| `tests/emath-builder` | `tests/emath-builder` | builder public-API test suite |
+| `tests/emath-checker` | `tests/emath-checker` | checker public-API test suite |
+| `tests/emath-cli` | `tests/emath-cli` | CLI public-API test suite |
+| `tests/emath-evidence` | `tests/emath-evidence` | evidence public-API test suite |
+| `tests/emath-exec-ir` | `tests/emath-exec-ir` | executable-IR public-API test suite |
+| `tests/emath-genesis` | `tests/emath-genesis` | genesis public-API test suite |
+| `tests/emath-hir` | `tests/emath-hir` | HIR public-API test suite |
+| `tests/emath-holes` | `tests/emath-holes` | holes public-API test suite |
+| `tests/emath-ir` | `tests/emath-ir` | IR canonicalization test suite |
+| `tests/emath-lab-core` | `tests/emath-lab-core` | laboratory public-API test suite |
+| `tests/emath-law-check` | `tests/emath-law-check` | law-check public-API test suite |
+| `tests/emath-lsp` | `tests/emath-lsp` | language-server public-API test suite |
+| `tests/emath-portfolio` | `tests/emath-portfolio` | portfolio public-API test suite |
+| `tests/emath-provenance` | `tests/emath-provenance` | provenance public-API test suite |
+| `tests/emath-provider-api` | `tests/emath-provider-api` | provider-API public-API test suite |
+| `tests/emath-rust-backend` | `tests/emath-rust-backend` | Rust backend public-API test suite |
+| `tests/emath-search` | `tests/emath-search` | search public-API test suite |
+| `tests/emath-sema` | `tests/emath-sema` | session/admission public-API test suite |
+| `tests/emath-store` | `tests/emath-store` | store public-API test suite |
+| `tests/emath-syntax` | `tests/emath-syntax` | syntax public-API test suite |
+| `tests/emath-term` | `tests/emath-term` | term-parse back test suite |
+| `tests/emath-trust-gates` | `tests/emath-trust-gates` | trust gate test suite |
+| `tests/emath-tuning` | `tests/emath-tuning` | tuning public-API test suite |
+| `tests/emath-world-codegen-rust` | `tests/emath-world-codegen-rust` | parametric codegen public-API test suite |
+| `tests/emath-world-ir` | `tests/emath-world-ir` | World IR public-API test suite |
 | `examples/demo-host` | `examples/demo-host` | build-time pipeline host + promotion + negative control |
 | `examples/demo-host-independent` | `examples/demo-host-independent` | fingerprint-free behavioral-assert host |
 | `examples/provider-skeleton` | `examples/provider-skeleton` | provider adapter skeleton |

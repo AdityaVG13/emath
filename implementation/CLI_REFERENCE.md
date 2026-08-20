@@ -39,9 +39,10 @@ deterministic sorted-key JSON via the in-tree writer.
 | --- | --- |
 | `emath parse --forest <file>` | bounded parse forest over the lexical/structural parse |
 | `emath signature <file>` | signature inference of parses |
-| `emath genesis <file> --out <dir>` | world interpretation + answer receipt (no invented `tested` authority; `keep: pareto N`) |
+| `emath genesis <file> --out <dir>` | world interpretation + answer receipt (no invented `tested` authority; `keep: pareto N`; G7 `evaluate`; `E-GEN-095` if a single answer would hide several kept worlds) |
 | `emath compile --parametric <file> --out <dir>` | compile a world via the parametric fallback into a generated crate |
 | `emath world show` / `emath portfolio show` | inspect worlds / interpretation portfolio |
+| `emath meaning list\|set\|unset\|explain` | project-local interpretation lock (`.emath/meaning.lock`); `set` refuses disqualified worlds (`E-LOCK-005`); drifted/tampered/malformed locks refuse (`E-LOCK-*`) and never silently fall back |
 | `emath import modelica <file.mo> [--json]` | retain a Modelica subset source as foreign-model declarations (no rewrite) |
 | `emath architecture [--json]` | print the neutral-IR architecture map |
 
