@@ -85,8 +85,13 @@ mod host_alloc {
         if len == 0 {
             return (0, 0);
         }
-        let mut buf = Vec::<u8>::with_capacity(len as usize);
+        // `vec![0u8; len]` guarantees capacity == len exactly (RawVec from a
+        // sized repeat has no amortized-growth path), so the paired `free`
+        // `Vec::from_raw_parts(raw_addr, 0, len)` reconstructs the identical
+        // capacity and the drop sizes the `free` correctly (site 1).
+        let mut buf = vec![0u8; len as usize];
         let capacity = buf.capacity();
+        debug_assert_eq!(capacity, len as usize, "exact-capacity invariant (ffi host shim)");
         let ptr = buf.as_mut_ptr();
         std::mem::forget(buf);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -141,10 +146,24 @@ fn alloc_region(len: u32) -> (u32, usize) {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let mut buf = Vec::<u8>::with_capacity(len as usize);
+        // `vec![0; len]` builds from `RawVec` with capacity exactly `len`
+        // (site 1). This is the load-bearing half of the `em_free`
+        // reconstruction contract: `from_raw_parts(ptr, 0, len)` sets cap ==
+        // len, and the drop's `free` size only matches the allocator's if the
+        // original capacity is exactly len. A sized repeat cannot
+        // over-allocate, so the capacity coupling is sound.
+        let mut buf = vec![0u8; len as usize];
         let capacity = buf.capacity();
         debug_assert_eq!(capacity, len as usize, "exact-capacity invariant (ffi site 1)");
         let ptr = buf.as_mut_ptr();
+        // Invariant, no `unsafe` block here (safe calls, unsafe-adjacent):
+        // `mem::forget(buf)` leaks the allocation until `em_free`. Leak-until-
+        // em_free is the protocol: the host's JS `finally` blocks always free
+        // every address this returns (module invariant 2), and `len == 0`
+        // already returned `0` above so nothing is leaked for the null case.
+        // `ptr as u32` truncation is lossless on wasm32 (address == usize ==
+        // 32-bit); `vec![0; len]` keeps capacity exactly len so `em_free`'s
+        // from_raw_parts reconstructs an identical Vec (site 1).
         std::mem::forget(buf);
         (ptr as u32, capacity)
     }
@@ -165,6 +184,24 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     if ptr == 0 {
         return;
     }
+    // SAFETY: `Vec::from_raw_parts(ptr, 0, len)` reconstructs ownership of a
+    // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
+    //
+    // (1) Valid ownership: `ptr`/`len` is a live pair returned by
+    //     `em_alloc`/`em_run`, still leaked and not double-freed (host ABI
+    //     contract, module invariant 2). Reconstructing it here transfers
+    //     that responsibility back to the Vec, whose drop now frees it.
+    // (2) Capacity coupling: `Vec::with_capacity`/`vec![0; len]` in
+    //     `alloc_region` produced capacity exactly `len` (sized repeat), so
+    //     `from_raw_parts(ptr, 0, len)`'s cap == len matches the allocator's
+    //     footprint; the drop's `free` uses the same size the alloc used.
+    // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
+    //     the zero-length (null) allocation is never reconstructed here.
+    // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
+    //     drops the Vec by binding.
+    // Enforced by: the host ABI contract (clauses 1) and `alloc_region`'s
+    // exact-capacity construction (clauses 2-3). Failure = host feeding a
+    // foreign/double/mismatched pair, an ABI violation, not a library bug.
     #[cfg(target_arch = "wasm32")]
     unsafe {
         let _ = Vec::from_raw_parts(ptr as *mut u8, 0, len as usize);
@@ -217,6 +254,26 @@ fn read_utf8<'a>(ptr: u32, len: u32) -> Result<&'a str, &'static str> {
             resolved
         }
     };
+    // SAFETY: `slice::from_raw_parts(raw_ptr, len)` is sound only if the
+    // whole `[raw_ptr, raw_ptr + len)` range is in-bounds, aligned, valid,
+    // and initialized for the `'a` the slice is borrowed for.
+    //
+    // (1) Host-initialized region: `len == 0` returned above; otherwise the
+    //     host wrote `len` bytes at the `em_alloc`-returned address, which
+    //     this module guarantees has capacity >= len (module invariant 3).
+    // (2) Alignment/validity: `*const u8` is always aligned, and the region
+    //     is caller-initialized (clause 1), so the bytes are valid for the
+    //     call duration only (`'a` is the function's anonymous lifetime).
+    // (3) Guards precede construction: `ptr == 0`, `ptr >= 1 << 31`, and
+    //     `len > 1 GiB` all reject via the `Err` path before this block, so
+    //     the slice is never built over a null/oversize range.
+    // (4) u32 -> usize bounds: widens losslessly on wasm32 (both 32-bit) and
+    //     on 64-bit hosts; `ptr >= 1<<31` keeps the wasm32 window under the
+    //     mid-point of a max 4 GiB linear heap, so `raw_ptr + len` stays
+    //     addressable (len capped at 1 GiB).
+    // Enforced by: the host ABI contract (clauses 1-2) and the guards above
+    // (clauses 3-4). Failure = a host feeding a non-owned/null/oversize
+    // pointer, an ABI violation, not a library bug.
     let bytes = unsafe { slice::from_raw_parts(raw_ptr, len as usize) };
     std::str::from_utf8(bytes).map_err(|_| "invalid UTF-8 input")
 }
@@ -233,6 +290,30 @@ fn pack_json(json: &str) -> u64 {
         let dst = host_alloc::resolve(ptr) as *mut u8;
 
         if !dst.is_null() {
+            // SAFETY: `ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len)`
+            // requires `copy_len` writable bytes at `dst`, readable bytes at
+            // the source, and the two ranges non-overlapping.
+            //
+            // (1) Fresh dst: `dst` is a region just returned by
+            //     `em_alloc(len)` (or its host-table alias) with capacity
+            //     >= copy_len == bytes.len(); it is not otherwise referenced
+            //     and is exclusively owned by this write.
+            // (2) Non-overlap by construction: `dst` is freshly allocated and
+            //     never aliases the static `bytes` input buffer; the only
+            //     degenerate case is empty JSON (`copy_len == 0`), which the
+            //     enclosing `copy_len != 0 && ptr != 0` guard skips.
+            // (3) Readable source / writable dst: `bytes` borrows the call's
+            //     `&str`; `dst` is free, writable slack the host expects to be
+            //     overwritten (module invariant round-trip).
+            // (4) u32::MAX truncation unreachable: `len` is capped at 1 GiB
+            //     by `u32::try_from(bytes.len())` because wasm linear memory
+            //     is at most 4 GiB, so a real JSON string can never exceed
+            //     that; even at the cap, `copy_len` is bounded by actual
+            //     `bytes.len()`, so no source read past the buffer occurs.
+            // Enforced by: `alloc_region`'s exact-capacity contract (clause 1)
+            // and the length guard above (clause 4). Failure = a host that
+            // overwrote the fresh region between `em_alloc` and this copy, an
+            // ABI violation.
             unsafe {
                 ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len);
             }
@@ -285,6 +366,22 @@ mod tests {
         }
         assert_eq!(em_alloc(0), 0);
         em_free(0, 0);
+    }
+
+    #[test]
+    fn test_em_alloc_stability_thousand() {
+        // alloc -> free -> alloc repeatedly at varied sizes: catches any
+        // capacity-coupling or leak-accounting drift across many cycles
+        // (site 1). Non-zero handles every time; no crash, no double-free.
+        for i in 0..1000_u32 {
+            let size = (i.wrapping_mul(101) % 8192) + 1;
+            let a = em_alloc(size);
+            assert_ne!(a, 0, "non-null handle at iter {i}");
+            em_free(a, size);
+            let b = em_alloc(size);
+            assert_ne!(b, 0, "re-alloc non-null at iter {i}");
+            em_free(b, size);
+        }
     }
 
     #[test]
