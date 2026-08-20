@@ -119,6 +119,10 @@ kbd,
 
 /* Warning Banner */
 .banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   background: #3b1414;
   color: #fca5a5;
   border-bottom: 1px solid #7f1d1d;
@@ -129,7 +133,26 @@ kbd,
 }
 
 .banner[hidden] {
-  display: none;
+  display: none !important;
+}
+
+.banner-message {
+  flex: 1;
+}
+
+.btn-banner-retry {
+  background: #7f1d1d;
+  color: #fef2f2;
+  border: 1px solid #991b1b;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-banner-retry:hover {
+  background: #991b1b;
 }
 
 /* ==========================================================================

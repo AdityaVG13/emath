@@ -1,4 +1,6 @@
-const WASM_URL = "/emath.wasm";
+export const WASM_URL =
+  (typeof window !== "undefined" && window.EMATH_WASM_URL) ||
+  "/emath.wasm";
 const WASM_MISSING = "emath.wasm not found (run `cargo xtask build-web`)";
 const SOURCE_HASH_PREFIX = "#src=";
 
@@ -7,10 +9,31 @@ const $ = (id) => document.getElementById(id);
 let emRun = null;
 let generatedFiles = [];
 
-export function showWasmMissing(visible = true) {
+export function showWasmMissing(visible = true, message = null, retryFn = null) {
   const banner = $("wasm-missing");
-  if (banner) {
-    banner.hidden = !visible;
+  if (!banner) {
+    return;
+  }
+  banner.hidden = !visible;
+  if (visible) {
+    banner.textContent = "";
+    const msgSpan = document.createElement("span");
+    msgSpan.className = "banner-message";
+    msgSpan.textContent = message || WASM_MISSING;
+    banner.appendChild(msgSpan);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-banner-retry";
+    btn.textContent = "Retry";
+    btn.onclick = () => {
+      if (typeof retryFn === "function") {
+        retryFn();
+      } else {
+        window.location.reload();
+      }
+    };
+    banner.appendChild(btn);
   }
 }
 
@@ -68,23 +91,62 @@ export function makeEmRun(instance) {
 }
 
 export async function instantiateWasm(url = WASM_URL) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const error = new Error(WASM_MISSING);
-    error.code = "WASM_MISSING";
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (netErr) {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    const msg = isOffline
+      ? `Offline: unable to fetch ${url}. If working offline, ensure emath.wasm is cached by loading once online. Or run 'cargo xtask serve-web' locally.`
+      : `Network error fetching ${url} (${netErr.message || netErr}). Check server connection or run 'cargo xtask serve-web'.`;
+    const error = new Error(msg);
+    error.code = isOffline ? "ERR_OFFLINE" : "ERR_NETWORK";
+    error.cause = netErr;
     throw error;
   }
+
+  if (!response.ok) {
+    const detail = `HTTP ${response.status} ${response.statusText || ""}`.trim();
+    const error = new Error(
+      response.status === 404
+        ? `emath.wasm not found (${detail}). Run 'cargo xtask build-web' to compile the WebAssembly engine.`
+        : `Failed to load emath.wasm (${detail}). Run 'cargo xtask build-web' to recompile.`
+    );
+    error.code = response.status === 404 ? "WASM_MISSING" : `HTTP_${response.status}`;
+    error.status = response.status;
+    throw error;
+  }
+
   if (typeof WebAssembly.instantiateStreaming === "function") {
     try {
       return await WebAssembly.instantiateStreaming(response, {});
     } catch {
-      const retry = await fetch(url);
-      const bytes = await retry.arrayBuffer();
-      return WebAssembly.instantiate(bytes, {});
+      try {
+        const retry = await fetch(url);
+        const bytes = await retry.arrayBuffer();
+        return await WebAssembly.instantiate(bytes, {});
+      } catch (fallbackErr) {
+        const error = new Error(
+          `WebAssembly compilation failed: ${fallbackErr.message || fallbackErr}. Run 'cargo xtask build-web' to recompile.`
+        );
+        error.code = "WASM_COMPILE_FAIL";
+        error.cause = fallbackErr;
+        throw error;
+      }
     }
   }
-  const bytes = await response.arrayBuffer();
-  return WebAssembly.instantiate(bytes, {});
+
+  try {
+    const bytes = await response.arrayBuffer();
+    return await WebAssembly.instantiate(bytes, {});
+  } catch (instantiateErr) {
+    const error = new Error(
+      `WebAssembly instantiation failed: ${instantiateErr.message || instantiateErr}. Run 'cargo xtask build-web' to recompile.`
+    );
+    error.code = "WASM_INSTANTIATE_FAIL";
+    error.cause = instantiateErr;
+    throw error;
+  }
 }
 
 function setStatus(text, kind) {
@@ -2866,10 +2928,9 @@ export async function boot() {
   try {
     const wasm = await instantiateWasm(WASM_URL);
     emRun = makeEmRun(wasm.instance);
+    showWasmMissing(false);
   } catch (error) {
-    if (error.code === "WASM_MISSING" || String(error.message).includes("emath.wasm not found")) {
-      showWasmMissing(true);
-    }
+    showWasmMissing(true, error.message, () => boot());
     setStatus(`fail: ${error.message || error}`, "fail");
     return;
   }
