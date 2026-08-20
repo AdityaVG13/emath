@@ -273,10 +273,15 @@ function writeSourceToHash(source) {
 
 function debounce(fn, ms) {
   let timer = 0;
-  return (...args) => {
+  const debounced = (...args) => {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => fn(...args), ms);
   };
+  debounced.cancel = () => {
+    window.clearTimeout(timer);
+    timer = 0;
+  };
+  return debounced;
 }
 
 function renderRun(result) {
@@ -1499,6 +1504,8 @@ export const plotState = {
   isDragging: false,
   dragStart: { x: 0, y: 0 },
   dragBounds: null,
+  isPinching: false,
+  pinchStart: null,
   points: [],
   inputs: [],
   outputs: [],
@@ -1654,19 +1661,76 @@ export function setupPlotCanvas() {
   if (!canvas) return;
   plotState.canvasInitialized = true;
 
-  canvas.addEventListener("mousedown", (e) => {
-    plotState.isDragging = true;
-    plotState.dragStart = { x: e.clientX, y: e.clientY };
-    plotState.dragBounds = {
-      minX: plotState.minX,
-      maxX: plotState.maxX,
-      minY: plotState.minY,
-      maxY: plotState.maxY,
-    };
+  const activePointers = new Map();
+
+  function syncPlotInputs() {
+    const minXInput = $("plot-min-x");
+    const maxXInput = $("plot-max-x");
+    if (minXInput) minXInput.value = plotState.minX.toFixed(2);
+    if (maxXInput) maxXInput.value = plotState.maxX.toFixed(2);
+  }
+
+  function getPinchDist() {
+    const pts = Array.from(activePointers.values());
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {}
+    activePointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+
+    if (activePointers.size === 1) {
+      plotState.isDragging = true;
+      plotState.isPinching = false;
+      plotState.dragStart = { x: e.clientX, y: e.clientY };
+      plotState.dragBounds = {
+        minX: plotState.minX,
+        maxX: plotState.maxX,
+        minY: plotState.minY,
+        maxY: plotState.maxY,
+      };
+    } else if (activePointers.size >= 2) {
+      plotState.isDragging = false;
+      plotState.isPinching = true;
+      const dist = getPinchDist();
+      plotState.pinchStart = {
+        dist: dist > 0 ? dist : 1,
+        minX: plotState.minX,
+        maxX: plotState.maxX,
+        minY: plotState.minY,
+        maxY: plotState.maxY,
+      };
+    }
   });
 
-  window.addEventListener("mousemove", (e) => {
-    if (plotState.isDragging && plotState.dragBounds) {
+  canvas.addEventListener("pointermove", (e) => {
+    if (activePointers.has(e.pointerId)) {
+      activePointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    }
+
+    if (plotState.isPinching && activePointers.size >= 2 && plotState.pinchStart) {
+      const currentDist = getPinchDist();
+      if (currentDist > 0 && plotState.pinchStart.dist > 0) {
+        const zoomFactor = plotState.pinchStart.dist / currentDist;
+        const midX = (plotState.pinchStart.minX + plotState.pinchStart.maxX) / 2;
+        const midY = (plotState.pinchStart.minY + plotState.pinchStart.maxY) / 2;
+        const spanX = (plotState.pinchStart.maxX - plotState.pinchStart.minX) * zoomFactor;
+        const spanY = (plotState.pinchStart.maxY - plotState.pinchStart.minY) * zoomFactor;
+        plotState.minX = midX - spanX / 2;
+        plotState.maxX = midX + spanX / 2;
+        plotState.minY = midY - spanY / 2;
+        plotState.maxY = midY + spanY / 2;
+        plotState.autoScaleY = false;
+        syncPlotInputs();
+        drawPlot();
+      }
+      return;
+    }
+
+    if (plotState.isDragging && plotState.dragBounds && activePointers.size === 1) {
       const rect = canvas.getBoundingClientRect();
       const dx = ((e.clientX - plotState.dragStart.x) / rect.width) * (plotState.dragBounds.maxX - plotState.dragBounds.minX);
       const dy = ((e.clientY - plotState.dragStart.y) / rect.height) * (plotState.dragBounds.maxY - plotState.dragBounds.minY);
@@ -1675,17 +1739,74 @@ export function setupPlotCanvas() {
       plotState.minY = plotState.dragBounds.minY + dy;
       plotState.maxY = plotState.dragBounds.maxY + dy;
       plotState.autoScaleY = false;
-      const minXInput = $("plot-min-x");
-      const maxXInput = $("plot-max-x");
-      if (minXInput) minXInput.value = plotState.minX.toFixed(2);
-      if (maxXInput) maxXInput.value = plotState.maxX.toFixed(2);
+      syncPlotInputs();
       drawPlot();
+      return;
+    }
+
+    if (activePointers.size === 0 && plotState.points.length > 0) {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mathX = plotState.minX + (mouseX / rect.width) * (plotState.maxX - plotState.minX);
+
+      let closest = null;
+      let minDist = Infinity;
+      for (const pt of plotState.points) {
+        const dist = Math.abs(pt.x - mathX);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = pt;
+        }
+      }
+
+      const tooltip = $("plot-tooltip");
+      if (closest && tooltip && Number.isFinite(closest.y)) {
+        const canvasX = ((closest.x - plotState.minX) / (plotState.maxX - plotState.minX)) * rect.width;
+        const canvasY = ((plotState.maxY - closest.y) / (plotState.maxY - plotState.minY)) * rect.height;
+        tooltip.style.left = `${canvasX}px`;
+        tooltip.style.top = `${canvasY}px`;
+        tooltip.textContent = `${plotState.xVar ?? "x"} = ${closest.x.toFixed(3)}, ${plotState.yVar ?? "y"} = ${closest.y.toFixed(3)}`;
+        tooltip.hidden = false;
+      }
     }
   });
 
-  window.addEventListener("mouseup", () => {
-    plotState.isDragging = false;
-    plotState.dragBounds = null;
+  const handlePointerEnd = (e) => {
+    if (canvas.hasPointerCapture(e.pointerId)) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+    activePointers.delete(e.pointerId);
+
+    if (activePointers.size === 0) {
+      plotState.isDragging = false;
+      plotState.isPinching = false;
+      plotState.dragBounds = null;
+      plotState.pinchStart = null;
+    } else if (activePointers.size === 1) {
+      plotState.isPinching = false;
+      plotState.pinchStart = null;
+      const remaining = Array.from(activePointers.values())[0];
+      plotState.isDragging = true;
+      plotState.dragStart = { x: remaining.clientX, y: remaining.clientY };
+      plotState.dragBounds = {
+        minX: plotState.minX,
+        maxX: plotState.maxX,
+        minY: plotState.minY,
+        maxY: plotState.maxY,
+      };
+    }
+  };
+
+  canvas.addEventListener("pointerup", handlePointerEnd);
+  canvas.addEventListener("pointercancel", handlePointerEnd);
+
+  canvas.addEventListener("pointerleave", () => {
+    if (activePointers.size === 0) {
+      const tooltip = $("plot-tooltip");
+      if (tooltip) tooltip.hidden = true;
+    }
   });
 
   canvas.addEventListener("wheel", (e) => {
@@ -1700,48 +1821,9 @@ export function setupPlotCanvas() {
     plotState.minY = midY - spanY / 2;
     plotState.maxY = midY + spanY / 2;
     plotState.autoScaleY = false;
-    const minXInput = $("plot-min-x");
-    const maxXInput = $("plot-max-x");
-    if (minXInput) minXInput.value = plotState.minX.toFixed(2);
-    if (maxXInput) maxXInput.value = plotState.maxX.toFixed(2);
+    syncPlotInputs();
     drawPlot();
   }, { passive: false });
-
-  canvas.addEventListener("mousemove", (e) => {
-    if (plotState.isDragging || plotState.points.length === 0) return;
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    // Convert mouseX to math X
-    const mathX = plotState.minX + (mouseX / rect.width) * (plotState.maxX - plotState.minX);
-
-    // Find closest point
-    let closest = null;
-    let minDist = Infinity;
-    for (const pt of plotState.points) {
-      const dist = Math.abs(pt.x - mathX);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = pt;
-      }
-    }
-
-    const tooltip = $("plot-tooltip");
-    if (closest && tooltip && Number.isFinite(closest.y)) {
-      const canvasX = ((closest.x - plotState.minX) / (plotState.maxX - plotState.minX)) * rect.width;
-      const canvasY = ((plotState.maxY - closest.y) / (plotState.maxY - plotState.minY)) * rect.height;
-      tooltip.style.left = `${canvasX}px`;
-      tooltip.style.top = `${canvasY}px`;
-      tooltip.textContent = `${plotState.xVar ?? "x"} = ${closest.x.toFixed(3)}, ${plotState.yVar ?? "y"} = ${closest.y.toFixed(3)}`;
-      tooltip.hidden = false;
-    }
-  });
-
-  canvas.addEventListener("mouseleave", () => {
-    const tooltip = $("plot-tooltip");
-    if (tooltip) tooltip.hidden = true;
-  });
 
   if (window.ResizeObserver && canvas.parentElement) {
     const ro = new ResizeObserver(() => {
@@ -1781,9 +1863,9 @@ export function drawPlot() {
     return;
   }
 
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
   ctx.scale(dpr, dpr);
 
   const width = rect.width;
@@ -1935,6 +2017,10 @@ export function resetPlotView() {
   plotState.minY = -10;
   plotState.maxY = 10;
   plotState.autoScaleY = true;
+  plotState.isDragging = false;
+  plotState.isPinching = false;
+  plotState.dragBounds = null;
+  plotState.pinchStart = null;
   const minXInput = $("plot-min-x");
   const maxXInput = $("plot-max-x");
   if (minXInput) minXInput.value = "-10";
@@ -2618,15 +2704,22 @@ function wireUi() {
     "input",
     guard((event) => filterLegend(event.target.value ?? "")),
   );
-  $("editor")?.addEventListener(
-    "input",
-    debounce(() => {
-      try {
-        localStorage.setItem("emath_editor_draft", sourcePayload());
-      } catch {}
-      updateSymbolifyButton();
-    }, 250),
-  );
+  const editorDraftDebounced = debounce(() => {
+    try {
+      localStorage.setItem("emath_editor_draft", sourcePayload());
+    } catch {}
+    updateSymbolifyButton();
+  }, 250);
+  $("editor")?.addEventListener("input", editorDraftDebounced);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (liveEvalDebounceTimer) {
+        clearTimeout(liveEvalDebounceTimer);
+        liveEvalDebounceTimer = null;
+      }
+      editorDraftDebounced.cancel();
+    }
+  });
   window.addEventListener(
     "hashchange",
     guard(() => {
