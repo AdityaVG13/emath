@@ -46,8 +46,12 @@ spec). Meaning-versus-work is already in the language: `definitions:` vs
 shapes, domains, events, prove/optimize goals). Planned crates on
 `implementation/CRATE_MAP.md` are not implemented: `emath-package`,
 `emath-types`, `emath-units`, `emath-shapes`, `emath-domains`,
-`emath-format`, `emath-canonical`. WASM playground and zero-math
-learnability are horizon, not present.
+`emath-format`, `emath-canonical`. Zero-math learnability is horizon.
+Surface minimalism is doctrine: admission demands only what meaning
+requires (`outputs:`, `goals:`, `tests:`, `compile:`, `exports:` are
+optional; an example without `expect` is a worked example — it computes
+and displays, claiming nothing). The WASM playground is present (see
+Compiler); graphing and AI-assisted learning in the pane are horizon.
 
 ## Compiler
 
@@ -60,7 +64,12 @@ providers are installed. Lowering: `emath-exec-ir` → `emath-rust-backend` /
 `emath-rust-ir` → `emath-artifact` (seven artifact classes) → `emath-build`
 (check → plan → generate → compile; `--verify` is honest about missing
 tests). Host: `emath-cli` (`check`, `plan`, `planner`, `build`, `run`,
-`test`, `explain`, genesis family). Genesis substrate: `emath-genesis`
+`test`, `explain`, `serve`, genesis family). Playground: `emath-wasm`
+(C-ABI engine, no bindgen) + `emath serve` host a local browser pane;
+`emath-exec-ir` carries a strict-f64 Tier-0 interpreter so `run` works
+in-browser without cargo, labeled `interpreted-strict-f64` — the
+compiled Rust tier stays the evidence pipeline's native lane, and
+tier agreement is a differential gate. Genesis substrate: `emath-genesis`
 (built-in worlds, VM, CSA totality baseline), `emath-world-ir`,
 `emath-world-codegen-rust`, `emath-portfolio`. Adapters
 `emath-adapter-dew` and `emath-adapter-rumoca` are native stand-ins.

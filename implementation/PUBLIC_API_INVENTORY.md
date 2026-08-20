@@ -77,6 +77,20 @@ pub struct BuildRequest;   // [planned] not on the session
 `MetricDefinition`, `PromotionPolicy`, `PromotionDecision`,
 `PromotionReceipt`, `RuntimeSelector`, `DriftPolicy`.
 
+## Math layout — crate exists, surface evolving (not gate-pinned)
+
+`crates/emath-layout`: `MathLayoutGraph`, `LayoutNode`, `LayoutEdge`,
+`LayoutContent`, `LayoutError`, `RetainedAmbiguity`, `UnloweredRegion`,
+`SpatialRelation`, `NodeId`, `LAYOUT_SCHEMA`, `LAYOUT_VERSION`,
+`check_version`, `parse_latex`, `to_binder_term`, `PdfPageFixture`,
+`PositionedGlyph`, `extract`, `reference_fixture`.
+
+## Wasm playground engine — crate exists, surface evolving (not gate-pinned)
+
+`crates/emath-wasm`: `ABI_VERSION`, `run_op` (`version`, `examples`,
+`check`, `plan`, `mig`, `generate`, `format`, `run`, `inputs`). C ABI
+in `ffi`: `em_alloc`, `em_free`, `em_run`.
+
 ## Neutral semantics — planned surface (not gate-pinned)
 
 `PackageIdentity`, `DeclarationId`, `TypeId`, `ExprId`, `Declaration`,
