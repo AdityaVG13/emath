@@ -36,6 +36,9 @@ mod canonical_identity {
             tests: Vec::new(),
             exports: Vec::new(),
             compile_spec: CompileSpec::default(),
+            about: None,
+            evidence: Vec::new(),
+            host: Vec::new(),
             source: Span::default(),
         });
         canonical_package(&package)
