@@ -448,7 +448,7 @@ impl ModelBuilder for BuilderModel {
                 Ok(emath_ir::TestCase {
                     name: test.name.clone(),
                     given,
-                    expect,
+                    expect: Some(expect),
                     source: OWNER,
                 })
             })
@@ -476,6 +476,7 @@ impl ModelBuilder for BuilderModel {
                         fallback: FallbackPolicy::NativeOnly,
                         produce: goal.produce.clone(),
                     },
+                    payload: emath_ir::GoalPayload::default(),
                     source: OWNER,
                 }
             })
@@ -525,6 +526,9 @@ impl ModelBuilder for BuilderModel {
             tests: test_ids,
             exports: Vec::new(),
             compile_spec,
+            about: None,
+            evidence: Vec::new(),
+            host: Vec::new(),
             source: OWNER,
         };
         package.declarations.push(declaration);
@@ -906,6 +910,3 @@ pub fn build_from_source(
         emath_build::BuildOptions::default(),
     )
 }
-
-
-
