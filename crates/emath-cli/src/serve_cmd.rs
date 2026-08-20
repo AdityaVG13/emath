@@ -119,7 +119,7 @@ fn parse_serve_args(args: &[String]) -> Result<ServeArgs, String> {
     })
 }
 
-/// `--dist` wins, then `EMATH_WEB_DIST`, then `<cwd>/web/dist`.
+/// `--dist` wins, then `EMATH_WEB_DIST`, then `<cwd>/web/dist` (with upward search).
 fn resolve_dist(flag: Option<&Path>, env_value: Option<&str>, cwd: &Path) -> PathBuf {
     if let Some(path) = flag {
         return path.to_path_buf();
@@ -127,7 +127,20 @@ fn resolve_dist(flag: Option<&Path>, env_value: Option<&str>, cwd: &Path) -> Pat
     if let Some(value) = env_value.filter(|value| !value.is_empty()) {
         return PathBuf::from(value);
     }
-    cwd.join(DEFAULT_DIST)
+    let direct = cwd.join(DEFAULT_DIST);
+    if dist_is_ready(&direct) {
+        return direct;
+    }
+    // Search upwards from cwd for web/dist (e.g. if invoked from a crate or subfolder)
+    let mut current = cwd;
+    while let Some(parent) = current.parent() {
+        let candidate = parent.join(DEFAULT_DIST);
+        if dist_is_ready(&candidate) {
+            return candidate;
+        }
+        current = parent;
+    }
+    direct
 }
 
 fn dist_is_ready(dist: &Path) -> bool {

@@ -361,3 +361,562 @@ footer.fail {
 .legend-row.hidden {
   display: none;
 }
+
+/* ==========================================================================
+   Live Parameter Sliders & Interactive Dynamic Inputs
+   ========================================================================== */
+.inputs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.inputs-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.inputs-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.auto-run-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.input-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 14rem;
+  flex: 1;
+}
+
+.input-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.input-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.input-type {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.input-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.input-controls-row input[type="number"] {
+  width: 5.5rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.85rem;
+  border-radius: 3px;
+}
+
+.input-controls-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.live-outputs-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: #1c2436;
+  border: 1px solid #2f4575;
+  border-radius: 4px;
+  margin-top: 0.25rem;
+  overflow-x: auto;
+}
+
+.outputs-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+#live-outputs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.output-pill {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   2D Function Plotter
+   ========================================================================== */
+#panel-plot {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  height: 100%;
+}
+
+#panel-plot.active {
+  display: flex;
+}
+
+.plot-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.plot-control-group,
+.plot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.plot-control-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.plot-control-group input[type="number"] {
+  width: 4.5rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.8rem;
+}
+
+.plot-control-group select {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.plot-secondary-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.sec-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#plot-secondary-sliders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.sec-slider-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sec-slider-item input[type="range"] {
+  width: 5rem;
+  accent-color: var(--accent);
+}
+
+.plot-canvas-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 250px;
+  background: #151619;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#plot-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.plot-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(20, 22, 28, 0.92);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  transform: translate(12px, -50%);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================================================
+   Mathematical Intent Typography View
+   ========================================================================== */
+#panel-math {
+  display: none;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  overflow-y: auto;
+}
+
+#panel-math.active {
+  display: flex;
+}
+
+.math-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.math-rendered {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.math-decl-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+}
+
+.math-decl-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+}
+
+.math-equation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.math-equation-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: "Cambria Math", "Latin Modern Math", "TeX Gyre Termes Math", "STIX Two Math", Georgia, serif;
+  font-size: 1.15rem;
+  padding: 0.25rem 0.4rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+.math-lhs {
+  color: #79c0ff;
+  font-weight: bold;
+}
+
+.math-eq {
+  color: var(--muted);
+}
+
+.math-rhs {
+  color: #e6edf3;
+}
+
+.math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  padding: 0 0.2em;
+  font-size: 0.9em;
+}
+
+.math-num {
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 0.1em;
+}
+
+.math-den {
+  padding-top: 0.1em;
+}
+
+.math-sup {
+  font-size: 0.75em;
+  vertical-align: super;
+}
+
+.math-sub {
+  font-size: 0.75em;
+  vertical-align: sub;
+}
+
+.math-sqrt {
+  display: inline-flex;
+  align-items: center;
+  border-top: 1px solid currentColor;
+  padding: 0 0.2em;
+  margin-left: 0.1em;
+}
+
+.math-sqrt-sign {
+  font-size: 1.1em;
+  margin-right: 0.05em;
+}
+
+.math-latex-container {
+  margin-top: 0.5rem;
+}
+
+#math-latex-raw {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+/* ==========================================================================
+   Finite Worlds & Morphisms Explorer (Genesis)
+   ========================================================================== */
+#panel-genesis {
+  display: none;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  overflow-y: auto;
+}
+
+#panel-genesis.active {
+  display: flex;
+}
+
+.genesis-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.genesis-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.genesis-content {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 1.2fr);
+  gap: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .genesis-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.genesis-matrix-section,
+.genesis-laws-section,
+.genesis-morphisms-section {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.genesis-matrix-section h3,
+.genesis-laws-section h3,
+.genesis-morphisms-section h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.genesis-matrix-table-wrapper {
+  overflow-x: auto;
+}
+
+.genesis-table {
+  border-collapse: collapse;
+  margin: 0.3rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.genesis-table th,
+.genesis-table td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: center;
+  font-size: 0.9rem;
+  min-width: 2.2rem;
+}
+
+.genesis-table th {
+  background: #2b3a5c;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.genesis-table td {
+  background: var(--bg);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.genesis-table td:hover,
+.genesis-table td.highlighted {
+  background: #33446b;
+  color: #fff;
+}
+
+.genesis-table td input {
+  width: 2rem;
+  text-align: center;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+}
+
+.genesis-cell-info {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 0.2rem 0;
+}
+
+.genesis-laws-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.genesis-law-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.genesis-law-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.genesis-law-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.genesis-law-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.genesis-law-status.pass {
+  background: rgba(158, 206, 106, 0.15);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+}
+
+.genesis-law-status.fail {
+  background: rgba(247, 118, 142, 0.15);
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.genesis-law-formula {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.genesis-law-witness {
+  font-size: 0.75rem;
+  color: var(--warning);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.genesis-morphism-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+

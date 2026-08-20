@@ -96,6 +96,13 @@ function showTab(name) {
   for (const panel of document.querySelectorAll(".tab-panel")) {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
   }
+  if (name === "plot") {
+    updatePlotView();
+  } else if (name === "math") {
+    updateMathView();
+  } else if (name === "genesis") {
+    updateGenesisView();
+  }
 }
 
 function setRaw(result) {
@@ -364,7 +371,38 @@ function showDesugared(result) {
   banner.hidden = true;
 }
 
-function renderInputFields(inputsResult, prefills) {
+let liveEvalDebounceTimer = null;
+
+export function updateLiveOutputs(result) {
+  const bar = $("live-outputs-bar");
+  const list = $("live-outputs-list");
+  if (!bar || !list) return;
+  const declarations = Array.isArray(result.declarations) ? result.declarations : [];
+  const outputs = [];
+  for (const decl of declarations) {
+    const tests = Array.isArray(decl.tests) ? decl.tests : [];
+    for (const test of tests) {
+      const computed = { ...(test.definitions ?? {}), ...(test.outputs ?? {}) };
+      for (const [name, val] of Object.entries(computed)) {
+        outputs.push({ name, val });
+      }
+    }
+  }
+  if (outputs.length === 0) {
+    bar.hidden = true;
+    return;
+  }
+  list.replaceChildren();
+  for (const { name, val } of outputs) {
+    const pill = document.createElement("span");
+    pill.className = "output-pill";
+    pill.textContent = `${name} = ${formatRunValue(val)}`;
+    list.appendChild(pill);
+  }
+  bar.hidden = false;
+}
+
+export function renderInputFields(inputsResult, prefills) {
   const panel = $("inputs-panel");
   const fields = $("input-fields");
   if (!panel || !fields) {
@@ -381,27 +419,99 @@ function renderInputFields(inputsResult, prefills) {
         continue;
       }
       count += 1;
-      const label = document.createElement("label");
-      label.className = "input-field";
-      const typeName = input.type ?? "Float64";
-      label.textContent = `${name} (${typeName})`;
-      const control = document.createElement("input");
-      control.type = "number";
-      control.step = "any";
-      control.dataset.input = name;
+      const card = document.createElement("div");
+      card.className = "input-card";
+
+      const header = document.createElement("div");
+      header.className = "input-card-header";
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "input-name";
+      nameSpan.textContent = name;
+      const typeSpan = document.createElement("span");
+      typeSpan.className = "input-type";
+      typeSpan.textContent = input.type ?? "Float64";
+      header.appendChild(nameSpan);
+      header.appendChild(typeSpan);
+      card.appendChild(header);
+
+      const row = document.createElement("div");
+      row.className = "input-controls-row";
+
+      const numInput = document.createElement("input");
+      numInput.type = "number";
+      numInput.step = "any";
+      numInput.dataset.input = name;
+
+      let initialVal = 0;
       const prefill = prefills[name];
       if (typeof prefill === "number" && Number.isFinite(prefill)) {
-        control.value = String(prefill);
+        initialVal = prefill;
       }
-      label.appendChild(control);
-      fields.appendChild(label);
+      numInput.value = String(initialVal);
+
+      // Adaptive slider bounds
+      let min = initialVal <= 0 ? (initialVal < -10 ? initialVal * 2 : -20) : -10;
+      let max = initialVal >= 0 ? (initialVal > 10 ? initialVal * 2 : 20) : 10;
+      if (min === max) {
+        min = -10;
+        max = 10;
+      }
+      let step = (max - min) / 200;
+      if (step > 1) step = 1;
+      else if (step < 0.001) step = 0.001;
+
+      const rangeInput = document.createElement("input");
+      rangeInput.type = "range";
+      rangeInput.min = String(min);
+      rangeInput.max = String(max);
+      rangeInput.step = String(step);
+      rangeInput.value = String(initialVal);
+
+      numInput.addEventListener("input", () => {
+        const val = Number(numInput.value);
+        if (Number.isFinite(val)) {
+          if (val < Number(rangeInput.min)) rangeInput.min = String(val * 1.5);
+          if (val > Number(rangeInput.max)) rangeInput.max = String(val * 1.5);
+          rangeInput.value = String(val);
+        }
+        triggerLiveEval();
+      });
+
+      rangeInput.addEventListener("input", () => {
+        numInput.value = rangeInput.value;
+        triggerLiveEval();
+      });
+
+      row.appendChild(numInput);
+      row.appendChild(rangeInput);
+      card.appendChild(row);
+      fields.appendChild(card);
     }
   }
   panel.hidden = count === 0;
 }
 
+function triggerLiveEval() {
+  const autoRun = $("chk-auto-run");
+  if (autoRun && !autoRun.checked) return;
+  if (liveEvalDebounceTimer) clearTimeout(liveEvalDebounceTimer);
+  liveEvalDebounceTimer = setTimeout(() => {
+    if (!emRun) return;
+    try {
+      const payload = JSON.stringify({ source: sourcePayload(), given: collectGiven() });
+      const result = emRun("run", payload);
+      renderRun(result);
+      updateLiveOutputs(result);
+      if ($("panel-plot")?.classList.contains("active")) {
+        drawPlot();
+      }
+    } catch {}
+  }, 25);
+}
+
 function refreshPaneChrome(result) {
   showDesugared(result);
+  updateLiveOutputs(result);
   if (!emRun) {
     return;
   }
@@ -413,7 +523,7 @@ function refreshPaneChrome(result) {
   }
 }
 
-function collectGiven() {
+export function collectGiven() {
   const given = {};
   for (const control of document.querySelectorAll("#input-fields input[data-input]")) {
     const name = control.dataset.input;
@@ -1113,6 +1223,1018 @@ export function handleEditorBackspace(editor, event) {
   return false;
 }
 
+// ============================================================================
+// 2D Function Plotter
+// ============================================================================
+
+export const plotState = {
+  xVar: null,
+  yVar: null,
+  minX: -10,
+  maxX: 10,
+  minY: -10,
+  maxY: 10,
+  samples: 200,
+  autoScaleY: true,
+  isDragging: false,
+  dragStart: { x: 0, y: 0 },
+  dragBounds: null,
+  points: [],
+  inputs: [],
+  outputs: [],
+  secondaryValues: {},
+  canvasInitialized: false,
+};
+
+export function updatePlotView() {
+  if (!emRun) return;
+  try {
+    const inputsResult = emRun("inputs", sourcePayload());
+    const decls = Array.isArray(inputsResult.declarations) ? inputsResult.declarations : [];
+    const inputs = [];
+    for (const decl of decls) {
+      for (const input of decl.inputs ?? []) {
+        if (input.name && !inputs.includes(input.name)) {
+          inputs.push(input.name);
+        }
+      }
+    }
+    plotState.inputs = inputs;
+
+    // Run to find available outputs
+    const runResult = emRun("run", JSON.stringify({ source: sourcePayload(), given: collectGiven() }));
+    const outputs = [];
+    for (const decl of runResult.declarations ?? []) {
+      for (const test of decl.tests ?? []) {
+        const computed = { ...(test.definitions ?? {}), ...(test.outputs ?? {}) };
+        for (const name of Object.keys(computed)) {
+          if (!outputs.includes(name)) outputs.push(name);
+        }
+      }
+    }
+    plotState.outputs = outputs;
+
+    const xSelect = $("plot-x-var");
+    const ySelect = $("plot-y-var");
+
+    if (xSelect && inputs.length > 0) {
+      const currentX = xSelect.value;
+      xSelect.replaceChildren();
+      for (const input of inputs) {
+        const opt = document.createElement("option");
+        opt.value = input;
+        opt.textContent = input;
+        xSelect.appendChild(opt);
+      }
+      if (inputs.includes(currentX)) {
+        xSelect.value = currentX;
+      } else if (inputs.includes("x")) {
+        xSelect.value = "x";
+      } else {
+        xSelect.value = inputs[0];
+      }
+      plotState.xVar = xSelect.value;
+    }
+
+    if (ySelect && outputs.length > 0) {
+      const currentY = ySelect.value;
+      ySelect.replaceChildren();
+      for (const out of outputs) {
+        const opt = document.createElement("option");
+        opt.value = out;
+        opt.textContent = out;
+        ySelect.appendChild(opt);
+      }
+      if (outputs.includes(currentY)) {
+        ySelect.value = currentY;
+      } else if (outputs.includes("y")) {
+        ySelect.value = "y";
+      } else {
+        ySelect.value = outputs[0];
+      }
+      plotState.yVar = ySelect.value;
+    }
+
+    // Render secondary parameter sliders
+    const secContainer = $("plot-secondary-params");
+    const secSliders = $("plot-secondary-sliders");
+    if (secContainer && secSliders) {
+      const secondaries = inputs.filter((name) => name !== plotState.xVar);
+      if (secondaries.length > 0) {
+        secSliders.replaceChildren();
+        const currentGivens = collectGiven();
+        for (const sec of secondaries) {
+          const item = document.createElement("div");
+          item.className = "sec-slider-item";
+          const label = document.createElement("span");
+          label.textContent = `${sec}:`;
+          const valDisplay = document.createElement("span");
+          valDisplay.className = "sec-val";
+          const initialVal = currentGivens[sec] ?? 1;
+          valDisplay.textContent = String(initialVal);
+
+          const slider = document.createElement("input");
+          slider.type = "range";
+          slider.min = initialVal < 0 ? String(initialVal * 2) : "-20";
+          slider.max = initialVal > 0 ? String(initialVal * 2) : "20";
+          slider.step = "0.1";
+          slider.value = String(initialVal);
+          plotState.secondaryValues[sec] = initialVal;
+
+          slider.addEventListener("input", () => {
+            const val = Number(slider.value);
+            valDisplay.textContent = String(val);
+            plotState.secondaryValues[sec] = val;
+            drawPlot();
+          });
+
+          item.appendChild(label);
+          item.appendChild(slider);
+          item.appendChild(valDisplay);
+          secSliders.appendChild(item);
+        }
+        secContainer.hidden = false;
+      } else {
+        secContainer.hidden = true;
+      }
+    }
+
+    setupPlotCanvas();
+    drawPlot();
+  } catch {}
+}
+
+export function setupPlotCanvas() {
+  if (plotState.canvasInitialized) return;
+  const canvas = $("plot-canvas");
+  if (!canvas) return;
+  plotState.canvasInitialized = true;
+
+  canvas.addEventListener("mousedown", (e) => {
+    plotState.isDragging = true;
+    plotState.dragStart = { x: e.clientX, y: e.clientY };
+    plotState.dragBounds = {
+      minX: plotState.minX,
+      maxX: plotState.maxX,
+      minY: plotState.minY,
+      maxY: plotState.maxY,
+    };
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (plotState.isDragging && plotState.dragBounds) {
+      const rect = canvas.getBoundingClientRect();
+      const dx = ((e.clientX - plotState.dragStart.x) / rect.width) * (plotState.dragBounds.maxX - plotState.dragBounds.minX);
+      const dy = ((e.clientY - plotState.dragStart.y) / rect.height) * (plotState.dragBounds.maxY - plotState.dragBounds.minY);
+      plotState.minX = plotState.dragBounds.minX - dx;
+      plotState.maxX = plotState.dragBounds.maxX - dx;
+      plotState.minY = plotState.dragBounds.minY + dy;
+      plotState.maxY = plotState.dragBounds.maxY + dy;
+      plotState.autoScaleY = false;
+      const minXInput = $("plot-min-x");
+      const maxXInput = $("plot-max-x");
+      if (minXInput) minXInput.value = plotState.minX.toFixed(2);
+      if (maxXInput) maxXInput.value = plotState.maxX.toFixed(2);
+      drawPlot();
+    }
+  });
+
+  window.addEventListener("mouseup", () => {
+    plotState.isDragging = false;
+    plotState.dragBounds = null;
+  });
+
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 0.85 : 1.15;
+    const midX = (plotState.minX + plotState.maxX) / 2;
+    const midY = (plotState.minY + plotState.maxY) / 2;
+    const spanX = (plotState.maxX - plotState.minX) * zoomFactor;
+    const spanY = (plotState.maxY - plotState.minY) * zoomFactor;
+    plotState.minX = midX - spanX / 2;
+    plotState.maxX = midX + spanX / 2;
+    plotState.minY = midY - spanY / 2;
+    plotState.maxY = midY + spanY / 2;
+    plotState.autoScaleY = false;
+    const minXInput = $("plot-min-x");
+    const maxXInput = $("plot-max-x");
+    if (minXInput) minXInput.value = plotState.minX.toFixed(2);
+    if (maxXInput) maxXInput.value = plotState.maxX.toFixed(2);
+    drawPlot();
+  }, { passive: false });
+
+  canvas.addEventListener("mousemove", (e) => {
+    if (plotState.isDragging || plotState.points.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Convert mouseX to math X
+    const mathX = plotState.minX + (mouseX / rect.width) * (plotState.maxX - plotState.minX);
+
+    // Find closest point
+    let closest = null;
+    let minDist = Infinity;
+    for (const pt of plotState.points) {
+      const dist = Math.abs(pt.x - mathX);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = pt;
+      }
+    }
+
+    const tooltip = $("plot-tooltip");
+    if (closest && tooltip && Number.isFinite(closest.y)) {
+      const canvasX = ((closest.x - plotState.minX) / (plotState.maxX - plotState.minX)) * rect.width;
+      const canvasY = ((plotState.maxY - closest.y) / (plotState.maxY - plotState.minY)) * rect.height;
+      tooltip.style.left = `${canvasX}px`;
+      tooltip.style.top = `${canvasY}px`;
+      tooltip.textContent = `${plotState.xVar ?? "x"} = ${closest.x.toFixed(3)}, ${plotState.yVar ?? "y"} = ${closest.y.toFixed(3)}`;
+      tooltip.hidden = false;
+    }
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    const tooltip = $("plot-tooltip");
+    if (tooltip) tooltip.hidden = true;
+  });
+}
+
+export function drawPlot() {
+  const canvas = $("plot-canvas");
+  if (!canvas || !emRun) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const minXInput = $("plot-min-x");
+  const maxXInput = $("plot-max-x");
+  const samplesInput = $("plot-samples");
+  if (minXInput && Number.isFinite(Number(minXInput.value))) plotState.minX = Number(minXInput.value);
+  if (maxXInput && Number.isFinite(Number(maxXInput.value))) plotState.maxX = Number(maxXInput.value);
+  if (samplesInput && Number.isFinite(Number(samplesInput.value))) plotState.samples = Math.max(10, Math.min(1000, Number(samplesInput.value)));
+
+  const parent = canvas.parentElement;
+  if (!parent) return;
+  const rect = parent.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+
+  const width = rect.width;
+  const height = rect.height;
+
+  // Compute points
+  const points = [];
+  const xVar = plotState.xVar ?? "x";
+  const yVar = plotState.yVar ?? "y";
+  const numSamples = plotState.samples;
+  const step = (plotState.maxX - plotState.minX) / (numSamples - 1);
+
+  const baseGivens = { ...collectGiven(), ...plotState.secondaryValues };
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < numSamples; i++) {
+    const xi = plotState.minX + i * step;
+    const given = { ...baseGivens, [xVar]: xi };
+    try {
+      const payload = JSON.stringify({ source: sourcePayload(), given });
+      const result = emRun("run", payload);
+      let yi = NaN;
+      for (const decl of result.declarations ?? []) {
+        for (const test of decl.tests ?? []) {
+          const computed = { ...(test.definitions ?? {}), ...(test.outputs ?? {}) };
+          if (computed[yVar] !== undefined && Number.isFinite(computed[yVar])) {
+            yi = computed[yVar];
+            break;
+          }
+        }
+      }
+      if (Number.isFinite(yi)) {
+        points.push({ x: xi, y: yi });
+        if (yi < minY) minY = yi;
+        if (yi > maxY) maxY = yi;
+      } else {
+        points.push({ x: xi, y: NaN });
+      }
+    } catch {
+      points.push({ x: xi, y: NaN });
+    }
+  }
+  plotState.points = points;
+
+  if (plotState.autoScaleY && Number.isFinite(minY) && Number.isFinite(maxY)) {
+    if (minY === maxY) {
+      minY -= 1;
+      maxY += 1;
+    }
+    const pad = (maxY - minY) * 0.1;
+    plotState.minY = minY - pad;
+    plotState.maxY = maxY + pad;
+  }
+
+  // Clear
+  ctx.fillStyle = "#151619";
+  ctx.fillRect(0, 0, width, height);
+
+  // Coordinate transforms
+  const toScreenX = (x) => ((x - plotState.minX) / (plotState.maxX - plotState.minX)) * width;
+  const toScreenY = (y) => ((plotState.maxY - y) / (plotState.maxY - plotState.minY)) * height;
+
+  // Draw Grid
+  ctx.strokeStyle = "#25272e";
+  ctx.lineWidth = 1;
+  ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillStyle = "#71717a";
+
+  const numGridX = 8;
+  const stepGridX = (plotState.maxX - plotState.minX) / numGridX;
+  for (let i = 0; i <= numGridX; i++) {
+    const gx = plotState.minX + i * stepGridX;
+    const sx = toScreenX(gx);
+    ctx.beginPath();
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, height);
+    ctx.stroke();
+    ctx.fillText(gx.toFixed(1), sx + 4, height - 8);
+  }
+
+  const numGridY = 6;
+  const stepGridY = (plotState.maxY - plotState.minY) / numGridY;
+  for (let i = 0; i <= numGridY; i++) {
+    const gy = plotState.minY + i * stepGridY;
+    const sy = toScreenY(gy);
+    ctx.beginPath();
+    ctx.moveTo(0, sy);
+    ctx.lineTo(width, sy);
+    ctx.stroke();
+    ctx.fillText(gy.toFixed(1), 6, sy - 4);
+  }
+
+  // Draw Axes
+  ctx.strokeStyle = "#4b4d57";
+  ctx.lineWidth = 1.5;
+
+  const originX = toScreenX(0);
+  const originY = toScreenY(0);
+
+  // Y-axis (x = 0)
+  if (originX >= 0 && originX <= width) {
+    ctx.beginPath();
+    ctx.moveTo(originX, 0);
+    ctx.lineTo(originX, height);
+    ctx.stroke();
+  }
+
+  // X-axis (y = 0)
+  if (originY >= 0 && originY <= height) {
+    ctx.beginPath();
+    ctx.moveTo(0, originY);
+    ctx.lineTo(width, originY);
+    ctx.stroke();
+  }
+
+  // Draw Curve
+  ctx.strokeStyle = "#7aa2f7";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+
+  let started = false;
+  for (const pt of points) {
+    if (!Number.isFinite(pt.y)) {
+      started = false;
+      continue;
+    }
+    const sx = toScreenX(pt.x);
+    const sy = toScreenY(pt.y);
+    if (!started) {
+      ctx.moveTo(sx, sy);
+      started = true;
+    } else {
+      ctx.lineTo(sx, sy);
+    }
+  }
+  ctx.stroke();
+}
+
+export function autoScalePlot() {
+  plotState.autoScaleY = true;
+  drawPlot();
+}
+
+export function resetPlotView() {
+  plotState.minX = -10;
+  plotState.maxX = 10;
+  plotState.minY = -10;
+  plotState.maxY = 10;
+  plotState.autoScaleY = true;
+  const minXInput = $("plot-min-x");
+  const maxXInput = $("plot-max-x");
+  if (minXInput) minXInput.value = "-10";
+  if (maxXInput) maxXInput.value = "10";
+  drawPlot();
+}
+
+export function exportPlotPng() {
+  const canvas = $("plot-canvas");
+  if (!canvas) return;
+  const link = document.createElement("a");
+  link.download = `emath-plot-${plotState.yVar ?? "y"}.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+// ============================================================================
+// Mathematical Intent Typography View
+// ============================================================================
+
+export function updateMathView() {
+  const container = $("math-rendered");
+  const rawPre = $("math-latex-raw");
+  if (!container || !rawPre) return;
+
+  const source = sourcePayload();
+  container.replaceChildren();
+
+  const lines = source.split("\n");
+  const latexLines = [];
+
+  let currentDecl = "Main";
+  let inDefinitions = false;
+  let inInputs = false;
+  const inputsList = [];
+  const equations = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    if (line.startsWith("emath function") || line.startsWith("function")) {
+      const match = line.match(/(?:emath\s+)?function\s+([a-zA-Z0-9_]+)/);
+      if (match) currentDecl = match[1];
+      inDefinitions = false;
+      inInputs = false;
+    } else if (line.startsWith("inputs:")) {
+      inInputs = true;
+      inDefinitions = false;
+    } else if (line.startsWith("definitions:")) {
+      inDefinitions = true;
+      inInputs = false;
+    } else if (inInputs && line.includes(":")) {
+      const parts = line.split(":");
+      inputsList.push({ name: parts[0].trim(), type: parts[1].trim() });
+    } else if (inDefinitions && line.includes("=")) {
+      const [lhs, rhs] = line.split("=").map((s) => s.trim());
+      equations.push({ lhs, rhs });
+    }
+  }
+
+  // Create Decl Card
+  const card = document.createElement("div");
+  card.className = "math-decl-card";
+
+  const title = document.createElement("div");
+  title.className = "math-decl-title";
+  const inputsSig = inputsList.map((inp) => `${symbolify(inp.name)} ∈ ℝ`).join(", ");
+  title.textContent = `Function ${currentDecl}(${inputsSig}) ⟹ Outputs`;
+  card.appendChild(title);
+
+  const eqList = document.createElement("div");
+  eqList.className = "math-equation-list";
+
+  latexLines.push(`\\text{Function } \\mathrm{${currentDecl}}(${inputsList.map((i) => asciify(i.name)).join(", ")})`);
+  latexLines.push("\\begin{aligned}");
+
+  for (const eq of equations) {
+    const row = document.createElement("div");
+    row.className = "math-equation-row";
+
+    const lhsSpan = document.createElement("span");
+    lhsSpan.className = "math-lhs";
+    lhsSpan.textContent = symbolify(eq.lhs);
+
+    const eqSpan = document.createElement("span");
+    eqSpan.className = "math-eq";
+    eqSpan.textContent = "=";
+
+    const rhsSpan = document.createElement("span");
+    rhsSpan.className = "math-rhs";
+    rhsSpan.innerHTML = formatMathExprHtml(eq.rhs);
+
+    row.appendChild(lhsSpan);
+    row.appendChild(eqSpan);
+    row.appendChild(rhsSpan);
+    eqList.appendChild(row);
+
+    const latexLhs = asciify(eq.lhs);
+    const latexRhs = formatMathExprLatex(eq.rhs);
+    latexLines.push(`  ${latexLhs} &= ${latexRhs} \\\\`);
+  }
+
+  latexLines.push("\\end{aligned}");
+
+  card.appendChild(eqList);
+  container.appendChild(card);
+
+  rawPre.textContent = latexLines.join("\n");
+}
+
+export function formatMathExprHtml(expr) {
+  let res = symbolify(expr);
+  // Fractions: a / b
+  res = res.replace(/([a-zA-Z0-9_().]+)\s*\/\s*([a-zA-Z0-9_().]+)/g, '<span class="math-frac"><span class="math-num">$1</span><span class="math-den">$2</span></span>');
+  // Exponents: a * a or a ^ b
+  res = res.replace(/([a-zA-Z0-9_]+)\s*\^\s*([0-9]+|[a-zA-Z])/g, '$1<span class="math-sup">$2</span>');
+  // Subscripts: a_b
+  res = res.replace(/([a-zA-Z0-9_]+)_([a-zA-Z0-9]+)/g, '$1<span class="math-sub">$2</span>');
+  // Sqrt: sqrt(x)
+  res = res.replace(/sqrt\(([^)]+)\)/g, '<span class="math-sqrt"><span class="math-sqrt-sign">√</span><span>$1</span></span>');
+  // Multiplications
+  res = res.replace(/\s*\*\s*/g, " · ");
+  return res;
+}
+
+export function formatMathExprLatex(expr) {
+  let res = asciify(expr);
+  // Fractions
+  res = res.replace(/([a-zA-Z0-9_().]+)\s*\/\s*([a-zA-Z0-9_().]+)/g, "\\frac{$1}{$2}");
+  // Sqrt
+  res = res.replace(/sqrt\(([^)]+)\)/g, "\\sqrt{$1}");
+  // Multiplication
+  res = res.replace(/\s*\*\s*/g, " \\cdot ");
+  // Trig
+  res = res.replace(/\b(sin|cos|tan|exp|ln|log)\b/g, "\\$1");
+  return res;
+}
+
+export function copyLatexToClipboard() {
+  const rawPre = $("math-latex-raw");
+  if (!rawPre) return;
+  const text = rawPre.textContent;
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    navigator.clipboard.writeText(text).then(
+      () => setStatus("LaTeX equations copied to clipboard", "ok"),
+      () => setStatus("failed to copy LaTeX", "fail"),
+    );
+  }
+}
+
+export function toggleLatexRaw() {
+  const container = $("math-latex-container");
+  const btn = $("btn-toggle-latex-raw");
+  if (!container || !btn) return;
+  container.hidden = !container.hidden;
+  btn.textContent = container.hidden ? "Show Raw LaTeX" : "Hide Raw LaTeX";
+}
+
+// ============================================================================
+// Finite Worlds & Morphisms Explorer (Genesis)
+// ============================================================================
+
+export const GENESIS_WORLDS = {
+  b2: {
+    name: "Boolean Algebra 𝔹₂",
+    elements: ["0", "1"],
+    operators: {
+      "∧ (AND)": [
+        ["0", "0"],
+        ["0", "1"],
+      ],
+      "∨ (OR)": [
+        ["0", "1"],
+        ["1", "1"],
+      ],
+      "⊕ (XOR)": [
+        ["0", "1"],
+        ["1", "0"],
+      ],
+      "→ (IMPLIES)": [
+        ["1", "1"],
+        ["0", "1"],
+      ],
+      "↑ (NAND)": [
+        ["1", "1"],
+        ["1", "0"],
+      ],
+    },
+  },
+  k3: {
+    name: "Kleene 3-Valued Logic 𝕂₃",
+    elements: ["F", "U", "T"],
+    operators: {
+      "∧ (Min/AND)": [
+        ["F", "F", "F"],
+        ["F", "U", "U"],
+        ["F", "U", "T"],
+      ],
+      "∨ (Max/OR)": [
+        ["F", "U", "T"],
+        ["U", "U", "T"],
+        ["T", "T", "T"],
+      ],
+    },
+  },
+  b4: {
+    name: "Belnap 4-Valued Logic ℬ₄",
+    elements: ["N", "F", "T", "B"],
+    operators: {
+      "∧ (Truth Conjunction)": [
+        ["N", "F", "N", "F"],
+        ["F", "F", "F", "F"],
+        ["N", "F", "T", "B"],
+        ["F", "F", "B", "B"],
+      ],
+      "∨ (Truth Disjunction)": [
+        ["N", "N", "T", "T"],
+        ["N", "F", "T", "B"],
+        ["T", "T", "T", "T"],
+        ["T", "B", "T", "B"],
+      ],
+      "⊗ (Information Consensus)": [
+        ["N", "N", "N", "N"],
+        ["N", "F", "N", "F"],
+        ["N", "N", "T", "T"],
+        ["N", "F", "T", "B"],
+      ],
+    },
+  },
+  v4: {
+    name: "Klein 4-Group V₄",
+    elements: ["e", "a", "b", "c"],
+    operators: {
+      "★ (Group Op)": [
+        ["e", "a", "b", "c"],
+        ["a", "e", "c", "b"],
+        ["b", "c", "e", "a"],
+        ["c", "b", "a", "e"],
+      ],
+    },
+  },
+  z3: {
+    name: "Cyclic Ring ℤ/3ℤ",
+    elements: ["0", "1", "2"],
+    operators: {
+      "+₃ (Add mod 3)": [
+        ["0", "1", "2"],
+        ["1", "2", "0"],
+        ["2", "0", "1"],
+      ],
+      "×₃ (Mul mod 3)": [
+        ["0", "0", "0"],
+        ["0", "1", "2"],
+        ["0", "2", "1"],
+      ],
+    },
+  },
+  z5: {
+    name: "Cyclic Ring ℤ/5ℤ",
+    elements: ["0", "1", "2", "3", "4"],
+    operators: {
+      "+₅ (Add mod 5)": [
+        ["0", "1", "2", "3", "4"],
+        ["1", "2", "3", "4", "0"],
+        ["2", "3", "4", "0", "1"],
+        ["3", "4", "0", "1", "2"],
+        ["4", "0", "1", "2", "3"],
+      ],
+      "×₅ (Mul mod 5)": [
+        ["0", "0", "0", "0", "0"],
+        ["0", "1", "2", "3", "4"],
+        ["0", "2", "4", "1", "3"],
+        ["0", "3", "1", "4", "2"],
+        ["0", "4", "3", "2", "1"],
+      ],
+    },
+  },
+};
+
+export const genesisState = {
+  selectedPreset: "b2",
+  selectedOp: "∧ (AND)",
+  customElements: ["0", "1"],
+  customTable: [
+    ["0", "0"],
+    ["0", "1"],
+  ],
+};
+
+export function updateGenesisView() {
+  const presetSelect = $("genesis-world-preset");
+  const opSelect = $("genesis-op-select");
+  if (!presetSelect || !opSelect) return;
+
+  const presetKey = presetSelect.value;
+  genesisState.selectedPreset = presetKey;
+
+  const world = GENESIS_WORLDS[presetKey];
+  if (world) {
+    opSelect.replaceChildren();
+    for (const opName of Object.keys(world.operators)) {
+      const opt = document.createElement("option");
+      opt.value = opName;
+      opt.textContent = opName;
+      opSelect.appendChild(opt);
+    }
+    if (world.operators[genesisState.selectedOp]) {
+      opSelect.value = genesisState.selectedOp;
+    } else {
+      opSelect.selectedIndex = 0;
+      genesisState.selectedOp = opSelect.value;
+    }
+    const symSpan = $("genesis-op-symbol");
+    if (symSpan) symSpan.textContent = genesisState.selectedOp.split(" ")[0];
+    renderGenesisMatrix(world.elements, world.operators[genesisState.selectedOp]);
+    verifyGenesisLaws(world.elements, world.operators[genesisState.selectedOp]);
+  }
+}
+
+export function renderGenesisMatrix(elements, table) {
+  const wrapper = $("genesis-matrix-table-wrapper");
+  if (!wrapper) return;
+  wrapper.replaceChildren();
+
+  const tableEl = document.createElement("table");
+  tableEl.className = "genesis-table";
+
+  // Header row
+  const headerRow = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.textContent = "★";
+  headerRow.appendChild(corner);
+  for (const el of elements) {
+    const th = document.createElement("th");
+    th.textContent = el;
+    headerRow.appendChild(th);
+  }
+  tableEl.appendChild(headerRow);
+
+  // Rows
+  elements.forEach((rowEl, rowIdx) => {
+    const tr = document.createElement("tr");
+    const rowHeader = document.createElement("th");
+    rowHeader.textContent = rowEl;
+    tr.appendChild(rowHeader);
+
+    elements.forEach((colEl, colIdx) => {
+      const td = document.createElement("td");
+      const val = table[rowIdx]?.[colIdx] ?? elements[0];
+      td.textContent = val;
+
+      td.addEventListener("mouseenter", () => {
+        const info = $("genesis-cell-info");
+        if (info) info.textContent = `${rowEl} ★ ${colEl} = ${val}`;
+      });
+
+      tr.appendChild(td);
+    });
+    tableEl.appendChild(tr);
+  });
+
+  wrapper.appendChild(tableEl);
+}
+
+export function verifyGenesisLaws(elements, table) {
+  const list = $("genesis-laws-list");
+  if (!list) return;
+  list.replaceChildren();
+
+  const n = elements.length;
+  const elMap = new Map();
+  elements.forEach((el, idx) => elMap.set(el, idx));
+
+  const apply = (a, b) => {
+    const ai = elMap.get(a);
+    const bi = elMap.get(b);
+    return table[ai]?.[bi];
+  };
+
+  // 1. Associativity: (a * b) * c == a * (b * c)
+  let assocPass = true;
+  let assocWitness = "";
+  for (let i = 0; i < n && assocPass; i++) {
+    for (let j = 0; j < n && assocPass; j++) {
+      for (let k = 0; k < n; k++) {
+        const a = elements[i], b = elements[j], c = elements[k];
+        const lhs = apply(apply(a, b), c);
+        const rhs = apply(a, apply(b, c));
+        if (lhs !== rhs) {
+          assocPass = false;
+          assocWitness = `Counterexample: (${a} ★ ${b}) ★ ${c} = ${lhs} ≠ ${rhs} = ${a} ★ (${b} ★ ${c})`;
+          break;
+        }
+      }
+    }
+  }
+
+  // 2. Commutativity: a * b == b * a
+  let commPass = true;
+  let commWitness = "";
+  for (let i = 0; i < n && commPass; i++) {
+    for (let j = 0; j < n; j++) {
+      const a = elements[i], b = elements[j];
+      const ab = apply(a, b);
+      const ba = apply(b, a);
+      if (ab !== ba) {
+        commPass = false;
+        commWitness = `Counterexample: ${a} ★ ${b} = ${ab} ≠ ${ba} = ${b} ★ ${a}`;
+        break;
+      }
+    }
+  }
+
+  // 3. Identity: exists e s.t. e * a == a * e == a
+  let identity = null;
+  for (const candidate of elements) {
+    let isId = true;
+    for (const a of elements) {
+      if (apply(candidate, a) !== a || apply(a, candidate) !== a) {
+        isId = false;
+        break;
+      }
+    }
+    if (isId) {
+      identity = candidate;
+      break;
+    }
+  }
+
+  // 4. Inverses (if identity exists)
+  let invertPass = Boolean(identity);
+  let invertWitness = "";
+  if (identity) {
+    for (const a of elements) {
+      let hasInv = false;
+      for (const b of elements) {
+        if (apply(a, b) === identity && apply(b, a) === identity) {
+          hasInv = true;
+          break;
+        }
+      }
+      if (!hasInv) {
+        invertPass = false;
+        invertWitness = `Element ${a} has no two-sided inverse for identity ${identity}`;
+        break;
+      }
+    }
+  } else {
+    invertWitness = "No identity element exists in carrier";
+  }
+
+  // 5. Idempotency: a * a == a
+  let idemPass = true;
+  let idemWitness = "";
+  for (const a of elements) {
+    if (apply(a, a) !== a) {
+      idemPass = false;
+      idemWitness = `Element ${a} ★ ${a} = ${apply(a, a)} ≠ ${a}`;
+      break;
+    }
+  }
+
+  const laws = [
+    {
+      name: "Associativity",
+      formula: "∀ a, b, c ∈ S: (a ★ b) ★ c = a ★ (b ★ c)",
+      pass: assocPass,
+      witness: assocWitness,
+    },
+    {
+      name: "Commutativity",
+      formula: "∀ a, b ∈ S: a ★ b = b ★ a",
+      pass: commPass,
+      witness: commWitness,
+    },
+    {
+      name: "Identity Element",
+      formula: "∃ e ∈ S s.t. ∀ a ∈ S: e ★ a = a ★ e = a",
+      pass: Boolean(identity),
+      witness: identity ? `Identity element e = ${identity}` : "No two-sided identity element found",
+    },
+    {
+      name: "Invertibility",
+      formula: "∀ a ∈ S, ∃ a⁻¹ ∈ S: a ★ a⁻¹ = a⁻¹ ★ a = e",
+      pass: invertPass,
+      witness: invertWitness,
+    },
+    {
+      name: "Idempotency",
+      formula: "∀ a ∈ S: a ★ a = a",
+      pass: idemPass,
+      witness: idemWitness,
+    },
+  ];
+
+  for (const law of laws) {
+    const card = document.createElement("div");
+    card.className = "genesis-law-card";
+
+    const header = document.createElement("div");
+    header.className = "genesis-law-header";
+    const name = document.createElement("span");
+    name.className = "genesis-law-name";
+    name.textContent = law.name;
+
+    const status = document.createElement("span");
+    status.className = `genesis-law-status ${law.pass ? "pass" : "fail"}`;
+    status.textContent = law.pass ? "ADMITTED" : "REFUSED";
+
+    header.appendChild(name);
+    header.appendChild(status);
+    card.appendChild(header);
+
+    const formula = document.createElement("div");
+    formula.className = "genesis-law-formula";
+    formula.textContent = law.formula;
+    card.appendChild(formula);
+
+    if (law.witness) {
+      const witness = document.createElement("div");
+      witness.className = "genesis-law-witness";
+      witness.textContent = law.witness;
+      card.appendChild(witness);
+    }
+
+    list.appendChild(card);
+  }
+}
+
+export function findGenesisMorphisms() {
+  const section = $("genesis-morphisms-section");
+  const output = $("genesis-morphisms-output");
+  if (!section || !output) return;
+
+  const presetKey = genesisState.selectedPreset;
+  const world = GENESIS_WORLDS[presetKey];
+  if (!world) return;
+
+  const elements = world.elements;
+  const table = world.operators[genesisState.selectedOp];
+  const n = elements.length;
+  const elMap = new Map();
+  elements.forEach((el, idx) => elMap.set(el, idx));
+
+  const apply = (a, b) => table[elMap.get(a)][elMap.get(b)];
+
+  output.replaceChildren();
+
+  // Find automorphisms phi: S -> S
+  const generateMaps = (idx, current) => {
+    if (idx === n) return [current];
+    const res = [];
+    for (let i = 0; i < n; i++) {
+      res.push(...generateMaps(idx + 1, [...current, elements[i]]));
+    }
+    return res;
+  };
+
+  const allMaps = generateMaps(0, []);
+  const validMorphisms = [];
+
+  for (const candidate of allMaps) {
+    const phi = (x) => candidate[elMap.get(x)];
+    let isHom = true;
+    for (let i = 0; i < n && isHom; i++) {
+      for (let j = 0; j < n; j++) {
+        const a = elements[i], b = elements[j];
+        if (phi(apply(a, b)) !== apply(phi(a), phi(b))) {
+          isHom = false;
+          break;
+        }
+      }
+    }
+    if (isHom) {
+      const isBijective = new Set(candidate).size === n;
+      validMorphisms.push({ map: candidate, isBijective });
+    }
+  }
+
+  const card = document.createElement("div");
+  card.className = "genesis-morphism-card";
+
+  const isoCount = validMorphisms.filter((m) => m.isBijective).length;
+  const homCount = validMorphisms.length;
+
+  card.innerHTML = `
+    <div><strong>Automorphism Group Aut(${world.name}):</strong> |Aut| = ${isoCount} (Total Endomorphisms: ${homCount})</div>
+    <div style="margin-top: 0.4rem;">Structure Preserving Mappings:</div>
+    <ul style="margin: 0.3rem 0; padding-left: 1.2rem;">
+      ${validMorphisms
+        .map(
+          (m, idx) =>
+            `<li>ϕ_${idx + 1}: { ${elements.map((el, i) => `${el} ↦ ${m.map[i]}`).join(", ")} } ${m.isBijective ? "<em>(Isomorphism ≅)</em>" : "<em>(Endomorphism)</em>"}</li>`,
+        )
+        .join("")}
+    </ul>
+  `;
+
+  output.appendChild(card);
+  section.hidden = false;
+}
+
 function wireUi() {
   $("btn-run")?.addEventListener("click", guard(runRun));
   $("btn-run-given")?.addEventListener("click", guard(runWithGiven));
@@ -1123,6 +2245,24 @@ function wireUi() {
   $("btn-format")?.addEventListener("click", guard(runFormat));
   $("btn-symbolify")?.addEventListener("click", guard(toggleSymbolify));
   $("btn-swap-layout")?.addEventListener("click", guard(togglePaneLayout));
+  $("plot-x-var")?.addEventListener("change", guard(() => { plotState.xVar = $("plot-x-var").value; drawPlot(); }));
+  $("plot-y-var")?.addEventListener("change", guard(() => { plotState.yVar = $("plot-y-var").value; drawPlot(); }));
+  $("plot-min-x")?.addEventListener("input", guard(() => { plotState.minX = Number($("plot-min-x").value); drawPlot(); }));
+  $("plot-max-x")?.addEventListener("input", guard(() => { plotState.maxX = Number($("plot-max-x").value); drawPlot(); }));
+  $("plot-samples")?.addEventListener("change", guard(() => { plotState.samples = Number($("plot-samples").value); drawPlot(); }));
+  $("btn-plot-autoscale")?.addEventListener("click", guard(autoScalePlot));
+  $("btn-plot-reset")?.addEventListener("click", guard(resetPlotView));
+  $("btn-plot-export")?.addEventListener("click", guard(exportPlotPng));
+  $("btn-copy-latex")?.addEventListener("click", guard(copyLatexToClipboard));
+  $("btn-toggle-latex-raw")?.addEventListener("click", guard(toggleLatexRaw));
+  $("genesis-world-preset")?.addEventListener("change", guard(updateGenesisView));
+  $("genesis-op-select")?.addEventListener("change", guard(() => { genesisState.selectedOp = $("genesis-op-select").value; updateGenesisView(); }));
+  $("btn-find-morphisms")?.addEventListener("click", guard(findGenesisMorphisms));
+  $("chk-auto-run")?.addEventListener("change", guard((e) => {
+    if (e.target.checked) {
+      triggerLiveEval();
+    }
+  }));
   $("examples")?.addEventListener(
     "change",
     guard((event) => {
