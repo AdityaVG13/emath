@@ -6,6 +6,11 @@
 
 #![forbid(unsafe_code)]
 
+pub mod interp;
+pub mod runner;
+
+pub use runner::definition_order;
+
 use emath_core::Span;
 use emath_ir::{BinaryOp, ExprNode, Literal, SemanticPackage, UnaryOp};
 
