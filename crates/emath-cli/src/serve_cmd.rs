@@ -1,4 +1,4 @@
-//! `emath serve`: localhost HTTP server for the checked-in web playground.
+//! `emath web`: localhost HTTP server for the checked-in web playground.
 //!
 //! Binds `127.0.0.1` only. Serves files from a `web/dist` directory (or
 //! `--dist` / `EMATH_WEB_DIST`) without caching. The process runs until
@@ -17,7 +17,7 @@ use crate::EXIT_USAGE;
 const DEFAULT_PORT: u16 = 7878;
 /// Default dist directory, resolved against the process working directory.
 const DEFAULT_DIST: &str = "web/dist";
-const USAGE: &str = "serve [--port N] [--no-open] [--dist PATH]";
+const USAGE: &str = "web [--port N] [--no-open] [--dist PATH]";
 const MISSING_ASSETS: &str = "web assets not built; run `cargo xtask build-web` first";
 
 /// Serve the web playground on `127.0.0.1` until the process is interrupted
@@ -25,13 +25,13 @@ const MISSING_ASSETS: &str = "web assets not built; run `cargo xtask build-web` 
 ///
 /// Returns [`EXIT_USAGE`] when the dist directory is missing, the port is
 /// busy, or arguments are invalid. Does not return on the success path.
-pub fn serve_cmd(args: &[String]) -> u8 {
+pub fn web_cmd(args: &[String]) -> u8 {
     let parsed = match parse_serve_args(args) {
         Ok(parsed) => parsed,
         Err(message) => {
             eprintln!("error: {message}");
             eprintln!("usage: emath {USAGE}");
-            eprintln!("try: emath help serve");
+            eprintln!("try: emath help web");
             return EXIT_USAGE;
         }
     };
@@ -53,7 +53,7 @@ pub fn serve_cmd(args: &[String]) -> u8 {
         }
     };
     let url = format!("http://127.0.0.1:{port}/");
-    println!("emath serve: {url} (dist: {})", dist.display());
+    println!("emath web: {url} (dist: {})", dist.display());
     if !parsed.no_open {
         open_browser(&url);
     }
@@ -64,6 +64,12 @@ pub fn serve_cmd(args: &[String]) -> u8 {
         let dist = dist.clone();
         thread::spawn(move || handle_connection(stream, &dist));
     }
+}
+
+/// Backwards-compatible alias for [`web_cmd`].
+#[allow(dead_code)]
+pub fn serve_cmd(args: &[String]) -> u8 {
+    web_cmd(args)
 }
 
 struct ServeArgs {

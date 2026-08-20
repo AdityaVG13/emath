@@ -201,10 +201,10 @@ emath genesis --out <dir>         semantic genesis analysis pipeline
 emath compile --parametric --out  deterministic generated crate
 emath world show / portfolio show introspection
 emath architecture / help         stable docs entry
-emath serve                       localhost web playground (Ctrl-C to stop)
+emath web                         localhost web playground (Ctrl-C to stop)
 ```
 
-Also implemented: `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed
+Also implemented: `serve` (alias for `web`), `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed
 refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`,
 `vendor`, `provider list|inspect|test`, `fork status|sync`, `agent
 check|plan|build`, and `import modelica`. Planned
@@ -216,10 +216,10 @@ After a source checkout, build the browser pane and WASM engine, then serve them
 
 ```console
 $ cargo xtask build-web
-$ emath serve
+$ emath web
 ```
 
-`cargo run -p emath-cli -- serve` is the same. The command prints `http://127.0.0.1:7878/` (or the `--port` you pass) and opens a browser; Ctrl-C stops the server. Use `--no-open` to skip the browser, and `--dist PATH` or `EMATH_WEB_DIST` to point at a built `web/dist`.
+`cargo run -p emath-cli -- web` is the same. The command prints `http://127.0.0.1:7878/` (or the `--port` you pass) and opens a browser; Ctrl-C stops the server. Use `--no-open` to skip the browser, and `--dist PATH` or `EMATH_WEB_DIST` to point at a built `web/dist`.
 
 Everything in the pane executes in-page through a C-ABI WASM build of the
 compiler — no server round-trips, no cargo, nothing leaves the machine:

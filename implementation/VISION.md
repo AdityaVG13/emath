@@ -64,8 +64,8 @@ providers are installed. Lowering: `emath-exec-ir` → `emath-rust-backend` /
 `emath-rust-ir` → `emath-artifact` (seven artifact classes) → `emath-build`
 (check → plan → generate → compile; `--verify` is honest about missing
 tests). Host: `emath-cli` (`check`, `plan`, `planner`, `build`, `run`,
-`test`, `explain`, `serve`, genesis family). Playground: `emath-wasm`
-(C-ABI engine, no bindgen) + `emath serve` host a local browser pane;
+`test`, `explain`, `web`, genesis family). Playground: `emath-wasm`
+(C-ABI engine, no bindgen) + `emath web` host a local browser pane;
 `emath-exec-ir` carries a strict-f64 Tier-0 interpreter so `run` works
 in-browser without cargo, labeled `interpreted-strict-f64` — the
 compiled Rust tier stays the evidence pipeline's native lane, and
