@@ -608,6 +608,105 @@ pub fn fixture_modular() -> Environment<i64> {
     environment
 }
 
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    /// The swap transform is not a no-op mutation. The demo term
+    /// `⊛(⧖(⋈(a, b)), ζ)` evaluates to 6 under the modular world and to
+    /// 5 under the swapped world (⋈ becomes `*`, ⊛ becomes `+`, ζ = 3,
+    /// a = 4, b = 7). A mutant that delegates the swapped world to the
+    /// modular world returns 6 here and is killed.
+    #[test]
+    fn swapped_world_is_not_a_noop_mutation() {
+        let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
+            .expect("canonical parses");
+        let env = fixture_modular();
+        let modular = evaluate(&term, &ModularWorld, &env).expect("modular evaluates");
+        let swapped = evaluate(&term, &SwappedModularWorld, &env).expect("swapped evaluates");
+        assert_eq!(modular, 6, "⋈ adds, ⧖ squares, ⊛ multiplies (mod 17)");
+        assert_eq!(
+            swapped, 5,
+            "⋈ multiplies, ⊛ adds after the swap — no-op mutants return 6"
+        );
+        assert_ne!(modular, swapped);
+    }
+
+    /// Nested-shape kill: the swap must hold on every operator path, not
+    /// just the demo shape. `⋈(⧖(a), ⧖(b))` is 14 modular (16 + 15) vs 2
+    /// swapped (16 * 15 mod 17).
+    #[test]
+    fn swap_mutation_is_killed_on_other_operator_paths() {
+        let term = Term::parse_canonical("apply(⋈,apply(⧖,var(a)),apply(⧖,var(b)))")
+            .expect("canonical parses");
+        let env = fixture_modular();
+        let modular = evaluate(&term, &ModularWorld, &env).expect("modular evaluates");
+        let swapped = evaluate(&term, &SwappedModularWorld, &env).expect("swapped evaluates");
+        assert_eq!(modular, 14);
+        assert_eq!(swapped, 2);
+        assert_ne!(modular, swapped);
+    }
+
+    /// Metamorphic determinism: the dual-run comparison is seed-free and
+    /// deterministic (the seed contract records `consumes_rng: false`),
+    /// so repeated evaluation must agree exactly.
+    #[test]
+    fn dual_run_is_deterministic() {
+        let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
+            .expect("canonical parses");
+        let env = fixture_modular();
+        let first = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
+        let second = evaluate(&term, &SwappedModularWorld, &env).expect("evaluates");
+        assert_eq!(first, second, "dual-run evaluation must be deterministic");
+    }
+}
+
+#[cfg(test)]
+mod specialized_abi_tests {
+    use super::*;
+
+    /// Differential pin: the declaration-specific ABI must agree with the
+    /// generic ABI on the reference term (both dispatch into the same
+    /// world semantics; a divergence would mean the generated dispatcher
+    /// mis-mapped a symbol or an arity).
+    #[test]
+    fn specialized_abi_agrees_with_generic_evaluation() {
+        let term = reference_term();
+        let env = fixture_modular();
+        let generic = evaluate(&term, &ModularWorld, &env).expect("generic evaluates");
+        let specialized =
+            evaluate_specialized(&term, &ModularWorld, &env).expect("specialized evaluates");
+        assert_eq!(generic, specialized);
+    }
+
+    /// The specialized dispatcher refuses symbols outside the declared
+    /// signature instead of guessing.
+    #[test]
+    fn specialized_dispatch_refuses_unknown_operators() {
+        let term = Term::Apply {
+            operator: "✳".into(),
+            arguments: vec![],
+        };
+        let env = fixture_modular();
+        let error = evaluate_specialized(&term, &ModularWorld, &env).expect_err("unknown refused");
+        assert!(matches!(error, EvalError::UnknownSymbol(_)));
+    }
+
+    /// A wrong runtime arity through the generic term shape is a typed
+    /// refusal in the specialized dispatcher (compile-time safety only
+    /// covers direct method calls).
+    #[test]
+    fn specialized_dispatch_refuses_wrong_arity() {
+        let term = Term::Apply {
+            operator: "⧖".into(),
+            arguments: vec![Term::Variable("a".into()), Term::Variable("b".into())],
+        };
+        let env = fixture_modular();
+        let error = evaluate_specialized(&term, &ModularWorld, &env).expect_err("arity refused");
+        assert!(matches!(error, EvalError::Arity { .. }));
+    }
+}
+
 "#;
 
 fn render_lib(term: &Term, signature: &Signature, labels: &[String]) -> String {
