@@ -26,6 +26,12 @@ admit without depending on this crate. The syntax tree is owned by
 - No panics on arbitrary UTF-8 input.
 - Exact spans on every token and node.
 - Indentation enforcement, duplicate-section checks, precedence handling.
+  `example <name>:` (and `example name:`) may have an empty body and
+  admits as a worked example; other `:` heads still require `E-SYN-112`.
+- Stateless `emath function name(args) -> T:` head-args parse into
+  `Declaration.signature` (untyped names store the `Infer` marker). Mixing
+  head-args with an `inputs:` / `outputs:` section is `E-SYN-122`. Head-args
+  on a stateful or non-function declaration are `E-SYN-123`.
 - Bounded source/token/nesting limits.
 - Recovery at statement boundaries.
 - Formatting is idempotent, comment-preserving and parse-stable.
@@ -34,7 +40,8 @@ admit without depending on this crate. The syntax tree is owned by
 ## Error model
 
 Stable diagnostics through `emath_core::Diagnostics`, returned alongside the
-tree. No panic on malformed input.
+tree. No panic on malformed input. Head-args mixing is `E-SYN-122`; head-args
+on a stateful or non-function declaration is `E-SYN-123`.
 
 ## Determinism class
 

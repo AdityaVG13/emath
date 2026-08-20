@@ -13,7 +13,7 @@ use crate::tree::{
     DeclarationSignature, Expr, ExprKind, GenericParam, Item, Param, Place, Section, Stmt,
     StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UnaryOp, UseTree, Visibility,
 };
-use emath_core::{Diagnostics, FileId, Span, limits::Limits};
+use emath_core::{limits::Limits, Diagnostics, FileId, Span};
 
 const MAX_EXPR_DEPTH: usize = 128;
 
@@ -121,12 +121,31 @@ impl Parser {
 
     /// After `=` (assignment/default/let) a newline + indented expression is
     /// a continuation. Consume the layout unconditionally.
-    fn skip_assignment_layout(&mut self) {
+    ///
+    /// Returns true when an `Indent` was consumed so the caller can
+    /// balance the matching `Dedent`. Otherwise the next sibling section
+    /// (at the enclosing indent) emits two Dedents in a row and the
+    /// parent suite closes early.
+    fn skip_assignment_layout(&mut self) -> bool {
         if self.peek() == &TokenKind::Newline {
             self.skip_newlines();
             if matches!(self.peek(), TokenKind::Indent) {
                 self.advance();
+                return true;
             }
+        }
+        false
+    }
+
+    fn close_assignment_indent(&mut self, opened: bool) {
+        if !opened {
+            return;
+        }
+        if self.peek() == &TokenKind::Newline {
+            self.skip_newlines();
+        }
+        if matches!(self.peek(), TokenKind::Dedent) {
+            self.advance();
         }
     }
 
@@ -336,9 +355,9 @@ impl Parser {
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.current_span();
         self.advance(); // `emath`
-        // The declaration kind is the next word (`custom`,
-        // `function`, `policy`, `record`, `model`, `kind`,
-        // `search`, `experiment`, `type`, or a user kind).
+                        // The declaration kind is the next word (`custom`,
+                        // `function`, `policy`, `record`, `model`, `kind`,
+                        // `search`, `experiment`, `type`, or a user kind).
         let item_kind = match self.peek().clone() {
             TokenKind::Ident(item_kind) => item_kind,
             TokenKind::Keyword(Keyword::Custom) => "custom".to_string(),
@@ -358,6 +377,15 @@ impl Parser {
         } else {
             Vec::new()
         };
+        // Stateless `emath function name(args) -> T:` head-args. Untyped
+        // names (`(x)`) store the `Infer` marker; admission defaults them
+        // to Float64 (N-TYPE-001), same as a bare `inputs:` field.
+        let signature = if matches!(self.peek(), TokenKind::LParen) {
+            let (params, ret) = self.parse_params_after_name_flag(true)?;
+            Some(DeclarationSignature { params, ret })
+        } else {
+            None
+        };
         if !self.eat(&TokenKind::Colon) {
             self.error_here("E-SYN-111", "expected `:` after the declaration head");
             return None;
@@ -372,6 +400,9 @@ impl Parser {
         } else {
             ("custom".to_string(), item_kind)
         };
+        if let Some(signature) = &signature {
+            self.refuse_head_signature(&as_kind, signature, &suite, start);
+        }
         Some(Declaration {
             name,
             generics,
@@ -379,10 +410,62 @@ impl Parser {
             as_kind,
             attributes: Vec::new(),
             body: suite.statements,
-            signature: None,
+            signature,
             source: start.cover(self.last_span()),
             head_source: start.cover(self.last_span()),
         })
+    }
+
+    /// Head-args are identity-equivalent to an `inputs:` section (and
+    /// `-> T` to an output named after the declaration). Mixing those
+    /// spellings, or smuggling head-args onto a stateful / non-function
+    /// declaration, is a typed refusal — never a silent accept.
+    fn refuse_head_signature(
+        &mut self,
+        as_kind: &str,
+        signature: &DeclarationSignature,
+        suite: &Suite,
+        span: Span,
+    ) {
+        for param in &signature.params {
+            if param.by_ref {
+                self.diagnostics.error(
+                    "E-SYN-101",
+                    "by-ref declaration head arguments are outside the Phase 1 subset",
+                    param.source,
+                );
+            }
+            if param.default.is_some() {
+                self.diagnostics.error(
+                    "E-SYN-101",
+                    "default values on declaration head arguments are outside the Phase 1 subset",
+                    param.source,
+                );
+            }
+        }
+        let stateful =
+            suite_has_section(suite, "state") || suite_has_section(suite, "constructors");
+        if as_kind != "function" || stateful {
+            self.diagnostics.error(
+                "E-SYN-123",
+                "declaration head arguments are only admitted on stateless `emath function` declarations (no `state:` or `constructors:`)",
+                span,
+            );
+        }
+        if suite_has_section(suite, "inputs") {
+            self.diagnostics.error(
+                "E-SYN-122",
+                "declaration head arguments cannot be mixed with an `inputs:` section; use one spelling",
+                span,
+            );
+        }
+        if signature.ret.is_some() && suite_has_section(suite, "outputs") {
+            self.diagnostics.error(
+                "E-SYN-122",
+                "declaration head `->` return type cannot be mixed with an `outputs:` section; use one spelling",
+                span,
+            );
+        }
     }
 
     /// Top-level `extern operator name<Generics>(params) -> Ret:` `suite`
@@ -468,10 +551,26 @@ impl Parser {
     // ---- suites --------------------------------------------------------
 
     fn parse_suite(&mut self) -> Option<Suite> {
+        self.parse_suite_inner(false)
+    }
+
+    /// `example <name>:` with no indented body is a worked example, not
+    /// `E-SYN-112`. Other section heads still require a block.
+    fn parse_section_suite(&mut self, section_name: &str) -> Option<Suite> {
+        self.parse_suite_inner(section_name == "example")
+    }
+
+    fn parse_suite_inner(&mut self, allow_empty: bool) -> Option<Suite> {
         let start = self.current_span();
         if self.at_line_end() {
             self.finish_line();
             if !matches!(self.peek(), TokenKind::Indent) {
+                if allow_empty {
+                    return Some(Suite {
+                        statements: Vec::new(),
+                        source: start,
+                    });
+                }
                 self.error_here("E-SYN-112", "expected an indented block");
                 return None;
             }
@@ -1181,7 +1280,7 @@ impl Parser {
                 self.error_here("E-SYN-111", "expected `:` after section head");
                 return None;
             }
-            let suite = self.parse_suite()?;
+            let suite = self.parse_section_suite(&name)?;
             return Some(self.stmt(
                 start,
                 StmtKind::Section(Section {
@@ -1209,7 +1308,7 @@ impl Parser {
                 self.error_here("E-SYN-111", "expected `:` after section head");
                 return None;
             }
-            let suite = self.parse_suite()?;
+            let suite = self.parse_section_suite(&name)?;
             return Some(self.stmt(
                 start,
                 StmtKind::Section(Section {
@@ -1288,21 +1387,25 @@ impl Parser {
         // `::` path continuation that still has an operator or `=` ahead
         // (`core.policy:` is a section head, not an expression).
         // Bare `name = value` stays an assignment.
-        let op_led = matches!(
-            self.peek_at(1),
-            TokenKind::Star
-                | TokenKind::Slash
-                | TokenKind::Plus
-                | TokenKind::Minus
-                | TokenKind::Caret
-                | TokenKind::Le
-                | TokenKind::Ge
-                | TokenKind::Lt
-                | TokenKind::Gt
-                | TokenKind::EqEq
-                | TokenKind::NotEq
-                | TokenKind::LParen
-        );
+        let dashed_compile = name == "error"
+            && matches!(self.peek_at(1), TokenKind::Minus)
+            && matches!(self.peek_at(2), TokenKind::Ident(tail) if tail == "limit");
+        let op_led = !dashed_compile
+            && matches!(
+                self.peek_at(1),
+                TokenKind::Star
+                    | TokenKind::Slash
+                    | TokenKind::Plus
+                    | TokenKind::Minus
+                    | TokenKind::Caret
+                    | TokenKind::Le
+                    | TokenKind::Ge
+                    | TokenKind::Lt
+                    | TokenKind::Gt
+                    | TokenKind::EqEq
+                    | TokenKind::NotEq
+                    | TokenKind::LParen
+            );
         let dot_led = matches!(self.peek_at(1), TokenKind::Dot | TokenKind::PathSep)
             && self.dotted_continues_expression();
         if op_led || dot_led {
@@ -1357,7 +1460,7 @@ impl Parser {
                 TokenKind::Newline | TokenKind::Indent | TokenKind::Eof => {
                     self.advance(); // name
                     self.advance(); // :
-                    let suite = self.parse_suite()?;
+                    let suite = self.parse_section_suite(&name)?;
                     return Some(self.stmt(
                         start,
                         StmtKind::Section(Section {
@@ -1407,6 +1510,31 @@ impl Parser {
                     return None;
                 }
             }
+        }
+
+        // Bare field name (`x`): admission defaults `inputs:` entries to
+        // Float64. The `Infer` marker is a parse-time placeholder so the
+        // tree stays a `FieldDecl`; the formatter omits it.
+        if matches!(
+            self.peek_at(1),
+            TokenKind::Newline | TokenKind::Dedent | TokenKind::Eof
+        ) {
+            self.advance();
+            return Some(self.stmt(
+                start,
+                StmtKind::FieldDecl {
+                    visibility: None,
+                    name,
+                    ty: TypeExpr {
+                        kind: TypeKind::Path {
+                            segments: vec!["Infer".into()],
+                            generic_args: vec![],
+                        },
+                        source: start,
+                    },
+                    default: None,
+                },
+            ));
         }
 
         // assignments with indexed targets: `norm[b, t] = ...`: but
@@ -1480,8 +1608,9 @@ impl Parser {
         via_dot: bool,
     ) -> Option<Stmt> {
         if self.eat(&TokenKind::Eq) {
-            self.skip_assignment_layout();
+            let opened = self.skip_assignment_layout();
             let value = self.parse_expr()?;
+            self.close_assignment_indent(opened);
             if segments.len() == 1 || via_dot {
                 return Some(self.stmt(
                     start,
@@ -1514,8 +1643,9 @@ impl Parser {
     fn parse_equation_tail(&mut self, left: &Expr, start: Span) -> Option<Stmt> {
         if self.peek() == &TokenKind::Eq {
             self.advance();
-            self.skip_assignment_layout();
+            let opened = self.skip_assignment_layout();
             let right = self.parse_expr()?;
+            self.close_assignment_indent(opened);
             return Some(self.stmt(
                 start,
                 StmtKind::Equation {
@@ -1819,7 +1949,7 @@ impl Parser {
         // before the dash now).
         if head
             .first()
-            .is_some_and(|h| h == "numeric" || h == "safety")
+            .is_some_and(|h| h == "numeric" || h == "safety" || h == "error")
         {
             if matches!(self.peek(), TokenKind::Minus)
                 && matches!(self.peek_at(1), TokenKind::Ident(_))
@@ -1841,6 +1971,42 @@ impl Parser {
                         self.advance();
                     }
                 }
+            }
+        }
+        if head.first().is_some_and(|word| word == "representation") {
+            if let TokenKind::Ident(word) = self.peek().clone() {
+                head.push(word);
+                self.advance();
+            }
+            if matches!(self.peek(), TokenKind::Arrow) {
+                self.advance();
+                if let TokenKind::Ident(model) = self.peek().clone() {
+                    head.push(model);
+                    self.advance();
+                }
+                // `Float64(round = nearest, overflow = error)` is mapping
+                // evidence, not a Phase 1 call; skip the parenthetical.
+                if matches!(self.peek(), TokenKind::LParen) {
+                    let mut depth = 0_i32;
+                    while !matches!(self.peek(), TokenKind::Eof) && !self.at_line_end() {
+                        match self.peek() {
+                            TokenKind::LParen => depth += 1,
+                            TokenKind::RParen => {
+                                depth -= 1;
+                                self.advance();
+                                if depth == 0 {
+                                    break;
+                                }
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        self.advance();
+                    }
+                }
+            }
+            if self.at_line_end() {
+                return Some((head, None));
             }
         }
         if self.at_line_end() {
@@ -2829,3 +2995,10 @@ fn visibility_name(visibility: Visibility) -> &'static str {
 
 // Declarations keep their full ordered body (`Declaration.body`); sections
 // are a filtered view via `Declaration::sections()`.
+
+fn suite_has_section(suite: &Suite, name: &str) -> bool {
+    suite
+        .statements
+        .iter()
+        .any(|stmt| matches!(&stmt.kind, StmtKind::Section(section) if section.name == name))
+}

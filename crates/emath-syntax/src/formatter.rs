@@ -185,8 +185,10 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
                 out.push_str(", ");
             }
             out.push_str(&param.name);
-            out.push_str(": ");
-            format_type(out, &param.ty);
+            if !is_infer_marker(&param.ty) {
+                out.push_str(": ");
+                format_type(out, &param.ty);
+            }
         }
         out.push(')');
         if let Some(ret) = &signature.ret {
@@ -332,8 +334,10 @@ fn format_stmt_kind_inner(out: &mut String, kind: &StmtKind, level: usize) {
         } => {
             format_visibility(out, *visibility);
             out.push_str(name);
-            out.push_str(": ");
-            format_type(out, ty);
+            if !is_infer_marker(ty) {
+                out.push_str(": ");
+                format_type(out, ty);
+            }
             if let Some(default_expr) = default {
                 out.push_str(" = ");
                 format_expr(out, default_expr, Prec::Root);
@@ -565,6 +569,16 @@ fn format_binder_head(out: &mut String, kind: BinderKind, binders: &[Binder]) {
             format_expr(out, domain, Prec::Root);
         }
     }
+}
+
+fn is_infer_marker(ty: &TypeExpr) -> bool {
+    matches!(
+        &ty.kind,
+        TypeKind::Path {
+            segments,
+            generic_args,
+        } if generic_args.is_empty() && segments.last().map(String::as_str) == Some("Infer")
+    )
 }
 
 /// Format a type expression. Types have no precedence ambiguity in the

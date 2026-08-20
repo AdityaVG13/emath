@@ -100,3 +100,37 @@ fn corpus_canonical_reparse_is_stable() {
         );
     }
 }
+
+#[test]
+fn numeric_units_surface_round_trips() {
+    let source = "\
+emath function Timed:
+    inputs:
+        t: Duration
+        rate: Per<Duration>
+    outputs:
+        y: Float64
+    definitions:
+        y = t / 1 s * rate * 1 s
+    compile:
+        target rust
+        numeric interval-f64
+        precision 53
+        error-limit 1e-12
+";
+    let once = format_once(source);
+    assert_eq!(format_once(&once), once, "fmt(fmt(s)) must equal fmt(s)");
+    let rebound = parse_lossless(&once, FileId(0), &Limits::default());
+    assert!(
+        !rebound.diagnostics.has_errors(),
+        "formatted numeric/units surface must parse back: {:?}",
+        rebound
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+    assert!(once.contains("numeric interval-f64"));
+    assert!(once.contains("1 s"));
+    assert!(once.contains("Per<Duration>"));
+}
