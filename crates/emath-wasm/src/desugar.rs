@@ -1,6 +1,6 @@
 //! Playground-only wrap: a pane that is not already a declaration becomes
-//! one. This is not a language change; `emath-syntax` / `emath-sema` still
-//! require an `emath …:` header. The wrap lives only in this crate
+//! one. This is not a language change; \`emath-syntax\` / \`emath-sema\` still
+//! require an \`emath …:\` header. The wrap lives only in this crate
 //! (the pane's engine).
 
 use std::borrow::Cow;
@@ -37,7 +37,19 @@ const BUILTINS: &[&str] = &[
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PreparedSource<'a> {
     pub source: Cow<'a, str>,
-    pub desugared: Option<String>,
+    pub is_wrapped: bool,
+}
+
+impl<'a> PreparedSource<'a> {
+    #[inline]
+    #[must_use]
+    pub fn desugared(&self) -> Option<&str> {
+        if self.is_wrapped {
+            Some(self.source.as_ref())
+        } else {
+            None
+        }
+    }
 }
 
 /// Wrap bare pane text when the first content line is not a declaration header.
@@ -46,13 +58,13 @@ pub(crate) fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
     if !needs_wrap(raw) {
         return PreparedSource {
             source: Cow::Borrowed(raw),
-            desugared: None,
+            is_wrapped: false,
         };
     }
     let wrapped = wrap_bare(raw);
     PreparedSource {
-        source: Cow::Owned(wrapped.clone()),
-        desugared: Some(wrapped),
+        source: Cow::Owned(wrapped),
+        is_wrapped: true,
     }
 }
 
@@ -76,35 +88,35 @@ fn is_declaration_header(line: &str) -> bool {
         .is_some_and(|rest| rest.starts_with(' ') || rest.starts_with('\t'))
 }
 
-enum BareLine {
-    Assign { name: String, rhs: String },
-    Expr(String),
+enum BareLine<'a> {
+    Assign { name: &'a str, rhs: &'a str },
+    Expr(&'a str),
 }
 
 fn wrap_bare(source: &str) -> String {
     let lines = content_lines(source);
-    let assigned: Vec<String> = lines
+    let assigned: Vec<&str> = lines
         .iter()
         .filter_map(|line| match line {
-            BareLine::Assign { name, .. } => Some(name.clone()),
+            BareLine::Assign { name, .. } => Some(*name),
             BareLine::Expr(_) => None,
         })
         .collect();
-    let mut used = Vec::new();
+    let mut used: Vec<&str> = Vec::new();
     for line in &lines {
         let text = match line {
-            BareLine::Assign { rhs, .. } => rhs.as_str(),
-            BareLine::Expr(expr) => expr.as_str(),
+            BareLine::Assign { rhs, .. } => rhs,
+            BareLine::Expr(expr) => expr,
         };
         for ident in scan_idents(text) {
-            if !used.iter().any(|existing| existing == &ident) {
+            if !used.contains(&ident) {
                 used.push(ident);
             }
         }
     }
-    let free: Vec<String> = used
+    let free: Vec<&str> = used
         .into_iter()
-        .filter(|ident| !assigned.iter().any(|name| name == ident) && !is_builtin(ident))
+        .filter(|ident| !assigned.contains(ident) && !is_builtin(ident))
         .collect();
 
     let expr_total = lines
@@ -112,25 +124,28 @@ fn wrap_bare(source: &str) -> String {
         .filter(|line| matches!(line, BareLine::Expr(_)))
         .count();
     let mut expr_index = 0usize;
-    let mut defs = Vec::new();
+    let mut defs: Vec<(Cow<'_, str>, &str)> = Vec::with_capacity(lines.len());
     for line in &lines {
         match line {
             BareLine::Assign { name, rhs } => {
-                defs.push((name.clone(), rhs.clone()));
+                defs.push((Cow::Borrowed(*name), *rhs));
             }
             BareLine::Expr(expr) => {
                 expr_index += 1;
                 let name = if expr_total <= 1 {
-                    SYNTH_RESULT.to_string()
+                    Cow::Borrowed(SYNTH_RESULT)
                 } else {
-                    format!("{SYNTH_RESULT}_{expr_index}")
+                    Cow::Owned(format!("{SYNTH_RESULT}_{expr_index}"))
                 };
-                defs.push((name, expr.clone()));
+                defs.push((name, *expr));
             }
         }
     }
 
-    let mut out = format!("emath function {SYNTH_DECL}:\n");
+    let mut out = String::with_capacity(source.len() + 64);
+    out.push_str("emath function ");
+    out.push_str(SYNTH_DECL);
+    out.push_str(":\n");
     if !free.is_empty() {
         out.push_str("    inputs:\n");
         for name in &free {
@@ -146,7 +161,7 @@ fn wrap_bare(source: &str) -> String {
     } else {
         for (name, rhs) in &defs {
             out.push_str("        ");
-            out.push_str(name);
+            out.push_str(name.as_ref());
             out.push_str(" = ");
             out.push_str(rhs);
             out.push('\n');
@@ -155,7 +170,7 @@ fn wrap_bare(source: &str) -> String {
     out
 }
 
-fn content_lines(source: &str) -> Vec<BareLine> {
+fn content_lines<'a>(source: &'a str) -> Vec<BareLine<'a>> {
     let mut lines = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
@@ -166,13 +181,13 @@ fn content_lines(source: &str) -> Vec<BareLine> {
             let name = lhs.trim();
             if is_ident(name) {
                 lines.push(BareLine::Assign {
-                    name: name.to_string(),
-                    rhs: rhs.trim().to_string(),
+                    name,
+                    rhs: rhs.trim(),
                 });
                 continue;
             }
         }
-        lines.push(BareLine::Expr(trimmed.to_string()));
+        lines.push(BareLine::Expr(trimmed));
     }
     lines
 }
@@ -196,44 +211,46 @@ fn split_assignment(line: &str) -> Option<(&str, &str)> {
 }
 
 fn is_ident(text: &str) -> bool {
-    let mut chars = text.chars();
-    let Some(first) = chars.next() else {
+    let bytes = text.as_bytes();
+    let Some(&first) = bytes.first() else {
         return false;
     };
-    (first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    (first.is_ascii_alphabetic() || first == b'_')
+        && bytes[1..]
+            .iter()
+            .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 fn is_builtin(name: &str) -> bool {
     BUILTINS.contains(&name)
 }
 
-fn scan_idents(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
+fn scan_idents<'a>(text: &'a str) -> Vec<&'a str> {
+    let bytes = text.as_bytes();
     let mut idents = Vec::new();
     let mut index = 0;
-    while index < chars.len() {
-        let ch = chars[index];
-        if ch.is_ascii_alphabetic() || ch == '_' {
+    while index < bytes.len() {
+        let b = bytes[index];
+        if b.is_ascii_alphabetic() || b == b'_' {
             let start = index;
             index += 1;
-            while index < chars.len()
-                && (chars[index].is_ascii_alphanumeric() || chars[index] == '_')
+            while index < bytes.len()
+                && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
             {
                 index += 1;
             }
-            idents.push(chars[start..index].iter().collect());
+            idents.push(&text[start..index]);
             continue;
         }
-        if ch.is_ascii_digit() {
+        if b.is_ascii_digit() {
             index += 1;
-            while index < chars.len()
-                && (chars[index].is_ascii_digit()
-                    || chars[index] == '.'
-                    || chars[index] == 'e'
-                    || chars[index] == 'E'
-                    || chars[index] == '+'
-                    || chars[index] == '-')
+            while index < bytes.len()
+                && (bytes[index].is_ascii_digit()
+                    || bytes[index] == b'.'
+                    || bytes[index] == b'e'
+                    || bytes[index] == b'E'
+                    || bytes[index] == b'+'
+                    || bytes[index] == b'-')
             {
                 index += 1;
             }

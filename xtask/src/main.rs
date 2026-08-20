@@ -1003,6 +1003,36 @@ fn build_web() -> u8 {
         );
         return 1;
     }
+    let wasm_opt_available = Command::new("wasm-opt")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if wasm_opt_available {
+        println!("build-web: running wasm-opt -O3 --strip-debug --strip-producers on emath.wasm");
+        let opt_status = Command::new("wasm-opt")
+            .args(["-O3", "--strip-debug", "--strip-producers", "-o"])
+            .arg(&wasm_dest)
+            .arg(&wasm_dest)
+            .status();
+        match opt_status {
+            Ok(status) if status.success() => {
+                println!("build-web: wasm-opt optimization complete");
+            }
+            Ok(status) => {
+                eprintln!(
+                    "build-web: warning: wasm-opt exited with status {:?}",
+                    status.code()
+                );
+            }
+            Err(error) => {
+                eprintln!("build-web: warning: failed to run wasm-opt: {error}");
+            }
+        }
+    } else {
+        println!(
+            "build-web: note: wasm-opt not found in PATH; skipping wasm-opt post-processing pass"
+        );
+    }
     for name in ["index.html", "app.js", "style.css"] {
         let src = PathBuf::from("web").join(name);
         if src.is_file() {
