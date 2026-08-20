@@ -2,6 +2,7 @@
 
 pub use crate::constructor::Field;
 use crate::constructor::{Constructor, TestCase};
+use crate::evidence::EvidenceClaim;
 use crate::expression::ExprNode;
 use crate::goal::{CompileSpec, Export, Goal, ResolutionPlan};
 use crate::ids::{DeclarationId, ExprId, GoalId, TestId, TypeId};
@@ -34,7 +35,40 @@ pub struct Declaration {
     pub tests: Vec<TestId>,
     pub exports: Vec<Export>,
     pub compile_spec: CompileSpec,
+    /// `about:` prose retained from source (summary text).
+    pub about: Option<String>,
+    /// `evidence:` claims recorded with verdict `NotRun` until a checker discharges them.
+    pub evidence: Vec<EvidenceClaim>,
+    /// `host:` bindings retained structurally. Native rust.library codegen does not
+    /// emit trait impls from these records (typed no-claim).
+    pub host: Vec<HostBinding>,
     pub source: Span,
+}
+
+/// One `host:` language binding (`rust:` / `implement Trait for Type:`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostBinding {
+    /// Host language (`rust`).
+    pub language: String,
+    /// Trait path (`cache_core::Policy`).
+    pub trait_path: String,
+    /// Implementing type (`AdaptiveCachePolicy`).
+    pub target: String,
+    /// Methods retained from the host block.
+    pub methods: Vec<HostMethod>,
+}
+
+/// One host method inside an `implement` block.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostMethod {
+    /// Method name.
+    pub name: String,
+    /// `(name, type)` parameters in source order.
+    pub params: Vec<(String, String)>,
+    /// Return type display, when present.
+    pub ret: Option<String>,
+    /// Retained body commands (not executed by Phase 1 native codegen).
+    pub body: Vec<String>,
 }
 
 /// One admitted import (`use` front-end).

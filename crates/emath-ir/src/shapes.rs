@@ -47,6 +47,36 @@ impl Shape {
         }
     }
 
+    /// Declared shape; zero extents and empty tensor ranks are typed refusals.
+    pub fn declare(extents: Vec<Extent>) -> Result<Self, ShapeError> {
+        if extents.is_empty() {
+            return Err(ShapeError {
+                code: "E-SHAPE-004",
+                message: "declared tensor/vector shape must have rank >= 1".into(),
+            });
+        }
+        for extent in &extents {
+            match extent {
+                Extent::Fixed(0) => {
+                    return Err(ShapeError {
+                        code: "E-SHAPE-004",
+                        message: "declared extent 0 is not a well-formed shape".into(),
+                    });
+                }
+                Extent::Symbolic(name)
+                    if name == "0" || name.eq_ignore_ascii_case("zero") =>
+                {
+                    return Err(ShapeError {
+                        code: "E-SHAPE-004",
+                        message: format!("declared extent `{name}` is not a well-formed shape"),
+                    });
+                }
+                _ => {}
+            }
+        }
+        Ok(Self { extents })
+    }
+
     /// Rank.
     #[must_use]
     pub fn rank(&self) -> usize {
@@ -171,7 +201,7 @@ fn is_one(extent: &Extent) -> bool {
 /// Shape failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShapeError {
-    /// Stable code (`E-SHAPE-001`..`E-SHAPE-003`).
+    /// Stable code (`E-SHAPE-001`..`E-SHAPE-004`).
     pub code: &'static str,
     /// Message.
     pub message: String,

@@ -45,6 +45,17 @@ impl Interval {
         }
     }
 
+    /// Well-formed closed interval. Inverted or non-finite bounds are `E-DOM-002`.
+    pub fn checked(low: f64, high: f64) -> Result<Self, DomainError> {
+        if !low.is_finite() || !high.is_finite() || low > high {
+            return Err(DomainError {
+                code: "E-DOM-002",
+                message: format!("ill-formed domain interval [{low}, {high}]"),
+            });
+        }
+        Ok(Self::closed(low, high))
+    }
+
     /// Whether `value` lies inside, within tolerance.
     #[must_use]
     pub fn contains(&self, value: f64) -> bool {
@@ -212,7 +223,7 @@ fn f64_cmp(left: f64, right: f64) -> std::cmp::Ordering {
 /// Domain violation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DomainError {
-    /// Stable code (`E-DOM-001`).
+    /// Stable code (`E-DOM-001`/`E-DOM-002`).
     pub code: &'static str,
     /// Message.
     pub message: String,

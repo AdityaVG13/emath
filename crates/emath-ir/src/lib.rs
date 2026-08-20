@@ -32,7 +32,7 @@ pub use evidence::{ClaimVerdict, EvidenceBundle, EvidenceClaim};
 pub use expression::{BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, UnaryOp};
 pub use goal::{
     CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExcludedCandidate, Export,
-    FallbackPolicy, Goal, GoalKind, GoalRequirements, NumericProfile, PlanNodeDef, PlanOperation,
+    FallbackPolicy, Goal, GoalKind, GoalPayload, GoalRequirements, PlanNodeDef, PlanOperation,
     ProviderRef, RequestSpec, ResolutionPlan, SafetyProfile, TargetProfile, build_goal,
     native_plan, plan_identity,
 };
@@ -43,13 +43,22 @@ pub use kind_schema::{
 };
 pub use layers::IrLayer;
 pub use mig::{Mig, MigEdge, MigEdgeKind, MigNode, MigNodeId, MigNodeKind};
-pub use numeric::{NumKind, NumericError, NumericType, cast_cost, promote, tower_rows};
+pub use numeric::{
+    NumKind, NumericBehavior, NumericError, NumericProfile, NumericType, STRICT_F64_MACHINE_EPS,
+    STRICT_F64_PRECISION_BITS, cast_cost, check_error_limit, check_precision_demand,
+    numeric_behavior, parse_numeric_profile, promote, tower_rows,
+};
 pub use operator::{DeclaredOperator, Fixity, canonical_operator};
-pub use package::{Declaration, ImportEntry, ImportSelection, PackageIdentity, SemanticPackage};
+pub use package::{
+    Declaration, HostBinding, HostMethod, ImportEntry, ImportSelection, PackageIdentity,
+    SemanticPackage,
+};
 pub use shapes::{Extent, Shape, ShapeError, SparseLayout};
 pub use type_system::{
     DischargeStatus, InferenceError, SchemeBody, SchemeField, TypeConstraints, TypeExpr,
     TypeScheme, TypeVar, canonical_of, render, unify,
 };
 pub use types::TypeNode;
-pub use units::{Unit, UnitDim, UnitError, check_compatible};
+pub use units::{
+    Unit, UnitDim, UnitError, UnitFamily, check_compatible, lookup_unit, per_unit,
+};
