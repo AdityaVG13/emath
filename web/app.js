@@ -114,11 +114,20 @@ function setRaw(result) {
 
 function renderDiagnostics(result) {
   const node = $("out-diagnostics");
+  const badge = $("badge-diag");
+  const items = Array.isArray(result.diagnostics) ? result.diagnostics : [];
+  
+  if (badge) {
+    const errorCount = items.filter((d) => (d.severity ?? "error") === "error").length;
+    badge.textContent = String(items.length);
+    badge.hidden = items.length === 0;
+    badge.classList.toggle("error", errorCount > 0);
+  }
+
   if (!node) {
     return;
   }
   node.replaceChildren();
-  const items = Array.isArray(result.diagnostics) ? result.diagnostics : [];
   if (items.length === 0) {
     node.textContent = "no diagnostics — package admits";
     return;
@@ -654,144 +663,377 @@ function fillExamples(result) {
   }
 }
 
-const LEGEND = [
-  [
-    "Sections",
-    [
-      ["inputs", "declared parameters; bound by given or the pane fields"],
-      ["outputs", "named results of the declaration"],
-      ["definitions", "equations that compute outputs from inputs/state"],
-      ["goals", "what to produce (evaluate, produce rust.library)"],
-      ["tests", "contains example <name>: blocks"],
-      ["state", "persistent fields for emath policy"],
-      ["constructors", "Self: assignment plus require/ensure"],
-      ["compile", "target/profile/numeric model"],
-      ["exports", "names visible outside the package"],
-      ["about", "prose metadata; not executed"],
-      ["evidence", "checker certificates attached to a goal"],
-      ["host", "lab/host experiment binding"],
+let currentLegendTab = "shortcuts";
+
+const LEGEND_SHORTCUTS = [
+  {
+    category: "Execution & Lowering",
+    items: [
+      { key: "Ctrl+R / ⌘↵", action: "Run Engine", desc: "Execute strict-f64 interpreter in browser" },
+      { key: "⇧⌘↵", action: "Check / Admit", desc: "Admit package, verify types and proofs without execution" },
+      { key: "⌥P / Alt+P", action: "Plan Synthesis", desc: "Compile goal requests and inspect execution plans" },
+      { key: "⌥G / Alt+G", action: "Intent Graph (MIG)", desc: "View Semantic Intermediate Representation MIG graph" },
+      { key: "⌥C / Alt+C", action: "Generate Rust", desc: "Lower code to in-memory rust-backend artifacts" },
+      { key: "⇧⌥F", action: "Format Source", desc: "Comment-preserving AST source formatter" },
     ],
-  ],
-  [
-    "Tests",
-    [
-      ["example <name>:", "one test; empty body is a worked example"],
-      ["example name:", "same, two-word head"],
-      ["given x = …", "binds an input or constructor parameter"],
-      ["expect …", "Boolean assertion; omit for a computed/worked run"],
+  },
+  {
+    category: "Workspace & View",
+    items: [
+      { key: "⇧⌘Y / Alt+S", action: "Symbolify / ASCII-fy", desc: "Toggle Unicode math (α, ∀, ∫) and LaTeX aliases (\\alpha)" },
+      { key: "⌘\\ / Ctrl+\\", action: "Swap Panes", desc: "Toggle editor and output pane positions" },
+      { key: "⌘K / Ctrl+K / F1", action: "Cheatsheet & Legend", desc: "Open this interactive reference drawer" },
+      { key: "Esc", action: "Close Modal", desc: "Dismiss active modal, overlay, or search" },
     ],
-  ],
-  [
-    "Ops & Tools",
-    [
-      ["Run", "Tier-0 interpreter (strict-f64); not compiled Rust (Ctrl+Enter)"],
-      ["Check", "admit the package; diagnostics only (Ctrl+Shift+Enter)"],
-      ["Plan", "goal requests and resolution plans"],
-      ["Intent Graph", "SIR MIG canonical form"],
-      ["Generate Rust", "in-memory rust-backend files; not executed here"],
-      ["Format", "comment-preserving formatter"],
-      ["Symbolify", "toggle LaTeX aliases (\\alpha) and Unicode math (α) (Ctrl+Shift+Y)"],
-      ["Swap Panes", "swap editor and output pane positions"],
+  },
+  {
+    category: "Tab Switcher",
+    items: [
+      { key: "⌥1", action: "Tab 1: Run", desc: "Values, test verdicts, and interpreter output" },
+      { key: "⌥2", action: "Tab 2: Plot", desc: "Interactive 2D function plotter with coordinate grid" },
+      { key: "⌥3", action: "Tab 3: Math", desc: "High-precision mathematical intent & LaTeX viewer" },
+      { key: "⌥4", action: "Tab 4: Genesis", desc: "Finite worlds, Cayley matrices, and morphism explorer" },
+      { key: "⌥5", action: "Tab 5: Diagnostics", desc: "Compiler diagnostics, type errors, and notes" },
+      { key: "⌥6", action: "Tab 6: Plan", desc: "Planner goal lowering requests and resolution steps" },
+      { key: "⌥7", action: "Tab 7: Intent Graph", desc: "MIG canonical graph topology with nodes & edges" },
+      { key: "⌥8", action: "Tab 8: Generated", desc: "Lowered Rust backend source files" },
+      { key: "⌥9", action: "Tab 9: Raw JSON", desc: "Raw WASM engine JSON response packet" },
     ],
-  ],
-  [
-    "Editor Shortcuts",
-    [
-      ["Tab", "indent 4 spaces (multi-line selection or cursor)"],
-      ["Shift+Tab", "outdent up to 4 spaces"],
-      ["Enter", "auto-indent with indent increase after ':'"],
-      ["Ctrl/Cmd+Shift+Y", "toggle Symbolify / ASCII-fy on selection or buffer"],
-      ["Alt+S", "toggle Symbolify / ASCII-fy"],
+  },
+  {
+    category: "Editor Indentation",
+    items: [
+      { key: "Tab", action: "Indent", desc: "Indent line or selection by 4 spaces" },
+      { key: "Shift+Tab", action: "Outdent", desc: "Outdent line or selection up to 4 spaces" },
+      { key: "Enter", action: "Smart Enter", desc: "Auto-indent newline and increase indent after ':'" },
+      { key: "Backspace", action: "Smart Backspace", desc: "Delete 4 spaces at indent boundary" },
     ],
-  ],
-  [
-    "Tabs",
-    [
-      ["Run", "values and test verdicts"],
-      ["Diagnostics", "E-* / N-* codes from admit"],
-      ["Plan", "planner requests"],
-      ["Intent Graph", "MIG"],
-      ["Generated", "rust-backend files"],
-      ["Raw JSON", "engine response"],
-    ],
-  ],
-  [
-    "Tiers / authority",
-    [
-      ["interpreted-strict-f64", "browser run; IEEE binary64 + platform libm"],
-      ["structural", "genesis authority when no checker ran"],
-      ["tested / certified / proved", "never invented by Run or empty checker_receipts"],
-    ],
-  ],
-  ["Notes", [["N-TYPE-001", "untyped head-arg / free name defaulted to Float64"]]],
-  [
-    "Error families",
-    [
-      ["E-SYN-*", "syntax/layout"],
-      ["E-NAME-*", "names/visibility"],
-      ["E-SEC-*", "section outside the Phase 1 subset"],
-      ["E-TYPE-*", "type/refinement"],
-      ["E-UNIT-*", "units"],
-      ["E-KIND-*", "custom kind"],
-      ["E-GOAL-*", "requests/planning"],
-      ["E-GEN-*", "semantic genesis"],
-      ["E-LOCK-*", "meaning lock"],
-      ["E-NUM-*", "numeric models"],
-      ["E-HOST-*", "host/lab"],
-      ["E-TLT-*", "tooling/CLI"],
-    ],
-  ],
+  },
 ];
 
-function renderLegend() {
+const LEGEND_SYMBOLS = [
+  {
+    category: "Greek Lowercase & Uppercase",
+    symbols: [
+      { sym: "α", latex: "\\alpha", ascii: "alpha", desc: "First parameter / variable" },
+      { sym: "β", latex: "\\beta", ascii: "beta", desc: "Second parameter / weight" },
+      { sym: "γ", latex: "\\gamma", ascii: "gamma", desc: "Third parameter / Lorentz factor" },
+      { sym: "δ", latex: "\\delta", ascii: "delta", desc: "Variation / Kronecker delta" },
+      { sym: "ε", latex: "\\epsilon", ascii: "epsilon", desc: "Error bound / small perturbation" },
+      { sym: "θ", latex: "\\theta", ascii: "theta", desc: "Angle / parameter vector" },
+      { sym: "λ", latex: "\\lambda", ascii: "lambda", desc: "Eigenvalue / step rate / decay" },
+      { sym: "μ", latex: "\\mu", ascii: "mu", desc: "Mean / coefficient of friction" },
+      { sym: "π", latex: "\\pi", ascii: "pi", desc: "Archimedes constant (3.14159...)" },
+      { sym: "σ", latex: "\\sigma", ascii: "sigma", desc: "Standard deviation / stress tensor" },
+      { sym: "τ", latex: "\\tau", ascii: "tau", desc: "Torque / time constant / 2π" },
+      { sym: "φ", latex: "\\phi", ascii: "phi", desc: "Golden ratio / scalar potential" },
+      { sym: "ω", latex: "\\omega", ascii: "omega", desc: "Angular frequency" },
+      { sym: "Δ", latex: "\\Delta", ascii: "Delta", desc: "Difference / Laplace operator" },
+      { sym: "Σ", latex: "\\Sigma", ascii: "Sigma", desc: "Summation / alphabet signature" },
+      { sym: "Ω", latex: "\\Omega", ascii: "Omega", desc: "Sample space / domain" },
+    ],
+  },
+  {
+    category: "Logic & Set Theory",
+    symbols: [
+      { sym: "∀", latex: "\\forall", ascii: "forall", desc: "Universal quantifier (for all)" },
+      { sym: "∃", latex: "\\exists", ascii: "exists", desc: "Existential quantifier (there exists)" },
+      { sym: "∈", latex: "\\in", ascii: "in", desc: "Element of set" },
+      { sym: "∉", latex: "\\notin", ascii: "notin", desc: "Not an element of" },
+      { sym: "⊆", latex: "\\subseteq", ascii: "subset_eq", desc: "Subset or equal" },
+      { sym: "⊂", latex: "\\subset", ascii: "subset", desc: "Strict subset" },
+      { sym: "∪", latex: "\\cup", ascii: "union", desc: "Set union" },
+      { sym: "∩", latex: "\\cap", ascii: "intersection", desc: "Set intersection" },
+      { sym: "∅", latex: "\\emptyset", ascii: "empty_set", desc: "Empty set" },
+      { sym: "∧", latex: "\\land", ascii: "/\\", desc: "Logical conjunction (AND)" },
+      { sym: "∨", latex: "\\lor", ascii: "\\/", desc: "Logical disjunction (OR)" },
+      { sym: "¬", latex: "\\neg", ascii: "~", desc: "Logical negation (NOT)" },
+      { sym: "⇒", latex: "\\implies", ascii: "=>", desc: "Material implication" },
+      { sym: "⇔", latex: "\\iff", ascii: "<=>", desc: "Logical equivalence (if and only if)" },
+      { sym: "⊤", latex: "\\top", ascii: "true", desc: "Top / true truth value" },
+      { sym: "⊥", latex: "\\bot", ascii: "false", desc: "Bottom / false / absurdity" },
+    ],
+  },
+  {
+    category: "Calculus, Operators & Relations",
+    symbols: [
+      { sym: "∂", latex: "\\partial", ascii: "partial", desc: "Partial derivative" },
+      { sym: "∇", latex: "\\nabla", ascii: "grad", desc: "Gradient / Del operator" },
+      { sym: "∫", latex: "\\int", ascii: "int", desc: "Integral operator" },
+      { sym: "∑", latex: "\\sum", ascii: "sum", desc: "Series summation" },
+      { sym: "∏", latex: "\\prod", ascii: "prod", desc: "Series product" },
+      { sym: "√", latex: "\\sqrt", ascii: "sqrt", desc: "Square root" },
+      { sym: "∞", latex: "\\infty", ascii: "infinity", desc: "Infinity" },
+      { sym: "≤", latex: "\\le", ascii: "<=", desc: "Less than or equal" },
+      { sym: "≥", latex: "\\ge", ascii: ">=", desc: "Greater than or equal" },
+      { sym: "≠", latex: "\\ne", ascii: "!=", desc: "Not equal" },
+      { sym: "≈", latex: "\\approx", ascii: "~=", desc: "Approximately equal" },
+      { sym: "≡", latex: "\\equiv", ascii: "===", desc: "Congruence / identity" },
+      { sym: "→", latex: "\\to", ascii: "->", desc: "Mapping / right arrow" },
+      { sym: "∘", latex: "\\circ", ascii: "o", desc: "Function composition" },
+      { sym: "×", latex: "\\times", ascii: "*", desc: "Cartesian product / cross product" },
+      { sym: "·", latex: "\\cdot", ascii: ".", desc: "Dot product / scalar product" },
+    ],
+  },
+];
+
+const LEGEND_SYNTAX = [
+  {
+    category: "Package & Imports",
+    desc: "Declaring top-level package and importing definitions",
+    code: `package "physics.kinematics"
+
+use math.calculus.*`,
+  },
+  {
+    category: "Function Definitions & Inputs",
+    desc: "Defining pure mathematical functions with typed parameters",
+    code: `inputs:
+    v0: Float64 = 10.0
+    theta: Float64 = 0.785398
+    g: Float64 = 9.81
+
+definitions:
+    vx = v0 * cos(theta)
+    vy = v0 * sin(theta)
+    range = (v0^2 * sin(2 * theta)) / g`,
+  },
+  {
+    category: "Theorems & Proofs",
+    desc: "Formally specifying mathematical theorems and invariants",
+    code: `theorem PythagoreanIdentity(theta: Float64):
+    sin(theta)^2 + cos(theta)^2 = 1.0
+proof:
+    identity trigonometric_pythagorean`,
+  },
+  {
+    category: "Assertions & Test Cases",
+    desc: "Worked examples and assertions executed in interpreted mode",
+    code: `example projectile_45_deg:
+    given v0 = 20.0
+    given theta = 0.785398
+    expect range > 40.0`,
+  },
+  {
+    category: "Finite Worlds & Genesis",
+    desc: "Discrete algebraic structures with elements and Cayley matrices",
+    code: `world KleinFourGroup:
+    elements: [e, a, b, c]
+    op: [
+        [e, a, b, c],
+        [a, e, c, b],
+        [b, c, e, a],
+        [c, b, a, e]
+    ]`,
+  },
+];
+
+const LEGEND_DIAGNOSTICS = [
+  {
+    category: "Diagnostic Families",
+    items: [
+      { code: "E-SYN-*", domain: "Syntax & Layout", desc: "Unbalanced delimiters, indentation violations, or invalid token sequences." },
+      { code: "E-NAME-*", domain: "Names & Visibility", desc: "Unbound identifier, conflicting shadow definitions, or private access." },
+      { code: "E-SEC-*", domain: "Section Layout", desc: "Disallowed section or misplaced construct outside the active dialect subset." },
+      { code: "E-TYPE-*", domain: "Type & Refinement", desc: "Incompatible types, failed subtyping check, or violated refinement predicate." },
+      { code: "E-UNIT-*", domain: "Dimensional Analysis", desc: "Mismatched physical units (e.g. adding meters to seconds)." },
+      { code: "E-KIND-*", domain: "Kinds & Universes", desc: "Incompatible kind universe or invalid higher-order construct." },
+      { code: "E-GOAL-*", domain: "Planning & Synthesis", desc: "Unresolvable lowering goal or circular derivation dependency." },
+      { code: "E-GEN-*", domain: "Genesis & Laws", desc: "Algebraic law failure (e.g. associativity, identity, or inverse witness violation)." },
+      { code: "E-LOCK-*", domain: "Meaning Lock", desc: "Deterministic hash drift against certified golden semantic lock." },
+      { code: "E-NUM-*", domain: "Numeric Model", desc: "IEEE-754 binary64 domain error, NaN division, or overflow in strict mode." },
+      { code: "E-HOST-*", domain: "Host Runtime", desc: "WASM memory boundary violation or foreign host bridge communication failure." },
+      { code: "E-TLT-*", domain: "Tooling & CLI", desc: "CLI argument discrepancy or environment configuration error." },
+      { code: "N-TYPE-001", domain: "Inference Note", desc: "Untyped free variable or function head argument defaulted to Float64." },
+    ],
+  },
+];
+
+export function renderLegend(tab = currentLegendTab, query = "") {
   const body = $("legend-body");
-  if (!body) {
-    return;
-  }
+  if (!body) return;
   body.replaceChildren();
-  for (const [title, rows] of LEGEND) {
-    const group = document.createElement("section");
-    group.className = "legend-group";
-    const heading = document.createElement("h3");
-    heading.textContent = title;
-    group.appendChild(heading);
-    for (const [itemName, itemRole] of rows) {
-      const row = document.createElement("div");
-      row.className = "legend-row";
-      row.dataset.search = `${itemName} ${itemRole}`.toLowerCase();
-      const name = document.createElement("span");
-      name.className = "name";
-      name.textContent = itemName;
-      const role = document.createElement("span");
-      role.textContent = itemRole;
-      row.appendChild(name);
-      row.appendChild(role);
-      group.appendChild(row);
+
+  const needle = query.trim().toLowerCase();
+
+  if (tab === "shortcuts") {
+    for (const group of LEGEND_SHORTCUTS) {
+      const section = document.createElement("div");
+      section.className = "legend-section";
+      const heading = document.createElement("div");
+      heading.className = "legend-section-title";
+      heading.textContent = group.category;
+      section.appendChild(heading);
+
+      const grid = document.createElement("div");
+      grid.className = "legend-grid";
+      let matchCount = 0;
+
+      for (const item of group.items) {
+        const searchText = `${item.key} ${item.action} ${item.desc}`.toLowerCase();
+        if (needle && !searchText.includes(needle)) continue;
+        matchCount++;
+
+        const card = document.createElement("div");
+        card.className = "legend-card";
+        const descSpan = document.createElement("span");
+        descSpan.className = "legend-card-desc";
+        descSpan.textContent = item.action;
+        descSpan.title = item.desc;
+
+        const kbd = document.createElement("kbd");
+        kbd.textContent = item.key;
+
+        card.appendChild(descSpan);
+        card.appendChild(kbd);
+        grid.appendChild(card);
+      }
+
+      if (matchCount > 0) {
+        section.appendChild(grid);
+        body.appendChild(section);
+      }
     }
-    body.appendChild(group);
+  } else if (tab === "symbols") {
+    for (const group of LEGEND_SYMBOLS) {
+      const section = document.createElement("div");
+      section.className = "legend-section";
+      const heading = document.createElement("div");
+      heading.className = "legend-section-title";
+      heading.textContent = group.category;
+      section.appendChild(heading);
+
+      const table = document.createElement("table");
+      table.className = "legend-table";
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th style="width:3.2rem;text-align:center;">Glyph</th>
+            <th style="width:7.5rem;">LaTeX</th>
+            <th style="width:6.5rem;">ASCII</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+      `;
+      const tbody = document.createElement("tbody");
+      let matchCount = 0;
+
+      for (const sym of group.symbols) {
+        const searchText = `${sym.sym} ${sym.latex} ${sym.ascii} ${sym.desc}`.toLowerCase();
+        if (needle && !searchText.includes(needle)) continue;
+        matchCount++;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="sym-sample">${sym.sym}</td>
+          <td><code>${sym.latex}</code></td>
+          <td><code>${sym.ascii}</code></td>
+          <td>${sym.desc}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      if (matchCount > 0) {
+        table.appendChild(tbody);
+        section.appendChild(table);
+        body.appendChild(section);
+      }
+    }
+  } else if (tab === "syntax") {
+    for (const item of LEGEND_SYNTAX) {
+      const searchText = `${item.category} ${item.desc} ${item.code}`.toLowerCase();
+      if (needle && !searchText.includes(needle)) continue;
+
+      const section = document.createElement("div");
+      section.className = "legend-section";
+      const heading = document.createElement("div");
+      heading.className = "legend-section-title";
+      heading.textContent = `${item.category} — ${item.desc}`;
+      section.appendChild(heading);
+
+      const pre = document.createElement("pre");
+      pre.className = "syntax-block";
+      pre.textContent = item.code;
+      section.appendChild(pre);
+      body.appendChild(section);
+    }
+  } else if (tab === "diagnostics") {
+    for (const group of LEGEND_DIAGNOSTICS) {
+      const section = document.createElement("div");
+      section.className = "legend-section";
+      const heading = document.createElement("div");
+      heading.className = "legend-section-title";
+      heading.textContent = group.category;
+      section.appendChild(heading);
+
+      const table = document.createElement("table");
+      table.className = "legend-table";
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th style="width:7.5rem;">Code / Family</th>
+            <th style="width:9.5rem;">Domain</th>
+            <th>Description & Remediation</th>
+          </tr>
+        </thead>
+      `;
+      const tbody = document.createElement("tbody");
+      let matchCount = 0;
+
+      for (const item of group.items) {
+        const searchText = `${item.code} ${item.domain} ${item.desc}`.toLowerCase();
+        if (needle && !searchText.includes(needle)) continue;
+        matchCount++;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><code>${item.code}</code></td>
+          <td style="color:#93c5fd;">${item.domain}</td>
+          <td>${item.desc}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      if (matchCount > 0) {
+        table.appendChild(tbody);
+        section.appendChild(table);
+        body.appendChild(section);
+      }
+    }
   }
+
+  if (body.children.length === 0) {
+    const empty = document.createElement("div");
+    empty.style.color = "var(--text-muted)";
+    empty.style.fontSize = "0.85rem";
+    empty.style.padding = "1rem 0";
+    empty.textContent = `No matches found for "${query}"`;
+    body.appendChild(empty);
+  }
+}
+
+export function switchLegendTab(tabId) {
+  currentLegendTab = tabId;
+  for (const btn of document.querySelectorAll(".legend-tab-btn")) {
+    btn.classList.toggle("active", btn.dataset.legendTab === tabId);
+  }
+  const searchInput = $("legend-search");
+  renderLegend(currentLegendTab, searchInput ? searchInput.value : "");
 }
 
 function filterLegend(query) {
-  const needle = query.trim().toLowerCase();
-  for (const row of document.querySelectorAll("#legend-body .legend-row")) {
-    row.classList.toggle("hidden", Boolean(needle) && !row.dataset.search.includes(needle));
-  }
+  renderLegend(currentLegendTab, query);
 }
 
-function openLegend() {
+export function openLegend(initialTab = "shortcuts") {
   const overlay = $("legend");
-  if (!overlay) {
-    return;
-  }
-  if (!$("legend-body")?.childElementCount) {
-    renderLegend();
-  }
+  if (!overlay) return;
+  switchLegendTab(initialTab);
   overlay.hidden = false;
   $("legend-search")?.focus();
 }
 
-function closeLegend() {
+export function closeLegend() {
   const overlay = $("legend");
   if (overlay) {
     overlay.hidden = true;
@@ -2274,9 +2516,15 @@ function wireUi() {
       }
     }),
   );
-  $("btn-help")?.addEventListener("click", guard(openLegend));
+  $("btn-help")?.addEventListener("click", guard(() => openLegend("shortcuts")));
   $("btn-share")?.addEventListener("click", guard(shareSource));
   $("btn-legend-close")?.addEventListener("click", guard(closeLegend));
+  for (const tabBtn of document.querySelectorAll(".legend-tab-btn")) {
+    tabBtn.addEventListener(
+      "click",
+      guard(() => switchLegendTab(tabBtn.dataset.legendTab)),
+    );
+  }
   $("legend")?.addEventListener(
     "click",
     guard((event) => {
@@ -2324,6 +2572,65 @@ function wireUi() {
       guard(() => showTab(button.dataset.tab)),
     );
   }
+  window.addEventListener(
+    "keydown",
+    guard((event) => {
+      if (event.key === "Escape") {
+        const legend = $("legend");
+        if (legend && !legend.hidden) {
+          event.preventDefault();
+          closeLegend();
+          return;
+        }
+      }
+      if (((event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) || event.key === "F1") {
+        event.preventDefault();
+        openLegend();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === "\\") {
+        event.preventDefault();
+        togglePaneLayout();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && (event.key === "r" || event.key === "R") && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        runRun();
+        return;
+      }
+      if (event.shiftKey && event.altKey && (event.key === "f" || event.key === "F")) {
+        event.preventDefault();
+        runFormat();
+        return;
+      }
+      if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey && (event.key === "p" || event.key === "P")) {
+        event.preventDefault();
+        runPlan();
+        return;
+      }
+      if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey && (event.key === "g" || event.key === "G")) {
+        event.preventDefault();
+        runMig();
+        return;
+      }
+      if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey && (event.key === "c" || event.key === "C")) {
+        event.preventDefault();
+        runGenerate();
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        const num = parseInt(event.key, 10);
+        if (!isNaN(num) && num >= 1 && num <= 9) {
+          const tabNames = ["run", "plot", "math", "genesis", "diagnostics", "plan", "mig", "generated", "raw"];
+          if (tabNames[num - 1]) {
+            event.preventDefault();
+            showTab(tabNames[num - 1]);
+            return;
+          }
+        }
+      }
+    }),
+  );
   $("editor")?.addEventListener(
     "keydown",
     guard((event) => {

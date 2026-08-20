@@ -3,179 +3,302 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>emath</title>
+  <title>emath — Mathematical Computing Workbench</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="wasm-missing" class="banner" hidden>
     emath.wasm not found — run `cargo xtask build-web`
   </div>
-  <header>
-    <h1>emath playground</h1>
-    <span id="version"></span>
-    <label>
-      Example
-      <select id="examples"></select>
-    </label>
-    <nav>
-      <button type="button" id="btn-help">Help</button>
-      <button type="button" id="btn-share">Share</button>
-      <button type="button" id="btn-swap-layout" title="Swap editor and output pane positions">⇄ Swap Panes</button>
-      <button type="button" id="btn-symbolify" title="Toggle between \alpha and α symbols (Ctrl/Cmd+Shift+Y)">α Symbolify</button>
-      <button type="button" id="btn-run" title="Ctrl/Cmd+Enter">Run</button>
-      <button type="button" id="btn-check" title="Ctrl/Cmd+Shift+Enter">Check</button>
-      <button type="button" id="btn-plan">Plan</button>
-      <button type="button" id="btn-mig">Intent Graph</button>
-      <button type="button" id="btn-generate">Generate Rust</button>
-      <button type="button" id="btn-format">Format</button>
+  <header class="app-header">
+    <div class="brand-cluster">
+      <div class="brand-logo">
+        <span class="brand-name">emath</span>
+        <span class="brand-tag">workbench</span>
+      </div>
+      <span id="version" class="version-badge">v0.1.0</span>
+      <label class="example-picker-label">
+        <span class="label-text">Example:</span>
+        <select id="examples" class="example-select"></select>
+      </label>
+    </div>
+
+    <nav class="actions-cluster">
+      <!-- Primary Execution Cluster -->
+      <div class="action-group group-exec">
+        <button type="button" id="btn-run" class="btn btn-exec-run" title="Run program (Ctrl+R or ⌘+Enter)">
+          <span class="btn-icon">▶</span>
+          <span class="btn-label">Run</span>
+          <kbd class="key-hint">⌘↵</kbd>
+        </button>
+        <button type="button" id="btn-check" class="btn btn-exec-check" title="Formal check &amp; verification (Shift+⌘+Enter)">
+          <span class="btn-icon">✓</span>
+          <span class="btn-label">Check</span>
+          <kbd class="key-hint">⇧⌘↵</kbd>
+        </button>
+      </div>
+
+      <!-- Analysis & Lowering Cluster -->
+      <div class="action-group group-segmented">
+        <button type="button" id="btn-plan" class="btn btn-seg" title="Compute lowering plan (Alt+P)">
+          <span class="btn-label">Plan</span>
+          <kbd class="key-hint">⌥P</kbd>
+        </button>
+        <button type="button" id="btn-mig" class="btn btn-seg" title="Mathematical Intent Graph (Alt+G)">
+          <span class="btn-label">MIG Graph</span>
+          <kbd class="key-hint">⌥G</kbd>
+        </button>
+        <button type="button" id="btn-generate" class="btn btn-seg" title="Generate native Rust code (Alt+C)">
+          <span class="btn-label">Rust</span>
+          <kbd class="key-hint">⌥C</kbd>
+        </button>
+        <button type="button" id="btn-format" class="btn btn-seg" title="Format source (Shift+Alt+F)">
+          <span class="btn-label">Format</span>
+          <kbd class="key-hint">⇧⌥F</kbd>
+        </button>
+      </div>
+
+      <!-- View & Ergonomics Cluster -->
+      <div class="action-group group-segmented">
+        <button type="button" id="btn-symbolify" class="btn btn-seg btn-symbolify" title="Toggle Unicode ⇄ LaTeX ASCII symbols (Shift+⌘+Y or Alt+S)">
+          <span class="sym-glyph">α</span>
+          <span class="btn-label">Symbolify</span>
+          <kbd class="key-hint">⇧⌘Y</kbd>
+        </button>
+        <button type="button" id="btn-swap-layout" class="btn btn-seg" title="Swap editor &amp; output panes (⌘+\)">
+          <span class="btn-icon">⇄</span>
+          <span class="btn-label">Swap</span>
+          <kbd class="key-hint">⌘\</kbd>
+        </button>
+      </div>
+
+      <!-- Utility & Help Cluster -->
+      <div class="action-group group-util">
+        <button type="button" id="btn-help" class="btn btn-util" title="Shortcuts, symbols, and language legend (⌘K or ?)">
+          <span class="btn-icon">⌨</span>
+          <span class="btn-label">Legend</span>
+          <kbd class="key-hint">⌘K</kbd>
+        </button>
+        <button type="button" id="btn-share" class="btn btn-util" title="Copy shareable URL to clipboard">
+          <span class="btn-icon">🔗</span>
+          <span class="btn-label">Share</span>
+        </button>
+      </div>
     </nav>
   </header>
-  <main>
-    <section class="editor-pane">
-      <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-      <div id="inputs-panel" hidden>
+
+  <main id="workbench-main">
+    <section class="pane editor-pane">
+      <div class="pane-header">
+        <span class="pane-title">Source Editor (<span class="lang-tag">.emath</span>)</span>
+        <div class="editor-header-hints">
+          <span class="hint-pill"><kbd>Tab</kbd> indent</span>
+          <span class="hint-pill"><kbd>⌘↵</kbd> run</span>
+          <span class="hint-pill"><kbd>⌘K</kbd> cheatsheet</span>
+        </div>
+      </div>
+      <div class="editor-wrapper">
+        <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="# Author .emath function here..."></textarea>
+      </div>
+      <div id="inputs-panel" class="inputs-panel" hidden>
         <div class="inputs-header">
-          <span class="inputs-title">Interactive Parameters &amp; Live Inputs</span>
+          <div class="inputs-header-left">
+            <span class="inputs-icon">⚡</span>
+            <span class="inputs-title">Live Parameters &amp; Simulation Inputs</span>
+          </div>
           <div class="inputs-actions">
             <label class="auto-run-label">
-              <input type="checkbox" id="chk-auto-run" checked> Live Eval
+              <input type="checkbox" id="chk-auto-run" checked>
+              <span class="custom-toggle"></span>
+              <span class="toggle-text">Live Eval</span>
             </label>
-            <button type="button" id="btn-run-given">Run Values</button>
+            <button type="button" id="btn-run-given" class="btn btn-sm btn-accent">Evaluate</button>
           </div>
         </div>
-        <div id="input-fields"></div>
+        <div id="input-fields" class="input-fields-grid"></div>
         <div id="live-outputs-bar" class="live-outputs-bar" hidden>
           <span class="outputs-label">Outputs:</span>
-          <div id="live-outputs-list"></div>
+          <div id="live-outputs-list" class="live-outputs-list"></div>
         </div>
       </div>
     </section>
-    <section class="output-pane">
-      <div id="desugar-banner" hidden>
+
+    <section class="pane output-pane">
+      <div id="desugar-banner" class="desugar-banner" hidden>
         <details>
-          <summary>desugared to a declaration — click to view</summary>
+          <summary>Desugared to canonical declaration — click to inspect</summary>
           <pre id="desugar-source"></pre>
         </details>
       </div>
-      <div class="tabs" role="tablist">
-        <button type="button" data-tab="run">Run</button>
-        <button type="button" data-tab="plot">Plot 2D</button>
-        <button type="button" data-tab="math">Math Intent</button>
-        <button type="button" data-tab="genesis">Finite Worlds</button>
-        <button type="button" data-tab="diagnostics" class="active">Diagnostics</button>
-        <button type="button" data-tab="plan">Plan</button>
-        <button type="button" data-tab="mig">Intent Graph</button>
-        <button type="button" data-tab="generated">Generated</button>
-        <button type="button" data-tab="raw">Raw JSON</button>
+      <div class="tabs-bar" role="tablist">
+        <button type="button" data-tab="run" class="tab-item"><span class="tab-icon">▶</span> Run</button>
+        <button type="button" data-tab="plot" class="tab-item"><span class="tab-icon">📈</span> Plot 2D</button>
+        <button type="button" data-tab="math" class="tab-item"><span class="tab-icon">∑</span> Math Intent</button>
+        <button type="button" data-tab="genesis" class="tab-item"><span class="tab-icon">✦</span> Finite Worlds</button>
+        <button type="button" data-tab="diagnostics" class="tab-item active"><span class="tab-icon">⚠</span> Diagnostics <span id="badge-diag" class="tab-badge" hidden>0</span></button>
+        <button type="button" data-tab="plan" class="tab-item"><span class="tab-icon">📋</span> Plan</button>
+        <button type="button" data-tab="mig" class="tab-item"><span class="tab-icon">🕸</span> Intent Graph</button>
+        <button type="button" data-tab="generated" class="tab-item"><span class="tab-icon">⚙</span> Generated</button>
+        <button type="button" data-tab="raw" class="tab-item"><span class="tab-icon">{ }</span> Raw JSON</button>
       </div>
-      <div id="panel-run" class="tab-panel">
-        <pre id="out-run"></pre>
-      </div>
-      <div id="panel-plot" class="tab-panel">
-        <div class="plot-toolbar">
-          <div class="plot-control-group">
-            <label>X Axis <select id="plot-x-var"></select></label>
-            <label>Output <select id="plot-y-var"></select></label>
+
+      <div class="tab-viewport">
+        <div id="panel-run" class="tab-panel">
+          <pre id="out-run"></pre>
+        </div>
+        <div id="panel-plot" class="tab-panel">
+          <div class="plot-toolbar">
+            <div class="plot-control-group">
+              <label class="control-field">
+                <span>X Axis</span>
+                <select id="plot-x-var"></select>
+              </label>
+              <label class="control-field">
+                <span>Output (Y)</span>
+                <select id="plot-y-var"></select>
+              </label>
+            </div>
+            <div class="plot-control-group">
+              <label class="control-field">
+                <span>Min X</span>
+                <input type="number" id="plot-min-x" value="-10" step="any">
+              </label>
+              <label class="control-field">
+                <span>Max X</span>
+                <input type="number" id="plot-max-x" value="10" step="any">
+              </label>
+              <label class="control-field">
+                <span>Samples</span>
+                <input type="number" id="plot-samples" value="200" min="20" max="1000" step="10">
+              </label>
+            </div>
+            <div class="plot-actions">
+              <button type="button" id="btn-plot-autoscale" class="btn btn-sm">Auto-Scale</button>
+              <button type="button" id="btn-plot-reset" class="btn btn-sm">Reset View</button>
+              <button type="button" id="btn-plot-export" class="btn btn-sm btn-accent">Export PNG</button>
+            </div>
           </div>
-          <div class="plot-control-group">
-            <label>Min X <input type="number" id="plot-min-x" value="-10" step="any"></label>
-            <label>Max X <input type="number" id="plot-max-x" value="10" step="any"></label>
-            <label>Samples <input type="number" id="plot-samples" value="200" min="20" max="1000" step="10"></label>
+          <div id="plot-secondary-params" class="plot-secondary-params" hidden>
+            <span class="sec-label">Secondary Parameters:</span>
+            <div id="plot-secondary-sliders"></div>
           </div>
-          <div class="plot-actions">
-            <button type="button" id="btn-plot-autoscale">Auto-Scale</button>
-            <button type="button" id="btn-plot-reset">Reset View</button>
-            <button type="button" id="btn-plot-export">Export PNG</button>
-          </div>
-        </div>
-        <div id="plot-secondary-params" class="plot-secondary-params" hidden>
-          <span class="sec-label">Secondary Parameters:</span>
-          <div id="plot-secondary-sliders"></div>
-        </div>
-        <div class="plot-canvas-wrapper">
-          <canvas id="plot-canvas"></canvas>
-          <div id="plot-tooltip" class="plot-tooltip" hidden></div>
-        </div>
-      </div>
-      <div id="panel-math" class="tab-panel">
-        <div class="math-toolbar">
-          <button type="button" id="btn-copy-latex">Copy LaTeX</button>
-          <button type="button" id="btn-toggle-latex-raw">Show Raw LaTeX</button>
-        </div>
-        <div id="math-rendered" class="math-rendered"></div>
-        <div id="math-latex-container" class="math-latex-container" hidden>
-          <pre id="math-latex-raw"></pre>
-        </div>
-      </div>
-      <div id="panel-genesis" class="tab-panel">
-        <div class="genesis-toolbar">
-          <label>
-            Preset World
-            <select id="genesis-world-preset">
-              <option value="b2">Boolean Algebra 𝔹₂ ({0, 1})</option>
-              <option value="k3">Kleene 3-Valued Logic 𝕂₃ ({0, ½, 1})</option>
-              <option value="b4">Belnap 4-Valued Logic ℬ₄ ({N, F, T, B})</option>
-              <option value="v4">Klein 4-Group V₄ ({e, a, b, c})</option>
-              <option value="z3">Cyclic Ring ℤ/3ℤ ({0, 1, 2})</option>
-              <option value="z5">Cyclic Ring ℤ/5ℤ ({0, 1, 2, 3, 4})</option>
-              <option value="custom">Custom Matrix Builder</option>
-            </select>
-          </label>
-          <label id="genesis-op-selector-label">
-            Operator
-            <select id="genesis-op-select"></select>
-          </label>
-          <button type="button" id="btn-genesis-check-laws">Verify Laws</button>
-          <button type="button" id="btn-genesis-find-morphisms">Find Morphisms</button>
-        </div>
-        <div class="genesis-content">
-          <div class="genesis-matrix-section">
-            <h3>Cayley / Operation Table (<span id="genesis-op-symbol">★</span>)</h3>
-            <div id="genesis-matrix-table-wrapper"></div>
-            <div id="genesis-cell-info" class="genesis-cell-info">Hover over a cell to see operation breakdown</div>
-          </div>
-          <div class="genesis-laws-section">
-            <h3>Axiomatic Laws Verification</h3>
-            <div id="genesis-laws-list" class="genesis-laws-list"></div>
+          <div class="plot-canvas-wrapper">
+            <canvas id="plot-canvas"></canvas>
+            <div id="plot-tooltip" class="plot-tooltip" hidden></div>
           </div>
         </div>
-        <div id="genesis-morphisms-section" class="genesis-morphisms-section" hidden>
-          <h3>Morphism Analysis &amp; Isomorphisms</h3>
-          <div id="genesis-morphisms-output"></div>
+        <div id="panel-math" class="tab-panel">
+          <div class="math-toolbar">
+            <button type="button" id="btn-copy-latex" class="btn btn-sm btn-accent">Copy LaTeX</button>
+            <button type="button" id="btn-toggle-latex-raw" class="btn btn-sm">Show Raw LaTeX</button>
+          </div>
+          <div id="math-rendered" class="math-rendered"></div>
+          <div id="math-latex-container" class="math-latex-container" hidden>
+            <pre id="math-latex-raw"></pre>
+          </div>
         </div>
-      </div>
-      <div id="panel-diagnostics" class="tab-panel active">
-        <pre id="out-diagnostics"></pre>
-      </div>
-      <div id="panel-plan" class="tab-panel">
-        <pre id="out-plan"></pre>
-      </div>
-      <div id="panel-mig" class="tab-panel">
-        <pre id="out-mig"></pre>
-      </div>
-      <div id="panel-generated" class="tab-panel">
-        <label class="file-pick">
-          File
-          <select id="generated-files"></select>
-        </label>
-        <pre id="out-generated"></pre>
-      </div>
-      <div id="panel-raw" class="tab-panel">
-        <pre id="out-raw"></pre>
+        <div id="panel-genesis" class="tab-panel">
+          <div class="genesis-toolbar">
+            <label class="control-field">
+              <span>Preset World</span>
+              <select id="genesis-world-preset">
+                <option value="b2">Boolean Algebra 𝔹₂ ({0, 1})</option>
+                <option value="k3">Kleene 3-Valued Logic 𝕂₃ ({0, ½, 1})</option>
+                <option value="b4">Belnap 4-Valued Logic ℬ₄ ({N, F, T, B})</option>
+                <option value="v4">Klein 4-Group V₄ ({e, a, b, c})</option>
+                <option value="z3">Cyclic Ring ℤ/3ℤ ({0, 1, 2})</option>
+                <option value="z5">Cyclic Ring ℤ/5ℤ ({0, 1, 2, 3, 4})</option>
+                <option value="custom">Custom Matrix Builder</option>
+              </select>
+            </label>
+            <label id="genesis-op-selector-label" class="control-field">
+              <span>Operator</span>
+              <select id="genesis-op-select"></select>
+            </label>
+            <div class="genesis-toolbar-buttons">
+              <button type="button" id="btn-find-morphisms" class="btn btn-sm btn-accent">Find Morphisms</button>
+            </div>
+          </div>
+          <div class="genesis-content">
+            <div class="genesis-matrix-section">
+              <div class="section-title">Cayley / Operation Table (<span id="genesis-op-symbol">★</span>)</div>
+              <div id="genesis-matrix-table-wrapper"></div>
+              <div id="genesis-cell-info" class="genesis-cell-info">Hover over a cell to see operation breakdown</div>
+            </div>
+            <div class="genesis-laws-section">
+              <div class="section-title">Axiomatic Laws Verification</div>
+              <div id="genesis-laws-list" class="genesis-laws-list"></div>
+            </div>
+          </div>
+          <div id="genesis-morphisms-section" class="genesis-morphisms-section" hidden>
+            <div class="section-title">Morphism Analysis &amp; Isomorphisms</div>
+            <div id="genesis-morphisms-output"></div>
+          </div>
+        </div>
+        <div id="panel-diagnostics" class="tab-panel active">
+          <pre id="out-diagnostics"></pre>
+        </div>
+        <div id="panel-plan" class="tab-panel">
+          <pre id="out-plan"></pre>
+        </div>
+        <div id="panel-mig" class="tab-panel">
+          <pre id="out-mig"></pre>
+        </div>
+        <div id="panel-generated" class="tab-panel">
+          <div class="file-picker-bar">
+            <label class="control-field">
+              <span>Target File:</span>
+              <select id="generated-files"></select>
+            </label>
+          </div>
+          <pre id="out-generated"></pre>
+        </div>
+        <div id="panel-raw" class="tab-panel">
+          <pre id="out-raw"></pre>
+        </div>
       </div>
     </section>
   </main>
+
+  <!-- Legend & Shortcuts Modal Drawer -->
   <div id="legend" class="legend" hidden>
-    <div class="legend-panel" role="dialog" aria-labelledby="legend-title">
-      <header>
-        <h2 id="legend-title">Legend</h2>
-        <input id="legend-search" type="search" placeholder="search sections, ops, codes" autocomplete="off">
-        <button type="button" id="btn-legend-close">Close</button>
+    <div class="legend-backdrop"></div>
+    <div class="legend-panel" role="dialog" aria-labelledby="legend-title" aria-modal="true">
+      <header class="legend-header">
+        <div class="legend-title-group">
+          <h2 id="legend-title">Workbench Legend &amp; Reference</h2>
+          <span class="legend-subtitle">Keyboard shortcuts, mathematical symbols, syntax &amp; diagnostic codes</span>
+        </div>
+        <div class="legend-search-wrapper">
+          <input id="legend-search" type="search" placeholder="Search shortcuts, symbols, ops, codes... (Esc to close)" autocomplete="off">
+          <kbd class="esc-badge">Esc</kbd>
+        </div>
+        <button type="button" id="btn-legend-close" class="btn btn-sm">Close</button>
       </header>
-      <div id="legend-body"></div>
+      <div class="legend-tabs" role="tablist">
+        <button type="button" class="legend-tab-btn active" data-legend-tab="shortcuts">⌨ Shortcuts</button>
+        <button type="button" class="legend-tab-btn" data-legend-tab="symbols">α Symbols &amp; LaTeX</button>
+        <button type="button" class="legend-tab-btn" data-legend-tab="syntax">📝 Language Syntax</button>
+        <button type="button" class="legend-tab-btn" data-legend-tab="diagnostics">⚠ Diagnostic Codes</button>
+      </div>
+      <div id="legend-body" class="legend-body"></div>
     </div>
   </div>
-  <footer id="status">idle</footer>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <span class="status-indicator-dot"></span>
+      <span id="status" class="status-text">idle</span>
+    </div>
+    <div class="footer-right">
+      <span class="footer-hint"><kbd>⌘K</kbd> Reference</span>
+      <span class="footer-divider">·</span>
+      <span class="footer-hint"><kbd>⌘↵</kbd> Run</span>
+      <span class="footer-divider">·</span>
+      <span class="footer-hint">100% Offline WebAssembly</span>
+    </div>
+  </footer>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>
