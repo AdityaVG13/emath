@@ -33,7 +33,9 @@ export function makeEmRun(instance) {
 
   return function emRunOp(op, payload) {
     const opBytes = encoder.encode(String(op));
-    const payloadBytes = encoder.encode(payload == null ? "" : String(payload));
+    const payloadBytes = encoder.encode(
+      payload === null || payload === undefined ? "" : String(payload),
+    );
     const opPtr = em_alloc(opBytes.length);
     const payloadPtr = em_alloc(payloadBytes.length);
     new Uint8Array(memory.buffer, opPtr, opBytes.length).set(opBytes);
@@ -570,14 +572,26 @@ const LEGEND = [
     ],
   ],
   [
-    "Ops",
+    "Ops & Tools",
     [
-      ["Run", "Tier-0 interpreter (strict-f64); not compiled Rust"],
-      ["Check", "admit the package; diagnostics only"],
+      ["Run", "Tier-0 interpreter (strict-f64); not compiled Rust (Ctrl+Enter)"],
+      ["Check", "admit the package; diagnostics only (Ctrl+Shift+Enter)"],
       ["Plan", "goal requests and resolution plans"],
       ["Intent Graph", "SIR MIG canonical form"],
       ["Generate Rust", "in-memory rust-backend files; not executed here"],
       ["Format", "comment-preserving formatter"],
+      ["Symbolify", "toggle LaTeX aliases (\\alpha) and Unicode math (α) (Ctrl+Shift+Y)"],
+      ["Swap Panes", "swap editor and output pane positions"],
+    ],
+  ],
+  [
+    "Editor Shortcuts",
+    [
+      ["Tab", "indent 4 spaces (multi-line selection or cursor)"],
+      ["Shift+Tab", "outdent up to 4 spaces"],
+      ["Enter", "auto-indent with indent increase after ':'"],
+      ["Ctrl/Cmd+Shift+Y", "toggle Symbolify / ASCII-fy on selection or buffer"],
+      ["Alt+S", "toggle Symbolify / ASCII-fy"],
     ],
   ],
   [
@@ -687,6 +701,418 @@ function shareSource() {
   setStatus(`share: ${href}`, "ok");
 }
 
+export const SYMBOL_MAP = [
+  // Greek Lowercase
+  ["\\alpha", "α"],
+  ["\\beta", "β"],
+  ["\\gamma", "γ"],
+  ["\\delta", "δ"],
+  ["\\epsilon", "ε"],
+  ["\\varepsilon", "ε"],
+  ["\\zeta", "ζ"],
+  ["\\eta", "η"],
+  ["\\theta", "θ"],
+  ["\\vartheta", "ϑ"],
+  ["\\iota", "ι"],
+  ["\\kappa", "κ"],
+  ["\\lambda", "λ"],
+  ["\\mu", "μ"],
+  ["\\nu", "ν"],
+  ["\\xi", "ξ"],
+  ["\\pi", "π"],
+  ["\\varpi", "ϖ"],
+  ["\\rho", "ρ"],
+  ["\\varrho", "ϱ"],
+  ["\\sigma", "σ"],
+  ["\\varsigma", "ς"],
+  ["\\tau", "τ"],
+  ["\\upsilon", "υ"],
+  ["\\phi", "φ"],
+  ["\\varphi", "ϕ"],
+  ["\\chi", "χ"],
+  ["\\psi", "ψ"],
+  ["\\omega", "ω"],
+
+  // Greek Uppercase
+  ["\\Gamma", "Γ"],
+  ["\\Delta", "Δ"],
+  ["\\Theta", "Θ"],
+  ["\\Lambda", "Λ"],
+  ["\\Xi", "Ξ"],
+  ["\\Pi", "Π"],
+  ["\\Sigma", "Σ"],
+  ["\\Upsilon", "Υ"],
+  ["\\Phi", "Φ"],
+  ["\\Psi", "Ψ"],
+  ["\\Omega", "Ω"],
+
+  // Operators & Calculus
+  ["\\partial", "∂"],
+  ["\\nabla", "∇"],
+  ["\\infty", "∞"],
+  ["\\iiint", "∭"],
+  ["\\iint", "∬"],
+  ["\\oint", "∮"],
+  ["\\int", "∫"],
+  ["\\sum", "∑"],
+  ["\\prod", "∏"],
+  ["\\coprod", "∐"],
+  ["\\sqrt", "√"],
+
+  // Relations & Comparison
+  ["\\approx", "≈"],
+  ["\\equiv", "≡"],
+  ["\\simeq", "≃"],
+  ["\\cong", "≅"],
+  ["\\propto", "∝"],
+  ["\\neq", "≠"],
+  ["\\ne", "≠"],
+  ["\\leq", "≤"],
+  ["\\le", "≤"],
+  ["\\geq", "≥"],
+  ["\\ge", "≥"],
+  ["\\pm", "±"],
+  ["\\mp", "∓"],
+  ["\\times", "×"],
+  ["\\cdot", "·"],
+  ["\\circ", "∘"],
+  ["\\bullet", "∙"],
+  ["\\oplus", "⊕"],
+  ["\\otimes", "⊗"],
+  ["\\odot", "⊙"],
+
+  // Logic & Set Theory
+  ["\\forall", "∀"],
+  ["\\exists", "∃"],
+  ["\\nexists", "∄"],
+  ["\\notin", "∉"],
+  ["\\in", "∈"],
+  ["\\ni", "∋"],
+  ["\\subseteq", "⊆"],
+  ["\\supseteq", "⊇"],
+  ["\\subset", "⊂"],
+  ["\\supset", "⊃"],
+  ["\\cap", "∩"],
+  ["\\cup", "∪"],
+  ["\\setminus", "∖"],
+  ["\\emptyset", "∅"],
+  ["\\land", "∧"],
+  ["\\lor", "∨"],
+  ["\\neg", "¬"],
+  ["\\top", "⊤"],
+  ["\\bot", "⊥"],
+
+  // Arrows
+  ["\\leftrightarrow", "↔"],
+  ["\\Leftrightarrow", "⇔"],
+  ["\\leftarrow", "←"],
+  ["\\Leftarrow", "⇐"],
+  ["\\rightarrow", "→"],
+  ["\\Rightarrow", "⇒"],
+  ["\\to", "→"],
+  ["\\mapsto", "↦"],
+];
+
+const SYMBOL_ENTRIES = [...SYMBOL_MAP].sort((a, b) => b[0].length - a[0].length);
+
+const CANONICAL_ASCII_MAP = new Map([
+  ["α", "\\alpha"],
+  ["β", "\\beta"],
+  ["γ", "\\gamma"],
+  ["δ", "\\delta"],
+  ["ε", "\\epsilon"],
+  ["ζ", "\\zeta"],
+  ["η", "\\eta"],
+  ["θ", "\\theta"],
+  ["ϑ", "\\vartheta"],
+  ["ι", "\\iota"],
+  ["κ", "\\kappa"],
+  ["λ", "\\lambda"],
+  ["μ", "\\mu"],
+  ["ν", "\\nu"],
+  ["ξ", "\\xi"],
+  ["π", "\\pi"],
+  ["ϖ", "\\varpi"],
+  ["ρ", "\\rho"],
+  ["ϱ", "\\varrho"],
+  ["σ", "\\sigma"],
+  ["ς", "\\varsigma"],
+  ["τ", "\\tau"],
+  ["υ", "\\upsilon"],
+  ["φ", "\\phi"],
+  ["ϕ", "\\varphi"],
+  ["χ", "\\chi"],
+  ["ψ", "\\psi"],
+  ["ω", "\\omega"],
+  ["Γ", "\\Gamma"],
+  ["Δ", "\\Delta"],
+  ["Θ", "\\Theta"],
+  ["Λ", "\\Lambda"],
+  ["Ξ", "\\Xi"],
+  ["Π", "\\Pi"],
+  ["Σ", "\\Sigma"],
+  ["Υ", "\\Upsilon"],
+  ["Φ", "\\Phi"],
+  ["Ψ", "\\Psi"],
+  ["Ω", "\\Omega"],
+  ["∂", "\\partial"],
+  ["∇", "\\nabla"],
+  ["∞", "\\infty"],
+  ["∭", "\\iiint"],
+  ["∬", "\\iint"],
+  ["∮", "\\oint"],
+  ["∫", "\\int"],
+  ["∑", "\\sum"],
+  ["∏", "\\prod"],
+  ["∐", "\\coprod"],
+  ["√", "\\sqrt"],
+  ["≈", "\\approx"],
+  ["≡", "\\equiv"],
+  ["≃", "\\simeq"],
+  ["≅", "\\cong"],
+  ["∝", "\\propto"],
+  ["≠", "\\ne"],
+  ["≤", "\\le"],
+  ["≥", "\\ge"],
+  ["±", "\\pm"],
+  ["∓", "\\mp"],
+  ["×", "\\times"],
+  ["·", "\\cdot"],
+  ["∘", "\\circ"],
+  ["∙", "\\bullet"],
+  ["⊕", "\\oplus"],
+  ["⊗", "\\otimes"],
+  ["⊙", "\\odot"],
+  ["∀", "\\forall"],
+  ["∃", "\\exists"],
+  ["∄", "\\nexists"],
+  ["∉", "\\notin"],
+  ["∈", "\\in"],
+  ["∋", "\\ni"],
+  ["⊆", "\\subseteq"],
+  ["⊇", "\\supseteq"],
+  ["⊂", "\\subset"],
+  ["⊃", "\\supset"],
+  ["∩", "\\cap"],
+  ["∪", "\\cup"],
+  ["∖", "\\setminus"],
+  ["∅", "\\emptyset"],
+  ["∧", "\\land"],
+  ["∨", "\\lor"],
+  ["¬", "\\neg"],
+  ["⊤", "\\top"],
+  ["⊥", "\\bot"],
+  ["↔", "\\leftrightarrow"],
+  ["⇔", "\\Leftrightarrow"],
+  ["←", "\\leftarrow"],
+  ["⇐", "\\Leftarrow"],
+  ["→", "\\to"],
+  ["⇒", "\\Rightarrow"],
+  ["↦", "\\mapsto"],
+]);
+
+export function symbolify(text) {
+  let result = text;
+  for (const [latex, unicode] of SYMBOL_ENTRIES) {
+    const escaped = latex.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`${escaped}(?![a-zA-Z])`, "g");
+    result = result.replace(regex, unicode);
+  }
+  return result;
+}
+
+export function asciify(text) {
+  let result = text;
+  for (const [unicode, latex] of CANONICAL_ASCII_MAP) {
+    if (result.includes(unicode)) {
+      result = result.replaceAll(unicode, latex);
+    }
+  }
+  return result;
+}
+
+export function hasUnicodeMath(text) {
+  return SYMBOL_MAP.some(([, unicode]) => text.includes(unicode));
+}
+
+export function hasLatexAliases(text) {
+  return SYMBOL_MAP.some(([latex]) => {
+    const escaped = latex.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`${escaped}(?![a-zA-Z])`);
+    return regex.test(text);
+  });
+}
+
+export function updateSymbolifyButton() {
+  const btn = $("btn-symbolify");
+  if (!btn) return;
+  const editor = $("editor");
+  const value = editor ? editor.value : "";
+  const isUnicode = hasUnicodeMath(value);
+  btn.textContent = isUnicode ? "\\a ASCII-fy" : "α Symbolify";
+  btn.title = isUnicode
+    ? "Convert Unicode symbols back to \\alpha LaTeX/ASCII (Ctrl/Cmd+Shift+Y)"
+    : "Convert \\alpha LaTeX/ASCII to Unicode symbols (Ctrl/Cmd+Shift+Y)";
+}
+
+export function toggleSymbolify() {
+  const editor = $("editor");
+  if (!editor) return;
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const hasSelection = start !== end;
+  const targetText = hasSelection ? editor.value.slice(start, end) : editor.value;
+
+  const isUnicode = hasUnicodeMath(targetText);
+  const converted = isUnicode ? asciify(targetText) : symbolify(targetText);
+
+  if (hasSelection) {
+    editor.value = editor.value.slice(0, start) + converted + editor.value.slice(end);
+    editor.selectionStart = start;
+    editor.selectionEnd = start + converted.length;
+  } else {
+    editor.value = converted;
+    editor.selectionStart = editor.selectionEnd = Math.min(start, editor.value.length);
+  }
+
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+  writeSourceToHash(editor.value);
+  updateSymbolifyButton();
+
+  setStatus(
+    isUnicode ? "converted to ASCII/LaTeX aliases" : "converted to Unicode math symbols",
+    "ok",
+  );
+}
+
+const STORAGE_LAYOUT_KEY = "emath_pane_layout";
+
+export function applyPaneLayout(swapped) {
+  const main = document.querySelector("main");
+  if (!main) return;
+  main.classList.toggle("layout-swapped", swapped);
+  const btn = $("btn-swap-layout");
+  if (btn) {
+    btn.classList.toggle("active", swapped);
+    btn.title = swapped
+      ? "Panes swapped (Editor Right, Output Left) — click to reset"
+      : "Swap editor and output pane positions";
+  }
+  try {
+    localStorage.setItem(STORAGE_LAYOUT_KEY, swapped ? "swapped" : "default");
+  } catch {}
+}
+
+export function togglePaneLayout() {
+  const main = document.querySelector("main");
+  const isSwapped = main ? main.classList.contains("layout-swapped") : false;
+  applyPaneLayout(!isSwapped);
+  setStatus(!isSwapped ? "layout: editor on right" : "layout: editor on left", "ok");
+}
+
+export function handleEditorTab(editor, event) {
+  event.preventDefault();
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const value = editor.value;
+
+  if (start !== end && value.slice(start, end).includes("\n")) {
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    const lineEnd = value.indexOf("\n", end) !== -1 ? value.indexOf("\n", end) : value.length;
+    const selectedBlock = value.slice(lineStart, lineEnd);
+    const lines = selectedBlock.split("\n");
+    const indented = lines.map((line) => "    " + line).join("\n");
+
+    editor.value = value.slice(0, lineStart) + indented + value.slice(lineEnd);
+    editor.selectionStart = start + 4;
+    editor.selectionEnd = end + lines.length * 4;
+  } else {
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    editor.value = before + "    " + after;
+    editor.selectionStart = editor.selectionEnd = start + 4;
+  }
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+export function handleEditorShiftTab(editor, event) {
+  event.preventDefault();
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const value = editor.value;
+
+  const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+  const lineEnd = value.indexOf("\n", end) !== -1 ? value.indexOf("\n", end) : value.length;
+  const selectedBlock = value.slice(lineStart, lineEnd);
+  const lines = selectedBlock.split("\n");
+
+  let removedFirstLine = 0;
+  let totalRemoved = 0;
+
+  const unindented = lines
+    .map((line, idx) => {
+      let spacesToRemove = 0;
+      if (line.startsWith("    ")) {
+        spacesToRemove = 4;
+      } else if (line.startsWith("\t")) {
+        spacesToRemove = 1;
+      } else {
+        const match = line.match(/^ {1,3}/);
+        if (match) spacesToRemove = match[0].length;
+      }
+      if (idx === 0) removedFirstLine = spacesToRemove;
+      totalRemoved += spacesToRemove;
+      return line.slice(spacesToRemove);
+    })
+    .join("\n");
+
+  editor.value = value.slice(0, lineStart) + unindented + value.slice(lineEnd);
+  editor.selectionStart = Math.max(lineStart, start - removedFirstLine);
+  editor.selectionEnd = Math.max(editor.selectionStart, end - totalRemoved);
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+export function handleEditorEnter(editor, event) {
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const value = editor.value;
+
+  const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+  const currentLine = value.slice(lineStart, start);
+  const indentMatch = currentLine.match(/^[ \t]*/);
+  let indent = indentMatch ? indentMatch[0] : "";
+
+  const trimmed = currentLine.trim();
+  if (trimmed.endsWith(":")) {
+    indent += "    ";
+  }
+
+  event.preventDefault();
+  const before = value.slice(0, start);
+  const after = value.slice(end);
+  const insert = "\n" + indent;
+  editor.value = before + insert + after;
+  editor.selectionStart = editor.selectionEnd = start + insert.length;
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+export function handleEditorBackspace(editor, event) {
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  if (start !== end) return false;
+  const value = editor.value;
+  const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+  const linePrefix = value.slice(lineStart, start);
+  if (/^ +$/.test(linePrefix) && linePrefix.length % 4 === 0 && linePrefix.length >= 4) {
+    event.preventDefault();
+    editor.value = value.slice(0, start - 4) + value.slice(start);
+    editor.selectionStart = editor.selectionEnd = start - 4;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+  return false;
+}
+
 function wireUi() {
   $("btn-run")?.addEventListener("click", guard(runRun));
   $("btn-run-given")?.addEventListener("click", guard(runWithGiven));
@@ -695,6 +1121,8 @@ function wireUi() {
   $("btn-mig")?.addEventListener("click", guard(runMig));
   $("btn-generate")?.addEventListener("click", guard(runGenerate));
   $("btn-format")?.addEventListener("click", guard(runFormat));
+  $("btn-symbolify")?.addEventListener("click", guard(toggleSymbolify));
+  $("btn-swap-layout")?.addEventListener("click", guard(togglePaneLayout));
   $("examples")?.addEventListener(
     "change",
     guard((event) => {
@@ -702,6 +1130,7 @@ function wireUi() {
       if (editor && event.target.value) {
         editor.value = event.target.value;
         writeSourceToHash(editor.value);
+        updateSymbolifyButton();
       }
     }),
   );
@@ -722,7 +1151,10 @@ function wireUi() {
   );
   $("editor")?.addEventListener(
     "input",
-    debounce(() => writeSourceToHash(sourcePayload()), 250),
+    debounce(() => {
+      writeSourceToHash(sourcePayload());
+      updateSymbolifyButton();
+    }, 250),
   );
   window.addEventListener(
     "hashchange",
@@ -731,6 +1163,7 @@ function wireUi() {
       const editor = $("editor");
       if (editor && fromHash && editor.value !== fromHash) {
         editor.value = fromHash;
+        updateSymbolifyButton();
       }
     }),
   );
@@ -754,12 +1187,45 @@ function wireUi() {
   $("editor")?.addEventListener(
     "keydown",
     guard((event) => {
+      const editor = event.target;
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
         if (event.shiftKey) {
           runCheck();
         } else {
           runRun();
+        }
+        return;
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        (event.key === "Y" || event.key === "y")
+      ) {
+        event.preventDefault();
+        toggleSymbolify();
+        return;
+      }
+      if (event.altKey && (event.key === "s" || event.key === "S")) {
+        event.preventDefault();
+        toggleSymbolify();
+        return;
+      }
+      if (event.key === "Tab") {
+        if (event.shiftKey) {
+          handleEditorShiftTab(editor, event);
+        } else {
+          handleEditorTab(editor, event);
+        }
+        return;
+      }
+      if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        handleEditorEnter(editor, event);
+        return;
+      }
+      if (event.key === "Backspace" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (handleEditorBackspace(editor, event)) {
+          return;
         }
       }
     }),
@@ -768,7 +1234,12 @@ function wireUi() {
 
 export async function boot() {
   showWasmMissing(false);
+  try {
+    const savedLayout = localStorage.getItem(STORAGE_LAYOUT_KEY);
+    applyPaneLayout(savedLayout === "swapped");
+  } catch {}
   wireUi();
+  updateSymbolifyButton();
   try {
     const wasm = await instantiateWasm(WASM_URL);
     emRun = makeEmRun(wasm.instance);
