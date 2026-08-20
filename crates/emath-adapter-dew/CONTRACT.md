@@ -21,9 +21,13 @@ versioned seam without consuming an upstream engine.
   and the accelerator inventory (WGSL/GLSL/CUDA/HIP/OpenCL).
 - `SourceMapEntry`: SIR -> Dew -> generated symbol/span source map with
   deterministic anchors (`build_source_map`).
-- `DifferentialFinding`, `MutantDrift`, `ScanCase`, `ScanProfile`: reference-
-  boundary scan and semantic-drift detection (`run_boundary_cases`,
-  `detect_drift`).
+- `DifferentialFinding`, `MutantDrift`, `ScanCase`, `ScanProfile`,
+  `EvalValue`: reference-boundary scan and semantic-drift detection
+  (`run_boundary_cases`, `detect_drift`, `evaluate_scalar`,
+  `detect_seeded_wrong_result`). `evaluate_scalar` is the Dew-adapter
+  evaluation path (bit-exact IEEE-754 binary64 for arithmetic, same
+  class as native exec-ir). `detect_seeded_wrong_result` is a Phase 3
+  planted-value control, not a differentiate producer.
 - `AdapterSeam`, `PatchLedger`, `PatchOutcome`, `ProviderVersion`, `SeamError`:
   versioned adapter-facing API with a patch ledger.
 - (not exhaustive).
@@ -66,12 +70,18 @@ None (`Cargo.toml` has no `[features]`).
 
 ## Conformance tests
 
-No `tests/` directory on disk. Inline `mod tests` exists in `src/capability.rs`
-(`E-PROV-031` backend inventory), `src/backends.rs` (`E-PROV-030` recusals and
-Rust/token rendering), and `src/oracle.rs` (boundary and drift detection).
+No `tests/` directory on disk in this crate. Integration coverage lives in
+`tests/emath-adapter-dew`: capability inventory, backend recusals,
+oracle boundary/drift, `native_and_dew_agree_on_scalar_corpus` (Phase 2
+native exec-ir ↔ Dew `evaluate_scalar` bit-exact agreement over the
+`tests/valid` scalar corpus plus adapter fixtures), and
+`seeded_wrong_derivative_result_is_refused` (Phase 3 planted-value
+control via `detect_seeded_wrong_result`).
 
 ## No-claim boundaries
 
-Phase 1 has no cross-engine differential lane (no upstream engine is
-consumed). The accelerator inventory is a capability classification, not a
-runtime; JIT selection is advisory with fallback.
+Phase 1 consumes no upstream Dew engine. The Phase 2 differential lane
+compares the in-tree native exec-ir interpreter against the Dew adapter
+evaluator, not an upstream Dew runtime. The accelerator inventory is a
+capability classification, not a runtime; JIT selection is advisory
+with fallback. `detect_seeded_wrong_result` is not a derivative engine.

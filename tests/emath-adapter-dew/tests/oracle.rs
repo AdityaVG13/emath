@@ -4,8 +4,8 @@
 
 use emath_adapter_dew::dexpr::DewMatrix;
 use emath_adapter_dew::{
-    DewExpr, Layout, MutantDrift, ScanCase, ScanProfile, detect_drift, run_boundary_cases,
-    scan_reference_boundaries,
+    DewExpr, Layout, MutantDrift, ScanCase, ScanProfile, detect_drift, detect_seeded_wrong_result,
+    run_boundary_cases, scan_reference_boundaries,
 };
 
 fn scalar_expr() -> DewExpr {
@@ -66,5 +66,24 @@ fn no_mutation_means_no_divergence_findings() {
     assert!(
         findings.is_empty(),
         "a clean scalar must not produce divergence findings"
+    );
+}
+
+#[test]
+fn seeded_wrong_derivative_result_is_refused() {
+    // CONTRACT.md (emath-adapter-dew): `detect_seeded_wrong_result` is a
+    // Phase 3 planted-value control, not a differentiate producer.
+    // Claimed "d/dx (x+1) = 0" is planted; the oracle must report bit
+    // disagreement against the reference evaluator.
+    let finding = detect_seeded_wrong_result(&scalar_expr(), "x", 0.0)
+        .expect("a planted wrong derivative result must be reported");
+    assert_ne!(
+        finding.reference_bits, finding.backend_bits,
+        "seeded wrong result must surface differing bits"
+    );
+    assert!(
+        finding.detail.contains("seeded wrong result"),
+        "finding must name the planted control, got {}",
+        finding.detail
     );
 }

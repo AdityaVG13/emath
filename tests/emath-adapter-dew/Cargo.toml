@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 emath-adapter-dew = { path = "../../crates/emath-adapter-dew" }
+emath-core = { path = "../../crates/emath-core" }
+emath-exec-ir = { path = "../../crates/emath-exec-ir" }
+emath-ir = { path = "../../crates/emath-ir" }
