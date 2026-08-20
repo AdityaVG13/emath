@@ -34,8 +34,20 @@
     <section class="editor-pane">
       <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       <div id="inputs-panel" hidden>
+        <div class="inputs-header">
+          <span class="inputs-title">Interactive Parameters &amp; Live Inputs</span>
+          <div class="inputs-actions">
+            <label class="auto-run-label">
+              <input type="checkbox" id="chk-auto-run" checked> Live Eval
+            </label>
+            <button type="button" id="btn-run-given">Run Values</button>
+          </div>
+        </div>
         <div id="input-fields"></div>
-        <button type="button" id="btn-run-given">Run with these values</button>
+        <div id="live-outputs-bar" class="live-outputs-bar" hidden>
+          <span class="outputs-label">Outputs:</span>
+          <div id="live-outputs-list"></div>
+        </div>
       </div>
     </section>
     <section class="output-pane">
@@ -47,6 +59,9 @@
       </div>
       <div class="tabs" role="tablist">
         <button type="button" data-tab="run">Run</button>
+        <button type="button" data-tab="plot">Plot 2D</button>
+        <button type="button" data-tab="math">Math Intent</button>
+        <button type="button" data-tab="genesis">Finite Worlds</button>
         <button type="button" data-tab="diagnostics" class="active">Diagnostics</button>
         <button type="button" data-tab="plan">Plan</button>
         <button type="button" data-tab="mig">Intent Graph</button>
@@ -55,6 +70,79 @@
       </div>
       <div id="panel-run" class="tab-panel">
         <pre id="out-run"></pre>
+      </div>
+      <div id="panel-plot" class="tab-panel">
+        <div class="plot-toolbar">
+          <div class="plot-control-group">
+            <label>X Axis <select id="plot-x-var"></select></label>
+            <label>Output <select id="plot-y-var"></select></label>
+          </div>
+          <div class="plot-control-group">
+            <label>Min X <input type="number" id="plot-min-x" value="-10" step="any"></label>
+            <label>Max X <input type="number" id="plot-max-x" value="10" step="any"></label>
+            <label>Samples <input type="number" id="plot-samples" value="200" min="20" max="1000" step="10"></label>
+          </div>
+          <div class="plot-actions">
+            <button type="button" id="btn-plot-autoscale">Auto-Scale</button>
+            <button type="button" id="btn-plot-reset">Reset View</button>
+            <button type="button" id="btn-plot-export">Export PNG</button>
+          </div>
+        </div>
+        <div id="plot-secondary-params" class="plot-secondary-params" hidden>
+          <span class="sec-label">Secondary Parameters:</span>
+          <div id="plot-secondary-sliders"></div>
+        </div>
+        <div class="plot-canvas-wrapper">
+          <canvas id="plot-canvas"></canvas>
+          <div id="plot-tooltip" class="plot-tooltip" hidden></div>
+        </div>
+      </div>
+      <div id="panel-math" class="tab-panel">
+        <div class="math-toolbar">
+          <button type="button" id="btn-copy-latex">Copy LaTeX</button>
+          <button type="button" id="btn-toggle-latex-raw">Show Raw LaTeX</button>
+        </div>
+        <div id="math-rendered" class="math-rendered"></div>
+        <div id="math-latex-container" class="math-latex-container" hidden>
+          <pre id="math-latex-raw"></pre>
+        </div>
+      </div>
+      <div id="panel-genesis" class="tab-panel">
+        <div class="genesis-toolbar">
+          <label>
+            Preset World
+            <select id="genesis-world-preset">
+              <option value="b2">Boolean Algebra 𝔹₂ ({0, 1})</option>
+              <option value="k3">Kleene 3-Valued Logic 𝕂₃ ({0, ½, 1})</option>
+              <option value="b4">Belnap 4-Valued Logic ℬ₄ ({N, F, T, B})</option>
+              <option value="v4">Klein 4-Group V₄ ({e, a, b, c})</option>
+              <option value="z3">Cyclic Ring ℤ/3ℤ ({0, 1, 2})</option>
+              <option value="z5">Cyclic Ring ℤ/5ℤ ({0, 1, 2, 3, 4})</option>
+              <option value="custom">Custom Matrix Builder</option>
+            </select>
+          </label>
+          <label id="genesis-op-selector-label">
+            Operator
+            <select id="genesis-op-select"></select>
+          </label>
+          <button type="button" id="btn-genesis-check-laws">Verify Laws</button>
+          <button type="button" id="btn-genesis-find-morphisms">Find Morphisms</button>
+        </div>
+        <div class="genesis-content">
+          <div class="genesis-matrix-section">
+            <h3>Cayley / Operation Table (<span id="genesis-op-symbol">★</span>)</h3>
+            <div id="genesis-matrix-table-wrapper"></div>
+            <div id="genesis-cell-info" class="genesis-cell-info">Hover over a cell to see operation breakdown</div>
+          </div>
+          <div class="genesis-laws-section">
+            <h3>Axiomatic Laws Verification</h3>
+            <div id="genesis-laws-list" class="genesis-laws-list"></div>
+          </div>
+        </div>
+        <div id="genesis-morphisms-section" class="genesis-morphisms-section" hidden>
+          <h3>Morphism Analysis &amp; Isomorphisms</h3>
+          <div id="genesis-morphisms-output"></div>
+        </div>
       </div>
       <div id="panel-diagnostics" class="tab-panel active">
         <pre id="out-diagnostics"></pre>
