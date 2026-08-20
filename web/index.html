@@ -131,11 +131,11 @@
         </details>
       </div>
       <div class="tabs-bar" role="tablist">
-        <button type="button" data-tab="run" class="tab-item"><span class="tab-icon">▶</span> Run</button>
+        <button type="button" data-tab="run" class="tab-item active"><span class="tab-icon">▶</span> Run</button>
         <button type="button" data-tab="plot" class="tab-item"><span class="tab-icon">📈</span> Plot 2D</button>
         <button type="button" data-tab="math" class="tab-item"><span class="tab-icon">∑</span> Math Intent</button>
         <button type="button" data-tab="genesis" class="tab-item"><span class="tab-icon">✦</span> Finite Worlds</button>
-        <button type="button" data-tab="diagnostics" class="tab-item active"><span class="tab-icon">⚠</span> Diagnostics <span id="badge-diag" class="tab-badge" hidden>0</span></button>
+        <button type="button" data-tab="diagnostics" class="tab-item"><span class="tab-icon">⚠</span> Diagnostics <span id="badge-diag" class="tab-badge" hidden>0</span></button>
         <button type="button" data-tab="plan" class="tab-item"><span class="tab-icon">📋</span> Plan</button>
         <button type="button" data-tab="mig" class="tab-item"><span class="tab-icon">🕸</span> Intent Graph</button>
         <button type="button" data-tab="generated" class="tab-item"><span class="tab-icon">⚙</span> Generated</button>
@@ -143,7 +143,7 @@
       </div>
 
       <div class="tab-viewport">
-        <div id="panel-run" class="tab-panel">
+        <div id="panel-run" class="tab-panel active">
           <pre id="out-run"></pre>
         </div>
         <div id="panel-plot" class="tab-panel">
@@ -235,7 +235,7 @@
             <div id="genesis-morphisms-output"></div>
           </div>
         </div>
-        <div id="panel-diagnostics" class="tab-panel active">
+        <div id="panel-diagnostics" class="tab-panel">
           <pre id="out-diagnostics"></pre>
         </div>
         <div id="panel-plan" class="tab-panel">

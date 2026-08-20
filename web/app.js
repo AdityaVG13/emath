@@ -89,8 +89,8 @@ function setStatus(text, kind) {
   }
 }
 
-function showTab(name) {
-  for (const button of document.querySelectorAll(".tabs [data-tab]")) {
+export function showTab(name) {
+  for (const button of document.querySelectorAll("[data-tab]")) {
     button.classList.toggle("active", button.dataset.tab === name);
   }
   for (const panel of document.querySelectorAll(".tab-panel")) {
@@ -656,10 +656,16 @@ function fillExamples(result) {
     editor.value = fromHash;
     return;
   }
+  try {
+    const draft = localStorage.getItem("emath_editor_draft");
+    if (draft && editor) {
+      editor.value = draft;
+      return;
+    }
+  } catch {}
   if (examples.length > 0 && editor && !editor.value) {
     editor.value = examples[0].source ?? "";
     select.selectedIndex = 1;
-    writeSourceToHash(editor.value);
   }
 }
 
@@ -1328,7 +1334,9 @@ export function toggleSymbolify() {
   }
 
   editor.dispatchEvent(new Event("input", { bubbles: true }));
-  writeSourceToHash(editor.value);
+  try {
+    localStorage.setItem("emath_editor_draft", editor.value);
+  } catch {}
   updateSymbolifyButton();
 
   setStatus(
@@ -1501,6 +1509,17 @@ export function updatePlotView() {
         }
       }
     }
+    if (inputs.length === 0) {
+      const src = sourcePayload();
+      const inMatch = src.match(/inputs:\s*([\s\S]*?)(?:outputs:|definitions:|goals:|tests:|compile:|$)/);
+      if (inMatch) {
+        for (const line of inMatch[1].split("\n")) {
+          const parts = line.trim().split(":");
+          if (parts[0] && !parts[0].startsWith("#")) inputs.push(parts[0].trim());
+        }
+      }
+      if (inputs.length === 0) inputs.push("x");
+    }
     plotState.inputs = inputs;
 
     // Run to find available outputs
@@ -1513,6 +1532,19 @@ export function updatePlotView() {
           if (!outputs.includes(name)) outputs.push(name);
         }
       }
+    }
+    if (outputs.length === 0) {
+      const src = sourcePayload();
+      const outMatch = src.match(/(?:outputs:|definitions:)\s*([\s\S]*?)(?:goals:|tests:|compile:|$)/);
+      if (outMatch) {
+        for (const line of outMatch[1].split("\n")) {
+          const parts = line.trim().split(/[:=]/);
+          if (parts[0] && !parts[0].startsWith("#") && !inputs.includes(parts[0].trim())) {
+            outputs.push(parts[0].trim());
+          }
+        }
+      }
+      if (outputs.length === 0) outputs.push("y");
     }
     plotState.outputs = outputs;
 
@@ -1700,6 +1732,22 @@ export function setupPlotCanvas() {
     const tooltip = $("plot-tooltip");
     if (tooltip) tooltip.hidden = true;
   });
+
+  if (window.ResizeObserver && canvas.parentElement) {
+    const ro = new ResizeObserver(() => {
+      const parent = canvas.parentElement;
+      if (parent && parent.offsetWidth > 0 && parent.offsetHeight > 0) {
+        drawPlot();
+      }
+    });
+    ro.observe(canvas.parentElement);
+  }
+  window.addEventListener("resize", () => {
+    const parent = canvas.parentElement;
+    if (parent && parent.offsetWidth > 0 && parent.offsetHeight > 0) {
+      drawPlot();
+    }
+  });
 }
 
 export function drawPlot() {
@@ -1718,7 +1766,10 @@ export function drawPlot() {
   const parent = canvas.parentElement;
   if (!parent) return;
   const rect = parent.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return;
+  if (rect.width <= 0 || rect.height <= 0) {
+    requestAnimationFrame(() => drawPlot());
+    return;
+  }
 
   const dpr = window.devicePixelRatio || 1;
   canvas.width = rect.width * dpr;
@@ -1915,23 +1966,31 @@ export function updateMathView() {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
 
-    if (line.startsWith("emath function") || line.startsWith("function")) {
-      const match = line.match(/(?:emath\s+)?function\s+([a-zA-Z0-9_]+)/);
+    if (line.startsWith("emath function") || line.startsWith("function") || line.startsWith("package")) {
+      const match = line.match(/(?:emath\s+)?(?:function|package)\s+([a-zA-Z0-9_]+)/);
       if (match) currentDecl = match[1];
       inDefinitions = false;
       inInputs = false;
     } else if (line.startsWith("inputs:")) {
       inInputs = true;
       inDefinitions = false;
-    } else if (line.startsWith("definitions:")) {
+    } else if (line.startsWith("definitions:") || line.startsWith("equations:")) {
       inDefinitions = true;
+      inInputs = false;
+    } else if (line.startsWith("goals:") || line.startsWith("tests:") || line.startsWith("compile:") || line.startsWith("outputs:") || line.startsWith("evidence:") || line.startsWith("state:")) {
+      inDefinitions = false;
       inInputs = false;
     } else if (inInputs && line.includes(":")) {
       const parts = line.split(":");
       inputsList.push({ name: parts[0].trim(), type: parts[1].trim() });
-    } else if (inDefinitions && line.includes("=")) {
+    } else if (inDefinitions && line.includes("=") && !line.includes("==")) {
       const [lhs, rhs] = line.split("=").map((s) => s.trim());
-      equations.push({ lhs, rhs });
+      if (lhs && rhs) equations.push({ lhs, rhs });
+    } else if (!inDefinitions && !inInputs && line.includes("=") && !line.includes("==") && !line.startsWith("expect ") && !line.startsWith("given ")) {
+      const [lhs, rhs] = line.split("=").map((s) => s.trim());
+      if (lhs && rhs && !lhs.includes(" ")) {
+        equations.push({ lhs, rhs });
+      }
     }
   }
 
@@ -1941,43 +2000,53 @@ export function updateMathView() {
 
   const title = document.createElement("div");
   title.className = "math-decl-title";
-  const inputsSig = inputsList.map((inp) => `${symbolify(inp.name)} ∈ ℝ`).join(", ");
+  const inputsSig = inputsList.length > 0
+    ? inputsList.map((inp) => `${symbolify(inp.name)} ∈ ℝ`).join(", ")
+    : "x ∈ ℝ";
   title.textContent = `Function ${currentDecl}(${inputsSig}) ⟹ Outputs`;
   card.appendChild(title);
 
   const eqList = document.createElement("div");
   eqList.className = "math-equation-list";
 
-  latexLines.push(`\\text{Function } \\mathrm{${currentDecl}}(${inputsList.map((i) => asciify(i.name)).join(", ")})`);
-  latexLines.push("\\begin{aligned}");
+  if (equations.length === 0) {
+    const emptyRow = document.createElement("div");
+    emptyRow.className = "math-equation-row";
+    emptyRow.style.color = "var(--text-muted)";
+    emptyRow.textContent = "No mathematical definitions detected. Add equations (e.g. y = x * x) in the editor.";
+    eqList.appendChild(emptyRow);
+  } else {
+    latexLines.push(`\\text{Function } \\mathrm{${currentDecl}}(${inputsList.length > 0 ? inputsList.map((i) => asciify(i.name)).join(", ") : "x"})`);
+    latexLines.push("\\begin{aligned}");
 
-  for (const eq of equations) {
-    const row = document.createElement("div");
-    row.className = "math-equation-row";
+    for (const eq of equations) {
+      const row = document.createElement("div");
+      row.className = "math-equation-row";
 
-    const lhsSpan = document.createElement("span");
-    lhsSpan.className = "math-lhs";
-    lhsSpan.textContent = symbolify(eq.lhs);
+      const lhsSpan = document.createElement("span");
+      lhsSpan.className = "math-lhs";
+      lhsSpan.textContent = symbolify(eq.lhs);
 
-    const eqSpan = document.createElement("span");
-    eqSpan.className = "math-eq";
-    eqSpan.textContent = "=";
+      const eqSpan = document.createElement("span");
+      eqSpan.className = "math-eq";
+      eqSpan.textContent = "=";
 
-    const rhsSpan = document.createElement("span");
-    rhsSpan.className = "math-rhs";
-    rhsSpan.innerHTML = formatMathExprHtml(eq.rhs);
+      const rhsSpan = document.createElement("span");
+      rhsSpan.className = "math-rhs";
+      rhsSpan.innerHTML = formatMathExprHtml(eq.rhs);
 
-    row.appendChild(lhsSpan);
-    row.appendChild(eqSpan);
-    row.appendChild(rhsSpan);
-    eqList.appendChild(row);
+      row.appendChild(lhsSpan);
+      row.appendChild(eqSpan);
+      row.appendChild(rhsSpan);
+      eqList.appendChild(row);
 
-    const latexLhs = asciify(eq.lhs);
-    const latexRhs = formatMathExprLatex(eq.rhs);
-    latexLines.push(`  ${latexLhs} &= ${latexRhs} \\\\`);
+      const latexLhs = asciify(eq.lhs);
+      const latexRhs = formatMathExprLatex(eq.rhs);
+      latexLines.push(`  ${latexLhs} &= ${latexRhs} \\\\`);
+    }
+
+    latexLines.push("\\end{aligned}");
   }
-
-  latexLines.push("\\end{aligned}");
 
   card.appendChild(eqList);
   container.appendChild(card);
@@ -2511,7 +2580,9 @@ function wireUi() {
       const editor = $("editor");
       if (editor && event.target.value) {
         editor.value = event.target.value;
-        writeSourceToHash(editor.value);
+        try {
+          localStorage.setItem("emath_editor_draft", editor.value);
+        } catch {}
         updateSymbolifyButton();
       }
     }),
@@ -2540,7 +2611,9 @@ function wireUi() {
   $("editor")?.addEventListener(
     "input",
     debounce(() => {
-      writeSourceToHash(sourcePayload());
+      try {
+        localStorage.setItem("emath_editor_draft", sourcePayload());
+      } catch {}
       updateSymbolifyButton();
     }, 250),
   );
@@ -2566,7 +2639,7 @@ function wireUi() {
       }
     }),
   );
-  for (const button of document.querySelectorAll(".tabs [data-tab]")) {
+  for (const button of document.querySelectorAll("[data-tab]")) {
     button.addEventListener(
       "click",
       guard(() => showTab(button.dataset.tab)),
