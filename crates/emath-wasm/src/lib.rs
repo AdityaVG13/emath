@@ -597,6 +597,11 @@ mod tests {
                 json.contains("\"ok\": true") && json.contains("\"diagnostics\": []"),
                 "{name}: {json}"
             );
+            let run_json = run_op("run", source);
+            assert!(
+                run_json.contains("\"ok\": true"),
+                "{name} run failed: {run_json}"
+            );
         }
     }
 

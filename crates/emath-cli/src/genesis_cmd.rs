@@ -427,8 +427,8 @@ fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static s
 
 /// Honest portfolio for the built-in seed worlds: every candidate is a
 /// real evaluation (or the structural term) with its valuation disclosed
-/// in the provenance, and authority is Structural — no checker ran, so
-/// nothing is stamped `tested` from `checker_receipts: []`.
+/// in the provenance, and authority is Structural (no checker ran, so
+/// nothing is stamped `tested` from `checker_receipts: []`).
 ///
 /// Also returns the semantic-VM step count per world name so the answer
 /// receipt can report the metered cost of the evaluation it certifies.
@@ -721,8 +721,8 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
     // SG-09 code binding: hash the exact crate `compile --parametric`
     // renders for the default compiled worlds, so the receipt binds the
     // code lane the demo challenges against these VM answers. A codegen
-    // refusal binds the explicit no-code value 0 — disclosed, never a
-    // fabricated identity.
+    // refusal binds the explicit no-code value 0 (disclosed, never a
+    // fabricated identity).
     let artifact_hash = {
         let labels = COMPILED_WORLDS
             .iter()
