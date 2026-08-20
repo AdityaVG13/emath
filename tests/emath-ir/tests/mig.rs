@@ -65,6 +65,9 @@ fn package(span_offset: u32, literal_bits: u64) -> SemanticPackage {
         tests: Vec::new(),
         exports: Vec::new(),
         compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
         source: span,
     });
     package
