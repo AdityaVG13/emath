@@ -38,6 +38,14 @@ struct EvalReceipt {
     term_id: u64,
     source_hash: u64,
     valuation: &'static str,
+    lock_id: Option<u64>,
+}
+
+impl EvalReceipt {
+    fn with_lock(mut self, lock_id: u64) -> Self {
+        self.lock_id = Some(lock_id);
+        self
+    }
 }
 
 pub fn dispatch_eval(args: &[String]) -> u8 {
@@ -99,15 +107,51 @@ fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> u8 {
             return EXIT_REFUSED;
         }
     };
-    let wanted = world_name.unwrap_or(DEFAULT_WORLD);
-    match evaluate_named(&analysis, wanted) {
-        Ok(receipt) => {
-            emit_receipt(&receipt, json);
-            EXIT_OK
-        }
+    let all_worlds = genesis_cmd::builtin_worlds(&analysis.inference.signature);
+    let selection = match crate::meaning_cmd::resolve_locked_worlds(path, &analysis, all_worlds) {
+        Ok(selection) => selection,
         Err(error) => {
             eprintln!("{error}");
-            EXIT_REFUSED
+            return EXIT_REFUSED;
+        }
+    };
+    if let Some(lock) = &selection.lock {
+        if let Some(wanted) = world_name {
+            match evaluate_named(&analysis, wanted) {
+                Ok(receipt) if receipt.world_id == lock.fingerprint => {
+                    emit_receipt(&receipt.with_lock(lock.lock_id), json);
+                    return EXIT_OK;
+                }
+                Ok(_) => {
+                    eprintln!(
+                        "error: E-LOCK-004: --world `{wanted}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `emath meaning unset`",
+                        lock.fingerprint
+                    );
+                    return EXIT_REFUSED;
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    return EXIT_REFUSED;
+                }
+            }
+        }
+        match evaluate_world(&analysis, &selection.worlds[0]) {
+            receipt => {
+                emit_receipt(&receipt.with_lock(lock.lock_id), json);
+                EXIT_OK
+            }
+        }
+    } else {
+        let wanted = world_name.unwrap_or(DEFAULT_WORLD);
+        match evaluate_named(&analysis, wanted) {
+            Ok(receipt) => {
+                emit_receipt(&receipt, json);
+                EXIT_OK
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                EXIT_REFUSED
+            }
         }
     }
 }
@@ -120,11 +164,31 @@ fn repl_cmd(path: &Path) -> u8 {
             return EXIT_REFUSED;
         }
     };
-    let worlds = genesis_cmd::builtin_worlds(&analysis.inference.signature);
-    let Ok(mut last) = evaluate_in_world(&analysis, &worlds, DEFAULT_WORLD) else {
-        eprintln!("{}", unknown_world_error(DEFAULT_WORLD));
+    let all_worlds = genesis_cmd::builtin_worlds(&analysis.inference.signature);
+    let selection =
+        match crate::meaning_cmd::resolve_locked_worlds(path, &analysis, all_worlds.clone()) {
+            Ok(selection) => selection,
+            Err(error) => {
+                eprintln!("{error}");
+                return EXIT_REFUSED;
+            }
+        };
+    let worlds = if selection.lock.is_some() {
+        selection.worlds.clone()
+    } else {
+        all_worlds
+    };
+    let default = worlds
+        .first()
+        .map(|world| world.name.as_str())
+        .unwrap_or(DEFAULT_WORLD);
+    let Ok(mut last) = evaluate_in_world(&analysis, &worlds, default) else {
+        eprintln!("{}", unknown_world_error(default));
         return EXIT_REFUSED;
     };
+    if let Some(lock) = &selection.lock {
+        last = last.with_lock(lock.lock_id);
+    }
     emit_receipt(&last, false);
 
     let stdin = io::stdin();
@@ -139,13 +203,29 @@ fn repl_cmd(path: &Path) -> u8 {
             ReplOp::Portfolio => print_portfolio(&analysis, &worlds),
             ReplOp::Explain => print_explain(&last),
             ReplOp::World(name) => match resolve_world_name(&name) {
-                Ok(label) => match evaluate_in_world(&analysis, &worlds, label) {
-                    Ok(receipt) => {
-                        emit_receipt(&receipt, false);
-                        last = receipt;
+                Ok(label) => {
+                    if let Some(lock) = &selection.lock {
+                        let locked_name = worlds[0].name.as_str();
+                        if label != locked_name {
+                            eprintln!(
+                                "error: E-LOCK-004: :world `{label}` disagrees with locked `{locked_name}` ({:016x}); re-open the portfolio with `emath meaning unset`",
+                                lock.fingerprint
+                            );
+                            continue;
+                        }
                     }
-                    Err(error) => eprintln!("{error}"),
-                },
+                    match evaluate_in_world(&analysis, &worlds, label) {
+                        Ok(receipt) => {
+                            let receipt = match &selection.lock {
+                                Some(lock) => receipt.with_lock(lock.lock_id),
+                                None => receipt,
+                            };
+                            emit_receipt(&receipt, false);
+                            last = receipt;
+                        }
+                        Err(error) => eprintln!("{error}"),
+                    }
+                }
                 Err(error) => eprintln!("{error}"),
             },
         }
@@ -304,6 +384,7 @@ fn evaluate_world(analysis: &Analysis, world: &WorldIr) -> EvalReceipt {
         term_id: analysis.term_id,
         source_hash: analysis.source_hash,
         valuation,
+        lock_id: None,
     }
 }
 
@@ -316,10 +397,16 @@ fn emit_receipt(receipt: &EvalReceipt, json: bool) {
 }
 
 fn render_text(receipt: &EvalReceipt) -> String {
-    format!(
-        "value {}\nworld {} {:016x}\nvm_steps {}\n",
-        receipt.answer, receipt.world_name, receipt.world_id, receipt.vm_steps
-    )
+    match receipt.lock_id {
+        Some(lock_id) => format!(
+            "value {}\nworld {} {:016x}\nvm_steps {}\nprovenance user-locked\nlock_id {:016x}\n",
+            receipt.answer, receipt.world_name, receipt.world_id, receipt.vm_steps, lock_id
+        ),
+        None => format!(
+            "value {}\nworld {} {:016x}\nvm_steps {}\n",
+            receipt.answer, receipt.world_name, receipt.world_id, receipt.vm_steps
+        ),
+    }
 }
 
 fn render_json(receipt: &EvalReceipt) -> String {
@@ -332,6 +419,10 @@ fn render_json(receipt: &EvalReceipt) -> String {
     object.int("vm_steps", receipt.vm_steps);
     object.int("term_id", receipt.term_id);
     object.int("source_hash", receipt.source_hash);
+    if let Some(lock_id) = receipt.lock_id {
+        object.string("meaning_provenance", "user-locked");
+        object.string("lock_id", &format!("{lock_id:016x}"));
+    }
     object.finish()
 }
 

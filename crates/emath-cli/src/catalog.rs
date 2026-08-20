@@ -15,9 +15,11 @@ pub const COMMANDS: &[&str] = &[
     "compile",
     "world",
     "portfolio",
+    "meaning",
     "import",
     "artifact",
     "architecture",
+    "serve",
     "new",
     "fmt",
     "explain",
@@ -54,9 +56,11 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "compile" => "compile --parametric <file.emath> --out <dir> [--world LABEL]",
         "world" => "world show WORLD_ID --dir <dir>",
         "portfolio" => "portfolio show PORTFOLIO_ID --dir <dir>",
+        "meaning" => "meaning list|set|unset|explain",
         "import" => "import modelica <file.mo> [--json]",
         "artifact" => "artifact check|battery <dir>",
         "architecture" => "architecture [--json]",
+        "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>]",
         "fmt" => "fmt <file.emath>",
         "explain" => "explain <file.emath> [<symbol>] [--json]",
@@ -95,9 +99,11 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "compile" => "parametric generated crate for an admitted world",
         "world" => "print one world candidate artifact",
         "portfolio" => "print one interpretation portfolio artifact",
+        "meaning" => "project-local interpretation lock (list|set|unset|explain)",
         "import" => "retain a Modelica subset as foreign-model declarations",
         "artifact" => "independent checker (`check`) or seeded negative-control battery",
         "architecture" => "provider-neutral pipeline map",
+        "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011)",
         "fmt" => "canonical-form check (full rewrite is Phase 4)",
         "explain" => "plan-level goal/provider explanation",
@@ -194,7 +200,7 @@ pub fn capabilities_json() -> String {
     out.string("version", env!("CARGO_PKG_VERSION"));
     out.string("contract", "emath-cli Phase 1 + Semantic Genesis G0-G3");
     out.object_field("exit_codes", codes.finish().trim());
-    out.strings("env_vars", &[]);
+    out.strings("env_vars", &["EMATH_WEB_DIST".to_string()]);
     out.objects("commands", &commands);
     out.finish()
 }
@@ -248,14 +254,36 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "eval" => &["--world", "--json", "--help", "-h"],
         "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
         "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
+        "meaning" => &[
+            "--dir",
+            "--world",
+            "--hole",
+            "--declaration",
+            "--cap",
+            "--json",
+            "--help",
+            "-h",
+        ],
         "fork" => &["--dry-run", "--json", "--help", "-h"],
         "robot-docs" => &["--guide", "--help", "-h"],
+        "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
         _ => &["--help", "-h"],
     }
 }
 
 fn flag_takes_value(flag: &str) -> bool {
-    matches!(flag, "--out" | "-o" | "--dir" | "--world")
+    matches!(
+        flag,
+        "--out"
+            | "-o"
+            | "--dir"
+            | "--world"
+            | "--port"
+            | "--dist"
+            | "--hole"
+            | "--declaration"
+            | "--cap"
+    )
 }
 
 /// Refuse unknown flags instead of silently ignoring them.

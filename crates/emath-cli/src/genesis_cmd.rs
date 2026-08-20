@@ -9,15 +9,19 @@
 use super::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::limits::Limits;
 use emath_genesis::{
-    BooleanAlienWorld, CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, Environment,
-    FreeTermWorld, ModularAlienWorld, OnePointWorld, SeededCsaWorld, VM_SCHEMA, VM_SCHEMA_VERSION,
-    VmBudget, VmOutcome, forest, free_symbolic_world, run as vm_run,
+    forest, free_symbolic_world, run as vm_run, BooleanAlienWorld, Environment, FreeTermWorld,
+    ModularAlienWorld, OnePointWorld, SeededCsaWorld, VmBudget, VmOutcome, CSA_MEANING_CLAIM,
+    CSA_SCHEMA, CSA_SCHEMA_VERSION, VM_SCHEMA, VM_SCHEMA_VERSION,
 };
-use emath_portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
+use emath_portfolio::{
+    apply_portfolio_cap, evaluate, Authority, CollapsePolicy, InterpretationCandidate,
+    InterpretationPolicy, InterpretationPortfolio, MetricAxis, MetricPolarity, PortfolioError,
+    ScoreVector, PROVENANCE_USER_LOCKED,
+};
 use emath_syntax::genesis as genesis_syntax;
-use emath_term::{Signature, TERM_IR_VERSION, Term, VariableId};
+use emath_term::{Signature, Term, VariableId, TERM_IR_VERSION};
 use emath_world_ir::{
-    Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr, fnv1a64,
+    fnv1a64, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -481,30 +485,57 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         eprintln!("error: cannot create {}: {error}", out.display());
         return EXIT_USAGE;
     }
-    let worlds = builtin_worlds(&analysis.inference.signature);
+    let all_worlds = builtin_worlds(&analysis.inference.signature);
+    let selection = match crate::meaning_cmd::resolve_locked_worlds(path, &analysis, all_worlds) {
+        Ok(selection) => selection,
+        Err(error) => {
+            eprintln!("{error}");
+            return EXIT_REFUSED;
+        }
+    };
+    let worlds = selection.worlds;
+    let meaning_lock = selection.lock;
+    let cap = selection.cap;
     let (mut raw_portfolio, vm_steps) = portfolio(&analysis, &worlds);
-    // Honor `keep: pareto N`: the portfolio holds at most the N
-    // policy-best candidates. A smaller budget must change the artifact
-    // instead of silently presenting the full tie set as one winner.
-    if let Some(budget) = analysis.file.keep_pareto {
-        if budget == 0 {
+    // Honor `keep: pareto N` / lock `portfolio_cap` / default pin-of-5
+    // only when no lock committed a single world. A lock commits before
+    // ranking; candidate generation above already ran on the locked set.
+    if meaning_lock.is_none() {
+        if cap == 0 {
             eprintln!("error: E-GEN-093: `keep: pareto 0` keeps no candidates");
             return EXIT_REFUSED;
         }
-        let kept = raw_portfolio
-            .candidates()
-            .iter()
-            .take(usize::try_from(budget).unwrap_or(usize::MAX))
-            .cloned()
-            .collect::<Vec<_>>();
+        let kept = apply_portfolio_cap(raw_portfolio.candidates(), cap);
         raw_portfolio = InterpretationPortfolio::new(kept);
     }
     let portfolio = raw_portfolio;
-    // An explicit `answer: return interpretation_portfolio` asks for the
-    // whole portfolio as the answer; without it, the single best
-    // candidate is the answer. Either way authority stays Structural:
-    // `checker_receipts` is empty and no `tested` stamp is invented.
+    // Explicit policy, never `kept.first()` as a hidden winner:
+    // `answer: return interpretation_portfolio` keeps the bag; a lock
+    // commits one world; otherwise `single-best` requires a unique bag
+    // member (`E-GEN-095` if several remain). Authority stays Structural.
     let portfolio_request = analysis.file.answer.contains("interpretation_portfolio");
+    let policy = answer_policy(portfolio_request, meaning_lock.as_ref());
+    let g7_receipt = match evaluate(
+        portfolio
+            .candidates()
+            .iter()
+            .map(InterpretationCandidate::world_candidate)
+            .collect(),
+        vec![MetricAxis::new("cost", MetricPolarity::Minimize)],
+        policy,
+    ) {
+        Ok(receipt) => receipt,
+        Err(PortfolioError::AmbiguousSingleBest { .. }) => {
+            eprintln!(
+                "error: E-GEN-095: ambiguous portfolio: lock a world or request `answer: return interpretation_portfolio`"
+            );
+            return EXIT_REFUSED;
+        }
+        Err(error) => {
+            eprintln!("error: E-GEN-095: {error}");
+            return EXIT_REFUSED;
+        }
+    };
 
     let free_term = {
         let mut object = emath_artifact::JsonWriter::object();
@@ -623,18 +654,22 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
     }
 
     let kept = portfolio.candidates();
-    let selected = kept.first();
+    let selected = selected_from_receipt(kept, &g7_receipt.selected);
     let result_string = if portfolio_request {
-        kept.iter()
+        selected
+            .iter()
             .map(|candidate| format!("{}:{}", candidate.name, candidate.answer))
             .collect::<Vec<_>>()
             .join(";")
     } else {
-        selected.map_or_else(String::new, |candidate| candidate.answer.clone())
+        selected
+            .first()
+            .map_or_else(String::new, |candidate| candidate.answer.clone())
     };
     let answer_anchor = if portfolio_request {
         let portfolio_id = fnv1a64(
-            kept.iter()
+            selected
+                .iter()
                 .map(|candidate| format!("{}", candidate.world_id.0))
                 .collect::<Vec<_>>()
                 .join("|")
@@ -643,6 +678,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         format!("{portfolio_id:016x}")
     } else {
         selected
+            .first()
             .map(|candidate| format!("{:016x}", candidate.world_id.0))
             .unwrap_or_default()
     };
@@ -651,12 +687,13 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         fnv1a64(format!("{}-{answer_anchor}", analysis.parse_id).as_bytes())
     );
     let valuation = if portfolio_request {
-        kept.iter()
+        selected
+            .iter()
             .map(|candidate| format!("{}={}", candidate.name, valuation_label(candidate)))
             .collect::<Vec<_>>()
             .join(";")
     } else {
-        selected.map_or_else(
+        selected.first().map_or_else(
             || "structural".to_string(),
             |candidate| valuation_label(candidate).to_string(),
         )
@@ -671,11 +708,13 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
     // when the whole portfolio is the answer. Zero means the answer is
     // structural (no execution happened).
     let receipt_vm_steps = if portfolio_request {
-        kept.iter()
+        selected
+            .iter()
             .map(|candidate| vm_steps.get(&candidate.name).copied().unwrap_or(0))
             .sum::<u64>()
     } else {
         selected
+            .first()
             .and_then(|candidate| vm_steps.get(&candidate.name).copied())
             .unwrap_or(0)
     };
@@ -739,6 +778,16 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         object.string("authority", authority_label);
         object.string("vm_schema", &format!("{VM_SCHEMA}.v{VM_SCHEMA_VERSION}"));
         object.int("vm_steps", receipt_vm_steps);
+        if let Some(lock) = &meaning_lock {
+            object.string("meaning_provenance", PROVENANCE_USER_LOCKED);
+            object.string("lock_id", &format!("{:016x}", lock.lock_id));
+            object.string(
+                "lock_origin_receipt",
+                &format!("{:016x}", lock.origin_receipt_id),
+            );
+            object.string("lock_method", &lock.method);
+            object.string("lock_world", &format!("{:016x}", lock.fingerprint));
+        }
         object.finish()
     };
 
@@ -804,6 +853,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         object.finish()
     };
 
+    let g7_receipt_body = g7_receipt.encode();
     let files = [
         ("source-artifact.json", &source_artifact),
         ("parse-forest.json", &analysis.parse_forest_json),
@@ -811,6 +861,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         ("free-term.json", &free_term),
         ("meaning-problem.json", &meaning_problem),
         ("interpretation-portfolio.json", &portfolio_json),
+        ("g7-portfolio-receipt.txt", &g7_receipt_body),
         ("world-admission.jsonl", &admission),
         ("answer-receipt.json", &answer_receipt),
         ("csa-baseline.json", &csa_baseline),
@@ -826,17 +877,25 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
         println!("world {} {:016x}", world.name, world.identity().0);
     }
     println!(
-        "genesis {}: parse {} signature {} term {:016x} portfolio {} kept {} answer {}",
+        "genesis {}: parse {} signature {} term {:016x} portfolio {} kept {} policy {} answer {}{}",
         path_to_string(path),
         analysis.parse_id,
         analysis.signature_id,
         analysis.term_id,
         portfolio_hash,
         kept.len(),
+        g7_receipt.input.policy.canonical(),
         if portfolio_request {
             "interpretation_portfolio".to_string()
         } else {
-            kept.first().map_or_else(String::new, |c| c.name.clone())
+            selected
+                .first()
+                .map_or_else(String::new, |candidate| candidate.name.clone())
+        },
+        if meaning_lock.is_some() {
+            format!(" provenance {PROVENANCE_USER_LOCKED}")
+        } else {
+            String::new()
         }
     );
     EXIT_OK
@@ -845,6 +904,38 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
 /// Valuation label disclosed on a candidate's provenance
 /// (`builtin-seed;valuation=<label>`), or `structural` when only the
 /// canonical term backs the answer.
+fn answer_policy(
+    portfolio_request: bool,
+    lock: Option<&crate::meaning_cmd::ResolvedLock>,
+) -> InterpretationPolicy {
+    if let Some(lock) = lock {
+        InterpretationPolicy::UserLocked {
+            lock_id: lock.lock_id,
+            origin_receipt_id: lock.origin_receipt_id,
+            method: lock.method.clone(),
+        }
+    } else if portfolio_request {
+        InterpretationPolicy::Portfolio
+    } else {
+        InterpretationPolicy::SingleBest {
+            collapse: CollapsePolicy::RequireUnique,
+        }
+    }
+}
+
+fn selected_from_receipt<'a>(
+    kept: &'a [InterpretationCandidate],
+    fingerprints: &[u64],
+) -> Vec<&'a InterpretationCandidate> {
+    fingerprints
+        .iter()
+        .filter_map(|fingerprint| {
+            kept.iter()
+                .find(|candidate| candidate.world_id.0 == *fingerprint)
+        })
+        .collect()
+}
+
 fn valuation_label(candidate: &InterpretationCandidate) -> &str {
     candidate
         .provenance
@@ -909,7 +1000,39 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
             return EXIT_REFUSED;
         }
     };
-    let world_labels = if worlds.is_empty() {
+    let all_worlds = builtin_worlds(&analysis.inference.signature);
+    let selection = match crate::meaning_cmd::resolve_locked_worlds(path, &analysis, all_worlds) {
+        Ok(selection) => selection,
+        Err(error) => {
+            eprintln!("{error}");
+            return EXIT_REFUSED;
+        }
+    };
+    let world_labels = if let Some(lock) = &selection.lock {
+        if !worlds.is_empty() {
+            for label in worlds {
+                let Some(world) = selection.worlds.iter().find(|world| world.name == *label) else {
+                    eprintln!("error: E-GEN-092: unknown world `{label}`");
+                    return EXIT_REFUSED;
+                };
+                if world.identity().0 != lock.fingerprint {
+                    eprintln!(
+                        "error: E-LOCK-004: --world `{label}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `emath meaning unset`",
+                        lock.fingerprint
+                    );
+                    return EXIT_REFUSED;
+                }
+            }
+        }
+        let label = selection.worlds[0].name.clone();
+        if !COMPILED_WORLDS.contains(&label.as_str()) {
+            eprintln!(
+                "error: E-LOCK-004: locked world `{label}` has no parametric lowering; re-open the portfolio with `emath meaning unset`"
+            );
+            return EXIT_REFUSED;
+        }
+        vec![label]
+    } else if worlds.is_empty() {
         COMPILED_WORLDS
             .iter()
             .map(|label| (*label).to_string())
@@ -1056,9 +1179,69 @@ pub fn portfolio_show_cmd(id: &str, dir: &Path) -> u8 {
     for path in candidates {
         if let Ok(body) = fs::read_to_string(&path) {
             print!("{body}");
+            let g7 = dir.join("g7-portfolio-receipt.txt");
+            if let Ok(receipt) = fs::read_to_string(&g7) {
+                println!();
+                print!("{receipt}");
+            }
+            for id in json_world_ids(&body) {
+                eprintln!("hint: emath meaning set FILE.emath --world {id}");
+            }
             return EXIT_OK;
         }
     }
     eprintln!("error: no portfolio artifact under {}", dir.display());
     EXIT_USAGE
+}
+
+fn json_world_ids(body: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut rest = body;
+    while let Some(index) = rest.find("\"world_id\"") {
+        rest = &rest[index + 10..];
+        let Some(start) = rest.find('"') else {
+            break;
+        };
+        rest = &rest[start + 1..];
+        let Some(end) = rest.find('"') else {
+            break;
+        };
+        ids.push(rest[..end].to_string());
+        rest = &rest[end + 1..];
+    }
+    ids
+}
+
+#[cfg(test)]
+mod tests {
+    use super::answer_policy;
+    use crate::meaning_cmd::ResolvedLock;
+    use emath_portfolio::{CollapsePolicy, InterpretationPolicy};
+
+    fn lock() -> ResolvedLock {
+        ResolvedLock {
+            lock_id: 1,
+            origin_receipt_id: 2,
+            fingerprint: 9,
+            method: "cli-set".into(),
+        }
+    }
+
+    #[test]
+    fn answer_policy_portfolio_lock_and_unique() {
+        assert!(matches!(
+            answer_policy(true, None),
+            InterpretationPolicy::Portfolio
+        ));
+        assert!(matches!(
+            answer_policy(false, Some(&lock())),
+            InterpretationPolicy::UserLocked { lock_id: 1, .. }
+        ));
+        assert!(matches!(
+            answer_policy(false, None),
+            InterpretationPolicy::SingleBest {
+                collapse: CollapsePolicy::RequireUnique
+            }
+        ));
+    }
 }

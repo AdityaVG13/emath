@@ -1,6 +1,6 @@
-//! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, and the
-//! Semantic Genesis commands (`parse`, `signature`, `genesis`, `eval`, `repl`,
-//! `compile --parametric`, `world show`, `portfolio show`).
+//! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, `serve`,
+//! and the Semantic Genesis commands (`parse`, `signature`, `genesis`, `eval`,
+//! `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning`).
 //! Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error.
 
 #![forbid(unsafe_code)]
@@ -9,6 +9,8 @@ mod agent_cmd;
 pub mod catalog;
 mod eval_cmd;
 pub mod genesis_cmd;
+mod meaning_cmd;
+mod serve_cmd;
 mod tooling_cmd;
 
 use emath_build::{BuildOptions, build_file};
@@ -36,6 +38,9 @@ pub fn print_diagnostics(diagnostics: &Diagnostics) {
 
 /// `check <file> [--json]`: parse + admit, no codegen.
 pub fn check(path: &Path, json: bool) -> u8 {
+    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
+        return code;
+    }
     let path = path.to_path_buf();
     let (diagnostics, package_id) = run_check(&path);
     print_diagnostics(&diagnostics);
@@ -91,6 +96,9 @@ pub(crate) fn run_check(path: &Path) -> (Diagnostics, String) {
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.
 pub fn plan(path: &PathBuf, json: bool) -> u8 {
+    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
+        return code;
+    }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         eprintln!("error: cannot read {}", path.display());
@@ -133,6 +141,9 @@ pub fn plan(path: &PathBuf, json: bool) -> u8 {
 /// `build <file> [--out <dir>] [--verify] [--json]` (default out:
 /// `target/emath` under the working directory).
 pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
+    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(spec) {
+        return code;
+    }
     let options = BuildOptions {
         verify_generated_crate: verify,
     };
@@ -663,6 +674,7 @@ pub fn run(args: &[String]) -> u8 {
                 usage("portfolio show PORTFOLIO_ID --dir <dir>")
             }
         }
+        "meaning" => meaning_cmd::dispatch(&args[1..]),
         "import" => {
             if args.get(1).is_some_and(|sub| sub == "modelica") && args.len() >= 3 {
                 let json = args[2..].iter().any(|arg| arg == "--json");
@@ -681,6 +693,7 @@ pub fn run(args: &[String]) -> u8 {
             }
         }
         "architecture" => architecture(catalog::wants_json(&args[1..])),
+        "serve" => serve_cmd::serve_cmd(&args[1..]),
         "new" | "fmt" | "explain" | "run" | "test" | "bench" | "verify" | "inspect" | "diff"
         | "doctor" | "vendor" | "provider" | "fork" | "agent" => {
             tooling_cmd::tooling_dispatch(command, &args[1..])
