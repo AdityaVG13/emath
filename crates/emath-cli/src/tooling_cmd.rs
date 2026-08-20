@@ -36,8 +36,8 @@ fn upstream_lock_path() -> PathBuf {
 /// crates ship std-only native stand-ins (`dew.scalar`, `native.causal`,
 /// `native.euler`, the `import modelica` subset scanner), while the
 /// upstream engine lanes (Dew JIT/GPU, the full Rumoca compiler,
-/// Wrenfold, Franken*) stay explicitly `planned` — never presented as
-/// implemented.
+/// Wrenfold, Franken*) stay explicitly `planned` (never presented as
+/// implemented).
 const PROVIDERS: [(&str, &str, &str); 10] = [
     (
         "native.rust",

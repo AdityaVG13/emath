@@ -11,15 +11,15 @@
 - Safe host API: `run_op(op, payload) -> String` returns one JSON object.
 - ABI version constant: `ABI_VERSION = 1`.
 - C ABI (`ffi`):
-  - `em_alloc(len) -> ptr` — allocate `len` bytes of linear memory.
-  - `em_free(ptr, len)` — reclaim a prior `em_alloc` (or `em_run` response).
-  - `em_run(op_ptr, op_len, payload_ptr, payload_len) -> u64` — dispatch; packed as `(ptr as u64) << 32 | (len as u64)`.
+  - `em_alloc(len) -> ptr`: allocate `len` bytes of linear memory.
+  - `em_free(ptr, len)`: reclaim a prior `em_alloc` (or `em_run` response).
+  - `em_run(op_ptr, op_len, payload_ptr, payload_len) -> u64`: dispatch; packed as `(ptr as u64) << 32 | (len as u64)`.
 - Ops: `version`, `examples`, `check`, `plan`, `mig`, `generate`, `format`, `run`, `inputs`.
 - Playground wrap (this crate only): if the payload source is not already a
   declaration (after leading whitespace/comments, first content line does
-  not start with `emath `), it is wrapped as `emath function Pane` —
+  not start with `emath `), it is wrapped as `emath function Pane` (
   assignment lines become `definitions:`, a lone final expression is bound
-  as `result`, and free identifiers become untyped `inputs:` (Float64 via
+  as `result`, and free identifiers become untyped `inputs:`; Float64 via
   `N-TYPE-001`). No `tests:` section is synthesized. This is not legal
   `.emath` outside the pane; `emath-syntax` / `emath-sema` are unchanged
   at the parse layer.
@@ -50,8 +50,8 @@
 
 ## Error model
 
-- `{"ok":false,"error":"..."}` — invalid UTF-8, unknown op, or generate backend refusal.
-- `{"ok":true,"diagnostics":[...]}` — the pipeline ran. Diagnostics are not a dispatch failure.
+- `{"ok":false,"error":"..."}`: invalid UTF-8, unknown op, or generate backend refusal.
+- `{"ok":true,"diagnostics":[...]}`: the pipeline ran. Diagnostics are not a dispatch failure.
 - Diagnostic objects: `severity` (`error`|`warning`), `code`, `message`, `start`, `end`.
 
 ## Determinism class

@@ -1,5 +1,5 @@
 //! Playground-only wrap: a pane that is not already a declaration becomes
-//! one. This is not a language change — `emath-syntax` / `emath-sema` still
+//! one. This is not a language change; `emath-syntax` / `emath-sema` still
 //! require an `emath …:` header. The wrap lives only in this crate
 //! (the pane's engine).
 
