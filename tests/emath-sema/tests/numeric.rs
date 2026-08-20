@@ -236,7 +236,7 @@ emath function CacheLike:
 
 #[test]
 fn cache_policy_example_no_longer_refuses_units_as_absent() {
-    let source = include_str!("../../../language/examples/cache-policy.emath");
+    let source = include_str!("../../../language/examples/integration/cache-policy.emath");
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("cache-policy", source);

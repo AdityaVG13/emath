@@ -122,7 +122,7 @@ $ cargo xtask demo all
 - **affine-scorer**: the Phase 1 vertical slice: compiles `tests/valid/affine_scorer.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
 - **semantic-genesis**: the G0–G3 pipeline: parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
 
-Exit criteria: both demos reach their final `ok` lines; the command exits 0. The language contract, evidence boundaries, and CLI surface are spelled out in `language/spec/` (start with `language/spec/overview.md`; see `language/spec/README.md` for the full chapter index); the test surface is documented in `tests/README.md`; security notes live in `SECURITY.md`.
+Exit criteria: both demos reach their final `ok` lines; the command exits 0. The language contract, evidence boundaries, and CLI surface are spelled out in `language/reference/` (start with `language/reference/overview.md`; see `language/reference/README.md` for the full chapter index); the test surface is documented in `tests/README.md`; security notes live in `SECURITY.md`.
 
 ## Example
 
@@ -208,7 +208,7 @@ Also implemented: `serve` (alias for `web`), `new`, `fmt`, `explain`, `run`, `te
 refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`,
 `vendor`, `provider list|inspect|test`, `fork status|sync`, `agent
 check|plan|build`, and `import modelica`. Planned
-(see `language/spec/diagnostics-and-tooling-contract.md`): `migrate`.
+(see `language/reference/diagnostics-and-tooling-contract.md`): `migrate`.
 
 ## Web playground
 

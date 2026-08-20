@@ -36,7 +36,7 @@ mod demo_interpretation_portfolio;
 mod demo_joint_tuning;
 mod demo_world_morphisms;
 
-const REFERENCE_SOURCE: &str = "language/examples/arbitrary-glyphs.emath";
+const REFERENCE_SOURCE: &str = "language/examples/integration/arbitrary-glyphs.emath";
 const GENERATED_DIR: &str = "examples/generated/semantic-genesis-worlds";
 
 fn main() {
@@ -121,7 +121,7 @@ fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
             "emath-cli",
             "--",
             "check",
-            "language/examples/cache-policy.emath",
+            "language/examples/integration/cache-policy.emath",
         ]),
         "cache-policy check",
     )?;
@@ -133,7 +133,7 @@ fn run_demo_cache_policy(work: &Path) -> Result<(), String> {
             "emath-cli",
             "--",
             "build",
-            "language/examples/cache-policy.emath",
+            "language/examples/integration/cache-policy.emath",
             "--out",
             &work.display().to_string(),
         ]),

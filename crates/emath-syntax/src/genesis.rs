@@ -1,8 +1,8 @@
 //! G0: custom-world genesis grammar.
 //!
 //! Parses `emath custom` declarations (see
-//! `language/grammar/GENESIS_GRAMMAR_ADDENDUM.ebnf` and
-//! `language/examples/arbitrary-glyphs.emath`). The parser is UTF-8
+//! `language/grammar/genesis.ebnf` and
+//! `language/examples/integration/arbitrary-glyphs.emath`). The parser is UTF-8
 //! byte-exact: glyphs (including non-ASCII identifier bytes) are preserved
 //! verbatim into [`GenesisFile::body_text`] for the forest stage. Malformed
 //! sections are recovered: parsing continues, every problem is reported as a

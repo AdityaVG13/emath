@@ -141,7 +141,7 @@ typed refusal (`E-GEN-094`), not a silent drop.
 `compile_cmd` analyzes the source, builds `WorldSpec` values from
 admitted World IR, and calls `generate`. The xtask demo runs
 `emath compile --parametric` on
-`language/examples/01_arbitrary_glyphs.emath`, diffs the emitted crate
+`language/examples/integration/arbitrary-glyphs.emath`, diffs the emitted crate
 against `examples/generated/semantic-genesis-worlds`, runs the
 generated tests, and checks the derived oracles
 (`free` canonical term, `boolean = false`, `modular-17 = 6`,

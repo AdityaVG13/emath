@@ -2,7 +2,7 @@
 
 Umbrella for bead `emath-b3e`. Constitution (`emath-k4u`) and Neutral IR
 (`emath-ir`) outrank this copy. Launch/adoption copy is `emath-ln2`; moat
-copy is `emath-7j5`. Terminology follows `language/spec/00_LANGUAGE_OVERVIEW.md`.
+copy is `emath-7j5`. Terminology follows `language/reference/overview.md`.
 
 ## Frame
 
@@ -12,7 +12,7 @@ Three commitments, one pipeline:
    (definitions, equations, constructors, laws). Goals name work. Partial,
    unproven, or invented structure is admitted when it is structurally
    well-formed; missing execution is a typed disposition, not a silent drop
-   (`language/spec/14_TOTAL_COMPILATION_PROTOCOL.md`).
+   (`language/reference/total-compilation-protocol.md`).
 2. **Executable portfolios.** Underconstrained math may have several
    coherent interpretations. The compiler retains them as worlds and
    artifacts (native, parametric, exploration, continuation, diagnostic)
@@ -33,7 +33,7 @@ or host-worse candidate and keeps a receipted baseline.
 
 ## Language
 
-**Today.** Spec is `language/spec/`. Surface crates: `emath-syntax` (lexer,
+**Today.** Spec is `language/reference/`. Surface crates: `emath-syntax` (lexer,
 lossless tree, parser, formatter, G0 `emath custom` worlds), `emath-schema`
 (kind-schema registry), `emath-hir`, `emath-term`, `emath-source`,
 `emath-core`. `emath-lsp` is a deterministic admission-backed skeleton.
