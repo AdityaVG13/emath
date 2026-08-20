@@ -100,6 +100,7 @@ fn main() {
             fallback: emath_ir::FallbackPolicy::NativeOnly,
             produce: "rust.library".to_string(),
         },
+        payload: emath_ir::GoalPayload::default(),
         source: emath_core::Span::default(),
     });
     assert!(
