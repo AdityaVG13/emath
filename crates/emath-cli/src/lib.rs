@@ -1,4 +1,4 @@
-//! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, `serve`,
+//! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, `web`, `serve`,
 //! and the Semantic Genesis commands (`parse`, `signature`, `genesis`, `eval`,
 //! `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning`).
 //! Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error.
@@ -693,7 +693,7 @@ pub fn run(args: &[String]) -> u8 {
             }
         }
         "architecture" => architecture(catalog::wants_json(&args[1..])),
-        "serve" => serve_cmd::serve_cmd(&args[1..]),
+        "web" | "serve" => serve_cmd::web_cmd(&args[1..]),
         "new" | "fmt" | "explain" | "run" | "test" | "bench" | "verify" | "inspect" | "diff"
         | "doctor" | "vendor" | "provider" | "fork" | "agent" => {
             tooling_cmd::tooling_dispatch(command, &args[1..])
