@@ -804,6 +804,9 @@ name = "emath-adapter-dew-tests"
 version = "0.1.0"
 dependencies = [
  "emath-adapter-dew",
+ "emath-core",
+ "emath-exec-ir",
+ "emath-ir",
 ]
 
 [[package]]
@@ -1119,6 +1122,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-layout"
+version = "0.1.0"
+dependencies = [
+ "emath-genesis",
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
 name = "emath-lsp"
 version = "0.1.0"
 dependencies = [
@@ -1389,6 +1401,19 @@ dependencies = [
  "emath-term",
  "emath-tuning",
  "emath-world-ir",
+]
+
+[[package]]
+name = "emath-wasm"
+version = "0.1.0"
+dependencies = [
+ "emath-artifact",
+ "emath-core",
+ "emath-exec-ir",
+ "emath-ir",
+ "emath-rust-backend",
+ "emath-sema",
+ "emath-syntax",
 ]
 
 [[package]]
@@ -3530,7 +3555,10 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "emath-genesis",
  "emath-holes",
+ "emath-layout",
+ "emath-portfolio",
  "emath-term",
  "emath-world-ir",
 ]
