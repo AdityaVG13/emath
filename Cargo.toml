@@ -159,13 +159,20 @@ fgdb-delta-types = { git = "https://github.com/Dicklesworthstone/frankengraphdb.
 # 33ef37a4c663535b832ae057b5c36296215e41f4 (UPSTREAM_LOCK.json row 12).
 # Unlike frankensqlite/frankengraphdb, frankensearch declares asupersync
 # internally as a crates.io VERSION RANGE (>=0.4.4, <0.5), NOT an internal
-# git rev — so emath-search declares the same crates.io range and Cargo
+# git rev: emath-search declares the same crates.io range and Cargo
 # unifies one crates.io asupersync instance for the whole emath-search graph
 # (no fgdb-style inline-git-rev unification needed). Optional for the
 # workspace; the consumer (emath-search `search` feature) decides
 # optionality, so this entry must not be marked optional (Cargo rejects that
 # at workspace level).
 frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "33ef37a4c663535b832ae057b5c36296215e41f4", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
 
 # Keep-gate measurement profile (gauntlet-06): claims under the keep-gate
 # harness use `cargo bench --profile release-perf`, never `--release`.
