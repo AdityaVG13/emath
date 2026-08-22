@@ -1086,6 +1086,7 @@ fn op_expr(
 ) -> Result<Expr, BackendError> {
     match op {
         EmirOp::ConstF64(bits) => Ok(Expr::F64(*bits)),
+        EmirOp::ConstI64(value) => Ok(Expr::F64((*value as f64).to_bits())),
         EmirOp::LoadInput(index) => {
             let name = names
                 .get(*index as usize)
@@ -1495,6 +1496,7 @@ fn op_expr(
 fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> String {
     match op {
         EmirOp::ConstF64(_) => "0.0".to_string(),
+        EmirOp::ConstI64(_) => "0.0".to_string(),
         EmirOp::LoadInput(i) => {
             if *i == var_index {
                 "1.0".to_string()
@@ -1584,6 +1586,7 @@ fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, idx: usize) 
     let d = |n: u32| format!("__d_{pass}_{n}");
     match op {
         EmirOp::ConstF64(_) => "0.0".to_string(),
+        EmirOp::ConstI64(_) => "0.0".to_string(),
         EmirOp::LoadInput(i) => {
             if *i == var_index {
                 "1.0".to_string()

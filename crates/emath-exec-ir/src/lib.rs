@@ -39,6 +39,7 @@ pub enum FoldCombine {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EmirOp {
     ConstF64(u64),
+    ConstI64(i64),
     LoadInput(u16),
     LoadState(u16),
     F64Add(EmirValue, EmirValue),
@@ -187,6 +188,7 @@ impl EmirOp {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::ConstF64(_) => "const-f64",
+            Self::ConstI64(_) => "const-i64",
             Self::LoadInput(_) => "load-input",
             Self::LoadState(_) => "load-state",
             Self::F64Add(..) => "f64-add",

@@ -641,6 +641,9 @@ fn value_map_value(map: &BTreeMap<String, Value>) -> String {
             Value::F64(number) => {
                 object.field(name, &json_f64(*number));
             }
+            Value::I64(number) => {
+                object.field(name, &json_f64(*number as f64));
+            }
             Value::Bool(flag) => {
                 object.bool(name, *flag);
             }
@@ -1287,6 +1290,19 @@ emath function square(x: Float64) -> Float64:
                                     expected.to_bits()
                                 );
                             }
+                        }
+                        Value::I64(expected) => {
+                            let parsed: f64 = match json_val {
+                                JsonValue::Num(num_str) => num_str.parse().expect("valid f64"),
+                                JsonValue::Str(s) => {
+                                    s.parse().expect("valid non-finite f64 string")
+                                }
+                                _ => panic!("unexpected json value for i64"),
+                            };
+                            assert!(
+                                (parsed - *expected as f64).abs() < 1e-9,
+                                "mismatch for `{key}`: wasm={parsed} vs native={expected}"
+                            );
                         }
                         Value::Bool(expected) => {
                             let parsed = match json_val {
