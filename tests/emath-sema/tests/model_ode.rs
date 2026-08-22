@@ -389,3 +389,57 @@ emath model RCCircuit:
         "RC circuit q(1) should be ~{expected:.4}, got {q_final:.4}"
     );
 }
+
+#[test]
+fn implicit_dae_with_solve_admits_and_simulates() {
+    // Implicit DAE: current I is found via Newton's method (solve op)
+    // at each time step. I is declared as an input (initial guess).
+    let source = "\
+emath model ImplicitCircuit:
+    inputs:
+        V: Float64
+        R: Float64
+        C: Float64
+        I: Float64
+    state:
+        q: Float64
+    equations:
+        I_solved = solve(V - R * I - q / C) wrt I
+        der(q) = I_solved
+";
+    let result = check_source("implicit-circuit", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "implicit DAE with solve must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let mut inputs = BTreeMap::new();
+    inputs.insert("V".into(), Value::F64(10.0));
+    inputs.insert("R".into(), Value::F64(1.0));
+    inputs.insert("C".into(), Value::F64(1.0));
+    inputs.insert("I".into(), Value::F64(1.0)); // initial guess
+    let mut state = BTreeMap::new();
+    state.insert("q".into(), Value::F64(0.0));
+    let traj = simulate_continuous(
+        &result.package,
+        &result.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        1.0,
+        0.01,
+        StepMethod::Euler, // Euler for predictable Newton convergence
+    )
+    .unwrap();
+    let q_final = match traj.samples.last().unwrap().state.get("q") {
+        Some(Value::F64(v)) => *v,
+        other => panic!("{other:?}"),
+    };
+    // Same analytical solution as the semi-explicit case:
+    // q(t) = C*V*(1 - exp(-t/(R*C))) = 10*(1 - exp(-1))
+    let expected = 10.0 * (1.0 - (-1.0f64).exp());
+    assert!(
+        (q_final - expected).abs() < 0.05,
+        "implicit RC circuit q(1) should be ~{expected:.4}, got {q_final:.4}"
+    );
+}
