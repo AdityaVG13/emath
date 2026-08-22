@@ -35,8 +35,9 @@ Schemas specify payload grammar, multiplicity, ordering semantics, defaults and 
 | `inputs:` | Fields | Optional | Input parameters with types |
 | `outputs:` | Fields | Optional (defaults to definitions) | Named output fields with types |
 | `state:` | Fields | Optional | State variables for models |
+| `algebraic:` | Fields | Optional | Implicit algebraic unknowns for `emath model` (Newton-solved at each step) |
 | `definitions:` | Suite | Yes (or `equations:`) | Named expressions: `name = expr` |
-| `equations:` | Suite | Yes (or `definitions:`) | Model equations: `der(state) = rhs` |
+| `equations:` | Suite | Yes (or `definitions:`) | Model equations: `der(state) = rhs`, `name = expr` algebraic definitions, or `lhs == rhs` / bare residual constraints |
 | `constructors:` | Suite | Optional | Constructor functions for state |
 | `constraints:` | Suite | Optional | Bool expressions fed to optimizer as penalties |
 | `tests:` | Suite | Optional | Example cases with `given`/`expect` |

@@ -1,0 +1,25 @@
+# Fully implicit DAE: causalized residuals with an `algebraic:` section.
+# The `equations:` section accepts `lhs == rhs` comparisons and bare
+# residuals.  Unknowns declared in `algebraic:` are implicit; the runner
+# Newton-solves the coupled residual system (finite-difference Jacobian,
+# Gaussian elimination) at every time step together with the rate
+# constraints, so causalization needs no manual `solve` op.
+# Same RC circuit as algebraic-dae.emath: q(t) = C*V*(1 - exp(-t/(R*C))),
+# but the resistor law is written as a residual instead of a definition:
+#   V - R*I - q/C == 0
+# and the rate `der(q) = I` is solved along with it.
+emath model CausalizedRC:
+    inputs:
+        V: Float64
+        R: Float64
+        C: Float64
+
+    algebraic:
+        I: Float64
+
+    state:
+        q: Float64
+
+    equations:
+        V - R * I - q / C == 0
+        der(q) = I

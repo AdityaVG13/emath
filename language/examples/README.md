@@ -25,6 +25,7 @@ say what the compiler does with each one today.
 | [optimize.emath](intro/optimize.emath) | Runs. `minimize((x-3)^2) wrt x` and `maximize(-(x-2)^2) wrt x` with gradient descent/ascent. |
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Runs. Semi-explicit DAE: algebraic variable `I` in `equations:`, `der(q) = I` references it. RC circuit with `emath simulate`. |
 | [implicit-dae.emath](intro/implicit-dae.emath) | Runs. Implicit DAE: `solve(V - R*I - q/C) wrt I` in equations. Newton's method finds current at each step. |
+| [causalized-rc.emath](intro/causalized-rc.emath) | Runs. Fully implicit DAE: `algebraic:` unknowns + `lhs == rhs` residuals + `der(q) = I`. Runner Newton-solves the coupled system every step; no manual `solve` op. |
 | [showcase.emath](intro/showcase.emath) | Runs. `solve` + `minimize` + `derivative` in one function: finds root of x^2-4, minimizes (x-3)^2+1, computes derivative 2x. |
 | [constrained-opt.emath](intro/constrained-opt.emath) | Runs. Constrained optimization: minimize x^2+y^2 with `constraints: x + y >= 1`. Compiler auto-adds penalty terms to the objective. |
 | [damped-oscillator.emath](intro/damped-oscillator.emath) | Admits. Damped harmonic oscillator (mass-spring-damper). First-order system: der(x)=v, der(v)=-(k*x+c*v)/m. Use `emath simulate`. |

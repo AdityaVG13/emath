@@ -146,8 +146,60 @@ fourth form is an algebraic definition: `name = expr` in `equations:`
 is evaluated at each time step in source order, so rate equations can
 reference it. This enables semi-explicit DAE models where algebraic
 variables are computed from state and inputs before the rates are
-evaluated. Any other leftover equation (e.g. `0 = expr` implicit
-residuals) is `E-TYPE-010`.
+evaluated.
+
+## Fully implicit DAEs: `algebraic:` unknowns and residuals
+
+For coupled systems that cannot be written as explicit rates or
+algebraic definitions, declare the implicit unknowns with an
+`algebraic:` section and write the balance laws as residuals:
+
+```emath
+emath model CausalizedRC:
+    inputs:
+        V: Float64
+        R: Float64
+        C: Float64
+
+    algebraic:
+        I: Float64
+
+    state:
+        q: Float64
+
+    equations:
+        V - R * I - q / C == 0   # residual: implicit constraint on I
+        der(q) = I               # rate, solved together with the residual
+```
+
+A residual is any `lhs == rhs` comparison or bare `expr` (meaning
+`expr == 0`) in `equations:`. `==` is always a residual — even a bare
+`a == 5` constrains `a` instead of defining it. Residuals are stored
+as implicit constraint records keyed by the model declaration.
+Automatic causalization rewrites `der(state)` inside a residual to a
+synthetic rate placeholder, so `M * der(v) == f` (non-scalar mass)
+solves for the rate `der(v)` together with the algebraic unknowns. At
+each time step the runner Newton-solves the coupled residual system
+with a finite-difference Jacobian and Gaussian elimination; definitions
+are re-evaluated with the solved algebraic values, and the solved rates
+feed the integrator. So a fully implicit DAE needs no manual `solve`
+op — see `language/examples/intro/causalized-rc.emath` and
+`language/examples/intro/implicit-dae.emath`.
+
+Conformance checks at admission time:
+
+- The residual system must be square: the number of residuals must
+  equal the number of declared algebraic unknowns plus the distinct
+  `der(state)` terms appearing in residuals (`E-TYPE-010` otherwise).
+- Every `algebraic:` unknown must appear in some residual (`E-TYPE-002`
+  otherwise); an `algebraic:` section with no residuals is `E-TYPE-010`.
+- `algebraic:` sections are `AtMostOne` in `emath model` declarations.
+
+Boundary of the admitted spelling: the `derivative(...)` keyword
+greedily consumes its argument, so a scalar implicit rate such as
+`0 = m * derivative(v) + v` parses as `m * derivative(v + v)` and is
+refused with guidance. The non-scalar mass form `M * der(v) == f` is
+the admitted spelling for implicit rates.
 
 `emath simulate` integrates those rates with Euler, RK4, or RK45.
 Default is a fixed step. `--atol` / `--rtol` turn on adaptive RK45.

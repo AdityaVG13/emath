@@ -12,8 +12,8 @@ use emath_ir::goal::{CompileSpec, EvidenceLevel};
 use emath_core::tree::CommandArgument;
 use emath_ir::{
     BinaryOp, Declaration, ExprId, ExprNode, Extent, HostBinding, HostMethod, ImportEntry, ImportSelection,
-    KindSchema, Literal, NumericProfile, RepeatPolicy, SafetyProfile, TypeId, TypeNode, Unit,
-    UnitDim, UnitFamily, check_compatible, check_error_limit, check_precision_demand, lookup_unit,
+    KindSchema, Literal, ModelResidual, NumericProfile, RepeatPolicy, SafetyProfile, TypeId, TypeNode,
+    Unit, UnitDim, UnitFamily, check_compatible, check_error_limit, check_precision_demand, lookup_unit,
     parse_numeric_profile, per_unit,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,6 +29,7 @@ const PHASE1_SECTIONS: &[&str] = &[
     "inputs",
     "outputs",
     "state",
+    "algebraic",
     "definitions",
     "equations",
     "equation",
@@ -172,6 +173,12 @@ struct Admitter {
     definitions: BTreeMap<String, (ExprId, Infer)>,
     /// Constraint expression IDs from `constraints:` section, for penalty method.
     constraints: Vec<ExprId>,
+    /// Causalized implicit residuals admitted from `equations:` (unknowns
+    /// solved by Newton at each time step; see `crate::ModelResidual`).
+    residuals: Vec<ModelResidual>,
+    /// Synthetic inputs `__rate_<state>` that replace `der(state)` inside
+    /// residual expressions; inferred like the state field they derive.
+    rate_placeholders: BTreeMap<String, Infer>,
     exprs: Vec<(ExprNode, Span)>,
     types: Vec<TypeNode>,
     host_types: BTreeSet<String>,
@@ -189,6 +196,8 @@ impl Admitter {
             states: BTreeMap::new(),
             definitions: BTreeMap::new(),
             constraints: Vec::new(),
+            residuals: Vec::new(),
+            rate_placeholders: BTreeMap::new(),
             exprs: Vec::new(),
             types: Vec::new(),
             host_types: BTreeSet::new(),
@@ -225,6 +234,9 @@ impl Admitter {
     fn lookup(&self, name: &str) -> Option<Infer> {
         if let Some(value) = self.index_locals.get(name) {
             return Some(if *value < 0 { Infer::Int } else { Infer::Nat });
+        }
+        if let Some(infer) = self.rate_placeholders.get(name) {
+            return Some(infer.clone());
         }
         if let Some(infer) = self.params.get(name) {
             return Some(infer.clone());
@@ -2897,6 +2909,7 @@ type AdmitResult = (
     Vec<(ExprNode, Span)>,
     Vec<TraceEntry>,
     Diagnostics,
+    Vec<ModelResidual>,
 );
 
 /// Admit one declaration into SIR. Returns (declaration, test cases, type
@@ -3086,10 +3099,58 @@ pub fn admit_declaration(
         .cloned()
         .unwrap_or_default();
     let state = fields_by_section.get("state").cloned().unwrap_or_default();
+    // `algebraic:` variables are the unknowns of the implicit residual
+    // system (causalized DAEs); initial guesses are supplied at simulate
+    // time in the same map as `inputs:` values.
+    if let Some(section) = by_name.get("algebraic") {
+        if !is_model {
+            admitter.error(
+                "E-KIND-010",
+                "`algebraic:` is only admitted on `emath model` declarations",
+                section.source,
+            );
+        } else {
+            for stmt in &section.suite.statements {
+                let StmtKind::FieldDecl { name, ty, .. } = &stmt.kind else {
+                    admitter.error(
+                        "E-SYN-101",
+                        "only `name: Type` declarations are allowed in `algebraic:`",
+                        stmt.source,
+                    );
+                    continue;
+                };
+                let _ = admit_named_field(
+                    &mut admitter,
+                    &mut fields_infer,
+                    &mut fields_by_section,
+                    "algebraic",
+                    name,
+                    ty,
+                    stmt.source,
+                    false,
+                );
+            }
+        }
+    }
+    let algebraic_fields = fields_by_section
+        .get("algebraic")
+        .cloned()
+        .unwrap_or_default();
     admitter.inputs = inputs
         .iter()
         .map(|f| (f.name.clone(), admitter.type_of(f.ty)))
         .collect();
+    for field in &algebraic_fields {
+        // Algebraic variables resolve like inputs inside definitions and
+        // residuals; the runner binds their guesses from the same value
+        // map. They stay out of `Declaration.inputs` (I/O contract).
+        admitter.inputs.entry(field.name.clone()).or_insert_with(|| {
+            fields_infer
+                .get(&field.name)
+                .cloned()
+                .unwrap_or(Infer::F64)
+        });
+    }
     admitter.states = state
         .iter()
         .map(|f| (f.name.clone(), admitter.type_of(f.ty)))
@@ -3215,9 +3276,15 @@ pub fn admit_declaration(
     if is_model
         && (by_name.contains_key("equations") || by_name.contains_key("equation"))
     {
+        let residual_rates: BTreeSet<String> = admitter
+            .residuals
+            .iter()
+            .flat_map(|residual| residual.rates.iter().cloned())
+            .collect();
         for field in &state {
             let rate_name = format!("der_{}", field.name);
-            if !definitions.contains_key(&rate_name) {
+            if !definitions.contains_key(&rate_name) && !residual_rates.contains(field.name.as_str())
+            {
                 admitter.error(
                     "E-NAME-025",
                     format!("state `{}` has no `derivative({})` equation", field.name, field.name),
@@ -3225,6 +3292,119 @@ pub fn admit_declaration(
                 );
             }
         }
+    }
+    // Causalization validation: the implicit residual system must be
+    // square (unknown components == residual components) and every
+    // declared `algebraic:` variable must be referenced by a residual.
+    if is_model && !admitter.residuals.is_empty() {
+        let mut unknown_dims: Vec<(String, usize)> = Vec::new();
+        for field in &algebraic_fields {
+            match fields_infer.get(&field.name) {
+                Some(Infer::F64) => unknown_dims.push((field.name.clone(), 1)),
+                Some(Infer::Vector {
+                    extent: Some(Extent::Fixed(n)),
+                }) => unknown_dims.push((field.name.clone(), *n)),
+                _ => {
+                    admitter.error(
+                        E_UNSUPPORTED_TYPE,
+                        format!(
+                            "algebraic variable `{}` must be a Float64 scalar or a fixed-length vector of Float64",
+                            field.name
+                        ),
+                        field.source,
+                    );
+                    unknown_dims.push((field.name.clone(), 0));
+                }
+            }
+        }
+        let rate_unknowns: Vec<(String, ExprId)> = admitter
+            .residuals
+            .iter()
+            .flat_map(|residual| {
+                residual
+                    .rates
+                    .iter()
+                    .map(|rate| (rate.clone(), residual.expr))
+            })
+            .collect();
+        for (rate, residual_expr) in &rate_unknowns {
+            match admitter.states.get(rate) {
+                Some(Infer::F64) => unknown_dims.push((format!("der({rate})"), 1)),
+                Some(Infer::Vector {
+                    extent: Some(Extent::Fixed(n)),
+                }) => unknown_dims.push((format!("der({rate})"), *n)),
+                _ => {
+                    admitter.error(
+                        E_UNSUPPORTED_TYPE,
+                        format!(
+                            "rate unknown `der({rate})` must derive a Float64 scalar or fixed-length vector state"
+                        ),
+                        residual_span(&admitter, *residual_expr),
+                    );
+                    unknown_dims.push((format!("der({rate})"), 0));
+                }
+            }
+        }
+        let unknown_total: usize = unknown_dims.iter().map(|(_, dims)| dims).sum();
+        let residual_total: usize = admitter
+            .residuals
+            .iter()
+            .map(|residual| residual.components as usize)
+            .sum();
+        if unknown_total == 0 {
+            admitter.error(
+                E_UNSUPPORTED_TYPE,
+                format!(
+                    "implicit residual has no unknown to solve for; declare `algebraic:` variables or write explicit `der(state) = rhs` rates"
+                ),
+                residual_span(&admitter, admitter.residuals[0].expr),
+            );
+        } else if unknown_total != residual_total {
+            admitter.error(
+                E_UNSUPPORTED_TYPE,
+                format!(
+                    "implicit residual system is not square: {} unknown component(s) ([{}]) vs {} residual component(s); every `algebraic:` variable must participate in the residual equations",
+                    unknown_total,
+                    unknown_dims
+                        .iter()
+                        .map(|(name, dims)| format!("{name}:{dims}"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    residual_total
+                ),
+                residual_span(&admitter, admitter.residuals[0].expr),
+            );
+        }
+        let mut referenced: BTreeSet<String> = BTreeSet::new();
+        for residual in &admitter.residuals {
+            if let Some((node, _)) = admitter.exprs.get(residual.expr.0 as usize) {
+                collect_node_names(&admitter.exprs, node, &mut referenced);
+            }
+        }
+        for field in &algebraic_fields {
+            if !referenced.contains(&field.name) {
+                admitter.error(
+                    E_UNKNOWN_VARIABLE,
+                    format!(
+                        "algebraic variable `{}` is not referenced by any implicit residual equation",
+                        field.name
+                    ),
+                    field.source,
+                );
+            }
+        }
+        for residual in &mut admitter.residuals {
+            residual.algebraic = algebraic_fields
+                .iter()
+                .map(|field| field.name.clone())
+                .collect();
+        }
+    } else if is_model && !algebraic_fields.is_empty() {
+        admitter.error(
+            E_UNSUPPORTED_TYPE,
+            "`algebraic:` variables are only solved by at least one implicit residual equation in `equations:`",
+            algebraic_fields[0].source,
+        );
     }
     for output in &outputs_raw {
         if !definitions.contains_key(&output.name) {
@@ -3650,6 +3830,7 @@ pub fn admit_declaration(
         admitter.exprs,
         admitter.trace,
         admitter.diagnostics,
+        admitter.residuals,
     )
 }
 
@@ -3848,11 +4029,37 @@ fn admit_equations(
             continue;
         }
         for stmt in &section.suite.statements {
-            // Accept both Equation and Assign statements in equations:
-            // - Equation: `derivative(state) = rhs` or `m * derivative(state) = rhs`
+            // Accept Equation, Assign, and bare-expression statements:
+            // - Equation: `derivative(state) = rhs`, `m * derivative(state) = rhs`,
+            //   or any other `lhs = rhs` (implicit residual, causalized)
             // - Assign: `algebraic_var = expr` (semi-explicit DAE)
-            let (left, right) = match &stmt.kind {
-                StmtKind::Equation { left, right } => (left.clone(), right.clone()),
+            // - Expr: `lhs == rhs` comparisons or bare `expr` (implicit residual)
+            // `eq_style` records whether the statement used `=`/assignment
+            // spelling; only those may become algebraic definitions. A
+            // `==` comparison is always a residual, even when the left
+            // side is a bare name (`a == 5` constrains `a`, it does not
+            // define it).
+            let (left, right, eq_style) = match &stmt.kind {
+                StmtKind::Equation { left, right } => {
+                    (left.clone(), right.clone(), true)
+                }
+                StmtKind::Expr(expr) => match &expr.kind {
+                    // `V - R * I - q / C == 0`: split the comparison so the
+                    // residual is `left - right`.
+                    ExprKind::Binary {
+                        op: SynBinOp::Eq,
+                        left,
+                        right,
+                    } => ((**left).clone(), (**right).clone(), false),
+                    // Bare `expr` means `expr == 0`.
+                    _ => {
+                        let zero = Expr {
+                            kind: ExprKind::Int("0".into()),
+                            source: expr.source,
+                        };
+                        (expr.clone(), zero, false)
+                    }
+                },
                 StmtKind::Assign { target, value } => {
                     if !target.indices.is_empty() {
                         admitter.error(
@@ -3869,12 +4076,12 @@ fn admit_equations(
                         },
                         source: target.source,
                     };
-                    (left, value.clone())
+                    (left, value.clone(), true)
                 }
                 _ => {
                     admitter.error(
                         "E-SYN-101",
-                        "only `derivative(state) = rhs` or `name = expr` equations are allowed in `equations:`",
+                        "only `derivative(state) = rhs`, `name = expr`, or `lhs == rhs` / bare residual expressions are allowed in `equations:`",
                         stmt.source,
                     );
                     continue;
@@ -3887,7 +4094,10 @@ fn admit_equations(
                     // Check if this is an algebraic definition: `name = expr`
                     // (semi-explicit DAE support).  The left side must be a
                     // plain identifier that is not a state field (state
-                    // fields use `der(state) = rhs`).
+                    // fields use `der(state) = rhs`). Only `=`-spelled
+                    // statements (eq_style) may become definitions — `==`
+                    // comparisons are always residuals.
+                    if eq_style {
                     if let Some(segments) = path_segments(left) {
                         if segments.len() == 1 {
                             let name = segments[0].clone();
@@ -3930,10 +4140,41 @@ fn admit_equations(
                             continue;
                         }
                     }
+                    }
+                    // Not an explicit rate and not an algebraic definition:
+                    // causalize it as an implicit residual `left - right`,
+                    // solved for the declaration's unknowns at each step.
+                    if admit_residual(admitter, left, right, definitions).is_some() {
+                        continue;
+                    }
                     admitter.error(code, message, left.source);
                     continue;
                 }
             };
+            // A named mass factor that is a vector/matrix/tensor cannot be
+            // rewritten to `der(x) = rhs / mass`; causalize the equation as
+            // an implicit residual over the rate unknown instead.
+            if let Some(mass_name) = &mass {
+                let scalar_mass = admitter.lookup(mass_name).is_some_and(|infer| {
+                    !matches!(
+                        infer,
+                        Infer::Vector { .. } | Infer::Matrix { .. } | Infer::Tensor { .. }
+                    )
+                });
+                if !scalar_mass {
+                    if admit_residual(admitter, left, right, definitions).is_some() {
+                        continue;
+                    }
+                    admitter.error(
+                        E_UNSUPPORTED_TYPE,
+                        format!(
+                            "non-scalar mass factor `{mass_name}` requires the implicit residual form; cannot rewrite to `der(...) = rhs / {mass_name}`"
+                        ),
+                        left.source,
+                    );
+                    continue;
+                }
+            }
             if !admitter.states.contains_key(&state_name) {
                 admitter.error(
                     E_UNKNOWN_VARIABLE,
@@ -4041,6 +4282,358 @@ fn admit_equations(
                 }
             }
         }
+    }
+}
+
+/// Causalization: build an implicit residual from `left == right` (or a
+/// bare `expr`, meaning `expr == 0`). `der(state)` occurrences without an
+/// explicit rate are rewritten to the synthetic input `__rate_<state>`;
+/// the remaining unknowns are the declaration's `algebraic:` variables.
+/// Returns `None` (after a diagnostic) when the residual cannot be typed
+/// as a scalar or fixed-length vector.
+fn admit_residual(
+    admitter: &mut Admitter,
+    left: &Expr,
+    right: &Expr,
+    definitions: &BTreeMap<String, ExprId>,
+) -> Option<ModelResidual> {
+    let mut rates: Vec<String> = Vec::new();
+    let left = admitter.rewrite_residual_rates(left, definitions, &mut rates)?;
+    let right = admitter.rewrite_residual_rates(right, definitions, &mut rates)?;
+    let (left_id, l_infer) = admitter.lower_expr(&left)?;
+    let (right_id, r_infer) = admitter.lower_expr(&right)?;
+    let (operation, components) = residual_difference(admitter, &l_infer, &r_infer, left.source)?;
+    let expr = admitter.push_expr(
+        ExprNode::Binary {
+            operation,
+            left: left_id,
+            right: right_id,
+        },
+        left.source,
+    );
+    let expr = admitter.inline_defs(expr);
+    rates.dedup();
+    admitter.record(
+        "sema",
+        format!(
+            "implicit residual: {components} component(s), rate unknowns [{}]",
+            rates.join(", ")
+        ),
+        left.source,
+    );
+    let residual = ModelResidual {
+        expr,
+        components: u16::try_from(components).unwrap_or(u16::MAX),
+        algebraic: Vec::new(),
+        rates,
+    };
+    admitter.residuals.push(residual.clone());
+    Some(residual)
+}
+
+/// Pick the subtraction operation and component count for a residual
+/// `left - right`. Scalar and fixed-extent vector operands are admitted.
+fn residual_difference(
+    admitter: &mut Admitter,
+    l: &Infer,
+    r: &Infer,
+    span: Span,
+) -> Option<(emath_ir::BinaryOp, usize)> {
+    use Infer::Vector;
+    fn scalar(infer: &Infer) -> bool {
+        matches!(infer, Infer::F64 | Infer::Nat | Infer::Int)
+    }
+    match (l, r) {
+        (l, r) if scalar(l) && scalar(r) => Some((BinaryOp::StrictFloatSub, 1)),
+        (
+            Vector {
+                extent: Some(Extent::Fixed(le)),
+            },
+            Vector {
+                extent: Some(Extent::Fixed(re)),
+            },
+        ) => {
+            if le != re {
+                admitter.error(
+                    "E-SHAPE-005",
+                    format!("dimension mismatch in residual subtraction: {le} vs {re}"),
+                    span,
+                );
+                return None;
+            }
+            Some((BinaryOp::VectorSub, *le))
+        }
+        _ => {
+            admitter.error(
+                E_UNSUPPORTED_TYPE,
+                format!(
+                    "implicit residual must subtract scalar from scalar or vector from vector, found {l:?} - {r:?}"
+                ),
+                span,
+            );
+            None
+        }
+    }
+}
+
+impl Admitter {
+    /// Replace `der(state)` / `derivative(state)` occurrences inside a
+    /// residual expression with the placeholder variable `__rate_<state>`,
+    /// collecting rate unknowns. Refuses residuals that reference a rate
+    /// that already has an explicit equation, or constructs outside the
+    /// Phase 1 subset.
+    fn rewrite_residual_rates(
+        &mut self,
+        expr: &Expr,
+        definitions: &BTreeMap<String, ExprId>,
+        rates: &mut Vec<String>,
+    ) -> Option<Expr> {
+        let node = expr.clone();
+        match &node.kind {
+            ExprKind::Derivative { value, wrt } => {
+                if wrt.as_ref().is_some_and(|w| !is_time_wrt(w)) {
+                    self.error(
+                        E_UNSUPPORTED_TYPE,
+                        "inside an implicit residual, `derivative` must be a time rate; only `t`/`time` is admitted as the independent variable",
+                        expr.source,
+                    );
+                    return None;
+                }
+                self.rate_placeholder_for(value, definitions, rates, expr.source)
+            }
+            ExprKind::Call { function, args } if args.len() == 1 && is_der_call(function) => {
+                self.rate_placeholder_for(&args[0], definitions, rates, expr.source)
+            }
+            ExprKind::Path { .. }
+            | ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Str(_) => Some(node),
+            ExprKind::Quantity { value, unit } => {
+                let value = self.rewrite_residual_rates(value, definitions, rates)?;
+                Some(Expr {
+                    kind: ExprKind::Quantity {
+                        value: Box::new(value),
+                        unit: unit.clone(),
+                    },
+                    source: expr.source,
+                })
+            }
+            ExprKind::Unary { op, value } => {
+                let value = self.rewrite_residual_rates(value, definitions, rates)?;
+                Some(Expr {
+                    kind: ExprKind::Unary {
+                        op: *op,
+                        value: Box::new(value),
+                    },
+                    source: expr.source,
+                })
+            }
+            ExprKind::Binary { op, left, right } => {
+                let left = self.rewrite_residual_rates(left, definitions, rates)?;
+                let right = self.rewrite_residual_rates(right, definitions, rates)?;
+                Some(Expr {
+                    kind: ExprKind::Binary {
+                        op: *op,
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    },
+                    source: expr.source,
+                })
+            }
+            ExprKind::If {
+                condition,
+                then_value,
+                else_value,
+            } => {
+                let condition = self.rewrite_residual_rates(condition, definitions, rates)?;
+                let then_value = self.rewrite_residual_rates(then_value, definitions, rates)?;
+                let else_value = self.rewrite_residual_rates(else_value, definitions, rates)?;
+                Some(Expr {
+                    kind: ExprKind::If {
+                        condition: Box::new(condition),
+                        then_value: Box::new(then_value),
+                        else_value: Box::new(else_value),
+                    },
+                    source: expr.source,
+                })
+            }
+            ExprKind::Call { function, args } => {
+                let mut new_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    new_args.push(self.rewrite_residual_rates(arg, definitions, rates)?);
+                }
+                Some(Expr {
+                    kind: ExprKind::Call {
+                        function: function.clone(),
+                        args: new_args,
+                    },
+                    source: expr.source,
+                })
+            }
+            _ => {
+                self.error(
+                    E_UNSUPPORTED_TYPE,
+                    "this expression form is not admitted inside an implicit residual in Phase 1 (residuals admit arithmetic, builtin calls, and `der(state)` on state fields)",
+                    expr.source,
+                );
+                None
+            }
+        }
+    }
+
+    /// One `der(x)` occurrence inside a residual: validate, register the
+    /// placeholder infer, and return the rewritten synthetic path.
+    fn rate_placeholder_for(
+        &mut self,
+        value: &Expr,
+        definitions: &BTreeMap<String, ExprId>,
+        rates: &mut Vec<String>,
+        span: Span,
+    ) -> Option<Expr> {
+        let Some(name) = state_field_name(self, value) else {
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                "only `der(state.field)` / `derivative(state field)` of a declared state field is admitted inside an implicit residual",
+                span,
+            );
+            return None;
+        };
+        let rate_name = format!("der_{name}");
+        if definitions.contains_key(&rate_name) {
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                format!(
+                    "rate `{rate_name}` already has an explicit equation; an implicit residual must not reference `der({name})` again"
+                ),
+                span,
+            );
+            return None;
+        }
+        let placeholder = format!("__rate_{name}");
+        if !self.rate_placeholders.contains_key(&placeholder) {
+            if let Some(infer) = self.states.get(&name) {
+                self.rate_placeholders
+                    .insert(placeholder.clone(), infer.clone());
+            }
+        }
+        if !rates.iter().any(|existing| existing == &name) {
+            rates.push(name);
+        }
+        Some(Expr {
+            kind: ExprKind::Path {
+                segments: vec![placeholder],
+                generics: None,
+            },
+            source: span,
+        })
+    }
+}
+
+/// The state field name of `derivative(x)` / `derivative(state.x)`.
+fn state_field_name(admitter: &Admitter, value: &Expr) -> Option<String> {
+    let segments = path_segments(value)?;
+    let name = if segments.len() == 2 && segments[0] == "state" {
+        segments[1].clone()
+    } else if segments.len() == 1 {
+        segments[0].clone()
+    } else {
+        return None;
+    };
+    admitter.states.contains_key(&name).then_some(name)
+}
+
+/// Whether a `derivative ... wrt` list is exactly `t` or `time`.
+fn is_time_wrt(wrt: &[Expr]) -> bool {
+    wrt.len() == 1
+        && path_segments(&wrt[0])
+            .is_some_and(|segments| segments.len() == 1 && is_time_name(&segments[0]))
+}
+
+fn residual_span(admitter: &Admitter, expr: ExprId) -> Span {
+    admitter
+        .exprs
+        .get(expr.0 as usize)
+        .map(|(_, span)| *span)
+        .unwrap_or_default()
+}
+
+/// Collect variable names referenced by a lowered expression tree
+/// (used to verify every `algebraic:` variable appears in a residual).
+/// Children are arena references, so the expression arena is threaded
+/// through the walk.
+fn collect_node_names(
+    exprs: &[(ExprNode, Span)],
+    node: &ExprNode,
+    out: &mut BTreeSet<String>,
+) {
+    match node {
+        ExprNode::Variable(name) => {
+            let name = name.0.strip_prefix("state.").unwrap_or(&name.0);
+            out.insert(name.to_string());
+        }
+        ExprNode::Unary { value, .. } => {
+            if let Some((child, _)) = exprs.get(value.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+        }
+        ExprNode::Binary { left, right, .. } => {
+            if let Some((child, _)) = exprs.get(left.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+            if let Some((child, _)) = exprs.get(right.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+        }
+        ExprNode::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            if let Some((child, _)) = exprs.get(condition.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+            if let Some((child, _)) = exprs.get(then_value.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+            if let Some((child, _)) = exprs.get(else_value.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+        }
+        ExprNode::Call { arguments, .. } => {
+            for argument in arguments {
+                if let Some((child, _)) = exprs.get(argument.0 as usize) {
+                    collect_node_names(exprs, child, out);
+                }
+            }
+        }
+        ExprNode::Index { value, indices } => {
+            if let Some((child, _)) = exprs.get(value.0 as usize) {
+                collect_node_names(exprs, child, out);
+            }
+            for index in indices {
+                if let Some((child, _)) = exprs.get(index.0 as usize) {
+                    collect_node_names(exprs, child, out);
+                }
+            }
+        }
+        ExprNode::Vector(elements) | ExprNode::Tensor { elements, .. } => {
+            for element in elements {
+                if let Some((child, _)) = exprs.get(element.0 as usize) {
+                    collect_node_names(exprs, child, out);
+                }
+            }
+        }
+        ExprNode::Matrix(rows) => {
+            for row in rows {
+                for element in row {
+                    if let Some((child, _)) = exprs.get(element.0 as usize) {
+                        collect_node_names(exprs, child, out);
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -5048,7 +5641,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
-        let (declaration, tests, types, exprs, entries, admit_diagnostics) =
+        let (declaration, tests, types, exprs, entries, admit_diagnostics, residuals) =
             admit_declaration(decl, &host_types);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
@@ -5062,6 +5655,9 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         };
         declaration.id = emath_ir::DeclarationId(declaration_id);
         declaration_id += 1;
+        if !residuals.is_empty() {
+            package.residuals.insert(declaration.id, residuals);
+        }
         package.types.extend(types);
         package.exprs.extend(exprs.iter().map(|(e, _)| e.clone()));
         package.expr_spans.extend(exprs.iter().map(|(_, s)| *s));

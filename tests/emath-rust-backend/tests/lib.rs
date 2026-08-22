@@ -559,6 +559,80 @@ fn chained_definitions_emit_let_bindings_in_source_order() {
 }
 
 #[test]
+fn causalized_model_is_refused_by_rust_lowering() {
+    // Fully implicit DAEs (Newton-solved residuals) are not yet codegen-
+    // able: emit_model_step_methods only lowers explicit rates. The
+    // rust backend must refuse loudly instead of miscompiling.
+    let mut package = SemanticPackage::new();
+    let ty = package.push_type(TypeNode::Float64);
+    let v = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("V")),
+        Span::default(),
+    );
+    let one = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(1.0_f64.to_bits())),
+        Span::default(),
+    );
+    let residual_expr = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::StrictFloatSub,
+            left: v,
+            right: one,
+        },
+        Span::default(),
+    );
+    package
+        .expr_spans
+        .resize(package.exprs.len(), Span::default());
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("Causalized"),
+        kind: QualifiedName::single("model"),
+        kind_label: "model".to_string(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        state: vec![Field {
+            name: "q".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        constructors: Vec::new(),
+        definitions: BTreeMap::new(),
+        invariants: Vec::new(),
+        goals: Vec::new(),
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    package.residuals.insert(
+        DeclarationId(0),
+        vec![emath_ir::ModelResidual {
+            expr: residual_expr,
+            components: 1,
+            algebraic: vec!["V".to_string()],
+            rates: Vec::new(),
+        }],
+    );
+    let err = BackendInput {
+        package: &package,
+        crate_name: "causalized".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("causalized model must be refused by rust codegen");
+    let text = err.to_string();
+    assert!(
+        text.contains("residuals") && text.contains("not implemented"),
+        "refusal must name the implicit-DAE boundary, got: {text}"
+    );
+}
+
+#[test]
 fn model_emits_explicit_step_methods() {
     let mut package = SemanticPackage::new();
     let ty = package.push_type(TypeNode::Float64);
