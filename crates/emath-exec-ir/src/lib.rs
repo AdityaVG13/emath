@@ -57,6 +57,12 @@ pub enum EmirOp {
     Abs(EmirValue),
     Floor(EmirValue),
     Ceil(EmirValue),
+    Sign(EmirValue),
+    Log2(EmirValue),
+    Log10(EmirValue),
+    Sinh(EmirValue),
+    Cosh(EmirValue),
+    Atan(EmirValue),
     Min(EmirValue, EmirValue),
     Max(EmirValue, EmirValue),
     Atan2(EmirValue, EmirValue),
@@ -194,6 +200,12 @@ impl EmirOp {
             Self::Abs(_) => "abs",
             Self::Floor(_) => "floor",
             Self::Ceil(_) => "ceil",
+            Self::Sign(_) => "sign",
+            Self::Log2(_) => "log2",
+            Self::Log10(_) => "log10",
+            Self::Sinh(_) => "sinh",
+            Self::Cosh(_) => "cosh",
+            Self::Atan(_) => "atan",
             Self::Min(..) => "min",
             Self::Max(..) => "max",
             Self::Atan2(..) => "atan2",
@@ -790,6 +802,12 @@ impl Emitter {
                 | "abs"
                 | "floor"
                 | "ceil"
+                | "sign"
+                | "log2"
+                | "log10"
+                | "sinh"
+                | "cosh"
+                | "atan"
                 | "is_finite"
                 | "norm"
                 | "transpose"
@@ -875,6 +893,32 @@ impl Emitter {
             "ceil" | "core::math::ceil" => {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::Ceil(v), span))
+            }
+            "sign" | "core::math::sign" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Sign(v), span))
+            }
+            "log2" | "core::math::log2" => {
+                let v = self.emit(package, args[0])?;
+                self.obligations.push(DomainObligation::LogPositive);
+                Ok(self.push(EmirOp::Log2(v), span))
+            }
+            "log10" | "core::math::log10" => {
+                let v = self.emit(package, args[0])?;
+                self.obligations.push(DomainObligation::LogPositive);
+                Ok(self.push(EmirOp::Log10(v), span))
+            }
+            "sinh" | "core::math::sinh" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Sinh(v), span))
+            }
+            "cosh" | "core::math::cosh" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Cosh(v), span))
+            }
+            "atan" | "core::math::atan" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Atan(v), span))
             }
             "norm" => {
                 let v = self.emit(package, args[0])?;

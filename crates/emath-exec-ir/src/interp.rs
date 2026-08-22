@@ -276,6 +276,12 @@ fn eval_op(
         EmirOp::Abs(value) => Ok(Value::F64(f64_of(registers, value, name)?.abs())),
         EmirOp::Floor(value) => Ok(Value::F64(f64_of(registers, value, name)?.floor())),
         EmirOp::Ceil(value) => Ok(Value::F64(f64_of(registers, value, name)?.ceil())),
+        EmirOp::Sign(value) => Ok(Value::F64(f64_of(registers, value, name)?.signum())),
+        EmirOp::Log2(value) => Ok(Value::F64(f64_of(registers, value, name)?.log2())),
+        EmirOp::Log10(value) => Ok(Value::F64(f64_of(registers, value, name)?.log10())),
+        EmirOp::Sinh(value) => Ok(Value::F64(f64_of(registers, value, name)?.sinh())),
+        EmirOp::Cosh(value) => Ok(Value::F64(f64_of(registers, value, name)?.cosh())),
+        EmirOp::Atan(value) => Ok(Value::F64(f64_of(registers, value, name)?.atan())),
         EmirOp::Min(left, right) => Ok(Value::F64(
             f64_of(registers, left, name)?.min(f64_of(registers, right, name)?),
         )),
@@ -835,6 +841,31 @@ fn evaluate_dual(
             EmirOp::Ceil(a) => {
                 let a = dual_of(&registers, a, name)?;
                 Dual { primal: a.primal.ceil(), tangent: 0.0 }
+            }
+            EmirOp::Sign(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.signum(), tangent: 0.0 }
+            }
+            EmirOp::Log2(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.log2(), tangent: a.tangent / (a.primal * std::f64::consts::LN_2) }
+            }
+            EmirOp::Log10(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.log10(), tangent: a.tangent / (a.primal * std::f64::consts::LN_10) }
+            }
+            EmirOp::Sinh(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.sinh(), tangent: a.primal.cosh() * a.tangent }
+            }
+            EmirOp::Cosh(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.cosh(), tangent: a.primal.sinh() * a.tangent }
+            }
+            EmirOp::Atan(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let d = 1.0 / (1.0 + a.primal * a.primal);
+                Dual { primal: a.primal.atan(), tangent: d * a.tangent }
             }
             EmirOp::F64Pow(a, b) => {
                 let a = dual_of(&registers, a, name)?;
