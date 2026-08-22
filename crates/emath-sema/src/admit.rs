@@ -11,7 +11,7 @@ use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
 use emath_ir::goal::{CompileSpec, EvidenceLevel};
 use emath_core::tree::CommandArgument;
 use emath_ir::{
-    Declaration, ExprId, ExprNode, Extent, HostBinding, HostMethod, ImportEntry, ImportSelection,
+    BinaryOp, Declaration, ExprId, ExprNode, Extent, HostBinding, HostMethod, ImportEntry, ImportSelection,
     KindSchema, Literal, NumericProfile, RepeatPolicy, SafetyProfile, TypeId, TypeNode, Unit,
     UnitDim, UnitFamily, check_compatible, check_error_limit, check_precision_demand, lookup_unit,
     parse_numeric_profile, per_unit,
@@ -40,6 +40,7 @@ const PHASE1_SECTIONS: &[&str] = &[
     "about",
     "evidence",
     "host",
+    "constraints",
 ];
 
 /// Folds a declaration name for confusable-collision detection (spec
@@ -169,6 +170,8 @@ struct Admitter {
     inputs: BTreeMap<String, Infer>,
     states: BTreeMap<String, Infer>,
     definitions: BTreeMap<String, (ExprId, Infer)>,
+    /// Constraint expression IDs from `constraints:` section, for penalty method.
+    constraints: Vec<ExprId>,
     exprs: Vec<(ExprNode, Span)>,
     types: Vec<TypeNode>,
     host_types: BTreeSet<String>,
@@ -185,6 +188,7 @@ impl Admitter {
             inputs: BTreeMap::new(),
             states: BTreeMap::new(),
             definitions: BTreeMap::new(),
+            constraints: Vec::new(),
             exprs: Vec::new(),
             types: Vec::new(),
             host_types: BTreeSet::new(),
@@ -307,6 +311,126 @@ impl Admitter {
             // Slice, Record, Binder — keep as-is (rare in derivative bodies).
             _ => expr_id,
         }
+    }
+
+    /// Add penalty terms for each constraint to the optimization body.
+    /// For inequality `a >= b`: penalty = `max(0, b - a)^2`.
+    /// For inequality `a <= b`: penalty = `max(0, a - b)^2`.
+    /// For equality `a == b`:  penalty = `(a - b)^2`.
+    /// The penalized body is `body + weight * sum(penalties)`.
+    fn add_constraint_penalties(&mut self, body: ExprId, span: Span) -> ExprId {
+        if self.constraints.is_empty() {
+            return body;
+        }
+        const PENALTY_WEIGHT: f64 = 1000.0;
+        let weight_id = self.push_expr(
+            ExprNode::Literal(Literal::FloatBits(PENALTY_WEIGHT.to_bits())),
+            span,
+        );
+        let mut result = body;
+        for &constraint_id in &self.constraints.clone() {
+            let Some(penalty) = self.constraint_penalty(constraint_id, span) else {
+                continue;
+            };
+            let weighted = self.push_expr(
+                ExprNode::Binary {
+                    operation: BinaryOp::StrictFloatMul,
+                    left: weight_id,
+                    right: penalty,
+                },
+                span,
+            );
+            result = self.push_expr(
+                ExprNode::Binary {
+                    operation: BinaryOp::StrictFloatAdd,
+                    left: result,
+                    right: weighted,
+                },
+                span,
+            );
+        }
+        if result != body {
+            self.record(
+                "sema",
+                format!("added {} constraint penalty term(s) to optimization body", self.constraints.len()),
+                span,
+            );
+        }
+        result
+    }
+
+    /// Build a penalty expression for a single constraint.
+    /// Returns None for non-comparison constraints (e.g. NotEqual).
+    fn constraint_penalty(&mut self, constraint_id: ExprId, span: Span) -> Option<ExprId> {
+        let (node, _) = self.exprs.get(constraint_id.0 as usize)?.clone();
+        let ExprNode::Binary { operation, left, right } = node else {
+            return None;
+        };
+        let zero = self.push_expr(
+            ExprNode::Literal(Literal::FloatBits(0.0f64.to_bits())),
+            span,
+        );
+        let two = self.push_expr(
+            ExprNode::Literal(Literal::FloatBits(2.0f64.to_bits())),
+            span,
+        );
+        // violation = amount by which constraint is violated (>= 0 when violated)
+        let violation = match operation {
+            BinaryOp::GreaterEqual | BinaryOp::Greater => {
+                // a >= b violated when a < b → violation = b - a
+                self.push_expr(
+                    ExprNode::Binary {
+                        operation: BinaryOp::StrictFloatSub,
+                        left: right,
+                        right: left,
+                    },
+                    span,
+                )
+            }
+            BinaryOp::LessEqual | BinaryOp::Less => {
+                // a <= b violated when a > b → violation = a - b
+                self.push_expr(
+                    ExprNode::Binary {
+                        operation: BinaryOp::StrictFloatSub,
+                        left,
+                        right,
+                    },
+                    span,
+                )
+            }
+            BinaryOp::Equal => {
+                // a == b → violation = a - b (squared, so sign doesn't matter)
+                self.push_expr(
+                    ExprNode::Binary {
+                        operation: BinaryOp::StrictFloatSub,
+                        left,
+                        right,
+                    },
+                    span,
+                )
+            }
+            _ => return None,
+        };
+        // For inequalities: clamp violation at 0 with max(0, violation)
+        let clamped = if matches!(operation, BinaryOp::Equal) {
+            violation
+        } else {
+            self.push_expr(
+                ExprNode::Call {
+                    function: QualifiedName("max".to_string()),
+                    arguments: vec![zero, violation],
+                },
+                span,
+            )
+        };
+        // penalty = clamped^2
+        Some(self.push_expr(
+            ExprNode::Call {
+                function: QualifiedName("pow".to_string()),
+                arguments: vec![clamped, two],
+            },
+            span,
+        ))
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -1265,8 +1389,9 @@ impl Admitter {
                     return None;
                 }
                 let inlined = self.inline_defs(body_id);
+                let body_with_penalty = self.add_constraint_penalties(inlined, expr.source);
                 let id = self.push_expr(
-                    ExprNode::Optimize { body: inlined, vars: var_names.clone(), maximize: *maximize },
+                    ExprNode::Optimize { body: body_with_penalty, vars: var_names.clone(), maximize: *maximize },
                     expr.source,
                 );
                 let direction = if *maximize { "maximize" } else { "minimize" };
@@ -2970,6 +3095,33 @@ pub fn admit_declaration(
         .map(|f| (f.name.clone(), admitter.type_of(f.ty)))
         .collect();
 
+    // Constraints section: process before definitions so the optimizer
+    // can access them during definition lowering.  Each statement is an
+    // expression that must infer as Bool.
+    if let Some(section) = by_name.get("constraints") {
+        for stmt in &section.suite.statements {
+            let StmtKind::Expr(expr) = &stmt.kind else {
+                admitter.error(
+                    "E-SYN-101",
+                    "only expressions are allowed in `constraints:`",
+                    stmt.source,
+                );
+                continue;
+            };
+            match admitter.lower_expr(expr) {
+                Some((id, Infer::Bool)) => admitter.constraints.push(id),
+                Some((_, infer)) => {
+                    admitter.error(
+                        "E-TYPE-012",
+                        format!("constraint must be Bool, got {infer:?}"),
+                        expr.source,
+                    );
+                }
+                None => {}
+            }
+        }
+    }
+
     // Definitions.
     let mut definitions: BTreeMap<String, ExprId> = BTreeMap::new();
     if let Some(section) = by_name.get("definitions") {
@@ -3480,7 +3632,7 @@ pub fn admit_declaration(
         state: state_fields,
         constructors,
         definitions,
-        invariants: Vec::new(),
+        invariants: admitter.constraints.clone(),
         goals: Vec::new(),
         tests: Vec::new(),
         exports,

@@ -26,7 +26,7 @@ say what the compiler does with each one today.
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Runs. Semi-explicit DAE: algebraic variable `I` in `equations:`, `der(q) = I` references it. RC circuit with `emath simulate`. |
 | [implicit-dae.emath](intro/implicit-dae.emath) | Runs. Implicit DAE: `solve(V - R*I - q/C) wrt I` in equations. Newton's method finds current at each step. |
 | [showcase.emath](intro/showcase.emath) | Runs. `solve` + `minimize` + `derivative` in one function: finds root of x^2-4, minimizes (x-3)^2+1, computes derivative 2x. |
-| [constrained-opt.emath](intro/constrained-opt.emath) | Runs. Constrained optimization: minimize x^2+y^2 subject to x+y=1. Substitutes y=1-x to eliminate the constraint, then minimizes. |
+| [constrained-opt.emath](intro/constrained-opt.emath) | Runs. Constrained optimization: minimize x^2+y^2 with `constraints: x + y >= 1`. Compiler auto-adds penalty terms to the objective. |
 | [damped-oscillator.emath](intro/damped-oscillator.emath) | Admits. Damped harmonic oscillator (mass-spring-damper). First-order system: der(x)=v, der(v)=-(k*x+c*v)/m. Use `emath simulate`. |
 | [compound-interest.emath](intro/compound-interest.emath) | Runs. Continuous compound interest: A = P * e^(r*t). With P=1000, r=5%, t=10yr → ~$1648.72. |
 | [logistic-growth.emath](intro/logistic-growth.emath) | Admits. Logistic population model: der(p) = r*p*(1 - p/K). Classic S-curve growth toward carrying capacity K. Use `emath simulate`. |

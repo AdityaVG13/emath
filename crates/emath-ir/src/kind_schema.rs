@@ -160,6 +160,14 @@ impl KindSchema {
                     },
                 ),
                 (
+                    "constraints".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
                     "host".into(),
                     SectionSchema {
                         repeat: RepeatPolicy::AtMostOne,

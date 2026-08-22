@@ -154,6 +154,14 @@ Default is a fixed step. `--atol` / `--rtol` turn on adaptive RK45.
 `--event name=value` stops at one scalar crossing. That is not a
 general event language.
 
+`constraints:` sections in function declarations feed into the
+optimization engine. Each constraint is a Bool expression (typically
+a comparison like `x + y >= 1`). When `minimize` or `maximize` is
+used in a definition, the compiler automatically adds penalty terms
+to the objective for each constraint. Inequality constraints (`>=`,
+`<=`) use `max(0, violation)^2` penalties; equality constraints
+(`==`) use `violation^2` penalties.
+
 Not admitted yet: full jacobian and
 hessian, `transitions:` / `events:`, discrete hybrid models,
 PDEs, `einsum`.
