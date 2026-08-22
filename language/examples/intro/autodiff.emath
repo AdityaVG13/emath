@@ -1,0 +1,23 @@
+# Forward-mode automatic differentiation.
+# `derivative(expr) wrt var` computes the exact derivative of expr
+# with respect to var using dual-number forward-mode autodiff.
+# Each EMIR op carries its derivative rule; the forward pass
+# propagates (value, tangent) pairs through the computation.
+# The derivative of x^2 is 2x; at x=3, the derivative is 6.
+emath function AutoDiff:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+        dy: Float64
+
+    definitions:
+        y = x * x
+        dy = derivative(y) wrt x
+
+    tests:
+        example <parabola>:
+            given x = 3
+            expect y == 9
+            expect dy == 6

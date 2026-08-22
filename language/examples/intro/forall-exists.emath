@@ -1,0 +1,22 @@
+# Quantifier binders over vectors. `forall` checks that every element
+# satisfies a condition; `exists` checks that at least one does.
+# Both lower to the same runtime Fold op as variable-bound `sum`, but
+# with And/Or combine instead of Add/Mul.
+emath function VectorQuantifiers:
+    inputs:
+        v: Vector[3]
+
+    outputs:
+        all_positive: Bool
+        has_zero: Bool
+
+    definitions:
+        n = length(v)
+        all_positive = forall i in 0..n: v[i] > 0
+        has_zero = exists i in 0..n: v[i] == 0
+
+    tests:
+        example <mixed>:
+            given v = [1.0, 0.0, 3.0]
+            expect all_positive == false
+            expect has_zero == true

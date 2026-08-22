@@ -1,0 +1,12 @@
+# Inclusive range 1..=n keeps the upper bound. product i in 1..=5: i
+# folds 1*2*3*4*5 = 120. (Half-open 1..6 gives the same five terms.)
+emath function Factorial:
+    outputs:
+        fac: Float64
+
+    definitions:
+        fac = product i in 1..=5: i
+
+    tests:
+        example <five>:
+            expect fac == 120.0

@@ -1,0 +1,19 @@
+# Variable-bound range sum. `length(v)` is a runtime value, so the
+# compiler lowers this to a fold (runtime loop) rather than unrolling.
+# This is the key difference from `sum i in 1..6: i` (literal bounds,
+# unrolled at compile time).
+emath function VectorRangeSum:
+    inputs:
+        v: Vector[3]
+
+    outputs:
+        s: Float64
+
+    definitions:
+        n = length(v)
+        s = sum i in 0..n: v[i]
+
+    tests:
+        example <range>:
+            given v = [1.0, 2.0, 3.0]
+            expect s == 6

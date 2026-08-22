@@ -1,0 +1,21 @@
+# Vector input bound by a given literal. The whole vector flows through
+# the runner as a typed value, so definitions can index, scale, and fold it
+# without flattening it to scalars.
+emath function VectorGiven:
+    inputs:
+        v: Vector[3]
+
+    outputs:
+        first: Float64
+        scaled: Vector[3]
+        mag_sq: Float64
+
+    definitions:
+        first = v[0]
+        scaled = 2.0 * v
+        mag_sq = dot(v, v)
+
+    tests:
+        example <ones>:
+            given v = [1.0, 2.0, 3.0]
+            expect first == 1.0 and mag_sq == 14.0 and scaled == [2.0, 4.0, 6.0]

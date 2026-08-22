@@ -1,0 +1,27 @@
+# Optimization with gradient descent.
+# `minimize(expr) wrt var` finds the input value that minimizes `expr`.
+# `maximize(expr) wrt var` finds the input value that maximizes it.
+# Each step uses forward-mode autodiff for the gradient:
+#   minimize: x_new = x_old - lr * f'(x)
+#   maximize: x_new = x_old + lr * f'(x)
+# Minimizing (x-3)^2 from x=0 converges to x=3.
+# Maximizing -(x-2)^2 from x=0 converges to x=2.
+emath function OptimizeDemo:
+    inputs:
+        x: Float64
+
+    outputs:
+        min_x: Float64
+        max_x: Float64
+
+    definitions:
+        loss = (x - 3) * (x - 3)
+        score = -(x - 2) * (x - 2)
+        min_x = minimize(loss) wrt x
+        max_x = maximize(score) wrt x
+
+    tests:
+        example <from_zero>:
+            given x = 0
+            expect abs(min_x - 3) < 0.1
+            expect abs(max_x - 2) < 0.1

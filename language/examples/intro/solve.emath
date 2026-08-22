@@ -1,0 +1,21 @@
+# Root-finding with Newton's method.
+# `solve(expr) wrt var` finds the value of input `var` that drives
+# `expr` (the residual) to zero.  Each Newton step uses forward-mode
+# autodiff to compute both f(x) and f'(x) in a single dual-number pass:
+#   x_new = x_old - f(x) / f'(x)
+# Starting from x=1, solving x^2 - 4 = 0 converges to x=2.
+emath function SolveRoot:
+    inputs:
+        x: Float64
+
+    outputs:
+        root: Float64
+
+    definitions:
+        residual = x * x - 4
+        root = solve(residual) wrt x
+
+    tests:
+        example <from_one>:
+            given x = 1
+            expect abs(root - 2) < 0.001

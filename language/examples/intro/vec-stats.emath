@@ -1,0 +1,18 @@
+# Beginner vector answers: mean averages a vector and abs takes the
+# elementwise absolute value. Both work on a known-size Vector input.
+emath function VecStats:
+    inputs:
+        v: Vector[3]
+
+    outputs:
+        avg: Float64
+        a: Vector[3]
+
+    definitions:
+        avg = mean(v)
+        a = abs(v)
+
+    tests:
+        example <stats>:
+            given v = [1.0, -2.0, 4.0]
+            expect avg == 1.0 and a == [1.0, 2.0, 4.0]

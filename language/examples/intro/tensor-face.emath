@@ -1,0 +1,10 @@
+# Rank-3 tensor and a slice. `t[0, :, :]` is the first 2×2 face.
+emath function TensorFace:
+    outputs:
+        face: Matrix[2, 2]
+    definitions:
+        t = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
+        face = t[0, :, :]
+    tests:
+        example <first_face>:
+            expect face == [[1.0, 2.0], [3.0, 4.0]]
