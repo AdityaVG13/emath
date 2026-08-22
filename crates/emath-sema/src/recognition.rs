@@ -1153,6 +1153,11 @@ pub fn expr_text(expr: &Expr) -> String {
             expr_text(value),
             indices.iter().map(expr_text).collect::<Vec<_>>().join(", ")
         ),
+        ExprKind::Slice { start, end } => format!(
+            "{}:{}",
+            start.as_ref().map_or_else(String::new, |e| expr_text(e)),
+            end.as_ref().map_or_else(String::new, |e| expr_text(e))
+        ),
         ExprKind::Unary { op, value } => format!("{op:?}({})", expr_text(value)),
         ExprKind::Binary { op, left, right } => {
             format!("({} {op:?} {})", expr_text(left), expr_text(right))
@@ -1186,6 +1191,25 @@ pub fn expr_text(expr: &Expr) -> String {
                 )
             });
             format!("derivative({}){}", expr_text(value), wrt_text)
+        }
+        ExprKind::Solve { value, wrt } => {
+            let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
+                format!(
+                    " wrt {}",
+                    w.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+                )
+            });
+            format!("solve({}){}", expr_text(value), wrt_text)
+        }
+        ExprKind::Optimize { value, wrt, maximize } => {
+            let kw = if *maximize { "maximize" } else { "minimize" };
+            let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
+                format!(
+                    " wrt {}",
+                    w.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+                )
+            });
+            format!("{kw}({}){}", expr_text(value), wrt_text)
         }
         ExprKind::At { value, location } => {
             format!("{} at {}", expr_text(value), expr_text(location))
@@ -1242,5 +1266,6 @@ pub fn type_text(ty: &TypeExpr) -> String {
         ),
         TypeKind::Ref(inner) => format!("&{}", type_text(inner)),
         TypeKind::Product(items) => items.iter().map(type_text).collect::<Vec<_>>().join(" * "),
+        TypeKind::In { base, unit } => format!("{} in {}", type_text(base), type_text(unit)),
     }
 }

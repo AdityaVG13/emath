@@ -29,7 +29,9 @@ pub use constructor::{
 pub use contracts::{ContractRegistry, ProviderRepresentationContract};
 pub use domains::{BranchConvention, Domain, DomainError, Interval, branch_point};
 pub use evidence::{ClaimVerdict, EvidenceBundle, EvidenceClaim};
-pub use expression::{BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, UnaryOp};
+pub use expression::{
+    BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, SliceAxis, UnaryOp,
+};
 pub use goal::{
     CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExcludedCandidate, Export,
     FallbackPolicy, Goal, GoalKind, GoalPayload, GoalRequirements, PlanNodeDef, PlanOperation,

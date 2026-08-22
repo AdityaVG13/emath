@@ -207,12 +207,23 @@ pub fn map_expression(package: &SemanticPackage, id: ExprId) -> Result<DewExpr, 
                 BinaryOp::ExactAdd
                 | BinaryOp::ExactSub
                 | BinaryOp::ExactMul
-                | BinaryOp::ExactDiv => {
+                | BinaryOp::ExactDiv
+                | BinaryOp::VectorAdd
+                | BinaryOp::VectorSub
+                | BinaryOp::VectorScale
+                | BinaryOp::VectorDot
+                | BinaryOp::MatrixAdd
+                | BinaryOp::MatrixSub
+                | BinaryOp::MatrixScale
+                | BinaryOp::MatrixMulVector
+                | BinaryOp::MatrixMulMatrix
+                | BinaryOp::TensorAdd
+                | BinaryOp::TensorSub => {
                     return Err(MappingIssue {
                         code: "E-PROV-030",
                         node: id,
                         detail: format!(
-                            "exact arithmetic `{}` is outside the strict-f64 subset",
+                            "operation `{}` is outside the strict-f64 scalar subset",
                             operation.name()
                         ),
                     });

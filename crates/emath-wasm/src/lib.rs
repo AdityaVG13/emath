@@ -33,6 +33,27 @@ pub const ABI_VERSION: u32 = 1;
 const HELLO_SQUARE: &str = include_str!("../../../language/examples/intro/hello-square.emath");
 const AFFINE_SCORER: &str =
     include_str!("../../../language/examples/intro/stateful-affine-scorer.emath");
+const SUM_ONE_TO_FIVE: &str =
+    include_str!("../../../language/examples/intro/sum-one-to-five.emath");
+const TENSOR_FACE: &str = include_str!("../../../language/examples/intro/tensor-face.emath");
+const VECTOR_GIVEN: &str =
+    include_str!("../../../language/examples/intro/vector-given.emath");
+const VEC_STATS: &str =
+    include_str!("../../../language/examples/intro/vec-stats.emath");
+const FACTORIAL: &str =
+    include_str!("../../../language/examples/intro/factorial.emath");
+const RANGE_SUM: &str =
+    include_str!("../../../language/examples/intro/range-sum.emath");
+const FORALL_EXISTS: &str =
+    include_str!("../../../language/examples/intro/forall-exists.emath");
+const INTEGRAL: &str =
+    include_str!("../../../language/examples/intro/integral.emath");
+const AUTODIFF: &str =
+    include_str!("../../../language/examples/intro/autodiff.emath");
+const SOLVE: &str =
+    include_str!("../../../language/examples/intro/solve.emath");
+const OPTIMIZE: &str =
+    include_str!("../../../language/examples/intro/optimize.emath");
 const PARAMETRIC_UNKNOWN: &str =
     include_str!("../../../language/examples/integration/parametric-unknown-operator.emath");
 
@@ -132,6 +153,17 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Tutorial 5: Parametric Operator Synthesis", PARAMETRIC_UNKNOWN),
         ("Tutorial 6: Diagnostics & Error Recovery", TUTORIAL_06_DIAGNOSTICS_DEMO),
         ("Hello Square (Classic)", HELLO_SQUARE),
+        ("Sum 1 to 5", SUM_ONE_TO_FIVE),
+        ("Tensor Face", TENSOR_FACE),
+        ("Vector Given", VECTOR_GIVEN),
+        ("Vec Stats (mean, abs)", VEC_STATS),
+        ("Factorial (inclusive 1..=n)", FACTORIAL),
+        ("Range Sum (variable-bound fold)", RANGE_SUM),
+        ("Forall / Exists (quantifier binders)", FORALL_EXISTS),
+        ("Integral (numerical integration)", INTEGRAL),
+        ("Autodiff (forward-mode derivative)", AUTODIFF),
+        ("Solve (Newton's method root-finding)", SOLVE),
+        ("Optimize (gradient descent)", OPTIMIZE),
     ]
 }
 
@@ -206,7 +238,7 @@ fn maybe_desugared(object: &mut emath_artifact::JsonObject, desugared: Option<&s
 
 struct RunPayload<'a> {
     source: Cow<'a, str>,
-    given: Option<BTreeMap<String, f64>>,
+    given: Option<BTreeMap<String, Value>>,
 }
 
 fn parse_run_payload<'a>(payload: &'a str) -> RunPayload<'a> {
@@ -235,7 +267,7 @@ fn parse_run_payload<'a>(payload: &'a str) -> RunPayload<'a> {
     }
 }
 
-fn parse_given_field(value: &JsonValue) -> Option<BTreeMap<String, f64>> {
+fn parse_given_field(value: &JsonValue) -> Option<BTreeMap<String, Value>> {
     let Ok(given) = value.field("given") else {
         return None;
     };
@@ -244,22 +276,92 @@ fn parse_given_field(value: &JsonValue) -> Option<BTreeMap<String, f64>> {
     };
     let mut map = BTreeMap::new();
     for (name, entry) in entries {
-        match entry {
-            JsonValue::Num(text) => {
-                if let Ok(number) = text.parse::<f64>() {
-                    map.insert(name.clone(), number);
-                }
-            }
-            JsonValue::Bool(true) => {
-                map.insert(name.clone(), 1.0);
-            }
-            JsonValue::Bool(false) => {
-                map.insert(name.clone(), 0.0);
-            }
-            _ => {}
+        if let Some(value) = parse_json_value(entry) {
+            map.insert(name.clone(), value);
         }
     }
     Some(map)
+}
+
+/// Parse a pane `given` entry into a typed [`Value`]: scalars, vectors,
+/// matrices (array-of-arrays), and tensors (`{ shape, data }`).
+fn parse_json_value(entry: &JsonValue) -> Option<Value> {
+    match entry {
+        JsonValue::Num(text) | JsonValue::Str(text) => {
+            text.parse::<f64>().ok().map(Value::F64)
+        }
+        JsonValue::Bool(flag) => Some(Value::Bool(*flag)),
+        JsonValue::Arr(list) => parse_json_array(list),
+        JsonValue::Obj(entries) => parse_json_tensor(entries),
+        JsonValue::Null => None,
+    }
+}
+
+fn parse_json_array(list: &[JsonValue]) -> Option<Value> {
+    if list
+        .iter()
+        .all(|item| matches!(item, JsonValue::Num(_) | JsonValue::Str(_)))
+    {
+        let elements = list
+            .iter()
+            .map(|item| match item {
+                JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<f64>().ok(),
+                _ => None,
+            })
+            .collect::<Option<Vec<f64>>>()?;
+        Some(Value::Vector(elements))
+    } else if list.iter().all(|item| matches!(item, JsonValue::Arr(_))) {
+        let rows = list.len();
+        let mut data = Vec::new();
+        let mut cols: Option<usize> = None;
+        for row in list {
+            let JsonValue::Arr(cells) = row else {
+                return None;
+            };
+            let row_len = cells.len();
+            match cols {
+                None => cols = Some(row_len),
+                Some(c) if c == row_len => {}
+                _ => return None,
+            }
+            for cell in cells {
+                let n = match cell {
+                    JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<f64>().ok()?,
+                    _ => return None,
+                };
+                data.push(n);
+            }
+        }
+        Some(Value::Matrix { rows, cols: cols?, data })
+    } else {
+        None
+    }
+}
+
+fn parse_json_tensor(entries: &[(String, JsonValue)]) -> Option<Value> {
+    let shape = entries
+        .iter()
+        .find(|(k, _)| k == "shape")
+        .and_then(|(_, v)| if let JsonValue::Arr(s) = v { Some(s) } else { None })?;
+    let data = entries
+        .iter()
+        .find(|(k, _)| k == "data")
+        .and_then(|(_, v)| if let JsonValue::Arr(d) = v { Some(d) } else { None })?;
+    let shape: Vec<usize> = shape
+        .iter()
+        .map(|s| match s {
+            JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<usize>().ok(),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let data: Vec<f64> = data
+        .iter()
+        .map(|d| match d {
+            JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<f64>().ok(),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Value::Tensor { shape, data })
 }
 
 fn diagnostic_objects(diagnostics: &Diagnostics) -> Vec<String> {
@@ -506,9 +608,9 @@ fn serialize_declaration_run(declaration: &DeclarationRun) -> String {
 fn serialize_test_run(test: &TestRun) -> String {
     let mut object = JsonWriter::object();
     object.string("name", &test.name);
-    object.object_field("given", &value_map_f64(&test.given));
+    object.object_field("given", &value_map_value(&test.given));
     if !test.state.is_empty() {
-        object.object_field("state", &value_map_f64(&test.state));
+        object.object_field("state", &value_map_value(&test.state));
     }
     object.object_field("definitions", &value_map_value(&test.definitions));
     object.object_field("outputs", &value_map_value(&test.outputs));
@@ -526,14 +628,6 @@ fn serialize_test_run(test: &TestRun) -> String {
     object.finish().trim_end().to_string()
 }
 
-fn value_map_f64(map: &BTreeMap<String, f64>) -> String {
-    let mut object = JsonWriter::object();
-    for (name, value) in map {
-        object.field(name, &json_f64(*value));
-    }
-    object.finish().trim_end().to_string()
-}
-
 fn value_map_value(map: &BTreeMap<String, Value>) -> String {
     let mut object = JsonWriter::object();
     for (name, value) in map {
@@ -544,9 +638,54 @@ fn value_map_value(map: &BTreeMap<String, Value>) -> String {
             Value::Bool(flag) => {
                 object.bool(name, *flag);
             }
+            Value::Vector(elements) => {
+                object.field(name, &json_f64_list(elements));
+            }
+            Value::Matrix { rows, cols, data } => {
+                object.field(name, &json_matrix(*rows, *cols, data));
+            }
+            Value::Tensor { shape, data } => {
+                object.field(name, &json_tensor(shape, data));
+            }
         }
     }
     object.finish().trim_end().to_string()
+}
+
+fn json_f64_list(values: &[f64]) -> String {
+    let body = values
+        .iter()
+        .map(|value| json_f64(*value))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{body}]")
+}
+
+fn json_matrix(rows: usize, cols: usize, data: &[f64]) -> String {
+    let mut rows_json = Vec::with_capacity(rows);
+    for row in 0..rows {
+        let start = row * cols;
+        rows_json.push(json_f64_list(&data[start..start + cols]));
+    }
+    format!("[{}]", rows_json.join(", "))
+}
+
+fn json_tensor(shape: &[usize], data: &[f64]) -> String {
+    let mut object = JsonWriter::object();
+    object.field("shape", &json_usize_list(shape));
+    object.field("data", &json_f64_list(data));
+    object.finish().trim_end().to_string()
+}
+
+fn json_usize_list(values: &[usize]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 fn json_f64(value: f64) -> String {
@@ -600,6 +739,94 @@ mod tests {
     }
 
     #[test]
+    fn run_vector_given_computes() {
+        let json = run_op("run", VECTOR_GIVEN);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"first\": 1.0"), "{json}");
+        assert!(json.contains("\"mag_sq\": 14.0"), "{json}");
+        assert!(json.contains("\"scaled\": [2.0, 4.0, 6.0]"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_envelope_vector_given_computes() {
+        let source = "\nemath function VecPane:\n    inputs:\n        v: Vector[3]\n\n    outputs:\n        first: Float64\n        mag_sq: Float64\n\n    definitions:\n        first = v[0]\n        mag_sq = dot(v, v)\n";
+        let json = run_envelope(source, Some(&[("v", "[1.0, 2.0, 3.0]")]));
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"_pane\""), "{json}");
+        assert!(json.contains("\"computed\": true"), "{json}");
+        assert!(json.contains("\"first\": 1.0"), "{json}");
+        assert!(json.contains("\"mag_sq\": 14.0"), "{json}");
+    }
+
+    #[test]
+    fn run_vec_stats_computes() {
+        let json = run_op("run", VEC_STATS);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"avg\": 1.0"), "{json}");
+        assert!(json.contains("\"a\": [1.0, 2.0, 4.0]"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_factorial_inclusive_computes() {
+        let json = run_op("run", FACTORIAL);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"fac\": 120.0"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_range_sum_computes() {
+        let json = run_op("run", RANGE_SUM);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"s\": 6.0"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_forall_exists_computes() {
+        let json = run_op("run", FORALL_EXISTS);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"all_positive\": false"), "{json}");
+        assert!(json.contains("\"has_zero\": true"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_integral_computes() {
+        let json = run_op("run", INTEGRAL);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"area\":"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_autodiff_computes() {
+        let json = run_op("run", AUTODIFF);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"dy\": 6.0"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_solve_computes() {
+        let json = run_op("run", SOLVE);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"root\":"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_optimize_computes() {
+        let json = run_op("run", OPTIMIZE);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"min_x\":"), "{json}");
+        assert!(json.contains("\"max_x\":"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
     fn curated_non_demo_examples_admit() {
         for (name, source) in curated_examples() {
             if name.contains("Diagnostics") || *name == "diagnostics demo" {
@@ -650,6 +877,42 @@ mod tests {
         assert!(
             json.contains("src/lib.rs") || json.contains("Cargo.toml"),
             "{json}"
+        );
+    }
+
+    #[test]
+    fn run_finite_sum_is_fifteen() {
+        let json = run_op("run", SUM_ONE_TO_FIVE);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"total\": 15.0"), "{json}");
+        assert!(json.contains("\"folded\": 15.0"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_tensor_face_serializes_matrix() {
+        let json = run_op("run", TENSOR_FACE);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(
+            json.contains("\"face\": [[1.0, 2.0], [3.0, 4.0]]"),
+            "{json}"
+        );
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn bare_sum_wrap_computes() {
+        let json = run_op("run", "sum i in 1..6: i\n");
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"desugared_source\""), "{json}");
+        assert!(
+            json.contains("\"result\": 15.0"),
+            "bare sum must compute 15, got {json}"
+        );
+        let folded = run_op("run", "sum([1, 2, 3, 4, 5])\n");
+        assert!(
+            folded.contains("\"result\": 15.0"),
+            "bare vector sum must compute 15, got {folded}"
         );
     }
 
@@ -940,7 +1203,7 @@ emath function square(x: Float64) -> Float64:
         let mut given_map = BTreeMap::new();
         let mut given_pairs = Vec::new();
         for (k, v) in given {
-            given_map.insert(k.to_string(), *v);
+            given_map.insert(k.to_string(), Value::F64(*v));
             given_pairs.push((*k, format_f64(*v)));
         }
         let prepared = prepare_source(source);
@@ -1009,6 +1272,64 @@ emath function square(x: Float64) -> Float64:
                                 _ => panic!("unexpected json value for bool"),
                             };
                             assert_eq!(parsed, *expected, "bool mismatch for `{key}`");
+                        }
+                        Value::Vector(expected) => {
+                            let JsonValue::Arr(list) = json_val else {
+                                panic!("unexpected json value for vector `{key}`");
+                            };
+                            assert_eq!(list.len(), expected.len(), "vector length mismatch for `{key}`");
+                            for (entry, want) in list.iter().zip(expected) {
+                                let got: f64 = match entry {
+                                    JsonValue::Num(text) => text.parse().expect("valid f64"),
+                                    JsonValue::Str(text) => text.parse().expect("valid f64"),
+                                    _ => panic!("unexpected vector element for `{key}`"),
+                                };
+                                assert_eq!(got.to_bits(), want.to_bits(), "vector mismatch for `{key}`");
+                            }
+                        }
+                        Value::Matrix { rows, cols, data } => {
+                            let JsonValue::Arr(outer) = json_val else {
+                                panic!("unexpected json value for matrix `{key}`");
+                            };
+                            assert_eq!(outer.len(), *rows, "matrix row mismatch for `{key}`");
+                            for (row_index, row) in outer.iter().enumerate() {
+                                let JsonValue::Arr(cells) = row else {
+                                    panic!("unexpected matrix row for `{key}`");
+                                };
+                                assert_eq!(cells.len(), *cols, "matrix col mismatch for `{key}`");
+                                for (col_index, cell) in cells.iter().enumerate() {
+                                    let got: f64 = match cell {
+                                        JsonValue::Num(text) => text.parse().expect("valid f64"),
+                                        JsonValue::Str(text) => text.parse().expect("valid f64"),
+                                        _ => panic!("unexpected matrix cell for `{key}`"),
+                                    };
+                                    let want = data[row_index * cols + col_index];
+                                    assert_eq!(got.to_bits(), want.to_bits(), "matrix mismatch for `{key}`");
+                                }
+                            }
+                        }
+                        Value::Tensor { shape, data } => {
+                            let JsonValue::Obj(map) = json_val else {
+                                panic!("unexpected json value for tensor `{key}`");
+                            };
+                            let shape_json = map
+                                .iter()
+                                .find(|(name, _)| name == "shape")
+                                .map(|(_, value)| value)
+                                .expect("tensor shape");
+                            let data_json = map
+                                .iter()
+                                .find(|(name, _)| name == "data")
+                                .map(|(_, value)| value)
+                                .expect("tensor data");
+                            let JsonValue::Arr(shape_list) = shape_json else {
+                                panic!("tensor shape must be an array for `{key}`");
+                            };
+                            let JsonValue::Arr(data_list) = data_json else {
+                                panic!("tensor data must be an array for `{key}`");
+                            };
+                            assert_eq!(shape_list.len(), shape.len(), "tensor rank mismatch for `{key}`");
+                            assert_eq!(data_list.len(), data.len(), "tensor data mismatch for `{key}`");
                         }
                     }
                 }

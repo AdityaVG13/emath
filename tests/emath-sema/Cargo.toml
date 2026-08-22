@@ -9,3 +9,4 @@ emath-sema = { path = "../../crates/emath-sema" }
 emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-syntax = { path = "../../crates/emath-syntax" }
+emath-exec-ir = { path = "../../crates/emath-exec-ir" }

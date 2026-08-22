@@ -10,26 +10,49 @@ const SYNTH_RESULT: &str = "result";
 
 const BUILTINS: &[&str] = &[
     "abs",
+    "and",
+    "at",
     "atan2",
     "ceil",
     "cos",
+    "derivative",
     "else",
+    "ensure",
+    "exists",
     "exp",
     "false",
     "floor",
+    "for",
+    "forall",
     "if",
+    "in",
+    "integral",
     "is_finite",
+    "let",
     "ln",
     "log",
+    "match",
     "max",
     "min",
+    "not",
+    "on",
+    "or",
+    "over",
     "pow",
+    "product",
+    "require",
+    "return",
+    "self",
     "sin",
     "sqrt",
+    "sum",
     "tan",
     "tanh",
     "then",
     "true",
+    "while",
+    "with",
+    "wrt",
 ];
 
 /// Source after the playground wrap, plus the visible desugared text
@@ -103,12 +126,19 @@ fn wrap_bare(source: &str) -> String {
         })
         .collect();
     let mut used: Vec<&str> = Vec::new();
+    let mut bound: Vec<&str> = Vec::new();
     for line in &lines {
         let text = match line {
             BareLine::Assign { rhs, .. } => rhs,
             BareLine::Expr(expr) => expr,
         };
-        for ident in scan_idents(text) {
+        let idents = scan_idents(text);
+        for name in binder_names(&idents) {
+            if !bound.contains(&name) {
+                bound.push(name);
+            }
+        }
+        for ident in idents {
             if !used.contains(&ident) {
                 used.push(ident);
             }
@@ -116,7 +146,7 @@ fn wrap_bare(source: &str) -> String {
     }
     let free: Vec<&str> = used
         .into_iter()
-        .filter(|ident| !assigned.contains(ident) && !is_builtin(ident))
+        .filter(|ident| !assigned.contains(ident) && !bound.contains(ident) && !is_builtin(ident))
         .collect();
 
     let expr_total = lines
@@ -223,6 +253,25 @@ fn is_ident(text: &str) -> bool {
 
 fn is_builtin(name: &str) -> bool {
     BUILTINS.contains(&name)
+}
+
+fn is_binder_head(name: &str) -> bool {
+    matches!(name, "sum" | "product" | "integral" | "forall" | "exists")
+}
+
+/// `sum i in 1..6` binds `i`; it is not a free pane input.
+fn binder_names<'a>(idents: &[&'a str]) -> Vec<&'a str> {
+    let mut names = Vec::new();
+    let mut index = 0;
+    while index + 2 < idents.len() {
+        if is_binder_head(idents[index]) && idents[index + 2] == "in" {
+            names.push(idents[index + 1]);
+            index += 3;
+            continue;
+        }
+        index += 1;
+    }
+    names
 }
 
 fn scan_idents<'a>(text: &'a str) -> Vec<&'a str> {

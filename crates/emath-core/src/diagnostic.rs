@@ -50,6 +50,18 @@ impl Diagnostic {
     }
 
     #[must_use]
+    pub fn note(code: &'static str, message: impl Into<String>, primary: Span) -> Self {
+        Self {
+            code,
+            severity: Severity::Note,
+            message: message.into(),
+            primary,
+            related: Vec::new(),
+            help: None,
+        }
+    }
+
+    #[must_use]
     pub fn with_note(mut self, span: Span, note: impl Into<String>) -> Self {
         self.related.push((span, note.into()));
         self
@@ -107,6 +119,10 @@ impl Diagnostics {
     }
     pub fn warning(&mut self, code: &'static str, message: impl Into<String>, primary: Span) {
         self.push(Diagnostic::warning(code, message, primary));
+    }
+
+    pub fn note(&mut self, code: &'static str, message: impl Into<String>, primary: Span) {
+        self.push(Diagnostic::note(code, message, primary));
     }
 
     pub fn extend_from(&mut self, other: &Diagnostics) {

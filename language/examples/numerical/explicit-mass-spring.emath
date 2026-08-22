@@ -1,10 +1,7 @@
 # explicit-mass-spring: A2-admitted continuous model.
 #
-# `dynamic-mass-spring.emath` still documents the later DAE / rumoca path
-# (`m * der(v) = rhs`). This file is the explicit ODE that `emath check`
-# and `emath simulate` accept today:
-#   der(x) = v
-#   der(v) = (-c * v - k * x) / m
+# Explicit form of the mass-spring ODE. The recorded mass-matrix spelling
+# `m * der(v) = -c * v - k * x` is also admitted when `m` is a named scalar.
 emath model MassSpring:
     inputs:
         m: Float64
