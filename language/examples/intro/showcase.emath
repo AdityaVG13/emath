@@ -1,0 +1,31 @@
+# Showcase: root-finding, optimization, and autodiff together.
+# `f = x^2 - 4` has a root at x=2. `solve` finds it via Newton's method
+# starting from x=1.  `derivative(f) wrt x` computes df/dx = 2x at x=1,
+# which is 2.  `g = (x-3)^2 + 1` has a minimum at x=3.  `minimize`
+# finds it via gradient descent starting from x=1.  The minimum value
+# is (3-3)^2 + 1 = 1.
+emath function Showcase:
+    inputs:
+        x: Float64
+
+    outputs:
+        root: Float64
+        slope_at_root: Float64
+        minimum: Float64
+        min_val: Float64
+
+    definitions:
+        f = x * x - 4
+        root = solve(f) wrt x
+        slope_at_root = derivative(f) wrt x
+        g = (x - 3) * (x - 3) + 1
+        minimum = minimize(g) wrt x
+        min_val = (minimum - 3) * (minimum - 3) + 1
+
+    tests:
+        example <demo>:
+            given x = 1
+            expect abs(root - 2) < 0.001
+            expect abs(slope_at_root - 2) < 0.001
+            expect abs(minimum - 3) < 0.1
+            expect abs(min_val - 1) < 0.1

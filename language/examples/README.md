@@ -25,6 +25,7 @@ say what the compiler does with each one today.
 | [optimize.emath](intro/optimize.emath) | Runs. `minimize((x-3)^2) wrt x` and `maximize(-(x-2)^2) wrt x` with gradient descent/ascent. |
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Runs. Semi-explicit DAE: algebraic variable `I` in `equations:`, `der(q) = I` references it. RC circuit with `emath simulate`. |
 | [implicit-dae.emath](intro/implicit-dae.emath) | Runs. Implicit DAE: `solve(V - R*I - q/C) wrt I` in equations. Newton's method finds current at each step. |
+| [showcase.emath](intro/showcase.emath) | Runs. `solve` + `minimize` + `derivative` in one function: finds root of x^2-4, minimizes (x-3)^2+1, computes derivative 2x. |
 
 ## numerical — numerics and dynamics
 

@@ -54,6 +54,8 @@ const SOLVE: &str =
     include_str!("../../../language/examples/intro/solve.emath");
 const OPTIMIZE: &str =
     include_str!("../../../language/examples/intro/optimize.emath");
+const SHOWCASE: &str =
+    include_str!("../../../language/examples/intro/showcase.emath");
 const PARAMETRIC_UNKNOWN: &str =
     include_str!("../../../language/examples/integration/parametric-unknown-operator.emath");
 
@@ -164,6 +166,7 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Autodiff (forward-mode derivative)", AUTODIFF),
         ("Solve (Newton's method root-finding)", SOLVE),
         ("Optimize (gradient descent)", OPTIMIZE),
+        ("Showcase (solve + optimize + autodiff)", SHOWCASE),
     ]
 }
 
@@ -812,6 +815,14 @@ mod tests {
     #[test]
     fn run_solve_computes() {
         let json = run_op("run", SOLVE);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"root\":"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_showcase_computes() {
+        let json = run_op("run", SHOWCASE);
         assert!(json.contains("\"ok\": true"), "{json}");
         assert!(json.contains("\"root\":"), "{json}");
         assert!(json.contains("\"expect_passed\": true"), "{json}");
