@@ -337,9 +337,11 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             push_str(out, var);
             encode_expr(out, exprs, *body);
         }
-        ExprNode::Optimize { body, var, maximize } => {
+        ExprNode::Optimize { body, vars, maximize } => {
             push_str(out, if *maximize { "maximize" } else { "minimize" });
-            push_str(out, var);
+            for v in vars {
+                push_str(out, v);
+            }
             encode_expr(out, exprs, *body);
         }
     }

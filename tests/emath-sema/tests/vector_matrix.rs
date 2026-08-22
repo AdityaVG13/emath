@@ -707,3 +707,50 @@ emath function MaximizeNegSquare:
         "maximize(-(x-2)^2) wrt x from x=0 should converge to 2, got {opt}"
     );
 }
+
+#[test]
+fn minimize_multi_variable_converges() {
+    let source = "
+emath function MultiVarOpt:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        opt_x: Float64
+        opt_y: Float64
+    definitions:
+        loss = (x - 1) * (x - 1) + (y - 2) * (y - 2)
+        opt_x = minimize(loss) wrt x, y
+        opt_y = minimize(loss) wrt y, x
+    tests:
+        example <bowl>:
+            given x = 0
+            given y = 0
+            expect abs(opt_x - 1) < 0.1
+            expect abs(opt_y - 2) < 0.1
+";
+    let result = check_source("multivar-opt", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "multi-variable minimize must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let opt_x = match test.outputs.get("opt_x") {
+        Some(Value::F64(v)) => *v,
+        other => panic!("opt_x should be F64, got {other:?}"),
+    };
+    let opt_y = match test.outputs.get("opt_y") {
+        Some(Value::F64(v)) => *v,
+        other => panic!("opt_y should be F64, got {other:?}"),
+    };
+    assert!(
+        (opt_x - 1.0).abs() < 0.1,
+        "minimize((x-1)^2 + (y-2)^2) wrt x,y from (0,0) should converge x to 1, got {opt_x}"
+    );
+    assert!(
+        (opt_y - 2.0).abs() < 0.1,
+        "minimize((x-1)^2 + (y-2)^2) wrt y,x from (0,0) should converge y to 2, got {opt_y}"
+    );
+}

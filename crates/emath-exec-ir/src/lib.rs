@@ -157,13 +157,14 @@ pub enum EmirOp {
         tolerance: f64,
         max_iter: u32,
     },
-    /// Gradient-descent optimization.  Iteratively adjusts the input at
-    /// `var_index` to minimize (or maximize when `maximize` is true)
+    /// Gradient-descent optimization.  Iteratively adjusts the inputs at
+    /// `var_indices` to minimize (or maximize when `maximize` is true)
     /// `body` (the objective).  Uses dual-number evaluation for the
-    /// gradient.  Returns the converged input value.
+    /// gradient (one pass per variable).  Returns the first converged
+    /// input value; all variables are updated in place each iteration.
     Optimize {
         body: EmirProgram,
-        var_index: u16,
+        var_indices: Vec<u16>,
         maximize: bool,
         learning_rate: f64,
         tolerance: f64,
@@ -738,8 +739,11 @@ impl Emitter {
                     span,
                 ))
             }
-            ExprNode::Optimize { body, var, maximize } => {
-                let var_index = self.input_index(var)?;
+            ExprNode::Optimize { body, vars, maximize } => {
+                let mut var_indices = Vec::with_capacity(vars.len());
+                for var in vars {
+                    var_indices.push(self.input_index(var)?);
+                }
                 let sc = self.states.len();
                 let mut body_emitter = self.sub_emitter();
                 let body_result = body_emitter.emit(package, *body)?;
@@ -747,7 +751,7 @@ impl Emitter {
                 Ok(self.push(
                     EmirOp::Optimize {
                         body: body_program,
-                        var_index,
+                        var_indices,
                         maximize: *maximize,
                         learning_rate: 0.01,
                         tolerance: 1e-10,

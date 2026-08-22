@@ -678,32 +678,45 @@ fn eval_op(
         }
         EmirOp::Optimize {
             ref body,
-            var_index,
+            ref var_indices,
             maximize,
             learning_rate,
             tolerance,
             max_iter,
         } => {
-            // Gradient descent (or ascent): x_new = x_old -/+ lr * f'(x)
-            let mut x = match inputs.get(var_index as usize) {
-                Some(Value::F64(v)) => *v,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: var_index as u32,
-                    op: name,
-                }),
-            };
+            // Multi-variable gradient descent (or ascent):
+            //   x_i_new = x_i_old -/+ lr * df/dx_i
+            // One dual-number pass per variable gives each partial.
             let mut work_inputs = inputs.to_vec();
             let sign = if maximize { 1.0 } else { -1.0 };
+            // Extract initial guesses from inputs.
+            let mut x: Vec<f64> = var_indices
+                .iter()
+                .map(|&vi| match inputs.get(vi as usize) {
+                    Some(Value::F64(v)) => *v,
+                    _ => 0.0,
+                })
+                .collect();
             for _ in 0..max_iter {
-                work_inputs[var_index as usize] = Value::F64(x);
-                let dual = evaluate_dual(body, &work_inputs, state, var_index, name)?;
-                let grad = dual.tangent;
-                if grad.abs() < tolerance {
-                    return Ok(Value::F64(x));
+                // Compute partial derivative w.r.t. each variable.
+                let mut grads = Vec::with_capacity(var_indices.len());
+                let mut max_grad = 0.0f64;
+                for (i, &vi) in var_indices.iter().enumerate() {
+                    work_inputs[vi as usize] = Value::F64(x[i]);
+                    let dual = evaluate_dual(body, &work_inputs, state, vi, name)?;
+                    grads.push(dual.tangent);
+                    max_grad = max_grad.max(dual.tangent.abs());
                 }
-                x += sign * learning_rate * grad;
+                if max_grad < tolerance {
+                    // Return the first variable's converged value.
+                    return Ok(Value::F64(x[0]));
+                }
+                for (i, &vi) in var_indices.iter().enumerate() {
+                    x[i] += sign * learning_rate * grads[i];
+                    work_inputs[vi as usize] = Value::F64(x[i]);
+                }
             }
-            Ok(Value::F64(x))
+            Ok(Value::F64(x[0]))
         }
     }
 }

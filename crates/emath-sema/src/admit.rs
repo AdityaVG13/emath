@@ -1221,30 +1221,34 @@ impl Admitter {
                     );
                     return None;
                 };
-                if vars.len() != 1 {
+                if vars.is_empty() {
                     self.error(
                         E_UNSUPPORTED_TYPE,
-                        "minimize/maximize wrt supports a single variable in Phase 1",
+                        "minimize/maximize requires at least one `wrt` variable",
                         expr.source,
                     );
                     return None;
                 }
-                let Some(segments) = path_segments(&vars[0]) else {
-                    self.error(
-                        E_UNSUPPORTED_TYPE,
-                        "optimization variable must be a plain name",
-                        expr.source,
-                    );
-                    return None;
-                };
-                let var_name = segments[0].clone();
-                if !self.inputs.contains_key(&var_name) {
-                    self.error(
-                        E_UNSUPPORTED_TYPE,
-                        format!("optimization variable `{var_name}` must be an input"),
-                        expr.source,
-                    );
-                    return None;
+                let mut var_names = Vec::with_capacity(vars.len());
+                for var in vars {
+                    let Some(segments) = path_segments(var) else {
+                        self.error(
+                            E_UNSUPPORTED_TYPE,
+                            "optimization variable must be a plain name",
+                            var.source,
+                        );
+                        return None;
+                    };
+                    let name = segments[0].clone();
+                    if !self.inputs.contains_key(&name) {
+                        self.error(
+                            E_UNSUPPORTED_TYPE,
+                            format!("optimization variable `{name}` must be an input"),
+                            var.source,
+                        );
+                        return None;
+                    }
+                    var_names.push(name);
                 }
                 let (body_id, body_infer) = match self.lower_expr(value) {
                     Some(result) => result,
@@ -1260,13 +1264,13 @@ impl Admitter {
                 }
                 let inlined = self.inline_defs(body_id);
                 let id = self.push_expr(
-                    ExprNode::Optimize { body: inlined, var: var_name.clone(), maximize: *maximize },
+                    ExprNode::Optimize { body: inlined, vars: var_names.clone(), maximize: *maximize },
                     expr.source,
                 );
                 let direction = if *maximize { "maximize" } else { "minimize" };
                 self.record(
                     "sema",
-                    format!("{direction} wrt {var_name} → gradient-descent optimization"),
+                    format!("{direction} wrt {} → gradient-descent optimization", var_names.join(", ")),
                     expr.source,
                 );
                 Some((id, Infer::F64))
