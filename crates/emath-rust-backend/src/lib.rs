@@ -1160,6 +1160,11 @@ fn op_expr(
         EmirOp::Min(l, r) => Ok(binary_method("min", *l, *r, program)),
         EmirOp::Max(l, r) => Ok(binary_method("max", *l, *r, program)),
         EmirOp::Atan2(l, r) => Ok(binary_method("atan2", *l, *r, program)),
+        EmirOp::Mod(l, r) => Ok(Expr::Bin {
+            op: BinOp::Rem,
+            left: Box::new(operand(program, *l)),
+            right: Box::new(operand(program, *r)),
+        }),
         EmirOp::IsFinite(value) => Ok(Expr::MethodCall {
             receiver: Box::new(operand(program, *value)),
             method: "is_finite".to_string(),
@@ -1537,6 +1542,7 @@ fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> String {
             "(__e{} * __d{} - __e{} * __d{}) / (__e{} * __e{} + __e{} * __e{})",
             b.0, a.0, a.0, b.0, a.0, a.0, b.0, b.0
         ),
+        EmirOp::Mod(a, _) => format!("__d{}", a.0),
         EmirOp::Select {
             condition: c,
             then_value: t,
@@ -1606,6 +1612,7 @@ fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, idx: usize) 
             "({} * {} - {} * {}) / ({} * {} + {} * {})",
             e(b.0), d(a.0), e(a.0), d(b.0), e(a.0), e(a.0), e(b.0), e(b.0)
         ),
+        EmirOp::Mod(a, _) => format!("{}", d(a.0)),
         EmirOp::Select { condition: c, then_value: t, else_value: ev } => {
             format!("if {} != 0.0 {{ {} }} else {{ {} }}", e(c.0), d(t.0), d(ev.0))
         }

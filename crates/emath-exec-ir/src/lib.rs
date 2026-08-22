@@ -66,6 +66,7 @@ pub enum EmirOp {
     Min(EmirValue, EmirValue),
     Max(EmirValue, EmirValue),
     Atan2(EmirValue, EmirValue),
+    Mod(EmirValue, EmirValue),
     Lt(EmirValue, EmirValue),
     Le(EmirValue, EmirValue),
     Gt(EmirValue, EmirValue),
@@ -209,6 +210,7 @@ impl EmirOp {
             Self::Min(..) => "min",
             Self::Max(..) => "max",
             Self::Atan2(..) => "atan2",
+            Self::Mod(..) => "mod",
             Self::Lt(..) => "lt",
             Self::Le(..) => "le",
             Self::Gt(..) => "gt",
@@ -832,11 +834,13 @@ impl Emitter {
                 | "max"
                 | "atan2"
                 | "pow"
+                | "mod"
                 | "dot"
                 | "core::math::min"
                 | "core::math::max"
                 | "core::math::atan2"
                 | "core::math::pow"
+                | "core::math::mod"
         );
         let expected = match (unary, binary) {
             (true, false) => Some(1),
@@ -951,6 +955,11 @@ impl Emitter {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
                 Ok(self.push(EmirOp::Atan2(l, r), span))
+            }
+            "mod" | "core::math::mod" => {
+                let l = self.emit(package, args[0])?;
+                let r = self.emit(package, args[1])?;
+                Ok(self.push(EmirOp::Mod(l, r), span))
             }
             "pow" | "core::math::pow" => {
                 let l = self.emit(package, args[0])?;
