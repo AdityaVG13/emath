@@ -63,6 +63,8 @@ pub enum EmirOp {
     Sinh(EmirValue),
     Cosh(EmirValue),
     Atan(EmirValue),
+    Cbrt(EmirValue),
+    Hypot(EmirValue, EmirValue),
     Min(EmirValue, EmirValue),
     Max(EmirValue, EmirValue),
     Atan2(EmirValue, EmirValue),
@@ -207,6 +209,8 @@ impl EmirOp {
             Self::Sinh(_) => "sinh",
             Self::Cosh(_) => "cosh",
             Self::Atan(_) => "atan",
+            Self::Cbrt(_) => "cbrt",
+            Self::Hypot(..) => "hypot",
             Self::Min(..) => "min",
             Self::Max(..) => "max",
             Self::Atan2(..) => "atan2",
@@ -810,6 +814,7 @@ impl Emitter {
                 | "sinh"
                 | "cosh"
                 | "atan"
+                | "cbrt"
                 | "is_finite"
                 | "norm"
                 | "transpose"
@@ -835,12 +840,14 @@ impl Emitter {
                 | "atan2"
                 | "pow"
                 | "mod"
+                | "hypot"
                 | "dot"
                 | "core::math::min"
                 | "core::math::max"
                 | "core::math::atan2"
                 | "core::math::pow"
                 | "core::math::mod"
+                | "core::math::hypot"
         );
         let ternary = matches!(function, "lerp" | "core::math::lerp" | "clamp" | "core::math::clamp");
         let expected = match (unary, binary, ternary) {
@@ -926,6 +933,10 @@ impl Emitter {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::Atan(v), span))
             }
+            "cbrt" | "core::math::cbrt" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Cbrt(v), span))
+            }
             "norm" => {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::VectorNorm(v), span))
@@ -962,6 +973,11 @@ impl Emitter {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
                 Ok(self.push(EmirOp::Mod(l, r), span))
+            }
+            "hypot" | "core::math::hypot" => {
+                let l = self.emit(package, args[0])?;
+                let r = self.emit(package, args[1])?;
+                Ok(self.push(EmirOp::Hypot(l, r), span))
             }
             "pow" | "core::math::pow" => {
                 let l = self.emit(package, args[0])?;
