@@ -78,13 +78,13 @@ pub enum ExprNode {
         body: ExprId,
         var: String,
     },
-    /// Gradient-descent optimization: find the value of input `var`
-    /// that minimizes (or maximizes when `maximize` is true) `body`
-    /// (the objective).  The initial guess is the input value supplied
+    /// Gradient-descent optimization: find the values of inputs `vars`
+    /// that minimize (or maximize when `maximize` is true) `body`
+    /// (the objective).  The initial guess is the input values supplied
     /// at runtime.  Uses forward-mode autodiff for the gradient.
     Optimize {
         body: ExprId,
-        var: String,
+        vars: Vec<String>,
         maximize: bool,
     },
 }

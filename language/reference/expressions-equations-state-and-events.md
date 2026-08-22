@@ -98,6 +98,7 @@ derivative(x)    der(x)    derivative(x) wrt time
 derivative(y) wrt x    # forward-mode autodiff in definitions
 solve(residual) wrt x    # Newton's method root-finding
 minimize(loss) wrt x     # gradient descent optimization
+minimize(loss) wrt x, y  # multi-variable gradient descent
 maximize(score) wrt x    # gradient ascent optimization
 ```
 
