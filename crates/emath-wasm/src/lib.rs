@@ -56,6 +56,8 @@ const OPTIMIZE: &str =
     include_str!("../../../language/examples/intro/optimize.emath");
 const SHOWCASE: &str =
     include_str!("../../../language/examples/intro/showcase.emath");
+const CONSTRAINED_OPT: &str =
+    include_str!("../../../language/examples/intro/constrained-opt.emath");
 const PARAMETRIC_UNKNOWN: &str =
     include_str!("../../../language/examples/integration/parametric-unknown-operator.emath");
 
@@ -167,6 +169,7 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Solve (Newton's method root-finding)", SOLVE),
         ("Optimize (gradient descent)", OPTIMIZE),
         ("Showcase (solve + optimize + autodiff)", SHOWCASE),
+        ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
     ]
 }
 
@@ -817,6 +820,14 @@ mod tests {
         let json = run_op("run", SOLVE);
         assert!(json.contains("\"ok\": true"), "{json}");
         assert!(json.contains("\"root\":"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_constrained_opt_computes() {
+        let json = run_op("run", CONSTRAINED_OPT);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"opt_x\":"), "{json}");
         assert!(json.contains("\"expect_passed\": true"), "{json}");
     }
 

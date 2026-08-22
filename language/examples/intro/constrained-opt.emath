@@ -1,0 +1,23 @@
+# Constrained optimization: minimize x^2 + y^2 subject to x + y = 1.
+# Substitute y = 1 - x to eliminate the constraint, reducing to
+# an unconstrained problem in x.  The minimum of x^2 + (1-x)^2 is
+# at x = 0.5, giving y = 0.5.
+emath function ConstrainedOpt:
+    inputs:
+        x: Float64
+
+    outputs:
+        opt_x: Float64
+        opt_y: Float64
+
+    definitions:
+        y = 1 - x
+        objective = x * x + y * y
+        opt_x = minimize(objective) wrt x
+        opt_y = 1 - opt_x
+
+    tests:
+        example <penalty>:
+            given x = 0
+            expect abs(opt_x - 0.5) < 0.1
+            expect abs(opt_y - 0.5) < 0.1
