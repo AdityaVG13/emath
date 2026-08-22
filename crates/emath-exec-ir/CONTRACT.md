@@ -10,7 +10,7 @@
 ## Public types and semantics
 
 - `EmirValue` — typed SSA value reference in the op list (wrapped `u32`).
-- `EmirOp` — one EMIR instruction (`ConstF64`, `LoadInput`, `LoadState`, arithmetic, elementary and comparison ops, `Select`, `IsFinite`, `Fold` runtime fold, `Integral` numerical integration, `Differentiate` forward-mode autodiff with nested sub-program, `Solve` Newton's-method root-finding, `Optimize` gradient-descent optimization); exposes a stable `name()`.
+- `EmirOp` — one EMIR instruction (`ConstF64`, `LoadInput`, `LoadState`, arithmetic, elementary functions (exp, ln, log2, log10, sqrt, sin, cos, tan, tanh, sinh, cosh, abs, floor, ceil, sign, cbrt, recip, fract, atan), comparison ops, `Select`, `IsFinite`, `Fold` runtime fold, `Integral` numerical integration, `Differentiate` forward-mode autodiff with nested sub-program, `Solve` Newton's-method root-finding, `Optimize` multi-variable gradient-descent optimization, `Mod` remainder, `Hypot`, `Min`/`Max`, `Atan2`); exposes a stable `name()`.
 - `FoldCombine` — accumulation strategy for `Fold` (`Add` / `Mul` / `And` / `Or`).
 - `DomainObligation` — domain obligation recorded during lowering (`DivisionNonZero`, `SqrtNonNegative`, `LogPositive`, `PowFiniteResult`) with `as_str`.
 - `EmirProgram` — one lowered definition: linear op list, result value, input/state counts, obligations; `print` renders it deterministically.
