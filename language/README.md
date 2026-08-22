@@ -16,5 +16,15 @@ chapters in [`reference/`](reference/README.md) are normative; grammar files
 are the machine-checkable surface model that follows them.
 
 Start with [`reference/overview.md`](reference/overview.md) (Chapter 1), then
-follow the chapter index. Examples illustrate intended semantics; the phase
-documents state when each becomes executable.
+follow the chapter index.
+
+The 16 chapters describe the whole language we are building. The compiler
+does not implement that whole language yet. What you can write, check,
+run, simulate, and compile to Rust today is the smaller working subset
+in the **Implemented today** sections of chapters 1, 5, and 7, plus
+[`examples/README.md`](examples/README.md).
+
+A file can parse and still not run. That is expected. emath compiles
+math you write; it does not decide whether the answer is the one you
+wanted. Worlds and later adapters (including Lean) can attach stronger
+evidence later. They are not the product yet.

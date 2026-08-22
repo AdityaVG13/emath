@@ -87,3 +87,39 @@ Extensibility is layered:
 ## 7. Output promise
 
 Every admitted request yields a typed artifact disposition. Unsupported execution does not erase the admitted semantic declaration; it can produce a parametric, continuation, exploration or diagnostic artifact according to policy.
+
+## Implemented today
+
+This chapter is the design of the whole language. The compiler currently
+admits three declaration kinds:
+
+```text
+emath function   stateless formulas
+emath policy     stateful objects with constructors
+emath model      continuous ODEs you can simulate
+```
+
+Other kind spellings still parse. Admission then treats them as a
+function or refuses their sections. That is a named refusal, not a
+silent guess.
+
+Working sections:
+
+```text
+inputs outputs state definitions equations equation
+constructors goals exports tests compile about evidence host
+```
+
+Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
+`goals:`.
+
+What you can do with an admitted file:
+
+- `emath check` — does this file make sense in the working subset?
+- `emath run` / `emath test` — evaluate definitions and examples
+- `emath build` — generate a Rust crate when there is an `evaluate` goal
+- `emath simulate` — integrate an admitted `emath model`
+
+The compiler will give you a number, a trajectory, generated Rust, or a
+named refusal. It will not tell you that the math is true. That is later
+evidence work, not the language.

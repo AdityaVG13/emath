@@ -3,22 +3,36 @@
 Cross-domain example programs illustrating emath semantics, grouped by
 category. Within each category, read in table order.
 
+A file in this tree is not automatically executable. The tables below
+say what the compiler does with each one today.
+
 ## intro — getting started
 
-| Example | Focus |
+| Example | Today |
 |---------|-------|
-| [hello-square.emath](intro/hello-square.emath) | Minimal model entry point |
-| [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | Stateful scoring model |
+| [hello-square.emath](intro/hello-square.emath) | Runs. Smallest `emath function`. |
+| [sum-one-to-five.emath](intro/sum-one-to-five.emath) | Runs. Finite `sum i in 1..6: i` and `sum([1, 2, 3, 4, 5])`. |
+| [tensor-face.emath](intro/tensor-face.emath) | Runs. Rank-3 tensor, a `:` slice, and a matrix `expect`. |
+| [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | Runs. Stateful `emath policy` with a constructor. |
+| [vector-given.emath](intro/vector-given.emath) | Runs. A `Vector[3]` input bound by `given v = [1, 2, 3]`; index, scale, and `dot` it. |
+| [vec-stats.emath](intro/vec-stats.emath) | Runs. `mean(v)` and elementwise `abs(v)` on a known-size vector. |
+| [factorial.emath](intro/factorial.emath) | Runs. Inclusive `product i in 1..=5: i` fold. |
+| [range-sum.emath](intro/range-sum.emath) | Runs. Variable-bound `sum i in 0..n: v[i]` with `n = length(v)`, a runtime fold (not compile-time unrolling). |
+| [forall-exists.emath](intro/forall-exists.emath) | Runs. `forall i in 0..n: v[i] > 0` and `exists i in 0..n: v[i] == 0`, quantifier binders over a vector. |
+| [integral.emath](intro/integral.emath) | Runs. `integral x in a..b: x * x` with composite Simpson's rule (1000 steps, exact for degree ≤ 3). |
+| [autodiff.emath](intro/autodiff.emath) | Runs. `derivative(y) wrt x` in a definition, forward-mode autodiff via dual numbers. At x=3, dy/dx of x^2 = 6. |
+| [solve.emath](intro/solve.emath) | Runs. `solve(x^2-4) wrt x` with Newton's method. From x=1, converges to root x=2. |
+| [optimize.emath](intro/optimize.emath) | Runs. `minimize((x-3)^2) wrt x` and `maximize(-(x-2)^2) wrt x` with gradient descent/ascent. |
 
 ## numerical — numerics and dynamics
 
-| Example | Focus |
+| Example | Today |
 |---------|-------|
-| [tensor-program.emath](numerical/tensor-program.emath) | Tensor-centric program |
-| [graph-router.emath](numerical/graph-router.emath) | Graph structure routing |
-| [heat-pde.emath](numerical/heat-pde.emath) | PDE-style dynamics |
-| [dynamic-mass-spring.emath](numerical/dynamic-mass-spring.emath) | Phase 3 acceptance demo (mass-spring) |
-| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Explicit ODE mass-spring (`emath simulate`) |
+| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Runs. `emath model` you can `emath simulate`. The `m * der(v) = rhs` spelling also admits when `m` is a named scalar. |
+| [dynamic-mass-spring.emath](numerical/dynamic-mass-spring.emath) | Target sketch for a later DAE / rumoca path. Not an admitted `emath model`. |
+| [tensor-program.emath](numerical/tensor-program.emath) | Target sketch (`einsum`, binders, autodiff). Rank-3 tensors and slices run in smaller functions; this file does not. |
+| [graph-router.emath](numerical/graph-router.emath) | Target sketch. Graphs and `solve` are not admitted. |
+| [heat-pde.emath](numerical/heat-pde.emath) | Target sketch. Fields and PDEs are not admitted. |
 
 ## search — conjecture and optimization
 

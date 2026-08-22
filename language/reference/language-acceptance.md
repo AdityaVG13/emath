@@ -1,5 +1,11 @@
 # Chapter 16: Language Acceptance Gates
 
+These gates are the finish line for the *whole* language, not a claim
+that we are there. Today the working subset is: parse and admit
+`function` / `policy` / `model`, evaluate strict-f64 definitions,
+simulate explicit ODEs, and generate Rust for `evaluate` goals. Most
+official examples still illustrate later chapters.
+
 The language phase is accepted only when:
 
 1. grammar and parser handle every official example and invalid fixture deterministically;

@@ -81,3 +81,41 @@ provider-selected under constraints
 ```
 
 The chosen profile enters artifact identity and evidence.
+
+## Implemented today
+
+Admitted compute types:
+
+```text
+Float64  Bool  Nat  Int
+Vector[n]  Matrix[r, c]  Tensor[…]
+quantity / `T in unit` annotations
+```
+
+`Nat` and `Int` are indexes and small integer values. Arithmetic with
+them still evaluates as `Float64`. A negative constant index is
+`E-SHAPE-006`.
+
+Shapes:
+
+- rank-1 / rank-2 literals stay `Vector` / `Matrix`
+- rank-3+ literals become `Tensor`
+- `v[i]`, `m[i, j]`, `t[i, j, k]` drop rank
+- `t[0, :, :]` and other `:` axes keep rank
+- tensor add/sub only when extents match, or one side is `1`
+
+Units that the compiler knows (`Duration`, `MiB`, `1 s`, `m/s`, …)
+admit. A quantity state in a model must have a matching state/time
+rate. Unknown units and unit clashes are named refusals
+(`E-UNIT-104`, `E-UNIT-105`, `E-UNIT-101`).
+
+Numeric models:
+
+- omitted `numeric:` means `strict-f64`
+- `numeric interval-f64` is accepted as a label
+- the machine still computes in `Float64`
+- writing `Real` without a model is `E-NUM-004`
+
+Not admitted as compute types yet: `Rat`, bare `Real`, `Complex`,
+`Option`, `Result`, `Graph`, `Field`, records as values, refinement
+predicates such as `NonNegative<Real>`.

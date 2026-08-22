@@ -20,10 +20,11 @@
   declaration (after leading whitespace/comments, first content line does
   not start with `emath `), it is wrapped as `emath function Pane` (
   assignment lines become `definitions:`, a lone final expression is bound
-  as `result`, and free identifiers become untyped `inputs:`; Float64 via
-  `N-TYPE-001`). No `tests:` section is synthesized. This is not legal
-  `.emath` outside the pane; `emath-syntax` / `emath-sema` are unchanged
-  at the parse layer.
+  as `result`, and free identifiers become untyped `inputs:` (Float64 via
+  `N-TYPE-001`). Language keywords (`in`, `sum`, `if`, …) and binder
+  variables (`sum i in 1..6` binds `i`) are not free inputs. No `tests:`
+  section is synthesized. This is not legal `.emath` outside the pane;
+  `emath-syntax` / `emath-sema` are unchanged at the parse layer.
 - When wrapping happens, `check` / `plan` / `mig` / `generate` / `run` /
   `inputs` include `"desugared_source"` (the wrapped text). The field is
   omitted when the source was already a declaration.
@@ -43,7 +44,7 @@
 
 - Dispatch never panics across the ABI. The sema pipeline returns diagnostics; `ok:false` is reserved for invalid UTF-8 and unknown ops (and backend generate failure).
 - `check` / `plan` / `generate` / `format` / `run` keep `ok:true` when the pipeline ran, even if the source has diagnostics.
-- `run` uses `check` then the Tier-0 EMIR interpreter (`emath-exec-ir`). Source errors return diagnostics only (no report). Successful admission returns `tier: interpreted-strict-f64` plus a `RunReport`.
+- `run` uses `check` then the Tier-0 EMIR interpreter (`emath-exec-ir`). Source errors return diagnostics only (no report). Successful admission returns `tier: interpreted-strict-f64` plus a `RunReport`. Vector / matrix / tensor values are serialized (tensors as `{shape, data}`), not dropped.
 - Per-test JSON: an asserted example emits `"expect_passed": true|false`. A worked example (`expect` omitted) or a synthetic `_pane` run emits `"computed": true` and omits `expect_passed`. Summary is `{tests, passed, failed, refused, computed}`. A missing envelope binding is `refusal: "lowering-refused"` with `reason` containing `missing input \`name\``.
 - All unsafe is confined to `ffi`. Each block documents its pointer/length pairing.
 - `em_alloc(len)` produces an exclusive region of capacity `len` (length 0 until written). `em_free(ptr, len)` must pair the same `ptr`/`len` exactly once.
@@ -93,6 +94,7 @@
   (`hello-square`, `stateful-affine-scorer`,
   `parametric-unknown-operator`) plus one intentional diagnostics demo.
   `cache-policy` and `tensor-program` exist but do not admit on this
-  pipeline, so they are not embedded.
+  pipeline, so they are not embedded. `sum-one-to-five` and
+  `tensor-face` do admit and are embedded.
 - Bare-expression wrap is playground-only. A `.emath` file without an
   `emath …:` header is still refused by the CLI / `emath-syntax` parser.

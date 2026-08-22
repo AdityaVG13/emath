@@ -18,6 +18,7 @@ deterministic sorted-key JSON via the in-tree writer.
 | `emath bench <file>` | typed refusal E-TLT-004 (benchmark harness is Phase 4+) |
 | `emath explain <file> [<symbol>] [--json]` | plan-level explanation of goals and plans |
 | `emath diff <a.emath> <b.emath> [--json]` | content-id fingerprint comparison of parse-admitted sources |
+| `emath simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler\|rk4\|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]` | integrate an admitted `emath model`; default is fixed-step; `--atol/--rtol` opt into adaptive RK45; `--event` locates one scalar crossing |
 
 ## Tooling
 
