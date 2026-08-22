@@ -5,13 +5,13 @@ use emath_core::tree::{
     BinaryOp as SynBinOp, Expr, ExprKind, Section, StmtKind, SyntaxTree, TypeExpr,
     TypeKind as SynTypeKind, UnaryOp as SynUnOp,
 };
-use emath_core::{Diagnostic, Diagnostics, QualifiedName, SchemaId, Severity, Span};
+use emath_core::{Diagnostic, Diagnostics, QualifiedName, SchemaId, Span};
 use emath_ir::constructor::{Constructor, Field, TestCase, Visibility};
 use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
 use emath_ir::goal::{CompileSpec, EvidenceLevel};
 use emath_core::tree::CommandArgument;
 use emath_ir::{
-    Declaration, ExprId, ExprNode, HostBinding, HostMethod, ImportEntry, ImportSelection,
+    Declaration, ExprId, ExprNode, Extent, HostBinding, HostMethod, ImportEntry, ImportSelection,
     KindSchema, Literal, NumericProfile, RepeatPolicy, SafetyProfile, TypeId, TypeNode, Unit,
     UnitDim, UnitFamily, check_compatible, check_error_limit, check_precision_demand, lookup_unit,
     parse_numeric_profile, per_unit,
@@ -30,6 +30,8 @@ const PHASE1_SECTIONS: &[&str] = &[
     "outputs",
     "state",
     "definitions",
+    "equations",
+    "equation",
     "constructors",
     "goals",
     "exports",
@@ -123,10 +125,17 @@ pub struct CheckResult {
     pub trace: SemanticTrace,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Infer {
     F64,
     Bool,
+    Vector {
+        extent: Option<Extent>,
+    },
+    Matrix {
+        rows: Option<Extent>,
+        cols: Option<Extent>,
+    },
     Unit { dims: UnitDim, family: UnitFamily },
     /// Whole host-imported record. Not a scalar.
     Opaque,
@@ -154,7 +163,7 @@ struct Admitter {
     params: BTreeMap<String, Infer>,
     inputs: BTreeMap<String, Infer>,
     states: BTreeMap<String, Infer>,
-    definitions: BTreeMap<String, ExprId>,
+    definitions: BTreeMap<String, (ExprId, Infer)>,
     exprs: Vec<(ExprNode, Span)>,
     types: Vec<TypeNode>,
     host_types: BTreeSet<String>,
@@ -198,27 +207,23 @@ impl Admitter {
     }
 
     fn note(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
-        self.diagnostics.push(Diagnostic {
-            code,
-            severity: Severity::Note,
-            message: message.into(),
-            primary: span,
-            related: Vec::new(),
-            help: None,
-        });
+        self.diagnostics.push(Diagnostic::note(code, message, span));
     }
 
     fn lookup(&self, name: &str) -> Option<Infer> {
         if let Some(infer) = self.params.get(name) {
-            return Some(*infer);
+            return Some(infer.clone());
         }
         if let Some(infer) = self.inputs.get(name) {
-            return Some(*infer);
+            return Some(infer.clone());
         }
         if let Some(stripped) = name.strip_prefix("state.") {
-            return self.states.get(stripped).copied();
+            return self.states.get(stripped).cloned();
         }
-        self.definitions.get(name).map(|_| Infer::F64)
+        if let Some((_, infer)) = self.definitions.get(name) {
+            return Some(infer.clone());
+        }
+        self.states.get(name).cloned()
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -317,7 +322,9 @@ impl Admitter {
             ExprKind::Path { segments, .. } => {
                 let name = segments.join(".");
                 if let Some(infer) = self.lookup(&name) {
-                    let id = self.push_expr(ExprNode::Variable(QualifiedName(name)), expr.source);
+                    let ir_name = state_variable_name(self, segments, &name);
+                    let id =
+                        self.push_expr(ExprNode::Variable(QualifiedName(ir_name)), expr.source);
                     return Some((id, infer));
                 }
                 if segments.len() >= 2 {
@@ -365,13 +372,13 @@ impl Admitter {
                 let name = segments.join(".");
                 let arity: Option<usize> = match name.as_str() {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
-                    | "tanh" | "abs" | "floor" | "ceil" => Some(1),
-                    "min" | "max" | "atan2" | "pow" => Some(2),
+                    | "tanh" | "abs" | "floor" | "ceil" | "norm" | "transpose" | "length" | "len" => Some(1),
+                    "min" | "max" | "atan2" | "pow" | "dot" => Some(2),
                     _ => {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, min, max, atan2, pow, is_finite)"
+                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, min, max, atan2, pow, is_finite, norm, transpose, dot, length)"
                             ),
                             function.source,
                         );
@@ -389,36 +396,157 @@ impl Admitter {
                     );
                     return None;
                 }
-                let mut lowered = Vec::new();
-                for arg in args {
-                    let (id, infer) = self.lower_expr(arg)?;
-                    if !matches!(infer, Infer::F64 | Infer::HostDeferred) {
-                        self.error(
-                            "E-TYPE-012",
-                            format!("argument to `{name}` must be Float64"),
-                            arg.source,
+                match name.as_str() {
+                    "norm" => {
+                        let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
+                        if !matches!(arg_infer, Infer::Vector { .. } | Infer::HostDeferred) {
+                            self.error(
+                                "E-TYPE-012",
+                                "`norm` expects a Vector argument",
+                                args[0].source,
+                            );
+                            return None;
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![arg_id],
+                            },
+                            expr.source,
                         );
-                        return None;
+                        Some((id, Infer::F64))
                     }
-                    lowered.push(id);
+                    "transpose" => {
+                        let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
+                        match arg_infer {
+                            Infer::Matrix { rows, cols } => {
+                                let id = self.push_expr(
+                                    ExprNode::Call {
+                                        function: QualifiedName(name.clone()),
+                                        arguments: vec![arg_id],
+                                    },
+                                    expr.source,
+                                );
+                                Some((id, Infer::Matrix { rows: cols, cols: rows }))
+                            }
+                            Infer::HostDeferred => {
+                                let id = self.push_expr(
+                                    ExprNode::Call {
+                                        function: QualifiedName(name.clone()),
+                                        arguments: vec![arg_id],
+                                    },
+                                    expr.source,
+                                );
+                                Some((id, Infer::Matrix { rows: None, cols: None }))
+                            }
+                            _ => {
+                                self.error(
+                                    "E-TYPE-012",
+                                    "`transpose` expects a Matrix argument",
+                                    args[0].source,
+                                );
+                                None
+                            }
+                        }
+                    }
+                    "length" | "len" => {
+                        let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
+                        if !matches!(arg_infer, Infer::Vector { .. } | Infer::HostDeferred) {
+                            self.error(
+                                "E-TYPE-012",
+                                "`length` expects a Vector argument",
+                                args[0].source,
+                            );
+                            return None;
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![arg_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::F64))
+                    }
+                    "dot" => {
+                        let (l_id, l_infer) = self.lower_expr(&args[0])?;
+                        let (r_id, r_infer) = self.lower_expr(&args[1])?;
+                        match (&l_infer, &r_infer) {
+                            (Infer::Vector { extent: e1 }, Infer::Vector { extent: e2 }) => {
+                                if let (Some(ext1), Some(ext2)) = (e1, e2) {
+                                    if ext1 != ext2 {
+                                        self.error(
+                                            "E-SHAPE-002",
+                                            format!("dimension mismatch in dot product: {ext1:?} vs {ext2:?}"),
+                                            expr.source,
+                                        );
+                                        return None;
+                                    }
+                                }
+                                let id = self.push_expr(
+                                    ExprNode::Binary {
+                                        operation: emath_ir::BinaryOp::VectorDot,
+                                        left: l_id,
+                                        right: r_id,
+                                    },
+                                    expr.source,
+                                );
+                                Some((id, Infer::F64))
+                            }
+                            (Infer::HostDeferred, _) | (_, Infer::HostDeferred) => {
+                                let id = self.push_expr(
+                                    ExprNode::Binary {
+                                        operation: emath_ir::BinaryOp::VectorDot,
+                                        left: l_id,
+                                        right: r_id,
+                                    },
+                                    expr.source,
+                                );
+                                Some((id, Infer::F64))
+                            }
+                            _ => {
+                                self.error(
+                                    "E-TYPE-012",
+                                    "`dot` expects two Vector arguments",
+                                    expr.source,
+                                );
+                                None
+                            }
+                        }
+                    }
+                    _ => {
+                        let mut lowered = Vec::new();
+                        for arg in args {
+                            let (id, infer) = self.lower_expr(arg)?;
+                            if !matches!(infer, Infer::F64 | Infer::HostDeferred) {
+                                self.error(
+                                    "E-TYPE-012",
+                                    format!("argument to `{name}` must be Float64"),
+                                    arg.source,
+                                );
+                                return None;
+                            }
+                            lowered.push(id);
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: lowered,
+                            },
+                            expr.source,
+                        );
+                        let result = if name == "is_finite" {
+                            Infer::Bool
+                        } else {
+                            Infer::F64
+                        };
+                        Some((id, result))
+                    }
                 }
-                let id = self.push_expr(
-                    ExprNode::Call {
-                        function: QualifiedName(name.clone()),
-                        arguments: lowered,
-                    },
-                    expr.source,
-                );
-                let result = if name == "is_finite" {
-                    Infer::Bool
-                } else {
-                    Infer::F64
-                };
-                Some((id, result))
             }
             ExprKind::Unary { op, value } => {
                 let (id, infer) = self.lower_expr(value)?;
-                match (op, infer) {
+                match (op, &infer) {
                     (SynUnOp::Neg, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred) => {
                         self.record("sema", "negate → strict negate", expr.source);
                         Some((
@@ -478,23 +606,141 @@ impl Admitter {
                 };
                 match op {
                     SynBinOp::Add => {
-                        self.record("sema", "add → strict f64 add", expr.source);
-                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Add, expr, self)?;
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatAdd, expr, l, r, result)
+                        match (&l_infer, &r_infer) {
+                            (Infer::Vector { extent: ext_l }, Infer::Vector { extent: ext_r }) => {
+                                if let (Some(l_e), Some(r_e)) = (ext_l, ext_r) {
+                                    if l_e != r_e {
+                                        self.error(
+                                            "E-SHAPE-005",
+                                            format!("dimension mismatch in vector addition: {l_e:?} vs {r_e:?}"),
+                                            expr.source,
+                                        );
+                                        return None;
+                                    }
+                                }
+                                let res_extent = ext_l.clone().or_else(|| ext_r.clone());
+                                self.record("sema", "vector add", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::VectorAdd, expr, l, r, Infer::Vector { extent: res_extent })
+                            }
+                            (Infer::Matrix { rows: r1, cols: c1 }, Infer::Matrix { rows: r2, cols: c2 }) => {
+                                if let (Some(r1_e), Some(r2_e)) = (r1, r2) {
+                                    if r1_e != r2_e {
+                                        self.error("E-SHAPE-005", "matrix row dimension mismatch in addition", expr.source);
+                                        return None;
+                                    }
+                                }
+                                if let (Some(c1_e), Some(c2_e)) = (c1, c2) {
+                                    if c1_e != c2_e {
+                                        self.error("E-SHAPE-005", "matrix col dimension mismatch in addition", expr.source);
+                                        return None;
+                                    }
+                                }
+                                self.record("sema", "matrix add", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::MatrixAdd, expr, l, r, Infer::Matrix { rows: r1.clone().or_else(|| r2.clone()), cols: c1.clone().or_else(|| c2.clone()) })
+                            }
+                            _ => {
+                                self.record("sema", "add → strict f64 add", expr.source);
+                                let result = combine_numeric(&l_infer, &r_infer, NumericCombine::Add, expr, self)?;
+                                arithmetic(self, emath_ir::BinaryOp::StrictFloatAdd, expr, l, r, result)
+                            }
+                        }
                     }
                     SynBinOp::Sub => {
-                        self.record("sema", "subtract → strict f64 subtract", expr.source);
-                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Add, expr, self)?;
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatSub, expr, l, r, result)
+                        match (&l_infer, &r_infer) {
+                            (Infer::Vector { extent: ext_l }, Infer::Vector { extent: ext_r }) => {
+                                if let (Some(l_e), Some(r_e)) = (ext_l, ext_r) {
+                                    if l_e != r_e {
+                                        self.error(
+                                            "E-SHAPE-005",
+                                            format!("dimension mismatch in vector subtraction: {l_e:?} vs {r_e:?}"),
+                                            expr.source,
+                                        );
+                                        return None;
+                                    }
+                                }
+                                let res_extent = ext_l.clone().or_else(|| ext_r.clone());
+                                self.record("sema", "vector subtract", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::VectorSub, expr, l, r, Infer::Vector { extent: res_extent })
+                            }
+                            (Infer::Matrix { rows: r1, cols: c1 }, Infer::Matrix { rows: r2, cols: c2 }) => {
+                                if let (Some(r1_e), Some(r2_e)) = (r1, r2) {
+                                    if r1_e != r2_e {
+                                        self.error("E-SHAPE-005", "matrix row dimension mismatch in subtraction", expr.source);
+                                        return None;
+                                    }
+                                }
+                                if let (Some(c1_e), Some(c2_e)) = (c1, c2) {
+                                    if c1_e != c2_e {
+                                        self.error("E-SHAPE-005", "matrix col dimension mismatch in subtraction", expr.source);
+                                        return None;
+                                    }
+                                }
+                                self.record("sema", "matrix subtract", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::MatrixSub, expr, l, r, Infer::Matrix { rows: r1.clone().or_else(|| r2.clone()), cols: c1.clone().or_else(|| c2.clone()) })
+                            }
+                            _ => {
+                                self.record("sema", "subtract → strict f64 subtract", expr.source);
+                                let result = combine_numeric(&l_infer, &r_infer, NumericCombine::Add, expr, self)?;
+                                arithmetic(self, emath_ir::BinaryOp::StrictFloatSub, expr, l, r, result)
+                            }
+                        }
                     }
                     SynBinOp::Mul => {
-                        self.record("sema", "multiply → strict f64 multiply", expr.source);
-                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Mul, expr, self)?;
-                        arithmetic(self, emath_ir::BinaryOp::StrictFloatMul, expr, l, r, result)
+                        match (&l_infer, &r_infer) {
+                            (Infer::Vector { extent }, Infer::F64 | Infer::HostDeferred) => {
+                                self.record("sema", "vector scale", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::VectorScale, expr, l, r, Infer::Vector { extent: extent.clone() })
+                            }
+                            (Infer::F64 | Infer::HostDeferred, Infer::Vector { extent }) => {
+                                self.record("sema", "vector scale", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::VectorScale, expr, r, l, Infer::Vector { extent: extent.clone() })
+                            }
+                            (Infer::Matrix { rows, cols }, Infer::F64 | Infer::HostDeferred) => {
+                                self.record("sema", "matrix scale", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::MatrixScale, expr, l, r, Infer::Matrix { rows: rows.clone(), cols: cols.clone() })
+                            }
+                            (Infer::F64 | Infer::HostDeferred, Infer::Matrix { rows, cols }) => {
+                                self.record("sema", "matrix scale", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::MatrixScale, expr, r, l, Infer::Matrix { rows: rows.clone(), cols: cols.clone() })
+                            }
+                            (Infer::Matrix { rows, cols }, Infer::Vector { extent }) => {
+                                if let (Some(c_e), Some(v_e)) = (cols, extent) {
+                                    if c_e != v_e {
+                                        self.error(
+                                            "E-SHAPE-002",
+                                            format!("dimension mismatch in matrix-vector multiplication: matrix columns {c_e:?} != vector length {v_e:?}"),
+                                            expr.source,
+                                        );
+                                        return None;
+                                    }
+                                }
+                                self.record("sema", "matrix mul vector", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::MatrixMulVector, expr, l, r, Infer::Vector { extent: rows.clone() })
+                            }
+                            (Infer::Matrix { rows: r1, cols: c1 }, Infer::Matrix { rows: r2, cols: c2 }) => {
+                                if let (Some(c1_e), Some(r2_e)) = (c1, r2) {
+                                    if c1_e != r2_e {
+                                        self.error(
+                                            "E-SHAPE-002",
+                                            format!("dimension mismatch in matrix multiplication: left columns {c1_e:?} != right rows {r2_e:?}"),
+                                            expr.source,
+                                        );
+                                        return None;
+                                    }
+                                }
+                                self.record("sema", "matrix mul matrix", expr.source);
+                                arithmetic(self, emath_ir::BinaryOp::MatrixMulMatrix, expr, l, r, Infer::Matrix { rows: r1.clone(), cols: c2.clone() })
+                            }
+                            _ => {
+                                self.record("sema", "multiply → strict f64 multiply", expr.source);
+                                let result = combine_numeric(&l_infer, &r_infer, NumericCombine::Mul, expr, self)?;
+                                arithmetic(self, emath_ir::BinaryOp::StrictFloatMul, expr, l, r, result)
+                            }
+                        }
                     }
                     SynBinOp::Div => {
                         self.record("sema", "divide → strict f64 divide", expr.source);
-                        let result = combine_numeric(l_infer, r_infer, NumericCombine::Div, expr, self)?;
+                        let result = combine_numeric(&l_infer, &r_infer, NumericCombine::Div, expr, self)?;
                         arithmetic(self, emath_ir::BinaryOp::StrictFloatDiv, expr, l, r, result)
                     }
                     SynBinOp::Pow => {
@@ -532,7 +778,7 @@ impl Admitter {
                         if matches!(
                             op,
                             SynBinOp::Lt | SynBinOp::Le | SynBinOp::Gt | SynBinOp::Ge
-                        ) && !comparable_numeric(l_infer, r_infer)
+                        ) && !comparable_numeric(&l_infer, &r_infer)
                         {
                             self.error(
                                 "E-UNIT-101",
@@ -616,6 +862,155 @@ impl Admitter {
                     then_infer,
                 ))
             }
+            ExprKind::List(items) => {
+                if items.is_empty() {
+                    self.error(
+                        "E-SHAPE-004",
+                        "empty vector literal is not allowed",
+                        expr.source,
+                    );
+                    return None;
+                }
+                let is_matrix = items.iter().all(|item| matches!(&item.kind, ExprKind::List(_)));
+                if is_matrix {
+                    let num_rows = items.len();
+                    let mut matrix_rows = Vec::with_capacity(num_rows);
+                    let mut expected_cols = None;
+                    for row_item in items {
+                        let ExprKind::List(row_elements) = &row_item.kind else { unreachable!() };
+                        if row_elements.is_empty() {
+                            self.error(
+                                "E-SHAPE-004",
+                                "empty matrix row is not allowed",
+                                row_item.source,
+                            );
+                            return None;
+                        }
+                        if let Some(cols) = expected_cols {
+                            if row_elements.len() != cols {
+                                self.error(
+                                    "E-SHAPE-005",
+                                    format!("matrix rows must have uniform column counts: expected {cols}, found {}", row_elements.len()),
+                                    row_item.source,
+                                );
+                                return None;
+                            }
+                        } else {
+                            expected_cols = Some(row_elements.len());
+                        }
+                        let mut lowered_row = Vec::with_capacity(row_elements.len());
+                        for elem in row_elements {
+                            let (id, infer) = self.lower_expr(elem)?;
+                            if !matches!(infer, Infer::F64 | Infer::HostDeferred | Infer::Unit { .. }) {
+                                self.error(
+                                    "E-TYPE-012",
+                                    "matrix element must be numeric",
+                                    elem.source,
+                                );
+                                return None;
+                            }
+                            lowered_row.push(id);
+                        }
+                        matrix_rows.push(lowered_row);
+                    }
+                    self.record("sema", "matrix literal", expr.source);
+                    let id = self.push_expr(ExprNode::Matrix(matrix_rows), expr.source);
+                    Some((id, Infer::Matrix {
+                        rows: Some(Extent::Fixed(num_rows)),
+                        cols: expected_cols.map(Extent::Fixed),
+                    }))
+                } else {
+                    let count = items.len();
+                    let mut lowered = Vec::with_capacity(count);
+                    for item in items {
+                        let (id, infer) = self.lower_expr(item)?;
+                        if !matches!(infer, Infer::F64 | Infer::HostDeferred | Infer::Unit { .. }) {
+                            self.error(
+                                "E-TYPE-012",
+                                "vector element must be numeric",
+                                item.source,
+                            );
+                            return None;
+                        }
+                        lowered.push(id);
+                    }
+                    self.record("sema", "vector literal", expr.source);
+                    let id = self.push_expr(ExprNode::Vector(lowered), expr.source);
+                    Some((id, Infer::Vector {
+                        extent: Some(Extent::Fixed(count)),
+                    }))
+                }
+            }
+            ExprKind::Index { value, indices } => {
+                let (target_id, target_infer) = self.lower_expr(value)?;
+                match target_infer {
+                    Infer::Vector { .. } => {
+                        if indices.len() != 1 {
+                            self.error(
+                                "E-SHAPE-006",
+                                format!("vector index requires 1 subscript, found {}", indices.len()),
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        let (idx_id, idx_infer) = self.lower_expr(&indices[0])?;
+                        if !matches!(idx_infer, Infer::F64 | Infer::HostDeferred) {
+                            self.error(
+                                "E-SHAPE-006",
+                                "vector index must be a non-negative integer or Float64 whole number",
+                                indices[0].source,
+                            );
+                            return None;
+                        }
+                        self.record("sema", "vector index", expr.source);
+                        let id = self.push_expr(
+                            ExprNode::Index {
+                                value: target_id,
+                                indices: vec![idx_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::F64))
+                    }
+                    Infer::Matrix { .. } => {
+                        if indices.len() != 2 {
+                            self.error(
+                                "E-SHAPE-006",
+                                format!("matrix index requires 2 subscripts (row, col), found {}", indices.len()),
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        let (r_id, r_infer) = self.lower_expr(&indices[0])?;
+                        let (c_id, c_infer) = self.lower_expr(&indices[1])?;
+                        if !matches!(r_infer, Infer::F64 | Infer::HostDeferred) || !matches!(c_infer, Infer::F64 | Infer::HostDeferred) {
+                            self.error(
+                                "E-SHAPE-006",
+                                "matrix indices must be non-negative integers or Float64 whole numbers",
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        self.record("sema", "matrix index", expr.source);
+                        let id = self.push_expr(
+                            ExprNode::Index {
+                                value: target_id,
+                                indices: vec![r_id, c_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::F64))
+                    }
+                    _ => {
+                        self.error(
+                            "E-TYPE-012",
+                            "indexing is only supported on Vector and Matrix values",
+                            value.source,
+                        );
+                        None
+                    }
+                }
+            }
             other => {
                 self.error(
                     E_UNSUPPORTED_TYPE,
@@ -690,10 +1085,46 @@ enum NumericCombine {
 fn infer_from_node(node: &TypeNode) -> Infer {
     match node {
         TypeNode::Bool => Infer::Bool,
+        TypeNode::Vector { extent, .. } => Infer::Vector { extent: extent.clone() },
+        TypeNode::Matrix { rows, cols, .. } => Infer::Matrix { rows: rows.clone(), cols: cols.clone() },
         TypeNode::UnitRef { name } => unit_infer_from_name(name),
         TypeNode::Refinement { base, .. } | TypeNode::Interval(base) => infer_from_node(base),
         TypeNode::Opaque { .. } => Infer::Opaque,
         _ => Infer::F64,
+    }
+}
+
+fn extents_compatible(got: Option<&Extent>, declared: Option<&Extent>) -> bool {
+    match (got, declared) {
+        (Some(got), Some(declared)) => got == declared,
+        _ => true,
+    }
+}
+
+fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
+    match (got, declared) {
+        (Infer::HostDeferred, _) | (_, Infer::HostDeferred) => true,
+        (Infer::Vector { extent: got }, Infer::Vector { extent: declared }) => {
+            extents_compatible(got.as_ref(), declared.as_ref())
+        }
+        (
+            Infer::Matrix {
+                rows: got_rows,
+                cols: got_cols,
+            },
+            Infer::Matrix {
+                rows: declared_rows,
+                cols: declared_cols,
+            },
+        ) => {
+            extents_compatible(got_rows.as_ref(), declared_rows.as_ref())
+                && extents_compatible(got_cols.as_ref(), declared_cols.as_ref())
+        }
+        (Infer::Unit { dims: got, .. }, Infer::Unit { dims: declared, .. }) => got == declared,
+        (Infer::F64, Infer::F64)
+        | (Infer::Bool, Infer::Bool)
+        | (Infer::Opaque, Infer::Opaque) => true,
+        _ => false,
     }
 }
 
@@ -712,7 +1143,7 @@ fn unit_infer_from_name(name: &str) -> Infer {
     Infer::F64
 }
 
-fn comparable_numeric(left: Infer, right: Infer) -> bool {
+fn comparable_numeric(left: &Infer, right: &Infer) -> bool {
     match (left, right) {
         (Infer::F64, Infer::F64) => true,
         (Infer::HostDeferred, Infer::F64)
@@ -735,8 +1166,8 @@ fn comparable_numeric(left: Infer, right: Infer) -> bool {
 }
 
 fn combine_numeric(
-    left: Infer,
-    right: Infer,
+    left: &Infer,
+    right: &Infer,
     combine: NumericCombine,
     expr: &Expr,
     admitter: &mut Admitter,
@@ -754,15 +1185,12 @@ fn combine_numeric(
         (Infer::HostDeferred, Infer::F64, _) | (Infer::F64, Infer::HostDeferred, _) => {
             Some(Infer::F64)
         }
-        (Infer::HostDeferred, Infer::Unit { .. }, NumericCombine::Add)
-        | (Infer::Unit { .. }, Infer::HostDeferred, NumericCombine::Add) => {
-            if let Infer::Unit { dims, family } = left {
-                Some(Infer::Unit { dims, family })
-            } else if let Infer::Unit { dims, family } = right {
-                Some(Infer::Unit { dims, family })
-            } else {
-                Some(Infer::F64)
-            }
+        (Infer::HostDeferred, Infer::Unit { dims, family }, NumericCombine::Add)
+        | (Infer::Unit { dims, family }, Infer::HostDeferred, NumericCombine::Add) => {
+            Some(Infer::Unit {
+                dims: *dims,
+                family: *family,
+            })
         }
         (Infer::HostDeferred, Infer::Unit { .. }, NumericCombine::Mul | NumericCombine::Div)
         | (Infer::Unit { .. }, Infer::HostDeferred, NumericCombine::Mul | NumericCombine::Div) => {
@@ -789,10 +1217,10 @@ fn combine_numeric(
             },
             NumericCombine::Add,
         ) => {
-            let dummy_left = Unit::with_family("left".into(), left_dims, 1.0, 0.0, left_family);
-            let dummy_right = Unit::with_family("right".into(), right_dims, 1.0, 0.0, right_family);
+            let dummy_left = Unit::with_family("left".into(), *left_dims, 1.0, 0.0, *left_family);
+            let dummy_right = Unit::with_family("right".into(), *right_dims, 1.0, 0.0, *right_family);
             match check_compatible(&dummy_left, &dummy_right) {
-                Ok(()) => Some(left),
+                Ok(()) => Some(left.clone()),
                 Err(error) => {
                     admitter.error(error.code, error.message, expr.source);
                     None
@@ -801,11 +1229,14 @@ fn combine_numeric(
         }
         (Infer::Unit { dims, family }, Infer::F64, NumericCombine::Mul | NumericCombine::Div)
         | (Infer::F64, Infer::Unit { dims, family }, NumericCombine::Mul) => {
-            Some(Infer::Unit { dims, family })
+            Some(Infer::Unit {
+                dims: *dims,
+                family: *family,
+            })
         }
         (Infer::F64, Infer::Unit { dims, family }, NumericCombine::Div) => Some(Infer::Unit {
-            dims: UnitDim::one().div(dims),
-            family,
+            dims: UnitDim::one().div(*dims),
+            family: *family,
         }),
         (
             Infer::Unit {
@@ -818,8 +1249,8 @@ fn combine_numeric(
             },
             NumericCombine::Mul,
         ) => {
-            let dummy_left = Unit::with_family("left".into(), left_dims, 1.0, 0.0, left_family);
-            let dummy_right = Unit::with_family("right".into(), right_dims, 1.0, 0.0, right_family);
+            let dummy_left = Unit::with_family("left".into(), *left_dims, 1.0, 0.0, *left_family);
+            let dummy_right = Unit::with_family("right".into(), *right_dims, 1.0, 0.0, *right_family);
             match dummy_left.mul(&dummy_right) {
                 Ok(product) => Some(Infer::from_unit(&product)),
                 Err(error) => {
@@ -839,8 +1270,8 @@ fn combine_numeric(
             },
             NumericCombine::Div,
         ) => {
-            let dummy_left = Unit::with_family("left".into(), left_dims, 1.0, 0.0, left_family);
-            let dummy_right = Unit::with_family("right".into(), right_dims, 1.0, 0.0, right_family);
+            let dummy_left = Unit::with_family("left".into(), *left_dims, 1.0, 0.0, *left_family);
+            let dummy_right = Unit::with_family("right".into(), *right_dims, 1.0, 0.0, *right_family);
             match dummy_left.div(&dummy_right) {
                 Ok(quotient) => Some(Infer::from_unit(&quotient)),
                 Err(error) => {
@@ -984,6 +1415,33 @@ fn map_type(
     }
 }
 
+fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>) -> bool {
+    let SynTypeKind::Path { segments, .. } = &arg.kind else {
+        return false;
+    };
+    let leaf = segments.last().map_or("", String::as_str);
+    if host_types.contains(leaf) {
+        return true;
+    }
+    matches!(
+        leaf,
+        "Real"
+            | "Float64"
+            | "float64"
+            | "f64"
+            | "Bool"
+            | "Self"
+            | "NonNegative"
+            | "Positive"
+            | "Probability"
+            | "Per"
+            | "Interval"
+            | "Vector"
+            | "Matrix"
+            | "Tensor"
+    ) || lookup_unit(leaf).is_ok()
+}
+
 fn map_shape_type(
     leaf: &str,
     generic_args: &[TypeExpr],
@@ -991,11 +1449,16 @@ fn map_shape_type(
     diagnostics: &mut Diagnostics,
     host_types: &BTreeSet<String>,
 ) -> Option<TypeNode> {
-    let element = generic_args
-        .first()
-        .and_then(|arg| map_type(arg, diagnostics, host_types))
-        .unwrap_or(TypeNode::Float64);
-    let extent_args = generic_args.get(1..).unwrap_or(&[]);
+    // `Vector[3]` / `Matrix[2, 2]` treat all args as extents (element defaults
+    // to Float64). `Vector[Float64, 3]` / `Matrix[Real, m, n]` name the element
+    // first, then the extents.
+    let (element, extent_args) = match generic_args.first() {
+        Some(first) if is_element_type_arg(first, host_types) => {
+            let element = map_type(first, diagnostics, host_types)?;
+            (element, generic_args.get(1..).unwrap_or(&[]))
+        }
+        _ => (TypeNode::Float64, generic_args),
+    };
     let mut extents = Vec::new();
     for arg in extent_args {
         match &arg.kind {
@@ -1014,7 +1477,7 @@ fn map_shape_type(
             }
             SynTypeKind::Path { segments, .. } => {
                 let name = segments.last().map_or("", String::as_str);
-                extents.push(emath_ir::Extent::Symbolic(name.to_string()));
+                extents.push(emath_ir::Extent::from_surface(name));
             }
             _ => {
                 diagnostics.error(
@@ -1040,31 +1503,16 @@ fn map_shape_type(
     match leaf {
         "Vector" => Some(TypeNode::Vector {
             element: Box::new(element),
-            extent: extents.first().map(|extent| match extent {
-                emath_ir::Extent::Fixed(size) => size.to_string(),
-                emath_ir::Extent::Symbolic(name) => name.clone(),
-            }),
+            extent: extents.first().cloned(),
         }),
         "Matrix" => Some(TypeNode::Matrix {
             element: Box::new(element),
-            rows: extents.first().map(|extent| match extent {
-                emath_ir::Extent::Fixed(size) => size.to_string(),
-                emath_ir::Extent::Symbolic(name) => name.clone(),
-            }),
-            cols: extents.get(1).map(|extent| match extent {
-                emath_ir::Extent::Fixed(size) => size.to_string(),
-                emath_ir::Extent::Symbolic(name) => name.clone(),
-            }),
+            rows: extents.first().cloned(),
+            cols: extents.get(1).cloned(),
         }),
         _ => Some(TypeNode::Tensor {
             element: Box::new(element),
-            shape: extents
-                .iter()
-                .map(|extent| match extent {
-                    emath_ir::Extent::Fixed(size) => size.to_string(),
-                    emath_ir::Extent::Symbolic(name) => name.clone(),
-                })
-                .collect(),
+            shape: extents,
         }),
     }
 }
@@ -1076,7 +1524,7 @@ fn extent_from_type(
     match &ty.kind {
         SynTypeKind::Path { segments, .. } => {
             let name = segments.last().map_or("", String::as_str);
-            Some(emath_ir::Extent::Symbolic(name.to_string()))
+            Some(emath_ir::Extent::from_surface(name))
         }
         _ => {
             diagnostics.error(
@@ -1145,8 +1593,11 @@ pub fn admit_declaration(
     admitter.host_types = host_types.clone();
     let kind_label = decl.as_kind.clone();
     let is_policy = kind_label == "policy";
+    let is_model = kind_label == "model";
     let schema = if is_policy {
         KindSchema::core_policy()
+    } else if is_model {
+        KindSchema::core_model()
     } else {
         KindSchema::core_function()
     };
@@ -1327,9 +1778,6 @@ pub fn admit_declaration(
         .iter()
         .map(|f| (f.name.clone(), admitter.type_of(f.ty)))
         .collect();
-    for output in &outputs_raw {
-        let _ = output;
-    }
 
     // Definitions.
     let mut definitions: BTreeMap<String, ExprId> = BTreeMap::new();
@@ -1361,20 +1809,42 @@ pub fn admit_declaration(
                 continue;
             }
             match admitter.lower_expr(value) {
-                Some((id, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred)) => {
+                Some((
+                    id,
+                    infer @ (Infer::F64
+                    | Infer::Unit { .. }
+                    | Infer::HostDeferred
+                    | Infer::Vector { .. }
+                    | Infer::Matrix { .. }),
+                )) => {
+                    if let Some(declared) = outputs_raw
+                        .iter()
+                        .find(|output| output.name == *name)
+                        .map(|output| admitter.type_of(output.ty))
+                    {
+                        if !infer_conforms(&infer, &declared) {
+                            admitter.error(
+                                "E-TYPE-012",
+                                format!(
+                                    "definition `{name}` has type {infer:?}, expected {declared:?}"
+                                ),
+                                value.source,
+                            );
+                        }
+                    }
                     admitter.record(
                         "sema",
-                        format!("definition `{name}` typed numeric"),
+                        format!("definition `{name}` typed"),
                         value.source,
                     );
                     definitions.insert(name.clone(), id);
                     // Later definitions may name earlier ones (`b = a * a`).
-                    admitter.definitions.insert(name.clone(), id);
+                    admitter.definitions.insert(name.clone(), (id, infer));
                 }
                 Some((_, Infer::Bool)) => {
                     admitter.error(
                         "E-TYPE-012",
-                        format!("definition `{name}` must be Float64 in Phase 1"),
+                        format!("definition `{name}` must be numeric or tensor in Phase 1"),
                         value.source,
                     );
                 }
@@ -1389,6 +1859,33 @@ pub fn admit_declaration(
             }
         }
     }
+    admit_equations(&mut admitter, &by_name, &mut definitions, is_model);
+    if is_model
+        && definitions.is_empty()
+        && !by_name.contains_key("definitions")
+        && !by_name.contains_key("equations")
+        && !by_name.contains_key("equation")
+    {
+        admitter.error(
+            "E-KIND-011",
+            "kind `model` requires section `definitions` or `equations`",
+            decl.head_source,
+        );
+    }
+    if is_model
+        && (by_name.contains_key("equations") || by_name.contains_key("equation"))
+    {
+        for field in &state {
+            let rate_name = format!("der_{}", field.name);
+            if !definitions.contains_key(&rate_name) {
+                admitter.error(
+                    "E-NAME-025",
+                    format!("state `{}` has no `derivative({})` equation", field.name, field.name),
+                    field.source,
+                );
+            }
+        }
+    }
     for output in &outputs_raw {
         if !definitions.contains_key(&output.name) {
             admitter.error(
@@ -1399,8 +1896,29 @@ pub fn admit_declaration(
         }
     }
     if outputs_omitted && schema.default_for("outputs") == Some("definitions") {
-        let ty = admitter.type_id(TypeNode::Float64);
         for name in definitions.keys() {
+            if name.starts_with("der_") {
+                continue;
+            }
+            let infer = admitter
+                .definitions
+                .get(name)
+                .map(|(_, inf)| inf.clone())
+                .unwrap_or(Infer::F64);
+            let node = match infer {
+                Infer::Bool => TypeNode::Bool,
+                Infer::Vector { extent } => TypeNode::Vector {
+                    element: Box::new(TypeNode::Float64),
+                    extent,
+                },
+                Infer::Matrix { rows, cols } => TypeNode::Matrix {
+                    element: Box::new(TypeNode::Float64),
+                    rows,
+                    cols,
+                },
+                _ => TypeNode::Float64,
+            };
+            let ty = admitter.type_id(node);
             outputs_raw.push(Field {
                 name: name.clone(),
                 ty,
@@ -1409,11 +1927,10 @@ pub fn admit_declaration(
             });
         }
     }
-    admitter.definitions = definitions.clone();
 
     // Constructors.
     let mut constructors: Vec<Constructor> = Vec::new();
-    if is_policy {
+    if is_policy || is_model {
         if let Some(section) = by_name.get("constructors") {
             for stmt in &section.suite.statements {
                 if let StmtKind::FnDecl {
@@ -1463,7 +1980,7 @@ pub fn admit_declaration(
                     );
                 }
             }
-        } else {
+        } else if is_policy {
             admitter.error(
                 "E-CTOR-031",
                 "policy declarations require a `constructors:` section with a public `new`",
@@ -1489,7 +2006,7 @@ pub fn admit_declaration(
             section.source,
         );
     }
-    if !is_policy && !state.is_empty() {
+    if !is_policy && !is_model && !state.is_empty() {
         admitter.error(
             "E-KIND-010",
             "function declarations cannot have state in Phase 1",
@@ -1624,31 +2141,39 @@ pub fn admit_declaration(
                     StmtKind::Given { name, value } => {
                         if !admitter.inputs.contains_key(name)
                             && !admitter.params.contains_key(name)
+                            && !(is_model && admitter.states.contains_key(name))
                         {
                             admitter.error(
                                 "E-NAME-026",
                                 format!(
-                                    "`given` name `{name}` is not an input or constructor parameter"
+                                    "`given` name `{name}` is not an input, constructor parameter, or model state field"
                                 ),
                                 inner.source,
                             );
                             continue;
                         }
                         match admitter.lower_expr(value) {
-                            Some((id, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred)) => {
+                            Some((
+                                id,
+                                Infer::F64
+                                | Infer::Unit { .. }
+                                | Infer::HostDeferred
+                                | Infer::Vector { .. }
+                                | Infer::Matrix { .. },
+                            )) => {
                                 given.insert(name.clone(), id);
                             }
                             Some((_, Infer::Bool)) => {
                                 admitter.error(
                                     "E-TYPE-012",
-                                    format!("`given {name}` must be Float64"),
+                                    format!("`given {name}` must be numeric or tensor"),
                                     inner.source,
                                 );
                             }
                             Some((_, Infer::Opaque)) => {
                                 admitter.error(
                                     "E-TYPE-012",
-                                    format!("`given {name}` must be Float64; opaque host values are not scalars"),
+                                    format!("`given {name}` must be numeric; opaque host values are not scalars"),
                                     inner.source,
                                 );
                             }
@@ -1660,6 +2185,8 @@ pub fn admit_declaration(
                         Some((
                             _,
                             Infer::F64
+                            | Infer::Vector { .. }
+                            | Infer::Matrix { .. }
                             | Infer::Unit { .. }
                             | Infer::HostDeferred
                             | Infer::Opaque,
@@ -1682,7 +2209,7 @@ pub fn admit_declaration(
                     }
                 }
             }
-            if is_policy {
+            if is_policy || (is_model && !constructors.is_empty()) {
                 // constructor parameters must be supplied by `given` values
                 let constructor_params: Vec<String> = constructors
                     .first()
@@ -1695,6 +2222,21 @@ pub fn admit_declaration(
                             format!(
                                 "policy example `{}` must supply constructor parameter `{param}` via `given`",
                                 example.generic.clone().unwrap_or_default()
+                            ),
+                            example.source,
+                        );
+                    }
+                }
+            }
+            if is_model && constructors.is_empty() {
+                for field in &state {
+                    if !given.contains_key(&field.name) {
+                        admitter.error(
+                            "E-NAME-027",
+                            format!(
+                                "model example `{}` must supply state `{name}` via `given`",
+                                example.generic.clone().unwrap_or_default(),
+                                name = field.name
                             ),
                             example.source,
                         );
@@ -1725,7 +2267,13 @@ pub fn admit_declaration(
     let declaration = Declaration {
         id: emath_ir::DeclarationId(0),
         name: QualifiedName::single(decl.name.clone()),
-        kind: QualifiedName::single(if is_policy { "policy" } else { "function" }),
+        kind: QualifiedName::single(if is_policy {
+            "policy"
+        } else if is_model {
+            "model"
+        } else {
+            "function"
+        }),
         kind_label,
         inputs: input_fields,
         outputs: output_fields,
@@ -1755,6 +2303,196 @@ pub fn admit_declaration(
 
 fn ty_display(node: &TypeNode) -> String {
     node.display_name()
+}
+
+fn state_variable_name(admitter: &Admitter, segments: &[String], name: &str) -> String {
+    if name.starts_with("state.") {
+        return name.to_string();
+    }
+    if segments.len() == 1
+        && admitter.states.contains_key(&segments[0])
+        && !admitter.inputs.contains_key(&segments[0])
+        && !admitter.params.contains_key(&segments[0])
+        && !admitter.definitions.contains_key(&segments[0])
+    {
+        return format!("state.{}", segments[0]);
+    }
+    name.to_string()
+}
+
+fn path_segments(expr: &Expr) -> Option<&[String]> {
+    match &expr.kind {
+        ExprKind::Path { segments, .. } => Some(segments),
+        _ => None,
+    }
+}
+
+fn is_time_name(name: &str) -> bool {
+    matches!(name, "t" | "time")
+}
+
+fn is_der_call(function: &Expr) -> bool {
+    path_segments(function).is_some_and(|segments| {
+        segments.len() == 1 && matches!(segments[0].as_str(), "der" | "derivative")
+    })
+}
+
+/// Explicit `derivative(state)` / `der(state)` / `derivative state wrt t`.
+fn unwrap_derivative(expr: &Expr) -> Option<(&Expr, Option<&[Expr]>)> {
+    match &expr.kind {
+        ExprKind::Derivative { value, wrt } => {
+            let wrt = wrt.as_deref();
+            if let ExprKind::Derivative {
+                value: inner,
+                wrt: None,
+            } = &value.kind
+            {
+                Some((inner, wrt))
+            } else {
+                Some((value.as_ref(), wrt))
+            }
+        }
+        ExprKind::Call { function, args } if args.len() == 1 && is_der_call(function) => {
+            Some((&args[0], None))
+        }
+        _ => None,
+    }
+}
+
+fn derivative_state_name(expr: &Expr) -> Result<Option<String>, (&'static str, String)> {
+    let Some((value, wrt)) = unwrap_derivative(expr) else {
+        return Ok(None);
+    };
+    if let Some(wrt) = wrt {
+        if wrt.len() != 1 {
+            return Err((
+                "E-TYPE-010",
+                "only a single independent variable `t`/`time` is admitted on `derivative`".into(),
+            ));
+        }
+        let Some(segments) = path_segments(&wrt[0]) else {
+            return Err((
+                "E-TYPE-010",
+                "derivative independent variable must be `t` or `time`".into(),
+            ));
+        };
+        if segments.len() != 1 || !is_time_name(&segments[0]) {
+            return Err((
+                "E-TYPE-010",
+                "derivative independent variable must be `t` or `time`".into(),
+            ));
+        }
+    }
+    let Some(segments) = path_segments(value) else {
+        return Err((
+            "E-TYPE-010",
+            "only `derivative(state)` of a named state field is admitted".into(),
+        ));
+    };
+    let name = if segments.first().map(String::as_str) == Some("state") {
+        segments.get(1)
+    } else {
+        segments.first()
+    };
+    let Some(name) = name.filter(|name| !name.is_empty()) else {
+        return Err((
+            "E-TYPE-010",
+            "only `derivative(state)` of a named state field is admitted".into(),
+        ));
+    };
+    Ok(Some(name.clone()))
+}
+
+fn admit_equations(
+    admitter: &mut Admitter,
+    by_name: &BTreeMap<&str, &Section>,
+    definitions: &mut BTreeMap<String, ExprId>,
+    is_model: bool,
+) {
+    for section_name in ["equations", "equation"] {
+        let Some(section) = by_name.get(section_name) else {
+            continue;
+        };
+        if !is_model {
+            admitter.error(
+                "E-KIND-010",
+                "equations are only admitted on `emath model` declarations",
+                section.source,
+            );
+            continue;
+        }
+        for stmt in &section.suite.statements {
+            let (left, right) = match &stmt.kind {
+                StmtKind::Equation { left, right } => (left, right),
+                _ => {
+                    admitter.error(
+                        "E-SYN-101",
+                        "only `derivative(state) = rhs` equations are allowed in `equations:`",
+                        stmt.source,
+                    );
+                    continue;
+                }
+            };
+            let state_name = match derivative_state_name(left) {
+                Ok(Some(name)) => name,
+                Ok(None) => {
+                    admitter.error(
+                        "E-TYPE-010",
+                        "only explicit `derivative(state) = rhs` equations are admitted",
+                        left.source,
+                    );
+                    continue;
+                }
+                Err((code, message)) => {
+                    admitter.error(code, message, left.source);
+                    continue;
+                }
+            };
+            if !admitter.states.contains_key(&state_name) {
+                admitter.error(
+                    E_UNKNOWN_VARIABLE,
+                    format!("unknown state field `{state_name}` in derivative"),
+                    left.source,
+                );
+                continue;
+            }
+            let rate_name = format!("der_{state_name}");
+            if definitions.contains_key(&rate_name) {
+                admitter.error(
+                    E_DUPLICATE_FIELD,
+                    format!("duplicate rate `{rate_name}`"),
+                    left.source,
+                );
+                continue;
+            }
+            match admitter.lower_expr(right) {
+                Some((
+                    id,
+                    infer @ (Infer::F64
+                    | Infer::Unit { .. }
+                    | Infer::HostDeferred
+                    | Infer::Vector { .. }
+                    | Infer::Matrix { .. }),
+                )) => {
+                    admitter.record(
+                        "sema",
+                        format!("rate `{rate_name}` typed"),
+                        right.source,
+                    );
+                    definitions.insert(rate_name.clone(), id);
+                    admitter.definitions.insert(rate_name, (id, infer));
+                }
+                Some((_, Infer::Bool | Infer::Opaque)) => {
+                    admitter.error(
+                        "E-TYPE-012",
+                        format!("rate `der_{state_name}` must be numeric or tensor"),
+                        right.source,
+                    );
+                }
+                None => {}
+            }
+        }
+    }
 }
 
 fn is_infer_marker(ty: &TypeExpr) -> bool {
@@ -1943,13 +2681,20 @@ fn admit_constructor(
                             continue;
                         }
                         match admitter.lower_expr(value) {
-                            Some((id, Infer::F64 | Infer::Unit { .. } | Infer::HostDeferred)) => {
+                            Some((
+                                id,
+                                Infer::F64
+                                | Infer::Unit { .. }
+                                | Infer::HostDeferred
+                                | Infer::Vector { .. }
+                                | Infer::Matrix { .. },
+                            )) => {
                                 assignments.insert(name.clone(), id);
                             }
                             Some((_, Infer::Bool)) => {
                                 admitter.error(
                                     "E-TYPE-012",
-                                    format!("state field `{name}` must be Float64"),
+                                    format!("state field `{name}` must be numeric or tensor"),
                                     value.source,
                                 );
                             }
@@ -2685,11 +3430,11 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
-        if decl.as_kind != "function" && decl.as_kind != "policy" {
+        if decl.as_kind != "function" && decl.as_kind != "policy" && decl.as_kind != "model" {
             diagnostics.error(
                 "E-KIND-100",
                 format!(
-                    "declaration type `{}` is outside the Phase 1 subset (function, policy)",
+                    "declaration type `{}` is outside the Phase 1 subset (function, policy, model)",
                     decl.as_kind
                 ),
                 decl.head_source,

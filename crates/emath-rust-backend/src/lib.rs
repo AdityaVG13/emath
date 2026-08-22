@@ -17,7 +17,7 @@ use emath_rust_ir::ast::{
     escape_ident, snake_case, BinOp, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item,
     Module, Param, Stmt, StructDef, TestDef, Ty, UnOp, Visibility, RUST_KEYWORDS,
 };
-use emath_rust_ir::render::render_module;
+use emath_rust_ir::render::{render_expr, render_module};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
@@ -433,6 +433,18 @@ impl BackendInput<'_> {
             }
             goals.clear();
 
+            if declaration.kind_label == "model" && !emit_free_fn {
+                self.emit_model_step_methods(
+                    package,
+                    declaration,
+                    &name,
+                    &input_names,
+                    &state_names,
+                    &mut methods,
+                    &mut assumptions,
+                )?;
+            }
+
             if emit_free_fn {
                 for method in methods {
                     items.push(Item::Fn(method));
@@ -511,6 +523,24 @@ impl BackendInput<'_> {
                                 "constructor invariants must hold for this example".to_string(),
                             )],
                         }
+                    } else if !declaration.state.is_empty() {
+                        let fields = declaration
+                            .state
+                            .iter()
+                            .map(|field| {
+                                if !given_names.contains(&field.name) {
+                                    return Err(BackendError::MissingGiven(field.name.clone()));
+                                }
+                                Ok((
+                                    field.name.clone(),
+                                    Expr::Var(escape_ident(&field.name)),
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Expr::StructLiteral {
+                            name: struct_name.clone(),
+                            fields,
+                        }
                     } else {
                         Expr::StructLiteral {
                             name: struct_name.clone(),
@@ -537,7 +567,7 @@ impl BackendInput<'_> {
                 // them (Phase 1: one evaluate goal per declaration).
                 let mut expect_names: Vec<String> = given_names.clone();
                 for definition in declaration.definitions.keys() {
-                    if given_names.contains(definition) {
+                    if given_names.contains(definition) || definition.starts_with("der_") {
                         continue;
                     }
                     statements.push(Stmt::Let {
@@ -547,21 +577,24 @@ impl BackendInput<'_> {
                     expect_names.push(definition.clone());
                 }
                 if let Some(expect) = test.expect {
-                    let expect_program = lower_definition(package, expect, &expect_names, &[])
-                        .map_err(BackendError::Lowering)?;
+                    let expect_program =
+                        lower_definition(package, expect, &expect_names, &state_names)
+                            .map_err(BackendError::Lowering)?;
                     add_obligations(&expect_program, &mut assumptions);
                     // The `expect` expression is a Boolean comparison; assert it
                     // with a real macro invocation (rendered via `Expr::Macro`).
                     statements.push(Stmt::Expr(Expr::Macro {
                         name: "assert".to_string(),
-                        args: vec![value_expr(&expect_program, &expect_names, &[])?],
+                        args: vec![value_expr(&expect_program, &expect_names, &state_names)?],
                     }));
                 } else {
                     // Worked example: execute the computation, assert nothing.
                     let unused = declaration
                         .definitions
                         .keys()
-                        .find(|definition| !given_names.contains(definition))
+                        .find(|definition| {
+                            !given_names.contains(definition) && !definition.starts_with("der_")
+                        })
                         .cloned()
                         .unwrap_or_else(|| "actual".to_string());
                     statements.push(Stmt::Let {
@@ -626,6 +659,277 @@ impl BackendInput<'_> {
         )
     }
 
+    fn emit_model_step_methods(
+        &self,
+        package: &SemanticPackage,
+        declaration: &emath_ir::Declaration,
+        owner: &str,
+        input_names: &[String],
+        state_names: &[String],
+        methods: &mut Vec<FnDef>,
+        assumptions: &mut Vec<String>,
+    ) -> Result<(), BackendError> {
+        if declaration.state.is_empty() {
+            return Ok(());
+        }
+        let order = definition_order(package, declaration);
+        for field in &declaration.state {
+            let rate_name = format!("der_{}", field.name);
+            let Some(end) = order.iter().position(|(name, _)| *name == &rate_name) else {
+                return Ok(());
+            };
+            let chain = &order[..=end];
+            let mut available = input_names.to_vec();
+            let mut body_stmts = Vec::new();
+            for (def_name, def_expr) in chain {
+                let used = {
+                    let mut names = BTreeSet::new();
+                    collect_var_names(package, *def_expr, &mut names);
+                    names
+                };
+                let lowering_inputs = expand_host_inputs(&available, &used);
+                let program = lower_definition(package, *def_expr, &lowering_inputs, state_names)
+                    .map_err(BackendError::Lowering)?;
+                add_obligations(&program, assumptions);
+                let value = value_expr(&program, &lowering_inputs, state_names)?;
+                if *def_name == &rate_name {
+                    body_stmts.push(Stmt::Expr(value));
+                } else {
+                    body_stmts.push(Stmt::Let {
+                        pattern: escape_ident(def_name),
+                        value: Box::new(value),
+                    });
+                    available.push((*def_name).clone());
+                }
+            }
+            let mut params = vec![Param {
+                name: "self".to_string(),
+                ty: Ty::Ref(Box::new(Ty::SelfType)),
+            }];
+            for input in input_names {
+                let ty = declaration
+                    .inputs
+                    .iter()
+                    .find(|field| &field.name == input)
+                    .map(|field| field.ty)
+                    .ok_or_else(|| BackendError::UnknownTarget(input.clone()))
+                    .and_then(|id| self.rust_ty(id, owner))?;
+                params.push(Param {
+                    name: escape_ident(input),
+                    ty,
+                });
+            }
+            methods.push(FnDef {
+                name: escape_ident(&rate_name),
+                generics: vec![],
+                params,
+                ret: self.rust_ty(field.ty, owner)?,
+                body: Stmt::Block(Block {
+                    statements: body_stmts,
+                }),
+                doc: vec![format!("Explicit rate `{rate_name}` at the current state.")],
+                visibility: Visibility::Public,
+                attrs: Vec::new(),
+            });
+        }
+
+        let mut step_params = vec![Param {
+            name: "self".to_string(),
+            ty: Ty::Ref(Box::new(Ty::SelfType)),
+        }];
+        for input in input_names {
+            let ty = declaration
+                .inputs
+                .iter()
+                .find(|field| &field.name == input)
+                .map(|field| field.ty)
+                .ok_or_else(|| BackendError::UnknownTarget(input.clone()))
+                .and_then(|id| self.rust_ty(id, owner))?;
+            step_params.push(Param {
+                name: escape_ident(input),
+                ty,
+            });
+        }
+        step_params.push(Param {
+            name: "dt".to_string(),
+            ty: Ty::F64,
+        });
+        let input_args: Vec<Expr> = input_names
+            .iter()
+            .map(|input| Expr::Var(escape_ident(input)))
+            .collect();
+        methods.push(FnDef {
+            name: "step_euler".to_string(),
+            generics: vec![],
+            params: step_params.clone(),
+            ret: Ty::SelfType,
+            body: self.step_euler_body(declaration, owner, &input_args)?,
+            doc: vec!["Forward Euler step from explicit `der_<state>` rates.".to_string()],
+            visibility: Visibility::Public,
+            attrs: Vec::new(),
+        });
+        methods.push(FnDef {
+            name: "step_rk4".to_string(),
+            generics: vec![],
+            params: step_params,
+            ret: Ty::SelfType,
+            body: self.step_rk4_body(declaration, owner, &input_args)?,
+            doc: vec!["Classic RK4 step from explicit `der_<state>` rates.".to_string()],
+            visibility: Visibility::Public,
+            attrs: Vec::new(),
+        });
+        Ok(())
+    }
+
+    fn step_euler_body(
+        &self,
+        declaration: &emath_ir::Declaration,
+        owner: &str,
+        input_args: &[Expr],
+    ) -> Result<Stmt, BackendError> {
+        let mut statements = Vec::new();
+        let mut fields = Vec::new();
+        for field in &declaration.state {
+            let rate = format!("k1_{}", field.name);
+            statements.push(Stmt::Let {
+                pattern: rate.clone(),
+                value: Box::new(rate_call(&field.name, input_args)),
+            });
+            let node = self
+                .package
+                .ty(field.ty)
+                .ok_or_else(|| BackendError::UnsupportedType(format!("unknown state type in `{owner}`")))?;
+            fields.push((
+                field.name.clone(),
+                add_scaled_expr(
+                    Expr::Field {
+                        receiver: Box::new(Expr::SelfValue),
+                        field: field.name.clone(),
+                    },
+                    Expr::Var(rate),
+                    Expr::Var("dt".to_string()),
+                    node,
+                ),
+            ));
+        }
+        statements.push(Stmt::Expr(Expr::StructLiteral {
+            name: "Self".to_string(),
+            fields,
+        }));
+        Ok(Stmt::Block(Block { statements }))
+    }
+
+    fn step_rk4_body(
+        &self,
+        declaration: &emath_ir::Declaration,
+        owner: &str,
+        input_args: &[Expr],
+    ) -> Result<Stmt, BackendError> {
+        let half = Expr::Bin {
+            op: BinOp::Div,
+            left: Box::new(Expr::Var("dt".to_string())),
+            right: Box::new(Expr::F64(2.0_f64.to_bits())),
+        };
+        let sixth = Expr::Bin {
+            op: BinOp::Div,
+            left: Box::new(Expr::Var("dt".to_string())),
+            right: Box::new(Expr::F64(6.0_f64.to_bits())),
+        };
+        let two_sixths = Expr::Bin {
+            op: BinOp::Div,
+            left: Box::new(Expr::Bin {
+                op: BinOp::Mul,
+                left: Box::new(Expr::F64(2.0_f64.to_bits())),
+                right: Box::new(Expr::Var("dt".to_string())),
+            }),
+            right: Box::new(Expr::F64(6.0_f64.to_bits())),
+        };
+        let mut statements = Vec::new();
+        statements.extend(rate_lets("self", "k1", declaration, input_args));
+        statements.push(Stmt::Let {
+            pattern: "s2".to_string(),
+            value: Box::new(self.shifted_state(declaration, owner, "k1", &half)?),
+        });
+        statements.extend(rate_lets("s2", "k2", declaration, input_args));
+        statements.push(Stmt::Let {
+            pattern: "s3".to_string(),
+            value: Box::new(self.shifted_state(declaration, owner, "k2", &half)?),
+        });
+        statements.extend(rate_lets("s3", "k3", declaration, input_args));
+        statements.push(Stmt::Let {
+            pattern: "s4".to_string(),
+            value: Box::new(self.shifted_state(
+                declaration,
+                owner,
+                "k3",
+                &Expr::Var("dt".to_string()),
+            )?),
+        });
+        statements.extend(rate_lets("s4", "k4", declaration, input_args));
+        let mut fields = Vec::new();
+        for field in &declaration.state {
+            let node = self
+                .package
+                .ty(field.ty)
+                .ok_or_else(|| BackendError::UnsupportedType(format!("unknown state type in `{owner}`")))?;
+            let mut next = Expr::Field {
+                receiver: Box::new(Expr::SelfValue),
+                field: field.name.clone(),
+            };
+            for (scale, prefix) in [
+                (&sixth, "k1"),
+                (&two_sixths, "k2"),
+                (&two_sixths, "k3"),
+                (&sixth, "k4"),
+            ] {
+                next = add_scaled_expr(
+                    next,
+                    Expr::Var(format!("{prefix}_{}", field.name)),
+                    scale.clone(),
+                    node,
+                );
+            }
+            fields.push((field.name.clone(), next));
+        }
+        statements.push(Stmt::Expr(Expr::StructLiteral {
+            name: "Self".to_string(),
+            fields,
+        }));
+        Ok(Stmt::Block(Block { statements }))
+    }
+
+    fn shifted_state(
+        &self,
+        declaration: &emath_ir::Declaration,
+        owner: &str,
+        rate_prefix: &str,
+        scale: &Expr,
+    ) -> Result<Expr, BackendError> {
+        let mut fields = Vec::new();
+        for field in &declaration.state {
+            let node = self
+                .package
+                .ty(field.ty)
+                .ok_or_else(|| BackendError::UnsupportedType(format!("unknown state type in `{owner}`")))?;
+            fields.push((
+                field.name.clone(),
+                add_scaled_expr(
+                    Expr::Field {
+                        receiver: Box::new(Expr::SelfValue),
+                        field: field.name.clone(),
+                    },
+                    Expr::Var(format!("{rate_prefix}_{}", field.name)),
+                    scale.clone(),
+                    node,
+                ),
+            ));
+        }
+        Ok(Expr::StructLiteral {
+            name: "Self".to_string(),
+            fields,
+        })
+    }
+
     fn rust_ty(&self, ty: TypeId, owner: &str) -> Result<Ty, BackendError> {
         let Some(node) = self.package.ty(ty) else {
             return Err(BackendError::UnsupportedType(format!(
@@ -639,6 +943,8 @@ impl BackendInput<'_> {
         match node {
             TypeNode::Float64 => Ok(Ty::F64),
             TypeNode::Bool => Ok(Ty::Bool),
+            TypeNode::Vector { .. } => Ok(Ty::Named("Vec<f64>".to_string())),
+            TypeNode::Matrix { .. } => Ok(Ty::Named("Vec<Vec<f64>>".to_string())),
             TypeNode::Refinement { base, .. } => self.rust_node(base, owner),
             TypeNode::UnitRef { .. } => Ok(Ty::F64),
             TypeNode::Opaque { name, .. } => {
@@ -867,6 +1173,102 @@ fn op_expr(
             then: Box::new(Stmt::Expr(operand(program, *then_value))),
             else_value: Box::new(Stmt::Expr(operand(program, *else_value))),
         }),
+        EmirOp::VectorCreate(elements) => Ok(Expr::Macro {
+            name: "vec".to_string(),
+            args: elements.iter().map(|e| operand(program, *e)).collect(),
+        }),
+        EmirOp::MatrixCreate {
+            rows,
+            cols,
+            elements,
+        } => Ok(Expr::Macro {
+            name: "vec".to_string(),
+            args: (0..*rows)
+                .map(|r| Expr::Macro {
+                    name: "vec".to_string(),
+                    args: (0..*cols)
+                        .map(|c| operand(program, elements[r * cols + c]))
+                        .collect(),
+                })
+                .collect(),
+        }),
+        EmirOp::VectorIndex { vector, index } => Ok(Expr::Index {
+            target: Box::new(operand(program, *vector)),
+            index: Box::new(Expr::Cast {
+                value: Box::new(operand(program, *index)),
+                target: Ty::Named("usize".to_string()),
+            }),
+        }),
+        EmirOp::MatrixIndex { matrix, row, col } => Ok(Expr::Index {
+            target: Box::new(Expr::Index {
+                target: Box::new(operand(program, *matrix)),
+                index: Box::new(Expr::Cast {
+                    value: Box::new(operand(program, *row)),
+                    target: Ty::Named("usize".to_string()),
+                }),
+            }),
+            index: Box::new(Expr::Cast {
+                value: Box::new(operand(program, *col)),
+                target: Ty::Named("usize".to_string()),
+            }),
+        }),
+        EmirOp::VectorAdd(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::VectorSub(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a - b).collect::<Vec<f64>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::VectorScale(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().map(|x| x * {}).collect::<Vec<f64>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::VectorDot(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a * b).sum::<f64>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::VectorNorm(v) => Ok(Expr::Raw(format!(
+            "{}.iter().map(|x| x * x).sum::<f64>().sqrt()",
+            render_expr(&operand(program, *v)),
+        ))),
+        EmirOp::VectorLength(v) => Ok(Expr::Raw(format!(
+            "({}.len() as f64)",
+            render_expr(&operand(program, *v)),
+        ))),
+        EmirOp::MatrixAdd(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::MatrixSub(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a - b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::MatrixScale(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().map(|row| row.iter().map(|x| x * {}).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::MatrixMulVector(m, v) => Ok(Expr::Raw(format!(
+            "{{ let m = &{}; let v = &{}; m.iter().map(|row| row.iter().zip(v.iter()).map(|(a, b)| a * b).sum::<f64>()).collect::<Vec<f64>>() }}",
+            render_expr(&operand(program, *m)),
+            render_expr(&operand(program, *v)),
+        ))),
+        EmirOp::MatrixMulMatrix(l, r) => Ok(Expr::Raw(format!(
+            "{{ let m1 = &{}; let m2 = &{}; let r1 = m1.len(); let c2 = if m2.is_empty() {{ 0 }} else {{ m2[0].len() }}; let c1 = if m1.is_empty() {{ 0 }} else {{ m1[0].len() }}; (0..r1).map(|i| (0..c2).map(|j| (0..c1).map(|k| m1[i][k] * m2[k][j]).sum::<f64>()).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }}",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::MatrixTranspose(m) => Ok(Expr::Raw(format!(
+            "{{ let m = &{}; if m.is_empty() {{ vec![] }} else {{ let rows = m.len(); let cols = m[0].len(); (0..cols).map(|c| (0..rows).map(|r| m[r][c]).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }} }}",
+            render_expr(&operand(program, *m)),
+        ))),
     }
 }
 
@@ -907,6 +1309,18 @@ fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut BTreeSet<S
             collect_var_names(package, *value, out);
             for index in indices {
                 collect_var_names(package, *index, out);
+            }
+        }
+        ExprNode::Vector(elements) => {
+            for element in elements {
+                collect_var_names(package, *element, out);
+            }
+        }
+        ExprNode::Matrix(rows) => {
+            for row in rows {
+                for element in row {
+                    collect_var_names(package, *element, out);
+                }
             }
         }
         ExprNode::Binder { body, .. } => collect_var_names(package, *body, out),
@@ -1023,6 +1437,60 @@ fn comparison(op: BinOp, left: EmirValue, right: EmirValue, program: &EmirProgra
         op,
         left: Box::new(operand(program, left)),
         right: Box::new(operand(program, right)),
+    }
+}
+
+fn rate_call(state_name: &str, input_args: &[Expr]) -> Expr {
+    Expr::MethodCall {
+        receiver: Box::new(Expr::SelfValue),
+        method: escape_ident(&format!("der_{state_name}")),
+        args: input_args.to_vec(),
+    }
+}
+
+fn rate_lets(
+    receiver: &str,
+    prefix: &str,
+    declaration: &emath_ir::Declaration,
+    input_args: &[Expr],
+) -> Vec<Stmt> {
+    declaration
+        .state
+        .iter()
+        .map(|field| Stmt::Let {
+            pattern: format!("{prefix}_{}", field.name),
+            value: Box::new(Expr::MethodCall {
+                receiver: Box::new(Expr::Var(receiver.to_string())),
+                method: escape_ident(&format!("der_{}", field.name)),
+                args: input_args.to_vec(),
+            }),
+        })
+        .collect()
+}
+
+fn add_scaled_expr(value: Expr, rate: Expr, scale: Expr, node: &TypeNode) -> Expr {
+    match node {
+        TypeNode::Vector { .. } => Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()",
+            render_expr(&value),
+            render_expr(&rate),
+            render_expr(&scale),
+        )),
+        TypeNode::Matrix { .. } => Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
+            render_expr(&value),
+            render_expr(&rate),
+            render_expr(&scale),
+        )),
+        _ => Expr::Bin {
+            op: BinOp::Add,
+            left: Box::new(value),
+            right: Box::new(Expr::Bin {
+                op: BinOp::Mul,
+                left: Box::new(scale),
+                right: Box::new(rate),
+            }),
+        },
     }
 }
 

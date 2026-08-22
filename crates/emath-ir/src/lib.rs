@@ -39,7 +39,7 @@ pub use goal::{
 pub use ids::{DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
 pub use kind_schema::{
     CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
-    core_policy_schema,
+    core_model_schema, core_policy_schema,
 };
 pub use layers::IrLayer;
 pub use mig::{Mig, MigEdge, MigEdgeKind, MigNode, MigNodeId, MigNodeKind};

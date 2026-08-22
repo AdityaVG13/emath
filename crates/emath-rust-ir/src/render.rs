@@ -648,6 +648,13 @@ pub fn render_expr(expr: &Expr) -> String {
         Expr::Field { receiver, field } => {
             format!("{}.{}", render_expr(receiver), escape_ident(field))
         }
+        Expr::Raw(code) => code.clone(),
+        Expr::Index { target, index } => {
+            format!("{}[{}]", render_expr(target), render_expr(index))
+        }
+        Expr::Cast { value, target } => {
+            format!("{} as {}", render_expr(value), render_ty(target))
+        }
         Expr::Call { path, args } => {
             let path = path
                 .iter()

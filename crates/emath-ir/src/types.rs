@@ -1,5 +1,6 @@
 //! Provider-free semantic type nodes (SIR types).
 
+use crate::shapes::Extent;
 use emath_core::QualifiedName;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,16 +21,16 @@ pub enum TypeNode {
     Complex(Box<TypeNode>),
     Vector {
         element: Box<TypeNode>,
-        extent: Option<String>,
+        extent: Option<Extent>,
     },
     Matrix {
         element: Box<TypeNode>,
-        rows: Option<String>,
-        cols: Option<String>,
+        rows: Option<Extent>,
+        cols: Option<Extent>,
     },
     Tensor {
         element: Box<TypeNode>,
-        shape: Vec<String>,
+        shape: Vec<Extent>,
     },
     Record(QualifiedName),
     Variant(QualifiedName),
@@ -46,6 +47,10 @@ pub enum TypeNode {
         name: String,
     },
     Other(QualifiedName),
+}
+
+fn extent_label(extent: Option<&Extent>) -> String {
+    extent.map(ToString::to_string).unwrap_or_default()
 }
 
 impl TypeNode {
@@ -67,7 +72,7 @@ impl TypeNode {
                 format!(
                     "Vector<{}, {}>",
                     element.display_name(),
-                    extent.clone().unwrap_or_default()
+                    extent_label(extent.as_ref())
                 )
             }
             Self::Matrix {
@@ -77,11 +82,19 @@ impl TypeNode {
             } => format!(
                 "Matrix<{}, {}, {}>",
                 element.display_name(),
-                rows.clone().unwrap_or_default(),
-                cols.clone().unwrap_or_default()
+                extent_label(rows.as_ref()),
+                extent_label(cols.as_ref())
             ),
             Self::Tensor { element, shape } => {
-                format!("Tensor<{}, [{}]>", element.display_name(), shape.join(", "))
+                format!(
+                    "Tensor<{}, [{}]>",
+                    element.display_name(),
+                    shape
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
             Self::Record(name)
             | Self::Variant(name)

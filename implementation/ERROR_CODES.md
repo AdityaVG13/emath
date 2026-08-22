@@ -140,9 +140,9 @@ Requests (`crates/emath-goal/src/lib.rs`):
 Admission (`crates/emath-sema/src/admit.rs`):
 
 - `E-SEC-101` — section outside the Phase 1 subset (`inputs`,
-  `outputs`, `state`, `definitions`, `constructors`, `goals`,
-  `exports`, `tests`, `compile`, `about`, `evidence`, `host`);
-  refused instead of silently dropped.
+  `outputs`, `state`, `definitions`, `equations`, `constructors`,
+  `goals`, `exports`, `tests`, `compile`, `about`, `evidence`,
+  `host`); refused instead of silently dropped.
   The pre-`goals:` spellings `request:` and `requests:` refuse with a
   migration hint to `goals:`.
 
@@ -325,7 +325,12 @@ Names/constructors/units (`crates/emath-sema/src/admit.rs`):
   declarations with the same name would collide in generated Rust, so the
   second is refused instead of silently overwriting the first.
 - `E-NAME-023` — declaration named `_`: `_` cannot be escaped into a Rust
-  type name, so the declaration is refused up front.
+  type name, so the declaration is refused up front. Also reused for a
+  declared output that has no definition.
+- `E-NAME-025` — continuous `emath model` is missing a
+  `derivative(state)` / `der(state)` equation for a declared state
+  field. Distinct from `E-NAME-023` so `_` names and missing rates are
+  never the same code.
 - `E-NAME-024` — declaration name differs from an already-seen name only
   by confusable glyphs (e.g. Latin `o` vs Cyrillic `о`, per the
   `confusable_fold` seed map); the second public declaration is refused
@@ -580,6 +585,11 @@ spelling is retired and is not emitted.
 - `E-SHAPE-003` — slice bounds invalid (start exceeds end).
 - `E-SHAPE-004` — declared shape is not well-formed (empty tensor rank,
   zero extent, or `Zero` symbolic extent).
+- `E-SHAPE-005` — elementwise shape mismatch: vector/matrix add or sub
+  extents differ, or a matrix literal has ragged rows.
+- `E-SHAPE-006` — index rank or index type is wrong (`v[i, j]` on a
+  vector, non-numeric subscript). Out-of-range evaluation is an
+  interpreter fault, not this code.
 
 ### Syntax/layout (`crates/emath-syntax`, `crates/emath-sema`, `crates/emath-hir`, `crates/emath-genesis`)
 
@@ -618,7 +628,9 @@ spelling is retired and is not emitted.
 - `E-TYPE-001` — unknown type.
 - `E-TYPE-002` — unknown variable.
 - `E-TYPE-003` — unknown function.
-- `E-TYPE-010` — unsupported type.
+- `E-TYPE-010` — unsupported type, or an implicit / mass-matrix
+  left-hand side (`m * derivative(v) = rhs`) outside the explicit ODE
+  subset.
 - `E-TYPE-011` — non-finite constant refused under the strict-f64
   policy.
 - `E-TYPE-012` — argument arity/type mismatch for the named function.
@@ -851,6 +863,9 @@ Not yet documented at generation time: **0**.
 | `E-SHAPE-002` | crates/emath-ir/src/shapes.rs | `E-SHAPE-002` |
 | `E-SHAPE-003` | crates/emath-ir/src/shapes.rs | `E-SHAPE-003`<br>`slice end {rows_end} exceeds extent {size}` |
 | `E-SHAPE-004` | crates/emath-ir/src/shapes.rs<br>crates/emath-sema/src/admit.rs | `E-SHAPE-004`<br>`declared extent `{name}` is not a well-formed shape` |
+| `E-SHAPE-005` | crates/emath-sema/src/admit.rs | `matrix rows must have uniform column counts`<br>`elementwise shape mismatch` |
+| `E-SHAPE-006` | crates/emath-sema/src/admit.rs | `vector index requires 1 subscript`<br>`matrix index requires 2 subscripts` |
+| `E-NAME-025` | crates/emath-sema/src/admit.rs | `state \`{}\` has no \`derivative({})\` equation` |
 | `E-SYN-100` | crates/emath-syntax/src/lexer.rs | `E-SYN-100` |
 | `E-SYN-101` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/recognition.rs<br>crates/emath-sema/src/session.rs<br>crates/emath-syntax/src/lexer.rs<br>crates/emath-syntax/src/parser.rs | `E-SYN-101`<br>`only `name: Type` declarations are allowed in `{section_name}`` |
 | `E-SYN-102` | crates/emath-syntax/src/parser.rs | `E-SYN-102` |

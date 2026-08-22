@@ -200,6 +200,55 @@ impl KindSchema {
         schema
     }
 
+    /// Frozen core continuous-model schema: optional state, constructors,
+    /// and explicit ODE `equations:` (`derivative(state) = rhs`).
+    #[must_use]
+    pub fn core_model() -> Self {
+        let mut schema = Self::core_function();
+        schema.name = "model".into();
+        schema.sections.insert(
+            "definitions".into(),
+            SectionSchema {
+                repeat: RepeatPolicy::AtMostOne,
+                payload: PayloadPolicy::Suite,
+                has_default: false,
+            },
+        );
+        schema.sections.insert(
+            "state".into(),
+            SectionSchema {
+                repeat: RepeatPolicy::AtMostOne,
+                payload: PayloadPolicy::Fields,
+                has_default: false,
+            },
+        );
+        schema.sections.insert(
+            "constructors".into(),
+            SectionSchema {
+                repeat: RepeatPolicy::AtMostOne,
+                payload: PayloadPolicy::Suite,
+                has_default: false,
+            },
+        );
+        schema.sections.insert(
+            "equations".into(),
+            SectionSchema {
+                repeat: RepeatPolicy::AtMostOne,
+                payload: PayloadPolicy::Suite,
+                has_default: false,
+            },
+        );
+        schema.sections.insert(
+            "equation".into(),
+            SectionSchema {
+                repeat: RepeatPolicy::AtMostOne,
+                payload: PayloadPolicy::Suite,
+                has_default: false,
+            },
+        );
+        schema
+    }
+
     /// Section schema; absent = unknown section (caller refuses).
     #[must_use]
     pub fn section(&self, name: &str) -> Option<&SectionSchema> {
@@ -300,4 +349,9 @@ pub fn core_function_schema() -> KindSchema {
 #[must_use]
 pub fn core_policy_schema() -> KindSchema {
     KindSchema::core_policy()
+}
+
+#[must_use]
+pub fn core_model_schema() -> KindSchema {
+    KindSchema::core_model()
 }

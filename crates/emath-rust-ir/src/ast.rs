@@ -96,7 +96,7 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     F64,
     Bool,
@@ -144,6 +144,15 @@ pub enum Expr {
     Field {
         receiver: Box<Expr>,
         field: String,
+    },
+    Raw(String),
+    Index {
+        target: Box<Expr>,
+        index: Box<Expr>,
+    },
+    Cast {
+        value: Box<Expr>,
+        target: Ty,
     },
     Call {
         path: Vec<String>,

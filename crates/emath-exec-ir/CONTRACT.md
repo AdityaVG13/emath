@@ -15,8 +15,9 @@
 - `EmirProgram` — one lowered definition: linear op list, result value, input/state counts, obligations; `print` renders it deterministically.
 - `EmirExprRef` — alias for `emath_ir::ExprId`.
 - Functions: `lower_requirement` (constructor precondition) and `lower_definition` (definition expression).
-- `interp`: `Value` (`F64`/`Bool`), `EvalFault`, `evaluate(program, inputs, state)` — single forward pass, typed registers, no panics.
+- `interp`: `Value` (`F64`/`Bool`/`Vector`/`Matrix`), `EvalFault` (including `IndexOutOfBounds`), `evaluate(program, inputs: &[Value], state: &[Value])`, and `evaluate_f64` for scalar slices. Single forward pass, typed registers, no panics. Out-of-range index is a fault, not NaN.
 - `runner`: `run_package` / `run_package_with_given` / `run_declaration` — constructor requires → Self state → definitions → example given/expect verdicts (`RunReport`). A declaration with no inputs evaluates definitions against an empty `given`. Definitions may reference earlier definition names in source order (let-binding semantics, recovered from expression spans; matches admission). `TestVerdict::Computed` is a worked example (`expect` omitted): values are recorded, no pass/fail claim. A declaration with no tests still emits a synthetic `_pane` worked run when every input is bound; `run_package_with_given` adds that `_pane` entry (or a typed `missing input \`name\`` refusal) in addition to source examples. `RunSummary` counts `{tests, passed, failed, refused, computed}`.
+- Continuous models: `step_continuous` (scalar), `step_continuous_values` (scalar/vector/matrix state), `simulate_continuous` (`Trajectory` from `t0` to `t1`), `StepMethod::{Euler, Rk4, Rk45}`. RK45 is Cash-Karp with a fixed step; adaptive dt is out of scope.
 
 ## Invariants
 

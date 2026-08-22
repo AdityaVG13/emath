@@ -15,6 +15,29 @@ pub enum Extent {
     Symbolic(String),
 }
 
+impl std::fmt::Display for Extent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Fixed(size) => write!(f, "{size}"),
+            Self::Symbolic(name) => f.write_str(name),
+        }
+    }
+}
+
+impl Extent {
+    /// Parse a surface type argument into an extent.
+    ///
+    /// Numeric spellings become `Fixed`; everything else is `Symbolic`.
+    #[must_use]
+    pub fn from_surface(name: &str) -> Self {
+        if let Ok(size) = name.parse::<usize>() {
+            Self::Fixed(size)
+        } else {
+            Self::Symbolic(name.to_string())
+        }
+    }
+}
+
 /// Shape of a tensor/matrix value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {

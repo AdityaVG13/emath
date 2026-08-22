@@ -57,7 +57,12 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push_str("vector:");
             encode_type(out, element);
             out.push(':');
-            out.push_str(extent.as_deref().unwrap_or("-"));
+            out.push_str(
+                &extent
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "-".to_string()),
+            );
         }
         TypeNode::Matrix {
             element,
@@ -67,15 +72,31 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push_str("matrix:");
             encode_type(out, element);
             out.push(':');
-            out.push_str(rows.as_deref().unwrap_or("-"));
+            out.push_str(
+                &rows
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "-".to_string()),
+            );
             out.push(':');
-            out.push_str(cols.as_deref().unwrap_or("-"));
+            out.push_str(
+                &cols
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "-".to_string()),
+            );
         }
         TypeNode::Tensor { element, shape } => {
             out.push_str("tensor:");
             encode_type(out, element);
             out.push(':');
-            out.push_str(&shape.join("x"));
+            out.push_str(
+                &shape
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("x"),
+            );
         }
         TypeNode::Record(name) => {
             out.push_str("record:");
@@ -258,6 +279,21 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                 encode_expr(out, exprs, variable.domain);
             }
             encode_expr(out, exprs, *body);
+        }
+        ExprNode::Vector(elements) => {
+            push_str(out, "vector");
+            for &element in elements {
+                encode_expr(out, exprs, element);
+            }
+        }
+        ExprNode::Matrix(rows) => {
+            push_str(out, "matrix");
+            for row in rows {
+                push_str(out, "row");
+                for &element in row {
+                    encode_expr(out, exprs, element);
+                }
+            }
         }
     }
 }
