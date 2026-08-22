@@ -64,6 +64,8 @@ pub enum EmirOp {
     Cosh(EmirValue),
     Atan(EmirValue),
     Cbrt(EmirValue),
+    Recip(EmirValue),
+    Fract(EmirValue),
     Hypot(EmirValue, EmirValue),
     Min(EmirValue, EmirValue),
     Max(EmirValue, EmirValue),
@@ -210,6 +212,8 @@ impl EmirOp {
             Self::Cosh(_) => "cosh",
             Self::Atan(_) => "atan",
             Self::Cbrt(_) => "cbrt",
+            Self::Recip(_) => "recip",
+            Self::Fract(_) => "fract",
             Self::Hypot(..) => "hypot",
             Self::Min(..) => "min",
             Self::Max(..) => "max",
@@ -815,6 +819,8 @@ impl Emitter {
                 | "cosh"
                 | "atan"
                 | "cbrt"
+                | "recip"
+                | "fract"
                 | "is_finite"
                 | "norm"
                 | "transpose"
@@ -936,6 +942,14 @@ impl Emitter {
             "cbrt" | "core::math::cbrt" => {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::Cbrt(v), span))
+            }
+            "recip" | "core::math::recip" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Recip(v), span))
+            }
+            "fract" | "core::math::fract" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Fract(v), span))
             }
             "norm" => {
                 let v = self.emit(package, args[0])?;

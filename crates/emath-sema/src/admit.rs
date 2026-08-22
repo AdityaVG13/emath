@@ -481,7 +481,7 @@ impl Admitter {
                 }
                 let arity: Option<usize> = match name.as_str() {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
-                    | "tanh" | "abs" | "floor" | "ceil" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt"
+                    | "tanh" | "abs" | "floor" | "ceil" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt" | "recip" | "fract"
                     | "norm" | "transpose" | "length" | "len" | "mean" => Some(1),
                     "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" => Some(2),
                     "lerp" | "clamp" => Some(3),
@@ -489,7 +489,7 @@ impl Admitter {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, sign, log2, log10, sinh, cosh, atan, cbrt, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean)"
+                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean)"
                             ),
                             function.source,
                         );

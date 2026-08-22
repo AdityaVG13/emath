@@ -1158,6 +1158,8 @@ fn op_expr(
         EmirOp::Cosh(value) => Ok(unary_method("cosh", *value, program)),
         EmirOp::Atan(value) => Ok(unary_method("atan", *value, program)),
         EmirOp::Cbrt(value) => Ok(unary_method("cbrt", *value, program)),
+        EmirOp::Recip(value) => Ok(unary_method("recip", *value, program)),
+        EmirOp::Fract(value) => Ok(unary_method("fract", *value, program)),
         EmirOp::Hypot(l, r) => Ok(binary_method("hypot", *l, *r, program)),
         EmirOp::Min(l, r) => Ok(binary_method("min", *l, *r, program)),
         EmirOp::Max(l, r) => Ok(binary_method("max", *l, *r, program)),
@@ -1532,6 +1534,8 @@ fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> String {
             let idx_s = idx.to_string();
             format!("__d{} / (3.0 * __e{} * __e{})", a.0, idx_s, idx_s)
         }
+        EmirOp::Recip(a) => format!("-__d{} / (__e{} * __e{})", a.0, a.0, a.0),
+        EmirOp::Fract(a) => format!("__d{}", a.0),
         EmirOp::Hypot(a, b) => {
             let idx_s = idx.to_string();
             format!("(__e{} * __d{} + __e{} * __d{}) / __e{}", a.0, a.0, b.0, b.0, idx_s)
@@ -1615,6 +1619,8 @@ fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, idx: usize) 
         EmirOp::Cbrt(a) => {
             format!("{} / (3.0 * {} * {})", d(a.0), e(idx as u32), e(idx as u32))
         }
+        EmirOp::Recip(a) => format!("-{} / ({} * {})", d(a.0), e(a.0), e(a.0)),
+        EmirOp::Fract(a) => format!("{}", d(a.0)),
         EmirOp::Hypot(a, b) => {
             format!("({} * {} + {} * {}) / {}", e(a.0), d(a.0), e(b.0), d(b.0), e(idx as u32))
         }
