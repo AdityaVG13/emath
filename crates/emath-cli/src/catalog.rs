@@ -11,6 +11,7 @@ pub const COMMANDS: &[&str] = &[
     "signature",
     "genesis",
     "eval",
+    "simulate",
     "repl",
     "compile",
     "world",
@@ -53,6 +54,9 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "signature" => "signature <file.emath> [--out <dir>]",
         "genesis" => "genesis <file.emath> --out <dir>",
         "eval" => "eval <file.emath> [--world <name>] [--json]",
+        "simulate" => {
+            "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--set name=value] [--json]"
+        }
         "repl" => "repl <file.emath>",
         "compile" => "compile --parametric <file.emath> --out <dir> [--world LABEL]",
         "world" => "world show WORLD_ID --dir <dir>",
@@ -97,6 +101,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "signature" => "arity/fixity/type-variable signature inference",
         "genesis" => "world interpretation + portfolio + answer receipt",
         "eval" => "evaluate the admitted term on the semantic VM (value + world + vm_steps)",
+        "simulate" => {
+            "integrate an admitted `emath model` with explicit Euler/RK4/RK45; `--set` binds inputs and state"
+        }
         "repl" => "interactive eval session over the same admission and VM path",
         "compile" => "parametric generated crate for an admitted world",
         "world" => "print one world candidate artifact",
@@ -255,6 +262,9 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
         "eval" => &["--world", "--json", "--help", "-h"],
+        "simulate" => &[
+            "--dt", "--t0", "--t1", "--method", "--set", "--json", "--help", "-h",
+        ],
         "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
         "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
         "meaning" => &[
@@ -286,6 +296,11 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--hole"
             | "--declaration"
             | "--cap"
+            | "--dt"
+            | "--t0"
+            | "--t1"
+            | "--method"
+            | "--set"
     )
 }
 

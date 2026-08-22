@@ -18,6 +18,7 @@ category. Within each category, read in table order.
 | [graph-router.emath](numerical/graph-router.emath) | Graph structure routing |
 | [heat-pde.emath](numerical/heat-pde.emath) | PDE-style dynamics |
 | [dynamic-mass-spring.emath](numerical/dynamic-mass-spring.emath) | Phase 3 acceptance demo (mass-spring) |
+| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Explicit ODE mass-spring (`emath simulate`) |
 
 ## search — conjecture and optimization
 

@@ -45,6 +45,7 @@ fn capabilities_json_names_schema_and_exit_codes() {
         "{body}"
     );
     assert!(body.contains("\"name\": \"check\""), "{body}");
+    assert!(body.contains("\"name\": \"simulate\""), "{body}");
     assert!(body.contains("\"name\": \"capabilities\""), "{body}");
     assert!(body.contains("\"0\": \"ok\""), "{body}");
 }
