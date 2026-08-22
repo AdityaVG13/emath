@@ -3690,20 +3690,88 @@ fn admit_equations(
             continue;
         }
         for stmt in &section.suite.statements {
+            // Accept both Equation and Assign statements in equations:
+            // - Equation: `derivative(state) = rhs` or `m * derivative(state) = rhs`
+            // - Assign: `algebraic_var = expr` (semi-explicit DAE)
             let (left, right) = match &stmt.kind {
-                StmtKind::Equation { left, right } => (left, right),
+                StmtKind::Equation { left, right } => (left.clone(), right.clone()),
+                StmtKind::Assign { target, value } => {
+                    if !target.indices.is_empty() {
+                        admitter.error(
+                            "E-SYN-101",
+                            "indexed assignments are not allowed in `equations:`",
+                            stmt.source,
+                        );
+                        continue;
+                    }
+                    let left = Expr {
+                        kind: ExprKind::Path {
+                            segments: target.segments.clone(),
+                            generics: None,
+                        },
+                        source: target.source,
+                    };
+                    (left, value.clone())
+                }
                 _ => {
                     admitter.error(
                         "E-SYN-101",
-                        "only `derivative(state) = rhs` equations are allowed in `equations:`",
+                        "only `derivative(state) = rhs` or `name = expr` equations are allowed in `equations:`",
                         stmt.source,
                     );
                     continue;
                 }
             };
+            let (left, right) = (&left, &right);
             let (state_name, mass) = match split_mass_times_derivative(left) {
                 Ok(split) => split,
                 Err((code, message)) => {
+                    // Check if this is an algebraic definition: `name = expr`
+                    // (semi-explicit DAE support).  The left side must be a
+                    // plain identifier that is not a state field (state
+                    // fields use `der(state) = rhs`).
+                    if let Some(segments) = path_segments(left) {
+                        if segments.len() == 1 {
+                            let name = segments[0].clone();
+                            if admitter.states.contains_key(&name) {
+                                admitter.error(
+                                    "E-TYPE-010",
+                                    format!("state field `{name}` must use `derivative({name}) = rhs`, not `{name} = rhs`"),
+                                    left.source,
+                                );
+                                continue;
+                            }
+                            if definitions.contains_key(&name) {
+                                admitter.error(
+                                    E_DUPLICATE_FIELD,
+                                    format!("duplicate definition `{name}`"),
+                                    left.source,
+                                );
+                                continue;
+                            }
+                            let Some((id, infer)) = admitter.lower_expr(right) else {
+                                continue;
+                            };
+                            if !is_numeric_element(&infer)
+                                && !matches!(infer, Infer::Vector { .. } | Infer::Matrix { .. } | Infer::Tensor { .. })
+                            {
+                                admitter.error(
+                                    "E-TYPE-012",
+                                    format!("algebraic definition `{name}` must be numeric"),
+                                    right.source,
+                                );
+                                continue;
+                            }
+                            admitter.record(
+                                "sema",
+                                format!("algebraic definition `{name}` in equations"),
+                                left.source,
+                            );
+                            definitions.insert(name.clone(), id);
+                            admitter.definitions.insert(name, (id, infer));
+                            continue;
+                        }
+                    }
                     admitter.error(code, message, left.source);
                     continue;
                 }

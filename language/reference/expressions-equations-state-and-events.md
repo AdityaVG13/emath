@@ -135,10 +135,17 @@ Model equations that run:
 der(x) = v
 der(v) = (-c * v - k * x) / m
 m * der(v) = -c * v - k * x    # only when m is a named scalar
+I = (V - q / C) / R            # algebraic definition (semi-explicit DAE)
+der(q) = I                      # rate referencing the algebraic variable
 ```
 
-The third form is rewritten and recorded as `der(v) = rhs / m`. Any
-other leftover equation is `E-TYPE-010`.
+The third form is rewritten and recorded as `der(v) = rhs / m`. The
+fourth form is an algebraic definition: `name = expr` in `equations:`
+is evaluated at each time step in source order, so rate equations can
+reference it. This enables semi-explicit DAE models where algebraic
+variables are computed from state and inputs before the rates are
+evaluated. Any other leftover equation (e.g. `0 = expr` implicit
+residuals) is `E-TYPE-010`.
 
 `emath simulate` integrates those rates with Euler, RK4, or RK45.
 Default is a fixed step. `--atol` / `--rtol` turn on adaptive RK45.

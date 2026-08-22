@@ -23,6 +23,7 @@ say what the compiler does with each one today.
 | [autodiff.emath](intro/autodiff.emath) | Runs. `derivative(y) wrt x` in a definition, forward-mode autodiff via dual numbers. At x=3, dy/dx of x^2 = 6. |
 | [solve.emath](intro/solve.emath) | Runs. `solve(x^2-4) wrt x` with Newton's method. From x=1, converges to root x=2. |
 | [optimize.emath](intro/optimize.emath) | Runs. `minimize((x-3)^2) wrt x` and `maximize(-(x-2)^2) wrt x` with gradient descent/ascent. |
+| [algebraic-dae.emath](intro/algebraic-dae.emath) | Runs. Semi-explicit DAE: algebraic variable `I` in `equations:`, `der(q) = I` references it. RC circuit with `emath simulate`. |
 
 ## numerical — numerics and dynamics
 

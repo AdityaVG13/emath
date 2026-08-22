@@ -1,0 +1,20 @@
+# Semi-explicit DAE: algebraic variables in model equations.
+# The `equations:` section accepts both `derivative(state) = rhs`
+# (ODE rates) and `name = expr` (algebraic definitions).  Algebraic
+# definitions are evaluated at each time step in source order, so
+# rate equations can reference them.
+# This RC circuit has an algebraic current I determined by Kirchhoff's
+# voltage law: I = (V - q/C) / R.  The charge q evolves as der(q) = I.
+# Analytical solution: q(t) = C*V*(1 - exp(-t/(R*C))).
+emath model RCCircuit:
+    inputs:
+        V: Float64
+        R: Float64
+        C: Float64
+
+    state:
+        q: Float64
+
+    equations:
+        I = (V - q / C) / R
+        der(q) = I
