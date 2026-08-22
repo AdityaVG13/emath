@@ -783,3 +783,45 @@ emath function ExactFactorial:
     );
     assert!(test.verdict.expect_passed());
 }
+
+#[test]
+fn constraints_section_feeds_optimization() {
+    let source = "\
+emath function ConstrainedMin:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        opt_x: Float64
+        opt_y: Float64
+    constraints:
+        x + y >= 1
+    definitions:
+        objective = x * x + y * y
+        opt_x = minimize(objective) wrt x, y
+        opt_y = y
+    tests:
+        example <demo>:
+            given x = 0
+            given y = 0
+            expect abs(opt_x - 0.5) < 0.2
+";
+    let result = check_source("constrained_min", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "constrained optimization must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let opt_x = match test.outputs.get("opt_x") {
+        Some(Value::F64(v)) => *v,
+        Some(Value::I64(v)) => *v as f64,
+        other => panic!("opt_x should be numeric, got {other:?}"),
+    };
+    assert!(
+        (opt_x - 0.5).abs() < 0.2,
+        "constrained minimum should be near x=0.5 (constraint x+y>=1), got {opt_x}"
+    );
+    assert!(test.verdict.expect_passed());
+}

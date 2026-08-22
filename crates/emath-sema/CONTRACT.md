@@ -61,6 +61,11 @@
   fixed learning rate. Both reuse the autodiff machinery for gradients.
   `integral` lowers to a dedicated `Integral` op (composite Simpson's
   rule, 1000 steps) for continuous-range numerical integration.
+  `constraints:` sections in function declarations store Bool
+  expressions as invariants. When `minimize`/`maximize` is lowered,
+  each constraint adds a penalty term to the objective: `weight *
+  max(0, violation)^2` for inequalities, `weight * violation^2` for
+  equalities. Weight is 1000.0 in Phase 1.
 - Model equations admit explicit `derivative(state) = rhs`, a recorded
   scalar mass-matrix rewrite `m * der(state) = rhs` when `m` is a named
   scalar input/parameter/definition, and algebraic definitions
