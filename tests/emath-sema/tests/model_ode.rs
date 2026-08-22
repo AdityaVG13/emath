@@ -319,3 +319,73 @@ emath model Empty:
         "empty model must be E-KIND-011, got {codes:?}"
     );
 }
+
+#[test]
+fn algebraic_definition_in_equations_admits() {
+    let source = "\
+emath model RCCircuit:
+    inputs:
+        V: Float64
+        R: Float64
+        C: Float64
+    state:
+        q: Float64
+    equations:
+        I = (V - q / C) / R
+        der(q) = I
+";
+    let result = check_source("rc-circuit", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "algebraic definition in equations must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let decl = &result.package.declarations[0];
+    assert!(decl.definitions.contains_key("I"), "algebraic var I must be in definitions");
+    assert!(decl.definitions.contains_key("der_q"), "rate der_q must be in definitions");
+}
+
+#[test]
+fn algebraic_dae_simulates_correctly() {
+    let source = "\
+emath model RCCircuit:
+    inputs:
+        V: Float64
+        R: Float64
+        C: Float64
+    state:
+        q: Float64
+    equations:
+        I = (V - q / C) / R
+        der(q) = I
+";
+    let result = check_source("rc-sim", source);
+    assert!(!result.diagnostics.has_errors());
+    let mut inputs = BTreeMap::new();
+    inputs.insert("V".into(), Value::F64(10.0));
+    inputs.insert("R".into(), Value::F64(1.0));
+    inputs.insert("C".into(), Value::F64(1.0));
+    let mut state = BTreeMap::new();
+    state.insert("q".into(), Value::F64(0.0));
+    let traj = simulate_continuous(
+        &result.package,
+        &result.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        1.0,
+        0.01,
+        StepMethod::Rk4,
+    )
+    .unwrap();
+    let q_final = match traj.samples.last().unwrap().state.get("q") {
+        Some(Value::F64(v)) => *v,
+        other => panic!("{other:?}"),
+    };
+    // Analytical: q(t) = C*V*(1 - exp(-t/(R*C))) = 10*(1 - exp(-1))
+    let expected = 10.0 * (1.0 - (-1.0f64).exp());
+    assert!(
+        (q_final - expected).abs() < 0.01,
+        "RC circuit q(1) should be ~{expected:.4}, got {q_final:.4}"
+    );
+}

@@ -61,10 +61,13 @@
   fixed learning rate. Both reuse the autodiff machinery for gradients.
   `integral` lowers to a dedicated `Integral` op (composite Simpson's
   rule, 1000 steps) for continuous-range numerical integration.
-- Model equations admit explicit `derivative(state) = rhs` and a recorded
+- Model equations admit explicit `derivative(state) = rhs`, a recorded
   scalar mass-matrix rewrite `m * der(state) = rhs` when `m` is a named
-  scalar input/parameter/definition. Leftover implicit residuals stay
-  `E-TYPE-010`. A quantity state requires a matching state/time rate
+  scalar input/parameter/definition, and algebraic definitions
+  `name = expr` (semi-explicit DAE support). Algebraic definitions are
+  stored as regular definitions and evaluated in source order at each
+  time step, so rate equations can reference them. Leftover implicit
+  residuals (`0 = expr`) stay `E-TYPE-010`. A quantity state requires a matching state/time rate
   (`E-UNIT-101`); unitless A2 models stay unitless.
 
 ## Error model
