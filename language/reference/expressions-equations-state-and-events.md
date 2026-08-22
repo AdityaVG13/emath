@@ -79,7 +79,7 @@ Expressions that run:
 
 ```text
 literals, names, + - * / ^, comparisons
-min max abs floor ceil sign is_finite
+min max abs floor ceil round sign is_finite
 sqrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
 cbrt recip fract hypot mod lerp clamp pow
 mean norm length dot transpose

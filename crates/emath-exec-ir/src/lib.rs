@@ -58,6 +58,7 @@ pub enum EmirOp {
     Abs(EmirValue),
     Floor(EmirValue),
     Ceil(EmirValue),
+    Round(EmirValue),
     Sign(EmirValue),
     Log2(EmirValue),
     Log10(EmirValue),
@@ -207,6 +208,7 @@ impl EmirOp {
             Self::Abs(_) => "abs",
             Self::Floor(_) => "floor",
             Self::Ceil(_) => "ceil",
+            Self::Round(_) => "round",
             Self::Sign(_) => "sign",
             Self::Log2(_) => "log2",
             Self::Log10(_) => "log10",
@@ -814,6 +816,7 @@ impl Emitter {
                 | "abs"
                 | "floor"
                 | "ceil"
+                | "round"
                 | "sign"
                 | "log2"
                 | "log10"
@@ -914,6 +917,10 @@ impl Emitter {
             "ceil" | "core::math::ceil" => {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::Ceil(v), span))
+            }
+            "round" | "core::math::round" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::Round(v), span))
             }
             "sign" | "core::math::sign" => {
                 let v = self.emit(package, args[0])?;
