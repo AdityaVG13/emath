@@ -282,6 +282,10 @@ fn eval_op(
         EmirOp::Sinh(value) => Ok(Value::F64(f64_of(registers, value, name)?.sinh())),
         EmirOp::Cosh(value) => Ok(Value::F64(f64_of(registers, value, name)?.cosh())),
         EmirOp::Atan(value) => Ok(Value::F64(f64_of(registers, value, name)?.atan())),
+        EmirOp::Cbrt(value) => Ok(Value::F64(f64_of(registers, value, name)?.cbrt())),
+        EmirOp::Hypot(left, right) => Ok(Value::F64(
+            f64_of(registers, left, name)?.hypot(f64_of(registers, right, name)?),
+        )),
         EmirOp::Min(left, right) => Ok(Value::F64(
             f64_of(registers, left, name)?.min(f64_of(registers, right, name)?),
         )),
@@ -869,6 +873,17 @@ fn evaluate_dual(
                 let a = dual_of(&registers, a, name)?;
                 let d = 1.0 / (1.0 + a.primal * a.primal);
                 Dual { primal: a.primal.atan(), tangent: d * a.tangent }
+            }
+            EmirOp::Cbrt(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let p = a.primal.cbrt();
+                Dual { primal: p, tangent: a.tangent / (3.0 * p * p) }
+            }
+            EmirOp::Hypot(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                let h = a.primal.hypot(b.primal);
+                Dual { primal: h, tangent: (a.primal * a.tangent + b.primal * b.tangent) / h }
             }
             EmirOp::F64Pow(a, b) => {
                 let a = dual_of(&registers, a, name)?;
