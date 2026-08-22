@@ -842,7 +842,7 @@ impl Emitter {
                 | "core::math::pow"
                 | "core::math::mod"
         );
-        let ternary = matches!(function, "lerp" | "core::math::lerp");
+        let ternary = matches!(function, "lerp" | "core::math::lerp" | "clamp" | "core::math::clamp");
         let expected = match (unary, binary, ternary) {
             (true, false, false) => Some(1),
             (false, true, false) => Some(2),
@@ -981,6 +981,14 @@ impl Emitter {
                 let diff = self.push(EmirOp::F64Sub(vb, va), span);
                 let interp = self.push(EmirOp::F64Mul(diff, vt), span);
                 Ok(self.push(EmirOp::F64Add(va, interp), span))
+            }
+            "clamp" | "core::math::clamp" => {
+                // clamp(x, lo, hi) = min(max(x, lo), hi)
+                let vx = self.emit(package, args[0])?;
+                let vlo = self.emit(package, args[1])?;
+                let vhi = self.emit(package, args[2])?;
+                let lo_clamped = self.push(EmirOp::Max(vx, vlo), span);
+                Ok(self.push(EmirOp::Min(lo_clamped, vhi), span))
             }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
