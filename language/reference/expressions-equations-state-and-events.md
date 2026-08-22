@@ -79,8 +79,9 @@ Expressions that run:
 
 ```text
 literals, names, + - * / ^, comparisons
-min max abs floor ceil is_finite
-sqrt exp ln sin cos tan tanh atan2
+min max abs floor ceil sign is_finite
+sqrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
+cbrt recip fract hypot mod lerp clamp pow
 mean norm length dot transpose
 if cond then a else b
 vector / matrix / tensor literals
@@ -154,5 +155,5 @@ Default is a fixed step. `--atol` / `--rtol` turn on adaptive RK45.
 general event language.
 
 Not admitted yet: full jacobian and
-hessian, multi-variable optimization, `transitions:` / `events:`,
-discrete hybrid models, residual DAEs, PDEs, `einsum`.
+hessian, `transitions:` / `events:`, discrete hybrid models,
+PDEs, `einsum`.
