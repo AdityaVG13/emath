@@ -754,3 +754,32 @@ emath function MultiVarOpt:
         "minimize((x-1)^2 + (y-2)^2) wrt y,x from (0,0) should converge y to 2, got {opt_y}"
     );
 }
+
+#[test]
+fn exact_integer_product_fold() {
+    let source = "\
+emath function ExactFactorial:
+    outputs:
+        fac: Int
+    definitions:
+        fac = product i in 1..=10: i
+    tests:
+        example <ten>:
+            expect fac == 3628800
+";
+    let result = check_source("exact_factorial", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "exact integer product must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(
+        test.outputs.get("fac"),
+        Some(&Value::I64(3628800)),
+        "10! should be exact i64 3628800, got {:?}",
+        test.outputs.get("fac")
+    );
+    assert!(test.verdict.expect_passed());
+}

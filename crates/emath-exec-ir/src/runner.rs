@@ -20,7 +20,7 @@
 
 use crate::interp::{evaluate, EvalFault, Value};
 use crate::{lower_definition, lower_requirement};
-use emath_ir::{BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, UnaryOp};
+use emath_ir::{BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, TypeNode, UnaryOp};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -298,7 +298,7 @@ fn run_test(
 
     match eval_definitions(package, declaration, &run.given, &run.state) {
         Ok(definitions) => {
-            run.outputs = outputs_of(declaration, &definitions);
+            run.outputs = outputs_of(package, declaration, &definitions);
             run.definitions = definitions;
         }
         Err(verdict) => {
@@ -369,7 +369,7 @@ fn run_direct(
 
     match eval_definitions(package, declaration, &run.given, &run.state) {
         Ok(definitions) => {
-            run.outputs = outputs_of(declaration, &definitions);
+            run.outputs = outputs_of(package, declaration, &definitions);
             run.definitions = definitions;
             run.verdict = TestVerdict::Computed;
         }
@@ -1225,12 +1225,22 @@ fn eval_definitions_values(
 }
 
 fn outputs_of(
+    package: &SemanticPackage,
     declaration: &Declaration,
     definitions: &BTreeMap<String, Value>,
 ) -> BTreeMap<String, Value> {
     let mut outputs = BTreeMap::new();
     for field in &declaration.outputs {
         if let Some(value) = definitions.get(&field.name).cloned() {
+            let value = match (&value, package.ty(field.ty)) {
+                (Value::I64(n), Some(TypeNode::Float64)) => Value::F64(*n as f64),
+                (Value::F64(n), Some(TypeNode::Int | TypeNode::Nat))
+                    if n.is_finite() && n.fract() == 0.0 =>
+                {
+                    Value::I64(*n as i64)
+                }
+                (v, _) => v.clone(),
+            };
             outputs.insert(field.name.clone(), value);
         }
     }
