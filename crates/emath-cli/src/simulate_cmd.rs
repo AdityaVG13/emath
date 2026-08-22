@@ -287,6 +287,7 @@ fn method_name(method: StepMethod) -> &'static str {
 fn value_json(value: &Value) -> String {
     match value {
         Value::F64(number) => format_f64(*number),
+        Value::I64(number) => number.to_string(),
         Value::Bool(flag) => flag.to_string(),
         Value::Vector(items) => {
             let body: Vec<String> = items.iter().copied().map(format_f64).collect();
