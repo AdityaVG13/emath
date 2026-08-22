@@ -280,6 +280,7 @@ fn eval_op(
         EmirOp::Abs(value) => Ok(Value::F64(f64_of(registers, value, name)?.abs())),
         EmirOp::Floor(value) => Ok(Value::F64(f64_of(registers, value, name)?.floor())),
         EmirOp::Ceil(value) => Ok(Value::F64(f64_of(registers, value, name)?.ceil())),
+        EmirOp::Round(value) => Ok(Value::F64(f64_of(registers, value, name)?.round())),
         EmirOp::Sign(value) => Ok(Value::F64(f64_of(registers, value, name)?.signum())),
         EmirOp::Log2(value) => Ok(Value::F64(f64_of(registers, value, name)?.log2())),
         EmirOp::Log10(value) => Ok(Value::F64(f64_of(registers, value, name)?.log10())),
@@ -891,6 +892,10 @@ fn evaluate_dual(
             EmirOp::Ceil(a) => {
                 let a = dual_of(&registers, a, name)?;
                 Dual { primal: a.primal.ceil(), tangent: 0.0 }
+            }
+            EmirOp::Round(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.round(), tangent: 0.0 }
             }
             EmirOp::Sign(a) => {
                 let a = dual_of(&registers, a, name)?;
