@@ -38,7 +38,34 @@
   `Per<>` is `E-UNIT-105`, dimensional mismatch is `E-UNIT-101`.
 - Declared `Vector`/`Matrix`/`Tensor` shapes and compile `domain lo..hi`
   are checked: empty/zero extents are `E-SHAPE-004`, inverted intervals
-  are `E-DOM-002`.
+  are `E-DOM-002`. Rank-3+ literals, `:` slices, and equal-or-`Fixed(1)`
+  tensor broadcast reuse `E-SHAPE-005` / `E-SHAPE-006`. `Nat`/`Int`
+  subscripts admit; a negative constant index is `E-SHAPE-006`.
+- Finite `sum` / `product` over a known integer range (`sum i in 1..6: i`,
+  inclusive `product i in 1..=5: i`) or a known-shape array
+  (`sum([1, 2, 3])`, `product(m)`) unroll to ordinary arithmetic. `mean(v)`
+  is `sum(v) / length(v)`; `abs(v)` maps elementwise over a known-size
+  vector. Variable-bound ranges (`sum i in 0..n: v[i]`) lower to a runtime
+  `Fold` op (EMIR sub-program evaluated per iteration). `forall`
+  and `exists` also lower to `Fold` with `And` / `Or` combine.
+  `derivative(expr) wrt var` lowers to a `Differentiate` op: the value
+  expression is inlined (definition references resolved) and emitted as a
+  nested EMIR sub-program. The interpreter evaluates it via dual-number
+  forward-mode autodiff (each op carries its own derivative rule). The
+  variable must be a scalar input.
+  `solve(residual) wrt var` lowers to a `Solve` op: Newton's method
+  iteratively adjusts `var` until the residual is within tolerance of
+  zero. Each step uses dual-number evaluation for both the residual and
+  its derivative. `minimize(objective) wrt var` and `maximize(objective)
+  wrt var` lower to `Optimize` ops: gradient descent (or ascent) with a
+  fixed learning rate. Both reuse the autodiff machinery for gradients.
+  `integral` lowers to a dedicated `Integral` op (composite Simpson's
+  rule, 1000 steps) for continuous-range numerical integration.
+- Model equations admit explicit `derivative(state) = rhs` and a recorded
+  scalar mass-matrix rewrite `m * der(state) = rhs` when `m` is a named
+  scalar input/parameter/definition. Leftover implicit residuals stay
+  `E-TYPE-010`. A quantity state requires a matching state/time rate
+  (`E-UNIT-101`); unitless A2 models stay unitless.
 
 ## Error model
 

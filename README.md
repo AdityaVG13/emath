@@ -166,7 +166,14 @@ emath policy CachePriority:
             method score = score
 ```
 
-The implemented vertical slice covers a scalar subset: a declaration with validated `state`, one checked constructor, scalar `define`d methods, `tests:` blocks, and `host rust` export: compiled and verified end to end as `examples/generated/affine-scorer`.
+What actually runs today is smaller and more concrete than that sketch:
+
+- `emath function` formulas (`tests/valid/square.emath`, `language/examples/intro/hello-square.emath`)
+- `emath policy` with a constructor (`tests/valid/affine_scorer.emath`)
+- `emath model` ODEs you can `emath simulate` (`language/examples/numerical/explicit-mass-spring.emath`)
+- vectors, matrices, rank-3 tensors, slices, units, and Nat/Int indexes
+
+The rest of the sketch above is the target language. The compiler will parse a lot of it and then refuse the parts it cannot run yet, with a named error. That is expected. Compiling is not proving.
 
 ## Core composition
 
@@ -194,6 +201,7 @@ emath check                       semantic admission
 emath plan                        deterministic resolution plan
 emath build [--out <dir>]       generate + verify Cargo artifact
                                   (default out: target/emath)
+emath simulate                    integrate an admitted emath model
 emath artifact check              independent artifact validation
 emath parse --forest              G0/G1: glyphs → bounded parse forest
 emath signature                   signature/fixity inference
