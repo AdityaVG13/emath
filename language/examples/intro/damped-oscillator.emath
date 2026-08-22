@@ -1,0 +1,22 @@
+# Damped harmonic oscillator: mass-spring-damper system.
+#   m * der(der(x)) + c * der(x) + k * x = 0
+# Written as a first-order system:
+#   der(x) = v
+#   der(v) = -(k * x + c * v) / m
+# With m=1, k=4, c=0.5, x0=1, v0=0, the system oscillates with
+# decaying amplitude (underdamped case).
+emath model DampedOscillator:
+    inputs:
+        x0: Float64
+        v0: Float64
+        m: Float64
+        k: Float64
+        c: Float64
+
+    state:
+        x: Float64
+        v: Float64
+
+    equations:
+        der(x) = v
+        der(v) = -(k * x + c * v) / m

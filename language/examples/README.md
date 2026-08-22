@@ -27,6 +27,7 @@ say what the compiler does with each one today.
 | [implicit-dae.emath](intro/implicit-dae.emath) | Runs. Implicit DAE: `solve(V - R*I - q/C) wrt I` in equations. Newton's method finds current at each step. |
 | [showcase.emath](intro/showcase.emath) | Runs. `solve` + `minimize` + `derivative` in one function: finds root of x^2-4, minimizes (x-3)^2+1, computes derivative 2x. |
 | [constrained-opt.emath](intro/constrained-opt.emath) | Runs. Constrained optimization: minimize x^2+y^2 subject to x+y=1. Substitutes y=1-x to eliminate the constraint, then minimizes. |
+| [damped-oscillator.emath](intro/damped-oscillator.emath) | Admits. Damped harmonic oscillator (mass-spring-damper). First-order system: der(x)=v, der(v)=-(k*x+c*v)/m. Use `emath simulate`. |
 
 ## numerical — numerics and dynamics
 
