@@ -45,6 +45,30 @@ pub struct Declaration {
     pub source: Span,
 }
 
+/// One causalized implicit residual of an `emath model`: an equation in
+/// `equations:` that is not an explicit `der(x) = rhs` rate and not an
+/// algebraic definition. The runner drives it to zero at every time step
+/// with Newton's method, solving for the declaration's unknowns together
+/// (`algebraic:` variables plus implicit state rates `der(x)`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModelResidual {
+    /// The residual expression (`left - right`, source order). Definition
+    /// references are inlined; each `der(x)` occurrence is rewritten to
+    /// the placeholder variable `__rate_<x>` (a synthetic input).
+    pub expr: ExprId,
+    /// Dimension of the residual after lowering: 1 for scalar, `n` for a
+    /// known-extent vector. Used at admission for the squareness check.
+    pub components: u16,
+    /// `algebraic:` variable names this declaration solves for. The list
+    /// is identical on every residual of a declaration (the solver treats
+    /// them as one coupled system); initial guesses come from the
+    /// simulate `inputs` map.
+    pub algebraic: Vec<String>,
+    /// State rate unknowns `der(x)` referenced by this residual with no
+    /// explicit rate equation for `x`.
+    pub rates: Vec<String>,
+}
+
 /// One `host:` language binding (`rust:` / `implement Trait for Type:`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostBinding {
@@ -122,6 +146,10 @@ pub struct SemanticPackage {
     /// Admitted imports (front-end).
     pub imports: Vec<ImportEntry>,
     pub declarations: Vec<Declaration>,
+    /// Causalized implicit residuals per model declaration (absent for
+    /// non-model kinds). Kept package-side so adding a section does not
+    /// churn every `Declaration` literal; see [`ModelResidual`].
+    pub residuals: std::collections::BTreeMap<DeclarationId, Vec<ModelResidual>>,
     pub types: Vec<TypeNode>,
     pub exprs: Vec<ExprNode>,
     pub expr_spans: Vec<Span>,
@@ -138,6 +166,7 @@ impl SemanticPackage {
             package_path: None,
             imports: Vec::new(),
             declarations: Vec::new(),
+            residuals: std::collections::BTreeMap::new(),
             types: Vec::new(),
             exprs: Vec::new(),
             expr_spans: Vec::new(),

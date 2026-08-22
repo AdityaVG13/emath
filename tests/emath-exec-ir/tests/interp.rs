@@ -121,16 +121,22 @@ fn eq_nan_is_false() {
 }
 
 #[test]
-fn type_confusion_and_on_f64() {
+fn type_confusion_and_on_vector() {
+    // Bool operands take truthy coercion from scalars (F64/I64), matching
+    // the Rust backend; non-scalar operands are type confusion.
     let program = program(vec![
         const_bits(1.0),
+        const_bits(2.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
         const_bits(0.0),
-        EmirOp::And(EmirValue(0), EmirValue(1)),
+        const_bits(4.0),
+        EmirOp::VectorCreate(vec![EmirValue(3), EmirValue(4)]),
+        EmirOp::And(EmirValue(2), EmirValue(5)),
     ]);
     assert_eq!(
         evaluate(&program, &[], &[]).unwrap_err(),
         EvalFault::TypeConfusion {
-            register: 0,
+            register: 2,
             op: "and",
         }
     );

@@ -239,6 +239,16 @@ impl KindSchema {
             },
         );
         schema.sections.insert(
+            "algebraic".into(),
+            SectionSchema {
+                // Unknowns of the implicit residual system (causalization):
+                // scalar or vector fields, initial guesses at simulate time.
+                repeat: RepeatPolicy::AtMostOne,
+                payload: PayloadPolicy::Fields,
+                has_default: false,
+            },
+        );
+        schema.sections.insert(
             "equations".into(),
             SectionSchema {
                 repeat: RepeatPolicy::AtMostOne,

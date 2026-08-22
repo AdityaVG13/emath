@@ -434,6 +434,17 @@ impl BackendInput<'_> {
             }
             goals.clear();
 
+            if declaration.kind_label == "model"
+                && package
+                    .residuals
+                    .get(&declaration.id)
+                    .is_some_and(|residuals| !residuals.is_empty())
+            {
+                return Err(BackendError::Lowering(format!(
+                    "model `{name}` uses causalized implicit residuals (Newton-solved unknowns); `rust.library` codegen for implicit DAEs is not implemented yet — use `emath simulate`"
+                )));
+            }
+
             if declaration.kind_label == "model" && !emit_free_fn {
                 self.emit_model_step_methods(
                     package,

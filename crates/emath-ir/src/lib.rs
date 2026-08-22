@@ -52,8 +52,8 @@ pub use numeric::{
 };
 pub use operator::{DeclaredOperator, Fixity, canonical_operator};
 pub use package::{
-    Declaration, HostBinding, HostMethod, ImportEntry, ImportSelection, PackageIdentity,
-    SemanticPackage,
+    Declaration, HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual,
+    PackageIdentity, SemanticPackage,
 };
 pub use shapes::{Extent, Shape, ShapeError, SparseLayout};
 pub use type_system::{

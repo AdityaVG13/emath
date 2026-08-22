@@ -438,6 +438,24 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
             out.push('\n');
             encode_expr(&mut out, &package.exprs, *definition.1);
         }
+        if let Some(residuals) = package.residuals.get(&declaration.id) {
+            for residual in residuals {
+                out.push_str("residual ");
+                out.push_str(&residual.components.to_string());
+                out.push('\n');
+                encode_expr(&mut out, &package.exprs, residual.expr);
+                for name in &residual.algebraic {
+                    out.push_str("algebraic ");
+                    out.push_str(name);
+                    out.push('\n');
+                }
+                for name in &residual.rates {
+                    out.push_str("rate ");
+                    out.push_str(name);
+                    out.push('\n');
+                }
+            }
+        }
         for goal in &declaration.goals {
             if let Some(goal) = package.goals.get(goal.index()) {
                 out.push_str("goal ");

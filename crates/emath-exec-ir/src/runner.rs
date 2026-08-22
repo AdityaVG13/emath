@@ -19,8 +19,11 @@
 //!   adds that `_pane` run in addition to any source examples.
 
 use crate::interp::{evaluate, EvalFault, Value};
-use crate::{lower_definition, lower_requirement};
-use emath_ir::{BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, TypeNode, UnaryOp};
+use crate::{lower_definition, lower_requirement, EmirProgram};
+use emath_ir::{
+    BinaryOp, Declaration, ExprId, ExprNode, Literal, ModelResidual, SemanticPackage, TypeNode,
+    UnaryOp,
+};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -1147,6 +1150,24 @@ fn eval_rates(
     inputs: &BTreeMap<String, Value>,
     state: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, String> {
+    let residuals = package
+        .residuals
+        .get(&declaration.id)
+        .cloned()
+        .unwrap_or_default();
+    let algebraic_names: Vec<String> = residuals
+        .first()
+        .map(|residual| residual.algebraic.clone())
+        .unwrap_or_default();
+    let mut rate_names: Vec<String> = Vec::new();
+    for residual in &residuals {
+        for rate in &residual.rates {
+            if !rate_names.contains(rate) {
+                rate_names.push(rate.clone());
+            }
+        }
+    }
+
     let definitions = eval_definitions_values(package, declaration, inputs, state).map_err(
         |verdict| {
             verdict
@@ -1154,20 +1175,346 @@ fn eval_rates(
                 .unwrap_or_else(|| verdict.to_string())
         },
     )?;
+
+    // Causalized implicit DAEs: solve the residual system with Newton's
+    // method at the current state (once per RK stage).
+    let (solved_algebraic, solved_rates) = if residuals.is_empty() {
+        (BTreeMap::new(), BTreeMap::new())
+    } else {
+        causal_newton(
+            package,
+            declaration,
+            inputs,
+            state,
+            &residuals,
+            &algebraic_names,
+            &rate_names,
+        )?
+    };
+
+    // Definitions referencing a solved algebraic variable must see the
+    // solved value: re-evaluate once with the solution bound.
+    let definitions = if solved_algebraic.is_empty() {
+        definitions
+    } else {
+        let mut step_inputs = inputs.clone();
+        for (name, value) in &solved_algebraic {
+            step_inputs.insert(name.clone(), value.clone());
+        }
+        eval_definitions_values(package, declaration, &step_inputs, state).map_err(|verdict| {
+            verdict
+                .reason_text()
+                .unwrap_or_else(|| verdict.to_string())
+        })?
+    };
+
     let mut rates = BTreeMap::new();
     for field in &declaration.state {
         let key = format!("der_{}", field.name);
-        let Some(value) = definitions.get(&key) else {
-            return Err(format!("missing rate `{key}`"));
+        let value = if rate_names.iter().any(|name| name == &field.name) {
+            solved_rates
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| format!("missing solved rate `{key}`"))?
+        } else {
+            definitions
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| format!("missing rate `{key}`"))?
         };
         match value {
             Value::Bool(_) => return Err(format!("rate `{key}` is not numeric")),
-            Value::I64(_) | Value::F64(_) | Value::Vector(_) | Value::Matrix { .. } | Value::Tensor { .. } => {
-                rates.insert(field.name.clone(), value.clone());
+            Value::I64(_)
+            | Value::F64(_)
+            | Value::Vector(_)
+            | Value::Matrix { .. }
+            | Value::Tensor { .. } => {
+                rates.insert(field.name.clone(), value);
             }
         }
     }
     Ok(rates)
+}
+
+/// One unknown of the causalized residual system.
+#[derive(Clone, Copy, Debug)]
+struct NewtonUnknown {
+    /// Bind-table slot (`LoadInput` index) of the unknown's value.
+    bind_index: usize,
+    /// Component count (1 for a scalar, `n` for a vector).
+    width: usize,
+}
+
+/// Solve a model's implicit residual system at the current state.
+///
+/// Causalization: every equation that is not an explicit rate or an
+/// algebraic definition is a residual `left - right`. The unknowns are the
+/// declaration's `algebraic:` variables (guesses from `inputs`) plus the
+/// implicit state rates `der(x)`. Newton's method iterates
+/// `x -= J⁻¹ F(x)`; the Jacobian comes from forward differences (one
+/// residual evaluation per unknown component), so residuals may mix any
+/// builtin function and vector shapes.
+///
+/// Returns the solved algebraic values (fed back into definitions) and
+/// the solved rate values keyed as `der_<state>`.
+fn causal_newton(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+    residuals: &[ModelResidual],
+    algebraic_names: &[String],
+    rate_names: &[String],
+) -> Result<(BTreeMap<String, Value>, BTreeMap<String, Value>), String> {
+    const MAX_ITER: usize = 30;
+    const TOL: f64 = 1e-9;
+
+    let input_names: Vec<String> = declaration
+        .inputs
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let state_names: Vec<String> = declaration
+        .state
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let mut state_values = Vec::with_capacity(state_names.len());
+    for name in &state_names {
+        let Some(value) = state.get(name) else {
+            return Err(format!("missing state `{name}`"));
+        };
+        state_values.push(value.clone());
+    }
+
+    let mut bind_names = input_names.clone();
+    for name in algebraic_names {
+        if !bind_names.iter().any(|existing| existing == name) {
+            bind_names.push(name.clone());
+        }
+    }
+    let rate_offset = bind_names.len();
+    for rate in rate_names {
+        bind_names.push(format!("__rate_{rate}"));
+    }
+
+    let mut bind_values: Vec<Value> = bind_names
+        .iter()
+        .map(|name| inputs.get(name).cloned().unwrap_or(Value::F64(0.0)))
+        .collect();
+
+    let mut unknowns: Vec<NewtonUnknown> = Vec::new();
+    let mut x: Vec<f64> = Vec::new();
+    for (index, name) in algebraic_names.iter().enumerate() {
+        let value = inputs
+            .get(name)
+            .cloned()
+            .ok_or_else(|| format!("missing algebraic-variable guess `{name}` in the simulate inputs map"))?;
+        let width = value_width(&value, name)?;
+        unknowns.push(NewtonUnknown {
+            bind_index: input_names.len() + index,
+            width,
+        });
+        append_flatten(&mut x, &value)?;
+    }
+    for (index, rate) in rate_names.iter().enumerate() {
+        let width = match state.get(rate) {
+            Some(Value::F64(_)) => 1,
+            Some(Value::Vector(items)) => items.len(),
+            other => {
+                return Err(format!(
+                    "rate unknown `der({rate})` needs a scalar or vector state, found {other:?}"
+                ));
+            }
+        };
+        let start = value_of_width(width)?;
+        unknowns.push(NewtonUnknown {
+            bind_index: rate_offset + index,
+            width,
+        });
+        append_flatten(&mut x, &start)?;
+        bind_values[rate_offset + index] = start;
+    }
+
+    let programs: Vec<EmirProgram> = residuals
+        .iter()
+        .map(|residual| {
+            lower_definition(package, residual.expr, &bind_names, &state_names)
+                .map_err(|detail| format!("residual lowering failed: {detail}"))
+        })
+        .collect::<Result<_, _>>()?;
+
+    let mut f = eval_residuals(&programs, &bind_values, &state_values)?;
+    let total = x.len();
+    let mut converged = max_abs(&f) < TOL;
+    for _ in 0..MAX_ITER {
+        if converged {
+            break;
+        }
+        // Forward-difference Jacobian.
+        let mut jac = vec![vec![0.0; total]; f.len()];
+        let mut offset = 0_usize;
+        for unknown in &unknowns {
+            for component in 0..unknown.width {
+                let column = offset + component;
+                let h = 1e-7 * (1.0 + x[column].abs());
+                let saved = x[column];
+                x[column] += h;
+                set_unknowns(&mut bind_values, &unknowns, &x);
+                let plus = eval_residuals(&programs, &bind_values, &state_values)?;
+                for (i, row) in jac.iter_mut().enumerate() {
+                    row[column] = (plus[i] - f[i]) / h;
+                }
+                x[column] = saved;
+            }
+            offset += unknown.width;
+        }
+        set_unknowns(&mut bind_values, &unknowns, &x);
+
+        let delta = gaussian_solve(&jac, &f).map_err(|message| {
+            format!("implicit residual Jacobian is singular ({message}); check that the residual equations are independent")
+        })?;
+        for (column, step) in delta.iter().enumerate() {
+            x[column] -= step;
+        }
+        set_unknowns(&mut bind_values, &unknowns, &x);
+        f = eval_residuals(&programs, &bind_values, &state_values)?;
+        let scale = x.iter().fold(1.0_f64, |acc, value| acc.max(value.abs()));
+        converged = max_abs(&f) < TOL || max_abs(&delta) < 1e-12 * (1.0 + scale);
+    }
+    if max_abs(&f) > 1e-6 {
+        return Err(format!(
+            "implicit residual system did not converge within {MAX_ITER} Newton iterations (max residual {:.3e}); check the model equations and `algebraic:` guesses",
+            max_abs(&f)
+        ));
+    }
+
+    let mut algebraic_solved = BTreeMap::new();
+    for (index, name) in algebraic_names.iter().enumerate() {
+        algebraic_solved.insert(name.clone(), bind_values[input_names.len() + index].clone());
+    }
+    let mut rate_solved = BTreeMap::new();
+    for (index, rate) in rate_names.iter().enumerate() {
+        rate_solved.insert(format!("der_{rate}"), bind_values[rate_offset + index].clone());
+    }
+    Ok((algebraic_solved, rate_solved))
+}
+
+fn value_width(value: &Value, name: &str) -> Result<usize, String> {
+    match value {
+        Value::F64(_) | Value::I64(_) => Ok(1),
+        Value::Vector(items) => Ok(items.len()),
+        _ => Err(format!(
+            "algebraic variable `{name}` must be a scalar or vector, found {value:?}"
+        )),
+    }
+}
+
+fn value_of_width(width: usize) -> Result<Value, String> {
+    if width == 1 {
+        Ok(Value::F64(0.0))
+    } else {
+        Ok(Value::Vector(vec![0.0; width]))
+    }
+}
+
+fn append_flatten(out: &mut Vec<f64>, value: &Value) -> Result<(), String> {
+    match value {
+        Value::F64(v) => out.push(*v),
+        Value::I64(v) => out.push(*v as f64),
+        Value::Vector(items) => out.extend_from_slice(items),
+        _ => return Err("unknown must be a scalar or vector".to_string()),
+    }
+    Ok(())
+}
+
+fn set_unknowns(bind_values: &mut [Value], unknowns: &[NewtonUnknown], x: &[f64]) {
+    let mut offset = 0_usize;
+    for unknown in unknowns {
+        bind_values[unknown.bind_index] = if unknown.width == 1 {
+            Value::F64(x[offset])
+        } else {
+            Value::Vector(x[offset..offset + unknown.width].to_vec())
+        };
+        offset += unknown.width;
+    }
+}
+
+fn eval_residuals(
+    programs: &[EmirProgram],
+    bind_values: &[Value],
+    state_values: &[Value],
+) -> Result<Vec<f64>, String> {
+    let mut out = Vec::new();
+    for program in programs {
+        let value =
+            evaluate(program, bind_values, state_values).map_err(|fault| {
+                format!("residual evaluation fault: {fault:?}")
+            })?;
+        match value {
+            Value::F64(v) => out.push(v),
+            Value::I64(v) => out.push(v as f64),
+            Value::Vector(items) => out.extend_from_slice(&items),
+            other => {
+                return Err(format!(
+                    "residual must evaluate to a scalar or vector, found {other:?}"
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn max_abs(values: &[f64]) -> f64 {
+    values.iter().fold(0.0_f64, |acc, value| acc.max(value.abs()))
+}
+
+/// Solve `matrix * x = rhs` by Gaussian elimination with partial pivoting.
+fn gaussian_solve(matrix: &[Vec<f64>], rhs: &[f64]) -> Result<Vec<f64>, String> {
+    let n = rhs.len();
+    if matrix.len() != n || matrix.iter().any(|row| row.len() != n) {
+        return Err("Jacobian is not square".to_string());
+    }
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let mut a: Vec<Vec<f64>> = matrix.to_vec();
+    let mut b: Vec<f64> = rhs.to_vec();
+    for col in 0..n {
+        let mut pivot = col;
+        let mut best = a[col][col].abs();
+        for row in (col + 1)..n {
+            let candidate = a[row][col].abs();
+            if candidate > best {
+                best = candidate;
+                pivot = row;
+            }
+        }
+        if best < 1e-300 {
+            return Err(format!("near-zero pivot in column {col}"));
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        for row in (col + 1)..n {
+            let factor = a[row][col] / a[col][col];
+            if factor == 0.0 {
+                continue;
+            }
+            for k in col..n {
+                a[row][k] -= factor * a[col][k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    let mut x = vec![0.0; n];
+    for row in (0..n).rev() {
+        let mut acc = b[row];
+        for k in (row + 1)..n {
+            acc -= a[row][k] * x[k];
+        }
+        x[row] = acc / a[row][row];
+    }
+    Ok(x)
 }
 
 fn eval_definitions_values(
@@ -1182,6 +1529,17 @@ fn eval_definitions_values(
         .map(|field| field.name.clone())
         .collect();
     let mut bind_names = input_names;
+    // Algebraic variables (implicit-residual unknowns) bind like inputs;
+    // their guesses come from the same caller-supplied value map.
+    if let Some(residuals) = package.residuals.get(&declaration.id) {
+        if let Some(first) = residuals.first() {
+            for name in &first.algebraic {
+                if !bind_names.iter().any(|existing| existing == name) {
+                    bind_names.push(name.clone());
+                }
+            }
+        }
+    }
     let mut bind_values = Vec::with_capacity(bind_names.len());
     for name in &bind_names {
         let Some(value) = inputs.get(name).cloned() else {
