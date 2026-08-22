@@ -13,7 +13,7 @@
 //! not runtime checks: division by zero yields inf/NaN per IEEE, matching
 //! the emitted Rust which also does not insert those checks.
 
-use crate::{EmirOp, EmirProgram, EmirValue};
+use crate::{EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
 use std::fmt;
 
 /// A typed register value. Locals match generated Rust (`f64` / `bool` / `Vec<f64>`).
@@ -29,6 +29,11 @@ pub enum Value {
     Matrix {
         rows: usize,
         cols: usize,
+        data: Vec<f64>,
+    },
+    /// Rank-3+ tensor of Float64, row-major.
+    Tensor {
+        shape: Vec<usize>,
         data: Vec<f64>,
     },
 }
@@ -59,6 +64,23 @@ impl PartialEq for Value {
             ) => {
                 r1 == r2
                     && c1 == c2
+                    && d1.len() == d2.len()
+                    && d1
+                        .iter()
+                        .zip(d2.iter())
+                        .all(|(l, r)| l.to_bits() == r.to_bits())
+            }
+            (
+                Self::Tensor {
+                    shape: s1,
+                    data: d1,
+                },
+                Self::Tensor {
+                    shape: s2,
+                    data: d2,
+                },
+            ) => {
+                s1 == s2
                     && d1.len() == d2.len()
                     && d1
                         .iter()
@@ -101,6 +123,16 @@ impl fmt::Display for Value {
                         }
                     }
                     f.write_str("]")?;
+                }
+                f.write_str("]")
+            }
+            Self::Tensor { shape, data } => {
+                write!(f, "tensor{:?}[", shape)?;
+                for (i, elem) in data.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    f.write_str(&format_f64(*elem))?;
                 }
                 f.write_str("]")
             }
@@ -441,7 +473,474 @@ fn eval_op(
                 data: out,
             })
         }
+        EmirOp::TensorCreate { ref shape, ref elements } => {
+            let mut data = Vec::with_capacity(elements.len());
+            for &elem in elements {
+                data.push(f64_of(registers, elem, name)?);
+            }
+            Ok(Value::Tensor {
+                shape: shape.clone(),
+                data,
+            })
+        }
+        EmirOp::TensorIndex {
+            tensor,
+            ref indices,
+        } => {
+            let (shape, data) = tensor_of(registers, tensor, name)?;
+            if indices.len() != shape.len() {
+                return Err(EvalFault::TypeConfusion {
+                    register: tensor.0,
+                    op: name,
+                });
+            }
+            let mut offset = 0usize;
+            for (axis, &index) in indices.iter().enumerate() {
+                let i = whole_index(registers, index, name, shape[axis])?;
+                offset = offset * shape[axis] + i;
+            }
+            Ok(Value::F64(data[offset]))
+        }
+        EmirOp::TensorSlice {
+            tensor,
+            ref axes,
+        } => eval_tensor_slice(registers, tensor, axes, name),
+        EmirOp::TensorAdd(left, right) => {
+            let (s1, d1) = tensor_of(registers, left, name)?;
+            let (s2, d2) = tensor_of(registers, right, name)?;
+            if s1 != s2 {
+                return Err(EvalFault::TypeConfusion {
+                    register: left.0,
+                    op: name,
+                });
+            }
+            Ok(Value::Tensor {
+                shape: s1.to_vec(),
+                data: d1.iter().zip(d2.iter()).map(|(a, b)| a + b).collect(),
+            })
+        }
+        EmirOp::TensorSub(left, right) => {
+            let (s1, d1) = tensor_of(registers, left, name)?;
+            let (s2, d2) = tensor_of(registers, right, name)?;
+            if s1 != s2 {
+                return Err(EvalFault::TypeConfusion {
+                    register: left.0,
+                    op: name,
+                });
+            }
+            Ok(Value::Tensor {
+                shape: s1.to_vec(),
+                data: d1.iter().zip(d2.iter()).map(|(a, b)| a - b).collect(),
+            })
+        }
+        EmirOp::Fold {
+            start,
+            end,
+            init,
+            combine,
+            loop_var_index,
+            ref body,
+        } => {
+            let start_val = f64_of(registers, start, name)?;
+            let end_val = f64_of(registers, end, name)?;
+            let start_i = start_val as i64;
+            let end_i = end_val as i64;
+            match combine {
+                FoldCombine::Add | FoldCombine::Mul => {
+                    let mut acc = f64_of(registers, init, name)?;
+                    for i in start_i..end_i {
+                        let mut body_inputs = inputs.to_vec();
+                        let idx = usize::from(loop_var_index);
+                        while body_inputs.len() <= idx {
+                            body_inputs.push(Value::F64(0.0));
+                        }
+                        body_inputs[idx] = Value::F64(i as f64);
+                        match evaluate(body, &body_inputs, state)? {
+                            Value::F64(term) => {
+                                acc = match combine {
+                                    FoldCombine::Add => acc + term,
+                                    FoldCombine::Mul => acc * term,
+                                    _ => unreachable!(),
+                                };
+                            }
+                            _ => {
+                                return Err(EvalFault::TypeConfusion {
+                                    register: body.result.0,
+                                    op: name,
+                                })
+                            }
+                        }
+                    }
+                    Ok(Value::F64(acc))
+                }
+                FoldCombine::And | FoldCombine::Or => {
+                    let mut acc = f64_of(registers, init, name)? != 0.0;
+                    for i in start_i..end_i {
+                        let mut body_inputs = inputs.to_vec();
+                        let idx = usize::from(loop_var_index);
+                        while body_inputs.len() <= idx {
+                            body_inputs.push(Value::F64(0.0));
+                        }
+                        body_inputs[idx] = Value::F64(i as f64);
+                        let term = match evaluate(body, &body_inputs, state)? {
+                            Value::Bool(b) => b,
+                            Value::F64(f) => f != 0.0,
+                            _ => {
+                                return Err(EvalFault::TypeConfusion {
+                                    register: body.result.0,
+                                    op: name,
+                                })
+                            }
+                        };
+                        acc = match combine {
+                            FoldCombine::And => acc && term,
+                            FoldCombine::Or => acc || term,
+                            _ => unreachable!(),
+                        };
+                    }
+                    Ok(Value::Bool(acc))
+                }
+            }
+        }
+        EmirOp::Integral {
+            start,
+            end,
+            steps,
+            loop_var_index,
+            ref integrand,
+        } => {
+            let a = f64_of(registers, start, name)?;
+            let b = f64_of(registers, end, name)?;
+            let n = steps as i64;
+            let h = (b - a) / n as f64;
+            let mut acc = 0.0;
+            for i in 0..=n {
+                let x = a + i as f64 * h;
+                let weight = if i == 0 || i == n {
+                    1.0
+                } else if i % 2 == 0 {
+                    2.0
+                } else {
+                    4.0
+                };
+                let mut body_inputs = inputs.to_vec();
+                let idx = usize::from(loop_var_index);
+                while body_inputs.len() <= idx {
+                    body_inputs.push(Value::F64(0.0));
+                }
+                body_inputs[idx] = Value::F64(x);
+                match evaluate(integrand, &body_inputs, state)? {
+                    Value::F64(fx) => acc += weight * fx,
+                    _ => {
+                        return Err(EvalFault::TypeConfusion {
+                            register: integrand.result.0,
+                            op: name,
+                        })
+                    }
+                }
+            }
+            Ok(Value::F64(acc * h / 3.0))
+        }
+        EmirOp::Differentiate { ref body, var_index } => {
+            let dual = evaluate_dual(body, inputs, state, var_index, name)?;
+            Ok(Value::F64(dual.tangent))
+        }
+        EmirOp::Solve {
+            ref body,
+            var_index,
+            tolerance,
+            max_iter,
+        } => {
+            // Newton's method: x_new = x_old - f(x) / f'(x)
+            // Uses dual-number evaluation for both f and f' in one pass.
+            let mut x = match inputs.get(var_index as usize) {
+                Some(Value::F64(v)) => *v,
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: var_index as u32,
+                    op: name,
+                }),
+            };
+            let mut work_inputs = inputs.to_vec();
+            for _ in 0..max_iter {
+                work_inputs[var_index as usize] = Value::F64(x);
+                let dual = evaluate_dual(body, &work_inputs, state, var_index, name)?;
+                let f = dual.primal;
+                let df = dual.tangent;
+                if f.abs() < tolerance {
+                    return Ok(Value::F64(x));
+                }
+                if df.abs() < 1e-30 {
+                    return Ok(Value::F64(x));
+                }
+                x -= f / df;
+            }
+            Ok(Value::F64(x))
+        }
+        EmirOp::Optimize {
+            ref body,
+            var_index,
+            maximize,
+            learning_rate,
+            tolerance,
+            max_iter,
+        } => {
+            // Gradient descent (or ascent): x_new = x_old -/+ lr * f'(x)
+            let mut x = match inputs.get(var_index as usize) {
+                Some(Value::F64(v)) => *v,
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: var_index as u32,
+                    op: name,
+                }),
+            };
+            let mut work_inputs = inputs.to_vec();
+            let sign = if maximize { 1.0 } else { -1.0 };
+            for _ in 0..max_iter {
+                work_inputs[var_index as usize] = Value::F64(x);
+                let dual = evaluate_dual(body, &work_inputs, state, var_index, name)?;
+                let grad = dual.tangent;
+                if grad.abs() < tolerance {
+                    return Ok(Value::F64(x));
+                }
+                x += sign * learning_rate * grad;
+            }
+            Ok(Value::F64(x))
+        }
     }
+}
+
+/// Dual number for forward-mode autodiff: (primal, tangent).
+#[derive(Clone)]
+struct Dual {
+    primal: f64,
+    tangent: f64,
+}
+
+/// Evaluate an EMIR sub-program with dual numbers, seeding the input at
+/// `var_index` with tangent 1.0.  Returns the full dual (primal +
+/// tangent) of the result — i.e. both the function value and its
+/// derivative with respect to that input.
+fn evaluate_dual(
+    program: &EmirProgram,
+    inputs: &[Value],
+    state: &[Value],
+    var_index: u16,
+    name: &'static str,
+) -> Result<Dual, EvalFault> {
+    let mut registers: Vec<Dual> = Vec::with_capacity(program.ops.len());
+    for (op, _) in &program.ops {
+        let dual = match op {
+            EmirOp::ConstF64(bits) => Dual {
+                primal: f64::from_bits(*bits),
+                tangent: 0.0,
+            },
+            EmirOp::LoadInput(idx) => {
+                let primal = match inputs.get(*idx as usize) {
+                    Some(Value::F64(v)) => *v,
+                    _ => return Err(EvalFault::TypeConfusion { register: *idx as u32, op: name }),
+                };
+                let tangent = if *idx == var_index { 1.0 } else { 0.0 };
+                Dual { primal, tangent }
+            }
+            EmirOp::LoadState(idx) => {
+                let primal = match state.get(*idx as usize) {
+                    Some(Value::F64(v)) => *v,
+                    _ => return Err(EvalFault::TypeConfusion { register: *idx as u32, op: name }),
+                };
+                Dual { primal, tangent: 0.0 }
+            }
+            EmirOp::F64Add(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: a.primal + b.primal, tangent: a.tangent + b.tangent }
+            }
+            EmirOp::F64Sub(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: a.primal - b.primal, tangent: a.tangent - b.tangent }
+            }
+            EmirOp::F64Mul(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual {
+                    primal: a.primal * b.primal,
+                    tangent: a.tangent * b.primal + a.primal * b.tangent,
+                }
+            }
+            EmirOp::F64Div(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                let bp2 = b.primal * b.primal;
+                Dual {
+                    primal: a.primal / b.primal,
+                    tangent: (a.tangent * b.primal - a.primal * b.tangent) / bp2,
+                }
+            }
+            EmirOp::Neg(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: -a.primal, tangent: -a.tangent }
+            }
+            EmirOp::Exp(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let p = a.primal.exp();
+                Dual { primal: p, tangent: p * a.tangent }
+            }
+            EmirOp::Ln(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.ln(), tangent: a.tangent / a.primal }
+            }
+            EmirOp::Sqrt(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let p = a.primal.sqrt();
+                Dual { primal: p, tangent: a.tangent / (2.0 * p) }
+            }
+            EmirOp::Sin(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.sin(), tangent: a.primal.cos() * a.tangent }
+            }
+            EmirOp::Cos(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.cos(), tangent: -a.primal.sin() * a.tangent }
+            }
+            EmirOp::Tan(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let c = a.primal.cos();
+                Dual { primal: a.primal.tan(), tangent: a.tangent / (c * c) }
+            }
+            EmirOp::Tanh(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let t = a.primal.tanh();
+                Dual { primal: t, tangent: (1.0 - t * t) * a.tangent }
+            }
+            EmirOp::Abs(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.abs(), tangent: a.primal.signum() * a.tangent }
+            }
+            EmirOp::Floor(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.floor(), tangent: 0.0 }
+            }
+            EmirOp::Ceil(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.ceil(), tangent: 0.0 }
+            }
+            EmirOp::F64Pow(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                let p = a.primal.powf(b.primal);
+                if b.tangent == 0.0 {
+                    // Constant exponent: d/dx [a^b] = b * a^(b-1) * a'
+                    Dual { primal: p, tangent: b.primal * a.primal.powf(b.primal - 1.0) * a.tangent }
+                } else {
+                    // General: a^b * (b * a'/a + b' * ln(a))
+                    Dual { primal: p, tangent: p * (b.primal * a.tangent / a.primal + b.tangent * a.primal.ln()) }
+                }
+            }
+            EmirOp::Min(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                if a.primal < b.primal {
+                    Dual { primal: a.primal, tangent: a.tangent }
+                } else {
+                    Dual { primal: b.primal, tangent: b.tangent }
+                }
+            }
+            EmirOp::Max(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                if a.primal > b.primal {
+                    Dual { primal: a.primal, tangent: a.tangent }
+                } else {
+                    Dual { primal: b.primal, tangent: b.tangent }
+                }
+            }
+            EmirOp::Atan2(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                let denom = a.primal * a.primal + b.primal * b.primal;
+                Dual {
+                    primal: a.primal.atan2(b.primal),
+                    tangent: (b.primal * a.tangent - a.primal * b.tangent) / denom,
+                }
+            }
+            EmirOp::Select { condition: c, then_value: t, else_value: e } => {
+                let c = dual_of(&registers, c, name)?;
+                let t = dual_of(&registers, t, name)?;
+                let e = dual_of(&registers, e, name)?;
+                if c.primal != 0.0 {
+                    Dual { primal: t.primal, tangent: t.tangent }
+                } else {
+                    Dual { primal: e.primal, tangent: e.tangent }
+                }
+            }
+            EmirOp::IsFinite(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: if a.primal.is_finite() { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            // Comparisons and boolean ops: tangent is always 0.0.
+            EmirOp::Eq(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal == b.primal { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Ne(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal != b.primal { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Lt(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal < b.primal { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Le(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal <= b.primal { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Gt(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal > b.primal { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Ge(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal >= b.primal { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::And(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal != 0.0 && b.primal != 0.0 { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Or(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                Dual { primal: if a.primal != 0.0 || b.primal != 0.0 { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            EmirOp::Not(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: if a.primal == 0.0 { 1.0 } else { 0.0 }, tangent: 0.0 }
+            }
+            _ => {
+                return Err(EvalFault::TypeConfusion {
+                    register: program.result.0,
+                    op: "differentiate (unsupported op in dual evaluation)",
+                });
+            }
+        };
+        registers.push(dual);
+    }
+    let result = registers
+        .get(program.result.0 as usize)
+        .ok_or(EvalFault::BadRegister(program.result.0))?;
+    Ok(result.clone())
+}
+
+fn dual_of(registers: &[Dual], value: &EmirValue, op: &'static str) -> Result<Dual, EvalFault> {
+    registers
+        .get(value.0 as usize)
+        .cloned()
+        .ok_or(EvalFault::TypeConfusion { register: value.0, op })
 }
 
 fn eq_ne(
@@ -456,10 +955,22 @@ fn eq_ne(
     let result = match (&left_value, &right_value) {
         (Value::F64(left), Value::F64(right)) => left == right,
         (Value::Bool(left), Value::Bool(right)) => left == right,
+        (Value::Bool(left), Value::F64(right)) => *left == (*right != 0.0),
+        (Value::F64(left), Value::Bool(right)) => (*left != 0.0) == *right,
         (Value::Vector(left), Value::Vector(right)) => left == right,
         (Value::Matrix { rows: r1, cols: c1, data: d1 }, Value::Matrix { rows: r2, cols: c2, data: d2 }) => {
             r1 == r2 && c1 == c2 && d1 == d2
         }
+        (
+            Value::Tensor {
+                shape: s1,
+                data: d1,
+            },
+            Value::Tensor {
+                shape: s2,
+                data: d2,
+            },
+        ) => s1 == s2 && d1 == d2,
         _ => {
             return Err(EvalFault::TypeConfusion {
                 register: left.0,
@@ -514,6 +1025,7 @@ fn f64_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<f64
 fn bool_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<bool, EvalFault> {
     match register(registers, value)? {
         Value::Bool(flag) => Ok(*flag),
+        Value::F64(num) => Ok(*num != 0.0),
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,
@@ -545,6 +1057,124 @@ fn matrix_of<'a>(
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,
+        }),
+    }
+}
+
+fn tensor_of<'a>(
+    registers: &'a [Value],
+    value: EmirValue,
+    op: &'static str,
+) -> Result<(&'a [usize], &'a [f64]), EvalFault> {
+    match register(registers, value)? {
+        Value::Tensor { shape, data } => Ok((shape.as_slice(), data.as_slice())),
+        _ => Err(EvalFault::TypeConfusion {
+            register: value.0,
+            op,
+        }),
+    }
+}
+
+fn collect_slice(
+    data: &[f64],
+    shape: &[usize],
+    starts: &[usize],
+    out_shape: &[usize],
+    axis: usize,
+    offset: usize,
+    out: &mut Vec<f64>,
+) {
+    if axis == shape.len() {
+        out.push(data[offset]);
+        return;
+    }
+    let stride = shape[axis + 1..].iter().product::<usize>().max(1);
+    for i in 0..out_shape[axis] {
+        collect_slice(
+            data,
+            shape,
+            starts,
+            out_shape,
+            axis + 1,
+            offset + (starts[axis] + i) * stride,
+            out,
+        );
+    }
+}
+
+fn eval_tensor_slice(
+    registers: &[Value],
+    tensor: EmirValue,
+    axes: &[EmirSliceAxis],
+    name: &'static str,
+) -> Result<Value, EvalFault> {
+    let (shape, data) = match register(registers, tensor)? {
+        Value::Vector(items) => (vec![items.len()], items.as_slice()),
+        Value::Matrix { rows, cols, data } => (vec![*rows, *cols], data.as_slice()),
+        Value::Tensor { shape, data } => (shape.clone(), data.as_slice()),
+        _ => {
+            return Err(EvalFault::TypeConfusion {
+                register: tensor.0,
+                op: name,
+            });
+        }
+    };
+    if axes.len() != shape.len() {
+        return Err(EvalFault::TypeConfusion {
+            register: tensor.0,
+            op: name,
+        });
+    }
+    let mut starts = Vec::with_capacity(axes.len());
+    let mut out_shape = Vec::with_capacity(axes.len());
+    for (axis, slice) in axes.iter().enumerate() {
+        match slice {
+            EmirSliceAxis::Point(index) => {
+                let i = whole_index(registers, *index, name, shape[axis])?;
+                starts.push(i);
+                out_shape.push(1);
+            }
+            EmirSliceAxis::Range { start, end } => {
+                let start_i = whole_index(registers, *start, name, shape[axis] + 1)?;
+                let raw_end = f64_of(registers, *end, name)?;
+                if !raw_end.is_finite() || raw_end < 0.0 || raw_end.fract() != 0.0 {
+                    return Err(EvalFault::IndexOutOfBounds {
+                        op: name,
+                        index: raw_end as i64,
+                        len: shape[axis],
+                    });
+                }
+                let end_i = raw_end as usize;
+                if end_i > shape[axis] || start_i > end_i {
+                    return Err(EvalFault::IndexOutOfBounds {
+                        op: name,
+                        index: end_i as i64,
+                        len: shape[axis],
+                    });
+                }
+                starts.push(start_i);
+                out_shape.push(end_i - start_i);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    collect_slice(data, &shape, &starts, &out_shape, 0, 0, &mut out);
+    let kept: Vec<usize> = axes
+        .iter()
+        .zip(out_shape)
+        .filter_map(|(axis, extent)| matches!(axis, EmirSliceAxis::Range { .. }).then_some(extent))
+        .collect();
+    match kept.as_slice() {
+        [] => Ok(Value::F64(out.first().copied().unwrap_or(f64::NAN))),
+        [_] => Ok(Value::Vector(out)),
+        [rows, cols] => Ok(Value::Matrix {
+            rows: *rows,
+            cols: *cols,
+            data: out,
+        }),
+        _ => Ok(Value::Tensor {
+            shape: kept,
+            data: out,
         }),
     }
 }

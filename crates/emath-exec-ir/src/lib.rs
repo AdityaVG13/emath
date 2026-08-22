@@ -10,15 +10,31 @@ pub mod interp;
 pub mod runner;
 
 pub use runner::{
-    definition_order, simulate_continuous, step_continuous, step_continuous_values, StepMethod,
-    Trajectory, TrajectorySample,
+    definition_order, simulate_continuous, simulate_continuous_with, step_continuous,
+    step_continuous_values, SimulateOptions, StepMethod, Trajectory, TrajectorySample,
 };
 
 use emath_core::Span;
-use emath_ir::{BinaryOp, ExprNode, Literal, SemanticPackage, UnaryOp};
+use emath_ir::{BinaryOp, BinderKind, ExprNode, Literal, SemanticPackage, SliceAxis, UnaryOp};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EmirValue(pub u32);
+
+/// One axis of [`EmirOp::TensorSlice`]: a scalar point or a half-open range.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum EmirSliceAxis {
+    Point(EmirValue),
+    Range { start: EmirValue, end: EmirValue },
+}
+
+/// Accumulation strategy for [`EmirOp::Fold`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FoldCombine {
+    Add,
+    Mul,
+    And,
+    Or,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EmirOp {
@@ -86,6 +102,73 @@ pub enum EmirOp {
     MatrixMulVector(EmirValue, EmirValue),
     MatrixMulMatrix(EmirValue, EmirValue),
     MatrixTranspose(EmirValue),
+    TensorCreate {
+        shape: Vec<usize>,
+        elements: Vec<EmirValue>,
+    },
+    TensorIndex {
+        tensor: EmirValue,
+        indices: Vec<EmirValue>,
+    },
+    TensorSlice {
+        tensor: EmirValue,
+        axes: Vec<EmirSliceAxis>,
+    },
+    TensorAdd(EmirValue, EmirValue),
+    TensorSub(EmirValue, EmirValue),
+    /// Runtime fold (sum/product/forall/exists) over a variable-bound
+    /// integer range.  `body` is a sub-program evaluated once per
+    /// iteration with the loop variable supplied as an extra input at
+    /// `loop_var_index`.
+    Fold {
+        start: EmirValue,
+        end: EmirValue,
+        init: EmirValue,
+        combine: FoldCombine,
+        loop_var_index: u16,
+        body: EmirProgram,
+    },
+    /// Numerical integration (composite Simpson's rule) over a continuous
+    /// range.  `integrand` is a sub-program evaluated at each sample
+    /// point with the integration variable supplied as an extra input at
+    /// `loop_var_index`.  `steps` must be even.
+    Integral {
+        start: EmirValue,
+        end: EmirValue,
+        steps: u32,
+        loop_var_index: u16,
+        integrand: EmirProgram,
+    },
+    /// Forward-mode autodiff.  Evaluates `body` with dual numbers,
+    /// seeding the input at `var_index` with tangent 1.0.  Returns the
+    /// tangent (derivative) of the body's result.
+    Differentiate {
+        body: EmirProgram,
+        var_index: u16,
+    },
+    /// Newton's-method root-finding.  Iteratively adjusts the input at
+    /// `var_index` until `body` (the residual) is within `tolerance` of
+    /// zero.  Each iteration uses dual-number evaluation for both the
+    /// residual value and its derivative.  Returns the converged input
+    /// value.
+    Solve {
+        body: EmirProgram,
+        var_index: u16,
+        tolerance: f64,
+        max_iter: u32,
+    },
+    /// Gradient-descent optimization.  Iteratively adjusts the input at
+    /// `var_index` to minimize (or maximize when `maximize` is true)
+    /// `body` (the objective).  Uses dual-number evaluation for the
+    /// gradient.  Returns the converged input value.
+    Optimize {
+        body: EmirProgram,
+        var_index: u16,
+        maximize: bool,
+        learning_rate: f64,
+        tolerance: f64,
+        max_iter: u32,
+    },
 }
 
 impl EmirOp {
@@ -140,6 +223,16 @@ impl EmirOp {
             Self::MatrixMulVector(..) => "mat-mul-vec",
             Self::MatrixMulMatrix(..) => "mat-mul-mat",
             Self::MatrixTranspose(_) => "mat-transpose",
+            Self::TensorCreate { .. } => "tensor-create",
+            Self::TensorIndex { .. } => "tensor-index",
+            Self::TensorSlice { .. } => "tensor-slice",
+            Self::TensorAdd(..) => "tensor-add",
+            Self::TensorSub(..) => "tensor-sub",
+            Self::Fold { .. } => "fold",
+            Self::Integral { .. } => "integral",
+            Self::Differentiate { .. } => "differentiate",
+            Self::Solve { .. } => "solve",
+            Self::Optimize { .. } => "optimize",
         }
     }
 }
@@ -264,6 +357,31 @@ impl Emitter {
             .ok_or_else(|| format!("unknown input `{name}`"))
     }
 
+    /// Create a sub-emitter that shares this emitter's input and state
+    /// tables.  Used by nested ops (`Differentiate`, `Solve`,
+    /// `Optimize`) so the sub-program can reference the same inputs.
+    fn sub_emitter(&self) -> Emitter {
+        Emitter {
+            ops: Vec::new(),
+            inputs: self.inputs.clone(),
+            states: self.states.clone(),
+            obligations: Vec::new(),
+        }
+    }
+
+    /// Finalize this emitter into an `EmirProgram` with the given result
+    /// value.  The state count comes from the parent emitter since
+    /// sub-programs share state tables.
+    fn finish(mut self, result: EmirValue, state_count: usize) -> EmirProgram {
+        EmirProgram {
+            ops: std::mem::take(&mut self.ops),
+            result,
+            input_count: u16::try_from(self.inputs.len()).unwrap_or(u16::MAX),
+            state_count: u16::try_from(state_count).unwrap_or(u16::MAX),
+            domain_obligations: std::mem::take(&mut self.obligations),
+        }
+    }
+
     fn emit(&mut self, package: &SemanticPackage, id: EmirExprRef) -> Result<EmirValue, String> {
         let expr = package
             .expr(id)
@@ -375,6 +493,8 @@ impl Emitter {
                     BinaryOp::MatrixScale => EmirOp::MatrixScale(l, r),
                     BinaryOp::MatrixMulVector => EmirOp::MatrixMulVector(l, r),
                     BinaryOp::MatrixMulMatrix => EmirOp::MatrixMulMatrix(l, r),
+                    BinaryOp::TensorAdd => EmirOp::TensorAdd(l, r),
+                    BinaryOp::TensorSub => EmirOp::TensorSub(l, r),
                     BinaryOp::ExactAdd
                     | BinaryOp::ExactSub
                     | BinaryOp::ExactMul
@@ -428,6 +548,19 @@ impl Emitter {
                     span,
                 ))
             }
+            ExprNode::Tensor { shape, elements } => {
+                let mut emitted = Vec::with_capacity(elements.len());
+                for &element in elements {
+                    emitted.push(self.emit(package, element)?);
+                }
+                Ok(self.push(
+                    EmirOp::TensorCreate {
+                        shape: shape.clone(),
+                        elements: emitted,
+                    },
+                    span,
+                ))
+            }
             ExprNode::Index { value, indices } => {
                 let target = self.emit(package, *value)?;
                 if indices.len() == 1 {
@@ -438,8 +571,190 @@ impl Emitter {
                     let col = self.emit(package, indices[1])?;
                     Ok(self.push(EmirOp::MatrixIndex { matrix: target, row, col }, span))
                 } else {
-                    Err("indexing with rank > 2 is outside the Phase 1 subset".to_string())
+                    let mut emitted = Vec::with_capacity(indices.len());
+                    for &index in indices {
+                        emitted.push(self.emit(package, index)?);
+                    }
+                    Ok(self.push(
+                        EmirOp::TensorIndex {
+                            tensor: target,
+                            indices: emitted,
+                        },
+                        span,
+                    ))
                 }
+            }
+            ExprNode::Slice { value, axes } => {
+                let target = self.emit(package, *value)?;
+                let mut emitted = Vec::with_capacity(axes.len());
+                for axis in axes {
+                    emitted.push(match axis {
+                        SliceAxis::Point(index) => EmirSliceAxis::Point(self.emit(package, *index)?),
+                        SliceAxis::Range { start, end } => EmirSliceAxis::Range {
+                            start: self.emit(package, *start)?,
+                            end: self.emit(package, *end)?,
+                        },
+                    });
+                }
+                Ok(self.push(
+                    EmirOp::TensorSlice {
+                        tensor: target,
+                        axes: emitted,
+                    },
+                    span,
+                ))
+            }
+            ExprNode::Binder {
+                kind,
+                variables,
+                body,
+            } => {
+                if variables.len() != 1 {
+                    return Err(
+                        "only a single binder variable is computed".to_string()
+                    );
+                }
+                let binder = &variables[0];
+                let domain_expr = package
+                    .expr(binder.domain)
+                    .ok_or_else(|| "binder domain out of range".to_string())?;
+                let (start_id, end_id) = match domain_expr {
+                    ExprNode::Vector(els) if els.len() == 2 => (els[0], els[1]),
+                    _ => {
+                        return Err(
+                            "binder domain must be a range vector".to_string()
+                        )
+                    }
+                };
+                let start_val = self.emit(package, start_id)?;
+                let end_val = self.emit(package, end_id)?;
+                let loop_var_index =
+                    u16::try_from(self.inputs.len()).unwrap_or(u16::MAX);
+                let mut body_inputs = self.inputs.clone();
+                body_inputs.push(binder.name.clone());
+                let mut body_emitter = Emitter {
+                    ops: Vec::new(),
+                    inputs: body_inputs,
+                    states: self.states.clone(),
+                    obligations: Vec::new(),
+                };
+                let body_result = body_emitter.emit(package, *body)?;
+                let body_program = EmirProgram {
+                    ops: std::mem::take(&mut body_emitter.ops),
+                    result: body_result,
+                    input_count: u16::try_from(body_emitter.inputs.len())
+                        .unwrap_or(u16::MAX),
+                    state_count: u16::try_from(self.states.len())
+                        .unwrap_or(u16::MAX),
+                    domain_obligations: std::mem::take(
+                        &mut body_emitter.obligations,
+                    ),
+                };
+                match kind {
+                    BinderKind::Sum
+                    | BinderKind::Product
+                    | BinderKind::ForAll
+                    | BinderKind::Exists => {
+                        let combine = match kind {
+                            BinderKind::Sum => FoldCombine::Add,
+                            BinderKind::Product => FoldCombine::Mul,
+                            BinderKind::ForAll => FoldCombine::And,
+                            BinderKind::Exists => FoldCombine::Or,
+                            _ => unreachable!(),
+                        };
+                        let identity: f64 = match combine {
+                            FoldCombine::Add => 0.0,
+                            FoldCombine::Mul => 1.0,
+                            FoldCombine::And => 1.0,
+                            FoldCombine::Or => 0.0,
+                        };
+                        let init_val =
+                            self.push(EmirOp::ConstF64(identity.to_bits()), span);
+                        Ok(self.push(
+                            EmirOp::Fold {
+                                start: start_val,
+                                end: end_val,
+                                init: init_val,
+                                combine,
+                                loop_var_index,
+                                body: body_program,
+                            },
+                            span,
+                        ))
+                    }
+                    BinderKind::Integral => Ok(self.push(
+                        EmirOp::Integral {
+                            start: start_val,
+                            end: end_val,
+                            steps: 1000,
+                            loop_var_index,
+                            integrand: body_program,
+                        },
+                        span,
+                    )),
+                }
+            }
+            ExprNode::Differentiate { body, var } => {
+                let var_index = self.input_index(var)?;
+                let mut body_emitter = Emitter {
+                    ops: Vec::new(),
+                    inputs: self.inputs.clone(),
+                    states: self.states.clone(),
+                    obligations: Vec::new(),
+                };
+                let body_result = body_emitter.emit(package, *body)?;
+                let body_program = EmirProgram {
+                    ops: std::mem::take(&mut body_emitter.ops),
+                    result: body_result,
+                    input_count: u16::try_from(body_emitter.inputs.len())
+                        .unwrap_or(u16::MAX),
+                    state_count: u16::try_from(self.states.len())
+                        .unwrap_or(u16::MAX),
+                    domain_obligations: std::mem::take(
+                        &mut body_emitter.obligations,
+                    ),
+                };
+                Ok(self.push(
+                    EmirOp::Differentiate {
+                        body: body_program,
+                        var_index,
+                    },
+                    span,
+                ))
+            }
+            ExprNode::Solve { body, var } => {
+                let var_index = self.input_index(var)?;
+                let sc = self.states.len();
+                let mut body_emitter = self.sub_emitter();
+                let body_result = body_emitter.emit(package, *body)?;
+                let body_program = body_emitter.finish(body_result, sc);
+                Ok(self.push(
+                    EmirOp::Solve {
+                        body: body_program,
+                        var_index,
+                        tolerance: 1e-12,
+                        max_iter: 100,
+                    },
+                    span,
+                ))
+            }
+            ExprNode::Optimize { body, var, maximize } => {
+                let var_index = self.input_index(var)?;
+                let sc = self.states.len();
+                let mut body_emitter = self.sub_emitter();
+                let body_result = body_emitter.emit(package, *body)?;
+                let body_program = body_emitter.finish(body_result, sc);
+                Ok(self.push(
+                    EmirOp::Optimize {
+                        body: body_program,
+                        var_index,
+                        maximize: *maximize,
+                        learning_rate: 0.01,
+                        tolerance: 1e-10,
+                        max_iter: 1000,
+                    },
+                    span,
+                ))
             }
             other => Err(format!(
                 "expression form {:?} is outside the Phase 1 strict-f64 subset",

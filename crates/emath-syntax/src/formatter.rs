@@ -633,6 +633,11 @@ pub fn format_type(out: &mut String, ty: &TypeExpr) {
                 format_type(out, item);
             }
         }
+        TypeKind::In { base, unit } => {
+            format_type(out, base);
+            out.push_str(" in ");
+            format_type(out, unit);
+        }
     }
 }
 
@@ -650,7 +655,9 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         ExprKind::At { .. }
         | ExprKind::On { .. }
         | ExprKind::Conditioned { .. }
-        | ExprKind::Derivative { .. } => true,
+        | ExprKind::Derivative { .. }
+        | ExprKind::Solve { .. }
+        | ExprKind::Optimize { .. } => true,
         // Binder expressions (`sum(i in S) body`) parse greedily; parens
         // keep them scoped inside larger factors, and the body must never
         // be parenthesized (see the binder arm below).
@@ -704,7 +711,7 @@ fn format_expr_inner(out: &mut String, expr: &Expr) {
                 if i > 0 {
                     out.push_str(", ");
                 }
-                format_expr(out, arg, Prec::Atomic);
+                format_expr(out, arg, Prec::Root);
             }
             out.push(')');
         }
@@ -715,9 +722,18 @@ fn format_expr_inner(out: &mut String, expr: &Expr) {
                 if i > 0 {
                     out.push_str(", ");
                 }
-                format_expr(out, index, Prec::Atomic);
+                format_expr(out, index, Prec::Root);
             }
             out.push(']');
+        }
+        ExprKind::Slice { start, end } => {
+            if let Some(start) = start {
+                format_expr(out, start, Prec::Root);
+            }
+            out.push(':');
+            if let Some(end) = end {
+                format_expr(out, end, Prec::Root);
+            }
         }
         ExprKind::Unary { op, value } => {
             match op {
@@ -792,6 +808,33 @@ fn format_expr_inner(out: &mut String, expr: &Expr) {
             format_expr(out, body, Prec::Root);
         }
         ExprKind::Derivative { value, wrt } => {
+            out.push_str("derivative ");
+            format_expr(out, value, Prec::Root);
+            if let Some(items) = wrt {
+                out.push_str(" wrt ");
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    format_expr(out, item, Prec::Root);
+                }
+            }
+        }
+        ExprKind::Solve { value, wrt } => {
+            out.push_str("solve ");
+            format_expr(out, value, Prec::Root);
+            if let Some(items) = wrt {
+                out.push_str(" wrt ");
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    format_expr(out, item, Prec::Root);
+                }
+            }
+        }
+        ExprKind::Optimize { value, wrt, maximize } => {
+            out.push_str(if *maximize { "maximize " } else { "minimize " });
             format_expr(out, value, Prec::Root);
             if let Some(items) = wrt {
                 out.push_str(" wrt ");

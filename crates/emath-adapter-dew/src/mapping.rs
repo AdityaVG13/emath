@@ -112,6 +112,74 @@ fn walk(
                 );
             }
         }
+        ExprNode::Vector(elements) => {
+            for (index, &element) in elements.iter().enumerate() {
+                walk(
+                    package,
+                    element,
+                    &format!("{dew_path}.elem{index}"),
+                    symbol,
+                    entries,
+                );
+            }
+        }
+        ExprNode::Matrix(rows) => {
+            for (r, row) in rows.iter().enumerate() {
+                for (c, &element) in row.iter().enumerate() {
+                    walk(
+                        package,
+                        element,
+                        &format!("{dew_path}.row{r}_col{c}"),
+                        symbol,
+                        entries,
+                    );
+                }
+            }
+        }
+        ExprNode::Index { value, indices } => {
+            walk(package, *value, &format!("{dew_path}.value"), symbol, entries);
+            for (index, &axis) in indices.iter().enumerate() {
+                walk(
+                    package,
+                    axis,
+                    &format!("{dew_path}.index{index}"),
+                    symbol,
+                    entries,
+                );
+            }
+        }
+        ExprNode::Slice { value, axes } => {
+            walk(package, *value, &format!("{dew_path}.value"), symbol, entries);
+            for (index, axis) in axes.iter().enumerate() {
+                match axis {
+                    emath_ir::SliceAxis::Point(point) => {
+                        walk(
+                            package,
+                            *point,
+                            &format!("{dew_path}.axis{index}"),
+                            symbol,
+                            entries,
+                        );
+                    }
+                    emath_ir::SliceAxis::Range { start, end } => {
+                        walk(
+                            package,
+                            *start,
+                            &format!("{dew_path}.axis{index}.start"),
+                            symbol,
+                            entries,
+                        );
+                        walk(
+                            package,
+                            *end,
+                            &format!("{dew_path}.axis{index}.end"),
+                            symbol,
+                            entries,
+                        );
+                    }
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -126,7 +194,11 @@ fn node_kind(node: Option<&ExprNode>) -> String {
         Some(ExprNode::If { .. }) => "if".into(),
         Some(ExprNode::Record { .. }) => "record".into(),
         Some(ExprNode::Index { .. }) => "index".into(),
+        Some(ExprNode::Slice { .. }) => "slice".into(),
         Some(ExprNode::Binder { .. }) => "binder".into(),
+        Some(ExprNode::Vector(_)) => "vector".into(),
+        Some(ExprNode::Matrix(_)) => "matrix".into(),
+        Some(ExprNode::Tensor { .. }) => "tensor".into(),
         None => "missing".into(),
     }
 }

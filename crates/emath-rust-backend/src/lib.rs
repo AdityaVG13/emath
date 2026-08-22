@@ -11,6 +11,7 @@
 
 use emath_exec_ir::{
     definition_order, lower_definition, lower_requirement, EmirOp, EmirProgram, EmirValue,
+    FoldCombine,
 };
 use emath_ir::{ConstructionReceipt, ExprId, ExprNode, GoalKind, SemanticPackage, TypeId, TypeNode};
 use emath_rust_ir::ast::{
@@ -945,6 +946,8 @@ impl BackendInput<'_> {
             TypeNode::Bool => Ok(Ty::Bool),
             TypeNode::Vector { .. } => Ok(Ty::Named("Vec<f64>".to_string())),
             TypeNode::Matrix { .. } => Ok(Ty::Named("Vec<Vec<f64>>".to_string())),
+            TypeNode::Tensor { .. } => Ok(Ty::Named("Vec<f64>".to_string())),
+            TypeNode::Nat | TypeNode::Int => Ok(Ty::F64),
             TypeNode::Refinement { base, .. } => self.rust_node(base, owner),
             TypeNode::UnitRef { .. } => Ok(Ty::F64),
             TypeNode::Opaque { name, .. } => {
@@ -1269,6 +1272,250 @@ fn op_expr(
             "{{ let m = &{}; if m.is_empty() {{ vec![] }} else {{ let rows = m.len(); let cols = m[0].len(); (0..cols).map(|c| (0..rows).map(|r| m[r][c]).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }} }}",
             render_expr(&operand(program, *m)),
         ))),
+        EmirOp::TensorCreate { elements, .. } => Ok(Expr::Macro {
+            name: "vec".to_string(),
+            args: elements.iter().map(|elem| operand(program, *elem)).collect(),
+        }),
+        EmirOp::TensorIndex { tensor, indices } => {
+            let mut expr = operand(program, *tensor);
+            for index in indices {
+                expr = Expr::Index {
+                    target: Box::new(expr),
+                    index: Box::new(Expr::Cast {
+                        value: Box::new(operand(program, *index)),
+                        target: Ty::Named("usize".to_string()),
+                    }),
+                };
+            }
+            Ok(expr)
+        }
+        EmirOp::TensorSlice { tensor, axes } => Ok(Expr::Raw(format!(
+            "{{ let t = &{}; /* tensor slice axes={} */ t.clone() }}",
+            render_expr(&operand(program, *tensor)),
+            axes.len()
+        ))),
+        EmirOp::TensorAdd(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::TensorSub(l, r) => Ok(Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a - b).collect::<Vec<f64>>()",
+            render_expr(&operand(program, *l)),
+            render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::Fold {
+            start,
+            end,
+            init,
+            combine,
+            loop_var_index,
+            body,
+        } => {
+            let mut body_names = names.to_vec();
+            let lv_idx = *loop_var_index as usize;
+            while body_names.len() <= lv_idx {
+                body_names.push(String::new());
+            }
+            body_names[lv_idx] = "__fold_var".to_string();
+            let body_expr = value_expr(body, &body_names, states)?;
+            let body_code = render_expr(&body_expr);
+            let (init_str, acc_op) = match combine {
+                FoldCombine::Add => (render_expr(&operand(program, *init)), "+"),
+                FoldCombine::Mul => (render_expr(&operand(program, *init)), "*"),
+                FoldCombine::And => ("true".to_string(), "&&"),
+                FoldCombine::Or => ("false".to_string(), "||"),
+            };
+            Ok(Expr::Raw(format!(
+                "{{ let mut __fold_acc = {}; for __fold_iter in ({} as i64)..({} as i64) {{ let __fold_var = __fold_iter as f64; __fold_acc = __fold_acc {} {}; }} __fold_acc }}",
+                init_str,
+                render_expr(&operand(program, *start)),
+                render_expr(&operand(program, *end)),
+                acc_op,
+                body_code,
+            )))
+        }
+        EmirOp::Integral {
+            start,
+            end,
+            steps,
+            loop_var_index,
+            integrand,
+        } => {
+            let mut body_names = names.to_vec();
+            let lv_idx = *loop_var_index as usize;
+            while body_names.len() <= lv_idx {
+                body_names.push(String::new());
+            }
+            body_names[lv_idx] = "__int_var".to_string();
+            let body_expr = value_expr(integrand, &body_names, states)?;
+            let body_code = render_expr(&body_expr);
+            Ok(Expr::Raw(format!(
+                "{{ let __a = {}; let __b = {}; let __n = {} as i64; let __h = (__b - __a) / __n as f64; let mut __int_acc = 0.0; for __i in 0..=__n {{ let __int_var = __a + __i as f64 * __h; let __w = if __i == 0 || __i == __n {{ 1.0 }} else if __i % 2 == 0 {{ 2.0 }} else {{ 4.0 }}; __int_acc += __w * {}; }} __int_acc * __h / 3.0 }}",
+                render_expr(&operand(program, *start)),
+                render_expr(&operand(program, *end)),
+                steps,
+                body_code,
+            )))
+        }
+        EmirOp::Differentiate { body, var_index } => {
+            let mut statements = Vec::new();
+            for (index, (op, _)) in body.ops.iter().enumerate() {
+                let primal = op_expr(op, body, names, states)?;
+                statements.push(Stmt::Let {
+                    pattern: format!("__e{index}"),
+                    value: Box::new(primal),
+                });
+                let tangent = Expr::Raw(dual_tangent_str(op, *var_index, index));
+                statements.push(Stmt::Let {
+                    pattern: format!("__d{index}"),
+                    value: Box::new(tangent),
+                });
+            }
+            statements.push(Stmt::Expr(Expr::Var(format!(
+                "__d{}",
+                body.result.0
+            ))));
+            Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
+        }
+        EmirOp::Solve {
+            body,
+            var_index,
+            tolerance,
+            max_iter,
+        } => {
+            // Newton's method: x_new = x_old - f(x) / f'(x)
+            // Generate primal (__e{N}) and tangent (__d{N}) let bindings
+            // inside a for loop, using __x for the variable input.
+            let init = op_expr(&EmirOp::LoadInput(*var_index), program, names, states)?;
+            let mut solve_names = names.to_vec();
+            let vi = *var_index as usize;
+            while solve_names.len() <= vi {
+                solve_names.push(String::new());
+            }
+            solve_names[vi] = "__x".to_string();
+            let mut inner = String::new();
+            for (index, (op, _)) in body.ops.iter().enumerate() {
+                let primal = op_expr(op, body, &solve_names, states)?;
+                inner.push_str(&format!("let __e{index} = {};\n", render_expr(&primal)));
+                let tangent = dual_tangent_str(op, *var_index, index);
+                inner.push_str(&format!("let __d{index} = {tangent};\n"));
+            }
+            let result_idx = body.result.0;
+            Ok(Expr::Raw(format!(
+                "{{ let mut __x = {};\nfor _ in 0..{max_iter} {{\n{inner}\
+                 let __f = __e{result_idx};\nlet __df = __d{result_idx};\n\
+                 if __f.abs() < {tolerance} || __df.abs() < 1e-30 {{ break; }}\n\
+                 __x -= __f / __df;\n}}\n__x }}",
+                render_expr(&init),
+            )))
+        }
+        EmirOp::Optimize {
+            body,
+            var_index,
+            maximize,
+            learning_rate,
+            tolerance,
+            max_iter,
+        } => {
+            // Gradient descent (or ascent):
+            //   minimize: x_new = x_old - lr * f'(x)
+            //   maximize: x_new = x_old + lr * f'(x)
+            let init = op_expr(&EmirOp::LoadInput(*var_index), program, names, states)?;
+            let mut opt_names = names.to_vec();
+            let vi = *var_index as usize;
+            while opt_names.len() <= vi {
+                opt_names.push(String::new());
+            }
+            opt_names[vi] = "__x".to_string();
+            let mut inner = String::new();
+            for (index, (op, _)) in body.ops.iter().enumerate() {
+                let primal = op_expr(op, body, &opt_names, states)?;
+                inner.push_str(&format!("let __e{index} = {};\n", render_expr(&primal)));
+                let tangent = dual_tangent_str(op, *var_index, index);
+                inner.push_str(&format!("let __d{index} = {tangent};\n"));
+            }
+            let result_idx = body.result.0;
+            let sign = if *maximize { "" } else { "-" };
+            Ok(Expr::Raw(format!(
+                "{{ let mut __x = {};\nfor _ in 0..{max_iter} {{\n{inner}\
+                 let __grad = __d{result_idx};\n\
+                 if __grad.abs() < {tolerance} {{ break; }}\n\
+                 __x += {sign} {learning_rate} * __grad;\n}}\n__x }}",
+                render_expr(&init),
+            )))
+        }
+    }
+}
+
+/// Generate the tangent expression string for an EMIR op in forward-mode
+/// autodiff.  Uses `__e{N}` for primal references and `__d{N}` for tangent
+/// references of earlier registers.  `idx` is the current register index.
+fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> String {
+    match op {
+        EmirOp::ConstF64(_) => "0.0".to_string(),
+        EmirOp::LoadInput(i) => {
+            if *i == var_index {
+                "1.0".to_string()
+            } else {
+                "0.0".to_string()
+            }
+        }
+        EmirOp::LoadState(_) => "0.0".to_string(),
+        EmirOp::F64Add(a, b) => format!("__d{} + __d{}", a.0, b.0),
+        EmirOp::F64Sub(a, b) => format!("__d{} - __d{}", a.0, b.0),
+        EmirOp::F64Mul(a, b) => {
+            format!("__d{} * __e{} + __e{} * __d{}", a.0, b.0, a.0, b.0)
+        }
+        EmirOp::F64Div(a, b) => format!(
+            "(__d{} * __e{} - __e{} * __d{}) / (__e{} * __e{})",
+            a.0, b.0, a.0, b.0, b.0, b.0
+        ),
+        EmirOp::Neg(a) => format!("-__d{}", a.0),
+        EmirOp::Exp(a) => format!("__e{} * __d{}", idx, a.0),
+        EmirOp::Ln(a) => format!("__d{} / __e{}", a.0, a.0),
+        EmirOp::Sqrt(a) => format!("__d{} / (2.0 * __e{})", a.0, idx),
+        EmirOp::Sin(a) => format!("__e{}.cos() * __d{}", a.0, a.0),
+        EmirOp::Cos(a) => format!("-__e{}.sin() * __d{}", a.0, a.0),
+        EmirOp::Tan(a) => format!(
+            "__d{} / (__e{}.cos() * __e{}.cos())",
+            a.0, a.0, a.0
+        ),
+        EmirOp::Tanh(a) => format!("(1.0 - __e{} * __e{}) * __d{}", idx, idx, a.0),
+        EmirOp::Abs(a) => format!("__e{}.signum() * __d{}", a.0, a.0),
+        EmirOp::Floor(_) | EmirOp::Ceil(_) => "0.0".to_string(),
+        EmirOp::F64Pow(a, b) => format!(
+            "__e{} * __e{}.powf(__e{} - 1.0) * __d{}",
+            b.0, a.0, b.0, a.0
+        ),
+        EmirOp::Min(a, b) => format!(
+            "if __e{} < __e{} {{ __d{} }} else {{ __d{} }}",
+            a.0, b.0, a.0, b.0
+        ),
+        EmirOp::Max(a, b) => format!(
+            "if __e{} > __e{} {{ __d{} }} else {{ __d{} }}",
+            a.0, b.0, a.0, b.0
+        ),
+        EmirOp::Atan2(a, b) => format!(
+            "(__e{} * __d{} - __e{} * __d{}) / (__e{} * __e{} + __e{} * __e{})",
+            b.0, a.0, a.0, b.0, a.0, a.0, b.0, b.0
+        ),
+        EmirOp::Select {
+            condition: c,
+            then_value: t,
+            else_value: e,
+        } => format!("if __e{} != 0.0 {{ __d{} }} else {{ __d{} }}", c.0, t.0, e.0),
+        EmirOp::IsFinite(_) => "0.0".to_string(),
+        EmirOp::Eq(..)
+        | EmirOp::Ne(..)
+        | EmirOp::Lt(..)
+        | EmirOp::Le(..)
+        | EmirOp::Gt(..)
+        | EmirOp::Ge(..)
+        | EmirOp::And(..)
+        | EmirOp::Or(..)
+        | EmirOp::Not(..) => "0.0".to_string(),
+        _ => "0.0".to_string(),
     }
 }
 
@@ -1311,6 +1558,18 @@ fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut BTreeSet<S
                 collect_var_names(package, *index, out);
             }
         }
+        ExprNode::Slice { value, axes } => {
+            collect_var_names(package, *value, out);
+            for axis in axes {
+                match axis {
+                    emath_ir::SliceAxis::Point(index) => collect_var_names(package, *index, out),
+                    emath_ir::SliceAxis::Range { start, end } => {
+                        collect_var_names(package, *start, out);
+                        collect_var_names(package, *end, out);
+                    }
+                }
+            }
+        }
         ExprNode::Vector(elements) => {
             for element in elements {
                 collect_var_names(package, *element, out);
@@ -1323,7 +1582,15 @@ fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut BTreeSet<S
                 }
             }
         }
+        ExprNode::Tensor { elements, .. } => {
+            for element in elements {
+                collect_var_names(package, *element, out);
+            }
+        }
         ExprNode::Binder { body, .. } => collect_var_names(package, *body, out),
+        ExprNode::Differentiate { body, .. }
+        | ExprNode::Solve { body, .. }
+        | ExprNode::Optimize { body, .. } => collect_var_names(package, *body, out),
     }
 }
 
@@ -1478,6 +1745,12 @@ fn add_scaled_expr(value: Expr, rate: Expr, scale: Expr, node: &TypeNode) -> Exp
         )),
         TypeNode::Matrix { .. } => Expr::Raw(format!(
             "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
+            render_expr(&value),
+            render_expr(&rate),
+            render_expr(&scale),
+        )),
+        TypeNode::Tensor { .. } => Expr::Raw(format!(
+            "{}.iter().zip({}.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()",
             render_expr(&value),
             render_expr(&rate),
             render_expr(&scale),

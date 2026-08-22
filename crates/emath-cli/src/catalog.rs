@@ -55,7 +55,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "genesis" => "genesis <file.emath> --out <dir>",
         "eval" => "eval <file.emath> [--world <name>] [--json]",
         "simulate" => {
-            "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--set name=value] [--json]"
+            "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"
         }
         "repl" => "repl <file.emath>",
         "compile" => "compile --parametric <file.emath> --out <dir> [--world LABEL]",
@@ -102,7 +102,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "genesis" => "world interpretation + portfolio + answer receipt",
         "eval" => "evaluate the admitted term on the semantic VM (value + world + vm_steps)",
         "simulate" => {
-            "integrate an admitted `emath model` with explicit Euler/RK4/RK45; `--set` binds inputs and state"
+            "integrate an admitted `emath model` with explicit Euler/RK4/RK45; `--atol/--rtol` enable adaptive RK45; `--event` locates one zero crossing; `--set` binds inputs and state"
         }
         "repl" => "interactive eval session over the same admission and VM path",
         "compile" => "parametric generated crate for an admitted world",
@@ -263,7 +263,18 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
         "eval" => &["--world", "--json", "--help", "-h"],
         "simulate" => &[
-            "--dt", "--t0", "--t1", "--method", "--set", "--json", "--help", "-h",
+            "--dt",
+            "--t0",
+            "--t1",
+            "--method",
+            "--atol",
+            "--rtol",
+            "--dt-max",
+            "--event",
+            "--set",
+            "--json",
+            "--help",
+            "-h",
         ],
         "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
         "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
@@ -300,6 +311,10 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--t0"
             | "--t1"
             | "--method"
+            | "--atol"
+            | "--rtol"
+            | "--dt-max"
+            | "--event"
             | "--set"
     )
 }

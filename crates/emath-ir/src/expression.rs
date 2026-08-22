@@ -45,6 +45,11 @@ pub enum ExprNode {
         value: ExprId,
         indices: Vec<ExprId>,
     },
+    /// Rank-preserving or mixed slice. Point axes drop rank; range axes keep it.
+    Slice {
+        value: ExprId,
+        axes: Vec<SliceAxis>,
+    },
     Binder {
         kind: BinderKind,
         variables: Vec<BinderVariable>,
@@ -52,6 +57,43 @@ pub enum ExprNode {
     },
     Vector(Vec<ExprId>),
     Matrix(Vec<Vec<ExprId>>),
+    /// Rank-3+ tensor of Float64, stored in row-major nested order.
+    Tensor {
+        shape: Vec<usize>,
+        elements: Vec<ExprId>,
+    },
+    /// Forward-mode autodiff: compute the derivative of `body` (a
+    /// sub-expression) with respect to the input named `var`.  The
+    /// EMIR emitter resolves `var` to an input index and produces an
+    /// `EmirOp::Differentiate` with a nested sub-program.
+    Differentiate {
+        body: ExprId,
+        var: String,
+    },
+    /// Newton's-method root-finding: find the value of input `var`
+    /// that drives `body` (the residual) to zero.  The initial guess
+    /// is the input value supplied at runtime.  Uses forward-mode
+    /// autodiff for the Jacobian step.
+    Solve {
+        body: ExprId,
+        var: String,
+    },
+    /// Gradient-descent optimization: find the value of input `var`
+    /// that minimizes (or maximizes when `maximize` is true) `body`
+    /// (the objective).  The initial guess is the input value supplied
+    /// at runtime.  Uses forward-mode autodiff for the gradient.
+    Optimize {
+        body: ExprId,
+        var: String,
+        maximize: bool,
+    },
+}
+
+/// One axis of [`ExprNode::Slice`]: a scalar point or a half-open range.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SliceAxis {
+    Point(ExprId),
+    Range { start: ExprId, end: ExprId },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,6 +164,8 @@ pub enum BinaryOp {
     MatrixScale,
     MatrixMulVector,
     MatrixMulMatrix,
+    TensorAdd,
+    TensorSub,
 }
 
 impl BinaryOp {
@@ -156,6 +200,8 @@ impl BinaryOp {
             Self::MatrixScale => "mat-scale",
             Self::MatrixMulVector => "mat-mul-vec",
             Self::MatrixMulMatrix => "mat-mul-mat",
+            Self::TensorAdd => "tensor-add",
+            Self::TensorSub => "tensor-sub",
         }
     }
 
@@ -267,6 +313,20 @@ impl ExprNode {
                     exprs[index.index()].collect_free(exprs, seen, out);
                 }
             }
+            Self::Slice { value, axes } => {
+                exprs[value.index()].collect_free(exprs, seen, out);
+                for axis in axes {
+                    match axis {
+                        SliceAxis::Point(index) => {
+                            exprs[index.index()].collect_free(exprs, seen, out);
+                        }
+                        SliceAxis::Range { start, end } => {
+                            exprs[start.index()].collect_free(exprs, seen, out);
+                            exprs[end.index()].collect_free(exprs, seen, out);
+                        }
+                    }
+                }
+            }
             Self::Binder {
                 variables, body, ..
             } => {
@@ -295,7 +355,17 @@ impl ExprNode {
                     }
                 }
             }
+            Self::Tensor { elements, .. } => {
+                for &element in elements {
+                    exprs[element.index()].collect_free(exprs, seen, out);
+                }
+            }
             Self::Literal(_) => {}
+            Self::Differentiate { body, .. }
+            | Self::Solve { body, .. }
+            | Self::Optimize { body, .. } => {
+                exprs[body.index()].collect_free(exprs, seen, out);
+            }
         }
     }
 }

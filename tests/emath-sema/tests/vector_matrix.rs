@@ -1,6 +1,8 @@
 //! Tests for Vector and Matrix types, literals, indexing, and arithmetic in semantic analysis.
 
 use emath_core::limits::Limits;
+use emath_exec_ir::interp::Value;
+use emath_exec_ir::runner::run_package;
 use emath_sema::admit::CheckResult;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
@@ -151,5 +153,557 @@ emath function BadIndex:
     assert!(
         codes.contains(&"E-SHAPE-006"),
         "expected E-SHAPE-006, got: {codes:?}"
+    );
+}
+
+#[test]
+fn rank3_tensor_literal_and_slice_admit() {
+    let source = "\
+emath function TensorSlice:
+    outputs:
+        t: Tensor[2, 2, 2]
+        face: Matrix[2, 2]
+    definitions:
+        t = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
+        face = t[0, :, :]
+";
+    let result = check_source("tensor-slice", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "rank-3 tensor + slice must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn vector3_plus_vector1_is_refused() {
+    let source = "\
+emath function Broadcast:
+    inputs:
+        v3: Vector[3]
+        v1: Vector[1]
+    outputs:
+        out: Vector[3]
+    definitions:
+        out = v3 + v1
+";
+    let result = check_source("vec-broadcast", source);
+    assert!(result.diagnostics.has_errors());
+    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
+    assert!(
+        codes.contains(&"E-SHAPE-005"),
+        "Vector[3]+Vector[1] must be E-SHAPE-005, got {codes:?}"
+    );
+}
+
+#[test]
+fn nat_index_admits() {
+    let source = "\
+emath function NatIndex:
+    inputs:
+        v: Vector[3]
+        i: Nat
+    outputs:
+        x: Float64
+    definitions:
+        x = v[i]
+";
+    let result = check_source("nat-index", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "Nat index must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn finite_sum_one_to_five_admits() {
+    let source = include_str!("../../../language/examples/intro/sum-one-to-five.emath");
+    let result = check_source("sum-one-to-five", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "finite sum must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("total"), Some(&Value::F64(15.0)));
+    assert_eq!(test.outputs.get("folded"), Some(&Value::F64(15.0)));
+    assert!(test.verdict.expect_passed());
+}
+
+#[test]
+fn vector_sum_and_matrix_expect_compute() {
+    let source = "\
+emath function Fold:
+    outputs:
+        s: Float64
+        p: Float64
+        face: Matrix[2, 2]
+    definitions:
+        s = sum([1, 2, 3, 4, 5])
+        p = product([[1, 2], [3, 4]])
+        face = [[1.0, 2.0], [3.0, 4.0]]
+    tests:
+        example <known>:
+            expect s == 15 and p == 24 and face == [[1.0, 2.0], [3.0, 4.0]]
+";
+    let result = check_source("fold", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "known-shape folds must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("s"), Some(&Value::F64(15.0)));
+    assert_eq!(test.outputs.get("p"), Some(&Value::F64(24.0)));
+    assert_eq!(
+        test.outputs.get("face"),
+        Some(&Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![1.0, 2.0, 3.0, 4.0],
+        })
+    );
+    assert!(
+        test.verdict.expect_passed(),
+        "matrix expect must compare values, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn constant_negative_index_is_refused() {
+    let source = "\
+emath function NegIndex:
+    inputs:
+        v: Vector[3]
+    outputs:
+        x: Float64
+    definitions:
+        x = v[-1]
+";
+    let result = check_source("neg-index", source);
+    assert!(result.diagnostics.has_errors());
+    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
+    assert!(
+        codes.contains(&"E-SHAPE-006"),
+        "v[-1] must be E-SHAPE-006, got {codes:?}"
+    );
+}
+
+#[test]
+fn mean_and_abs_on_vector_compute() {
+    let source = "\nemath function VecStats:\n    inputs:\n        v: Vector[3]\n    outputs:\n        avg: Float64\n        a: Vector[3]\n    definitions:\n        avg = mean(v)\n        a = abs(v)\n    tests:\n        example <stats>:\n            given v = [1.0, -2.0, 4.0]\n            expect avg == 1.0 and a == [1.0, 2.0, 4.0]\n";
+    let result = check_source("vec-stats", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "mean/abs on a vector must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("avg"), Some(&Value::F64(1.0)));
+    assert_eq!(
+        test.outputs.get("a"),
+        Some(&Value::Vector(vec![1.0, 2.0, 4.0]))
+    );
+    assert!(
+        test.verdict.expect_passed(),
+        "mean/abs expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn variable_bound_sum_identity_computes() {
+    let source = "\
+emath function TriangularSum:
+    inputs:
+        n: Float64
+    outputs:
+        total: Float64
+    definitions:
+        total = sum i in 0..n: i
+    tests:
+        example <triangular>:
+            given n = 5
+            expect total == 10
+";
+    let result = check_source("triangular-sum", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "variable-bound sum of i must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("total"), Some(&Value::F64(10.0)));
+    assert!(
+        test.verdict.expect_passed(),
+        "triangular sum expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn variable_bound_sum_vector_index_computes() {
+    let source = "\
+emath function VectorRangeSum:
+    inputs:
+        v: Vector[3]
+    outputs:
+        s: Float64
+    definitions:
+        n = length(v)
+        s = sum i in 0..n: v[i]
+    tests:
+        example <range>:
+            given v = [1.0, 2.0, 3.0]
+            expect s == 6
+";
+    let result = check_source("range-sum", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "variable-bound sum with index must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("s"), Some(&Value::F64(6.0)));
+    assert!(
+        test.verdict.expect_passed(),
+        "variable-bound sum with index expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn forall_positive_vector_computes() {
+    let source = "
+emath function AllPositive:
+    inputs:
+        v: Vector[3]
+    outputs:
+        all_pos: Bool
+    definitions:
+        n = length(v)
+        all_pos = forall i in 0..n: v[i] > 0
+    tests:
+        example <positive>:
+            given v = [1.0, 2.0, 3.0]
+            expect all_pos == true
+";
+    let result = check_source("forall-positive", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "forall must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("all_pos"), Some(&Value::Bool(true)));
+    assert!(
+        test.verdict.expect_passed(),
+        "forall positive expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn forall_fails_on_negative_element() {
+    let source = "
+emath function AllPositiveCheck:
+    inputs:
+        v: Vector[3]
+    outputs:
+        all_pos: Bool
+    definitions:
+        n = length(v)
+        all_pos = forall i in 0..n: v[i] > 0
+    tests:
+        example <mixed>:
+            given v = [1.0, -2.0, 3.0]
+            expect all_pos == false
+";
+    let result = check_source("forall-negative", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "forall with failing element must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("all_pos"), Some(&Value::Bool(false)));
+    assert!(
+        test.verdict.expect_passed(),
+        "forall false expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn exists_zero_in_vector_computes() {
+    let source = "
+emath function HasZero:
+    inputs:
+        v: Vector[3]
+    outputs:
+        has_zero: Bool
+    definitions:
+        n = length(v)
+        has_zero = exists i in 0..n: v[i] == 0
+    tests:
+        example <zero>:
+            given v = [1.0, 0.0, 3.0]
+            expect has_zero == true
+";
+    let result = check_source("exists-zero", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "exists must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("has_zero"), Some(&Value::Bool(true)));
+    assert!(
+        test.verdict.expect_passed(),
+        "exists zero expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn integral_of_x_computes() {
+    let source = "
+emath function IntegrateX:
+    inputs:
+        a: Float64
+        b: Float64
+    outputs:
+        area: Float64
+    definitions:
+        area = integral x in a..b: x
+    tests:
+        example <linear>:
+            given a = 0
+            given b = 2
+";
+    let result = check_source("integral-x", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "integral must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let area = match test.outputs.get("area") {
+        Some(Value::F64(v)) => *v,
+        _ => panic!("expected f64 output for area, got {:?}", test.outputs.get("area")),
+    };
+    // Simpson's rule is exact for polynomials of degree <= 3.
+    assert!(
+        (area - 2.0).abs() < 1e-10,
+        "integral of x from 0 to 2 should be ~2.0, got {area}"
+    );
+}
+
+#[test]
+fn integral_of_x_squared_computes() {
+    let source = "
+emath function IntegrateXSquared:
+    outputs:
+        area: Float64
+    definitions:
+        area = integral x in 0..3: x * x
+    tests:
+        example <quadratic>:
+";
+    let result = check_source("integral-xsquared", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "integral of x*x must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let area = match test.outputs.get("area") {
+        Some(Value::F64(v)) => *v,
+        _ => panic!("expected f64 output for area, got {:?}", test.outputs.get("area")),
+    };
+    // Integral of x^2 from 0 to 3 = 9.  Simpson's rule is exact for degree <= 3.
+    assert!(
+        (area - 9.0).abs() < 1e-10,
+        "integral of x*x from 0 to 3 should be ~9.0, got {area}"
+    );
+}
+
+#[test]
+fn derivative_of_x_squared_computes() {
+    let source = "
+emath function AutoDiffSquare:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+        dy: Float64
+    definitions:
+        y = x * x
+        dy = derivative(y) wrt x
+    tests:
+        example <parabola>:
+            given x = 3
+            expect dy == 6
+";
+    let result = check_source("autodiff-square", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "derivative must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("dy"), Some(&Value::F64(6.0)));
+    assert!(
+        test.verdict.expect_passed(),
+        "derivative of x*x at x=3 should be 6, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn derivative_of_sin_computes() {
+    let source = "
+emath function AutoDiffSin:
+    inputs:
+        x: Float64
+    outputs:
+        dy: Float64
+    definitions:
+        dy = derivative(sin(x)) wrt x
+    tests:
+        example <sin>:
+            given x = 0
+            expect dy == 1
+";
+    let result = check_source("autodiff-sin", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "derivative of sin must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.outputs.get("dy"), Some(&Value::F64(1.0)));
+    assert!(
+        test.verdict.expect_passed(),
+        "derivative of sin(x) at x=0 should be 1, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn solve_finds_root_of_quadratic() {
+    let source = "
+emath function SolveRoot:
+    inputs:
+        x: Float64
+    outputs:
+        root: Float64
+    definitions:
+        residual = x * x - 4
+        root = solve(residual) wrt x
+    tests:
+        example <from_one>:
+            given x = 1
+            expect abs(root - 2) < 0.001
+";
+    let result = check_source("solve-root", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "solve must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let root = test.outputs.get("root");
+    assert!(root.is_some(), "root output missing");
+    let root_val = match root {
+        Some(Value::F64(v)) => *v,
+        other => panic!("root should be F64, got {other:?}"),
+    };
+    assert!(
+        (root_val - 2.0).abs() < 0.001,
+        "solve(x^2-4) wrt x from x=1 should converge to 2, got {root_val}"
+    );
+}
+
+#[test]
+fn minimize_finds_minimum() {
+    let source = "
+emath function MinimizeSquare:
+    inputs:
+        x: Float64
+    outputs:
+        optimum: Float64
+    definitions:
+        loss = (x - 3) * (x - 3)
+        optimum = minimize(loss) wrt x
+    tests:
+        example <from_zero>:
+            given x = 0
+            expect abs(optimum - 3) < 0.1
+";
+    let result = check_source("minimize-square", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "minimize must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let opt = match test.outputs.get("optimum") {
+        Some(Value::F64(v)) => *v,
+        other => panic!("optimum should be F64, got {other:?}"),
+    };
+    assert!(
+        (opt - 3.0).abs() < 0.1,
+        "minimize((x-3)^2) wrt x from x=0 should converge to 3, got {opt}"
+    );
+}
+
+#[test]
+fn maximize_finds_maximum() {
+    let source = "
+emath function MaximizeNegSquare:
+    inputs:
+        x: Float64
+    outputs:
+        optimum: Float64
+    definitions:
+        score = -(x - 2) * (x - 2)
+        optimum = maximize(score) wrt x
+    tests:
+        example <from_zero>:
+            given x = 0
+            expect abs(optimum - 2) < 0.1
+";
+    let result = check_source("maximize-neg-square", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "maximize must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let opt = match test.outputs.get("optimum") {
+        Some(Value::F64(v)) => *v,
+        other => panic!("optimum should be F64, got {other:?}"),
+    };
+    assert!(
+        (opt - 2.0).abs() < 0.1,
+        "maximize(-(x-2)^2) wrt x from x=0 should converge to 2, got {opt}"
     );
 }

@@ -2,7 +2,10 @@
 
 use emath_core::{QualifiedName, Span};
 use emath_exec_ir::interp::Value;
-use emath_exec_ir::{simulate_continuous, step_continuous, step_continuous_values, StepMethod};
+use emath_exec_ir::{
+    simulate_continuous, simulate_continuous_with, step_continuous, step_continuous_values,
+    SimulateOptions, StepMethod,
+};
 use emath_ir::{
     Declaration, DeclarationId, ExprNode, Field, SemanticPackage, TypeNode, UnaryOp, Visibility,
 };
@@ -248,4 +251,109 @@ fn vector_state_euler_steps_componentwise() {
     )
     .unwrap();
     assert_eq!(next.get("x"), Some(&Value::Vector(vec![1.5, 3.0])));
+}
+
+#[test]
+fn adaptive_decay_uses_fewer_steps_than_tiny_fixed() {
+    let package = decay_package();
+    let declaration = &package.declarations[0];
+    let mut state = BTreeMap::new();
+    state.insert("x".to_string(), Value::F64(1.0));
+    let fixed = simulate_continuous(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.0,
+        1.0,
+        1e-4,
+        StepMethod::Rk45,
+    )
+    .unwrap();
+    let adaptive = simulate_continuous_with(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.0,
+        1.0,
+        0.1,
+        StepMethod::Rk45,
+        &SimulateOptions {
+            atol: Some(1e-6),
+            rtol: Some(1e-6),
+            dt_max: Some(0.2),
+            event: None,
+        },
+    )
+    .unwrap();
+    assert!(
+        adaptive.samples.len() < fixed.samples.len(),
+        "adaptive={} fixed={}",
+        adaptive.samples.len(),
+        fixed.samples.len()
+    );
+    let last = match adaptive.samples.last().unwrap().state.get("x") {
+        Some(Value::F64(value)) => *value,
+        other => panic!("expected scalar x, got {other:?}"),
+    };
+    assert!((last - (-1.0_f64).exp()).abs() < 1e-4, "last={last}");
+}
+
+#[test]
+fn non_positive_atol_is_refused() {
+    let package = decay_package();
+    let declaration = &package.declarations[0];
+    let mut state = BTreeMap::new();
+    state.insert("x".to_string(), Value::F64(1.0));
+    let error = simulate_continuous_with(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.0,
+        1.0,
+        0.1,
+        StepMethod::Rk45,
+        &SimulateOptions {
+            atol: Some(0.0),
+            rtol: None,
+            dt_max: None,
+            event: None,
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("atol"), "{error}");
+}
+
+#[test]
+fn event_stops_when_x_crosses_half() {
+    let package = decay_package();
+    let declaration = &package.declarations[0];
+    let mut state = BTreeMap::new();
+    state.insert("x".to_string(), Value::F64(1.0));
+    let trajectory = simulate_continuous_with(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.0,
+        2.0,
+        0.1,
+        StepMethod::Rk45,
+        &SimulateOptions {
+            atol: None,
+            rtol: None,
+            dt_max: None,
+            event: Some(("x".to_string(), 0.5)),
+        },
+    )
+    .unwrap();
+    let last = trajectory.samples.last().unwrap();
+    let x = match last.state.get("x") {
+        Some(Value::F64(value)) => *value,
+        other => panic!("expected scalar x, got {other:?}"),
+    };
+    assert!((x - 0.5).abs() < 1e-6, "x={x} t={}", last.t);
+    assert!(last.t < 1.0, "event time should be before t1, t={}", last.t);
 }

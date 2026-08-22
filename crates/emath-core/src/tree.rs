@@ -217,6 +217,11 @@ pub enum TypeKind {
     Tuple(Vec<TypeExpr>),
     Ref(Box<TypeExpr>),
     Product(Vec<TypeExpr>),
+    /// `Float64 in m` / `Float64 in m/s`: a numeric type with a unit annotation.
+    In {
+        base: Box<TypeExpr>,
+        unit: Box<TypeExpr>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -248,6 +253,11 @@ pub enum ExprKind {
         value: Box<Expr>,
         indices: Vec<Expr>,
     },
+    /// Index-axis slice `i:j`, `i:`, `:j`, or `:`. Rank-preserving.
+    Slice {
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+    },
     Unary {
         op: UnaryOp,
         value: Box<Expr>,
@@ -278,6 +288,21 @@ pub enum ExprKind {
     Derivative {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,
+    },
+    /// `solve(f) wrt x` — Newton's-method root-finding.
+    /// The parser creates `Solve { value, wrt: None }` and the `wrt`
+    /// postfix clause attaches `wrt: Some(...)`.
+    Solve {
+        value: Box<Expr>,
+        wrt: Option<Vec<Expr>>,
+    },
+    /// `minimize(f) wrt x` or `maximize(f) wrt x` — gradient-descent
+    /// optimization.  `maximize` is true for `maximize`, false for
+    /// `minimize`.
+    Optimize {
+        value: Box<Expr>,
+        wrt: Option<Vec<Expr>>,
+        maximize: bool,
     },
     /// `temperature at time.start`
     At {

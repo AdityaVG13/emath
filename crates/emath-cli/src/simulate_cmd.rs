@@ -4,7 +4,7 @@ use super::{print_diagnostics, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_artifact::JsonWriter;
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::{format_f64, Value};
-use emath_exec_ir::{simulate_continuous, StepMethod};
+use emath_exec_ir::{simulate_continuous_with, SimulateOptions, StepMethod};
 use emath_sema::CompilerSession;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ pub fn dispatch_simulate(args: &[String]) -> u8 {
         Err(message) => {
             eprintln!("error: {message}");
             usage(
-                "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--set name=value] [--json]",
+                "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
             )
         }
     }
@@ -29,6 +29,10 @@ struct SimulateArgs {
     method: StepMethod,
     bindings: BTreeMap<String, f64>,
     json: bool,
+    atol: Option<f64>,
+    rtol: Option<f64>,
+    dt_max: Option<f64>,
+    event: Option<(String, f64)>,
 }
 
 fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
@@ -39,6 +43,10 @@ fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
     let mut method = StepMethod::Rk4;
     let mut bindings = BTreeMap::new();
     let mut json = false;
+    let mut atol = None;
+    let mut rtol = None;
+    let mut dt_max = None;
+    let mut event = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -58,6 +66,33 @@ fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
             "--method" => {
                 index += 1;
                 method = parse_method(args.get(index).ok_or("--method needs a name")?)?;
+            }
+            "--atol" => {
+                index += 1;
+                atol = Some(parse_positive_f64(
+                    args.get(index).ok_or("--atol needs a number")?,
+                    "--atol",
+                )?);
+            }
+            "--rtol" => {
+                index += 1;
+                rtol = Some(parse_positive_f64(
+                    args.get(index).ok_or("--rtol needs a number")?,
+                    "--rtol",
+                )?);
+            }
+            "--dt-max" => {
+                index += 1;
+                dt_max = Some(parse_positive_f64(
+                    args.get(index).ok_or("--dt-max needs a number")?,
+                    "--dt-max",
+                )?);
+            }
+            "--event" => {
+                index += 1;
+                event = Some(parse_event(
+                    args.get(index).ok_or("--event needs name=value")?,
+                )?);
             }
             "--set" => {
                 index += 1;
@@ -83,6 +118,10 @@ fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
         method,
         bindings,
         json,
+        atol,
+        rtol,
+        dt_max,
+        event,
     })
 }
 
@@ -91,6 +130,24 @@ fn parse_f64(text: &str, flag: &str) -> Result<f64, String> {
         .ok()
         .filter(|value| value.is_finite())
         .ok_or_else(|| format!("{flag} `{text}` is not a finite Float64"))
+}
+
+fn parse_positive_f64(text: &str, flag: &str) -> Result<f64, String> {
+    let value = parse_f64(text, flag)?;
+    if value <= 0.0 {
+        return Err(format!("{flag} must be a positive finite Float64"));
+    }
+    Ok(value)
+}
+
+fn parse_event(text: &str) -> Result<(String, f64), String> {
+    let (name, value) = text
+        .split_once('=')
+        .ok_or_else(|| format!("`--event {text}` must be `name=value`"))?;
+    if name.is_empty() {
+        return Err("--event name must be non-empty".to_string());
+    }
+    Ok((name.to_string(), parse_f64(value, "--event")?))
 }
 
 fn parse_method(name: &str) -> Result<StepMethod, String> {
@@ -143,7 +200,7 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
         };
         state.insert(field.name.clone(), Value::F64(value));
     }
-    match simulate_continuous(
+    match simulate_continuous_with(
         &result.package,
         declaration,
         &inputs,
@@ -152,6 +209,12 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
         args.t1,
         args.dt,
         args.method,
+        &SimulateOptions {
+            atol: args.atol,
+            rtol: args.rtol,
+            dt_max: args.dt_max,
+            event: args.event.clone(),
+        },
     ) {
         Ok(trajectory) => {
             emit_trajectory(&args.path, declaration.name.leaf(), args, &trajectory);
@@ -239,6 +302,10 @@ fn value_json(value: &Value) -> String {
                 rows_json.push(format!("[{}]", cells.join(", ")));
             }
             format!("[{}]", rows_json.join(", "))
+        }
+        Value::Tensor { data, .. } => {
+            let body: Vec<String> = data.iter().copied().map(format_f64).collect();
+            format!("[{}]", body.join(", "))
         }
     }
 }

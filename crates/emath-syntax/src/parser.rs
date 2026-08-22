@@ -100,6 +100,13 @@ impl Parser {
         }
     }
 
+    fn peek_reduction_call(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::Keyword(Keyword::Sum | Keyword::Product)
+        ) && matches!(self.peek_at(1), TokenKind::LParen)
+    }
+
     fn error_here(&mut self, code: &'static str, message: impl Into<String>) {
         let span = self.current_span();
         self.diagnostics.error(code, message, span);
@@ -773,7 +780,7 @@ impl Parser {
             | TokenKind::Bang
             | TokenKind::LParen
             | TokenKind::LBracket
-            | TokenKind::Keyword(Keyword::True | Keyword::False | Keyword::Derivative) => {
+            | TokenKind::Keyword(Keyword::True | Keyword::False | Keyword::Derivative | Keyword::Solve | Keyword::Minimize | Keyword::Maximize) => {
                 let expr = self.parse_expr()?;
                 if let Some(stmt) = self.parse_equation_tail(&expr, start) {
                     return Some(stmt);
@@ -1063,6 +1070,10 @@ impl Parser {
     }
 
     fn parse_binder_statement(&mut self, start: Span) -> Option<Stmt> {
+        if self.peek_reduction_call() {
+            let expr = self.parse_expr()?;
+            return Some(self.stmt(start, StmtKind::Expr(expr)));
+        }
         let kind = binder_kind(self.peek());
         self.advance();
         let binders = self.parse_binders()?;
@@ -2147,14 +2158,25 @@ impl Parser {
             self.advance();
             items.push(self.parse_type_primary()?);
         }
-        if items.len() == 1 {
-            Some(items.pop().unwrap())
+        let base = if items.len() == 1 {
+            items.pop().unwrap()
         } else {
-            Some(TypeExpr {
+            TypeExpr {
                 kind: TypeKind::Product(items),
                 source: start.cover(self.last_span()),
-            })
+            }
+        };
+        if self.eat_keyword(Keyword::In) {
+            let unit = self.parse_type_expr()?;
+            return Some(TypeExpr {
+                kind: TypeKind::In {
+                    base: Box::new(base),
+                    unit: Box::new(unit),
+                },
+                source: start.cover(self.last_span()),
+            });
         }
+        Some(base)
     }
 
     fn parse_type_primary(&mut self) -> Option<TypeExpr> {
@@ -2311,11 +2333,14 @@ impl Parser {
         loop {
             match self.peek().clone() {
                 TokenKind::Keyword(Keyword::Wrt) => {
-                    // Only attach `wrt` to an existing `derivative` node.
-                    // Consuming the keyword first made `derivative v wrt t = rhs`
-                    // parse the value `v` as eating `wrt`, leaving `t = rhs`
-                    // as a leftover assignment instead of an equation.
-                    if !matches!(&expr.kind, ExprKind::Derivative { wrt: None, .. }) {
+                    // Attach `wrt` to a solver node (Derivative, Solve,
+                    // Optimize) that doesn't already have one.
+                    if !matches!(
+                        &expr.kind,
+                        ExprKind::Derivative { wrt: None, .. }
+                            | ExprKind::Solve { wrt: None, .. }
+                            | ExprKind::Optimize { wrt: None, .. }
+                    ) {
                         break;
                     }
                     self.advance();
@@ -2324,12 +2349,30 @@ impl Parser {
                         items.push(self.parse_expr_depth(depth + 1)?);
                     }
                     let start = expr.source;
-                    expr = Expr {
-                        kind: ExprKind::Derivative {
-                            value: Box::new(expr),
-                            wrt: Some(items),
+                    expr = match &expr.kind {
+                        ExprKind::Derivative { value, .. } => Expr {
+                            kind: ExprKind::Derivative {
+                                value: value.clone(),
+                                wrt: Some(items),
+                            },
+                            source: start.cover(self.last_span()),
                         },
-                        source: start.cover(self.last_span()),
+                        ExprKind::Solve { value, .. } => Expr {
+                            kind: ExprKind::Solve {
+                                value: value.clone(),
+                                wrt: Some(items),
+                            },
+                            source: start.cover(self.last_span()),
+                        },
+                        ExprKind::Optimize { value, maximize, .. } => Expr {
+                            kind: ExprKind::Optimize {
+                                value: value.clone(),
+                                wrt: Some(items),
+                                maximize: *maximize,
+                            },
+                            source: start.cover(self.last_span()),
+                        },
+                        _ => unreachable!("checked above"),
                     };
                 }
                 TokenKind::Keyword(Keyword::At) if depth > 0 => {
@@ -2621,7 +2664,7 @@ impl Parser {
                         if self.eat(&TokenKind::Comma) {
                             continue;
                         }
-                        indices.push(self.parse_expr_depth(depth + 1)?);
+                        indices.push(self.parse_index_axis(depth)?);
                     }
                     if !self.eat(&TokenKind::RBracket) {
                         self.error_here("E-SYN-102", "expected `]` to close indices");
@@ -2722,6 +2765,43 @@ impl Parser {
             }
         }
         Some(value)
+    }
+
+    fn parse_index_axis(&mut self, depth: usize) -> Option<Expr> {
+        let start = self.current_span();
+        if self.eat(&TokenKind::Colon) {
+            let end = if matches!(
+                self.peek(),
+                TokenKind::Comma | TokenKind::RBracket | TokenKind::Eof
+            ) {
+                None
+            } else {
+                Some(Box::new(self.parse_expr_depth(depth + 1)?))
+            };
+            return Some(Expr {
+                kind: ExprKind::Slice { start: None, end },
+                source: start.cover(self.last_span()),
+            });
+        }
+        let first = self.parse_expr_depth(depth + 1)?;
+        if self.eat(&TokenKind::Colon) {
+            let end = if matches!(
+                self.peek(),
+                TokenKind::Comma | TokenKind::RBracket | TokenKind::Eof
+            ) {
+                None
+            } else {
+                Some(Box::new(self.parse_expr_depth(depth + 1)?))
+            };
+            return Some(Expr {
+                kind: ExprKind::Slice {
+                    start: Some(Box::new(first)),
+                    end,
+                },
+                source: start.cover(self.last_span()),
+            });
+        }
+        Some(first)
     }
 
     fn parse_call_args(&mut self) -> Option<Vec<Expr>> {
@@ -2881,6 +2961,19 @@ impl Parser {
                 | Keyword::ForAll
                 | Keyword::Exists,
             ) => {
+                if self.peek_reduction_call() {
+                    let TokenKind::Keyword(keyword) = self.peek().clone() else {
+                        return None;
+                    };
+                    self.advance();
+                    return Some(Expr {
+                        kind: ExprKind::Path {
+                            segments: vec![keyword.spelling().to_string()],
+                            generics: None,
+                        },
+                        source: start,
+                    });
+                }
                 let kind = binder_kind(self.peek());
                 self.advance();
                 let binders = self.parse_binders()?;
@@ -2909,6 +3002,30 @@ impl Parser {
                     kind: ExprKind::Derivative {
                         value: Box::new(value),
                         wrt: None,
+                    },
+                    source: start.cover(self.last_span()),
+                })
+            }
+            TokenKind::Keyword(Keyword::Solve) => {
+                self.advance();
+                let value = self.parse_expr_depth(depth + 1)?;
+                Some(Expr {
+                    kind: ExprKind::Solve {
+                        value: Box::new(value),
+                        wrt: None,
+                    },
+                    source: start.cover(self.last_span()),
+                })
+            }
+            TokenKind::Keyword(Keyword::Minimize) | TokenKind::Keyword(Keyword::Maximize) => {
+                let maximize = matches!(self.peek(), TokenKind::Keyword(Keyword::Maximize));
+                self.advance();
+                let value = self.parse_expr_depth(depth + 1)?;
+                Some(Expr {
+                    kind: ExprKind::Optimize {
+                        value: Box::new(value),
+                        wrt: None,
+                        maximize,
                     },
                     source: start.cover(self.last_span()),
                 })

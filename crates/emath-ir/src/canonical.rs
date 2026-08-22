@@ -258,6 +258,23 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                 encode_expr(out, exprs, index);
             }
         }
+        ExprNode::Slice { value, axes } => {
+            push_str(out, "slice");
+            encode_expr(out, exprs, *value);
+            for axis in axes {
+                match axis {
+                    crate::expression::SliceAxis::Point(index) => {
+                        push_str(out, "point");
+                        encode_expr(out, exprs, *index);
+                    }
+                    crate::expression::SliceAxis::Range { start, end } => {
+                        push_str(out, "range");
+                        encode_expr(out, exprs, *start);
+                        encode_expr(out, exprs, *end);
+                    }
+                }
+            }
+        }
         ExprNode::Binder {
             kind,
             variables,
@@ -294,6 +311,36 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                     encode_expr(out, exprs, element);
                 }
             }
+        }
+        ExprNode::Tensor { shape, elements } => {
+            push_str(out, "tensor");
+            out.push_str("shape ");
+            out.push_str(
+                &shape
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("x"),
+            );
+            out.push('\n');
+            for &element in elements {
+                encode_expr(out, exprs, element);
+            }
+        }
+        ExprNode::Differentiate { body, var } => {
+            push_str(out, "differentiate");
+            push_str(out, var);
+            encode_expr(out, exprs, *body);
+        }
+        ExprNode::Solve { body, var } => {
+            push_str(out, "solve");
+            push_str(out, var);
+            encode_expr(out, exprs, *body);
+        }
+        ExprNode::Optimize { body, var, maximize } => {
+            push_str(out, if *maximize { "maximize" } else { "minimize" });
+            push_str(out, var);
+            encode_expr(out, exprs, *body);
         }
     }
 }

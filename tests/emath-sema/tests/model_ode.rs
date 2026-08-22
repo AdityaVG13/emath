@@ -1,10 +1,13 @@
 //! Continuous `emath model` admission: explicit `derivative(state) = rhs`.
 
 use emath_core::limits::Limits;
+use emath_exec_ir::interp::Value;
+use emath_exec_ir::{simulate_continuous, StepMethod};
 use emath_ir::ExprNode;
 use emath_sema::admit::CheckResult;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
+use std::collections::BTreeMap;
 
 fn check_source(name: &str, source: &str) -> CheckResult {
     install_source_parser();
@@ -78,22 +81,121 @@ emath model Spring:
 }
 
 #[test]
-fn implicit_mass_times_derivative_is_refused() {
+fn scalar_mass_times_derivative_admits_as_rewrite() {
     let source = "\
-emath model Implicit:
+emath model MassSpring:
+    inputs:
+        m: Float64
+        c: Float64
+        k: Float64
+    state:
+        x: Float64
+        v: Float64
+    equations:
+        der(x) = v
+        m * derivative(v) = -c * v - k * x
+";
+    let result = check_source("mass-matrix", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "named scalar mass-matrix must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let decl = &result.package.declarations[0];
+    assert!(decl.definitions.contains_key("der_x"));
+    assert!(decl.definitions.contains_key("der_v"));
+    let rate = decl.definitions["der_v"];
+    assert!(matches!(
+        result.package.expr(rate),
+        Some(ExprNode::Binary { .. })
+    ));
+}
+
+#[test]
+fn mass_matrix_spring_matches_explicit() {
+    let implicit = check_source(
+        "mass-sim",
+        "\
+emath model MassSpring:
+    inputs:
+        m: Float64
+        c: Float64
+        k: Float64
+    state:
+        x: Float64
+        v: Float64
+    equations:
+        der(x) = v
+        m * der(v) = -c * v - k * x
+",
+    );
+    let explicit = check_source(
+        "explicit-sim",
+        include_str!("../../../language/examples/numerical/explicit-mass-spring.emath"),
+    );
+    assert!(!implicit.diagnostics.has_errors());
+    assert!(!explicit.diagnostics.has_errors());
+    let mut inputs = BTreeMap::new();
+    inputs.insert("m".into(), Value::F64(1.0));
+    inputs.insert("c".into(), Value::F64(0.2));
+    inputs.insert("k".into(), Value::F64(1.0));
+    let mut state = BTreeMap::new();
+    state.insert("x".into(), Value::F64(1.0));
+    state.insert("v".into(), Value::F64(0.0));
+    let left = simulate_continuous(
+        &implicit.package,
+        &implicit.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        0.5,
+        0.05,
+        StepMethod::Rk4,
+    )
+    .unwrap();
+    let right = simulate_continuous(
+        &explicit.package,
+        &explicit.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        0.5,
+        0.05,
+        StepMethod::Rk4,
+    )
+    .unwrap();
+    let lx = match left.samples.last().unwrap().state.get("x") {
+        Some(Value::F64(value)) => *value,
+        other => panic!("{other:?}"),
+    };
+    let rx = match right.samples.last().unwrap().state.get("x") {
+        Some(Value::F64(value)) => *value,
+        other => panic!("{other:?}"),
+    };
+    assert!((lx - rx).abs() < 1e-12, "implicit={lx} explicit={rx}");
+}
+
+#[test]
+fn leftover_implicit_residual_is_still_refused() {
+    let source = "\
+emath model Residual:
     inputs:
         m: Float64
     state:
         v: Float64
     equations:
-        m * derivative(v) = -v
+        0 = m * derivative(v) + v
 ";
-    let result = check_source("implicit", source);
+    let result = check_source("residual", source);
     assert!(result.diagnostics.has_errors());
     let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
     assert!(
         codes.contains(&"E-TYPE-010"),
-        "implicit DAE left-hand side must be E-TYPE-010, got {codes:?}"
+        "leftover implicit residual must stay E-TYPE-010, got {codes:?}"
     );
 }
 
@@ -157,6 +259,49 @@ fn explicit_mass_spring_example_admits() {
     assert_eq!(decl.kind_label, "model");
     assert!(decl.definitions.contains_key("der_x"));
     assert!(decl.definitions.contains_key("der_v"));
+}
+
+#[test]
+fn unit_rates_admit_when_state_is_quantity() {
+    let source = "\
+emath model UnitSpring:
+    inputs:
+        v: Float64 in m/s
+    state:
+        x: Float64 in m
+    equations:
+        der(x) = v
+";
+    let result = check_source("unit-rates", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "quantity state with matching rate unit must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn unit_rate_mismatch_is_refused() {
+    let source = "\
+emath model BadUnits:
+    inputs:
+        v: Float64 in m
+    state:
+        x: Float64 in m
+    equations:
+        der(x) = v
+";
+    let result = check_source("unit-mismatch", source);
+    assert!(result.diagnostics.has_errors());
+    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
+    assert!(
+        codes.contains(&"E-UNIT-101"),
+        "rate unit mismatch must be E-UNIT-101, got {codes:?}"
+    );
 }
 
 #[test]

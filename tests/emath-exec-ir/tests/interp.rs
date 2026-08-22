@@ -18,6 +18,42 @@ fn const_bits(value: f64) -> EmirOp {
 }
 
 #[test]
+fn tensor_create_and_slice_spot() {
+    let program = program(vec![
+        const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
+        const_bits(4.0),
+        const_bits(5.0),
+        const_bits(6.0),
+        const_bits(7.0),
+        const_bits(8.0),
+        EmirOp::TensorCreate {
+            shape: vec![2, 2, 2],
+            elements: (0..8).map(EmirValue).collect(),
+        },
+        const_bits(0.0),
+        const_bits(2.0),
+        const_bits(1.0),
+        EmirOp::TensorSlice {
+            tensor: EmirValue(8),
+            axes: vec![
+                emath_exec_ir::EmirSliceAxis::Point(EmirValue(9)),
+                emath_exec_ir::EmirSliceAxis::Range {
+                    start: EmirValue(9),
+                    end: EmirValue(10),
+                },
+                emath_exec_ir::EmirSliceAxis::Point(EmirValue(11)),
+            ],
+        },
+    ]);
+    assert_eq!(
+        evaluate(&program, &[], &[]).unwrap(),
+        Value::Vector(vec![2.0, 4.0])
+    );
+}
+
+#[test]
 fn add_spot() {
     let program = program(vec![
         const_bits(2.0),
