@@ -41,7 +41,6 @@ members = [
   "crates/emath-lsp",
   "crates/emath-registry",
   "crates/emath-plugin-sdk",
-  "crates/emath-provenance",
   "crates/emath-search",
   "crates/emath-wasm",
   "tests/emath-adapter-dew",
@@ -62,7 +61,6 @@ members = [
   "tests/emath-law-check",
   "tests/emath-lsp",
   "tests/emath-portfolio",
-  "tests/emath-provenance",
   "tests/emath-provider-api",
   "tests/emath-rust-backend",
   "tests/emath-search",
@@ -141,19 +139,6 @@ asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev 
 # optionality, so this entry must not be marked optional (Cargo rejects that at
 # workspace level).
 fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev = "e705df6960d8a22bb19d12a36d6534116b4b4cd5", default-features = false }
-# frankengraphdb provenance/evidence graph (CUTOVER_PLAN.md §5.3/§9.11,
-# pass 2): fgdb facade + its fgdb-types / fgdb-delta-types companions at
-# exact-commit pin 26b579de45a8d9ff439298982beda8e3b1e40217 (pre-1.0, no
-# releases, git-only, publish=false -- expect churn). Optional for the
-# workspace; the consumer (emath-provenance graphdb feature) decides
-# optionality, so these entries must not be marked optional (Cargo rejects
-# that at workspace level). frankengraphdb itself pins asupersync internally
-# at git rev c17e51931 (v0.4.7 line) -- a second git instance next to the
-# f0270d53 workspace pin; emath-provenance depends on that same rev directly
-# so the two unify into one compiled instance.
-fgdb = { git = "https://github.com/Dicklesworthstone/frankengraphdb.git", rev = "26b579de45a8d9ff439298982beda8e3b1e40217", default-features = false }
-fgdb-types = { git = "https://github.com/Dicklesworthstone/frankengraphdb.git", rev = "26b579de45a8d9ff439298982beda8e3b1e40217", default-features = false }
-fgdb-delta-types = { git = "https://github.com/Dicklesworthstone/frankengraphdb.git", rev = "26b579de45a8d9ff439298982beda8e3b1e40217", default-features = false }
 # frankensearch artifact-corpus search engine (CUTOVER_PLAN.md §5.4/§9.12,
 # pass 3): facade `frankensearch` v0.3.2 at exact-commit pin
 # 33ef37a4c663535b832ae057b5c36296215e41f4 (UPSTREAM_LOCK.json row 12).
