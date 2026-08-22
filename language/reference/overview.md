@@ -107,7 +107,7 @@ Working sections:
 
 ```text
 inputs outputs state definitions equations equation
-constructors goals exports tests compile about evidence host
+constructors constraints goals exports tests compile about evidence host
 ```
 
 Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to

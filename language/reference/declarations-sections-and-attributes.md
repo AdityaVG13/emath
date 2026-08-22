@@ -28,6 +28,25 @@ goals:
 
 Schemas specify payload grammar, multiplicity, ordering semantics, defaults and lowering.
 
+### Available sections (function)
+
+| Section | Payload | Required | Purpose |
+|---------|---------|----------|---------|
+| `inputs:` | Fields | Optional | Input parameters with types |
+| `outputs:` | Fields | Optional (defaults to definitions) | Named output fields with types |
+| `state:` | Fields | Optional | State variables for models |
+| `definitions:` | Suite | Yes (or `equations:`) | Named expressions: `name = expr` |
+| `equations:` | Suite | Yes (or `definitions:`) | Model equations: `der(state) = rhs` |
+| `constructors:` | Suite | Optional | Constructor functions for state |
+| `constraints:` | Suite | Optional | Bool expressions fed to optimizer as penalties |
+| `tests:` | Suite | Optional | Example cases with `given`/`expect` |
+| `goals:` | Commands | Optional | Compilation and provider goals |
+| `exports:` | Commands | Optional | What to export from this declaration |
+| `compile:` | Commands | Optional (default: rust/library/strict-f64) | Compile target and profile |
+| `about:` | Commands | Optional | Prose metadata |
+| `evidence:` | Suite | Optional | Evidence claims |
+| `host:` | Suite | Optional | Host-language bindings |
+
 ## Attributes
 
 Attributes are scoped metadata with versioned semantics:
