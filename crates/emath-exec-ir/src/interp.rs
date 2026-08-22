@@ -291,6 +291,9 @@ fn eval_op(
         EmirOp::Atan2(left, right) => Ok(Value::F64(
             f64_of(registers, left, name)?.atan2(f64_of(registers, right, name)?),
         )),
+        EmirOp::Mod(left, right) => Ok(Value::F64(
+            f64_of(registers, left, name)? % f64_of(registers, right, name)?,
+        )),
         EmirOp::Lt(left, right) => Ok(Value::Bool(
             f64_of(registers, left, name)? < f64_of(registers, right, name)?,
         )),
@@ -904,6 +907,16 @@ fn evaluate_dual(
                 Dual {
                     primal: a.primal.atan2(b.primal),
                     tangent: (b.primal * a.tangent - a.primal * b.tangent) / denom,
+                }
+            }
+            EmirOp::Mod(a, b) => {
+                let a = dual_of(&registers, a, name)?;
+                let b = dual_of(&registers, b, name)?;
+                // mod(a, b) = a - b * floor(a/b).  At non-boundary points,
+                // d/da = 1, d/db ≈ -floor(a/b).  Use the simple approximation.
+                Dual {
+                    primal: a.primal % b.primal,
+                    tangent: a.tangent,
                 }
             }
             EmirOp::Select { condition: c, then_value: t, else_value: e } => {

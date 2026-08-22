@@ -483,12 +483,12 @@ impl Admitter {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
                     | "tanh" | "abs" | "floor" | "ceil" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan"
                     | "norm" | "transpose" | "length" | "len" | "mean" => Some(1),
-                    "min" | "max" | "atan2" | "pow" | "dot" => Some(2),
+                    "min" | "max" | "atan2" | "pow" | "mod" | "dot" => Some(2),
                     _ => {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, sign, log2, log10, sinh, cosh, atan, min, max, atan2, pow, is_finite, norm, transpose, dot, length, sum, product, mean)"
+                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, sign, log2, log10, sinh, cosh, atan, min, max, atan2, pow, mod, is_finite, norm, transpose, dot, length, sum, product, mean)"
                             ),
                             function.source,
                         );
