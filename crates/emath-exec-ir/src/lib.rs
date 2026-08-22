@@ -9,7 +9,10 @@
 pub mod interp;
 pub mod runner;
 
-pub use runner::definition_order;
+pub use runner::{
+    definition_order, simulate_continuous, step_continuous, step_continuous_values, StepMethod,
+    Trajectory, TrajectorySample,
+};
 
 use emath_core::Span;
 use emath_ir::{BinaryOp, ExprNode, Literal, SemanticPackage, UnaryOp};
@@ -56,6 +59,33 @@ pub enum EmirOp {
         then_value: EmirValue,
         else_value: EmirValue,
     },
+    VectorCreate(Vec<EmirValue>),
+    MatrixCreate {
+        rows: usize,
+        cols: usize,
+        elements: Vec<EmirValue>,
+    },
+    VectorIndex {
+        vector: EmirValue,
+        index: EmirValue,
+    },
+    MatrixIndex {
+        matrix: EmirValue,
+        row: EmirValue,
+        col: EmirValue,
+    },
+    VectorAdd(EmirValue, EmirValue),
+    VectorSub(EmirValue, EmirValue),
+    VectorScale(EmirValue, EmirValue),
+    VectorDot(EmirValue, EmirValue),
+    VectorNorm(EmirValue),
+    VectorLength(EmirValue),
+    MatrixAdd(EmirValue, EmirValue),
+    MatrixSub(EmirValue, EmirValue),
+    MatrixScale(EmirValue, EmirValue),
+    MatrixMulVector(EmirValue, EmirValue),
+    MatrixMulMatrix(EmirValue, EmirValue),
+    MatrixTranspose(EmirValue),
 }
 
 impl EmirOp {
@@ -94,6 +124,22 @@ impl EmirOp {
             Self::Not(_) => "not",
             Self::IsFinite(_) => "is-finite",
             Self::Select { .. } => "select",
+            Self::VectorCreate(_) => "vec-create",
+            Self::MatrixCreate { .. } => "mat-create",
+            Self::VectorIndex { .. } => "vec-index",
+            Self::MatrixIndex { .. } => "mat-index",
+            Self::VectorAdd(..) => "vec-add",
+            Self::VectorSub(..) => "vec-sub",
+            Self::VectorScale(..) => "vec-scale",
+            Self::VectorDot(..) => "vec-dot",
+            Self::VectorNorm(_) => "vec-norm",
+            Self::VectorLength(_) => "vec-len",
+            Self::MatrixAdd(..) => "mat-add",
+            Self::MatrixSub(..) => "mat-sub",
+            Self::MatrixScale(..) => "mat-scale",
+            Self::MatrixMulVector(..) => "mat-mul-vec",
+            Self::MatrixMulMatrix(..) => "mat-mul-mat",
+            Self::MatrixTranspose(_) => "mat-transpose",
         }
     }
 }
@@ -320,6 +366,15 @@ impl Emitter {
                     BinaryOp::Min => EmirOp::Min(l, r),
                     BinaryOp::Max => EmirOp::Max(l, r),
                     BinaryOp::Atan2 => EmirOp::Atan2(l, r),
+                    BinaryOp::VectorAdd => EmirOp::VectorAdd(l, r),
+                    BinaryOp::VectorSub => EmirOp::VectorSub(l, r),
+                    BinaryOp::VectorScale => EmirOp::VectorScale(l, r),
+                    BinaryOp::VectorDot => EmirOp::VectorDot(l, r),
+                    BinaryOp::MatrixAdd => EmirOp::MatrixAdd(l, r),
+                    BinaryOp::MatrixSub => EmirOp::MatrixSub(l, r),
+                    BinaryOp::MatrixScale => EmirOp::MatrixScale(l, r),
+                    BinaryOp::MatrixMulVector => EmirOp::MatrixMulVector(l, r),
+                    BinaryOp::MatrixMulMatrix => EmirOp::MatrixMulMatrix(l, r),
                     BinaryOp::ExactAdd
                     | BinaryOp::ExactSub
                     | BinaryOp::ExactMul
@@ -347,6 +402,44 @@ impl Emitter {
                     },
                     span,
                 ))
+            }
+            ExprNode::Vector(elements) => {
+                let mut emitted = Vec::with_capacity(elements.len());
+                for &element in elements {
+                    emitted.push(self.emit(package, element)?);
+                }
+                Ok(self.push(EmirOp::VectorCreate(emitted), span))
+            }
+            ExprNode::Matrix(rows) => {
+                let r = rows.len();
+                let c = rows.first().map_or(0, |row| row.len());
+                let mut elements = Vec::with_capacity(r * c);
+                for row in rows {
+                    for &element in row {
+                        elements.push(self.emit(package, element)?);
+                    }
+                }
+                Ok(self.push(
+                    EmirOp::MatrixCreate {
+                        rows: r,
+                        cols: c,
+                        elements,
+                    },
+                    span,
+                ))
+            }
+            ExprNode::Index { value, indices } => {
+                let target = self.emit(package, *value)?;
+                if indices.len() == 1 {
+                    let idx = self.emit(package, indices[0])?;
+                    Ok(self.push(EmirOp::VectorIndex { vector: target, index: idx }, span))
+                } else if indices.len() == 2 {
+                    let row = self.emit(package, indices[0])?;
+                    let col = self.emit(package, indices[1])?;
+                    Ok(self.push(EmirOp::MatrixIndex { matrix: target, row, col }, span))
+                } else {
+                    Err("indexing with rank > 2 is outside the Phase 1 subset".to_string())
+                }
             }
             other => Err(format!(
                 "expression form {:?} is outside the Phase 1 strict-f64 subset",
@@ -379,6 +472,10 @@ impl Emitter {
                 | "floor"
                 | "ceil"
                 | "is_finite"
+                | "norm"
+                | "transpose"
+                | "length"
+                | "len"
                 | "core::math::exp"
                 | "core::math::ln"
                 | "core::math::log"
@@ -398,6 +495,7 @@ impl Emitter {
                 | "max"
                 | "atan2"
                 | "pow"
+                | "dot"
                 | "core::math::min"
                 | "core::math::max"
                 | "core::math::atan2"
@@ -458,6 +556,23 @@ impl Emitter {
             "ceil" | "core::math::ceil" => {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::Ceil(v), span))
+            }
+            "norm" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::VectorNorm(v), span))
+            }
+            "transpose" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::MatrixTranspose(v), span))
+            }
+            "length" | "len" => {
+                let v = self.emit(package, args[0])?;
+                Ok(self.push(EmirOp::VectorLength(v), span))
+            }
+            "dot" => {
+                let l = self.emit(package, args[0])?;
+                let r = self.emit(package, args[1])?;
+                Ok(self.push(EmirOp::VectorDot(l, r), span))
             }
             "min" | "core::math::min" => {
                 let l = self.emit(package, args[0])?;

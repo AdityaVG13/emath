@@ -18,7 +18,7 @@
 //!   every input is bound (zero inputs = trivially bound). `extra_given`
 //!   adds that `_pane` run in addition to any source examples.
 
-use crate::interp::{evaluate, EvalFault, Value};
+use crate::interp::{evaluate, evaluate_f64, EvalFault, Value};
 use crate::{lower_definition, lower_requirement};
 use emath_ir::{BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, UnaryOp};
 use std::collections::BTreeMap;
@@ -287,13 +287,13 @@ fn run_test(
             }
         }
     } else if !declaration.state.is_empty() {
-        run.verdict = TestVerdict::LoweringRefused {
-            detail: format!(
-                "declaration `{}` has state but no constructor",
-                declaration.name.leaf()
-            ),
-        };
-        return run;
+        match seed_state_from_given(declaration, &run.given) {
+            Ok(state) => run.state = state,
+            Err(verdict) => {
+                run.verdict = verdict;
+                return run;
+            }
+        }
     }
 
     match eval_definitions(package, declaration, &run.given, &run.state) {
@@ -307,7 +307,14 @@ fn run_test(
         }
     }
 
-    run.verdict = eval_expect(package, declaration, test, &run.given, &run.definitions);
+    run.verdict = eval_expect(
+        package,
+        declaration,
+        test,
+        &run.given,
+        &run.definitions,
+        &run.state,
+    );
     run
 }
 
@@ -351,13 +358,13 @@ fn run_direct(
             }
         }
     } else if !declaration.state.is_empty() {
-        run.verdict = TestVerdict::LoweringRefused {
-            detail: format!(
-                "declaration `{}` has state but no constructor",
-                declaration.name.leaf()
-            ),
-        };
-        return run;
+        match seed_state_from_given(declaration, &run.given) {
+            Ok(state) => run.state = state,
+            Err(verdict) => {
+                run.verdict = verdict;
+                return run;
+            }
+        }
     }
 
     match eval_definitions(package, declaration, &run.given, &run.state) {
@@ -400,13 +407,13 @@ fn eval_givens(
         let expr = test.given[name];
         let program = lower_definition(package, expr, &seen, &[])
             .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
-        match evaluate(&program, &seen_values, &[]) {
+        match evaluate_f64(&program, &seen_values, &[]) {
             Ok(Value::F64(value)) => {
                 given.insert(name.clone(), value);
                 seen.push(name.clone());
                 seen_values.push(value);
             }
-            Ok(Value::Bool(_)) => {
+            Ok(Value::Bool(_)) | Ok(Value::Vector(_)) | Ok(Value::Matrix { .. }) => {
                 return Err(TestVerdict::Fault {
                     fault: EvalFault::TypeConfusion {
                         register: program.result.0,
@@ -460,11 +467,11 @@ fn eval_constructor(
         };
         let program = lower_definition(package, expr, &param_names, &[])
             .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
-        match evaluate(&program, &param_values, &[]) {
+        match evaluate_f64(&program, &param_values, &[]) {
             Ok(Value::F64(value)) => {
                 state.insert(field.name.clone(), value);
             }
-            Ok(Value::Bool(_)) => {
+            Ok(Value::Bool(_)) | Ok(Value::Vector(_)) | Ok(Value::Matrix { .. }) => {
                 return Err(TestVerdict::Fault {
                     fault: EvalFault::TypeConfusion {
                         register: program.result.0,
@@ -497,17 +504,19 @@ fn check_obligation(
 ) -> Result<(), TestVerdict> {
     let program = lower_requirement(package, expr, param_names)
         .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
-    match evaluate(&program, param_values, &[]) {
+    match evaluate_f64(&program, param_values, &[]) {
         Ok(Value::Bool(true)) => Ok(()),
         Ok(Value::Bool(false)) => Err(TestVerdict::ConstructorRefused {
             obligation: format!("{keyword} {}", expr_text(package, expr)),
         }),
-        Ok(Value::F64(_)) => Err(TestVerdict::Fault {
-            fault: EvalFault::TypeConfusion {
-                register: program.result.0,
-                op: keyword,
-            },
-        }),
+        Ok(Value::F64(_)) | Ok(Value::Vector(_)) | Ok(Value::Matrix { .. }) => {
+            Err(TestVerdict::Fault {
+                fault: EvalFault::TypeConfusion {
+                    register: program.result.0,
+                    op: keyword,
+                },
+            })
+        }
         Err(fault) => Err(TestVerdict::Fault { fault }),
     }
 }
@@ -547,12 +556,12 @@ fn eval_definitions(
     for (name, expr) in definition_order(package, declaration) {
         let program = lower_definition(package, expr, &bind_names, &state_names)
             .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
-        match evaluate(&program, &bind_values, &state_values) {
+        match evaluate_f64(&program, &bind_values, &state_values) {
             Ok(value) => {
-                definitions.insert(name.clone(), value);
+                definitions.insert(name.clone(), value.clone());
                 if !bind_names.iter().any(|existing| existing == name) {
                     bind_names.push(name.clone());
-                    bind_values.push(value_as_f64(value));
+                    bind_values.push(value_as_f64(&value));
                 }
             }
             Err(fault) => return Err(TestVerdict::Fault { fault }),
@@ -579,13 +588,371 @@ pub fn definition_order<'d>(
     entries
 }
 
+fn seed_state_from_given(
+    declaration: &Declaration,
+    given: &BTreeMap<String, f64>,
+) -> Result<BTreeMap<String, f64>, TestVerdict> {
+    let mut state = BTreeMap::new();
+    for field in &declaration.state {
+        let Some(value) = given.get(&field.name).copied() else {
+            return Err(TestVerdict::LoweringRefused {
+                detail: format!("test body does not supply state `{name}`", name = field.name),
+            });
+        };
+        state.insert(field.name.clone(), value);
+    }
+    Ok(state)
+}
+
+/// Explicit first-order stepper for `emath model` rates stored as `der_<state>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepMethod {
+    /// Forward Euler: `x += h * f(x)`.
+    Euler,
+    /// Classic RK4.
+    Rk4,
+    /// Cash-Karp RK45 with a fixed step (the 5th-order update).
+    /// Adaptive dt selection is a later bead; this lands the tableau.
+    Rk45,
+}
+
+/// One sample on a simulated trajectory.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrajectorySample {
+    pub t: f64,
+    pub state: BTreeMap<String, Value>,
+}
+
+/// Explicit trajectory from `t0` through `t1` at step `dt`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Trajectory {
+    pub method: StepMethod,
+    pub dt: f64,
+    pub samples: Vec<TrajectorySample>,
+}
+
+/// Advance one explicit step. Rates come from admitted `der_<name>` definitions.
+pub fn step_continuous(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, f64>,
+    state: &BTreeMap<String, f64>,
+    dt: f64,
+    method: StepMethod,
+) -> Result<BTreeMap<String, f64>, String> {
+    let inputs = scalar_map_to_values(inputs);
+    let state = scalar_map_to_values(state);
+    let next = step_continuous_values(package, declaration, &inputs, &state, dt, method)?;
+    values_to_scalars(&next)
+}
+
+/// Advance one explicit step, allowing vector-valued state and rates.
+pub fn step_continuous_values(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+    dt: f64,
+    method: StepMethod,
+) -> Result<BTreeMap<String, Value>, String> {
+    if !dt.is_finite() || dt <= 0.0 {
+        return Err("step size must be a positive finite Float64".to_string());
+    }
+    match method {
+        StepMethod::Euler => {
+            let rates = eval_rates(package, declaration, inputs, state)?;
+            apply_scaled(state, &[(1.0, &rates)], dt)
+        }
+        StepMethod::Rk4 => {
+            let k1 = eval_rates(package, declaration, inputs, state)?;
+            let s2 = apply_scaled(state, &[(1.0, &k1)], dt / 2.0)?;
+            let k2 = eval_rates(package, declaration, inputs, &s2)?;
+            let s3 = apply_scaled(state, &[(1.0, &k2)], dt / 2.0)?;
+            let k3 = eval_rates(package, declaration, inputs, &s3)?;
+            let s4 = apply_scaled(state, &[(1.0, &k3)], dt)?;
+            let k4 = eval_rates(package, declaration, inputs, &s4)?;
+            apply_scaled(
+                state,
+                &[
+                    (1.0 / 6.0, &k1),
+                    (2.0 / 6.0, &k2),
+                    (2.0 / 6.0, &k3),
+                    (1.0 / 6.0, &k4),
+                ],
+                dt,
+            )
+        }
+        StepMethod::Rk45 => {
+            // Cash-Karp 5th-order weights (fixed step).
+            let k1 = eval_rates(package, declaration, inputs, state)?;
+            let s2 = apply_scaled(state, &[(1.0 / 5.0, &k1)], dt)?;
+            let k2 = eval_rates(package, declaration, inputs, &s2)?;
+            let s3 = apply_scaled(state, &[(3.0 / 40.0, &k1), (9.0 / 40.0, &k2)], dt)?;
+            let k3 = eval_rates(package, declaration, inputs, &s3)?;
+            let s4 = apply_scaled(
+                state,
+                &[
+                    (3.0 / 10.0, &k1),
+                    (-9.0 / 10.0, &k2),
+                    (6.0 / 5.0, &k3),
+                ],
+                dt,
+            )?;
+            let k4 = eval_rates(package, declaration, inputs, &s4)?;
+            let s5 = apply_scaled(
+                state,
+                &[
+                    (-11.0 / 54.0, &k1),
+                    (5.0 / 2.0, &k2),
+                    (-70.0 / 27.0, &k3),
+                    (35.0 / 27.0, &k4),
+                ],
+                dt,
+            )?;
+            let k5 = eval_rates(package, declaration, inputs, &s5)?;
+            let s6 = apply_scaled(
+                state,
+                &[
+                    (1631.0 / 55296.0, &k1),
+                    (175.0 / 512.0, &k2),
+                    (575.0 / 13824.0, &k3),
+                    (44275.0 / 110592.0, &k4),
+                    (253.0 / 4096.0, &k5),
+                ],
+                dt,
+            )?;
+            let k6 = eval_rates(package, declaration, inputs, &s6)?;
+            apply_scaled(
+                state,
+                &[
+                    (37.0 / 378.0, &k1),
+                    (250.0 / 621.0, &k3),
+                    (125.0 / 594.0, &k4),
+                    (512.0 / 1771.0, &k6),
+                ],
+                dt,
+            )
+        }
+    }
+}
+
+/// Integrate from `t0` to `t1` with fixed `dt`. Includes the sample at `t0`.
+pub fn simulate_continuous(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+    t0: f64,
+    t1: f64,
+    dt: f64,
+    method: StepMethod,
+) -> Result<Trajectory, String> {
+    if !t0.is_finite() || !t1.is_finite() {
+        return Err("trajectory times must be finite Float64".to_string());
+    }
+    if t1 < t0 {
+        return Err("trajectory end must be >= start".to_string());
+    }
+    if !dt.is_finite() || dt <= 0.0 {
+        return Err("step size must be a positive finite Float64".to_string());
+    }
+    let mut samples = vec![TrajectorySample {
+        t: t0,
+        state: state.clone(),
+    }];
+    let mut current = state.clone();
+    let mut t = t0;
+    let mut guard = 0_u32;
+    while t + dt <= t1 + dt * 1e-12 {
+        if t >= t1 {
+            break;
+        }
+        let step = dt.min(t1 - t);
+        if step <= 0.0 {
+            break;
+        }
+        current = step_continuous_values(package, declaration, inputs, &current, step, method)?;
+        t += step;
+        samples.push(TrajectorySample {
+            t,
+            state: current.clone(),
+        });
+        guard += 1;
+        if guard > 1_000_000 {
+            return Err("trajectory exceeded 1_000_000 steps".to_string());
+        }
+        if (t - t1).abs() <= dt * 1e-12 {
+            break;
+        }
+    }
+    Ok(Trajectory {
+        method,
+        dt,
+        samples,
+    })
+}
+
+fn scalar_map_to_values(map: &BTreeMap<String, f64>) -> BTreeMap<String, Value> {
+    map.iter()
+        .map(|(name, value)| (name.clone(), Value::F64(*value)))
+        .collect()
+}
+
+fn values_to_scalars(map: &BTreeMap<String, Value>) -> Result<BTreeMap<String, f64>, String> {
+    let mut out = BTreeMap::new();
+    for (name, value) in map {
+        match value {
+            Value::F64(number) => {
+                out.insert(name.clone(), *number);
+            }
+            _ => return Err(format!("state `{name}` is not a scalar")),
+        }
+    }
+    Ok(out)
+}
+
+fn apply_scaled(
+    state: &BTreeMap<String, Value>,
+    terms: &[(f64, &BTreeMap<String, Value>)],
+    dt: f64,
+) -> Result<BTreeMap<String, Value>, String> {
+    let mut next = BTreeMap::new();
+    for (name, value) in state {
+        let mut acc = value.clone();
+        for (weight, rates) in terms {
+            let rate = rates
+                .get(name)
+                .ok_or_else(|| format!("missing rate `der_{name}`"))?;
+            acc = add_scaled(&acc, rate, dt * *weight)?;
+        }
+        next.insert(name.clone(), acc);
+    }
+    Ok(next)
+}
+
+fn add_scaled(value: &Value, rate: &Value, scale: f64) -> Result<Value, String> {
+    match (value, rate) {
+        (Value::F64(x), Value::F64(r)) => Ok(Value::F64(x + scale * r)),
+        (Value::Vector(x), Value::Vector(r)) if x.len() == r.len() => Ok(Value::Vector(
+            x.iter()
+                .zip(r.iter())
+                .map(|(a, b)| a + scale * b)
+                .collect(),
+        )),
+        (
+            Value::Matrix {
+                rows: r1,
+                cols: c1,
+                data: d1,
+            },
+            Value::Matrix {
+                rows: r2,
+                cols: c2,
+                data: d2,
+            },
+        ) if r1 == r2 && c1 == c2 && d1.len() == d2.len() => Ok(Value::Matrix {
+            rows: *r1,
+            cols: *c1,
+            data: d1
+                .iter()
+                .zip(d2.iter())
+                .map(|(a, b)| a + scale * b)
+                .collect(),
+        }),
+        _ => Err("state and rate must have the same scalar/vector/matrix shape".to_string()),
+    }
+}
+
+fn eval_rates(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+) -> Result<BTreeMap<String, Value>, String> {
+    let definitions = eval_definitions_values(package, declaration, inputs, state).map_err(
+        |verdict| {
+            verdict
+                .reason_text()
+                .unwrap_or_else(|| verdict.to_string())
+        },
+    )?;
+    let mut rates = BTreeMap::new();
+    for field in &declaration.state {
+        let key = format!("der_{}", field.name);
+        let Some(value) = definitions.get(&key) else {
+            return Err(format!("missing rate `{key}`"));
+        };
+        match value {
+            Value::Bool(_) => return Err(format!("rate `{key}` is not numeric")),
+            Value::F64(_) | Value::Vector(_) | Value::Matrix { .. } => {
+                rates.insert(field.name.clone(), value.clone());
+            }
+        }
+    }
+    Ok(rates)
+}
+
+fn eval_definitions_values(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+) -> Result<BTreeMap<String, Value>, TestVerdict> {
+    let input_names: Vec<String> = declaration
+        .inputs
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let mut bind_names = input_names;
+    let mut bind_values = Vec::with_capacity(bind_names.len());
+    for name in &bind_names {
+        let Some(value) = inputs.get(name).cloned() else {
+            return Err(TestVerdict::LoweringRefused {
+                detail: format!("test body does not supply input `{name}`"),
+            });
+        };
+        bind_values.push(value);
+    }
+    let state_names: Vec<String> = declaration
+        .state
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let mut state_values = Vec::with_capacity(state_names.len());
+    for name in &state_names {
+        let Some(value) = state.get(name).cloned() else {
+            return Err(TestVerdict::LoweringRefused {
+                detail: format!("missing state `{name}`"),
+            });
+        };
+        state_values.push(value);
+    }
+
+    let mut definitions = BTreeMap::new();
+    for (name, expr) in definition_order(package, declaration) {
+        let program = lower_definition(package, expr, &bind_names, &state_names)
+            .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
+        match evaluate(&program, &bind_values, &state_values) {
+            Ok(value) => {
+                definitions.insert(name.clone(), value.clone());
+                if !bind_names.iter().any(|existing| existing == name) {
+                    bind_names.push(name.clone());
+                    bind_values.push(value);
+                }
+            }
+            Err(fault) => return Err(TestVerdict::Fault { fault }),
+        }
+    }
+    Ok(definitions)
+}
+
 fn outputs_of(
     declaration: &Declaration,
     definitions: &BTreeMap<String, Value>,
 ) -> BTreeMap<String, Value> {
     let mut outputs = BTreeMap::new();
     for field in &declaration.outputs {
-        if let Some(value) = definitions.get(&field.name).copied() {
+        if let Some(value) = definitions.get(&field.name).cloned() {
             outputs.insert(field.name.clone(), value);
         }
     }
@@ -598,6 +965,7 @@ fn eval_expect(
     test: &emath_ir::TestCase,
     given: &BTreeMap<String, f64>,
     definitions: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, f64>,
 ) -> TestVerdict {
     let given_names: Vec<String> = given.keys().cloned().collect();
     let mut expect_names = given_names.clone();
@@ -610,33 +978,45 @@ fn eval_expect(
             continue;
         };
         expect_names.push(name.clone());
-        expect_values.push(value_as_f64(*value));
+        expect_values.push(value_as_f64(value));
     }
     let Some(expect) = test.expect else {
         return TestVerdict::Computed;
     };
-    let program = match lower_definition(package, expect, &expect_names, &[]) {
+    let state_names: Vec<String> = declaration
+        .state
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let state_values: Vec<f64> = state_names
+        .iter()
+        .map(|name| state.get(name).copied().unwrap_or(f64::NAN))
+        .collect();
+    let program = match lower_definition(package, expect, &expect_names, &state_names) {
         Ok(program) => program,
         Err(detail) => return TestVerdict::LoweringRefused { detail },
     };
-    match evaluate(&program, &expect_values, &[]) {
+    match evaluate_f64(&program, &expect_values, &state_values) {
         Ok(Value::Bool(true)) => TestVerdict::Passed,
         Ok(Value::Bool(false)) => TestVerdict::Failed,
-        Ok(Value::F64(_)) => TestVerdict::Fault {
-            fault: EvalFault::TypeConfusion {
-                register: program.result.0,
-                op: "expect",
-            },
-        },
+        Ok(Value::F64(_)) | Ok(Value::Vector(_)) | Ok(Value::Matrix { .. }) => {
+            TestVerdict::Fault {
+                fault: EvalFault::TypeConfusion {
+                    register: program.result.0,
+                    op: "expect",
+                },
+            }
+        }
         Err(fault) => TestVerdict::Fault { fault },
     }
 }
 
-fn value_as_f64(value: Value) -> f64 {
+fn value_as_f64(value: &Value) -> f64 {
     match value {
-        Value::F64(number) => number,
+        Value::F64(number) => *number,
         Value::Bool(true) => 1.0,
         Value::Bool(false) => 0.0,
+        Value::Vector(_) | Value::Matrix { .. } => f64::NAN,
     }
 }
 

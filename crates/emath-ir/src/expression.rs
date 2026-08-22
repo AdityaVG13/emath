@@ -50,6 +50,8 @@ pub enum ExprNode {
         variables: Vec<BinderVariable>,
         body: ExprId,
     },
+    Vector(Vec<ExprId>),
+    Matrix(Vec<Vec<ExprId>>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,6 +113,15 @@ pub enum BinaryOp {
     Min,
     Max,
     Atan2,
+    VectorAdd,
+    VectorSub,
+    VectorScale,
+    VectorDot,
+    MatrixAdd,
+    MatrixSub,
+    MatrixScale,
+    MatrixMulVector,
+    MatrixMulMatrix,
 }
 
 impl BinaryOp {
@@ -136,6 +147,15 @@ impl BinaryOp {
             Self::Min => "f64-min",
             Self::Max => "f64-max",
             Self::Atan2 => "f64-atan2",
+            Self::VectorAdd => "vec-add",
+            Self::VectorSub => "vec-sub",
+            Self::VectorScale => "vec-scale",
+            Self::VectorDot => "vec-dot",
+            Self::MatrixAdd => "mat-add",
+            Self::MatrixSub => "mat-sub",
+            Self::MatrixScale => "mat-scale",
+            Self::MatrixMulVector => "mat-mul-vec",
+            Self::MatrixMulMatrix => "mat-mul-mat",
         }
     }
 
@@ -262,6 +282,18 @@ impl ExprNode {
                     seen.insert(name.clone());
                 }
                 exprs[body.index()].collect_free(exprs, seen, out);
+            }
+            Self::Vector(elements) => {
+                for &element in elements {
+                    exprs[element.index()].collect_free(exprs, seen, out);
+                }
+            }
+            Self::Matrix(rows) => {
+                for row in rows {
+                    for &element in row {
+                        exprs[element.index()].collect_free(exprs, seen, out);
+                    }
+                }
             }
             Self::Literal(_) => {}
         }

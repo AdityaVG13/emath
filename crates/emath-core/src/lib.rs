@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod capabilities;
 pub mod diagnostic;
 pub mod hash;
 pub mod id;
@@ -13,6 +14,11 @@ pub mod source;
 pub mod span;
 pub mod tree;
 
+pub use capabilities::{
+    compiler_capabilities, CompilerCapabilities, DeferredFeature, GoalDescriptor,
+    NumericModelDescriptor, SectionDescriptor, WorldClassDescriptor,
+    COMPILER_CAPABILITIES_SCHEMA_V1,
+};
 pub use diagnostic::{Diagnostic, Diagnostics, Severity};
 pub use hash::{bootstrap_content_id, content_id_of_str, fnv1a64_bytes};
 pub use id::{ContentId, FileId, QualifiedName, SchemaId};

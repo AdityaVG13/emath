@@ -565,14 +565,13 @@ impl Parser {
         if self.at_line_end() {
             self.finish_line();
             if !matches!(self.peek(), TokenKind::Indent) {
-                if allow_empty {
-                    return Some(Suite {
-                        statements: Vec::new(),
-                        source: start,
-                    });
+                if !allow_empty {
+                    self.error_here("E-SYN-112", "expected an indented block");
                 }
-                self.error_here("E-SYN-112", "expected an indented block");
-                return None;
+                return Some(Suite {
+                    statements: Vec::new(),
+                    source: start,
+                });
             }
             self.advance();
             let mut statements = Vec::new();
@@ -2161,6 +2160,16 @@ impl Parser {
     fn parse_type_primary(&mut self) -> Option<TypeExpr> {
         let start = self.current_span();
         match self.peek().clone() {
+            TokenKind::Int(text) => {
+                self.advance();
+                Some(TypeExpr {
+                    kind: TypeKind::Path {
+                        segments: vec![text],
+                        generic_args: Vec::new(),
+                    },
+                    source: start.cover(self.last_span()),
+                })
+            }
             TokenKind::Amp => {
                 self.advance();
                 let inner = self.parse_type_primary()?;
@@ -2251,6 +2260,21 @@ impl Parser {
                     if !self.eat(&TokenKind::Gt) {
                         self.error_here("E-SYN-102", "expected `>` to close type arguments");
                     }
+                } else if matches!(self.peek(), TokenKind::LBracket) {
+                    self.advance();
+                    while !matches!(self.peek(), TokenKind::RBracket | TokenKind::Eof) {
+                        if self.eat(&TokenKind::Comma) {
+                            continue;
+                        }
+                        if let Some(arg) = self.parse_type_expr() {
+                            generic_args.push(arg);
+                        } else {
+                            break;
+                        }
+                    }
+                    if !self.eat(&TokenKind::RBracket) {
+                        self.error_here("E-SYN-102", "expected `]` to close type arguments");
+                    }
                 }
                 Some(TypeExpr {
                     kind: TypeKind::Path {
@@ -2287,23 +2311,26 @@ impl Parser {
         loop {
             match self.peek().clone() {
                 TokenKind::Keyword(Keyword::Wrt) => {
-                    self.advance();
-                    if let ExprKind::Derivative { wrt: None, .. } = &expr.kind {
-                        let mut items = vec![self.parse_expr_depth(depth + 1)?];
-                        while self.eat(&TokenKind::Comma) {
-                            items.push(self.parse_expr_depth(depth + 1)?);
-                        }
-                        let start = expr.source;
-                        expr = Expr {
-                            kind: ExprKind::Derivative {
-                                value: Box::new(expr),
-                                wrt: Some(items),
-                            },
-                            source: start.cover(self.last_span()),
-                        };
-                    } else {
+                    // Only attach `wrt` to an existing `derivative` node.
+                    // Consuming the keyword first made `derivative v wrt t = rhs`
+                    // parse the value `v` as eating `wrt`, leaving `t = rhs`
+                    // as a leftover assignment instead of an equation.
+                    if !matches!(&expr.kind, ExprKind::Derivative { wrt: None, .. }) {
                         break;
                     }
+                    self.advance();
+                    let mut items = vec![self.parse_expr_depth(depth + 1)?];
+                    while self.eat(&TokenKind::Comma) {
+                        items.push(self.parse_expr_depth(depth + 1)?);
+                    }
+                    let start = expr.source;
+                    expr = Expr {
+                        kind: ExprKind::Derivative {
+                            value: Box::new(expr),
+                            wrt: Some(items),
+                        },
+                        source: start.cover(self.last_span()),
+                    };
                 }
                 TokenKind::Keyword(Keyword::At) if depth > 0 => {
                     self.advance();
