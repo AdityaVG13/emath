@@ -21,6 +21,8 @@ use std::fmt;
 pub enum Value {
     /// IEEE-754 binary64.
     F64(f64),
+    /// Signed 64-bit integer (exact arithmetic in folds).
+    I64(i64),
     /// Boolean, produced by comparisons, `is_finite`, `and`/`or`/`not`.
     Bool(bool),
     /// Vector of Float64.
@@ -96,6 +98,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::F64(value) => f.write_str(&format_f64(*value)),
+            Self::I64(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
             Self::Vector(vec) => {
                 f.write_str("[")?;
@@ -242,6 +245,7 @@ fn eval_op(
     let name = op.name();
     match *op {
         EmirOp::ConstF64(bits) => Ok(Value::F64(f64::from_bits(bits))),
+        EmirOp::ConstI64(value) => Ok(Value::I64(value)),
         EmirOp::LoadInput(index) => inputs
             .get(usize::from(index))
             .cloned()
@@ -562,19 +566,49 @@ fn eval_op(
             let end_i = end_val as i64;
             match combine {
                 FoldCombine::Add | FoldCombine::Mul => {
-                    let mut acc = f64_of(registers, init, name)?;
+                    let mut acc_i: Option<i64> = match register(registers, init)? {
+                        Value::I64(n) => Some(*n),
+                        Value::F64(_) => None,
+                        _ => return Err(EvalFault::TypeConfusion { register: init.0, op: name }),
+                    };
+                    let mut acc_f: f64 = if acc_i.is_none() {
+                        f64_of(registers, init, name)?
+                    } else { 0.0 };
                     for i in start_i..end_i {
                         let mut body_inputs = inputs.to_vec();
                         let idx = usize::from(loop_var_index);
                         while body_inputs.len() <= idx {
                             body_inputs.push(Value::F64(0.0));
                         }
-                        body_inputs[idx] = Value::F64(i as f64);
+                        body_inputs[idx] = if acc_i.is_some() {
+                            Value::I64(i)
+                        } else {
+                            Value::F64(i as f64)
+                        };
                         match evaluate(body, &body_inputs, state)? {
+                            Value::I64(term) => {
+                                if let Some(ref mut acc) = acc_i {
+                                    *acc = match combine {
+                                        FoldCombine::Add => *acc + term,
+                                        FoldCombine::Mul => *acc * term,
+                                        _ => unreachable!(),
+                                    };
+                                } else {
+                                    let term_f = term as f64;
+                                    acc_f = match combine {
+                                        FoldCombine::Add => acc_f + term_f,
+                                        FoldCombine::Mul => acc_f * term_f,
+                                        _ => unreachable!(),
+                                    };
+                                }
+                            }
                             Value::F64(term) => {
-                                acc = match combine {
-                                    FoldCombine::Add => acc + term,
-                                    FoldCombine::Mul => acc * term,
+                                if let Some(acc) = acc_i.take() {
+                                    acc_f = acc as f64;
+                                }
+                                acc_f = match combine {
+                                    FoldCombine::Add => acc_f + term,
+                                    FoldCombine::Mul => acc_f * term,
                                     _ => unreachable!(),
                                 };
                             }
@@ -586,7 +620,10 @@ fn eval_op(
                             }
                         }
                     }
-                    Ok(Value::F64(acc))
+                    Ok(match acc_i {
+                        Some(n) => Value::I64(n),
+                        None => Value::F64(acc_f),
+                    })
                 }
                 FoldCombine::And | FoldCombine::Or => {
                     let mut acc = f64_of(registers, init, name)? != 0.0;
@@ -759,6 +796,10 @@ fn evaluate_dual(
         let dual = match op {
             EmirOp::ConstF64(bits) => Dual {
                 primal: f64::from_bits(*bits),
+                tangent: 0.0,
+            },
+            EmirOp::ConstI64(value) => Dual {
+                primal: *value as f64,
                 tangent: 0.0,
             },
             EmirOp::LoadInput(idx) => {
@@ -1098,6 +1139,7 @@ fn whole_index(
 fn f64_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<f64, EvalFault> {
     match register(registers, value)? {
         Value::F64(number) => Ok(*number),
+        Value::I64(number) => Ok(*number as f64),
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,

@@ -494,6 +494,7 @@ fn check_obligation(
             obligation: format!("{keyword} {}", expr_text(package, expr)),
         }),
         Ok(Value::F64(_))
+        | Ok(Value::I64(_))
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
         | Ok(Value::Tensor { .. }) => {
@@ -951,6 +952,9 @@ fn error_scale(
 fn value_abs_diff(left: &Value, right: &Value) -> f64 {
     match (left, right) {
         (Value::F64(a), Value::F64(b)) => (a - b).abs(),
+        (Value::I64(a), Value::I64(b)) => (*a as f64 - *b as f64).abs(),
+        (Value::I64(a), Value::F64(b)) => (*a as f64 - b).abs(),
+        (Value::F64(a), Value::I64(b)) => (a - *b as f64).abs(),
         (Value::Vector(a), Value::Vector(b)) => a
             .iter()
             .zip(b.iter())
@@ -975,6 +979,7 @@ fn value_abs_diff(left: &Value, right: &Value) -> f64 {
 fn value_abs_max(value: &Value) -> f64 {
     match value {
         Value::F64(number) => number.abs(),
+        Value::I64(number) => (*number as f64).abs(),
         Value::Bool(_) => 0.0,
         Value::Vector(items) => items.iter().fold(0.0, |acc, item| acc.max(item.abs())),
         Value::Matrix { data, .. } | Value::Tensor { data, .. } => {
@@ -1037,6 +1042,7 @@ fn event_gap(
     };
     match value {
         Value::F64(number) => Ok(*number - target),
+        Value::I64(number) => Ok(*number as f64 - target),
         _ => Err(format!("event state `{name}` must be a scalar")),
     }
 }
@@ -1053,6 +1059,9 @@ fn values_to_scalars(map: &BTreeMap<String, Value>) -> Result<BTreeMap<String, f
         match value {
             Value::F64(number) => {
                 out.insert(name.clone(), *number);
+            }
+            Value::I64(number) => {
+                out.insert(name.clone(), *number as f64);
             }
             _ => return Err(format!("state `{name}` is not a scalar")),
         }
@@ -1082,6 +1091,9 @@ fn apply_scaled(
 fn add_scaled(value: &Value, rate: &Value, scale: f64) -> Result<Value, String> {
     match (value, rate) {
         (Value::F64(x), Value::F64(r)) => Ok(Value::F64(x + scale * r)),
+        (Value::I64(x), Value::F64(r)) => Ok(Value::F64(*x as f64 + scale * r)),
+        (Value::F64(x), Value::I64(r)) => Ok(Value::F64(x + scale * *r as f64)),
+        (Value::I64(x), Value::I64(r)) => Ok(Value::F64(*x as f64 + scale * *r as f64)),
         (Value::Vector(x), Value::Vector(r)) if x.len() == r.len() => Ok(Value::Vector(
             x.iter()
                 .zip(r.iter())
@@ -1150,7 +1162,7 @@ fn eval_rates(
         };
         match value {
             Value::Bool(_) => return Err(format!("rate `{key}` is not numeric")),
-            Value::F64(_) | Value::Vector(_) | Value::Matrix { .. } | Value::Tensor { .. } => {
+            Value::I64(_) | Value::F64(_) | Value::Vector(_) | Value::Matrix { .. } | Value::Tensor { .. } => {
                 rates.insert(field.name.clone(), value.clone());
             }
         }
@@ -1266,6 +1278,7 @@ fn eval_expect(
         Ok(Value::Bool(true)) => TestVerdict::Passed,
         Ok(Value::Bool(false)) => TestVerdict::Failed,
         Ok(Value::F64(_))
+        | Ok(Value::I64(_))
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
         | Ok(Value::Tensor { .. }) => {
