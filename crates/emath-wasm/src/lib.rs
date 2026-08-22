@@ -58,6 +58,8 @@ const SHOWCASE: &str =
     include_str!("../../../language/examples/intro/showcase.emath");
 const CONSTRAINED_OPT: &str =
     include_str!("../../../language/examples/intro/constrained-opt.emath");
+const COMPOUND_INTEREST: &str =
+    include_str!("../../../language/examples/intro/compound-interest.emath");
 const PARAMETRIC_UNKNOWN: &str =
     include_str!("../../../language/examples/integration/parametric-unknown-operator.emath");
 
@@ -170,6 +172,7 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Optimize (gradient descent)", OPTIMIZE),
         ("Showcase (solve + optimize + autodiff)", SHOWCASE),
         ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
+        ("Compound interest (exponential growth)", COMPOUND_INTEREST),
     ]
 }
 
@@ -823,6 +826,14 @@ mod tests {
         let json = run_op("run", SOLVE);
         assert!(json.contains("\"ok\": true"), "{json}");
         assert!(json.contains("\"root\":"), "{json}");
+        assert!(json.contains("\"expect_passed\": true"), "{json}");
+    }
+
+    #[test]
+    fn run_compound_interest_computes() {
+        let json = run_op("run", COMPOUND_INTEREST);
+        assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"amount\":"), "{json}");
         assert!(json.contains("\"expect_passed\": true"), "{json}");
     }
 
