@@ -557,3 +557,62 @@ fn chained_definitions_emit_let_bindings_in_source_order() {
         "evaluate b must let-bind earlier definition a, got:\n{lib}"
     );
 }
+
+#[test]
+fn model_emits_explicit_step_methods() {
+    let mut package = SemanticPackage::new();
+    let ty = package.push_type(TypeNode::Float64);
+    let x = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("state.x")),
+        Span::default(),
+    );
+    let rate = package.push_expr(
+        ExprNode::Unary {
+            operation: emath_ir::UnaryOp::Negate,
+            value: x,
+        },
+        Span::default(),
+    );
+    let mut definitions = BTreeMap::new();
+    definitions.insert("der_x".to_string(), rate);
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("Decay"),
+        kind: QualifiedName::single("model"),
+        kind_label: "model".to_string(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        state: vec![Field {
+            name: "x".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: Vec::new(),
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    let output = BackendInput {
+        package: &package,
+        crate_name: "decay".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("model must emit step methods");
+    let lib = output
+        .files
+        .get("src/lib.rs")
+        .expect("generated crate has src/lib.rs");
+    assert!(
+        lib.contains("fn der_x(") && lib.contains("fn step_euler(") && lib.contains("fn step_rk4("),
+        "model must emit der_x/step_euler/step_rk4, got:\n{lib}"
+    );
+}

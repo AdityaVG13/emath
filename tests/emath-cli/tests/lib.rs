@@ -62,6 +62,8 @@ fn unknown_flag_is_usage() {
     assert_eq!(run(&args("new name --verify")), EXIT_USAGE);
     assert_eq!(run(&args("vendor --out d --verify")), EXIT_USAGE);
     assert_eq!(run(&args("capabilities --waffle")), EXIT_USAGE);
+    assert_eq!(run(&args("simulate --help")), EXIT_OK);
+    assert_eq!(run(&args("simulate")), EXIT_USAGE);
 }
 
 #[test]

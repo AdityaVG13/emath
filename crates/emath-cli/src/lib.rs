@@ -11,6 +11,7 @@ mod eval_cmd;
 pub mod genesis_cmd;
 mod meaning_cmd;
 mod serve_cmd;
+mod simulate_cmd;
 mod tooling_cmd;
 
 use emath_build::{BuildOptions, build_file};
@@ -641,6 +642,7 @@ pub fn run(args: &[String]) -> u8 {
             }
         }
         "eval" => eval_cmd::dispatch_eval(&args[1..]),
+        "simulate" => simulate_cmd::dispatch_simulate(&args[1..]),
         "repl" => eval_cmd::dispatch_repl(&args[1..]),
         "compile" => {
             let (path, out, worlds) = parse_genesis_args(&args[1..]);

@@ -1,4 +1,4 @@
-# expect: E-KIND-100 declaration type outside the Phase 1 subset
+# expect: E-KIND-011 kind `model` requires section `definitions` or `equations`
 emath model M:
     inputs:
         x: Float64
