@@ -283,6 +283,8 @@ fn eval_op(
         EmirOp::Cosh(value) => Ok(Value::F64(f64_of(registers, value, name)?.cosh())),
         EmirOp::Atan(value) => Ok(Value::F64(f64_of(registers, value, name)?.atan())),
         EmirOp::Cbrt(value) => Ok(Value::F64(f64_of(registers, value, name)?.cbrt())),
+        EmirOp::Recip(value) => Ok(Value::F64(f64_of(registers, value, name)?.recip())),
+        EmirOp::Fract(value) => Ok(Value::F64(f64_of(registers, value, name)?.fract())),
         EmirOp::Hypot(left, right) => Ok(Value::F64(
             f64_of(registers, left, name)?.hypot(f64_of(registers, right, name)?),
         )),
@@ -878,6 +880,15 @@ fn evaluate_dual(
                 let a = dual_of(&registers, a, name)?;
                 let p = a.primal.cbrt();
                 Dual { primal: p, tangent: a.tangent / (3.0 * p * p) }
+            }
+            EmirOp::Recip(a) => {
+                let a = dual_of(&registers, a, name)?;
+                let p = a.primal.recip();
+                Dual { primal: p, tangent: -a.tangent * p * p }
+            }
+            EmirOp::Fract(a) => {
+                let a = dual_of(&registers, a, name)?;
+                Dual { primal: a.primal.fract(), tangent: a.tangent }
             }
             EmirOp::Hypot(a, b) => {
                 let a = dual_of(&registers, a, name)?;
