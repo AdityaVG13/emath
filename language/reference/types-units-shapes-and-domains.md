@@ -93,8 +93,11 @@ quantity / `T in unit` annotations
 ```
 
 `Nat` and `Int` are indexes and small integer values. Arithmetic with
-them still evaluates as `Float64`. A negative constant index is
-`E-SHAPE-006`.
+them still evaluates as `Float64` internally, but when an output is
+declared `Int`, the result is converted to exact `i64` — no
+floating-point rounding in the final value. This makes `product i in
+1..=20: i` with `Int` output give the exact factorial, not a float
+approximation. A negative constant index is `E-SHAPE-006`.
 
 Shapes:
 

@@ -44,6 +44,9 @@ impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::F64(left), Self::F64(right)) => left.to_bits() == right.to_bits(),
+            (Self::I64(left), Self::I64(right)) => left == right,
+            (Self::I64(left), Self::F64(right)) => (*left as f64) == *right,
+            (Self::F64(left), Self::I64(right)) => *left == (*right as f64),
             (Self::Bool(left), Self::Bool(right)) => left == right,
             (Self::Vector(left), Self::Vector(right)) => {
                 left.len() == right.len()
@@ -1083,6 +1086,9 @@ fn eq_ne(
     let right_value = register(registers, right)?;
     let result = match (&left_value, &right_value) {
         (Value::F64(left), Value::F64(right)) => left == right,
+        (Value::I64(left), Value::I64(right)) => left == right,
+        (Value::I64(left), Value::F64(right)) => (*left as f64) == *right,
+        (Value::F64(left), Value::I64(right)) => *left == (*right as f64),
         (Value::Bool(left), Value::Bool(right)) => left == right,
         (Value::Bool(left), Value::F64(right)) => *left == (*right != 0.0),
         (Value::F64(left), Value::Bool(right)) => (*left != 0.0) == *right,

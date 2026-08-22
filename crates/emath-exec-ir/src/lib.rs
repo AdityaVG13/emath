@@ -689,14 +689,16 @@ impl Emitter {
                             BinderKind::Exists => FoldCombine::Or,
                             _ => unreachable!(),
                         };
-                        let identity: f64 = match combine {
-                            FoldCombine::Add => 0.0,
-                            FoldCombine::Mul => 1.0,
-                            FoldCombine::And => 1.0,
-                            FoldCombine::Or => 0.0,
+                        let init_val = match combine {
+                            FoldCombine::Add => self.push(EmirOp::ConstI64(0), span),
+                            FoldCombine::Mul => self.push(EmirOp::ConstI64(1), span),
+                            FoldCombine::And => {
+                                self.push(EmirOp::ConstF64(1.0f64.to_bits()), span)
+                            }
+                            FoldCombine::Or => {
+                                self.push(EmirOp::ConstF64(0.0f64.to_bits()), span)
+                            }
                         };
-                        let init_val =
-                            self.push(EmirOp::ConstF64(identity.to_bits()), span);
                         Ok(self.push(
                             EmirOp::Fold {
                                 start: start_val,

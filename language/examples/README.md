@@ -16,7 +16,7 @@ say what the compiler does with each one today.
 | [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | Runs. Stateful `emath policy` with a constructor. |
 | [vector-given.emath](intro/vector-given.emath) | Runs. A `Vector[3]` input bound by `given v = [1, 2, 3]`; index, scale, and `dot` it. |
 | [vec-stats.emath](intro/vec-stats.emath) | Runs. `mean(v)` and elementwise `abs(v)` on a known-size vector. |
-| [factorial.emath](intro/factorial.emath) | Runs. Inclusive `product i in 1..=5: i` fold. |
+| [factorial.emath](intro/factorial.emath) | Runs. Inclusive `product i in 1..=5: i` fold with `Int` output — exact i64 arithmetic, no float rounding. |
 | [range-sum.emath](intro/range-sum.emath) | Runs. Variable-bound `sum i in 0..n: v[i]` with `n = length(v)`, a runtime fold (not compile-time unrolling). |
 | [forall-exists.emath](intro/forall-exists.emath) | Runs. `forall i in 0..n: v[i] > 0` and `exists i in 0..n: v[i] == 0`, quantifier binders over a vector. |
 | [integral.emath](intro/integral.emath) | Runs. `integral x in a..b: x * x` with composite Simpson's rule (1000 steps, exact for degree ≤ 3). |
