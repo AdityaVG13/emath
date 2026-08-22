@@ -842,9 +842,11 @@ impl Emitter {
                 | "core::math::pow"
                 | "core::math::mod"
         );
-        let expected = match (unary, binary) {
-            (true, false) => Some(1),
-            (false, true) => Some(2),
+        let ternary = matches!(function, "lerp" | "core::math::lerp");
+        let expected = match (unary, binary, ternary) {
+            (true, false, false) => Some(1),
+            (false, true, false) => Some(2),
+            (false, false, true) => Some(3),
             _ => None,
         };
         if let Some(expected) = expected {
@@ -970,6 +972,15 @@ impl Emitter {
             "is_finite" | "core::math::is_finite" => {
                 let v = self.emit(package, args[0])?;
                 Ok(self.push(EmirOp::IsFinite(v), span))
+            }
+            "lerp" | "core::math::lerp" => {
+                // lerp(a, b, t) = a + (b - a) * t
+                let va = self.emit(package, args[0])?;
+                let vb = self.emit(package, args[1])?;
+                let vt = self.emit(package, args[2])?;
+                let diff = self.push(EmirOp::F64Sub(vb, va), span);
+                let interp = self.push(EmirOp::F64Mul(diff, vt), span);
+                Ok(self.push(EmirOp::F64Add(va, interp), span))
             }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
