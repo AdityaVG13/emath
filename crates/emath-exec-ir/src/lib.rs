@@ -138,6 +138,19 @@ pub enum EmirOp {
         center: usize,
         edge: EdgePolicy,
     },
+    /// 2D spatial stencil: `out[r][c] = sum_{kr,kc} weights[kr*3+kc] *
+    /// input[r+kr-cr, c+kc-cc]`, with out-of-range indices resolved by
+    /// `edge`. Weights are the 3x3 tap (row-major, length 9), fixed at
+    /// admission (e.g. `laplacian_2d(u, dx)` lowers to the 5-point
+    /// stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` with `center = (1,1)`).
+    /// Output shape equals input shape. `Dirichlet` is not admitted for
+    /// 2D in Phase 1 (use Clamp or Neumann).
+    Stencil2d {
+        input: EmirValue,
+        weights: Vec<f64>,
+        center: (usize, usize),
+        edge: EdgePolicy,
+    },
     MatrixAdd(EmirValue, EmirValue),
     MatrixSub(EmirValue, EmirValue),
     MatrixScale(EmirValue, EmirValue),
@@ -274,6 +287,7 @@ impl EmirOp {
             Self::VectorNorm(_) => "vec-norm",
             Self::VectorLength(_) => "vec-len",
             Self::Stencil1d { .. } => "stencil-1d",
+            Self::Stencil2d { .. } => "stencil-2d",
             Self::MatrixAdd(..) => "mat-add",
             Self::MatrixSub(..) => "mat-sub",
             Self::MatrixScale(..) => "mat-scale",
@@ -1131,6 +1145,50 @@ impl Emitter {
                         weights: vec![inv, -2.0 * inv, inv],
                         center: 1,
                         edge: EdgePolicy::Dirichlet { left: g_left, right: g_right },
+                    },
+                    span,
+                )
+            }
+            "laplacian_2d" | "laplacian_2d_neumann" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`{function}` expects 2 operands (matrix, dx), got {}",
+                        args.len()
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                let dx = match package.expr(args[1]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+                        let v = f64::from_bits(*bits);
+                        if !v.is_finite() || v <= 0.0 {
+                            return Err(format!(
+                                "`{function}` dx must be a positive finite literal, got {v:?}"
+                            ));
+                        }
+                        v
+                    }
+                    _ => return Err(format!(
+                        "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                    )),
+                };
+                let inv = 1.0 / (dx * dx);
+                // 5-point Laplacian: [[0,1,0],[1,-4,1],[0,1,0]] / dx^2.
+                let weights = vec![
+                    0.0, inv, 0.0,
+                    inv, -4.0 * inv, inv,
+                    0.0, inv, 0.0,
+                ];
+                let edge = if function == "laplacian_2d_neumann" {
+                    EdgePolicy::Neumann
+                } else {
+                    EdgePolicy::Clamp
+                };
+                self.push(
+                    EmirOp::Stencil2d {
+                        input,
+                        weights,
+                        center: (1, 1),
+                        edge,
                     },
                     span,
                 )

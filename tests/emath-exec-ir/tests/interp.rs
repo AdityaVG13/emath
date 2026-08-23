@@ -814,3 +814,76 @@ fn stencil_neumann_mirror_reflects_linear_field() {
     assert_eq!(out[3], 0.0);
     assert_eq!(out[4], -2.0);
 }
+
+// Build a program that constructs `data` as a row-major matrix via
+// MatrixCreate, applies a 2D 3x3 stencil, and returns the result.
+fn stencil2d_prog(
+    weights: Vec<f64>,
+    center: (usize, usize),
+    rows: usize,
+    cols: usize,
+    data: Vec<f64>,
+    edge: EdgePolicy,
+) -> EmirProgram {
+    let n = data.len();
+    let mut ops: Vec<EmirOp> = data.iter().map(|x| const_bits(*x)).collect();
+    let elems: Vec<EmirValue> = (0..n).map(|i| EmirValue(i as u32)).collect();
+    ops.push(EmirOp::MatrixCreate {
+        rows,
+        cols,
+        elements: elems,
+    });
+    let mat_reg = u32::try_from(n).unwrap_or(0);
+    ops.push(EmirOp::Stencil2d {
+        input: EmirValue(mat_reg),
+        weights,
+        center,
+        edge,
+    });
+    let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
+    EmirProgram {
+        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
+        result: EmirValue(last),
+        input_count: 0,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+#[test]
+fn stencil2d_laplacian_constant_is_zero() {
+    // The 5-point laplacian of a constant field is zero everywhere,
+    // including the clamped boundary cells.
+    let weights = vec![0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0];
+    let prog = stencil2d_prog(weights, (1, 1), 3, 3, vec![7.0; 9], EdgePolicy::Clamp);
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![0.0; 9]
+        }
+    );
+}
+
+#[test]
+fn stencil2d_laplacian_quadratic_is_four_interior() {
+    // u[r][c] = r^2 + c^2; the continuous laplacian is 4, and the
+    // 5-point stencil recovers it exactly on the interior (dx = 1).
+    let rows = 5;
+    let cols = 5;
+    let data: Vec<f64> = (0..rows)
+        .flat_map(|r| (0..cols).map(move |c| (r as f64).powi(2) + (c as f64).powi(2)))
+        .collect();
+    let weights = vec![0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0];
+    let prog = stencil2d_prog(weights, (1, 1), rows, cols, data, EdgePolicy::Clamp);
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Matrix { data, .. } => data,
+        _ => panic!("expected matrix"),
+    };
+    for r in 1..(rows - 1) {
+        for c in 1..(cols - 1) {
+            assert_eq!(out[r * cols + c], 4.0, "interior ({r},{c})");
+        }
+    }
+}
