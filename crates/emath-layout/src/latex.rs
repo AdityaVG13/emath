@@ -97,41 +97,51 @@ fn parse_document(source: &str) -> Result<MathLayoutGraph, LayoutError> {
     let bytes = source.as_bytes();
     let mut pos = 0;
     while pos < bytes.len() {
-        if bytes[pos] == b'$' {
+        if bytes.get(pos) == Some(&b'$') {
             let open = pos;
             let inner_start = open + 1;
             let Some(close) = find_unescaped_dollar(bytes, inner_start) else {
                 return Err(LayoutError::UnterminatedDollar { offset: open });
             };
-            let ast = parse_math_str(&source[inner_start..close], inner_start)?;
+            let Some(inner) = source.get(inner_start..close) else {
+                return Err(LayoutError::UnterminatedDollar { offset: open });
+            };
+            let ast = parse_math_str(inner, inner_start)?;
             let region = builder.add_node(LayoutContent::FormulaRegion, (open, close + 1));
             let root = emit(&mut builder, &ast);
             builder.add_edge(region, root, SpatialRelation::Contains);
             pos = close + 1;
-        } else if source[pos..].starts_with("\\[") {
+        } else if source.get(pos..).is_some_and(|rest| rest.starts_with("\\[")) {
             let open = pos;
             let inner_start = open + 2;
-            let Some(rel) = source[inner_start..].find("\\]") else {
+            let Some(rel) = source.get(inner_start..).and_then(|rest| rest.find("\\]")) else {
                 return Err(LayoutError::UnterminatedDisplay { offset: open });
             };
             let close = inner_start + rel;
-            let ast = parse_math_str(&source[inner_start..close], inner_start)?;
+            let Some(inner) = source.get(inner_start..close) else {
+                return Err(LayoutError::UnterminatedDisplay { offset: open });
+            };
+            let ast = parse_math_str(inner, inner_start)?;
             let region = builder.add_node(LayoutContent::FormulaRegion, (open, close + 2));
             let root = emit(&mut builder, &ast);
             builder.add_edge(region, root, SpatialRelation::Contains);
             pos = close + 2;
         } else {
-            pos += source[pos..].chars().next().map_or(1, char::len_utf8);
+            pos += source
+                .get(pos..)
+                .and_then(|rest| rest.chars().next())
+                .map_or(1, char::len_utf8);
         }
     }
     Ok(builder.finish())
 }
 
 fn find_unescaped_dollar(bytes: &[u8], start: usize) -> Option<usize> {
-    bytes[start..]
-        .iter()
-        .position(|byte| *byte == b'$')
-        .map(|rel| start + rel)
+    bytes.get(start..).and_then(|rest| {
+        rest.iter()
+            .position(|byte| *byte == b'$')
+            .map(|rel| start + rel)
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -223,7 +233,12 @@ fn tokenize(source: &str, base: usize) -> Result<Vec<Token>, LayoutError> {
     let mut pos = 0;
     let bytes = source.as_bytes();
     while pos < bytes.len() {
-        let ch = source[pos..].chars().next().expect("pos in range");
+        let Some(ch) = source.get(pos..).and_then(|rest| rest.chars().next()) else {
+            return Err(LayoutError::UnexpectedToken {
+                token: "invalid utf-8 boundary".to_string(),
+                offset: base + pos,
+            });
+        };
         if ch.is_ascii_whitespace() {
             pos += ch.len_utf8();
             continue;

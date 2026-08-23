@@ -51,11 +51,15 @@ export function makeEmRun(instance) {
   if (typeof em_alloc !== "function" || typeof em_run !== "function") {
     throw new Error("wasm module missing em_alloc/em_run");
   }
+  if (typeof memory !== "object" || memory === null || !(memory.buffer instanceof ArrayBuffer)) {
+    throw new Error("wasm module missing WebAssembly.Memory export");
+  }
   if (typeof em_init === "function") {
     em_init();
   }
   const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
+  // fatal: reject non-UTF-8 at the ABI edge instead of inserting U+FFFD
+  const decoder = new TextDecoder("utf-8", { fatal: true });
 
   return function emRunOp(op, payload) {
     const opBytes = encoder.encode(String(op));
@@ -67,20 +71,67 @@ export function makeEmRun(instance) {
     let ptr = 0;
     let len = 0;
     try {
-      new Uint8Array(memory.buffer, opPtr, opBytes.length).set(opBytes);
+      // em_alloc(0) → 0 is the null/empty convention; nonzero len must mint.
+      if (opBytes.length > 0 && opPtr === 0) {
+        throw new Error("wasm em_alloc failed for op buffer");
+      }
+      if (payloadBytes.length > 0 && payloadPtr === 0) {
+        throw new Error("wasm em_alloc failed for payload buffer");
+      }
+      if (opBytes.length > 0) {
+        new Uint8Array(memory.buffer, opPtr, opBytes.length).set(opBytes);
+      }
       if (payloadBytes.length > 0) {
         new Uint8Array(memory.buffer, payloadPtr, payloadBytes.length).set(payloadBytes);
       }
       const ret = em_run(opPtr, opBytes.length, payloadPtr, payloadBytes.length);
+      // Packed (ptr:u32, len:u32) in a u64; Number() is exact for the low 32 bits.
       const result = typeof ret === "bigint" ? ret : BigInt(ret);
       ptr = Number(result >> 32n);
       len = Number(result & 0xffffffffn);
-      const jsonBytes = new Uint8Array(memory.buffer, ptr, len);
-      const text = decoder.decode(jsonBytes);
-      return JSON.parse(text);
+      if (
+        !Number.isFinite(ptr) ||
+        !Number.isFinite(len) ||
+        !Number.isInteger(ptr) ||
+        !Number.isInteger(len) ||
+        ptr < 0 ||
+        len < 0
+      ) {
+        throw new Error("wasm em_run returned a non-finite ptr/len pair");
+      }
+      // Empty pack (0,0): oversized-response refuse or alloc failure.
+      if (ptr === 0 && len === 0) {
+        throw new Error("wasm em_run returned an empty pack (response too large or alloc failed)");
+      }
+      if (ptr === 0 && len !== 0) {
+        throw new Error("wasm em_run returned a null ptr with nonzero len");
+      }
+      // Bounds: view must fit the current linear memory (re-read buffer after
+      // em_run — growth during dispatch detaches prior ArrayBuffers).
+      const buf = memory.buffer;
+      if (ptr + len > buf.byteLength) {
+        throw new Error(
+          `wasm em_run ptr/len out of bounds (ptr=${ptr}, len=${len}, memory=${buf.byteLength})`,
+        );
+      }
+      const jsonBytes = new Uint8Array(buf, ptr, len);
+      let text;
+      try {
+        text = decoder.decode(jsonBytes);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`wasm em_run returned invalid UTF-8: ${detail}`);
+      }
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`wasm em_run returned invalid JSON: ${detail}`);
+      }
     } finally {
       if (typeof em_free === "function") {
-        if (ptr !== 0 || len !== 0) {
+        // em_free(0, _) is a documented no-op; always pair every mint.
+        if (ptr !== 0) {
           em_free(ptr, len);
         }
         em_free(opPtr, opBytes.length);
@@ -988,6 +1039,7 @@ export function renderLegend(tab = currentLegendTab, query = "") {
 
       const table = document.createElement("table");
       table.className = "legend-table";
+      // ubs:ignore — static HTML literal only (no interpolated data)
       table.innerHTML = `
         <thead>
           <tr>
@@ -1007,11 +1059,12 @@ export function renderLegend(tab = currentLegendTab, query = "") {
         matchCount++;
 
         const tr = document.createElement("tr");
+        // ubs:ignore — all interpolations pass through escapeHtml
         tr.innerHTML = `
-          <td class="sym-sample">${sym.sym}</td>
-          <td><code>${sym.latex}</code></td>
-          <td><code>${sym.ascii}</code></td>
-          <td>${sym.desc}</td>
+          <td class="sym-sample">${escapeHtml(sym.sym)}</td>
+          <td><code>${escapeHtml(sym.latex)}</code></td>
+          <td><code>${escapeHtml(sym.ascii)}</code></td>
+          <td>${escapeHtml(sym.desc)}</td>
         `;
         tbody.appendChild(tr);
       }
@@ -1051,6 +1104,7 @@ export function renderLegend(tab = currentLegendTab, query = "") {
 
       const table = document.createElement("table");
       table.className = "legend-table";
+      // ubs:ignore — static HTML literal only (no interpolated data)
       table.innerHTML = `
         <thead>
           <tr>
@@ -1069,10 +1123,11 @@ export function renderLegend(tab = currentLegendTab, query = "") {
         matchCount++;
 
         const tr = document.createElement("tr");
+        // ubs:ignore — all interpolations pass through escapeHtml
         tr.innerHTML = `
-          <td><code>${item.code}</code></td>
-          <td style="color:#93c5fd;">${item.domain}</td>
-          <td>${item.desc}</td>
+          <td><code>${escapeHtml(item.code)}</code></td>
+          <td style="color:#93c5fd;">${escapeHtml(item.domain)}</td>
+          <td>${escapeHtml(item.desc)}</td>
         `;
         tbody.appendChild(tr);
       }
@@ -1346,6 +1401,16 @@ const CANONICAL_ASCII_MAP = new Map([
   ["↦", "\\mapsto"],
 ]);
 
+/** Escape text before any innerHTML interpolation (XSS sink hardening). */
+export function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function symbolify(text) {
   let result = text;
   for (const [latex, unicode] of SYMBOL_ENTRIES) {
@@ -1575,6 +1640,31 @@ export const plotState = {
   canvasInitialized: false,
 };
 
+/** Expand a collapsed axis so screen transforms never divide by zero. */
+function ensurePlotSpan(axis) {
+  const minKey = axis === "x" ? "minX" : "minY";
+  const maxKey = axis === "x" ? "maxX" : "maxY";
+  let min = plotState[minKey];
+  let max = plotState[maxKey];
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    plotState[minKey] = -10;
+    plotState[maxKey] = 10;
+    return;
+  }
+  if (max < min) {
+    plotState[minKey] = max;
+    plotState[maxKey] = min;
+    min = plotState[minKey];
+    max = plotState[maxKey];
+  }
+  const span = max - min;
+  if (!(span > 0)) {
+    const pad = Math.max(Math.abs(min) * 1e-6, 1e-6, 1);
+    plotState[minKey] = min - pad;
+    plotState[maxKey] = max + pad;
+  }
+}
+
 export function updatePlotView() {
   if (!emRun) return;
   try {
@@ -1696,6 +1786,9 @@ export function updatePlotView() {
 
           slider.addEventListener("input", () => {
             const val = Number(slider.value);
+            if (!Number.isFinite(val)) {
+              return;
+            }
             valDisplay.textContent = String(val);
             plotState.secondaryValues[sec] = val;
             drawPlot();
@@ -1823,8 +1916,12 @@ export function setupPlotCanvas() {
 
       const tooltip = $("plot-tooltip");
       if (closest && tooltip && Number.isFinite(closest.y)) {
-        const canvasX = ((closest.x - plotState.minX) / (plotState.maxX - plotState.minX)) * rect.width;
-        const canvasY = ((plotState.maxY - closest.y) / (plotState.maxY - plotState.minY)) * rect.height;
+        ensurePlotSpan("x");
+        ensurePlotSpan("y");
+        const spanX = plotState.maxX - plotState.minX;
+        const spanY = plotState.maxY - plotState.minY;
+        const canvasX = ((closest.x - plotState.minX) / spanX) * rect.width;
+        const canvasY = ((plotState.maxY - closest.y) / spanY) * rect.height;
         tooltip.style.left = `${canvasX}px`;
         tooltip.style.top = `${canvasY}px`;
         tooltip.textContent = `${plotState.xVar ?? "x"} = ${closest.x.toFixed(3)}, ${plotState.yVar ?? "y"} = ${closest.y.toFixed(3)}`;
@@ -1933,11 +2030,15 @@ export function drawPlot() {
   const width = rect.width;
   const height = rect.height;
 
+  // Degenerate axis spans → Inf/NaN screen coords; expand before sampling.
+  ensurePlotSpan("x");
+  ensurePlotSpan("y");
+
   // Compute points
   const points = [];
   const xVar = plotState.xVar ?? "x";
   const yVar = plotState.yVar ?? "y";
-  const numSamples = plotState.samples;
+  const numSamples = Math.max(2, plotState.samples | 0);
   const step = (plotState.maxX - plotState.minX) / (numSamples - 1);
 
   const baseGivens = { ...collectGiven(), ...plotState.secondaryValues };
@@ -1982,15 +2083,18 @@ export function drawPlot() {
     const pad = (maxY - minY) * 0.1;
     plotState.minY = minY - pad;
     plotState.maxY = maxY + pad;
+    ensurePlotSpan("y");
   }
 
   // Clear
   ctx.fillStyle = "#151619";
   ctx.fillRect(0, 0, width, height);
 
-  // Coordinate transforms
-  const toScreenX = (x) => ((x - plotState.minX) / (plotState.maxX - plotState.minX)) * width;
-  const toScreenY = (y) => ((plotState.maxY - y) / (plotState.maxY - plotState.minY)) * height;
+  // Coordinate transforms (spans already normalized above)
+  const spanX = plotState.maxX - plotState.minX;
+  const spanY = plotState.maxY - plotState.minY;
+  const toScreenX = (x) => ((x - plotState.minX) / spanX) * width;
+  const toScreenY = (y) => ((plotState.maxY - y) / spanY) * height;
 
   // Draw Grid
   ctx.strokeStyle = "#25272e";
@@ -2191,6 +2295,7 @@ export function updateMathView() {
 
       const rhsSpan = document.createElement("span");
       rhsSpan.className = "math-rhs";
+      // ubs:ignore — formatMathExprHtml escapeHtml-sanitizes editor text first
       rhsSpan.innerHTML = formatMathExprHtml(eq.rhs);
 
       row.appendChild(lhsSpan);
@@ -2213,7 +2318,8 @@ export function updateMathView() {
 }
 
 export function formatMathExprHtml(expr) {
-  let res = symbolify(expr);
+  // Escape editor-derived text first; only trusted span wrappers are added after.
+  let res = escapeHtml(symbolify(expr));
   // Fractions: a / b
   res = res.replace(/([a-zA-Z0-9_().]+)\s*\/\s*([a-zA-Z0-9_().]+)/g, '<span class="math-frac"><span class="math-num">$1</span><span class="math-den">$2</span></span>');
   // Exponents: a * a or a ^ b
@@ -2687,14 +2793,15 @@ export function findGenesisMorphisms() {
   const isoCount = validMorphisms.filter((m) => m.isBijective).length;
   const homCount = validMorphisms.length;
 
+  // ubs:ignore — world/elements escaped; isoCount/homCount are numbers
   card.innerHTML = `
-    <div><strong>Automorphism Group Aut(${world.name}):</strong> |Aut| = ${isoCount} (Total Endomorphisms: ${homCount})</div>
+    <div><strong>Automorphism Group Aut(${escapeHtml(world.name)}):</strong> |Aut| = ${isoCount} (Total Endomorphisms: ${homCount})</div>
     <div style="margin-top: 0.4rem;">Structure Preserving Mappings:</div>
     <ul style="margin: 0.3rem 0; padding-left: 1.2rem;">
       ${validMorphisms
         .map(
           (m, idx) =>
-            `<li>ϕ_${idx + 1}: { ${elements.map((el, i) => `${el} ↦ ${m.map[i]}`).join(", ")} } ${m.isBijective ? "<em>(Isomorphism ≅)</em>" : "<em>(Endomorphism)</em>"}</li>`,
+            `<li>ϕ_${idx + 1}: { ${elements.map((el, i) => `${escapeHtml(el)} ↦ ${escapeHtml(m.map[i])}`).join(", ")} } ${m.isBijective ? "<em>(Isomorphism ≅)</em>" : "<em>(Endomorphism)</em>"}</li>`,
         )
         .join("")}
     </ul>
@@ -2716,9 +2823,27 @@ function wireUi() {
   $("btn-swap-layout")?.addEventListener("click", guard(togglePaneLayout));
   $("plot-x-var")?.addEventListener("change", guard(() => { plotState.xVar = $("plot-x-var").value; drawPlot(); }));
   $("plot-y-var")?.addEventListener("change", guard(() => { plotState.yVar = $("plot-y-var").value; drawPlot(); }));
-  $("plot-min-x")?.addEventListener("input", guard(() => { plotState.minX = Number($("plot-min-x").value); drawPlot(); }));
-  $("plot-max-x")?.addEventListener("input", guard(() => { plotState.maxX = Number($("plot-max-x").value); drawPlot(); }));
-  $("plot-samples")?.addEventListener("change", guard(() => { plotState.samples = Number($("plot-samples").value); drawPlot(); }));
+  $("plot-min-x")?.addEventListener("input", guard(() => {
+    const v = Number($("plot-min-x").value);
+    if (Number.isFinite(v)) {
+      plotState.minX = v;
+      drawPlot();
+    }
+  }));
+  $("plot-max-x")?.addEventListener("input", guard(() => {
+    const v = Number($("plot-max-x").value);
+    if (Number.isFinite(v)) {
+      plotState.maxX = v;
+      drawPlot();
+    }
+  }));
+  $("plot-samples")?.addEventListener("change", guard(() => {
+    const v = Number($("plot-samples").value);
+    if (Number.isFinite(v)) {
+      plotState.samples = Math.max(10, Math.min(1000, v));
+      drawPlot();
+    }
+  }));
   $("btn-plot-autoscale")?.addEventListener("click", guard(autoScalePlot));
   $("btn-plot-reset")?.addEventListener("click", guard(resetPlotView));
   $("btn-plot-export")?.addEventListener("click", guard(exportPlotPng));
@@ -2797,7 +2922,7 @@ function wireUi() {
     "change",
     guard((event) => {
       const index = Number(event.target.value);
-      const file = generatedFiles[index];
+      const file = Number.isInteger(index) ? generatedFiles[index] : undefined;
       const node = $("out-generated");
       if (node) {
         node.textContent = file?.content ?? "";

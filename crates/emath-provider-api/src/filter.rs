@@ -53,8 +53,8 @@ pub fn filter_goal(goal: &Goal, registry: &ProviderRegistry) -> Vec<ProviderVerd
     let mut verdicts: Vec<ProviderVerdict> = registry
         .ids()
         .iter()
-        .map(|id| {
-            let table = registry.get(id).expect("registry id lookup must succeed");
+        .filter_map(|id| {
+            let table = registry.get(id)?;
             let isolation = registry
                 .isolation_of(id)
                 .unwrap_or(ProviderIsolation::Static);
@@ -165,10 +165,10 @@ pub fn filter_goal(goal: &Goal, registry: &ProviderRegistry) -> Vec<ProviderVerd
             } else {
                 Compatibility::Excluded { reasons }
             };
-            ProviderVerdict {
+            Some(ProviderVerdict {
                 provider: id.clone(),
                 compatibility,
-            }
+            })
         })
         .collect();
     verdicts.sort_by(|left, right| {

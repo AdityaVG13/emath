@@ -38,14 +38,18 @@ pub struct EvidencePolicy {
 }
 
 impl Default for EvidencePolicy {
-    /// Default policy: five bars over the standard claim classes
-    /// (`correctness`, `equivalence`, `performance`, `safety`).
+    /// Default policy: E0–E5 bars over the claim classes emitted by the
+    /// native pipeline and the checker battery (`correctness`,
+    /// `equivalence`, `performance`, `safety`, plus build's
+    /// `static-semantics` / `codegen`).
     fn default() -> Self {
         let classes = vec![
             "correctness".to_string(),
             "equivalence".to_string(),
             "performance".to_string(),
             "safety".to_string(),
+            "static-semantics".to_string(),
+            "codegen".to_string(),
         ];
         let table = standard_table();
         Self { table, classes }
@@ -89,7 +93,14 @@ impl EvidencePolicy {
 /// higher bar admits a stronger producer/checker combination.
 fn standard_table() -> BTreeMap<String, Vec<EvidenceEntry>> {
     let mut table = BTreeMap::new();
-    for class in ["correctness", "equivalence", "performance", "safety"] {
+    for class in [
+        "correctness",
+        "equivalence",
+        "performance",
+        "safety",
+        "static-semantics",
+        "codegen",
+    ] {
         // E0: any claim, no checker. The exact bar is every producer
         // kind with `Independence::None`; an empty vec would make
         // `satisfied_by` never hold.

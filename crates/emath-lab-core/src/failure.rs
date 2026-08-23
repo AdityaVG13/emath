@@ -50,9 +50,7 @@ impl FailureBundle {
     /// The bundle as a JSON document.
     #[must_use]
     pub fn to_json(&self) -> String {
-        let JsonValue::Object(mut fields) = self.body_value() else {
-            unreachable!("body is an object");
-        };
+        let mut fields = self.body_fields();
         fields.push((
             "bundle_id".to_string(),
             JsonValue::String(self.bundle_id.0.clone()),
@@ -61,7 +59,11 @@ impl FailureBundle {
     }
 
     fn body_value(&self) -> JsonValue {
-        JsonValue::Object(vec![
+        JsonValue::Object(self.body_fields())
+    }
+
+    fn body_fields(&self) -> Vec<(String, JsonValue)> {
+        vec![
             ("schema".to_string(), JsonValue::String(self.schema.clone())),
             (
                 "outcome".to_string(),
@@ -90,7 +92,7 @@ impl FailureBundle {
                         .collect(),
                 ),
             ),
-        ])
+        ]
     }
 }
 

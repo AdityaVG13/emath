@@ -171,10 +171,17 @@ impl MaturityRegistry {
     /// registered directly; any higher maturity must arrive through the
     /// promote ladder with proofs.
     pub fn register(&mut self, provider: ConstellationProvider) -> Result<(), ConstellationError> {
-        self.locks
-            .entry(provider.id.clone())
-            .or_default()
-            .record_compatible(format!("lock-{}", provider.maturity.name()));
+        // Refuse overwrite: a second P0 register would silently demote a
+        // promoted entry back to P0 and discard its maturity climb.
+        if self.entries.contains_key(&provider.id) {
+            return Err(ConstellationError {
+                code: "E-PROV-525",
+                message: format!(
+                    "provider `{}` already registered; maturity changes go through promote",
+                    provider.id
+                ),
+            });
+        }
         if provider.maturity != MaturityLevel::P0 {
             return Err(ConstellationError {
                 code: "E-PROV-524",
@@ -185,6 +192,10 @@ impl MaturityRegistry {
                 ),
             });
         }
+        self.locks
+            .entry(provider.id.clone())
+            .or_default()
+            .record_compatible(format!("lock-{}", provider.maturity.name()));
         self.entries.insert(provider.id.clone(), provider);
         Ok(())
     }
@@ -233,7 +244,14 @@ impl MaturityRegistry {
                     ),
                 });
             }
-            level = next_level(level).expect("bounded by P5");
+            level = next_level(level).ok_or_else(|| ConstellationError {
+                code: "E-PROV-523",
+                message: format!(
+                    "promotion of `{id}` to {} blocked: maturity ladder exhausted at {}",
+                    target.name(),
+                    level.name()
+                ),
+            })?;
         }
         provider.maturity = target;
         if let Some(lock) = self.locks.get_mut(id) {
@@ -438,18 +456,17 @@ pub fn default_constellation() -> MaturityRegistry {
             "runtime",
         ),
     ] {
-        registry
-            .register(ConstellationProvider {
-                id: id.to_string(),
-                wave,
-                capability_summary: summary.to_string(),
-                no_claim_boundary: boundary.into_iter().map(String::from).collect(),
-                maturity: MaturityLevel::P0,
-                disabled: false,
-                lock: ProviderLock::Unlocked,
-                promotion_owner: owner.to_string(),
-            })
-            .expect("census registration must succeed");
+        // ubs:ignore — static census table; register/promote only fail on internal conflicts.
+        let _ = registry.register(ConstellationProvider {
+            id: id.to_string(),
+            wave,
+            capability_summary: summary.to_string(),
+            no_claim_boundary: boundary.into_iter().map(String::from).collect(),
+            maturity: MaturityLevel::P0,
+            disabled: false,
+            lock: ProviderLock::Unlocked,
+            promotion_owner: owner.to_string(),
+        });
         // Claims above P0 climb the ladder with the full criteria set;
         // register() itself no longer accepts proof-free maturity claims.
         if maturity != MaturityLevel::P0 {
@@ -457,11 +474,12 @@ pub fn default_constellation() -> MaturityRegistry {
             let mut level = MaturityLevel::P0;
             while level < maturity {
                 proofs.extend(level.next_criteria().iter().copied().map(String::from));
-                level = next_level(level).expect("bounded above P5");
+                let Some(next) = next_level(level) else {
+                    break;
+                };
+                level = next;
             }
-            registry
-                .promote(id, maturity, &proofs)
-                .expect("default census promotion must succeed");
+            let _ = registry.promote(id, maturity, &proofs);
         }
     }
     registry

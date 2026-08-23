@@ -21,8 +21,8 @@ use emath_ir::package::SemanticPackage;
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ExprNode, Literal, TypeNode};
 use emath_plugin_sdk::{PluginDescriptor, SandboxPolicy, Trust, admit, execute};
 use emath_provider_api::{
-    CapabilityTable, ConstellationProvider, MaturityLevel, ProviderIsolation, ProviderLock,
-    ProviderRegistry, RegistryConfig, default_constellation,
+    CapabilitySpec, CapabilityTable, ConstellationProvider, MaturityLevel, ProviderIsolation,
+    ProviderLock, ProviderRegistry, RegistryConfig, RepresentationSpec, default_constellation,
 };
 use emath_runtime::{Budget, Outcome};
 
@@ -328,4 +328,67 @@ fn plugin_execute_with_positive_fuel_reaches_the_runtime_refusal() {
     let descriptor = plugin(vec!["fs-read"], vec!["fs-read"]);
     let err = execute(&descriptor, b"input", Trust::Untrusted).unwrap_err();
     assert_eq!(err.code, "E-PLG-001");
+}
+
+#[test]
+fn provider_registry_refuses_duplicate_ids() {
+    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+    let table = CapabilityTable {
+        capabilities: vec![CapabilitySpec {
+            name: "evaluate".into(),
+            semantic_subset: "host".into(),
+            representations: vec![RepresentationSpec {
+                name: "native".into(),
+                exact_relation: "identity".into(),
+                encode_cost: 0,
+            }],
+            exactness: vec!["exact".into()],
+            failure_modes: vec![],
+            checker_bindings: vec![],
+        }],
+        ..CapabilityTable::default()
+    };
+    registry
+        .register("dup", ProviderIsolation::Static, table.clone())
+        .expect("first register");
+    let err = registry
+        .register("dup", ProviderIsolation::Static, table)
+        .unwrap_err();
+    assert_eq!(err.code, "E-PROV-518");
+}
+
+#[test]
+fn maturity_registry_refuses_duplicate_ids() {
+    let mut registry = default_constellation();
+    let first = ConstellationProvider {
+        id: "dup-maturity".into(),
+        wave: 'A',
+        capability_summary: "once".into(),
+        no_claim_boundary: vec![],
+        maturity: MaturityLevel::P0,
+        disabled: false,
+        lock: ProviderLock::Unlocked,
+        promotion_owner: "test".into(),
+    };
+    registry.register(first).expect("first register");
+    let again = ConstellationProvider {
+        id: "dup-maturity".into(),
+        wave: 'A',
+        capability_summary: "overwrite attempt".into(),
+        no_claim_boundary: vec![],
+        maturity: MaturityLevel::P0,
+        disabled: false,
+        lock: ProviderLock::Unlocked,
+        promotion_owner: "attacker".into(),
+    };
+    let err = registry.register(again).unwrap_err();
+    assert_eq!(err.code, "E-PROV-525");
+}
+
+#[test]
+fn plugin_id_with_control_characters_is_refused() {
+    let mut descriptor = plugin(vec!["fs-read"], vec!["fs-read"]);
+    descriptor.id = "bad\nid".into();
+    let err = admit(&descriptor, Trust::Local).unwrap_err();
+    assert_eq!(err.code, "E-PLG-005");
 }

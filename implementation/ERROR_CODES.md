@@ -23,7 +23,7 @@
 | `E-SCHEMA-*` | schema registry | unknown schema name (E-SCHEMA-001) |
 | `E-PROV-001/002` | adapter seam | upstream fork version drift; uncategorized patch set |
 | `E-REG-*` | package/provider registry | unknown package (020), lock mismatch (021), yanked (022), revoked (023), unsatisfied constraint (024), kind schema missing (030), provider capability missing (031) |
-| `E-PLG-*` | plugin SDK | component runtime absent (001), sandbox violation (002), capability outside allowed set / none declared (003), interface core mismatch (004) |
+| `E-PLG-*` | plugin SDK | component runtime absent (001), sandbox violation (002), capability outside allowed set / none declared (003), interface core mismatch (004), empty/control-bearing plugin id (005) |
 | `E-LOCK-*` | meaning lock | malformed lock (001), unknown schema version (002), tampered fingerprint/lock_id (003), drifted/inadmissible locked world (004), disqualified set (005), unknown candidate (006) |
 
 Codes are stable identifiers. Messages can improve without changing code meaning. A code is never repurposed.
@@ -125,6 +125,7 @@ Plugin SDK (`crates/emath-plugin-sdk/src/lib.rs`):
 - `E-PLG-003` — capability outside the sandbox's allowed set, or no
   capabilities declared.
 - `E-PLG-004` — plugin interface core does not match the SDK's.
+- `E-PLG-005` — plugin id is empty or contains ASCII control characters.
 
 Requests (`crates/emath-goal/src/lib.rs`):
 
@@ -353,7 +354,9 @@ Types (`crates/emath-ir/src/type_system.rs`):
 Provider API (`crates/emath-provider-api/src`):
 
 - `E-PROV-510` — registration refused: claim contradicts advertised table isolation, or advertised isolation not allowed by the registry policy.
+- `E-PROV-518` — provider registry refuses a duplicate provider id (silent overwrite would replace isolation/capabilities under the same lookup key).
 - `E-PROV-524` — constellation register attempts a maturity above P0 without proofs; census entries start at P0 and climb via promote.
+- `E-PROV-525` — constellation register refuses a duplicate provider id (a second P0 register must not silently demote a promoted entry).
 
 Lab (`crates/emath-lab-core/src`, `crates/emath-rust-ir/src/host.rs`):
 
@@ -607,6 +610,8 @@ spelling is retired and is not emitted.
 - `E-SYN-113` — UTF-8 BOM rejected at the start of a source file.
 - `E-SYN-114` — non-ASCII identifier refused (confusable lookalike
   hazard).
+- `E-SYN-116` — source exceeds `Limits::max_source_bytes`; the lexer
+  refuses before scanning so huge inputs cannot burn O(n) work.
 - `E-SYN-201` — malformed genesis header (expected `emath custom
   Name:`).
 - `E-SYN-202` — clause outside `construct meaning:` (or unsupported

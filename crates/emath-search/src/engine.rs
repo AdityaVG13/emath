@@ -191,11 +191,19 @@ impl CorpusSearch {
                 request_tx,
                 worker: Some(worker),
             }),
-            Ok(Err(error)) => Err(error),
-            Err(error) => Err(SearchError::Open {
-                path: path.display().to_string(),
-                reason: format!("worker channel closed: {error}"),
-            }),
+            Ok(Err(error)) => {
+                // Worker already sent Err and returned; join so Drop of the
+                // handle cannot detach a finishing thread / lose a panic.
+                let _ = worker.join();
+                Err(error)
+            }
+            Err(error) => {
+                let _ = worker.join();
+                Err(SearchError::Open {
+                    path: path.display().to_string(),
+                    reason: format!("worker channel closed: {error}"),
+                })
+            }
         }
     }
 
@@ -354,15 +362,24 @@ fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, 
         reason: format!("create staging {}: {error}", staging.display()),
     })?;
 
-    let documents: Vec<IndexableDocument> = docs
-        .iter()
-        .map(|doc| IndexableDocument {
-            id: doc.fs_doc_id().expect("validated composite id"),
+    let mut documents = Vec::with_capacity(docs.len());
+    for doc in docs {
+        let id = match doc.fs_doc_id() {
+            Ok(id) => id,
+            Err(error) => {
+                // Staging was created above; `?` must not leave it behind for
+                // recover_leftovers on a later build.
+                let _ = std::fs::remove_dir_all(&staging);
+                return Err(error);
+            }
+        };
+        documents.push(IndexableDocument {
+            id,
             content: doc.text.clone(),
             title: None,
             metadata: HashMap::default(),
-        })
-        .collect();
+        });
+    }
 
     let builder = IndexBuilder::new(&staging)
         .with_embedder_stack(control_stack())

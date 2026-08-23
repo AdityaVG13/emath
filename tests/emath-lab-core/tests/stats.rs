@@ -1,12 +1,14 @@
 //! Stats protocol tests (origin `crates/emath-lab-core/src/stats.rs`).
 
-use emath_lab_core::stats::{percentile, percentile_f64};
+use emath_lab_core::stats::{mean, percentile, percentile_f64};
 
 #[test]
 fn empty_percentile_is_e_host_006_not_an_index_panic() {
     let err = percentile(&[], 0.5).unwrap_err();
     assert_eq!(err.code, "E-HOST-006");
     let err = percentile_f64(&[], 0.5).unwrap_err();
+    assert_eq!(err.code, "E-HOST-006");
+    let err = mean(&[]).unwrap_err();
     assert_eq!(err.code, "E-HOST-006");
 }
 

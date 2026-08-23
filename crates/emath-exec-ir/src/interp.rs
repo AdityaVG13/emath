@@ -196,6 +196,15 @@ pub enum EvalFault {
         /// Exclusive upper bound of the indexed axis.
         len: usize,
     },
+    /// Op violated an arithmetic precondition (zero/odd Simpson steps,
+    /// index-offset overflow, etc.). Distinct from IEEE `/0` on f64 ops,
+    /// which remains Inf/NaN to match generated Rust.
+    Arithmetic {
+        /// EMIR op name.
+        op: &'static str,
+        /// Short reason (`integral steps must be positive and even`).
+        detail: &'static str,
+    },
 }
 
 impl fmt::Display for EvalFault {
@@ -210,6 +219,7 @@ impl fmt::Display for EvalFault {
             Self::IndexOutOfBounds { op, index, len } => {
                 write!(f, "{op} index {index} is outside 0..{len}")
             }
+            Self::Arithmetic { op, detail } => write!(f, "{op}: {detail}"),
         }
     }
 }
@@ -353,6 +363,16 @@ fn eval_op(
             cols,
             ref elements,
         } => {
+            let expected = rows.checked_mul(cols).ok_or(EvalFault::Arithmetic {
+                op: name,
+                detail: "matrix size overflow",
+            })?;
+            if elements.len() != expected {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "matrix element count does not match rows*cols",
+                });
+            }
             let mut data = Vec::with_capacity(elements.len());
             for &elem in elements {
                 data.push(f64_of(registers, elem, name)?);
@@ -372,17 +392,33 @@ fn eval_op(
             let (r_count, c_count, data) = matrix_of(registers, matrix, name)?;
             let r = whole_index(registers, row, name, r_count)?;
             let c = whole_index(registers, col, name, c_count)?;
-            Ok(Value::F64(data[r * c_count + c]))
+            let offset = r
+                .checked_mul(c_count)
+                .and_then(|base| base.checked_add(c))
+                .ok_or(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "matrix index offset overflow",
+                })?;
+            data.get(offset)
+                .copied()
+                .map(Value::F64)
+                .ok_or(EvalFault::IndexOutOfBounds {
+                    op: name,
+                    index: i64::try_from(offset).unwrap_or(i64::MAX),
+                    len: data.len(),
+                })
         }
         EmirOp::VectorAdd(left, right) => {
             let v1 = vector_of(registers, left, name)?;
             let v2 = vector_of(registers, right, name)?;
+            require_equal_len(v1.len(), v2.len(), name, "vector length mismatch")?;
             let out = v1.iter().zip(v2.iter()).map(|(a, b)| a + b).collect();
             Ok(Value::Vector(out))
         }
         EmirOp::VectorSub(left, right) => {
             let v1 = vector_of(registers, left, name)?;
             let v2 = vector_of(registers, right, name)?;
+            require_equal_len(v1.len(), v2.len(), name, "vector length mismatch")?;
             let out = v1.iter().zip(v2.iter()).map(|(a, b)| a - b).collect();
             Ok(Value::Vector(out))
         }
@@ -402,6 +438,7 @@ fn eval_op(
         EmirOp::VectorDot(left, right) => {
             let v1 = vector_of(registers, left, name)?;
             let v2 = vector_of(registers, right, name)?;
+            require_equal_len(v1.len(), v2.len(), name, "vector length mismatch")?;
             let dot: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
             Ok(Value::F64(dot))
         }
@@ -416,7 +453,8 @@ fn eval_op(
         }
         EmirOp::MatrixAdd(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
-            let (_, _, d2) = matrix_of(registers, right, name)?;
+            let (r2, c2, d2) = matrix_of(registers, right, name)?;
+            require_same_matrix_shape(r1, c1, r2, c2, name)?;
             let data = d1.iter().zip(d2.iter()).map(|(a, b)| a + b).collect();
             Ok(Value::Matrix {
                 rows: r1,
@@ -426,7 +464,8 @@ fn eval_op(
         }
         EmirOp::MatrixSub(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
-            let (_, _, d2) = matrix_of(registers, right, name)?;
+            let (r2, c2, d2) = matrix_of(registers, right, name)?;
+            require_same_matrix_shape(r1, c1, r2, c2, name)?;
             let data = d1.iter().zip(d2.iter()).map(|(a, b)| a - b).collect();
             Ok(Value::Matrix {
                 rows: r1,
@@ -451,10 +490,11 @@ fn eval_op(
         EmirOp::MatrixMulVector(matrix, vector) => {
             let (rows, cols, m_data) = matrix_of(registers, matrix, name)?;
             let v = vector_of(registers, vector, name)?;
+            require_equal_len(v.len(), cols, name, "matrix×vector width mismatch")?;
             let mut out = Vec::with_capacity(rows);
             for r in 0..rows {
                 let sum: f64 = (0..cols)
-                    .map(|c| m_data[r * cols + c] * v.get(c).copied().unwrap_or(0.0))
+                    .map(|c| m_data[r * cols + c] * v[c])
                     .sum();
                 out.push(sum);
             }
@@ -463,15 +503,21 @@ fn eval_op(
         EmirOp::MatrixMulMatrix(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
             let (r2, c2, d2) = matrix_of(registers, right, name)?;
-            let mut out = Vec::with_capacity(r1 * c2);
+            if c1 != r2 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "matrix product inner dimensions mismatch",
+                });
+            }
+            let out_len = r1.checked_mul(c2).ok_or(EvalFault::Arithmetic {
+                op: name,
+                detail: "matrix product size overflow",
+            })?;
+            let mut out = Vec::with_capacity(out_len);
             for i in 0..r1 {
                 for j in 0..c2 {
                     let sum: f64 = (0..c1)
-                        .map(|k| {
-                            let a = d1[i * c1 + k];
-                            let b = if k < r2 { d2[k * c2 + j] } else { 0.0 };
-                            a * b
-                        })
+                        .map(|k| d1[i * c1 + k] * d2[k * c2 + j])
                         .sum();
                     out.push(sum);
                 }
@@ -484,7 +530,11 @@ fn eval_op(
         }
         EmirOp::MatrixTranspose(value) => {
             let (rows, cols, data) = matrix_of(registers, value, name)?;
-            let mut out = vec![0.0; rows * cols];
+            let len = rows.checked_mul(cols).ok_or(EvalFault::Arithmetic {
+                op: name,
+                detail: "matrix size overflow",
+            })?;
+            let mut out = vec![0.0; len];
             for r in 0..rows {
                 for c in 0..cols {
                     out[c * rows + r] = data[r * cols + c];
@@ -497,6 +547,16 @@ fn eval_op(
             })
         }
         EmirOp::TensorCreate { ref shape, ref elements } => {
+            let expected = shape_product(shape).ok_or(EvalFault::Arithmetic {
+                op: name,
+                detail: "tensor size overflow",
+            })?;
+            if elements.len() != expected {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "tensor element count does not match shape product",
+                });
+            }
             let mut data = Vec::with_capacity(elements.len());
             for &elem in elements {
                 data.push(f64_of(registers, elem, name)?);
@@ -520,9 +580,22 @@ fn eval_op(
             let mut offset = 0usize;
             for (axis, &index) in indices.iter().enumerate() {
                 let i = whole_index(registers, index, name, shape[axis])?;
-                offset = offset * shape[axis] + i;
+                offset = offset
+                    .checked_mul(shape[axis])
+                    .and_then(|base| base.checked_add(i))
+                    .ok_or(EvalFault::Arithmetic {
+                        op: name,
+                        detail: "tensor index offset overflow",
+                    })?;
             }
-            Ok(Value::F64(data[offset]))
+            data.get(offset)
+                .copied()
+                .map(Value::F64)
+                .ok_or(EvalFault::IndexOutOfBounds {
+                    op: name,
+                    index: i64::try_from(offset).unwrap_or(i64::MAX),
+                    len: data.len(),
+                })
         }
         EmirOp::TensorSlice {
             tensor,
@@ -566,8 +639,10 @@ fn eval_op(
         } => {
             let start_val = f64_of(registers, start, name)?;
             let end_val = f64_of(registers, end, name)?;
-            let start_i = start_val as i64;
-            let end_i = end_val as i64;
+            // Bounds must be finite whole numbers; bare `as i64` maps NaN→0 and
+            // Inf→saturating extremes, which silently runs the wrong loop.
+            let start_i = finite_whole_i64(start_val, start.0, name)?;
+            let end_i = finite_whole_i64(end_val, end.0, name)?;
             match combine {
                 FoldCombine::Add | FoldCombine::Mul => {
                     let mut acc_i: Option<i64> = match register(registers, init)? {
@@ -595,14 +670,24 @@ fn eval_op(
                                     *acc = match combine {
                                         FoldCombine::Add => *acc + term,
                                         FoldCombine::Mul => *acc * term,
-                                        _ => unreachable!(),
+                                        FoldCombine::And | FoldCombine::Or => {
+                                            return Err(EvalFault::Arithmetic {
+                                                op: name,
+                                                detail: "numeric fold got bool combine",
+                                            });
+                                        }
                                     };
                                 } else {
                                     let term_f = term as f64;
                                     acc_f = match combine {
                                         FoldCombine::Add => acc_f + term_f,
                                         FoldCombine::Mul => acc_f * term_f,
-                                        _ => unreachable!(),
+                                        FoldCombine::And | FoldCombine::Or => {
+                                            return Err(EvalFault::Arithmetic {
+                                                op: name,
+                                                detail: "numeric fold got bool combine",
+                                            });
+                                        }
                                     };
                                 }
                             }
@@ -613,7 +698,12 @@ fn eval_op(
                                 acc_f = match combine {
                                     FoldCombine::Add => acc_f + term,
                                     FoldCombine::Mul => acc_f * term,
-                                    _ => unreachable!(),
+                                    FoldCombine::And | FoldCombine::Or => {
+                                        return Err(EvalFault::Arithmetic {
+                                            op: name,
+                                            detail: "numeric fold got bool combine",
+                                        });
+                                    }
                                 };
                             }
                             _ => {
@@ -630,7 +720,9 @@ fn eval_op(
                     })
                 }
                 FoldCombine::And | FoldCombine::Or => {
-                    let mut acc = f64_of(registers, init, name)? != 0.0;
+                    // `bool_of` admits Bool and numeric 0/≠0; bare `f64_of`
+                    // wrongly refused a Bool vacuous init for forall/exists.
+                    let mut acc = bool_of(registers, init, name)?;
                     for i in start_i..end_i {
                         let mut body_inputs = inputs.to_vec();
                         let idx = usize::from(loop_var_index);
@@ -651,7 +743,12 @@ fn eval_op(
                         acc = match combine {
                             FoldCombine::And => acc && term,
                             FoldCombine::Or => acc || term,
-                            _ => unreachable!(),
+                            FoldCombine::Add | FoldCombine::Mul => {
+                                return Err(EvalFault::Arithmetic {
+                                    op: name,
+                                    detail: "bool fold got numeric combine",
+                                });
+                            }
                         };
                     }
                     Ok(Value::Bool(acc))
@@ -665,9 +762,17 @@ fn eval_op(
             loop_var_index,
             ref integrand,
         } => {
+            // Composite Simpson requires a positive even panel count; steps==0
+            // is `/ 0.0` → Inf, and odd n is a silently wrong quadrature.
+            if steps == 0 || steps % 2 != 0 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "integral steps must be positive and even",
+                });
+            }
             let a = f64_of(registers, start, name)?;
             let b = f64_of(registers, end, name)?;
-            let n = steps as i64;
+            let n = i64::from(steps);
             let h = (b - a) / n as f64;
             let mut acc = 0.0;
             for i in 0..=n {
@@ -725,12 +830,27 @@ fn eval_op(
                 if f.abs() < tolerance {
                     return Ok(Value::F64(x));
                 }
+                // A vanished derivative is not convergence: Newton cannot
+                // step, so returning `x` would silently invent a root.
                 if df.abs() < 1e-30 {
-                    return Ok(Value::F64(x));
+                    return Err(EvalFault::Arithmetic {
+                        op: name,
+                        detail: "solve derivative vanished before convergence",
+                    });
                 }
                 x -= f / df;
             }
-            Ok(Value::F64(x))
+            // Accept a root landed by the final Newton update; otherwise
+            // refuse rather than invent one (same rule as causal_newton).
+            work_inputs[var_index as usize] = Value::F64(x);
+            let dual = evaluate_dual(body, &work_inputs, state, var_index, name)?;
+            if dual.primal.abs() < tolerance {
+                return Ok(Value::F64(x));
+            }
+            Err(EvalFault::Arithmetic {
+                op: name,
+                detail: "solve did not converge within max_iter",
+            })
         }
         EmirOp::Optimize {
             ref body,
@@ -743,16 +863,28 @@ fn eval_op(
             // Multi-variable gradient descent (or ascent):
             //   x_i_new = x_i_old -/+ lr * df/dx_i
             // One dual-number pass per variable gives each partial.
+            if var_indices.is_empty() {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "optimize requires at least one variable",
+                });
+            }
             let mut work_inputs = inputs.to_vec();
             let sign = if maximize { 1.0 } else { -1.0 };
-            // Extract initial guesses from inputs.
-            let mut x: Vec<f64> = var_indices
-                .iter()
-                .map(|&vi| match inputs.get(vi as usize) {
-                    Some(Value::F64(v)) => *v,
-                    _ => 0.0,
-                })
-                .collect();
+            // Extract initial guesses from inputs; refuse silent 0.0 defaults.
+            let mut x: Vec<f64> = Vec::with_capacity(var_indices.len());
+            for &vi in var_indices {
+                match inputs.get(vi as usize) {
+                    Some(Value::F64(v)) => x.push(*v),
+                    Some(_) => {
+                        return Err(EvalFault::TypeConfusion {
+                            register: u32::from(vi),
+                            op: name,
+                        });
+                    }
+                    None => return Err(EvalFault::MissingInput(vi)),
+                }
+            }
             for _ in 0..max_iter {
                 // Compute partial derivative w.r.t. each variable.
                 let mut grads = Vec::with_capacity(var_indices.len());
@@ -772,7 +904,20 @@ fn eval_op(
                     work_inputs[vi as usize] = Value::F64(x[i]);
                 }
             }
-            Ok(Value::F64(x[0]))
+            // Accept stationarity reached by the final gradient step.
+            let mut max_grad = 0.0f64;
+            for (i, &vi) in var_indices.iter().enumerate() {
+                work_inputs[vi as usize] = Value::F64(x[i]);
+                let dual = evaluate_dual(body, &work_inputs, state, vi, name)?;
+                max_grad = max_grad.max(dual.tangent.abs());
+            }
+            if max_grad < tolerance {
+                return Ok(Value::F64(x[0]));
+            }
+            Err(EvalFault::Arithmetic {
+                op: name,
+                detail: "optimize did not converge within max_iter",
+            })
         }
     }
 }
@@ -943,7 +1088,14 @@ fn evaluate_dual(
                 let a = dual_of(&registers, a, name)?;
                 let b = dual_of(&registers, b, name)?;
                 let h = a.primal.hypot(b.primal);
-                Dual { primal: h, tangent: (a.primal * a.tangent + b.primal * b.tangent) / h }
+                // At the origin the Euclidean norm is not differentiable;
+                // emit 0 rather than poisoning Newton/optimize with Inf/NaN.
+                let tangent = if h == 0.0 {
+                    0.0
+                } else {
+                    (a.primal * a.tangent + b.primal * b.tangent) / h
+                };
+                Dual { primal: h, tangent }
             }
             EmirOp::F64Pow(a, b) => {
                 let a = dual_of(&registers, a, name)?;
@@ -1140,11 +1292,54 @@ fn whole_index(
     if index >= len {
         return Err(EvalFault::IndexOutOfBounds {
             op,
-            index: index as i64,
+            index: i64::try_from(index).unwrap_or(i64::MAX),
             len,
         });
     }
     Ok(index)
+}
+
+/// Convert a fold bound to `i64` only when it is a finite whole number.
+///
+/// Lossy `as i64` is refused: NaN becomes 0 and ±Inf saturate, which would
+/// otherwise make `sum`/`product`/`forall`/`exists` loops run the wrong range.
+/// Values outside the `i64` range are also refused rather than saturating.
+fn finite_whole_i64(raw: f64, register: u32, op: &'static str) -> Result<i64, EvalFault> {
+    if !raw.is_finite() || raw.fract() != 0.0 {
+        return Err(EvalFault::TypeConfusion { register, op });
+    }
+    if raw < i64::MIN as f64 || raw > i64::MAX as f64 {
+        return Err(EvalFault::TypeConfusion { register, op });
+    }
+    Ok(raw as i64)
+}
+
+fn require_equal_len(
+    left: usize,
+    right: usize,
+    op: &'static str,
+    detail: &'static str,
+) -> Result<(), EvalFault> {
+    if left != right {
+        return Err(EvalFault::Arithmetic { op, detail });
+    }
+    Ok(())
+}
+
+fn require_same_matrix_shape(
+    r1: usize,
+    c1: usize,
+    r2: usize,
+    c2: usize,
+    op: &'static str,
+) -> Result<(), EvalFault> {
+    if r1 != r2 || c1 != c2 {
+        return Err(EvalFault::Arithmetic {
+            op,
+            detail: "matrix shape mismatch",
+        });
+    }
+    Ok(())
 }
 
 fn f64_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<f64, EvalFault> {
@@ -1189,7 +1384,19 @@ fn matrix_of<'a>(
     op: &'static str,
 ) -> Result<(usize, usize, &'a [f64]), EvalFault> {
     match register(registers, value)? {
-        Value::Matrix { rows, cols, data } => Ok((*rows, *cols, data.as_slice())),
+        Value::Matrix { rows, cols, data } => {
+            let expected = rows.checked_mul(*cols).ok_or(EvalFault::Arithmetic {
+                op,
+                detail: "matrix size overflow",
+            })?;
+            if data.len() != expected {
+                return Err(EvalFault::Arithmetic {
+                    op,
+                    detail: "matrix data length does not match rows*cols",
+                });
+            }
+            Ok((*rows, *cols, data.as_slice()))
+        }
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,
@@ -1203,7 +1410,19 @@ fn tensor_of<'a>(
     op: &'static str,
 ) -> Result<(&'a [usize], &'a [f64]), EvalFault> {
     match register(registers, value)? {
-        Value::Tensor { shape, data } => Ok((shape.as_slice(), data.as_slice())),
+        Value::Tensor { shape, data } => {
+            let expected = shape_product(shape).ok_or(EvalFault::Arithmetic {
+                op,
+                detail: "tensor size overflow",
+            })?;
+            if data.len() != expected {
+                return Err(EvalFault::Arithmetic {
+                    op,
+                    detail: "tensor data length does not match shape product",
+                });
+            }
+            Ok((shape.as_slice(), data.as_slice()))
+        }
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,
@@ -1219,23 +1438,39 @@ fn collect_slice(
     axis: usize,
     offset: usize,
     out: &mut Vec<f64>,
-) {
+) -> Result<(), EvalFault> {
     if axis == shape.len() {
-        out.push(data[offset]);
-        return;
+        let value = data.get(offset).copied().ok_or(EvalFault::IndexOutOfBounds {
+            op: "tensor-slice",
+            index: i64::try_from(offset).unwrap_or(i64::MAX),
+            len: data.len(),
+        })?;
+        out.push(value);
+        return Ok(());
     }
     let stride = shape[axis + 1..].iter().product::<usize>().max(1);
     for i in 0..out_shape[axis] {
-        collect_slice(
-            data,
-            shape,
-            starts,
-            out_shape,
-            axis + 1,
-            offset + (starts[axis] + i) * stride,
-            out,
-        );
+        let next = offset
+            .checked_add(
+                starts[axis]
+                    .checked_add(i)
+                    .and_then(|idx| idx.checked_mul(stride))
+                    .ok_or(EvalFault::Arithmetic {
+                        op: "tensor-slice",
+                        detail: "tensor slice offset overflow",
+                    })?,
+            )
+            .ok_or(EvalFault::Arithmetic {
+                op: "tensor-slice",
+                detail: "tensor slice offset overflow",
+            })?;
+        collect_slice(data, shape, starts, out_shape, axis + 1, next, out)?;
     }
+    Ok(())
+}
+
+fn shape_product(shape: &[usize]) -> Option<usize> {
+    shape.iter().try_fold(1usize, |acc, &dim| acc.checked_mul(dim))
 }
 
 fn eval_tensor_slice(
@@ -1284,7 +1519,7 @@ fn eval_tensor_slice(
                 if end_i > shape[axis] || start_i > end_i {
                     return Err(EvalFault::IndexOutOfBounds {
                         op: name,
-                        index: end_i as i64,
+                        index: i64::try_from(end_i).unwrap_or(i64::MAX),
                         len: shape[axis],
                     });
                 }
@@ -1293,8 +1528,18 @@ fn eval_tensor_slice(
             }
         }
     }
+    let expected = shape_product(&shape).ok_or(EvalFault::Arithmetic {
+        op: name,
+        detail: "tensor size overflow",
+    })?;
+    if data.len() != expected {
+        return Err(EvalFault::Arithmetic {
+            op: name,
+            detail: "tensor/matrix data length does not match shape",
+        });
+    }
     let mut out = Vec::new();
-    collect_slice(data, &shape, &starts, &out_shape, 0, 0, &mut out);
+    collect_slice(data, &shape, &starts, &out_shape, 0, 0, &mut out)?;
     let kept: Vec<usize> = axes
         .iter()
         .zip(out_shape)

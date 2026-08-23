@@ -76,3 +76,23 @@ fn flags_for_matches_implemented_usage() {
         Some(2)
     );
 }
+
+#[test]
+fn value_taking_flag_at_eol_is_usage_not_silent_ok() {
+    assert_eq!(
+        reject_unknown_flags("agent", &["build".into(), "f.emath".into(), "--out".into()]),
+        Some(2)
+    );
+    assert_eq!(
+        reject_unknown_flags("simulate", &["f.emath".into(), "--dt".into()]),
+        Some(2)
+    );
+    assert_eq!(
+        reject_unknown_flags("eval", &["f.emath".into(), "--world".into()]),
+        Some(2)
+    );
+    assert_eq!(
+        reject_unknown_flags("agent", &["build".into(), "f.emath".into(), "--out".into(), "d".into()]),
+        None
+    );
+}

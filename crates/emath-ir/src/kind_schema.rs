@@ -342,6 +342,11 @@ impl KindSchema {
         self.defaults.insert(section.into(), value.into());
     }
 
+    /// Removes a default entry (used when renaming migrates provenance keys).
+    pub fn remove_default(&mut self, section: &str) {
+        self.defaults.remove(section);
+    }
+
     /// Set the static predicate.
     pub fn set_predicate(&mut self, predicate: impl Into<String>) {
         self.predicate = Some(predicate.into());

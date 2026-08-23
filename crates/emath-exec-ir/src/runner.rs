@@ -900,14 +900,22 @@ fn adaptive_rk45_try(
     options: &SimulateOptions,
 ) -> Result<(BTreeMap<String, Value>, f64, f64), String> {
     let stages = cash_karp_stages(package, declaration, inputs, state, dt)?;
+    // Rust `f64::max` ignores NaN, so a NaN fourth/fifth pair would otherwise
+    // report err=0 and be accepted as a perfect step.
+    if !values_finite(&stages.fourth) || !values_finite(&stages.fifth) {
+        return Err("adaptive RK45 step produced a non-finite state".to_string());
+    }
     let err = state_error(&stages.fourth, &stages.fifth);
     let scale = error_scale(state, &stages.fifth, options);
     let rel = if scale > 0.0 { err / scale } else { err };
+    if !rel.is_finite() {
+        return Err("adaptive RK45 error estimate is non-finite".to_string());
+    }
     if rel <= 1.0 {
         Ok((stages.fifth, dt, rel))
     } else {
         let next = (0.9 * dt * rel.powf(-0.2)).max(dt * 0.2);
-        if next >= dt {
+        if !next.is_finite() || next >= dt {
             return Err("adaptive step rejected but could not shrink dt".to_string());
         }
         Ok((stages.fifth, next, rel))
@@ -931,10 +939,31 @@ fn state_error(left: &BTreeMap<String, Value>, right: &BTreeMap<String, Value>) 
     let mut max = 0.0_f64;
     for (name, a) in left {
         if let Some(b) = right.get(name) {
-            max = max.max(value_abs_diff(a, b));
+            let diff = value_abs_diff(a, b);
+            // `f64::max` returns the non-NaN arg when the other is NaN, which
+            // would under-report a poisoned comparison as err=0.
+            if !diff.is_finite() {
+                return f64::INFINITY;
+            }
+            max = max.max(diff);
         }
     }
     max
+}
+
+fn values_finite(state: &BTreeMap<String, Value>) -> bool {
+    state.values().all(value_is_finite)
+}
+
+fn value_is_finite(value: &Value) -> bool {
+    match value {
+        Value::F64(number) => number.is_finite(),
+        Value::I64(_) | Value::Bool(_) => true,
+        Value::Vector(items) => items.iter().all(|item| item.is_finite()),
+        Value::Matrix { data, .. } | Value::Tensor { data, .. } => {
+            data.iter().all(|item| item.is_finite())
+        }
+    }
 }
 
 fn error_scale(
@@ -1005,6 +1034,13 @@ fn locate_event(
 ) -> Result<Option<(f64, BTreeMap<String, Value>)>, String> {
     let g0 = event_gap(start, name, target)?;
     let g1 = event_gap(end, name, target)?;
+    // Non-finite gaps make the sign test and bisection silent-wrong
+    // (NaN comparisons are never > 0, so a blow-up looks like a crossing).
+    if !g0.is_finite() || !g1.is_finite() {
+        return Err(format!(
+            "event state `{name}` produced a non-finite gap (start={g0}, end={g1})"
+        ));
+    }
     if g0 == 0.0 {
         return Ok(Some((t0, start.clone())));
     }
@@ -1020,6 +1056,11 @@ fn locate_event(
         let mid_t = 0.5 * (lo_t + hi_t);
         let mid = step_continuous_values(package, declaration, inputs, &lo, mid_t - lo_t, method)?;
         let gmid = event_gap(&mid, name, target)?;
+        if !gmid.is_finite() {
+            return Err(format!(
+                "event state `{name}` produced a non-finite gap during location (g={gmid})"
+            ));
+        }
         if gmid == 0.0 || (hi_t - lo_t).abs() <= 1e-12 {
             return Ok(Some((mid_t, mid)));
         }
@@ -1298,10 +1339,22 @@ fn causal_newton(
         bind_names.push(format!("__rate_{rate}"));
     }
 
-    let mut bind_values: Vec<Value> = bind_names
-        .iter()
-        .map(|name| inputs.get(name).cloned().unwrap_or(Value::F64(0.0)))
-        .collect();
+    // Declaration inputs must be present — silent `0.0` defaults invent
+    // parameter values and can converge to a wrong DAE solution (same
+    // refuse-silent-defaults rule as Optimize in interp). Rate unknowns
+    // (`__rate_*`) start at 0.0 by construction below.
+    let mut bind_values: Vec<Value> = Vec::with_capacity(bind_names.len());
+    for name in &bind_names {
+        if let Some(value) = inputs.get(name) {
+            bind_values.push(value.clone());
+            continue;
+        }
+        if name.starts_with("__rate_") {
+            bind_values.push(Value::F64(0.0));
+            continue;
+        }
+        return Err(format!("missing input `{name}`"));
+    }
 
     let mut unknowns: Vec<NewtonUnknown> = Vec::new();
     let mut x: Vec<f64> = Vec::new();
@@ -1593,7 +1646,10 @@ fn outputs_of(
             let value = match (&value, package.ty(field.ty)) {
                 (Value::I64(n), Some(TypeNode::Float64)) => Value::F64(*n as f64),
                 (Value::F64(n), Some(TypeNode::Int | TypeNode::Nat))
-                    if n.is_finite() && n.fract() == 0.0 =>
+                    if n.is_finite()
+                        && n.fract() == 0.0
+                        && *n >= i64::MIN as f64
+                        && *n <= i64::MAX as f64 =>
                 {
                     Value::I64(*n as i64)
                 }

@@ -25,5 +25,6 @@ dependencies = [
 name = "emath-schema-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-ir",
  "emath-schema",
 ]

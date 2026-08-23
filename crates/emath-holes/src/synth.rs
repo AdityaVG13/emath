@@ -58,6 +58,9 @@ pub enum SynthesisError {
     /// Carrier exceeds [`MAX_CARRIER_SIZE`]; the table space would be
     /// unbounded (typed refusal `E-RES-110`).
     CarrierTooLarge(usize),
+    /// Duplicate carrier labels collapse table cells (BTreeMap keys), so
+    /// enumeration would silently under-generate; refused instead.
+    DuplicateCarrier,
     /// An empty law set is refused: every table would vacuously
     /// "satisfy" it, so the outcome is a typed refusal (`E-RES-111`),
     /// never an invented `Contradictory` or a promised meaning.
@@ -184,6 +187,13 @@ pub fn synthesize_tables(
     }
     if carrier.len() > MAX_CARRIER_SIZE {
         return Err(SynthesisError::CarrierTooLarge(carrier.len()));
+    }
+    {
+        let mut seen = carrier.to_vec();
+        seen.sort();
+        if seen.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(SynthesisError::DuplicateCarrier);
+        }
     }
     if laws.is_empty() {
         return Err(SynthesisError::EmptyLaws);

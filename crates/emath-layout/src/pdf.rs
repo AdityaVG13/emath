@@ -83,7 +83,8 @@ pub fn extract(fixture: &PdfPageFixture) -> MathLayoutGraph {
         .max()
         .unwrap_or(1)
         .max(1);
-    let baseline_cut = max_font * 80 / 100;
+    // Saturate rather than wrap if a fixture uses extreme milli-unit sizes.
+    let baseline_cut = max_font.saturating_mul(80) / 100;
 
     let mut bases: Vec<usize> = fixture
         .glyphs
@@ -106,7 +107,7 @@ pub fn extract(fixture: &PdfPageFixture) -> MathLayoutGraph {
         };
         let child = &fixture.glyphs[index];
         let parent = &fixture.glyphs[base];
-        let offset = (child.y - parent.y).abs();
+        let offset = i64_abs_diff(child.y, parent.y);
         attachments[index] = classify_offset(offset, child.y, parent.y, parent.font_size, child.font_size);
         match attachments[index] {
             Attachment::Super => {
@@ -258,8 +259,13 @@ fn is_math_seed(text: &str) -> bool {
 fn nearest_base(glyphs: &[PositionedGlyph], bases: &[usize], index: usize) -> Option<usize> {
     let x = glyphs[index].x;
     bases.iter().copied().min_by_key(|base| {
-        ((glyphs[*base].x - x).abs(), glyphs[*base].x, *base)
+        (i64_abs_diff(glyphs[*base].x, x), glyphs[*base].x, *base)
     })
+}
+
+/// Absolute difference without wrapping on `i64::MIN`/`i64::MAX` pairs.
+fn i64_abs_diff(a: i64, b: i64) -> i64 {
+    i64::try_from(a.abs_diff(b)).unwrap_or(i64::MAX)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -278,10 +284,13 @@ fn classify_offset(
     child_font: i64,
 ) -> Attachment {
     let font = parent_font.max(1);
-    if offset * 100 >= font * 20 && offset * 100 < font * 45 {
+    let offset_pct = offset.saturating_mul(100);
+    let band_lo = font.saturating_mul(20);
+    let band_hi = font.saturating_mul(45);
+    if offset_pct >= band_lo && offset_pct < band_hi {
         return Attachment::Ambiguous;
     }
-    if offset * 100 >= font * 45 && child_font < parent_font {
+    if offset_pct >= band_hi && child_font < parent_font {
         if child_y > parent_y {
             Attachment::Super
         } else {
@@ -296,12 +305,20 @@ fn split_runs(fixture: &PdfPageFixture, line: &[usize], gap: i64) -> Vec<Vec<usi
     let mut runs: Vec<Vec<usize>> = Vec::new();
     for &index in line {
         if let Some(run) = runs.last_mut() {
-            let prev = *run.last().expect("run non-empty");
-            let dx = fixture.glyphs[index].x
-                - (fixture.glyphs[prev].x + fixture.glyphs[prev].width);
-            if dx <= gap {
-                run.push(index);
-                continue;
+            if let Some(&prev) = run.last() {
+                let prev_glyph = &fixture.glyphs[prev];
+                let Some(prev_end) = prev_glyph.x.checked_add(prev_glyph.width) else {
+                    runs.push(vec![index]);
+                    continue;
+                };
+                let Some(dx) = fixture.glyphs[index].x.checked_sub(prev_end) else {
+                    runs.push(vec![index]);
+                    continue;
+                };
+                if dx <= gap {
+                    run.push(index);
+                    continue;
+                }
             }
         }
         runs.push(vec![index]);

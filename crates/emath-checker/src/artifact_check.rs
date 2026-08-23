@@ -13,7 +13,7 @@ use emath_artifact::{
     manifest_from_json, plan_from_json, required_artifact_paths, source_map_from_json,
 };
 use emath_core::ContentId;
-use emath_ir::ClaimVerdict;
+use emath_ir::{ClaimVerdict, EvidenceLevel};
 use std::path::Path;
 
 use crate::{CheckerError, identity_of};
@@ -173,8 +173,14 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
     }
     let mut claims = input.evidence.claims.clone();
     claims.sort_by(|left, right| left.id.cmp(&right.id));
+    let mut strongest_pass = EvidenceLevel::E0;
+    let mut saw_pass = false;
     for claim in &claims {
         if claim.verdict == ClaimVerdict::Pass {
+            saw_pass = true;
+            if claim.level > strongest_pass {
+                strongest_pass = claim.level;
+            }
             if claim.checker.is_none() {
                 issues.push(issue(
                     "E-EVID-107",
@@ -207,6 +213,18 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
                 ));
             }
         }
+    }
+    // Manifest evidence_level is the delivered bar (build→artifact). Pass
+    // claims weaker than that bar mean the artifact over-advertises.
+    if saw_pass && input.manifest.evidence_level > strongest_pass {
+        issues.push(issue(
+            "E-EVID-103",
+            format!(
+                "manifest evidence_level {} exceeds strongest Pass claim {}",
+                input.manifest.evidence_level.as_str(),
+                strongest_pass.as_str()
+            ),
+        ));
     }
 
     // 6. Source-map consistency.

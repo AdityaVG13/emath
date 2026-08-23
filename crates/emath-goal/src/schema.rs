@@ -164,7 +164,9 @@ impl GoalSchema {
             exactness_token(&self.accuracy),
             self.evidence.as_str(),
             budget_token(&self.budget),
-            self.target.family,
+            // Family alone collided for distinct triples/features; use the
+            // full target token (same embedding style as budget_token).
+            target_token(&self.target),
             self.determinism_token(),
             fallback_token(&self.fallback),
             self.produce,

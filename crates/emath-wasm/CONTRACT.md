@@ -47,8 +47,8 @@
 - `run` uses `check` then the Tier-0 EMIR interpreter (`emath-exec-ir`). Source errors return diagnostics only (no report). Successful admission returns `tier: interpreted-strict-f64` plus a `RunReport`. Vector / matrix / tensor values are serialized (tensors as `{shape, data}`), not dropped.
 - Per-test JSON: an asserted example emits `"expect_passed": true|false`. A worked example (`expect` omitted) or a synthetic `_pane` run emits `"computed": true` and omits `expect_passed`. Summary is `{tests, passed, failed, refused, computed}`. A missing envelope binding is `refusal: "lowering-refused"` with `reason` containing `missing input \`name\``.
 - All unsafe is confined to `ffi`. Each block documents its pointer/length pairing.
-- `em_alloc(len)` produces an exclusive region of capacity `len` (length 0 until written). `em_free(ptr, len)` must pair the same `ptr`/`len` exactly once.
-- `em_run` reads `op` and `payload` as UTF-8 slices the caller owns, writes the JSON response through `em_alloc`, and returns that allocation. The JS caller copies, then `em_free`s.
+- `em_alloc(len)` produces an exclusive region of capacity `len` (length 0 until written). `em_free(ptr, len)` must pair a live `ptr` exactly once; reconstruction uses the capacity stored at mint time, so a mismatched host `len` cannot induce allocator UB (still a contract violation to lie about `len`).
+- `em_run` reads `op` and `payload` as UTF-8 slices the caller owns, writes the JSON response through `em_alloc`, and returns that allocation. The JS caller copies, then `em_free`s. An oversized response (`len > u32::MAX`) or a failed response alloc returns the empty pack `0`.
 
 ## Error model
 
@@ -73,7 +73,7 @@
 - `ffi` is the single `allow(unsafe_code)` leaf.
 - Invariants:
   1. `em_alloc` returns either `0` (`len == 0`) or a pointer from `Vec::with_capacity(len)` whose backing store is leaked via `mem::forget`. Nothing else aliases that allocation until `em_free`.
-  2. `em_free(ptr, len)` reconstructs `Vec::from_raw_parts(ptr, 0, len)` and drops it. `ptr`/`len` must match a live `em_alloc` (or the `em_run` response allocation). Double-free and mismatched length are undefined.
+  2. `em_free(ptr, len)` reconstructs `Vec::from_raw_parts(ptr, 0, stored_cap)` and drops it. `ptr` must be a live `em_alloc` (or the `em_run` response allocation). Double-free / foreign `ptr` are provable no-ops via `LIVE_ALLOCS`. Mismatched host `len` is ignored for drop sizing (stored capacity wins).
   3. `em_run` may read `[op_ptr, op_ptr+op_len)` and `[payload_ptr, payload_ptr+payload_len)` only as bytes the caller initialized. Those regions must be valid, non-overlapping with the response allocation, and not freed until `em_run` returns.
 
 ## Feature flags

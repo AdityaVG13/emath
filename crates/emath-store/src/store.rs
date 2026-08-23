@@ -131,8 +131,16 @@ impl Store {
                 request_tx,
                 worker: Some(worker),
             }),
-            Ok(Err(error)) => Err(error),
-            Err(error) => Err(StoreError::Open(format!("worker channel closed: {error}"))),
+            Ok(Err(error)) => {
+                // Worker already sent Err and returned; join so Drop of the
+                // handle cannot detach a finishing thread / lose a panic.
+                let _ = worker.join();
+                Err(error)
+            }
+            Err(error) => {
+                let _ = worker.join();
+                Err(StoreError::Open(format!("worker channel closed: {error}")))
+            }
         }
     }
 
@@ -467,10 +475,12 @@ fn run_batch(
     let outcome = run_ops(runtime, connection, ops);
     match outcome {
         Ok(()) => engine_exec(runtime, connection, "COMMIT").map_err(|e| transaction_context(&e)),
-        Err(error) => {
-            let _ = engine_exec(runtime, connection, "ROLLBACK");
-            Err(error)
-        }
+        Err(error) => match engine_exec(runtime, connection, "ROLLBACK") {
+            Ok(()) => Err(error),
+            Err(rollback_error) => Err(StoreError::Transaction(format!(
+                "ROLLBACK failed after {error}: {rollback_error}"
+            ))),
+        },
     }
 }
 

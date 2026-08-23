@@ -155,7 +155,10 @@ impl Parser<'_> {
     }
 
     fn eat(&mut self, expected: &str) -> bool {
-        if self.bytes[self.pos..].starts_with(expected.as_bytes()) {
+        let Some(rest) = self.bytes.get(self.pos..) else {
+            return false;
+        };
+        if rest.starts_with(expected.as_bytes()) {
             self.pos += expected.len();
             true
         } else {
@@ -245,9 +248,14 @@ impl Parser<'_> {
                     }
                 }
                 _other => {
-                    let rest = std::str::from_utf8(&self.bytes[self.pos - 1..])
+                    let Some(rest_bytes) = self.bytes.get(self.pos.saturating_sub(1)..) else {
+                        return Err("unexpected end of string".into());
+                    };
+                    let rest = std::str::from_utf8(rest_bytes)
                         .map_err(|_| "invalid utf-8".to_string())?;
-                    let ch = rest.chars().next().expect("non-empty slice");
+                    let Some(ch) = rest.chars().next() else {
+                        return Err("unexpected end of string".into());
+                    };
                     value.push(ch);
                     self.pos += ch.len_utf8() - 1;
                 }
@@ -314,8 +322,10 @@ impl Parser<'_> {
         }) {
             self.pos += 1;
         }
-        let text = std::str::from_utf8(&self.bytes[start..self.pos])
-            .map_err(|_| "invalid number".to_string())?;
+        let Some(slice) = self.bytes.get(start..self.pos) else {
+            return Err("invalid number span".into());
+        };
+        let text = std::str::from_utf8(slice).map_err(|_| "invalid number".to_string())?;
         if text.is_empty() {
             return Err("empty number".into());
         }

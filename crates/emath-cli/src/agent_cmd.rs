@@ -6,15 +6,15 @@ use emath_agent_protocol::{
     AgentProposal, ChallengeLoop, ChallengeOutcome, CheckerSuite, ProposalKind,
 };
 use emath_artifact::JsonWriter;
-use emath_build::{BuildOptions, build_file};
+use emath_build::{build_file, BuildOptions};
 use emath_portfolio::InterpretationPortfolio;
 use emath_sema::session::CompilerSession;
 use emath_tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
-use emath_world_ir::WorldId;
 use emath_world_ir::translation::EvidenceHandle;
+use emath_world_ir::WorldId;
 
 use crate::tooling_cmd::{classify_build_error, doctor_probes, flag_value, positional_args};
-use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run_check, usage};
+use crate::{run_check, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 
 /// Permissive loop: schema and capability admission decide; empty checkers.
 const PROPOSE_LOOP: ChallengeLoop = ChallengeLoop {
@@ -56,7 +56,11 @@ pub(crate) fn agent_cmd(args: &[String]) -> u8 {
             }
             object.string("diagnostics_text", &lines);
             println!("{}", object.finish());
-            if admitted { EXIT_OK } else { EXIT_REFUSED }
+            if admitted {
+                EXIT_OK
+            } else {
+                EXIT_REFUSED
+            }
         }
         "plan" => {
             let Some(file) = file else {
@@ -375,12 +379,17 @@ fn agent_triage_cmd(file: Option<&String>) -> u8 {
         diag_rows.push(row.finish());
     }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let (goals, plans) = match session.load_package(file) {
+    let (goals, plans, plan_ok, plan_error) = match session.load_package(file) {
         Ok(package) => {
             let result = session.plan(package.file);
-            (result.package.goals.len() as u64, result.plans.len() as u64)
+            (
+                result.package.goals.len() as u64,
+                result.plans.len() as u64,
+                true,
+                None,
+            )
         }
-        Err(_) => (0, 0),
+        Err(error) => (0, 0, false, Some(error.to_string())),
     };
     let mut object = JsonWriter::object();
     object.string("schema", "emath.agent");
@@ -391,10 +400,14 @@ fn agent_triage_cmd(file: Option<&String>) -> u8 {
     object.bool("admitted", admitted);
     object.string("package", &package_id);
     object.objects("diagnostics", &diag_rows);
+    object.bool("plan_ok", plan_ok);
+    if let Some(message) = &plan_error {
+        object.string("plan_error", message);
+    }
     object.int("goals", goals);
     object.int("plans", plans);
     println!("{}", object.finish());
-    if admitted && doctor_ok {
+    if admitted && doctor_ok && plan_ok {
         EXIT_OK
     } else {
         EXIT_REFUSED

@@ -388,7 +388,9 @@ where
         partials.push(next.to_bits());
         acc = Some(next);
     }
-    let value = acc.expect("range was checked non-empty");
+    let value = acc.ok_or(AnalogueError::InvalidDomain {
+        reason: "empty-range",
+    })?;
     Ok(receipt(
         request,
         op.rule(),

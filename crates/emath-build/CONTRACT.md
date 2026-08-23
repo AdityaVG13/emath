@@ -9,6 +9,7 @@
 ## Public types and semantics
 - `BuildOptions`: `verify_generated_crate` controls whether the staged crate runs `cargo test` before publish.
 - `BuildReport`: artifact_dir, artifact_id, package_id, crate_name, plan_ids, assumptions, exports, refusal_codes. Empty refusal_codes on success.
+- Evidence honesty: admission claims are E1/`static-semantics`; cargo-test verification claims are E3/`codegen` only when verification actually ran (otherwise `not-run` at E0). Manifest `evidence_level` is the delivered bar. A goal requiring a higher bar than delivered is refused with `E-EVID-103`.
 - `BuildError`: enum over ReadFailed, AdmittedWithErrors(String codes), Backend, VerifyFailed, Artifact, Io.
 - Dependency policy (module `deps`): `DepPolicy`, `DepPlan`, `DepRequest`, `CargoDependency`, `DepError`, `DepSource`, `RuntimeKind`, `TargetKind`; entry points `check_declared`, `plan_dependencies`, `requests_for`.
 - Build script support (module `script`): `ScriptLock`, `ScriptReport`, `ScriptError`, `locked_build_script`.

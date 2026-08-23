@@ -1490,9 +1490,9 @@ impl Admitter {
         if matches!(kind, BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral) {
             return self.lower_variable_bound_binder(expr, kind, binder, domain, body);
         }
-        let combine = match kind {
-            BinderKind::Sum => emath_ir::BinaryOp::StrictFloatAdd,
-            BinderKind::Product => emath_ir::BinaryOp::StrictFloatMul,
+        let (combine, identity) = match kind {
+            BinderKind::Sum => (emath_ir::BinaryOp::StrictFloatAdd, 0.0_f64),
+            BinderKind::Product => (emath_ir::BinaryOp::StrictFloatMul, 1.0_f64),
             BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists => {
                 self.error(
                     E_UNSUPPORTED_TYPE,
@@ -1501,11 +1501,6 @@ impl Admitter {
                 );
                 return None;
             }
-        };
-        let identity: f64 = match kind {
-            BinderKind::Sum => 0.0,
-            BinderKind::Product => 1.0,
-            BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists => unreachable!(),
         };
         let previous = self.index_locals.insert(binder.name.clone(), start);
         let mut acc_id = self.push_expr(
@@ -1538,7 +1533,13 @@ impl Admitter {
                     BinderKind::Sum => NumericCombine::Add,
                     BinderKind::Product => NumericCombine::Mul,
                     BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists => {
-                        unreachable!()
+                        self.error(
+                            E_UNSUPPORTED_TYPE,
+                            format!("`{kind:?}` is not a finite arithmetic fold yet"),
+                            expr.source,
+                        );
+                        restore_index_local(&mut self.index_locals, &binder.name, previous);
+                        return None;
                     }
                 },
                 expr,
@@ -1696,7 +1697,14 @@ impl Admitter {
         let (combine, identity): (emath_ir::BinaryOp, f64) = match name {
             "sum" => (emath_ir::BinaryOp::StrictFloatAdd, 0.0),
             "product" => (emath_ir::BinaryOp::StrictFloatMul, 1.0),
-            _ => unreachable!("reduction names are sum/product"),
+            _ => {
+                self.error(
+                    E_UNKNOWN_FUNCTION,
+                    format!("`{name}` is not a finite reduction"),
+                    expr.source,
+                );
+                return None;
+            }
         };
         let Some(coords) = reduction_coords(&arg_infer) else {
             if is_numeric_element(&arg_infer) {
@@ -1769,9 +1777,12 @@ impl Admitter {
             return None;
         }
         if items.iter().all(|item| matches!(&item.kind, ExprKind::List(_))) {
-            let first = match &items[0].kind {
-                ExprKind::List(row) => row.as_slice(),
-                _ => unreachable!(),
+            let Some(first) = items.first().and_then(|item| match &item.kind {
+                ExprKind::List(row) => Some(row.as_slice()),
+                _ => None,
+            }) else {
+                self.error("E-SHAPE-004", "matrix literal row must be a list", expr.source);
+                return None;
             };
             let nested_tensor = first
                 .iter()
@@ -1811,7 +1822,12 @@ impl Admitter {
         let mut expected_cols = None;
         for row_item in items {
             let ExprKind::List(row_elements) = &row_item.kind else {
-                unreachable!()
+                self.error(
+                    "E-SHAPE-004",
+                    "matrix row must be a list literal",
+                    row_item.source,
+                );
+                return None;
             };
             if row_elements.is_empty() {
                 self.error("E-SHAPE-004", "empty matrix row is not allowed", row_item.source);
@@ -2087,7 +2103,12 @@ fn collect_tensor_literal(
     if nested {
         for item in items {
             let ExprKind::List(inner) = &item.kind else {
-                unreachable!()
+                admitter.error(
+                    "E-SHAPE-004",
+                    "tensor axis entry must be a list literal",
+                    item.source,
+                );
+                return None;
             };
             collect_tensor_literal(admitter, inner, depth + 1, shape, elements)?;
         }
@@ -4688,12 +4709,14 @@ fn admit_named_field(
         };
         let infer = infer_from_node(&node);
         let ty_id = admitter.type_id(node);
+        let ty_name = admitter
+            .types
+            .get(ty_id.index())
+            .map(ty_display)
+            .unwrap_or_else(|| format!("type#{}", ty_id.index()));
         admitter.record(
             "sema",
-            format!(
-                "field `{name}` typed as {}",
-                ty_display(admitter.types.get(ty_id.index()).unwrap())
-            ),
+            format!("field `{name}` typed as {ty_name}"),
             span,
         );
         (infer, ty_id)

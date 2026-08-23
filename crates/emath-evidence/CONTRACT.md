@@ -12,7 +12,7 @@ Frequently re-exported types (not exhaustive):
 
 - `EvidenceRecord`, `EvidenceKind`, `Freshness`, `Falsifier`/`FalsifierKind`, `ProducerRole`, `CheckerRole`, `Independence` (module `ir`): the claim model with explicit producer/checker/falsifier/freshness.
 - `Assumption`, `AssumptionLedger`, `PremiseClass` (module `ledger`): classified assumption ledger with `premise_class_token`.
-- `EvidencePolicy`, `EvidenceEntry` (module `policy`): `requirement_for`, `satisfied_by`, `admissible_combos`.
+- `EvidencePolicy`, `EvidenceEntry` (module `policy`): `requirement_for`, `satisfied_by`, `admissible_combos`. Default classes include the checker battery (`correctness`, `equivalence`, `performance`, `safety`) and the native build claim classes (`static-semantics`, `codegen`).
 - `CertificateRegistry`, `CheckerContract`, `CertificateKind` (module `registry`): `register_contract`, `lookup_contract`, `admits_claim_class`.
 - `EvidenceStore` (module `store`): content-addressed store with `store_address`.
 - `RevalidationConfig`, `RevalidationReport`, `RevalidationTrigger` (module `revalidation`): `require_promotable`, `revalidation_sweep`.

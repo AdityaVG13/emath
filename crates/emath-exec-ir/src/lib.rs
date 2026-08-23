@@ -348,10 +348,18 @@ fn lower(
     Ok(EmirProgram {
         ops: emitter.ops,
         result: value,
-        input_count: u16::try_from(inputs.len()).unwrap_or(u16::MAX),
-        state_count: u16::try_from(states.len()).unwrap_or(u16::MAX),
+        input_count: u16_count(inputs.len(), "input")?,
+        state_count: u16_count(states.len(), "state")?,
         domain_obligations: emitter.obligations,
     })
+}
+
+fn u16_count(n: usize, what: &str) -> Result<u16, String> {
+    u16::try_from(n).map_err(|_| format!("{what} count {n} exceeds u16::MAX"))
+}
+
+fn u16_index(n: usize, what: &str) -> Result<u16, String> {
+    u16::try_from(n).map_err(|_| format!("{what} index {n} exceeds u16::MAX"))
 }
 
 struct Emitter {
@@ -362,26 +370,27 @@ struct Emitter {
 }
 
 impl Emitter {
-    fn push(&mut self, op: EmirOp, span: Span) -> EmirValue {
-        let value = EmirValue(u32::try_from(self.ops.len()).unwrap_or(u32::MAX));
+    fn push(&mut self, op: EmirOp, span: Span) -> Result<EmirValue, String> {
+        let id = u32::try_from(self.ops.len())
+            .map_err(|_| format!("EMIR op count {} exceeds u32::MAX", self.ops.len()))?;
         self.ops.push((op, span));
-        value
+        Ok(EmirValue(id))
     }
 
     fn state_index(&self, name: &str) -> Result<u16, String> {
         self.states
             .iter()
             .position(|s| s == name)
-            .map(|i| u16::try_from(i).unwrap_or(u16::MAX))
             .ok_or_else(|| format!("unknown state field `{name}`"))
+            .and_then(|i| u16_index(i, "state"))
     }
 
     fn input_index(&self, name: &str) -> Result<u16, String> {
         self.inputs
             .iter()
             .position(|s| s == name)
-            .map(|i| u16::try_from(i).unwrap_or(u16::MAX))
             .ok_or_else(|| format!("unknown input `{name}`"))
+            .and_then(|i| u16_index(i, "input"))
     }
 
     /// Create a sub-emitter that shares this emitter's input and state
@@ -399,14 +408,14 @@ impl Emitter {
     /// Finalize this emitter into an `EmirProgram` with the given result
     /// value.  The state count comes from the parent emitter since
     /// sub-programs share state tables.
-    fn finish(mut self, result: EmirValue, state_count: usize) -> EmirProgram {
-        EmirProgram {
+    fn finish(mut self, result: EmirValue, state_count: usize) -> Result<EmirProgram, String> {
+        Ok(EmirProgram {
             ops: std::mem::take(&mut self.ops),
             result,
-            input_count: u16::try_from(self.inputs.len()).unwrap_or(u16::MAX),
-            state_count: u16::try_from(state_count).unwrap_or(u16::MAX),
+            input_count: u16_count(self.inputs.len(), "input")?,
+            state_count: u16_count(state_count, "state")?,
             domain_obligations: std::mem::take(&mut self.obligations),
-        }
+        })
     }
 
     fn emit(&mut self, package: &SemanticPackage, id: EmirExprRef) -> Result<EmirValue, String> {
@@ -423,7 +432,7 @@ impl Emitter {
                         "non-finite constant {value:?} refused under strict-f64 policy"
                     ));
                 }
-                Ok(self.push(EmirOp::ConstF64(*bits), span))
+                self.push(EmirOp::ConstF64(*bits), span)
             }
             ExprNode::Literal(Literal::Integer(text)) => {
                 let parsed: f64 = text
@@ -436,21 +445,21 @@ impl Emitter {
                     ));
                 }
                 let value: f64 = parsed;
-                Ok(self.push(EmirOp::ConstF64(value.to_bits()), span))
+                self.push(EmirOp::ConstF64(value.to_bits()), span)
             }
             ExprNode::Literal(Literal::Bool(on)) => {
                 let value: f64 = if *on { 1.0 } else { 0.0 };
-                Ok(self.push(EmirOp::ConstF64(value.to_bits()), span))
+                self.push(EmirOp::ConstF64(value.to_bits()), span)
             }
             ExprNode::Literal(_) => Err("unsupported literal in Phase 1 subset".to_string()),
             ExprNode::Variable(name) => {
                 let name = &name.0;
                 if let Some(stripped) = name.strip_prefix("state.") {
                     let index = self.state_index(stripped)?;
-                    Ok(self.push(EmirOp::LoadState(index), span))
+                    self.push(EmirOp::LoadState(index), span)
                 } else {
                     let index = self.input_index(name)?;
-                    Ok(self.push(EmirOp::LoadInput(index), span))
+                    self.push(EmirOp::LoadInput(index), span)
                 }
             }
             ExprNode::Call {
@@ -479,7 +488,7 @@ impl Emitter {
                     UnaryOp::Floor => EmirOp::Floor(operand),
                     UnaryOp::Ceil => EmirOp::Ceil(operand),
                 };
-                Ok(self.push(op, span))
+                self.push(op, span)
             }
             ExprNode::Binary {
                 operation,
@@ -531,7 +540,7 @@ impl Emitter {
                         );
                     }
                 };
-                Ok(self.push(op, span))
+                self.push(op, span)
             }
             ExprNode::If {
                 condition,
@@ -541,74 +550,86 @@ impl Emitter {
                 let condition = self.emit(package, *condition)?;
                 let then_value = self.emit(package, *then_value)?;
                 let else_value = self.emit(package, *else_value)?;
-                Ok(self.push(
+                self.push(
                     EmirOp::Select {
                         condition,
                         then_value,
                         else_value,
                     },
                     span,
-                ))
+                )
             }
             ExprNode::Vector(elements) => {
                 let mut emitted = Vec::with_capacity(elements.len());
                 for &element in elements {
                     emitted.push(self.emit(package, element)?);
                 }
-                Ok(self.push(EmirOp::VectorCreate(emitted), span))
+                self.push(EmirOp::VectorCreate(emitted), span)
             }
             ExprNode::Matrix(rows) => {
                 let r = rows.len();
                 let c = rows.first().map_or(0, |row| row.len());
-                let mut elements = Vec::with_capacity(r * c);
+                if rows.iter().any(|row| row.len() != c) {
+                    return Err("jagged matrix rows (unequal column counts)".into());
+                }
+                let mut elements = Vec::with_capacity(r.saturating_mul(c));
                 for row in rows {
                     for &element in row {
                         elements.push(self.emit(package, element)?);
                     }
                 }
-                Ok(self.push(
+                self.push(
                     EmirOp::MatrixCreate {
                         rows: r,
                         cols: c,
                         elements,
                     },
                     span,
-                ))
+                )
             }
             ExprNode::Tensor { shape, elements } => {
+                let expected = shape
+                    .iter()
+                    .try_fold(1usize, |acc, &dim| acc.checked_mul(dim));
+                let Some(expected) = expected else {
+                    return Err("tensor shape product overflow".into());
+                };
+                if elements.len() != expected {
+                    return Err("tensor element count does not match shape product".into());
+                }
                 let mut emitted = Vec::with_capacity(elements.len());
                 for &element in elements {
                     emitted.push(self.emit(package, element)?);
                 }
-                Ok(self.push(
+                self.push(
                     EmirOp::TensorCreate {
                         shape: shape.clone(),
                         elements: emitted,
                     },
                     span,
-                ))
+                )
             }
             ExprNode::Index { value, indices } => {
                 let target = self.emit(package, *value)?;
                 if indices.len() == 1 {
                     let idx = self.emit(package, indices[0])?;
-                    Ok(self.push(EmirOp::VectorIndex { vector: target, index: idx }, span))
+                    self.push(EmirOp::VectorIndex { vector: target, index: idx }, span)
                 } else if indices.len() == 2 {
                     let row = self.emit(package, indices[0])?;
                     let col = self.emit(package, indices[1])?;
-                    Ok(self.push(EmirOp::MatrixIndex { matrix: target, row, col }, span))
+                    self.push(EmirOp::MatrixIndex { matrix: target, row, col }, span)
                 } else {
                     let mut emitted = Vec::with_capacity(indices.len());
                     for &index in indices {
                         emitted.push(self.emit(package, index)?);
                     }
-                    Ok(self.push(
+                    self.push(
                         EmirOp::TensorIndex {
                             tensor: target,
                             indices: emitted,
                         },
                         span,
-                    ))
+                    )
                 }
             }
             ExprNode::Slice { value, axes } => {
@@ -623,13 +644,13 @@ impl Emitter {
                         },
                     });
                 }
-                Ok(self.push(
+                self.push(
                     EmirOp::TensorSlice {
                         tensor: target,
                         axes: emitted,
                     },
                     span,
-                ))
+                )
             }
             ExprNode::Binder {
                 kind,
@@ -655,8 +676,7 @@ impl Emitter {
                 };
                 let start_val = self.emit(package, start_id)?;
                 let end_val = self.emit(package, end_id)?;
-                let loop_var_index =
-                    u16::try_from(self.inputs.len()).unwrap_or(u16::MAX);
+                let loop_var_index = u16_index(self.inputs.len(), "loop variable")?;
                 let mut body_inputs = self.inputs.clone();
                 body_inputs.push(binder.name.clone());
                 let mut body_emitter = Emitter {
@@ -669,13 +689,9 @@ impl Emitter {
                 let body_program = EmirProgram {
                     ops: std::mem::take(&mut body_emitter.ops),
                     result: body_result,
-                    input_count: u16::try_from(body_emitter.inputs.len())
-                        .unwrap_or(u16::MAX),
-                    state_count: u16::try_from(self.states.len())
-                        .unwrap_or(u16::MAX),
-                    domain_obligations: std::mem::take(
-                        &mut body_emitter.obligations,
-                    ),
+                    input_count: u16_count(body_emitter.inputs.len(), "input")?,
+                    state_count: u16_count(self.states.len(), "state")?,
+                    domain_obligations: std::mem::take(&mut body_emitter.obligations),
                 };
                 match kind {
                     BinderKind::Sum
@@ -687,19 +703,23 @@ impl Emitter {
                             BinderKind::Product => FoldCombine::Mul,
                             BinderKind::ForAll => FoldCombine::And,
                             BinderKind::Exists => FoldCombine::Or,
-                            _ => unreachable!(),
+                            BinderKind::Integral => {
+                                return Err(
+                                    "integral binder must lower via Integral op".to_string(),
+                                );
+                            }
                         };
                         let init_val = match combine {
-                            FoldCombine::Add => self.push(EmirOp::ConstI64(0), span),
-                            FoldCombine::Mul => self.push(EmirOp::ConstI64(1), span),
+                            FoldCombine::Add => self.push(EmirOp::ConstI64(0), span)?,
+                            FoldCombine::Mul => self.push(EmirOp::ConstI64(1), span)?,
                             FoldCombine::And => {
-                                self.push(EmirOp::ConstF64(1.0f64.to_bits()), span)
+                                self.push(EmirOp::ConstF64(1.0f64.to_bits()), span)?
                             }
                             FoldCombine::Or => {
-                                self.push(EmirOp::ConstF64(0.0f64.to_bits()), span)
+                                self.push(EmirOp::ConstF64(0.0f64.to_bits()), span)?
                             }
                         };
-                        Ok(self.push(
+                        self.push(
                             EmirOp::Fold {
                                 start: start_val,
                                 end: end_val,
@@ -709,9 +729,9 @@ impl Emitter {
                                 body: body_program,
                             },
                             span,
-                        ))
+                        )
                     }
-                    BinderKind::Integral => Ok(self.push(
+                    BinderKind::Integral => self.push(
                         EmirOp::Integral {
                             start: start_val,
                             end: end_val,
@@ -720,7 +740,7 @@ impl Emitter {
                             integrand: body_program,
                         },
                         span,
-                    )),
+                    ),
                 }
             }
             ExprNode::Differentiate { body, var } => {
@@ -735,29 +755,25 @@ impl Emitter {
                 let body_program = EmirProgram {
                     ops: std::mem::take(&mut body_emitter.ops),
                     result: body_result,
-                    input_count: u16::try_from(body_emitter.inputs.len())
-                        .unwrap_or(u16::MAX),
-                    state_count: u16::try_from(self.states.len())
-                        .unwrap_or(u16::MAX),
-                    domain_obligations: std::mem::take(
-                        &mut body_emitter.obligations,
-                    ),
+                    input_count: u16_count(body_emitter.inputs.len(), "input")?,
+                    state_count: u16_count(self.states.len(), "state")?,
+                    domain_obligations: std::mem::take(&mut body_emitter.obligations),
                 };
-                Ok(self.push(
+                self.push(
                     EmirOp::Differentiate {
                         body: body_program,
                         var_index,
                     },
                     span,
-                ))
+                )
             }
             ExprNode::Solve { body, var } => {
                 let var_index = self.input_index(var)?;
                 let sc = self.states.len();
                 let mut body_emitter = self.sub_emitter();
                 let body_result = body_emitter.emit(package, *body)?;
-                let body_program = body_emitter.finish(body_result, sc);
-                Ok(self.push(
+                let body_program = body_emitter.finish(body_result, sc)?;
+                self.push(
                     EmirOp::Solve {
                         body: body_program,
                         var_index,
@@ -765,7 +781,7 @@ impl Emitter {
                         max_iter: 100,
                     },
                     span,
-                ))
+                )
             }
             ExprNode::Optimize { body, vars, maximize } => {
                 let mut var_indices = Vec::with_capacity(vars.len());
@@ -775,8 +791,8 @@ impl Emitter {
                 let sc = self.states.len();
                 let mut body_emitter = self.sub_emitter();
                 let body_result = body_emitter.emit(package, *body)?;
-                let body_program = body_emitter.finish(body_result, sc);
-                Ok(self.push(
+                let body_program = body_emitter.finish(body_result, sc)?;
+                self.push(
                     EmirOp::Optimize {
                         body: body_program,
                         var_indices,
@@ -786,7 +802,7 @@ impl Emitter {
                         max_iter: 1000,
                     },
                     span,
-                ))
+                )
             }
             other => Err(format!(
                 "expression form {:?} is outside the Phase 1 strict-f64 subset",
@@ -880,156 +896,156 @@ impl Emitter {
         match function {
             "exp" | "core::math::exp" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Exp(v), span))
+                self.push(EmirOp::Exp(v), span)
             }
             "ln" | "log" | "core::math::ln" | "core::math::log" => {
                 let v = self.emit(package, args[0])?;
                 self.obligations.push(DomainObligation::LogPositive);
-                Ok(self.push(EmirOp::Ln(v), span))
+                self.push(EmirOp::Ln(v), span)
             }
             "sqrt" | "core::math::sqrt" => {
                 let v = self.emit(package, args[0])?;
                 self.obligations.push(DomainObligation::SqrtNonNegative);
-                Ok(self.push(EmirOp::Sqrt(v), span))
+                self.push(EmirOp::Sqrt(v), span)
             }
             "sin" | "core::math::sin" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Sin(v), span))
+                self.push(EmirOp::Sin(v), span)
             }
             "cos" | "core::math::cos" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Cos(v), span))
+                self.push(EmirOp::Cos(v), span)
             }
             "tan" | "core::math::tan" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Tan(v), span))
+                self.push(EmirOp::Tan(v), span)
             }
             "tanh" | "core::math::tanh" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Tanh(v), span))
+                self.push(EmirOp::Tanh(v), span)
             }
             "abs" | "core::math::abs" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Abs(v), span))
+                self.push(EmirOp::Abs(v), span)
             }
             "floor" | "core::math::floor" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Floor(v), span))
+                self.push(EmirOp::Floor(v), span)
             }
             "ceil" | "core::math::ceil" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Ceil(v), span))
+                self.push(EmirOp::Ceil(v), span)
             }
             "round" | "core::math::round" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Round(v), span))
+                self.push(EmirOp::Round(v), span)
             }
             "sign" | "core::math::sign" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Sign(v), span))
+                self.push(EmirOp::Sign(v), span)
             }
             "log2" | "core::math::log2" => {
                 let v = self.emit(package, args[0])?;
                 self.obligations.push(DomainObligation::LogPositive);
-                Ok(self.push(EmirOp::Log2(v), span))
+                self.push(EmirOp::Log2(v), span)
             }
             "log10" | "core::math::log10" => {
                 let v = self.emit(package, args[0])?;
                 self.obligations.push(DomainObligation::LogPositive);
-                Ok(self.push(EmirOp::Log10(v), span))
+                self.push(EmirOp::Log10(v), span)
             }
             "sinh" | "core::math::sinh" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Sinh(v), span))
+                self.push(EmirOp::Sinh(v), span)
             }
             "cosh" | "core::math::cosh" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Cosh(v), span))
+                self.push(EmirOp::Cosh(v), span)
             }
             "atan" | "core::math::atan" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Atan(v), span))
+                self.push(EmirOp::Atan(v), span)
             }
             "cbrt" | "core::math::cbrt" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Cbrt(v), span))
+                self.push(EmirOp::Cbrt(v), span)
             }
             "recip" | "core::math::recip" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Recip(v), span))
+                self.push(EmirOp::Recip(v), span)
             }
             "fract" | "core::math::fract" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::Fract(v), span))
+                self.push(EmirOp::Fract(v), span)
             }
             "norm" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::VectorNorm(v), span))
+                self.push(EmirOp::VectorNorm(v), span)
             }
             "transpose" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::MatrixTranspose(v), span))
+                self.push(EmirOp::MatrixTranspose(v), span)
             }
             "length" | "len" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::VectorLength(v), span))
+                self.push(EmirOp::VectorLength(v), span)
             }
             "dot" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
-                Ok(self.push(EmirOp::VectorDot(l, r), span))
+                self.push(EmirOp::VectorDot(l, r), span)
             }
             "min" | "core::math::min" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
-                Ok(self.push(EmirOp::Min(l, r), span))
+                self.push(EmirOp::Min(l, r), span)
             }
             "max" | "core::math::max" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
-                Ok(self.push(EmirOp::Max(l, r), span))
+                self.push(EmirOp::Max(l, r), span)
             }
             "atan2" | "core::math::atan2" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
-                Ok(self.push(EmirOp::Atan2(l, r), span))
+                self.push(EmirOp::Atan2(l, r), span)
             }
             "mod" | "core::math::mod" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
-                Ok(self.push(EmirOp::Mod(l, r), span))
+                self.push(EmirOp::Mod(l, r), span)
             }
             "hypot" | "core::math::hypot" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
-                Ok(self.push(EmirOp::Hypot(l, r), span))
+                self.push(EmirOp::Hypot(l, r), span)
             }
             "pow" | "core::math::pow" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
                 self.obligations.push(DomainObligation::PowFiniteResult);
-                Ok(self.push(EmirOp::F64Pow(l, r), span))
+                self.push(EmirOp::F64Pow(l, r), span)
             }
             "is_finite" | "core::math::is_finite" => {
                 let v = self.emit(package, args[0])?;
-                Ok(self.push(EmirOp::IsFinite(v), span))
+                self.push(EmirOp::IsFinite(v), span)
             }
             "lerp" | "core::math::lerp" => {
                 // lerp(a, b, t) = a + (b - a) * t
                 let va = self.emit(package, args[0])?;
                 let vb = self.emit(package, args[1])?;
                 let vt = self.emit(package, args[2])?;
-                let diff = self.push(EmirOp::F64Sub(vb, va), span);
-                let interp = self.push(EmirOp::F64Mul(diff, vt), span);
-                Ok(self.push(EmirOp::F64Add(va, interp), span))
+                let diff = self.push(EmirOp::F64Sub(vb, va), span)?;
+                let interp = self.push(EmirOp::F64Mul(diff, vt), span)?;
+                self.push(EmirOp::F64Add(va, interp), span)
             }
             "clamp" | "core::math::clamp" => {
                 // clamp(x, lo, hi) = min(max(x, lo), hi)
                 let vx = self.emit(package, args[0])?;
                 let vlo = self.emit(package, args[1])?;
                 let vhi = self.emit(package, args[2])?;
-                let lo_clamped = self.push(EmirOp::Max(vx, vlo), span);
-                Ok(self.push(EmirOp::Min(lo_clamped, vhi), span))
+                let lo_clamped = self.push(EmirOp::Max(vx, vlo), span)?;
+                self.push(EmirOp::Min(lo_clamped, vhi), span)
             }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }

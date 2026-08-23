@@ -131,16 +131,28 @@ impl Measurement {
         }
         let mut sorted = self.samples.clone();
         sorted.sort_unstable();
-        let mean_value = mean(&sorted);
+        let mean_value = mean(&sorted)?;
         let cv_pct = Self::coefficient_of_variation_pct(&sorted, mean_value);
+        let Some(min) = sorted.first().copied() else {
+            return Err(LabError::new(
+                "E-HOST-006",
+                format!("no raw samples for metric {}", self.metric_id),
+            ));
+        };
+        let Some(max) = sorted.last().copied() else {
+            return Err(LabError::new(
+                "E-HOST-006",
+                format!("no raw samples for metric {}", self.metric_id),
+            ));
+        };
         Ok(Summary {
             count: sorted.len() as u64,
-            min: *sorted.first().expect("non-empty checked above"),
-            max: *sorted.last().expect("non-empty checked above"),
+            min,
+            max,
             mean: mean_value,
-            median: percentile(&sorted, 0.5).expect("non-empty checked above"),
-            p90: percentile(&sorted, 0.90).expect("non-empty checked above"),
-            p99: percentile(&sorted, 0.99).expect("non-empty checked above"),
+            median: percentile(&sorted, 0.5)?,
+            p90: percentile(&sorted, 0.90)?,
+            p99: percentile(&sorted, 0.99)?,
             cv_pct,
         })
     }

@@ -12,6 +12,10 @@ registry, filter, descriptor and constellation surfaces.
 - `ProviderDescriptor`: schema, id, version, implementation content id,
   goal kinds, semantic subsets, targets, maximum evidence level,
   determinism flag, permissions, checker bindings.
+- `CapabilityTable::canonical` encodes isolation, lock, `maximum_evidence`,
+  and `deterministic` (plus capability tokens) so evidence-ceiling /
+  determinism drift changes identity the same way
+  `emath-plan::ProviderFingerprint` does.
 - `CapabilityReport` with `CapabilityReason` and `CostEstimate`: whether a
   goal is supported, reasons, and estimated cost.
 - `ProviderResult`: untrusted provider transport (schema, goal identity,
@@ -36,9 +40,9 @@ registry, filter, descriptor and constellation surfaces.
 ## Error model
 
 `ProviderError` carries a stable string `code` plus `message`. Sub-modules
-emit typed errors under `E-PROV-501..524`: descriptor self-validation
-(`E-PROV-501..503`), registry (`E-PROV-510/511`), filter
-(`E-PROV-512..516`), ledger/constellation (`E-PROV-521..523/524`).
+emit typed errors under `E-PROV-501..525`: descriptor self-validation
+(`E-PROV-501..503`), registry (`E-PROV-510/511/518`), filter
+(`E-PROV-512..516`), ledger/constellation (`E-PROV-521..523/524/525`).
 
 ## Determinism class
 

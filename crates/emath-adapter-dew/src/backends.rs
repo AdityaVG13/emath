@@ -315,11 +315,27 @@ fn emit(
             format!("let {name}: f64 = {l}.atan2({r});")
         }
         DewExpr::And(left, right) => {
+            // Bool-typed operands would emit `bool != 0.0` (non-compiling).
+            // Refuse like Not/IsFinite instead of producing broken Rust.
+            if is_bool_typed(left) || is_bool_typed(right) {
+                return Err(
+                    "E-PROV-030: boolean-typed And/Or is outside the scalar strict-f64 Rust \
+                     fragment backend and is refused"
+                        .into(),
+                );
+            }
             let l = emit(left, stmts, anchors, next)?;
             let r = emit(right, stmts, anchors, next)?;
             format!("let {name}: f64 = if ({l} != 0.0) && ({r} != 0.0) {{ 1.0 }} else {{ 0.0 }};")
         }
         DewExpr::Or(left, right) => {
+            if is_bool_typed(left) || is_bool_typed(right) {
+                return Err(
+                    "E-PROV-030: boolean-typed And/Or is outside the scalar strict-f64 Rust \
+                     fragment backend and is refused"
+                        .into(),
+                );
+            }
             let l = emit(left, stmts, anchors, next)?;
             let r = emit(right, stmts, anchors, next)?;
             format!("let {name}: f64 = if ({l} != 0.0) || ({r} != 0.0) {{ 1.0 }} else {{ 0.0 }};")
@@ -362,6 +378,14 @@ fn emit(
     stmts.push(stmt);
     anchors.push((anchors.len(), name.clone()));
     Ok(name)
+}
+
+/// Nodes the evaluator types as `Bool` (not the f64 0/1 Cmp/And/Or path).
+fn is_bool_typed(expr: &DewExpr) -> bool {
+    matches!(
+        expr,
+        DewExpr::Bool(_) | DewExpr::Not(_) | DewExpr::IsFinite(_)
+    )
 }
 
 /// Emits one operand, then a method call applied to it.

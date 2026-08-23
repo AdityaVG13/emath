@@ -768,12 +768,13 @@ pub fn write_example_json(name: &str, out: &mut Vec<u8>) -> Result<(), SchemaErr
 /// String variants — still deterministic and byte-stable.
 pub fn schema_json_string(name: &str) -> Result<String, SchemaError> {
     let bytes = schema_json(name)?;
-    Ok(String::from_utf8(bytes).expect("schema json is utf8"))
+    // Registry emitters write UTF-8 only; surface corruption as E-SCHEMA-001.
+    String::from_utf8(bytes).map_err(|_| SchemaError::new(name))
 }
 
 pub fn example_json_string(name: &str) -> Result<String, SchemaError> {
     let bytes = example_json(name)?;
-    Ok(String::from_utf8(bytes).expect("example json is utf8"))
+    String::from_utf8(bytes).map_err(|_| SchemaError::new(name))
 }
 
 // Registry tests moved to `tests/emath-schema/tests/registry.rs`.

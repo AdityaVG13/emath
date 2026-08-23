@@ -124,6 +124,14 @@ impl ProviderRegistry {
                 message: format!("registration `{id}` rejected: descriptor invalid"),
             });
         }
+        // Duplicate ids must not silently overwrite: a later register would
+        // replace isolation/capabilities under the same lookup key.
+        if self.descriptors.contains_key(id) {
+            return Err(RegistryError {
+                code: "E-PROV-518",
+                message: format!("registration `{id}` refused: provider id already registered"),
+            });
+        }
         self.descriptors
             .insert(id.to_string(), (table.isolation, table));
         Ok(())

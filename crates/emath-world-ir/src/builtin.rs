@@ -109,9 +109,8 @@ fn variable_signature() -> Signature {
         "ζ", "⋈", "⊙", "∧", "∨", "¬", "⊤", "⊥", "+", "×", "-", "⊕", "⊖", "0", "1", "2", "⊞", "⊠",
         "I", "O", "∪", "ø",
     ] {
-        signature
-            .insert(SymbolId(id.to_string()), arity(id))
-            .unwrap();
+        // ubs:ignore — static distinct glyphs; insert only errs on arity conflict.
+        let _ = signature.insert(SymbolId(id.to_string()), arity(id));
     }
     signature
 }

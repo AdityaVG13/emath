@@ -184,3 +184,148 @@ fn glyph_bearing_did_change_round_trips_byte_offsets() {
         "the byte-offset edit must replace exactly `⊛ ζ`"
     );
 }
+
+/// Hover at byte offset 0 must resolve a leading keyword. The previous
+/// `word_at` early-return on `offset == 0` made `emath` at the file start
+/// unreachable from hover.
+#[test]
+fn hover_at_byte_zero_resolves_leading_keyword() {
+    let uri = "file:///hover0.emath";
+    let text = "emath custom X:\n";
+    let mut state = ServerState::new();
+    let mut output = Vec::new();
+    state
+        .handle(
+            &RpcMessage {
+                id: None,
+                method: "textDocument/didOpen".into(),
+                params: string_field(BTreeMap::from([(
+                    "textDocument".into(),
+                    JsonValue::Object(BTreeMap::from([
+                        ("uri".into(), JsonValue::String(uri.into())),
+                        ("text".into(), JsonValue::String(text.into())),
+                    ])),
+                )])),
+            },
+            &mut output,
+        )
+        .expect("didOpen handled");
+    output.clear();
+    state
+        .handle(
+            &RpcMessage {
+                id: Some(7),
+                method: "textDocument/hover".into(),
+                params: JsonValue::Object(BTreeMap::from([
+                    (
+                        "textDocument".into(),
+                        JsonValue::Object(BTreeMap::from([(
+                            "uri".into(),
+                            JsonValue::String(uri.into()),
+                        )])),
+                    ),
+                    (
+                        "position".into(),
+                        JsonValue::Object(BTreeMap::from([
+                            ("line".into(), JsonValue::Number(0)),
+                            ("character".into(), JsonValue::Number(0)),
+                        ])),
+                    ),
+                ])),
+            },
+            &mut output,
+        )
+        .expect("hover handled");
+    let body = String::from_utf8(output).expect("utf-8 output");
+    assert!(
+        body.contains("**emath**"),
+        "hover at character 0 must resolve the leading keyword; got {body}"
+    );
+}
+
+/// `publishDiagnostics` must use `primary.end`, not a zero-width caret at
+/// `primary.start`. A token-length syntax refusal must advertise end > start.
+#[test]
+fn publish_diagnostics_uses_primary_end() {
+    let uri = "file:///diag-end.emath";
+    // Incomplete declaration: compiler attaches a non-empty primary span.
+    let text = "emath custom\n";
+    let mut state = ServerState::new();
+    let mut output = Vec::new();
+    state
+        .handle(
+            &RpcMessage {
+                id: None,
+                method: "textDocument/didOpen".into(),
+                params: string_field(BTreeMap::from([(
+                    "textDocument".into(),
+                    JsonValue::Object(BTreeMap::from([
+                        ("uri".into(), JsonValue::String(uri.into())),
+                        ("text".into(), JsonValue::String(text.into())),
+                    ])),
+                )])),
+            },
+            &mut output,
+        )
+        .expect("didOpen handled");
+    let body = String::from_utf8(output).expect("utf-8 output");
+    assert!(
+        body.contains("publishDiagnostics"),
+        "didOpen must publish diagnostics: {body}"
+    );
+    assert!(
+        range_with_nonzero_width(&body),
+        "at least one diagnostic range must cover primary.end (end != start); got {body}"
+    );
+}
+
+/// True when some LSP range in `body` has distinct start and end positions.
+///
+/// `JsonValue` renders object keys sorted, so a range is
+/// `"range":{"end":{"character":E,"line":EL},"start":{"character":S,"line":SL}}`.
+fn range_with_nonzero_width(body: &str) -> bool {
+    const MARKER: &str = "\"range\":{\"end\":{\"character\":";
+    let mut rest = body;
+    while let Some(idx) = rest.find(MARKER) {
+        let slice = &rest[idx + MARKER.len()..];
+        let Some(end_char) = parse_leading_i64(slice) else {
+            break;
+        };
+        let Some(after_end_char) = slice.split_once(",\"line\":").map(|(_, t)| t) else {
+            rest = &rest[idx + 1..];
+            continue;
+        };
+        let Some(end_line) = parse_leading_i64(after_end_char) else {
+            rest = &rest[idx + 1..];
+            continue;
+        };
+        let Some(after_start) = after_end_char.split_once("\"start\":{\"character\":") else {
+            rest = &rest[idx + 1..];
+            continue;
+        };
+        let Some(start_char) = parse_leading_i64(after_start.1) else {
+            rest = &rest[idx + 1..];
+            continue;
+        };
+        let Some(after_start_char) = after_start.1.split_once(",\"line\":").map(|(_, t)| t) else {
+            rest = &rest[idx + 1..];
+            continue;
+        };
+        let Some(start_line) = parse_leading_i64(after_start_char) else {
+            rest = &rest[idx + 1..];
+            continue;
+        };
+        if (end_line, end_char) != (start_line, start_char) {
+            return true;
+        }
+        rest = &rest[idx + 1..];
+    }
+    false
+}
+
+fn parse_leading_i64(text: &str) -> Option<i64> {
+    let end = text
+        .find(|ch: char| !(ch.is_ascii_digit() || ch == '-'))
+        .unwrap_or(text.len());
+    text[..end].parse().ok()
+}

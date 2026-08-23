@@ -1328,13 +1328,13 @@ fn serve_web(port: u16) -> u8 {
     println!("Headers: COOP=same-origin, COEP=require-corp");
     println!("Press Ctrl+C to stop");
 
+    // One connection at a time on the accept thread. Unbounded
+    // `thread::spawn` per accept detached JoinHandles and was a localhost
+    // resource/DoS footgun (same fix as `emath web` / serve_cmd).
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let dist_dir = dist.clone();
-                std::thread::spawn(move || {
-                    let _ = handle_http_connection(stream, &dist_dir);
-                });
+                let _ = handle_http_connection(stream, &dist);
             }
             Err(error) => {
                 eprintln!("serve-web: connection failed: {error}");
