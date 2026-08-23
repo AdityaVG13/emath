@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod codegen_helpers;
 use codegen_helpers::*;
+mod codegen_render;
+use codegen_render::*;
 
 #[derive(Clone, Debug)]
 pub struct BackendInput<'a> {
