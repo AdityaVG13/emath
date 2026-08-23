@@ -887,3 +887,62 @@ fn stencil2d_laplacian_quadratic_is_four_interior() {
         }
     }
 }
+
+#[test]
+fn gradient_constant_field_is_zero() {
+    // du/dx of a constant field is zero everywhere (dx = 1, inv = 1/2).
+    let weights = vec![-0.5, 0.0, 0.5];
+    let prog = stencil_prog(weights, 1, vec![5.0; 5]);
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Vector(vec![0.0; 5])
+    );
+}
+
+#[test]
+fn gradient_linear_field_is_one_interior() {
+    // u = [0,1,2,3,4] (slope 1). The central-difference gradient is 1 on
+    // the interior and 0.5 at the clamped (one-sided) boundaries.
+    let weights = vec![-0.5, 0.0, 0.5];
+    let prog = stencil_prog(weights, 1, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Vector(vec![0.5, 1.0, 1.0, 1.0, 0.5])
+    );
+}
+
+#[test]
+fn gradient_2d_x_linear_in_columns() {
+    // u[r][c] = c (increasing along columns). du/dc is 1 on the interior
+    // and 0.5 at the clamped left/right edges; constant along rows.
+    let data = vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0];
+    let weights = vec![0.0, 0.0, 0.0, -0.5, 0.0, 0.5, 0.0, 0.0, 0.0];
+    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::Clamp);
+    let expected = vec![0.5, 1.0, 0.5, 0.5, 1.0, 0.5, 0.5, 1.0, 0.5];
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: expected
+        }
+    );
+}
+
+#[test]
+fn gradient_2d_y_linear_in_rows() {
+    // u[r][c] = r (increasing along rows). du/dr is 1 on the interior and
+    // 0.5 at the clamped top/bottom edges; constant along columns.
+    let data = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0];
+    let weights = vec![0.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0];
+    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::Clamp);
+    let expected = vec![0.5, 0.5, 0.5, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5];
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: expected
+        }
+    );
+}

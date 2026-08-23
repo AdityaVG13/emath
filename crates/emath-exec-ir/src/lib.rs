@@ -1193,6 +1193,88 @@ impl Emitter {
                     span,
                 )
             }
+            "gradient" => {
+                // 1-D central-difference first derivative (du/dx).
+                // Reuses Stencil1d with weights [-1/(2dx), 0, +1/(2dx)] and
+                // Clamp edges (one-sided at the boundary).
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`gradient` expects 2 operands (vector, dx), got {}",
+                        args.len()
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                let dx = match package.expr(args[1]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+                        let v = f64::from_bits(*bits);
+                        if !v.is_finite() || v <= 0.0 {
+                            return Err(format!(
+                                "`gradient` dx must be a positive finite literal, got {v:?}"
+                            ));
+                        }
+                        v
+                    }
+                    _ => return Err(
+                        "`gradient` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                            .to_string(),
+                    ),
+                };
+                let inv = 1.0 / (2.0 * dx);
+                self.push(
+                    EmirOp::Stencil1d {
+                        input,
+                        weights: vec![-inv, 0.0, inv],
+                        center: 1,
+                        edge: EdgePolicy::Clamp,
+                    },
+                    span,
+                )
+            }
+            "gradient_2d_x" | "gradient_2d_y" => {
+                // 2-D central-difference first derivative of a scalar field
+                // along one axis. Reuses Stencil2d with the 1-D central-
+                // difference taps embedded in the middle row (du/dc, x) or
+                // middle column (du/dr, y); the other taps are zero. Clamp
+                // edges (one-sided at the boundary).
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`{function}` expects 2 operands (matrix, dx), got {}",
+                        args.len()
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                let dx = match package.expr(args[1]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+                        let v = f64::from_bits(*bits);
+                        if !v.is_finite() || v <= 0.0 {
+                            return Err(format!(
+                                "`{function}` dx must be a positive finite literal, got {v:?}"
+                            ));
+                        }
+                        v
+                    }
+                    _ => return Err(format!(
+                        "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                    )),
+                };
+                let inv = 1.0 / (2.0 * dx);
+                let weights = if function == "gradient_2d_x" {
+                    // du/dc: taps at (1,0)=-inv and (1,2)=+inv.
+                    vec![0.0, 0.0, 0.0, -inv, 0.0, inv, 0.0, 0.0, 0.0]
+                } else {
+                    // du/dr: taps at (0,1)=-inv and (2,1)=+inv.
+                    vec![0.0, -inv, 0.0, 0.0, 0.0, 0.0, 0.0, inv, 0.0]
+                };
+                self.push(
+                    EmirOp::Stencil2d {
+                        input,
+                        weights,
+                        center: (1, 1),
+                        edge: EdgePolicy::Clamp,
+                    },
+                    span,
+                )
+            }
             "transpose" => {
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::MatrixTranspose(v), span)
