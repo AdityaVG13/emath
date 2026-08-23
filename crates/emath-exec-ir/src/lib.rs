@@ -36,6 +36,15 @@ pub enum FoldCombine {
     Or,
 }
 
+/// Edge policy for [`EmirOp::Stencil1d`]: how out-of-range stencil indices
+/// are resolved. `Clamp` replicates the nearest in-range cell, giving a
+/// Neumann (insulated) boundary; the laplacian of a constant field is
+/// therefore zero everywhere, including the boundary cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EdgePolicy {
+    Clamp,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum EmirOp {
     ConstF64(u64),
@@ -109,6 +118,16 @@ pub enum EmirOp {
     VectorDot(EmirValue, EmirValue),
     VectorNorm(EmirValue),
     VectorLength(EmirValue),
+    /// 1D spatial stencil: `out[i] = sum_k weights[k] * input[i + k - center]`,
+    /// with out-of-range indices resolved by `edge`. Weights are fixed at
+    /// admission (e.g. `laplacian(u, dx)` lowers to weights `[1, -2, 1] / dx²`
+    /// with `center = 1`). Output length equals input length.
+    Stencil1d {
+        input: EmirValue,
+        weights: Vec<f64>,
+        center: usize,
+        edge: EdgePolicy,
+    },
     MatrixAdd(EmirValue, EmirValue),
     MatrixSub(EmirValue, EmirValue),
     MatrixScale(EmirValue, EmirValue),
@@ -244,6 +263,7 @@ impl EmirOp {
             Self::VectorDot(..) => "vec-dot",
             Self::VectorNorm(_) => "vec-norm",
             Self::VectorLength(_) => "vec-len",
+            Self::Stencil1d { .. } => "stencil-1d",
             Self::MatrixAdd(..) => "mat-add",
             Self::MatrixSub(..) => "mat-sub",
             Self::MatrixScale(..) => "mat-scale",
@@ -981,6 +1001,42 @@ impl Emitter {
             "norm" => {
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::VectorNorm(v), span)
+            }
+            "laplacian" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`laplacian` expects 2 operands (vector, dx), got {}",
+                        args.len()
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                // Phase 1: dx must be a positive literal so the stencil weights
+                // are fixed at emission (no runtime division, no IEEE inf/NaN).
+                let dx = match package.expr(args[1]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+                        let v = f64::from_bits(*bits);
+                        if !v.is_finite() || v <= 0.0 {
+                            return Err(format!(
+                                "`laplacian` dx must be a positive finite literal, got {v:?}"
+                            ));
+                        }
+                        v
+                    }
+                    _ => return Err(
+                        "`laplacian` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                            .to_string(),
+                    ),
+                };
+                let inv = 1.0 / (dx * dx);
+                self.push(
+                    EmirOp::Stencil1d {
+                        input,
+                        weights: vec![inv, -2.0 * inv, inv],
+                        center: 1,
+                        edge: EdgePolicy::Clamp,
+                    },
+                    span,
+                )
             }
             "transpose" => {
                 let v = self.emit(package, args[0])?;

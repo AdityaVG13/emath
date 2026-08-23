@@ -825,3 +825,30 @@ emath function ConstrainedMin:
     );
     assert!(test.verdict.expect_passed());
 }
+
+#[test]
+fn heat_rod_laplacian_admits_and_inline_tests_pass() {
+    let source = include_str!("../../../language/examples/numerical/heat-rod.emath");
+    let result = check_source("heat-rod", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "heat-rod must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    // constant_holds: the laplacian of a constant field is zero everywhere
+    // (clamped edges replicate the boundary), so one Euler step leaves u fixed.
+    let t0 = &report.declarations[0].tests[0];
+    assert_eq!(
+        t0.outputs.get("next"),
+        Some(&Value::Vector(vec![5.0; 5]))
+    );
+    assert!(t0.verdict.expect_passed());
+    // zero_dt_identity: dt = 0 zeroes the diffusion update, so next == u.
+    let t1 = &report.declarations[0].tests[1];
+    assert_eq!(
+        t1.outputs.get("next"),
+        Some(&Value::Vector(vec![0.0, 1.0, 4.0, 9.0, 16.0]))
+    );
+    assert!(t1.verdict.expect_passed());
+}

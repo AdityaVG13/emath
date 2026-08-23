@@ -41,6 +41,7 @@ say what the compiler does with each one today.
 | [tensor-program.emath](numerical/tensor-program.emath) | Target sketch (`einsum`, binders, autodiff). Rank-3 tensors and slices run in smaller functions; this file does not. |
 | [graph-router.emath](numerical/graph-router.emath) | Target sketch. Graphs and `solve` are not admitted. |
 | [heat-pde.emath](numerical/heat-pde.emath) | Target sketch. Fields and PDEs are not admitted. |
+| [heat-rod.emath](numerical/heat-rod.emath) | Runs. `emath function` one Euler step of the 1D heat equation; `laplacian(u, dx)` is admitted. |
 
 ## search — conjecture and optimization
 

@@ -1,0 +1,33 @@
+# heat-rod: 1D heat equation, one explicit-Euler step.
+#
+# `laplacian(u, dx)` applies the central second-difference stencil
+# [1, -2, 1] / dx^2 with clamped (insulated) edges. Phase 1 requires
+# `dx` to be a positive literal constant (variable dx is not yet supported),
+# so the cell width is fixed here at 1.0. With `dt = 0` the step is the
+# identity; with a constant field the laplacian is zero everywhere, so the
+# rod holds its temperature.
+
+emath function HeatStep:
+    inputs:
+        u: Vector[5]
+        alpha: Float64
+        dt: Float64
+
+    outputs:
+        next: Vector[5]
+
+    definitions:
+        next = u + dt * alpha * laplacian(u, 1.0)
+
+    tests:
+        example <constant_holds>:
+            given u = [5.0, 5.0, 5.0, 5.0, 5.0]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next == [5.0, 5.0, 5.0, 5.0, 5.0]
+
+        example <zero_dt_identity>:
+            given u = [0.0, 1.0, 4.0, 9.0, 16.0]
+            given alpha = 1.0
+            given dt = 0.0
+            expect next == [0.0, 1.0, 4.0, 9.0, 16.0]

@@ -10,8 +10,8 @@
 #![forbid(unsafe_code)]
 
 use emath_exec_ir::{
-    definition_order, lower_definition, lower_requirement, EmirOp, EmirProgram, EmirValue,
-    FoldCombine,
+    definition_order, lower_definition, lower_requirement, EdgePolicy, EmirOp, EmirProgram,
+    EmirValue, FoldCombine,
 };
 use emath_ir::{ConstructionReceipt, ExprId, ExprNode, GoalKind, SemanticPackage, TypeId, TypeNode};
 use emath_rust_ir::ast::{
@@ -1271,6 +1271,29 @@ fn op_expr(
             "({}.len() as f64)",
             render_expr(&operand(program, *v)),
         ))),
+        EmirOp::Stencil1d {
+            input,
+            weights,
+            center,
+            edge,
+        } => {
+            let src = render_expr(&operand(program, *input));
+            let w_lit = weights
+                .iter()
+                .map(|w| format!("{w:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let clamp = match *edge {
+                EdgePolicy::Clamp => "raw.clamp(0, (n - 1) as isize) as usize",
+            };
+            Ok(Expr::Raw(format!(
+                "(0..{src}.len()).map(|i| {{ let n = {src}.len(); [{w}].iter().enumerate().map(|(k, &w)| {{ let raw = i as isize + k as isize - {c} as isize; w * {src}[{clamp}] }}).sum::<f64>() }}).collect::<Vec<f64>>()",
+                src = src,
+                w = w_lit,
+                c = *center,
+                clamp = clamp
+            )))
+        }
         EmirOp::MatrixAdd(l, r) => Ok(Expr::Raw(format!(
             "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
             render_expr(&operand(program, *l)),

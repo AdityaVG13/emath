@@ -219,4 +219,10 @@ to the objective for each constraint. Inequality constraints (`>=`,
 
 Not admitted yet: full jacobian and
 hessian, `transitions:` / `events:`, discrete hybrid models,
-PDEs, `einsum`.
+`einsum`.
+
+Spatial operators: `laplacian(u, dx)` computes the 1D discrete Laplacian
+stencil `[1, -2, 1] / dx²` with clamped (insulated) edges, and is admitted
+in `definitions:`. `dx` must be a positive literal constant in Phase 1
+(variable `dx` is not yet supported). Gradient, divergence, and 2D/3D
+fields remain target sketches (see `heat-pde.emath`).

@@ -1,6 +1,6 @@
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate};
-use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, FoldCombine};
+use emath_exec_ir::{EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
 
 fn program(ops: Vec<EmirOp>) -> EmirProgram {
     let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
@@ -641,4 +641,105 @@ fn fold_and_accepts_bool_init() {
         },
     ]);
     assert_eq!(evaluate(&prog, &[], &[]).unwrap(), Value::Bool(true));
+}
+
+// Build a program that constructs `input` as a vector via VectorCreate,
+// applies a 1D stencil, and returns the result. Mirrors how
+// `laplacian(u, dx)` lowers to `EmirOp::Stencil1d`.
+fn stencil_prog(weights: Vec<f64>, center: usize, input: Vec<f64>) -> EmirProgram {
+    let n = input.len();
+    let mut ops: Vec<EmirOp> = input.iter().map(|x| const_bits(*x)).collect();
+    let elems: Vec<EmirValue> = (0..n).map(|i| EmirValue(i as u32)).collect();
+    ops.push(EmirOp::VectorCreate(elems));
+    let vec_reg = u32::try_from(n).unwrap_or(0);
+    ops.push(EmirOp::Stencil1d {
+        input: EmirValue(vec_reg),
+        weights,
+        center,
+        edge: EdgePolicy::Clamp,
+    });
+    let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
+    EmirProgram {
+        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
+        result: EmirValue(last),
+        input_count: 0,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+#[test]
+fn stencil_laplacian_constant_is_zero() {
+    // The laplacian of a constant field is zero everywhere, including the
+    // clamped boundary cells (the replicated neighbor equals the cell).
+    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![3.0; 5]);
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Vector(vec![0.0; 5])
+    );
+}
+
+#[test]
+fn stencil_laplacian_linear_is_zero_interior() {
+    // The central second difference of a linear field is zero on interior.
+    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Vector(v) => v,
+        _ => panic!("expected vector"),
+    };
+    assert_eq!(out[1], 0.0);
+    assert_eq!(out[2], 0.0);
+    assert_eq!(out[3], 0.0);
+}
+
+#[test]
+fn stencil_laplacian_quadratic_is_two_interior() {
+    // The central second difference is exact on quadratics: u[i-1] - 2u[i]
+    // + u[i+1] of x^2 with dx = 1 equals 2 on the interior.
+    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![0.0, 1.0, 4.0, 9.0, 16.0]);
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Vector(v) => v,
+        _ => panic!("expected vector"),
+    };
+    assert_eq!(out[1], 2.0);
+    assert_eq!(out[2], 2.0);
+    assert_eq!(out[3], 2.0);
+}
+
+#[test]
+fn stencil_laplacian_sine_matches_continuous() {
+    // u[i] = sin(x_i), x_i = i * dx, dx = 0.1. The continuous Laplacian
+    // d^2/dx^2 sin(x) = -sin(x); the discrete stencil (weights
+    // [1, -2, 1] / dx^2) approximates -u[i] on the interior.
+    let dx = 0.1;
+    let inv = 1.0 / (dx * dx);
+    let n = 20;
+    let input: Vec<f64> = (0..n).map(|i| ((i as f64) * dx).sin()).collect();
+    let prog = stencil_prog(vec![inv, -2.0 * inv, inv], 1, input.clone());
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Vector(v) => v,
+        _ => panic!("expected vector"),
+    };
+    for i in 2..(n - 2) {
+        let analytic = -input[i];
+        assert!(
+            (out[i] - analytic).abs() < 1e-2,
+            "i={i}: discrete laplacian {} vs continuous {}",
+            out[i],
+            analytic
+        );
+    }
+}
+
+#[test]
+fn stencil_clamped_edge_replicates_boundary() {
+    // At i = 0 with Clamp the left neighbor is u[0] itself, so the stencil
+    // collapses to u[1] - u[0]; symmetrically at the right edge.
+    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![5.0, 7.0, 9.0]);
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Vector(v) => v,
+        _ => panic!("expected vector"),
+    };
+    assert_eq!(out[0], 7.0 - 5.0);
+    assert_eq!(out[2], 7.0 - 9.0);
 }
