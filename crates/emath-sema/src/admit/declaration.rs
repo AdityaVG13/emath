@@ -13,9 +13,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::equations::{admit_equations, collect_node_names, residual_span};
 use super::infer::{Infer, infer_conforms};
 use super::sections::{
-    admit_about, admit_compile_spec, admit_constructor, admit_evidence,
-    admit_host, admit_named_field,
+    admit_compile_spec, admit_constructor, admit_named_field,
 };
+use super::sections_meta::{admit_about, admit_evidence, admit_host};
 use super::{
     Admitter, E_DUPLICATE_FIELD, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE,
     PHASE1_SECTIONS, TraceEntry,
