@@ -818,7 +818,12 @@ impl Emitter {
                         var_indices,
                         maximize: *maximize,
                         learning_rate: 0.01,
-                        tolerance: 1e-10,
+                        // 1e-6 converges comfortably within max_iter for
+                        // well-conditioned quadratics; 1e-10 (the prior
+                        // value) is unreachable at lr=0.01 in 1000 steps
+                        // (gradient floors near 1e-8), so every optimize
+                        // call faulted with "did not converge".
+                        tolerance: 1e-6,
                         max_iter: 1000,
                     },
                     span,

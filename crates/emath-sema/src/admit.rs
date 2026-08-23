@@ -334,7 +334,13 @@ impl Admitter {
         if self.constraints.is_empty() {
             return body;
         }
-        const PENALTY_WEIGHT: f64 = 1000.0;
+        // Must stay stable with the optimizer's fixed learning_rate
+        // (0.01): the penalty Hessian adds eigenvalue 4*w, so stability
+        // needs lr < 2/(2+4w). At w=20, 2/L = 0.024 > 0.01 (stable) and
+        // the equilibrium w/(1+2w) = 0.488 is within typical tolerance.
+        // w=1000 (the prior value) gave L≈4002, needing lr<0.0005, so the
+        // fixed lr=0.01 overshot and never converged.
+        const PENALTY_WEIGHT: f64 = 20.0;
         let weight_id = self.push_expr(
             ExprNode::Literal(Literal::FloatBits(PENALTY_WEIGHT.to_bits())),
             span,
