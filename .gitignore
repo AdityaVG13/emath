@@ -112,3 +112,6 @@ beads_compliance_audit/
 
 # Beads compliance audit dir (managed by /beads-compliance-and-completion-verification skill)
 /beads_compliance_audit/
+
+# Scar-archaeology dig books (local campaign artifacts; do not commit)
+.scar/
