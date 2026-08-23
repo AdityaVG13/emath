@@ -868,3 +868,43 @@ fn heat_rod_laplacian_admits_and_inline_tests_pass() {
     );
     assert!(t3.verdict.expect_passed());
 }
+
+#[test]
+fn heat_plate_2d_laplacian_admits_and_inline_tests_pass() {
+    let source = include_str!("../../../language/examples/numerical/heat-plate.emath");
+    let result = check_source("heat-plate", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "heat-plate must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    // constant_holds: a constant field has a zero laplacian, so the plate
+    // holds its temperature under one Euler step.
+    let t0 = &report.declarations[0].tests[0];
+    assert_eq!(
+        t0.outputs.get("next"),
+        Some(&Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![5.0; 9]
+        })
+    );
+    assert!(t0.verdict.expect_passed());
+    // hot_spot_diffuses: a single hot cell spreads to its four neighbors
+    // and drops by 4 (the 5-point laplacian center term).
+    let t1 = &report.declarations[0].tests[1];
+    assert_eq!(
+        t1.outputs.get("next"),
+        Some(&Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![0.0, 1.0, 0.0, 1.0, -3.0, 1.0, 0.0, 1.0, 0.0]
+        })
+    );
+    assert!(t1.verdict.expect_passed());
+}

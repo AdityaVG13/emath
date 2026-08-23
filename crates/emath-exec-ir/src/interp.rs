@@ -500,6 +500,72 @@ fn eval_op(
             }
             Ok(Value::Vector(out))
         }
+        EmirOp::Stencil2d {
+            input,
+            ref weights,
+            center,
+            edge,
+        } => {
+            let (rows, cols, data) = matrix_of(registers, input, name)?;
+            let last_r = rows.saturating_sub(1) as isize;
+            let last_c = cols.saturating_sub(1) as isize;
+            let (cr, cc) = center;
+            let mut out = Vec::with_capacity(data.len());
+            for r in 0..rows {
+                for c in 0..cols {
+                    let mut acc = 0.0f64;
+                    for kr in 0..3usize {
+                        for kc in 0..3usize {
+                            let w = weights[kr * 3 + kc];
+                            if w == 0.0 {
+                                continue;
+                            }
+                            let raw_r = r as isize + kr as isize - cr as isize;
+                            let raw_c = c as isize + kc as isize - cc as isize;
+                            acc += match edge {
+                                EdgePolicy::Clamp => {
+                                    let rr = raw_r.clamp(0, last_r) as usize;
+                                    let cc2 = raw_c.clamp(0, last_c) as usize;
+                                    w * data[rr * cols + cc2]
+                                }
+                                EdgePolicy::Neumann => {
+                                    let rr = (if raw_r < 0 {
+                                        -raw_r
+                                    } else if raw_r > last_r {
+                                        2 * last_r - raw_r
+                                    } else {
+                                        raw_r
+                                    })
+                                    .clamp(0, last_r) as usize;
+                                    let cc2 = (if raw_c < 0 {
+                                        -raw_c
+                                    } else if raw_c > last_c {
+                                        2 * last_c - raw_c
+                                    } else {
+                                        raw_c
+                                    })
+                                    .clamp(0, last_c) as usize;
+                                    w * data[rr * cols + cc2]
+                                }
+                                EdgePolicy::Dirichlet { .. } => {
+                                    return Err(EvalFault::Arithmetic {
+                                        op: name,
+                                        detail: "2D Dirichlet boundary is not yet supported; \
+                                                 use Clamp or Neumann",
+                                    });
+                                }
+                            };
+                        }
+                    }
+                    out.push(acc);
+                }
+            }
+            Ok(Value::Matrix {
+                rows,
+                cols,
+                data: out,
+            })
+        }
         EmirOp::MatrixAdd(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
             let (r2, c2, d2) = matrix_of(registers, right, name)?;
@@ -1082,7 +1148,7 @@ fn evaluate_dual(
                 let a = dual_of(&registers, a, name)?;
                 Dual { primal: a.primal.abs(), tangent: a.primal.signum() * a.tangent }
             }
-            EmirOp::Stencil1d { .. } => {
+            EmirOp::Stencil1d { .. } | EmirOp::Stencil2d { .. } => {
                 return Err(EvalFault::Arithmetic {
                     op: name,
                     detail: "spatial stencil ops are not differentiable in Phase 1",

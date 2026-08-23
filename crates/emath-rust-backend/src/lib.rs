@@ -1302,6 +1302,41 @@ fn op_expr(
                 tap = tap
             )))
         }
+        EmirOp::Stencil2d {
+            input,
+            weights,
+            center,
+            edge,
+        } => {
+            let src = render_expr(&operand(program, *input));
+            let w_lit = weights
+                .iter()
+                .map(|w| format!("{w:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let (cr, cc) = *center;
+            let tap = match *edge {
+                EdgePolicy::Clamp => format!(
+                    "w[kr * 3 + kc] * m[(raw_r).clamp(0, lr) as usize][(raw_c).clamp(0, lc) as usize]"
+                ),
+                EdgePolicy::Neumann => format!(
+                    "w[kr * 3 + kc] * m[(if raw_r < 0 {{ -raw_r }} else if raw_r > lr {{ 2 * lr - raw_r }} else {{ raw_r }}).clamp(0, lr) as usize][(if raw_c < 0 {{ -raw_c }} else if raw_c > lc {{ 2 * lc - raw_c }} else {{ raw_c }}).clamp(0, lc) as usize]"
+                ),
+                EdgePolicy::Dirichlet { .. } => {
+                    return Err(BackendError::Lowering(
+                        "2D Dirichlet boundary is not yet supported for Stencil2d".to_string(),
+                    ));
+                }
+            };
+            Ok(Expr::Raw(format!(
+                "{{ let m = &{src}; let nr = m.len(); let nc = if nr == 0 {{ 0 }} else {{ m[0].len() }}; let lr = (nr - 1) as isize; let lc = (nc - 1) as isize; let w = [{w}]; (0..nr).map(|r| (0..nc).map(|c| (0..3).flat_map(|kr| (0..3).map(move |kc| {{ let raw_r = r as isize + kr as isize - {cr} as isize; let raw_c = c as isize + kc as isize - {cc} as isize; {tap} }})).sum::<f64>()).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }}",
+                src = src,
+                w = w_lit,
+                cr = cr,
+                cc = cc,
+                tap = tap
+            )))
+        }
         EmirOp::MatrixAdd(l, r) => Ok(Expr::Raw(format!(
             "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
             render_expr(&operand(program, *l)),

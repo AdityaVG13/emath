@@ -625,14 +625,14 @@ impl Admitter {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
                     | "tanh" | "abs" | "floor" | "ceil" | "round" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt" | "recip" | "fract"
                     | "norm" | "transpose" | "length" | "len" | "mean" => Some(1),
-                    "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" => Some(2),
+                    "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" => Some(2),
                     "lerp" | "clamp" => Some(3),
                     "laplacian_dirichlet" => Some(4),
                     _ => {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet)"
+                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann)"
                             ),
                             function.source,
                         );
@@ -783,6 +783,38 @@ impl Admitter {
                             expr.source,
                         );
                         Some((id, Infer::Vector { extent }))
+                    }
+                    "laplacian_2d" | "laplacian_2d_neumann" => {
+                        let (mat_id, mat_infer) = self.lower_expr(&args[0])?;
+                        let (rows, cols) = match mat_infer {
+                            Infer::Matrix { rows, cols } => (rows, cols),
+                            Infer::HostDeferred => (None, None),
+                            _ => {
+                                self.error(
+                                    "E-TYPE-012",
+                                    format!("`{name}` expects a Matrix first argument"),
+                                    args[0].source,
+                                );
+                                return None;
+                            }
+                        };
+                        let (dx_id, dx_infer) = self.lower_expr(&args[1])?;
+                        if !matches!(dx_infer, Infer::F64 | Infer::HostDeferred) {
+                            self.error(
+                                "E-TYPE-012",
+                                format!("`{name}` expects a Float64 cell width (dx) as the second argument"),
+                                args[1].source,
+                            );
+                            return None;
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![mat_id, dx_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Matrix { rows, cols }))
                     }
                     "transpose" => {
                         let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
