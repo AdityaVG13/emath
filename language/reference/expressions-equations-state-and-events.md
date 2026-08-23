@@ -83,6 +83,8 @@ min max abs floor ceil round sign is_finite
 sqrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
 cbrt recip fract hypot mod lerp clamp pow
 mean norm length dot transpose
+laplacian laplacian_neumann laplacian_dirichlet laplacian_2d laplacian_2d_neumann
+gradient gradient_2d_x gradient_2d_y
 if cond then a else b
 vector / matrix / tensor literals
 index and slice  v[i]  m[i, j]  t[0, :, :]
@@ -221,8 +223,39 @@ Not admitted yet: full jacobian and
 hessian, `transitions:` / `events:`, discrete hybrid models,
 `einsum`.
 
-Spatial operators: `laplacian(u, dx)` computes the 1D discrete Laplacian
-stencil `[1, -2, 1] / dx²` with clamped (insulated) edges, and is admitted
-in `definitions:`. `dx` must be a positive literal constant in Phase 1
-(variable `dx` is not yet supported). Gradient, divergence, and 2D/3D
-fields remain target sketches (see `heat-pde.emath`).
+Spatial operators (admitted in `definitions:` and `equations:`):
+
+1-D Laplacian — second derivative via the stencil `[1, -2, 1] / dx²`:
+- `laplacian(u, dx)` — clamped (insulated) edges.
+- `laplacian_neumann(u, dx)` — mirror (zero-flux) edges.
+- `laplacian_dirichlet(u, dx, g_left, g_right)` — fixed boundary values.
+
+2-D Laplacian — 5-point stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` over a
+`Matrix`:
+- `laplacian_2d(u, dx)` — clamped edges.
+- `laplacian_2d_neumann(u, dx)` — mirror edges.
+
+1-D gradient — first derivative via central differences
+`[-1/(2dx), 0, +1/(2dx)]`:
+- `gradient(u, dx)` — clamped (one-sided) edges; returns a `Vector`.
+
+2-D gradient — first derivative along one axis (central differences):
+- `gradient_2d_x(u, dx)` — `du/dc` (along columns); returns a `Matrix`.
+- `gradient_2d_y(u, dx)` — `du/dr` (along rows); returns a `Matrix`.
+
+`dx` must be a positive literal constant in Phase 1 (variable `dx` is not
+yet supported). The divergence of a 2-D vector field `(u, v)` is expressible
+by composition — `gradient_2d_x(u, dx) + gradient_2d_y(v, dx)` — so a
+dedicated `divergence` builtin is deferred.
+
+Heat equation as a continuous model: an `emath model` with a `Vector`
+(1-D) or `Matrix` (2-D) state and `der(u) = alpha * laplacian[_2d](u, 1.0)`
+admits and integrates under `emath simulate` (RK4). With clamped or mirror
+edges the domain is insulated, so total heat `sum(u)` is conserved. See
+`heat-rod.emath`, `heat-rod-sim.emath`, `heat-plate.emath`,
+`heat-plate-sim.emath`, and `gradient-field.emath`.
+
+Not admitted yet: 3-D fields, `Field[R^d -> R]` types, and Dirichlet
+boundaries for the 2-D Laplacian (the arms return a clear "not yet
+supported" error). `heat-pde.emath` remains a target sketch for the full
+field-type design.
