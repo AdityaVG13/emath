@@ -16,6 +16,9 @@ use emath_core::{limits::Limits, Diagnostics, FileId, Span};
 mod decl;
 mod expr;
 mod stmt;
+mod stmt_binders;
+mod stmt_idents;
+mod stmt_suite;
 mod types;
 
 const MAX_EXPR_DEPTH: usize = 128;
