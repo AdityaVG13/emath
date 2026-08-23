@@ -814,3 +814,70 @@ fn heat_rod_model_simulates_and_conserves_total_heat() {
         final_u[2]
     );
 }
+
+#[test]
+fn heat_plate_model_simulates_and_conserves_total_heat() {
+    // 2D heat equation as a continuous model:
+    //   der(u) = alpha * laplacian_2d(u, dx)
+    // with an insulated (Clamp) boundary. The runner integrates the
+    // matrix-valued state with RK4. Total heat sum(u) is conserved (the
+    // 5-point Clamp laplacian sums to zero), and an initial hot spot at
+    // the center diffuses to its four neighbors.
+    let result = check_source(
+        "heat-plate-sim",
+        include_str!("../../../language/examples/numerical/heat-plate-sim.emath"),
+    );
+    assert!(
+        !result.diagnostics.has_errors(),
+        "heat-plate model must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let mut inputs = BTreeMap::new();
+    inputs.insert("alpha".into(), Value::F64(1.0));
+    let mut state = BTreeMap::new();
+    // Hot spot at the center cell; total heat = 1.0.
+    state.insert(
+        "u".into(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+        },
+    );
+    let traj = simulate_continuous(
+        &result.package,
+        &result.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        0.5,
+        0.01,
+        StepMethod::Rk4,
+    )
+    .expect("heat-plate simulation should not fault");
+    let final_u = match traj.samples.last().unwrap().state.get("u") {
+        Some(Value::Matrix { data, .. }) => data.clone(),
+        other => panic!("expected Matrix state `u`, got {other:?}"),
+    };
+    // Insulated boundary: total heat is conserved.
+    let total: f64 = final_u.iter().sum();
+    assert!(
+        (total - 1.0).abs() < 1e-9,
+        "total heat should be conserved at 1.0, got {total}"
+    );
+    // The hot spot diffuses: the center drops and heat reaches all four
+    // neighbors (up=1, left=3, right=5, down=7 in row-major order).
+    assert!(
+        final_u[4] < 1.0,
+        "center hot spot should diffuse down, got u[4] = {}",
+        final_u[4]
+    );
+    assert!(final_u[1] > 0.0, "heat should reach the top neighbor");
+    assert!(final_u[3] > 0.0, "heat should reach the left neighbor");
+    assert!(final_u[5] > 0.0, "heat should reach the right neighbor");
+    assert!(final_u[7] > 0.0, "heat should reach the bottom neighbor");
+}
