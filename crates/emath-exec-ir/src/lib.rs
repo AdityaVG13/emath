@@ -37,12 +37,22 @@ pub enum FoldCombine {
 }
 
 /// Edge policy for [`EmirOp::Stencil1d`]: how out-of-range stencil indices
-/// are resolved. `Clamp` replicates the nearest in-range cell, giving a
-/// Neumann (insulated) boundary; the laplacian of a constant field is
-/// therefore zero everywhere, including the boundary cells.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// are resolved.
+///
+/// - `Clamp` replicates the nearest in-range cell (a first-order
+///   zero-gradient / insulated boundary).
+/// - `Neumann` mirrors the next interior cell across the boundary
+///   (`u[-1] = u[1]`, `u[n] = u[n-2]`): a second-order zero-gradient
+///   (insulated) boundary that enforces a vanishing central-difference
+///   gradient at the edge.
+/// - `Dirichlet { left, right }` holds the boundary at fixed values:
+///   out-of-range taps read `left` (below index 0) or `right` (above the
+///   last index).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EdgePolicy {
     Clamp,
+    Neumann,
+    Dirichlet { left: f64, right: f64 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1039,6 +1049,88 @@ impl Emitter {
                         weights: vec![inv, -2.0 * inv, inv],
                         center: 1,
                         edge: EdgePolicy::Clamp,
+                    },
+                    span,
+                )
+            }
+            "laplacian_neumann" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`laplacian_neumann` expects 2 operands (vector, dx), got {}",
+                        args.len()
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                let dx = match package.expr(args[1]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+                        let v = f64::from_bits(*bits);
+                        if !v.is_finite() || v <= 0.0 {
+                            return Err(format!(
+                                "`laplacian_neumann` dx must be a positive finite literal, got {v:?}"
+                            ));
+                        }
+                        v
+                    }
+                    _ => return Err(
+                        "`laplacian_neumann` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                            .to_string(),
+                    ),
+                };
+                let inv = 1.0 / (dx * dx);
+                self.push(
+                    EmirOp::Stencil1d {
+                        input,
+                        weights: vec![inv, -2.0 * inv, inv],
+                        center: 1,
+                        edge: EdgePolicy::Neumann,
+                    },
+                    span,
+                )
+            }
+            "laplacian_dirichlet" => {
+                if args.len() != 4 {
+                    return Err(format!(
+                        "`laplacian_dirichlet` expects 4 operands (vector, dx, g_left, g_right), got {}",
+                        args.len()
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                let dx = match package.expr(args[1]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+                        let v = f64::from_bits(*bits);
+                        if !v.is_finite() || v <= 0.0 {
+                            return Err(format!(
+                                "`laplacian_dirichlet` dx must be a positive finite literal, got {v:?}"
+                            ));
+                        }
+                        v
+                    }
+                    _ => return Err(
+                        "`laplacian_dirichlet` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                            .to_string(),
+                    ),
+                };
+                let g_left = match package.expr(args[2]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => f64::from_bits(*bits),
+                    _ => return Err(
+                        "`laplacian_dirichlet` left boundary value must be a literal constant in Phase 1"
+                            .to_string(),
+                    ),
+                };
+                let g_right = match package.expr(args[3]) {
+                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => f64::from_bits(*bits),
+                    _ => return Err(
+                        "`laplacian_dirichlet` right boundary value must be a literal constant in Phase 1"
+                            .to_string(),
+                    ),
+                };
+                let inv = 1.0 / (dx * dx);
+                self.push(
+                    EmirOp::Stencil1d {
+                        input,
+                        weights: vec![inv, -2.0 * inv, inv],
+                        center: 1,
+                        edge: EdgePolicy::Dirichlet { left: g_left, right: g_right },
                     },
                     span,
                 )

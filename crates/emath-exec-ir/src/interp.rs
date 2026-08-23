@@ -465,10 +465,36 @@ fn eval_op(
                 let mut acc = 0.0f64;
                 for (k, &w) in weights.iter().enumerate() {
                     let raw = i as isize + k as isize - center as isize;
-                    let idx = match edge {
-                        EdgePolicy::Clamp => raw.clamp(0, last) as usize,
+                    acc += match edge {
+                        // Replicate the nearest in-range cell.
+                        EdgePolicy::Clamp => {
+                            let idx = raw.clamp(0, last) as usize;
+                            w * v[idx]
+                        }
+                        // Mirror across the boundary: u[-1]=u[1], u[n]=u[n-2].
+                        // The trailing clamp guards tiny vectors (n < 3)
+                        // where the mirror target is itself out of range.
+                        EdgePolicy::Neumann => {
+                            let idx = if raw < 0 {
+                                (-raw) as usize
+                            } else if raw > last {
+                                (2 * last - raw) as usize
+                            } else {
+                                raw as usize
+                            };
+                            w * v[idx.clamp(0, last as usize)]
+                        }
+                        // Fixed boundary values; OOB taps read the constant.
+                        EdgePolicy::Dirichlet { left, right } => {
+                            if raw < 0 {
+                                w * left
+                            } else if raw > last {
+                                w * right
+                            } else {
+                                w * v[raw as usize]
+                            }
+                        }
                     };
-                    acc += w * v[idx];
                 }
                 out.push(acc);
             }

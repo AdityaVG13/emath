@@ -851,4 +851,20 @@ fn heat_rod_laplacian_admits_and_inline_tests_pass() {
         Some(&Value::Vector(vec![0.0, 1.0, 4.0, 9.0, 16.0]))
     );
     assert!(t1.verdict.expect_passed());
+    // Dirichlet boundaries held at 0 cool the edge cells of a constant
+    // field; the interior holds its temperature.
+    let t2 = &report.declarations[0].tests[2];
+    assert_eq!(
+        t2.outputs.get("next_dirichlet"),
+        Some(&Value::Vector(vec![0.0, 5.0, 5.0, 5.0, 0.0]))
+    );
+    assert!(t2.verdict.expect_passed());
+    // Neumann (insulated) on a linear field: the mirrored ghost pulls the
+    // edge cells toward the interior (no heat flux out).
+    let t3 = &report.declarations[0].tests[3];
+    assert_eq!(
+        t3.outputs.get("next_neumann"),
+        Some(&Value::Vector(vec![2.0, 1.0, 2.0, 3.0, 2.0]))
+    );
+    assert!(t3.verdict.expect_passed());
 }

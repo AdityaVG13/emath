@@ -1283,15 +1283,23 @@ fn op_expr(
                 .map(|w| format!("{w:?}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let clamp = match *edge {
-                EdgePolicy::Clamp => "raw.clamp(0, (n - 1) as isize) as usize",
+            let tap = match *edge {
+                EdgePolicy::Clamp => {
+                    format!("w * {src}[raw.clamp(0, last) as usize]")
+                }
+                EdgePolicy::Neumann => format!(
+                    "w * {src}[(if raw < 0 {{ -raw }} else if raw > last {{ 2 * last - raw }} else {{ raw }}).clamp(0, last) as usize]"
+                ),
+                EdgePolicy::Dirichlet { left, right } => format!(
+                    "w * if raw < 0 {{ {left:?} }} else if raw > last {{ {right:?} }} else {{ {src}[raw as usize] }}"
+                ),
             };
             Ok(Expr::Raw(format!(
-                "(0..{src}.len()).map(|i| {{ let n = {src}.len(); [{w}].iter().enumerate().map(|(k, &w)| {{ let raw = i as isize + k as isize - {c} as isize; w * {src}[{clamp}] }}).sum::<f64>() }}).collect::<Vec<f64>>()",
+                "(0..{src}.len()).map(|i| {{ let n = {src}.len(); let last = (n - 1) as isize; [{w}].iter().enumerate().map(|(k, &w)| {{ let raw = i as isize + k as isize - {c} as isize; {tap} }}).sum::<f64>() }}).collect::<Vec<f64>>()",
                 src = src,
                 w = w_lit,
                 c = *center,
-                clamp = clamp
+                tap = tap
             )))
         }
         EmirOp::MatrixAdd(l, r) => Ok(Expr::Raw(format!(
