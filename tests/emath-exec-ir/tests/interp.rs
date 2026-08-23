@@ -647,6 +647,15 @@ fn fold_and_accepts_bool_init() {
 // applies a 1D stencil, and returns the result. Mirrors how
 // `laplacian(u, dx)` lowers to `EmirOp::Stencil1d`.
 fn stencil_prog(weights: Vec<f64>, center: usize, input: Vec<f64>) -> EmirProgram {
+    stencil_prog_edge(weights, center, input, EdgePolicy::Clamp)
+}
+
+fn stencil_prog_edge(
+    weights: Vec<f64>,
+    center: usize,
+    input: Vec<f64>,
+    edge: EdgePolicy,
+) -> EmirProgram {
     let n = input.len();
     let mut ops: Vec<EmirOp> = input.iter().map(|x| const_bits(*x)).collect();
     let elems: Vec<EmirValue> = (0..n).map(|i| EmirValue(i as u32)).collect();
@@ -656,7 +665,7 @@ fn stencil_prog(weights: Vec<f64>, center: usize, input: Vec<f64>) -> EmirProgra
         input: EmirValue(vec_reg),
         weights,
         center,
-        edge: EdgePolicy::Clamp,
+        edge,
     });
     let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
     EmirProgram {
@@ -742,4 +751,66 @@ fn stencil_clamped_edge_replicates_boundary() {
     };
     assert_eq!(out[0], 7.0 - 5.0);
     assert_eq!(out[2], 7.0 - 9.0);
+}
+
+#[test]
+fn stencil_dirichlet_matching_value_is_zero() {
+    // Dirichlet boundaries held at the field's own constant value: the
+    // ghost cells match the interior, so the laplacian is zero everywhere,
+    // including the boundary cells.
+    let prog = stencil_prog_edge(
+        vec![1.0, -2.0, 1.0],
+        1,
+        vec![5.0; 5],
+        EdgePolicy::Dirichlet { left: 5.0, right: 5.0 },
+    );
+    assert_eq!(
+        evaluate(&prog, &[], &[]).unwrap(),
+        Value::Vector(vec![0.0; 5])
+    );
+}
+
+#[test]
+fn stencil_dirichlet_mismatched_value_shifts_boundary() {
+    // Constant field c = 5 with Dirichlet boundaries held at 0: only the
+    // boundary cells see the ghost value, so L[0] = L[4] = (0 - 5) = -5
+    // and the interior stays zero.
+    let prog = stencil_prog_edge(
+        vec![1.0, -2.0, 1.0],
+        1,
+        vec![5.0; 5],
+        EdgePolicy::Dirichlet { left: 0.0, right: 0.0 },
+    );
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Vector(v) => v,
+        _ => panic!("expected vector"),
+    };
+    assert_eq!(out[0], -5.0);
+    assert_eq!(out[4], -5.0);
+    assert_eq!(out[1], 0.0);
+    assert_eq!(out[2], 0.0);
+    assert_eq!(out[3], 0.0);
+}
+
+#[test]
+fn stencil_neumann_mirror_reflects_linear_field() {
+    // Neumann mirrors the next interior cell across the boundary
+    // (u[-1] = u[1], u[n] = u[n-2]). For a linear field the interior
+    // second difference is 0; the mirrored ghost creates a kink, giving
+    // L[0] = 2*(u[1]-u[0]) = 2 and L[4] = 2*(u[3]-u[4]) = -2.
+    let prog = stencil_prog_edge(
+        vec![1.0, -2.0, 1.0],
+        1,
+        vec![0.0, 1.0, 2.0, 3.0, 4.0],
+        EdgePolicy::Neumann,
+    );
+    let out = match evaluate(&prog, &[], &[]).unwrap() {
+        Value::Vector(v) => v,
+        _ => panic!("expected vector"),
+    };
+    assert_eq!(out[0], 2.0);
+    assert_eq!(out[1], 0.0);
+    assert_eq!(out[2], 0.0);
+    assert_eq!(out[3], 0.0);
+    assert_eq!(out[4], -2.0);
 }

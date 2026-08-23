@@ -1,11 +1,20 @@
 # heat-rod: 1D heat equation, one explicit-Euler step.
 #
-# `laplacian(u, dx)` applies the central second-difference stencil
-# [1, -2, 1] / dx^2 with clamped (insulated) edges. Phase 1 requires
-# `dx` to be a positive literal constant (variable dx is not yet supported),
-# so the cell width is fixed here at 1.0. With `dt = 0` the step is the
-# identity; with a constant field the laplacian is zero everywhere, so the
-# rod holds its temperature.
+# Three boundary policies on the same stencil [1, -2, 1] / dx^2:
+#   laplacian(u, dx)                      — Clamp: replicate the edge cell
+#                                          (first-order insulated boundary).
+#   laplacian_neumann(u, dx)              — Neumann: mirror the next interior
+#                                          cell (second-order zero-gradient /
+#                                          insulated; no heat flux out).
+#   laplacian_dirichlet(u, dx, g_l, g_r)  — Dirichlet: hold the left boundary
+#                                          at g_l and the right at g_r.
+#
+# Phase 1 requires dx and the Dirichlet values to be finite literal
+# constants (variable forms are not yet supported), so dx is fixed at
+# 1.0 here. With dt = 0 every step is the identity; with a constant
+# field the Clamp and Neumann laplacians are zero everywhere, so the
+# rod holds its temperature, while Dirichlet boundaries held at 0 cool
+# the edge cells.
 
 emath function HeatStep:
     inputs:
@@ -15,9 +24,13 @@ emath function HeatStep:
 
     outputs:
         next: Vector[5]
+        next_dirichlet: Vector[5]
+        next_neumann: Vector[5]
 
     definitions:
         next = u + dt * alpha * laplacian(u, 1.0)
+        next_dirichlet = u + dt * alpha * laplacian_dirichlet(u, 1.0, 0.0, 0.0)
+        next_neumann = u + dt * alpha * laplacian_neumann(u, 1.0)
 
     tests:
         example <constant_holds>:
@@ -31,3 +44,15 @@ emath function HeatStep:
             given alpha = 1.0
             given dt = 0.0
             expect next == [0.0, 1.0, 4.0, 9.0, 16.0]
+
+        example <dirichlet_cools_boundary>:
+            given u = [5.0, 5.0, 5.0, 5.0, 5.0]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next_dirichlet == [0.0, 5.0, 5.0, 5.0, 0.0]
+
+        example <neumann_insulated_linear>:
+            given u = [0.0, 1.0, 2.0, 3.0, 4.0]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next_neumann == [2.0, 1.0, 2.0, 3.0, 2.0]
