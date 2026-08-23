@@ -751,3 +751,66 @@ emath model ImplicitCircuit:
         "implicit RC circuit q(1) should be ~{expected:.4}, got {q_final:.4}"
     );
 }
+
+#[test]
+fn heat_rod_model_simulates_and_conserves_total_heat() {
+    // 1D heat equation as a continuous model: der(u) = alpha * laplacian(u, dx)
+    // with an insulated (Clamp) boundary. The runner integrates the vector-
+    // valued state with RK4. Total heat sum(u) is conserved (the Clamp
+    // laplacian sums to zero), and an initial hot spot diffuses to its
+    // neighbors.
+    let result = check_source(
+        "heat-rod-sim",
+        include_str!("../../../language/examples/numerical/heat-rod-sim.emath"),
+    );
+    assert!(
+        !result.diagnostics.has_errors(),
+        "heat-rod model must admit, got: {:?}",
+        result.diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let mut inputs = BTreeMap::new();
+    inputs.insert("alpha".into(), Value::F64(1.0));
+    let mut state = BTreeMap::new();
+    // Hot spot at index 1; total heat = 1.0.
+    state.insert("u".into(), Value::Vector(vec![0.0, 1.0, 0.0, 0.0, 0.0]));
+    let traj = simulate_continuous(
+        &result.package,
+        &result.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        0.5,
+        0.01,
+        StepMethod::Rk4,
+    )
+    .expect("heat-rod simulation should not fault");
+    let final_u = match traj.samples.last().unwrap().state.get("u") {
+        Some(Value::Vector(v)) => v.clone(),
+        other => panic!("expected Vector state `u`, got {other:?}"),
+    };
+    // Insulated boundary: total heat is conserved.
+    let total: f64 = final_u.iter().sum();
+    assert!(
+        (total - 1.0).abs() < 1e-9,
+        "total heat should be conserved at 1.0, got {total}"
+    );
+    // The hot spot diffuses: the peak drops and heat reaches both neighbors.
+    assert!(
+        final_u[1] < 1.0,
+        "hot spot should diffuse down, got u[1] = {}",
+        final_u[1]
+    );
+    assert!(
+        final_u[0] > 0.0,
+        "heat should reach the left neighbor, got u[0] = {}",
+        final_u[0]
+    );
+    assert!(
+        final_u[2] > 0.0,
+        "heat should reach the right neighbor, got u[2] = {}",
+        final_u[2]
+    );
+}

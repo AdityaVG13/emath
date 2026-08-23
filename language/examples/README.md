@@ -40,8 +40,9 @@ say what the compiler does with each one today.
 | [dynamic-mass-spring.emath](numerical/dynamic-mass-spring.emath) | Target sketch for a later DAE / rumoca path. Not an admitted `emath model`. |
 | [tensor-program.emath](numerical/tensor-program.emath) | Target sketch (`einsum`, binders, autodiff). Rank-3 tensors and slices run in smaller functions; this file does not. |
 | [graph-router.emath](numerical/graph-router.emath) | Target sketch. Graphs and `solve` are not admitted. |
-| [heat-pde.emath](numerical/heat-pde.emath) | Target sketch. Fields and PDEs are not admitted. |
-| [heat-rod.emath](numerical/heat-rod.emath) | Runs. `emath function` one Euler step of the 1D heat equation; `laplacian(u, dx)` is admitted. |
+| [heat-pde.emath](numerical/heat-pde.emath) | Target sketch. Full field types (`Field[R^d -> R]`, 2D/3D) are not admitted; the 1D laplacian and heat simulation run (see heat-rod.emath, heat-rod-sim.emath). |
+| [heat-rod.emath](numerical/heat-rod.emath) | Runs. `emath function` one Euler step of the 1D heat equation; `laplacian(u, dx)` with Clamp/Neumann/Dirichlet boundaries is admitted. |
+| [heat-rod-sim.emath](numerical/heat-rod-sim.emath) | Runs. `emath model` with vector state `u: Vector[5]` and `der(u) = alpha * laplacian(u, 1.0)`; `emath simulate` integrates the 1D heat equation over time (insulated boundary conserves total heat). |
 
 ## search — conjecture and optimization
 

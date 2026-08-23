@@ -1,0 +1,20 @@
+# heat-rod-sim: 1D heat equation as a continuous model.
+#
+# The rod temperature u(x) evolves by du/dt = alpha * laplacian(u, dx).
+# With Clamp boundaries the rod is insulated (no heat flux out), so the
+# total heat sum(u) is conserved and an initial hot spot diffuses across
+# the rod toward the uniform mean. Phase 1 fixes dx = 1.0 (a literal
+# constant); variable dx is not yet supported.
+#
+# Simulate with `emath simulate` (RK4). The explicit step is stable when
+# dt <= dx^2 / (2 * alpha); dt = 0.01 is well within for alpha = 1.0,
+# dx = 1.0. See tests/emath-sema/tests/model_ode.rs for the conservation
+# and diffusion assertions.
+
+emath model HeatRod:
+    inputs:
+        alpha: Float64
+    state:
+        u: Vector[5]
+    equations:
+        der(u) = alpha * laplacian(u, 1.0)
