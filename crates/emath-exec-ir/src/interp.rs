@@ -13,7 +13,7 @@
 //! not runtime checks: division by zero yields inf/NaN per IEEE, matching
 //! the emitted Rust which also does not insert those checks.
 
-use crate::{EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
+use crate::{EdgePolicy, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
 use std::fmt;
 
 /// A typed register value. Locals match generated Rust (`f64` / `bool` / `Vec<f64>`).
@@ -450,6 +450,29 @@ fn eval_op(
         EmirOp::VectorLength(value) => {
             let v = vector_of(registers, value, name)?;
             Ok(Value::F64(v.len() as f64))
+        }
+        EmirOp::Stencil1d {
+            input,
+            ref weights,
+            center,
+            edge,
+        } => {
+            let v = vector_of(registers, input, name)?;
+            let n = v.len();
+            let last = n.saturating_sub(1) as isize;
+            let mut out = Vec::with_capacity(n);
+            for i in 0..n {
+                let mut acc = 0.0f64;
+                for (k, &w) in weights.iter().enumerate() {
+                    let raw = i as isize + k as isize - center as isize;
+                    let idx = match edge {
+                        EdgePolicy::Clamp => raw.clamp(0, last) as usize,
+                    };
+                    acc += w * v[idx];
+                }
+                out.push(acc);
+            }
+            Ok(Value::Vector(out))
         }
         EmirOp::MatrixAdd(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
@@ -1032,6 +1055,12 @@ fn evaluate_dual(
             EmirOp::Abs(a) => {
                 let a = dual_of(&registers, a, name)?;
                 Dual { primal: a.primal.abs(), tangent: a.primal.signum() * a.tangent }
+            }
+            EmirOp::Stencil1d { .. } => {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "spatial stencil ops are not differentiable in Phase 1",
+                });
             }
             EmirOp::Floor(a) => {
                 let a = dual_of(&registers, a, name)?;
