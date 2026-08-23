@@ -10,6 +10,27 @@ use emath_core::{Diagnostics, FileId, Span, limits::Limits};
 /// Lex the whole source into layout-aware tokens (comments skipped).
 #[must_use]
 pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnostics) {
+    let mut diagnostics = Diagnostics::new();
+    // Enforce the byte ceiling before scanning so huge inputs cannot burn
+    // O(n) work after a session/host forgot `Limits::check_source`.
+    if let Err(max) = limits.check_source(source.len()) {
+        diagnostics.error(
+            "E-SYN-116",
+            format!(
+                "source is {} bytes; limit is {max} bytes",
+                source.len()
+            ),
+            Span::new(file, 0, 0),
+        );
+        let end = u32::try_from(source.len()).unwrap_or(u32::MAX);
+        return (
+            vec![Token {
+                kind: TokenKind::Eof,
+                span: Span::new(file, end, end),
+            }],
+            diagnostics,
+        );
+    }
     let mut lexer = Lexer {
         source,
         file,
@@ -17,7 +38,7 @@ pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnost
         bytes: source.as_bytes(),
         pos: 0,
         tokens: Vec::new(),
-        diagnostics: Diagnostics::new(),
+        diagnostics,
         indent_stack: vec![0],
         paren_depth: 0,
         nesting: 0,
@@ -41,6 +62,26 @@ pub fn lex_with_comments(
     file: FileId,
     limits: &Limits,
 ) -> (Vec<Token>, Diagnostics, Vec<Comment>) {
+    let mut diagnostics = Diagnostics::new();
+    if let Err(max) = limits.check_source(source.len()) {
+        diagnostics.error(
+            "E-SYN-116",
+            format!(
+                "source is {} bytes; limit is {max} bytes",
+                source.len()
+            ),
+            Span::new(file, 0, 0),
+        );
+        let end = u32::try_from(source.len()).unwrap_or(u32::MAX);
+        return (
+            vec![Token {
+                kind: TokenKind::Eof,
+                span: Span::new(file, end, end),
+            }],
+            diagnostics,
+            Vec::new(),
+        );
+    }
     let mut lexer = Lexer {
         source,
         file,
@@ -48,7 +89,7 @@ pub fn lex_with_comments(
         bytes: source.as_bytes(),
         pos: 0,
         tokens: Vec::new(),
-        diagnostics: Diagnostics::new(),
+        diagnostics,
         indent_stack: vec![0],
         paren_depth: 0,
         nesting: 0,
@@ -182,7 +223,12 @@ impl Lexer<'_> {
                 if self.paren_depth == 0 {
                     let indent = content_start - line_start;
                     if indent > *self.indent_stack.last().unwrap_or(&0) {
-                        self.indent_stack.push(indent);
+                        // Do not grow the stack past the token budget: a
+                        // rejected Indent would otherwise force unbounded
+                        // trailing Dedents at EOF that bypass `push`.
+                        if self.tokens.len() < self.limits.max_tokens {
+                            self.indent_stack.push(indent);
+                        }
                         self.push(TokenKind::Indent, line_start);
                     } else {
                         while self.indent_stack.len() > 1
@@ -207,11 +253,7 @@ impl Lexer<'_> {
         }
         while self.indent_stack.len() > 1 {
             self.indent_stack.pop();
-            let end = u32::try_from(self.bytes.len()).unwrap_or(u32::MAX);
-            self.tokens.push(Token {
-                kind: TokenKind::Dedent,
-                span: Span::new(self.file, end, end),
-            });
+            self.push(TokenKind::Dedent, self.bytes.len());
         }
     }
 
@@ -538,9 +580,12 @@ impl Lexer<'_> {
                     b'"' => value.push('"'),
                     b'\\' => value.push('\\'),
                     b'u' => {
+                        // Invalid `\u` forms must stay inside the string so the
+                        // closing quote is still found; `break` would exit the
+                        // lex loop, emit a truncated Str, and retokenize the tail.
                         if !self.eat(b'{') {
                             self.error("E-SYN-109", "invalid string escape", start);
-                            break;
+                            continue;
                         }
                         let hex_start = self.pos;
                         while self.peek().is_some_and(|b| b.is_ascii_hexdigit()) {
@@ -549,12 +594,17 @@ impl Lexer<'_> {
                         let hex = &self.source[hex_start..self.pos];
                         if !self.eat(b'}') || hex.is_empty() {
                             self.error("E-SYN-109", "invalid string escape", start);
-                            break;
+                            continue;
                         }
-                        if let Ok(code) = u32::from_str_radix(hex, 16) {
-                            if let Some(ch) = char::from_u32(code) {
-                                value.push(ch);
-                            } else {
+                        match u32::from_str_radix(hex, 16) {
+                            Ok(code) => {
+                                if let Some(ch) = char::from_u32(code) {
+                                    value.push(ch);
+                                } else {
+                                    self.error("E-SYN-109", "invalid unicode escape", start);
+                                }
+                            }
+                            Err(_) => {
                                 self.error("E-SYN-109", "invalid unicode escape", start);
                             }
                         }

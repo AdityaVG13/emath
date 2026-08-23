@@ -32,7 +32,7 @@ use emath_rust_ir::profiles::CrateProfile;
 use emath_sema::session::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Persistent cargo target dir for generated crates (`$CWD/target/emath-cargo/<key>`).
 /// Incremental rustc survives across `emath run` / `--verify` because those
@@ -353,10 +353,38 @@ fn compose_artifact(
         },
         |goal| goal.requirements.target.clone(),
     );
-    let evidence_level = package
+    // Goal requirement vs what this native Phase-1 path actually delivers.
+    // Admission is E1 (sema/admit); cargo-test verification is E3. A
+    // not-run verification claim must not advertise E3 (overclaim across
+    // build→checker→evidence). Manifest `evidence_level` records delivered
+    // strength, never an unmet goal ceiling.
+    let required_evidence = package
         .goals
         .first()
         .map_or(EvidenceLevel::E1, |goal| goal.requirements.evidence);
+    let admit_level = EvidenceLevel::E1;
+    let verify_level = if verification_ran {
+        EvidenceLevel::E3
+    } else {
+        EvidenceLevel::E0
+    };
+    let evidence_level = if verification_ran {
+        EvidenceLevel::E3
+    } else {
+        EvidenceLevel::E1
+    };
+    if required_evidence > evidence_level {
+        return Err(BuildError::Backend(format!(
+            "E-EVID-103: goal requires {} but native build delivers only {}{}",
+            required_evidence.as_str(),
+            evidence_level.as_str(),
+            if verification_ran {
+                ""
+            } else {
+                " (enable verify_generated_crate for E3)"
+            },
+        )));
+    }
     let public_exports: Vec<String> = declaration.exports.iter().map(|e| e.name.clone()).collect();
 
     // Live build source map: every entry carries the source FileId, the
@@ -385,7 +413,7 @@ fn compose_artifact(
     };
     let plans_recorded: Vec<PlanRecord> = plans.iter().map(plan_to_record).collect();
 
-    // Claims: honest about what ran. Unverified steps are `not-run`.
+    // Claims: honest about what ran. Unverified steps are `not-run` at E0.
     let mut claims = vec![EvidenceClaim {
         id: format!("{}.admitted", meta.package_id.0),
         statement: format!("`{0}` was admitted without errors", meta.crate_name),
@@ -399,7 +427,7 @@ fn compose_artifact(
         } else {
             ClaimVerdict::Pass
         },
-        level: EvidenceLevel::E1,
+        level: admit_level,
         falsifiers: vec![],
         artifacts: vec!["emath/resolution-plan.json".to_string()],
         fresh_until: None,
@@ -427,7 +455,7 @@ fn compose_artifact(
         } else {
             ClaimVerdict::NotRun
         },
-        level: EvidenceLevel::E3,
+        level: verify_level,
         falsifiers: vec![],
         artifacts: vec![
             "emath/artifact-manifest.json".to_string(),
@@ -600,8 +628,24 @@ pub fn run_cargo_timed(
         .stdin(std::process::Stdio::null())
         .spawn()
         .map_err(|error| format!("cannot spawn cargo: {error}"))?;
-    let mut stdout = child.stdout.take().expect("stdout must be piped");
-    let mut stderr = child.stderr.take().expect("stderr must be piped");
+    // Take both pipes before returning Err so a missing pipe cannot orphan
+    // a live cargo child (kill + wait before propagating).
+    let mut stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            kill_timed_child(&mut child);
+            let _ = child.wait();
+            return Err("stdout pipe missing after spawn".to_string());
+        }
+    };
+    let mut stderr = match child.stderr.take() {
+        Some(stderr) => stderr,
+        None => {
+            kill_timed_child(&mut child);
+            let _ = child.wait();
+            return Err("stderr pipe missing after spawn".to_string());
+        }
+    };
     let stdout_thread = std::thread::spawn(move || {
         let mut buf = Vec::new();
         let _ = stdout.read_to_end(&mut buf);
@@ -633,7 +677,16 @@ pub fn run_cargo_timed(
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
                 std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
             }
-            Err(error) => return Err(format!("cannot wait on cargo: {error}")),
+            Err(error) => {
+                // try_wait failed: still own the child and pipe readers — kill,
+                // reap, and join so we never detach live threads or leave cargo
+                // holding CARGO_TARGET_DIR.
+                kill_timed_child(&mut child);
+                let _ = child.wait();
+                let _ = stdout_thread.join();
+                let _ = stderr_thread.join();
+                return Err(format!("cannot wait on cargo: {error}"));
+            }
         }
     };
     let stdout = stdout_thread.join().unwrap_or_default();
@@ -643,6 +696,28 @@ pub fn run_cargo_timed(
         stdout,
         stderr,
     })
+}
+
+/// Join `relative` under `root`, rejecting absolute paths and `..` / prefix
+/// / root components (same policy as artifact staging path checks).
+fn safe_generated_join(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let rel = Path::new(relative);
+    if rel.is_absolute() {
+        return Err(format!(
+            "refusing absolute generated path `{relative}` outside verify root"
+        ));
+    }
+    for component in rel.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+                return Err(format!(
+                    "refusing unsafe generated path `{relative}` (traversal or absolute component)"
+                ));
+            }
+        }
+    }
+    Ok(root.join(rel))
 }
 
 fn kill_timed_child(child: &mut std::process::Child) {
@@ -682,7 +757,9 @@ test surface (add a `tests:` section to the spec, or drop --verify)"
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
     for (path, text) in &output.files {
-        let target = dir.join(path);
+        // Refuse absolute / `..` segments so a malicious or buggy backend map
+        // cannot write outside the verify staging directory.
+        let target = safe_generated_join(dir, path)?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }

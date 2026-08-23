@@ -2029,10 +2029,9 @@ impl Parser {
         }
         // `define y = expr` / `method score = score`: a trailing
         // `name = value` argument after the head words.
-        if matches!(self.peek(), TokenKind::Ident(_)) && matches!(self.peek_at(1), TokenKind::Eq) {
-            let TokenKind::Ident(name) = self.peek().clone() else {
-                unreachable!()
-            };
+        if matches!(self.peek_at(1), TokenKind::Eq)
+            && let TokenKind::Ident(name) = self.peek().clone()
+        {
             self.advance();
             self.advance();
             self.skip_assignment_layout();
@@ -2159,7 +2158,10 @@ impl Parser {
             items.push(self.parse_type_primary()?);
         }
         let base = if items.len() == 1 {
-            items.pop().unwrap()
+            let Some(item) = items.pop() else {
+                return None;
+            };
+            item
         } else {
             TypeExpr {
                 kind: TypeKind::Product(items),
@@ -2349,31 +2351,41 @@ impl Parser {
                         items.push(self.parse_expr_depth(depth + 1)?);
                     }
                     let start = expr.source;
-                    expr = match &expr.kind {
-                        ExprKind::Derivative { value, .. } => Expr {
+                    let Some(next) = (match &expr.kind {
+                        ExprKind::Derivative { value, .. } => Some(Expr {
                             kind: ExprKind::Derivative {
                                 value: value.clone(),
                                 wrt: Some(items),
                             },
                             source: start.cover(self.last_span()),
-                        },
-                        ExprKind::Solve { value, .. } => Expr {
+                        }),
+                        ExprKind::Solve { value, .. } => Some(Expr {
                             kind: ExprKind::Solve {
                                 value: value.clone(),
                                 wrt: Some(items),
                             },
                             source: start.cover(self.last_span()),
-                        },
-                        ExprKind::Optimize { value, maximize, .. } => Expr {
+                        }),
+                        ExprKind::Optimize { value, maximize, .. } => Some(Expr {
                             kind: ExprKind::Optimize {
                                 value: value.clone(),
                                 wrt: Some(items),
                                 maximize: *maximize,
                             },
                             source: start.cover(self.last_span()),
-                        },
-                        _ => unreachable!("checked above"),
+                        }),
+                        // Guard above admits only Derivative/Solve/Optimize.
+                        _ => {
+                            self.error_here(
+                                "E-SYN-107",
+                                "`wrt` applies only to derivative, solve, or optimize",
+                            );
+                            None
+                        }
+                    }) else {
+                        return None;
                     };
+                    expr = next;
                 }
                 TokenKind::Keyword(Keyword::At) if depth > 0 => {
                     self.advance();

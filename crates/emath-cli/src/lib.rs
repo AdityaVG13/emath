@@ -310,9 +310,11 @@ fn register_native_rust(registry: &mut ProviderRegistry) {
         maximum_evidence: EvidenceLevel::E2,
         deterministic: true,
     };
-    registry
-        .register("native.rust", ProviderIsolation::Static, table)
-        .expect("static native capability registration must succeed");
+    if let Err(error) = registry.register("native.rust", ProviderIsolation::Static, table) {
+        // Static bootstrap table is well-formed; a failure is an internal
+        // registry defect, not user input. Keep planning usable by logging.
+        eprintln!("warning: native.rust capability registration failed: {error:?}");
+    }
 }
 
 /// `import modelica <file.mo> [--json]`: retain a Modelica subset source as

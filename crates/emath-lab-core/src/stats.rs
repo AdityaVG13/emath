@@ -247,12 +247,16 @@ fn cull_outliers(policy: OutlierPolicy, observations: &mut Vec<PairedObservation
         .collect();
     // Non-empty by construction: the caller refuses when no samples
     // survive warmup before culling ever runs.
-    let median = percentile(&baselines, 0.5).expect("baselines non-empty before cull");
+    let Ok(median) = percentile(&baselines, 0.5) else {
+        return 0;
+    };
     let deviations: Vec<f64> = baselines
         .iter()
         .map(|baseline| (*baseline as f64 - median).abs())
         .collect();
-    let mad = percentile_f64(&deviations, 0.5).expect("deviations non-empty before cull");
+    let Ok(mad) = percentile_f64(&deviations, 0.5) else {
+        return 0;
+    };
     if mad == 0.0 {
         return 0; // degenerate spread: nothing to trim against
     }
@@ -263,11 +267,19 @@ fn cull_outliers(policy: OutlierPolicy, observations: &mut Vec<PairedObservation
 }
 
 /// Arithmetic mean of u64 samples.
-#[must_use]
+///
+/// An empty sample set is a typed refusal (`E-HOST-006`), never `0.0/0.0`
+/// NaN from dividing by `len`.
 #[allow(clippy::cast_precision_loss)] // sample counts/sums as f64; exact below 2^53
-pub fn mean(values: &[u64]) -> f64 {
+pub fn mean(values: &[u64]) -> Result<f64, LabError> {
+    if values.is_empty() {
+        return Err(LabError::new(
+            "E-HOST-006",
+            "mean of an empty sample set",
+        ));
+    }
     let sum: f64 = values.iter().map(|value| *value as f64).sum();
-    sum / values.len() as f64
+    Ok(sum / values.len() as f64)
 }
 
 /// Linear-interpolated percentile of u64 samples.

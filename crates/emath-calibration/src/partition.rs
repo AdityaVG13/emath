@@ -119,11 +119,14 @@ impl PartitionedExamples {
                 k if k < boundaries_permille[2] => ExampleKind::Adversarial,
                 _ => ExampleKind::HeldOut,
             };
-            let bucket = buckets
-                .iter_mut()
-                .find(|(existing, _)| *existing == kind)
-                .expect("bucket exists for every kind");
-            bucket.1.push(example.clone());
+            // Fixed slot order matches the `buckets` array above.
+            let index = match kind {
+                ExampleKind::Construction => 0,
+                ExampleKind::Validation => 1,
+                ExampleKind::Adversarial => 2,
+                ExampleKind::HeldOut => 3,
+            };
+            buckets[index].1.push(example.clone());
         }
         for (_, bucket) in &mut buckets {
             bucket.sort_by_key(|example| example.id);

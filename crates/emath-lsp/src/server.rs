@@ -224,6 +224,7 @@ impl ServerState {
             };
             if let Some(range) = change.get("range") {
                 if let Some((start, end)) = range_offsets(range, &document.text) {
+                    // range_offsets guarantees char boundaries and start <= end <= len.
                     document.text.replace_range(start..end, text);
                 }
             } else {
@@ -247,7 +248,10 @@ impl ServerState {
                 } else {
                     2
                 };
-                let (start, end) = offset_range(&document.text, item.primary.start);
+                // Half-open Span `[start, end)` — using only start made every
+                // published range zero-width (wrong squiggle under the token).
+                let (start, end) =
+                    span_positions(&document.text, item.primary.start, item.primary.end);
                 let range = JsonValue::Object(
                     [
                         ("start".into(), position(&start)),
@@ -291,7 +295,7 @@ impl ServerState {
         let Some(position) = params.get("position") else {
             return JsonValue::Null;
         };
-        let Some(offset) = position_offsets(position, &line_starts(text)) else {
+        let Some(offset) = position_offsets(position, text) else {
             return JsonValue::Null;
         };
         let Some(word) = word_at(text, offset) else {
@@ -353,8 +357,8 @@ fn document_uri(params: &JsonValue) -> Option<String> {
 }
 
 /// Converts a `{line, character}` position into a byte offset.
-fn position_offsets(position: &JsonValue, line_starts: &[usize]) -> Option<usize> {
-    line_character_offset(position, line_starts)
+fn position_offsets(position: &JsonValue, text: &str) -> Option<usize> {
+    line_character_offset(position, text, &line_starts(text))
 }
 
 /// Converts a `{start, end}` range into byte offsets.
@@ -362,30 +366,69 @@ fn range_offsets(range: &JsonValue, text: &str) -> Option<(usize, usize)> {
     let line_starts = line_starts(text);
     let start = range.get("start")?;
     let end = range.get("end")?;
-    let start = line_character_offset(start, &line_starts)?;
-    let end = line_character_offset(end, &line_starts)?;
-    Some((start, end.min(text.len())))
+    let start = line_character_offset(start, text, &line_starts)?;
+    let end = line_character_offset(end, text, &line_starts)?;
+    if start > end {
+        return None;
+    }
+    Some((start, end))
 }
 
 /// Byte offset for a `{line, character}` position given precomputed line starts.
-fn line_character_offset(position: &JsonValue, line_starts: &[usize]) -> Option<usize> {
+///
+/// `character` is treated as a UTF-8 byte offset within the line (Phase 1).
+/// Offsets past the line end, past `text.len()`, or mid-codepoint are refused.
+fn line_character_offset(
+    position: &JsonValue,
+    text: &str,
+    line_starts: &[usize],
+) -> Option<usize> {
     let line = usize::try_from(position.get_int("line")?).ok()?;
     let character = usize::try_from(position.get_int("character")?).ok()?;
     let base = *line_starts.get(line)?;
-    Some(base + character)
+    let line_end = line_starts
+        .get(line + 1)
+        .copied()
+        .unwrap_or(text.len());
+    let offset = base.checked_add(character)?;
+    if offset > line_end || offset > text.len() || !text.is_char_boundary(offset) {
+        return None;
+    }
+    Some(offset)
 }
 
-/// Byte-offset to `{line, character}`.
-fn offset_range(text: &str, offset: u32) -> (Position, Position) {
-    let offset = usize::try_from(offset)
+/// Clamp a byte offset into `text` and snap back to a char boundary.
+fn clamp_byte_offset(text: &str, offset: u32) -> usize {
+    let mut offset = usize::try_from(offset)
         .unwrap_or(text.len())
         .min(text.len());
+    while offset > 0 && !text.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    offset
+}
+
+/// Byte offset to `{line, character}` (UTF-8 byte `character`, Phase 1).
+fn offset_to_position(text: &str, offset: usize) -> Position {
     let starts = line_starts(text);
     let line = starts
         .partition_point(|start| *start <= offset)
         .saturating_sub(1);
-    let character = offset - starts[line];
-    (Position { line, character }, Position { line, character })
+    let character = offset.saturating_sub(starts.get(line).copied().unwrap_or(0));
+    Position { line, character }
+}
+
+/// Half-open byte span `[start, end)` to LSP `{start, end}` positions.
+///
+/// `end < start` (corrupt span) collapses to a caret at `start`. Mid-codepoint
+/// offsets snap back via [`clamp_byte_offset`].
+fn span_positions(text: &str, start: u32, end: u32) -> (Position, Position) {
+    let start_b = clamp_byte_offset(text, start);
+    let end_b = clamp_byte_offset(text, end).max(start_b);
+    (
+        offset_to_position(text, start_b),
+        offset_to_position(text, end_b),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,12 +465,16 @@ fn line_starts(text: &str) -> Vec<usize> {
 }
 
 /// The word containing `offset`, if any.
+///
+/// `offset == 0` is valid: a word that starts at the first byte (e.g. leading
+/// `emath`) must still hover. Empty / non-word at 0 yields `None` via
+/// `start == end`.
 fn word_at(text: &str, offset: usize) -> Option<&str> {
     let offset = offset.min(text.len());
-    let bytes = text.as_bytes();
-    if offset == 0 {
+    if !text.is_char_boundary(offset) {
         return None;
     }
+    let bytes = text.as_bytes();
     let mut start = offset;
     while start > 0 && is_word_byte(bytes.get(start - 1).copied()) {
         start -= 1;
@@ -436,10 +483,10 @@ fn word_at(text: &str, offset: usize) -> Option<&str> {
     while end < bytes.len() && is_word_byte(bytes.get(end).copied()) {
         end += 1;
     }
-    if start == end {
+    if start == end || !text.is_char_boundary(start) || !text.is_char_boundary(end) {
         None
     } else {
-        Some(&text[start..end])
+        text.get(start..end)
     }
 }
 

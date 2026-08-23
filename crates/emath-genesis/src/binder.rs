@@ -364,7 +364,7 @@ impl ScopedBinder {
                         },
                     });
                 }
-                Ok(accumulator.expect("range was checked non-empty"))
+                accumulator.ok_or(BinderError::EmptyDomain { lower, upper })
             }
         }
     }

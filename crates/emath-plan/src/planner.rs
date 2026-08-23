@@ -103,12 +103,17 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
                 candidates.push((cost, verdict.provider.clone()));
             }
             Compatibility::Excluded { reasons } => {
-                let primary = reasons.first().expect("exclusion always has reasons");
-                exclusions.push((
-                    verdict.provider.clone(),
-                    primary.code.to_string(),
-                    primary.detail.clone(),
-                ));
+                // Empty reason lists must still be recorded: dropping the
+                // exclusion would hide an inapplicable provider from the
+                // inspection (and from the algebra's refused arms).
+                let (code, detail) = match reasons.first() {
+                    Some(primary) => (primary.code.to_string(), primary.detail.clone()),
+                    None => (
+                        "E-GOAL-201".to_string(),
+                        "exclusion reported without reasons".to_string(),
+                    ),
+                };
+                exclusions.push((verdict.provider.clone(), code, detail));
             }
         }
     }
@@ -200,11 +205,24 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
     }
     // The algebra's left-biased alternative selected the first deterministic
     // candidate; build its plan DAG.
-    let provider_id = application
-        .trace
-        .first()
-        .expect("an applied alternative always traces its provider")
-        .clone();
+    let Some(provider_id) = application.trace.first().cloned() else {
+        let inspection = PlanInspection {
+            policy: config.policy.clone(),
+            candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
+            exclusions,
+            selected_plan_id: None,
+            checks: vec![],
+            budget: None,
+            artifact_class: disposition_without_plan(&goal.requirements.fallback)
+                .name()
+                .into(),
+        };
+        return PlanningOutcome::NoEligible {
+            reasons: vec!["E-GOAL-201: applied selection missing provider trace".to_string()],
+            disposition: disposition_without_plan(&goal.requirements.fallback),
+            inspection,
+        };
+    };
     let has_conversions = registry.get(&provider_id).is_some_and(|table| {
         table.capabilities.iter().any(|capability| {
             capability

@@ -8,10 +8,11 @@
 //!
 //! - [`PluginDescriptor`] (schema `emath.plugin`) with a canonical JSON
 //!   rendering and FNV-1a64 content id;
-//! - [`admit`]: the sandbox/fuel/permission gate. Untrusted descriptors
-//!   must declare positive fuel; `network` requires the `network`
-//!   permission; every capability must be inside `allowed_capabilities`.
-//!   Refusals are typed (`E-PLG-002`, `E-PLG-003`) and deterministic;
+//! - [`admit`]: the sandbox/fuel/permission gate. Ids must be non-empty and
+//!   free of ASCII controls (`E-PLG-005`). Untrusted descriptors must
+//!   declare positive fuel; `network` requires the `network` permission;
+//!   every capability must be inside `allowed_capabilities`. Refusals are
+//!   typed (`E-PLG-002`, `E-PLG-003`, `E-PLG-005`) and deterministic;
 //! - [`execute`]: the harness entry. The Phase 1 subset has no component
 //!   runtime, so execution is a typed refusal (`E-PLG-001`); the shape of
 //!   the call (`descriptor, input -> output`) is the stable contract that
@@ -129,9 +130,23 @@ impl PluginDescriptor {
 
 /// The admission gate: sandbox/fuel/permission decision.
 ///
-/// Refusals: `E-PLG-002` (sandbox violation), `E-PLG-003` (capability
-/// outside the allowed set or none declared).
+/// Refusals: `E-PLG-005` (empty/control id), `E-PLG-002` (sandbox
+/// violation), `E-PLG-003` (capability outside the allowed set or none
+/// declared).
 pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginError> {
+    // Empty or control-bearing ids break log/diagnostic line framing and
+    // make content ids ambiguous; refuse before sandbox checks.
+    if descriptor.id.is_empty()
+        || descriptor
+            .id
+            .chars()
+            .any(|ch| (ch as u32) < 0x20 || ch == '\u{7f}')
+    {
+        return Err(PluginError::new(
+            "E-PLG-005",
+            "plugin id must be non-empty and free of ASCII control characters".into(),
+        ));
+    }
     if descriptor.capabilities.is_empty() {
         return Err(PluginError::new(
             "E-PLG-003",

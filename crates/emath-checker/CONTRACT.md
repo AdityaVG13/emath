@@ -20,7 +20,7 @@ Frequently re-exported types (not exhaustive):
 
 - The checker never calls generator internals; it reads only the retained artifact and recomputes content identity.
 - Artifact identity must recompute (E-EVID-102); content identity must match (E-EVID-101).
-- Evidence/goal scope must match the artifact (E-EVID-103); stale certificates refuse (E-EVID-104).
+- Evidence/goal scope must match the artifact (E-EVID-103); stale certificates refuse (E-EVID-104). Manifest `evidence_level` must not exceed the strongest Pass claim level (also `E-EVID-103`).
 - Symlink and non-UTF-8 paths are refused (E-EVID-113, E-EVID-114).
 - Claim language must not be stronger than available evidence (E-EVID-201).
 - Translation mismatch has no independent verification basis unless a witness verifies (E-EVID-301, E-EVID-302).

@@ -154,9 +154,12 @@ impl QualityGate {
         if verdict.eligible() {
             Ok(())
         } else {
-            let (code, label) = verdict
-                .first_failure()
-                .expect("ineligible verdict has at least one failure");
+            let Some((code, label)) = verdict.first_failure() else {
+                return Err(LabError::new(
+                    "E-HOST-005",
+                    "quality gate blocked without a recorded failure",
+                ));
+            };
             Err(LabError::new(
                 code,
                 format!("quality gate blocked before measurement: {label}"),

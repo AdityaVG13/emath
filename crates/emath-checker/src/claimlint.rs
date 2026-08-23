@@ -50,11 +50,30 @@ const WORDING: &[(&str, u8, &str)] = &[
     ("approximate", 0, "approximate"),
 ];
 
+/// True when `term` appears in `haystack` as a whole token/phrase
+/// (ASCII alphanumeric boundaries). Prevents `"unproven"` matching
+/// `"proven"` and `"unexpected"` matching `"expected"`.
+fn contains_term(haystack: &str, term: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let mut from = 0;
+    while let Some(rel) = haystack[from..].find(term) {
+        let start = from + rel;
+        let end = start + term.len();
+        let before_ok = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+        let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
 impl ClaimLinter {
     /// Lints documentation lines against the bundle's evidence level.
-    /// Statements are matched case-insensitively; the strongest matched
-    /// term decides. Overclaims are flagged deterministically in line
-    /// order with a downgrade suggestion.
+    /// Statements are matched case-insensitively on word/phrase
+    /// boundaries; the strongest matched term decides. Overclaims are
+    /// flagged deterministically in line order with a downgrade suggestion.
     #[must_use]
     pub fn lint(&self, level: EvidenceLevel, statements: &[String]) -> Vec<LintIssue> {
         let mut issues = Vec::new();
@@ -63,7 +82,7 @@ impl ClaimLinter {
             let lowered = statement.to_ascii_lowercase();
             let best = WORDING
                 .iter()
-                .filter(|(term, _, _)| lowered.contains(term))
+                .filter(|(term, _, _)| contains_term(&lowered, term))
                 .max_by_key(|(_, minimum, _)| *minimum);
             if let Some((term, minimum, suggestion)) = best {
                 if *minimum > available {

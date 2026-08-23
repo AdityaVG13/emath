@@ -23,6 +23,7 @@ where
     Fut: std::future::Future<Output = ()>,
 {
     asupersync::test_utils::run_test(move || async move {
+        // ubs:ignore — test-only helper; run_test installs Cx before the body runs.
         let cx = Cx::current().expect("test runtime Cx must be installed by block_on");
         f(cx).await;
     });

@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+emath-ir = { path = "../../crates/emath-ir" }
 emath-schema = { path = "../../crates/emath-schema" }
 
 # Standalone package (own lockfile): opt out of the repository workspace so

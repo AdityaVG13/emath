@@ -340,6 +340,16 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<u8> {
             return Some(2);
         }
         if flag_takes_value(arg) {
+            // Value-taking flags at EOL previously advanced off the end and
+            // fell through to silent defaults (e.g. `agent build f --out`).
+            if index + 1 >= args.len() {
+                eprintln!("error: `{arg}` needs a value for `emath {command}`");
+                if let Some(usage) = command_usage(command) {
+                    eprintln!("usage: emath {usage}");
+                }
+                eprintln!("try: emath help {command}");
+                return Some(2);
+            }
             index += 1;
         }
         index += 1;

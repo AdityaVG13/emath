@@ -270,7 +270,10 @@ fn quote(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            ch if (ch as u32) < 0x20 => write!(out, "\\u{:04x}", ch as u32).unwrap(),
+            ch if (ch as u32) < 0x20 => {
+                // fmt::Write for String is infallible; avoid unwrap on the hot path.
+                let _ = write!(out, "\\u{:04x}", ch as u32);
+            }
             ch => out.push(ch),
         }
     }

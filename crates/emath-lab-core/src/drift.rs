@@ -135,10 +135,18 @@ impl DriftMonitor {
         expected: f64,
     ) -> Vec<DriftAlert> {
         let mut fired = Vec::new();
-        if expected == 0.0 {
-            return fired;
-        }
-        let deviation = (observed - expected).abs() / expected.abs();
+        // Relative deviation is undefined at a zero baseline. Matching
+        // zeros are in-band; any nonzero observation against a zero
+        // expectation is infinite relative drift and must fire, not
+        // silently pass.
+        let deviation = if expected == 0.0 {
+            if observed == 0.0 {
+                return fired;
+            }
+            f64::INFINITY
+        } else {
+            (observed - expected).abs() / expected.abs()
+        };
         for band in &self.bands {
             if band.kind == kind
                 && (band.metric_id.is_empty() || band.metric_id == metric_id)

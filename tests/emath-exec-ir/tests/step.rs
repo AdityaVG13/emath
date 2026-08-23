@@ -327,6 +327,37 @@ fn non_positive_atol_is_refused() {
 }
 
 #[test]
+fn adaptive_refuses_nan_initial_state() {
+    // NaN fourth/fifth pairs used to report err=0 via f64::max ignoring NaN,
+    // so adaptive RK45 silently "converged" on a poisoned trajectory.
+    let package = decay_package();
+    let declaration = &package.declarations[0];
+    let mut state = BTreeMap::new();
+    state.insert("x".to_string(), Value::F64(f64::NAN));
+    let error = simulate_continuous_with(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.0,
+        1.0,
+        0.1,
+        StepMethod::Rk45,
+        &SimulateOptions {
+            atol: Some(1e-6),
+            rtol: Some(1e-6),
+            dt_max: Some(0.2),
+            event: None,
+        },
+    )
+    .unwrap_err();
+    assert!(
+        error.contains("non-finite"),
+        "expected non-finite refusal, got: {error}"
+    );
+}
+
+#[test]
 fn event_stops_when_x_crosses_half() {
     let package = decay_package();
     let declaration = &package.declarations[0];
@@ -356,4 +387,35 @@ fn event_stops_when_x_crosses_half() {
     };
     assert!((x - 0.5).abs() < 1e-6, "x={x} t={}", last.t);
     assert!(last.t < 1.0, "event time should be before t1, t={}", last.t);
+}
+
+#[test]
+fn event_refuses_non_finite_gap() {
+    // NaN gaps make `g0 * g1 > 0` false, so the locator treated a blow-up
+    // as a bracketed crossing and bisected garbage.
+    let package = decay_package();
+    let declaration = &package.declarations[0];
+    let mut state = BTreeMap::new();
+    state.insert("x".to_string(), Value::F64(f64::NAN));
+    let error = simulate_continuous_with(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.0,
+        1.0,
+        0.1,
+        StepMethod::Euler,
+        &SimulateOptions {
+            atol: None,
+            rtol: None,
+            dt_max: None,
+            event: Some(("x".to_string(), 0.0)),
+        },
+    )
+    .unwrap_err();
+    assert!(
+        error.contains("non-finite"),
+        "expected non-finite event refusal, got: {error}"
+    );
 }

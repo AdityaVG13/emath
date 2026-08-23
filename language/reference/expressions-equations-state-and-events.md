@@ -123,10 +123,13 @@ the full computation chain.
 `solve(residual) wrt var` finds the value of input `var` that drives
 `residual` to zero, using Newton's method (`x -= f(x)/f'(x)`). Each
 step uses the same dual-number evaluation for both the residual value
-and its derivative. `minimize(objective) wrt var` and `maximize(objective)
+and its derivative. A vanished derivative or exhausting the iteration
+budget without `|f| < tolerance` is a typed refusal, not a silent
+non-root. `minimize(objective) wrt var` and `maximize(objective)
 wrt var` find the input value that minimizes or maximizes `objective`
 using gradient descent (`x -= lr * f'(x)`) or ascent (`x += lr * f'(x)`).
-The initial guess is the input value supplied at runtime.
+The initial guess is the input value supplied at runtime. Exhausting
+iterations without a stationary gradient is likewise refused.
 
 Definitions are directed: `name = expr`. Later definitions may use
 earlier ones, in source order.

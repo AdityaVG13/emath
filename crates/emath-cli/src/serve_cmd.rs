@@ -9,7 +9,6 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
-use std::thread;
 
 use crate::EXIT_USAGE;
 
@@ -57,12 +56,14 @@ pub fn web_cmd(args: &[String]) -> u8 {
     if !parsed.no_open {
         open_browser(&url);
     }
+    // Handle one connection at a time on the accept thread. This is a
+    // localhost playground (127.0.0.1 only): unbounded `thread::spawn` per
+    // accept was a resource/DoS footgun and left JoinHandles detached.
     loop {
         let Ok((stream, _)) = listener.accept() else {
             continue;
         };
-        let dist = dist.clone();
-        thread::spawn(move || handle_connection(stream, &dist));
+        handle_connection(stream, &dist);
     }
 }
 
@@ -260,7 +261,16 @@ fn handle_connection(mut stream: TcpStream, dist: &Path) {
             Ok(body) => {
                 write_response(&mut stream, 200, "OK", content_type(&file), &body);
             }
-            Err(_) => write_not_found(&mut stream),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                write_not_found(&mut stream);
+            }
+            Err(_) => write_response(
+                &mut stream,
+                500,
+                "Internal Server Error",
+                "text/plain; charset=utf-8",
+                b"Internal Server Error\n",
+            ),
         },
         None => write_not_found(&mut stream),
     }

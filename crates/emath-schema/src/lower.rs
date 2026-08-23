@@ -201,14 +201,46 @@ impl LowerExt for KindSchema {
     }
 
     fn rename_section(&mut self, from: &str, to: &str) {
-        let existing = self
-            .section(from)
-            .cloned()
-            .expect("rename source checked before mutation");
+        let Some(existing) = self.section(from).cloned() else {
+            return;
+        };
         self.remove_section(from);
         self.insert_section(to, existing);
-        // Keep provenance: the new name admits the old one.
-        self.insert_default(format!("admission.{to}"), from.to_string());
+        // Migrate admission/bind provenance with the section. A bare
+        // `admission.{to}=from` would orphan prior hoist aliases under
+        // `admission.{from}` and leave `bind.{from}` pointing at a removed
+        // section — both corrupt identity and `is_bound` after rename.
+        let old_admission = format!("admission.{from}");
+        let new_admission = format!("admission.{to}");
+        let mut aliases = Vec::new();
+        if let Some(prev) = self.default_for(&old_admission) {
+            for part in prev.split(',').filter(|part| !part.is_empty()) {
+                if !aliases.iter().any(|alias| alias == part) {
+                    aliases.push(part.to_string());
+                }
+            }
+        }
+        if !aliases.iter().any(|alias| alias == from) {
+            aliases.push(from.to_string());
+        }
+        if let Some(existing_to) = self.default_for(&new_admission) {
+            for part in existing_to.split(',').filter(|part| !part.is_empty()) {
+                if !aliases.iter().any(|alias| alias == part) {
+                    aliases.push(part.to_string());
+                }
+            }
+        }
+        self.remove_default(&old_admission);
+        self.insert_default(new_admission, aliases.join(","));
+
+        let old_bind = format!("bind.{from}");
+        let new_bind = format!("bind.{to}");
+        if let Some(symbol) = self.default_for(&old_bind).map(str::to_string) {
+            self.remove_default(&old_bind);
+            if self.default_for(&new_bind).is_none() {
+                self.insert_default(new_bind, symbol);
+            }
+        }
     }
 
     fn bind_section(&mut self, section: &str, symbol: &str) {

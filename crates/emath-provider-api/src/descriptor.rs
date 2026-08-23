@@ -174,14 +174,20 @@ impl CapabilityTable {
     }
 
     /// Versioned canonical encoding (`descriptor:`).
+    ///
+    /// Includes isolation, lock, evidence ceiling, and determinism so a
+    /// ceiling/determinism drift changes identity the same way
+    /// `emath-plan::ProviderFingerprint` does (cross-crate contract).
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut capabilities: Vec<&CapabilitySpec> = self.capabilities.iter().collect();
         capabilities.sort_by(|left, right| left.name.cmp(&right.name));
         format!(
-            "descriptor:{}:{}:{}",
+            "descriptor:{}:{}:ev{}:det{}:{}",
             self.isolation.name(),
             lock_token(&self.lock),
+            self.maximum_evidence.as_str(),
+            u8::from(self.deterministic),
             capabilities
                 .iter()
                 .map(|capability| capability_token(capability))

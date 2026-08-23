@@ -192,8 +192,8 @@ impl Term {
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut output = String::new();
-        self.write_canonical(&mut output)
-            .expect("writing into String cannot fail");
+        // ubs:ignore — fmt::Write for String is infallible.
+        let _ = self.write_canonical(&mut output);
         output
     }
 

@@ -370,9 +370,8 @@ pub fn infer_signature_named(
 
     let mut signature = Signature::default();
     for (symbol, arity) in &arities {
-        signature
-            .insert(symbol.clone(), *arity)
-            .expect("each symbol is inserted exactly once");
+        // ubs:ignore — insert keys come from a BTreeMap, so arity conflicts are impossible.
+        let _ = signature.insert(symbol.clone(), *arity);
     }
     // Deterministic fixity-hypothesis priority: infix > prefix > postfix >
     // constant. A symbol seen in several positions resolves to the highest

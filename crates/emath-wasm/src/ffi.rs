@@ -12,10 +12,12 @@
 //!    `capacity()` equals `len`; pinned by `test_em_alloc_capacity_exact`)
 //!    and **length = 0**, leaked via [`std::mem::forget`]. The host owns
 //!    that region until [`em_free`].
-//! 2. [`em_free`] reconstructs that `Vec` with `from_raw_parts(ptr, 0, len)`
-//!    and drops it. `ptr`/`len` must match a live allocation from
-//!    [`em_alloc`] (including the JSON buffer returned by [`em_run`]).
-//!    Double-free or a mismatched length is undefined.
+//! 2. [`em_free`] reconstructs that `Vec` with
+//!    `from_raw_parts(ptr, 0, stored_cap)` and drops it. `ptr` must be a
+//!    live allocation from [`em_alloc`] (including the JSON buffer returned
+//!    by [`em_run`]). Double-free / foreign `ptr` are no-ops via
+//!    `LIVE_ALLOCS`. Host `len` is ignored for drop sizing — the capacity
+//!    recorded at mint time always wins (mismatched `len` cannot UB).
 //! 3. [`em_run`] reads `[op_ptr, op_ptr + op_len)` and
 //!    `[payload_ptr, payload_ptr + payload_len)` as UTF-8. Those slices
 //!    must be valid, initialized, and not freed for the duration of the
@@ -38,7 +40,7 @@
 
 #![allow(clippy::cast_possible_truncation)]
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::ptr;
 use std::slice;
 use std::sync::LazyLock;
@@ -49,29 +51,33 @@ use crate::run_op;
 
 static INIT_PANIC_HOOK: Once = Once::new();
 
-/// Live-ownership set of every address/id this module has minted via
+/// Live-ownership map of every address/id this module has minted via
 /// `em_alloc` (or the host-alloc shim) and has not yet reclaimed via
-/// `em_free`.
+/// `em_free`. Values are the exact capacity recorded at mint time.
 ///
 /// This is the load-bearing, locally-enforced half of the `em_free`
 /// soundness invariant: a raw address only reaches `Vec::from_raw_parts`
 /// if it is (a) minted by this module and (b) still owed. Foreign pointers
 /// and double-frees of addresses with no current membership are rejected as
 /// provable no-ops before any dereference, without trusting the host ABI
-/// pledge. The guard is generation-blind (address-keyed): a stale pointer
-/// whose address a later `em_alloc` reused is indistinguishable from that
-/// new mint and passes membership, so a stray double-free straddling an
-/// address-reusing `em_alloc` can consume the new mint's single free pass
-/// (double-free of live memory). That sequence requires the host to already
-/// be violating the exactly-once contract, so it stays a documented ABI
+/// pledge. Reconstruction always uses the **stored capacity**, so a host
+/// that passes a mismatched `len` cannot induce allocator UB — the caller's
+/// `len` is ignored for the drop size (still a contract violation to lie,
+/// but no longer undefined). The guard is generation-blind (address-keyed):
+/// a stale pointer whose address a later `em_alloc` reused is
+/// indistinguishable from that new mint and passes membership, so a stray
+/// double-free straddling an address-reusing `em_alloc` can consume the new
+/// mint's single free pass. That sequence requires the host to already be
+/// violating the exactly-once contract, so it stays a documented ABI
 /// violation, not a guard-guaranteed no-op.
 ///
 /// Single-threaded wasm linear memory, so the `Mutex` is uncontended; the
 /// poisoning policy (`unwrap_or_else(Into::into_inner)`) mirrors
-/// `INIT_PANIC_HOOK`'s style and keeps a poisoned set usable after a panic.
-static LIVE_ALLOCS: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+/// `INIT_PANIC_HOOK`'s style and keeps a poisoned map usable after a panic.
+static LIVE_ALLOCS: LazyLock<Mutex<HashMap<u32, u32>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn live_allocs_lock() -> std::sync::MutexGuard<'static, HashSet<u32>> {
+fn live_allocs_lock() -> std::sync::MutexGuard<'static, HashMap<u32, u32>> {
     LIVE_ALLOCS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
@@ -117,31 +123,40 @@ mod host_alloc {
         }
         // `vec![0u8; len]` guarantees capacity == len exactly (RawVec from a
         // sized repeat has no amortized-growth path), so the paired `free`
-        // `Vec::from_raw_parts(raw_addr, 0, len)` reconstructs the identical
-        // capacity and the drop sizes the `free` correctly (site 1).
+        // reconstructs with the stored capacity and the drop sizes correctly
+        // (site 1).
         let mut buf = vec![0u8; len as usize];
         let capacity = buf.capacity();
         debug_assert_eq!(capacity, len as usize, "exact-capacity invariant (ffi host shim)");
         let ptr = buf.as_mut_ptr();
         std::mem::forget(buf);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // Register the id before the addr table so em_free's LIVE_ALLOCS gate
-        // and host resolve agree on minted-ness. One guard set, both paths
-        // (shared with the wasm32 alloc_region above).
-        super::live_allocs_lock().insert(id);
-        let mut map = ALLOCATIONS.lock().unwrap();
+        // Hold LIVE_ALLOCS then ALLOCATIONS together (same order as em_free →
+        // host free) so a concurrent em_free cannot observe membership in
+        // LIVE_ALLOCS while the addr table still lacks the id — that window
+        // would remove the guard entry and miss the free, leaking the buffer.
+        let mut live = super::live_allocs_lock();
+        let mut map = ALLOCATIONS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        live.insert(id, len);
         map.insert(id, (ptr as usize, capacity));
         (id, capacity)
     }
 
-    pub fn free(ptr: u32, len: u32) {
+    /// Reclaim a host-shim allocation. `expected_len` is the caller-reported
+    /// size; reconstruction always uses the capacity stored at mint time.
+    pub fn free(ptr: u32, expected_len: u32) {
         if ptr == 0 {
             return;
         }
-        let mut map = ALLOCATIONS.lock().unwrap();
-        if let Some((raw_addr, _cap)) = map.remove(&ptr) {
+        let mut map = ALLOCATIONS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((raw_addr, cap)) = map.remove(&ptr) {
+            let _ = expected_len; // host report ignored; drop uses mint capacity
             unsafe {
-                let _ = Vec::from_raw_parts(raw_addr as *mut u8, 0, len as usize);
+                let _ = Vec::from_raw_parts(raw_addr as *mut u8, 0, cap);
             }
         }
     }
@@ -150,7 +165,9 @@ mod host_alloc {
         if ptr == 0 {
             return std::ptr::null();
         }
-        let map = ALLOCATIONS.lock().unwrap();
+        let map = ALLOCATIONS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.get(&ptr).map_or(std::ptr::null(), |&(addr, _)| addr as *const u8)
     }
 }
@@ -205,9 +222,10 @@ fn alloc_region(len: u32) -> (u32, usize) {
         // 32-bit); `vec![0; len]` keeps capacity exactly len so `em_free`'s
         // from_raw_parts reconstructs an identical Vec (site 1).
         std::mem::forget(buf);
-        // Minted-and-owed: register the address so em_free's guard accepts it
-        // exactly once. Never registers the len==0 null case (returned above).
-        live_allocs_lock().insert(ptr as u32);
+        // Minted-and-owed: register address → capacity so em_free accepts it
+        // exactly once and reconstructs with the mint-time size. Never
+        // registers the len==0 null case (returned above).
+        live_allocs_lock().insert(ptr as u32, len);
         (ptr as u32, capacity)
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -220,8 +238,10 @@ fn alloc_region(len: u32) -> (u32, usize) {
 ///
 /// # Safety (host contract)
 ///
-/// `ptr` and `len` must be a live pair from [`em_alloc`]. `ptr == 0` is a
-/// no-op (the `len == 0` allocation).
+/// `ptr` must be a live address from [`em_alloc`]. `ptr == 0` is a no-op
+/// (the `len == 0` allocation). The host should pass the original `len`;
+/// reconstruction uses the capacity stored at mint time, so a mismatched
+/// `len` is ignored for allocator sizing (no UB) rather than trusted.
 #[unsafe(no_mangle)]
 pub extern "C" fn em_free(ptr: u32, len: u32) {
     if ptr == 0 {
@@ -238,47 +258,46 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     // guaranteed no-op). So the `Vec::from_raw_parts` block below runs only
     // on addresses with a current membership record, and at most once per
     // mint (a stray second call for the same address is a no-op unless a
-    // re-mint intervened).
-    if !live_allocs_lock().remove(&ptr) {
+    // re-mint intervened). Capacity comes from the map value, never from the
+    // host's `len` argument.
+    let Some(cap) = live_allocs_lock().remove(&ptr) else {
         return;
-    }
-    // SAFETY: `Vec::from_raw_parts(ptr, 0, len)` reconstructs ownership of a
+    };
+    let _ = len; // host report ignored; drop uses mint capacity `cap`
+    // SAFETY: `Vec::from_raw_parts(ptr, 0, cap)` reconstructs ownership of a
     // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
     //
     // (0) Invariant locally enforced by LIVE_ALLOCS membership (single-
     //     threaded wasm; Mutex uncontended): this block runs only on
     //     addresses this module minted and still owes, exactly-once.
     //     Foreign/double/stale pointers never reach this block.
-    // (1) Valid ownership: `ptr`/`len` is a live pair minted by
-    //     `em_alloc`, still leaked and not double-freed (guard, step 0).
-    //     Reconstructing it here transfers that responsibility back to the
-    //     Vec, whose drop now frees it.
-    // (2) Capacity coupling: `vec![0; len]` in `alloc_region` produced
-    //     capacity exactly `len` (sized repeat), so
-    //     `from_raw_parts(ptr, 0, len)`'s cap == len matches the allocator's
-    //     footprint; the drop's `free` uses the same size the alloc used.
-    //     This allocator-identity clause is enforced by construction
-    //     (`vec![0; len]` round-trips through the same global allocator the
-    //     drop's `free` reaches), not by the guard.
+    // (1) Valid ownership: `ptr` is a live mint from `em_alloc`, still
+    //     leaked and not double-freed (guard, step 0). Reconstructing it
+    //     here transfers that responsibility back to the Vec, whose drop
+    //     now frees it.
+    // (2) Capacity coupling: `cap` is the exact capacity recorded when
+    //     `vec![0; len]` minted this region (sized repeat ⇒ capacity ==
+    //     requested len). `from_raw_parts(ptr, 0, cap)` matches the
+    //     allocator footprint; the host's `len` argument is not used for
+    //     the drop size, so a mismatched report cannot induce UB.
     // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
     //     the zero-length (null) allocation is never reconstructed here.
     // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
     //     drops the Vec by binding.
     // Residual: if the guard and reality disagree (allocator swap, memory
     //     corruption) such that a registered `ptr`'s backing no longer
-    //     matches `vec![0; len]`'s footprint, `from_raw_parts` can
-    //     panic/UB. The guard CANNOT catch that — it enforces minted-
-    //     and-owed, not the allocator's physical layout; the capacity
-    //     coupling (clause 2) must already be intact.
-    // Enforced by: LIVE_ALLOCS membership (clause 0) plus `alloc_region`'s
-    // exact-capacity construction (clauses 2-3). Failure = host feeding a
-    // foreign/double/mismatched pair, an ABI violation, not a library bug.
+    //     matches the stored capacity, `from_raw_parts` can panic/UB. The
+    //     guard enforces minted-and-owed + recorded capacity, not the
+    //     allocator's physical layout against external corruption.
+    // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0–2)
+    // and `alloc_region`'s exact-capacity construction. Failure = host
+    // feeding a foreign/double pair or memory corruption, not a library bug.
     #[cfg(target_arch = "wasm32")]
     unsafe {
-        let _ = Vec::from_raw_parts(ptr as *mut u8, 0, len as usize);
+        let _ = Vec::from_raw_parts(ptr as *mut u8, 0, cap as usize);
     }
     #[cfg(not(target_arch = "wasm32"))]
-    host_alloc::free(ptr, len);
+    host_alloc::free(ptr, cap);
 }
 
 /// Dispatch `op` / `payload` and return a packed JSON allocation.
@@ -318,12 +337,13 @@ fn read_utf8<'a>(ptr: u32, len: u32) -> Result<&'a str, &'static str> {
     let raw_ptr = ptr as *const u8;
     #[cfg(not(target_arch = "wasm32"))]
     let raw_ptr = {
+        // Host builds mint opaque IDs, not native addresses. An unresolved
+        // id must not be cast to a pointer — that would be dangling UB.
         let resolved = host_alloc::resolve(ptr);
         if resolved.is_null() {
-            ptr as usize as *const u8
-        } else {
-            resolved
+            return Err("invalid UTF-8 input");
         }
+        resolved
     };
     // SAFETY: `slice::from_raw_parts(raw_ptr, len)` is sound only if the
     // whole `[raw_ptr, raw_ptr + len)` range is in-bounds, aligned, valid,
@@ -351,46 +371,62 @@ fn read_utf8<'a>(ptr: u32, len: u32) -> Result<&'a str, &'static str> {
 
 fn pack_json(json: &str) -> u64 {
     let bytes = json.as_bytes();
-    let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
-    let copy_len = bytes.len().min(len as usize);
+    // Refuse rather than silently truncate a >u32::MAX response into a
+    // corrupt (ptr,len) pack the host would treat as complete JSON.
+    let Ok(len) = u32::try_from(bytes.len()) else {
+        return 0;
+    };
+    let copy_len = bytes.len();
     let ptr = em_alloc(len);
+    // Non-empty response must mint a real region. A zero ptr with nonzero
+    // len would be an invalid pack (host would read from linear-memory
+    // base). Recurse once through the error path only when the primary
+    // alloc failed — error JSON is tiny and cannot itself OOM in practice;
+    // if it did, return the empty pack rather than loop.
+    if copy_len != 0 && ptr == 0 {
+        if json.starts_with("{\"ok\": false") {
+            return 0;
+        }
+        return pack_json(&crate::error_json("wasm response allocation failed"));
+    }
     if copy_len != 0 && ptr != 0 {
         #[cfg(target_arch = "wasm32")]
         let dst = ptr as *mut u8;
         #[cfg(not(target_arch = "wasm32"))]
         let dst = host_alloc::resolve(ptr).cast_mut();
 
-        if !dst.is_null() {
-            // SAFETY: `ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len)`
-            // requires `copy_len` writable bytes at `dst`, readable bytes at
-            // the source, and the two ranges non-overlapping.
-            //
-            // (1) Fresh dst: `dst` is a region just returned by
-            //     `em_alloc(len)` (or its host-table alias) with capacity
-            //     >= copy_len == bytes.len(); it is not otherwise referenced
-            //     and is exclusively owned by this write.
-            // (2) Non-overlap by construction: `dst` is freshly allocated and
-            //     never aliases the static `bytes` input buffer; the only
-            //     degenerate case is empty JSON (`copy_len == 0`), which the
-            //     enclosing `copy_len != 0 && ptr != 0` guard skips.
-            // (3) Readable source / writable dst: `bytes` borrows the call's
-            //     `&str`; `dst` is free, writable slack the host expects to be
-            //     overwritten (module invariant round-trip).
-            // (4) u32::MAX truncation unreachable: `u32::try_from` saturates
-            //     at u32::MAX (4 GiB - 1) on 64-bit hosts; on wasm32 the
-            //     response lives in linear memory (max 4 GiB), so a real JSON
-            //     response can never exceed the cap. A >4 GiB host response
-            //     would truncate `len` and copy into a truncated region — no
-            //     test produces one; documented boundary. Even at the cap,
-            //     `copy_len` is bounded by actual `bytes.len()`, so no source
-            //     read past the buffer occurs.
-            // Enforced by: `alloc_region`'s exact-capacity contract (clause 1)
-            // and the length guard above (clause 4). Failure = a host that
-            // overwrote the fresh region between `em_alloc` and this copy, an
-            // ABI violation.
-            unsafe {
-                ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len);
+        if dst.is_null() {
+            em_free(ptr, len);
+            if json.starts_with("{\"ok\": false") {
+                return 0;
             }
+            return pack_json(&crate::error_json("wasm response allocation failed"));
+        }
+        // SAFETY: `ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len)`
+        // requires `copy_len` writable bytes at `dst`, readable bytes at
+        // the source, and the two ranges non-overlapping.
+        //
+        // (1) Fresh dst: `dst` is a region just returned by
+        //     `em_alloc(len)` (or its host-table alias) with capacity
+        //     >= copy_len == bytes.len(); it is not otherwise referenced
+        //     and is exclusively owned by this write.
+        // (2) Non-overlap by construction: `dst` is freshly allocated and
+        //     never aliases the static `bytes` input buffer; the only
+        //     degenerate case is empty JSON (`copy_len == 0`), which the
+        //     enclosing `copy_len != 0 && ptr != 0` guard skips.
+        // (3) Readable source / writable dst: `bytes` borrows the call's
+        //     `&str`; `dst` is free, writable slack the host expects to be
+        //     overwritten (module invariant round-trip).
+        // (4) Length bound: `u32::try_from(bytes.len())` above returns 0
+        //     (no pack) when the response exceeds u32::MAX, so this copy
+        //     only runs when `len == bytes.len()` fits in `u32` and
+        //     `copy_len == bytes.len()`.
+        // Enforced by: `alloc_region`'s exact-capacity contract (clause 1)
+        // and the fallible length check above (clause 4). Failure = a host
+        // that overwrote the fresh region between `em_alloc` and this copy,
+        // an ABI violation.
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), dst, copy_len);
         }
     }
     (u64::from(ptr) << 32) | u64::from(len)
@@ -421,29 +457,42 @@ mod tests {
     fn test_em_free_zero() {
         em_free(0, 0);
         // ptr == 0 never registers (len == 0 mint path returns 0 unregistered).
-        assert!(!live_allocs_lock().contains(&0));
+        assert!(!live_allocs_lock().contains_key(&0));
     }
 
     #[test]
     fn test_em_alloc_zero_not_registered() {
         assert_eq!(em_alloc(0), 0);
-        assert!(!live_allocs_lock().contains(&0), "null never mints a guard entry");
+        assert!(
+            !live_allocs_lock().contains_key(&0),
+            "null never mints a guard entry"
+        );
     }
 
     #[test]
     fn test_em_free_double_free_noop() {
         let p = em_alloc(64);
         assert_ne!(p, 0);
-        assert!(live_allocs_lock().contains(&p), "alloc mints a guard entry");
+        assert_eq!(
+            live_allocs_lock().get(&p).copied(),
+            Some(64),
+            "alloc mints ptr→capacity"
+        );
 
         em_free(p, 64);
-        assert!(!live_allocs_lock().contains(&p), "first free reclaims the entry");
+        assert!(
+            !live_allocs_lock().contains_key(&p),
+            "first free reclaims the entry"
+        );
 
         // Second free of the same pair is a provable no-op: no re-deref, no
         // panic. `p` is our own unique handle (monotonic id), so membership
         // checks are race-free even alongside parallel tests.
         em_free(p, 64);
-        assert!(!live_allocs_lock().contains(&p), "double free leaves no residue");
+        assert!(
+            !live_allocs_lock().contains_key(&p),
+            "double free leaves no residue"
+        );
     }
 
     #[test]
@@ -453,9 +502,31 @@ mod tests {
         // not ours and not reachable by concurrent ids, so the containment
         // check is stable.
         let unminted = 0xDEAD_BEEF_u32;
-        assert!(!live_allocs_lock().contains(&unminted));
+        assert!(!live_allocs_lock().contains_key(&unminted));
         em_free(unminted, 16);
-        assert!(!live_allocs_lock().contains(&unminted));
+        assert!(!live_allocs_lock().contains_key(&unminted));
+    }
+
+    #[test]
+    fn test_em_free_mismatched_len_uses_stored_capacity() {
+        // Host lies about len; reconstruction must still use mint capacity
+        // (no allocator UB). Drop sizing reads the map value, not `len`.
+        let p = em_alloc(32);
+        assert_ne!(p, 0);
+        assert_eq!(live_allocs_lock().get(&p).copied(), Some(32));
+        em_free(p, 9999);
+        assert!(
+            !live_allocs_lock().contains_key(&p),
+            "mismatched len still reclaims via stored capacity"
+        );
+        em_free(p, 32); // double-free remains a no-op
+    }
+
+    #[test]
+    fn test_read_utf8_unresolved_host_id_rejected() {
+        // On the host shim, IDs are opaque. An unminted id must not be
+        // interpreted as a native pointer.
+        assert_eq!(read_utf8(0xDEAD_BEEF, 4), Err("invalid UTF-8 input"));
     }
 
     #[test]

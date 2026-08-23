@@ -1430,11 +1430,19 @@ fn op_expr(
                 inner.push_str(&format!("let __d{index} = {tangent};\n"));
             }
             let result_idx = body.result.0;
+            // Match interpreter: vanish/exhaustion panic; final Newton
+            // update is re-checked so a last-step root still succeeds.
             Ok(Expr::Raw(format!(
-                "{{ let mut __x = {};\nfor _ in 0..{max_iter} {{\n{inner}\
+                "{{ let mut __x = {};\nlet mut __converged = false;\n\
+                 for _ in 0..{max_iter} {{\n{inner}\
                  let __f = __e{result_idx};\nlet __df = __d{result_idx};\n\
-                 if __f.abs() < {tolerance} || __df.abs() < 1e-30 {{ break; }}\n\
-                 __x -= __f / __df;\n}}\n__x }}",
+                 if __f.abs() < {tolerance} {{ __converged = true; break; }}\n\
+                 if __df.abs() < 1e-30 {{ panic!(\"solve derivative vanished before convergence\"); }}\n\
+                 __x -= __f / __df;\n}}\n\
+                 if !__converged {{\n{inner}\
+                 if __e{result_idx}.abs() < {tolerance} {{ __converged = true; }}\n}}\n\
+                 if !__converged {{ panic!(\"solve did not converge within max_iter\"); }}\n\
+                 __x }}",
                 render_expr(&init),
             )))
         }
@@ -1448,15 +1456,16 @@ fn op_expr(
         } => {
             // Multi-variable gradient descent (or ascent).
             // One primal/tangent pass per variable gives each partial.
+            // Match interpreter: refuse max_iter exhaustion (panic — evaluate is f64).
             let sign = if *maximize { "" } else { "-" };
-            let mut block = String::from("{ ");
+            let mut block = String::from("{ let mut __converged = false;\n");
             // Initialize __x{i} for each variable.
             for (i, vi) in var_indices.iter().enumerate() {
                 let init = op_expr(&EmirOp::LoadInput(*vi), program, names, states)?;
                 block.push_str(&format!("let mut __x{i} = {};\n", render_expr(&init)));
             }
-            block.push_str(&format!("for _ in 0..{max_iter} {{\n"));
-            // For each variable, compute the gradient.
+            // Shared dual-number body used in-loop and for the final check.
+            let mut grad_body = String::new();
             let mut grads = Vec::new();
             for (i, vi) in var_indices.iter().enumerate() {
                 let mut opt_names = names.to_vec();
@@ -1467,18 +1476,16 @@ fn op_expr(
                 opt_names[viu] = format!("__x{i}");
                 for (index, (op, _)) in body.ops.iter().enumerate() {
                     let primal = op_expr(op, body, &opt_names, states)?;
-                    block.push_str(&format!(
+                    grad_body.push_str(&format!(
                         "let __e_{i}_{index} = {};\n",
                         render_expr(&primal)
                     ));
-                    // Tangent: use __e_{i}_{N} and __d_{i}_{N} instead of __e{N} and __d{N}
                     let tangent = dual_tangent_str_multi(op, *vi, i, index);
-                    block.push_str(&format!("let __d_{i}_{index} = {tangent};\n"));
+                    grad_body.push_str(&format!("let __d_{i}_{index} = {tangent};\n"));
                 }
                 let result_idx = body.result.0;
                 grads.push(format!("__d_{i}_{result_idx}"));
             }
-            // Convergence check: max gradient magnitude.
             let max_grad = grads
                 .iter()
                 .map(|g| format!("{g}.abs()"))
@@ -1489,13 +1496,24 @@ fn op_expr(
             } else {
                 format!("{max_grad})")
             };
-            block.push_str(&format!("if {max_grad_expr} < {tolerance} {{ break; }}\n"));
-            // Update all variables.
+            block.push_str(&format!("for _ in 0..{max_iter} {{\n"));
+            block.push_str(&grad_body);
+            block.push_str(&format!(
+                "if {max_grad_expr} < {tolerance} {{ __converged = true; break; }}\n"
+            ));
             for (i, g) in grads.iter().enumerate() {
                 block.push_str(&format!("__x{i} += {sign} {learning_rate} * {g};\n"));
             }
             block.push_str("}\n");
-            // Return the first variable's value.
+            // Final stationarity check after the last gradient step.
+            block.push_str("if !__converged {\n");
+            block.push_str(&grad_body);
+            block.push_str(&format!(
+                "if {max_grad_expr} < {tolerance} {{ __converged = true; }}\n}}\n"
+            ));
+            block.push_str(
+                "if !__converged { panic!(\"optimize did not converge within max_iter\"); }\n",
+            );
             block.push_str("__x0 }");
             Ok(Expr::Raw(block))
         }
@@ -1552,11 +1570,16 @@ fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> String {
         EmirOp::Fract(a) => format!("__d{}", a.0),
         EmirOp::Hypot(a, b) => {
             let idx_s = idx.to_string();
-            format!("(__e{} * __d{} + __e{} * __d{}) / __e{}", a.0, a.0, b.0, b.0, idx_s)
+            format!(
+                "if __e{idx_s} == 0.0 {{ 0.0 }} else {{ (__e{} * __d{} + __e{} * __d{}) / __e{idx_s} }}",
+                a.0, a.0, b.0, b.0
+            )
         }
+        // Match interpreter: constant-exponent form when db==0 (avoids ln
+        // for a<=0); otherwise general a^b * (b*a'/a + b'*ln(a)).
         EmirOp::F64Pow(a, b) => format!(
-            "__e{} * __e{}.powf(__e{} - 1.0) * __d{}",
-            b.0, a.0, b.0, a.0
+            "if __d{} == 0.0 {{ __e{} * __e{}.powf(__e{} - 1.0) * __d{} }} else {{ __e{} * (__e{} * __d{} / __e{} + __d{} * __e{}.ln()) }}",
+            b.0, b.0, a.0, b.0, a.0, idx, b.0, a.0, a.0, b.0, a.0
         ),
         EmirOp::Min(a, b) => format!(
             "if __e{} < __e{} {{ __d{} }} else {{ __d{} }}",
@@ -1637,11 +1660,28 @@ fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, idx: usize) 
         EmirOp::Recip(a) => format!("-{} / ({} * {})", d(a.0), e(a.0), e(a.0)),
         EmirOp::Fract(a) => format!("{}", d(a.0)),
         EmirOp::Hypot(a, b) => {
-            format!("({} * {} + {} * {}) / {}", e(a.0), d(a.0), e(b.0), d(b.0), e(idx as u32))
+            let h = e(idx as u32);
+            format!(
+                "if {h} == 0.0 {{ 0.0 }} else {{ ({} * {} + {} * {}) / {h} }}",
+                e(a.0),
+                d(a.0),
+                e(b.0),
+                d(b.0)
+            )
         }
         EmirOp::F64Pow(a, b) => format!(
-            "{} * {}.powf({} - 1.0) * {}",
-            e(b.0), e(a.0), e(b.0), d(a.0)
+            "if {} == 0.0 {{ {} * {}.powf({} - 1.0) * {} }} else {{ {} * ({} * {} / {} + {} * {}.ln()) }}",
+            d(b.0),
+            e(b.0),
+            e(a.0),
+            e(b.0),
+            d(a.0),
+            e(idx as u32),
+            e(b.0),
+            d(a.0),
+            e(a.0),
+            d(b.0),
+            e(a.0)
         ),
         EmirOp::Min(a, b) => format!("if {} < {} {{ {} }} else {{ {} }}", e(a.0), e(b.0), d(a.0), d(b.0)),
         EmirOp::Max(a, b) => format!("if {} > {} {{ {} }} else {{ {} }}", e(a.0), e(b.0), d(a.0), d(b.0)),

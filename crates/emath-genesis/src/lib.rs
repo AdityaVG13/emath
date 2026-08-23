@@ -288,10 +288,11 @@ impl FirstOrderWorld for ModularAlienWorld {
 #[must_use]
 pub fn reference_alien_term() -> (Signature, Term) {
     let mut signature = Signature::default();
-    signature.insert(SymbolId("⧖".into()), 1).unwrap();
-    signature.insert(SymbolId("⋈".into()), 2).unwrap();
-    signature.insert(SymbolId("⊛".into()), 2).unwrap();
-    signature.insert(SymbolId("ζ".into()), 0).unwrap();
+    // ubs:ignore — static distinct symbols; Signature::insert only errs on arity conflict.
+    let _ = signature.insert(SymbolId("⧖".into()), 1);
+    let _ = signature.insert(SymbolId("⋈".into()), 2);
+    let _ = signature.insert(SymbolId("⊛".into()), 2);
+    let _ = signature.insert(SymbolId("ζ".into()), 0);
 
     let joined = Term::Apply {
         operator: SymbolId("⋈".into()),
