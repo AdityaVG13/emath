@@ -44,6 +44,7 @@ say what the compiler does with each one today.
 | [heat-rod.emath](numerical/heat-rod.emath) | Runs. `emath function` one Euler step of the 1D heat equation; `laplacian(u, dx)` with Clamp/Neumann/Dirichlet boundaries is admitted. |
 | [heat-rod-sim.emath](numerical/heat-rod-sim.emath) | Runs. `emath model` with vector state `u: Vector[5]` and `der(u) = alpha * laplacian(u, 1.0)`; `emath simulate` integrates the 1D heat equation over time (insulated boundary conserves total heat). |
 | [heat-plate.emath](numerical/heat-plate.emath) | Runs. `emath function` one Euler step of the 2D heat equation; `laplacian_2d(u, dx)` (5-point stencil, clamped edges) is admitted. |
+| [heat-plate-sim.emath](numerical/heat-plate-sim.emath) | Runs. `emath model` with matrix state `u: Matrix[3,3]` and `der(u) = alpha * laplacian_2d(u, 1.0)`; `emath simulate` integrates the 2D heat equation over time (insulated boundary conserves total heat). |
 | [gradient-field.emath](numerical/gradient-field.emath) | Runs. `emath function` computing 1-D `gradient(u, dx)` and 2-D `gradient_2d_x`/`gradient_2d_y` (central-difference first derivatives, clamped edges). |
 
 ## search — conjecture and optimization
