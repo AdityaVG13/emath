@@ -908,3 +908,39 @@ fn heat_plate_2d_laplacian_admits_and_inline_tests_pass() {
     );
     assert!(t1.verdict.expect_passed());
 }
+
+#[test]
+fn gradient_field_admits_and_inline_tests_pass() {
+    let source = include_str!("../../../language/examples/numerical/gradient-field.emath");
+    let result = check_source("gradient-field", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "gradient-field must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    // linear_vector_has_constant_gradient: du/dx of a slope-1 ramp is 1
+    // interior / 0.5 clamped edges; a zero matrix has zero gradients.
+    let t0 = &report.declarations[0].tests[0];
+    assert_eq!(
+        t0.outputs.get("du"),
+        Some(&Value::Vector(vec![0.5, 1.0, 1.0, 1.0, 0.5]))
+    );
+    assert!(t0.verdict.expect_passed());
+    // ramp_matrix_has_axis_gradients: du/dc of a column-ramp is 1 interior
+    // / 0.5 clamped; du/dr of a column-ramp is zero (no row variation).
+    let t1 = &report.declarations[0].tests[1];
+    assert_eq!(
+        t1.outputs.get("gx"),
+        Some(&Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![0.5, 1.0, 0.5, 0.5, 1.0, 0.5, 0.5, 1.0, 0.5]
+        })
+    );
+    assert!(t1.verdict.expect_passed());
+}
