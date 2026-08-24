@@ -94,8 +94,7 @@ Save as `my_first.emath`, run `emath test my_first.emath`.
 | Learn all the names and namespaces | [NAMING.md](NAMING.md) |
 | Read complete examples | [examples/intro/](examples/intro/) |
 | Understand the full language | [reference/overview.md](reference/overview.md) |
-| Simulate ODEs/DAEs | [examples/intro/damped-oscillator.emath](examples/intro/damped-oscillator.emath) |
+| Simulate ODEs/DAEs | [examples/intro/algebraic-dae.emath](examples/intro/algebraic-dae.emath) |
 | Do linear algebra | [examples/intro/tensor-face.emath](examples/intro/tensor-face.emath) |
 | Work with finite fields | [examples/intro/modular-arithmetic.emath](examples/intro/modular-arithmetic.emath) |
-| Explore RS proximity | [examples/intro/rs-proximity.emath](examples/intro/rs-proximity.emath) |
 | Add a new language feature | [MAINTAINING.md](MAINTAINING.md) |
