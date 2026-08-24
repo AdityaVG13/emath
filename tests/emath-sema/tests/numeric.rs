@@ -236,7 +236,84 @@ emath function CacheLike:
 
 #[test]
 fn cache_policy_example_no_longer_refuses_units_as_absent() {
-    let source = include_str!("../../../language/examples/integration/cache-policy.emath");
+    let source = r#"
+use core::math::{Real, Probability, NonNegative, exp}
+use core::units::{Duration, Bytes, MiB}
+use host::cache_core::{CacheCandidate, Policy}
+
+emath policy AdaptiveCachePolicy:
+    about:
+        summary: "Dimension-safe cache scoring policy with generated derivatives and host adapter."
+
+    inputs:
+        candidate: CacheCandidate
+
+    outputs:
+        score: Float64
+
+    state:
+        alpha: NonNegative<Real>
+        gamma: NonNegative<Per<Duration>>
+        memory_penalty: NonNegative<Real>
+
+    constructors:
+        public fn new(
+            alpha: Real,
+            gamma: Per<Duration>,
+            memory_penalty: Real,
+        ) -> Result<Self, ConfigError>:
+            require alpha >= 0
+            require gamma >= 0 / s
+            require memory_penalty >= 0
+            Self:
+                alpha = alpha
+                gamma = gamma
+                memory_penalty = memory_penalty
+
+    definitions:
+        score =
+            candidate.reuse_probability^state.alpha
+            * candidate.rebuild_cost / 1 ms
+            * exp(-(state.gamma * candidate.age))
+            / (1 + state.memory_penalty * candidate.bytes / 1 MiB)
+
+    goals:
+        evaluate <score>:
+            produce rust.library
+
+        differentiate <score>:
+            wrt [state.alpha, state.gamma, state.memory_penalty]
+            order 1
+
+        benchmark <score>:
+            against host::LruPolicy::score
+            measure [latency, hit_rate, bytes_retained, token_cost]
+
+    evidence:
+        claim <finite_score>:
+            statement is_finite(score)
+            require guarded
+
+        claim <nonnegative_score>:
+            statement score >= 0
+            require bounded
+
+    compile:
+        target rust
+        representation Real => Float64(round = nearest, overflow = error)
+        unresolved parametric
+
+    exports:
+        public type AdaptiveCachePolicy
+        public function score
+        public function gradient_score
+
+    host:
+        rust:
+            implement cache_core::Policy for AdaptiveCachePolicy:
+                method score(candidate: &CacheCandidate) -> f64:
+                    evaluate score with candidate = candidate
+"#;
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("cache-policy", source);

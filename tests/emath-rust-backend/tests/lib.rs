@@ -366,11 +366,11 @@ fn constant_only_declaration_generates_parameterless_method() {
         .get("src/lib.rs")
         .expect("generated crate has src/lib.rs");
     assert!(
-        lib.contains("fn y()") || lib.contains("fn y(&self)"),
+        lib.contains("fn TwentyOne()") || lib.contains("fn TwentyOne(&self)"),
         "no-input declaration must generate a parameterless evaluator, got:\n{lib}"
     );
     assert!(
-        !lib.contains("fn y(&self,") && !lib.contains("fn y(&self ,") && !lib.contains("fn y(,"),
+        !lib.contains("fn TwentyOne(&self,") && !lib.contains("fn TwentyOne(&self ,") && !lib.contains("fn TwentyOne(,"),
         "no-input evaluator must not take extra parameters, got:\n{lib}"
     );
 }
@@ -553,7 +553,7 @@ fn chained_definitions_emit_let_bindings_in_source_order() {
         .get("src/lib.rs")
         .expect("generated crate has src/lib.rs");
     assert!(
-        lib.contains("let a =") && lib.contains("pub fn b("),
+        lib.contains("let a =") && lib.contains("pub fn Chain("),
         "evaluate b must let-bind earlier definition a, got:\n{lib}"
     );
 }
