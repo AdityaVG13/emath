@@ -106,7 +106,7 @@ record_expr      = path , ":" , suite ;
 range_expr       = [ expression ] , ( ".." | "..=" ) , [ expression ] ;
 
 binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , binder_list , ":" , expression
-                 | ( "derivative" | "jacobian" | "hessian" ) , expression , "wrt" , expression ;
+                 | ( "derivative" | "jacobian" | "hessian" ) , postfix_expr , "wrt" , expression ;
 binder_list      = pattern , "in" , expression , { "," , pattern , "in" , expression } ;
 
 type_expr        = type_primary , { type_operator , type_primary } ;
