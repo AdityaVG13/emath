@@ -82,6 +82,7 @@ pub(super) fn map_type(
         "Bool" => Some(TypeNode::Bool),
         "Nat" => Some(TypeNode::Nat),
         "Int" => Some(TypeNode::Int),
+        "Complex" => Some(TypeNode::Complex(Box::new(TypeNode::Float64))),
         "Self" => Some(TypeNode::Other(QualifiedName("Self".into()))),
         "NonNegative" | "Positive" | "Probability" => {
             let inner = generic_args
@@ -260,6 +261,7 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
             | "Probability"
             | "Per"
             | "Interval"
+            | "Complex"
             | "Vector"
             | "Matrix"
             | "Tensor"

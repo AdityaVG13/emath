@@ -1042,3 +1042,147 @@ emath function test(x: Float64) -> Float64:
         other => panic!("expected Derivative, got {:?}", other),
     }
 }
+
+// ---- Complex numbers (B14) ------------------------------------------------
+
+#[test]
+fn complex_literal_2i_parses() {
+    // `2i` should parse as `2 * i` (imaginary literal).
+    let source = "\
+emath function test() -> Float64:
+    definitions:
+        result = 2i
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "2i must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Binary { op, left, right } => {
+            assert_eq!(*op, BinaryOp::Mul, "should be multiplication");
+            assert!(
+                matches!(&left.kind, ExprKind::Float(v) if v == "2"),
+                "left should be Float(\"2\"), got {:?}",
+                left.kind
+            );
+            assert!(
+                matches!(&right.kind, ExprKind::Path { segments, .. } if segments == &["i"]),
+                "right should be Path([\"i\"]), got {:?}",
+                right.kind
+            );
+        }
+        other => panic!("expected Binary Mul, got {:?}", other),
+    }
+}
+
+#[test]
+fn complex_literal_3_5i_parses() {
+    // `3.5i` should parse as `3.5 * i`.
+    let source = "\
+emath function test() -> Float64:
+    definitions:
+        result = 3.5i
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "3.5i must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Binary { op, left, right } => {
+            assert_eq!(*op, BinaryOp::Mul);
+            assert!(
+                matches!(&left.kind, ExprKind::Float(v) if v == "3.5"),
+                "left should be Float(\"3.5\"), got {:?}",
+                left.kind
+            );
+            assert!(
+                matches!(&right.kind, ExprKind::Path { segments, .. } if segments == &["i"]),
+                "right should be Path([\"i\"]), got {:?}",
+                right.kind
+            );
+        }
+        other => panic!("expected Binary Mul, got {:?}", other),
+    }
+}
+
+#[test]
+fn complex_literal_in_expression_parses() {
+    // `1 + 2i` should parse as `1 + (2 * i)`.
+    let source = "\
+emath function test() -> Float64:
+    definitions:
+        result = 1 + 2i
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "1 + 2i must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Binary { op: BinaryOp::Add, right, .. } => {
+            // right should be 2 * i
+            match &right.kind {
+                ExprKind::Binary { op: BinaryOp::Mul, .. } => {}
+                other => panic!("expected Mul for 2i, got {:?}", other),
+            }
+        }
+        other => panic!("expected Add, got {:?}", other),
+    }
+}
+
+#[test]
+fn complex_type_parses() {
+    // `Complex` as a type annotation.
+    let source = "\
+emath model ComplexTest:
+    inputs:
+        z: Complex
+";
+    let (_tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "Complex type must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn vector_of_complex_parses() {
+    // `Vector<Complex, [2]>` — Complex as element type.
+    let source = "\
+emath model ComplexVector:
+    inputs:
+        v: Vector<Complex, [2]>
+";
+    let (_tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "Vector<Complex, [2]> must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn identifier_starting_with_i_not_complex() {
+    // `image` should NOT be parsed as complex literal — `i` is only a
+    // complex suffix when not followed by identifier characters.
+    let source = "\
+emath function test(image: Float64) -> Float64:
+    definitions:
+        result = image + 1
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "`image` should be a regular identifier, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+}

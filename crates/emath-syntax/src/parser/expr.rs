@@ -664,6 +664,30 @@ impl super::Parser {
             }
             TokenKind::Float(text) => {
                 self.advance();
+                // B14: Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
+                // The lexer includes `i` in the Float token text. We
+                // desugar to `N * i` where `i` is the imaginary unit
+                // (a named constant resolved by sema).
+                if text.ends_with('i') && text.len() > 1 {
+                    let coeff = &text[..text.len() - 1];
+                    return Some(Expr {
+                        kind: ExprKind::Binary {
+                            op: BinaryOp::Mul,
+                            left: Box::new(Expr {
+                                kind: ExprKind::Float(coeff.to_string()),
+                                source: start,
+                            }),
+                            right: Box::new(Expr {
+                                kind: ExprKind::Path {
+                                    segments: vec!["i".to_string()],
+                                    generics: None,
+                                },
+                                source: start.cover(self.last_span()),
+                            }),
+                        },
+                        source: start,
+                    });
+                }
                 Some(Expr {
                     kind: ExprKind::Float(text),
                     source: start,
