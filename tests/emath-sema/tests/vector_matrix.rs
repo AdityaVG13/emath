@@ -944,3 +944,115 @@ fn gradient_field_admits_and_inline_tests_pass() {
     );
     assert!(t1.verdict.expect_passed());
 }
+
+// ---- B02: filtered binder tests ---------------------------------------
+
+#[test]
+fn b02_filtered_sum_computes() {
+    // `sum i in 0..n if i > 2: i` — sums only elements > 2.
+    // For n=5: 3 + 4 = 7
+    let source = "\
+emath function FilteredSum:
+    inputs:
+        n: Float64
+    outputs:
+        total: Float64
+    definitions:
+        total = sum i in 0..n if i > 2: i
+    tests:
+        example <filtered>:
+            given n = 5
+            expect total == 7
+";
+    let result = check_source("filtered-sum", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "filtered sum must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(
+        test.outputs.get("total"),
+        Some(&Value::F64(7.0)),
+        "filtered sum of i>2 for n=5 should be 7 (3+4)"
+    );
+    assert!(
+        test.verdict.expect_passed(),
+        "filtered sum expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn b02_always_false_filter_gives_identity() {
+    // `sum i in 0..n if i < 0: i` — always-false filter = empty sum = 0
+    let source = "\
+emath function EmptyFilteredSum:
+    inputs:
+        n: Float64
+    outputs:
+        total: Float64
+    definitions:
+        total = sum i in 0..n if i < 0: i
+    tests:
+        example <empty>:
+            given n = 5
+            expect total == 0
+";
+    let result = check_source("empty-filtered-sum", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "always-false filtered sum must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(
+        test.outputs.get("total"),
+        Some(&Value::F64(0.0)),
+        "always-false filter should give identity (0)"
+    );
+    assert!(
+        test.verdict.expect_passed(),
+        "empty filtered sum expect must pass, got {}",
+        test.verdict
+    );
+}
+
+#[test]
+fn b02_filtered_forall_computes() {
+    // `forall i in 0..n if i < n: i >= 0` — all elements less than n
+    // are non-negative. For n=5: all of 0,1,2,3,4 are >= 0 → true.
+    let source = "\
+emath function FilteredForAll:
+    inputs:
+        n: Float64
+    outputs:
+        ok: Bool
+    definitions:
+        ok = forall i in 0..n if i < n: i >= 0
+    tests:
+        example <filteredforall>:
+            given n = 5
+            expect ok == true
+";
+    let result = check_source("filtered-forall", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "filtered forall must admit, got: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(
+        test.outputs.get("ok"),
+        Some(&Value::Bool(true)),
+        "filtered forall should be true"
+    );
+    assert!(
+        test.verdict.expect_passed(),
+        "filtered forall expect must pass, got {}",
+        test.verdict
+    );
+}

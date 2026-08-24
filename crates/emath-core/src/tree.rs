@@ -197,6 +197,8 @@ pub enum StmtKind {
         kind: BinderKind,
         binders: Vec<Binder>,
         suite: Suite,
+        /// B02: optional `if <condition>` guard clause.
+        guard: Option<Box<Expr>>,
     },
     SelfBlock {
         assignments: Vec<(String, Expr)>,
@@ -314,6 +316,10 @@ pub enum ExprKind {
         kind: BinderKind,
         binders: Vec<Binder>,
         body: Box<Expr>,
+        /// B02: optional `if <condition>` guard clause on the binder.
+        /// When present, the fold only includes iterations where the
+        /// guard evaluates to true.
+        guard: Option<Box<Expr>>,
     },
     /// `derivative(x)` or `derivative temperature wrt time`.
     Derivative {

@@ -187,10 +187,15 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             kind,
             binders,
             body,
+            guard,
         } => {
             // The expression-level binder requires the colon form:
-            // `sum i in S: body`.
+            // `sum i in S: body` or `sum i in S if cond: body`.
             format_binder_head(out, *kind, binders);
+            if let Some(guard_expr) = guard {
+                out.push_str(" if ");
+                format_expr(out, guard_expr, Prec::Root);
+            }
             out.push_str(": ");
             format_expr(out, body, Prec::Root);
         }

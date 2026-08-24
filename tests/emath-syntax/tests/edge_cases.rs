@@ -656,3 +656,26 @@ emath function test() -> Bool:
         expr.kind
     );
 }
+
+#[test]
+fn b02_binder_guard_parses() {
+    // `sum i in 0..n if i > 2: i` should parse as a Binder with a guard.
+    let source = "\
+emath function test(n: Float64) -> Float64:
+    definitions:
+        result = sum i in 0..n if i > 2: i
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "binder with guard must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Binder { guard, .. } => {
+            assert!(guard.is_some(), "guard should be Some");
+        }
+        other => panic!("expected Binder, got {:?}", other),
+    }
+}

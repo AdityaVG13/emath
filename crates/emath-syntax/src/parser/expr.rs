@@ -96,7 +96,7 @@ impl super::Parser {
                         source: start.cover(self.last_span()),
                     };
                 }
-                TokenKind::Keyword(Keyword::If) if depth > 0 => {
+                TokenKind::Keyword(Keyword::If) if depth > 0 && !self.suppress_postfix_if => {
                     self.advance();
                     let condition = self.parse_loose_expr()?;
                     let start = expr.source;
@@ -739,6 +739,8 @@ impl super::Parser {
                 let kind = binder_kind(self.peek());
                 self.advance();
                 let binders = self.parse_binders()?;
+                // B02: optional `if <condition>` guard clause.
+                let guard = self.parse_binder_guard();
                 if !self.eat(&TokenKind::Colon) {
                     self.error_here("E-SYN-111", "expected `:` after binder variables");
                     return None;
@@ -753,6 +755,7 @@ impl super::Parser {
                         kind,
                         binders,
                         body: Box::new(body),
+                        guard,
                     },
                     source: start.cover(self.last_span()),
                 })

@@ -480,8 +480,13 @@ fn format_stmt_kind_inner(out: &mut String, kind: &StmtKind, level: usize) {
             kind: bkind,
             binders,
             suite,
+            guard,
         } => {
             format_binder_head(out, *bkind, binders);
+            if let Some(guard_expr) = guard {
+                out.push_str(" if ");
+                format_expr(out, guard_expr, Prec::Root);
+            }
             out.push_str(":\n");
             format_suite(out, suite, level + 1);
         }
