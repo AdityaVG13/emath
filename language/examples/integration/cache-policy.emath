@@ -10,7 +10,7 @@ emath policy AdaptiveCachePolicy:
         candidate: CacheCandidate
 
     outputs:
-        score: Real
+        score: Float64
 
     state:
         alpha: NonNegative<Real>

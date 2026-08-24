@@ -8,7 +8,7 @@ emath function modular_basics:
     p = 7
     (* Modular arithmetic via builtins *)
     inv3 = mod_inv(3, p)       (* 3^(-1) mod 7 = 5 *)
-    check = cong(3 * inv3, 1, p) (* 3*5 ≡ 1 (mod 7) → true *)
+    check = congruence(3 * inv3, 1, p) (* 3*5 ≡ 1 (mod 7) → true *)
 
     (* Wilson's theorem: (p-1)! ≡ -1 (mod p) for prime p *)
     fac6 = factorial(6)        (* 6! = 720 *)
@@ -19,8 +19,8 @@ emath function modular_basics:
     expect inv3 == 5
     expect check == true
     expect wilson == 6
-    expect cong(17, 5, 12) == true   (* 17 ≡ 5 (mod 12) *)
-    expect cong(17, 6, 12) == false  (* 17 ≢ 6 (mod 12) *)
+    expect congruence(17, 5, 12) == true   (* 17 ≡ 5 (mod 12) *)
+    expect congruence(17, 6, 12) == false  (* 17 ≢ 6 (mod 12) *)
 
 emath function rs_distance:
   (* Reed-Solomon code distance: d = n - k + 1 (Singleton bound)

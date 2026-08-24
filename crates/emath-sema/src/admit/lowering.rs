@@ -18,6 +18,24 @@ use super::{
     E_UNKNOWN_FUNCTION, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE,
 };
 
+/// Strip namespace prefixes from builtin function names.
+///
+/// Builtin functions can be called with or without a namespace prefix:
+/// `sin(x)` and `math::sin(x)` are equivalent. This function normalizes
+/// namespaced paths to their bare form so the rest of the lowering only
+/// needs to handle one spelling.
+///
+/// Recognized prefixes: `math::`, `linalg::`, `pde::`, `coding::`,
+/// `core::math::` (legacy).
+fn normalize_builtin(name: &str) -> String {
+    for prefix in &["math::", "linalg::", "pde::", "coding::", "core::math::"] {
+        if let Some(bare) = name.strip_prefix(prefix) {
+            return bare.to_string();
+        }
+    }
+    name.to_string()
+}
+
 impl super::Admitter {
     pub(super) fn lower_expr(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
         match &expr.kind {
@@ -196,6 +214,7 @@ impl super::Admitter {
                     return None;
                 };
                 let name = segments.join(".");
+                let name = normalize_builtin(&name);
                 if matches!(name.as_str(), "sum" | "product") {
                     if args.len() != 1 {
                         self.error(
@@ -210,10 +229,9 @@ impl super::Admitter {
                 let arity: Option<usize> = match name.as_str() {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
                     | "tanh" | "abs" | "floor" | "ceil" | "round" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt" | "recip" | "fract"
-                    | "norm" | "transpose" | "length" | "len" | "mean" | "factorial" => Some(1),
+                    | "norm" | "transpose" | "length" | "mean" | "factorial" => Some(1),
                     "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" | "mod_inv" => Some(2),
-                    "lerp" | "clamp" | "cong" => Some(3),
-                    "poly_eval_mod" | "rs_encode" => Some(3),
+                    "lerp" | "clamp" | "congruence" | "poly_eval_mod" | "rs_encode" => Some(3),
                     "laplacian_dirichlet" => Some(4),
                     "einsum" => {
                         // einsum(subscripts, tensor1, ...) — variable arity, min 2.
@@ -241,7 +259,7 @@ impl super::Admitter {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y, einsum, factorial, mod_inv, cong, poly_eval_mod, rs_encode)"
+                                "unknown function `{name}` (Phase 1 builtins — math: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y; coding: poly_eval_mod, rs_encode. Use bare names or namespace::name)"
                             ),
                             function.source,
                         );
@@ -522,7 +540,7 @@ impl super::Admitter {
                             }
                         }
                     }
-                    "length" | "len" => {
+                    "length" => {
                         let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
                         if !matches!(arg_infer, Infer::Vector { .. } | Infer::HostDeferred) {
                             self.error(
@@ -699,7 +717,7 @@ impl super::Admitter {
                         );
                         Some((id, Infer::Int))
                     }
-                    "cong" => {
+                    "congruence" => {
                         let (a_id, _) = self.lower_expr(&args[0])?;
                         let (b_id, _) = self.lower_expr(&args[1])?;
                         let (m_id, _) = self.lower_expr(&args[2])?;

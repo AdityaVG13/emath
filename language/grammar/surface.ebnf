@@ -106,7 +106,7 @@ call_suffix      = "(" , [ argument_list ] , ")" ;
    remaining arguments are tensor operands. Recognized as a builtin by
    sema and lowered to EmirOp::Einsum. *)
 (* B15: Modular arithmetic builtins: `factorial(n)` → i64, `mod_inv(a, m)` → i64,
-   `cong(a, b, m)` → Bool. `Mod<p>` and `GF<p>` are admitted as Int types.
+   `congruence(a, b, m)` → Bool. `GF<p>` is admitted as Int type.
    `poly_eval_mod(coeffs, x, p)` → i64 (Horner over GF(p)),
    `rs_encode(coeffs, n, p)` → Vector (RS codeword).
    These parse as regular call_suffix on path primaries, recognized by sema. *)

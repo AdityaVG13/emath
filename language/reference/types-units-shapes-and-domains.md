@@ -12,12 +12,13 @@ Graph, Field, Distribution, StateMachine
 record, variant, trait, opaque/external
 ```
 
-`Real` is mathematical and does not by itself prescribe `f64`.
+`Real` is the mathematical concept of real numbers. As a compute type,
+use `Float64` — `Real` is no longer an admitted type alias.
 
 ## Refinement types
 
 ```emath
-type Probability = Real where 0 <= self and self <= 1
+type Probability = Float64 where 0 <= self and self <= 1
 type Positive<T> = T where self > 0
 ```
 
@@ -115,7 +116,7 @@ The chosen profile enters artifact identity and evidence.
 Admitted compute types:
 
 ```text
-Float64  Bool  Nat  Int  Complex  Mod<p>  GF<p>
+Float64  Bool  Nat  Int  Complex  GF<p>  GF<p>
 Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
 ```
@@ -149,7 +150,7 @@ Numeric models:
 
 Not admitted as compute types yet: `Rat`, bare `Real`,
 `Option`, `Result`, `Graph`, `Field`, records as values, refinement
-predicates such as `NonNegative<Real>`.
+predicates such as `NonNegative<Float64>`.
 
 `Complex` is admitted as a type (e.g., `Complex`, `Vector<Complex, [2]>`).
 Complex literals use the `Ni` suffix (e.g., `2i`, `3.5i`) which desugars
@@ -159,7 +160,7 @@ shadowed by an input or definition. Complex arithmetic (add, sub, mul,
 div, neg, eq, ne) is fully supported in the interpreter via a native
 `Complex { re, im }` value type.
 
-`Mod<p>` and `GF<p>` are admitted as `Int` types (e.g., `Mod<7>`, `GF<2>`).
+`GF<p>` and `GF<p>` are admitted as `Int` types (e.g., `Mod<7>`, `GF<2>`).
 Values are exact i64 integers; modular reduction is an operational concern
 handled by the builtins (`mod`, `mod_inv`, `cong`), not by the type system.
 

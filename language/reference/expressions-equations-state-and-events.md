@@ -344,7 +344,7 @@ admitted in `definitions:` and `equations:`:
   overflow guard). Returns `Int`.
 - `mod_inv(a, m)` — modular inverse of `a` modulo `m` via extended GCD.
   Errors at runtime if `gcd(a, m) != 1`. Returns `Int`.
-- `cong(a, b, m)` — congruence test: `(a - b) mod m == 0`. Returns `Bool`.
+- `congruence(a, b, m)` — congruence test: `(a - b) mod m == 0`. Returns `Bool`.
 - `mod(a, m)` — floating-point remainder (already available as a general
   builtin; works on `Int` values too via i64-to-f64 coercion).
 - `poly_eval_mod(coeffs, x, p)` — evaluates polynomial `c[0] + c[1]*x +
@@ -354,7 +354,7 @@ admitted in `definitions:` and `equations:`:
   evaluating the polynomial at points `0, 1, ..., n-1` over `GF(p)`.
   Returns a `Vector` of `n` values.
 
-`Mod<p>` and `GF<p>` are admitted as `Int` types — values are exact
+`GF<p>` and `GF<p>` are admitted as `Int` types — values are exact
 integers, and modular reduction is performed by the builtins, not the
 type system. This is sufficient for Reed–Solomon code construction
 over small prime fields (evaluating polynomials, checking distances,

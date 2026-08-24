@@ -116,10 +116,10 @@ Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
 Admitted types:
 
 ```text
-Float64  Bool  Nat  Int  Complex  Mod<p>  GF<p>
+Float64  Bool  Nat  Int  Complex  GF<p>  GF<p>
 Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
-NonNegative<Real> / Positive<Real> / Probability<Real>
+NonNegative<Float64> / Positive<Float64> / Probability<Float64>
 Interval<Float64>
 ```
 
@@ -140,7 +140,7 @@ minimize(expr) wrt x / maximize(expr) wrt x  (gradient descent/ascent)
 einsum("ik,kj->ij", A, B)      (Einstein summation contraction)
 factorial(n)                   (exact i64 factorial, n in [0,20])
 mod_inv(a, m)                  (modular inverse via extended GCD)
-cong(a, b, m)                  (congruence test: (a-b) mod m == 0)
+congruence(a, b, m)                  (congruence test: (a-b) mod m == 0)
 poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's method)
 rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p))
 1 + 2i / 2i / 3.5i             (complex literals, Ni suffix — computes via Complex arithmetic)

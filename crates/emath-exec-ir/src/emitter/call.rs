@@ -13,6 +13,21 @@ impl super::Emitter {
         args: &[EmirExprRef],
         span: Span,
     ) -> Result<EmirValue, String> {
+        // Normalize namespace prefixes: math::sin → sin, linalg::dot → dot, etc.
+        // This lets users write either `sin(x)` or `math::sin(x)`.
+        let function_owned;
+        let function = if let Some(bare) = function
+            .strip_prefix("math::")
+            .or_else(|| function.strip_prefix("linalg::"))
+            .or_else(|| function.strip_prefix("pde::"))
+            .or_else(|| function.strip_prefix("coding::"))
+            .or_else(|| function.strip_prefix("core::math::"))
+        {
+            function_owned = bare.to_string();
+            &function_owned
+        } else {
+            function
+        };
         // Arity is enforced in every build, debug or release (bug-hunt
         // residual: debug_assert let empty/1-arg unary calls through to an
         // indexing panic and silently dropped extras in release).
@@ -43,7 +58,6 @@ impl super::Emitter {
                 | "norm"
                 | "transpose"
                 | "length"
-                | "len"
                 | "core::math::exp"
                 | "core::math::ln"
                 | "core::math::log"
@@ -425,7 +439,7 @@ impl super::Emitter {
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::MatrixTranspose(v), span)
             }
-            "length" | "len" => {
+            "length" => {
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::VectorLength(v), span)
             }
@@ -514,7 +528,7 @@ impl super::Emitter {
                 let m = self.emit(package, args[1])?;
                 self.push(EmirOp::ModInv(a, m), span)
             }
-            "cong" | "core::math::cong" => {
+            "congruence" => {
                 let a = self.emit(package, args[0])?;
                 let b = self.emit(package, args[1])?;
                 let m = self.emit(package, args[2])?;

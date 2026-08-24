@@ -6,7 +6,7 @@ emath optimization CapacityPlan<N: Nat>:
 
     outputs:
         allocation: Vector<NonNegative<Real>, N>
-        total_cost: Real
+        total_cost: Float64
 
     constraints:
         forall i in 0..N: allocation[i] <= capacity[i]

@@ -28,11 +28,11 @@ emath kind ScoringPolicyKind:
 
 emath ScoringPolicyKind SimpleScore:
     inputs:
-        x: Real
-        y: Real
+        x: Float64
+        y: Float64
 
     outputs:
-        score: Real
+        score: Float64
 
     definitions:
         score = x / (1 + abs(y))

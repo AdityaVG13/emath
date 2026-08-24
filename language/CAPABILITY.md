@@ -35,11 +35,11 @@
 
 | Type | Parses | Admits | Computes |
 |------|--------|--------|----------|
-| `Float64` `Real` `f64` | yes | yes | yes |
+| `Float64` | yes | yes | yes |
 | `Bool` | yes | yes | yes |
 | `Nat` `Int` | yes | yes | yes (Int → exact i64 output) |
 | `Complex` | yes | yes | yes (Complex value type, `i` constant, arithmetic) |
-| `Mod<p>` `GF<p>` | yes | yes (as Int) | yes (via builtins) |
+| `GF<p>` `GF<p>` | yes | yes (as Int) | yes (via builtins) |
 | `Vector[n]` `Matrix[r,c]` `Tensor[...]` | yes | yes | yes |
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
 | `Interval<F>` | yes | yes | yes |
@@ -93,6 +93,6 @@
 | `einsum` | variable (≥2) | yes |
 | `factorial` | 1 | yes (i64, n ∈ [0,20]) |
 | `mod_inv` | 2 | yes (i64, extended GCD) |
-| `cong` | 3 | yes (Bool) |
+| `congruence` | 3 | yes (Bool) |
 | `poly_eval_mod` | 3 | yes (i64, Horner over GF(p)) |
 | `rs_encode` | 3 | yes (Vector, RS codeword) |

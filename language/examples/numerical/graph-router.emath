@@ -11,7 +11,7 @@ emath graph_algorithm ToolRouteGraph<NodeCount: Nat>:
 
         record Route:
             nodes: Sequence<NodeId>
-            total_cost: Real
+            total_cost: Float64
 
     inputs:
         graph: DirectedGraph<NodeId, NodeCost, NodeCount>
