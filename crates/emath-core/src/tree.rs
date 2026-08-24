@@ -338,10 +338,16 @@ pub enum ExprKind {
         /// guard evaluates to true.
         guard: Option<Box<Expr>>,
     },
-    /// `derivative(x)` or `derivative temperature wrt time`.
+    /// `derivative(x)`, `∂(T) wrt x` (partial), `total(T) wrt t` (total).
+    /// `∂(H) wrt T holding p` — held-fixed set is part of the term.
     Derivative {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,
+        kind: DerivativeKind,
+        /// Held-fixed set: variables held constant during differentiation.
+        /// `∂(H) wrt T holding p` — part of the term's identity (hash-relevant).
+        /// Different holding sets produce different terms.
+        holding: Vec<Expr>,
     },
     /// `solve(f) wrt x` — Newton's-method root-finding.
     /// The parser creates `Solve { value, wrt: None }` and the `wrt`
@@ -410,6 +416,18 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
+}
+
+/// Kind of derivative operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DerivativeKind {
+    /// `derivative(x)` — unqualified (existing behavior).
+    Plain,
+    /// `∂(T)` / `partial(T)` — partial derivative.
+    /// Requires explicit `holding` set or refused as MeaningHole.
+    Partial,
+    /// `total(T)` / `d(T)` — total/material derivative.
+    Total,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -81,14 +81,27 @@ pub fn expr_text(expr: &Expr) -> String {
             if *inclusive { "=" } else { "" },
             end.as_ref().map_or_else(String::new, |e| expr_text(e))
         ),
-        ExprKind::Derivative { value, wrt } => {
+        ExprKind::Derivative { value, wrt, kind, holding } => {
+            let prefix = match kind {
+                emath_core::tree::DerivativeKind::Plain => "derivative",
+                emath_core::tree::DerivativeKind::Partial => "partial",
+                emath_core::tree::DerivativeKind::Total => "total",
+            };
             let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
                 format!(
                     " wrt {}",
                     w.iter().map(expr_text).collect::<Vec<_>>().join(", ")
                 )
             });
-            format!("derivative({}){}", expr_text(value), wrt_text)
+            let holding_text = if holding.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " holding {}",
+                    holding.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+                )
+            };
+            format!("{}({}){}{}", prefix, expr_text(value), wrt_text, holding_text)
         }
         ExprKind::Solve { value, wrt } => {
             let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {

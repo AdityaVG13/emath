@@ -2,7 +2,7 @@
 //! and parser edge cases (F5 non-greedy derivative operand).
 
 use emath_core::limits::Limits;
-use emath_core::tree::{ExprKind, BinaryOp, Item, NotationFixity, StmtKind};
+use emath_core::tree::{ExprKind, BinaryOp, DerivativeKind, Item, NotationFixity, StmtKind};
 use emath_core::{Diagnostic, FileId, SourceStore, Span};
 use emath_syntax::lexer::lex;
 use emath_syntax::token::TokenKind;
@@ -233,7 +233,7 @@ emath function f(v: Float64) -> Float64:
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
-    let ExprKind::Derivative { value, wrt } = &expr.kind else {
+    let ExprKind::Derivative { value, wrt, .. } = &expr.kind else {
         panic!("expected Derivative at top level, got {:?}", expr.kind);
     };
     assert!(
@@ -840,5 +840,205 @@ emath model VectorTest:
             );
         }
         other => panic!("expected TypeKind::Path, got {:?}", other),
+    }
+}
+
+// ---- Partial/Total derivatives with held-fixed sets (04 section 2.2) ------
+
+#[test]
+fn partial_derivative_parses() {
+    let source = "\
+emath function test(x: Float64) -> Float64:
+    definitions:
+        result = partial(x^2) wrt x
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "partial(x^2) wrt x must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Derivative { kind, wrt, holding, .. } => {
+            assert_eq!(*kind, DerivativeKind::Partial, "should be Partial");
+            assert!(wrt.is_some(), "wrt should be attached");
+            assert!(holding.is_empty(), "holding should be empty");
+        }
+        other => panic!("expected Derivative, got {:?}", other),
+    }
+}
+
+#[test]
+fn partial_derivative_unicode_parses() {
+    let source = "\
+emath function test(x: Float64) -> Float64:
+    definitions:
+        result = \u{2202}(x^2) wrt x
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "\u{2202}(x^2) wrt x must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Derivative { kind, .. } => {
+            assert_eq!(*kind, DerivativeKind::Partial, "should be Partial");
+        }
+        other => panic!("expected Derivative, got {:?}", other),
+    }
+}
+
+#[test]
+fn total_derivative_parses() {
+    let source = "\
+emath function test(t: Float64) -> Float64:
+    definitions:
+        result = total(t^2) wrt t
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "total(t^2) wrt t must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Derivative { kind, wrt, .. } => {
+            assert_eq!(*kind, DerivativeKind::Total, "should be Total");
+            assert!(wrt.is_some(), "wrt should be attached");
+        }
+        other => panic!("expected Derivative, got {:?}", other),
+    }
+}
+
+#[test]
+fn total_derivative_d_form_parses() {
+    let source = "\
+emath function test(t: Float64) -> Float64:
+    definitions:
+        result = d(t^2) wrt t
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "d(t^2) wrt t must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Derivative { kind, .. } => {
+            assert_eq!(*kind, DerivativeKind::Total, "d(...) should be Total");
+        }
+        other => panic!("expected Derivative, got {:?}", other),
+    }
+}
+
+#[test]
+fn partial_derivative_holding_set_parses() {
+    let source = "\
+emath function test(T: Float64, p: Float64, V: Float64) -> Float64:
+    definitions:
+        result = partial(H) wrt T holding p
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "partial(H) wrt T holding p must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Derivative { kind, wrt, holding, .. } => {
+            assert_eq!(*kind, DerivativeKind::Partial);
+            assert!(wrt.is_some(), "wrt should be attached");
+            assert_eq!(holding.len(), 1, "holding should have one variable");
+        }
+        other => panic!("expected Derivative, got {:?}", other),
+    }
+}
+
+#[test]
+fn holding_set_different_variables_distinct() {
+    // `partial(H) wrt T holding p` and `partial(H) wrt T holding V`
+    // must produce structurally different AST nodes.
+    let src_a = "emath function f(T: Float64, p: Float64) -> Float64:\n    definitions:\n        a = partial(H) wrt T holding p\n";
+    let src_b = "emath function f(T: Float64, V: Float64) -> Float64:\n    definitions:\n        b = partial(H) wrt T holding V\n";
+    let (tree_a, diags_a) = parse_str(src_a);
+    let (tree_b, diags_b) = parse_str(src_b);
+    assert!(!diags_a.has_errors());
+    assert!(!diags_b.has_errors());
+    let expr_a = def_expr(&tree_a, "a").unwrap();
+    let expr_b = def_expr(&tree_b, "b").unwrap();
+    // The holding sets differ (p vs V), so the Derivative nodes differ.
+    assert_ne!(expr_a.kind, expr_b.kind, "different holding sets must produce different AST nodes");
+}
+
+#[test]
+fn partial_as_identifier_still_works() {
+    // `partial` not followed by `(` should be a regular identifier.
+    let source = "\
+emath function test(partial: Float64) -> Float64:
+    definitions:
+        result = partial + 1
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "`partial` as identifier must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        "expected addition, got {:?}",
+        expr.kind
+    );
+}
+
+#[test]
+fn d_as_identifier_still_works() {
+    // `d` not followed by `(` should be a regular identifier.
+    let source = "\
+emath function test(d: Float64) -> Float64:
+    definitions:
+        result = d + 1
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "`d` as identifier must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        "expected addition, got {:?}",
+        expr.kind
+    );
+}
+
+#[test]
+fn derivative_plain_regression() {
+    // Existing `derivative(x) wrt x` must still produce Plain kind.
+    let source = "\
+emath function test(x: Float64) -> Float64:
+    definitions:
+        result = derivative(x^2) wrt x
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "derivative(x^2) wrt x must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::Derivative { kind, .. } => {
+            assert_eq!(*kind, DerivativeKind::Plain, "derivative should be Plain");
+        }
+        other => panic!("expected Derivative, got {:?}", other),
     }
 }
