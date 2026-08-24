@@ -519,6 +519,21 @@ impl super::Emitter {
                 }
                 self.push(EmirOp::Einsum { subscripts, inputs }, span)
             }
+            "grad" => {
+                // Reverse-mode AD: compile body as sub-program, compute
+                // gradients w.r.t. all inputs in one backward pass.
+                if args.len() != 1 {
+                    return Err("`grad` expects 1 argument".to_string());
+                }
+                let sc = self.states.len();
+                let mut body_emitter = self.sub_emitter();
+                let body_result = body_emitter.emit(package, args[0])?;
+                let body_program = body_emitter.finish(body_result, sc)?;
+                let var_indices: Vec<u16> =
+                    (0..u16::try_from(self.inputs.len()).map_err(|_| "too many inputs for grad")?)
+                        .collect();
+                self.push(EmirOp::ReverseMode { body: body_program, var_indices }, span)
+            }
             "factorial" | "core::math::factorial" => {
                 let n = self.emit(package, args[0])?;
                 self.push(EmirOp::Factorial(n), span)

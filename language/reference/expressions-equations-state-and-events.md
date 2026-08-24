@@ -198,6 +198,7 @@ product([[1, 2], [3, 4]])
 mean(v)          abs(v)
 derivative(x)    der(x)    derivative(x) wrt time
 derivative(y) wrt x    # forward-mode autodiff in definitions
+grad(f)                # reverse-mode AD: gradient w.r.t. all inputs
 solve(residual) wrt x    # Newton's method root-finding
 minimize(loss) wrt x     # gradient descent optimization
 minimize(loss) wrt x, y  # multi-variable gradient descent
@@ -232,6 +233,32 @@ forward-mode autodiff. The value expression is inlined (definition
 references resolved) and lowered to a nested EMIR sub-program; each EMIR
 op carries its own derivative rule, so the tangent propagates through
 the full computation chain.
+
+### Reverse-mode autodiff (gradient)
+
+`grad(expr)` computes the gradient of a scalar expression with respect
+to all declaration inputs in a single backward (adjoint) pass. It
+returns a `Vector[N]` where N is the number of inputs, containing
+`[df/dx1, df/dx2, ..., df/dxN]`.
+
+```emath
+emath function grad_example(x: Float64, y: Float64) -> Vector[2]:
+    definitions:
+        f = x * y + y * y
+        g = grad(f)    # [df/dx, df/dy] = [y, x + 2*y]
+```
+
+Reverse-mode is efficient for scalar functions of many inputs: the cost
+is O(function_cost) regardless of input count, versus O(N * function_cost)
+for forward-mode (`derivative` with N separate passes). The interpreter
+uses a Wengert tape: a forward pass records all primal values, then a
+backward pass propagates adjoints from the output to all inputs in one
+traversal. Codegen emits inline Rust with the same primal/adjoint
+structure.
+
+`grad` is admitted in `definitions:` and `equations:`. The expression
+argument must be scalar numeric; `grad` on a vector or non-numeric
+expression is refused with `E-TYPE-012`.
 
 ### Partial and total derivatives (04 section 2.2)
 

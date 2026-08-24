@@ -229,7 +229,7 @@ impl super::Admitter {
                 let arity: Option<usize> = match name.as_str() {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
                     | "tanh" | "abs" | "floor" | "ceil" | "round" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt" | "recip" | "fract"
-                    | "norm" | "transpose" | "length" | "mean" | "factorial" => Some(1),
+                    | "norm" | "transpose" | "length" | "mean" | "factorial" | "grad" => Some(1),
                     "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" | "mod_inv" | "hamming_distance" => Some(2),
                     "lerp" | "clamp" | "congruence" | "poly_eval_mod" | "rs_encode" => Some(3),
                     "laplacian_dirichlet" => Some(4),
@@ -259,7 +259,7 @@ impl super::Admitter {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins — math: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y; coding: poly_eval_mod, rs_encode, hamming_distance. Use bare names or namespace::name)"
+                                "unknown function `{name}` (Phase 1 builtins — math: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; autodiff: grad; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y; coding: poly_eval_mod, rs_encode, hamming_distance. Use bare names or namespace::name)"
                             ),
                             function.source,
                         );
@@ -704,6 +704,37 @@ impl super::Admitter {
                             expr.source,
                         );
                         Some((id, Infer::Int))
+                    }
+                    "grad" => {
+                        // Reverse-mode AD: grad(expr) computes the gradient
+                        // of a scalar expression w.r.t. all declaration
+                        // inputs.  Returns Vector[N] where N = input count.
+                        let (body_id, body_infer) = self.lower_expr(&args[0])?;
+                        if !is_numeric_element(&body_infer) {
+                            self.error(
+                                "E-TYPE-012",
+                                "`grad` expects a scalar numeric expression",
+                                args[0].source,
+                            );
+                            return None;
+                        }
+                        let n = self.inputs.len();
+                        if n == 0 {
+                            self.error(
+                                "E-TYPE-012",
+                                "`grad` requires at least one input to differentiate",
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![body_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Vector { extent: Some(Extent::Fixed(n)) }))
                     }
                     "mod_inv" => {
                         let (a_id, _) = self.lower_expr(&args[0])?;
