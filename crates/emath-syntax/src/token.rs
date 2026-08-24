@@ -159,6 +159,10 @@ pub enum TokenKind {
     Eq,
     EqEq,
     NotEq,
+    /// `==>` — logical implication.
+    Imply,
+    /// `<==>` — logical biconditional.
+    Iff,
     Le,
     Ge,
     Lt,
@@ -203,6 +207,8 @@ impl TokenKind {
             Self::Eq => "`=`".to_string(),
             Self::EqEq => "`==`".to_string(),
             Self::NotEq => "`!=`".to_string(),
+            Self::Imply => "`==>`".to_string(),
+            Self::Iff => "`<==>`".to_string(),
             Self::Le => "`<=`".to_string(),
             Self::Ge => "`>=`".to_string(),
             Self::Lt => "`<`".to_string(),

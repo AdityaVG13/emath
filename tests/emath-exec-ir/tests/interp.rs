@@ -946,3 +946,67 @@ fn gradient_2d_y_linear_in_rows() {
         }
     );
 }
+
+// ---- B12: logic connectives evaluation ----------------------------------
+
+#[test]
+fn b12_imply_truth_table() {
+    // Imply: !a || b
+    let cases = [
+        (false, false, true),
+        (false, true, true),
+        (true, false, false),
+        (true, true, true),
+    ];
+    for (a, b, expected) in cases {
+        let prog = EmirProgram {
+            ops: vec![
+                (EmirOp::LoadInput(0), Span::default()),
+                (EmirOp::LoadInput(1), Span::default()),
+                (EmirOp::Imply(EmirValue(0), EmirValue(1)), Span::default()),
+            ],
+            result: EmirValue(2),
+            input_count: 2,
+            state_count: 0,
+            domain_obligations: Vec::new(),
+        };
+        let inputs = vec![Value::Bool(a), Value::Bool(b)];
+        let result = evaluate(&prog, &inputs, &[]).unwrap();
+        assert_eq!(
+            result,
+            Value::Bool(expected),
+            "Imply({a}, {b}) should be {expected}"
+        );
+    }
+}
+
+#[test]
+fn b12_iff_truth_table() {
+    // Iff: a == b for Bool
+    let cases = [
+        (false, false, true),
+        (false, true, false),
+        (true, false, false),
+        (true, true, true),
+    ];
+    for (a, b, expected) in cases {
+        let prog = EmirProgram {
+            ops: vec![
+                (EmirOp::LoadInput(0), Span::default()),
+                (EmirOp::LoadInput(1), Span::default()),
+                (EmirOp::Iff(EmirValue(0), EmirValue(1)), Span::default()),
+            ],
+            result: EmirValue(2),
+            input_count: 2,
+            state_count: 0,
+            domain_obligations: Vec::new(),
+        };
+        let inputs = vec![Value::Bool(a), Value::Bool(b)];
+        let result = evaluate(&prog, &inputs, &[]).unwrap();
+        assert_eq!(
+            result,
+            Value::Bool(expected),
+            "Iff({a}, {b}) should be {expected}"
+        );
+    }
+}

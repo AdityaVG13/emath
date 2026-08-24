@@ -350,7 +350,13 @@ impl Lexer<'_> {
                 self.pos += 1;
                 if self.peek() == Some(b'=') {
                     self.pos += 1;
-                    self.push(TokenKind::EqEq, start);
+                    // `==>` — logical implication (B12)
+                    if self.peek() == Some(b'>') {
+                        self.pos += 1;
+                        self.push(TokenKind::Imply, start);
+                    } else {
+                        self.push(TokenKind::EqEq, start);
+                    }
                 } else if self.peek() == Some(b'>') {
                     self.pos += 1;
                     self.push(TokenKind::Arrow, start);
@@ -371,7 +377,13 @@ impl Lexer<'_> {
                 self.pos += 1;
                 if self.peek() == Some(b'=') {
                     self.pos += 1;
-                    self.push(TokenKind::Le, start);
+                    // `<==>` — logical biconditional (B12)
+                    if self.peek() == Some(b'=') && self.peek2() == Some(b'>') {
+                        self.pos += 2;
+                        self.push(TokenKind::Iff, start);
+                    } else {
+                        self.push(TokenKind::Le, start);
+                    }
                 } else {
                     self.push(TokenKind::Lt, start);
                 }

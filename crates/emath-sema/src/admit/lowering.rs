@@ -935,7 +935,7 @@ impl super::Admitter {
                             Infer::Bool,
                         ))
                     }
-                    SynBinOp::And | SynBinOp::Or => {
+                    SynBinOp::And | SynBinOp::Or | SynBinOp::Imply | SynBinOp::Iff => {
                         if !matches!(l_infer, Infer::Bool) || !matches!(r_infer, Infer::Bool) {
                             self.error(
                                 "E-TYPE-012",
@@ -947,10 +947,12 @@ impl super::Admitter {
                         Some((
                             self.push_expr(
                                 ExprNode::Binary {
-                                    operation: if matches!(op, SynBinOp::And) {
-                                        emath_ir::BinaryOp::And
-                                    } else {
-                                        emath_ir::BinaryOp::Or
+                                    operation: match op {
+                                        SynBinOp::And => emath_ir::BinaryOp::And,
+                                        SynBinOp::Or => emath_ir::BinaryOp::Or,
+                                        SynBinOp::Imply => emath_ir::BinaryOp::Imply,
+                                        SynBinOp::Iff => emath_ir::BinaryOp::Iff,
+                                        _ => unreachable!(),
                                     },
                                     left: l,
                                     right: r,

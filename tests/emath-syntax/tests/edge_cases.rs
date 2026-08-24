@@ -553,3 +553,106 @@ notation infixr 50 \"Y\" => core::math::mul
         .collect();
     assert_eq!(notations.len(), 2, "expected 2 notation declarations");
 }
+
+// ---- B12: logic connectives ==> and <==> --------------------------------
+
+#[test]
+fn b12_imply_parses() {
+    // `==>` is logical implication, right-associative, lower than `or`.
+    let source = "\
+emath function test() -> Bool:
+    definitions:
+        result = true ==> false
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "==> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Imply, .. }),
+        "expected Imply, got {:?}",
+        expr.kind
+    );
+}
+
+#[test]
+fn b12_iff_parses() {
+    // `<==>` is logical biconditional, lower than `==>`.
+    let source = "\
+emath function test() -> Bool:
+    definitions:
+        result = true <==> false
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "<==> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Iff, .. }),
+        "expected Iff, got {:?}",
+        expr.kind
+    );
+}
+
+#[test]
+fn b12_imply_right_associative() {
+    // `A ==> B ==> C` should parse as `A ==> (B ==> C)`.
+    let source = "\
+emath function test() -> Bool:
+    definitions:
+        result = true ==> false ==> true
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "chained ==> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    let ExprKind::Binary { op, left, right } = &expr.kind else {
+        panic!("expected Binary, got {:?}", expr.kind);
+    };
+    assert_eq!(*op, BinaryOp::Imply, "top-level should be Imply");
+    // Right child should also be Imply (right-associative).
+    assert!(
+        matches!(&right.kind, ExprKind::Binary { op: BinaryOp::Imply, .. }),
+        "right child should be Imply, got {:?}",
+        right.kind
+    );
+    // Left child should be a Bool literal (true), not another Imply.
+    assert!(
+        matches!(&left.kind, ExprKind::Bool(true)),
+        "left child should be true, got {:?}",
+        left.kind
+    );
+}
+
+#[test]
+fn b12_arrow_not_imply() {
+    // `=>` must still parse as the match/lambda/notation arrow, not as `==>`.
+    // `true => false` is not valid expression syntax (=> is not a binary op).
+    let source = "\
+emath function test() -> Bool:
+    definitions:
+        result = true
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "plain expression must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    // Verify the expression is just `true`, not something involving =>.
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Bool(true)),
+        "expected Bool(true), got {:?}",
+        expr.kind
+    );
+}

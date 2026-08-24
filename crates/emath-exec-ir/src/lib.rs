@@ -101,6 +101,10 @@ pub enum EmirOp {
     Ne(EmirValue, EmirValue),
     And(EmirValue, EmirValue),
     Or(EmirValue, EmirValue),
+    /// `==>` — `!a || b`
+    Imply(EmirValue, EmirValue),
+    /// `<==>` — `a == b` for Bool
+    Iff(EmirValue, EmirValue),
     Not(EmirValue),
     IsFinite(EmirValue),
     Select {
@@ -274,6 +278,8 @@ impl EmirOp {
             Self::Ne(..) => "ne",
             Self::And(..) => "and",
             Self::Or(..) => "or",
+            Self::Imply(..) => "imply",
+            Self::Iff(..) => "iff",
             Self::Not(_) => "not",
             Self::IsFinite(_) => "is-finite",
             Self::Select { .. } => "select",
