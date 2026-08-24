@@ -395,6 +395,12 @@ pub(crate) fn op_expr(
                 coeffs.0, n.0, p.0
             )))
         }
+        EmirOp::HammingDistance(a, b) => {
+            Ok(Expr::Raw(format!(
+                "emath_runtime::hamming_distance(&__e{}, &__e{})",
+                a.0, b.0
+            )))
+        }
         EmirOp::Fold {
             start,
             end,

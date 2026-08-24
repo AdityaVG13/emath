@@ -202,6 +202,9 @@ pub enum EmirOp {
     /// evaluating polynomial at points 0..n over GF(p). Returns Vector
     /// of n i64-as-f64 values. For RS proximity testing.
     RSEncode(EmirValue, EmirValue, EmirValue),
+    /// `hamming_distance(a, b)` — count positions where two vectors
+    /// differ. Returns i64. For RS proximity testing.
+    HammingDistance(EmirValue, EmirValue),
     /// Runtime fold (sum/product/forall/exists) over a variable-bound
     /// integer range.  `body` is a sub-program evaluated once per
     /// iteration with the loop variable supplied as an extra input at
@@ -339,6 +342,7 @@ impl EmirOp {
             Self::Congruence(..) => "congruence",
             Self::PolyEvalMod(..) => "poly-eval-mod",
             Self::RSEncode(..) => "rs-encode",
+            Self::HammingDistance(..) => "hamming-distance",
             Self::Fold { .. } => "fold",
             Self::Integral { .. } => "integral",
             Self::Differentiate { .. } => "differentiate",
