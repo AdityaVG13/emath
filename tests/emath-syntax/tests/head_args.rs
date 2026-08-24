@@ -165,7 +165,32 @@ fn untyped_head_args_format_without_infer() {
 
 #[test]
 fn cache_policy_example_parses_as_one_declaration() {
-    let text = include_str!("../../../language/examples/integration/cache-policy.emath");
+    // Inlined from the pruned cache-policy.emath example.
+    // Tests that a policy declaration with goals section parses cleanly.
+    let text = "\
+emath policy AdaptiveCachePolicy:
+    inputs:
+        candidate: Float64
+
+    outputs:
+        score: Float64
+
+    state:
+        alpha: Float64
+        gamma: Float64
+        memory_penalty: Float64
+
+    definitions:
+        score = candidate^state.alpha
+
+    goals:
+        evaluate <score>:
+            produce rust.library
+
+        differentiate <score>:
+            wrt [state.alpha, state.gamma, state.memory_penalty]
+            order 1
+";
     let (tree, diagnostics) = parse_str(text);
     let names: Vec<String> = tree
         .items

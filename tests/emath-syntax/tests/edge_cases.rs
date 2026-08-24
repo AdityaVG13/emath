@@ -496,9 +496,23 @@ notation infixd 40 \"⋅\" => core::math::dot
 
 #[test]
 fn n1_notation_example_file_parses() {
-    // The notation-governance example file must parse cleanly with all
-    // six notation declarations (five fixity forms + one with alias).
-    let source = include_str!("../../../language/examples/intro/notation-governance.emath");
+    // Inlined from the pruned notation-governance.emath example.
+    // Six notation declarations: five fixity forms + one with alias.
+    let source = "\
+package examples.notation
+
+notation infixl 40 \"⊕\" => core::math::add
+
+notation infixr 50 \"⊗\" => core::math::mul
+
+notation prefix 80 \"¬\" => core::logic::negate
+
+notation postfix 90 \"†\" => core::math::conjugate
+
+notation infix 45 \"≡\" => core::logic::iff
+
+notation infixl 40 \"⊕\" => core::math::add alias \"++\"
+";
     let (tree, diags) = parse_str(source);
     assert!(
         !diags.has_errors(),
@@ -1179,7 +1193,7 @@ emath function test(image: Float64) -> Float64:
     definitions:
         result = image + 1
 ";
-    let (tree, diags) = parse_str(source);
+    let (_tree, diags) = parse_str(source);
     assert!(
         !diags.has_errors(),
         "`image` should be a regular identifier, got: {:?}",

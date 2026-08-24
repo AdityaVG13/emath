@@ -61,7 +61,7 @@ pub fn expr_text(expr: &Expr) -> String {
             format!("({} {op:?} {})", expr_text(left), expr_text(right))
         }
         ExprKind::Quantity { value, unit } => {
-            format!("{} {}", expr_text(value), unit.join(" "))
+            format!("{} {}", expr_text(value), unit.to_string())
         }
         ExprKind::List(items) => format!(
             "[{}]",

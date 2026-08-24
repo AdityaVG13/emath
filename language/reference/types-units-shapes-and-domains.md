@@ -58,6 +58,36 @@ unit DollarPerMillionToken = USD / (1_000_000 Token)
 
 A quantity has dimension, scale, offset rules and representation. Affine units such as absolute temperature cannot be treated as ordinary multiplicative units.
 
+### Compound-unit bracket syntax (F7/U4)
+
+A simple unit attaches directly to a numeric literal:
+
+```emath
+9.81 m          # simple unit (meters)
+1.0 s           # simple unit (seconds)
+```
+
+A compound unit uses bracket notation with the `unit` contextual keyword:
+
+```emath
+9.81 [unit m/s^2]       # acceleration (m s^-2)
+100.0 [unit kg*m^2/s^2] # energy (joules)
+1.0 [unit m/(s*s)]      # acceleration, parenthesized denominator
+```
+
+The `unit` keyword inside brackets disambiguates from indexing.
+Without it, `[m]` after a numeric literal is not a unit bracket (C3 fix).
+
+Unit expressions are left-associative for `*` and `/`:
+
+```emath
+1.0 [unit m/s*s]        # left-assoc: ((m/s)*s) = dimension length, NOT acceleration
+1.0 [unit m/s^2]        # acceleration: m^1 * s^-2
+```
+
+This is the C2 trap: `m/s*s` and `m/s^2` have different dimensions.
+Use parentheses in denominators to avoid the trap: `m/(s*s)`.
+
 ## Shapes
 
 ```emath
@@ -164,6 +194,11 @@ Units that the compiler knows (`Duration`, `MiB`, `1 s`, `m/s`, …)
 admit. A quantity state in a model must have a matching state/time
 rate. Unknown units and unit clashes are named refusals
 (`E-UNIT-104`, `E-UNIT-105`, `E-UNIT-101`).
+
+Compound-unit bracket syntax (`9.81 [unit m/s^2]`) parses and lowers
+to combined dimensions. Unit expressions support `*`, `/`, `^`, and
+parenthesized groups. Left-associativity means `m/s*s` has dimension
+length, not acceleration (C2 trap).
 
 Numeric models:
 

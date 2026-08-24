@@ -47,6 +47,18 @@ impl UnitDim {
         Self(exponents)
     }
 
+    /// Scale all exponents by `n` (power).
+    #[must_use]
+    pub const fn pow(self, n: i32) -> Self {
+        let mut exponents = [0; 7];
+        let mut index = 0;
+        while index < 7 {
+            exponents[index] = self.0[index] * n as i64;
+            index += 1;
+        }
+        Self(exponents)
+    }
+
     /// Canonical SI-style rendering, e.g. `m^1*s^-1`.
     #[must_use]
     pub fn render(self) -> String {
