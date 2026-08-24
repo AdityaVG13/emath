@@ -33,7 +33,7 @@ pub fn expr_text(expr: &Expr) -> String {
                 out.push_str(
                     &generics
                         .iter()
-                        .map(type_text)
+                        .map(generic_arg_text)
                         .collect::<Vec<_>>()
                         .join(", "),
                 );
@@ -146,7 +146,7 @@ pub fn type_text(ty: &TypeExpr) -> String {
                 out.push_str(
                     &generic_args
                         .iter()
-                        .map(type_text)
+                        .map(generic_arg_text)
                         .collect::<Vec<_>>()
                         .join(", "),
                 );
@@ -165,5 +165,15 @@ pub fn type_text(ty: &TypeExpr) -> String {
         TypeKind::Ref(inner) => format!("&{}", type_text(inner)),
         TypeKind::Product(items) => items.iter().map(type_text).collect::<Vec<_>>().join(" * "),
         TypeKind::In { base, unit } => format!("{} in {}", type_text(base), type_text(unit)),
+    }
+}
+
+pub fn generic_arg_text(arg: &emath_core::tree::GenericArg) -> String {
+    match arg {
+        emath_core::tree::GenericArg::Type(ty) => type_text(ty),
+        emath_core::tree::GenericArg::Value(expr) => expr_text(expr),
+        emath_core::tree::GenericArg::Named { name, arg } => {
+            format!("{name} = {}", generic_arg_text(arg))
+        }
     }
 }

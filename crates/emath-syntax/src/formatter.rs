@@ -9,8 +9,8 @@
 use crate::token::Comment;
 use crate::tree::{
     Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration,
-    Item, NotationDecl, NotationFixity, Param, Place, Section, Stmt, StmtKind, Suite,
-    SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
+    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, Section, Stmt, StmtKind,
+    Suite, SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
 };
 
 mod expr;
@@ -628,7 +628,7 @@ pub fn format_type(out: &mut String, ty: &TypeExpr) {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    format_type(out, arg);
+                    format_generic_arg(out, arg);
                 }
                 out.push('>');
             }
@@ -669,6 +669,18 @@ pub fn format_type(out: &mut String, ty: &TypeExpr) {
             format_type(out, base);
             out.push_str(" in ");
             format_type(out, unit);
+        }
+    }
+}
+
+pub fn format_generic_arg(out: &mut String, arg: &GenericArg) {
+    match arg {
+        GenericArg::Type(ty) => format_type(out, ty),
+        GenericArg::Value(expr) => format_expr(out, expr, Prec::Root),
+        GenericArg::Named { name, arg } => {
+            out.push_str(name);
+            out.push_str(" = ");
+            format_generic_arg(out, arg);
         }
     }
 }

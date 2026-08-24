@@ -1,8 +1,38 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{TypeExpr, TypeKind};
+use crate::tree::{GenericArg, TypeExpr, TypeKind};
 
 impl super::Parser {
     // ---- types ---------------------------------------------------------
+
+    /// Parse a generic argument inside `<...>` or `[...]` at a type use site.
+    /// C10: accepts types, value literals, expressions, and named args.
+    pub(super) fn parse_generic_arg(&mut self) -> Option<GenericArg> {
+        // Named argument: `identifier = expression`
+        if let TokenKind::Ident(name) = self.peek().clone() {
+            if matches!(self.peek_at(1), TokenKind::Eq) {
+                self.advance(); // consume name
+                self.advance(); // consume =
+                let expr = self.parse_additive(0)?;
+                return Some(GenericArg::Named {
+                    name,
+                    arg: Box::new(GenericArg::Value(expr)),
+                });
+            }
+        }
+        // Value argument: integer or float literal
+        if matches!(self.peek(), TokenKind::Int(_) | TokenKind::Float(_)) {
+            let expr = self.parse_additive(0)?;
+            return Some(GenericArg::Value(expr));
+        }
+        // Bracket-list extent: `[N, N]` — parse as a list expression
+        if matches!(self.peek(), TokenKind::LBracket) {
+            let expr = self.parse_additive(0)?;
+            return Some(GenericArg::Value(expr));
+        }
+        // Default: type expression
+        let ty = self.parse_type_expr()?;
+        Some(GenericArg::Type(ty))
+    }
 
     pub(super) fn parse_type_expr(&mut self) -> Option<TypeExpr> {
         let start = self.current_span();
@@ -129,7 +159,7 @@ impl super::Parser {
                         if self.eat(&TokenKind::Comma) {
                             continue;
                         }
-                        if let Some(arg) = self.parse_type_expr() {
+                        if let Some(arg) = self.parse_generic_arg() {
                             generic_args.push(arg);
                         } else {
                             break;
@@ -144,7 +174,7 @@ impl super::Parser {
                         if self.eat(&TokenKind::Comma) {
                             continue;
                         }
-                        if let Some(arg) = self.parse_type_expr() {
+                        if let Some(arg) = self.parse_generic_arg() {
                             generic_args.push(arg);
                         } else {
                             break;
