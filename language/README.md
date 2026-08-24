@@ -5,7 +5,8 @@ contracts for the emath language.
 
 | Directory / File | Purpose |
 |------------------|---------|
-| [`CAPABILITY.md`](CAPABILITY.md) | **What works today** — single-source capability matrix (parses / runs / refused). Read this first. |
+| [`QUICKSTART.md`](QUICKSTART.md) | **Start here** — zero to working program in 60 seconds. |
+| [`CAPABILITY.md`](CAPABILITY.md) | **What works today** — single-source capability matrix (parses / runs / refused). |
 | [`NAMING.md`](NAMING.md) | Naming conventions: types, builtins, namespaces, error codes. |
 | [`MAINTAINING.md`](MAINTAINING.md) | Checklist for adding a language feature (the four-artifact rule). |
 | [`reference/`](reference/README.md) | Normative semantic specification, 16 chapters; the index there carries the canonical chapter order. |
