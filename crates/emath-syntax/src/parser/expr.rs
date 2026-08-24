@@ -355,6 +355,16 @@ impl super::Parser {
                     };
                 }
                 TokenKind::LBracket => {
+                    // C3: refuse indexing on numeric literals.  Indexing a
+                    // number (e.g. `9.81 [m/s^2]`) is always a type error,
+                    // and the bracket form collides with future unit-bracket
+                    // syntax.  List/tuple/path primaries still accept `[]`.
+                    if matches!(
+                        &value.kind,
+                        ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Quantity { .. }
+                    ) {
+                        break;
+                    }
                     self.advance();
                     let mut indices = Vec::new();
                     while !matches!(self.peek(), TokenKind::RBracket | TokenKind::Eof) {
