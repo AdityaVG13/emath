@@ -115,7 +115,7 @@ The chosen profile enters artifact identity and evidence.
 Admitted compute types:
 
 ```text
-Float64  Bool  Nat  Int
+Float64  Bool  Nat  Int  Complex
 Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
 ```
@@ -147,6 +147,10 @@ Numeric models:
 - the machine still computes in `Float64`
 - writing `Real` without a model is `E-NUM-004`
 
-Not admitted as compute types yet: `Rat`, bare `Real`, `Complex`,
+Not admitted as compute types yet: `Rat`, bare `Real`,
 `Option`, `Result`, `Graph`, `Field`, records as values, refinement
 predicates such as `NonNegative<Real>`.
+
+`Complex` is admitted as a type (e.g., `Complex`, `Vector<Complex, [2]>`).
+Complex literals use the `Ni` suffix (e.g., `2i`, `3.5i`) which desugars
+to `N * i` where `i` is the imaginary unit (a named constant).

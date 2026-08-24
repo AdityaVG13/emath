@@ -34,6 +34,7 @@ say what the compiler does with each one today.
 | [notation-governance.emath](intro/notation-governance.emath) | Parses. Seven `notation` declarations covering all five fixity forms and the `alias` clause (N1–N5). |
 | [value-generics.emath](intro/value-generics.emath) | Parses. Value-level generic arguments: `Mod<7>`, `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = x + 1>` (C10). |
 | [partial-derivatives.emath](intro/partial-derivatives.emath) | Parses. Partial/total derivatives with held-fixed sets: `partial(H) wrt T holding p`, `∂(S)`, `total(x)`, `d(v)` (04 section 2.2). |
+| [complex-numbers.emath](intro/complex-numbers.emath) | Parses. Complex type admission, `Ni` literal suffix (`2i`, `3.5i`), `Vector<Complex, [2]>` (B14). |
 
 ## numerical — numerics and dynamics
 

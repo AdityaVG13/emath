@@ -553,6 +553,13 @@ impl Lexer<'_> {
                 }
             }
         }
+        // B14: Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
+        // Only when `i` is not followed by more identifier characters
+        // (so `2image` stays Int("2") + Ident("image"), not complex).
+        if self.peek() == Some(b'i') && !self.peek2().is_some_and(is_ident_byte) {
+            self.pos += 1; // consume `i`
+            is_float = true; // complex literals use the Float channel
+        }
         let text = &self.source[start..self.pos];
         if is_float {
             self.push(TokenKind::Float(text.to_string()), start);
