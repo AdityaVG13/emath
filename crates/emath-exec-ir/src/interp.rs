@@ -646,6 +646,48 @@ fn eval_op(
                 _ => Value::Tensor { shape: out_shape, data: out_data },
             })
         }
+        EmirOp::Factorial(n) => {
+            let n = i64_of(registers, n, name)?;
+            if n < 0 || n > 20 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "factorial overflow: n must be in [0, 20] for i64",
+                });
+            }
+            let result = (1..=n).product::<i64>();
+            Ok(Value::I64(result))
+        }
+        EmirOp::ModInv(a, m) => {
+            let a = i64_of(registers, a, name)?;
+            let m = i64_of(registers, m, name)?;
+            if m <= 0 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "mod_inv: modulus must be positive",
+                });
+            }
+            // Extended GCD to find inverse: a*x ≡ 1 (mod m)
+            let (g, x, _) = extended_gcd(a.rem_euclid(m), m);
+            if g != 1 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "mod_inv: no inverse exists (gcd != 1)",
+                });
+            }
+            Ok(Value::I64(x.rem_euclid(m)))
+        }
+        EmirOp::Congruence(a, b, m) => {
+            let a = i64_of(registers, a, name)?;
+            let b = i64_of(registers, b, name)?;
+            let m = i64_of(registers, m, name)?;
+            if m == 0 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "cong: modulus must be non-zero",
+                });
+            }
+            Ok(Value::Bool((a - b).rem_euclid(m) == 0))
+        }
         EmirOp::Fold {
             start,
             end,
@@ -987,5 +1029,16 @@ fn cartesian_product(shape: &[usize]) -> Vec<Vec<usize>> {
         }
     }
     result
+}
+
+/// Extended GCD: returns (g, x, y) such that a*x + b*y = g = gcd(a, b).
+/// Used by `mod_inv` to find the modular inverse.
+fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
+    if b == 0 {
+        (a, 1, 0)
+    } else {
+        let (g, x, y) = extended_gcd(b, a.rem_euclid(b));
+        (g, y, x - (a / b) * y)
+    }
 }
 

@@ -127,6 +127,17 @@ pub(super) fn f64_of(registers: &[Value], value: EmirValue, op: &'static str) ->
     }
 }
 
+pub(super) fn i64_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<i64, EvalFault> {
+    match register(registers, value)? {
+        Value::I64(number) => Ok(*number),
+        Value::F64(number) => Ok(*number as i64),
+        _ => Err(EvalFault::TypeConfusion {
+            register: value.0,
+            op,
+        }),
+    }
+}
+
 pub(super) fn bool_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<bool, EvalFault> {
     match register(registers, value)? {
         Value::Bool(flag) => Ok(*flag),

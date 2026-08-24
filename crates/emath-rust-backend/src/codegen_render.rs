@@ -362,6 +362,24 @@ pub(crate) fn op_expr(
         EmirOp::Einsum { subscripts, .. } => Ok(Expr::Raw(format!(
             "panic!(\"einsum({subscripts:?}) codegen not yet implemented\")"
         ))),
+        EmirOp::Factorial(n) => {
+            Ok(Expr::Raw(format!(
+                "(1..=__e{} as i64).fold(1i64, |a, b| a * b)",
+                n.0
+            )))
+        }
+        EmirOp::ModInv(a, m) => {
+            Ok(Expr::Raw(format!(
+                "emath_runtime::mod_inv(__e{} as i64, __e{} as i64)",
+                a.0, m.0
+            )))
+        }
+        EmirOp::Congruence(a, b, m) => {
+            Ok(Expr::Raw(format!(
+                "(((__e{} as i64) - (__e{} as i64)).rem_euclid(__e{} as i64) == 0)",
+                a.0, b.0, m.0
+            )))
+        }
         EmirOp::Fold {
             start,
             end,

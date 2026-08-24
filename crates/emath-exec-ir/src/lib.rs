@@ -185,6 +185,12 @@ pub enum EmirOp {
         subscripts: String,
         inputs: Vec<EmirValue>,
     },
+    /// `factorial(n)` — exact i64 factorial. B15/B17.
+    Factorial(EmirValue),
+    /// `mod_inv(a, m)` — modular inverse via extended GCD. B15.
+    ModInv(EmirValue, EmirValue),
+    /// `cong(a, b, m)` — congruence check: (a - b) % m == 0. B15.
+    Congruence(EmirValue, EmirValue, EmirValue),
     /// Runtime fold (sum/product/forall/exists) over a variable-bound
     /// integer range.  `body` is a sub-program evaluated once per
     /// iteration with the loop variable supplied as an extra input at
@@ -316,6 +322,9 @@ impl EmirOp {
             Self::TensorAdd(..) => "tensor-add",
             Self::TensorSub(..) => "tensor-sub",
             Self::Einsum { .. } => "einsum",
+            Self::Factorial(..) => "factorial",
+            Self::ModInv(..) => "mod-inv",
+            Self::Congruence(..) => "congruence",
             Self::Fold { .. } => "fold",
             Self::Integral { .. } => "integral",
             Self::Differentiate { .. } => "differentiate",

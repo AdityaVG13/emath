@@ -505,6 +505,21 @@ impl super::Emitter {
                 }
                 self.push(EmirOp::Einsum { subscripts, inputs }, span)
             }
+            "factorial" | "core::math::factorial" => {
+                let n = self.emit(package, args[0])?;
+                self.push(EmirOp::Factorial(n), span)
+            }
+            "mod_inv" | "core::math::mod_inv" => {
+                let a = self.emit(package, args[0])?;
+                let m = self.emit(package, args[1])?;
+                self.push(EmirOp::ModInv(a, m), span)
+            }
+            "cong" | "core::math::cong" => {
+                let a = self.emit(package, args[0])?;
+                let b = self.emit(package, args[1])?;
+                let m = self.emit(package, args[2])?;
+                self.push(EmirOp::Congruence(a, b, m), span)
+            }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
     }
