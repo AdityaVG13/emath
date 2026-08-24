@@ -308,5 +308,12 @@ fn value_json(value: &Value) -> String {
             let body: Vec<String> = data.iter().copied().map(format_f64).collect();
             format!("[{}]", body.join(", "))
         }
+        Value::Complex { re, im } => {
+            if *im == 0.0 {
+                format_f64(*re)
+            } else {
+                format!("{}{}{}i", format_f64(*re), if *im >= 0.0 { " + " } else { " - " }, format_f64(im.abs()))
+            }
+        }
     }
 }
