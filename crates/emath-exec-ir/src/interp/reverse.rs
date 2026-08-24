@@ -4,7 +4,7 @@
 //! adjoints in a single reverse traversal.  Efficient for scalar
 //! functions of many inputs: O(cost) regardless of input count.
 
-use crate::{EmirOp, EmirProgram, EmirValue};
+use crate::{BuiltinId, EmirOp, EmirProgram, EmirValue};
 use super::{EvalFault, Value};
 
 /// Evaluate an EMIR sub-program in reverse mode, returning the gradient
@@ -111,49 +111,28 @@ fn forward_primal(
             Ok(f(a)? / bv)
         }
         EmirOp::Neg(a) => Ok(-f(a)?),
-        EmirOp::Exp(a) => Ok(f(a)?.exp()),
-        EmirOp::Ln(a) => {
+        EmirOp::UnaryBuiltin(id, a) => {
             let av = f(a)?;
-            if av <= 0.0 {
+            // Keep domain error checks for Ln/Sqrt in forward pass.
+            if matches!(id, BuiltinId::Ln) && av <= 0.0 {
                 return Err(EvalFault::Arithmetic { op: name, detail: "ln of non-positive in reverse-mode forward pass" });
             }
-            Ok(av.ln())
-        }
-        EmirOp::Sqrt(a) => {
-            let av = f(a)?;
-            if av < 0.0 {
+            if matches!(id, BuiltinId::Sqrt) && av < 0.0 {
                 return Err(EvalFault::Arithmetic { op: name, detail: "sqrt of negative in reverse-mode forward pass" });
             }
-            Ok(av.sqrt())
+            Ok(id.eval_unary(av))
         }
-        EmirOp::Sin(a) => Ok(f(a)?.sin()),
-        EmirOp::Cos(a) => Ok(f(a)?.cos()),
-        EmirOp::Tan(a) => Ok(f(a)?.tan()),
-        EmirOp::Tanh(a) => Ok(f(a)?.tanh()),
-        EmirOp::Abs(a) => Ok(f(a)?.abs()),
-        EmirOp::Floor(a) => Ok(f(a)?.floor()),
-        EmirOp::Ceil(a) => Ok(f(a)?.ceil()),
-        EmirOp::Round(a) => Ok(f(a)?.round()),
-        EmirOp::Sign(a) => Ok(f(a)?.signum()),
-        EmirOp::Log2(a) => Ok(f(a)?.log2()),
-        EmirOp::Log10(a) => Ok(f(a)?.log10()),
-        EmirOp::Sinh(a) => Ok(f(a)?.sinh()),
-        EmirOp::Cosh(a) => Ok(f(a)?.cosh()),
-        EmirOp::Atan(a) => Ok(f(a)?.atan()),
-        EmirOp::Cbrt(a) => Ok(f(a)?.cbrt()),
-        EmirOp::Recip(a) => Ok(f(a)?.recip()),
-        EmirOp::Fract(a) => Ok(f(a)?.fract()),
-        EmirOp::Hypot(a, b) => Ok(f(a)?.hypot(f(b)?)),
         EmirOp::F64Pow(a, b) => Ok(f(a)?.powf(f(b)?)),
-        EmirOp::Min(a, b) => Ok(f(a)?.min(f(b)?)),
-        EmirOp::Max(a, b) => Ok(f(a)?.max(f(b)?)),
-        EmirOp::Atan2(a, b) => Ok(f(a)?.atan2(f(b)?)),
-        EmirOp::Mod(a, b) => {
-            let bv = f(b)?;
-            if bv == 0.0 {
-                return Err(EvalFault::Arithmetic { op: name, detail: "mod by zero in reverse-mode forward pass" });
+        EmirOp::BinaryBuiltin(id, a, b) => {
+            if matches!(id, BuiltinId::Mod) {
+                let bv = f(b)?;
+                if bv == 0.0 {
+                    return Err(EvalFault::Arithmetic { op: name, detail: "mod by zero in reverse-mode forward pass" });
+                }
+                Ok(id.eval_binary(f(a)?, bv))
+            } else {
+                Ok(id.eval_binary(f(a)?, f(b)?))
             }
-            Ok(f(a)? % bv)
         }
         EmirOp::Select { condition: c, then_value: t, else_value: e } => {
             let cv = f(c)?;
@@ -231,92 +210,11 @@ fn backward_step(
             push_adj(adjoints, b, -adj * pa / (pb * pb));
         }
         EmirOp::Neg(a) => push_adj(adjoints, a, -adj),
-        EmirOp::Exp(a) => {
-            // d/dx exp(x) = exp(x) = primal[output]
+        EmirOp::UnaryBuiltin(id, a) => {
+            let primal_in = p(a)?;
             let primal_out = primals[idx];
-            push_adj(adjoints, a, adj * primal_out);
-        }
-        EmirOp::Ln(a) => {
-            let pa = p(a)?;
-            if pa != 0.0 {
-                push_adj(adjoints, a, adj / pa);
-            }
-        }
-        EmirOp::Sqrt(a) => {
-            let primal_out = primals[idx];
-            if primal_out != 0.0 {
-                push_adj(adjoints, a, adj / (2.0 * primal_out));
-            }
-        }
-        EmirOp::Sin(a) => {
-            let pa = p(a)?;
-            push_adj(adjoints, a, adj * pa.cos());
-        }
-        EmirOp::Cos(a) => {
-            let pa = p(a)?;
-            push_adj(adjoints, a, -adj * pa.sin());
-        }
-        EmirOp::Tan(a) => {
-            let pa = p(a)?;
-            let c = pa.cos();
-            if c != 0.0 {
-                push_adj(adjoints, a, adj / (c * c));
-            }
-        }
-        EmirOp::Tanh(a) => {
-            let primal_out = primals[idx];
-            push_adj(adjoints, a, adj * (1.0 - primal_out * primal_out));
-        }
-        EmirOp::Abs(a) => {
-            let pa = p(a)?;
-            push_adj(adjoints, a, adj * pa.signum());
-        }
-        EmirOp::Floor(_) | EmirOp::Ceil(_) | EmirOp::Round(_) | EmirOp::Sign(_) => {}
-        EmirOp::Log2(a) => {
-            let pa = p(a)?;
-            if pa != 0.0 {
-                push_adj(adjoints, a, adj / (pa * std::f64::consts::LN_2));
-            }
-        }
-        EmirOp::Log10(a) => {
-            let pa = p(a)?;
-            if pa != 0.0 {
-                push_adj(adjoints, a, adj / (pa * std::f64::consts::LN_10));
-            }
-        }
-        EmirOp::Sinh(a) => {
-            let pa = p(a)?;
-            push_adj(adjoints, a, adj * pa.cosh());
-        }
-        EmirOp::Cosh(a) => {
-            let pa = p(a)?;
-            push_adj(adjoints, a, adj * pa.sinh());
-        }
-        EmirOp::Atan(a) => {
-            let pa = p(a)?;
-            push_adj(adjoints, a, adj / (1.0 + pa * pa));
-        }
-        EmirOp::Cbrt(a) => {
-            let primal_out = primals[idx];
-            if primal_out != 0.0 {
-                push_adj(adjoints, a, adj / (3.0 * primal_out * primal_out));
-            }
-        }
-        EmirOp::Recip(a) => {
-            let pa = p(a)?;
-            if pa != 0.0 {
-                push_adj(adjoints, a, -adj / (pa * pa));
-            }
-        }
-        EmirOp::Fract(a) => push_adj(adjoints, a, adj),
-        EmirOp::Hypot(a, b) => {
-            let pa = p(a)?;
-            let pb = p(b)?;
-            let primal_out = primals[idx];
-            if primal_out != 0.0 {
-                push_adj(adjoints, a, adj * pa / primal_out);
-                push_adj(adjoints, b, adj * pb / primal_out);
-            }
+            let input_adj = id.backward_unary(primal_in, primal_out, adj);
+            push_adj(adjoints, a, input_adj);
         }
         EmirOp::F64Pow(a, b) => {
             let pa = p(a)?;
@@ -331,36 +229,13 @@ fn backward_step(
                 push_adj(adjoints, b, adj * primal_out * pa.ln());
             }
         }
-        EmirOp::Min(a, b) => {
+        EmirOp::BinaryBuiltin(id, a, b) => {
             let pa = p(a)?;
             let pb = p(b)?;
-            if pa <= pb {
-                push_adj(adjoints, a, adj);
-            } else {
-                push_adj(adjoints, b, adj);
-            }
-        }
-        EmirOp::Max(a, b) => {
-            let pa = p(a)?;
-            let pb = p(b)?;
-            if pa >= pb {
-                push_adj(adjoints, a, adj);
-            } else {
-                push_adj(adjoints, b, adj);
-            }
-        }
-        EmirOp::Atan2(a, b) => {
-            let pa = p(a)?;
-            let pb = p(b)?;
-            let denom = pa * pa + pb * pb;
-            if denom != 0.0 {
-                push_adj(adjoints, a, adj * pb / denom);
-                push_adj(adjoints, b, -adj * pa / denom);
-            }
-        }
-        EmirOp::Mod(a, _b) => {
-            // d/da [a mod b] = 1 at non-boundary points
-            push_adj(adjoints, a, adj);
+            let primal_out = primals[idx];
+            let (adj_a, adj_b) = id.backward_binary(pa, pb, primal_out, adj);
+            push_adj(adjoints, a, adj_a);
+            push_adj(adjoints, b, adj_b);
         }
         EmirOp::Select { condition: c, then_value: t, else_value: e } => {
             let cv = primals

@@ -79,111 +79,16 @@ pub(super) fn evaluate_dual(
                 let a = dual_of(&registers, a, name)?;
                 Dual { primal: -a.primal, tangent: -a.tangent }
             }
-            EmirOp::Exp(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let p = a.primal.exp();
-                Dual { primal: p, tangent: p * a.tangent }
-            }
-            EmirOp::Ln(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.ln(), tangent: a.tangent / a.primal }
-            }
-            EmirOp::Sqrt(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let p = a.primal.sqrt();
-                Dual { primal: p, tangent: a.tangent / (2.0 * p) }
-            }
-            EmirOp::Sin(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.sin(), tangent: a.primal.cos() * a.tangent }
-            }
-            EmirOp::Cos(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.cos(), tangent: -a.primal.sin() * a.tangent }
-            }
-            EmirOp::Tan(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let c = a.primal.cos();
-                Dual { primal: a.primal.tan(), tangent: a.tangent / (c * c) }
-            }
-            EmirOp::Tanh(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let t = a.primal.tanh();
-                Dual { primal: t, tangent: (1.0 - t * t) * a.tangent }
-            }
-            EmirOp::Abs(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.abs(), tangent: a.primal.signum() * a.tangent }
+            EmirOp::UnaryBuiltin(id, a) => {
+                let val = dual_of(&registers, a, name)?;
+                let (primal, tangent) = id.eval_dual_unary(val.primal, val.tangent);
+                Dual { primal, tangent }
             }
             EmirOp::Stencil1d { .. } | EmirOp::Stencil2d { .. } => {
                 return Err(EvalFault::Arithmetic {
                     op: name,
                     detail: "spatial stencil ops are not differentiable in Phase 1",
                 });
-            }
-            EmirOp::Floor(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.floor(), tangent: 0.0 }
-            }
-            EmirOp::Ceil(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.ceil(), tangent: 0.0 }
-            }
-            EmirOp::Round(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.round(), tangent: 0.0 }
-            }
-            EmirOp::Sign(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.signum(), tangent: 0.0 }
-            }
-            EmirOp::Log2(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.log2(), tangent: a.tangent / (a.primal * std::f64::consts::LN_2) }
-            }
-            EmirOp::Log10(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.log10(), tangent: a.tangent / (a.primal * std::f64::consts::LN_10) }
-            }
-            EmirOp::Sinh(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.sinh(), tangent: a.primal.cosh() * a.tangent }
-            }
-            EmirOp::Cosh(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.cosh(), tangent: a.primal.sinh() * a.tangent }
-            }
-            EmirOp::Atan(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let d = 1.0 / (1.0 + a.primal * a.primal);
-                Dual { primal: a.primal.atan(), tangent: d * a.tangent }
-            }
-            EmirOp::Cbrt(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let p = a.primal.cbrt();
-                Dual { primal: p, tangent: a.tangent / (3.0 * p * p) }
-            }
-            EmirOp::Recip(a) => {
-                let a = dual_of(&registers, a, name)?;
-                let p = a.primal.recip();
-                Dual { primal: p, tangent: -a.tangent * p * p }
-            }
-            EmirOp::Fract(a) => {
-                let a = dual_of(&registers, a, name)?;
-                Dual { primal: a.primal.fract(), tangent: a.tangent }
-            }
-            EmirOp::Hypot(a, b) => {
-                let a = dual_of(&registers, a, name)?;
-                let b = dual_of(&registers, b, name)?;
-                let h = a.primal.hypot(b.primal);
-                // At the origin the Euclidean norm is not differentiable;
-                // emit 0 rather than poisoning Newton/optimize with Inf/NaN.
-                let tangent = if h == 0.0 {
-                    0.0
-                } else {
-                    (a.primal * a.tangent + b.primal * b.tangent) / h
-                };
-                Dual { primal: h, tangent }
             }
             EmirOp::F64Pow(a, b) => {
                 let a = dual_of(&registers, a, name)?;
@@ -197,42 +102,11 @@ pub(super) fn evaluate_dual(
                     Dual { primal: p, tangent: p * (b.primal * a.tangent / a.primal + b.tangent * a.primal.ln()) }
                 }
             }
-            EmirOp::Min(a, b) => {
-                let a = dual_of(&registers, a, name)?;
-                let b = dual_of(&registers, b, name)?;
-                if a.primal < b.primal {
-                    Dual { primal: a.primal, tangent: a.tangent }
-                } else {
-                    Dual { primal: b.primal, tangent: b.tangent }
-                }
-            }
-            EmirOp::Max(a, b) => {
-                let a = dual_of(&registers, a, name)?;
-                let b = dual_of(&registers, b, name)?;
-                if a.primal > b.primal {
-                    Dual { primal: a.primal, tangent: a.tangent }
-                } else {
-                    Dual { primal: b.primal, tangent: b.tangent }
-                }
-            }
-            EmirOp::Atan2(a, b) => {
-                let a = dual_of(&registers, a, name)?;
-                let b = dual_of(&registers, b, name)?;
-                let denom = a.primal * a.primal + b.primal * b.primal;
-                Dual {
-                    primal: a.primal.atan2(b.primal),
-                    tangent: (b.primal * a.tangent - a.primal * b.tangent) / denom,
-                }
-            }
-            EmirOp::Mod(a, b) => {
-                let a = dual_of(&registers, a, name)?;
-                let b = dual_of(&registers, b, name)?;
-                // mod(a, b) = a - b * floor(a/b).  At non-boundary points,
-                // d/da = 1, d/db ≈ -floor(a/b).  Use the simple approximation.
-                Dual {
-                    primal: a.primal % b.primal,
-                    tangent: a.tangent,
-                }
+            EmirOp::BinaryBuiltin(id, a, b) => {
+                let av = dual_of(&registers, a, name)?;
+                let bv = dual_of(&registers, b, name)?;
+                let (primal, tangent) = id.eval_dual_binary(av.primal, av.tangent, bv.primal, bv.tangent);
+                Dual { primal, tangent }
             }
             EmirOp::Select { condition: c, then_value: t, else_value: e } => {
                 let c = dual_of(&registers, c, name)?;

@@ -7,9 +7,11 @@
 #![forbid(unsafe_code)]
 
 mod emitter;
+pub mod builtin;
 pub mod interp;
 pub mod runner;
 
+pub use builtin::BuiltinId;
 pub use runner::{
     definition_order, simulate_continuous, simulate_continuous_with, step_continuous,
     step_continuous_values, SimulateOptions, StepMethod, Trajectory, TrajectorySample,
@@ -70,31 +72,12 @@ pub enum EmirOp {
     F64Div(EmirValue, EmirValue),
     F64Pow(EmirValue, EmirValue),
     Neg(EmirValue),
-    Exp(EmirValue),
-    Ln(EmirValue),
-    Sqrt(EmirValue),
-    Sin(EmirValue),
-    Cos(EmirValue),
-    Tan(EmirValue),
-    Tanh(EmirValue),
-    Abs(EmirValue),
-    Floor(EmirValue),
-    Ceil(EmirValue),
-    Round(EmirValue),
-    Sign(EmirValue),
-    Log2(EmirValue),
-    Log10(EmirValue),
-    Sinh(EmirValue),
-    Cosh(EmirValue),
-    Atan(EmirValue),
-    Cbrt(EmirValue),
-    Recip(EmirValue),
-    Fract(EmirValue),
-    Hypot(EmirValue, EmirValue),
-    Min(EmirValue, EmirValue),
-    Max(EmirValue, EmirValue),
-    Atan2(EmirValue, EmirValue),
-    Mod(EmirValue, EmirValue),
+    /// Generic unary math builtin dispatched via BuiltinId registry.
+    /// Replaces 19 individual variants (Exp, Sin, Cos, ...).
+    UnaryBuiltin(BuiltinId, EmirValue),
+    /// Generic binary math builtin dispatched via BuiltinId registry.
+    /// Replaces 5 individual variants (Hypot, Min, Max, Atan2, Mod).
+    BinaryBuiltin(BuiltinId, EmirValue, EmirValue),
     Lt(EmirValue, EmirValue),
     Le(EmirValue, EmirValue),
     Gt(EmirValue, EmirValue),
@@ -295,31 +278,8 @@ impl EmirOp {
             Self::F64Div(..) => "f64-div",
             Self::F64Pow(..) => "f64-pow",
             Self::Neg(_) => "neg",
-            Self::Exp(_) => "exp",
-            Self::Ln(_) => "ln",
-            Self::Sqrt(_) => "sqrt",
-            Self::Sin(_) => "sin",
-            Self::Cos(_) => "cos",
-            Self::Tan(_) => "tan",
-            Self::Tanh(_) => "tanh",
-            Self::Abs(_) => "abs",
-            Self::Floor(_) => "floor",
-            Self::Ceil(_) => "ceil",
-            Self::Round(_) => "round",
-            Self::Sign(_) => "sign",
-            Self::Log2(_) => "log2",
-            Self::Log10(_) => "log10",
-            Self::Sinh(_) => "sinh",
-            Self::Cosh(_) => "cosh",
-            Self::Atan(_) => "atan",
-            Self::Cbrt(_) => "cbrt",
-            Self::Recip(_) => "recip",
-            Self::Fract(_) => "fract",
-            Self::Hypot(..) => "hypot",
-            Self::Min(..) => "min",
-            Self::Max(..) => "max",
-            Self::Atan2(..) => "atan2",
-            Self::Mod(..) => "mod",
+            Self::UnaryBuiltin(id, _) => id.name(),
+            Self::BinaryBuiltin(id, _, _) => id.name(),
             Self::Lt(..) => "lt",
             Self::Le(..) => "le",
             Self::Gt(..) => "gt",
