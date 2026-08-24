@@ -51,11 +51,12 @@ pub(super) fn is_der_call(function: &Expr) -> bool {
 /// Explicit `derivative(state)` / `der(state)` / `derivative state wrt t`.
 pub(super) fn unwrap_derivative(expr: &Expr) -> Option<(&Expr, Option<&[Expr]>)> {
     match &expr.kind {
-        ExprKind::Derivative { value, wrt } => {
+        ExprKind::Derivative { value, wrt, .. } => {
             let wrt = wrt.as_deref();
             if let ExprKind::Derivative {
                 value: inner,
                 wrt: None,
+                ..
             } = &value.kind
             {
                 Some((inner, wrt))
@@ -568,7 +569,7 @@ impl Admitter {
     ) -> Option<Expr> {
         let node = expr.clone();
         match &node.kind {
-            ExprKind::Derivative { value, wrt } => {
+            ExprKind::Derivative { value, wrt, .. } => {
                 if wrt.as_ref().is_some_and(|w| !is_time_wrt(w)) {
                     self.error(
                         E_UNSUPPORTED_TYPE,

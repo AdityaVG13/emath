@@ -1,5 +1,5 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{BinaryOp, Expr, ExprKind, UnaryOp};
+use crate::tree::{BinaryOp, DerivativeKind, Expr, ExprKind, UnaryOp};
 use super::{binder_kind, comparison_operator, MAX_EXPR_DEPTH};
 
 impl super::Parser {
@@ -37,10 +37,12 @@ impl super::Parser {
                     }
                     let start = expr.source;
                     let Some(next) = (match &expr.kind {
-                        ExprKind::Derivative { value, .. } => Some(Expr {
+                        ExprKind::Derivative { value, kind, holding, .. } => Some(Expr {
                             kind: ExprKind::Derivative {
                                 value: value.clone(),
                                 wrt: Some(items),
+                                kind: *kind,
+                                holding: holding.clone(),
                             },
                             source: start.cover(self.last_span()),
                         }),
@@ -71,6 +73,37 @@ impl super::Parser {
                         return None;
                     };
                     expr = next;
+                }
+                // `holding` clause: `∂(H) wrt T holding p, V`
+                // Contextual keyword — only matches when the current
+                // expression is a Partial derivative without holding set.
+                TokenKind::Ident(name) if name == "holding"
+                    && matches!(
+                        &expr.kind,
+                        ExprKind::Derivative {
+                            kind: DerivativeKind::Partial,
+                            holding: h,
+                            ..
+                        } if h.is_empty()
+                    ) =>
+                {
+                    self.advance();
+                    let mut items = vec![self.parse_expr_depth(depth + 1)?];
+                    while self.eat(&TokenKind::Comma) {
+                        items.push(self.parse_expr_depth(depth + 1)?);
+                    }
+                    let start = expr.source;
+                    if let ExprKind::Derivative { value, wrt, kind, .. } = &expr.kind {
+                        expr = Expr {
+                            kind: ExprKind::Derivative {
+                                value: value.clone(),
+                                wrt: wrt.clone(),
+                                kind: *kind,
+                                holding: items,
+                            },
+                            source: start.cover(self.last_span()),
+                        };
+                    }
                 }
                 TokenKind::Keyword(Keyword::At) if depth > 0 => {
                     self.advance();
@@ -772,6 +805,8 @@ impl super::Parser {
                     kind: ExprKind::Derivative {
                         value: Box::new(value),
                         wrt: None,
+                        kind: DerivativeKind::Plain,
+                        holding: Vec::new(),
                     },
                     source: start.cover(self.last_span()),
                 })
@@ -801,6 +836,42 @@ impl super::Parser {
                 })
             }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::SelfKw) => {
+                // Contextual keywords for partial/total derivatives:
+                // `partial(T)`, `∂(T)`, `total(T)`, `d(T)` — only when
+                // followed by `(`.  Otherwise these are regular identifiers.
+                if let TokenKind::Ident(name) = self.peek().clone() {
+                    if matches!(self.peek_at(1), TokenKind::LParen) {
+                        match name.as_str() {
+                            "partial" | "\u{2202}" => {
+                                self.advance();
+                                let value = self.parse_postfix(depth + 1)?;
+                                return Some(Expr {
+                                    kind: ExprKind::Derivative {
+                                        value: Box::new(value),
+                                        wrt: None,
+                                        kind: DerivativeKind::Partial,
+                                        holding: Vec::new(),
+                                    },
+                                    source: start.cover(self.last_span()),
+                                });
+                            }
+                            "total" | "d" => {
+                                self.advance();
+                                let value = self.parse_postfix(depth + 1)?;
+                                return Some(Expr {
+                                    kind: ExprKind::Derivative {
+                                        value: Box::new(value),
+                                        wrt: None,
+                                        kind: DerivativeKind::Total,
+                                        holding: Vec::new(),
+                                    },
+                                    source: start.cover(self.last_span()),
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 let mut segments = Vec::new();
                 if let TokenKind::Ident(segment) = self.peek().clone() {
                     segments.push(segment);

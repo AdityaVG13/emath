@@ -33,6 +33,7 @@ say what the compiler does with each one today.
 | [logistic-growth.emath](intro/logistic-growth.emath) | Admits. Logistic population model: der(p) = r*p*(1 - p/K). Classic S-curve growth toward carrying capacity K. Use `emath simulate`. |
 | [notation-governance.emath](intro/notation-governance.emath) | Parses. Seven `notation` declarations covering all five fixity forms and the `alias` clause (N1–N5). |
 | [value-generics.emath](intro/value-generics.emath) | Parses. Value-level generic arguments: `Mod<7>`, `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = x + 1>` (C10). |
+| [partial-derivatives.emath](intro/partial-derivatives.emath) | Parses. Partial/total derivatives with held-fixed sets: `partial(H) wrt T holding p`, `∂(S)`, `total(x)`, `d(v)` (04 section 2.2). |
 
 ## numerical — numerics and dynamics
 

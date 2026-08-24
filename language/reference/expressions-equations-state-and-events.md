@@ -16,6 +16,8 @@ exists witness in candidates: valid(witness)
 derivative f wrt x
 jacobian f wrt x
 hessian f wrt x
+partial(T) wrt x holding p
+total(t) wrt time
 ```
 
 A binder produces semantic structure; it is not immediately expanded into loops.
@@ -149,6 +151,31 @@ forward-mode autodiff. The value expression is inlined (definition
 references resolved) and lowered to a nested EMIR sub-program; each EMIR
 op carries its own derivative rule, so the tangent propagates through
 the full computation chain.
+
+### Partial and total derivatives (04 section 2.2)
+
+Three derivative operators are distinguished by kind:
+
+- `derivative(expr) wrt x` — unqualified derivative (existing, computes via autodiff).
+- `partial(expr) wrt x holding p` — partial derivative. The `holding`
+  set (variables held constant) is part of the term's identity:
+  `partial(H) wrt T holding p` and `partial(H) wrt T holding V` are
+  different terms.
+- `total(expr) wrt t` or `d(expr) wrt t` — total/material derivative
+  (distinct operator, distinct glyph).
+
+`partial` and `total` are contextual keywords: they activate only when
+followed by `(` in expression position. In all other positions they are
+regular identifiers, so `partial + 1` and `d = 5` still work.
+
+The Unicode partial derivative symbol `∂` (U+2202) is accepted as an
+alias for `partial`: `∂(T) wrt x` is the same as `partial(T) wrt x`.
+
+A partial derivative without an explicit `holding` set is a MeaningHole
+refusal — the compiler will not guess which variables are held fixed.
+This prevents the most error-prone notation in physics from being
+silently ambiguous.
+
 `solve(residual) wrt var` finds the value of input `var` that drives
 `residual` to zero, using Newton's method (`x -= f(x)/f'(x)`). Each
 step uses the same dual-number evaluation for both the residual value

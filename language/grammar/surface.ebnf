@@ -115,7 +115,14 @@ record_expr      = path , ":" , suite ;
 range_expr       = [ expression ] , ( ".." | "..=" ) , [ expression ] ;
 
 binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , binder_list , [ "if" , expression ] , ":" , expression
-                 | ( "derivative" | "jacobian" | "hessian" ) , postfix_expr , "wrt" , expression ;
+                 | derivative_expr ;
+-- 04 section 2.2: Partial/total derivatives with held-fixed sets.
+-- `partial(T)` / `∂(T)` is partial; `total(T)` / `d(T)` is total.
+-- `holding` is part of the term's identity (hash-relevant).
+-- `partial` / `total` / `d` / `∂` are contextual keywords: only active
+-- when followed by `(` in expression position; otherwise regular identifiers.
+derivative_expr  = ( "derivative" | "jacobian" | "hessian" ) , postfix_expr , "wrt" , expression
+                 | ( "partial" | "∂" | "total" | "d" ) , postfix_expr , "wrt" , expression , [ "holding" , expression , { "," , expression } ] ;
 binder_list      = pattern , "in" , expression , { "," , pattern , "in" , expression } ;
 
 type_expr        = type_primary , { type_operator , type_primary } ;

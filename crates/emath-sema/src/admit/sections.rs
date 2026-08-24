@@ -299,7 +299,7 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
                 .any(|b| b.domain.as_ref().is_some_and(contains_state_reference))
                 || contains_state_reference(body)
         }
-        ExprKind::Derivative { value, wrt }
+        ExprKind::Derivative { value, wrt, .. }
         | ExprKind::Solve { value, wrt }
         | ExprKind::Optimize { value, wrt, .. } => {
             contains_state_reference(value)

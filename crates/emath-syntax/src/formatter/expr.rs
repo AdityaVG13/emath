@@ -199,12 +199,25 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             out.push_str(": ");
             format_expr(out, body, Prec::Root);
         }
-        ExprKind::Derivative { value, wrt } => {
-            out.push_str("derivative ");
+        ExprKind::Derivative { value, wrt, kind, holding } => {
+            match kind {
+                crate::tree::DerivativeKind::Plain => out.push_str("derivative "),
+                crate::tree::DerivativeKind::Partial => out.push_str("partial "),
+                crate::tree::DerivativeKind::Total => out.push_str("total "),
+            }
             format_expr(out, value, Prec::Root);
             if let Some(items) = wrt {
                 out.push_str(" wrt ");
                 for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    format_expr(out, item, Prec::Root);
+                }
+            }
+            if !holding.is_empty() {
+                out.push_str(" holding ");
+                for (i, item) in holding.iter().enumerate() {
                     if i > 0 {
                         out.push_str(", ");
                     }
