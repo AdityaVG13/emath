@@ -828,7 +828,48 @@ emath function ConstrainedMin:
 
 #[test]
 fn heat_rod_laplacian_admits_and_inline_tests_pass() {
-    let source = include_str!("../../../language/examples/numerical/heat-rod.emath");
+    let source = r#"
+emath function HeatStep:
+    inputs:
+        u: Vector[5]
+        alpha: Float64
+        dt: Float64
+
+    outputs:
+        next: Vector[5]
+        next_dirichlet: Vector[5]
+        next_neumann: Vector[5]
+
+    definitions:
+        next = u + dt * alpha * laplacian(u, 1.0)
+        next_dirichlet = u + dt * alpha * laplacian_dirichlet(u, 1.0, 0.0, 0.0)
+        next_neumann = u + dt * alpha * laplacian_neumann(u, 1.0)
+
+    tests:
+        example <constant_holds>:
+            given u = [5.0, 5.0, 5.0, 5.0, 5.0]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next == [5.0, 5.0, 5.0, 5.0, 5.0]
+
+        example <zero_dt_identity>:
+            given u = [0.0, 1.0, 4.0, 9.0, 16.0]
+            given alpha = 1.0
+            given dt = 0.0
+            expect next == [0.0, 1.0, 4.0, 9.0, 16.0]
+
+        example <dirichlet_cools_boundary>:
+            given u = [5.0, 5.0, 5.0, 5.0, 5.0]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next_dirichlet == [0.0, 5.0, 5.0, 5.0, 0.0]
+
+        example <neumann_insulated_linear>:
+            given u = [0.0, 1.0, 2.0, 3.0, 4.0]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next_neumann == [2.0, 1.0, 2.0, 3.0, 2.0]
+"#;
     let result = check_source("heat-rod", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -871,7 +912,32 @@ fn heat_rod_laplacian_admits_and_inline_tests_pass() {
 
 #[test]
 fn heat_plate_2d_laplacian_admits_and_inline_tests_pass() {
-    let source = include_str!("../../../language/examples/numerical/heat-plate.emath");
+    let source = r#"
+emath function HeatPlate:
+    inputs:
+        u: Matrix[3, 3]
+        alpha: Float64
+        dt: Float64
+
+    outputs:
+        next: Matrix[3, 3]
+
+    definitions:
+        next = u + dt * alpha * laplacian_2d(u, 1.0)
+
+    tests:
+        example <constant_holds>:
+            given u = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next == [[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]
+
+        example <hot_spot_diffuses>:
+            given u = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]
+            given alpha = 1.0
+            given dt = 1.0
+            expect next == [[0.0, 1.0, 0.0], [1.0, -3.0, 1.0], [0.0, 1.0, 0.0]]
+"#;
     let result = check_source("heat-plate", source);
     assert!(
         !result.diagnostics.has_errors(),
