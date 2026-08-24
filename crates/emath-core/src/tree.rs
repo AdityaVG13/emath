@@ -239,12 +239,29 @@ pub struct TypeExpr {
     pub source: Span,
 }
 
+/// A generic argument at a use site: `Vector<Float64>`, `Mod<7>`,
+/// `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = x^3 + x + 1>`.
+///
+/// C10: The grammar previously admitted types only at use sites. This
+/// enum allows value-level arguments (literals, expressions, named
+/// args, bracket-list extents) alongside type arguments.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GenericArg {
+    /// A type argument: `Float64`, `Real`, `NonNegative`
+    Type(TypeExpr),
+    /// A value argument: `7`, `[N, N]`, `x^3 + x + 1`
+    Value(Expr),
+    /// A named argument: `modulus = x^3 + x + 1`, `extent = [N, N]`
+    Named { name: String, arg: Box<GenericArg> },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
     /// `Float64`, `core::math::Real`, `NonNegative<Real>`, `Field<K, Ω * Time>`
+    /// `Mod<7>`, `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = ...>`
     Path {
         segments: Vec<String>,
-        generic_args: Vec<TypeExpr>,
+        generic_args: Vec<GenericArg>,
     },
     List(Vec<TypeExpr>),
     Tuple(Vec<TypeExpr>),
@@ -276,7 +293,7 @@ pub enum ExprKind {
     },
     Path {
         segments: Vec<String>,
-        generics: Option<Vec<TypeExpr>>,
+        generics: Option<Vec<GenericArg>>,
     },
     Call {
         function: Box<Expr>,

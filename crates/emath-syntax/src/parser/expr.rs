@@ -272,7 +272,7 @@ impl super::Parser {
         Some(acc.unwrap_or(prev))
     }
 
-    fn parse_additive(&mut self, depth: usize) -> Option<Expr> {
+    pub(super) fn parse_additive(&mut self, depth: usize) -> Option<Expr> {
         let mut left = self.parse_multiplicative(depth)?;
         loop {
             if self.skip_continuation_lines() {
@@ -822,10 +822,10 @@ impl super::Parser {
                 if matches!(self.peek(), TokenKind::Lt) && self.lookahead_has_matching_gt() {
                     let save = self.pos;
                     self.advance();
-                    if let Some(first_arg) = self.parse_type_expr() {
+                    if let Some(first_arg) = self.parse_generic_arg() {
                         let mut args = vec![first_arg];
                         while self.eat(&TokenKind::Comma) {
-                            let Some(arg) = self.parse_type_expr() else {
+                            let Some(arg) = self.parse_generic_arg() else {
                                 self.pos = save;
                                 generics = None;
                                 break;

@@ -42,6 +42,34 @@ input: Tensor<Float32, Hidden>
 
 Shape constraints include equality, broadcasting, rank, extent arithmetic and layout. Unknown extents remain symbolic when supported.
 
+## Generic arguments at use sites (C10)
+
+Generic arguments instantiate a parameterized type at a use site. The
+grammar admits three kinds of argument:
+
+- **Type argument** — a type expression: `Vector<Float64>`, `NonNegative<Real>`
+- **Value argument** — a literal or expression: `Mod<7>`, `Tensor<Float64, [N, N]>`
+- **Named argument** — `name = expression`: `GF<2, 3, modulus = x + 1>`
+
+```emath
+inputs:
+    v: Vector<Float64>            # type-only (unchanged)
+    m: Mod<7>                     # integer literal value arg
+    grid: Tensor<Float64, [N, N]> # type arg + bracket-list extent
+    field: GF<2, 3, modulus = x + 1>  # value args + named arg
+```
+
+The first argument to `Vector` / `Matrix` / `Tensor`, if it is a
+recognized element type (`Float64`, `Real`, …), is the element type;
+remaining arguments are extents. If the first argument is not an
+element type, all arguments are extents and the element defaults to
+`Float64`.
+
+Value-level and named generic arguments **parse** today. Semantic
+admission of non-type arguments (modular arithmetic, finite fields,
+function spaces) will arrive with the domain-specific language beads
+that use them.
+
 ## Domains
 
 ```emath

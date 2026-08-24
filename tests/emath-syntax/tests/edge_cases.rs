@@ -679,3 +679,166 @@ emath function test(n: Float64) -> Float64:
         other => panic!("expected Binder, got {:?}", other),
     }
 }
+
+// ---- C10: value-level generic arguments at use sites ---------------------
+
+/// Find the type of the first field in an `inputs:` section.
+fn first_input_ty<'a>(tree: &'a emath_core::tree::SyntaxTree) -> Option<&'a emath_core::tree::TypeExpr> {
+    let item = tree.items.first()?;
+    let Item::Declaration(decl) = item else {
+        return None;
+    };
+    for section in decl.sections() {
+        if section.name == "inputs" {
+            for stmt in &section.suite.statements {
+                if let StmtKind::FieldDecl { ty, .. } = &stmt.kind {
+                    return Some(ty);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn c10_mod_value_generic_parses() {
+    // `Mod<7>` — integer literal as a value generic argument.
+    let source = "\
+emath model ModTest:
+    inputs:
+        x: Mod<7>
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "Mod<7> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
+    match &ty.kind {
+        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+            assert_eq!(segments.last().map(String::as_str), Some("Mod"));
+            assert_eq!(generic_args.len(), 1, "Mod should have one generic arg");
+            match &generic_args[0] {
+                emath_core::tree::GenericArg::Value(expr) => {
+                    assert!(
+                        matches!(&expr.kind, ExprKind::Int(v) if v == "7"),
+                        "expected Int(\"7\"), got {:?}",
+                        expr.kind
+                    );
+                }
+                other => panic!("expected GenericArg::Value, got {:?}", other),
+            }
+        }
+        other => panic!("expected TypeKind::Path, got {:?}", other),
+    }
+}
+
+#[test]
+fn c10_tensor_bracket_list_extent_parses() {
+    // `Tensor<Float64, [N, N]>` — type arg + bracket-list extent arg.
+    let source = "\
+emath model TensorTest:
+    inputs:
+        x: Tensor<Float64, [N, N]>
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "Tensor<Float64, [N, N]> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
+    match &ty.kind {
+        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+            assert_eq!(segments.last().map(String::as_str), Some("Tensor"));
+            assert_eq!(generic_args.len(), 2, "Tensor should have two generic args");
+            // First arg: Float64 (type)
+            assert!(
+                matches!(&generic_args[0], emath_core::tree::GenericArg::Type(_)),
+                "first arg should be Type, got {:?}",
+                generic_args[0]
+            );
+            // Second arg: [N, N] (value expression)
+            match &generic_args[1] {
+                emath_core::tree::GenericArg::Value(expr) => {
+                    assert!(
+                        matches!(&expr.kind, ExprKind::List(_)),
+                        "expected List expr for [N, N], got {:?}",
+                        expr.kind
+                    );
+                }
+                other => panic!("expected GenericArg::Value, got {:?}", other),
+            }
+        }
+        other => panic!("expected TypeKind::Path, got {:?}", other),
+    }
+}
+
+#[test]
+fn c10_named_generic_arg_parses() {
+    // `GF<2, 3, modulus = x + 1>` — named argument in generic args.
+    let source = "\
+emath model GfTest:
+    inputs:
+        x: GF<2, 3, modulus = x + 1>
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "GF<2, 3, modulus = x + 1> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
+    match &ty.kind {
+        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+            assert_eq!(segments.last().map(String::as_str), Some("GF"));
+            assert_eq!(generic_args.len(), 3, "GF should have three generic args");
+            // First two: value literals (2, 3)
+            assert!(matches!(&generic_args[0], emath_core::tree::GenericArg::Value(_)));
+            assert!(matches!(&generic_args[1], emath_core::tree::GenericArg::Value(_)));
+            // Third: named arg
+            match &generic_args[2] {
+                emath_core::tree::GenericArg::Named { name, arg } => {
+                    assert_eq!(name, "modulus");
+                    assert!(
+                        matches!(arg.as_ref(), emath_core::tree::GenericArg::Value(_)),
+                        "named arg value should be a Value, got {:?}",
+                        arg
+                    );
+                }
+                other => panic!("expected GenericArg::Named, got {:?}", other),
+            }
+        }
+        other => panic!("expected TypeKind::Path, got {:?}", other),
+    }
+}
+
+#[test]
+fn c10_vector_float64_regression() {
+    // Existing type-only generics must still parse identically.
+    let source = "\
+emath model VectorTest:
+    inputs:
+        x: Vector<Float64>
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "Vector<Float64> must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
+    match &ty.kind {
+        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+            assert_eq!(segments.last().map(String::as_str), Some("Vector"));
+            assert_eq!(generic_args.len(), 1);
+            assert!(
+                matches!(&generic_args[0], emath_core::tree::GenericArg::Type(_)),
+                "Vector arg should be Type, got {:?}",
+                generic_args[0]
+            );
+        }
+        other => panic!("expected TypeKind::Path, got {:?}", other),
+    }
+}

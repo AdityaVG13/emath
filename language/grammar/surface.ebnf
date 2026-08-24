@@ -119,12 +119,19 @@ binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , bi
 binder_list      = pattern , "in" , expression , { "," , pattern , "in" , expression } ;
 
 type_expr        = type_primary , { type_operator , type_primary } ;
-type_primary     = path , [ "<" , type_expr , { "," , type_expr } , ">" ]
+type_primary     = path , [ generic_args ]
                  | "(" , type_expr , { "," , type_expr } , ")"
                  | "[" , type_expr , ";" , expression , "]"
                  | "fn" , parameter_list , "->" , type_expr
                  | type_primary , "where" , expression ;
 type_operator    = "|" | "&" | "*" | "/" ;
+
+(* C10: Generic arguments at use sites accept types, value literals,
+   expressions, bracket-list extents, and named arguments.
+   Examples: Vector<Float64>, Mod<7>, Tensor<Float64, [N, N]>,
+   GF<2, 3, modulus = x^3 + x + 1>. *)
+generic_args     = "<" , generic_arg , { "," , generic_arg } , ">" ;
+generic_arg      = [ identifier , "=" ] , ( type_expr | expression ) ;
 
 pattern          = identifier
                  | "_"

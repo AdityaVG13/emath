@@ -1,12 +1,32 @@
 //! Type mapping functions: surface `TypeExpr` → semantic IR `TypeNode`,
 //! unit annotations, and type display.
 
-use emath_core::tree::{TypeExpr, TypeKind as SynTypeKind};
+use emath_core::tree::{ExprKind, GenericArg, TypeExpr, TypeKind as SynTypeKind};
 use emath_core::{Diagnostics, QualifiedName, SchemaId};
 use emath_ir::{TypeNode, Unit, lookup_unit, per_unit};
 use std::collections::BTreeSet;
 
 use super::E_UNSUPPORTED_TYPE;
+
+/// Extract a `TypeExpr` from a `GenericArg::Type`, refusing value/named args
+/// in the Phase 1 strict-f64 subset.
+fn generic_arg_as_type<'a>(
+    arg: &'a GenericArg,
+    diagnostics: &mut Diagnostics,
+) -> Option<&'a TypeExpr> {
+    match arg {
+        GenericArg::Type(ty) => Some(ty),
+        GenericArg::Value(_) | GenericArg::Named { .. } => {
+            diagnostics.error(
+                E_UNSUPPORTED_TYPE,
+                "value-level generic arguments are not yet admitted in the Phase 1 strict-f64 subset",
+                // GenericArg doesn't carry its own span; use a default.
+                emath_core::Span::default(),
+            );
+            None
+        }
+    }
+}
 
 /// Map a surface type to a neutral type node (Phase 1 subset).
 pub(super) fn map_type(
@@ -66,7 +86,8 @@ pub(super) fn map_type(
         "NonNegative" | "Positive" | "Probability" => {
             let inner = generic_args
                 .first()
-                .and_then(|arg| map_type(arg, diagnostics, host_types));
+                .and_then(|arg| generic_arg_as_type(arg, diagnostics))
+                .and_then(|ty| map_type(ty, diagnostics, host_types));
             let base = inner.unwrap_or(TypeNode::Float64);
             Some(TypeNode::Refinement {
                 base: Box::new(base),
@@ -82,16 +103,21 @@ pub(super) fn map_type(
                 );
                 return None;
             }
-            let inner_name = match &generic_args[0].kind {
-                SynTypeKind::Path { segments, .. } => segments.last().map_or("", String::as_str),
-                _ => {
-                    diagnostics.error(
-                        "E-UNIT-105",
-                        "`Per<U>` inner argument must be a unit type",
-                        generic_args[0].source,
-                    );
-                    return None;
+            let inner_ty = generic_arg_as_type(&generic_args[0], diagnostics);
+            let inner_name = match inner_ty {
+                Some(ty) => {
+                    if let SynTypeKind::Path { segments, .. } = &ty.kind {
+                        segments.last().map_or("", String::as_str)
+                    } else {
+                        diagnostics.error(
+                            "E-UNIT-105",
+                            "`Per<U>` inner argument must be a unit type",
+                            ty.source,
+                        );
+                        return None;
+                    }
                 }
+                None => return None,
             };
             match per_unit(inner_name) {
                 Ok(unit) => Some(TypeNode::UnitRef { name: unit.name }),
@@ -104,7 +130,8 @@ pub(super) fn map_type(
         "Interval" => {
             let inner = generic_args
                 .first()
-                .and_then(|arg| map_type(arg, diagnostics, host_types))
+                .and_then(|arg| generic_arg_as_type(arg, diagnostics))
+                .and_then(|ty| map_type(ty, diagnostics, host_types))
                 .unwrap_or(TypeNode::Float64);
             Some(TypeNode::Interval(Box::new(inner)))
         }
@@ -114,6 +141,7 @@ pub(super) fn map_type(
         "Result" => {
             let error_name = generic_args
                 .get(1)
+                .and_then(|arg| generic_arg_as_type(arg, diagnostics))
                 .map_or_else(|| "ConfigError".to_string(), type_display);
             Some(TypeNode::Other(QualifiedName(error_name)))
         }
@@ -240,7 +268,7 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
 
 pub(super) fn map_shape_type(
     leaf: &str,
-    generic_args: &[TypeExpr],
+    generic_args: &[GenericArg],
     ty: &TypeExpr,
     diagnostics: &mut Diagnostics,
     host_types: &BTreeSet<String>,
@@ -248,8 +276,12 @@ pub(super) fn map_shape_type(
     // `Vector[3]` / `Matrix[2, 2]` treat all args as extents (element defaults
     // to Float64). `Vector[Float64, 3]` / `Matrix[Real, m, n]` name the element
     // first, then the extents.
+    //
+    // C10: Extents can arrive as either GenericArg::Type (old-style: integers
+    // and identifiers parsed as type paths) or GenericArg::Value (new-style:
+    // integer literals and expressions). Both are valid extents.
     let (element, extent_args) = match generic_args.first() {
-        Some(first) if is_element_type_arg(first, host_types) => {
+        Some(GenericArg::Type(first)) if is_element_type_arg(first, host_types) => {
             let element = map_type(first, diagnostics, host_types)?;
             (element, generic_args.get(1..).unwrap_or(&[]))
         }
@@ -257,36 +289,63 @@ pub(super) fn map_shape_type(
     };
     let mut extents = Vec::new();
     for arg in extent_args {
-        match &arg.kind {
-            SynTypeKind::List(items) if items.is_empty() => {
-                diagnostics.error(
-                    "E-SHAPE-004",
-                    "declared tensor/vector shape must have rank >= 1",
-                    arg.source,
-                );
-                return None;
-            }
-            SynTypeKind::List(items) => {
-                for item in items {
-                    extents.push(extent_from_type(item, diagnostics)?);
+        match arg {
+            GenericArg::Type(ty) => match &ty.kind {
+                SynTypeKind::List(items) if items.is_empty() => {
+                    diagnostics.error(
+                        "E-SHAPE-004",
+                        "declared tensor/vector shape must have rank >= 1",
+                        ty.source,
+                    );
+                    return None;
                 }
-            }
-            SynTypeKind::Path { segments, .. } => {
-                let name = segments.last().map_or("", String::as_str);
-                extents.push(emath_ir::Extent::from_surface(name));
-            }
-            _ => {
+                SynTypeKind::List(items) => {
+                    for item in items {
+                        extents.push(extent_from_type(item, diagnostics)?);
+                    }
+                }
+                SynTypeKind::Path { segments, .. } => {
+                    let name = segments.last().map_or("", String::as_str);
+                    extents.push(emath_ir::Extent::from_surface(name));
+                }
+                _ => {
+                    diagnostics.error(
+                        "E-SHAPE-004",
+                        format!("shape extent `{}` is not well-formed", type_display(ty)),
+                        ty.source,
+                    );
+                    return None;
+                }
+            },
+            GenericArg::Value(expr) => match &expr.kind {
+                ExprKind::Int(value) => {
+                    extents.push(emath_ir::Extent::from_surface(value));
+                }
+                ExprKind::Path { segments, .. } => {
+                    let name = segments.last().map_or("", String::as_str);
+                    extents.push(emath_ir::Extent::from_surface(name));
+                }
+                _ => {
+                    diagnostics.error(
+                        "E-SHAPE-004",
+                        format!("shape extent `{}` is not a literal or identifier", crate::recognition::expr_text(expr)),
+                        expr.source,
+                    );
+                    return None;
+                }
+            },
+            GenericArg::Named { .. } => {
                 diagnostics.error(
                     "E-SHAPE-004",
-                    format!("shape extent `{}` is not well-formed", type_display(arg)),
-                    arg.source,
+                    "named generic arguments are not valid as shape extents",
+                    ty.source,
                 );
                 return None;
             }
         }
     }
     if leaf == "Tensor" && extents.is_empty() && extent_args.iter().any(|arg| {
-        matches!(arg.kind, SynTypeKind::List(_))
+        matches!(arg, GenericArg::Type(ty) if matches!(ty.kind, SynTypeKind::List(_)))
     }) {
         return None;
     }

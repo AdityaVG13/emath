@@ -4,7 +4,7 @@
 //! nodes into source text, applying precedence-based parenthesization.
 
 use super::Prec;
-use super::{format_binder_head, format_type};
+use super::format_binder_head;
 use crate::tree::{BinaryOp, Expr, ExprKind, UnaryOp};
 
 #[must_use]
@@ -86,7 +86,7 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    format_type(out, generic);
+                    super::format_generic_arg(out, generic);
                 }
                 out.push('>');
             }

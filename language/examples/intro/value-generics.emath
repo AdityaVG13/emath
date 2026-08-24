@@ -1,0 +1,17 @@
+# C10: Value-level generic arguments at use sites.
+# The grammar now admits value literals, expressions, bracket-list extents,
+# and named arguments alongside type arguments in generic position.
+
+emath model ValueGenerics:
+    inputs:
+        # Type-only generic (existing syntax, unchanged)
+        v: Vector<Float64>
+
+        # Integer literal as a value generic argument
+        m: Mod<7>
+
+        # Type argument + bracket-list extent argument
+        grid: Tensor<Float64, [N, N]>
+
+        # Multiple value arguments + named argument
+        field: GF<2, 3, modulus = x + 1>
