@@ -367,13 +367,13 @@ pub(crate) fn op_expr(
         ))),
         EmirOp::Factorial(n) => {
             Ok(Expr::Raw(format!(
-                "(1..=__e{} as i64).fold(1i64, |a, b| a * b)",
+                "((1..=__e{} as i64).fold(1i64, |a, b| a * b)) as f64",
                 n.0
             )))
         }
         EmirOp::ModInv(a, m) => {
             Ok(Expr::Raw(format!(
-                "emath_runtime::mod_inv(__e{} as i64, __e{} as i64)",
+                "(emath_runtime::mod_inv(__e{} as i64, __e{} as i64)) as f64",
                 a.0, m.0
             )))
         }
@@ -385,7 +385,7 @@ pub(crate) fn op_expr(
         }
         EmirOp::PolyEvalMod(coeffs, x, p) => {
             Ok(Expr::Raw(format!(
-                "emath_runtime::poly_eval_mod(&__e{}, __e{} as i64, __e{} as i64)",
+                "(emath_runtime::poly_eval_mod(&__e{}, __e{} as i64, __e{} as i64)) as f64",
                 coeffs.0, x.0, p.0
             )))
         }
@@ -397,7 +397,7 @@ pub(crate) fn op_expr(
         }
         EmirOp::HammingDistance(a, b) => {
             Ok(Expr::Raw(format!(
-                "emath_runtime::hamming_distance(&__e{}, &__e{})",
+                "(emath_runtime::hamming_distance(&__e{}, &__e{})) as f64",
                 a.0, b.0
             )))
         }

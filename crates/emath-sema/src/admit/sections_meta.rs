@@ -6,13 +6,165 @@ use emath_core::tree::{CommandArgument, Expr, ExprKind, Section, StmtKind, Synta
 use emath_core::Diagnostics;
 use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
 use emath_ir::goal::EvidenceLevel;
-use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection};
+use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual};
+use emath_ir::ids::{ExprId, TypeId};
+use emath_ir::{ExprNode, SliceAxis};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::types::type_display;
 use super::{
     admit_declaration, Admitter, CheckResult, SemanticTrace, confusable_fold,
 };
+
+/// Walk a single expression node and offset all child ExprIds and TypeIds
+/// by the given amounts. Expression nodes store child references as ExprIds
+/// that are local to the admitter's arena; when the arena is appended to
+/// the package, those references must be shifted to the global index space.
+fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
+    let remap_e = |id: &mut ExprId| {
+        id.0 += expr_offset;
+    };
+    let remap_t = |id: &mut TypeId| {
+        id.0 += type_offset;
+    };
+    match node {
+        ExprNode::Literal(_) | ExprNode::Variable(_) => {}
+        ExprNode::Call { arguments, .. } => {
+            for id in arguments {
+                remap_e(id);
+            }
+        }
+        ExprNode::Unary { value, .. } => remap_e(value),
+        ExprNode::Binary { left, right, .. } => {
+            remap_e(left);
+            remap_e(right);
+        }
+        ExprNode::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            remap_e(condition);
+            remap_e(then_value);
+            remap_e(else_value);
+        }
+        ExprNode::Record { ty, fields } => {
+            remap_t(ty);
+            for (_, id) in fields {
+                remap_e(id);
+            }
+        }
+        ExprNode::Index { value, indices } => {
+            remap_e(value);
+            for id in indices {
+                remap_e(id);
+            }
+        }
+        ExprNode::Slice { value, axes } => {
+            remap_e(value);
+            for axis in axes.iter_mut() {
+                match axis {
+                    SliceAxis::Point(id) => remap_e(id),
+                    SliceAxis::Range { start, end } => {
+                        remap_e(start);
+                        remap_e(end);
+                    }
+                }
+            }
+        }
+        ExprNode::Binder { body, .. } => remap_e(body),
+        ExprNode::Vector(ids) => {
+            for id in ids {
+                remap_e(id);
+            }
+        }
+        ExprNode::Matrix(rows) => {
+            for row in rows.iter_mut() {
+                for id in row.iter_mut() {
+                    remap_e(id);
+                }
+            }
+        }
+        ExprNode::Tensor { elements, .. } => {
+            for id in elements {
+                remap_e(id);
+            }
+        }
+        ExprNode::Differentiate { body, .. } => remap_e(body),
+        ExprNode::Solve { body, .. } => remap_e(body),
+        ExprNode::Optimize { body, .. } => remap_e(body),
+    }
+}
+
+/// Offset all ExprIds and TypeIds in a declaration and its test cases by
+/// the given amounts. The admitter creates IDs local to its own arena
+/// (starting at 0); when the arenas are appended to the package, those
+/// IDs must be shifted to match the global index space.
+fn remap_ids(
+    declaration: &mut emath_ir::Declaration,
+    tests: &mut [emath_ir::constructor::TestCase],
+    residuals: &mut [ModelResidual],
+    expr_offset: u32,
+    type_offset: u32,
+) {
+    let remap_expr = |id: &mut ExprId| {
+        id.0 += expr_offset;
+    };
+    let remap_type = |id: &mut TypeId| {
+        id.0 += type_offset;
+    };
+
+    // Definitions
+    for (_, id) in &mut declaration.definitions {
+        remap_expr(id);
+    }
+    // Invariants
+    for id in &mut declaration.invariants {
+        remap_expr(id);
+    }
+    // Inputs / outputs / state: Field ty
+    for field in &mut declaration.inputs {
+        remap_type(&mut field.ty);
+    }
+    for field in &mut declaration.outputs {
+        remap_type(&mut field.ty);
+    }
+    for field in &mut declaration.state {
+        remap_type(&mut field.ty);
+    }
+    // Constructors
+    for ctor in &mut declaration.constructors {
+        for id in &mut ctor.preconditions {
+            remap_expr(id);
+        }
+        for (_, id) in &mut ctor.assignments {
+            remap_expr(id);
+        }
+        for id in &mut ctor.postconditions {
+            remap_expr(id);
+        }
+        for (_, id) in &mut ctor.defaults {
+            remap_expr(id);
+        }
+        if let Some(id) = &mut ctor.error_type {
+            remap_type(id);
+        }
+    }
+    // Evidence claims: no ExprId fields, only string metadata
+    // Constructors
+    for test in tests.iter_mut() {
+        for (_, id) in &mut test.given {
+            remap_expr(id);
+        }
+        if let Some(id) = &mut test.expect {
+            remap_expr(id);
+        }
+    }
+    // Model residuals
+    for residual in residuals.iter_mut() {
+        remap_expr(&mut residual.expr);
+    }
+}
 
 pub(super) fn host_imported_types(imports: &[ImportEntry]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
@@ -379,7 +531,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
-        let (declaration, tests, types, exprs, entries, admit_diagnostics, residuals) =
+        let (declaration, mut tests, types, exprs, entries, admit_diagnostics, mut residuals) =
             admit_declaration(decl, &host_types);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
@@ -393,11 +545,21 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         };
         declaration.id = emath_ir::DeclarationId(declaration_id);
         declaration_id += 1;
+        // Remap local ExprIds and TypeIds to the package's global index
+        // space before merging the arenas. Without this, declaration 2's
+        // ExprId(0) would alias declaration 1's first expression.
+        let expr_offset = u32::try_from(package.exprs.len()).unwrap_or(u32::MAX);
+        let type_offset = u32::try_from(package.types.len()).unwrap_or(u32::MAX);
+        remap_ids(&mut declaration, &mut tests, &mut residuals, expr_offset, type_offset);
         if !residuals.is_empty() {
             package.residuals.insert(declaration.id, residuals);
         }
         package.types.extend(types);
-        package.exprs.extend(exprs.iter().map(|(e, _)| e.clone()));
+        for (e, _) in &exprs {
+            let mut node = e.clone();
+            remap_expr_node(&mut node, expr_offset, type_offset);
+            package.exprs.push(node);
+        }
         package.expr_spans.extend(exprs.iter().map(|(_, s)| *s));
         for test in tests {
             declaration.tests.push(package.push_test(test));

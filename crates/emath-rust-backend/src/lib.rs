@@ -417,9 +417,14 @@ impl BackendInput<'_> {
                 let body = Stmt::Block(Block {
                     statements: body_stmts,
                 });
+                let fn_name = if emit_free_fn {
+                    escape_ident(&name)
+                } else {
+                    escape_ident(&target)
+                };
                 evaluate_targets.push(target.clone());
                 methods.push(FnDef {
-                    name: escape_ident(&target),
+                    name: fn_name,
                     generics: vec![],
                     params,
                     ret: Ty::F64,
@@ -480,7 +485,7 @@ impl BackendInput<'_> {
                 let Some(test) = package.tests.get(test_id.index()) else {
                     continue;
                 };
-                let test_name = snake_case(&test.name);
+                let test_name = format!("{}_{}", snake_case(&name), snake_case(&test.name));
                 let given_names: Vec<String> = test.given.keys().cloned().collect();
                 let mut statements: Vec<Stmt> = Vec::new();
                 let mut seen: Vec<String> = Vec::new();
@@ -508,7 +513,7 @@ impl BackendInput<'_> {
                 }
                 let eval_call = if emit_free_fn {
                     Expr::Call {
-                        path: vec![escape_ident(target)],
+                        path: vec![escape_ident(&name)],
                         args: eval_args,
                     }
                 } else {
