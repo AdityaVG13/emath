@@ -287,6 +287,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let has_recognition_items = tree.items.iter().any(|item| match item {
         emath_core::tree::Item::Package { .. } | emath_core::tree::Item::Use { .. } => true,
         emath_core::tree::Item::Declaration(decl) => decl.item_kind != "custom",
+        emath_core::tree::Item::Notation(_) => true,
     });
     let recognition = if has_recognition_items {
         let front_end = crate::recognition::admit_front_end(tree, &mut diagnostics, &mut trace);

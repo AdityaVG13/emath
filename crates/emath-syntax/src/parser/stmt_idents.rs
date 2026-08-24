@@ -707,7 +707,7 @@ impl super::Parser {
     /// that opens generic type arguments (`Tensor<...>`), a comparison, or
     /// a call is left unconsumed so the command tail can parse it as an
     /// argument.
-    fn collect_segments_with_dots(&mut self) -> (Vec<String>, bool) {
+    pub(super) fn collect_segments_with_dots(&mut self) -> (Vec<String>, bool) {
         let mut segments = Vec::new();
         let mut via_dot = false;
         if let TokenKind::Ident(first) = self.peek().clone() {

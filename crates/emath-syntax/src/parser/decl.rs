@@ -1,6 +1,7 @@
 use crate::token::{Keyword, TokenKind};
 use crate::tree::{
-    Declaration, DeclarationSignature, GenericParam, Item, Suite, UseTree,
+    Declaration, DeclarationSignature, GenericParam, Item, NotationDecl, NotationFixity, Suite,
+    UseTree,
 };
 use emath_core::Span;
 
@@ -20,6 +21,11 @@ impl super::Parser {
                 }
                 TokenKind::Keyword(Keyword::Use) => {
                     if let Some(item) = self.parse_use_item() {
+                        self.tree_items.push(item);
+                    }
+                }
+                TokenKind::Ident(name) if name == "notation" => {
+                    if let Some(item) = self.parse_notation_item() {
                         self.tree_items.push(item);
                     }
                 }
@@ -276,6 +282,118 @@ impl super::Parser {
                 span,
             );
         }
+    }
+
+    /// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
+    ///
+    /// N1: Notation declarations are scoped to the package and imported
+    /// via `use`.  N2: The optional `alias` clause provides an alternative
+    /// spelling.  N5: Notation is typography — removing it never changes
+    /// semantic identity.
+    fn parse_notation_item(&mut self) -> Option<Item> {
+        let start = self.current_span();
+        self.advance(); // `notation`
+
+        // Fixity: prefix | postfix | infixl | infixr | infix
+        let fixity = match self.peek() {
+            TokenKind::Ident(s) if s == "prefix" => NotationFixity::Prefix,
+            TokenKind::Ident(s) if s == "postfix" => NotationFixity::Postfix,
+            TokenKind::Ident(s) if s == "infixl" => NotationFixity::InfixLeft,
+            TokenKind::Ident(s) if s == "infixr" => NotationFixity::InfixRight,
+            TokenKind::Ident(s) if s == "infix" => NotationFixity::Infix,
+            _ => {
+                self.error_here(
+                    "E-SYN-101",
+                    "expected fixity (prefix|postfix|infixl|infixr|infix) in notation declaration",
+                );
+                return None;
+            }
+        };
+        self.advance();
+
+        // Precedence: integer
+        let precedence = match self.peek() {
+            TokenKind::Int(n) => {
+                let n = n.clone();
+                self.advance();
+                n.parse::<u32>().unwrap_or(0)
+            }
+            _ => {
+                self.error_here("E-SYN-101", "expected precedence integer in notation declaration");
+                return None;
+            }
+        };
+
+        // Glyph: string literal
+        let glyph = match self.peek() {
+            TokenKind::Str(s) => {
+                let s = s.clone();
+                self.advance();
+                s
+            }
+            _ => {
+                self.error_here("E-SYN-101", "expected glyph string in notation declaration");
+                return None;
+            }
+        };
+
+        // Arrow: => (lexed as TokenKind::Arrow, same as ->)
+        if !self.eat(&TokenKind::Arrow) {
+            self.error_here("E-SYN-101", "expected `=>` in notation declaration");
+            return None;
+        }
+
+        // Target path: ident (:: ident)*
+        // Stop if we see `alias` followed by a string (N2 alias clause).
+        let mut target = Vec::new();
+        loop {
+            match self.peek() {
+                TokenKind::Ident(name) => {
+                    // Don't consume `alias` as a path segment — it starts
+                    // the optional N2 alias clause.
+                    if name == "alias" && matches!(self.peek_at(1), TokenKind::Str(_)) {
+                        break;
+                    }
+                    target.push(name.clone());
+                    self.advance();
+                }
+                TokenKind::PathSep | TokenKind::Dot => {
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+        if target.is_empty() {
+            self.error_here("E-SYN-110", "expected target path after `=>` in notation");
+            return None;
+        }
+
+        // N2: Optional alias clause: `alias "*"`
+        let alias = if self.peek() == &TokenKind::Ident("alias".to_string()) {
+            self.advance();
+            match self.peek() {
+                TokenKind::Str(s) => {
+                    let s = s.clone();
+                    self.advance();
+                    Some(s)
+                }
+                _ => {
+                    self.error_here("E-SYN-101", "expected alias string after `alias`");
+                    return None;
+                }
+            }
+        } else {
+            None
+        };
+
+        Some(Item::Notation(NotationDecl {
+            fixity,
+            precedence,
+            glyph,
+            target,
+            alias,
+            source: start.cover(self.last_span()),
+        }))
     }
 
     /// Top-level `extern operator name<Generics>(params) -> Ret:` `suite`
