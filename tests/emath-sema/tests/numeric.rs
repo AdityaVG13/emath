@@ -483,3 +483,33 @@ emath function f(x: Float64) -> Float64:
         "cases expression should be admitted in definitions, got errors: {codes:?}"
     );
 }
+
+// ─── domain declarations on inputs (U5) ───
+
+#[test]
+fn domain_annotated_input_admits() {
+    let source = "\
+emath function f(x: Float64 in [0.0, 1.0]) -> Float64:
+    definitions:
+        f = x * x
+";
+    let codes = errors_of("domain-input", source);
+    assert!(
+        codes.is_empty(),
+        "domain-annotated input should be admitted, got errors: {codes:?}"
+    );
+}
+
+#[test]
+fn domain_on_non_numeric_type_errors() {
+    let source = "\
+emath function f(x: Bool in [0.0, 1.0]) -> Float64:
+    definitions:
+        f = 1.0
+";
+    let codes = errors_of("domain-non-numeric", source);
+    assert!(
+        !codes.is_empty(),
+        "domain annotation on non-numeric type must error"
+    );
+}
