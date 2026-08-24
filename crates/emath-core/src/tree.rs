@@ -379,6 +379,22 @@ pub enum ExprKind {
         value: Box<Expr>,
         condition: Box<Expr>,
     },
+    /// `unit of E` or `dimension of E` — compile-time query.
+    /// Returns the unit expression or named dimension of E.
+    /// Usable in `require`, `tests:`, and `expect`.
+    UnitQuery {
+        kind: UnitQueryKind,
+        expr: Box<Expr>,
+    },
+}
+
+/// Kind of compile-time unit/dimension query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitQueryKind {
+    /// `unit of E` — returns the unit expression.
+    Unit,
+    /// `dimension of E` — returns the named dimension.
+    Dimension,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -282,6 +282,22 @@ arrow, output indices). The interp handles Vector, Matrix, and Tensor
 operands and returns the contracted result. Block matrices (`[A | b]`)
 are not yet admitted.
 
+### Unit and dimension queries (04 section 1.4)
+
+`unit of E` and `dimension of E` are compile-time query operators
+with precedence just above `==`. They are usable in `require`,
+`tests:`, and `expect`:
+
+```emath
+require dimension of thrust == Force
+expect unit of (m * c^2) == kg*m^2/s^2
+```
+
+`unit` and `dimension` are contextual keywords: they activate only
+when followed by `of`. In all other positions they are regular
+identifiers. These queries parse today; compile-time evaluation
+requires a unit inference engine (not yet implemented in Phase 1).
+
 Spatial operators (admitted in `definitions:` and `equations:`):
 
 1-D Laplacian — second derivative via the stencil `[1, -2, 1] / dx²`:

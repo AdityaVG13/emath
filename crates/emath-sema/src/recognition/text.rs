@@ -142,6 +142,13 @@ pub fn expr_text(expr: &Expr) -> String {
             expr_text(else_value)
         ),
         ExprKind::Binder { kind, .. } => format!("binder({kind:?})"),
+        ExprKind::UnitQuery { kind, expr } => {
+            let kw = match kind {
+                emath_core::tree::UnitQueryKind::Unit => "unit of",
+                emath_core::tree::UnitQueryKind::Dimension => "dimension of",
+            };
+            format!("{} {}", kw, expr_text(expr))
+        }
     }
 }
 

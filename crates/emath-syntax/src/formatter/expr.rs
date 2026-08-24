@@ -44,7 +44,8 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         | ExprKind::Conditioned { .. }
         | ExprKind::Derivative { .. }
         | ExprKind::Solve { .. }
-        | ExprKind::Optimize { .. } => true,
+        | ExprKind::Optimize { .. }
+        | ExprKind::UnitQuery { .. } => true,
         // Binder expressions (`sum(i in S) body`) parse greedily; parens
         // keep them scoped inside larger factors, and the body must never
         // be parenthesized (see the binder arm below).
@@ -265,6 +266,13 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             format_expr(out, value, Prec::Root);
             out.push_str(" if ");
             format_expr(out, condition, Prec::Root);
+        }
+        ExprKind::UnitQuery { kind, expr } => {
+            match kind {
+                crate::tree::UnitQueryKind::Unit => out.push_str("unit of "),
+                crate::tree::UnitQueryKind::Dimension => out.push_str("dimension of "),
+            }
+            format_expr(out, expr, Prec::Root);
         }
     }
 }

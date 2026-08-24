@@ -1,5 +1,5 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{BinaryOp, DerivativeKind, Expr, ExprKind, UnaryOp};
+use crate::tree::{BinaryOp, DerivativeKind, Expr, ExprKind, UnaryOp, UnitQueryKind};
 use super::{binder_kind, comparison_operator, MAX_EXPR_DEPTH};
 
 impl super::Parser {
@@ -262,8 +262,39 @@ impl super::Parser {
         Some(left)
     }
 
+    /// `unit of E` / `dimension of E` — compile-time query operators.
+    /// Precedence: just above `==` (binds tighter than comparison,
+    /// looser than additive). Contextual keywords: `unit` and `dimension`
+    /// are identifiers that activate only when followed by `of`.
+    fn parse_unit_query(&mut self, depth: usize) -> Option<Expr> {
+        let start = self.current_span();
+        // Check for `unit of` or `dimension of` contextual keywords.
+        if let TokenKind::Ident(kw) = self.peek().clone() {
+            if matches!(kw.as_str(), "unit" | "dimension") {
+                if matches!(self.peek_at(1), TokenKind::Ident(id) if id == "of") {
+                    let kind = if kw == "unit" {
+                        UnitQueryKind::Unit
+                    } else {
+                        UnitQueryKind::Dimension
+                    };
+                    self.advance(); // consume `unit`/`dimension`
+                    self.advance(); // consume `of`
+                    let expr = self.parse_additive(depth)?;
+                    return Some(Expr {
+                        kind: ExprKind::UnitQuery {
+                            kind,
+                            expr: Box::new(expr),
+                        },
+                        source: start.cover(self.last_span()),
+                    });
+                }
+            }
+        }
+        self.parse_additive(depth)
+    }
+
     fn parse_comparison(&mut self, depth: usize) -> Option<Expr> {
-        let first = self.parse_additive(depth)?;
+        let first = self.parse_unit_query(depth)?;
         let mut prev = first;
         let mut acc: Option<Expr> = None;
         loop {
@@ -277,7 +308,7 @@ impl super::Parser {
             if self.skip_continuation_lines() {
                 // operator-first continuation
             }
-            let right = self.parse_additive(depth)?;
+            let right = self.parse_unit_query(depth)?;
             let compar = Expr {
                 kind: ExprKind::Binary {
                     op,
