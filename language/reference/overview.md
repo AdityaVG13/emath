@@ -116,7 +116,7 @@ Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
 Admitted types:
 
 ```text
-Float64  Bool  Nat  Int  Complex
+Float64  Bool  Nat  Int  Complex  Mod<p>  GF<p>
 Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
 NonNegative<Real> / Positive<Real> / Probability<Real>
@@ -138,6 +138,9 @@ total(expr) wrt t / d(expr) wrt t  (total/material derivative)
 solve(expr) wrt x              (Newton's method root-finding)
 minimize(expr) wrt x / maximize(expr) wrt x  (gradient descent/ascent)
 einsum("ik,kj->ij", A, B)      (Einstein summation contraction)
+factorial(n)                   (exact i64 factorial, n in [0,20])
+mod_inv(a, m)                  (modular inverse via extended GCD)
+cong(a, b, m)                  (congruence test: (a-b) mod m == 0)
 1 + 2i / 2i / 3.5i             (complex literals, Ni suffix)
 unit of E / dimension of E     (compile-time queries, parse only)
 ```

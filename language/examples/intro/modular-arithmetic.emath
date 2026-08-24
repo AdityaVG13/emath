@@ -1,0 +1,52 @@
+(* Modular arithmetic and finite fields — B15/B29/B40
+   Building blocks for Reed-Solomon code construction over GF(p). *)
+
+emath function modular_basics:
+  outputs:
+    result: Int
+  definitions:
+    p = 7
+    (* Modular arithmetic via builtins *)
+    inv3 = mod_inv(3, p)       (* 3^(-1) mod 7 = 5 *)
+    check = cong(3 * inv3, 1, p) (* 3*5 ≡ 1 (mod 7) → true *)
+
+    (* Wilson's theorem: (p-1)! ≡ -1 (mod p) for prime p *)
+    fac6 = factorial(6)        (* 6! = 720 *)
+    wilson = mod(fac6, p)      (* 720 mod 7 = 6 = p-1 = -1 mod p *)
+
+    result = wilson
+  tests:
+    expect inv3 == 5
+    expect check == true
+    expect wilson == 6
+    expect cong(17, 5, 12) == true   (* 17 ≡ 5 (mod 12) *)
+    expect cong(17, 6, 12) == false  (* 17 ≢ 6 (mod 12) *)
+
+emath function rs_distance:
+  (* Reed-Solomon code distance: d = n - k + 1 (Singleton bound)
+     For RS(n, k) over GF(p), the minimum distance is n - k + 1. *)
+  outputs:
+    distance: Int
+    n: Int
+    k: Int
+  definitions:
+    n = 7
+    k = 3
+    distance = n - k + 1    (* = 5 *)
+  tests:
+    expect distance == 5
+    expect n == 7
+    expect k == 3
+
+emath function gf7_inverse_table:
+  (* Compute the inverse table for GF(7) *)
+  outputs:
+    table: Vector[7]
+  definitions:
+    table = [mod_inv(0, 7), mod_inv(1, 7), mod_inv(2, 7),
+             mod_inv(3, 7), mod_inv(4, 7), mod_inv(5, 7),
+             mod_inv(6, 7)]
+  tests:
+    (* 0 has no inverse — expect error at runtime; for now, table
+       construction parses and admits. *)
+    expect length(table) == 7

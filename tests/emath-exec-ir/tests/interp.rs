@@ -1108,3 +1108,109 @@ fn einsum_transpose() {
         }
     );
 }
+
+// ─── Finite field / modular arithmetic tests (B15/B29/B40) ───
+
+#[test]
+fn factorial_basic() {
+    let program = program(vec![
+        EmirOp::ConstI64(5),        // 0: n = 5
+        EmirOp::Factorial(EmirValue(0)), // 1: 5! = 120
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(120));
+}
+
+#[test]
+fn factorial_zero_and_one() {
+    let p0 = program(vec![EmirOp::ConstI64(0), EmirOp::Factorial(EmirValue(0))]);
+    assert_eq!(evaluate(&p0, &[], &[]).unwrap(), Value::I64(1));
+
+    let p1 = program(vec![EmirOp::ConstI64(1), EmirOp::Factorial(EmirValue(0))]);
+    assert_eq!(evaluate(&p1, &[], &[]).unwrap(), Value::I64(1));
+}
+
+#[test]
+fn factorial_overflow_guard() {
+    let program = program(vec![
+        EmirOp::ConstI64(21),
+        EmirOp::Factorial(EmirValue(0)),
+    ]);
+    assert!(evaluate(&program, &[], &[]).is_err());
+}
+
+#[test]
+fn mod_inv_basic() {
+    // mod_inv(3, 7) = 5 because 3*5 = 15 ≡ 1 (mod 7)
+    let program = program(vec![
+        EmirOp::ConstI64(3),              // 0: a = 3
+        EmirOp::ConstI64(7),              // 1: m = 7
+        EmirOp::ModInv(EmirValue(0), EmirValue(1)), // 2: 3^(-1) mod 7 = 5
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(5));
+}
+
+#[test]
+fn mod_inv_no_inverse() {
+    // mod_inv(2, 4) should error — gcd(2,4)=2, not 1
+    let program = program(vec![
+        EmirOp::ConstI64(2),
+        EmirOp::ConstI64(4),
+        EmirOp::ModInv(EmirValue(0), EmirValue(1)),
+    ]);
+    assert!(evaluate(&program, &[], &[]).is_err());
+}
+
+#[test]
+fn congruence_true() {
+    // cong(17, 5, 12) → (17-5) % 12 = 0 → true
+    let program = program(vec![
+        EmirOp::ConstI64(17),  // 0: a
+        EmirOp::ConstI64(5),   // 1: b
+        EmirOp::ConstI64(12),  // 2: m
+        EmirOp::Congruence(EmirValue(0), EmirValue(1), EmirValue(2)), // 3
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn congruence_false() {
+    // cong(17, 6, 12) → (17-6) % 12 = 11 ≠ 0 → false
+    let program = program(vec![
+        EmirOp::ConstI64(17),  // 0: a
+        EmirOp::ConstI64(6),   // 1: b
+        EmirOp::ConstI64(12),  // 2: m
+        EmirOp::Congruence(EmirValue(0), EmirValue(1), EmirValue(2)), // 3
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Bool(false));
+}
+
+#[test]
+fn congruence_negative() {
+    // cong(-1, 6, 7) → (-1-6) rem_euclid 7 = (-7) rem_euclid 7 = 0 → true
+    let program = program(vec![
+        EmirOp::ConstI64(-1),  // 0: a
+        EmirOp::ConstI64(6),   // 1: b
+        EmirOp::ConstI64(7),   // 2: m
+        EmirOp::Congruence(EmirValue(0), EmirValue(1), EmirValue(2)), // 3
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn wilsons_theorem_prime_7() {
+    // Wilson's theorem: (p-1)! ≡ -1 (mod p) for prime p
+    // For p=7: 6! = 720, 720 mod 7 = 6 = -1 mod 7
+    let program = program(vec![
+        EmirOp::ConstI64(6),             // 0: n = 6
+        EmirOp::Factorial(EmirValue(0)), // 1: 6! = 720
+        EmirOp::ConstI64(7),             // 2: p = 7
+        EmirOp::Mod(EmirValue(1), EmirValue(2)), // 3: 720 % 7 = 6
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::F64(6.0));
+}

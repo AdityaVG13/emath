@@ -105,6 +105,9 @@ call_suffix      = "(" , [ argument_list ] , ")" ;
    a path primary. The first argument is a string literal (subscripts);
    remaining arguments are tensor operands. Recognized as a builtin by
    sema and lowered to EmirOp::Einsum. *)
+(* B15: Modular arithmetic builtins: `factorial(n)` → i64, `mod_inv(a, m)` → i64,
+   `cong(a, b, m)` → Bool. `Mod<p>` and `GF<p>` are admitted as Int types.
+   These parse as regular call_suffix on path primaries, recognized by sema. *)
 index_suffix     = "[" , [ expression , { "," , expression } ] , "]" ;
 field_suffix     = "." , identifier ;
 generic_suffix   = "::<" , type_expr , { "," , type_expr } , ">" ;

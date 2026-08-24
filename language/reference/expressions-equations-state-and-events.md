@@ -334,3 +334,29 @@ Not admitted yet: 3-D fields, `Field[R^d -> R]` types, and Dirichlet
 boundaries for the 2-D Laplacian (the arms return a clear "not yet
 supported" error). `heat-pde.emath` remains a target sketch for the full
 field-type design.
+
+### Modular arithmetic and finite fields
+
+Modular arithmetic builtins operate on integer (i64) values and are
+admitted in `definitions:` and `equations:`:
+
+- `factorial(n)` — exact i64 factorial. `n` must be in [0, 20] (i64
+  overflow guard). Returns `Int`.
+- `mod_inv(a, m)` — modular inverse of `a` modulo `m` via extended GCD.
+  Errors at runtime if `gcd(a, m) != 1`. Returns `Int`.
+- `cong(a, b, m)` — congruence test: `(a - b) mod m == 0`. Returns `Bool`.
+- `mod(a, m)` — floating-point remainder (already available as a general
+  builtin; works on `Int` values too via i64-to-f64 coercion).
+
+`Mod<p>` and `GF<p>` are admitted as `Int` types — values are exact
+integers, and modular reduction is performed by the builtins, not the
+type system. This is sufficient for Reed–Solomon code construction
+over small prime fields (evaluating polynomials, checking distances,
+testing Wilson's theorem).
+
+```emath
+definitions:
+  p = 7
+  wilson = mod(factorial(p - 1), p)
+  expect wilson == p - 1  (* (p-1)! ≡ -1 (mod p) for prime p *)
+```

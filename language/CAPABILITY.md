@@ -39,6 +39,7 @@
 | `Bool` | yes | yes | yes |
 | `Nat` `Int` | yes | yes | yes (Int → exact i64 output) |
 | `Complex` | yes | yes | type-checks (eval pending) |
+| `Mod<p>` `GF<p>` | yes | yes (as Int) | yes (via builtins) |
 | `Vector[n]` `Matrix[r,c]` `Tensor[...]` | yes | yes | yes |
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
 | `Interval<F>` | yes | yes | yes |
@@ -90,3 +91,6 @@
 | `gradient` `gradient_2d_x` `gradient_2d_y` | 2 | yes |
 | `sum` `product` | 1 (reduction) | yes |
 | `einsum` | variable (≥2) | yes |
+| `factorial` | 1 | yes (i64, n ∈ [0,20]) |
+| `mod_inv` | 2 | yes (i64, extended GCD) |
+| `cong` | 3 | yes (Bool) |

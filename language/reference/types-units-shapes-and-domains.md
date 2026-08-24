@@ -115,7 +115,7 @@ The chosen profile enters artifact identity and evidence.
 Admitted compute types:
 
 ```text
-Float64  Bool  Nat  Int  Complex
+Float64  Bool  Nat  Int  Complex  Mod<p>  GF<p>
 Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
 ```
@@ -154,3 +154,16 @@ predicates such as `NonNegative<Real>`.
 `Complex` is admitted as a type (e.g., `Complex`, `Vector<Complex, [2]>`).
 Complex literals use the `Ni` suffix (e.g., `2i`, `3.5i`) which desugars
 to `N * i` where `i` is the imaginary unit (a named constant).
+
+`Mod<p>` and `GF<p>` are admitted as `Int` types (e.g., `Mod<7>`, `GF<2>`).
+Values are exact i64 integers; modular reduction is an operational concern
+handled by the builtins (`mod`, `mod_inv`, `cong`), not by the type system.
+
+### Modular arithmetic builtins
+
+| Builtin | Arity | Returns | Description |
+|---------|-------|---------|-------------|
+| `mod(a, m)` | 2 | Float64 | `a % m` (floating-point remainder) |
+| `factorial(n)` | 1 | Int | `n!` as exact i64 (n must be in [0, 20]) |
+| `mod_inv(a, m)` | 2 | Int | Modular inverse of `a` mod `m` via extended GCD; errors if `gcd(a, m) != 1` |
+| `cong(a, b, m)` | 3 | Bool | Congruence check: `(a - b) mod m == 0` |

@@ -37,6 +37,7 @@ say what the compiler does with each one today.
 | [complex-numbers.emath](intro/complex-numbers.emath) | Parses. Complex type admission, `Ni` literal suffix (`2i`, `3.5i`), `Vector<Complex, [2]>` (B14). |
 | [unit-queries.emath](intro/unit-queries.emath) | Parses. `unit of E` / `dimension of E` compile-time queries (04 section 1.4). |
 | [einsum.emath](intro/einsum.emath) | Parses. `einsum("ik,kj->ij", A, B)` tensor contraction: matmul, dot product, transpose (B08). |
+| [modular-arithmetic.emath](intro/modular-arithmetic.emath) | Parses. `Mod<p>`/`GF<p>` types, `factorial(n)`, `mod_inv(a, m)`, `cong(a, b, m)` — finite field arithmetic for Reed-Solomon code construction (B15/B29/B40). |
 
 ## numerical — numerics and dynamics
 

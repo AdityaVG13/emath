@@ -84,6 +84,10 @@ pub(super) fn map_type(
         "Int" => Some(TypeNode::Int),
         "Complex" => Some(TypeNode::Complex(Box::new(TypeNode::Float64))),
         "Self" => Some(TypeNode::Other(QualifiedName("Self".into()))),
+        // Mod<p> and GF<p> — integers modulo a prime. Values are exact i64
+        // integers; modular reduction is an operational concern in the builtins,
+        // not a type-system concern. B15/B29/B40.
+        "Mod" | "GF" => Some(TypeNode::Int),
         "NonNegative" | "Positive" | "Probability" => {
             let inner = generic_args
                 .first()

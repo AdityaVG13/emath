@@ -192,9 +192,9 @@ impl super::Admitter {
                 let arity: Option<usize> = match name.as_str() {
                     "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
                     | "tanh" | "abs" | "floor" | "ceil" | "round" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt" | "recip" | "fract"
-                    | "norm" | "transpose" | "length" | "len" | "mean" => Some(1),
-                    "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" => Some(2),
-                    "lerp" | "clamp" => Some(3),
+                    | "norm" | "transpose" | "length" | "len" | "mean" | "factorial" => Some(1),
+                    "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" | "mod_inv" => Some(2),
+                    "lerp" | "clamp" | "cong" => Some(3),
                     "laplacian_dirichlet" => Some(4),
                     "einsum" => {
                         // einsum(subscripts, tensor1, ...) — variable arity, min 2.
@@ -222,7 +222,7 @@ impl super::Admitter {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y, einsum)"
+                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y, einsum, factorial, mod_inv, cong)"
                             ),
                             function.source,
                         );
@@ -656,6 +656,42 @@ impl super::Admitter {
                                 None
                             }
                         }
+                    }
+                    "factorial" => {
+                        let (arg_id, _) = self.lower_expr(&args[0])?;
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![arg_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Int))
+                    }
+                    "mod_inv" => {
+                        let (a_id, _) = self.lower_expr(&args[0])?;
+                        let (m_id, _) = self.lower_expr(&args[1])?;
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![a_id, m_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Int))
+                    }
+                    "cong" => {
+                        let (a_id, _) = self.lower_expr(&args[0])?;
+                        let (b_id, _) = self.lower_expr(&args[1])?;
+                        let (m_id, _) = self.lower_expr(&args[2])?;
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![a_id, b_id, m_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Bool))
                     }
                     _ => {
                         let mut lowered = Vec::new();
