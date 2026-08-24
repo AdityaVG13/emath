@@ -145,11 +145,14 @@ fn dew_env(case: &CorpusCase) -> BTreeMap<String, f64> {
 fn native_bits(case: &CorpusCase) -> u64 {
     let program = lower_definition(&case.package, case.expr, &case.inputs, &case.states)
         .unwrap_or_else(|error| panic!("{}: native lower refused: {error}", case.name));
-    match evaluate(&program, &case.input_values, &case.state_values)
+    let input_values: Vec<Value> = case.input_values.iter().map(|&v| Value::F64(v)).collect();
+    let state_values: Vec<Value> = case.state_values.iter().map(|&v| Value::F64(v)).collect();
+    match evaluate(&program, &input_values, &state_values)
         .unwrap_or_else(|fault| panic!("{}: native eval fault: {fault}", case.name))
     {
         Value::F64(value) => value.to_bits(),
         Value::Bool(value) => u64::from(value),
+        _ => panic!("{}: native eval returned non-scalar value", case.name),
     }
 }
 

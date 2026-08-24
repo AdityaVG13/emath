@@ -2,11 +2,10 @@
 //! EMIR expression nodes with stable inference.
 
 use emath_core::tree::{
-    BinaryOp as SynBinOp, BinderKind, Expr, ExprKind,
-    UnaryOp as SynUnOp,
+    BinaryOp as SynBinOp, BinderKind, Expr, ExprKind, UnaryOp as SynUnOp,
 };
 use emath_core::QualifiedName;
-use emath_ir::{ExprId, ExprNode, Extent, Literal, lookup_unit};
+use emath_ir::{ExprId, ExprNode, Extent, Literal, UnitDim, UnitFamily, lookup_unit};
 
 mod helpers;
 
@@ -89,48 +88,72 @@ impl super::Admitter {
                 None
             }
             ExprKind::Quantity { value, unit } => {
-                let name = unit.last().map_or("", String::as_str);
-                match lookup_unit(name) {
-                    Ok(looked_up) => {
-                        let inner = match &value.kind {
-                            ExprKind::Int(text) | ExprKind::Float(text) => text.as_str(),
-                            _ => {
-                                self.error(
-                                    "E-UNIT-105",
-                                    "quantity value must be a numeric literal",
-                                    expr.source,
-                                );
-                                return None;
+                let inner = match &value.kind {
+                    ExprKind::Int(text) | ExprKind::Float(text) => text.as_str(),
+                    _ => {
+                        self.error(
+                            "E-UNIT-105",
+                            "quantity value must be a numeric literal",
+                            expr.source,
+                        );
+                        return None;
+                    }
+                };
+                let parsed = parse_float_constant(inner);
+                // Resolve compound unit: flatten to (name, power) pairs,
+                // look up each unit, compute combined dimensions.
+                let factors = unit.flatten();
+                let mut combined_dims = UnitDim::one();
+                let mut combined_family = UnitFamily::Si;
+                let mut unit_label = String::new();
+                for (name, power) in &factors {
+                    match lookup_unit(name) {
+                        Ok(looked_up) => {
+                            if *power >= 0 {
+                                combined_dims = combined_dims.mul(looked_up.dims.pow(*power));
+                            } else {
+                                combined_dims = combined_dims.div(looked_up.dims.pow(-*power));
                             }
-                        };
-                        let parsed = parse_float_constant(inner);
-                        match parsed {
-                            Some(number) if number.is_finite() => {
-                                self.record(
-                                    "sema",
-                                    format!("quantity `{inner} {name}` → {}", looked_up.name),
-                                    expr.source,
-                                );
-                                let id = self.push_expr(
-                                    ExprNode::Literal(Literal::FloatBits(number.to_bits())),
-                                    expr.source,
-                                );
-                                Some((id, Infer::from_unit(&looked_up)))
+                            combined_family = looked_up.family;
+                            if !unit_label.is_empty() {
+                                unit_label.push('*');
                             }
-                            _ => {
-                                self.error(
-                                    "E-TYPE-011",
-                                    format!(
-                                        "non-finite quantity `{inner} {name}` refused under the selected numeric model"
-                                    ),
-                                    expr.source,
-                                );
-                                None
-                            }
+                            unit_label.push_str(&looked_up.name);
+                        }
+                        Err(error) => {
+                            self.error(error.code, error.message, expr.source);
+                            return None;
                         }
                     }
-                    Err(error) => {
-                        self.error(error.code, error.message, expr.source);
+                }
+                match parsed {
+                    Some(number) if number.is_finite() => {
+                        self.record(
+                            "sema",
+                            format!("quantity `{inner} {unit_label}` → dims {}", combined_dims.render()),
+                            expr.source,
+                        );
+                        let id = self.push_expr(
+                            ExprNode::Literal(Literal::FloatBits(number.to_bits())),
+                            expr.source,
+                        );
+                        if combined_dims == UnitDim::one() {
+                            Some((id, Infer::F64))
+                        } else {
+                            Some((id, Infer::Unit {
+                                dims: combined_dims,
+                                family: combined_family,
+                            }))
+                        }
+                    }
+                    _ => {
+                        self.error(
+                            "E-TYPE-011",
+                            format!(
+                                "non-finite quantity `{inner} {unit_label}` refused under the selected numeric model"
+                            ),
+                            expr.source,
+                        );
                         None
                     }
                 }
@@ -1195,7 +1218,7 @@ impl super::Admitter {
                 // to nested `If { c1, e1, If { c2, e2, e3 } }`.
                 // The subject is for readability only (arm conditions
                 // are full expressions, not pattern matches).
-                let (mut current_else, mut result_infer) = self.lower_expr(else_arm)?;
+                let (mut current_else, result_infer) = self.lower_expr(else_arm)?;
                 for (cond, value) in arms.iter().rev() {
                     let (cond_id, cond_infer) = self.lower_expr(cond)?;
                     if !matches!(cond_infer, Infer::Bool) {

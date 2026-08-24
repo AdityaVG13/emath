@@ -1,5 +1,5 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{BinaryOp, BinderKind, DerivativeKind, Expr, ExprKind, LimitDirection, UnaryOp, UnitQueryKind};
+use crate::tree::{BinaryOp, BinderKind, DerivativeKind, Expr, ExprKind, LimitDirection, UnaryOp, UnitExpr, UnitQueryKind};
 use super::{binder_kind, comparison_operator, MAX_EXPR_DEPTH};
 
 impl super::Parser {
@@ -601,10 +601,35 @@ impl super::Parser {
                 value = Expr {
                     kind: ExprKind::Quantity {
                         value: Box::new(value),
-                        unit: vec![unit],
+                        unit: UnitExpr::Base(unit),
                     },
                     source,
                 };
+            }
+        }
+        // Compound-unit bracket: `9.81 [unit m/s^2]` (F7/U4).
+        // The C3 fix already broke out of the postfix loop when `[`
+        // follows a numeric literal, so we handle it here.
+        if matches!(
+            &value.kind,
+            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Quantity { .. }
+        ) {
+            if matches!(self.peek(), TokenKind::LBracket) {
+                if let Some(unit_expr) = self.parse_unit_bracket(depth) {
+                    // Extract the inner numeric value (strip any prior unit).
+                    let inner_value = match &value.kind {
+                        ExprKind::Quantity { value: inner, .. } => inner.clone(),
+                        _ => Box::new(value.clone()),
+                    };
+                    let source = value.source.cover(self.last_span());
+                    value = Expr {
+                        kind: ExprKind::Quantity {
+                            value: inner_value,
+                            unit: unit_expr,
+                        },
+                        source,
+                    };
+                }
             }
         }
         Some(value)
@@ -1166,7 +1191,7 @@ impl super::Parser {
             self.advance();
         }
         let mut arms = Vec::new();
-        let mut else_arm = None;
+        let else_arm;
         // Suppress `|` as `or` so it acts as arm delimiter.
         self.suppress_pipe_or = true;
         loop {
@@ -1231,5 +1256,93 @@ impl super::Parser {
             },
             source: start.cover(self.last_span()),
         })
+    }
+
+    /// Parse a compound-unit bracket: `[unit m/s^2]` (F7/U4).
+    /// The `unit` keyword is required as a contextual keyword to
+    /// disambiguate from indexing. Returns `None` if the bracket
+    /// does not start with `unit`.
+    fn parse_unit_bracket(&mut self, depth: usize) -> Option<UnitExpr> {
+        // Only enter if the next token is `[`.
+        if !matches!(self.peek(), TokenKind::LBracket) {
+            return None;
+        }
+        // Peek ahead: `[` must be followed by the identifier `unit`.
+        let peek1 = self.peek_at(1).clone();
+        if !matches!(peek1, TokenKind::Ident(name) if name == "unit") {
+            return None;
+        }
+        // Consume `[` and `unit`.
+        self.advance();
+        self.advance();
+
+        let unit_expr = self.parse_unit_expr(depth)?;
+
+        if !self.eat(&TokenKind::RBracket) {
+            self.error_here("E-SYN-102", "expected `]` to close unit bracket");
+            return None;
+        }
+        Some(unit_expr)
+    }
+
+    /// Parse a unit expression: `m/s^2`, `kg*m^2/s^2`, `m/(s*s)`.
+    /// Left-associative for `*` and `/` (C2 trap: `m/s*s` = length, not acceleration).
+    fn parse_unit_expr(&mut self, depth: usize) -> Option<UnitExpr> {
+        let _ = depth;
+        let mut left = self.parse_unit_atom()?;
+        loop {
+            match self.peek() {
+                TokenKind::Star => {
+                    self.advance();
+                    let right = self.parse_unit_atom()?;
+                    left = UnitExpr::Mul(Box::new(left), Box::new(right));
+                }
+                TokenKind::Slash => {
+                    self.advance();
+                    let right = self.parse_unit_atom()?;
+                    left = UnitExpr::Div(Box::new(left), Box::new(right));
+                }
+                _ => break,
+            }
+        }
+        Some(left)
+    }
+
+    /// Parse a unit atom: identifier, parenthesized group, or power.
+    fn parse_unit_atom(&mut self) -> Option<UnitExpr> {
+        let base = match self.peek().clone() {
+            TokenKind::Ident(name) => {
+                self.advance();
+                UnitExpr::Base(name)
+            }
+            TokenKind::LParen => {
+                self.advance();
+                let inner = self.parse_unit_expr(0)?;
+                if !self.eat(&TokenKind::RParen) {
+                    self.error_here("E-SYN-101", "expected `)` to close unit group");
+                    return None;
+                }
+                inner
+            }
+            other => {
+                self.error_here(
+                    "E-SYN-101",
+                    format!("expected unit name, found {}", other.describe()),
+                );
+                return None;
+            }
+        };
+        // Check for power: `s^2`
+        if matches!(self.peek(), TokenKind::Caret) {
+            self.advance();
+            let TokenKind::Int(exp_str) = self.peek().clone() else {
+                self.error_here("E-SYN-101", "expected integer exponent after `^`");
+                return None;
+            };
+            self.advance();
+            let exp: i32 = exp_str.parse().unwrap_or(1);
+            return Some(UnitExpr::Pow(Box::new(base), exp));
+        }
+        Some(base)
     }
 }

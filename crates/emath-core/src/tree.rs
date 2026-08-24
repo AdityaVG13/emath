@@ -287,16 +287,76 @@ pub struct Expr {
     pub source: Span,
 }
 
+/// Compound unit expression for bracket-notation units (F7/U4).
+/// `m/s^2` = Div(Base("m"), Pow(Base("s"), 2))
+/// `kg*m^2/s^2` = Div(Mul(Base("kg"), Pow(Base("m"), 2)), Pow(Base("s"), 2))
+/// Simple units like `9.81 m` use `Base("m")`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UnitExpr {
+    /// Single unit identifier: `m`, `s`, `kg`.
+    Base(String),
+    /// Multiplication: `a * b`.
+    Mul(Box<UnitExpr>, Box<UnitExpr>),
+    /// Division: `a / b`.
+    Div(Box<UnitExpr>, Box<UnitExpr>),
+    /// Power: `a^n` (n is an integer exponent).
+    Pow(Box<UnitExpr>, i32),
+}
+
+impl UnitExpr {
+    /// Flatten to a list of (unit_name, power) pairs.
+    /// `m/s^2` → `[("m", 1), ("s", -2)]`
+    #[must_use]
+    pub fn flatten(&self) -> Vec<(String, i32)> {
+        match self {
+            Self::Base(name) => vec![(name.clone(), 1)],
+            Self::Mul(left, right) => {
+                let mut result = left.flatten();
+                result.extend(right.flatten());
+                result
+            }
+            Self::Div(left, right) => {
+                let mut result = left.flatten();
+                for (name, power) in right.flatten() {
+                    result.push((name, -power));
+                }
+                result
+            }
+            Self::Pow(base, exponent) => {
+                base.flatten().into_iter().map(|(name, p)| (name, p * exponent)).collect()
+            }
+        }
+    }
+
+    /// Format as a unit string: `m/s^2`, `kg*m^2/s^2`.
+    #[must_use]
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Base(name) => name.clone(),
+            Self::Mul(left, right) => format!("{}*{}", left.to_string(), right.to_string()),
+            Self::Div(left, right) => format!("{}/{}", left.to_string(), right.to_string()),
+            Self::Pow(base, exp) => format!("{}^{}", base.to_string(), exp),
+        }
+    }
+
+    /// Whether this is a simple single-unit expression (no compound operators).
+    #[must_use]
+    pub fn is_simple(&self) -> bool {
+        matches!(self, Self::Base(_))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
     Int(String),
     Float(String),
     Str(String),
     Bool(bool),
-    /// `1 ms`, `0 m`: numeric value with attached unit path.
+    /// `1 ms`, `0 m`: numeric value with attached unit.
+    /// `9.81 [unit m/s^2]`: numeric value with compound unit bracket.
     Quantity {
         value: Box<Expr>,
-        unit: Vec<String>,
+        unit: UnitExpr,
     },
     Path {
         segments: Vec<String>,

@@ -513,3 +513,75 @@ emath function f(x: Bool in [0.0, 1.0]) -> Float64:
         "domain annotation on non-numeric type must error"
     );
 }
+
+#[test]
+fn compound_unit_acceleration_admits() {
+    // `9.81 [unit m/s^2]` should parse and lower without unit errors.
+    // E-TYPE-012 is expected (unit type vs Float64 output), but
+    // E-UNIT-104 (unknown unit) must not appear.
+    let source = function_with_compile("numeric strict-f64", "", "y = 9.81 [unit m/s^2]");
+    let codes = errors_of("compound-accel", &source);
+    assert!(
+        !codes.iter().any(|code| code == "E-UNIT-104"),
+        "known units in m/s^2 must not produce E-UNIT-104, got {codes:?}"
+    );
+}
+
+#[test]
+fn compound_unit_c2_trap_admits_as_length() {
+    // `1.0 [unit m/s*s]` is left-assoc: ((m/s)*s) = dimension length.
+    // Should parse without unit errors (known units).
+    let source = function_with_compile("numeric strict-f64", "", "y = 1.0 [unit m/s*s]");
+    let codes = errors_of("c2-trap", &source);
+    assert!(
+        !codes.iter().any(|code| code == "E-UNIT-104"),
+        "known units in m/s*s must not produce E-UNIT-104, got {codes:?}"
+    );
+}
+
+#[test]
+fn compound_unit_parenthesized_admits() {
+    // `9.81 [unit m/(s*s)]` — parenthesized denominator.
+    // Should parse without unit errors.
+    let source = function_with_compile(
+        "numeric strict-f64",
+        "",
+        "y = 9.81 [unit m/(s*s)]",
+    );
+    let codes = errors_of("compound-paren", &source);
+    assert!(
+        !codes.iter().any(|code| code == "E-UNIT-104"),
+        "known units in m/(s*s) must not produce E-UNIT-104, got {codes:?}"
+    );
+}
+
+#[test]
+fn compound_unit_with_unknown_unit_errors() {
+    // `1.0 [unit m/furlong]` — furlong is not a known unit.
+    let source = function_with_compile(
+        "numeric strict-f64",
+        "",
+        "y = 1.0 [unit m/furlong]",
+    );
+    let codes = errors_of("compound-unknown", &source);
+    assert!(
+        codes.iter().any(|code| code == "E-UNIT-104"),
+        "unknown unit in compound expression must be E-UNIT-104, got {codes:?}"
+    );
+}
+
+#[test]
+fn compound_unit_kg_m2_s2_admits() {
+    // `100.0 [unit kg*m^2/s^2]` — energy (joules).
+    // Should parse without unit errors.
+    let source = function_with_compile(
+        "numeric strict-f64",
+        "",
+        "y = 100.0 [unit kg*m^2/s^2]",
+    );
+    let codes = errors_of("compound-energy", &source);
+    assert!(
+        !codes.iter().any(|code| code == "E-UNIT-104"),
+        "known units in kg*m^2/s^2 must not produce E-UNIT-104, got {codes:?}"
+    );
+}

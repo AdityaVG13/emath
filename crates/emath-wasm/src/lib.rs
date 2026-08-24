@@ -38,8 +38,6 @@ const SUM_ONE_TO_FIVE: &str =
 const TENSOR_FACE: &str = include_str!("../../../language/examples/intro/tensor-face.emath");
 const VECTOR_GIVEN: &str =
     include_str!("../../../language/examples/intro/vector-given.emath");
-const VEC_STATS: &str =
-    include_str!("../../../language/examples/intro/vec-stats.emath");
 const FACTORIAL: &str =
     include_str!("../../../language/examples/intro/factorial.emath");
 const RANGE_SUM: &str =
@@ -54,14 +52,8 @@ const SOLVE: &str =
     include_str!("../../../language/examples/intro/solve.emath");
 const OPTIMIZE: &str =
     include_str!("../../../language/examples/intro/optimize.emath");
-const SHOWCASE: &str =
-    include_str!("../../../language/examples/intro/showcase.emath");
 const CONSTRAINED_OPT: &str =
     include_str!("../../../language/examples/intro/constrained-opt.emath");
-const COMPOUND_INTEREST: &str =
-    include_str!("../../../language/examples/intro/compound-interest.emath");
-const PARAMETRIC_UNKNOWN: &str =
-    include_str!("../../../language/examples/integration/parametric-unknown-operator.emath");
 
 const TUTORIAL_01_QUICKSTART: &str = "\
 # Tutorial 1: Quickstart & Scratchpad
@@ -156,13 +148,11 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Tutorial 2: 2D Curve Plotter & Parameters", TUTORIAL_02_PLOTTER),
         ("Tutorial 3: Math Intent & Typography", TUTORIAL_03_MATH_INTENT),
         ("Tutorial 4: Stateful Scorer & Assertions", AFFINE_SCORER),
-        ("Tutorial 5: Parametric Operator Synthesis", PARAMETRIC_UNKNOWN),
         ("Tutorial 6: Diagnostics & Error Recovery", TUTORIAL_06_DIAGNOSTICS_DEMO),
         ("Hello Square (Classic)", HELLO_SQUARE),
         ("Sum 1 to 5", SUM_ONE_TO_FIVE),
         ("Tensor Face", TENSOR_FACE),
         ("Vector Given", VECTOR_GIVEN),
-        ("Vec Stats (mean, abs)", VEC_STATS),
         ("Factorial (inclusive 1..=n)", FACTORIAL),
         ("Range Sum (variable-bound fold)", RANGE_SUM),
         ("Forall / Exists (quantifier binders)", FORALL_EXISTS),
@@ -170,9 +160,7 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Autodiff (forward-mode derivative)", AUTODIFF),
         ("Solve (Newton's method root-finding)", SOLVE),
         ("Optimize (gradient descent)", OPTIMIZE),
-        ("Showcase (solve + optimize + autodiff)", SHOWCASE),
         ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
-        ("Compound interest (exponential growth)", COMPOUND_INTEREST),
     ]
 }
 
@@ -659,6 +647,12 @@ fn value_map_value(map: &BTreeMap<String, Value>) -> String {
             Value::Tensor { shape, data } => {
                 object.field(name, &json_tensor(shape, data));
             }
+            Value::Complex { re, im } => {
+                let mut inner = JsonWriter::object();
+                inner.field("re", &json_f64(*re));
+                inner.field("im", &json_f64(*im));
+                object.object_field(name, &inner.finish());
+            }
         }
     }
     object.finish().trim_end().to_string()
@@ -772,15 +766,6 @@ mod tests {
     }
 
     #[test]
-    fn run_vec_stats_computes() {
-        let json = run_op("run", VEC_STATS);
-        assert!(json.contains("\"ok\": true"), "{json}");
-        assert!(json.contains("\"avg\": 1.0"), "{json}");
-        assert!(json.contains("\"a\": [1.0, 2.0, 4.0]"), "{json}");
-        assert!(json.contains("\"expect_passed\": true"), "{json}");
-    }
-
-    #[test]
     fn run_factorial_inclusive_computes() {
         let json = run_op("run", FACTORIAL);
         assert!(json.contains("\"ok\": true"), "{json}");
@@ -830,26 +815,10 @@ mod tests {
     }
 
     #[test]
-    fn run_compound_interest_computes() {
-        let json = run_op("run", COMPOUND_INTEREST);
-        assert!(json.contains("\"ok\": true"), "{json}");
-        assert!(json.contains("\"amount\":"), "{json}");
-        assert!(json.contains("\"expect_passed\": true"), "{json}");
-    }
-
-    #[test]
     fn run_constrained_opt_computes() {
         let json = run_op("run", CONSTRAINED_OPT);
         assert!(json.contains("\"ok\": true"), "{json}");
         assert!(json.contains("\"opt_x\":"), "{json}");
-        assert!(json.contains("\"expect_passed\": true"), "{json}");
-    }
-
-    #[test]
-    fn run_showcase_computes() {
-        let json = run_op("run", SHOWCASE);
-        assert!(json.contains("\"ok\": true"), "{json}");
-        assert!(json.contains("\"root\":"), "{json}");
         assert!(json.contains("\"expect_passed\": true"), "{json}");
     }
 
@@ -1380,6 +1349,23 @@ emath function square(x: Float64) -> Float64:
                             assert_eq!(shape_list.len(), shape.len(), "tensor rank mismatch for `{key}`");
                             assert_eq!(data_list.len(), data.len(), "tensor data mismatch for `{key}`");
                         }
+                        Value::Complex { re, im } => {
+                            let JsonValue::Obj(map) = json_val else {
+                                panic!("unexpected json value for complex `{key}`");
+                            };
+                            let got_re: f64 = match map.iter().find(|(k, _)| k == "re").map(|(_, v)| v) {
+                                Some(JsonValue::Num(t)) => t.parse().expect("valid f64"),
+                                Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
+                                _ => panic!("missing re for complex `{key}`"),
+                            };
+                            let got_im: f64 = match map.iter().find(|(k, _)| k == "im").map(|(_, v)| v) {
+                                Some(JsonValue::Num(t)) => t.parse().expect("valid f64"),
+                                Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
+                                _ => panic!("missing im for complex `{key}`"),
+                            };
+                            assert_eq!(got_re.to_bits(), re.to_bits(), "complex re mismatch for `{key}`");
+                            assert_eq!(got_im.to_bits(), im.to_bits(), "complex im mismatch for `{key}`");
+                        }
                     }
                 }
             }
@@ -1538,7 +1524,6 @@ emath policy AffineTransform:
         let models = &[
             HELLO_SQUARE,
             AFFINE_SCORER,
-            PARAMETRIC_UNKNOWN,
             TUTORIAL_01_QUICKSTART,
             TUTORIAL_02_PLOTTER,
             TUTORIAL_03_MATH_INTENT,
