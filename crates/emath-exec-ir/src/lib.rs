@@ -60,6 +60,8 @@ pub enum EdgePolicy {
 pub enum EmirOp {
     ConstF64(u64),
     ConstI64(i64),
+    /// Complex constant (real, imaginary). B14.
+    ConstComplex(f64, f64),
     LoadInput(u16),
     LoadState(u16),
     F64Add(EmirValue, EmirValue),
@@ -191,6 +193,15 @@ pub enum EmirOp {
     ModInv(EmirValue, EmirValue),
     /// `cong(a, b, m)` — congruence check: (a - b) % m == 0. B15.
     Congruence(EmirValue, EmirValue, EmirValue),
+    /// `poly_eval_mod(coeffs, x, p)` — Horner-method polynomial
+    /// evaluation over GF(p). `coeffs` is a Vector of i64 coefficients
+    /// (c[0] + c[1]*x + ... + c[k-1]*x^(k-1)), `x` and `p` are i64.
+    /// Returns i64 result mod p. For RS code construction.
+    PolyEvalMod(EmirValue, EmirValue, EmirValue),
+    /// `rs_encode(coeffs, n, p)` — construct Reed-Solomon codeword by
+    /// evaluating polynomial at points 0..n over GF(p). Returns Vector
+    /// of n i64-as-f64 values. For RS proximity testing.
+    RSEncode(EmirValue, EmirValue, EmirValue),
     /// Runtime fold (sum/product/forall/exists) over a variable-bound
     /// integer range.  `body` is a sub-program evaluated once per
     /// iteration with the loop variable supplied as an extra input at
@@ -252,6 +263,7 @@ impl EmirOp {
         match self {
             Self::ConstF64(_) => "const-f64",
             Self::ConstI64(_) => "const-i64",
+            Self::ConstComplex(..) => "const-complex",
             Self::LoadInput(_) => "load-input",
             Self::LoadState(_) => "load-state",
             Self::F64Add(..) => "f64-add",
@@ -325,6 +337,8 @@ impl EmirOp {
             Self::Factorial(..) => "factorial",
             Self::ModInv(..) => "mod-inv",
             Self::Congruence(..) => "congruence",
+            Self::PolyEvalMod(..) => "poly-eval-mod",
+            Self::RSEncode(..) => "rs-encode",
             Self::Fold { .. } => "fold",
             Self::Integral { .. } => "integral",
             Self::Differentiate { .. } => "differentiate",

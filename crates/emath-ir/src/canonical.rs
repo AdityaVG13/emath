@@ -189,6 +189,10 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                 use std::fmt::Write;
                 let _ = writeln!(out, "literal-f64 {bits:016x}");
             }
+            Literal::Complex { re_bits, im_bits } => {
+                use std::fmt::Write;
+                let _ = writeln!(out, "literal-complex {re_bits:016x} {im_bits:016x}");
+            }
             Literal::Text(payload) => {
                 out.push_str("literal-text ");
                 out.push_str(payload);

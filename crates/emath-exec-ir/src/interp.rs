@@ -58,6 +58,7 @@ fn eval_op(
     match *op {
         EmirOp::ConstF64(bits) => Ok(Value::F64(f64::from_bits(bits))),
         EmirOp::ConstI64(value) => Ok(Value::I64(value)),
+        EmirOp::ConstComplex(re, im) => Ok(Value::Complex { re, im }),
         EmirOp::LoadInput(index) => inputs
             .get(usize::from(index))
             .cloned()
@@ -66,22 +67,66 @@ fn eval_op(
             .get(usize::from(index))
             .cloned()
             .ok_or(EvalFault::MissingState(index)),
-        EmirOp::F64Add(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)? + f64_of(registers, right, name)?,
-        )),
-        EmirOp::F64Sub(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)? - f64_of(registers, right, name)?,
-        )),
-        EmirOp::F64Mul(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)? * f64_of(registers, right, name)?,
-        )),
-        EmirOp::F64Div(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)? / f64_of(registers, right, name)?,
-        )),
+        EmirOp::F64Add(left, right) => {
+            let l = register(registers, left)?;
+            let r = register(registers, right)?;
+            match (l, r) {
+                (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
+                    let (lr, li) = complex_of(registers, left, name)?;
+                    let (rr, ri) = complex_of(registers, right, name)?;
+                    Ok(Value::Complex { re: lr + rr, im: li + ri })
+                }
+                _ => Ok(Value::F64(f64_of(registers, left, name)? + f64_of(registers, right, name)?)),
+            }
+        }
+        EmirOp::F64Sub(left, right) => {
+            let l = register(registers, left)?;
+            let r = register(registers, right)?;
+            match (l, r) {
+                (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
+                    let (lr, li) = complex_of(registers, left, name)?;
+                    let (rr, ri) = complex_of(registers, right, name)?;
+                    Ok(Value::Complex { re: lr - rr, im: li - ri })
+                }
+                _ => Ok(Value::F64(f64_of(registers, left, name)? - f64_of(registers, right, name)?)),
+            }
+        }
+        EmirOp::F64Mul(left, right) => {
+            let l = register(registers, left)?;
+            let r = register(registers, right)?;
+            match (l, r) {
+                (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
+                    let (lr, li) = complex_of(registers, left, name)?;
+                    let (rr, ri) = complex_of(registers, right, name)?;
+                    // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+                    Ok(Value::Complex { re: lr * rr - li * ri, im: lr * ri + li * rr })
+                }
+                _ => Ok(Value::F64(f64_of(registers, left, name)? * f64_of(registers, right, name)?)),
+            }
+        }
+        EmirOp::F64Div(left, right) => {
+            let l = register(registers, left)?;
+            let r = register(registers, right)?;
+            match (l, r) {
+                (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
+                    let (lr, li) = complex_of(registers, left, name)?;
+                    let (rr, ri) = complex_of(registers, right, name)?;
+                    let denom = rr * rr + ri * ri;
+                    // (a + bi) / (c + di) = ((ac + bd) + (bc - ad)i) / (c² + d²)
+                    Ok(Value::Complex { re: (lr * rr + li * ri) / denom, im: (li * rr - lr * ri) / denom })
+                }
+                _ => Ok(Value::F64(f64_of(registers, left, name)? / f64_of(registers, right, name)?)),
+            }
+        }
         EmirOp::F64Pow(left, right) => Ok(Value::F64(
             f64_of(registers, left, name)?.powf(f64_of(registers, right, name)?),
         )),
-        EmirOp::Neg(value) => Ok(Value::F64(-f64_of(registers, value, name)?)),
+        EmirOp::Neg(value) => {
+            match register(registers, value)? {
+                Value::Complex { re, im } => Ok(Value::Complex { re: -*re, im: -*im }),
+                _ => Ok(Value::F64(-f64_of(registers, value, name)?)),
+            }
+        }
         EmirOp::Exp(value) => Ok(Value::F64(f64_of(registers, value, name)?.exp())),
         EmirOp::Ln(value) => Ok(Value::F64(f64_of(registers, value, name)?.ln())),
         EmirOp::Sqrt(value) => Ok(Value::F64(f64_of(registers, value, name)?.sqrt())),
@@ -687,6 +732,62 @@ fn eval_op(
                 });
             }
             Ok(Value::Bool((a - b).rem_euclid(m) == 0))
+        }
+        EmirOp::PolyEvalMod(coeffs, x, p) => {
+            let x = i64_of(registers, x, name)?;
+            let p = i64_of(registers, p, name)?;
+            if p <= 0 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "poly_eval_mod: modulus must be positive",
+                });
+            }
+            let coeff_vec = match register(registers, coeffs)? {
+                Value::Vector(data) => data,
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: coeffs.0,
+                    op: name,
+                }),
+            };
+            // Horner's method: ((c[k-1]*x + c[k-2])*x + ...) mod p
+            let mut result: i64 = 0;
+            for &c in coeff_vec.iter().rev() {
+                result = (result * x + c as i64).rem_euclid(p);
+            }
+            Ok(Value::I64(result))
+        }
+        EmirOp::RSEncode(coeffs, n, p) => {
+            let n = i64_of(registers, n, name)?;
+            let p = i64_of(registers, p, name)?;
+            if p <= 0 {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "rs_encode: modulus must be positive",
+                });
+            }
+            if n <= 0 || n as usize > p as usize {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "rs_encode: codeword length n must be in (0, p]",
+                });
+            }
+            let coeff_vec = match register(registers, coeffs)? {
+                Value::Vector(data) => data.clone(),
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: coeffs.0,
+                    op: name,
+                }),
+            };
+            // Evaluate polynomial at x = 0, 1, ..., n-1 over GF(p)
+            let mut codeword = Vec::with_capacity(n as usize);
+            for x in 0..n {
+                let mut result: i64 = 0;
+                for &c in coeff_vec.iter().rev() {
+                    result = (result * x + c as i64).rem_euclid(p);
+                }
+                codeword.push(result as f64);
+            }
+            Ok(Value::Vector(codeword))
         }
         EmirOp::Fold {
             start,

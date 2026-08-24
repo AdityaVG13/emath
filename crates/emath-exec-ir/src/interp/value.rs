@@ -9,6 +9,8 @@ pub enum Value {
     I64(i64),
     /// Boolean, produced by comparisons, `is_finite`, `and`/`or`/`not`.
     Bool(bool),
+    /// Complex number (real + imaginary parts). B14.
+    Complex { re: f64, im: f64 },
     /// Vector of Float64.
     Vector(Vec<f64>),
     /// Matrix of Float64 (row-major).
@@ -32,6 +34,15 @@ impl PartialEq for Value {
             (Self::I64(left), Self::F64(right)) => (*left as f64) == *right,
             (Self::F64(left), Self::I64(right)) => *left == (*right as f64),
             (Self::Bool(left), Self::Bool(right)) => left == right,
+            (Self::Complex { re: r1, im: i1 }, Self::Complex { re: r2, im: i2 }) => {
+                r1.to_bits() == r2.to_bits() && i1.to_bits() == i2.to_bits()
+            }
+            (Self::Complex { re, im }, Self::F64(right)) => {
+                im.to_bits() == 0.0_f64.to_bits() && re.to_bits() == right.to_bits()
+            }
+            (Self::F64(left), Self::Complex { re, im }) => {
+                im.to_bits() == 0.0_f64.to_bits() && left.to_bits() == re.to_bits()
+            }
             (Self::Vector(left), Self::Vector(right)) => {
                 left.len() == right.len()
                     && left
@@ -87,6 +98,15 @@ impl fmt::Display for Value {
             Self::F64(value) => f.write_str(&format_f64(*value)),
             Self::I64(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
+            Self::Complex { re, im } => {
+                if *im == 0.0 {
+                    f.write_str(&format_f64(*re))
+                } else if *re == 0.0 {
+                    write!(f, "{}i", format_f64(*im))
+                } else {
+                    write!(f, "{} + {}i", format_f64(*re), format_f64(*im))
+                }
+            }
             Self::Vector(vec) => {
                 f.write_str("[")?;
                 for (i, elem) in vec.iter().enumerate() {

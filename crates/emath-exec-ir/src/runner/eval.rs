@@ -105,6 +105,7 @@ pub(super) fn check_obligation(
         }),
         Ok(Value::F64(_))
         | Ok(Value::I64(_))
+        | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
         | Ok(Value::Tensor { .. }) => {
@@ -277,6 +278,7 @@ pub(super) fn eval_expect(
         Ok(Value::Bool(false)) => TestVerdict::Failed,
         Ok(Value::F64(_))
         | Ok(Value::I64(_))
+        | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
         | Ok(Value::Tensor { .. }) => {

@@ -18,6 +18,13 @@ pub(super) fn eq_ne(
         (Value::Bool(left), Value::Bool(right)) => left == right,
         (Value::Bool(left), Value::F64(right)) => *left == (*right != 0.0),
         (Value::F64(left), Value::Bool(right)) => (*left != 0.0) == *right,
+        (Value::Complex { re: r1, im: i1 }, Value::Complex { re: r2, im: i2 }) => {
+            r1 == r2 && i1 == i2
+        }
+        (Value::Complex { re, im }, Value::F64(right)) => *im == 0.0 && re == right,
+        (Value::F64(left), Value::Complex { re, im }) => *im == 0.0 && left == re,
+        (Value::Complex { re, im }, Value::I64(right)) => *im == 0.0 && re == &(*right as f64),
+        (Value::I64(left), Value::Complex { re, im }) => *im == 0.0 && &(*left as f64) == re,
         (Value::Vector(left), Value::Vector(right)) => left == right,
         (Value::Matrix { rows: r1, cols: c1, data: d1 }, Value::Matrix { rows: r2, cols: c2, data: d2 }) => {
             r1 == r2 && c1 == c2 && d1 == d2
@@ -120,6 +127,7 @@ pub(super) fn f64_of(registers: &[Value], value: EmirValue, op: &'static str) ->
     match register(registers, value)? {
         Value::F64(number) => Ok(*number),
         Value::I64(number) => Ok(*number as f64),
+        Value::Complex { re, im } if *im == 0.0 => Ok(*re),
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,
@@ -131,6 +139,20 @@ pub(super) fn i64_of(registers: &[Value], value: EmirValue, op: &'static str) ->
     match register(registers, value)? {
         Value::I64(number) => Ok(*number),
         Value::F64(number) => Ok(*number as i64),
+        _ => Err(EvalFault::TypeConfusion {
+            register: value.0,
+            op,
+        }),
+    }
+}
+
+/// Extract a complex (re, im) pair from a register. F64 and I64 values
+/// are promoted to complex with zero imaginary part.
+pub(super) fn complex_of(registers: &[Value], value: EmirValue, op: &'static str) -> Result<(f64, f64), EvalFault> {
+    match register(registers, value)? {
+        Value::Complex { re, im } => Ok((*re, *im)),
+        Value::F64(number) => Ok((*number, 0.0)),
+        Value::I64(number) => Ok((*number as f64, 0.0)),
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
             op,

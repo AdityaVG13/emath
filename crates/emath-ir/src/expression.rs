@@ -12,6 +12,8 @@ pub enum Literal {
     Integer(String),
     Rational(String),
     FloatBits(u64),
+    /// Complex constant stored as IEEE-754 bit patterns. B14.
+    Complex { re_bits: u64, im_bits: u64 },
     Text(String),
 }
 

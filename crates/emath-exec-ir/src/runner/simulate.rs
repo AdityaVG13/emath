@@ -413,6 +413,7 @@ fn value_is_finite(value: &Value) -> bool {
     match value {
         Value::F64(number) => number.is_finite(),
         Value::I64(_) | Value::Bool(_) => true,
+        Value::Complex { re, im } => re.is_finite() && im.is_finite(),
         Value::Vector(items) => items.iter().all(|item| item.is_finite()),
         Value::Matrix { data, .. } | Value::Tensor { data, .. } => {
             data.iter().all(|item| item.is_finite())
@@ -467,6 +468,7 @@ fn value_abs_max(value: &Value) -> f64 {
         Value::F64(number) => number.abs(),
         Value::I64(number) => (*number as f64).abs(),
         Value::Bool(_) => 0.0,
+        Value::Complex { re, im } => re.hypot(*im),
         Value::Vector(items) => items.iter().fold(0.0, |acc, item| acc.max(item.abs())),
         Value::Matrix { data, .. } | Value::Tensor { data, .. } => {
             data.iter().fold(0.0, |acc, item| acc.max(item.abs()))
@@ -721,6 +723,7 @@ fn eval_rates(
             Value::Bool(_) => return Err(format!("rate `{key}` is not numeric")),
             Value::I64(_)
             | Value::F64(_)
+            | Value::Complex { .. }
             | Value::Vector(_)
             | Value::Matrix { .. }
             | Value::Tensor { .. } => {

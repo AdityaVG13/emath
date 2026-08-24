@@ -520,6 +520,18 @@ impl super::Emitter {
                 let m = self.emit(package, args[2])?;
                 self.push(EmirOp::Congruence(a, b, m), span)
             }
+            "poly_eval_mod" | "core::math::poly_eval_mod" => {
+                let c = self.emit(package, args[0])?;
+                let x = self.emit(package, args[1])?;
+                let p = self.emit(package, args[2])?;
+                self.push(EmirOp::PolyEvalMod(c, x, p), span)
+            }
+            "rs_encode" | "core::math::rs_encode" => {
+                let c = self.emit(package, args[0])?;
+                let n = self.emit(package, args[1])?;
+                let p = self.emit(package, args[2])?;
+                self.push(EmirOp::RSEncode(c, n, p), span)
+            }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
     }

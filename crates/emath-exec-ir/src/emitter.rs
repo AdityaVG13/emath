@@ -129,6 +129,16 @@ impl Emitter {
                 let value: f64 = if *on { 1.0 } else { 0.0 };
                 self.push(EmirOp::ConstF64(value.to_bits()), span)
             }
+            ExprNode::Literal(Literal::Complex { re_bits, im_bits }) => {
+                let re = f64::from_bits(*re_bits);
+                let im = f64::from_bits(*im_bits);
+                if !re.is_finite() || !im.is_finite() {
+                    return Err(format!(
+                        "non-finite complex constant {{re: {re:?}, im: {im:?}}} refused under strict-f64 policy"
+                    ));
+                }
+                self.push(EmirOp::ConstComplex(re, im), span)
+            }
             ExprNode::Literal(_) => Err("unsupported literal in Phase 1 subset".to_string()),
             ExprNode::Variable(name) => {
                 let name = &name.0;

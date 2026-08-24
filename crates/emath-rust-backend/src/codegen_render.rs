@@ -45,6 +45,9 @@ pub(crate) fn op_expr(
     match op {
         EmirOp::ConstF64(bits) => Ok(Expr::F64(*bits)),
         EmirOp::ConstI64(value) => Ok(Expr::F64((*value as f64).to_bits())),
+        EmirOp::ConstComplex(re, im) => Ok(Expr::Raw(format!(
+            "num_complex::Complex::new({re:?}, {im:?})"
+        ))),
         EmirOp::LoadInput(index) => {
             let name = names
                 .get(*index as usize)
@@ -378,6 +381,18 @@ pub(crate) fn op_expr(
             Ok(Expr::Raw(format!(
                 "(((__e{} as i64) - (__e{} as i64)).rem_euclid(__e{} as i64) == 0)",
                 a.0, b.0, m.0
+            )))
+        }
+        EmirOp::PolyEvalMod(coeffs, x, p) => {
+            Ok(Expr::Raw(format!(
+                "emath_runtime::poly_eval_mod(&__e{}, __e{} as i64, __e{} as i64)",
+                coeffs.0, x.0, p.0
+            )))
+        }
+        EmirOp::RSEncode(coeffs, n, p) => {
+            Ok(Expr::Raw(format!(
+                "emath_runtime::rs_encode(&__e{}, __e{} as i64, __e{} as i64)",
+                coeffs.0, n.0, p.0
             )))
         }
         EmirOp::Fold {
