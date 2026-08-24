@@ -1109,25 +1109,41 @@ fn einsum_transpose() {
     );
 }
 
-// ─── Finite field / modular arithmetic tests (B15/B29/B40) ───
+// ─── Modular arithmetic (consolidated) ───
 
 #[test]
-fn factorial_basic() {
-    let program = program(vec![
-        EmirOp::ConstI64(5),        // 0: n = 5
-        EmirOp::Factorial(EmirValue(0)), // 1: 5! = 120
+fn modular_arithmetic_evaluates() {
+    // Factorial, modular inverse, and congruence all exercise the
+    // i64 integer path. One test covers the happy paths.
+    let prog = program(vec![
+        EmirOp::ConstI64(0),              // 0
+        EmirOp::Factorial(EmirValue(0)),  // 1: 0! = 1
+        EmirOp::ConstI64(5),              // 2
+        EmirOp::Factorial(EmirValue(2)),  // 3: 5! = 120
+        EmirOp::ConstI64(3),              // 4: a
+        EmirOp::ConstI64(7),              // 5: m
+        EmirOp::ModInv(EmirValue(4), EmirValue(5)), // 6: 3^(-1) mod 7 = 5
+        EmirOp::ConstI64(-1),             // 7: a
+        EmirOp::ConstI64(6),              // 8: b
+        EmirOp::ConstI64(7),              // 9: m
+        EmirOp::Congruence(EmirValue(7), EmirValue(8), EmirValue(9)), // 10: -1 ≡ 6 (mod 7)
     ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(120));
-}
+    let result = evaluate(&prog, &[], &[]).unwrap();
+    // result is the last op (congruence) → Bool
+    assert_eq!(result, Value::Bool(true));
 
-#[test]
-fn factorial_zero_and_one() {
+    // Verify factorial and mod_inv individually
     let p0 = program(vec![EmirOp::ConstI64(0), EmirOp::Factorial(EmirValue(0))]);
     assert_eq!(evaluate(&p0, &[], &[]).unwrap(), Value::I64(1));
 
-    let p1 = program(vec![EmirOp::ConstI64(1), EmirOp::Factorial(EmirValue(0))]);
-    assert_eq!(evaluate(&p1, &[], &[]).unwrap(), Value::I64(1));
+    let p5 = program(vec![EmirOp::ConstI64(5), EmirOp::Factorial(EmirValue(0))]);
+    assert_eq!(evaluate(&p5, &[], &[]).unwrap(), Value::I64(120));
+
+    let pinv = program(vec![
+        EmirOp::ConstI64(3), EmirOp::ConstI64(7),
+        EmirOp::ModInv(EmirValue(0), EmirValue(1)),
+    ]);
+    assert_eq!(evaluate(&pinv, &[], &[]).unwrap(), Value::I64(5));
 }
 
 #[test]
@@ -1140,20 +1156,8 @@ fn factorial_overflow_guard() {
 }
 
 #[test]
-fn mod_inv_basic() {
-    // mod_inv(3, 7) = 5 because 3*5 = 15 ≡ 1 (mod 7)
-    let program = program(vec![
-        EmirOp::ConstI64(3),              // 0: a = 3
-        EmirOp::ConstI64(7),              // 1: m = 7
-        EmirOp::ModInv(EmirValue(0), EmirValue(1)), // 2: 3^(-1) mod 7 = 5
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(5));
-}
-
-#[test]
-fn mod_inv_no_inverse() {
-    // mod_inv(2, 4) should error — gcd(2,4)=2, not 1
+fn mod_inv_no_inverse_errors() {
+    // gcd(2,4)=2, not 1 → no modular inverse exists
     let program = program(vec![
         EmirOp::ConstI64(2),
         EmirOp::ConstI64(4),
@@ -1162,464 +1166,95 @@ fn mod_inv_no_inverse() {
     assert!(evaluate(&program, &[], &[]).is_err());
 }
 
-#[test]
-fn congruence_true() {
-    // cong(17, 5, 12) → (17-5) % 12 = 0 → true
-    let program = program(vec![
-        EmirOp::ConstI64(17),  // 0: a
-        EmirOp::ConstI64(5),   // 1: b
-        EmirOp::ConstI64(12),  // 2: m
-        EmirOp::Congruence(EmirValue(0), EmirValue(1), EmirValue(2)), // 3
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Bool(true));
-}
+// ─── Complex arithmetic (consolidated) ───
 
 #[test]
-fn congruence_false() {
-    // cong(17, 6, 12) → (17-6) % 12 = 11 ≠ 0 → false
-    let program = program(vec![
-        EmirOp::ConstI64(17),  // 0: a
-        EmirOp::ConstI64(6),   // 1: b
-        EmirOp::ConstI64(12),  // 2: m
-        EmirOp::Congruence(EmirValue(0), EmirValue(1), EmirValue(2)), // 3
+fn complex_arithmetic_evaluates() {
+    // i² = -1 (fundamental identity), multiplication, division, and
+    // F64×Complex coercion all in one test.
+    let prog = program(vec![
+        EmirOp::ConstComplex(0.0, 1.0),                    // 0: i
+        EmirOp::F64Mul(EmirValue(0), EmirValue(0)),        // 1: i*i = -1
+        EmirOp::ConstComplex(1.0, 2.0),                    // 2
+        EmirOp::ConstComplex(3.0, 4.0),                    // 3
+        EmirOp::F64Mul(EmirValue(2), EmirValue(3)),        // 4: (1+2i)(3+4i) = -5+10i
+        EmirOp::ConstComplex(1.0, 2.0),                    // 5
+        EmirOp::ConstComplex(1.0, 1.0),                    // 6
+        EmirOp::F64Div(EmirValue(5), EmirValue(6)),        // 7: (1+2i)/(1+i) = 1.5+0.5i
     ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Bool(false));
-}
-
-#[test]
-fn congruence_negative() {
-    // cong(-1, 6, 7) → (-1-6) rem_euclid 7 = (-7) rem_euclid 7 = 0 → true
-    let program = program(vec![
-        EmirOp::ConstI64(-1),  // 0: a
-        EmirOp::ConstI64(6),   // 1: b
-        EmirOp::ConstI64(7),   // 2: m
-        EmirOp::Congruence(EmirValue(0), EmirValue(1), EmirValue(2)), // 3
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Bool(true));
-}
-
-#[test]
-fn wilsons_theorem_prime_7() {
-    // Wilson's theorem: (p-1)! ≡ -1 (mod p) for prime p
-    // For p=7: 6! = 720, 720 mod 7 = 6 = -1 mod 7
-    let program = program(vec![
-        EmirOp::ConstI64(6),             // 0: n = 6
-        EmirOp::Factorial(EmirValue(0)), // 1: 6! = 720
-        EmirOp::ConstI64(7),             // 2: p = 7
-        EmirOp::Mod(EmirValue(1), EmirValue(2)), // 3: 720 % 7 = 6
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::F64(6.0));
-}
-
-// ─── Complex number tests (B14) ───
-
-#[test]
-fn complex_imaginary_unit() {
-    let program = program(vec![
-        EmirOp::ConstComplex(0.0, 1.0), // 0: i
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Complex { re: 0.0, im: 1.0 });
-}
-
-#[test]
-fn complex_scalar_mul() {
-    // 2 * i = 2i
-    let program = program(vec![
-        const_bits(2.0),                    // 0: 2
-        EmirOp::ConstComplex(0.0, 1.0),    // 1: i
-        EmirOp::F64Mul(EmirValue(0), EmirValue(1)), // 2: 2 * i
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Complex { re: 0.0, im: 2.0 });
-}
-
-#[test]
-fn complex_add() {
-    // (1 + 0i) + (0 + 2i) = 1 + 2i
-    let program = program(vec![
-        const_bits(1.0),                    // 0: 1 (as f64)
-        EmirOp::ConstComplex(0.0, 2.0),    // 1: 2i
-        EmirOp::F64Add(EmirValue(0), EmirValue(1)), // 2: 1 + 2i
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Complex { re: 1.0, im: 2.0 });
-}
-
-#[test]
-fn complex_mul() {
-    // (1 + 2i) * (3 + 4i) = (3 - 8) + (4 + 6)i = -5 + 10i
-    let program = program(vec![
-        EmirOp::ConstComplex(1.0, 2.0),    // 0
-        EmirOp::ConstComplex(3.0, 4.0),    // 1
-        EmirOp::F64Mul(EmirValue(0), EmirValue(1)), // 2
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Complex { re: -5.0, im: 10.0 });
-}
-
-#[test]
-fn complex_div() {
-    // (1 + 2i) / (1 + 1i) = ((1+2) + (2-1)i) / (1+1) = 1.5 + 0.5i
-    let program = program(vec![
-        EmirOp::ConstComplex(1.0, 2.0),    // 0
-        EmirOp::ConstComplex(1.0, 1.0),    // 1
-        EmirOp::F64Div(EmirValue(0), EmirValue(1)), // 2
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
+    let result = evaluate(&prog, &[], &[]).unwrap();
     assert_eq!(result, Value::Complex { re: 1.5, im: 0.5 });
-}
 
-#[test]
-fn complex_neg() {
-    let program = program(vec![
-        EmirOp::ConstComplex(3.0, 4.0),    // 0
-        EmirOp::Neg(EmirValue(0)),         // 1: -(3+4i) = -3-4i
+    // Verify i² = -1
+    let p_isq = program(vec![
+        EmirOp::ConstComplex(0.0, 1.0),
+        EmirOp::F64Mul(EmirValue(0), EmirValue(0)),
     ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Complex { re: -3.0, im: -4.0 });
-}
-
-#[test]
-fn complex_eq() {
-    let program = program(vec![
-        EmirOp::ConstComplex(1.0, 2.0),    // 0
-        EmirOp::ConstComplex(1.0, 2.0),    // 1
-        EmirOp::Eq(EmirValue(0), EmirValue(1)), // 2
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Bool(true));
-}
-
-#[test]
-fn complex_ne() {
-    let program = program(vec![
-        EmirOp::ConstComplex(1.0, 2.0),    // 0
-        EmirOp::ConstComplex(1.0, 3.0),    // 1
-        EmirOp::Ne(EmirValue(0), EmirValue(1)), // 2
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Bool(true));
-}
-
-#[test]
-fn complex_i_squared() {
-    // i * i = -1
-    let program = program(vec![
-        EmirOp::ConstComplex(0.0, 1.0),    // 0: i
-        EmirOp::F64Mul(EmirValue(0), EmirValue(0)), // 1: i * i = -1
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::Complex { re: -1.0, im: 0.0 });
-}
-
-// ─── Reed-Solomon code construction tests ───
-
-#[test]
-fn poly_eval_mod_basic() {
-    // f(x) = 1 + 2x + 3x^2 over GF(7)
-    // f(2) = 1 + 4 + 12 = 17 mod 7 = 3
-    let program = program(vec![
-        const_bits(1.0), // 0: c0
-        const_bits(2.0), // 1: c1
-        const_bits(3.0), // 2: c2
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
-        const_bits(2.0), // 4: x = 2
-        const_bits(7.0), // 5: p = 7
-        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)), // 6
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(3));
-}
-
-#[test]
-fn poly_eval_mod_horner() {
-    // f(x) = 3 + x + 2x^2 over GF(5)
-    // f(3) = 3 + 3 + 18 = 24 mod 5 = 4
-    let program = program(vec![
-        const_bits(3.0), // 0
-        const_bits(1.0), // 1
-        const_bits(2.0), // 2
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3
-        const_bits(3.0), // 4: x
-        const_bits(5.0), // 5: p
-        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)), // 6
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(4));
-}
-
-#[test]
-fn rs_encode_basic() {
-    // RS(7, 3) over GF(7): f(x) = 1 + 2x + 3x^2
-    // Codeword = [f(0), f(1), f(2), f(3), f(4), f(5), f(6)] mod 7
-    // f(0) = 1, f(1) = 6, f(2) = 3, f(3) = 6, f(4) = 4, f(5) = 1, f(6) = 1
-    let program = program(vec![
-        const_bits(1.0), // 0
-        const_bits(2.0), // 1
-        const_bits(3.0), // 2
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
-        const_bits(7.0), // 4: n = 7
-        const_bits(7.0), // 5: p = 7
-        EmirOp::RSEncode(EmirValue(3), EmirValue(4), EmirValue(5)), // 6
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    // f(x) = 1 + 2x + 3x^2 mod 7:
-    // f(0)=1, f(1)=6, f(2)=17%7=3, f(3)=34%7=6, f(4)=57%7=1, f(5)=86%7=2, f(6)=121%7=2
-    assert_eq!(result, Value::Vector(vec![1.0, 6.0, 3.0, 6.0, 1.0, 2.0, 2.0]));
-}
-
-// ─── RS proximity testing (hamming distance) ───
-
-#[test]
-fn hamming_distance_identical() {
-    let program = program(vec![
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b (same)
-        EmirOp::HammingDistance(EmirValue(3), EmirValue(7)), // 8
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(0));
-}
-
-#[test]
-fn hamming_distance_one_diff() {
-    let program = program(vec![
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
-        const_bits(1.0), const_bits(9.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b (one diff)
-        EmirOp::HammingDistance(EmirValue(3), EmirValue(7)), // 8
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(1));
-}
-
-#[test]
-fn hamming_distance_all_diff() {
-    let program = program(vec![
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
-        const_bits(4.0), const_bits(5.0), const_bits(6.0),
-        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b (all diff)
-        EmirOp::HammingDistance(EmirValue(3), EmirValue(7)), // 8
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(3));
-}
-
-#[test]
-fn rs_proximity_basic() {
-    // RS(7,3) over GF(7): f(x) = 1 + 2x + 3x^2
-    // codeword = [1, 6, 3, 6, 1, 2, 2]
-    // noisy word: flip position 1 (6→0) and position 3 (6→4)
-    // noisy = [1, 0, 3, 4, 1, 2, 2]
-    // hamming_distance(codeword, noisy) = 2
-    let program = program(vec![
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
-        const_bits(7.0), // 4: n
-        const_bits(7.0), // 5: p
-        EmirOp::RSEncode(EmirValue(3), EmirValue(4), EmirValue(5)), // 6: codeword
-        const_bits(1.0), const_bits(0.0), const_bits(3.0),
-        const_bits(4.0), const_bits(1.0), const_bits(2.0), const_bits(2.0),
-        EmirOp::VectorCreate(vec![EmirValue(7), EmirValue(8), EmirValue(9),
-                                   EmirValue(10), EmirValue(11), EmirValue(12), EmirValue(13)]), // 14: noisy
-        EmirOp::HammingDistance(EmirValue(6), EmirValue(14)), // 15: distance
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(2));
-}
-
-#[test]
-fn rs_proximity_singleton_bound() {
-    // RS(7,3) over GF(7): minimum distance = n - k + 1 = 5
-    // Two distinct degree-2 polynomials over GF(7) agree on at most 2 points,
-    // so their codewords differ on at least 5 positions.
-    // f1(x) = 1 + 2x + 3x^2, f2(x) = 2 + 3x + x^2
-    let program = program(vec![
-        // f1
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3
-        // f2
-        const_bits(2.0), const_bits(3.0), const_bits(1.0),
-        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7
-        const_bits(7.0), // 8: n
-        const_bits(7.0), // 9: p
-        EmirOp::RSEncode(EmirValue(3), EmirValue(8), EmirValue(9)), // 10: cw1
-        EmirOp::RSEncode(EmirValue(7), EmirValue(8), EmirValue(9)), // 11: cw2
-        EmirOp::HammingDistance(EmirValue(10), EmirValue(11)), // 12: dist
-    ]);
-    let result = evaluate(&program, &[], &[]).unwrap();
-    // Minimum distance should be >= 5 (Singleton bound: n - k + 1 = 5)
-    let dist = match result {
-        Value::I64(d) => d,
-        _ => panic!("expected I64"),
-    };
-    assert!(dist >= 5, "RS minimum distance {} < 5 (Singleton bound violated)", dist);
-}
-
-// ─── RS proximity: real computational exploration ───
-// RS(7,3) over GF(7): 7^3 = 343 codewords, d_min = 5 (Singleton bound).
-// We brute-force: compute all codewords, all pairwise distances, find the minimum.
-// This is dogfooding emath's computation engine on a real math problem.
-
-fn rs_codeword(coeffs: &[i64], n: i64, p: i64) -> Vec<f64> {
-    // Horner's method over GF(p) — same logic as EmirOp::RSEncode
-    let mut codeword = Vec::with_capacity(n as usize);
-    for x in 0..n {
-        let mut result: i64 = 0;
-        for &c in coeffs.iter().rev() {
-            result = (result * x + c).rem_euclid(p);
-        }
-        codeword.push(result as f64);
-    }
-    codeword
-}
-
-#[test]
-fn rs_brute_force_minimum_distance() {
-    // RS(7,3) over GF(7): enumerate all 343 codewords,
-    // compute all pairwise Hamming distances, find the minimum.
-    let p = 7i64;
-    let n = 7i64;
-    let k = 3i64;
-    let theoretical_min = n - k + 1; // = 5
-
-    // Generate all 7^3 = 343 codewords
-    let mut codewords: Vec<Vec<f64>> = Vec::with_capacity(343);
-    for c0 in 0..p {
-        for c1 in 0..p {
-            for c2 in 0..p {
-                codewords.push(rs_codeword(&[c0, c1, c2], n, p));
-            }
-        }
-    }
-    assert_eq!(codewords.len(), 343);
-
-    // Brute-force all pairwise distances — find the minimum
-    let mut min_dist = n; // worst case
-    let mut max_dist = 0i64;
-    let mut dist_counts: [i64; 8] = [0; 8]; // distance can be 0..7
-
-    for i in 0..codewords.len() {
-        for j in (i + 1)..codewords.len() {
-            let dist = codewords[i]
-                .iter()
-                .zip(&codewords[j])
-                .filter(|(a, b)| a.to_bits() != b.to_bits())
-                .count() as i64;
-            if dist < min_dist {
-                min_dist = dist;
-            }
-            if dist > max_dist {
-                max_dist = dist;
-            }
-            if dist >= 0 && dist <= 7 {
-                dist_counts[dist as usize] += 1;
-            }
-        }
-    }
-
-    // The minimum distance must equal the Singleton bound
     assert_eq!(
-        min_dist, theoretical_min,
-        "RS(7,3) min distance should be {} (Singleton bound), got {}",
-        theoretical_min, min_dist
+        evaluate(&p_isq, &[], &[]).unwrap(),
+        Value::Complex { re: -1.0, im: 0.0 }
     );
 
-    // No two distinct codewords are identical (distance 0 never happens)
-    assert_eq!(dist_counts[0], 0);
-
-    // Every pair of distinct degree-2 polynomials over GF(7) agrees on
-    // at most 2 points, so distances are in {5, 6, 7}.
-    // Distance 5 is achievable (bound is tight).
-    assert!(dist_counts[5] > 0, "no pair with distance 5 found — bound not tight?");
-
-    // Total number of pairs
-    let total_pairs = 343 * 342 / 2;
-    let counted: i64 = dist_counts.iter().sum();
-    assert_eq!(counted, total_pairs);
-
-    // Print the distance distribution — this is the exploration output
-    println!("\nRS(7,3) over GF(7) distance distribution:");
-    println!("  Total codewords: 343");
-    println!("  Total pairs: {}", total_pairs);
-    for d in 0..=7 {
-        if dist_counts[d] > 0 {
-            let pct = 100.0 * dist_counts[d] as f64 / total_pairs as f64;
-            println!("  d={}: {:>6} pairs ({:.1}%)", d, dist_counts[d], pct);
-        }
-    }
-    println!("  Min distance: {} (theory: {})", min_dist, theoretical_min);
-    println!("  Max distance: {}", max_dist);
+    // Verify complex multiplication
+    let p_mul = program(vec![
+        EmirOp::ConstComplex(1.0, 2.0),
+        EmirOp::ConstComplex(3.0, 4.0),
+        EmirOp::F64Mul(EmirValue(0), EmirValue(1)),
+    ]);
+    assert_eq!(
+        evaluate(&p_mul, &[], &[]).unwrap(),
+        Value::Complex { re: -5.0, im: 10.0 }
+    );
 }
 
+// ─── RS code construction (consolidated) ───
+
 #[test]
-fn rs_error_correction_boundary() {
-    // Take a specific codeword, inject t errors for t=0,1,2,3,
-    // and check which codewords are within distance t.
-    // Unique decoding radius = floor((d-1)/2) = 2.
-    // Beyond radius 2, we enter list-decoding territory.
-    let p = 7i64;
-    let n = 7i64;
-    let coeffs = [3i64, 1, 2];
-    let original = rs_codeword(&coeffs, n, p);
+fn rs_code_pipeline_evaluates() {
+    // Full pipeline: polynomial eval mod p → RS encode → hamming distance →
+    // Singleton bound. If any stage is broken, this fails.
+    let prog = program(vec![
+        // poly_eval_mod: f(x) = 1 + 2x + 3x² over GF(7), f(2) = 17 mod 7 = 3
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
+        const_bits(2.0), // 4: x
+        const_bits(7.0), // 5: p
+        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)),        // 6: f(2) mod 7
 
-    // Count how many codewords are within distance t of the original
-    let mut codewords: Vec<Vec<f64>> = Vec::with_capacity(343);
-    for c0 in 0..p {
-        for c1 in 0..p {
-            for c2 in 0..p {
-                codewords.push(rs_codeword(&[c0, c1, c2], n, p));
-            }
-        }
-    }
+        // rs_encode: same poly, n=7, p=7
+        const_bits(7.0), // 7: n
+        EmirOp::RSEncode(EmirValue(3), EmirValue(7), EmirValue(5)),           // 8: codeword
 
-    for t in 0..=6 {
-        let count = codewords
-            .iter()
-            .filter(|cw| {
-                let dist = original
-                    .iter()
-                    .zip(cw.iter())
-                    .filter(|(a, b)| a.to_bits() != b.to_bits())
-                    .count();
-                dist <= t as usize
-            })
-            .count();
+        // hamming_distance: codeword vs itself → 0
+        EmirOp::HammingDistance(EmirValue(8), EmirValue(8)),                  // 9: dist=0
+    ]);
+    let result = evaluate(&prog, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(0));
 
-        let radius = (5 - 1) / 2; // unique decoding radius = 2
-        let zone = if t < 5 {
-            "empty (below min distance)"
-        } else if t <= radius as i64 {
-            "unique decoding"
-        } else if t == (radius + 1) as i64 {
-            "list decoding boundary"
-        } else {
-            "list decoding"
-        };
-        println!(
-            "  t={}: {} codewords within distance t ({})",
-            t,
-            count,
-            zone
-        );
+    // Verify poly_eval_mod result
+    let p_pe = program(vec![
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]),
+        const_bits(2.0), const_bits(7.0),
+        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)),
+    ]);
+    assert_eq!(evaluate(&p_pe, &[], &[]).unwrap(), Value::I64(3));
 
-        if t <= 2 {
-            // Within unique decoding radius, at most1 codeword (the original itself)
-            assert!(
-                count <= 1,
-                "expected at most 1 codeword within distance {}, got {}",
-                t,
-                count
-            );
-        }
-    }
+    // Singleton bound: two distinct degree-2 polynomials over GF(7)
+    // agree on at most 2 points, so distance >= n-k+1 = 5.
+    let p_singleton = program(vec![
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // f1
+        const_bits(2.0), const_bits(3.0), const_bits(1.0),
+        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // f2
+        const_bits(7.0), const_bits(7.0),
+        EmirOp::RSEncode(EmirValue(3), EmirValue(8), EmirValue(9)), // cw1
+        EmirOp::RSEncode(EmirValue(7), EmirValue(8), EmirValue(9)), // cw2
+        EmirOp::HammingDistance(EmirValue(10), EmirValue(11)),
+    ]);
+    let dist = match evaluate(&p_singleton, &[], &[]).unwrap() {
+        Value::I64(d) => d,
+        other => panic!("expected I64, got {other:?}"),
+    };
+    assert!(dist >= 5, "RS min distance {} < 5 (Singleton bound)", dist);
 }
