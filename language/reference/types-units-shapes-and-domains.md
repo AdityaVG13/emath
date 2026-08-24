@@ -153,7 +153,11 @@ predicates such as `NonNegative<Real>`.
 
 `Complex` is admitted as a type (e.g., `Complex`, `Vector<Complex, [2]>`).
 Complex literals use the `Ni` suffix (e.g., `2i`, `3.5i`) which desugars
-to `N * i` where `i` is the imaginary unit (a named constant).
+to `N * i` where `i` is the imaginary unit. The identifier `i` is a
+named constant (not a reserved keyword) — it is recognized only when not
+shadowed by an input or definition. Complex arithmetic (add, sub, mul,
+div, neg, eq, ne) is fully supported in the interpreter via a native
+`Complex { re, im }` value type.
 
 `Mod<p>` and `GF<p>` are admitted as `Int` types (e.g., `Mod<7>`, `GF<2>`).
 Values are exact i64 integers; modular reduction is an operational concern

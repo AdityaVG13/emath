@@ -1214,3 +1214,161 @@ fn wilsons_theorem_prime_7() {
     let result = evaluate(&program, &[], &[]).unwrap();
     assert_eq!(result, Value::F64(6.0));
 }
+
+// ─── Complex number tests (B14) ───
+
+#[test]
+fn complex_imaginary_unit() {
+    let program = program(vec![
+        EmirOp::ConstComplex(0.0, 1.0), // 0: i
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: 0.0, im: 1.0 });
+}
+
+#[test]
+fn complex_scalar_mul() {
+    // 2 * i = 2i
+    let program = program(vec![
+        const_bits(2.0),                    // 0: 2
+        EmirOp::ConstComplex(0.0, 1.0),    // 1: i
+        EmirOp::F64Mul(EmirValue(0), EmirValue(1)), // 2: 2 * i
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: 0.0, im: 2.0 });
+}
+
+#[test]
+fn complex_add() {
+    // (1 + 0i) + (0 + 2i) = 1 + 2i
+    let program = program(vec![
+        const_bits(1.0),                    // 0: 1 (as f64)
+        EmirOp::ConstComplex(0.0, 2.0),    // 1: 2i
+        EmirOp::F64Add(EmirValue(0), EmirValue(1)), // 2: 1 + 2i
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: 1.0, im: 2.0 });
+}
+
+#[test]
+fn complex_mul() {
+    // (1 + 2i) * (3 + 4i) = (3 - 8) + (4 + 6)i = -5 + 10i
+    let program = program(vec![
+        EmirOp::ConstComplex(1.0, 2.0),    // 0
+        EmirOp::ConstComplex(3.0, 4.0),    // 1
+        EmirOp::F64Mul(EmirValue(0), EmirValue(1)), // 2
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: -5.0, im: 10.0 });
+}
+
+#[test]
+fn complex_div() {
+    // (1 + 2i) / (1 + 1i) = ((1+2) + (2-1)i) / (1+1) = 1.5 + 0.5i
+    let program = program(vec![
+        EmirOp::ConstComplex(1.0, 2.0),    // 0
+        EmirOp::ConstComplex(1.0, 1.0),    // 1
+        EmirOp::F64Div(EmirValue(0), EmirValue(1)), // 2
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: 1.5, im: 0.5 });
+}
+
+#[test]
+fn complex_neg() {
+    let program = program(vec![
+        EmirOp::ConstComplex(3.0, 4.0),    // 0
+        EmirOp::Neg(EmirValue(0)),         // 1: -(3+4i) = -3-4i
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: -3.0, im: -4.0 });
+}
+
+#[test]
+fn complex_eq() {
+    let program = program(vec![
+        EmirOp::ConstComplex(1.0, 2.0),    // 0
+        EmirOp::ConstComplex(1.0, 2.0),    // 1
+        EmirOp::Eq(EmirValue(0), EmirValue(1)), // 2
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn complex_ne() {
+    let program = program(vec![
+        EmirOp::ConstComplex(1.0, 2.0),    // 0
+        EmirOp::ConstComplex(1.0, 3.0),    // 1
+        EmirOp::Ne(EmirValue(0), EmirValue(1)), // 2
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn complex_i_squared() {
+    // i * i = -1
+    let program = program(vec![
+        EmirOp::ConstComplex(0.0, 1.0),    // 0: i
+        EmirOp::F64Mul(EmirValue(0), EmirValue(0)), // 1: i * i = -1
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::Complex { re: -1.0, im: 0.0 });
+}
+
+// ─── Reed-Solomon code construction tests ───
+
+#[test]
+fn poly_eval_mod_basic() {
+    // f(x) = 1 + 2x + 3x^2 over GF(7)
+    // f(2) = 1 + 4 + 12 = 17 mod 7 = 3
+    let program = program(vec![
+        const_bits(1.0), // 0: c0
+        const_bits(2.0), // 1: c1
+        const_bits(3.0), // 2: c2
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
+        const_bits(2.0), // 4: x = 2
+        const_bits(7.0), // 5: p = 7
+        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)), // 6
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(3));
+}
+
+#[test]
+fn poly_eval_mod_horner() {
+    // f(x) = 3 + x + 2x^2 over GF(5)
+    // f(3) = 3 + 3 + 18 = 24 mod 5 = 4
+    let program = program(vec![
+        const_bits(3.0), // 0
+        const_bits(1.0), // 1
+        const_bits(2.0), // 2
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3
+        const_bits(3.0), // 4: x
+        const_bits(5.0), // 5: p
+        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)), // 6
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(4));
+}
+
+#[test]
+fn rs_encode_basic() {
+    // RS(7, 3) over GF(7): f(x) = 1 + 2x + 3x^2
+    // Codeword = [f(0), f(1), f(2), f(3), f(4), f(5), f(6)] mod 7
+    // f(0) = 1, f(1) = 6, f(2) = 3, f(3) = 6, f(4) = 4, f(5) = 1, f(6) = 1
+    let program = program(vec![
+        const_bits(1.0), // 0
+        const_bits(2.0), // 1
+        const_bits(3.0), // 2
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
+        const_bits(7.0), // 4: n = 7
+        const_bits(7.0), // 5: p = 7
+        EmirOp::RSEncode(EmirValue(3), EmirValue(4), EmirValue(5)), // 6
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    // f(x) = 1 + 2x + 3x^2 mod 7:
+    // f(0)=1, f(1)=6, f(2)=17%7=3, f(3)=34%7=6, f(4)=57%7=1, f(5)=86%7=2, f(6)=121%7=2
+    assert_eq!(result, Value::Vector(vec![1.0, 6.0, 3.0, 6.0, 1.0, 2.0, 2.0]));
+}

@@ -38,7 +38,7 @@
 | `Float64` `Real` `f64` | yes | yes | yes |
 | `Bool` | yes | yes | yes |
 | `Nat` `Int` | yes | yes | yes (Int → exact i64 output) |
-| `Complex` | yes | yes | type-checks (eval pending) |
+| `Complex` | yes | yes | yes (Complex value type, `i` constant, arithmetic) |
 | `Mod<p>` `GF<p>` | yes | yes (as Int) | yes (via builtins) |
 | `Vector[n]` `Matrix[r,c]` `Tensor[...]` | yes | yes | yes |
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
@@ -66,13 +66,13 @@
 | Binders (sum/product/integral/forall/exists) | `sum i in 0..n: f(i)` | yes | yes |
 | Filtered binders (`if` guard) | `sum i in 0..n if i > 0: f(i)` | yes | yes |
 | Derivative (autodiff) | `derivative(y) wrt x` | yes | yes |
-| Partial derivative | `partial(H) wrt T holding p` | yes | parse only |
-| Total derivative | `total(t) wrt t` / `d(t) wrt t` | yes | parse only |
-| Unicode partial | `∂(T) wrt x` | yes | parse only |
+| Partial derivative | `partial(H) wrt T holding p` | yes | yes (same autodiff path) |
+| Total derivative | `total(t) wrt t` / `d(t) wrt t` | yes | yes (same autodiff path) |
+| Unicode partial | `∂(T) wrt x` | yes | yes (same autodiff path) |
 | Solve (Newton) | `solve(f) wrt x` | yes | yes |
 | Optimize | `minimize(loss) wrt x` | yes | yes |
 | einsum | `einsum("ik,kj->ij", A, B)` | yes | yes |
-| Complex literal | `2i`, `3.5i`, `1 + 2i` | yes | type-checks |
+| Complex literal | `2i`, `3.5i`, `1 + 2i` | yes | yes (Complex arithmetic) |
 | Unit query | `unit of E` / `dimension of E` | yes | parse only |
 | Notation declarations | `notation infix 10 "⊕" => core::algebra::add` | yes | parse only |
 
@@ -94,3 +94,5 @@
 | `factorial` | 1 | yes (i64, n ∈ [0,20]) |
 | `mod_inv` | 2 | yes (i64, extended GCD) |
 | `cong` | 3 | yes (Bool) |
+| `poly_eval_mod` | 3 | yes (i64, Horner over GF(p)) |
+| `rs_encode` | 3 | yes (Vector, RS codeword) |

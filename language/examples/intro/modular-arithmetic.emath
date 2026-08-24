@@ -38,15 +38,28 @@ emath function rs_distance:
     expect n == 7
     expect k == 3
 
+emath function rs_encode_demo:
+  (* RS(7, 3) over GF(7): encode f(x) = 1 + 2x + 3x^2 *)
+  outputs:
+    codeword: Vector[7]
+    val_at_2: Int
+  definitions:
+    coeffs = [1, 2, 3]
+    codeword = rs_encode(coeffs, 7, 7)
+    val_at_2 = poly_eval_mod(coeffs, 2, 7)  (* f(2) = 17 mod 7 = 3 *)
+  tests:
+    expect val_at_2 == 3
+    expect length(codeword) == 7
+    expect codeword[0] == 1  (* f(0) = 1 *)
+    expect codeword[1] == 6  (* f(1) = 6 *)
+
 emath function gf7_inverse_table:
   (* Compute the inverse table for GF(7) *)
   outputs:
     table: Vector[7]
   definitions:
-    table = [mod_inv(0, 7), mod_inv(1, 7), mod_inv(2, 7),
-             mod_inv(3, 7), mod_inv(4, 7), mod_inv(5, 7),
-             mod_inv(6, 7)]
+    table = [mod_inv(1, 7), mod_inv(2, 7), mod_inv(3, 7),
+             mod_inv(4, 7), mod_inv(5, 7), mod_inv(6, 7)]
   tests:
-    (* 0 has no inverse — expect error at runtime; for now, table
-       construction parses and admits. *)
-    expect length(table) == 7
+    expect length(table) == 6
+

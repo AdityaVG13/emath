@@ -347,6 +347,12 @@ admitted in `definitions:` and `equations:`:
 - `cong(a, b, m)` — congruence test: `(a - b) mod m == 0`. Returns `Bool`.
 - `mod(a, m)` — floating-point remainder (already available as a general
   builtin; works on `Int` values too via i64-to-f64 coercion).
+- `poly_eval_mod(coeffs, x, p)` — evaluates polynomial `c[0] + c[1]*x +
+  ... + c[k-1]*x^(k-1)` at `x` modulo `p` using Horner's method. `coeffs`
+  is a `Vector`, `x` and `p` are integers. Returns `Int`.
+- `rs_encode(coeffs, n, p)` — constructs a Reed-Solomon codeword by
+  evaluating the polynomial at points `0, 1, ..., n-1` over `GF(p)`.
+  Returns a `Vector` of `n` values.
 
 `Mod<p>` and `GF<p>` are admitted as `Int` types — values are exact
 integers, and modular reduction is performed by the builtins, not the
