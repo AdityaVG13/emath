@@ -18,8 +18,9 @@ use infer::*;
 mod types;
 mod equations;
 mod sections;
+mod sections_meta;
 mod lowering;
-pub use sections::check_tree;
+pub use sections_meta::check_tree;
 
 pub const E_DUPLICATE_FIELD: &str = "E-NAME-020";
 pub const E_UNKNOWN_VARIABLE: &str = "E-TYPE-002";

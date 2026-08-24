@@ -2,7 +2,7 @@
 //! and parser edge cases (F5 non-greedy derivative operand).
 
 use emath_core::limits::Limits;
-use emath_core::tree::{ExprKind, BinaryOp, StmtKind};
+use emath_core::tree::{ExprKind, BinaryOp, Item, NotationFixity, StmtKind};
 use emath_core::{Diagnostic, FileId, SourceStore, Span};
 use emath_syntax::lexer::lex;
 use emath_syntax::token::TokenKind;
@@ -379,4 +379,177 @@ emath function mat() -> Vector[2]:
         matches!(&value.kind, ExprKind::List(_)),
         "indexed value should be a list, got {:?}", value.kind
     );
+}
+
+// ---- N1-N5: notation governance core ----------------------------------
+
+#[test]
+fn n1_notation_decl_parses() {
+    // N1: notation declarations are package-level items, scoped to the
+    // package and imported via `use`.
+    let source = "\
+package test.pkg
+
+notation infixl 40 \"⋅\" => core::math::dot
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "notation decl must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let notation = tree
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Notation(n) => Some(n),
+            _ => None,
+        })
+        .expect("expected a Notation item");
+    assert_eq!(notation.fixity, NotationFixity::InfixLeft);
+    assert_eq!(notation.precedence, 40);
+    assert_eq!(notation.glyph, "⋅");
+    assert_eq!(notation.target, vec!["core", "math", "dot"]);
+    assert!(notation.alias.is_none(), "no alias clause");
+}
+
+#[test]
+fn n2_notation_alias_clause_parses() {
+    // N2: the optional `alias` clause provides an alternative spelling.
+    // accept-many/canon-one: multiple aliases map to one canonical path.
+    let source = "\
+package test.pkg
+
+notation infixl 40 \"⋅\" => core::math::dot alias \"*\"
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "notation with alias must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let notation = tree
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Notation(n) => Some(n),
+            _ => None,
+        })
+        .expect("expected a Notation item");
+    assert_eq!(
+        notation.alias.as_deref(),
+        Some("*"),
+        "alias clause should be captured"
+    );
+}
+
+#[test]
+fn n1_all_fixity_forms_parse() {
+    // All five fixity keywords must be recognized.
+    for (fixity_str, expected) in [
+        ("prefix", NotationFixity::Prefix),
+        ("postfix", NotationFixity::Postfix),
+        ("infixl", NotationFixity::InfixLeft),
+        ("infixr", NotationFixity::InfixRight),
+        ("infix", NotationFixity::Infix),
+    ] {
+        let source = format!(
+            "package test.pkg\n\nnotation {fixity_str} 50 \"⊗\" => core::math::op"
+        );
+        let (tree, diags) = parse_str(&source);
+        assert!(
+            !diags.has_errors(),
+            "fixity `{fixity_str}` must parse cleanly, got: {:?}",
+            diags.errors().map(|e| e.code).collect::<Vec<_>>()
+        );
+        let notation = tree
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Notation(n) => Some(n),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("expected Notation for fixity `{fixity_str}`"));
+        assert_eq!(notation.fixity, expected, "fixity mismatch for `{fixity_str}`");
+    }
+}
+
+#[test]
+fn n4_invalid_fixity_errors() {
+    // N4 conflict rules: an unrecognized fixity keyword must produce a
+    // parse error, not silently misparse.
+    let source = "\
+package test.pkg
+
+notation infixd 40 \"⋅\" => core::math::dot
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        diags.has_errors(),
+        "invalid fixity `infixd` must produce an error"
+    );
+    assert!(
+        tree.items.iter().all(|i| !matches!(i, Item::Notation(_))),
+        "no Notation item should be produced for invalid fixity"
+    );
+}
+
+#[test]
+fn n1_notation_example_file_parses() {
+    // The notation-governance example file must parse cleanly with all
+    // six notation declarations (five fixity forms + one with alias).
+    let source = include_str!("../../../language/examples/intro/notation-governance.emath");
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "notation example must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let notations: Vec<_> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Notation(n) => Some(n),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        notations.len(),
+        6,
+        "expected 6 notation declarations, got {}",
+        notations.len()
+    );
+    // The last one should have an alias clause (N2).
+    assert_eq!(
+        notations[5].alias.as_deref(),
+        Some("++"),
+        "last notation should have alias \"++\""
+    );
+}
+
+#[test]
+fn n1_multiple_notation_decls_no_comments() {
+    // Multiple notation declarations without comments must parse cleanly.
+    let source = "\
+package test.pkg
+
+notation infixl 40 \"X\" => core::math::add
+
+notation infixr 50 \"Y\" => core::math::mul
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "multiple notation decls must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let notations: Vec<_> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Notation(n) => Some(n),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notations.len(), 2, "expected 2 notation declarations");
 }

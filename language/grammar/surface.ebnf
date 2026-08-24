@@ -61,8 +61,13 @@ variant_decl     = "variant" , identifier , [ generic_arguments ] , ":" , suite 
 trait_decl       = "trait" , identifier , [ generic_arguments ] , ":" , suite ;
 impl_decl        = "impl" , type_expr , [ "for" , type_expr ] , ":" , suite ;
 operator_decl    = [ "extern" ] , "operator" , identifier , [ generic_arguments ] , parameter_list , "->" , type_expr , ":" , suite ;
-notation_decl    = "notation" , notation_fixity , integer , string , "=>" , path ;
+notation_decl    = "notation" , notation_fixity , integer , string , "=>" , path , [ "alias" , string ] ;
 notation_fixity  = "prefix" | "postfix" | "infixl" | "infixr" | "infix" ;
+-- N1: Notation declarations are scoped to the package and imported via `use`.
+-- N2: The optional `alias` clause provides an alternative spelling
+--     (accept-many/canon-one: multiple aliases resolve to one canonical path).
+-- N5: Notation is typography, not meaning — removing a notation import
+--     never changes the semantic identity of a program.
 extern_decl      = "extern" , ( function_decl | type_decl | operator_decl ) ;
 
 let_statement    = "let" , pattern , [ ":" , type_expr ] , "=" , expression ;

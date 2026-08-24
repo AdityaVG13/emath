@@ -31,6 +31,7 @@ say what the compiler does with each one today.
 | [damped-oscillator.emath](intro/damped-oscillator.emath) | Admits. Damped harmonic oscillator (mass-spring-damper). First-order system: der(x)=v, der(v)=-(k*x+c*v)/m. Use `emath simulate`. |
 | [compound-interest.emath](intro/compound-interest.emath) | Runs. Continuous compound interest: A = P * e^(r*t). With P=1000, r=5%, t=10yr → ~$1648.72. |
 | [logistic-growth.emath](intro/logistic-growth.emath) | Admits. Logistic population model: der(p) = r*p*(1 - p/K). Classic S-curve growth toward carrying capacity K. Use `emath simulate`. |
+| [notation-governance.emath](intro/notation-governance.emath) | Parses. Seven `notation` declarations covering all five fixity forms and the `alias` clause (N1–N5). |
 
 ## numerical — numerics and dynamics
 

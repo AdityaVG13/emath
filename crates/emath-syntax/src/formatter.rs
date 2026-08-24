@@ -9,8 +9,8 @@
 use crate::token::Comment;
 use crate::tree::{
     Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration,
-    Item, Param, Place, Section, Stmt, StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind,
-    UseTree, Visibility,
+    Item, NotationDecl, NotationFixity, Param, Place, Section, Stmt, StmtKind, Suite,
+    SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
 };
 
 mod expr;
@@ -65,6 +65,7 @@ fn item_span_start(item: &Item) -> usize {
     match item {
         Item::Package { source, .. } | Item::Use { source, .. } => source.start as usize,
         Item::Declaration(decl) => decl.head_source.start as usize,
+        Item::Notation(notation) => notation.source.start as usize,
     }
 }
 
@@ -125,7 +126,47 @@ fn format_item(out: &mut String, item: &Item, level: usize) {
             }
         }
         Item::Declaration(decl) => format_declaration(out, decl, level),
+        Item::Notation(notation) => format_notation(out, notation, level),
     }
+}
+
+fn format_notation(out: &mut String, notation: &NotationDecl, level: usize) {
+    indent(out, level);
+    out.push_str("notation ");
+    let fixity = match notation.fixity {
+        NotationFixity::Prefix => "prefix",
+        NotationFixity::Postfix => "postfix",
+        NotationFixity::InfixLeft => "infixl",
+        NotationFixity::InfixRight => "infixr",
+        NotationFixity::Infix => "infix",
+    };
+    out.push_str(fixity);
+    out.push(' ');
+    out.push_str(&notation.precedence.to_string());
+    out.push(' ');
+    push_string_literal(out, &notation.glyph);
+    out.push_str(" => ");
+    out.push_str(&notation.target.join("::"));
+    if let Some(alias) = &notation.alias {
+        out.push_str(" alias ");
+        push_string_literal(out, alias);
+    }
+    out.push('\n');
+}
+
+fn push_string_literal(out: &mut String, text: &str) {
+    out.push('"');
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
 }
 
 fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {

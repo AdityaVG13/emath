@@ -1,0 +1,23 @@
+package examples.notation
+
+# N1: Notation declarations are package-level items, peers of use and
+# emath declarations. They are scoped to this package.
+
+# Infix-left associativity at precedence 40 (same level as +).
+notation infixl 40 "⊕" => core::math::add
+
+# Infix-right associativity at precedence 50 (same level as *).
+notation infixr 50 "⊗" => core::math::mul
+
+# Prefix operator at precedence 80 (tighter than infix).
+notation prefix 80 "¬" => core::logic::negate
+
+# Postfix operator at precedence 90 (tightest).
+notation postfix 90 "†" => core::math::conjugate
+
+# Non-associative infix at precedence 45.
+notation infix 45 "≡" => core::logic::iff
+
+# N2: The optional alias clause provides an alternative spelling.
+# Both "⊕" and "++" resolve to the same canonical operator.
+notation infixl 40 "⊕" => core::math::add alias "++"

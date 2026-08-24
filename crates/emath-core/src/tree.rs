@@ -21,12 +21,43 @@ pub enum Item {
         source: Span,
     },
     Declaration(Declaration),
+    /// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
+    Notation(NotationDecl),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UseTree {
     All,
     Named(Vec<(String, Option<String>)>),
+}
+
+/// Fixity for a `notation` declaration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NotationFixity {
+    Prefix,
+    Postfix,
+    InfixLeft,
+    InfixRight,
+    Infix,
+}
+
+/// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
+///
+/// N1: Notation declarations are scoped to the package that declares them
+/// and are imported via `use`.  N2: The optional `alias` clause provides
+/// an alternative spelling (accept-many/canon-one: multiple aliases resolve
+/// to one canonical path).  N5: Notation is typography, not meaning —
+/// removing a notation import never changes semantic identity.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NotationDecl {
+    pub fixity: NotationFixity,
+    pub precedence: u32,
+    pub glyph: String,
+    pub target: Vec<String>,
+    /// N2 alias clause: `alias "*"` — an alternative spelling for the
+    /// same operator.  Multiple aliases map to one canonical path.
+    pub alias: Option<String>,
+    pub source: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
