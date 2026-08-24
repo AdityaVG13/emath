@@ -313,6 +313,7 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
         ExprKind::Conditioned { value, condition } => {
             contains_state_reference(value) || contains_state_reference(condition)
         }
+        ExprKind::UnitQuery { expr, .. } => contains_state_reference(expr),
     }
 }
 

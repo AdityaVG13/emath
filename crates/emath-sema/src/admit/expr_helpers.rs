@@ -311,5 +311,6 @@ pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
         ExprKind::At { .. } => "at",
         ExprKind::On { .. } => "on",
         ExprKind::Conditioned { .. } => "conditioned",
+        ExprKind::UnitQuery { .. } => "unit-query",
     }
 }

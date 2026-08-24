@@ -1186,3 +1186,96 @@ emath function test(image: Float64) -> Float64:
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
     );
 }
+
+// ---- unit of / dimension of compile-time queries (04 section 1.4) --------
+
+use emath_core::tree::UnitQueryKind;
+
+#[test]
+fn unit_of_parses() {
+    let source = "\
+emath function test(m: Float64, c: Float64) -> Float64:
+    definitions:
+        result = unit of (m * c^2)
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "unit of (m * c^2) must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::UnitQuery { kind, .. } => {
+            assert_eq!(*kind, UnitQueryKind::Unit, "should be Unit kind");
+        }
+        other => panic!("expected UnitQuery, got {:?}", other),
+    }
+}
+
+#[test]
+fn dimension_of_parses() {
+    let source = "\
+emath function test(thrust: Float64) -> Float64:
+    definitions:
+        result = dimension of thrust
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "dimension of thrust must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    match &expr.kind {
+        ExprKind::UnitQuery { kind, .. } => {
+            assert_eq!(*kind, UnitQueryKind::Dimension, "should be Dimension kind");
+        }
+        other => panic!("expected UnitQuery, got {:?}", other),
+    }
+}
+
+#[test]
+fn unit_of_with_comparison_parses() {
+    // `unit of E == X` should parse as `(unit of E) == X`
+    let source = "\
+emath function test(e: Float64) -> Float64:
+    definitions:
+        result = unit of e == kg*m^2/s^2
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "unit of e == ... must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    // Top-level should be a comparison (Binary with Eq)
+    match &expr.kind {
+        ExprKind::Binary { op: BinaryOp::Eq, left, .. } => {
+            // Left should be UnitQuery
+            assert!(
+                matches!(&left.kind, ExprKind::UnitQuery { kind: UnitQueryKind::Unit, .. }),
+                "left should be UnitQuery(Unit), got {:?}",
+                left.kind
+            );
+        }
+        other => panic!("expected Binary Eq, got {:?}", other),
+    }
+}
+
+#[test]
+fn unit_as_identifier_still_works() {
+    // `unit` not followed by `of` should be a regular identifier.
+    let source = "\
+emath function test(unit: Float64) -> Float64:
+    definitions:
+        result = unit + 1
+";
+    let (_tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "`unit` as identifier must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+}

@@ -1260,7 +1260,7 @@ impl super::Admitter {
         name: &str,
         args: &[Expr],
     ) -> Option<(ExprId, Infer)> {
-        use emath_ir::{ExprNode, Literal};
+        use emath_ir::ExprNode;
 
         // Lower all arguments (including the subscripts string literal).
         let mut arg_ids = Vec::with_capacity(args.len());
