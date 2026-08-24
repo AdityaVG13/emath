@@ -432,3 +432,35 @@ emath function f(x: Float64) -> Float64:
         "limit in definitions must error (it's a claim, not a computation)"
     );
 }
+
+// ─── reverse-mode AD (emath-xx0x.1) ───
+
+#[test]
+fn grad_admits_in_definitions() {
+    let source = "\
+emath function f(x: Float64, y: Float64) -> Vector[2]:
+    definitions:
+        f = grad(x * y + y * y)
+";
+    let codes = errors_of("grad-admit", source);
+    assert!(
+        codes.is_empty(),
+        "grad() should be admitted in definitions, got errors: {codes:?}"
+    );
+}
+
+#[test]
+fn grad_requires_scalar_expression() {
+    // grad() on a vector expression should error.
+    let source = "\
+emath function f(x: Float64, y: Float64) -> Vector[2]:
+    definitions:
+        v = [x, y]
+        f = grad(v)
+";
+    let codes = errors_of("grad-non-scalar", source);
+    assert!(
+        !codes.is_empty(),
+        "grad() on a non-scalar expression must error"
+    );
+}

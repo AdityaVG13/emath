@@ -633,6 +633,49 @@ pub(crate) fn op_expr(
                  }}"
             )))
         }
+        EmirOp::ReverseMode { body, var_indices } => {
+            // Forward pass: compute all primals.
+            let mut forward = String::new();
+            for (index, (op, _)) in body.ops.iter().enumerate() {
+                let e = op_expr(op, body, names, states)?;
+                forward.push_str(&format!("let __re{index} = {};\n", render_expr(&e)));
+            }
+            // Initialize adjoints to 0.0.
+            let n = body.ops.len();
+            let mut init_adj = String::new();
+            for index in 0..n {
+                init_adj.push_str(&format!("let mut __ra{index}: f64 = 0.0;\n"));
+            }
+            // Seed the output adjoint.
+            let result_idx = body.result.0;
+            init_adj.push_str(&format!("__ra{result_idx} = 1.0;\n"));
+            // Input adjoint accumulators.
+            let input_count = body.input_count;
+            let mut init_ia = String::new();
+            for i in 0..input_count {
+                init_ia.push_str(&format!("let mut __ria{i}: f64 = 0.0;\n"));
+            }
+            // Backward pass: traverse ops in reverse.
+            let mut backward = String::new();
+            for (index, (op, _)) in body.ops.iter().enumerate().rev() {
+                backward.push_str(&reverse_adjoint_str(op, index));
+            }
+            // Collect requested gradients.
+            let grads: Vec<String> = var_indices
+                .iter()
+                .map(|vi| format!("__ria{vi}"))
+                .collect();
+            Ok(Expr::Raw(format!(
+                "{{\n\
+                 {forward}\
+                 {init_adj}\
+                 {init_ia}\
+                 {backward}\
+                 vec![{}]\n\
+                 }}",
+                grads.join(", "),
+            )))
+        }
     }
 }
 
@@ -814,5 +857,93 @@ pub(crate) fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, i
         | EmirOp::Gt(..) | EmirOp::Ge(..) | EmirOp::And(..) | EmirOp::Or(..)
         | EmirOp::Imply(..) | EmirOp::Iff(..) | EmirOp::Not(..) => "0.0".to_string(),
         _ => "0.0".to_string(),
+    }
+}
+
+/// Generate the backward-pass adjoint update statements for an EMIR op
+/// in reverse-mode autodiff.  Uses `__re{N}` for primal references and
+/// `__ra{N}` for adjoint references.  `idx` is the current register index.
+/// Returns statements that accumulate adjoints into the op's input registers
+/// and input adjoint accumulators (`__ria{N}`).
+pub(crate) fn reverse_adjoint_str(op: &EmirOp, idx: usize) -> String {
+    let adj = format!("__ra{idx}");
+    let p = |n: u32| format!("__re{n}");
+    let a = |n: u32| format!("__ra{n}");
+    let updates = match op {
+        EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) => String::new(),
+        EmirOp::LoadInput(i) => format!("__ria{i} += {adj};\n"),
+        EmirOp::LoadState(_) => String::new(),
+        EmirOp::F64Add(x, y) => format!("{} += {adj};\n{} += {adj};\n", a(x.0), a(y.0)),
+        EmirOp::F64Sub(x, y) => format!("{} += {adj};\n{} -= {adj};\n", a(x.0), a(y.0)),
+        EmirOp::F64Mul(x, y) => format!(
+            "{} += {adj} * {};\n{} += {adj} * {};\n",
+            a(x.0), p(y.0), a(y.0), p(x.0)
+        ),
+        EmirOp::F64Div(x, y) => format!(
+            "{} += {adj} / {};\n{} -= {adj} * {} / ({} * {});\n",
+            a(x.0), p(y.0), a(y.0), p(x.0), p(y.0), p(y.0)
+        ),
+        EmirOp::Neg(x) => format!("{} -= {adj};\n", a(x.0)),
+        EmirOp::Exp(x) => format!("{} += {adj} * __re{idx};\n", a(x.0)),
+        EmirOp::Ln(x) => format!("{} += {adj} / {};\n", a(x.0), p(x.0)),
+        EmirOp::Sqrt(x) => format!("{} += {adj} / (2.0 * __re{idx});\n", a(x.0)),
+        EmirOp::Sin(x) => format!("{} += {adj} * {}.cos();\n", a(x.0), p(x.0)),
+        EmirOp::Cos(x) => format!("{} -= {adj} * {}.sin();\n", a(x.0), p(x.0)),
+        EmirOp::Tan(x) => format!(
+            "{} += {adj} / ({}.cos() * {}.cos());\n",
+            a(x.0), p(x.0), p(x.0)
+        ),
+        EmirOp::Tanh(x) => format!("{} += {adj} * (1.0 - __re{idx} * __re{idx});\n", a(x.0)),
+        EmirOp::Abs(x) => format!("{} += {adj} * {}.signum();\n", a(x.0), p(x.0)),
+        EmirOp::Floor(_) | EmirOp::Ceil(_) | EmirOp::Round(_) | EmirOp::Sign(_) => String::new(),
+        EmirOp::Log2(x) => format!("{} += {adj} / ({} * std::f64::consts::LN_2);\n", a(x.0), p(x.0)),
+        EmirOp::Log10(x) => format!("{} += {adj} / ({} * std::f64::consts::LN_10);\n", a(x.0), p(x.0)),
+        EmirOp::Sinh(x) => format!("{} += {adj} * {}.cosh();\n", a(x.0), p(x.0)),
+        EmirOp::Cosh(x) => format!("{} += {adj} * {}.sinh();\n", a(x.0), p(x.0)),
+        EmirOp::Atan(x) => format!("{} += {adj} / (1.0 + {} * {});\n", a(x.0), p(x.0), p(x.0)),
+        EmirOp::Cbrt(x) => format!("{} += {adj} / (3.0 * __re{idx} * __re{idx});\n", a(x.0)),
+        EmirOp::Recip(x) => format!("{} -= {adj} / ({} * {});\n", a(x.0), p(x.0), p(x.0)),
+        EmirOp::Fract(x) => format!("{} += {adj};\n", a(x.0)),
+        EmirOp::Hypot(x, y) => format!(
+            "if __re{idx} != 0.0 {{ {} += {adj} * {} / __re{idx}; {} += {adj} * {} / __re{idx}; }}\n",
+            a(x.0), p(x.0), a(y.0), p(y.0)
+        ),
+        EmirOp::F64Pow(x, y) => format!(
+            "if {} != 0.0 {{ {} += {adj} * __re{idx} * {} / {}; }}\n\
+             if {} > 0.0 {{ {} += {adj} * __re{idx} * {}.ln(); }}\n",
+            p(x.0), a(x.0), p(y.0), p(x.0),
+            p(x.0), a(y.0), p(x.0)
+        ),
+        EmirOp::Min(x, y) => format!(
+            "if {} <= {} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+            p(x.0), p(y.0), a(x.0), a(y.0)
+        ),
+        EmirOp::Max(x, y) => format!(
+            "if {} >= {} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+            p(x.0), p(y.0), a(x.0), a(y.0)
+        ),
+        EmirOp::Atan2(x, y) => {
+            let denom = format!("({} * {} + {} * {})", p(x.0), p(x.0), p(y.0), p(y.0));
+            format!(
+                "if {denom} != 0.0 {{ {} += {adj} * {} / {denom}; {} -= {adj} * {} / {denom}; }}\n",
+                a(x.0), p(y.0), a(y.0), p(x.0)
+            )
+        }
+        EmirOp::Mod(x, _y) => format!("{} += {adj};\n", a(x.0)),
+        EmirOp::Select { condition: c, then_value: t, else_value: ev } => format!(
+            "if {} != 0.0 {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+            p(c.0), a(t.0), a(ev.0)
+        ),
+        // Non-differentiable ops: no adjoint contribution.
+        EmirOp::IsFinite(_) | EmirOp::Eq(..) | EmirOp::Ne(..)
+        | EmirOp::Lt(..) | EmirOp::Le(..) | EmirOp::Gt(..) | EmirOp::Ge(..)
+        | EmirOp::And(..) | EmirOp::Or(..) | EmirOp::Not(_)
+        | EmirOp::Imply(..) | EmirOp::Iff(..) => String::new(),
+        _ => String::new(),
+    };
+    if updates.is_empty() {
+        String::new()
+    } else {
+        format!("if {adj} != 0.0 {{\n{updates}}}\n")
     }
 }

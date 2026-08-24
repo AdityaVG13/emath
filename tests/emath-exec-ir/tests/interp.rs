@@ -1337,3 +1337,141 @@ fn sample_limit_one_sided_from_above() {
         "1/x as x->0+ should be very large, got {val}"
     );
 }
+
+// ─── reverse-mode AD (emath-xx0x.1) ───
+
+#[test]
+fn reverse_mode_quadratic_gradient() {
+    // f(x, y) = x*y + y*y
+    // df/dx = y, df/dy = x + 2*y
+    // At x=3, y=2: df/dx = 2, df/dy = 7
+    let body = EmirProgram {
+        ops: vec![
+            (EmirOp::LoadInput(0), Span::default()),      // 0: x
+            (EmirOp::LoadInput(1), Span::default()),      // 1: y
+            (EmirOp::F64Mul(EmirValue(0), EmirValue(1)), Span::default()), // 2: x*y
+            (EmirOp::LoadInput(1), Span::default()),      // 3: y
+            (EmirOp::LoadInput(1), Span::default()),      // 4: y
+            (EmirOp::F64Mul(EmirValue(3), EmirValue(4)), Span::default()), // 5: y*y
+            (EmirOp::F64Add(EmirValue(2), EmirValue(5)), Span::default()), // 6: x*y + y*y
+        ],
+        result: EmirValue(6),
+        input_count: 2,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    let prog = program(vec![
+        EmirOp::ReverseMode {
+            body,
+            var_indices: vec![0, 1],
+        },
+    ]);
+    let result = evaluate(&prog, &[Value::F64(3.0), Value::F64(2.0)], &[]).unwrap();
+    let grads = match result {
+        Value::Vector(v) => v,
+        other => panic!("expected Vector, got {other:?}"),
+    };
+    assert_eq!(grads.len(), 2, "should have 2 gradients");
+    assert!(
+        (grads[0] - 2.0).abs() < 1e-10,
+        "df/dx should be 2.0, got {}", grads[0]
+    );
+    assert!(
+        (grads[1] - 7.0).abs() < 1e-10,
+        "df/dy should be 7.0, got {}", grads[1]
+    );
+}
+
+#[test]
+fn reverse_mode_ten_inputs_matches_forward() {
+    // f(x1,...,x10) = sum(xi^2)
+    // df/dxi = 2*xi
+    // At xi = (i+1): gradients = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+    let n: usize = 10;
+    let mut ops = Vec::new();
+    for i in 0..n {
+        ops.push((EmirOp::LoadInput(i as u16), Span::default()));
+        ops.push((EmirOp::F64Mul(
+            EmirValue(2 * i as u32),
+            EmirValue(2 * i as u32),
+        ), Span::default()));
+    }
+    // Sum: start with x0^2, then add each subsequent square.
+    let mut acc = EmirValue(1); // first square at index 1
+    for i in 1..n {
+        let sq_idx = 2 * i as u32 + 1;
+        ops.push((EmirOp::F64Add(acc, EmirValue(sq_idx)), Span::default()));
+        acc = EmirValue(ops.len() as u32 - 1);
+    }
+    let body = EmirProgram {
+        ops,
+        result: acc,
+        input_count: n as u16,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    let var_indices: Vec<u16> = (0..n as u16).collect();
+    let prog = program(vec![
+        EmirOp::ReverseMode { body, var_indices },
+    ]);
+    let inputs: Vec<Value> = (1..=n).map(|i| Value::F64(i as f64)).collect();
+    let result = evaluate(&prog, &inputs, &[]).unwrap();
+    let grads = match result {
+        Value::Vector(v) => v,
+        other => panic!("expected Vector, got {other:?}"),
+    };
+    assert_eq!(grads.len(), n, "should have {n} gradients");
+    for i in 0..n {
+        let expected = 2.0 * (i + 1) as f64;
+        assert!(
+            (grads[i] - expected).abs() < 1e-10,
+            "df/dx{} should be {expected}, got {}", i + 1, grads[i]
+        );
+    }
+}
+
+#[test]
+fn reverse_mode_transcendental_gradient() {
+    // f(x, y) = sin(x) * exp(y)
+    // df/dx = cos(x) * exp(y)
+    // df/dy = sin(x) * exp(y)
+    // At x=1.0, y=0.5:
+    //   df/dx = cos(1.0) * exp(0.5) ≈ 0.5403 * 1.6487 ≈ 0.8910
+    //   df/dy = sin(1.0) * exp(0.5) ≈ 0.8415 * 1.6487 ≈ 1.3878
+    let body = EmirProgram {
+        ops: vec![
+            (EmirOp::LoadInput(0), Span::default()),      // 0: x
+            (EmirOp::Sin(EmirValue(0)), Span::default()),  // 1: sin(x)
+            (EmirOp::LoadInput(1), Span::default()),      // 2: y
+            (EmirOp::Exp(EmirValue(2)), Span::default()),  // 3: exp(y)
+            (EmirOp::F64Mul(EmirValue(1), EmirValue(3)), Span::default()), // 4: sin(x)*exp(y)
+        ],
+        result: EmirValue(4),
+        input_count: 2,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    let prog = program(vec![
+        EmirOp::ReverseMode {
+            body,
+            var_indices: vec![0, 1],
+        },
+    ]);
+    let x = 1.0_f64;
+    let y = 0.5_f64;
+    let result = evaluate(&prog, &[Value::F64(x), Value::F64(y)], &[]).unwrap();
+    let grads = match result {
+        Value::Vector(v) => v,
+        other => panic!("expected Vector, got {other:?}"),
+    };
+    let expected_dx = x.cos() * y.exp();
+    let expected_dy = x.sin() * y.exp();
+    assert!(
+        (grads[0] - expected_dx).abs() < 1e-10,
+        "df/dx should be {expected_dx}, got {}", grads[0]
+    );
+    assert!(
+        (grads[1] - expected_dy).abs() < 1e-10,
+        "df/dy should be {expected_dy}, got {}", grads[1]
+    );
+}

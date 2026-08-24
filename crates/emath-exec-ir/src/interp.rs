@@ -17,9 +17,11 @@ use crate::{EdgePolicy, EmirOp, EmirProgram, FoldCombine};
 
 mod dual;
 mod helpers;
+mod reverse;
 mod value;
 
 use dual::evaluate_dual;
+use reverse::evaluate_reverse;
 use helpers::*;
 pub use value::{EvalFault, Value, format_f64};
 
@@ -1172,6 +1174,9 @@ fn eval_op(
                     detail: "sample_limit produced no finite values",
                 })
             }
+        }
+        EmirOp::ReverseMode { ref body, ref var_indices } => {
+            evaluate_reverse(body, inputs, state, var_indices, name)
         }
     }
 }

@@ -269,6 +269,16 @@ pub enum EmirOp {
         target: EmirValue,
         direction: EmirValue,
     },
+    /// Reverse-mode autodiff (adjoint method).  Evaluates `body` in a
+    /// forward pass, then computes gradients w.r.t. all specified input
+    /// indices in a single backward pass.  Returns a Vector of gradients
+    /// (one per var index).  Efficient for scalar functions of many
+    /// inputs: O(cost) regardless of input count, vs O(N * cost) for
+    /// forward-mode.
+    ReverseMode {
+        body: EmirProgram,
+        var_indices: Vec<u16>,
+    },
 }
 
 impl EmirOp {
@@ -359,6 +369,7 @@ impl EmirOp {
             Self::Solve { .. } => "solve",
             Self::Optimize { .. } => "optimize",
             Self::SampleLimit { .. } => "sample-limit",
+            Self::ReverseMode { .. } => "reverse-mode",
         }
     }
 }
