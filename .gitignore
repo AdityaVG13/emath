@@ -30,6 +30,7 @@ tests/*/target/
 docs/*
 !docs/MANUAL.md
 !docs/WHY_NOT_LEAN.md
+!docs/MASTER_MATH_ROADMAP.md
 
 # agent contract is local-only
 AGENTS.md
