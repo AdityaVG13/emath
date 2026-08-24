@@ -106,12 +106,41 @@ silent guess.
 Working sections:
 
 ```text
-inputs outputs state definitions equations equation
+inputs outputs state definitions equations equation algebraic
 constructors constraints goals exports tests compile about evidence host
 ```
 
 Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
 `goals:`.
+
+Admitted types:
+
+```text
+Float64  Bool  Nat  Int  Complex
+Vector[n]  Matrix[r, c]  Tensor[…]
+quantity / `T in unit` annotations
+NonNegative<Real> / Positive<Real> / Probability<Real>
+Interval<Float64>
+```
+
+Value-level generic arguments at use sites: `Mod<7>`,
+`Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = x + 1>`.
+
+Admitted expressions that compute:
+
+```text
+arithmetic  comparison  logic (and or not ==> <==>)
+sum product integral forall exists  (binders, with optional `if` guard)
+derivative(expr) wrt x         (forward-mode autodiff)
+partial(expr) wrt x holding p  (partial derivative, held-fixed set)
+total(expr) wrt t / d(expr) wrt t  (total/material derivative)
+∂(expr) wrt x                  (Unicode alias for partial)
+solve(expr) wrt x              (Newton's method root-finding)
+minimize(expr) wrt x / maximize(expr) wrt x  (gradient descent/ascent)
+einsum("ik,kj->ij", A, B)      (Einstein summation contraction)
+1 + 2i / 2i / 3.5i             (complex literals, Ni suffix)
+unit of E / dimension of E     (compile-time queries, parse only)
+```
 
 What you can do with an admitted file:
 

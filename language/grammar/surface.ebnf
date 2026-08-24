@@ -84,7 +84,7 @@ match_statement  = "match" , expression , ":" , newline , indent , { pattern , [
 for_statement    = "for" , pattern , "in" , expression , ":" , suite ;
 while_statement  = "while" , expression , [ "with" , argument_tuple ] , ":" , suite ;
 
-expression       = lambda_expr | conditional_expr | binary_expr ;
+expression       = lambda_expr | conditional_expr | unit_query_expr | binary_expr ;
 lambda_expr      = "fn" , parameter_list , [ "->" , type_expr ] , "=>" , expression ;
 conditional_expr = "if" , expression , ":" , expression , "else" , ":" , expression ;
 binary_expr      = unary_expr , { operator_token , unary_expr } ;
@@ -101,6 +101,10 @@ postfix_expr     = primary_expr , { call_suffix | index_suffix | field_suffix | 
    for future unit-bracket syntax.  List, tuple, and path primaries still
    accept index_suffix. *)
 call_suffix      = "(" , [ argument_list ] , ")" ;
+(* B08: `einsum("ik,kj->ij", A, B)` parses as a regular call_suffix on
+   a path primary. The first argument is a string literal (subscripts);
+   remaining arguments are tensor operands. Recognized as a builtin by
+   sema and lowered to EmirOp::Einsum. *)
 index_suffix     = "[" , [ expression , { "," , expression } ] , "]" ;
 field_suffix     = "." , identifier ;
 generic_suffix   = "::<" , type_expr , { "," , type_expr } , ">" ;
@@ -168,7 +172,12 @@ decimal          = integer , "." , integer , [ exponent ] ;
 float_literal    = ( integer | decimal ) , ( "f16" | "bf16" | "f32" | "f64" | "f128" ) ;
 rational_literal = integer , "//" , integer ;
 quantity_literal = ( integer | decimal | rational_literal ) , whitespace , path ;
-complex_literal  = expression , ( "+" | "-" ) , expression , "i" ;
+-- B14: Complex literals. `Ni` (e.g., 2i, 3.5i) is the pure imaginary
+-- form; `a +/- bi` is the sum form. `Ni` desugars to `N * i` (named
+-- constant). The lexer consumes `i` as part of the number token when
+-- not followed by identifier characters.
+complex_literal  = ( integer | decimal ) , "i"
+                 | expression , ( "+" | "-" ) , ( integer | decimal ) , "i" ;
 exponent         = ( "e" | "E" ) , [ "+" | "-" ] , integer ;
 
 newline          = ? line ending ? ;

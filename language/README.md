@@ -3,8 +3,10 @@
 Normative reference, grammar, examples, templates, and standard-library
 contracts for the emath language.
 
-| Directory | Purpose |
-|-----------|---------|
+| Directory / File | Purpose |
+|------------------|---------|
+| [`CAPABILITY.md`](CAPABILITY.md) | **What works today** — single-source capability matrix (parses / runs / refused). Read this first. |
+| [`MAINTAINING.md`](MAINTAINING.md) | Checklist for adding a language feature (the four-artifact rule). |
 | [`reference/`](reference/README.md) | Normative semantic specification, 16 chapters; the index there carries the canonical chapter order. |
 | [`grammar/`](grammar/README.md) | EBNF grammars: authoritative surface grammar and genesis addendum; authority and supersession notes in the grammar README. |
 | [`examples/`](examples/README.md) | Cross-domain example programs, grouped by category, with a curated reading order. |
@@ -15,7 +17,8 @@ contracts for the emath language.
 chapters in [`reference/`](reference/README.md) are normative; grammar files
 are the machine-checkable surface model that follows them.
 
-Start with [`reference/overview.md`](reference/overview.md) (Chapter 1), then
+Start with [`CAPABILITY.md`](CAPABILITY.md) for what works today, then
+[`reference/overview.md`](reference/overview.md) (Chapter 1), then
 follow the chapter index.
 
 The 16 chapters describe the whole language we are building. The compiler
