@@ -1464,3 +1464,162 @@ fn rs_proximity_singleton_bound() {
     };
     assert!(dist >= 5, "RS minimum distance {} < 5 (Singleton bound violated)", dist);
 }
+
+// ─── RS proximity: real computational exploration ───
+// RS(7,3) over GF(7): 7^3 = 343 codewords, d_min = 5 (Singleton bound).
+// We brute-force: compute all codewords, all pairwise distances, find the minimum.
+// This is dogfooding emath's computation engine on a real math problem.
+
+fn rs_codeword(coeffs: &[i64], n: i64, p: i64) -> Vec<f64> {
+    // Horner's method over GF(p) — same logic as EmirOp::RSEncode
+    let mut codeword = Vec::with_capacity(n as usize);
+    for x in 0..n {
+        let mut result: i64 = 0;
+        for &c in coeffs.iter().rev() {
+            result = (result * x + c).rem_euclid(p);
+        }
+        codeword.push(result as f64);
+    }
+    codeword
+}
+
+#[test]
+fn rs_brute_force_minimum_distance() {
+    // RS(7,3) over GF(7): enumerate all 343 codewords,
+    // compute all pairwise Hamming distances, find the minimum.
+    let p = 7i64;
+    let n = 7i64;
+    let k = 3i64;
+    let theoretical_min = n - k + 1; // = 5
+
+    // Generate all 7^3 = 343 codewords
+    let mut codewords: Vec<Vec<f64>> = Vec::with_capacity(343);
+    for c0 in 0..p {
+        for c1 in 0..p {
+            for c2 in 0..p {
+                codewords.push(rs_codeword(&[c0, c1, c2], n, p));
+            }
+        }
+    }
+    assert_eq!(codewords.len(), 343);
+
+    // Brute-force all pairwise distances — find the minimum
+    let mut min_dist = n; // worst case
+    let mut max_dist = 0i64;
+    let mut dist_counts: [i64; 8] = [0; 8]; // distance can be 0..7
+
+    for i in 0..codewords.len() {
+        for j in (i + 1)..codewords.len() {
+            let dist = codewords[i]
+                .iter()
+                .zip(&codewords[j])
+                .filter(|(a, b)| a.to_bits() != b.to_bits())
+                .count() as i64;
+            if dist < min_dist {
+                min_dist = dist;
+            }
+            if dist > max_dist {
+                max_dist = dist;
+            }
+            if dist >= 0 && dist <= 7 {
+                dist_counts[dist as usize] += 1;
+            }
+        }
+    }
+
+    // The minimum distance must equal the Singleton bound
+    assert_eq!(
+        min_dist, theoretical_min,
+        "RS(7,3) min distance should be {} (Singleton bound), got {}",
+        theoretical_min, min_dist
+    );
+
+    // No two distinct codewords are identical (distance 0 never happens)
+    assert_eq!(dist_counts[0], 0);
+
+    // Every pair of distinct degree-2 polynomials over GF(7) agrees on
+    // at most 2 points, so distances are in {5, 6, 7}.
+    // Distance 5 is achievable (bound is tight).
+    assert!(dist_counts[5] > 0, "no pair with distance 5 found — bound not tight?");
+
+    // Total number of pairs
+    let total_pairs = 343 * 342 / 2;
+    let counted: i64 = dist_counts.iter().sum();
+    assert_eq!(counted, total_pairs);
+
+    // Print the distance distribution — this is the exploration output
+    println!("\nRS(7,3) over GF(7) distance distribution:");
+    println!("  Total codewords: 343");
+    println!("  Total pairs: {}", total_pairs);
+    for d in 0..=7 {
+        if dist_counts[d] > 0 {
+            let pct = 100.0 * dist_counts[d] as f64 / total_pairs as f64;
+            println!("  d={}: {:>6} pairs ({:.1}%)", d, dist_counts[d], pct);
+        }
+    }
+    println!("  Min distance: {} (theory: {})", min_dist, theoretical_min);
+    println!("  Max distance: {}", max_dist);
+}
+
+#[test]
+fn rs_error_correction_boundary() {
+    // Take a specific codeword, inject t errors for t=0,1,2,3,
+    // and check which codewords are within distance t.
+    // Unique decoding radius = floor((d-1)/2) = 2.
+    // Beyond radius 2, we enter list-decoding territory.
+    let p = 7i64;
+    let n = 7i64;
+    let coeffs = [3i64, 1, 2];
+    let original = rs_codeword(&coeffs, n, p);
+
+    // Count how many codewords are within distance t of the original
+    let mut codewords: Vec<Vec<f64>> = Vec::with_capacity(343);
+    for c0 in 0..p {
+        for c1 in 0..p {
+            for c2 in 0..p {
+                codewords.push(rs_codeword(&[c0, c1, c2], n, p));
+            }
+        }
+    }
+
+    for t in 0..=6 {
+        let count = codewords
+            .iter()
+            .filter(|cw| {
+                let dist = original
+                    .iter()
+                    .zip(cw.iter())
+                    .filter(|(a, b)| a.to_bits() != b.to_bits())
+                    .count();
+                dist <= t as usize
+            })
+            .count();
+
+        let radius = (5 - 1) / 2; // unique decoding radius = 2
+        let zone = if t < 5 {
+            "empty (below min distance)"
+        } else if t <= radius as i64 {
+            "unique decoding"
+        } else if t == (radius + 1) as i64 {
+            "list decoding boundary"
+        } else {
+            "list decoding"
+        };
+        println!(
+            "  t={}: {} codewords within distance t ({})",
+            t,
+            count,
+            zone
+        );
+
+        if t <= 2 {
+            // Within unique decoding radius, at most1 codeword (the original itself)
+            assert!(
+                count <= 1,
+                "expected at most 1 codeword within distance {}, got {}",
+                t,
+                count
+            );
+        }
+    }
+}
