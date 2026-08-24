@@ -40,6 +40,7 @@ Schemas specify payload grammar, multiplicity, ordering semantics, defaults and 
 | `equations:` | Suite | Yes (or `definitions:`) | Model equations: `der(state) = rhs`, `name = expr` algebraic definitions, or `lhs == rhs` / bare residual constraints |
 | `constructors:` | Suite | Optional | Constructor functions for state |
 | `constraints:` | Suite | Optional | Bool expressions fed to optimizer as penalties |
+| `invariant:` | Suite | Optional | Claim expressions (limits, series, asymptotic equivalence) admitted as stated truths |
 | `tests:` | Suite | Optional | Example cases with `given`/`expect` |
 | `goals:` | Commands | Optional | Compilation and provider goals |
 | `exports:` | Commands | Optional | What to export from this declaration |

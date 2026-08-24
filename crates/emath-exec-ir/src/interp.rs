@@ -1106,6 +1106,73 @@ fn eval_op(
                 detail: "optimize did not converge within max_iter",
             })
         }
+        EmirOp::SampleLimit {
+            ref body,
+            var_index,
+            target,
+            direction,
+        } => {
+            // Numerical limit approximation: sample the body at points
+            // approaching the target along a geometric sequence of step
+            // sizes (0.1, 0.01, ..., 1e-12). Return the last finite value
+            // whose predecessor was also finite and within 1% of it
+            // (convergence check). If no pair converges, return the last
+            // finite sample.
+            let target_val = match registers.get(target.0 as usize) {
+                Some(Value::F64(v)) => *v,
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: target.0,
+                    op: name,
+                }),
+            };
+            let dir_val = match registers.get(direction.0 as usize) {
+                Some(Value::F64(v)) => *v,
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: direction.0,
+                    op: name,
+                }),
+            };
+            let mut work_inputs = inputs.to_vec();
+            while work_inputs.len() <= var_index as usize {
+                work_inputs.push(Value::F64(0.0));
+            }
+            let directions: &[f64] = match dir_val as i64 {
+                0 => &[1.0, -1.0],      // two-sided
+                1 => &[1.0],             // from above
+                -1 => &[-1.0],           // from below
+                _ => &[1.0, -1.0],      // fallback: two-sided
+            };
+            let mut best = f64::NAN;
+            let mut prev = f64::NAN;
+            for step_exp in 1..=12u32 {
+                let h = 10f64.powi(-(step_exp as i32));
+                for &d in directions {
+                    let x = target_val + d * h;
+                    work_inputs[var_index as usize] = Value::F64(x);
+                    match evaluate(body, &work_inputs, state) {
+                        Ok(Value::F64(fx)) => {
+                            if fx.is_finite() {
+                                if prev.is_finite() && (fx - prev).abs() <= fx.abs() * 0.01 + 1e-14 {
+                                    // Converged: successive samples agree to 1%.
+                                    return Ok(Value::F64(fx));
+                                }
+                                prev = fx;
+                                best = fx;
+                            }
+                        }
+                        _ => {} // non-finite or wrong type: skip
+                    }
+                }
+            }
+            if best.is_finite() {
+                Ok(Value::F64(best))
+            } else {
+                Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "sample_limit produced no finite values",
+                })
+            }
+        }
     }
 }
 

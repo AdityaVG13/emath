@@ -163,6 +163,8 @@ pub enum TokenKind {
     Imply,
     /// `<==>` — logical biconditional.
     Iff,
+    /// `~~` — asymptotic equivalence (B18).
+    TildeTilde,
     Le,
     Ge,
     Lt,
@@ -209,6 +211,7 @@ impl TokenKind {
             Self::NotEq => "`!=`".to_string(),
             Self::Imply => "`==>`".to_string(),
             Self::Iff => "`<==>`".to_string(),
+            Self::TildeTilde => "`~~`".to_string(),
             Self::Le => "`<=`".to_string(),
             Self::Ge => "`>=`".to_string(),
             Self::Lt => "`<`".to_string(),

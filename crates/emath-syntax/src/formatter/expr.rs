@@ -5,7 +5,7 @@
 
 use super::Prec;
 use super::format_binder_head;
-use crate::tree::{BinaryOp, Expr, ExprKind, UnaryOp};
+use crate::tree::{BinaryOp, Expr, ExprKind, LimitDirection, UnaryOp};
 
 #[must_use]
 pub fn binary_prec(op: BinaryOp) -> Prec {
@@ -17,6 +17,7 @@ pub fn binary_prec(op: BinaryOp) -> Prec {
         BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
             Prec::Comparison
         }
+        BinaryOp::Asymp => Prec::Comparison,
         BinaryOp::Add | BinaryOp::Sub => Prec::Additive,
         BinaryOp::Mul | BinaryOp::Div => Prec::Multiplicative,
         BinaryOp::Pow => Prec::Power,
@@ -50,6 +51,7 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         // keep them scoped inside larger factors, and the body must never
         // be parenthesized (see the binder arm below).
         ExprKind::Binder { .. } => parent > Prec::Atomic,
+        ExprKind::Limit { .. } | ExprKind::SampleLimit { .. } => parent > Prec::Atomic,
         _ => false,
     };
     if needs_parens {
@@ -274,6 +276,42 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             }
             format_expr(out, expr, Prec::Root);
         }
+        ExprKind::Limit {
+            var,
+            target,
+            direction,
+            body,
+        } => {
+            out.push_str("limit ");
+            out.push_str(var);
+            out.push_str(" -> ");
+            format_expr(out, target, Prec::Multiplicative);
+            match direction {
+                LimitDirection::TwoSided => {}
+                LimitDirection::FromAbove => out.push('+'),
+                LimitDirection::FromBelow => out.push('-'),
+            }
+            out.push_str(": ");
+            format_expr(out, body, Prec::Root);
+        }
+        ExprKind::SampleLimit {
+            var,
+            target,
+            direction,
+            body,
+        } => {
+            out.push_str("sample_limit ");
+            out.push_str(var);
+            out.push_str(" -> ");
+            format_expr(out, target, Prec::Multiplicative);
+            match direction {
+                LimitDirection::TwoSided => {}
+                LimitDirection::FromAbove => out.push('+'),
+                LimitDirection::FromBelow => out.push('-'),
+            }
+            out.push_str(": ");
+            format_expr(out, body, Prec::Root);
+        }
     }
 }
 
@@ -301,5 +339,6 @@ pub fn binary_spelling(op: BinaryOp) -> &'static str {
         BinaryOp::Or => "or",
         BinaryOp::Imply => "==>",
         BinaryOp::Iff => "<==>",
+        BinaryOp::Asymp => "~~",
     }
 }

@@ -130,6 +130,23 @@ impl super::Parser {
                     },
                 ))
             }
+            // B04/B06: contextual keywords `limit`, `sample_limit`, `series`
+            // in statement position. When followed by the right tokens,
+            // parse as an expression statement, not a command.
+            "limit" | "sample_limit"
+                if matches!(self.peek_at(1), TokenKind::Ident(_))
+                    && matches!(self.peek_at(2), TokenKind::Arrow) =>
+            {
+                let expr = self.parse_expr()?;
+                Some(self.stmt(start, StmtKind::Expr(expr)))
+            }
+            "series"
+                if matches!(self.peek_at(1), TokenKind::Ident(_))
+                    && matches!(self.peek_at(2), TokenKind::Keyword(Keyword::In)) =>
+            {
+                let expr = self.parse_expr()?;
+                Some(self.stmt(start, StmtKind::Expr(expr)))
+            }
             _ => self.parse_default_ident_statement(start),
         }
     }

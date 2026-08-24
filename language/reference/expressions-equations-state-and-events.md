@@ -46,6 +46,76 @@ arrow) per C5. Precedence (lowest to highest): `<==>` < `==>` < `or` <
 `and` < comparisons < arithmetic. Both produce `Bool` results and
 require `Bool` operands.
 
+## Limits, series, and asymptotic equivalence
+
+### Limit as a claim (B04)
+
+`limit` is a contextual keyword that produces a **claim**, not a
+computation. It states that a function approaches a value as the
+variable tends to a target:
+
+```emath
+limit x -> 0: sin(x) / x          # two-sided limit
+limit x -> 0+: 1 / x              # one-sided from above
+limit x -> 0-: 1 / x              # one-sided from below
+limit n -> inf: (1 + 1/n) ^ n     # limit at infinity
+```
+
+The `+`/`-` suffix before `:` selects the direction. Without a suffix,
+the limit is two-sided. The target is parsed at multiplicative
+precedence, so complex targets need parentheses: `limit x -> (a + b): f(x)`.
+
+`limit` expressions are usable in `require`, `ensure`, and `invariant`
+sections. They are not computable — use `sample_limit` for numerical
+evaluation.
+
+### sample_limit as a computation (B04)
+
+`sample_limit` is a contextual keyword that produces a **computation**.
+It numerically approximates the limit by sampling the body at points
+approaching the target:
+
+```emath
+definitions:
+    l = sample_limit x -> 0: sin(x) / x    # returns ~1.0
+```
+
+`sample_limit` returns `Float64`. It is admitted in `definitions:` and
+`equations:` sections.
+
+### Series (B06)
+
+`series` is a contextual keyword that produces a **claim** about
+convergence. It follows the binder syntax:
+
+```emath
+series n in 0..inf: a[n]           # convergence claim
+series k in 0..10: 1 / (k + 1)     # finite series (admitted as binder)
+```
+
+`series` is not a computation. It is usable in `require` and
+`invariant` sections to state convergence properties.
+
+### Asymptotic equivalence (B18)
+
+`~~` is a binary operator for asymptotic equivalence. It states that
+two functions are asymptotically equal (their ratio tends to 1):
+
+```emath
+factorial(n) ~~ sqrt(2 * pi * n) * (n / e) ^ n    # Stirling's approximation
+f(n) ~~ g(n)                                       # general form
+```
+
+`~~` has the same precedence as comparison operators. It is a **claim**,
+not a computation — it lowers to a limit claim (`limit x -> inf: f(x)/g(x) == 1`).
+Per C7, `~` is reserved for the distribution tag; asymptotic equivalence
+uses `~~`.
+
+`limit`, `sample_limit`, and `series` are contextual keywords: they
+activate only in their syntactic positions (followed by an identifier
+and `->` for limits, or `in` for series). In all other positions they
+are regular user identifiers.
+
 ## Definitions
 
 A definition is directed and names a value/function:
@@ -132,6 +202,17 @@ solve(residual) wrt x    # Newton's method root-finding
 minimize(loss) wrt x     # gradient descent optimization
 minimize(loss) wrt x, y  # multi-variable gradient descent
 maximize(score) wrt x    # gradient ascent optimization
+sample_limit x -> 0: sin(x) / x    # numerical limit approximation
+```
+
+Expressions that parse but do not compute (claims — usable in
+`require`/`invariant`):
+```text
+limit x -> 0: f(x)          # B04: limit claim (two-sided)
+limit x -> 0+: f(x)         # B04: one-sided from above
+limit x -> 0-: f(x)         # B04: one-sided from below
+series n in 0..inf: a[n]    # B06: series convergence claim
+f(n) ~~ g(n)               # B18: asymptotic equivalence
 ```
 
 `sum` / `product` run when the range is a known integer interval
@@ -366,3 +447,19 @@ definitions:
   wilson = mod(factorial(p - 1), p)
   expect wilson == p - 1  (* (p-1)! ≡ -1 (mod p) for prime p *)
 ```
+
+### Limits, series, and asymptotic equivalence (B04+B06+B18)
+
+- `limit x -> 0: f(x)` — limit as a **claim** (parses, does not compute).
+  One-sided: `0+` (from above), `0-` (from below). Usable in `require`/
+  `invariant`.
+- `sample_limit x -> 0: f(x)` — numerical limit approximation
+  (**computation**). Admitted in `definitions:`/`equations:`.
+- `series n in 0..inf: a[n]` — series convergence **claim** (parses,
+  does not compute). Contextual keyword.
+- `f(n) ~~ g(n)` — asymptotic equivalence (**claim**). Lowers to a
+  limit claim. Per C7, `~` is the distribution tag; `~~` is asymptotics.
+
+`limit`, `sample_limit`, and `series` are contextual keywords: they
+activate only in their syntactic positions and remain valid user
+identifiers elsewhere.

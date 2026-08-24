@@ -314,6 +314,10 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
             contains_state_reference(value) || contains_state_reference(condition)
         }
         ExprKind::UnitQuery { expr, .. } => contains_state_reference(expr),
+        ExprKind::Limit { target, body, .. }
+        | ExprKind::SampleLimit { target, body, .. } => {
+            contains_state_reference(target) || contains_state_reference(body)
+        }
     }
 }
 

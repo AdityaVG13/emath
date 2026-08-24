@@ -89,6 +89,16 @@ pub enum ExprNode {
         vars: Vec<String>,
         maximize: bool,
     },
+    /// Numerical limit approximation (B04).  Evaluates `body` with the
+    /// variable at `var` set to sample points approaching `target` from
+    /// the given `direction` (0 = two-sided, 1 = from above, -1 = from
+    /// below).  Returns the best-estimate limit value.
+    SampleLimit {
+        body: ExprId,
+        var: String,
+        target: ExprId,
+        direction: ExprId,
+    },
 }
 
 /// One axis of [`ExprNode::Slice`]: a scalar point or a half-open range.
@@ -239,6 +249,8 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
+    /// `series n in 0..inf: a[n]` — series convergence claim (B06).
+    Series,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -372,6 +384,10 @@ impl ExprNode {
             Self::Differentiate { body, .. }
             | Self::Solve { body, .. }
             | Self::Optimize { body, .. } => {
+                exprs[body.index()].collect_free(exprs, seen, out);
+            }
+            Self::SampleLimit { body, target, .. } => {
+                exprs[target.index()].collect_free(exprs, seen, out);
                 exprs[body.index()].collect_free(exprs, seen, out);
             }
         }

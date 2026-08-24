@@ -57,13 +57,13 @@ impl super::super::Admitter {
         }
         // For bool folds (forall/exists), use the runtime Fold op for
         // correct bool handling in both interp and codegen.
-        if matches!(kind, BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral) {
+        if matches!(kind, BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral | BinderKind::Series) {
             return self.lower_variable_bound_binder(expr, kind, binder, domain, body, guard);
         }
         let (combine, identity) = match kind {
             BinderKind::Sum => (emath_ir::BinaryOp::StrictFloatAdd, 0.0_f64),
             BinderKind::Product => (emath_ir::BinaryOp::StrictFloatMul, 1.0_f64),
-            BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists => {
+            BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists | BinderKind::Series => {
                 self.error(
                     E_UNSUPPORTED_TYPE,
                     format!("`{kind:?}` is not a finite arithmetic fold yet"),
@@ -142,7 +142,7 @@ impl super::super::Admitter {
                 match kind {
                     BinderKind::Sum => NumericCombine::Add,
                     BinderKind::Product => NumericCombine::Mul,
-                    BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists => {
+                    BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists | BinderKind::Series => {
                         self.error(
                             E_UNSUPPORTED_TYPE,
                             format!("`{kind:?}` is not a finite arithmetic fold yet"),
@@ -198,6 +198,7 @@ impl super::super::Admitter {
             BinderKind::ForAll => emath_ir::BinderKind::ForAll,
             BinderKind::Exists => emath_ir::BinderKind::Exists,
             BinderKind::Integral => emath_ir::BinderKind::Integral,
+            BinderKind::Series => emath_ir::BinderKind::Series,
         };
         let ExprKind::Range { start, end, inclusive } = &domain.kind else {
             self.error(
@@ -280,6 +281,7 @@ impl super::super::Admitter {
                 BinderKind::Product => Literal::FloatBits(1.0f64.to_bits()),
                 BinderKind::ForAll => Literal::Bool(true),
                 BinderKind::Exists => Literal::Bool(false),
+                BinderKind::Series => Literal::Bool(true),
             };
             let identity_id = self.push_expr(ExprNode::Literal(identity_literal), expr.source);
             self.push_expr(

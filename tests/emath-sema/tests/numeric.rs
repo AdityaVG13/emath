@@ -350,3 +350,85 @@ emath function CacheLike:
         "matching negative must refuse with E-NUM-001, got {codes:?}"
     );
 }
+
+// ─── B04+B06+B18: claims in invariant (limit, series, asymp) ───
+
+#[test]
+fn limit_claim_admitted_in_invariant() {
+    let source = "\
+emath function f(x: Float64) -> Float64:
+    definitions:
+        f = x * x
+    invariant:
+        limit x -> 0: sin(x) / x == 1
+";
+    let codes = errors_of("limit-claim", source);
+    assert!(
+        codes.is_empty(),
+        "limit claim in invariant should be admitted, got errors: {codes:?}"
+    );
+}
+
+#[test]
+fn one_sided_limit_claim_admitted_in_invariant() {
+    let source = "\
+emath function f(x: Float64) -> Float64:
+    definitions:
+        f = x * x
+    invariant:
+        limit x -> 0+: 1 / x > 0
+";
+    let codes = errors_of("limit-plus-claim", source);
+    assert!(
+        codes.is_empty(),
+        "one-sided limit claim in invariant should be admitted, got errors: {codes:?}"
+    );
+}
+
+#[test]
+fn series_claim_admitted_in_invariant() {
+    let source = "\
+emath function f(n: Nat) -> Float64:
+    definitions:
+        f = 1 / (n + 1)
+    invariant:
+        series k in 0..100: 1 / (k + 1) < 10
+";
+    let codes = errors_of("series-claim", source);
+    assert!(
+        codes.is_empty(),
+        "series claim in invariant should be admitted, got errors: {codes:?}"
+    );
+}
+
+#[test]
+fn asymp_claim_admitted_in_invariant() {
+    let source = "\
+emath function f(n: Float64) -> Float64:
+    definitions:
+        f = n * n
+    invariant:
+        n * n ~~ n ^ 2.0
+";
+    let codes = errors_of("asymp-claim", source);
+    assert!(
+        codes.is_empty(),
+        "asymptotic equivalence claim in invariant should be admitted, got errors: {codes:?}"
+    );
+}
+
+#[test]
+fn limit_in_definitions_still_errors() {
+    // limit in definitions (computation context) must still error —
+    // it's a claim, not a computation. Use sample_limit instead.
+    let source = "\
+emath function f(x: Float64) -> Float64:
+    definitions:
+        f = limit x -> 0: sin(x) / x
+";
+    let codes = errors_of("limit-in-defs", source);
+    assert!(
+        !codes.is_empty(),
+        "limit in definitions must error (it's a claim, not a computation)"
+    );
+}

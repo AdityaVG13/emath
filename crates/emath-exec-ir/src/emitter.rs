@@ -398,6 +398,11 @@ impl Emitter {
                                     "integral binder must lower via Integral op".to_string(),
                                 );
                             }
+                            BinderKind::Series => {
+                                return Err(
+                                    "series binder is a claim, not a computation".to_string(),
+                                );
+                            }
                         };
                         let init_val = match combine {
                             FoldCombine::Add => self.push(EmirOp::ConstI64(0), span)?,
@@ -431,6 +436,9 @@ impl Emitter {
                         },
                         span,
                     ),
+                    BinderKind::Series => {
+                        return Err("series binder is a claim, not a computation".to_string());
+                    }
                 }
             }
             ExprNode::Differentiate { body, var } => {
@@ -488,13 +496,26 @@ impl Emitter {
                         var_indices,
                         maximize: *maximize,
                         learning_rate: 0.01,
-                        // 1e-6 converges comfortably within max_iter for
-                        // well-conditioned quadratics; 1e-10 (the prior
-                        // value) is unreachable at lr=0.01 in 1000 steps
-                        // (gradient floors near 1e-8), so every optimize
-                        // call faulted with "did not converge".
                         tolerance: 1e-6,
                         max_iter: 1000,
+                    },
+                    span,
+                )
+            }
+            ExprNode::SampleLimit { body, var, target, direction } => {
+                let var_index = self.input_index(var)?;
+                let target_val = self.emit(package, *target)?;
+                let direction_val = self.emit(package, *direction)?;
+                let sc = self.states.len();
+                let mut body_emitter = self.sub_emitter();
+                let body_result = body_emitter.emit(package, *body)?;
+                let body_program = body_emitter.finish(body_result, sc)?;
+                self.push(
+                    EmirOp::SampleLimit {
+                        body: body_program,
+                        var_index,
+                        target: target_val,
+                        direction: direction_val,
                     },
                     span,
                 )

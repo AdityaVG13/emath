@@ -199,6 +199,7 @@ fn node_kind(node: Option<&ExprNode>) -> String {
         Some(ExprNode::Differentiate { .. }) => "differentiate".into(),
         Some(ExprNode::Solve { .. }) => "solve".into(),
         Some(ExprNode::Optimize { .. }) => "optimize".into(),
+        Some(ExprNode::SampleLimit { .. }) => "sample-limit".into(),
         Some(ExprNode::Vector(_)) => "vector".into(),
         Some(ExprNode::Matrix(_)) => "matrix".into(),
         Some(ExprNode::Tensor { .. }) => "tensor".into(),
