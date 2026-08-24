@@ -18,6 +18,24 @@ hessian f wrt x
 
 A binder produces semantic structure; it is not immediately expanded into loops.
 
+## Logic connectives
+
+Boolean operators and logic connectives:
+
+```emath
+a and b       # conjunction
+a or b        # disjunction
+not a         # negation
+a ==> b       # implication (right-associative: a ==> (b ==> c))
+a <==> b      # biconditional
+```
+
+`==>` and `<==>` are B12 logic connectives. They use distinct tokens
+from `=>` (match/lambda/notation arrow) and `<=>` (chemistry equilibrium
+arrow) per C5. Precedence (lowest to highest): `<==>` < `==>` < `or` <
+`and` < comparisons < arithmetic. Both produce `Bool` results and
+require `Bool` operands.
+
 ## Definitions
 
 A definition is directed and names a value/function:
@@ -82,6 +100,7 @@ literals, names, + - * / ^, comparisons
 min max abs floor ceil round sign is_finite
 sqrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
 cbrt recip fract hypot mod lerp clamp pow
+and or not ==> <==>
 mean norm length dot transpose
 laplacian laplacian_neumann laplacian_dirichlet laplacian_2d laplacian_2d_neumann
 gradient gradient_2d_x gradient_2d_y

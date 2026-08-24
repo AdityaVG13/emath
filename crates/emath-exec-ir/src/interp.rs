@@ -137,6 +137,12 @@ fn eval_op(
         EmirOp::Or(left, right) => Ok(Value::Bool(
             bool_of(registers, left, name)? || bool_of(registers, right, name)?,
         )),
+        EmirOp::Imply(left, right) => Ok(Value::Bool(
+            !bool_of(registers, left, name)? || bool_of(registers, right, name)?,
+        )),
+        EmirOp::Iff(left, right) => Ok(Value::Bool(
+            bool_of(registers, left, name)? == bool_of(registers, right, name)?,
+        )),
         EmirOp::Not(value) => Ok(Value::Bool(!bool_of(registers, value, name)?)),
         EmirOp::IsFinite(value) => Ok(Value::Bool(f64_of(registers, value, name)?.is_finite())),
         EmirOp::Select {

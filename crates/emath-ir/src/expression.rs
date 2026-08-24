@@ -152,6 +152,10 @@ pub enum BinaryOp {
     GreaterEqual,
     And,
     Or,
+    /// `==>` — logical implication: `!a || b`.
+    Imply,
+    /// `<==>` — logical biconditional: `a == b` for Bool.
+    Iff,
     Min,
     Max,
     Atan2,
@@ -188,6 +192,8 @@ impl BinaryOp {
             Self::GreaterEqual => "f64-ge",
             Self::And => "bool-and",
             Self::Or => "bool-or",
+            Self::Imply => "bool-imply",
+            Self::Iff => "bool-iff",
             Self::Min => "f64-min",
             Self::Max => "f64-max",
             Self::Atan2 => "f64-atan2",

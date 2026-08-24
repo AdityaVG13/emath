@@ -157,6 +157,10 @@ dedent           = ? decreased indentation token ? ;
 string           = ? UTF-8 quoted string with escapes ? ;
 character        = ? Unicode scalar literal ? ;
 punctuation_operator = ? built-in operator token ? ;
+-- B12: Logic connectives ==> (implication, right-associative) and
+--     <==> (biconditional) are built-in punctuation operators with
+--     lower precedence than `or`.  `=>` stays the match/lambda/notation
+--     arrow; `<=>` stays chemistry's equilibrium arrow (C5).
 custom_operator  = ? imported scoped notation token ? ;
 unicode_identifier = ? Unicode XID start followed by XID continue, normalized to NFC ? ;
 digit            = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;

@@ -10,6 +10,8 @@ use crate::tree::{BinaryOp, Expr, ExprKind, UnaryOp};
 #[must_use]
 pub fn binary_prec(op: BinaryOp) -> Prec {
     match op {
+        BinaryOp::Iff => Prec::Iff,
+        BinaryOp::Imply => Prec::Imply,
         BinaryOp::Or => Prec::Or,
         BinaryOp::And => Prec::And,
         BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
@@ -271,5 +273,7 @@ pub fn binary_spelling(op: BinaryOp) -> &'static str {
         BinaryOp::Ge => ">=",
         BinaryOp::And => "and",
         BinaryOp::Or => "or",
+        BinaryOp::Imply => "==>",
+        BinaryOp::Iff => "<==>",
     }
 }

@@ -142,6 +142,17 @@ pub(crate) fn op_expr(
         EmirOp::Ne(l, r) => Ok(comparison(BinOp::Ne, *l, *r, program)),
         EmirOp::And(l, r) => Ok(comparison(BinOp::And, *l, *r, program)),
         EmirOp::Or(l, r) => Ok(comparison(BinOp::Or, *l, *r, program)),
+        // `==>` = `!l || r`
+        EmirOp::Imply(l, r) => Ok(Expr::Bin {
+            op: BinOp::Or,
+            left: Box::new(Expr::Un {
+                op: UnOp::Not,
+                value: Box::new(operand(program, *l)),
+            }),
+            right: Box::new(operand(program, *r)),
+        }),
+        // `<==>` = `l == r` for Bool
+        EmirOp::Iff(l, r) => Ok(comparison(BinOp::Eq, *l, *r, program)),
         EmirOp::Select {
             condition,
             then_value,
@@ -709,7 +720,7 @@ pub(crate) fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, i
         EmirOp::IsFinite(_) => "0.0".to_string(),
         EmirOp::Eq(..) | EmirOp::Ne(..) | EmirOp::Lt(..) | EmirOp::Le(..)
         | EmirOp::Gt(..) | EmirOp::Ge(..) | EmirOp::And(..) | EmirOp::Or(..)
-        | EmirOp::Not(..) => "0.0".to_string(),
+        | EmirOp::Imply(..) | EmirOp::Iff(..) | EmirOp::Not(..) => "0.0".to_string(),
         _ => "0.0".to_string(),
     }
 }

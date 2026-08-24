@@ -14,7 +14,7 @@ impl super::Parser {
             self.error_here("E-SYN-106", "expression nesting limit exceeded");
             return None;
         }
-        let mut expr = self.parse_or(depth)?;
+        let mut expr = self.parse_iff(depth)?;
         // postfix clauses: `derivative x wrt y`, `temperature at time.start`,
         // `temperature on boundary(Ω)`, `choice if condition`
         loop {
@@ -112,6 +112,61 @@ impl super::Parser {
             }
         }
         Some(expr)
+    }
+
+    // ---- B12: logic connectives ==> and <==>) -------------------------
+
+    /// `<==>` — biconditional (lowest precedence, left-associative).
+    fn parse_iff(&mut self, depth: usize) -> Option<Expr> {
+        let mut left = self.parse_imply(depth)?;
+        loop {
+            if self.skip_continuation_lines() {
+                continue;
+            }
+            if !matches!(self.peek(), TokenKind::Iff) {
+                break;
+            }
+            self.advance();
+            if self.skip_continuation_lines() {
+                // operator-first continuation
+            }
+            let right = self.parse_imply(depth)?;
+            let span = left.source.cover(right.source);
+            left = Expr {
+                kind: ExprKind::Binary {
+                    op: BinaryOp::Iff,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                },
+                source: span,
+            };
+        }
+        Some(left)
+    }
+
+    /// `==>` — implication (right-associative, lower than `or`).
+    fn parse_imply(&mut self, depth: usize) -> Option<Expr> {
+        let left = self.parse_or(depth)?;
+        if self.skip_continuation_lines() {
+            return self.parse_imply(depth);
+        }
+        if !matches!(self.peek(), TokenKind::Imply) {
+            return Some(left);
+        }
+        self.advance();
+        if self.skip_continuation_lines() {
+            // operator-first continuation
+        }
+        let right = self.parse_imply(depth)?; // right-recursive
+        let span = left.source.cover(right.source);
+        Some(Expr {
+            kind: ExprKind::Binary {
+                op: BinaryOp::Imply,
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+            source: span,
+        })
     }
 
     fn parse_or(&mut self, depth: usize) -> Option<Expr> {

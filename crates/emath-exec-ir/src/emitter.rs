@@ -195,6 +195,8 @@ impl Emitter {
                     BinaryOp::GreaterEqual => EmirOp::Ge(l, r),
                     BinaryOp::And => EmirOp::And(l, r),
                     BinaryOp::Or => EmirOp::Or(l, r),
+                    BinaryOp::Imply => EmirOp::Imply(l, r),
+                    BinaryOp::Iff => EmirOp::Iff(l, r),
                     BinaryOp::Min => EmirOp::Min(l, r),
                     BinaryOp::Max => EmirOp::Max(l, r),
                     BinaryOp::Atan2 => EmirOp::Atan2(l, r),

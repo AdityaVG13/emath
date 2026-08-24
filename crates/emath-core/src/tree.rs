@@ -374,6 +374,10 @@ pub enum BinaryOp {
     Ge,
     And,
     Or,
+    /// `==>` — logical implication (right-associative).
+    Imply,
+    /// `<==>` — logical biconditional.
+    Iff,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

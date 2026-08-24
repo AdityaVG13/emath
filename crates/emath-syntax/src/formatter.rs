@@ -17,11 +17,13 @@ mod expr;
 pub use expr::{binary_prec, binary_spelling, format_expr, unary_prec};
 
 /// Precedence levels matching the parser's chain
-/// (or < and < comparison < additive < multiplicative < power < unary).
+/// (iff < imply < or < and < comparison < additive < multiplicative < power < unary).
 /// `Root` is the statement level: nothing is parenthesized there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Prec {
     Root,
+    Iff,
+    Imply,
     Or,
     And,
     Comparison,

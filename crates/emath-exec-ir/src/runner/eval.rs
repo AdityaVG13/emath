@@ -382,6 +382,8 @@ fn bin_symbol(operation: BinaryOp) -> &'static str {
         BinaryOp::GreaterEqual => ">=",
         BinaryOp::And => "&&",
         BinaryOp::Or => "||",
+        BinaryOp::Imply => "==>",
+        BinaryOp::Iff => "<==>",
         other => other.name(),
     }
 }
