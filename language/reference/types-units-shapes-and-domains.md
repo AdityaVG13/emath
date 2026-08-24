@@ -24,6 +24,30 @@ type Positive<T> = T where self > 0
 
 Refinements may be established statically, by constructor checks, by provider certificates or remain caller obligations.
 
+## Domain annotations (U5)
+
+A domain annotation constrains a numeric input to a bounded interval:
+
+```emath
+emath function clamp01(x: Float64 in [0.0, 1.0]) -> Float64:
+    definitions:
+        f = x * (1.0 - x)
+```
+
+Syntax: `Type in [lo, hi]` where `lo` and `hi` are numeric expressions
+(typically literals). The `in` keyword is disambiguated by the following
+token: `in [` is a domain annotation, `in <identifier>` is a unit
+annotation, `in <range>` in binder position is a binder variable.
+
+Domain annotations map to `TypeNode::Refinement` with a predicate
+encoding the bounds (`domain[lo,hi]`). They participate in type
+identity: two declarations that differ only in domain bounds are
+distinct declarations.
+
+Domain annotations require a scalar numeric base type (`Float64`,
+`Nat`, `Int`, or an existing refinement). A domain annotation on a
+non-numeric type (e.g., `Bool`) is refused with `E-TYPE-001`.
+
 ## Units and dimensions
 
 ```emath

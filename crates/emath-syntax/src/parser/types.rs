@@ -53,6 +53,30 @@ impl super::Parser {
             }
         };
         if self.eat_keyword(Keyword::In) {
+            // U5: Domain annotation `Float64 in [lo, hi]` - when `in`
+            // is followed by `[`, parse bounds as expressions.
+            if matches!(self.peek(), TokenKind::LBracket) {
+                self.advance(); // consume `[`
+                let lo = self.parse_expr()?;
+                if !self.eat(&TokenKind::Comma) {
+                    self.error_here("E-SYN-102", "expected `,` in domain bounds");
+                    return None;
+                }
+                let hi = self.parse_expr()?;
+                if !self.eat(&TokenKind::RBracket) {
+                    self.error_here("E-SYN-102", "expected `]` to close domain bounds");
+                    return None;
+                }
+                return Some(TypeExpr {
+                    kind: TypeKind::Domain {
+                        base: Box::new(base),
+                        lo: Box::new(lo),
+                        hi: Box::new(hi),
+                    },
+                    source: start.cover(self.last_span()),
+                });
+            }
+            // Unit annotation: `Float64 in m/s`
             let unit = self.parse_type_expr()?;
             return Some(TypeExpr {
                 kind: TypeKind::In {

@@ -8,6 +8,24 @@ use std::collections::BTreeSet;
 
 use super::E_UNSUPPORTED_TYPE;
 
+/// Extract a text representation of a numeric literal expression for
+/// use in a domain predicate string. Supports Int, Float, and negated
+/// Int/Float literals. More complex expressions are rendered via
+/// `expr_text` as a fallback.
+fn expr_literal_text(expr: &emath_core::tree::Expr) -> String {
+    match &expr.kind {
+        ExprKind::Int(text) | ExprKind::Float(text) => text.clone(),
+        ExprKind::Unary {
+            op: emath_core::tree::UnaryOp::Neg,
+            value,
+        } => match &value.kind {
+            ExprKind::Int(text) | ExprKind::Float(text) => format!("-{text}"),
+            _ => super::super::recognition::expr_text(expr),
+        },
+        _ => super::super::recognition::expr_text(expr),
+    }
+}
+
 /// Extract a `TypeExpr` from a `GenericArg::Type`, refusing value/named args
 /// in the Phase 1 strict-f64 subset.
 fn generic_arg_as_type<'a>(
@@ -51,6 +69,33 @@ pub(super) fn map_type(
             return None;
         }
         return map_unit_annotation(unit, diagnostics);
+    }
+    // U5: Domain annotation `Float64 in [lo, hi]` - map to a refinement
+    // that carries the bounds as a predicate string.
+    if let SynTypeKind::Domain { base, lo, hi } = &ty.kind {
+        let base_node = map_type(base, diagnostics, host_types)?;
+        if !matches!(
+            base_node,
+            TypeNode::Float64 | TypeNode::Nat | TypeNode::Int | TypeNode::Refinement { .. }
+        ) {
+            diagnostics.error(
+                E_UNSUPPORTED_TYPE,
+                format!(
+                    "domain annotation applies to a scalar numeric type, not `{}`",
+                    type_display(base)
+                ),
+                ty.source,
+            );
+            return None;
+        }
+        // Extract numeric literal bounds for the predicate.
+        let lo_text = expr_literal_text(lo);
+        let hi_text = expr_literal_text(hi);
+        let predicate = format!("domain[{lo_text},{hi_text}]");
+        return Some(TypeNode::Refinement {
+            base: Box::new(base_node),
+            predicate,
+        });
     }
     if let SynTypeKind::Product(items) = &ty.kind {
         return map_unit_product(items, diagnostics);
@@ -432,6 +477,9 @@ pub(super) fn type_display(expr: &TypeExpr) -> String {
         ),
         SynTypeKind::In { base, unit } => {
             format!("{} in {}", type_display(base), type_display(unit))
+        }
+        SynTypeKind::Domain { base, lo, hi } => {
+            format!("{} in [{}, {}]", type_display(base), super::super::recognition::expr_text(lo), super::super::recognition::expr_text(hi))
         }
     }
 }

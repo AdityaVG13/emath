@@ -671,6 +671,14 @@ pub fn format_type(out: &mut String, ty: &TypeExpr) {
             out.push_str(" in ");
             format_type(out, unit);
         }
+        TypeKind::Domain { base, lo, hi } => {
+            format_type(out, base);
+            out.push_str(" in [");
+            expr::format_expr_inner(out, lo);
+            out.push_str(", ");
+            expr::format_expr_inner(out, hi);
+            out.push(']');
+        }
     }
 }
 

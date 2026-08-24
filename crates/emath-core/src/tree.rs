@@ -272,6 +272,13 @@ pub enum TypeKind {
         base: Box<TypeExpr>,
         unit: Box<TypeExpr>,
     },
+    /// `Float64 in [0, 1]` / `Float64 in [a, b]`: a numeric type with
+    /// a bounded domain (U5). Values outside [lo, hi] are a type error.
+    Domain {
+        base: Box<TypeExpr>,
+        lo: Box<Expr>,
+        hi: Box<Expr>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

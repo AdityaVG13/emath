@@ -210,6 +210,9 @@ pub fn type_text(ty: &TypeExpr) -> String {
         TypeKind::Ref(inner) => format!("&{}", type_text(inner)),
         TypeKind::Product(items) => items.iter().map(type_text).collect::<Vec<_>>().join(" * "),
         TypeKind::In { base, unit } => format!("{} in {}", type_text(base), type_text(unit)),
+        TypeKind::Domain { base, lo, hi } => {
+            format!("{} in [{}, {}]", type_text(base), expr_text(lo), expr_text(hi))
+        }
     }
 }
 
