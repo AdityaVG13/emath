@@ -5,7 +5,7 @@
 
 use super::Prec;
 use super::format_binder_head;
-use crate::tree::{BinaryOp, Expr, ExprKind, LimitDirection, UnaryOp, UnitExpr};
+use crate::tree::{BinaryOp, Expr, ExprKind, LimitDirection, UnaryOp};
 
 #[must_use]
 pub fn binary_prec(op: BinaryOp) -> Prec {
@@ -80,9 +80,9 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 out.push(' ');
                 out.push_str(&unit.to_string());
             } else {
-                // Compound unit: `9.81 [unit m/s^2]`
+                // Compound unit: `9.81 [unit m/s^2]` (canonical form)
                 out.push_str(" [unit ");
-                out.push_str(&format_unit_expr(unit));
+                out.push_str(&unit.canonical_form());
                 out.push(']');
             }
         }
@@ -368,37 +368,5 @@ pub fn binary_spelling(op: BinaryOp) -> &'static str {
         BinaryOp::Imply => "==>",
         BinaryOp::Iff => "<==>",
         BinaryOp::Asymp => "~~",
-    }
-}
-
-/// Format a compound `UnitExpr` for the bracket notation.
-/// `m/s^2`, `kg*m^2/s^2`, `m/(s*s)`.
-fn format_unit_expr(unit: &UnitExpr) -> String {
-    match unit {
-        UnitExpr::Base(name) => name.clone(),
-        UnitExpr::Mul(left, right) => {
-            format!("{}*{}", format_unit_atom(left), format_unit_atom(right))
-        }
-        UnitExpr::Div(left, right) => {
-            format!("{}/{}", format_unit_atom(left), format_unit_atom(right))
-        }
-        UnitExpr::Pow(base, exp) => {
-            format!("{}^{}", format_unit_atom(base), exp)
-        }
-    }
-}
-
-/// Format a unit atom, parenthesizing compound sub-expressions.
-fn format_unit_atom(unit: &UnitExpr) -> String {
-    match unit {
-        UnitExpr::Base(_) => format_unit_expr(unit),
-        UnitExpr::Pow(base, exp) => {
-            format!("{}^{}", format_unit_atom(base), exp)
-        }
-        // Mul and Div inside a Mul/Div context get parenthesized
-        // for clarity and to preserve semantics.
-        UnitExpr::Mul(_, _) | UnitExpr::Div(_, _) => {
-            format!("({})", format_unit_expr(unit))
-        }
     }
 }
