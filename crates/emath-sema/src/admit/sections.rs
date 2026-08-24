@@ -318,6 +318,13 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
         | ExprKind::SampleLimit { target, body, .. } => {
             contains_state_reference(target) || contains_state_reference(body)
         }
+        ExprKind::Cases { subject, arms, else_arm } => {
+            subject.as_ref().is_some_and(|s| contains_state_reference(s))
+                || arms.iter().any(|(c, v)| {
+                    contains_state_reference(c) || contains_state_reference(v)
+                })
+                || contains_state_reference(else_arm)
+        }
     }
 }
 

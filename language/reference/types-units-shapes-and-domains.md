@@ -13,7 +13,7 @@ record, variant, trait, opaque/external
 ```
 
 `Real` is the mathematical concept of real numbers. As a compute type,
-use `Float64` — `Real` is no longer an admitted type alias.
+use `Float64` - `Real` is no longer an admitted type alias.
 
 ## Refinement types
 
@@ -48,9 +48,9 @@ Shape constraints include equality, broadcasting, rank, extent arithmetic and la
 Generic arguments instantiate a parameterized type at a use site. The
 grammar admits three kinds of argument:
 
-- **Type argument** — a type expression: `Vector<Float64>`, `NonNegative<Real>`
-- **Value argument** — a literal or expression: `Mod<7>`, `Tensor<Float64, [N, N]>`
-- **Named argument** — `name = expression`: `GF<2, 3, modulus = x + 1>`
+- **Type argument** - a type expression: `Vector<Float64>`, `NonNegative<Real>`
+- **Value argument** - a literal or expression: `Mod<7>`, `Tensor<Float64, [N, N]>`
+- **Named argument** - `name = expression`: `GF<2, 3, modulus = x + 1>`
 
 ```emath
 inputs:
@@ -123,7 +123,7 @@ quantity / `T in unit` annotations
 
 `Nat` and `Int` are indexes and small integer values. Arithmetic with
 them still evaluates as `Float64` internally, but when an output is
-declared `Int`, the result is converted to exact `i64` — no
+declared `Int`, the result is converted to exact `i64` - no
 floating-point rounding in the final value. This makes `product i in
 1..=20: i` with `Int` output give the exact factorial, not a float
 approximation. A negative constant index is `E-SHAPE-006`.
@@ -155,7 +155,7 @@ predicates such as `NonNegative<Float64>`.
 `Complex` is admitted as a type (e.g., `Complex`, `Vector<Complex, [2]>`).
 Complex literals use the `Ni` suffix (e.g., `2i`, `3.5i`) which desugars
 to `N * i` where `i` is the imaginary unit. The identifier `i` is a
-named constant (not a reserved keyword) — it is recognized only when not
+named constant (not a reserved keyword) - it is recognized only when not
 shadowed by an input or definition. Complex arithmetic (add, sub, mul,
 div, neg, eq, ne) is fully supported in the interpreter via a native
 `Complex { re, im }` value type.

@@ -2,7 +2,7 @@
 
 Each example teaches one concept. Read in table order within a section.
 
-## intro — getting started
+## intro - getting started
 
 | Example | Concept |
 |---------|---------|
@@ -12,10 +12,10 @@ Each example teaches one concept. Read in table order within a section.
 | [range-sum.emath](intro/range-sum.emath) | Variable-bound runtime fold. |
 | [forall-exists.emath](intro/forall-exists.emath) | Quantifier binders over a vector. |
 | [integral.emath](intro/integral.emath) | `integral` binder (Simpson's rule). |
-| [autodiff.emath](intro/autodiff.emath) | `derivative(y) wrt x` — forward-mode autodiff. |
-| [solve.emath](intro/solve.emath) | `solve(f) wrt x` — Newton's method. |
-| [optimize.emath](intro/optimize.emath) | `minimize` / `maximize` — gradient descent/ascent. |
-| [constrained-opt.emath](intro/constrained-opt.emath) | `constraints:` section — auto penalty method. |
+| [autodiff.emath](intro/autodiff.emath) | `derivative(y) wrt x` - forward-mode autodiff. |
+| [solve.emath](intro/solve.emath) | `solve(f) wrt x` - Newton's method. |
+| [optimize.emath](intro/optimize.emath) | `minimize` / `maximize` - gradient descent/ascent. |
+| [constrained-opt.emath](intro/constrained-opt.emath) | `constraints:` section - auto penalty method. |
 | [tensor-face.emath](intro/tensor-face.emath) | Rank-3 tensor, `:` slice, matrix `expect`. |
 | [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | `emath policy` with constructor. |
 | [vector-given.emath](intro/vector-given.emath) | `Vector[3]` input, indexing, `dot`. |
@@ -23,7 +23,7 @@ Each example teaches one concept. Read in table order within a section.
 | [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE (Newton-solved each step). |
 | [modular-arithmetic.emath](intro/modular-arithmetic.emath) | `GF<p>`, `factorial`, `mod_inv`, `congruence`, `rs_encode`, `hamming_distance`. |
 
-## numerical — dynamics and PDEs
+## numerical - dynamics and PDEs
 
 | Example | Concept |
 |---------|---------|

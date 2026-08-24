@@ -51,7 +51,7 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         // keep them scoped inside larger factors, and the body must never
         // be parenthesized (see the binder arm below).
         ExprKind::Binder { .. } => parent > Prec::Atomic,
-        ExprKind::Limit { .. } | ExprKind::SampleLimit { .. } => parent > Prec::Atomic,
+        ExprKind::Limit { .. } | ExprKind::SampleLimit { .. } | ExprKind::Cases { .. } => parent > Prec::Atomic,
         _ => false,
     };
     if needs_parens {
@@ -311,6 +311,26 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             }
             out.push_str(": ");
             format_expr(out, body, Prec::Root);
+        }
+        ExprKind::Cases {
+            subject,
+            arms,
+            else_arm,
+        } => {
+            out.push_str("cases ");
+            if let Some(subj) = subject {
+                format_expr(out, subj, Prec::Root);
+                out.push_str(": ");
+            }
+            for (cond, val) in arms {
+                out.push_str("| ");
+                format_expr(out, cond, Prec::Root);
+                out.push_str(" => ");
+                format_expr(out, val, Prec::Root);
+                out.push(' ');
+            }
+            out.push_str("| else => ");
+            format_expr(out, else_arm, Prec::Root);
         }
     }
 }

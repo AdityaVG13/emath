@@ -47,6 +47,10 @@ struct Parser {
     /// `if` in a binder context is parsed as a guard clause, not as
     /// a conditioned expression on the binder's domain.
     suppress_postfix_if: bool,
+    /// U1: when true, suppresses `|` as the `or` operator so that
+    /// `|` in a `cases` body is parsed as an arm delimiter, not as
+    /// a binary `or` on the arm value.
+    suppress_pipe_or: bool,
 }
 
 impl Parser {
@@ -59,6 +63,7 @@ impl Parser {
             lex_diagnostics,
             tree_items: Vec::new(),
             suppress_postfix_if: false,
+            suppress_pipe_or: false,
         }
     }
 

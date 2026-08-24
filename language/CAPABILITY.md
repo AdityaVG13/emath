@@ -44,8 +44,8 @@
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
 | `Interval<F>` | yes | yes | yes |
 | `T in unit` | yes | yes | yes |
-| `Rat` bare `Real` | yes | no | — |
-| `Option` `Result` `Graph` `Field` | yes | no | — |
+| `Rat` bare `Real` | yes | no | - |
+| `Option` `Result` `Graph` `Field` | yes | no | - |
 
 ## Generic arguments at use sites
 

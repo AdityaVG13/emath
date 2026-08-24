@@ -78,15 +78,15 @@ The integer is the operator precedence. The string is the glyph. The
 path is the canonical operator the notation resolves to. The optional
 `alias` clause provides an alternative spelling (N2).
 
-### N1 — Notation as package citizens
+### N1 - Notation as package citizens
 
 Notation declarations are top-level items, peers of `use` and `emath`
 declarations. They are scoped to the package that declares them. A file
 that does not import a notation cannot use its glyph. Importing a
-notation does not import the underlying operator — that is a separate
+notation does not import the underlying operator - that is a separate
 `use`.
 
-### N2 — Alias policy (accept-many / canon-one)
+### N2 - Alias policy (accept-many / canon-one)
 
 The `alias` clause provides an additional spelling for the same
 canonical operator. Multiple aliases may exist across different
@@ -94,7 +94,7 @@ packages, but they all resolve to one canonical path. The canonical
 path is the `=>` target; aliases are convenience spellings, not
 independent operators.
 
-### N3 — Reserved and confusable glyphs
+### N3 - Reserved and confusable glyphs
 
 The following glyphs are reserved by the core language and cannot be
 rebound by notation declarations:
@@ -109,17 +109,17 @@ Glyphs that are visually confusable (e.g. `−` U+2212 vs `-` U+002D,
 confusable-glyph warning. The canonical ASCII operator always retains
 its meaning.
 
-### N4 — Total conflict rules
+### N4 - Total conflict rules
 
 Two notation declarations conflict when they bind the same glyph with
 different target paths in the same scope. The compiler refuses with
 `E-NOTATION-AMBIG`. Precedence and fixity differences do not resolve
-the conflict — the glyph must map to exactly one operator per scope.
+the conflict - the glyph must map to exactly one operator per scope.
 
 A notation that shadows a reserved glyph (N3) is refused with
 `E-NOTATION-RESERVED`.
 
-### N5 — Notation⊥worlds invariant
+### N5 - Notation⊥worlds invariant
 
 Notation is typography, not meaning. Removing or adding a notation
 import from a file does not change the semantic identity of any

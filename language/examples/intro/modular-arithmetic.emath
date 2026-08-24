@@ -1,4 +1,4 @@
-(* Modular arithmetic and finite fields — B15/B29/B40
+(* Modular arithmetic and finite fields - B15/B29/B40
    Building blocks for Reed-Solomon code construction over GF(p). *)
 
 emath function modular_basics:

@@ -7,34 +7,34 @@
 
 Every language change updates four artifacts in the same commit:
 
-1. **Reference chapter** (`language/reference/`) — the normative spec.
+1. **Reference chapter** (`language/reference/`) - the normative spec.
    Update the relevant chapter's "Implemented today" section and any
    prose that describes the feature. When adding a new capability, add
    it to the appropriate chapter body.
 
-2. **Grammar** (`language/grammar/surface.ebnf`) — the machine-checkable
+2. **Grammar** (`language/grammar/surface.ebnf`) - the machine-checkable
    surface model. Add or modify the grammar rule. Add a comment citing
    the bead ID (e.g., `(* B14: ... *)`).
 
-3. **Example** (`language/examples/`) — at least one runnable or
+3. **Example** (`language/examples/`) - at least one runnable or
    parse-only `.emath` file that demonstrates the feature. Place it in
    `examples/intro/` for core features.
 
-4. **Example index** (`language/examples/README.md`) — add a row to the
+4. **Example index** (`language/examples/README.md`) - add a row to the
    table with the filename, status (Runs / Parses / Admits), and a
    one-line description.
 
 ## Additional updates
 
-5. **Capability matrix** (`language/CAPABILITY.md`) — add or update the
+5. **Capability matrix** (`language/CAPABILITY.md`) - add or update the
    row for the new feature. This is the single-source-of-truth for what
    works today.
 
-6. **Overview** (`language/reference/overview.md`) — update the
+6. **Overview** (`language/reference/overview.md`) - update the
    "Implemented today" section if the feature adds a new type,
    expression form, or section.
 
-7. **Tests** (`tests/`) — add focused tests that prove the feature
+7. **Tests** (`tests/`) - add focused tests that prove the feature
    works. Syntax tests in `tests/emath-syntax/tests/`, sema tests in
    `tests/emath-sema/tests/`, exec-ir tests in `tests/emath-exec-ir/tests/`.
 

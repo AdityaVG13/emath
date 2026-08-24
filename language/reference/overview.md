@@ -132,9 +132,9 @@ Admitted expressions that compute:
 arithmetic  comparison  logic (and or not ==> <==>)
 sum product integral forall exists  (binders, with optional `if` guard)
 derivative(expr) wrt x         (forward-mode autodiff)
-partial(expr) wrt x holding p  (partial derivative, held-fixed set — computes via autodiff)
-total(expr) wrt t / d(expr) wrt t  (total/material derivative — computes via autodiff)
-∂(expr) wrt x                  (Unicode alias for partial — computes via autodiff)
+partial(expr) wrt x holding p  (partial derivative, held-fixed set - computes via autodiff)
+total(expr) wrt t / d(expr) wrt t  (total/material derivative - computes via autodiff)
+∂(expr) wrt x                  (Unicode alias for partial - computes via autodiff)
 solve(expr) wrt x              (Newton's method root-finding)
 minimize(expr) wrt x / maximize(expr) wrt x  (gradient descent/ascent)
 einsum("ik,kj->ij", A, B)      (Einstein summation contraction)
@@ -144,16 +144,16 @@ congruence(a, b, m)                  (congruence test: (a-b) mod m == 0)
 poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's method)
 rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p))
 hamming_distance(a, b)         (count positions where two vectors differ)
-1 + 2i / 2i / 3.5i             (complex literals, Ni suffix — computes via Complex arithmetic)
+1 + 2i / 2i / 3.5i             (complex literals, Ni suffix - computes via Complex arithmetic)
 unit of E / dimension of E     (compile-time queries, parse only)
 ```
 
 What you can do with an admitted file:
 
-- `emath check` — does this file make sense in the working subset?
-- `emath run` / `emath test` — evaluate definitions and examples
-- `emath build` — generate a Rust crate when there is an `evaluate` goal
-- `emath simulate` — integrate an admitted `emath model`
+- `emath check` - does this file make sense in the working subset?
+- `emath run` / `emath test` - evaluate definitions and examples
+- `emath build` - generate a Rust crate when there is an `evaluate` goal
+- `emath simulate` - integrate an admitted `emath model`
 
 The compiler will give you a number, a trajectory, generated Rust, or a
 named refusal. It will not tell you that the math is true. That is later

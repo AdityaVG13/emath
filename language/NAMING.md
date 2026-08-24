@@ -7,17 +7,17 @@
 | Canonical name | Removed aliases | Notes |
 |----------------|-----------------|-------|
 | `Float64` | ~~`Real`~~, ~~`f64`~~, ~~`float64`~~ | The only floating-point type. |
-| `Bool` | — | |
-| `Nat` | — | Non-negative integers. |
-| `Int` | — | Signed integers. Exact i64 output. |
-| `Complex` | — | `re + im*i`. Literals: `2i`, `3.5i`. |
+| `Bool` | - | |
+| `Nat` | - | Non-negative integers. |
+| `Int` | - | Signed integers. Exact i64 output. |
+| `Complex` | - | `re + im*i`. Literals: `2i`, `3.5i`. |
 | `GF<p>` | ~~`Mod<p>`~~ | Galois field / integers mod p. Maps to `Int`. |
-| `Vector[n]` | — | |
-| `Matrix[r, c]` | — | |
-| `Tensor[...]` | — | |
+| `Vector[n]` | - | |
+| `Matrix[r, c]` | - | |
+| `Tensor[...]` | - | |
 
 `Real` still appears in `representation Real` (compile section numeric
-profile) — that is a different system, not a type annotation.
+profile) - that is a different system, not a type annotation.
 
 ## Builtin functions
 
@@ -79,7 +79,7 @@ be explicit about the domain or when disambiguation matters.
 **coding::** (coding theory)
 `poly_eval_mod` `rs_encode` `hamming_distance`
 
-**Reduction binders** (not namespaced — they are language constructs)
+**Reduction binders** (not namespaced - they are language constructs)
 `sum` `product` `mean`
 
 ## Error codes
@@ -101,5 +101,5 @@ The user always sees the string form, never the constant name.
 ## EMIR op names
 
 EMIR op names use kebab-case (`f64-add`, `mod-inv`, `poly-eval-mod`).
-They are internal — users never type them. They appear in diagnostics
+They are internal - users never type them. They appear in diagnostics
 and debug output only.

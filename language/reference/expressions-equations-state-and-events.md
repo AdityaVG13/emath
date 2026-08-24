@@ -66,7 +66,7 @@ the limit is two-sided. The target is parsed at multiplicative
 precedence, so complex targets need parentheses: `limit x -> (a + b): f(x)`.
 
 `limit` expressions are usable in `require`, `ensure`, and `invariant`
-sections. They are not computable — use `sample_limit` for numerical
+sections. They are not computable - use `sample_limit` for numerical
 evaluation.
 
 ### sample_limit as a computation (B04)
@@ -107,7 +107,7 @@ f(n) ~~ g(n)                                       # general form
 ```
 
 `~~` has the same precedence as comparison operators. It is a **claim**,
-not a computation — it lowers to a limit claim (`limit x -> inf: f(x)/g(x) == 1`).
+not a computation - it lowers to a limit claim (`limit x -> inf: f(x)/g(x) == 1`).
 Per C7, `~` is reserved for the distribution tag; asymptotic equivalence
 uses `~~`.
 
@@ -199,6 +199,7 @@ mean(v)          abs(v)
 derivative(x)    der(x)    derivative(x) wrt time
 derivative(y) wrt x    # forward-mode autodiff in definitions
 grad(f)                # reverse-mode AD: gradient w.r.t. all inputs
+cases x: | x > 0 => 1 | else => 0  # piecewise conditional
 solve(residual) wrt x    # Newton's method root-finding
 minimize(loss) wrt x     # gradient descent optimization
 minimize(loss) wrt x, y  # multi-variable gradient descent
@@ -206,7 +207,7 @@ maximize(score) wrt x    # gradient ascent optimization
 sample_limit x -> 0: sin(x) / x    # numerical limit approximation
 ```
 
-Expressions that parse but do not compute (claims — usable in
+Expressions that parse but do not compute (claims - usable in
 `require`/`invariant`):
 ```text
 limit x -> 0: f(x)          # B04: limit claim (two-sided)
@@ -260,16 +261,49 @@ structure.
 argument must be scalar numeric; `grad` on a vector or non-numeric
 expression is refused with `E-TYPE-012`.
 
+### cases expression (U1)
+
+`cases` is a piecewise conditional expression with mandatory `else`
+(totality enforced at parse time). It lowers to nested conditional
+expressions.
+
+```emath
+emath function signum(x: Float64) -> Float64:
+    definitions:
+        f = cases x:
+            | x > 0.0 => 1.0
+            | x < 0.0 => -1.0
+            | else => 0.0
+```
+
+Syntax:
+- `cases [subject]:` introduces the expression. The subject is
+  optional (for readability; arm conditions are full expressions,
+  not pattern matches).
+- Arms are delimited by `|` and use `=>` as the arm arrow.
+- A mandatory `else` arm enforces totality. Missing `else` is a
+  parse error (`E-SYN-110`).
+- At least one condition arm is required before `else`.
+
+`cases` is a contextual keyword: it activates only when followed by
+`:` or by an identifier and then `:`. In all other positions it is a
+regular user identifier.
+
+Lowering: `cases x: | c1 => e1 | c2 => e2 | else => e3` lowers to
+`if c1: e1 else: if c2: e2 else: e3` (nested `ExprNode::If`). All arm
+values must have the same type (`E-TYPE-012` on mismatch). Arm
+conditions must be Boolean (`E-TYPE-012` on non-Boolean).
+
 ### Partial and total derivatives (04 section 2.2)
 
 Three derivative operators are distinguished by kind:
 
-- `derivative(expr) wrt x` — unqualified derivative (existing, computes via autodiff).
-- `partial(expr) wrt x holding p` — partial derivative. The `holding`
+- `derivative(expr) wrt x` - unqualified derivative (existing, computes via autodiff).
+- `partial(expr) wrt x holding p` - partial derivative. The `holding`
   set (variables held constant) is part of the term's identity:
   `partial(H) wrt T holding p` and `partial(H) wrt T holding V` are
   different terms.
-- `total(expr) wrt t` or `d(expr) wrt t` — total/material derivative
+- `total(expr) wrt t` or `d(expr) wrt t` - total/material derivative
   (distinct operator, distinct glyph).
 
 `partial` and `total` are contextual keywords: they activate only when
@@ -280,7 +314,7 @@ The Unicode partial derivative symbol `∂` (U+2202) is accepted as an
 alias for `partial`: `∂(T) wrt x` is the same as `partial(T) wrt x`.
 
 A partial derivative without an explicit `holding` set is a MeaningHole
-refusal — the compiler will not guess which variables are held fixed.
+refusal - the compiler will not guess which variables are held fixed.
 This prevents the most error-prone notation in physics from being
 silently ambiguous.
 
@@ -340,7 +374,7 @@ emath model CausalizedRC:
 ```
 
 A residual is any `lhs == rhs` comparison or bare `expr` (meaning
-`expr == 0`) in `equations:`. `==` is always a residual — even a bare
+`expr == 0`) in `equations:`. `==` is always a residual - even a bare
 `a == 5` constrains `a` instead of defining it. Residuals are stored
 as implicit constraint records keyed by the model declaration.
 Automatic causalization rewrites `der(state)` inside a residual to a
@@ -350,7 +384,7 @@ each time step the runner Newton-solves the coupled residual system
 with a finite-difference Jacobian and Gaussian elimination; definitions
 are re-evaluated with the solved algebraic values, and the solved rates
 feed the integrator. So a fully implicit DAE needs no manual `solve`
-op — see `language/examples/intro/causalized-rc.emath` and
+op - see `language/examples/intro/causalized-rc.emath` and
 `language/examples/intro/implicit-dae.emath`.
 
 Conformance checks at admission time:
@@ -408,27 +442,27 @@ requires a unit inference engine (not yet implemented in Phase 1).
 
 Spatial operators (admitted in `definitions:` and `equations:`):
 
-1-D Laplacian — second derivative via the stencil `[1, -2, 1] / dx²`:
-- `laplacian(u, dx)` — clamped (insulated) edges.
-- `laplacian_neumann(u, dx)` — mirror (zero-flux) edges.
-- `laplacian_dirichlet(u, dx, g_left, g_right)` — fixed boundary values.
+1-D Laplacian - second derivative via the stencil `[1, -2, 1] / dx²`:
+- `laplacian(u, dx)` - clamped (insulated) edges.
+- `laplacian_neumann(u, dx)` - mirror (zero-flux) edges.
+- `laplacian_dirichlet(u, dx, g_left, g_right)` - fixed boundary values.
 
-2-D Laplacian — 5-point stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` over a
+2-D Laplacian - 5-point stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` over a
 `Matrix`:
-- `laplacian_2d(u, dx)` — clamped edges.
-- `laplacian_2d_neumann(u, dx)` — mirror edges.
+- `laplacian_2d(u, dx)` - clamped edges.
+- `laplacian_2d_neumann(u, dx)` - mirror edges.
 
-1-D gradient — first derivative via central differences
+1-D gradient - first derivative via central differences
 `[-1/(2dx), 0, +1/(2dx)]`:
-- `gradient(u, dx)` — clamped (one-sided) edges; returns a `Vector`.
+- `gradient(u, dx)` - clamped (one-sided) edges; returns a `Vector`.
 
-2-D gradient — first derivative along one axis (central differences):
-- `gradient_2d_x(u, dx)` — `du/dc` (along columns); returns a `Matrix`.
-- `gradient_2d_y(u, dx)` — `du/dr` (along rows); returns a `Matrix`.
+2-D gradient - first derivative along one axis (central differences):
+- `gradient_2d_x(u, dx)` - `du/dc` (along columns); returns a `Matrix`.
+- `gradient_2d_y(u, dx)` - `du/dr` (along rows); returns a `Matrix`.
 
 `dx` must be a positive literal constant in Phase 1 (variable `dx` is not
 yet supported). The divergence of a 2-D vector field `(u, v)` is expressible
-by composition — `gradient_2d_x(u, dx) + gradient_2d_y(v, dx)` — so a
+by composition - `gradient_2d_x(u, dx) + gradient_2d_y(v, dx)` - so a
 dedicated `divergence` builtin is deferred.
 
 Heat equation as a continuous model: an `emath model` with a `Vector`
@@ -448,21 +482,21 @@ field-type design.
 Modular arithmetic builtins operate on integer (i64) values and are
 admitted in `definitions:` and `equations:`:
 
-- `factorial(n)` — exact i64 factorial. `n` must be in [0, 20] (i64
+- `factorial(n)` - exact i64 factorial. `n` must be in [0, 20] (i64
   overflow guard). Returns `Int`.
-- `mod_inv(a, m)` — modular inverse of `a` modulo `m` via extended GCD.
+- `mod_inv(a, m)` - modular inverse of `a` modulo `m` via extended GCD.
   Errors at runtime if `gcd(a, m) != 1`. Returns `Int`.
-- `congruence(a, b, m)` — congruence test: `(a - b) mod m == 0`. Returns `Bool`.
-- `mod(a, m)` — floating-point remainder (already available as a general
+- `congruence(a, b, m)` - congruence test: `(a - b) mod m == 0`. Returns `Bool`.
+- `mod(a, m)` - floating-point remainder (already available as a general
   builtin; works on `Int` values too via i64-to-f64 coercion).
-- `poly_eval_mod(coeffs, x, p)` — evaluates polynomial `c[0] + c[1]*x +
+- `poly_eval_mod(coeffs, x, p)` - evaluates polynomial `c[0] + c[1]*x +
   ... + c[k-1]*x^(k-1)` at `x` modulo `p` using Horner's method. `coeffs`
   is a `Vector`, `x` and `p` are integers. Returns `Int`.
-- `rs_encode(coeffs, n, p)` — constructs a Reed-Solomon codeword by
+- `rs_encode(coeffs, n, p)` - constructs a Reed-Solomon codeword by
   evaluating the polynomial at points `0, 1, ..., n-1` over `GF(p)`.
   Returns a `Vector` of `n` values.
 
-`GF<p>` and `GF<p>` are admitted as `Int` types — values are exact
+`GF<p>` and `GF<p>` are admitted as `Int` types - values are exact
 integers, and modular reduction is performed by the builtins, not the
 type system. This is sufficient for Reed–Solomon code construction
 over small prime fields (evaluating polynomials, checking distances,
@@ -477,14 +511,14 @@ definitions:
 
 ### Limits, series, and asymptotic equivalence (B04+B06+B18)
 
-- `limit x -> 0: f(x)` — limit as a **claim** (parses, does not compute).
+- `limit x -> 0: f(x)` - limit as a **claim** (parses, does not compute).
   One-sided: `0+` (from above), `0-` (from below). Usable in `require`/
   `invariant`.
-- `sample_limit x -> 0: f(x)` — numerical limit approximation
+- `sample_limit x -> 0: f(x)` - numerical limit approximation
   (**computation**). Admitted in `definitions:`/`equations:`.
-- `series n in 0..inf: a[n]` — series convergence **claim** (parses,
+- `series n in 0..inf: a[n]` - series convergence **claim** (parses,
   does not compute). Contextual keyword.
-- `f(n) ~~ g(n)` — asymptotic equivalence (**claim**). Lowers to a
+- `f(n) ~~ g(n)` - asymptotic equivalence (**claim**). Lowers to a
   limit claim. Per C7, `~` is the distribution tag; `~~` is asymptotics.
 
 `limit`, `sample_limit`, and `series` are contextual keywords: they
