@@ -314,5 +314,6 @@ pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
         ExprKind::UnitQuery { .. } => "unit-query",
         ExprKind::Limit { .. } => "limit",
         ExprKind::SampleLimit { .. } => "sample-limit",
+        ExprKind::Cases { .. } => "cases",
     }
 }

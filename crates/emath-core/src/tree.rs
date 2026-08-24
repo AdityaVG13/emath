@@ -404,6 +404,15 @@ pub enum ExprKind {
         direction: LimitDirection,
         body: Box<Expr>,
     },
+    /// `cases x: | c1 => e1 | c2 => e2 | else => e3` (U1).
+    /// Lowers to nested conditional expressions.
+    /// The subject is optional (for readability; arm conditions are
+    /// full expressions, not pattern matches).
+    Cases {
+        subject: Option<Box<Expr>>,
+        arms: Vec<(Expr, Expr)>,
+        else_arm: Box<Expr>,
+    },
 }
 
 /// Kind of compile-time unit/dimension query.

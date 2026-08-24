@@ -464,3 +464,22 @@ emath function f(x: Float64, y: Float64) -> Vector[2]:
         "grad() on a non-scalar expression must error"
     );
 }
+
+// ─── cases expression (U1) ───
+
+#[test]
+fn cases_admits_and_computes() {
+    let source = "\
+emath function f(x: Float64) -> Float64:
+    definitions:
+        f = cases x:
+            | x > 0.0 => 1.0
+            | x < 0.0 => -1.0
+            | else => 0.0
+";
+    let codes = errors_of("cases-admit", source);
+    assert!(
+        codes.is_empty(),
+        "cases expression should be admitted in definitions, got errors: {codes:?}"
+    );
+}

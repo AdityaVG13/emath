@@ -165,6 +165,15 @@ pub fn expr_text(expr: &Expr) -> String {
             };
             format!("sample_limit {var} -> {}{dir}: {}", expr_text(target), expr_text(body))
         }
+        ExprKind::Cases { subject, arms, else_arm } => {
+            let subj = subject.as_ref().map_or_else(String::new, |s| format!("{}: ", expr_text(s)));
+            let arms_text = arms
+                .iter()
+                .map(|(c, v)| format!("| {} => {}", expr_text(c), expr_text(v)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("cases {subj}{arms_text} | else => {}", expr_text(else_arm))
+        }
     }
 }
 

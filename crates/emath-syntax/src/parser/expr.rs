@@ -210,8 +210,9 @@ impl super::Parser {
             }
             if !matches!(
                 self.peek(),
-                TokenKind::Keyword(Keyword::Or) | TokenKind::Pipe
-            ) {
+                TokenKind::Keyword(Keyword::Or)
+            ) && (!matches!(self.peek(), TokenKind::Pipe) || self.suppress_pipe_or)
+            {
                 break;
             }
             self.advance();
@@ -975,6 +976,29 @@ impl super::Parser {
                             source: start.cover(self.last_span()),
                         });
                     }
+                    // U1: `cases x: | c1 => e1 | else => e2` - contextual
+                    // keyword for cases expression. Activates when `cases`
+                    // is followed by `:` (no subject) or by an identifier
+                    // and then `:` (subject is a simple name).
+                    if name == "cases" {
+                        if matches!(self.peek_at(1), TokenKind::Colon) {
+                            self.advance(); // `cases`
+                            self.advance(); // `:`
+                            return Some(self.parse_cases_body(start, None, depth)?);
+                        }
+                        if matches!(self.peek_at(1), TokenKind::Ident(_))
+                            && matches!(self.peek_at(2), TokenKind::Colon)
+                        {
+                            self.advance(); // `cases`
+                            let subject = self.parse_primary(depth)?;
+                            self.advance(); // `:`
+                            return Some(self.parse_cases_body(
+                                start,
+                                Some(Box::new(subject)),
+                                depth,
+                            )?);
+                        }
+                    }
                 }
                 // Contextual keywords for partial/total derivatives:
                 // `partial(T)`, `∂(T)`, `total(T)`, `d(T)` — only when
@@ -1123,6 +1147,88 @@ impl super::Parser {
         };
         Some(Expr {
             kind,
+            source: start.cover(self.last_span()),
+        })
+    }
+
+    /// U1: Parse the body of a `cases [subject]: | c1 => e1 | else => eN`
+    /// expression. The caller has already consumed `cases`, the optional
+    /// subject, and `:`. Arms are delimited by `|` and use `=>` as the
+    /// arm arrow. A mandatory `else` arm enforces totality at parse time.
+    fn parse_cases_body(
+        &mut self,
+        start: emath_core::Span,
+        subject: Option<Box<Expr>>,
+        depth: usize,
+    ) -> Option<Expr> {
+        self.skip_newlines();
+        if matches!(self.peek(), TokenKind::Indent) {
+            self.advance();
+        }
+        let mut arms = Vec::new();
+        let mut else_arm = None;
+        // Suppress `|` as `or` so it acts as arm delimiter.
+        self.suppress_pipe_or = true;
+        loop {
+            self.skip_newlines();
+            if !self.eat(&TokenKind::Pipe) {
+                self.error_here(
+                    "E-SYN-110",
+                    "expected `|` to start a cases arm",
+                );
+                return None;
+            }
+            self.skip_newlines();
+            // Check for `else` arm.
+            if matches!(self.peek(), TokenKind::Keyword(Keyword::Else)) {
+                self.advance(); // `else`
+                if !self.eat(&TokenKind::Arrow) {
+                    self.error_here(
+                        "E-SYN-101",
+                        "expected `=>` after `else` in cases arm",
+                    );
+                    return None;
+                }
+                self.skip_newlines();
+                let value = self.parse_expr_depth(depth + 1)?;
+                else_arm = Some(Box::new(value));
+                break;
+            }
+            // Regular arm: `| condition => value`
+            let condition = self.parse_expr_depth(depth + 1)?;
+            if !self.eat(&TokenKind::Arrow) {
+                self.error_here(
+                    "E-SYN-101",
+                    "expected `=>` in cases arm",
+                );
+                return None;
+            }
+            self.skip_newlines();
+            let value = self.parse_expr_depth(depth + 1)?;
+            arms.push((condition, value));
+        }
+        // Restore `|` as `or` operator.
+        self.suppress_pipe_or = false;
+        let Some(else_arm) = else_arm else {
+            self.error_here(
+                "E-SYN-110",
+                "cases expression requires a mandatory `else` arm",
+            );
+            return None;
+        };
+        if arms.is_empty() {
+            self.error_here(
+                "E-SYN-110",
+                "cases expression requires at least one condition arm before `else`",
+            );
+            return None;
+        }
+        Some(Expr {
+            kind: ExprKind::Cases {
+                subject,
+                arms,
+                else_arm,
+            },
             source: start.cover(self.last_span()),
         })
     }

@@ -147,6 +147,15 @@ impl super::Parser {
                 let expr = self.parse_expr()?;
                 Some(self.stmt(start, StmtKind::Expr(expr)))
             }
+            // U1: `cases [subject]: | ...` in statement position.
+            "cases"
+                if matches!(self.peek_at(1), TokenKind::Colon)
+                    || (matches!(self.peek_at(1), TokenKind::Ident(_))
+                        && matches!(self.peek_at(2), TokenKind::Colon)) =>
+            {
+                let expr = self.parse_expr()?;
+                Some(self.stmt(start, StmtKind::Expr(expr)))
+            }
             _ => self.parse_default_ident_statement(start),
         }
     }

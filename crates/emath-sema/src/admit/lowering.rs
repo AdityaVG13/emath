@@ -1186,6 +1186,46 @@ impl super::Admitter {
                     then_infer,
                 ))
             }
+            ExprKind::Cases {
+                subject: _,
+                arms,
+                else_arm,
+            } => {
+                // U1: Lower `cases: | c1 => e1 | c2 => e2 | else => e3`
+                // to nested `If { c1, e1, If { c2, e2, e3 } }`.
+                // The subject is for readability only (arm conditions
+                // are full expressions, not pattern matches).
+                let (mut current_else, mut result_infer) = self.lower_expr(else_arm)?;
+                for (cond, value) in arms.iter().rev() {
+                    let (cond_id, cond_infer) = self.lower_expr(cond)?;
+                    if !matches!(cond_infer, Infer::Bool) {
+                        self.error(
+                            "E-TYPE-012",
+                            "cases arm condition must be Boolean",
+                            cond.source,
+                        );
+                        return None;
+                    }
+                    let (val_id, val_infer) = self.lower_expr(value)?;
+                    if val_infer != result_infer {
+                        self.error(
+                            "E-TYPE-012",
+                            "cases arms must have the same type",
+                            expr.source,
+                        );
+                        return None;
+                    }
+                    current_else = self.push_expr(
+                        ExprNode::If {
+                            condition: cond_id,
+                            then_value: val_id,
+                            else_value: current_else,
+                        },
+                        expr.source,
+                    );
+                }
+                Some((current_else, result_infer))
+            }
             ExprKind::List(items) => self.lower_list_literal(expr, items),
             ExprKind::Index { value, indices } => self.lower_index(expr, value, indices),
             ExprKind::Binder {
