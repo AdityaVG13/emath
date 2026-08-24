@@ -344,6 +344,51 @@ impl UnitExpr {
     pub fn is_simple(&self) -> bool {
         matches!(self, Self::Base(_))
     }
+
+    /// Canonical form: sort factors by name, combine like terms,
+    /// and render as `name^power * name^power / name^power`.
+    /// Two unit expressions that flatten to the same factors
+    /// produce the same canonical form.
+    /// `m/(s*s)` and `m/s^2` both produce `m^1/s^2`.
+    #[must_use]
+    pub fn canonical_form(&self) -> String {
+        let mut factors = self.flatten();
+        // Combine like terms by name.
+        factors.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut combined: Vec<(String, i32)> = Vec::new();
+        for (name, power) in factors {
+            if let Some(last) = combined.last_mut() {
+                if last.0 == name {
+                    last.1 += power;
+                    continue;
+                }
+            }
+            combined.push((name, power));
+        }
+        // Split into positive (numerator) and negative (denominator) powers.
+        let num: Vec<&(String, i32)> = combined.iter().filter(|(_, p)| *p > 0).collect();
+        let den: Vec<&(String, i32)> = combined.iter().filter(|(_, p)| *p < 0).collect();
+        let fmt_part = |parts: &[&(String, i32)]| -> String {
+            parts
+                .iter()
+                .map(|(name, power)| {
+                    let abs_power = power.abs();
+                    if abs_power == 1 {
+                        name.clone()
+                    } else {
+                        format!("{name}^{abs_power}")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("*")
+        };
+        match (num.is_empty(), den.is_empty()) {
+            (true, true) => "1".to_string(),
+            (false, true) => fmt_part(&num),
+            (true, false) => format!("1/{}", fmt_part(&den)),
+            (false, false) => format!("{}/{}", fmt_part(&num), fmt_part(&den)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -362,3 +362,89 @@ fn formatter_roundtrips_simple_unit() {
         "formatter must not wrap simple units in brackets: {formatted}"
     );
 }
+
+// ---- Conformance: canonical form and hash equality -------------------
+
+#[test]
+fn canonical_form_same_unit_different_spelling() {
+    // `m/(s*s)` and `m/s^2` should produce the same canonical form.
+    let a = UnitExpr::Div(
+        Box::new(UnitExpr::Base("m".into())),
+        Box::new(UnitExpr::Mul(
+            Box::new(UnitExpr::Base("s".into())),
+            Box::new(UnitExpr::Base("s".into())),
+        )),
+    );
+    let b = UnitExpr::Div(
+        Box::new(UnitExpr::Base("m".into())),
+        Box::new(UnitExpr::Pow(Box::new(UnitExpr::Base("s".into())), 2)),
+    );
+    assert_eq!(
+        a.canonical_form(),
+        b.canonical_form(),
+        "m/(s*s) and m/s^2 must have the same canonical form"
+    );
+    assert_eq!(
+        a.canonical_form(),
+        "m/s^2",
+        "canonical form should be m/s^2, got {}",
+        a.canonical_form()
+    );
+}
+
+#[test]
+fn canonical_form_different_units_never_collide() {
+    // `m/s*s` (length) and `m/s^2` (acceleration) must differ.
+    let length = UnitExpr::Mul(
+        Box::new(UnitExpr::Div(
+            Box::new(UnitExpr::Base("m".into())),
+            Box::new(UnitExpr::Base("s".into())),
+        )),
+        Box::new(UnitExpr::Base("s".into())),
+    );
+    let accel = UnitExpr::Div(
+        Box::new(UnitExpr::Base("m".into())),
+        Box::new(UnitExpr::Pow(Box::new(UnitExpr::Base("s".into())), 2)),
+    );
+    assert_ne!(
+        length.canonical_form(),
+        accel.canonical_form(),
+        "m/s*s (length) and m/s^2 (acceleration) must never collide"
+    );
+}
+
+#[test]
+fn canonical_form_energy_unit() {
+    // `kg*m^2/s^2` should canonicalize to `kg*m^2/s^2`.
+    let energy = UnitExpr::Div(
+        Box::new(UnitExpr::Mul(
+            Box::new(UnitExpr::Base("kg".into())),
+            Box::new(UnitExpr::Pow(Box::new(UnitExpr::Base("m".into())), 2)),
+        )),
+        Box::new(UnitExpr::Pow(Box::new(UnitExpr::Base("s".into())), 2)),
+    );
+    assert_eq!(
+        energy.canonical_form(),
+        "kg*m^2/s^2",
+        "energy canonical form, got {}",
+        energy.canonical_form()
+    );
+}
+
+#[test]
+fn formatter_normalizes_to_canonical_form() {
+    use emath_syntax::formatter::format;
+    use emath_core::FileId;
+    use emath_core::limits::Limits;
+    use emath_syntax::parse_lossless;
+
+    // Parse `m/(s*s)` and verify formatter outputs canonical `m/s^2`.
+    let source = "emath function f() -> Float64:\n    definitions:\n        a = 9.81 [unit m/(s*s)]\n";
+    let parsed = parse_lossless(source, FileId(0), &Limits::default());
+    assert!(!parsed.diagnostics.has_errors(), "must parse cleanly");
+    let formatted = format(&parsed.tree, &parsed.comments);
+    assert!(
+        formatted.contains("[unit m/s^2]"),
+        "formatter must normalize m/(s*s) to m/s^2: {formatted}"
+    );
+}
