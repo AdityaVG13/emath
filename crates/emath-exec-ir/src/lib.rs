@@ -176,6 +176,15 @@ pub enum EmirOp {
     },
     TensorAdd(EmirValue, EmirValue),
     TensorSub(EmirValue, EmirValue),
+    /// `einsum("ik,kj->ij", A, B)` — Einstein summation contraction.
+    /// `subscripts` is the subscript string (e.g., "ik,kj->ij").
+    /// `inputs` are the operand value IDs. The interp parses the
+    /// subscripts, determines index sizes from operand shapes, and
+    /// computes the contracted result.
+    Einsum {
+        subscripts: String,
+        inputs: Vec<EmirValue>,
+    },
     /// Runtime fold (sum/product/forall/exists) over a variable-bound
     /// integer range.  `body` is a sub-program evaluated once per
     /// iteration with the loop variable supplied as an extra input at
@@ -306,6 +315,7 @@ impl EmirOp {
             Self::TensorSlice { .. } => "tensor-slice",
             Self::TensorAdd(..) => "tensor-add",
             Self::TensorSub(..) => "tensor-sub",
+            Self::Einsum { .. } => "einsum",
             Self::Fold { .. } => "fold",
             Self::Integral { .. } => "integral",
             Self::Differentiate { .. } => "differentiate",

@@ -549,6 +549,103 @@ fn eval_op(
                 data: d1.iter().zip(d2.iter()).map(|(a, b)| a - b).collect(),
             })
         }
+        EmirOp::Einsum { ref subscripts, ref inputs } => {
+            // Gather operand shapes and flat data from Vector/Matrix/Tensor.
+            let operands: Vec<(Vec<usize>, Vec<f64>)> = inputs
+                .iter()
+                .map(|&v| {
+                    let val = register(registers, v)?;
+                    let (shape, data) = match val {
+                        Value::Vector(d) => (vec![d.len()], d.clone()),
+                        Value::Matrix { rows, cols, data } => (vec![*rows, *cols], data.clone()),
+                        Value::Tensor { shape, data } => (shape.clone(), data.clone()),
+                        _ => return Err(EvalFault::TypeConfusion { register: v.0, op: name }),
+                    };
+                    Ok((shape, data))
+                })
+                .collect::<Result<_, _>>()?;
+
+            // Parse subscripts: "ik,kj->ij" or "ik,kj" (implicit).
+            let (input_specs, output_spec) = parse_einsum_subscripts(&subscripts);
+
+            // Determine the size of each index letter.
+            let mut dim_sizes: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
+            for (spec, (shape, _)) in input_specs.iter().zip(operands.iter()) {
+                if spec.len() != shape.len() {
+                    return Err(EvalFault::TypeConfusion { register: inputs[0].0, op: name });
+                }
+                for (letter, &size) in spec.chars().zip(shape.iter()) {
+                    dim_sizes.entry(letter).and_modify(|s| *s = (*s).max(size)).or_insert(size);
+                }
+            }
+
+            // Collect all unique index letters.
+            let all_indices: Vec<char> = {
+                let mut seen = std::collections::HashSet::new();
+                let mut order = Vec::new();
+                for spec in input_specs.iter().chain(std::iter::once(&output_spec)) {
+                    for c in spec.chars() {
+                        if seen.insert(c) {
+                            order.push(c);
+                        }
+                    }
+                }
+                order
+            };
+
+            // Contracted indices: in inputs but not in output.
+            let output_set: std::collections::HashSet<char> = output_spec.chars().collect();
+            let contracted: Vec<char> = all_indices.iter().copied().filter(|c| !output_set.contains(c)).collect();
+
+            // Compute output shape.
+            let out_shape: Vec<usize> = output_spec.chars().map(|c| *dim_sizes.get(&c).unwrap_or(&1)).collect();
+            let out_len: usize = out_shape.iter().product::<usize>().max(1);
+            let mut out_data = vec![0.0f64; out_len];
+
+            // Iterate over all combinations of contracted indices.
+            let contracted_sizes: Vec<usize> = contracted.iter().map(|c| *dim_sizes.get(c).unwrap_or(&1)).collect();
+
+            // Iterate over all combinations of output indices.
+            let out_coords = cartesian_product(&out_shape);
+            let contracted_coords = cartesian_product(&contracted_sizes);
+
+            for (out_pos, out_coord) in out_coords.iter().enumerate() {
+                let mut sum = 0.0f64;
+                for c_coord in contracted_coords.iter() {
+                    // Build a map from index letter to current value.
+                    let mut idx_map: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
+                    for (i, c) in output_spec.chars().enumerate() {
+                        idx_map.insert(c, out_coord[i]);
+                    }
+                    for (i, c) in contracted.iter().enumerate() {
+                        idx_map.insert(*c, c_coord[i]);
+                    }
+
+                    // Compute the product of operand elements.
+                    let mut product = 1.0f64;
+                    for (spec, (shape, data)) in input_specs.iter().zip(operands.iter()) {
+                        let spec_chars: Vec<char> = spec.chars().collect();
+                        let mut flat_idx = 0usize;
+                        let mut stride = 1usize;
+                        for (c, &dim) in spec_chars.iter().zip(shape.iter()).rev() {
+                            flat_idx += idx_map[&c] * stride;
+                            stride *= dim;
+                        }
+                        product *= data[flat_idx];
+                    }
+                    sum += product;
+                }
+                out_data[out_pos] = sum;
+            }
+
+            // Return as Vector, Matrix, or Tensor based on output rank.
+            Ok(match out_shape.len() {
+                0 => Value::F64(out_data[0]),
+                1 => Value::Vector(out_data),
+                2 => Value::Matrix { rows: out_shape[0], cols: out_shape[1], data: out_data },
+                _ => Value::Tensor { shape: out_shape, data: out_data },
+            })
+        }
         EmirOp::Fold {
             start,
             end,
@@ -844,4 +941,51 @@ fn eval_op(
 
 // --- Helper functions extracted to interp/helpers.rs ---
 // --- Dual-number autodiff subsystem extracted to interp/dual.rs ---
+
+/// Parse an einsum subscript string into (input_specs, output_spec).
+/// "ik,kj->ij" → (["ik", "kj"], "ij")
+/// "ik,kj"     → (["ik", "kj"], "ij") (implicit: non-repeated indices)
+fn parse_einsum_subscripts(s: &str) -> (Vec<String>, String) {
+    if let Some((lhs, rhs)) = s.split_once("->") {
+        let inputs: Vec<String> = lhs.split(',').map(|t| t.trim().to_string()).collect();
+        (inputs, rhs.trim().to_string())
+    } else {
+        // Implicit mode: output = indices that appear exactly once.
+        let inputs: Vec<String> = s.split(',').map(|t| t.trim().to_string()).collect();
+        let mut counts: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
+        for spec in &inputs {
+            for c in spec.chars() {
+                *counts.entry(c).or_insert(0) += 1;
+            }
+        }
+        let output: String = inputs.iter()
+            .flat_map(|spec| spec.chars())
+            .filter(|c| counts.get(c) == Some(&1))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter().collect();
+        (inputs, output)
+    }
+}
+
+/// Generate all index combinations for a shape (cartesian product).
+fn cartesian_product(shape: &[usize]) -> Vec<Vec<usize>> {
+    if shape.is_empty() {
+        return vec![vec![]];
+    }
+    let total: usize = shape.iter().product::<usize>().max(1);
+    let mut result = Vec::with_capacity(total);
+    let mut current = vec![0usize; shape.len()];
+    for _ in 0..total {
+        result.push(current.clone());
+        // Increment the rightmost index with carry.
+        for i in (0..shape.len()).rev() {
+            current[i] += 1;
+            if current[i] < shape[i] {
+                break;
+            }
+            current[i] = 0;
+        }
+    }
+    result
+}
 

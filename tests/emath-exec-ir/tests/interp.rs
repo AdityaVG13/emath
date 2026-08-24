@@ -1010,3 +1010,101 @@ fn b12_iff_truth_table() {
         );
     }
 }
+
+// ---- einsum tests (B08) ---------------------------------------------------
+
+#[test]
+fn einsum_matrix_multiply() {
+    // A = [[1, 2], [3, 4]], B = [[5, 6], [7, 8]]
+    // C = einsum("ik,kj->ij", A, B) = [[19, 22], [43, 50]]
+    let program = program(vec![
+        const_bits(1.0), // 0
+        const_bits(2.0), // 1
+        const_bits(3.0), // 2
+        const_bits(4.0), // 3
+        EmirOp::MatrixCreate {
+            rows: 2,
+            cols: 2,
+            elements: vec![EmirValue(0), EmirValue(1), EmirValue(2), EmirValue(3)],
+        }, // 4: A
+        const_bits(5.0), // 5
+        const_bits(6.0), // 6
+        const_bits(7.0), // 7
+        const_bits(8.0), // 8
+        EmirOp::MatrixCreate {
+            rows: 2,
+            cols: 2,
+            elements: vec![EmirValue(5), EmirValue(6), EmirValue(7), EmirValue(8)],
+        }, // 9: B
+        EmirOp::Einsum {
+            subscripts: "ik,kj->ij".to_string(),
+            inputs: vec![EmirValue(4), EmirValue(9)],
+        }, // 10: C
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(
+        result,
+        Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![19.0, 22.0, 43.0, 50.0],
+        }
+    );
+}
+
+#[test]
+fn einsum_vector_dot_product() {
+    // a = [1, 2, 3], b = [4, 5, 6]
+    // einsum("i,i->", a, b) = 1*4 + 2*5 + 3*6 = 32
+    let program = program(vec![
+        const_bits(1.0), // 0
+        const_bits(2.0), // 1
+        const_bits(3.0), // 2
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
+        const_bits(4.0), // 4
+        const_bits(5.0), // 5
+        const_bits(6.0), // 6
+        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b
+        EmirOp::Einsum {
+            subscripts: "i,i->".to_string(),
+            inputs: vec![EmirValue(3), EmirValue(7)],
+        }, // 8: scalar
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::F64(32.0));
+}
+
+#[test]
+fn einsum_transpose() {
+    // A = [[1, 2, 3], [4, 5, 6]] (2x3)
+    // einsum("ij->ji", A) = [[1, 4], [2, 5], [3, 6]] (3x2)
+    let program = program(vec![
+        const_bits(1.0), // 0
+        const_bits(2.0), // 1
+        const_bits(3.0), // 2
+        const_bits(4.0), // 3
+        const_bits(5.0), // 4
+        const_bits(6.0), // 5
+        EmirOp::MatrixCreate {
+            rows: 2,
+            cols: 3,
+            elements: vec![
+                EmirValue(0), EmirValue(1), EmirValue(2),
+                EmirValue(3), EmirValue(4), EmirValue(5),
+            ],
+        }, // 6: A
+        EmirOp::Einsum {
+            subscripts: "ij->ji".to_string(),
+            inputs: vec![EmirValue(6)],
+        }, // 7: A^T
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(
+        result,
+        Value::Matrix {
+            rows: 3,
+            cols: 2,
+            data: vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
+        }
+    );
+}

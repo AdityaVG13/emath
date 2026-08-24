@@ -486,6 +486,25 @@ impl super::Emitter {
                 let lo_clamped = self.push(EmirOp::Max(vx, vlo), span)?;
                 self.push(EmirOp::Min(lo_clamped, vhi), span)
             }
+            "einsum" => {
+                if args.len() < 2 {
+                    return Err("`einsum` expects at least 2 arguments".to_string());
+                }
+                // Extract the subscripts string from the first argument.
+                let first_expr = package
+                    .expr(args[0])
+                    .ok_or("einsum: first argument expression not found")?;
+                let subscripts = match first_expr {
+                    ExprNode::Literal(Literal::Text(s)) => s.clone(),
+                    _ => return Err("`einsum` first argument must be a string literal".to_string()),
+                };
+                // Emit the tensor arguments.
+                let mut inputs = Vec::with_capacity(args.len() - 1);
+                for arg in &args[1..] {
+                    inputs.push(self.emit(package, *arg)?);
+                }
+                self.push(EmirOp::Einsum { subscripts, inputs }, span)
+            }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
     }
