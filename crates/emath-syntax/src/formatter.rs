@@ -583,6 +583,7 @@ fn binder_kind_str(kind: BinderKind) -> &'static str {
         BinderKind::Integral => "integral",
         BinderKind::ForAll => "forall",
         BinderKind::Exists => "exists",
+        BinderKind::Series => "series",
     }
 }
 

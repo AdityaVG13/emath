@@ -386,6 +386,24 @@ pub enum ExprKind {
         kind: UnitQueryKind,
         expr: Box<Expr>,
     },
+    /// `limit x -> 0: f(x)` — limit as a claim (B04).
+    /// Not a computation; usable in `require`/`ensure`/`invariant`.
+    /// One-sided: `limit x -> 0+: f(x)` (FromAbove), `limit x -> 0-: f(x)` (FromBelow).
+    Limit {
+        var: String,
+        target: Box<Expr>,
+        direction: LimitDirection,
+        body: Box<Expr>,
+    },
+    /// `sample_limit x -> 0: f(x)` — numerical limit approximation (B04).
+    /// A computation that samples the body at points approaching the target
+    /// and returns the best-estimate limit value.
+    SampleLimit {
+        var: String,
+        target: Box<Expr>,
+        direction: LimitDirection,
+        body: Box<Expr>,
+    },
 }
 
 /// Kind of compile-time unit/dimension query.
@@ -423,6 +441,8 @@ pub enum BinaryOp {
     Imply,
     /// `<==>` — logical biconditional.
     Iff,
+    /// `~~` — asymptotic equivalence (B18). Lowers to a limit claim.
+    Asymp,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -432,6 +452,19 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
+    /// `series n in 0..inf: a[n]` — series convergence claim (B06).
+    Series,
+}
+
+/// Direction for one-sided limits (B04).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LimitDirection {
+    /// Two-sided limit: `limit x -> 0: f(x)`
+    TwoSided,
+    /// From above: `limit x -> 0+: f(x)`
+    FromAbove,
+    /// From below: `limit x -> 0-: f(x)`
+    FromBelow,
 }
 
 /// Kind of derivative operator.

@@ -1,5 +1,5 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{BinaryOp, DerivativeKind, Expr, ExprKind, UnaryOp, UnitQueryKind};
+use crate::tree::{BinaryOp, BinderKind, DerivativeKind, Expr, ExprKind, LimitDirection, UnaryOp, UnitQueryKind};
 use super::{binder_kind, comparison_operator, MAX_EXPR_DEPTH};
 
 impl super::Parser {
@@ -290,7 +290,23 @@ impl super::Parser {
                 }
             }
         }
-        self.parse_additive(depth)
+        // B18: `f ~~ g` — asymptotic equivalence at comparison precedence.
+        // Lowers to a limit claim in sema.
+        let left = self.parse_additive(depth)?;
+        if matches!(self.peek(), TokenKind::TildeTilde) {
+            self.advance();
+            let right = self.parse_additive(depth)?;
+            let span = left.source.cover(right.source);
+            return Some(Expr {
+                kind: ExprKind::Binary {
+                    op: BinaryOp::Asymp,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                },
+                source: span,
+            });
+        }
+        Some(left)
     }
 
     fn parse_comparison(&mut self, depth: usize) -> Option<Expr> {
@@ -891,6 +907,75 @@ impl super::Parser {
                 })
             }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::SelfKw) => {
+                // B04: `limit x -> 0: f(x)` — contextual keyword for limit
+                // claim. Activates only when `limit` is followed by an
+                // identifier and then `->`. Otherwise `limit` is a regular
+                // user identifier.
+                if let TokenKind::Ident(name) = self.peek().clone() {
+                    if name == "limit"
+                        && matches!(self.peek_at(1), TokenKind::Ident(_))
+                        && matches!(self.peek_at(2), TokenKind::Arrow)
+                    {
+                        self.advance(); // `limit`
+                        let TokenKind::Ident(var) = self.peek().clone() else {
+                            unreachable!()
+                        };
+                        self.advance(); // var
+                        self.advance(); // `->`
+                        return Some(self.parse_limit_body(
+                            start,
+                            var,
+                            false, // is_sample = false
+                            depth,
+                        )?);
+                    }
+                    if name == "sample_limit"
+                        && matches!(self.peek_at(1), TokenKind::Ident(_))
+                        && matches!(self.peek_at(2), TokenKind::Arrow)
+                    {
+                        self.advance(); // `sample_limit`
+                        let TokenKind::Ident(var) = self.peek().clone() else {
+                            unreachable!()
+                        };
+                        self.advance(); // var
+                        self.advance(); // `->`
+                        return Some(self.parse_limit_body(
+                            start,
+                            var,
+                            true, // is_sample = true
+                            depth,
+                        )?);
+                    }
+                    // B06: `series n in 0..inf: a[n]` — contextual keyword
+                    // for series binder. Activates only when `series` is
+                    // followed by an identifier and then `in`.
+                    if name == "series"
+                        && matches!(self.peek_at(1), TokenKind::Ident(_))
+                        && matches!(self.peek_at(2), TokenKind::Keyword(Keyword::In))
+                    {
+                        self.advance(); // `series`
+                        let binders = self.parse_binders()?;
+                        let guard = self.parse_binder_guard();
+                        if !self.eat(&TokenKind::Colon) {
+                            self.error_here("E-SYN-111", "expected `:` after series binder variables");
+                            return None;
+                        }
+                        self.skip_newlines();
+                        if matches!(self.peek(), TokenKind::Indent) {
+                            self.advance();
+                        }
+                        let body = self.parse_expr_depth(depth + 1)?;
+                        return Some(Expr {
+                            kind: ExprKind::Binder {
+                                kind: BinderKind::Series,
+                                binders,
+                                body: Box::new(body),
+                                guard,
+                            },
+                            source: start.cover(self.last_span()),
+                        });
+                    }
+                }
                 // Contextual keywords for partial/total derivatives:
                 // `partial(T)`, `∂(T)`, `total(T)`, `d(T)` — only when
                 // followed by `(`.  Otherwise these are regular identifiers.
@@ -980,5 +1065,65 @@ impl super::Parser {
                 None
             }
         }
+    }
+
+    /// B04: Parse the body of a `limit x -> T[+|-]: body` or
+    /// `sample_limit x -> T[+|-]: body` expression.
+    ///
+    /// The caller has already consumed `limit`/`sample_limit`, the
+    /// variable name, and `->`.  We parse the target at the
+    /// multiplicative level so that `+`/`-` before `:` is interpreted
+    /// as a one-sided direction suffix, not a binary operator.  Complex
+    /// targets like `a + b` require parentheses: `limit x -> (a + b): f(x)`.
+    fn parse_limit_body(
+        &mut self,
+        start: emath_core::Span,
+        var: String,
+        is_sample: bool,
+        depth: usize,
+    ) -> Option<Expr> {
+        let target = self.parse_multiplicative(depth)?;
+        // One-sided suffix: `+` or `-` immediately before `:`.
+        let direction = if matches!(self.peek(), TokenKind::Plus | TokenKind::Minus)
+            && matches!(self.peek_at(1), TokenKind::Colon)
+        {
+            let dir = if matches!(self.peek(), TokenKind::Plus) {
+                LimitDirection::FromAbove
+            } else {
+                LimitDirection::FromBelow
+            };
+            self.advance(); // consume `+` or `-`
+            dir
+        } else {
+            LimitDirection::TwoSided
+        };
+        if !self.eat(&TokenKind::Colon) {
+            self.error_here("E-SYN-111", "expected `:` after limit target");
+            return None;
+        }
+        self.skip_newlines();
+        if matches!(self.peek(), TokenKind::Indent) {
+            self.advance();
+        }
+        let body = self.parse_expr_depth(depth + 1)?;
+        let kind = if is_sample {
+            ExprKind::SampleLimit {
+                var,
+                target: Box::new(target),
+                direction,
+                body: Box::new(body),
+            }
+        } else {
+            ExprKind::Limit {
+                var,
+                target: Box::new(target),
+                direction,
+                body: Box::new(body),
+            }
+        };
+        Some(Expr {
+            kind,
+            source: start.cover(self.last_span()),
+        })
     }
 }

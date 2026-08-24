@@ -304,6 +304,29 @@ pub(super) fn admit_declaration(
         }
     }
 
+    // Invariant section: each statement is a claim (Bool) that must hold.
+    // Uses lower_requirement so claim expressions (limit, series, asymp)
+    // are admitted as Bool(true) rather than erroring.
+    if let Some(section) = by_name.get("invariant") {
+        for stmt in &section.suite.statements {
+            let expr = match &stmt.kind {
+                StmtKind::Expr(e) => e,
+                StmtKind::Require(e) | StmtKind::Ensure(e) | StmtKind::Invariant(e) => e,
+                _ => {
+                    admitter.error(
+                        "E-SYN-101",
+                        "only expressions are allowed in `invariant:`",
+                        stmt.source,
+                    );
+                    continue;
+                }
+            };
+            if let Some(id) = admitter.lower_requirement(expr) {
+                admitter.constraints.push(id);
+            }
+        }
+    }
+
     // Definitions.
     let mut definitions: BTreeMap<String, ExprId> = BTreeMap::new();
     if let Some(section) = by_name.get("definitions") {

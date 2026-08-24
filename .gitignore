@@ -28,7 +28,7 @@ tests/*/target/
 # local working docs (product notes, curated queues); the shipped spec
 # lives under language/ and the public contract docs under implementation/
 docs/*
-!docs/MANUAL.md
+# MANUAL.md lives at repo root (next to README), not under docs/
 
 # beads description files (local-only, not shipped)
 .beads-desc/

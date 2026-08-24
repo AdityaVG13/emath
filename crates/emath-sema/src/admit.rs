@@ -46,6 +46,7 @@ const PHASE1_SECTIONS: &[&str] = &[
     "evidence",
     "host",
     "constraints",
+    "invariant",
 ];
 
 /// Folds a declaration name for confusable-collision detection (spec
@@ -151,6 +152,10 @@ struct Admitter {
     host_types: BTreeSet<String>,
     /// Finite binder locals (`sum i in 0..n`). Looked up before inputs.
     index_locals: BTreeMap<String, i64>,
+    /// When true, claim expressions (limit, series, asymp) are admitted
+    /// as Bool(true) instead of erroring. Set during require/invariant
+    /// lowering; false during definitions lowering.
+    in_claim_context: bool,
 }
 
 impl Admitter {
@@ -169,6 +174,7 @@ impl Admitter {
             types: Vec::new(),
             host_types: BTreeSet::new(),
             index_locals: BTreeMap::new(),
+            in_claim_context: false,
         }
     }
 

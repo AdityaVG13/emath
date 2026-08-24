@@ -312,5 +312,7 @@ pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
         ExprKind::On { .. } => "on",
         ExprKind::Conditioned { .. } => "conditioned",
         ExprKind::UnitQuery { .. } => "unit-query",
+        ExprKind::Limit { .. } => "limit",
+        ExprKind::SampleLimit { .. } => "sample-limit",
     }
 }

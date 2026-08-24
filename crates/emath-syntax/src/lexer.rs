@@ -422,6 +422,19 @@ impl Lexer<'_> {
                 self.pos += 1;
                 self.push(TokenKind::Caret, start);
             }
+            b'~' => {
+                self.pos += 1;
+                if self.peek() == Some(b'~') {
+                    self.pos += 1;
+                    self.push(TokenKind::TildeTilde, start);
+                } else {
+                    self.error(
+                        "E-SYN-101",
+                        "unexpected `~`; use `~~` for asymptotic equivalence",
+                        start,
+                    );
+                }
+            }
             b'(' => {
                 self.pos += 1;
                 self.paren_depth += 1;

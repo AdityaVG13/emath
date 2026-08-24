@@ -148,7 +148,8 @@ pub(crate) fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut
         ExprNode::Binder { body, .. } => collect_var_names(package, *body, out),
         ExprNode::Differentiate { body, .. }
         | ExprNode::Solve { body, .. }
-        | ExprNode::Optimize { body, .. } => collect_var_names(package, *body, out),
+        | ExprNode::Optimize { body, .. }
+        | ExprNode::SampleLimit { body, .. } => collect_var_names(package, *body, out),
     }
 }
 

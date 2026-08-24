@@ -259,6 +259,16 @@ pub enum EmirOp {
         tolerance: f64,
         max_iter: u32,
     },
+    /// Numerical limit approximation (B04).  Evaluates `body` with the
+    /// input at `var_index` set to sample points approaching `target`
+    /// from the given `direction` (0 = two-sided, +1 = from above,
+    /// -1 = from below).  Returns the best-estimate limit as F64.
+    SampleLimit {
+        body: EmirProgram,
+        var_index: u16,
+        target: EmirValue,
+        direction: EmirValue,
+    },
 }
 
 impl EmirOp {
@@ -348,6 +358,7 @@ impl EmirOp {
             Self::Differentiate { .. } => "differentiate",
             Self::Solve { .. } => "solve",
             Self::Optimize { .. } => "optimize",
+            Self::SampleLimit { .. } => "sample-limit",
         }
     }
 }

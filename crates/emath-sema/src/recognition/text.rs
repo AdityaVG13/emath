@@ -149,6 +149,22 @@ pub fn expr_text(expr: &Expr) -> String {
             };
             format!("{} {}", kw, expr_text(expr))
         }
+        ExprKind::Limit { var, target, direction, body } => {
+            let dir = match direction {
+                emath_core::tree::LimitDirection::TwoSided => "",
+                emath_core::tree::LimitDirection::FromAbove => "+",
+                emath_core::tree::LimitDirection::FromBelow => "-",
+            };
+            format!("limit {var} -> {}{dir}: {}", expr_text(target), expr_text(body))
+        }
+        ExprKind::SampleLimit { var, target, direction, body } => {
+            let dir = match direction {
+                emath_core::tree::LimitDirection::TwoSided => "",
+                emath_core::tree::LimitDirection::FromAbove => "+",
+                emath_core::tree::LimitDirection::FromBelow => "-",
+            };
+            format!("sample_limit {var} -> {}{dir}: {}", expr_text(target), expr_text(body))
+        }
     }
 }
 

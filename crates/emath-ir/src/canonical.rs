@@ -291,6 +291,7 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                 crate::expression::BinderKind::Integral => "integral",
                 crate::expression::BinderKind::ForAll => "forall",
                 crate::expression::BinderKind::Exists => "exists",
+                crate::expression::BinderKind::Series => "series",
             });
             out.push('\n');
             for variable in variables {
@@ -346,6 +347,13 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             for v in vars {
                 push_str(out, v);
             }
+            encode_expr(out, exprs, *body);
+        }
+        ExprNode::SampleLimit { body, var, target, direction } => {
+            push_str(out, "sample-limit");
+            push_str(out, var);
+            encode_expr(out, exprs, *target);
+            encode_expr(out, exprs, *direction);
             encode_expr(out, exprs, *body);
         }
     }

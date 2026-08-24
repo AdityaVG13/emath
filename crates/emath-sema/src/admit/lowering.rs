@@ -2,7 +2,7 @@
 //! EMIR expression nodes with stable inference.
 
 use emath_core::tree::{
-    BinaryOp as SynBinOp, Expr, ExprKind,
+    BinaryOp as SynBinOp, BinderKind, Expr, ExprKind,
     UnaryOp as SynUnOp,
 };
 use emath_core::QualifiedName;
@@ -1095,6 +1095,28 @@ impl super::Admitter {
                             Infer::Bool,
                         ))
                     }
+                    SynBinOp::Asymp => {
+                        if self.in_claim_context {
+                            // Admit as a stated claim: Bool(true).
+                            self.record(
+                                "sema",
+                                "asymptotic equivalence (`~~`) claim admitted (not computationally verified)",
+                                expr.source,
+                            );
+                            let id = self.push_expr(
+                                ExprNode::Literal(Literal::Bool(true)),
+                                expr.source,
+                            );
+                            return Some((id, Infer::Bool));
+                        }
+                        self.error(
+                            E_UNSUPPORTED_TYPE,
+                            "asymptotic equivalence (`~~`) is a claim, not a computation; \
+                             use it in `require` or `invariant`",
+                            expr.source,
+                        );
+                        return None;
+                    }
                 }
             }
             ExprKind::If {
@@ -1140,7 +1162,22 @@ impl super::Admitter {
                 binders,
                 body,
                 guard,
-            } => self.lower_finite_binder(expr, *kind, binders, body, guard.as_deref()),
+            } => {
+                // Series in claim context: admit as Bool(true).
+                if *kind == BinderKind::Series && self.in_claim_context {
+                    self.record(
+                        "sema",
+                        "series convergence claim admitted (not computationally verified)",
+                        expr.source,
+                    );
+                    let id = self.push_expr(
+                        ExprNode::Literal(Literal::Bool(true)),
+                        expr.source,
+                    );
+                    return Some((id, Infer::Bool));
+                }
+                self.lower_finite_binder(expr, *kind, binders, body, guard.as_deref())
+            }
             ExprKind::Derivative { .. } => {
                 // The parser may produce nested Derivative nodes:
                 // `derivative x wrt y` becomes Derivative(Derivative(x)) wrt y.
@@ -1335,6 +1372,83 @@ impl super::Admitter {
                 );
                 Some((id, Infer::F64))
             }
+            ExprKind::Limit { var, target, direction, body } => {
+                if self.in_claim_context {
+                    // Admit as a stated claim: Bool(true), not verified.
+                    self.record(
+                        "sema",
+                        format!("limit {var} -> claim admitted (not computationally verified)"),
+                        expr.source,
+                    );
+                    let _ = (target, direction, body);
+                    let id = self.push_expr(
+                        ExprNode::Literal(Literal::Bool(true)),
+                        expr.source,
+                    );
+                    return Some((id, Infer::Bool));
+                }
+                let dir = match direction {
+                    emath_core::tree::LimitDirection::TwoSided => "",
+                    emath_core::tree::LimitDirection::FromAbove => "+",
+                    emath_core::tree::LimitDirection::FromBelow => "-",
+                };
+                self.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`limit {var} -> {dir}` is a claim, not a computation; \
+                         use `sample_limit` for numerical evaluation or place in `require`/`invariant`"
+                    ),
+                    expr.source,
+                );
+                let _ = (target, body);
+                None
+            }
+            ExprKind::SampleLimit { var, target, direction, body } => {
+                // Lower as a SampleLimit node: the body is compiled as a
+                // sub-program with the limit variable as an input.
+                let dir_bits = match direction {
+                    emath_core::tree::LimitDirection::TwoSided => 0.0_f64,
+                    emath_core::tree::LimitDirection::FromAbove => 1.0_f64,
+                    emath_core::tree::LimitDirection::FromBelow => -1.0_f64,
+                };
+                let (target_id, _) = self.lower_expr(target)?;
+                let dir_id = self.push_expr(
+                    ExprNode::Literal(Literal::FloatBits(dir_bits.to_bits())),
+                    expr.source,
+                );
+                // Register the limit variable as a temporary input so the
+                // body can reference it.
+                let prev = self.inputs.insert(var.clone(), Infer::F64);
+                let (body_id, body_infer) = self.lower_expr(body)?;
+                if let Some(p) = prev {
+                    self.inputs.insert(var.clone(), p);
+                } else {
+                    self.inputs.remove(var);
+                }
+                if !is_numeric_element(&body_infer) {
+                    self.error(
+                        "E-TYPE-012",
+                        "sample_limit body must be numeric",
+                        body.source,
+                    );
+                    return None;
+                }
+                let id = self.push_expr(
+                    ExprNode::SampleLimit {
+                        body: body_id,
+                        var: var.clone(),
+                        target: target_id,
+                        direction: dir_id,
+                    },
+                    expr.source,
+                );
+                self.record(
+                    "sema",
+                    format!("sample_limit {var} → numerical limit approximation"),
+                    expr.source,
+                );
+                Some((id, Infer::F64))
+            }
             other => {
                 self.error(
                     E_UNSUPPORTED_TYPE,
@@ -1350,7 +1464,14 @@ impl super::Admitter {
     }
 
     pub(super) fn lower_requirement(&mut self, expr: &Expr) -> Option<ExprId> {
-        let (id, infer) = self.lower_expr(expr)?;
+        // Claim expressions (limit, series, asymp) are admitted as stated
+        // claims in require/invariant. They produce Bool(true) — the claim
+        // is recorded but not computationally verified in Phase 1.
+        let prev_claim = self.in_claim_context;
+        self.in_claim_context = true;
+        let result = self.lower_expr(expr);
+        self.in_claim_context = prev_claim;
+        let (id, infer) = result?;
         if !matches!(infer, Infer::Bool) {
             self.error(
                 "E-CTOR-032",

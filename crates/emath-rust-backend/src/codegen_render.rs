@@ -586,6 +586,53 @@ pub(crate) fn op_expr(
             block.push_str("__x0 }");
             Ok(Expr::Raw(block))
         }
+        EmirOp::SampleLimit {
+            body,
+            var_index,
+            target,
+            direction,
+        } => {
+            // Numerical limit: sample body at target ± h for decreasing h.
+            // Match interpreter algorithm: geometric step sizes 1e-1..1e-12,
+            // return on 1% agreement between successive finite samples.
+            let target_str = render_expr(&operand(program, *target));
+            let dir_str = render_expr(&operand(program, *direction));
+            let vi = *var_index as usize;
+            let mut lim_names = names.to_vec();
+            while lim_names.len() <= vi {
+                lim_names.push(String::new());
+            }
+            lim_names[vi] = "__lv".to_string();
+            let mut inner = String::new();
+            for (index, (op, _)) in body.ops.iter().enumerate() {
+                let e = op_expr(op, body, &lim_names, states)?;
+                inner.push_str(&format!("let __le{index} = {};\n", render_expr(&e)));
+            }
+            let result_idx = body.result.0;
+            Ok(Expr::Raw(format!(
+                "{{ let __t = {target_str}; let __d = {dir_str};\n\
+                 let __dirs: &[f64] = if __d > 0.5 {{ &[1.0] }} else if __d < -0.5 {{ &[-1.0] }} else {{ &[1.0, -1.0] }};\n\
+                 let mut __best = f64::NAN;\n\
+                 let mut __prev = f64::NAN;\n\
+                 for __exp in 1u32..=12 {{\n\
+                 let __h = 10f64.powi(-(__exp as i32));\n\
+                 for &__dd in __dirs {{\n\
+                 let __lv = __t + __dd * __h;\n\
+                 {inner}\
+                 let __fx = __le{result_idx};\n\
+                 if __fx.is_finite() {{\n\
+                 if __prev.is_finite() && (__fx - __prev).abs() <= __fx.abs() * 0.01 + 1e-14 {{\n\
+                 return __fx;\n\
+                 }}\n\
+                 __prev = __fx;\n\
+                 __best = __fx;\n\
+                 }}\n\
+                 }}\n\
+                 }}\n\
+                 if __best.is_finite() {{ __best }} else {{ panic!(\"sample_limit produced no finite values\"); }}\n\
+                 }}"
+            )))
+        }
     }
 }
 

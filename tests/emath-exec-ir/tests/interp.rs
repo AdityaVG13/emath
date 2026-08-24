@@ -1258,3 +1258,82 @@ fn rs_code_pipeline_evaluates() {
     };
     assert!(dist >= 5, "RS min distance {} < 5 (Singleton bound)", dist);
 }
+
+// ─── sample_limit computation (B04) ───
+#[test]
+fn sample_limit_sin_x_over_x_approaches_one() {
+    // Body sub-program: sin(x) / x where x is input 0.
+    let body = EmirProgram {
+        ops: vec![
+            (EmirOp::LoadInput(0), Span::default()),
+            (EmirOp::Sin(EmirValue(0)), Span::default()),
+            (EmirOp::LoadInput(0), Span::default()),
+            (EmirOp::F64Div(EmirValue(1), EmirValue(2)), Span::default()),
+        ],
+        result: EmirValue(3),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    // Main program: target=0, direction=0 (two-sided), sample_limit.
+    let prog = program(vec![
+        const_bits(0.0),                // 0: target = 0
+        const_bits(0.0),                // 1: direction = two-sided
+        EmirOp::SampleLimit {
+            body,
+            var_index: 0,
+            target: EmirValue(0),
+            direction: EmirValue(1),
+        },
+    ]);
+    let result = evaluate(&prog, &[], &[]).unwrap();
+    let val = match result {
+        Value::F64(v) => v,
+        other => panic!("expected F64, got {other:?}"),
+    };
+    // sin(x)/x → 1 as x → 0. The numerical approximation should be
+    // very close to 1.0 (within 1% tolerance).
+    assert!(
+        (val - 1.0).abs() < 0.01,
+        "sample_limit sin(x)/x as x->0 should be ~1.0, got {val}"
+    );
+}
+
+#[test]
+fn sample_limit_one_sided_from_above() {
+    // Body: 1/x where x is input 0. From above (direction=1), as x→0+,
+    // 1/x → +inf. The sampler should produce large positive values.
+    let body = EmirProgram {
+        ops: vec![
+            (EmirOp::ConstF64(1.0f64.to_bits()), Span::default()),
+            (EmirOp::LoadInput(0), Span::default()),
+            (EmirOp::F64Div(EmirValue(0), EmirValue(1)), Span::default()),
+        ],
+        result: EmirValue(2),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    let prog = program(vec![
+        const_bits(0.0),                // target = 0
+        const_bits(1.0),                // direction = from above
+        EmirOp::SampleLimit {
+            body,
+            var_index: 0,
+            target: EmirValue(0),
+            direction: EmirValue(1),
+        },
+    ]);
+    let result = evaluate(&prog, &[], &[]).unwrap();
+    let val = match result {
+        Value::F64(v) => v,
+        other => panic!("expected F64, got {other:?}"),
+    };
+    // 1/x as x→0+ grows without bound. The sampler returns the last
+    // finite value before convergence or the best estimate.
+    // It should be a large positive number.
+    assert!(
+        val > 1e5,
+        "1/x as x->0+ should be very large, got {val}"
+    );
+}
