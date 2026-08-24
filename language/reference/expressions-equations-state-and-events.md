@@ -274,8 +274,13 @@ to the objective for each constraint. Inequality constraints (`>=`,
 (`==`) use `violation^2` penalties.
 
 Not admitted yet: full jacobian and
-hessian, `transitions:` / `events:`, discrete hybrid models,
-`einsum`.
+hessian, `transitions:` / `events:`, discrete hybrid models.
+
+`einsum("ik,kj->ij", A, B)` is admitted and evaluates: the subscript
+string defines the Einstein summation contraction (input indices,
+arrow, output indices). The interp handles Vector, Matrix, and Tensor
+operands and returns the contracted result. Block matrices (`[A | b]`)
+are not yet admitted.
 
 Spatial operators (admitted in `definitions:` and `equations:`):
 

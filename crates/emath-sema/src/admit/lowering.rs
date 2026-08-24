@@ -196,11 +196,33 @@ impl super::Admitter {
                     "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" => Some(2),
                     "lerp" | "clamp" => Some(3),
                     "laplacian_dirichlet" => Some(4),
+                    "einsum" => {
+                        // einsum(subscripts, tensor1, ...) — variable arity, min 2.
+                        if args.len() < 2 {
+                            self.error(
+                                "E-TYPE-012",
+                                "`einsum` expects at least 2 arguments (subscripts + tensors)",
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        // First arg must be a string literal.
+                        if !matches!(&args[0].kind, ExprKind::Str(_)) {
+                            self.error(
+                                "E-TYPE-012",
+                                "`einsum` first argument must be a string literal",
+                                args[0].source,
+                            );
+                            return None;
+                        }
+                        // Lower as Einsum op.
+                        return self.lower_einsum(expr, &name, &args);
+                    }
                     _ => {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y)"
+                                "unknown function `{name}` (Phase 1 builtins: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, lerp, clamp, is_finite, norm, transpose, dot, length, sum, product, mean, laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y, einsum)"
                             ),
                             function.source,
                         );
@@ -1227,5 +1249,71 @@ impl super::Admitter {
             return None;
         }
         Some(id)
+    }
+
+    /// Lower an `einsum("subscripts", A, B, ...)` call.
+    /// The subscripts string is carried as the first Call argument
+    /// (a Literal::Text). The emitter extracts it and emits EmirOp::Einsum.
+    fn lower_einsum(
+        &mut self,
+        expr: &Expr,
+        name: &str,
+        args: &[Expr],
+    ) -> Option<(ExprId, Infer)> {
+        use emath_ir::{ExprNode, Literal};
+
+        // Lower all arguments (including the subscripts string literal).
+        let mut arg_ids = Vec::with_capacity(args.len());
+        for arg in args {
+            let (id, _) = self.lower_expr(arg)?;
+            arg_ids.push(id);
+        }
+
+        // Determine the output rank from the subscripts string.
+        let subscripts = if let ExprKind::Str(s) = &args[0].kind {
+            s.clone()
+        } else {
+            // Already checked in the caller, but defensive.
+            self.error(
+                "E-TYPE-012",
+                "`einsum` first argument must be a string literal",
+                args[0].source,
+            );
+            return None;
+        };
+
+        let output_spec = if let Some((_, rhs)) = subscripts.split_once("->") {
+            rhs.trim().to_string()
+        } else {
+            // Implicit mode: non-repeated indices.
+            let inputs: Vec<&str> = subscripts.split(',').map(str::trim).collect();
+            let mut counts: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
+            for spec in &inputs {
+                for c in spec.chars() {
+                    *counts.entry(c).or_insert(0) += 1;
+                }
+            }
+            inputs.iter()
+                .flat_map(|spec| spec.chars())
+                .filter(|c| counts.get(c) == Some(&1))
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter().collect::<String>()
+        };
+
+        let infer = match output_spec.len() {
+            0 => Infer::F64,
+            1 => Infer::Vector { extent: None },
+            2 => Infer::Matrix { rows: None, cols: None },
+            _ => Infer::HostDeferred,
+        };
+
+        let id = self.push_expr(
+            ExprNode::Call {
+                function: QualifiedName(name.to_string()),
+                arguments: arg_ids,
+            },
+            expr.source,
+        );
+        Some((id, infer))
     }
 }

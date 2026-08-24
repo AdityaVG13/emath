@@ -356,6 +356,12 @@ pub(crate) fn op_expr(
             render_expr(&operand(program, *l)),
             render_expr(&operand(program, *r)),
         ))),
+        // einsum codegen: the interp handles evaluation; Rust codegen
+        // emits a placeholder that panics at runtime. Full tensor
+        // codegen is a Stage 2 concern.
+        EmirOp::Einsum { subscripts, .. } => Ok(Expr::Raw(format!(
+            "panic!(\"einsum({subscripts:?}) codegen not yet implemented\")"
+        ))),
         EmirOp::Fold {
             start,
             end,
