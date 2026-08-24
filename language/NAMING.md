@@ -77,7 +77,7 @@ be explicit about the domain or when disambiguation matters.
 `laplacian_dirichlet` `gradient` `gradient_2d_x` `gradient_2d_y`
 
 **coding::** (coding theory)
-`poly_eval_mod` `rs_encode`
+`poly_eval_mod` `rs_encode` `hamming_distance`
 
 **Reduction binders** (not namespaced — they are language constructs)
 `sum` `product` `mean`

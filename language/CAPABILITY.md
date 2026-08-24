@@ -96,3 +96,4 @@
 | `congruence` | 3 | yes (Bool) |
 | `poly_eval_mod` | 3 | yes (i64, Horner over GF(p)) |
 | `rs_encode` | 3 | yes (Vector, RS codeword) |
+| `hamming_distance` | 2 | yes (i64, positions where vectors differ) |

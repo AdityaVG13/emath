@@ -789,6 +789,33 @@ fn eval_op(
             }
             Ok(Value::Vector(codeword))
         }
+        EmirOp::HammingDistance(a, b) => {
+            let a_vec = match register(registers, a)? {
+                Value::Vector(data) => data.clone(),
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: a.0,
+                    op: name,
+                }),
+            };
+            let b_vec = match register(registers, b)? {
+                Value::Vector(data) => data.clone(),
+                _ => return Err(EvalFault::TypeConfusion {
+                    register: b.0,
+                    op: name,
+                }),
+            };
+            if a_vec.len() != b_vec.len() {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "hamming_distance: vectors must have equal length",
+                });
+            }
+            let dist = a_vec.iter()
+                .zip(b_vec.iter())
+                .filter(|(x, y)| x.to_bits() != y.to_bits())
+                .count() as i64;
+            Ok(Value::I64(dist))
+        }
         EmirOp::Fold {
             start,
             end,

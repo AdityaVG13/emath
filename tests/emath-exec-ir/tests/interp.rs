@@ -1372,3 +1372,95 @@ fn rs_encode_basic() {
     // f(0)=1, f(1)=6, f(2)=17%7=3, f(3)=34%7=6, f(4)=57%7=1, f(5)=86%7=2, f(6)=121%7=2
     assert_eq!(result, Value::Vector(vec![1.0, 6.0, 3.0, 6.0, 1.0, 2.0, 2.0]));
 }
+
+// ─── RS proximity testing (hamming distance) ───
+
+#[test]
+fn hamming_distance_identical() {
+    let program = program(vec![
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b (same)
+        EmirOp::HammingDistance(EmirValue(3), EmirValue(7)), // 8
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(0));
+}
+
+#[test]
+fn hamming_distance_one_diff() {
+    let program = program(vec![
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
+        const_bits(1.0), const_bits(9.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b (one diff)
+        EmirOp::HammingDistance(EmirValue(3), EmirValue(7)), // 8
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(1));
+}
+
+#[test]
+fn hamming_distance_all_diff() {
+    let program = program(vec![
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
+        const_bits(4.0), const_bits(5.0), const_bits(6.0),
+        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b (all diff)
+        EmirOp::HammingDistance(EmirValue(3), EmirValue(7)), // 8
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(3));
+}
+
+#[test]
+fn rs_proximity_basic() {
+    // RS(7,3) over GF(7): f(x) = 1 + 2x + 3x^2
+    // codeword = [1, 6, 3, 6, 1, 2, 2]
+    // noisy word: flip position 1 (6→0) and position 3 (6→4)
+    // noisy = [1, 0, 3, 4, 1, 2, 2]
+    // hamming_distance(codeword, noisy) = 2
+    let program = program(vec![
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
+        const_bits(7.0), // 4: n
+        const_bits(7.0), // 5: p
+        EmirOp::RSEncode(EmirValue(3), EmirValue(4), EmirValue(5)), // 6: codeword
+        const_bits(1.0), const_bits(0.0), const_bits(3.0),
+        const_bits(4.0), const_bits(1.0), const_bits(2.0), const_bits(2.0),
+        EmirOp::VectorCreate(vec![EmirValue(7), EmirValue(8), EmirValue(9),
+                                   EmirValue(10), EmirValue(11), EmirValue(12), EmirValue(13)]), // 14: noisy
+        EmirOp::HammingDistance(EmirValue(6), EmirValue(14)), // 15: distance
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    assert_eq!(result, Value::I64(2));
+}
+
+#[test]
+fn rs_proximity_singleton_bound() {
+    // RS(7,3) over GF(7): minimum distance = n - k + 1 = 5
+    // Two distinct degree-2 polynomials over GF(7) agree on at most 2 points,
+    // so their codewords differ on at least 5 positions.
+    // f1(x) = 1 + 2x + 3x^2, f2(x) = 2 + 3x + x^2
+    let program = program(vec![
+        // f1
+        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3
+        // f2
+        const_bits(2.0), const_bits(3.0), const_bits(1.0),
+        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7
+        const_bits(7.0), // 8: n
+        const_bits(7.0), // 9: p
+        EmirOp::RSEncode(EmirValue(3), EmirValue(8), EmirValue(9)), // 10: cw1
+        EmirOp::RSEncode(EmirValue(7), EmirValue(8), EmirValue(9)), // 11: cw2
+        EmirOp::HammingDistance(EmirValue(10), EmirValue(11)), // 12: dist
+    ]);
+    let result = evaluate(&program, &[], &[]).unwrap();
+    // Minimum distance should be >= 5 (Singleton bound: n - k + 1 = 5)
+    let dist = match result {
+        Value::I64(d) => d,
+        _ => panic!("expected I64"),
+    };
+    assert!(dist >= 5, "RS minimum distance {} < 5 (Singleton bound violated)", dist);
+}

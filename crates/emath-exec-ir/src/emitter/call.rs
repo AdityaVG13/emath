@@ -546,6 +546,11 @@ impl super::Emitter {
                 let p = self.emit(package, args[2])?;
                 self.push(EmirOp::RSEncode(c, n, p), span)
             }
+            "hamming_distance" => {
+                let a = self.emit(package, args[0])?;
+                let b = self.emit(package, args[1])?;
+                self.push(EmirOp::HammingDistance(a, b), span)
+            }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
     }

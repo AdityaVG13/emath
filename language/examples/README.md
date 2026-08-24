@@ -37,7 +37,8 @@ say what the compiler does with each one today.
 | [complex-numbers.emath](intro/complex-numbers.emath) | Parses. Complex type admission, `Ni` literal suffix (`2i`, `3.5i`), `Vector<Complex, [2]>` (B14). |
 | [unit-queries.emath](intro/unit-queries.emath) | Parses. `unit of E` / `dimension of E` compile-time queries (04 section 1.4). |
 | [einsum.emath](intro/einsum.emath) | Parses. `einsum("ik,kj->ij", A, B)` tensor contraction: matmul, dot product, transpose (B08). |
-| [modular-arithmetic.emath](intro/modular-arithmetic.emath) | Parses. `Mod<p>`/`GF<p>` types, `factorial`, `mod_inv`, `congruence`, `poly_eval_mod`, `rs_encode` — finite field arithmetic and RS code construction (B15/B29/B40). |
+| [modular-arithmetic.emath](intro/modular-arithmetic.emath) | Parses. `GF<p>` types, `factorial`, `mod_inv`, `congruence`, `poly_eval_mod`, `rs_encode` — finite field arithmetic and RS code construction (B15/B29/B40). |
+| [rs-proximity.emath](intro/rs-proximity.emath) | Parses. RS(7,3) over GF(7): codeword construction, noise injection, Hamming distance, Singleton bound verification — the computational exploration loop for RS proximity conjectures. |
 
 ## numerical — numerics and dynamics
 

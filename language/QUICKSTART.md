@@ -97,4 +97,5 @@ Save as `my_first.emath`, run `emath test my_first.emath`.
 | Simulate ODEs/DAEs | [examples/intro/damped-oscillator.emath](examples/intro/damped-oscillator.emath) |
 | Do linear algebra | [examples/intro/tensor-face.emath](examples/intro/tensor-face.emath) |
 | Work with finite fields | [examples/intro/modular-arithmetic.emath](examples/intro/modular-arithmetic.emath) |
+| Explore RS proximity | [examples/intro/rs-proximity.emath](examples/intro/rs-proximity.emath) |
 | Add a new language feature | [MAINTAINING.md](MAINTAINING.md) |

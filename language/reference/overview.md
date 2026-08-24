@@ -143,6 +143,7 @@ mod_inv(a, m)                  (modular inverse via extended GCD)
 congruence(a, b, m)                  (congruence test: (a-b) mod m == 0)
 poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's method)
 rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p))
+hamming_distance(a, b)         (count positions where two vectors differ)
 1 + 2i / 2i / 3.5i             (complex literals, Ni suffix — computes via Complex arithmetic)
 unit of E / dimension of E     (compile-time queries, parse only)
 ```
