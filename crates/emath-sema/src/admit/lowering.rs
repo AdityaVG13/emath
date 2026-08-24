@@ -1006,7 +1006,8 @@ impl super::Admitter {
                 kind,
                 binders,
                 body,
-            } => self.lower_finite_binder(expr, *kind, binders, body),
+                guard,
+            } => self.lower_finite_binder(expr, *kind, binders, body, guard.as_deref()),
             ExprKind::Derivative { .. } => {
                 // The parser may produce nested Derivative nodes:
                 // `derivative x wrt y` becomes Derivative(Derivative(x)) wrt y.

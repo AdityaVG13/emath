@@ -16,6 +16,7 @@ impl super::super::Admitter {
         kind: BinderKind,
         binders: &[emath_core::tree::Binder],
         body: &Expr,
+        guard: Option<&Expr>,
     ) -> Option<(ExprId, Infer)> {
         if binders.len() != 1 {
             self.error(
@@ -36,7 +37,7 @@ impl super::super::Admitter {
         };
         let Some((start, end)) = integer_range(domain) else {
             // Variable-bound range: lower as a runtime fold.
-            return self.lower_variable_bound_binder(expr, kind, binder, domain, body);
+            return self.lower_variable_bound_binder(expr, kind, binder, domain, body, guard);
         };
         if end < start {
             self.error(
@@ -57,7 +58,7 @@ impl super::super::Admitter {
         // For bool folds (forall/exists), use the runtime Fold op for
         // correct bool handling in both interp and codegen.
         if matches!(kind, BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral) {
-            return self.lower_variable_bound_binder(expr, kind, binder, domain, body);
+            return self.lower_variable_bound_binder(expr, kind, binder, domain, body, guard);
         }
         let (combine, identity) = match kind {
             BinderKind::Sum => (emath_ir::BinaryOp::StrictFloatAdd, 0.0_f64),
@@ -79,11 +80,51 @@ impl super::super::Admitter {
         let mut acc_infer = Infer::F64;
         for value in start..end {
             self.index_locals.insert(binder.name.clone(), value);
-            let (term_id, term_infer) = match self.lower_expr(body) {
-                Some(term) => term,
-                None => {
+            let (term_id, term_infer) = if let Some(guard_expr) = guard {
+                // B02: filtered fold — if guard is true, use body; else identity.
+                let (guard_id, guard_infer) = match self.lower_expr(guard_expr) {
+                    Some(result) => result,
+                    None => {
+                        restore_index_local(&mut self.index_locals, &binder.name, previous);
+                        return None;
+                    }
+                };
+                if !matches!(guard_infer, Infer::Bool) {
+                    self.error(
+                        "E-TYPE-012",
+                        "binder guard (`if`) must be a Boolean expression",
+                        guard_expr.source,
+                    );
                     restore_index_local(&mut self.index_locals, &binder.name, previous);
                     return None;
+                }
+                let (body_id, body_infer) = match self.lower_expr(body) {
+                    Some(result) => result,
+                    None => {
+                        restore_index_local(&mut self.index_locals, &binder.name, previous);
+                        return None;
+                    }
+                };
+                let identity_id = self.push_expr(
+                    ExprNode::Literal(Literal::FloatBits(identity.to_bits())),
+                    expr.source,
+                );
+                let select_id = self.push_expr(
+                    ExprNode::If {
+                        condition: guard_id,
+                        then_value: body_id,
+                        else_value: identity_id,
+                    },
+                    expr.source,
+                );
+                (select_id, body_infer)
+            } else {
+                match self.lower_expr(body) {
+                    Some(term) => term,
+                    None => {
+                        restore_index_local(&mut self.index_locals, &binder.name, previous);
+                        return None;
+                    }
                 }
             };
             if !is_numeric_element(&term_infer) {
@@ -149,6 +190,7 @@ impl super::super::Admitter {
         binder: &emath_core::tree::Binder,
         domain: &Expr,
         body: &Expr,
+        guard: Option<&Expr>,
     ) -> Option<(ExprId, Infer)> {
         let sir_kind = match kind {
             BinderKind::Sum => emath_ir::BinderKind::Sum,
@@ -213,6 +255,43 @@ impl super::super::Admitter {
                 restore_input(&mut self.inputs, &binder.name, prev);
                 return None;
             }
+        };
+        // B02: if a guard is present, wrap the body in a conditional:
+        // if guard then body else identity.
+        let body_id = if let Some(guard_expr) = guard {
+            let (guard_id, guard_infer) = match self.lower_expr(guard_expr) {
+                Some(result) => result,
+                None => {
+                    restore_input(&mut self.inputs, &binder.name, prev);
+                    return None;
+                }
+            };
+            if !matches!(guard_infer, Infer::Bool) {
+                self.error(
+                    "E-TYPE-012",
+                    "binder guard (`if`) must be a Boolean expression",
+                    guard_expr.source,
+                );
+                restore_input(&mut self.inputs, &binder.name, prev);
+                return None;
+            }
+            let identity_literal = match kind {
+                BinderKind::Sum | BinderKind::Integral => Literal::FloatBits(0.0f64.to_bits()),
+                BinderKind::Product => Literal::FloatBits(1.0f64.to_bits()),
+                BinderKind::ForAll => Literal::Bool(true),
+                BinderKind::Exists => Literal::Bool(false),
+            };
+            let identity_id = self.push_expr(ExprNode::Literal(identity_literal), expr.source);
+            self.push_expr(
+                ExprNode::If {
+                    condition: guard_id,
+                    then_value: body_id,
+                    else_value: identity_id,
+                },
+                expr.source,
+            )
+        } else {
+            body_id
         };
         restore_input(&mut self.inputs, &binder.name, prev);
         let is_bool_fold = matches!(kind, BinderKind::ForAll | BinderKind::Exists);

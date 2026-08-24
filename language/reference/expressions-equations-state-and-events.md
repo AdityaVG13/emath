@@ -8,6 +8,8 @@ Mathematical binders include:
 
 ```emath
 sum i in 0..N: x[i]
+sum i in 0..N if i > 0: x[i]    # B02: filtered fold
+sum i in 0..N, j in 0..M: A[i,j] # multi-binder
 integral x in Ω: f(x)
 forall x in domain: property(x)
 exists witness in candidates: valid(witness)
@@ -17,6 +19,12 @@ hessian f wrt x
 ```
 
 A binder produces semantic structure; it is not immediately expanded into loops.
+
+The optional `if <condition>` guard clause (B02) filters the fold: only
+iterations where the condition is true contribute. An always-false guard
+produces the identity element (0 for `sum`, 1 for `product`, `true` for
+`forall`, `false` for `exists`). Multi-binder guards cover all variables
+in the binder list: `sum i in 0..n, j in 0..m if i + j < k: f(i, j)`.
 
 ## Logic connectives
 

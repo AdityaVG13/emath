@@ -131,6 +131,8 @@ impl super::Parser {
         let kind = binder_kind(self.peek());
         self.advance();
         let binders = self.parse_binders()?;
+        // B02: optional `if <condition>` guard clause.
+        let guard = self.parse_binder_guard();
         if self.eat(&TokenKind::Colon) {
             let suite = self.parse_suite()?;
             Some(self.stmt(
@@ -139,6 +141,7 @@ impl super::Parser {
                     kind,
                     binders,
                     suite,
+                    guard,
                 },
             ))
         } else {
@@ -149,6 +152,7 @@ impl super::Parser {
                     kind,
                     binders,
                     body: Box::new(body),
+                    guard,
                 },
                 source: start.cover(self.last_span()),
             };
@@ -158,10 +162,16 @@ impl super::Parser {
 
     pub(super) fn parse_binders(&mut self) -> Option<Vec<Binder>> {
         let mut binders = Vec::new();
+        // B02: suppress postfix `if` so it's available as a guard clause
+        // rather than being consumed as a conditioned expression on the
+        // binder's domain (e.g. `sum i in 0..n if cond: body`).
+        let prev_flag = self.suppress_postfix_if;
+        self.suppress_postfix_if = true;
         loop {
             let start = self.current_span();
             let TokenKind::Ident(name) = self.peek().clone() else {
                 self.error_here("E-SYN-110", "expected a binder variable name");
+                self.suppress_postfix_if = prev_flag;
                 return None;
             };
             self.advance();
@@ -179,6 +189,17 @@ impl super::Parser {
                 break;
             }
         }
+        self.suppress_postfix_if = prev_flag;
         Some(binders)
+    }
+
+    /// B02: parse the optional `if <condition>` guard clause on a binder.
+    /// Returns `Some(expr)` if `if` is present, `None` otherwise.
+    pub(super) fn parse_binder_guard(&mut self) -> Option<Box<Expr>> {
+        if self.eat_keyword(Keyword::If) {
+            self.parse_expr().map(Box::new)
+        } else {
+            None
+        }
     }
 }

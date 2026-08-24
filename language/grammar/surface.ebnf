@@ -114,7 +114,7 @@ list_expr        = "[" , [ expression , { "," , expression } ] , "]"
 record_expr      = path , ":" , suite ;
 range_expr       = [ expression ] , ( ".." | "..=" ) , [ expression ] ;
 
-binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , binder_list , ":" , expression
+binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , binder_list , [ "if" , expression ] , ":" , expression
                  | ( "derivative" | "jacobian" | "hessian" ) , postfix_expr , "wrt" , expression ;
 binder_list      = pattern , "in" , expression , { "," , pattern , "in" , expression } ;
 

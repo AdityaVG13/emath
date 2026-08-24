@@ -43,6 +43,10 @@ struct Parser {
     diagnostics: Diagnostics,
     lex_diagnostics: Diagnostics,
     tree_items: Vec<Item>,
+    /// B02: when true, suppresses the postfix `if` handler so that
+    /// `if` in a binder context is parsed as a guard clause, not as
+    /// a conditioned expression on the binder's domain.
+    suppress_postfix_if: bool,
 }
 
 impl Parser {
@@ -54,6 +58,7 @@ impl Parser {
             diagnostics: Diagnostics::new(),
             lex_diagnostics,
             tree_items: Vec::new(),
+            suppress_postfix_if: false,
         }
     }
 
