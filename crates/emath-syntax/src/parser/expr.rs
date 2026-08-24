@@ -694,7 +694,12 @@ impl super::Parser {
             }
             TokenKind::Keyword(Keyword::Derivative) => {
                 self.advance();
-                let value = self.parse_expr_depth(depth + 1)?;
+                // F5: restrict operand to postfix_expr so that
+                // `derivative(v) + v` parses as `(derivative v) + v`,
+                // not `derivative(v + v)`.  Parenthesised operands
+                // (`derivative(v + v)`) still work because a parenthesised
+                // expression is a primary_expr, hence a postfix_expr.
+                let value = self.parse_postfix(depth + 1)?;
                 Some(Expr {
                     kind: ExprKind::Derivative {
                         value: Box::new(value),

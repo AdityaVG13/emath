@@ -180,14 +180,16 @@ emath model MassSpring:
 }
 
 #[test]
-fn scalar_rate_residual_spelling_is_refused_with_guidance() {
-    // The surface grammar parses `m * derivative(v) + v` as
-    // `m * derivative(v + v)` (the derivative keyword greedily consumes
-    // the additive tail), so a scalar implicit rate cannot be spelled as
-    // a residual tail. The refusal names the boundary: only plain
-    // `der(state)` on a state field is admitted inside residuals. The
-    // non-scalar mass form (`M * der(v) == f`) is the admitted implicit
-    // rate spelling (see `matrix_mass_residual_simulates_like_scalar`).
+fn scalar_rate_residual_spelling_is_admitted_after_f5() {
+    // After F5 (non-greedy derivative operand), `m * derivative(v) + v`
+    // parses as `(m * derivative(v)) + v`, not `m * derivative(v + v)`.
+    // The derivative only consumes the postfix expression `v` (a state
+    // field), so this is a valid implicit ODE residual:
+    //   0 = m * der(v) + v
+    // Previously the greedy parse consumed `v + v` as the derivative
+    // operand, producing `derivative(v + v)` which was refused (E-TYPE-010)
+    // because a complex expression (not a plain state field) appeared as
+    // the derivative operand inside a residual.
     let source = "\
 emath model ResidualDecay:
     inputs:
@@ -198,11 +200,10 @@ emath model ResidualDecay:
         0 = m * derivative(v) + v
 ";
     let result = check_source("residual-decay", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
     assert!(
-        codes.contains(&"E-TYPE-010"),
-        "complex derivative residual must be E-TYPE-010, got {codes:?}"
+        !result.diagnostics.has_errors(),
+        "after F5, `m * derivative(v) + v` should admit as a valid residual, got: {:?}",
+        result.diagnostics.errors().map(|d| (d.code, d.message.as_str())).collect::<Vec<_>>()
     );
 }
 

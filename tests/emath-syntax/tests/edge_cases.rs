@@ -1,9 +1,12 @@
-//! Edge-case regressions: empty / extreme / Unicode lexer + source map.
+//! Edge-case regressions: empty / extreme / Unicode lexer + source map,
+//! and parser edge cases (F5 non-greedy derivative operand).
 
 use emath_core::limits::Limits;
+use emath_core::tree::{ExprKind, BinaryOp, StmtKind};
 use emath_core::{Diagnostic, FileId, SourceStore, Span};
 use emath_syntax::lexer::lex;
 use emath_syntax::token::TokenKind;
+use emath_syntax::parse_str;
 
 #[test]
 fn empty_source_lexes_only_eof() {
@@ -157,4 +160,108 @@ fn diagnostic_message_newlines_cannot_inject_frames() {
         rendered.contains("= help: help line"),
         "help controls must flatten, got {rendered:?}"
     );
+}
+
+// ---- F5: non-greedy derivative operand -------------------------------------
+
+/// Find the expression bound to `name` inside a declaration's
+/// `definitions:` section.  Handles both `Let` and `Assign` statement kinds.
+fn def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'a emath_core::tree::Expr> {
+    let item = tree.items.first()?;
+    let emath_core::tree::Item::Declaration(decl) = item else {
+        return None;
+    };
+    for section in decl.sections() {
+        if section.name == "definitions" {
+            for stmt in &section.suite.statements {
+                match &stmt.kind {
+                    StmtKind::Let { name: n, value, .. } if n == name => return Some(value),
+                    StmtKind::Assign { target, value } if target.segments.first().is_some_and(|s| s == name) => return Some(value),
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn f5_derivative_plus_does_not_greedily_consume() {
+    // `derivative(v) + v` must parse as `(derivative v) + v`,
+    // not `derivative(v + v)`.
+    let source = "\
+emath function f(v: Float64) -> Float64:
+    definitions:
+        result = derivative(v) + v
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "must parse cleanly, got errors: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    // Top level should be Binary(Add, Derivative(v), v)
+    let ExprKind::Binary { op, left, right } = &expr.kind else {
+        panic!("expected Binary at top level, got {:?}", expr.kind);
+    };
+    assert_eq!(*op, BinaryOp::Add, "top-level operator should be Add");
+    assert!(
+        matches!(&left.kind, ExprKind::Derivative { .. }),
+        "left side should be Derivative, got {:?}",
+        left.kind
+    );
+    assert!(
+        matches!(&right.kind, ExprKind::Path { .. }),
+        "right side should be the bare identifier v, got {:?}",
+        right.kind
+    );
+}
+
+#[test]
+fn f5_derivative_parenthesised_operand_still_works() {
+    // `derivative(v + v)` must still parse as derivative of the sum.
+    let source = "\
+emath function f(v: Float64) -> Float64:
+    definitions:
+        result = derivative(v + v)
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "must parse cleanly, got errors: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "result").expect("expected `result` binding");
+    let ExprKind::Derivative { value, wrt } = &expr.kind else {
+        panic!("expected Derivative at top level, got {:?}", expr.kind);
+    };
+    assert!(
+        matches!(value.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        "operand should be v + v, got {:?}",
+        value.kind
+    );
+    assert!(wrt.is_none());
+}
+
+#[test]
+fn f5_derivative_wrt_still_attaches() {
+    // `derivative(y) wrt x` must still attach the wrt clause.
+    let source = "\
+emath function f(x: Float64) -> Float64:
+    definitions:
+        y = x * x
+        dy = derivative(y) wrt x
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "must parse cleanly, got errors: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "dy").expect("expected `dy` binding");
+    let ExprKind::Derivative { wrt, .. } = &expr.kind else {
+        panic!("expected Derivative, got {:?}", expr.kind);
+    };
+    assert!(wrt.is_some(), "wrt must be attached");
 }
