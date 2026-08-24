@@ -85,7 +85,7 @@ cbrt recip fract hypot mod lerp clamp pow
 mean norm length dot transpose
 laplacian laplacian_neumann laplacian_dirichlet laplacian_2d laplacian_2d_neumann
 gradient gradient_2d_x gradient_2d_y
-if cond then a else b
+if cond: a else: b
 vector / matrix / tensor literals
 index and slice  v[i]  m[i, j]  t[0, :, :]
 sum i in 1..6: i

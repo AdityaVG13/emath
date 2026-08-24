@@ -85,6 +85,10 @@ conditional_expr = "if" , expression , ":" , expression , "else" , ":" , express
 binary_expr      = unary_expr , { operator_token , unary_expr } ;
 unary_expr       = { prefix_operator } , postfix_expr ;
 postfix_expr     = primary_expr , { call_suffix | index_suffix | field_suffix | generic_suffix } ;
+(* C3: index_suffix is refused after numeric literals (Int, Float, Quantity).
+   Indexing a number is always a type error; the bracket form is reserved
+   for future unit-bracket syntax.  List, tuple, and path primaries still
+   accept index_suffix. *)
 call_suffix      = "(" , [ argument_list ] , ")" ;
 index_suffix     = "[" , [ expression , { "," , expression } ] , "]" ;
 field_suffix     = "." , identifier ;

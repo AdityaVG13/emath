@@ -265,3 +265,118 @@ emath function f(x: Float64) -> Float64:
     };
     assert!(wrt.is_some(), "wrt must be attached");
 }
+
+// ---- C1: conditional expression spelling -----------------------------------
+
+#[test]
+fn c1_conditional_uses_colon_form() {
+    // The grammar and parser use `if c: a else: b` (colons, no `then`).
+    // ch7's "Implemented today" list previously said `if cond then a else b`
+    // (with `then`) — a documentation drift.  The colon form is what
+    // actually parses and runs.
+    let source = "\
+emath function sign(x: Float64) -> Float64:
+    definitions:
+        s = if x > 0: 1 else: 0
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "colon-form conditional must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "s").expect("expected `s` binding");
+    let ExprKind::If { condition, then_value, else_value } = &expr.kind else {
+        panic!("expected If expression, got {:?}", expr.kind);
+    };
+    // Verify structure: condition is `x > 0`, then is `1`, else is `0`
+    assert!(
+        matches!(&condition.kind, ExprKind::Binary { op: BinaryOp::Gt, .. }),
+        "condition should be x > 0, got {:?}", condition.kind
+    );
+    assert!(
+        matches!(&then_value.kind, ExprKind::Int(_)),
+        "then_value should be 1, got {:?}", then_value.kind
+    );
+    assert!(
+        matches!(&else_value.kind, ExprKind::Int(_)),
+        "else_value should be 0, got {:?}", else_value.kind
+    );
+}
+
+// ---- C3: numeric literal indexing refused ----------------------------------
+
+#[test]
+fn c3_numeric_literal_not_indexed() {
+    // `9.81 [m]` must NOT parse as indexing the decimal 9.81 by m.
+    // After the C3 fix, `parse_postfix` refuses `[` after numeric
+    // literals, so `x` is bound to just `9.81` (a Float), and `[m]`
+    // is left as a separate construct (list-literal statement).
+    let source = "\
+emath function bad() -> Float64:
+    definitions:
+        x = 9.81 [m]
+";
+    let (tree, _diags) = parse_str(source);
+    // The parse may or may not produce errors (the leftover `[m]`
+    // might be consumed as a list-literal expression statement),
+    // but the key invariant is: x is bound to a Float, NOT an Index.
+    let expr = def_expr(&tree, "x").expect("expected `x` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Float(_)),
+        "x should be bound to a Float literal (9.81), not an Index, got {:?}",
+        expr.kind
+    );
+}
+
+#[test]
+fn c3_variable_indexing_still_works() {
+    // `v[0]` on a non-literal primary (path/identifier) must still parse
+    // as indexing.  The C3 fix only refuses `[` after numeric literals.
+    let source = "\
+emath function idx(v: Vector[3]) -> Float64:
+    definitions:
+        x = v[0]
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "variable indexing must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "x").expect("expected `x` binding");
+    let ExprKind::Index { value, indices } = &expr.kind else {
+        panic!("expected Index expression, got {:?}", expr.kind);
+    };
+    assert!(
+        matches!(&value.kind, ExprKind::Path { .. }),
+        "indexed value should be a path (v), got {:?}", value.kind
+    );
+    assert_eq!(indices.len(), 1, "should have one index");
+}
+
+#[test]
+fn c3_list_literal_indexing_still_works() {
+    // `[[1, 2], [3, 4]][0]` on a list literal must still parse as indexing.
+    // The C3 fix only refuses `[` after numeric scalar literals (Int,
+    // Float, Quantity), not after list/tuple primaries.
+    let source = "\
+emath function mat() -> Vector[2]:
+    definitions:
+        row = [[1, 2], [3, 4]][0]
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "list literal indexing must parse cleanly, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "row").expect("expected `row` binding");
+    let ExprKind::Index { value, .. } = &expr.kind else {
+        panic!("expected Index expression, got {:?}", expr.kind);
+    };
+    assert!(
+        matches!(&value.kind, ExprKind::List(_)),
+        "indexed value should be a list, got {:?}", value.kind
+    );
+}
