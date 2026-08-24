@@ -29,8 +29,9 @@ tests/*/target/
 # lives under language/ and the public contract docs under implementation/
 docs/*
 !docs/MANUAL.md
-!docs/WHY_NOT_LEAN.md
-!docs/MASTER_MATH_ROADMAP.md
+
+# beads description files (local-only, not shipped)
+.beads-desc/
 
 # agent contract is local-only
 AGENTS.md
