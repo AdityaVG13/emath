@@ -5,6 +5,7 @@ use emath_core::tree::{
     BinaryOp as SynBinOp, BinderKind, Expr, ExprKind, UnaryOp as SynUnOp,
 };
 use emath_core::QualifiedName;
+use emath_exec_ir::BuiltinId;
 use emath_ir::{ExprId, ExprNode, Extent, Literal, UnitDim, UnitFamily, lookup_unit};
 
 mod helpers;
@@ -250,10 +251,9 @@ impl super::Admitter {
                     return self.lower_reduction(expr, &name, &args[0]);
                 }
                 let arity: Option<usize> = match name.as_str() {
-                    "is_finite" | "exp" | "ln" | "log" | "sqrt" | "sin" | "cos" | "tan"
-                    | "tanh" | "abs" | "floor" | "ceil" | "round" | "sign" | "log2" | "log10" | "sinh" | "cosh" | "atan" | "cbrt" | "recip" | "fract"
-                    | "norm" | "transpose" | "length" | "mean" | "factorial" | "grad" => Some(1),
-                    "min" | "max" | "atan2" | "pow" | "mod" | "hypot" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" | "mod_inv" | "hamming_distance" => Some(2),
+                    s if BuiltinId::from_name(s).is_some() => Some(BuiltinId::from_name(s).unwrap().arity()),
+                    "is_finite" | "norm" | "transpose" | "length" | "mean" | "factorial" | "grad" => Some(1),
+                    "pow" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" | "mod_inv" | "hamming_distance" => Some(2),
                     "lerp" | "clamp" | "congruence" | "poly_eval_mod" | "rs_encode" => Some(3),
                     "laplacian_dirichlet" => Some(4),
                     "einsum" => {

@@ -129,41 +129,12 @@ fn eval_op(
                 _ => Ok(Value::F64(-f64_of(registers, value, name)?)),
             }
         }
-        EmirOp::Exp(value) => Ok(Value::F64(f64_of(registers, value, name)?.exp())),
-        EmirOp::Ln(value) => Ok(Value::F64(f64_of(registers, value, name)?.ln())),
-        EmirOp::Sqrt(value) => Ok(Value::F64(f64_of(registers, value, name)?.sqrt())),
-        EmirOp::Sin(value) => Ok(Value::F64(f64_of(registers, value, name)?.sin())),
-        EmirOp::Cos(value) => Ok(Value::F64(f64_of(registers, value, name)?.cos())),
-        EmirOp::Tan(value) => Ok(Value::F64(f64_of(registers, value, name)?.tan())),
-        EmirOp::Tanh(value) => Ok(Value::F64(f64_of(registers, value, name)?.tanh())),
-        EmirOp::Abs(value) => Ok(Value::F64(f64_of(registers, value, name)?.abs())),
-        EmirOp::Floor(value) => Ok(Value::F64(f64_of(registers, value, name)?.floor())),
-        EmirOp::Ceil(value) => Ok(Value::F64(f64_of(registers, value, name)?.ceil())),
-        EmirOp::Round(value) => Ok(Value::F64(f64_of(registers, value, name)?.round())),
-        EmirOp::Sign(value) => Ok(Value::F64(f64_of(registers, value, name)?.signum())),
-        EmirOp::Log2(value) => Ok(Value::F64(f64_of(registers, value, name)?.log2())),
-        EmirOp::Log10(value) => Ok(Value::F64(f64_of(registers, value, name)?.log10())),
-        EmirOp::Sinh(value) => Ok(Value::F64(f64_of(registers, value, name)?.sinh())),
-        EmirOp::Cosh(value) => Ok(Value::F64(f64_of(registers, value, name)?.cosh())),
-        EmirOp::Atan(value) => Ok(Value::F64(f64_of(registers, value, name)?.atan())),
-        EmirOp::Cbrt(value) => Ok(Value::F64(f64_of(registers, value, name)?.cbrt())),
-        EmirOp::Recip(value) => Ok(Value::F64(f64_of(registers, value, name)?.recip())),
-        EmirOp::Fract(value) => Ok(Value::F64(f64_of(registers, value, name)?.fract())),
-        EmirOp::Hypot(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)?.hypot(f64_of(registers, right, name)?),
-        )),
-        EmirOp::Min(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)?.min(f64_of(registers, right, name)?),
-        )),
-        EmirOp::Max(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)?.max(f64_of(registers, right, name)?),
-        )),
-        EmirOp::Atan2(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)?.atan2(f64_of(registers, right, name)?),
-        )),
-        EmirOp::Mod(left, right) => Ok(Value::F64(
-            f64_of(registers, left, name)? % f64_of(registers, right, name)?,
-        )),
+        EmirOp::UnaryBuiltin(id, value) => Ok(Value::F64(id.eval_unary(f64_of(registers, value, name)?))),
+        EmirOp::BinaryBuiltin(id, left, right) => {
+            let l = f64_of(registers, left, name)?;
+            let r = f64_of(registers, right, name)?;
+            Ok(Value::F64(id.eval_binary(l, r)))
+        }
         EmirOp::Lt(left, right) => Ok(Value::Bool(
             f64_of(registers, left, name)? < f64_of(registers, right, name)?,
         )),

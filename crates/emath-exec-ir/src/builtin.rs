@@ -1,0 +1,371 @@
+//! Builtin function registry: single source of truth for unary/binary
+//! math builtins. Replaces 23 individual EmirOp variants with 2 generic
+//! variants (UnaryBuiltin, BinaryBuiltin) that dispatch through BuiltinId.
+//!
+//! Adding a new unary/binary math builtin = 1 enum variant + 1 arm per method
+//! in this file (~10 LOC). Previously: ~30 LOC spread across 4 files.
+
+use crate::DomainObligation;
+use std::f64::consts::{LN_2, LN_10};
+
+/// Identifier for a registered builtin math function.
+/// Replaces individual EmirOp variants (Exp, Sin, Cos, ...) with a
+/// single `UnaryBuiltin(BuiltinId, EmirValue)` op.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BuiltinId {
+    // Unary f64 -> f64 (19 builtins)
+    Exp, Ln, Sqrt, Sin, Cos, Tan, Tanh, Abs, Floor, Ceil, Round, Sign,
+    Log2, Log10, Sinh, Cosh, Atan, Cbrt, Recip, Fract,
+    // Binary f64 x f64 -> f64 (5 builtins)
+    Hypot, Min, Max, Atan2, Mod,
+}
+
+impl BuiltinId {
+    /// Look up a builtin by its surface name (after namespace stripping).
+    /// `"ln"` and `"log"` both map to `Ln`.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "exp" => Some(Self::Exp),
+            "ln" | "log" => Some(Self::Ln),
+            "sqrt" => Some(Self::Sqrt),
+            "sin" => Some(Self::Sin),
+            "cos" => Some(Self::Cos),
+            "tan" => Some(Self::Tan),
+            "tanh" => Some(Self::Tanh),
+            "abs" => Some(Self::Abs),
+            "floor" => Some(Self::Floor),
+            "ceil" => Some(Self::Ceil),
+            "round" => Some(Self::Round),
+            "sign" => Some(Self::Sign),
+            "log2" => Some(Self::Log2),
+            "log10" => Some(Self::Log10),
+            "sinh" => Some(Self::Sinh),
+            "cosh" => Some(Self::Cosh),
+            "atan" => Some(Self::Atan),
+            "cbrt" => Some(Self::Cbrt),
+            "recip" => Some(Self::Recip),
+            "fract" => Some(Self::Fract),
+            "hypot" => Some(Self::Hypot),
+            "min" => Some(Self::Min),
+            "max" => Some(Self::Max),
+            "atan2" => Some(Self::Atan2),
+            "mod" => Some(Self::Mod),
+            _ => None,
+        }
+    }
+
+    /// Surface name for diagnostics and codegen.
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Exp => "exp",
+            Self::Ln => "ln",
+            Self::Sqrt => "sqrt",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Tanh => "tanh",
+            Self::Abs => "abs",
+            Self::Floor => "floor",
+            Self::Ceil => "ceil",
+            Self::Round => "round",
+            Self::Sign => "sign",
+            Self::Log2 => "log2",
+            Self::Log10 => "log10",
+            Self::Sinh => "sinh",
+            Self::Cosh => "cosh",
+            Self::Atan => "atan",
+            Self::Cbrt => "cbrt",
+            Self::Recip => "recip",
+            Self::Fract => "fract",
+            Self::Hypot => "hypot",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::Atan2 => "atan2",
+            Self::Mod => "mod",
+        }
+    }
+
+    /// Number of operands (1 = unary, 2 = binary).
+    #[must_use]
+    pub fn arity(&self) -> usize {
+        match self {
+            Self::Exp | Self::Ln | Self::Sqrt | Self::Sin | Self::Cos
+            | Self::Tan | Self::Tanh | Self::Abs | Self::Floor | Self::Ceil
+            | Self::Round | Self::Sign | Self::Log2 | Self::Log10
+            | Self::Sinh | Self::Cosh | Self::Atan | Self::Cbrt
+            | Self::Recip | Self::Fract => 1,
+            Self::Hypot | Self::Min | Self::Max | Self::Atan2 | Self::Mod => 2,
+        }
+    }
+
+    // ── Interpreter evaluation ──────────────────────────────────────────
+
+    /// Evaluate a unary builtin on an f64.
+    #[must_use]
+    pub fn eval_unary(&self, x: f64) -> f64 {
+        match self {
+            Self::Exp => x.exp(),
+            Self::Ln => x.ln(),
+            Self::Sqrt => x.sqrt(),
+            Self::Sin => x.sin(),
+            Self::Cos => x.cos(),
+            Self::Tan => x.tan(),
+            Self::Tanh => x.tanh(),
+            Self::Abs => x.abs(),
+            Self::Floor => x.floor(),
+            Self::Ceil => x.ceil(),
+            Self::Round => x.round(),
+            Self::Sign => x.signum(),
+            Self::Log2 => x.log2(),
+            Self::Log10 => x.log10(),
+            Self::Sinh => x.sinh(),
+            Self::Cosh => x.cosh(),
+            Self::Atan => x.atan(),
+            Self::Cbrt => x.cbrt(),
+            Self::Recip => x.recip(),
+            Self::Fract => x.fract(),
+            _ => unreachable!("not a unary builtin"),
+        }
+    }
+
+    /// Evaluate a binary builtin on two f64s.
+    #[must_use]
+    pub fn eval_binary(&self, a: f64, b: f64) -> f64 {
+        match self {
+            Self::Hypot => a.hypot(b),
+            Self::Min => a.min(b),
+            Self::Max => a.max(b),
+            Self::Atan2 => a.atan2(b),
+            Self::Mod => a % b,
+            _ => unreachable!("not a binary builtin"),
+        }
+    }
+
+    // ── Forward-mode AD (dual numbers) ────────────────────────────────
+
+    /// Forward-mode dual evaluation for a unary builtin.
+    /// Returns (primal_out, tangent_out).
+    /// For non-differentiable functions (floor, ceil, round, sign),
+    /// tangent is 0.
+    #[must_use]
+    pub fn eval_dual_unary(&self, primal: f64, tangent: f64) -> (f64, f64) {
+        match self {
+            Self::Exp => {
+                let p = primal.exp();
+                (p, p * tangent)
+            }
+            Self::Ln => (primal.ln(), tangent / primal),
+            Self::Sqrt => {
+                let p = primal.sqrt();
+                (p, tangent / (2.0 * p))
+            }
+            Self::Sin => (primal.sin(), primal.cos() * tangent),
+            Self::Cos => (primal.cos(), -primal.sin() * tangent),
+            Self::Tan => {
+                let c = primal.cos();
+                (primal.tan(), tangent / (c * c))
+            }
+            Self::Tanh => {
+                let t = primal.tanh();
+                (t, (1.0 - t * t) * tangent)
+            }
+            Self::Abs => (primal.abs(), primal.signum() * tangent),
+            Self::Floor => (primal.floor(), 0.0),
+            Self::Ceil => (primal.ceil(), 0.0),
+            Self::Round => (primal.round(), 0.0),
+            Self::Sign => (primal.signum(), 0.0),
+            Self::Log2 => (primal.log2(), tangent / (primal * LN_2)),
+            Self::Log10 => (primal.log10(), tangent / (primal * LN_10)),
+            Self::Sinh => (primal.sinh(), primal.cosh() * tangent),
+            Self::Cosh => (primal.cosh(), primal.sinh() * tangent),
+            Self::Atan => {
+                let d = 1.0 / (1.0 + primal * primal);
+                (primal.atan(), d * tangent)
+            }
+            Self::Cbrt => {
+                let p = primal.cbrt();
+                (p, tangent / (3.0 * p * p))
+            }
+            Self::Recip => {
+                let p = primal.recip();
+                (p, -tangent * p * p)
+            }
+            Self::Fract => (primal.fract(), tangent),
+            _ => unreachable!("not a unary builtin"),
+        }
+    }
+
+    /// Forward-mode dual evaluation for a binary builtin.
+    /// Returns (primal_out, tangent_out).
+    #[must_use]
+    pub fn eval_dual_binary(&self, pa: f64, ta: f64, pb: f64, tb: f64) -> (f64, f64) {
+        match self {
+            Self::Hypot => {
+                let h = pa.hypot(pb);
+                let tangent = if h == 0.0 {
+                    0.0
+                } else {
+                    (pa * ta + pb * tb) / h
+                };
+                (h, tangent)
+            }
+            Self::Min => {
+                if pa <= pb {
+                    (pa, ta)
+                } else {
+                    (pb, tb)
+                }
+            }
+            Self::Max => {
+                if pa >= pb {
+                    (pa, ta)
+                } else {
+                    (pb, tb)
+                }
+            }
+            Self::Atan2 => {
+                let p = pa.atan2(pb);
+                let d = 1.0 / (1.0 + (pa / pb).powi(2));
+                (p, d * (ta * pb - tb * pa) / (pb * pb))
+            }
+            Self::Mod => {
+                // d/da [a mod b] = 1 at non-boundary points; b is not differentiable
+                (pa % pb, ta)
+            }
+            _ => unreachable!("not a binary builtin"),
+        }
+    }
+
+    // ── Reverse-mode AD (adjoint propagation) ─────────────────────────
+
+    /// Backward pass for a unary builtin.
+    /// Given the primal input and primal output, and the adjoint of the
+    /// output, returns the adjoint to propagate to the input.
+    #[must_use]
+    pub fn backward_unary(&self, primal_in: f64, primal_out: f64, adj: f64) -> f64 {
+        match self {
+            Self::Exp => adj * primal_out, // d/dx exp(x) = exp(x)
+            Self::Ln => {
+                if primal_in != 0.0 { adj / primal_in } else { 0.0 }
+            }
+            Self::Sqrt => {
+                if primal_out != 0.0 { adj / (2.0 * primal_out) } else { 0.0 }
+            }
+            Self::Sin => adj * primal_in.cos(),
+            Self::Cos => -adj * primal_in.sin(),
+            Self::Tan => {
+                let c = primal_in.cos();
+                if c != 0.0 { adj / (c * c) } else { 0.0 }
+            }
+            Self::Tanh => adj * (1.0 - primal_out * primal_out),
+            Self::Abs => adj * primal_in.signum(),
+            Self::Floor | Self::Ceil | Self::Round | Self::Sign => 0.0,
+            Self::Log2 => {
+                if primal_in != 0.0 { adj / (primal_in * LN_2) } else { 0.0 }
+            }
+            Self::Log10 => {
+                if primal_in != 0.0 { adj / (primal_in * LN_10) } else { 0.0 }
+            }
+            Self::Sinh => adj * primal_in.cosh(),
+            Self::Cosh => adj * primal_in.sinh(),
+            Self::Atan => adj / (1.0 + primal_in * primal_in),
+            Self::Cbrt => {
+                if primal_out != 0.0 { adj / (3.0 * primal_out * primal_out) } else { 0.0 }
+            }
+            Self::Recip => {
+                if primal_in != 0.0 { -adj / (primal_in * primal_in) } else { 0.0 }
+            }
+            Self::Fract => adj,
+            _ => unreachable!("not a unary builtin"),
+        }
+    }
+
+    /// Backward pass for a binary builtin.
+    /// Given both primal inputs, the primal output, and the adjoint of
+    /// the output, returns (adjoint_a, adjoint_b).
+    #[must_use]
+    pub fn backward_binary(&self, pa: f64, pb: f64, primal_out: f64, adj: f64) -> (f64, f64) {
+        match self {
+            Self::Hypot => {
+                if primal_out != 0.0 {
+                    (adj * pa / primal_out, adj * pb / primal_out)
+                } else {
+                    (0.0, 0.0)
+                }
+            }
+            Self::Min => {
+                if pa <= pb { (adj, 0.0) } else { (0.0, adj) }
+            }
+            Self::Max => {
+                if pa >= pb { (adj, 0.0) } else { (0.0, adj) }
+            }
+            Self::Atan2 => {
+                let denom = pa * pa + pb * pb;
+                if denom != 0.0 {
+                    (adj * pb / denom, -adj * pa / denom)
+                } else {
+                    (0.0, 0.0)
+                }
+            }
+            Self::Mod => (adj, 0.0), // d/da = 1, d/db = 0
+            _ => unreachable!("not a binary builtin"),
+        }
+    }
+
+    // ── Rust codegen ──────────────────────────────────────────────────
+
+    /// Rust codegen for a unary builtin: e.g. `"x.exp()"`.
+    #[must_use]
+    pub fn rust_unary(&self, arg: &str) -> String {
+        match self {
+            Self::Exp => format!("{arg}.exp()"),
+            Self::Ln => format!("{arg}.ln()"),
+            Self::Sqrt => format!("{arg}.sqrt()"),
+            Self::Sin => format!("{arg}.sin()"),
+            Self::Cos => format!("{arg}.cos()"),
+            Self::Tan => format!("{arg}.tan()"),
+            Self::Tanh => format!("{arg}.tanh()"),
+            Self::Abs => format!("{arg}.abs()"),
+            Self::Floor => format!("{arg}.floor()"),
+            Self::Ceil => format!("{arg}.ceil()"),
+            Self::Round => format!("{arg}.round()"),
+            Self::Sign => format!("{arg}.signum()"),
+            Self::Log2 => format!("{arg}.log2()"),
+            Self::Log10 => format!("{arg}.log10()"),
+            Self::Sinh => format!("{arg}.sinh()"),
+            Self::Cosh => format!("{arg}.cosh()"),
+            Self::Atan => format!("{arg}.atan()"),
+            Self::Cbrt => format!("{arg}.cbrt()"),
+            Self::Recip => format!("{arg}.recip()"),
+            Self::Fract => format!("{arg}.fract()"),
+            _ => unreachable!("not a unary builtin"),
+        }
+    }
+
+    /// Rust codegen for a binary builtin: e.g. `"a.min(b)"`.
+    #[must_use]
+    pub fn rust_binary(&self, a: &str, b: &str) -> String {
+        match self {
+            Self::Hypot => format!("{a}.hypot({b})"),
+            Self::Min => format!("{a}.min({b})"),
+            Self::Max => format!("{a}.max({b})"),
+            Self::Atan2 => format!("{a}.atan2({b})"),
+            Self::Mod => format!("{a} % {b}"),
+            _ => unreachable!("not a binary builtin"),
+        }
+    }
+
+    // ── Metadata ─────────────────────────────────────────────────────
+
+    /// Domain obligations for this builtin (e.g. LogPositive for ln).
+    #[must_use]
+    pub fn domain_obligations(&self) -> &'static [DomainObligation] {
+        match self {
+            Self::Ln | Self::Log2 | Self::Log10 => &[DomainObligation::LogPositive],
+            Self::Sqrt => &[DomainObligation::SqrtNonNegative],
+            _ => &[],
+        }
+    }
+}

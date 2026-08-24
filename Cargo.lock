@@ -1237,6 +1237,7 @@ name = "emath-sema"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-exec-ir",
  "emath-ir",
  "emath-syntax",
 ]

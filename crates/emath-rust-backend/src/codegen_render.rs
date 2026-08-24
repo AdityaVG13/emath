@@ -1,9 +1,9 @@
-use emath_exec_ir::{EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
+use emath_exec_ir::{BuiltinId, EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
 use emath_rust_ir::ast::{escape_ident, BinOp, Block, Expr, Stmt, Ty, UnOp};
 use emath_rust_ir::render::render_expr;
 
 use crate::BackendError;
-use crate::codegen_helpers::{binary_method, comparison, unary_method};
+use crate::codegen_helpers::comparison;
 
 /// Render the program as an expression. Multi-op programs become a block
 /// `{ let __e0 = ...; ...; __eN }`; single-op programs inline directly.
@@ -103,35 +103,15 @@ pub(crate) fn op_expr(
             op: UnOp::Not,
             value: Box::new(operand(program, *value)),
         }),
-        EmirOp::Exp(value) => Ok(unary_method("exp", *value, program)),
-        EmirOp::Ln(value) => Ok(unary_method("ln", *value, program)),
-        EmirOp::Sqrt(value) => Ok(unary_method("sqrt", *value, program)),
-        EmirOp::Sin(value) => Ok(unary_method("sin", *value, program)),
-        EmirOp::Cos(value) => Ok(unary_method("cos", *value, program)),
-        EmirOp::Tan(value) => Ok(unary_method("tan", *value, program)),
-        EmirOp::Tanh(value) => Ok(unary_method("tanh", *value, program)),
-        EmirOp::Abs(value) => Ok(unary_method("abs", *value, program)),
-        EmirOp::Floor(value) => Ok(unary_method("floor", *value, program)),
-        EmirOp::Ceil(value) => Ok(unary_method("ceil", *value, program)),
-        EmirOp::Round(value) => Ok(unary_method("round", *value, program)),
-        EmirOp::Sign(value) => Ok(unary_method("signum", *value, program)),
-        EmirOp::Log2(value) => Ok(unary_method("log2", *value, program)),
-        EmirOp::Log10(value) => Ok(unary_method("log10", *value, program)),
-        EmirOp::Sinh(value) => Ok(unary_method("sinh", *value, program)),
-        EmirOp::Cosh(value) => Ok(unary_method("cosh", *value, program)),
-        EmirOp::Atan(value) => Ok(unary_method("atan", *value, program)),
-        EmirOp::Cbrt(value) => Ok(unary_method("cbrt", *value, program)),
-        EmirOp::Recip(value) => Ok(unary_method("recip", *value, program)),
-        EmirOp::Fract(value) => Ok(unary_method("fract", *value, program)),
-        EmirOp::Hypot(l, r) => Ok(binary_method("hypot", *l, *r, program)),
-        EmirOp::Min(l, r) => Ok(binary_method("min", *l, *r, program)),
-        EmirOp::Max(l, r) => Ok(binary_method("max", *l, *r, program)),
-        EmirOp::Atan2(l, r) => Ok(binary_method("atan2", *l, *r, program)),
-        EmirOp::Mod(l, r) => Ok(Expr::Bin {
-            op: BinOp::Rem,
-            left: Box::new(operand(program, *l)),
-            right: Box::new(operand(program, *r)),
-        }),
+        EmirOp::UnaryBuiltin(id, value) => {
+            let arg = render_expr(&operand(program, *value));
+            Ok(Expr::Raw(id.rust_unary(&arg)))
+        }
+        EmirOp::BinaryBuiltin(id, l, r) => {
+            let arg_l = render_expr(&operand(program, *l));
+            let arg_r = render_expr(&operand(program, *r));
+            Ok(Expr::Raw(id.rust_binary(&arg_l, &arg_r)))
+        }
         EmirOp::IsFinite(value) => Ok(Expr::MethodCall {
             receiver: Box::new(operand(program, *value)),
             method: "is_finite".to_string(),
@@ -704,55 +684,59 @@ pub(crate) fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> Strin
             a.0, b.0, a.0, b.0, b.0, b.0
         ),
         EmirOp::Neg(a) => format!("-__d{}", a.0),
-        EmirOp::Exp(a) => format!("__e{} * __d{}", idx, a.0),
-        EmirOp::Ln(a) => format!("__d{} / __e{}", a.0, a.0),
-        EmirOp::Sqrt(a) => format!("__d{} / (2.0 * __e{})", a.0, idx),
-        EmirOp::Sin(a) => format!("__e{}.cos() * __d{}", a.0, a.0),
-        EmirOp::Cos(a) => format!("-__e{}.sin() * __d{}", a.0, a.0),
-        EmirOp::Tan(a) => format!(
-            "__d{} / (__e{}.cos() * __e{}.cos())",
-            a.0, a.0, a.0
-        ),
-        EmirOp::Tanh(a) => format!("(1.0 - __e{} * __e{}) * __d{}", idx, idx, a.0),
-        EmirOp::Abs(a) => format!("__e{}.signum() * __d{}", a.0, a.0),
-        EmirOp::Floor(_) | EmirOp::Ceil(_) | EmirOp::Round(_) | EmirOp::Sign(_) => "0.0".to_string(),
-        EmirOp::Log2(a) => format!("__d{} / (__e{} * std::f64::consts::LN_2)", a.0, a.0),
-        EmirOp::Log10(a) => format!("__d{} / (__e{} * std::f64::consts::LN_10)", a.0, a.0),
-        EmirOp::Sinh(a) => format!("__e{}.cosh() * __d{}", a.0, a.0),
-        EmirOp::Cosh(a) => format!("__e{}.sinh() * __d{}", a.0, a.0),
-        EmirOp::Atan(a) => format!("__d{} / (1.0 + __e{} * __e{})", a.0, a.0, a.0),
-        EmirOp::Cbrt(a) => {
-            let idx_s = idx.to_string();
-            format!("__d{} / (3.0 * __e{} * __e{})", a.0, idx_s, idx_s)
-        }
-        EmirOp::Recip(a) => format!("-__d{} / (__e{} * __e{})", a.0, a.0, a.0),
-        EmirOp::Fract(a) => format!("__d{}", a.0),
-        EmirOp::Hypot(a, b) => {
-            let idx_s = idx.to_string();
-            format!(
-                "if __e{idx_s} == 0.0 {{ 0.0 }} else {{ (__e{} * __d{} + __e{} * __d{}) / __e{idx_s} }}",
-                a.0, a.0, b.0, b.0
-            )
-        }
+        EmirOp::UnaryBuiltin(id, a) => match id {
+            BuiltinId::Exp => format!("__e{} * __d{}", idx, a.0),
+            BuiltinId::Ln => format!("__d{} / __e{}", a.0, a.0),
+            BuiltinId::Sqrt => format!("__d{} / (2.0 * __e{})", a.0, idx),
+            BuiltinId::Sin => format!("__e{}.cos() * __d{}", a.0, a.0),
+            BuiltinId::Cos => format!("-__e{}.sin() * __d{}", a.0, a.0),
+            BuiltinId::Tan => format!(
+                "__d{} / (__e{}.cos() * __e{}.cos())",
+                a.0, a.0, a.0
+            ),
+            BuiltinId::Tanh => format!("(1.0 - __e{} * __e{}) * __d{}", idx, idx, a.0),
+            BuiltinId::Abs => format!("__e{}.signum() * __d{}", a.0, a.0),
+            BuiltinId::Floor | BuiltinId::Ceil | BuiltinId::Round | BuiltinId::Sign => "0.0".to_string(),
+            BuiltinId::Log2 => format!("__d{} / (__e{} * std::f64::consts::LN_2)", a.0, a.0),
+            BuiltinId::Log10 => format!("__d{} / (__e{} * std::f64::consts::LN_10)", a.0, a.0),
+            BuiltinId::Sinh => format!("__e{}.cosh() * __d{}", a.0, a.0),
+            BuiltinId::Cosh => format!("__e{}.sinh() * __d{}", a.0, a.0),
+            BuiltinId::Atan => format!("__d{} / (1.0 + __e{} * __e{})", a.0, a.0, a.0),
+            BuiltinId::Cbrt => {
+                format!("__d{} / (3.0 * __e{} * __e{})", a.0, idx, idx)
+            }
+            BuiltinId::Recip => format!("-__d{} / (__e{} * __e{})", a.0, a.0, a.0),
+            BuiltinId::Fract => format!("__d{}", a.0),
+            _ => "0.0".to_string(),
+        },
         // Match interpreter: constant-exponent form when db==0 (avoids ln
         // for a<=0); otherwise general a^b * (b*a'/a + b'*ln(a)).
         EmirOp::F64Pow(a, b) => format!(
             "if __d{} == 0.0 {{ __e{} * __e{}.powf(__e{} - 1.0) * __d{} }} else {{ __e{} * (__e{} * __d{} / __e{} + __d{} * __e{}.ln()) }}",
             b.0, b.0, a.0, b.0, a.0, idx, b.0, a.0, a.0, b.0, a.0
         ),
-        EmirOp::Min(a, b) => format!(
-            "if __e{} < __e{} {{ __d{} }} else {{ __d{} }}",
-            a.0, b.0, a.0, b.0
-        ),
-        EmirOp::Max(a, b) => format!(
-            "if __e{} > __e{} {{ __d{} }} else {{ __d{} }}",
-            a.0, b.0, a.0, b.0
-        ),
-        EmirOp::Atan2(a, b) => format!(
-            "(__e{} * __d{} - __e{} * __d{}) / (__e{} * __e{} + __e{} * __e{})",
-            b.0, a.0, a.0, b.0, a.0, a.0, b.0, b.0
-        ),
-        EmirOp::Mod(a, _) => format!("__d{}", a.0),
+        EmirOp::BinaryBuiltin(id, a, b) => match id {
+            BuiltinId::Hypot => {
+                format!(
+                    "if __e{idx} == 0.0 {{ 0.0 }} else {{ (__e{} * __d{} + __e{} * __d{}) / __e{idx} }}",
+                    a.0, a.0, b.0, b.0
+                )
+            }
+            BuiltinId::Min => format!(
+                "if __e{} < __e{} {{ __d{} }} else {{ __d{} }}",
+                a.0, b.0, a.0, b.0
+            ),
+            BuiltinId::Max => format!(
+                "if __e{} > __e{} {{ __d{} }} else {{ __d{} }}",
+                a.0, b.0, a.0, b.0
+            ),
+            BuiltinId::Atan2 => format!(
+                "(__e{} * __d{} - __e{} * __d{}) / (__e{} * __e{} + __e{} * __e{})",
+                b.0, a.0, a.0, b.0, a.0, a.0, b.0, b.0
+            ),
+            BuiltinId::Mod => format!("__d{}", a.0),
+            _ => "0.0".to_string(),
+        },
         EmirOp::Select {
             condition: c,
             then_value: t,
@@ -799,35 +783,28 @@ pub(crate) fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, i
             d(a.0), e(b.0), e(a.0), d(b.0), e(b.0), e(b.0)
         ),
         EmirOp::Neg(a) => format!("-{}", d(a.0)),
-        EmirOp::Exp(a) => format!("{} * {}", e(idx as u32), d(a.0)),
-        EmirOp::Ln(a) => format!("{} / {}", d(a.0), e(a.0)),
-        EmirOp::Sqrt(a) => format!("{} / (2.0 * {})", d(a.0), e(idx as u32)),
-        EmirOp::Sin(a) => format!("{}.cos() * {}", e(a.0), d(a.0)),
-        EmirOp::Cos(a) => format!("-{}.sin() * {}", e(a.0), d(a.0)),
-        EmirOp::Tan(a) => format!("{} / ({}.cos() * {}.cos())", d(a.0), e(a.0), e(a.0)),
-        EmirOp::Tanh(a) => format!("(1.0 - {} * {}) * {}", e(idx as u32), e(idx as u32), d(a.0)),
-        EmirOp::Abs(a) => format!("{}.signum() * {}", e(a.0), d(a.0)),
-        EmirOp::Floor(_) | EmirOp::Ceil(_) | EmirOp::Round(_) | EmirOp::Sign(_) => "0.0".to_string(),
-        EmirOp::Log2(a) => format!("{} / ({} * std::f64::consts::LN_2)", d(a.0), e(a.0)),
-        EmirOp::Log10(a) => format!("{} / ({} * std::f64::consts::LN_10)", d(a.0), e(a.0)),
-        EmirOp::Sinh(a) => format!("{}.cosh() * {}", e(a.0), d(a.0)),
-        EmirOp::Cosh(a) => format!("{}.sinh() * {}", e(a.0), d(a.0)),
-        EmirOp::Atan(a) => format!("{} / (1.0 + {} * {})", d(a.0), e(a.0), e(a.0)),
-        EmirOp::Cbrt(a) => {
-            format!("{} / (3.0 * {} * {})", d(a.0), e(idx as u32), e(idx as u32))
-        }
-        EmirOp::Recip(a) => format!("-{} / ({} * {})", d(a.0), e(a.0), e(a.0)),
-        EmirOp::Fract(a) => format!("{}", d(a.0)),
-        EmirOp::Hypot(a, b) => {
-            let h = e(idx as u32);
-            format!(
-                "if {h} == 0.0 {{ 0.0 }} else {{ ({} * {} + {} * {}) / {h} }}",
-                e(a.0),
-                d(a.0),
-                e(b.0),
-                d(b.0)
-            )
-        }
+        EmirOp::UnaryBuiltin(id, a) => match id {
+            BuiltinId::Exp => format!("{} * {}", e(idx as u32), d(a.0)),
+            BuiltinId::Ln => format!("{} / {}", d(a.0), e(a.0)),
+            BuiltinId::Sqrt => format!("{} / (2.0 * {})", d(a.0), e(idx as u32)),
+            BuiltinId::Sin => format!("{}.cos() * {}", e(a.0), d(a.0)),
+            BuiltinId::Cos => format!("-{}.sin() * {}", e(a.0), d(a.0)),
+            BuiltinId::Tan => format!("{} / ({}.cos() * {}.cos())", d(a.0), e(a.0), e(a.0)),
+            BuiltinId::Tanh => format!("(1.0 - {} * {}) * {}", e(idx as u32), e(idx as u32), d(a.0)),
+            BuiltinId::Abs => format!("{}.signum() * {}", e(a.0), d(a.0)),
+            BuiltinId::Floor | BuiltinId::Ceil | BuiltinId::Round | BuiltinId::Sign => "0.0".to_string(),
+            BuiltinId::Log2 => format!("{} / ({} * std::f64::consts::LN_2)", d(a.0), e(a.0)),
+            BuiltinId::Log10 => format!("{} / ({} * std::f64::consts::LN_10)", d(a.0), e(a.0)),
+            BuiltinId::Sinh => format!("{}.cosh() * {}", e(a.0), d(a.0)),
+            BuiltinId::Cosh => format!("{}.sinh() * {}", e(a.0), d(a.0)),
+            BuiltinId::Atan => format!("{} / (1.0 + {} * {})", d(a.0), e(a.0), e(a.0)),
+            BuiltinId::Cbrt => {
+                format!("{} / (3.0 * {} * {})", d(a.0), e(idx as u32), e(idx as u32))
+            }
+            BuiltinId::Recip => format!("-{} / ({} * {})", d(a.0), e(a.0), e(a.0)),
+            BuiltinId::Fract => format!("{}", d(a.0)),
+            _ => "0.0".to_string(),
+        },
         EmirOp::F64Pow(a, b) => format!(
             "if {} == 0.0 {{ {} * {}.powf({} - 1.0) * {} }} else {{ {} * ({} * {} / {} + {} * {}.ln()) }}",
             d(b.0),
@@ -842,13 +819,23 @@ pub(crate) fn dual_tangent_str_multi(op: &EmirOp, var_index: u16, pass: usize, i
             d(b.0),
             e(a.0)
         ),
-        EmirOp::Min(a, b) => format!("if {} < {} {{ {} }} else {{ {} }}", e(a.0), e(b.0), d(a.0), d(b.0)),
-        EmirOp::Max(a, b) => format!("if {} > {} {{ {} }} else {{ {} }}", e(a.0), e(b.0), d(a.0), d(b.0)),
-        EmirOp::Atan2(a, b) => format!(
-            "({} * {} - {} * {}) / ({} * {} + {} * {})",
-            e(b.0), d(a.0), e(a.0), d(b.0), e(a.0), e(a.0), e(b.0), e(b.0)
-        ),
-        EmirOp::Mod(a, _) => format!("{}", d(a.0)),
+        EmirOp::BinaryBuiltin(id, a, b) => match id {
+            BuiltinId::Hypot => {
+                let h = e(idx as u32);
+                format!(
+                    "if {h} == 0.0 {{ 0.0 }} else {{ ({} * {} + {} * {}) / {h} }}",
+                    e(a.0), d(a.0), e(b.0), d(b.0)
+                )
+            }
+            BuiltinId::Min => format!("if {} < {} {{ {} }} else {{ {} }}", e(a.0), e(b.0), d(a.0), d(b.0)),
+            BuiltinId::Max => format!("if {} > {} {{ {} }} else {{ {} }}", e(a.0), e(b.0), d(a.0), d(b.0)),
+            BuiltinId::Atan2 => format!(
+                "({} * {} - {} * {}) / ({} * {} + {} * {})",
+                e(b.0), d(a.0), e(a.0), d(b.0), e(a.0), e(a.0), e(b.0), e(b.0)
+            ),
+            BuiltinId::Mod => format!("{}", d(a.0)),
+            _ => "0.0".to_string(),
+        },
         EmirOp::Select { condition: c, then_value: t, else_value: ev } => {
             format!("if {} != 0.0 {{ {} }} else {{ {} }}", e(c.0), d(t.0), d(ev.0))
         }
@@ -884,52 +871,58 @@ pub(crate) fn reverse_adjoint_str(op: &EmirOp, idx: usize) -> String {
             a(x.0), p(y.0), a(y.0), p(x.0), p(y.0), p(y.0)
         ),
         EmirOp::Neg(x) => format!("{} -= {adj};\n", a(x.0)),
-        EmirOp::Exp(x) => format!("{} += {adj} * __re{idx};\n", a(x.0)),
-        EmirOp::Ln(x) => format!("{} += {adj} / {};\n", a(x.0), p(x.0)),
-        EmirOp::Sqrt(x) => format!("{} += {adj} / (2.0 * __re{idx});\n", a(x.0)),
-        EmirOp::Sin(x) => format!("{} += {adj} * {}.cos();\n", a(x.0), p(x.0)),
-        EmirOp::Cos(x) => format!("{} -= {adj} * {}.sin();\n", a(x.0), p(x.0)),
-        EmirOp::Tan(x) => format!(
-            "{} += {adj} / ({}.cos() * {}.cos());\n",
-            a(x.0), p(x.0), p(x.0)
-        ),
-        EmirOp::Tanh(x) => format!("{} += {adj} * (1.0 - __re{idx} * __re{idx});\n", a(x.0)),
-        EmirOp::Abs(x) => format!("{} += {adj} * {}.signum();\n", a(x.0), p(x.0)),
-        EmirOp::Floor(_) | EmirOp::Ceil(_) | EmirOp::Round(_) | EmirOp::Sign(_) => String::new(),
-        EmirOp::Log2(x) => format!("{} += {adj} / ({} * std::f64::consts::LN_2);\n", a(x.0), p(x.0)),
-        EmirOp::Log10(x) => format!("{} += {adj} / ({} * std::f64::consts::LN_10);\n", a(x.0), p(x.0)),
-        EmirOp::Sinh(x) => format!("{} += {adj} * {}.cosh();\n", a(x.0), p(x.0)),
-        EmirOp::Cosh(x) => format!("{} += {adj} * {}.sinh();\n", a(x.0), p(x.0)),
-        EmirOp::Atan(x) => format!("{} += {adj} / (1.0 + {} * {});\n", a(x.0), p(x.0), p(x.0)),
-        EmirOp::Cbrt(x) => format!("{} += {adj} / (3.0 * __re{idx} * __re{idx});\n", a(x.0)),
-        EmirOp::Recip(x) => format!("{} -= {adj} / ({} * {});\n", a(x.0), p(x.0), p(x.0)),
-        EmirOp::Fract(x) => format!("{} += {adj};\n", a(x.0)),
-        EmirOp::Hypot(x, y) => format!(
-            "if __re{idx} != 0.0 {{ {} += {adj} * {} / __re{idx}; {} += {adj} * {} / __re{idx}; }}\n",
-            a(x.0), p(x.0), a(y.0), p(y.0)
-        ),
+        EmirOp::UnaryBuiltin(id, x) => match id {
+            BuiltinId::Exp => format!("{} += {adj} * __re{idx};\n", a(x.0)),
+            BuiltinId::Ln => format!("{} += {adj} / {};\n", a(x.0), p(x.0)),
+            BuiltinId::Sqrt => format!("{} += {adj} / (2.0 * __re{idx});\n", a(x.0)),
+            BuiltinId::Sin => format!("{} += {adj} * {}.cos();\n", a(x.0), p(x.0)),
+            BuiltinId::Cos => format!("{} -= {adj} * {}.sin();\n", a(x.0), p(x.0)),
+            BuiltinId::Tan => format!(
+                "{} += {adj} / ({}.cos() * {}.cos());\n",
+                a(x.0), p(x.0), p(x.0)
+            ),
+            BuiltinId::Tanh => format!("{} += {adj} * (1.0 - __re{idx} * __re{idx});\n", a(x.0)),
+            BuiltinId::Abs => format!("{} += {adj} * {}.signum();\n", a(x.0), p(x.0)),
+            BuiltinId::Floor | BuiltinId::Ceil | BuiltinId::Round | BuiltinId::Sign => String::new(),
+            BuiltinId::Log2 => format!("{} += {adj} / ({} * std::f64::consts::LN_2);\n", a(x.0), p(x.0)),
+            BuiltinId::Log10 => format!("{} += {adj} / ({} * std::f64::consts::LN_10);\n", a(x.0), p(x.0)),
+            BuiltinId::Sinh => format!("{} += {adj} * {}.cosh();\n", a(x.0), p(x.0)),
+            BuiltinId::Cosh => format!("{} += {adj} * {}.sinh();\n", a(x.0), p(x.0)),
+            BuiltinId::Atan => format!("{} += {adj} / (1.0 + {} * {});\n", a(x.0), p(x.0), p(x.0)),
+            BuiltinId::Cbrt => format!("{} += {adj} / (3.0 * __re{idx} * __re{idx});\n", a(x.0)),
+            BuiltinId::Recip => format!("{} -= {adj} / ({} * {});\n", a(x.0), p(x.0), p(x.0)),
+            BuiltinId::Fract => format!("{} += {adj};\n", a(x.0)),
+            _ => String::new(),
+        },
         EmirOp::F64Pow(x, y) => format!(
             "if {} != 0.0 {{ {} += {adj} * __re{idx} * {} / {}; }}\n\
              if {} > 0.0 {{ {} += {adj} * __re{idx} * {}.ln(); }}\n",
             p(x.0), a(x.0), p(y.0), p(x.0),
             p(x.0), a(y.0), p(x.0)
         ),
-        EmirOp::Min(x, y) => format!(
-            "if {} <= {} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
-            p(x.0), p(y.0), a(x.0), a(y.0)
-        ),
-        EmirOp::Max(x, y) => format!(
-            "if {} >= {} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
-            p(x.0), p(y.0), a(x.0), a(y.0)
-        ),
-        EmirOp::Atan2(x, y) => {
-            let denom = format!("({} * {} + {} * {})", p(x.0), p(x.0), p(y.0), p(y.0));
-            format!(
-                "if {denom} != 0.0 {{ {} += {adj} * {} / {denom}; {} -= {adj} * {} / {denom}; }}\n",
-                a(x.0), p(y.0), a(y.0), p(x.0)
-            )
-        }
-        EmirOp::Mod(x, _y) => format!("{} += {adj};\n", a(x.0)),
+        EmirOp::BinaryBuiltin(id, x, y) => match id {
+            BuiltinId::Hypot => format!(
+                "if __re{idx} != 0.0 {{ {} += {adj} * {} / __re{idx}; {} += {adj} * {} / __re{idx}; }}\n",
+                a(x.0), p(x.0), a(y.0), p(y.0)
+            ),
+            BuiltinId::Min => format!(
+                "if {} <= {} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+                p(x.0), p(y.0), a(x.0), a(y.0)
+            ),
+            BuiltinId::Max => format!(
+                "if {} >= {} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+                p(x.0), p(y.0), a(x.0), a(y.0)
+            ),
+            BuiltinId::Atan2 => {
+                let denom = format!("({} * {} + {} * {})", p(x.0), p(x.0), p(y.0), p(y.0));
+                format!(
+                    "if {denom} != 0.0 {{ {} += {adj} * {} / {denom}; {} -= {adj} * {} / {denom}; }}\n",
+                    a(x.0), p(y.0), a(y.0), p(x.0)
+                )
+            }
+            BuiltinId::Mod => format!("{} += {adj};\n", a(x.0)),
+            _ => String::new(),
+        },
         EmirOp::Select { condition: c, then_value: t, else_value: ev } => format!(
             "if {} != 0.0 {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
             p(c.0), a(t.0), a(ev.0)

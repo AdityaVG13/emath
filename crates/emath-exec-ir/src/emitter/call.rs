@@ -3,7 +3,7 @@
 use emath_core::Span;
 use emath_ir::{ExprNode, Literal, SemanticPackage};
 
-use crate::{DomainObligation, EdgePolicy, EmirExprRef, EmirOp, EmirValue};
+use crate::{BuiltinId, DomainObligation, EdgePolicy, EmirExprRef, EmirOp, EmirValue};
 
 impl super::Emitter {
     pub(crate) fn emit_call(
@@ -31,63 +31,12 @@ impl super::Emitter {
         // Arity is enforced in every build, debug or release (bug-hunt
         // residual: debug_assert let empty/1-arg unary calls through to an
         // indexing panic and silently dropped extras in release).
-        let unary = matches!(
-            function,
-            "exp"
-                | "ln"
-                | "log"
-                | "sqrt"
-                | "sin"
-                | "cos"
-                | "tan"
-                | "tanh"
-                | "abs"
-                | "floor"
-                | "ceil"
-                | "round"
-                | "sign"
-                | "log2"
-                | "log10"
-                | "sinh"
-                | "cosh"
-                | "atan"
-                | "cbrt"
-                | "recip"
-                | "fract"
-                | "is_finite"
-                | "norm"
-                | "transpose"
-                | "length"
-                | "core::math::exp"
-                | "core::math::ln"
-                | "core::math::log"
-                | "core::math::sqrt"
-                | "core::math::sin"
-                | "core::math::cos"
-                | "core::math::tan"
-                | "core::math::tanh"
-                | "core::math::abs"
-                | "core::math::floor"
-                | "core::math::ceil"
-                | "core::math::is_finite"
-        );
-        let binary = matches!(
-            function,
-            "min"
-                | "max"
-                | "atan2"
-                | "pow"
-                | "mod"
-                | "hypot"
-                | "dot"
-                | "core::math::min"
-                | "core::math::max"
-                | "core::math::atan2"
-                | "core::math::pow"
-                | "core::math::mod"
-                | "core::math::hypot"
-        );
-        let ternary = matches!(function, "lerp" | "core::math::lerp" | "clamp" | "core::math::clamp");
+        let builtin_id = BuiltinId::from_name(function);
+        let unary = builtin_id.is_some_and(|id| id.arity() == 1)
+            || matches!(function, "is_finite" | "norm" | "transpose" | "length");
+        let binary = builtin_id.is_some_and(|id| id.arity() == 2)
+            || matches!(function, "pow" | "dot");
+        let ternary = matches!(function, "lerp" | "clamp");
         let expected = match (unary, binary, ternary) {
             (true, false, false) => Some(1),
             (false, true, false) => Some(2),
@@ -103,89 +52,26 @@ impl super::Emitter {
             }
         }
         match function {
-            "exp" | "core::math::exp" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Exp(v), span)
-            }
-            "ln" | "log" | "core::math::ln" | "core::math::log" => {
-                let v = self.emit(package, args[0])?;
-                self.obligations.push(DomainObligation::LogPositive);
-                self.push(EmirOp::Ln(v), span)
-            }
-            "sqrt" | "core::math::sqrt" => {
-                let v = self.emit(package, args[0])?;
-                self.obligations.push(DomainObligation::SqrtNonNegative);
-                self.push(EmirOp::Sqrt(v), span)
-            }
-            "sin" | "core::math::sin" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Sin(v), span)
-            }
-            "cos" | "core::math::cos" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Cos(v), span)
-            }
-            "tan" | "core::math::tan" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Tan(v), span)
-            }
-            "tanh" | "core::math::tanh" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Tanh(v), span)
-            }
-            "abs" | "core::math::abs" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Abs(v), span)
-            }
-            "floor" | "core::math::floor" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Floor(v), span)
-            }
-            "ceil" | "core::math::ceil" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Ceil(v), span)
-            }
-            "round" | "core::math::round" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Round(v), span)
-            }
-            "sign" | "core::math::sign" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Sign(v), span)
-            }
-            "log2" | "core::math::log2" => {
-                let v = self.emit(package, args[0])?;
-                self.obligations.push(DomainObligation::LogPositive);
-                self.push(EmirOp::Log2(v), span)
-            }
-            "log10" | "core::math::log10" => {
-                let v = self.emit(package, args[0])?;
-                self.obligations.push(DomainObligation::LogPositive);
-                self.push(EmirOp::Log10(v), span)
-            }
-            "sinh" | "core::math::sinh" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Sinh(v), span)
-            }
-            "cosh" | "core::math::cosh" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Cosh(v), span)
-            }
-            "atan" | "core::math::atan" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Atan(v), span)
-            }
-            "cbrt" | "core::math::cbrt" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Cbrt(v), span)
-            }
-            "recip" | "core::math::recip" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Recip(v), span)
-            }
-            "fract" | "core::math::fract" => {
-                let v = self.emit(package, args[0])?;
-                self.push(EmirOp::Fract(v), span)
+            f if BuiltinId::from_name(f).is_some() => {
+                let id = BuiltinId::from_name(f).unwrap();
+                match id.arity() {
+                    1 => {
+                        let v = self.emit(package, args[0])?;
+                        for obl in id.domain_obligations() {
+                            self.obligations.push(*obl);
+                        }
+                        self.push(EmirOp::UnaryBuiltin(id, v), span)
+                    }
+                    2 => {
+                        let l = self.emit(package, args[0])?;
+                        let r = self.emit(package, args[1])?;
+                        for obl in id.domain_obligations() {
+                            self.obligations.push(*obl);
+                        }
+                        self.push(EmirOp::BinaryBuiltin(id, l, r), span)
+                    }
+                    _ => unreachable!(),
+                }
             }
             "norm" => {
                 let v = self.emit(package, args[0])?;
@@ -448,31 +334,6 @@ impl super::Emitter {
                 let r = self.emit(package, args[1])?;
                 self.push(EmirOp::VectorDot(l, r), span)
             }
-            "min" | "core::math::min" => {
-                let l = self.emit(package, args[0])?;
-                let r = self.emit(package, args[1])?;
-                self.push(EmirOp::Min(l, r), span)
-            }
-            "max" | "core::math::max" => {
-                let l = self.emit(package, args[0])?;
-                let r = self.emit(package, args[1])?;
-                self.push(EmirOp::Max(l, r), span)
-            }
-            "atan2" | "core::math::atan2" => {
-                let l = self.emit(package, args[0])?;
-                let r = self.emit(package, args[1])?;
-                self.push(EmirOp::Atan2(l, r), span)
-            }
-            "mod" | "core::math::mod" => {
-                let l = self.emit(package, args[0])?;
-                let r = self.emit(package, args[1])?;
-                self.push(EmirOp::Mod(l, r), span)
-            }
-            "hypot" | "core::math::hypot" => {
-                let l = self.emit(package, args[0])?;
-                let r = self.emit(package, args[1])?;
-                self.push(EmirOp::Hypot(l, r), span)
-            }
             "pow" | "core::math::pow" => {
                 let l = self.emit(package, args[0])?;
                 let r = self.emit(package, args[1])?;
@@ -497,8 +358,8 @@ impl super::Emitter {
                 let vx = self.emit(package, args[0])?;
                 let vlo = self.emit(package, args[1])?;
                 let vhi = self.emit(package, args[2])?;
-                let lo_clamped = self.push(EmirOp::Max(vx, vlo), span)?;
-                self.push(EmirOp::Min(lo_clamped, vhi), span)
+                let lo_clamped = self.push(EmirOp::BinaryBuiltin(BuiltinId::Max, vx, vlo), span)?;
+                self.push(EmirOp::BinaryBuiltin(BuiltinId::Min, lo_clamped, vhi), span)
             }
             "einsum" => {
                 if args.len() < 2 {

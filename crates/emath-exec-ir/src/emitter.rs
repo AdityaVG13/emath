@@ -7,7 +7,8 @@ use emath_core::Span;
 use emath_ir::{BinaryOp, BinderKind, ExprNode, Literal, SemanticPackage, SliceAxis, UnaryOp};
 
 use crate::{
-    DomainObligation, EmirExprRef, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine,
+    BuiltinId, DomainObligation, EmirExprRef, EmirOp, EmirProgram, EmirSliceAxis, EmirValue,
+    FoldCombine,
 };
 
 pub(crate) fn lower(
@@ -161,20 +162,20 @@ impl Emitter {
                     UnaryOp::Not => EmirOp::Not(operand),
                     UnaryOp::Sqrt => {
                         self.obligations.push(DomainObligation::SqrtNonNegative);
-                        EmirOp::Sqrt(operand)
+                        EmirOp::UnaryBuiltin(BuiltinId::Sqrt, operand)
                     }
-                    UnaryOp::Exp => EmirOp::Exp(operand),
+                    UnaryOp::Exp => EmirOp::UnaryBuiltin(BuiltinId::Exp, operand),
                     UnaryOp::Log => {
                         self.obligations.push(DomainObligation::LogPositive);
-                        EmirOp::Ln(operand)
+                        EmirOp::UnaryBuiltin(BuiltinId::Ln, operand)
                     }
-                    UnaryOp::Sin => EmirOp::Sin(operand),
-                    UnaryOp::Cos => EmirOp::Cos(operand),
-                    UnaryOp::Tan => EmirOp::Tan(operand),
-                    UnaryOp::Tanh => EmirOp::Tanh(operand),
-                    UnaryOp::Abs => EmirOp::Abs(operand),
-                    UnaryOp::Floor => EmirOp::Floor(operand),
-                    UnaryOp::Ceil => EmirOp::Ceil(operand),
+                    UnaryOp::Sin => EmirOp::UnaryBuiltin(BuiltinId::Sin, operand),
+                    UnaryOp::Cos => EmirOp::UnaryBuiltin(BuiltinId::Cos, operand),
+                    UnaryOp::Tan => EmirOp::UnaryBuiltin(BuiltinId::Tan, operand),
+                    UnaryOp::Tanh => EmirOp::UnaryBuiltin(BuiltinId::Tanh, operand),
+                    UnaryOp::Abs => EmirOp::UnaryBuiltin(BuiltinId::Abs, operand),
+                    UnaryOp::Floor => EmirOp::UnaryBuiltin(BuiltinId::Floor, operand),
+                    UnaryOp::Ceil => EmirOp::UnaryBuiltin(BuiltinId::Ceil, operand),
                 };
                 self.push(op, span)
             }
@@ -207,9 +208,9 @@ impl Emitter {
                     BinaryOp::Or => EmirOp::Or(l, r),
                     BinaryOp::Imply => EmirOp::Imply(l, r),
                     BinaryOp::Iff => EmirOp::Iff(l, r),
-                    BinaryOp::Min => EmirOp::Min(l, r),
-                    BinaryOp::Max => EmirOp::Max(l, r),
-                    BinaryOp::Atan2 => EmirOp::Atan2(l, r),
+                    BinaryOp::Min => EmirOp::BinaryBuiltin(BuiltinId::Min, l, r),
+                    BinaryOp::Max => EmirOp::BinaryBuiltin(BuiltinId::Max, l, r),
+                    BinaryOp::Atan2 => EmirOp::BinaryBuiltin(BuiltinId::Atan2, l, r),
                     BinaryOp::VectorAdd => EmirOp::VectorAdd(l, r),
                     BinaryOp::VectorSub => EmirOp::VectorSub(l, r),
                     BinaryOp::VectorScale => EmirOp::VectorScale(l, r),

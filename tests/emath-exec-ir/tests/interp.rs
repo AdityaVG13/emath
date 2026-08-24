@@ -1,6 +1,6 @@
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate};
-use emath_exec_ir::{EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
+use emath_exec_ir::{BuiltinId, EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
 
 fn program(ops: Vec<EmirOp>) -> EmirProgram {
     let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
@@ -1266,7 +1266,7 @@ fn sample_limit_sin_x_over_x_approaches_one() {
     let body = EmirProgram {
         ops: vec![
             (EmirOp::LoadInput(0), Span::default()),
-            (EmirOp::Sin(EmirValue(0)), Span::default()),
+            (EmirOp::UnaryBuiltin(BuiltinId::Sin, EmirValue(0)), Span::default()),
             (EmirOp::LoadInput(0), Span::default()),
             (EmirOp::F64Div(EmirValue(1), EmirValue(2)), Span::default()),
         ],
@@ -1441,9 +1441,9 @@ fn reverse_mode_transcendental_gradient() {
     let body = EmirProgram {
         ops: vec![
             (EmirOp::LoadInput(0), Span::default()),      // 0: x
-            (EmirOp::Sin(EmirValue(0)), Span::default()),  // 1: sin(x)
+            (EmirOp::UnaryBuiltin(BuiltinId::Sin, EmirValue(0)), Span::default()),  // 1: sin(x)
             (EmirOp::LoadInput(1), Span::default()),      // 2: y
-            (EmirOp::Exp(EmirValue(2)), Span::default()),  // 3: exp(y)
+            (EmirOp::UnaryBuiltin(BuiltinId::Exp, EmirValue(2)), Span::default()),  // 3: exp(y)
             (EmirOp::F64Mul(EmirValue(1), EmirValue(3)), Span::default()), // 4: sin(x)*exp(y)
         ],
         result: EmirValue(4),
