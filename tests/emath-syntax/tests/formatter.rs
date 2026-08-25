@@ -134,3 +134,61 @@ emath function Timed:
     assert!(once.contains("1 s"));
     assert!(once.contains("Per<Duration>"));
 }
+
+/// ELP item attributes round-trip in the canonical `@` spelling:
+/// `emath_item = { attribute }, "emath", ...`. The formatter must emit
+/// the grammar form (not a Rust-style bracket) and remain idempotent.
+#[test]
+fn item_attributes_round_trip() {
+    let source = "\
+@capabilities(experimental-syntax)
+@experimental
+emath function P:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = x * x
+";
+    let once = format_once(source);
+    assert!(
+        once.starts_with("@capabilities(experimental-syntax)\n@experimental\nemath function P:"),
+        "attributes must render before the head in `@` form: {once}"
+    );
+    assert!(
+        !once.contains('['),
+        "attributes must not render as Rust-style brackets: {once}"
+    );
+    assert_eq!(format_once(&once), once, "fmt(fmt(s)) must equal fmt(s)");
+    let rebound = parse_lossless(&once, FileId(0), &Limits::default());
+    assert!(
+        !rebound.diagnostics.has_errors(),
+        "formatted attributes must parse back: {:?}",
+        rebound
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// Quoted string arguments keep their quotes through the round trip so
+/// identifier args and string args never merge on reformat.
+#[test]
+fn attribute_string_arguments_keep_quotes() {
+    let source = "\
+@capabilities(\"experimental-syntax\", nightly)
+emath function P:
+    outputs:
+        y: Float64
+    definitions:
+        y = 1.0
+";
+    let once = format_once(source);
+    assert!(
+        once.contains("@capabilities(\"experimental-syntax\", nightly)"),
+        "quoted form must round-trip: {once}"
+    );
+    assert_eq!(format_once(&once), once, "fmt(fmt(s)) must equal fmt(s)");
+}

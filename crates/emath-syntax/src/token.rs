@@ -191,6 +191,8 @@ pub enum TokenKind {
     Question,
     Amp,
     Pipe,
+    /// `@` — attribute prefix on `emath` items (`@capabilities(...)`).
+    AtSign,
     Newline,
     Indent,
     Dedent,
@@ -238,6 +240,7 @@ impl TokenKind {
             Self::Question => "`?`".to_string(),
             Self::Amp => "`&`".to_string(),
             Self::Pipe => "`|`".to_string(),
+            Self::AtSign => "`@`".to_string(),
             Self::Newline => "end of line".to_string(),
             Self::Indent => "indent".to_string(),
             Self::Dedent => "dedent".to_string(),

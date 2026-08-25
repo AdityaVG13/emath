@@ -1,0 +1,20 @@
+# @capabilities(experimental-syntax) grants the experimental lane for
+# the whole file: @experimental items are refused anywhere without it
+# (E-PKG-064). Run `emath check` on a copy with the two attribute lines
+# removed to see the refusal.
+@capabilities(experimental-syntax)
+@experimental
+emath function ExperimentalSquare:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = x * x
+
+    tests:
+        example <four>:
+            given x = 2
+            expect y == 4

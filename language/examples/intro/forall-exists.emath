@@ -15,6 +15,10 @@ emath function VectorQuantifiers:
         all_positive = forall i in 0..n: v[i] > 0
         has_zero = exists i in 0..n: v[i] == 0
 
+    goals:
+        evaluate <all_positive>:
+            produce rust.library
+
     tests:
         example <mixed>:
             given v = [1.0, 0.0, 3.0]

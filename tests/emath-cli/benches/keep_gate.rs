@@ -34,7 +34,7 @@ const TARGET_ELAPSED: Duration = Duration::from_secs(5);
 /// History dir under the workspace root.
 const HISTORY_REL: &str = ".bench-history";
 /// Reference genesis source used by the codegen cells.
-const GLYPHS_REL: &str = "language/examples/integration/arbitrary-glyphs.emath";
+const GLYPHS_REL: &str = "tests/valid/arbitrary-glyphs.emath";
 /// Committed generated golden for the identity comparison.
 const SG_GENERATED_LIB_REL: &str = "examples/generated/semantic-genesis-worlds/src/lib.rs";
 

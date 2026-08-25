@@ -62,7 +62,7 @@ Not trusted:
 ## Determinism / replay
 
 `run_demo_semantic_genesis` in `xtask/src/main.rs` runs `emath genesis`
-twice on `language/examples/integration/arbitrary-glyphs.emath` into dirs `a`
+twice on `tests/valid/arbitrary-glyphs.emath` into dirs `a`
 and `b`, then `diff_dirs(&a, &b, "genesis determinism")`. Pass requires
 byte-identical artifacts.
 

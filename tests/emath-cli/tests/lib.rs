@@ -1,6 +1,6 @@
 //! CLI ergonomics tests, moved from `crates/emath-cli/src/lib.rs`.
 
-use emath_cli::{run, EXIT_OK, EXIT_USAGE};
+use emath_cli::{run, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 
 fn args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
@@ -71,4 +71,55 @@ fn catalog_commands_honor_help_and_unknown_flags() {
     assert_eq!(run(&args("version --help")), EXIT_OK);
     assert_eq!(run(&args("capabilities --help")), EXIT_OK);
     assert_eq!(run(&args("robot-docs --help")), EXIT_OK);
+}
+
+#[test]
+fn causalized_residual_model_refuses_check_without_breaking_plain_models() {
+    // The library's `run` assumes the parser backend is installed (the
+    // binary does this in main); parsing tests must install it once.
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath-cli-e-kind-017-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let causalized = dir.join("causalized.emath");
+    let plain = dir.join("plain.emath");
+    std::fs::write(
+        &causalized,
+        "\
+emath model CausalizedRC:
+    inputs:
+        V: Float64
+    algebraic:
+        I: Float64
+    state:
+        q: Float64
+    equations:
+        V - I - q == 0
+        der(q) = I
+",
+    )
+    .expect("write causalized");
+    std::fs::write(
+        &plain,
+        "\
+emath model PlainRC:
+    inputs:
+        V: Float64
+    state:
+        q: Float64
+    equations:
+        der(q) = V - q
+",
+    )
+    .expect("write plain");
+    assert_eq!(
+        run(&["check".into(), causalized.to_string_lossy().into_owned()]),
+        EXIT_REFUSED,
+        "causalized residuals must refuse at check (E-KIND-017 gate)"
+    );
+    assert_eq!(
+        run(&["check".into(), plain.to_string_lossy().into_owned()]),
+        EXIT_OK,
+        "single-rate models keep admitting"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

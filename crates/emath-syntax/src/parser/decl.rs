@@ -1,7 +1,7 @@
 use crate::token::{Keyword, TokenKind};
 use crate::tree::{
-    Declaration, DeclarationSignature, GenericParam, Item, NotationDecl, NotationFixity, Suite,
-    UseTree,
+    Attribute, Declaration, DeclarationSignature, GenericParam, Item, NotationDecl,
+    NotationFixity, Suite, UseTree,
 };
 use emath_core::Span;
 
@@ -27,6 +27,28 @@ impl super::Parser {
                 TokenKind::Ident(name) if name == "notation" => {
                     if let Some(item) = self.parse_notation_item() {
                         self.tree_items.push(item);
+                    }
+                }
+                // Grammar: `emath_item = { attribute }, "emath", ...`.
+                // Attributes parse only as item prefixes; anything else
+                // after them is a typed refusal (E-SYN-101), never a
+                // silent drop.
+                TokenKind::AtSign => {
+                    let attributes = self.parse_attributes();
+                    if !matches!(self.peek(), TokenKind::Keyword(Keyword::Emath)) {
+                        self.error_here(
+                            "E-SYN-101",
+                            "attributes must precede an `emath` declaration",
+                        );
+                        self.skip_to_line_end();
+                        continue;
+                    }
+                    match self.parse_declaration() {
+                        Some(mut decl) => {
+                            decl.attributes = attributes;
+                            self.tree_items.push(Item::Declaration(decl));
+                        }
+                        None => self.skip_to_line_end(),
                     }
                 }
                 TokenKind::Keyword(Keyword::Emath) => match self.parse_declaration() {
@@ -159,6 +181,167 @@ impl super::Parser {
             tree: tree.unwrap_or(UseTree::Named(Vec::new())),
             source: start.cover(self.last_span()),
         })
+    }
+
+    /// `{ attribute }` before an `emath` item. Grammar surface:
+    /// `attribute = "@", path, [ "(", [ attribute_arg, { ",", attribute_arg } ], ")" ], newline`
+    /// with `attribute_arg = string | identifier | "[" , { string | identifier } , "]"`.
+    /// Args are stored as canonical source text (identifiers verbatim,
+    /// strings in their quoted spelling) so the formatter round-trips
+    /// without a kind tag. Anything else is a typed refusal (E-SYN-117),
+    /// never a silent drop.
+    fn parse_attributes(&mut self) -> Vec<Attribute> {
+        let mut attributes = Vec::new();
+        while matches!(self.peek(), TokenKind::AtSign) {
+            match self.parse_attribute() {
+                Some(attribute) => {
+                    if !matches!(self.peek(), TokenKind::Newline | TokenKind::Eof) {
+                        self.error_here(
+                            "E-SYN-101",
+                            "expected end of line after attribute",
+                        );
+                        self.skip_to_line_end();
+                        return attributes;
+                    }
+                    attributes.push(attribute);
+                }
+                None => {
+                    self.skip_to_line_end();
+                    return attributes;
+                }
+            }
+            self.skip_newlines();
+        }
+        attributes
+    }
+
+    fn parse_attribute(&mut self) -> Option<Attribute> {
+        let start = self.current_span();
+        self.advance(); // `@`
+        let mut name_parts = Vec::new();
+        match self.peek() {
+            TokenKind::Ident(name) => {
+                name_parts.push(name.clone());
+                self.advance();
+            }
+            _ => {
+                self.error_here("E-SYN-101", "expected an attribute name after `@`");
+                return None;
+            }
+        }
+        while matches!(self.peek(), TokenKind::PathSep) {
+            self.advance();
+            match self.peek() {
+                TokenKind::Ident(segment) => {
+                    name_parts.push(segment.clone());
+                    self.advance();
+                }
+                _ => {
+                    self.error_here("E-SYN-101", "expected an identifier after `::` in attribute path");
+                    return None;
+                }
+            }
+        }
+        let mut args = Vec::new();
+        if self.eat(&TokenKind::LParen) {
+            loop {
+                if matches!(self.peek(), TokenKind::RParen) {
+                    self.advance();
+                    break;
+                }
+                if !self.parse_attribute_arg(&mut args) {
+                    return None;
+                }
+                match self.peek() {
+                    TokenKind::Comma => {
+                        self.advance();
+                    }
+                    TokenKind::RParen => {
+                        self.advance();
+                        break;
+                    }
+                    _ => {
+                        self.error_here(
+                            "E-SYN-117",
+                            "attribute arguments accept identifiers, string literals, or bracket lists",
+                        );
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(Attribute {
+            name: name_parts.join("::"),
+            args,
+            source: start.cover(self.last_span()),
+        })
+    }
+
+    fn parse_attribute_arg(&mut self, args: &mut Vec<String>) -> bool {
+        match self.peek() {
+            TokenKind::Ident(ident) => {
+                // Hyphen-joined identifiers collapse to one argument
+                // (`@capabilities(experimental-syntax)` is the key
+                // `experimental-syntax`, not a subtraction). The pieces
+                // are joined verbatim so the formatter round-trips.
+                let mut joined = ident.clone();
+                self.advance();
+                while matches!(self.peek(), TokenKind::Minus)
+                    && matches!(self.peek_at(1), TokenKind::Ident(_))
+                {
+                    joined.push('-');
+                    if let TokenKind::Ident(part) = self.peek_at(1).clone() {
+                        joined.push_str(&part);
+                    }
+                    self.advance();
+                    self.advance();
+                }
+                args.push(joined);
+                true
+            }
+            TokenKind::Str(value) => {
+                args.push(quote_string_literal(value));
+                self.advance();
+                true
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                loop {
+                    match self.peek() {
+                        TokenKind::Ident(ident) => {
+                            args.push(ident.clone());
+                            self.advance();
+                        }
+                        TokenKind::Str(value) => {
+                            args.push(quote_string_literal(value));
+                            self.advance();
+                        }
+                        TokenKind::RBracket => {
+                            self.advance();
+                            break;
+                        }
+                        _ => {
+                            self.error_here(
+                                "E-SYN-117",
+                                "attribute lists accept identifiers or string literals",
+                            );
+                            return false;
+                        }
+                    }
+                    if matches!(self.peek(), TokenKind::Comma) {
+                        self.advance();
+                    }
+                }
+                true
+            }
+            _ => {
+                self.error_here(
+                    "E-SYN-117",
+                    "attribute arguments accept identifiers, string literals, or bracket lists",
+                );
+                false
+            }
+        }
     }
 
     /// Declaration head (unified form): `emath <kind> <Name<Params>>:`;
@@ -466,4 +649,21 @@ impl super::Parser {
         }
         params
     }
+}
+
+/// Re-quote a lexer string value for canonical attribute-argument text.
+/// The lexer stores the unescaped value; the canonical spelling keeps the
+/// quotes so formatting round-trips without a string/identifier kind tag.
+fn quote_string_literal(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }

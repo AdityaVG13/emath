@@ -384,8 +384,14 @@ each time step the runner Newton-solves the coupled residual system
 with a finite-difference Jacobian and Gaussian elimination; definitions
 are re-evaluated with the solved algebraic values, and the solved rates
 feed the integrator. So a fully implicit DAE needs no manual `solve`
-op - see `language/examples/intro/causalized-rc.emath` and
-`language/examples/intro/implicit-dae.emath`.
+op - see `language/examples/intro/causalized-rc.emath`.
+
+**Capability status (Phase 1):** `emath simulate` runs fully implicit
+DAEs, but `rust.library` codegen for the coupled Newton solve is not
+implemented, so `emath check` / `emath build` refuse such a model with
+`E-KIND-017` instead of failing untyped. Semi-explicit DAEs (algebraic
+definitions plus one rate in `equations:`) build fine; see
+`language/examples/intro/algebraic-dae.emath`.
 
 Conformance checks at admission time:
 

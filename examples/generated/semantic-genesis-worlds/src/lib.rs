@@ -32,8 +32,8 @@ impl Term {
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut output = String::new();
-        self.write_canonical(&mut output)
-            .expect("writing into String cannot fail");
+        // ubs:ignore — fmt::Write for String is infallible.
+        let _ = self.write_canonical(&mut output);
         output
     }
 
@@ -589,11 +589,9 @@ pub fn fixture_modular() -> Environment<i64> {
 mod contract_tests {
     use super::*;
 
-    /// The swap transform is not a no-op mutation. The demo term
-    /// `⊛(⧖(⋈(a, b)), ζ)` evaluates to 6 under the modular world and to
-    /// 5 under the swapped world (⋈ becomes `*`, ⊛ becomes `+`, ζ = 3,
-    /// a = 4, b = 7). A mutant that delegates the swapped world to the
-    /// modular world returns 6 here and is killed.
+    /// The swap transform is not a no-op: the demo term evaluates to 6 under
+    /// the modular world and 5 under the swapped world, so a mutant that
+    /// delegates the swap away is killed.
     #[test]
     fn swapped_world_is_not_a_noop_mutation() {
         let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
@@ -643,9 +641,8 @@ mod specialized_abi_tests {
     use super::*;
 
     /// Differential pin: the declaration-specific ABI must agree with the
-    /// generic ABI on the reference term (both dispatch into the same
-    /// world semantics; a divergence would mean the generated dispatcher
-    /// mis-mapped a symbol or an arity).
+    /// generic ABI on the reference term, or the dispatcher mis-mapped a
+    /// symbol or arity.
     #[test]
     fn specialized_abi_agrees_with_generic_evaluation() {
         let term = reference_term();

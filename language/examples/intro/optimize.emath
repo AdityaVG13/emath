@@ -20,6 +20,10 @@ emath function OptimizeDemo:
         min_x = minimize(loss) wrt x
         max_x = maximize(score) wrt x
 
+    goals:
+        evaluate <min_x>:
+            produce rust.library
+
     tests:
         example <from_zero>:
             given x = 0

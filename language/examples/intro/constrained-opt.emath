@@ -19,6 +19,10 @@ emath function ConstrainedOpt:
         objective = x * x + y * y
         opt_x = minimize(objective) wrt x, y
 
+    goals:
+        evaluate <opt_x>:
+            produce rust.library
+
     tests:
         example <demo>:
             given x = 0

@@ -3,12 +3,11 @@
 ## Declaration head
 
 ```emath
-@deterministic
 emath policy AdaptivePolicy<T, N>:
     ...
 ```
 
-The head contains attributes, declaration form, qualified name/generics and kind, named directly as `emath <kind> <Name<Parameters>>:`.
+The head contains attributes, declaration form, qualified name/generics and kind, named directly as `emath <kind> <Name<Parameters>>:`. Attribute lines precede the `emath` keyword (`{ attribute }` in the grammar):
 
 ## Section model
 
@@ -51,9 +50,35 @@ Schemas specify payload grammar, multiplicity, ordering semantics, defaults and 
 
 ## Attributes
 
-Attributes are scoped metadata with versioned semantics:
+Attributes are scoped metadata with versioned semantics. The surface
+grammar is fixed — `attribute = "@" , path , [ "(" , [ argument_list ] , ")" ] , newline`
+— and arguments are identifiers, string literals, or bracket lists.
+
+### Implemented today
+
+The front-end admits exactly two item attributes end to end (parse,
+format, type-check):
+
+- `@capabilities(experimental-syntax)` — declares the experimental lane
+  capability for the file. The capability is **file-scoped**: declaring
+  it on any item admits `@experimental` items anywhere in the same
+  source file. Unknown capability keys are refused with `E-PKG-065`.
+- `@experimental` — marks an item as experimental syntax. It takes no
+  arguments (`E-SYN-117`); without the declared `experimental-syntax`
+  capability the item is refused with `E-PKG-064`, so experimental
+  syntax never compiles silently in a stable package (see
+  `elps/README.md`, experimental lane).
+
+Every other attribute is refused with `E-SYN-118` — nothing is silently
+dropped. The design vocabulary below (`@deterministic`, `@deprecated`,
+`@repr`, `@evidence`, named arguments like `since = "0.3"`) is normative
+surface that the front-end does not admit yet; each will land through an
+ELP with its own semantics and admission path.
+
+### Design vocabulary (not yet admitted)
 
 ```emath
+@deterministic
 @deprecated(since = "0.3", use = NewPolicy)
 @repr(rust = "transparent")
 @evidence(min = E3)

@@ -22,6 +22,10 @@ emath function GradientField:
         gx = gradient_2d_x(m, 1.0)
         gy = gradient_2d_y(m, 1.0)
 
+    goals:
+        evaluate <du>:
+            produce rust.library
+
     tests:
         example <linear_vector_has_constant_gradient>:
             given u = [0.0, 1.0, 2.0, 3.0, 4.0]

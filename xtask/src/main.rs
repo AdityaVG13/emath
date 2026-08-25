@@ -36,7 +36,7 @@ mod demo_interpretation_portfolio;
 mod demo_joint_tuning;
 mod demo_world_morphisms;
 
-const REFERENCE_SOURCE: &str = "language/examples/integration/arbitrary-glyphs.emath";
+const REFERENCE_SOURCE: &str = "tests/valid/arbitrary-glyphs.emath";
 const GENERATED_DIR: &str = "examples/generated/semantic-genesis-worlds";
 
 fn main() {

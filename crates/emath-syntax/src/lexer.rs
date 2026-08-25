@@ -513,6 +513,10 @@ impl Lexer<'_> {
                 self.pos += 1;
                 self.push(TokenKind::Amp, start);
             }
+            b'@' => {
+                self.pos += 1;
+                self.push(TokenKind::AtSign, start);
+            }
             b'|' => {
                 self.pos += 1;
                 self.push(TokenKind::Pipe, start);

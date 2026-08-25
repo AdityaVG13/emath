@@ -20,14 +20,15 @@ Each example teaches one concept. Read in table order within a section.
 | [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | `emath policy` with constructor. |
 | [vector-given.emath](intro/vector-given.emath) | `Vector[3]` input, indexing, `dot`. |
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Semi-explicit DAE with `emath simulate`. |
-| [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE (Newton-solved each step). |
+| [causalized-rc.emath](intro/causalized-rc.emath) | Refused: implicit-residual DAE — admitted and simulable, but Phase 1 `rust.library` codegen not implemented (E-KIND-017). |
 | [modular-arithmetic.emath](intro/modular-arithmetic.emath) | `GF<p>`, `factorial`, `mod_inv`, `congruence`, `rs_encode`, `hamming_distance`. |
+| [attribute-gated.emath](intro/attribute-gated.emath) | `@capabilities(experimental-syntax)` + `@experimental` — the ELP experimental lane gate. |
 
 ## numerical - dynamics and PDEs
 
 | Example | Concept |
 |---------|---------|
-| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | `emath model` with `emath simulate`. |
+| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Coupled mass-spring as one vector-state ODE (`emath simulate`). |
 | [heat-rod-sim.emath](numerical/heat-rod-sim.emath) | 1D heat equation: `laplacian` + `emath simulate`. |
 | [heat-plate-sim.emath](numerical/heat-plate-sim.emath) | 2D heat equation: `laplacian_2d` + `emath simulate`. |
 | [gradient-field.emath](numerical/gradient-field.emath) | `gradient` / `gradient_2d_x` / `gradient_2d_y`. |

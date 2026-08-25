@@ -16,6 +16,10 @@ emath function AutoDiff:
         y = x * x
         dy = derivative(y) wrt x
 
+    goals:
+        evaluate <dy>:
+            produce rust.library
+
     tests:
         example <parabola>:
             given x = 3

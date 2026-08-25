@@ -57,6 +57,7 @@ intent, not an implemented surface.
 | `emath-rust-ir` | `crates/emath-rust-ir` | structured Rust target AST | ir |
 | `emath-rust-backend` | `crates/emath-rust-backend` | EMIR to Rust IR and rendering | rust-ir |
 | `emath-artifact` | `crates/emath-artifact` | Cargo package, manifests, source maps, SBOM | core/schema |
+| `emath-rt` | `crates/emath-rt` | pre-compiled math kernels, embedded verbatim into generated crates and used by the interpreter | std only |
 | `emath-runtime` | `crates/emath-runtime` | Outcome, budgets, continuations, provider runtime | core |
 
 ### Tier 5 — integration
@@ -97,7 +98,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-store` | `crates/emath-store` | evidence/artifact state store (frankensqlite, `sqlite-store` feature) | core/ir |
-| `emath-provenance` | `crates/emath-provenance` | goal → plan → artifact lineage graph (frankengraphdb, `graphdb` feature) | ir |
 | `emath-search` | `crates/emath-search` | artifact corpus hybrid search (frankensearch, `search` feature) | ir |
 
 Feature-gated: each crate's default build is std-only; the upstream engine
@@ -132,9 +132,9 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-law-check` | `tests/emath-law-check` | law-check public-API test suite |
 | `tests/emath-lsp` | `tests/emath-lsp` | language-server public-API test suite |
 | `tests/emath-portfolio` | `tests/emath-portfolio` | portfolio public-API test suite |
-| `tests/emath-provenance` | `tests/emath-provenance` | provenance public-API test suite |
 | `tests/emath-provider-api` | `tests/emath-provider-api` | provider-API public-API test suite |
 | `tests/emath-rust-backend` | `tests/emath-rust-backend` | Rust backend public-API test suite |
+| `tests/emath-rt` | `tests/emath-rt` | runtime-kernel public-API test suite |
 | `tests/emath-search` | `tests/emath-search` | search public-API test suite |
 | `tests/emath-sema` | `tests/emath-sema` | session/admission public-API test suite |
 | `tests/emath-store` | `tests/emath-store` | store public-API test suite |

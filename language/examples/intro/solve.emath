@@ -15,6 +15,10 @@ emath function SolveRoot:
         residual = x * x - 4
         root = solve(residual) wrt x
 
+    goals:
+        evaluate <root>:
+            produce rust.library
+
     tests:
         example <from_one>:
             given x = 1

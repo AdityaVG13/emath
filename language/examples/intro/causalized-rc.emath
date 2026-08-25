@@ -1,9 +1,8 @@
 # Fully implicit DAE: causalized residuals with an `algebraic:` section.
-# The `equations:` section accepts `lhs == rhs` comparisons and bare
-# residuals.  Unknowns declared in `algebraic:` are implicit; the runner
-# Newton-solves the coupled residual system (finite-difference Jacobian,
-# Gaussian elimination) at every time step together with the rate
-# constraints, so causalization needs no manual `solve` op.
+# REFUSED at `emath check` with E-KIND-017: residual unknowns are admitted
+# and the runner Newton-solves them (`emath simulate` works), but Phase 1
+# `rust.library` codegen for the coupled solve is not implemented, so the
+# declaration refuses as a buildable crate instead of failing untyped.
 # Same RC circuit as algebraic-dae.emath: q(t) = C*V*(1 - exp(-t/(R*C))),
 # but the resistor law is written as a residual instead of a definition:
 #   V - R*I - q/C == 0

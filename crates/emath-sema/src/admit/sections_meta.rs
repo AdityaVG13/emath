@@ -435,6 +435,13 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut trace = SemanticTrace::default();
     let mut package = emath_ir::SemanticPackage::new();
 
+    // Item-attribute gates are file-scoped and run for every checked
+    // tree, independent of the front-end lane: the Phase 1 compat lane
+    // canonicalizes every kind to `custom`, so gating inside
+    // `admit_front_end` (which runs only for package/use/notation
+    // items) would silently skip ordinary files.
+    crate::recognition::admit_capability_gates(tree, &mut diagnostics);
+
     // Front-end: package identity and `use` imports. External file
     // imports remain a Phase 2 refusal (E-PKG-050).
     let has_recognition_items = tree.items.iter().any(|item| match item {

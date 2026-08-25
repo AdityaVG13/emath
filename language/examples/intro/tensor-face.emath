@@ -5,6 +5,11 @@ emath function TensorFace:
     definitions:
         t = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
         face = t[0, :, :]
+
+    goals:
+        evaluate <face>:
+            produce rust.library
+
     tests:
         example <first_face>:
             expect face == [[1.0, 2.0], [3.0, 4.0]]

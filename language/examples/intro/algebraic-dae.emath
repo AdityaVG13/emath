@@ -18,3 +18,7 @@ emath model RCCircuit:
     equations:
         I = (V - q / C) / R
         der(q) = I
+
+    goals:
+        evaluate <I>:
+            produce rust.library

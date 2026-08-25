@@ -15,6 +15,10 @@ emath function VectorGiven:
         scaled = 2.0 * v
         mag_sq = dot(v, v)
 
+    goals:
+        evaluate <mag_sq>:
+            produce rust.library
+
     tests:
         example <ones>:
             given v = [1.0, 2.0, 3.0]

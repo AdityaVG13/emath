@@ -13,6 +13,10 @@ emath function VectorRangeSum:
         n = length(v)
         s = sum i in 0..n: v[i]
 
+    goals:
+        evaluate <s>:
+            produce rust.library
+
     tests:
         example <range>:
             given v = [1.0, 2.0, 3.0]

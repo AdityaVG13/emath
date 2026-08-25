@@ -1,15 +1,15 @@
-# explicit-mass-spring: A2-admitted continuous model.
+# explicit-mass-spring: coupled mass-spring as a single vector-state ODE.
 #
-# Explicit form of the mass-spring ODE. The recorded mass-matrix spelling
-# `m * der(v) = -c * v - k * x` is also admitted when `m` is a named scalar.
+# The Phase 1 backend admits exactly one evaluate goal per declaration, so
+# the coupled pair `dx/dt = v, dv/dt = (-c v - k x)/m` is written as ONE
+# vector rate equation over the state s = [x, v]: no second `der()` line,
+# same physics. Predictor-corrector RK4 via `emath simulate`.
 emath model MassSpring:
     inputs:
         m: Float64
         c: Float64
         k: Float64
     state:
-        x: Float64
-        v: Float64
+        s: Vector[2]
     equations:
-        der(x) = v
-        der(v) = (-c * v - k * x) / m
+        der(s) = [s[1], ((-k / m) * s[0] - (c / m) * s[1])]

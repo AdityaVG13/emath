@@ -7,6 +7,11 @@ emath function SumOneToFive:
     definitions:
         total = sum i in 1..6: i
         folded = sum([1, 2, 3, 4, 5])
+
+    goals:
+        evaluate <total>:
+            produce rust.library
+
     tests:
         example <fifteen>:
             expect total == 15 and folded == 15
