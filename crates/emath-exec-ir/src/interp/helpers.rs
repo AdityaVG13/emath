@@ -280,6 +280,18 @@ pub(super) fn shape_product(shape: &[usize]) -> Option<usize> {
     shape.iter().try_fold(1usize, |acc, &dim| acc.checked_mul(dim))
 }
 
+/// Chunk a flat row-major matrix into rows, for the emath-rt nested
+/// representation. Callers must have validated `data.len() == rows * cols`
+/// (via `matrix_of`).
+pub(super) fn rows_of(data: &[f64], cols: usize) -> Vec<Vec<f64>> {
+    data.chunks_exact(cols).map(|row| row.to_vec()).collect()
+}
+
+/// Flatten nested rows back into the flat row-major representation.
+pub(super) fn flatten_rows(rows: &[Vec<f64>]) -> Vec<f64> {
+    rows.iter().flat_map(|row| row.iter().copied()).collect()
+}
+
 pub(super) fn eval_tensor_slice(
     registers: &[Value],
     tensor: EmirValue,

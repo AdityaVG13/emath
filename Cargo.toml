@@ -13,6 +13,7 @@ members = [
   "crates/emath-hir",
   "crates/emath-rust-ir",
   "crates/emath-rust-backend",
+  "crates/emath-rt",
   "crates/emath-artifact",
   "crates/emath-runtime",
   "crates/emath-provider-api",
@@ -63,6 +64,7 @@ members = [
   "tests/emath-portfolio",
   "tests/emath-provider-api",
   "tests/emath-rust-backend",
+  "tests/emath-rt",
   "tests/emath-search",
   "tests/emath-sema",
   "tests/emath-store",
@@ -97,6 +99,7 @@ emath-sema = { path = "crates/emath-sema" }
 emath-exec-ir = { path = "crates/emath-exec-ir" }
 emath-rust-ir = { path = "crates/emath-rust-ir" }
 emath-rust-backend = { path = "crates/emath-rust-backend" }
+emath-rt = { path = "crates/emath-rt" }
 emath-artifact = { path = "crates/emath-artifact" }
 emath-runtime = { path = "crates/emath-runtime" }
 emath-provider-api = { path = "crates/emath-provider-api" }
