@@ -235,22 +235,20 @@ fn eval_op(
             let v1 = vector_of(registers, left, name)?;
             let v2 = vector_of(registers, right, name)?;
             require_equal_len(v1.len(), v2.len(), name, "vector length mismatch")?;
-            let out = v1.iter().zip(v2.iter()).map(|(a, b)| a + b).collect();
-            Ok(Value::Vector(out))
+            Ok(Value::Vector(emath_rt::vec_add(v1, v2)))
         }
         EmirOp::VectorSub(left, right) => {
             let v1 = vector_of(registers, left, name)?;
             let v2 = vector_of(registers, right, name)?;
             require_equal_len(v1.len(), v2.len(), name, "vector length mismatch")?;
-            let out = v1.iter().zip(v2.iter()).map(|(a, b)| a - b).collect();
-            Ok(Value::Vector(out))
+            Ok(Value::Vector(emath_rt::vec_sub(v1, v2)))
         }
         EmirOp::VectorScale(left, right) => {
             // Canonical operand order from admission: (vector, scalar).
             // Still accept (scalar, vector) so older EMIR stays evaluable.
             match (register(registers, left)?, register(registers, right)?) {
                 (Value::Vector(v), Value::F64(s)) | (Value::F64(s), Value::Vector(v)) => {
-                    Ok(Value::Vector(v.iter().map(|x| x * s).collect()))
+                    Ok(Value::Vector(emath_rt::vec_scale(v, *s)))
                 }
                 _ => Err(EvalFault::TypeConfusion {
                     register: left.0,
@@ -262,13 +260,11 @@ fn eval_op(
             let v1 = vector_of(registers, left, name)?;
             let v2 = vector_of(registers, right, name)?;
             require_equal_len(v1.len(), v2.len(), name, "vector length mismatch")?;
-            let dot: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
-            Ok(Value::F64(dot))
+            Ok(Value::F64(emath_rt::vec_dot(v1, v2)))
         }
         EmirOp::VectorNorm(value) => {
             let v = vector_of(registers, value, name)?;
-            let sum_sq: f64 = v.iter().map(|x| x * x).sum();
-            Ok(Value::F64(sum_sq.sqrt()))
+            Ok(Value::F64(emath_rt::vec_norm(v)))
         }
         EmirOp::VectorLength(value) => {
             let v = vector_of(registers, value, name)?;
@@ -281,47 +277,14 @@ fn eval_op(
             edge,
         } => {
             let v = vector_of(registers, input, name)?;
-            let n = v.len();
-            let last = n.saturating_sub(1) as isize;
-            let mut out = Vec::with_capacity(n);
-            for i in 0..n {
-                let mut acc = 0.0f64;
-                for (k, &w) in weights.iter().enumerate() {
-                    let raw = i as isize + k as isize - center as isize;
-                    acc += match edge {
-                        // Replicate the nearest in-range cell.
-                        EdgePolicy::Clamp => {
-                            let idx = raw.clamp(0, last) as usize;
-                            w * v[idx]
-                        }
-                        // Mirror across the boundary: u[-1]=u[1], u[n]=u[n-2].
-                        // The trailing clamp guards tiny vectors (n < 3)
-                        // where the mirror target is itself out of range.
-                        EdgePolicy::Neumann => {
-                            let idx = if raw < 0 {
-                                (-raw) as usize
-                            } else if raw > last {
-                                (2 * last - raw) as usize
-                            } else {
-                                raw as usize
-                            };
-                            w * v[idx.clamp(0, last as usize)]
-                        }
-                        // Fixed boundary values; OOB taps read the constant.
-                        EdgePolicy::Dirichlet { left, right } => {
-                            if raw < 0 {
-                                w * left
-                            } else if raw > last {
-                                w * right
-                            } else {
-                                w * v[raw as usize]
-                            }
-                        }
-                    };
+            let edge = match edge {
+                EdgePolicy::Clamp => emath_rt::EdgePolicy::Clamp,
+                EdgePolicy::Neumann => emath_rt::EdgePolicy::Neumann,
+                EdgePolicy::Dirichlet { left, right } => {
+                    emath_rt::EdgePolicy::Dirichlet { left, right }
                 }
-                out.push(acc);
-            }
-            Ok(Value::Vector(out))
+            };
+            Ok(Value::Vector(emath_rt::stencil_1d(v, weights, center as i64, &edge)))
         }
         EmirOp::Stencil2d {
             input,
@@ -330,70 +293,44 @@ fn eval_op(
             edge,
         } => {
             let (rows, cols, data) = matrix_of(registers, input, name)?;
-            let last_r = rows.saturating_sub(1) as isize;
-            let last_c = cols.saturating_sub(1) as isize;
-            let (cr, cc) = center;
-            let mut out = Vec::with_capacity(data.len());
-            for r in 0..rows {
-                for c in 0..cols {
-                    let mut acc = 0.0f64;
-                    for kr in 0..3usize {
-                        for kc in 0..3usize {
-                            let w = weights[kr * 3 + kc];
-                            if w == 0.0 {
-                                continue;
-                            }
-                            let raw_r = r as isize + kr as isize - cr as isize;
-                            let raw_c = c as isize + kc as isize - cc as isize;
-                            acc += match edge {
-                                EdgePolicy::Clamp => {
-                                    let rr = raw_r.clamp(0, last_r) as usize;
-                                    let cc2 = raw_c.clamp(0, last_c) as usize;
-                                    w * data[rr * cols + cc2]
-                                }
-                                EdgePolicy::Neumann => {
-                                    let rr = (if raw_r < 0 {
-                                        -raw_r
-                                    } else if raw_r > last_r {
-                                        2 * last_r - raw_r
-                                    } else {
-                                        raw_r
-                                    })
-                                    .clamp(0, last_r) as usize;
-                                    let cc2 = (if raw_c < 0 {
-                                        -raw_c
-                                    } else if raw_c > last_c {
-                                        2 * last_c - raw_c
-                                    } else {
-                                        raw_c
-                                    })
-                                    .clamp(0, last_c) as usize;
-                                    w * data[rr * cols + cc2]
-                                }
-                                EdgePolicy::Dirichlet { .. } => {
-                                    return Err(EvalFault::Arithmetic {
-                                        op: name,
-                                        detail: "2D Dirichlet boundary is not yet supported; \
-                                                 use Clamp or Neumann",
-                                    });
-                                }
-                            };
-                        }
-                    }
-                    out.push(acc);
-                }
+            if matches!(edge, EdgePolicy::Dirichlet { .. }) {
+                return Err(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "2D Dirichlet boundary is not yet supported; use Clamp or Neumann",
+                });
             }
+            let edge = match edge {
+                EdgePolicy::Clamp => emath_rt::EdgePolicy::Clamp,
+                EdgePolicy::Neumann => emath_rt::EdgePolicy::Neumann,
+                EdgePolicy::Dirichlet { .. } => unreachable!("checked above"),
+            };
+            let nested = rows_of(data, cols);
+            let w9: &[f64; 9] = weights
+                .as_slice()
+                .try_into()
+                .map_err(|_| EvalFault::Arithmetic {
+                    op: name,
+                    detail: "2D stencil weights must have length 9",
+                })?;
+            let out = emath_rt::stencil_2d(
+                &nested,
+                w9,
+                (center.0 as i64, center.1 as i64),
+                &edge,
+            );
             Ok(Value::Matrix {
                 rows,
                 cols,
-                data: out,
+                data: flatten_rows(&out),
             })
         }
         EmirOp::MatrixAdd(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
             let (r2, c2, d2) = matrix_of(registers, right, name)?;
             require_same_matrix_shape(r1, c1, r2, c2, name)?;
-            let data = d1.iter().zip(d2.iter()).map(|(a, b)| a + b).collect();
+            let a = rows_of(d1, c1);
+            let b = rows_of(d2, c2);
+            let data = flatten_rows(&emath_rt::mat_add(&a, &b));
             Ok(Value::Matrix {
                 rows: r1,
                 cols: c1,
@@ -404,7 +341,9 @@ fn eval_op(
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
             let (r2, c2, d2) = matrix_of(registers, right, name)?;
             require_same_matrix_shape(r1, c1, r2, c2, name)?;
-            let data = d1.iter().zip(d2.iter()).map(|(a, b)| a - b).collect();
+            let a = rows_of(d1, c1);
+            let b = rows_of(d2, c2);
+            let data = flatten_rows(&emath_rt::mat_sub(&a, &b));
             Ok(Value::Matrix {
                 rows: r1,
                 cols: c1,
@@ -414,11 +353,14 @@ fn eval_op(
         EmirOp::MatrixScale(left, right) => {
             match (register(registers, left)?, register(registers, right)?) {
                 (Value::Matrix { rows, cols, data }, Value::F64(s))
-                | (Value::F64(s), Value::Matrix { rows, cols, data }) => Ok(Value::Matrix {
-                    rows: *rows,
-                    cols: *cols,
-                    data: data.iter().map(|x| x * s).collect(),
-                }),
+                | (Value::F64(s), Value::Matrix { rows, cols, data }) => {
+                    let nested = rows_of(data, *cols);
+                    Ok(Value::Matrix {
+                        rows: *rows,
+                        cols: *cols,
+                        data: flatten_rows(&emath_rt::mat_scale(&nested, *s)),
+                    })
+                }
                 _ => Err(EvalFault::TypeConfusion {
                     register: left.0,
                     op: name,
@@ -429,14 +371,8 @@ fn eval_op(
             let (rows, cols, m_data) = matrix_of(registers, matrix, name)?;
             let v = vector_of(registers, vector, name)?;
             require_equal_len(v.len(), cols, name, "matrix×vector width mismatch")?;
-            let mut out = Vec::with_capacity(rows);
-            for r in 0..rows {
-                let sum: f64 = (0..cols)
-                    .map(|c| m_data[r * cols + c] * v[c])
-                    .sum();
-                out.push(sum);
-            }
-            Ok(Value::Vector(out))
+            let nested = rows_of(m_data, cols);
+            Ok(Value::Vector(emath_rt::mat_mul_vec(&nested, v)))
         }
         EmirOp::MatrixMulMatrix(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
@@ -447,37 +383,19 @@ fn eval_op(
                     detail: "matrix product inner dimensions mismatch",
                 });
             }
-            let out_len = r1.checked_mul(c2).ok_or(EvalFault::Arithmetic {
-                op: name,
-                detail: "matrix product size overflow",
-            })?;
-            let mut out = Vec::with_capacity(out_len);
-            for i in 0..r1 {
-                for j in 0..c2 {
-                    let sum: f64 = (0..c1)
-                        .map(|k| d1[i * c1 + k] * d2[k * c2 + j])
-                        .sum();
-                    out.push(sum);
-                }
-            }
+            let a = rows_of(d1, c1);
+            let b = rows_of(d2, c2);
+            let data = flatten_rows(&emath_rt::mat_mul_mat(&a, &b));
             Ok(Value::Matrix {
                 rows: r1,
                 cols: c2,
-                data: out,
+                data,
             })
         }
         EmirOp::MatrixTranspose(value) => {
             let (rows, cols, data) = matrix_of(registers, value, name)?;
-            let len = rows.checked_mul(cols).ok_or(EvalFault::Arithmetic {
-                op: name,
-                detail: "matrix size overflow",
-            })?;
-            let mut out = vec![0.0; len];
-            for r in 0..rows {
-                for c in 0..cols {
-                    out[c * rows + r] = data[r * cols + c];
-                }
-            }
+            let nested = rows_of(data, cols);
+            let out = flatten_rows(&emath_rt::mat_transpose(&nested));
             Ok(Value::Matrix {
                 rows: cols,
                 cols: rows,
@@ -550,7 +468,7 @@ fn eval_op(
             }
             Ok(Value::Tensor {
                 shape: s1.to_vec(),
-                data: d1.iter().zip(d2.iter()).map(|(a, b)| a + b).collect(),
+                data: emath_rt::tensor_add(d1, d2),
             })
         }
         EmirOp::TensorSub(left, right) => {
@@ -564,7 +482,7 @@ fn eval_op(
             }
             Ok(Value::Tensor {
                 shape: s1.to_vec(),
-                data: d1.iter().zip(d2.iter()).map(|(a, b)| a - b).collect(),
+                data: emath_rt::tensor_sub(d1, d2),
             })
         }
         EmirOp::Einsum { ref subscripts, ref inputs } => {
@@ -666,33 +584,22 @@ fn eval_op(
         }
         EmirOp::Factorial(n) => {
             let n = i64_of(registers, n, name)?;
-            if n < 0 || n > 20 {
-                return Err(EvalFault::Arithmetic {
+            let result =
+                emath_rt::factorial_checked(n).map_err(|detail| EvalFault::Arithmetic {
                     op: name,
-                    detail: "factorial overflow: n must be in [0, 20] for i64",
-                });
-            }
-            let result = (1..=n).product::<i64>();
+                    detail,
+                })?;
             Ok(Value::I64(result))
         }
         EmirOp::ModInv(a, m) => {
             let a = i64_of(registers, a, name)?;
             let m = i64_of(registers, m, name)?;
-            if m <= 0 {
-                return Err(EvalFault::Arithmetic {
+            let result =
+                emath_rt::mod_inv_checked(a, m).map_err(|detail| EvalFault::Arithmetic {
                     op: name,
-                    detail: "mod_inv: modulus must be positive",
-                });
-            }
-            // Extended GCD to find inverse: a*x ≡ 1 (mod m)
-            let (g, x, _) = extended_gcd(a.rem_euclid(m), m);
-            if g != 1 {
-                return Err(EvalFault::Arithmetic {
-                    op: name,
-                    detail: "mod_inv: no inverse exists (gcd != 1)",
-                });
-            }
-            Ok(Value::I64(x.rem_euclid(m)))
+                    detail,
+                })?;
+            Ok(Value::I64(result))
         }
         EmirOp::Congruence(a, b, m) => {
             let a = i64_of(registers, a, name)?;
@@ -709,12 +616,6 @@ fn eval_op(
         EmirOp::PolyEvalMod(coeffs, x, p) => {
             let x = i64_of(registers, x, name)?;
             let p = i64_of(registers, p, name)?;
-            if p <= 0 {
-                return Err(EvalFault::Arithmetic {
-                    op: name,
-                    detail: "poly_eval_mod: modulus must be positive",
-                });
-            }
             let coeff_vec = match register(registers, coeffs)? {
                 Value::Vector(data) => data,
                 _ => return Err(EvalFault::TypeConfusion {
@@ -722,28 +623,15 @@ fn eval_op(
                     op: name,
                 }),
             };
-            // Horner's method: ((c[k-1]*x + c[k-2])*x + ...) mod p
-            let mut result: i64 = 0;
-            for &c in coeff_vec.iter().rev() {
-                result = (result * x + c as i64).rem_euclid(p);
-            }
+            let result =
+                emath_rt::poly_eval_mod_checked(coeff_vec, x, p).map_err(|detail| {
+                    EvalFault::Arithmetic { op: name, detail }
+                })?;
             Ok(Value::I64(result))
         }
         EmirOp::RSEncode(coeffs, n, p) => {
             let n = i64_of(registers, n, name)?;
             let p = i64_of(registers, p, name)?;
-            if p <= 0 {
-                return Err(EvalFault::Arithmetic {
-                    op: name,
-                    detail: "rs_encode: modulus must be positive",
-                });
-            }
-            if n <= 0 || n as usize > p as usize {
-                return Err(EvalFault::Arithmetic {
-                    op: name,
-                    detail: "rs_encode: codeword length n must be in (0, p]",
-                });
-            }
             let coeff_vec = match register(registers, coeffs)? {
                 Value::Vector(data) => data.clone(),
                 _ => return Err(EvalFault::TypeConfusion {
@@ -751,42 +639,30 @@ fn eval_op(
                     op: name,
                 }),
             };
-            // Evaluate polynomial at x = 0, 1, ..., n-1 over GF(p)
-            let mut codeword = Vec::with_capacity(n as usize);
-            for x in 0..n {
-                let mut result: i64 = 0;
-                for &c in coeff_vec.iter().rev() {
-                    result = (result * x + c as i64).rem_euclid(p);
-                }
-                codeword.push(result as f64);
-            }
+            let codeword =
+                emath_rt::rs_encode_checked(&coeff_vec, n, p).map_err(|detail| {
+                    EvalFault::Arithmetic { op: name, detail }
+                })?;
             Ok(Value::Vector(codeword))
         }
         EmirOp::HammingDistance(a, b) => {
             let a_vec = match register(registers, a)? {
-                Value::Vector(data) => data.clone(),
+                Value::Vector(data) => data,
                 _ => return Err(EvalFault::TypeConfusion {
                     register: a.0,
                     op: name,
                 }),
             };
             let b_vec = match register(registers, b)? {
-                Value::Vector(data) => data.clone(),
+                Value::Vector(data) => data,
                 _ => return Err(EvalFault::TypeConfusion {
                     register: b.0,
                     op: name,
                 }),
             };
-            if a_vec.len() != b_vec.len() {
-                return Err(EvalFault::Arithmetic {
-                    op: name,
-                    detail: "hamming_distance: vectors must have equal length",
-                });
-            }
-            let dist = a_vec.iter()
-                .zip(b_vec.iter())
-                .filter(|(x, y)| x.to_bits() != y.to_bits())
-                .count() as i64;
+            let dist = emath_rt::hamming_distance_checked(a_vec, b_vec).map_err(|detail| {
+                EvalFault::Arithmetic { op: name, detail }
+            })?;
             Ok(Value::I64(dist))
         }
         EmirOp::Fold {
@@ -1202,14 +1078,5 @@ fn cartesian_product(shape: &[usize]) -> Vec<Vec<usize>> {
     result
 }
 
-/// Extended GCD: returns (g, x, y) such that a*x + b*y = g = gcd(a, b).
-/// Used by `mod_inv` to find the modular inverse.
-fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
-    if b == 0 {
-        (a, 1, 0)
-    } else {
-        let (g, x, y) = extended_gcd(b, a.rem_euclid(b));
-        (g, y, x - (a / b) * y)
-    }
-}
+// Extended GCD moved to crates/emath-rt/src/body.rs (mod_inv_checked).
 

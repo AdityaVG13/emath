@@ -947,6 +947,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-rt",
 ]
 
 [[package]]
@@ -1173,6 +1174,17 @@ name = "emath-registry"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+]
+
+[[package]]
+name = "emath-rt"
+version = "0.1.0"
+
+[[package]]
+name = "emath-rt-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-rt",
 ]
 
 [[package]]
