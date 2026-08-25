@@ -357,6 +357,157 @@ impl BuiltinId {
         }
     }
 
+    // ── Symbolic AD formulas for codegen ─────────────────────────────
+    //
+    // The interpreter differentiates with numbers (eval_dual_*/backward_*).
+    // Generated Rust differentiates with source formulas; these methods
+    // return the formula strings so the AD math lives in one place.
+    // `e`/`p` map a register to its primal-reference name, `d` maps it to
+    // its tangent-reference name, and `idx` is the output register.
+
+    /// Forward-mode tangent formula for a unary builtin.
+    #[must_use]
+    pub fn rust_tangent_unary(
+        &self,
+        e: &dyn Fn(u32) -> String,
+        d: &dyn Fn(u32) -> String,
+        idx: u32,
+        input: u32,
+    ) -> String {
+        let e_in = e(input);
+        let d_in = d(input);
+        let e_out = e(idx);
+        match self {
+            Self::Exp => format!("{e_out} * {d_in}"),
+            Self::Ln => format!("{d_in} / {e_in}"),
+            Self::Sqrt => format!("{d_in} / (2.0 * {e_out})"),
+            Self::Sin => format!("{e_in}.cos() * {d_in}"),
+            Self::Cos => format!("-{e_in}.sin() * {d_in}"),
+            Self::Tan => format!("{d_in} / ({e_in}.cos() * {e_in}.cos())"),
+            Self::Tanh => format!("(1.0 - {e_out} * {e_out}) * {d_in}"),
+            Self::Abs => format!("{e_in}.signum() * {d_in}"),
+            Self::Floor | Self::Ceil | Self::Round | Self::Sign => "0.0".to_string(),
+            Self::Log2 => format!("{d_in} / ({e_in} * std::f64::consts::LN_2)"),
+            Self::Log10 => format!("{d_in} / ({e_in} * std::f64::consts::LN_10)"),
+            Self::Sinh => format!("{e_in}.cosh() * {d_in}"),
+            Self::Cosh => format!("{e_in}.sinh() * {d_in}"),
+            Self::Atan => format!("{d_in} / (1.0 + {e_in} * {e_in})"),
+            Self::Cbrt => format!("{d_in} / (3.0 * {e_out} * {e_out})"),
+            Self::Recip => format!("-{d_in} / ({e_in} * {e_in})"),
+            Self::Fract => d_in,
+            _ => unreachable!("not a unary builtin"),
+        }
+    }
+
+    /// Forward-mode tangent formula for a binary builtin.
+    #[must_use]
+    pub fn rust_tangent_binary(
+        &self,
+        e: &dyn Fn(u32) -> String,
+        d: &dyn Fn(u32) -> String,
+        idx: u32,
+        a: u32,
+        b: u32,
+    ) -> String {
+        let (ea, eb, da, db, e_out) = (e(a), e(b), d(a), d(b), e(idx));
+        match self {
+            Self::Hypot => format!(
+                "if {e_out} == 0.0 {{ 0.0 }} else {{ ({ea} * {da} + {eb} * {db}) / {e_out} }}"
+            ),
+            Self::Min => format!("if {ea} < {eb} {{ {da} }} else {{ {db} }}"),
+            Self::Max => format!("if {ea} > {eb} {{ {da} }} else {{ {db} }}"),
+            Self::Atan2 => format!(
+                "({eb} * {da} - {ea} * {db}) / ({ea} * {ea} + {eb} * {eb})"
+            ),
+            Self::Mod => da,
+            _ => unreachable!("not a binary builtin"),
+        }
+    }
+
+    /// Reverse-mode adjoint update for a unary builtin, as source
+    /// statements (`None` when the builtin always has zero gradient).
+    #[must_use]
+    pub fn rust_adjoint_unary(
+        &self,
+        adj: &str,
+        p: &dyn Fn(u32) -> String,
+        idx: u32,
+        input: u32,
+    ) -> Option<String> {
+        let p_in = p(input);
+        let p_out = p(idx);
+        let acc = |reg: u32| format!("__ra{}", reg);
+        Some(match self {
+            Self::Exp => format!("{} += {adj} * {p_out};\n", acc(input)),
+            Self::Ln => format!("{} += {adj} / {p_in};\n", acc(input)),
+            Self::Sqrt => format!("{} += {adj} / (2.0 * {p_out});\n", acc(input)),
+            Self::Sin => format!("{} += {adj} * {p_in}.cos();\n", acc(input)),
+            Self::Cos => format!("{} -= {adj} * {p_in}.sin();\n", acc(input)),
+            Self::Tan => format!(
+                "{} += {adj} / ({p_in}.cos() * {p_in}.cos());\n",
+                acc(input)
+            ),
+            Self::Tanh => format!("{} += {adj} * (1.0 - {p_out} * {p_out});\n", acc(input)),
+            Self::Abs => format!("{} += {adj} * {p_in}.signum();\n", acc(input)),
+            Self::Floor | Self::Ceil | Self::Round | Self::Sign => return None,
+            Self::Log2 => {
+                format!("{} += {adj} / ({p_in} * std::f64::consts::LN_2);\n", acc(input))
+            }
+            Self::Log10 => {
+                format!("{} += {adj} / ({p_in} * std::f64::consts::LN_10);\n", acc(input))
+            }
+            Self::Sinh => format!("{} += {adj} * {p_in}.cosh();\n", acc(input)),
+            Self::Cosh => format!("{} += {adj} * {p_in}.sinh();\n", acc(input)),
+            Self::Atan => format!("{} += {adj} / (1.0 + {p_in} * {p_in});\n", acc(input)),
+            Self::Cbrt => format!("{} += {adj} / (3.0 * {p_out} * {p_out});\n", acc(input)),
+            Self::Recip => format!("{} -= {adj} / ({p_in} * {p_in});\n", acc(input)),
+            Self::Fract => format!("{} += {adj};\n", acc(input)),
+            _ => unreachable!("not a unary builtin"),
+        })
+    }
+
+    /// Reverse-mode adjoint update for a binary builtin, as source
+    /// statements (`None` when the builtin always has zero gradient).
+    #[must_use]
+    pub fn rust_adjoint_binary(
+        &self,
+        adj: &str,
+        p: &dyn Fn(u32) -> String,
+        idx: u32,
+        a: u32,
+        b: u32,
+    ) -> Option<String> {
+        let (pa, pb, p_out) = (p(a), p(b), p(idx));
+        let acc = |reg: u32| format!("__ra{}", reg);
+        Some(match self {
+            Self::Hypot => format!(
+                "if {p_out} != 0.0 {{ {} += {adj} * {pa} / {p_out}; {} += {adj} * {pb} / {p_out}; }}\n",
+                acc(a),
+                acc(b)
+            ),
+            Self::Min => format!(
+                "if {pa} <= {pb} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+                acc(a),
+                acc(b)
+            ),
+            Self::Max => format!(
+                "if {pa} >= {pb} {{ {} += {adj}; }} else {{ {} += {adj}; }}\n",
+                acc(a),
+                acc(b)
+            ),
+            Self::Atan2 => {
+                let denom = format!("({pa} * {pa} + {pb} * {pb})");
+                format!(
+                    "if {denom} != 0.0 {{ {} += {adj} * {pb} / {denom}; {} -= {adj} * {pa} / {denom}; }}\n",
+                    acc(a),
+                    acc(b)
+                )
+            }
+            Self::Mod => format!("{} += {adj};\n", acc(a)),
+            _ => unreachable!("not a binary builtin"),
+        })
+    }
+
     // ── Metadata ─────────────────────────────────────────────────────
 
     /// Domain obligations for this builtin (e.g. LogPositive for ln).
