@@ -459,6 +459,47 @@ if "$PYTHON" scripts/g4_precedence.py --check --out "$TAMPERED_P" $G4_GRAMMARS >
 fi
 lane_done "g4-precedence" "negative-control" "passed" "tampered corpus refused"
 echo "g4-precedence: fixture current; tampered corpus refused"
+# Hidden-interpretation scan (G4 sub-test 4): every multi-role glyph in
+# the shipped grammar must be registered with the policy that pins its
+# meaning (parser-context | worlds-machinery | typed-refusal). A delta
+# that gives a glyph a second role without registering it — or drifts a
+# registered glyph's role set — is the "one glyph, many meanings" class.
+G4_HIDDEN_BASELINE="tests/language-gates/fixtures/g4-hidden-interpretation-baseline.json"
+lane_begin
+if ! G4H_OUT="$("$PYTHON" scripts/g4_hidden_interpretation.py --baseline "$G4_HIDDEN_BASELINE" $G4_GRAMMARS 2>&1)"; then
+    echo "FAIL: g4-hidden-interpretation found unregistered multi-role glyphs" >&2
+    printf '%s\n' "$G4H_OUT" >&2
+    lane_done "g4-hidden-interpretation" "baseline" "failed" "unregistered role drift"
+    exit 1
+fi
+lane_done "g4-hidden-interpretation" "baseline" "passed" "every multi-role glyph registered"
+# Negative control: a glyph introduced in two productions without a
+# registry entry is refused.
+if "$PYTHON" scripts/g4_hidden_interpretation.py \
+    --delta tests/language-gates/diffs/g4-hidden-interpretation-newrole.diff \
+    --baseline "$G4_HIDDEN_BASELINE" $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-hidden-interpretation admitted an unregistered multi-role glyph" >&2
+    lane_done "g4-hidden-interpretation" "negative-control" "failed" "multi-role glyph admitted"
+    exit 1
+fi
+# Negative control: a registered glyph gaining a new role is refused.
+if "$PYTHON" scripts/g4_hidden_interpretation.py \
+    --delta tests/language-gates/diffs/g4-hidden-interpretation-drift.diff \
+    --baseline "$G4_HIDDEN_BASELINE" $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-hidden-interpretation admitted a registered glyph's role drift" >&2
+    lane_done "g4-hidden-interpretation" "negative-control" "failed" "role drift admitted"
+    exit 1
+fi
+# Positive control: a single-role glyph addition needs no registration.
+if ! "$PYTHON" scripts/g4_hidden_interpretation.py \
+    --delta tests/language-gates/diffs/g4-hidden-interpretation-clean.diff \
+    --baseline "$G4_HIDDEN_BASELINE" $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-hidden-interpretation refused a single-role glyph addition" >&2
+    lane_done "g4-hidden-interpretation" "positive-control" "failed" "clean delta refused"
+    exit 1
+fi
+lane_done "g4-hidden-interpretation" "controls" "passed" "multi-role and drift refused; clean delta passes"
+echo "g4-hidden-interpretation: registry current; multi-role/drift deltas refused"
 
 echo "== four-artifact rule =="
 # The four-artifact rule applies to the change UNDER GATE, not the last
