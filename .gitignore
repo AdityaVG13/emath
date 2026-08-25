@@ -72,6 +72,8 @@ AGENTS.md
 !/implementation/SG00_STRICT_BASELINE.md
 !/implementation/RESEARCH_THEOREMS.md
 !/implementation/GENESIS_KERNEL.md
+# folder index for the shipped contract-doc set (above)
+!/implementation/README.md
 # python bytecode from the gate scripts
 __pycache__/
 
