@@ -59,6 +59,7 @@ fn package(span_offset: u32, literal_bits: u64) -> SemanticPackage {
             is_public: true,
             source: span,
         }],
+        algebraic: Vec::new(),
         definitions: BTreeMap::from([("y".to_string(), ExprId(2))]),
         invariants: vec![ExprId(2)],
         goals: Vec::new(),

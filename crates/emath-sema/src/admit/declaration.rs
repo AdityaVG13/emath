@@ -954,6 +954,7 @@ pub(super) fn admit_declaration(
         inputs: input_fields,
         outputs: output_fields,
         state: state_fields,
+        algebraic: algebraic_fields,
         constructors,
         definitions,
         invariants: admitter.constraints.clone(),

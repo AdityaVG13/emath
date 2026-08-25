@@ -74,11 +74,11 @@ fn catalog_commands_honor_help_and_unknown_flags() {
 }
 
 #[test]
-fn causalized_residual_model_refuses_check_without_breaking_plain_models() {
+fn causalized_residual_model_admits_and_plain_models_keep_admitting() {
     // The library's `run` assumes the parser backend is installed (the
     // binary does this in main); parsing tests must install it once.
     emath_syntax::install_source_parser();
-    let dir = std::env::temp_dir().join(format!("emath-cli-e-kind-017-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("emath-cli-causalized-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let causalized = dir.join("causalized.emath");
     let plain = dir.join("plain.emath");
@@ -113,8 +113,8 @@ emath model PlainRC:
     .expect("write plain");
     assert_eq!(
         run(&["check".into(), causalized.to_string_lossy().into_owned()]),
-        EXIT_REFUSED,
-        "causalized residuals must refuse at check (E-KIND-017 gate)"
+        EXIT_OK,
+        "causalized residuals must admit at check (codegen now handles them)"
     );
     assert_eq!(
         run(&["check".into(), plain.to_string_lossy().into_owned()]),

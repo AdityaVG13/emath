@@ -524,6 +524,7 @@ impl ModelBuilder for BuilderModel {
             invariants,
             goals: goal_ids,
             tests: test_ids,
+            algebraic: Vec::new(),
             exports: Vec::new(),
             compile_spec,
             about: None,

@@ -5,6 +5,10 @@
   "bumps": [
     {
       "date": "2026-08-25",
+      "note": "causalized implicit-DAE rust.library codegen (E-KIND-017 retired): models with algebraic: residuals now build step_euler/step_rk4 embedding the interpreter's causalized Newton solve; ERROR_CODES annex re-spliced to 271 emitted codes; simulate CLI accepts algebraic guesses; example causalized-rc.emath flips to admitted+building; capabilities snapshot: deferred dae row removed, numeric_models.dae-implicit added"
+    },
+    {
+      "date": "2026-08-25",
       "note": "ERROR_CODES annex re-spliced to 272 emitted codes: E-KIND-017 story + row (CLI causalized-residual capability gate); examples-lane repair re-pinned the registry"
     },
     {
@@ -53,7 +57,7 @@
     },
     {
       "date": "2026-08-19",
-      "note": "ERROR_CODES annex re-spliced: catalog.rs CLI work added E-TLT-004/006 emission rows; new feature-gated infra crates (store/provenance/search) raise rust-file count (170\u2192180); codes still 243, surface unchanged CRATE_MAP re-pinned (Tier 8 infra adapters: emath-store/provenance/search)"
+      "note": "ERROR_CODES annex re-spliced: catalog.rs CLI work added E-TLT-004/006 emission rows; new feature-gated infra crates (store/provenance/search) raise rust-file count (170→180); codes still 243, surface unchanged CRATE_MAP re-pinned (Tier 8 infra adapters: emath-store/provenance/search)"
     },
     {
       "date": "2026-08-18",
@@ -101,7 +105,7 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "1d9e8fc6083c271cfc720dcd95b07be6c72012a113603214e3285ea962d08287",
+    "implementation/ERROR_CODES.md": "1223b94a7788259169d9523db380527ceba4fe4fdbb15b0b97b6039f13579847",
     "implementation/CLI_REFERENCE.md": "fafe5e487efba30d46f0ee0c1a672cfa9720acf873f91c00f3b3933cc7181bc9",
     "implementation/CRATE_MAP.md": "c127e8e858afd2db2b5c55cd3618f7a8fe2e0e36a8f7a71e712273b1e83bf91b",
     "implementation/PUBLIC_API_INVENTORY.md": "c73d6c04e7f77f73c48116623c9bdcfb8a09fe90a57c7db2602d88c18ecef806"

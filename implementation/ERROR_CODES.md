@@ -309,14 +309,6 @@ Kinds (`crates/emath-schema/src/load.rs`, `crates/emath-sema/src/admit.rs`,
   `E-KIND-010` so unknown-section (schema conformance) and
   constructors/state (Phase 1 subset) are never the same code. Live
   `request:` / `requests:` use this code with a `goals:` migration hint.
-- `E-KIND-017` — causalized implicit residuals in an `emath model`
-  (declared via `algebraic:` plus `lhs == rhs` / bare residual equations)
-  are admitted and simulable, but Phase 1 `rust.library` codegen for the
-  coupled Newton solve is not implemented. The `check` / `agent check`
-  CLI gates the declaration with this code instead of letting `build`
-  fail untyped; `emath simulate` still runs it (see
-  `causalized_implicit_dae_admits_and_simulates` in
-  `tests/emath-sema/tests/model_ode.rs`).
 - `E-KIND-032` — schema load refuses a kind whose expansion would recurse.
 - `E-KIND-100` — `emath custom <K> as kind` is refused by admission: the
   Phase 1 grammar only accepts `item_kind == "kind"`, so the documented
@@ -686,7 +678,7 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **272 unique codes** from 244 rust files.
+Emissions: **271 unique codes** from 244 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
@@ -792,7 +784,6 @@ Not yet documented at generation time: **0**.
 | `E-KIND-014` | crates/emath-schema/src/lang.rs | `duplicate default for section `{section}``<br>`E-KIND-014` |
 | `E-KIND-015` | crates/emath-schema/src/lang.rs | `default for undeclared section `{section}``<br>`predicate references undeclared section `{section}`` |
 | `E-KIND-016` | crates/emath-hir/src/open.rs<br>crates/emath-hir/tests/registry_complete.rs | `E-KIND-016`<br>`E-KIND-016 must be in the registry` |
-| `E-KIND-017` | crates/emath-cli/src/lib.rs | `E-KIND-017` |
 | `E-KIND-020` | crates/emath-schema/src/lower.rs | `E-KIND-020` |
 | `E-KIND-021` | crates/emath-schema/src/lower.rs | `E-KIND-021`<br>`rename source `{from}` is not a declared section` |
 | `E-KIND-022` | crates/emath-schema/src/lower.rs | `lowering program exceeds {MAX_LOWER_OPS} ops`<br>`recursive hoist into `{into}`` |
@@ -943,7 +934,7 @@ Not yet documented at generation time: **0**.
 | `E-TYPE-001` | crates/emath-sema/src/admit/types.rs | `unknown type `{other}`` |
 | `E-TYPE-002` | crates/emath-core/src/diagnostic.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-wasm/src/lib.rs | `E-TYPE-002` |
 | `E-TYPE-003` | crates/emath-sema/src/admit.rs | `E-TYPE-003` |
-| `E-TYPE-010` | crates/emath-core/src/capabilities.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/equations.rs | `implicit residual form is E-TYPE-010`<br>`E-TYPE-010` |
+| `E-TYPE-010` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/equations.rs | `E-TYPE-010`<br>`state field `{name}` must use `derivative({name}) = rhs`, not `{name} = rhs`` |
 | `E-TYPE-011` | crates/emath-sema/src/admit/lowering.rs | `non-finite constant `{text}` refused under strict-f64 policy`<br>`E-TYPE-011` |
 | `E-TYPE-012` | crates/emath-sema/src/admit/declaration.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/sections.rs<br>crates/emath-wasm/src/lib.rs | `constraint must be Bool, got {infer:?}`<br>`E-TYPE-012` |
 | `E-TYPE-101` | crates/emath-adapter-rumoca/src/conformance.rs<br>crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-101` |

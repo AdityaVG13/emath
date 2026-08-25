@@ -105,6 +105,7 @@ impl BackendInput<'_> {
         let mut anchors: Vec<BackendAnchor> = Vec::new();
         let mut assumptions: Vec<String> = Vec::new();
         let mut emitted_error_types: Vec<String> = Vec::new();
+        let mut newton_helpers_emitted = false;
         let mut receipts: Vec<ConstructionReceipt> = Vec::new();
 
         items.push(Item::RawAttribute("#![forbid(unsafe_code)]".to_string()));
@@ -379,7 +380,15 @@ impl BackendInput<'_> {
                     return Err(BackendError::UnknownTarget(target));
                 };
                 let chain = &order[..=end];
+                // Algebraic unknowns are part of the I/O contract of a
+                // causalized model's evaluate goal: definitions may
+                // reference them (e.g. an explicit `der_q = I` rate), so
+                // the evaluate method carries them as guess parameters just
+                // like the step methods do.
                 let mut available = input_names.clone();
+                for field in &declaration.algebraic {
+                    available.push(field.name.clone());
+                }
                 let mut body_stmts = Vec::new();
                 for (def_name, def_expr) in chain {
                     let def_name = *def_name;
@@ -425,6 +434,12 @@ impl BackendInput<'_> {
                         ty,
                     });
                 }
+                for field in &declaration.algebraic {
+                    params.push(Param {
+                        name: escape_ident(&field.name),
+                        ty: self.rust_ty(field.ty, &name)?,
+                    });
+                }
                 let body = Stmt::Block(Block {
                     statements: body_stmts,
                 });
@@ -453,17 +468,6 @@ impl BackendInput<'_> {
             }
             goals.clear();
 
-            if declaration.kind_label == "model"
-                && package
-                    .residuals
-                    .get(&declaration.id)
-                    .is_some_and(|residuals| !residuals.is_empty())
-            {
-                return Err(BackendError::Lowering(format!(
-                    "model `{name}` uses causalized implicit residuals (Newton-solved unknowns); `rust.library` codegen for implicit DAEs is not implemented yet — use `emath simulate`"
-                )));
-            }
-
             if declaration.kind_label == "model" && !emit_free_fn {
                 self.emit_model_step_methods(
                     package,
@@ -471,8 +475,10 @@ impl BackendInput<'_> {
                     &name,
                     &input_names,
                     &state_names,
+                    &mut items,
                     &mut methods,
                     &mut assumptions,
+                    &mut newton_helpers_emitted,
                 )?;
             }
 
@@ -516,7 +522,11 @@ impl BackendInput<'_> {
                     ));
                 };
                 let mut eval_args: Vec<Expr> = Vec::new();
-                for input in &declaration.inputs {
+                for input in declaration
+                    .inputs
+                    .iter()
+                    .chain(declaration.algebraic.iter())
+                {
                     if !given_names.contains(&input.name) {
                         return Err(BackendError::MissingInput(input.name.clone()));
                     }
