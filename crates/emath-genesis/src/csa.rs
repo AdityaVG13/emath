@@ -1,38 +1,22 @@
 //! Canonical seeded algebra (schema `emath.csa`, version 1).
 //!
-//! CSA is the totality baseline (ADR-003): a deterministic concrete
-//! interpretation of *any* admitted first-order term. Its only purpose is
-//! exercising codegen, receipts and replay -- it is **never** presented as
-//! the author-intended meaning of a term, and the [`CSA_MEANING_CLAIM`]
-//! label travels with every CSA artifact so no consumer can mistake it
-//! for one.
-//!
-//! Two worlds are provided:
-//!
-//! - [`OnePointWorld`]: the degenerate one-point algebra. Every constant
-//!   and every operator application is the single carrier point. Total by
-//!   construction; collapses all structure (that collapse is the point --
-//!   it is the terminal object of the world category, useful as the
-//!   cheapest possible totality witness).
-//! - [`SeededCsaWorld`]: a seeded concrete algebra over `u64`. Constants
-//!   and operator applications mix the seed, the symbol identity and the
-//!   argument values through FNV-1a, so every finite term has exactly one
-//!   reproducible value per seed, distinct seeds are a built-in negative
-//!   control, and no symbol or operator is ever unknown.
-//!
-//! Determinism class: bit-exact across runs, hosts and tool versions
-//! (pure integer mixing, no floats, no iteration-order dependence).
+//! Deterministic concrete interpretation of any admitted first-order
+//! term; a totality baseline only, never author-intended meaning (the
+//! [`CSA_MEANING_CLAIM`] label travels with every artifact). Worlds:
+//! [`OnePointWorld`] (everything is one carrier point) and
+//! [`SeededCsaWorld`] (FNV-1a mixing of seed, symbol, arguments).
+//! Bit-exact determinism: pure integer mixing, no floats.
 
 use crate::{EvalError, FirstOrderWorld};
 use emath_term::SymbolId;
 
 /// CSA schema id for machine-readable artifacts.
 pub const CSA_SCHEMA: &str = "emath.csa";
-/// CSA schema version. Bump on any change to the mixing function or the
-/// receipt layout: old values would silently stop reproducing otherwise.
+/// CSA schema version. Bump on changes to the mixing fn or receipt
+/// layout; old values would silently stop reproducing.
 pub const CSA_SCHEMA_VERSION: u32 = 1;
-/// The labeling claim every CSA artifact must carry (labeling test below
-/// pins it). CSA values witness totality; they never assert meaning.
+/// Label every CSA artifact must carry: values witness totality, never
+/// assert meaning.
 pub const CSA_MEANING_CLAIM: &str = "totality-baseline; never author-intended meaning";
 
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
@@ -70,9 +54,8 @@ impl FirstOrderWorld for OnePointWorld {
 /// Seeded concrete algebra over `u64`: total, deterministic, seed-keyed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeededCsaWorld {
-    /// Seed keying the whole interpretation. The same seed always yields
-    /// the same value for the same term; a different seed is the built-in
-    /// negative control.
+    /// Seed keying the whole interpretation; different seeds are the
+    /// built-in negative control.
     pub seed: u64,
 }
 
@@ -83,8 +66,7 @@ impl SeededCsaWorld {
         Self { seed: 0xe4a7_0001 }
     }
 
-    /// Deterministic value for a free variable (variables are part of the
-    /// carrier too: CSA is total on open terms under this valuation).
+    /// Deterministic value for a free variable (CSA is total on open terms).
     #[must_use]
     pub fn variable_value(&self, name: &str) -> u64 {
         fnv1a(fnv1a(self.seed ^ FNV_OFFSET, b"var:"), name.as_bytes())

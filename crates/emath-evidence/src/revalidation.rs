@@ -1,14 +1,10 @@
 //! Revalidation.
 //!
-//! Evidence goes stale when the source, compiler, provider, checker,
-//! target or assumptions change. A sweep marks affected records for
-//! revalidation; records whose certificates remain independently valid
-//! (checker-enforced, content-addressed) survive the sweep with no
-//! re-run. Promotion of a stale record is refused (`E-EVID-505`).
-//!
-//! Stable codes:
-//! - `E-EVID-504` reused by the store for double supersession;
-//! - `E-EVID-505` stale record refused for promotion.
+//! Evidence goes stale when source, compiler, provider, checker, target
+//! or assumptions change. A sweep marks affected records for
+//! revalidation; independently valid (checker-enforced, content-
+//! addressed) certificates survive without re-run. Stale promotion
+//! refuses (`E-EVID-505`).
 
 use crate::{EvidenceError, EvidenceStore};
 
@@ -60,9 +56,8 @@ impl RevalidationTrigger {
 /// Revalidation configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RevalidationConfig {
-    /// Record ids whose certificates remain independently valid: the
-    /// certificate is checker-enforced and content-addressed, so swept
-    /// triggers do not stale it.
+    /// Record ids whose certificates stay independently valid under
+    /// swept triggers (checker-enforced, content-addressed).
     pub independently_valid: Vec<String>,
 }
 
@@ -83,9 +78,8 @@ impl RevalidationReport {
     }
 }
 
-/// Sweeps the store: every stored record is either still valid or
-/// stale. With no triggers nothing is invalidated; revoked records are
-/// always stale (they cannot be promoted).
+/// Sweep the store: every record is still valid or stale. No triggers
+/// → nothing invalidated; revoked records are always stale.
 #[must_use]
 pub fn revalidation_sweep(
     store: &EvidenceStore,
@@ -111,8 +105,8 @@ pub fn revalidation_sweep(
     report
 }
 
-/// Promotion gate: a stale record cannot be promoted until it is
-/// revalidated (`E-EVID-505`; unknown ids are `E-EVID-501`).
+/// Promotion gate: stale records refuse until revalidated (`E-EVID-505`;
+/// unknown ids `E-EVID-501`).
 pub fn require_promotable(
     store: &EvidenceStore,
     report: &RevalidationReport,

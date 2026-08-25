@@ -134,11 +134,8 @@ pub struct Continuation {
     pub receipt: SolveReceipt,
 }
 
-/// Checks declared laws against an existing finite table.
-///
-/// Surfaces the independent checker's report, including minimized
-/// counterexamples, so a wrong candidate is rejected with evidence
-/// rather than dropped during synthesis.
+/// Check declared laws against an existing table; surfaces the
+/// independent checker's report (with counterexamples).
 pub fn check_laws(
     candidate: WorldId,
     table: &FittedTable,
@@ -147,35 +144,15 @@ pub fn check_laws(
     check_world(candidate, table, &obligations_for(&table.operator, laws))
 }
 
-/// Synthesizes all finite binary operator tables over `carrier` that
-/// satisfy every declared law.
-///
-/// Enumeration is deterministic: table index `i` in
-/// `0 .. carrier.len()^(carrier.len()²)` maps to the table whose cell
-/// for input-pair `p` is `carrier[(i / n^p) % n]`, in lexicographic
-/// input-pair order. Every candidate is validated by
-/// `emath-law-check`; unspecified rows never occur because the
-/// enumeration is total.
-///
-/// When the search is exhaustive and finds no table, the law set is
-/// rejected: the run reports zero tables with `exhaustive == true`.
 #[allow(clippy::cast_precision_loss)]
-/// Maximum carrier size: enumeration space is `carrier^(carrier²)`, so an
-/// oversized carrier is refused up front (E-RES-110) instead of spun up.
+/// Maximum carrier size; enumeration space is `carrier^(carrier²)`, so
+/// an oversized carrier refuses up front (`E-RES-110`).
 pub const MAX_CARRIER_SIZE: usize = 8;
 
-/// Synthesizes all finite binary operator tables over `carrier` that
-/// satisfy every declared law.
-///
-/// Enumeration is deterministic: table index `i` in
-/// `0 .. carrier.len()^(carrier.len()²)` maps to the table whose cell
-/// for input-pair `p` is `carrier[(i / n^p) % n]`, in lexicographic
-/// input-pair order. Every candidate is validated by
-/// `emath-law-check`; unspecified rows never occur because the
-/// enumeration is total.
-///
-/// When the search is exhaustive and finds no table, the law set is
-/// rejected: the run reports zero tables with `exhaustive == true`.
+/// Synthesize every finite table over `carrier` satisfying all declared
+/// laws, in deterministic mixed-radix enumeration order, each validated
+/// by `emath-law-check`. Exhaustive with no table → the law set is
+/// rejected (`exhaustive == true`, zero tables).
 pub fn synthesize_tables(
     operator: &SymbolId,
     carrier: &[String],
@@ -238,10 +215,8 @@ fn obligations_for(operator: &SymbolId, laws: &[SynthesisLaw]) -> Vec<WorldOblig
         .collect()
 }
 
-/// Cells of the table for enumeration index `i`: input pairs in
-/// lexicographic order get the mixed-radix digits of `i` (least
-/// significant digit = first pair), so `i in 0 .. n^(n²)` decodes
-/// without power overflow: `digit = index % n; index /= n` per cell.
+/// Cells for enumeration index `i`: lexicographic input pairs take the
+/// mixed-radix digits of `i` (`digit = index % n; index /= n` per cell).
 #[allow(clippy::cast_possible_truncation)]
 fn table_cells(carrier: &[String], index: u64) -> std::collections::BTreeMap<Vec<String>, String> {
     let n = carrier.len() as u64;
@@ -258,12 +233,9 @@ fn table_cells(carrier: &[String], index: u64) -> std::collections::BTreeMap<Vec
     cells
 }
 
-/// Solves one operator-definition hole by finite synthesis and returns a
-/// continuation: the next immutable graph (hole marked `Solved` when
-/// tables were found, `Contradictory` when the search was exhaustive
-/// with no table, `BudgetExhausted` when the budget cut the search), the
-/// synthesized tables, and the deterministic receipt. The input graph is
-/// never mutated.
+/// Solve one operator-definition hole by synthesis, returning a
+/// continuation: next immutable graph (`Solved`/`Contradictory`/
+/// `BudgetExhausted`), tables, and receipt. Input graph never mutated.
 pub fn solve_op_hole(
     graph: &HoleGraph,
     hole_id: u64,

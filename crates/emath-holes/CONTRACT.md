@@ -41,9 +41,9 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- Inline `#[cfg(test)]` in `src/synth.rs`: `n3_commutative_synthesis_is_exhaustive_over_the_full_table_space`, `budget_cut_reports_not_exhaustive`, `empty_laws_are_refused_not_contradictory`, `impossible_identity_laws_are_rejected_exhaustively` (seeded two-identity set, n=2, `tables.is_empty()` and `exhaustive == true`), `carrier8_table_space_is_honestly_not_exhaustive`, `noncommutative_table_is_rejected_with_minimized_counterexample`.
+- Workspace integration suite `tests/emath-holes` (`tests/synth.rs`): `n3_commutative_synthesis_is_exhaustive_over_the_full_table_space`, `budget_cut_reports_not_exhaustive`, `empty_laws_are_refused_not_contradictory`, `impossible_identity_laws_are_rejected_exhaustively` (seeded two-identity set, n=2, `tables.is_empty()` and `exhaustive == true`), `carrier8_table_space_is_honestly_not_exhaustive`, `noncommutative_table_is_rejected_with_minimized_counterexample`.
 - Production path: `cargo xtask demo holes-synthesis` synthesizes commutative-monoid tables on a 2-element carrier and exhaustively rejects `impossible_identity_laws`.
-- No `tests/` directory on disk.
+- No `tests/` directory on disk in the crate and no `#[cfg(test)]` module in `src/`.
 
 ## No-claim boundaries
 - A slice of the planned finite-synthesis surface, not the full production synthesis service.

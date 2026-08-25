@@ -2,21 +2,12 @@
 
 //! Meaning holes and finite synthesis.
 //!
-//! An underconstrained construct is a meaning hole. This crate delivers
-//! a deterministic hole graph (stable ids, kinds, states, dependencies,
-//! budget bookkeeping) and finite synthesis of operator tables:
-//!
-//! - deterministic finite-carrier enumeration over `carrier^(n²)`;
-//! - law validation by the independent finite-law checker
-//!   (emath-law-check), so only tables satisfying every declared law are
-//!   synthesized;
-//! - continuations: solving a hole produces a new immutable problem
-//!   state (the next graph) plus a receipt; failed proposals never
-//!   mutate the authoritative graph.
-//!
-//! The synthesis exit is covered: operator tables satisfying declared finite
-//! laws are synthesized, and a seeded impossible law set (two distinct
-//! identities for the same operator) is rejected exhaustively.
+//! An underconstrained construct is a meaning hole: deterministic hole
+//! graph (stable ids, states, dependencies, budget) plus finite
+//! synthesis of operator tables — deterministic `carrier^(n²)`
+//! enumeration validated by the independent law checker. Continuations
+//! yield an immutable next graph + receipt; failed proposals never
+//! mutate the authoritative graph.
 
 pub mod graph;
 pub mod synth;

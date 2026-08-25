@@ -1,9 +1,9 @@
 //! Goal schema.
 //!
-//! Full goal schema: core kinds plus a custom-goal envelope, inputs and
-//! outputs, accuracy, evidence, budget, target, determinism and fallback
-//! policy. The schema validates itself (`E-GOAL-011`..`E-GOAL-013`) and
-//! carries a versioned canonical encoding for plan identity.
+//! Core kinds plus a custom-goal envelope, with inputs/outputs,
+//! accuracy, evidence, budget, target, determinism and fallback policy.
+//! Self-validates (`E-GOAL-011`..`E-GOAL-013`) and carries a versioned
+//! canonical encoding for plan identity.
 
 use emath_core::{ContentId, SchemaId, fnv1a64_bytes};
 use emath_ir::{
@@ -124,7 +124,7 @@ pub struct GoalSchemaProblem {
 }
 
 impl GoalSchema {
-    /// Validates the schema; every problem has a stable code.
+    /// Validate; every problem has a stable code.
     #[must_use]
     pub fn validate(&self) -> Vec<GoalSchemaProblem> {
         let mut problems = Vec::new();
@@ -164,8 +164,7 @@ impl GoalSchema {
             exactness_token(&self.accuracy),
             self.evidence.as_str(),
             budget_token(&self.budget),
-            // Family alone collided for distinct triples/features; use the
-            // full target token (same embedding style as budget_token).
+            // Family alone collides; use the full target token.
             target_token(&self.target),
             self.determinism_token(),
             fallback_token(&self.fallback),

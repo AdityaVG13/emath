@@ -1,12 +1,8 @@
 //! The ten-layer IR stack registry: one row per layer with its durable
-//! schema id, schema version and owning crate. This is the single place
-//! that enumerates the stack (lossless syntax tree, HIR, MIG, SIR, GIR,
-//! resolution graph, EIR, evidence IR, structured Rust IR, artifact graph
-//! with identity). Ids reuse the durable strings already written into
-//! artifacts where those exist (`emath.sir`, `emath.resolution-plan`,
-//! `emath.evidence-bundle`, `emath.artifact`, `emath.hir`); versions are
-//! explicit so a schema change is a visible, versioned event, never a
-//! silent drift.
+//! schema id, schema version and owning crate — the single enumeration
+//! of the stack (syntax, HIR, MIG, SIR, GIR, resolution, EIR, evidence,
+//! rust-ir, artifact). Ids reuse durable artifact strings; versions are
+//! explicit so a schema change is a visible, versioned event.
 
 use emath_core::SchemaId;
 

@@ -1,11 +1,9 @@
-//! Type representation, refinement
-//! obligations and constrained inference.
-//!
-//! Type schemes cover primitives, generic records/variants, functions and
-//! opaque capabilities. Refinements carry an explicit discharge status
-//! (static, constructor, runtime guard, certificate or external
-//! assumption). Inference keeps its own constraint store with a minimal
-//! unifier and produces trace-bearing diagnostics (`E-TYPE-3xx`).
+//! Type representation, refinement obligations and constrained inference.
+//! Schemes cover primitives, generic records/variants, functions, opaque
+//! capabilities; refinements carry explicit discharge status (static,
+//! constructor, runtime-guard, certificate, external-assumption). Inference
+//! keeps its own constraint store with a minimal unifier; diagnostics are
+//! trace-bearing (`E-TYPE-3xx`).
 
 use std::collections::BTreeMap;
 
@@ -119,7 +117,7 @@ impl TypeScheme {
     }
 }
 
-/// Constraint store for type inference (, type side).
+/// Constraint store for type inference.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TypeConstraints {
     bindings: BTreeMap<TypeVar, TypeExpr>,

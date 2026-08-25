@@ -279,11 +279,9 @@ pub fn check_artifact(input: &ArtifactInput, config: &ArtifactCheckConfig) -> Ar
     }
 }
 
-/// Deterministic manifest-body identity (excludes `artifact_id` itself).
-///
-/// The one identity: delegates to
-/// [`emath_artifact::manifest_identity`] so the publisher and the
-/// independent checker share a single function.
+/// Manifest-body identity; delegates to
+/// [`emath_artifact::manifest_identity`] so publisher and checker share
+/// one function.
 #[must_use]
 pub fn independent_manifest_identity(manifest: &ArtifactManifest) -> ContentId {
     emath_artifact::manifest_identity(manifest)
@@ -304,24 +302,10 @@ pub fn first_error(report: &ArtifactCheckReport) -> Option<CheckerError> {
         .map(|found| CheckerError::new(found.code, found.message.clone()))
 }
 
-/// Check an artifact directory on disk: `<root>/emath/<artifact-id>/` as
-/// published by `emath build`. This is the CLI's single
-/// independent verification entry point, so write-only artifacts are no
-/// longer possible: every durable document is parsed and every declared
-/// file is read with strict UTF-8 and no symlink following.
-///
-/// Reads a staged artifact directory into the in-memory input the
-/// independent checker consumes. This is the single constructor bridge
-/// between disk and `ArtifactInput`; the negative-control battery
-/// (`negative::run_standard_battery`) seeds from inputs built this way,
-/// so the honest baseline is always a real staged tree.
-///
-/// Document-level failures are typed refusals:
-///
-/// - `E-EVID-105` a required artifact path is missing;
-/// - `E-EVID-108` document does not conform to its schema (unparseable);
-/// - `E-EVID-113` a required or declared path is a symlink;
-/// - `E-EVID-114` a document or declared file is not valid UTF-8.
+/// Read a staged artifact directory (`<root>/emath/<artifact-id>/`) into
+/// `ArtifactInput` with strict UTF-8 and no symlink following; the
+/// negative-control battery seeds from inputs built this way. Document
+/// failures are typed `E-EVID-105/108/113/114`.
 pub fn artifact_input_from_dir(root: &Path) -> Result<ArtifactInput, CheckerError> {
     let requirement = |path: &'static str| {
         let full = root.join(path);
@@ -455,13 +439,8 @@ pub fn artifact_input_from_dir(root: &Path) -> Result<ArtifactInput, CheckerErro
     })
 }
 
-/// Independent artifact checker over a staged directory.
-///
-/// Document-level failures are typed refusals:
-/// - `E-EVID-105` a required artifact path is missing;
-/// - `E-EVID-108` document does not conform to its schema (unparseable);
-/// - `E-EVID-113` a required or declared path is a symlink;
-/// - `E-EVID-114` a document or declared file is not valid UTF-8.
+/// Independent artifact checker over a staged directory (document-level
+/// failures are typed `E-EVID-105/108/113/114`).
 pub fn check_artifact_dir(root: &Path) -> Result<ArtifactCheckReport, CheckerError> {
     let input = artifact_input_from_dir(root)?;
     Ok(check_artifact(&input, &ArtifactCheckConfig::default()))

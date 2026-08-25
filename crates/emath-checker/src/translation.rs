@@ -77,11 +77,8 @@ fn sample_footprint(samples: &[TranslationSample]) -> String {
     format!("{:016x}", fnv1a64_bytes(rows.join(";").as_bytes()))
 }
 
-/// Validates the recovered semantics against the source relation.
-///
-/// Refuses with `E-EVID-301` when any input row is missing from the
-/// recovered samples or produces a different output; otherwise returns
-/// the equivalence witness for the artifact.
+/// Validates recovered semantics against the source relation
+/// (`E-EVID-301` on missing/mismatched rows); returns the witness.
 pub fn validate_translation(
     relations: &[TranslationRelation],
     samples: &[TranslationSample],

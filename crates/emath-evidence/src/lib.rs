@@ -1,17 +1,10 @@
-//! Evidence IR, assumption ledger, evidence-level policy, certificate
-//! registry, content-addressed store, revalidation, optional proof
-//! providers and the certify-the-certifier corpus (Phase 8,
-//! ).
+//! Evidence IR, assumption ledger, evidence-level policy (E0–E5),
+//! certificate registry, content-addressed store, revalidation, proof
+//! providers, and the certify-the-certifier corpus (Phase 8). Authority
+//! is explicit: claims carry roles/freshness/falsifiers; assumptions
+//! classify M/N/S/E/H; revocation/supersession is append-only.
 //!
-//! Authority is explicit: every claim names its kind, producer and
-//! checker roles, freshness window and falsifiers; assumptions are
-//! classified M/N/S/E/H; the E0–E5 policy maps requirements to
-//! admissible producer/checker combinations per claim class; the
-//! certificate registry holds versioned checker contracts; the store
-//! addresses records by content and keeps revocation/supersession
-//! append-only; revalidation sweeps stale evidence; proof kernels are
-//! an optional seam; and a fixed unsound-certifier corpus is refused.
-//!
+//! Stable codes (`E-EVID-*`):
 //! Stable codes (`E-EVID-*`, evidence/checker area):
 //! - `E-EVID-101`..`E-EVID-111` independent artifact checker (emath-checker);
 //! - `E-EVID-201` claim-language lint (emath-checker);

@@ -142,13 +142,8 @@ impl InterpretationPortfolio {
 
 /// Admits a candidate translated along `morphism` into the target world.
 ///
-/// The result carries [`WorldMorphism::target`], keeps the base score, and
-/// records [`WorldMorphism::identity`] in provenance. Authority is capped by
-/// the morphism's preservation relation: `Exact` and `Refinement` transport
-/// checked meaning, so they keep the base authority; `Approximation`,
-/// `Simulation`, and `ObservationalEquivalence` only guarantee a weaker
-/// agreement, so they degrade to [`Authority::Structural`]. When obligations
-/// disagree, any non-transporting relation wins (the cap is conservative).
+/// Authority is capped by the preservation relation: `Exact`/`Refinement`
+/// transport it; anything weaker degrades to [`Authority::Structural`].
 #[must_use]
 pub fn translated_candidate(
     morphism: &WorldMorphism,

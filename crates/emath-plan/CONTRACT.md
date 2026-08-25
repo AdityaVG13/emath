@@ -16,7 +16,7 @@
 - `ArtifactDisposition` / `disposition_for_plan` / `disposition_without_plan` / `disposition_exhausted` — total disposition machinery.
 - `DecompositionRule` / `SubgoalDag` / `SubgoalNode` / `decompose` / `requirements_preserved` — decomposition and requirement preservation.
 - `FallbackGraph` / `FallbackNode`, `Conversion` / `ConversionNode` / `RepresentationError` / `find_conversion_path`, `ProviderTraitSpec` / `LiftedMethod` / `emit_provider_trait` / `lift_missing`, `plan_identity` / `PlanCache` / `ProviderFingerprint` / `provider_set_fingerprint`, `PlanInspection` (not exhaustive).
-- `algebra`: `QState` (residual resolution question over five facets mirroring `E-PROV-512`..`E-PROV-516`), `Step` (capability as a partial transformation; `Id`, `Serial`, `Parallel`, `Alt`, `Fallback`, `Portfolio`), `Application`, `Lifted`, and the `serial`/`parallel`/`fallback` helpers. `Step::apply` is partial; `Step::apply_total` lifts to a total application whose failure is an explicit refusal with retained reasons. Candidate selection in `plan` is expressed through `Step::Alt` over capability steps.
+- `algebra`: `Facet` (five capability facets mirroring `E-PROV-512`..`E-PROV-516`), `QState` (residual resolution question over those facets), `Step` (capability as a partial transformation; `Id`, `Serial`, `Parallel`, `Alt`, `Fallback`, `Portfolio`), `Application`, `Lifted`, and the `serial`/`parallel`/`fallback` helpers. `Step::apply` is partial; `Step::apply_total` lifts to a total application whose failure is an explicit refusal with retained reasons. Candidate selection in `plan` is expressed through `Step::Alt` over capability steps.
 - `PlanInspection::explain` — deterministic human-readable plan explanation (selected candidate, tie-break order, every exclusion with stable code, checks, budget, disposition).
 
 ## Invariants
@@ -28,7 +28,7 @@
 ## Error model
 
 - No `emath_core::Diagnostics`; planning is a total function returning `PlanningOutcome` variants carrying stable reasons (`E-GOAL-201`, `E-RES-100`).
-- `RepresentationError` is a dedicated error type in `representations` for conversion-path finding.
+- `RepresentationError` is a dedicated error type in `representations` for conversion-path finding; it carries stable codes (`E-PROV-515` / `E-PROV-517`).
 
 ## Determinism class
 
@@ -48,7 +48,10 @@
 
 ## Conformance tests
 
-- No `crates/emath-plan/tests/` directory on disk; conformance is unit-level: `planner.rs` (`node_budget_refuses_oversized_plan_dag`) and `algebra.rs` law tests (serial associativity, identity neutrality, alternative left-bias, parallel state commutativity, lifting totality, fallback degradation marking). The standalone `tests/emath-plan` package exercises the algebra-driven selection end to end.
+- No `crates/emath-plan/tests/` directory on disk; all conformance lives in the standalone `tests/emath-plan` package:
+  - `tests/planner.rs`: `node_budget_refuses_oversized_plan_dag`, `adding_providers_or_budget_preserves_the_artifact_class`, `capability_matrix_admits_supported_and_refuses_unsupported`.
+  - `tests/planner_logic.rs`: candidate-exhaustion bounds (`more_than_max_compatible_candidates_is_exhausted`, `one_compatible_plan_in_large_registry_is_not_exhausted`), `excluded_trace_reports_real_exclusions`, exactness produce polarity and lossy-path handling (`serves_kind_requires_exact_produce`, `exact_goal_keeps_searching_past_lossy_hit`, `exact_goal_refuses_when_every_path_is_lossy`, `estimate_goal_accepts_first_lossy_path`).
+  - `tests/algebra.rs`: law tests (serial associativity, identity neutrality, alternative left-bias, parallel state commutativity, lifting totality, fallback degradation marking).
 
 ## No-claim boundaries
 

@@ -1,11 +1,9 @@
 //! Dew neutral expression mapping.
 //!
-//! Exact scalar mapping over the strict-Float64 subset (bit-exact
-//! literals, IEEE-754 strict arithmetic, conditionals, one-to-one
-//! function naming) and explicit linear-algebra mapping for fixed
-//! vectors/matrices with shape and layout conversions. Unsupported
-//! emath nodes are refused (`E-PROV-030`) before Dew execution:
-//! nothing is silently accepted (gate 2).
+//! Exact scalar mapping over the strict-Float64 subset plus explicit
+//! linear-algebra mapping (fixed vectors/matrices, shape/layout
+//! conversions). Unsupported emath nodes are refused (`E-PROV-030`)
+//! before Dew execution: nothing is silently accepted.
 
 use emath_core::QualifiedName;
 use emath_ir::{BinaryOp, ExprId, ExprNode, Literal, SemanticPackage, UnaryOp};

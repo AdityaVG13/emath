@@ -1,13 +1,9 @@
 //! Certify-the-certifier corpus.
 //!
-//! A fixed corpus of known-unsound certifier outputs (optimizations,
-//! estimators, proofs, translations) must be rejected by the admission
-//! gate. The corpus doubles as the regression oracle: any future
-//! certifier change that admits one of these patterns is itself
-//! unsound.
-//!
-//! Stable codes:
-//! - `E-EVID-507` unsound certifier output rejected by the corpus gate.
+//! A fixed corpus of known-unsound certifier outputs must be rejected by
+//! the admission gate; the corpus doubles as regression oracle (any
+//! certifier change admitting one of these patterns is itself unsound).
+//! Code: `E-EVID-507`.
 
 use crate::EvidenceError;
 use crate::registry::CertificateKind;
@@ -62,10 +58,8 @@ pub const CERTIFY_THE_CERTIFIER: [UnsoundFixture; 7] = [
     },
 ];
 
-/// Admission gate over certifier output: a certificate carrying any
-/// corpus pattern is refused (`E-EVID-507`) with the pattern's hole;
-/// output carrying none of them passes the gate (it is not *provably*
-/// unsound by the corpus).
+/// Admission gate over certifier output: any corpus pattern refuses
+/// (`E-EVID-507`) with its hole; no pattern → pass.
 pub fn reject_unsound_certifier_output(certificate: &[u8]) -> Result<(), EvidenceError> {
     // Binary or non-UTF-8 payloads are not certificates: the earlier
     // empty-fallback let them pass the corpus unchecked.

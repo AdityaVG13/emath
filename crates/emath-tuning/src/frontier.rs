@@ -1,21 +1,9 @@
 //! Frontier engine: aggressive candidate generation, strict admission.
 //!
-//! Generation and admission are deliberately asymmetric. The generator
-//! may hypothesize any algebraic rewrite (aggressive); every candidate it
-//! emits is *unverified* — `held_out_verified == false` and zero evidence
-//! units — so nothing it produces can promote until the held-out
-//! challenge and the campaign checklist admit it (strict). The pipeline
-//! order is fixed:
-//!
-//! 1. generate: [`generate_algebraic_candidates`] (deterministic: sorted,
-//!    deduplicated, budget-capped);
-//! 2. verify: [`verify_held_out`] runs the held-out challenge; only a
-//!    passing candidate carries evidence units;
-//! 3. benchmark: hosts measure *verified* candidates only — an incorrect
-//!    candidate is rejected before any benchmark runs;
-//! 4. campaign: [`crate::campaign::HostCampaign::run`] applies the
-//!    protection envelope, protected metrics, fallback requirement, and
-//!    emits the deterministic promotion receipt.
+//! Generation is deliberately asymmetric with admission: candidates start
+//! unverified with zero evidence, and only the held-out challenge plus the
+//! campaign checklist can promote them. Pipeline order is fixed:
+//! generate → verify → benchmark → campaign.
 
 use crate::{ExecutionDelta, JointCandidate, SemanticChange, SemanticVariableKind, WorldDelta};
 use emath_term::SymbolId;
@@ -53,12 +41,8 @@ impl RewriteRule {
     }
 }
 
-/// Generates one unverified [`JointCandidate`] per rewrite rule.
-///
-/// Deterministic: rules are sorted by canonical form, exact duplicates
-/// are dropped, and the result is capped at `budget` candidates. Every
-/// candidate starts with `held_out_verified == false` and zero evidence,
-/// so the generator alone can never produce a promotable candidate.
+/// Generates one unverified [`JointCandidate`] per rewrite rule; sorted,
+/// deduplicated, budget-capped, always unverified and evidence-free.
 #[must_use]
 pub fn generate_algebraic_candidates(
     base_world: WorldId,
@@ -90,13 +74,8 @@ pub fn generate_algebraic_candidates(
         .collect()
 }
 
-/// Runs the held-out challenge over a candidate's changes.
-///
-/// The candidate passes only when the oracle accepts *every* change.
-/// A passing candidate is rebuilt with `held_out_verified == true` and
-/// the awarded evidence units; a failing candidate is rebuilt unverified
-/// with zero evidence, so its identity records the refusal. Either way
-/// the returned candidate has a fresh deterministic identity.
+/// Runs the held-out challenge: passes only when the oracle accepts every
+/// change; the rebuilt candidate records the verdict in its identity.
 #[must_use]
 pub fn verify_held_out(
     candidate: &JointCandidate,

@@ -728,11 +728,8 @@ impl super::Parser {
         segments
     }
 
-    /// Collect identifiers optionally joined by `.` or `::`. Returns
-    /// segments and whether a dot/sep joined any of them. An identifier
-    /// that opens generic type arguments (`Tensor<...>`), a comparison, or
-    /// a call is left unconsumed so the command tail can parse it as an
-    /// argument.
+    /// Collect identifiers optionally joined by `.` or `::`; an identifier
+    /// opening generics, a comparison, or a call is left for the command tail.
     pub(super) fn collect_segments_with_dots(&mut self) -> (Vec<String>, bool) {
         let mut segments = Vec::new();
         let mut via_dot = false;

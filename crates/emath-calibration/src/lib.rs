@@ -2,17 +2,10 @@
 
 //! Semantic calibration.
 //!
-//! Behavioral examples constrain candidate worlds. This crate delivers:
-//!
-//! - deterministic example partitions (construction / validation /
-//!   held-out / adversarial), keyed by content identity;
-//! - finite-carrier operator-table fitting with a per-world record of
-//!   satisfied and failed examples;
-//! - a held-out challenge that no candidate is credited for if it saw the
-//!   challenged examples during construction;
-//! - semantic drift between fitted tables;
-//! - world versioning with deterministic stamps, so a world invalidated by
-//!   future examples is a new version, never a silent redefinition.
+//! Behavioral examples constrain candidate worlds: deterministic example
+//! partitions, finite-carrier operator-table fitting with per-world
+//! records, a held-out challenge, semantic drift, and versioned worlds
+//! (invalidation → new version, never silent redefinition).
 
 pub mod challenge;
 pub mod drift;

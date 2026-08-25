@@ -20,9 +20,17 @@ Layer: foundation (std-only, no other emath crates).
 - `SOURCE: &'static str` — the embeddable kernel body; byte-stable per
   version.
 - All functions in `body.rs` are re-exported at the crate root: `vec_*`,
-  `mat_*`, `tensor_*`, `stencil_1d`, `stencil_2d`, `factorial`, `mod_inv`,
-  `poly_eval_mod`, `rs_encode`, `hamming_distance`, `fold_add`, `fold_mul`,
+  `mat_*`, `tensor_*`, `stencil_1d`, `stencil_2d`, `factorial`,
+  `factorial_checked`, `mod_inv`, `mod_inv_checked`, `poly_eval_mod`,
+  `poly_eval_mod_checked`, `rs_encode`, `rs_encode_checked`,
+  `hamming_distance`, `hamming_distance_checked`, `fold_add`, `fold_mul`,
   `fold_all`, `fold_any`, `simpson`, `sample_limit`, `EdgePolicy`.
+- `stencil_1d` / `stencil_2d` take `EdgePolicy` **by value** (moved from a
+  borrowed `&EdgePolicy`); `stencil_1d` honors all three policies,
+  `stencil_2d` refuses `Dirichlet`.
+- Every panicking kernel (e.g. `factorial`, `mod_inv`) has a `_checked`
+  twin returning `Result<_, &'static str>`; the panicking form delegates to
+  it.
 
 ## Invariants
 
@@ -47,7 +55,12 @@ Layer: foundation (std-only, no other emath crates).
   `factorial` panic on invalid inputs; the interpreter performs its own
   validation first and returns typed `EvalFault`s, so panics are
   unreachable from interpreted evaluation of admitted programs.
-- All other kernels are total on arbitrary input.
+- `simpson` asserts on a non-positive or odd panel count `n`.
+- `sample_limit` panics when no sample in the geometric progression is
+  finite (`sample_limit produced no finite values`).
+- `mat_mul_mat` panics on ragged operands (direct `a[i][k]` / `b[k][j]`
+  indexing, mirroring the historical inline semantics).
+- All remaining kernels are total on arbitrary input.
 
 ## Determinism class
 

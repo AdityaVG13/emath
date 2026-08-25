@@ -43,8 +43,9 @@
 - None: no `[features]` in Cargo.toml.
 
 ## Conformance tests
-- `run_cargo_timed`: a live child past the budget is SIGKILL'd after its direct children (cargo, then rustc) and reported as `E-RES-120`; a child that already exited is not reported as a timeout. The child stays in the terminal process group so Ctrl-C reaches it.
-- `metrics`: receipt format byte-stable for the same recorded values (sorted keys, schema/version pinned); collectors accumulate re-entered phases and counters.
+- Workspace suite `tests/emath-build`:
+  - `run_cargo_timed` (`tests/lib.rs`, `run_cargo_timed_tests`): a live child past the budget is SIGKILL'd after its direct children (cargo, then rustc) and reported as `E-RES-120`; a child that already exited is not reported as a timeout. The child stays in the terminal process group so Ctrl-C reaches it.
+  - `metrics` (`tests/metrics.rs`): receipt format byte-stable for the same recorded values (sorted keys, schema/version pinned); collectors accumulate re-entered phases and counters.
 
 ## No-claim boundaries
 - Provider registry and provider-specific planning live upstream (`emath-plan`, `emath-provider-api`); `build` does not choose providers.

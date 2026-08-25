@@ -1,13 +1,10 @@
 //! Failure bundles: truthful failure documents.
 //!
-//! When a monitor observes true divergence (drift beyond the frozen
-//! band), the harness emits a `FailureBundle` instead of a success
-//! receipt: the bundle names the outcome (`true-divergence`), the
-//! identities on both sides of the comparison, and a JSON-pointer
-//! (`/failure/true-divergence`) that locates the failure inside the
-//! document. The pointer deliberately never is `/failure/test_failed`:
-//! this is a divergence failure of the harness comparison, not a unit
-//! test failure.
+//! On true divergence the harness emits a `FailureBundle` instead of a
+//! success receipt, naming the outcome (`true-divergence`), both
+//! identities, and a JSON pointer locating the failure. The pointer is
+//! `/failure/true-divergence`, deliberately never
+//! `/failure/test_failed`.
 
 use crate::drift::DriftAlert;
 use crate::identity::EngineIdentity;
@@ -40,8 +37,7 @@ pub struct FailureBundle {
 }
 
 impl FailureBundle {
-    /// Canonical body (all fields except `bundle_id`), sorted
-    /// deterministically by the lab JSON writer; the identity input.
+    /// Canonical body (all fields except `bundle_id`); identity input.
     #[must_use]
     pub fn canonical_json(&self) -> String {
         json::write(&self.body_value())
@@ -96,9 +92,8 @@ impl FailureBundle {
     }
 }
 
-/// Emits a `true-divergence` failure bundle over the given alerts.
-/// Callers construct this only when alerts actually fired (the drift
-/// monitor gates on `drifted()`); a bundle without evidence is a lie.
+/// Emit a `true-divergence` bundle over fired alerts; only emit when
+/// alerts actually fired (a bundle without evidence is a lie).
 #[must_use]
 pub fn true_divergence_bundle(
     subject: &EngineIdentity,

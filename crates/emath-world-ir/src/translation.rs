@@ -32,12 +32,9 @@ impl PreservationRelation {
         }
     }
 
-    /// Whether this relation transports interpretive authority unchanged.
-    ///
-    /// Matches the portfolio's conservative authority cap: `Exact` and
-    /// `Refinement` transport authority; `Approximation`, `Simulation`,
-    /// and `ObservationalEquivalence` only guarantee weaker agreement, so
-    /// answers produced through them degrade to structural authority.
+    /// Whether this relation transports interpretive authority unchanged:
+    /// `Exact`/`Refinement` do; the weaker relations degrade to structural
+    /// authority.
     #[must_use]
     pub fn transports_authority(self) -> bool {
         matches!(self, Self::Exact | Self::Refinement)
@@ -303,12 +300,9 @@ pub struct StrictFastPortfolio {
 }
 
 impl StrictFastPortfolio {
-    /// Assembles a portfolio with constructor invariants enforced:
-    ///
-    /// - `strict_to_fast.source` equals `strict.identity()`;
-    /// - `strict_to_fast.target` equals `fast.identity()`;
-    /// - every operator symbol of the fast world carries at least one
-    ///   preservation obligation.
+    /// Assembles a portfolio enforcing the invariants: `strict_to_fast`
+    /// spans strict→fast identities, and every fast-world operator symbol
+    /// carries at least one preservation obligation.
     pub fn new(
         strict: WorldIr,
         fast: WorldIr,
@@ -364,11 +358,8 @@ impl StrictFastPortfolio {
         &self.guard
     }
 
-    /// Fast-path admission check.
-    ///
-    /// Returns the fast world identity when every guard holds. Returns a
-    /// [`DeoptReason`] when a guard fails; the caller must then evaluate in
-    /// the strict world.
+    /// Fast-path admission: the fast identity when every guard holds, else
+    /// a [`DeoptReason`] and the caller must evaluate in the strict world.
     pub fn try_fast(
         &self,
         used_symbols: &[SymbolId],
@@ -421,14 +412,9 @@ impl StrictFastPortfolio {
         }
     }
 
-    /// Authority-aware fast-path admission.
-    ///
-    /// Like [`Self::try_fast`], but when the caller requires full
-    /// authority (an authoritative answer, not best-effort), the fast
-    /// path is additionally refused if any used symbol's preservation
-    /// obligation does not transport authority — the answer would silently
-    /// degrade to structural authority. A symbol with no obligation at
-    /// all already deoptimizes through the applicability guard.
+    /// Authority-aware fast-path admission: like [`Self::try_fast`], but a
+    /// full-authority call is refused when any used symbol's preservation
+    /// obligation would silently degrade the answer to structural authority.
     pub fn try_fast_with_authority(
         &self,
         used_symbols: &[SymbolId],

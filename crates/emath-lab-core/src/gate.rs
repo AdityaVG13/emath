@@ -1,10 +1,9 @@
 //! Correctness/quality gate API.
 //!
-//! Semantic, evidence and correctness checks run *before* any performance
-//! measurement. A candidate whose gate fails is never measured, never
-//! promoted; failures carry stable codes (`E-HOST-005` by default, or the
-//! check's own evidence code such as `E-EVID-*`). The verdict is
-//! deterministic: checks are evaluated in sorted label order.
+//! Semantic/evidence/correctness checks run before any performance
+//! measurement; a failing candidate is never measured or promoted.
+//! Failures carry stable codes (`E-HOST-005` default, `E-EVID-*`
+//! allowed); verdicts are deterministic (sorted label order).
 
 use crate::error::LabError;
 
@@ -50,7 +49,7 @@ pub struct GateCheck {
 }
 
 impl GateCheck {
-    /// Passing check.
+    /// Pass.
     #[must_use]
     pub fn pass(label: impl Into<String>, kind: GateCheckKind) -> Self {
         Self {
@@ -62,7 +61,7 @@ impl GateCheck {
         }
     }
 
-    /// Failing check with a stable code.
+    /// Fail with a stable code.
     #[must_use]
     pub fn fail(
         label: impl Into<String>,
@@ -141,7 +140,7 @@ impl GateVerdict {
 pub struct QualityGate;
 
 impl QualityGate {
-    /// Evaluates checks in sorted label order; any failure blocks
+    /// Evaluate checks in sorted label order; any failure blocks
     /// performance measurement (`eligible() == false`).
     #[must_use]
     pub fn evaluate(mut checks: Vec<GateCheck>) -> GateVerdict {
@@ -149,7 +148,7 @@ impl QualityGate {
         GateVerdict { checks }
     }
 
-    /// Refuses with `E-HOST-005` when the gate blocks (first failure).
+    /// Refuse with `E-HOST-005` when the gate blocks (first failure).
     pub fn require_eligible(verdict: &GateVerdict) -> Result<(), LabError> {
         if verdict.eligible() {
             Ok(())

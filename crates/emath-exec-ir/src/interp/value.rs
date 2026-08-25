@@ -150,11 +150,9 @@ impl fmt::Display for Value {
     }
 }
 
-/// Format an f64 for display and JSON number tokens.
-///
-/// Finite values use `format!("{v}")`, with a trailing `.0` when that
-/// spelling would otherwise look like an integer. Non-finite values are
-/// the strings `NaN`, `Infinity`, and `-Infinity`.
+/// Format an f64 for display/JSON: finite values get a trailing `.0` when
+/// they would otherwise look like integers; non-finite become `NaN`,
+/// `Infinity`, `-Infinity`.
 #[must_use]
 pub fn format_f64(value: f64) -> String {
     if value.is_nan() {

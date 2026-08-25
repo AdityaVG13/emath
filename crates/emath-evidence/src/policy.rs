@@ -38,10 +38,8 @@ pub struct EvidencePolicy {
 }
 
 impl Default for EvidencePolicy {
-    /// Default policy: E0–E5 bars over the claim classes emitted by the
-    /// native pipeline and the checker battery (`correctness`,
-    /// `equivalence`, `performance`, `safety`, plus build's
-    /// `static-semantics` / `codegen`).
+    /// Default: E0–E5 bars over the claim classes emitted by the native
+    /// pipeline and checker battery.
     fn default() -> Self {
         let classes = vec![
             "correctness".to_string(),
@@ -57,9 +55,8 @@ impl Default for EvidencePolicy {
 }
 
 impl EvidencePolicy {
-    /// Admissible combinations for a `(level, claim class)` pair: the
-    /// exact bar for that level. Lower-level evidence never satisfies a
-    /// higher requirement.
+    /// Admissible combinations for a `(level, class)` pair; lower-level
+    /// evidence never satisfies a higher requirement.
     #[must_use]
     pub fn admissible(&self, level: EvidenceLevel, class: &str) -> Vec<EvidenceEntry> {
         self.table
@@ -89,8 +86,8 @@ impl EvidencePolicy {
     }
 }
 
-/// The standard E0–E5 ladder over the standard claim classes. Each
-/// higher bar admits a stronger producer/checker combination.
+/// The standard E0–E5 ladder; each higher bar admits a stronger
+/// producer/checker combination.
 fn standard_table() -> BTreeMap<String, Vec<EvidenceEntry>> {
     let mut table = BTreeMap::new();
     for class in [
@@ -101,9 +98,8 @@ fn standard_table() -> BTreeMap<String, Vec<EvidenceEntry>> {
         "static-semantics",
         "codegen",
     ] {
-        // E0: any claim, no checker. The exact bar is every producer
-        // kind with `Independence::None`; an empty vec would make
-        // `satisfied_by` never hold.
+        // E0: any producer kind, no checker (empty vec would make
+        // `satisfied_by` never hold).
         table.insert(
             format!("E0:{class}"),
             [

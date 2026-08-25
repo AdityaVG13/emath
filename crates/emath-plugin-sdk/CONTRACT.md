@@ -22,7 +22,11 @@ network, no component host. Depends on `emath-core` (FNV-1a64 content id).
 
 ## Invariants
 
+- Plugin ids must be non-empty and free of ASCII control characters
+  (breaks log/diagnostic framing and content-id ambiguity), refused with
+  `E-PLG-005` before any sandbox check.
 - Every declared capability must be inside `allowed_capabilities`
+  (`E-PLG-003`); an empty declared capability set is refused
   (`E-PLG-003`).
 - A capability touching a resource class requires the matching granted
   permission; `network` requires the `network` permission (`E-PLG-002`).
@@ -40,7 +44,7 @@ network, no component host. Depends on `emath-core` (FNV-1a64 content id).
 `PluginError` with stable codes: `E-PLG-001` (component runtime absent),
 `E-PLG-002` (sandbox/fuel/permission violation), `E-PLG-003` (capability
 outside the allowed set or none declared), `E-PLG-004` (interface-core
-mismatch).
+mismatch), `E-PLG-005` (empty or ASCII-control-bearing plugin id).
 
 ## Determinism class
 

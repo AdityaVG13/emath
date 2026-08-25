@@ -228,10 +228,8 @@ pub fn tower_rows() -> String {
 }
 
 /// Computation model selected by `numeric:` / `representation`.
-///
 /// These are computation descriptors, never claims about real-number
-/// semantics. `Real` is not silently `f64`: the Phase 1 default is the
-/// explicit `strict-f64` model when the directive is omitted.
+/// semantics; `Real` is not silently `f64` (Phase 1 default: `strict-f64`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NumericProfile {
     /// IEEE-754 binary64, round-ties-to-even, overflow is error. Phase 1 default.

@@ -30,14 +30,10 @@ fn upstream_lock_path() -> PathBuf {
         .join(UPSTREAM_LOCK_REL)
 }
 
-/// Built-in provider descriptors: (id, capability, status).
-///
-/// The status table must agree with the in-tree reality: the adapter
-/// crates ship std-only native stand-ins (`dew.scalar`, `native.causal`,
-/// `native.euler`, the `import modelica` subset scanner), while the
-/// upstream engine lanes (Dew JIT/GPU, the full Rumoca compiler,
-/// Wrenfold, Franken*) stay explicitly `planned` (never presented as
-/// implemented).
+/// Built-in provider descriptors: (id, capability, status). Status must
+/// match in-tree reality: std-only native stand-ins `implemented`;
+/// upstream lanes (Dew JIT/GPU, full Rumoca, Wrenfold, Franken*) always
+/// `planned`.
 const PROVIDERS: [(&str, &str, &str); 10] = [
     (
         "native.rust",
@@ -182,9 +178,8 @@ fn is_valid_name(name: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
 }
 
-/// `fmt <file>`: canonical-form check via the real lossless formatter.
-/// The file is canonical only when the formatter round-trips it byte for
-/// byte; anything less is a refusal with a diff preview, never a fake ok.
+/// `fmt <file>`: canonical-form check via the lossless formatter;
+/// canonical only on byte-for-byte round-trip, else refusal + diff.
 fn fmt_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
         return usage("fmt <file.emath>");
@@ -320,9 +315,8 @@ fn run_cmd(args: &[String]) -> u8 {
             return classify_build_error(&error);
         }
     };
-    // The published artifact directory is named by its content id
-    // (`fnv1a64:<hash>`); cargo rejects the colon in a manifest path, so
-    // stage a colon-free copy under the temp dir and execute that.
+    // Artifact dir is named by its content id (`fnv1a64:<hash>`); cargo
+    // rejects the colon, so stage a colon-free copy under the temp dir.
     let hash = report
         .artifact_id
         .0
@@ -330,9 +324,8 @@ fn run_cmd(args: &[String]) -> u8 {
         .next_back()
         .unwrap_or(&report.artifact_id.0);
     let run_dir = std::env::temp_dir().join(format!("emath-run-{hash}"));
-    // RAII: every early return after staging must wipe `$TMPDIR/emath-run-*`.
-    // A bare `remove_dir_all` only on the success path leaked the tree when
-    // create/copy or `run_cargo_timed` failed.
+    // RAII guard: wipe the staged tree on every exit path (a bare
+    // success-path remove leaked it on early returns).
     struct RunDirGuard(PathBuf);
     impl Drop for RunDirGuard {
         fn drop(&mut self) {
@@ -391,8 +384,8 @@ fn run_cmd(args: &[String]) -> u8 {
             "run: artifact {} crate `{}` is a library; executing its example tests",
             report.artifact_id.0, report.crate_name
         );
-        // Skip rustdoc/doctests: generated libs have example `#[test]`s, not
-        // doc-tests. Bare `cargo test` also launches rustdoc (`running 0 tests`).
+        // Skip rustdoc/doctests: generated libs have example `#[test]`s,
+        // and bare `cargo test` launches rustdoc anyway.
         command
             .args([
                 "test",
@@ -459,11 +452,10 @@ fn test_cmd(args: &[String]) -> u8 {
     }
 }
 
-/// `bench <file>`: typed refusal. The keep-gate harness exists
-/// (`cargo bench --profile release-perf --bench comprehensive_bench`,
-/// history under `.bench-history/`), but a candidate-vs-baseline CLI
-/// comparison still requires the keep-gate ruleset (Phase 4+); this
-/// command must never `EXIT_OK` with empty output.
+/// `bench <file>`: typed refusal. Candidate-vs-baseline CLI comparison
+/// needs the keep-gate ruleset (Phase 4+); never `EXIT_OK` with empty
+/// output. Use `cargo bench --profile release-perf --bench
+/// comprehensive_bench`.
 fn bench_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
         return usage("bench <file.emath>");
@@ -482,9 +474,8 @@ fn verify_cmd(args: &[String]) -> u8 {
     artifact_check(&PathBuf::from(dir))
 }
 
-/// `inspect <dir>`: print the committed artifact manifest. Reads exactly
-/// the file `emath build` writes (`<dir>/emath/<id>/emath/artifact-manifest.json`)
-/// and refuses non-UTF-8 manifests instead of substituting lossy text
+/// `inspect <dir>`: print the committed artifact manifest; refuses
+/// non-UTF-8 manifests instead of substituting lossy text.
 fn inspect_cmd(args: &[String]) -> u8 {
     let Some(dir) = first_positional(args) else {
         return usage("inspect <artifact-dir>");
@@ -600,9 +591,7 @@ fn fingerprint(file: &str) -> Result<emath_core::ContentId, ()> {
         eprintln!("error: cannot read {file}");
         return Err(());
     };
-    // Content identity binds the bytes, not a lossy decode: non-UTF-8
-    // sources must stay visibly distinct instead of being silently
-    // approximated.
+    // Bind the bytes, not a lossy decode: non-UTF-8 stays distinct.
     Ok(emath_core::bootstrap_content_id(&bytes))
 }
 
@@ -793,9 +782,8 @@ fn provider_cmd(args: &[String]) -> u8 {
                 return EXIT_USAGE;
             };
             let _ = (status, id);
-            // No in-CLI negative-control battery exists. Printing "suite:
-            // ok" without running anything would be a fake success; refuse
-            // with a typed code instead (same pattern as bench E-TLT-004).
+            // No in-CLI battery exists; printing "ok" without running
+            // anything would be a fake success (same as bench E-TLT-004).
             eprintln!(
                 "error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath-adapter-rumoca in the workspace"
             );

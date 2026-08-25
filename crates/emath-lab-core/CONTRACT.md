@@ -38,7 +38,7 @@
 - None: no `[features]` in Cargo.toml.
 
 ## Conformance tests
-- In-crate `#[cfg(test)]` modules (no `tests/` directory on disk):
+- Workspace integration suite `tests/emath-lab-core` (one file per module; no `tests/` directory on disk in the crate and no `#[cfg(test)]` in `src/`):
   - failure: `monitor_with_fired_alert`, `bundle_emitted_with_true_divergence_pointer`, `bundle_identity_is_deterministic_and_binds_to_identities`, `monitor_emits_bundle_only_after_true_divergence`.
   - stats: `empty_percentile_is_e_host_006_not_an_index_panic`, `single_sample_percentile_is_the_sample`, `interpolated_percentile_of_two_samples`.
   - identity: `distinct_identities_pass_the_comparator_gate`, `identical_identities_are_refused_by_the_comparator_gate`, `tokens_are_role_label_stable`.

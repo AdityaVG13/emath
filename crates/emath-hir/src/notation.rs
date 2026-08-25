@@ -1,9 +1,8 @@
-//! Core: scoped notation.
+//! Scoped notation.
 //!
-//! Imports an operator declaration (surface) into a
-//! scoped notation table with precedence/fixity, alias resolution,
-//! arity checks and ambiguity detection. Rendering follows canonical
-//! rules (`infix`/`prefix`/`postfix` place the data operand).
+//! Imports operator declarations into a scoped notation table with
+//! precedence/fixity, alias resolution, arity checks and ambiguity
+//! detection.
 
 use emath_ir::operator::{DeclaredOperator, Fixity};
 
@@ -97,13 +96,9 @@ pub fn default_precedence(fixity: Fixity) -> u8 {
     }
 }
 
-/// Mounts declared operators into the scoped notation table:
-/// - empty symbols are refused (`E-NAME-021`);
-/// - duplicate symbols are refused (`E-NAME-020`);
-/// - alias resolution maps surface names to canonical names;
-/// - fixity/arity incompatibility is refused (`E-NAME-021`);
-/// - same precedence + same fixity with different bindings is an
-///   ambiguity (`E-NAME-022`).
+/// Mount declared operators into the scoped notation table. Refusals:
+/// empty symbol (`E-NAME-021`), duplicate (`E-NAME-020`), fixity/arity
+/// mismatch (`E-NAME-021`), ambiguity (`E-NAME-022`); aliases resolve.
 #[must_use]
 pub fn mount_notation(
     context: &NotationContext<'_>,
@@ -199,9 +194,8 @@ pub fn mount_notation(
     mount
 }
 
-/// Checks a use of the notation against the bound arity; known-arity
-/// mismatches are refused (`E-NAME-021`), unknown symbols are allowed
-/// (deferred to sema).
+/// Check notation use against the bound arity; known mismatches refuse
+/// (`E-NAME-021`), unknown arities pass (deferred to sema).
 #[must_use]
 pub fn check_use_arity(entry: &NotationEntry, used: usize) -> Option<NotationIssue> {
     let Some(arity) = entry.arity else {

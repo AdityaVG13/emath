@@ -193,11 +193,9 @@ pub struct HoleGraph {
 }
 
 impl HoleGraph {
-    /// Builds a graph; holes are sorted by id (input order does not
-    /// matter). The graph identity is a full-state fingerprint: hole id,
-    /// state, budget, and status. Hole ids themselves stay stable, so a
-    /// continuation produces a new graph identity without re-identifying
-    /// any hole.
+    /// Build a graph; holes sorted by id. Graph identity fingerprints
+    /// full state (id/state/budget/status); hole ids stay stable, so a
+    /// continuation re-identifies only the graph, never a hole.
     #[must_use]
     pub fn new(mut holes: Vec<MeaningHole>) -> Self {
         holes.sort_by_key(|hole| hole.id);
@@ -249,10 +247,9 @@ impl HoleGraph {
             .collect()
     }
 
-    /// Continuation step: returns a new graph with `hole_id` updated to
-    /// `state` with `extra_budget` added and `status` recorded. The
-    /// current graph is never mutated (non-destructive refinement,
-    /// spec 8); the hole id stays stable.
+    /// Continuation step: new graph with `hole_id` set to `state`,
+    /// `extra_budget` added, `status` recorded. Never mutates the
+    /// current graph (non-destructive refinement, spec 8).
     #[must_use]
     pub fn with_updated(
         &self,

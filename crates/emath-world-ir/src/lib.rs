@@ -9,17 +9,12 @@ use emath_term::{Signature, SymbolId};
 
 /// JSON `$schema` id of the World IR document family.
 pub const WORLD_IR_SCHEMA: &str = "emath.world-ir";
-/// World IR schema version. Bump on any change to [`WorldIr`]'s layout or
-/// to the canonical form in [`WorldIr::canonical`]; consumers refuse
-/// versions they do not know. Provider-native types never appear in the
-/// schema: provider references are string ids only
-/// ([`OperatorSemantics::ProviderBinding`]).
+/// World IR schema version; bump on any layout/canonical change, and
+/// consumers refuse unknown versions. Provider references are string ids only.
 pub const WORLD_IR_VERSION: u32 = 1;
 
-/// Content identity placeholder for an admitted world.
-///
-/// Production emath should replace the demonstration FNV identity with its
-/// canonical cryptographic identity service while preserving the semantic domain.
+/// Content identity placeholder for an admitted world (FNV demo; production
+/// should swap in the canonical cryptographic identity service).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WorldId(pub u64);
 
@@ -180,9 +175,8 @@ pub struct MeaningHole {
     pub state: MeaningHoleState,
 }
 
-/// Provider-neutral mathematical world: the executable interpretation
-/// environment with the seven contract components — carriers, symbols,
-/// signature, meanings (operators), constructors, laws and effects —
+/// Provider-neutral mathematical world: the seven contract components
+/// (carriers, symbols, signature, meanings, constructors, laws, effects)
 /// plus explicit holes and declared capabilities.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldIr {
@@ -219,11 +213,8 @@ impl WorldIr {
         WorldId(fnv1a64(self.canonical().as_bytes()))
     }
 
-    /// Renders a deterministic seed canonical form.
-    ///
-    /// The name is a display-only alias and is excluded from content
-    /// identity (spec 07): a `WorldId` binds semantic content, not
-    /// incidental labels.
+    /// Renders a deterministic seed canonical form; the display name is
+    /// excluded from content identity — `WorldId` binds semantic content.
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut carriers = self.carriers.clone();

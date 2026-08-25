@@ -376,8 +376,8 @@ fn range_offsets(range: &JsonValue, text: &str) -> Option<(usize, usize)> {
 
 /// Byte offset for a `{line, character}` position given precomputed line starts.
 ///
-/// `character` is treated as a UTF-8 byte offset within the line (Phase 1).
-/// Offsets past the line end, past `text.len()`, or mid-codepoint are refused.
+/// `character` is a UTF-8 byte offset within the line (Phase 1); offsets past
+/// the line end or mid-codepoint are refused.
 fn line_character_offset(
     position: &JsonValue,
     text: &str,
@@ -420,8 +420,8 @@ fn offset_to_position(text: &str, offset: usize) -> Position {
 
 /// Half-open byte span `[start, end)` to LSP `{start, end}` positions.
 ///
-/// `end < start` (corrupt span) collapses to a caret at `start`. Mid-codepoint
-/// offsets snap back via [`clamp_byte_offset`].
+/// `end < start` collapses to a caret; mid-codepoint offsets snap back via
+/// [`clamp_byte_offset`].
 fn span_positions(text: &str, start: u32, end: u32) -> (Position, Position) {
     let start_b = clamp_byte_offset(text, start);
     let end_b = clamp_byte_offset(text, end).max(start_b);
@@ -464,11 +464,8 @@ fn line_starts(text: &str) -> Vec<usize> {
     starts
 }
 
-/// The word containing `offset`, if any.
-///
-/// `offset == 0` is valid: a word that starts at the first byte (e.g. leading
-/// `emath`) must still hover. Empty / non-word at 0 yields `None` via
-/// `start == end`.
+/// The word containing `offset`, if any. `offset == 0` is valid (a leading
+/// word must still hover); non-word at 0 yields `None`.
 fn word_at(text: &str, offset: usize) -> Option<&str> {
     let offset = offset.min(text.len());
     if !text.is_char_boundary(offset) {

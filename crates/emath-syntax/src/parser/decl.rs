@@ -161,13 +161,9 @@ impl super::Parser {
         })
     }
 
-    /// Declaration head (unified form): `emath <kind> <Name<Params>>:`
-    /// (`emath function Square<T: Real>:`, `emath policy AffineScorer:`,
-    /// `emath record CacheCandidate:`, `emath ScoringPolicyKind SimpleScore:`
-    /// user-kind use, or a built-in kind). `emath custom Name:` is the bare
-    /// custom-kind form (world files, unclassified declarations). The
-    /// legacy `emath custom <Name<Params>> as kind:` spelling is gone; every
-    /// kind is named directly after `emath`.
+    /// Declaration head (unified form): `emath <kind> <Name<Params>>:`;
+    /// `emath custom Name:` is the bare custom-kind form. The legacy
+    /// `... as kind:` spelling is gone.
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.current_span();
         self.advance(); // `emath`
@@ -232,10 +228,8 @@ impl super::Parser {
         })
     }
 
-    /// Head-args are identity-equivalent to an `inputs:` section (and
-    /// `-> T` to an output named after the declaration). Mixing those
-    /// spellings, or smuggling head-args onto a stateful / non-function
-    /// declaration, is a typed refusal — never a silent accept.
+    /// Head-args are identity-equivalent to an `inputs:` section (`-> T`
+    /// to a named output); mixing spellings is a typed refusal.
     fn refuse_head_signature(
         &mut self,
         as_kind: &str,
@@ -285,11 +279,8 @@ impl super::Parser {
     }
 
     /// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
-    ///
-    /// N1: Notation declarations are scoped to the package and imported
-    /// via `use`.  N2: The optional `alias` clause provides an alternative
-    /// spelling.  N5: Notation is typography — removing it never changes
-    /// semantic identity.
+    /// Scoped to the package; alias is an alternative spelling; notation is
+    /// typography (removing it never changes semantic identity).
     fn parse_notation_item(&mut self) -> Option<Item> {
         let start = self.current_span();
         self.advance(); // `notation`

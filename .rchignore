@@ -1,0 +1,31 @@
+# RCH does not read .gitignore. These trees are local-only and stall SyncUp
+# (hook walk + 180s retry budget) before cargo ever starts on Spark.
+
+.zerostack/
+.scratch-*/
+**/.asgrep/
+.skill-loop*
+.module-coupling-topology/
+.jeffreyskills/
+.bv/
+.beads/
+.bench-history/
+internal/
+agent_ergonomics_audit/
+architecture/
+bootstrap/
+history/
+legal/
+licenses/
+methodology/
+phases/
+beads_compliance_audit/
+validation/
+web/dist/
+tests/*/target/
+.factory/
+.claude/
+.codex/
+.cursor/
+.vscode/
+.idea/

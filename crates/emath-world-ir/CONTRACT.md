@@ -50,10 +50,10 @@
 
 ## Conformance tests
 
-- lib.rs mutation_matrix_tests: World IR mutation matrix (12 semantic rows must change identity; name and symbol display must not) and input-order independence of canonical()/identity().
-- builtin.rs builtin_world_tests: at least five world classes with deterministic, pairwise-distinct identities in stable roster order; provider rebuild determinism.
-- translation.rs dispatch_tests: input-region partitioning routes fast inside the guard and deoptimizes with a canonical receipt outside it; authority-aware dispatch serves best-effort requests through weak morphisms but deoptimizes authoritative requests (`authority:op:simulation` receipt) while exact morphisms keep the fast path.
-- Lane: cargo test -p emath-world-ir --lib.
+- No `crates/emath-world-ir/tests/` directory and no inline `#[cfg(test)]` modules in `src/`. Conformance lives in the standalone `tests/emath-world-ir` package:
+  - `tests/lib.rs`: World IR mutation matrix (`semantic_mutations_change_identity_and_presentation_does_not` — 12 semantic rows must change identity; name and symbol display must not) and input-order independence of canonical()/identity() (`canonical_form_is_input_order_independent`).
+  - `tests/builtin.rs`: at least five world classes with deterministic, pairwise-distinct identities in stable roster order; provider rebuild determinism.
+  - `tests/translation.rs`: input-region partitioning routes fast inside the guard and deoptimizes with a canonical receipt outside it; authority-aware dispatch serves best-effort requests through weak morphisms but deoptimizes authoritative requests while exact morphisms keep the fast path.
 
 ## No-claim boundaries
 

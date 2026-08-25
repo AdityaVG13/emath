@@ -1,10 +1,8 @@
 //! Minimal deterministic JSON for lab artifacts (std-only, in-tree).
 //!
-//! The writer emits objects with keys sorted lexicographically and numbers
-//! through Rust's deterministic shortest-roundtrip `Display`, so identical
-//! values always produce byte-identical text. The parser is a small
-//! recursive-descent reader over the same subset: objects, arrays, strings
-//! (with standard escapes and `\uXXXX`), numbers, booleans and null.
+//! Writer: keys sorted, numbers via Rust's roundtrip `Display` →
+//! byte-identical text. Parser: recursive-descent over objects, arrays,
+//! strings (standard escapes + `\uXXXX`), numbers, booleans, null.
 
 use std::fmt;
 use std::fmt::Write as _;
@@ -18,8 +16,7 @@ pub enum JsonValue {
     Bool(bool),
     /// String.
     String(String),
-    /// Number (parsed into f64; integral values round-trip exactly below
-    /// `2^53`, which covers lab counts, bytes and nanoseconds).
+    /// Number (f64; integral values round-trip exactly below `2^53`).
     Number(f64),
     /// Array.
     Array(Vec<JsonValue>),
@@ -103,8 +100,8 @@ fn write_string(text: &str) -> String {
     out
 }
 
-/// Maximum nesting depth accepted by the parser; deeper documents are
-/// refused so adversarial inputs cannot exhaust the stack.
+/// Maximum parser nesting depth; deeper documents refuse so adversarial
+/// inputs cannot exhaust the stack.
 const MAX_DEPTH: usize = 128;
 
 /// Parses a JSON document into a value.

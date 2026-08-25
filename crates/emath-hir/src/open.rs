@@ -1,10 +1,8 @@
-//! Core: open declaration framework.
+//! Open declaration framework.
 //!
-//! `Hir` collects every section family, attribute, generic parameter,
-//! documentation and extension payload with provenance spans. Section
-//! admission runs against the kind schema from `emath-ir::kind_schema`:
-//! repeat policies are enforced with stable codes, and unknown sections
-//! are refused (never silently ignored).
+//! `Hir` collects section families, attributes, generics, documentation
+//! and extension payloads with provenance. Section admission follows the
+//! kind schema: repeat policies enforced, unknown sections refused.
 
 use std::collections::BTreeMap;
 
@@ -254,10 +252,9 @@ impl SectionManifest {
         Self { schema, declared }
     }
 
-    /// Admits the declared sections against the schema. Unknown
-    /// sections are refused (`E-KIND-016`); duplicate sections are
-    /// refused (`E-SYN-103`); repeat/payload policies are checked with
-    /// stable codes. Ordered refusals; no side effects.
+    /// Admit declared sections against the schema. Refusals:
+    /// unknown (`E-KIND-016`), duplicate (`E-SYN-103`), repeat/payload
+    /// policy codes. Ordered refusals; no side effects.
     #[must_use]
     pub fn check(&self, diagnostics: &mut Diagnostics) -> Vec<SectionViolation> {
         let mut violations = Vec::new();
@@ -431,9 +428,8 @@ fn collect_docs(sections: &[Section]) -> BTreeMap<String, Vec<String>> {
     docs
 }
 
-/// Live `request:` / `requests:` spellings are not Goals-family aliases.
-/// The migrator rewrites bootstrap `request:` to `goals:`; the compiler
-/// refuses the old names with this hint (`E-KIND-016` / `E-SEC-101`).
+/// `request:`/`requests:` are not Goals-family aliases; the migrator
+/// rewrites them to `goals:`, and the old spellings refuse with a hint.
 fn renamed_goals_hint(name: &str) -> Option<String> {
     matches!(name, "request" | "requests")
         .then(|| format!("section `{name}:` was renamed to `goals:`; use `goals:`"))

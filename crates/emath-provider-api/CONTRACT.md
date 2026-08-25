@@ -66,8 +66,11 @@ None (`Cargo.toml` has no `[features]`).
 
 ## Conformance tests
 
-No `tests/` directory on disk. Inline `mod tests` exists in `src/filter.rs`
-(`#[test]` on goal filtering verdicts, including `E-PROV-515` refusal).
+No `crates/emath-provider-api/tests/` directory and no inline `#[cfg(test)]`
+modules in `src/`. Conformance lives in the standalone `tests/emath-provider-api`
+package: `tests/filter.rs` covers goal-filtering verdicts, including
+`E-PROV-515` exactness refusals (`estimate_only_provider_excluded_for_bounded_goal`,
+`undeclared_exactness_provider_excluded_for_any_explicit_goal`).
 
 ## No-claim boundaries
 

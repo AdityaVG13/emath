@@ -264,9 +264,7 @@ impl super::Parser {
     }
 
     /// `unit of E` / `dimension of E` — compile-time query operators.
-    /// Precedence: just above `==` (binds tighter than comparison,
-    /// looser than additive). Contextual keywords: `unit` and `dimension`
-    /// are identifiers that activate only when followed by `of`.
+    /// Precedence just above `==`; `unit`/`dimension` activate only before `of`.
     fn parse_unit_query(&mut self, depth: usize) -> Option<Expr> {
         let start = self.current_span();
         // Check for `unit of` or `dimension of` contextual keywords.
@@ -1116,14 +1114,9 @@ impl super::Parser {
         }
     }
 
-    /// B04: Parse the body of a `limit x -> T[+|-]: body` or
-    /// `sample_limit x -> T[+|-]: body` expression.
-    ///
-    /// The caller has already consumed `limit`/`sample_limit`, the
-    /// variable name, and `->`.  We parse the target at the
-    /// multiplicative level so that `+`/`-` before `:` is interpreted
-    /// as a one-sided direction suffix, not a binary operator.  Complex
-    /// targets like `a + b` require parentheses: `limit x -> (a + b): f(x)`.
+    /// B04: Parse the body of a `limit x -> T[+|-]: body` expression; the
+    /// target parses at multiplicative level so `+`/`-` before `:` is a
+    /// direction suffix (complex targets need parens).
     fn parse_limit_body(
         &mut self,
         start: emath_core::Span,
@@ -1176,10 +1169,8 @@ impl super::Parser {
         })
     }
 
-    /// U1: Parse the body of a `cases [subject]: | c1 => e1 | else => eN`
-    /// expression. The caller has already consumed `cases`, the optional
-    /// subject, and `:`. Arms are delimited by `|` and use `=>` as the
-    /// arm arrow. A mandatory `else` arm enforces totality at parse time.
+    /// U1: Parse a `cases [subject]: | c1 => e1 | else => eN` body; arms use
+    /// `|`/`=>` and a mandatory `else` arm enforces totality.
     fn parse_cases_body(
         &mut self,
         start: emath_core::Span,
@@ -1258,10 +1249,8 @@ impl super::Parser {
         })
     }
 
-    /// Parse a compound-unit bracket: `[unit m/s^2]` (F7/U4).
-    /// The `unit` keyword is required as a contextual keyword to
-    /// disambiguate from indexing. Returns `None` if the bracket
-    /// does not start with `unit`.
+    /// Parse a compound-unit bracket `[unit m/s^2]` (F7/U4); the `unit`
+    /// keyword disambiguates from indexing. `None` when not a unit bracket.
     fn parse_unit_bracket(&mut self, depth: usize) -> Option<UnitExpr> {
         // Only enter if the next token is `[`.
         if !matches!(self.peek(), TokenKind::LBracket) {

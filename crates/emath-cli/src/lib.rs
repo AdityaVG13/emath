@@ -184,11 +184,9 @@ pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
 }
 
 /// `planner <file.emath> [--json] [--parametric]`: run the deterministic
-/// planner over the (empty by default) provider registry and print the
-/// machine inspection: candidates, exclusions with reasons, selected plan,
-/// checks, budget and artifact disposition. With `--parametric`, goals are
-/// inspected under the parametric fallback, lifting missing providers to a
-/// compilable Rust trait.
+/// planner over the provider registry and print the machine inspection
+/// (candidates, exclusions, selected plan, checks, disposition). With
+/// `--parametric`, missing providers lift to a compilable Rust trait.
 pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
@@ -415,13 +413,10 @@ pub fn artifact_check(dir: &Path) -> u8 {
     if ok { EXIT_OK } else { EXIT_REFUSED }
 }
 
-/// `artifact battery <dir>`: run the seeded negative-control battery
-/// (`emath_checker::run_standard_battery`) over every published artifact
-/// under `<dir>/emath/<artifact-id>`. Each seed (tampered, stale,
-/// wrong-goal, incomplete, unsupported) must be refused with the code the
-/// checker assigns for that kind; an escape is an admitted dishonest
-/// artifact and refuses the command. This is the CI-visible battery lane:
-/// it runs against the real staged build output, not a fixture.
+/// `artifact battery <dir>`: run the seeded negative-control battery over
+/// every published artifact. Each seed must be refused with the code the
+/// checker assigns; an escape is an admitted dishonest artifact and
+/// refuses the command (CI-visible lane over real staged output).
 pub fn artifact_battery(dir: &Path) -> u8 {
     let artifact_root = dir.join("emath");
     if !artifact_root.is_dir() {

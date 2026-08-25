@@ -1,43 +1,12 @@
 //! SG-18 host joint tuning: budgeted search over meanings and host
 //! evaluation strategies under a protected real-program objective.
 //!
-//! A [`TuningRequest`] names a carrier `{0, …, n−1}` and a
-//! [`ProtectedObjective`] — host input sequences with required outputs.
-//! The search enumerates the joint space (semantic table ×
-//! [`ImplVariant`]) in semantic-major order and returns the lowest-cost
-//! **qualified** candidate, or a typed refusal.
-//!
-//! Protection is absolute. A candidate that fails any protected example
-//! is [`CandidateStatus::Disqualified`] and can never be selected,
-//! regardless of cost. Cost is a secondary integer (op applications on
-//! the protected inputs plus table complexity) used only among
-//! qualified candidates. Ties break by lowest joint index.
-//!
-//! Rules (honest, no silent truncation):
-//!
-//! - Carrier elements are canonical indices `0..n`. Size `0` is refused.
-//!   Size above [`MAX_CARRIER_SIZE`] is refused (`carrier-too-large`).
-//! - An empty protected set is refused (`no-protected-objective`).
-//!   Unprotected tuning is not this phase.
-//! - Semantic tables are decoded by [`OpTable::from_index`] in the same
-//!   mixed-radix order as [`crate::synth`]. Same index, same table.
-//! - Joint index `j` decodes as table `j / 3`, variant `j % 3`
-//!   (`FoldLeft`, `FoldRight`, `PairwiseTree`).
-//! - [`TuningBudget::max_candidates`] is a hard window. Filling it with
-//!   candidates still unexamined is [`TuningError::BudgetExceeded`],
-//!   never a truncated winner. Exhausting the space with no qualified
-//!   candidate is [`TuningError::NoQualifiedCandidate`].
-//! - [`TuningRequest::joint_cursor`] is the next unexamined joint index.
-//!   Because tuning selects a **global** cost minimum (not a first
-//!   winner), a budget refusal carries the best qualified joint index
-//!   found so far, and [`TuningRequest::incumbent`] seeds the next
-//!   window with it. Splitting a search across windows and threading
-//!   the incumbent is exactly equivalent to the unsplit search.
-//!   Budget, cursor, and incumbent are execution parameters and are
-//!   excluded from [`tuning_id`].
-//!
-//! Determinism class: pure integer enumeration, no floats. Receipts are
-//! BTreeMap-ordered JSON, byte-identical across runs.
+//! Enumerates the joint space (semantic table × [`ImplVariant`]) in
+//! semantic-major order; returns the lowest-cost qualified candidate or
+//! a typed refusal. Protection is absolute: any failed example
+//! disqualifies. Budget/cursor/incumbent are execution parameters,
+//! excluded from [`tuning_id`]. Determinism: pure integer enumeration;
+//! receipts are BTreeMap-ordered JSON, byte-identical across runs.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -48,10 +17,8 @@ use crate::synth::{OpTable, MAX_CARRIER_SIZE};
 
 /// Joint-tuning schema id for artifacts and receipts.
 pub const TUNING_SCHEMA: &str = "emath.joint-tuning";
-/// Joint-tuning schema version. Bump on any change to the canonical
-/// request encoding, the joint enumeration order, impl-variant
-/// semantics, the cost rule, or the receipt layout; consumers refuse
-/// versions they do not know.
+/// Joint-tuning schema version. Bump on changes to the request encoding,
+/// enumeration order, variant semantics, cost rule, or receipt layout.
 pub const TUNING_VERSION: u32 = 1;
 /// Number of host evaluation strategies in the implementation space.
 pub const IMPL_VARIANT_COUNT: u64 = 3;
@@ -78,10 +45,9 @@ pub enum TuningError {
         /// Stable reason token.
         reason: &'static str,
     },
-    /// The search window filled without exhausting the joint space.
-    /// `incumbent` is the best qualified joint index found so far
-    /// (including any seed); thread it into the next window's
-    /// [`TuningRequest::incumbent`] to keep the search globally exact.
+    /// Search window filled without exhausting the joint space.
+    /// `incumbent` is the best qualified joint index so far; thread it
+    /// into the next window to keep the search globally exact.
     BudgetExceeded {
         /// Budget limit that was exhausted.
         limit: u64,
@@ -141,10 +107,8 @@ impl ImplVariant {
         }
     }
 
-    /// Evaluate `inputs` under `table` with this strategy.
-    ///
-    /// Empty input is `None` (callers refuse empty examples before
-    /// evaluation). A singleton is the element itself.
+    /// Evaluate `inputs` under `table` with this strategy. Empty input is
+    /// `None`; a singleton is the element itself.
     #[must_use]
     pub fn evaluate(self, table: &OpTable, inputs: &[u8]) -> Option<u8> {
         if inputs.is_empty() {
@@ -217,10 +181,8 @@ pub struct TuningRequest {
     pub budget: TuningBudget,
     /// Next unexamined joint index. Excluded from [`tuning_id`].
     pub joint_cursor: u64,
-    /// Best qualified joint index from earlier windows, as reported by
-    /// [`TuningError::BudgetExceeded`]. Must be `< joint_cursor` and
-    /// must classify as qualified (re-verified, never trusted).
-    /// Excluded from [`tuning_id`].
+    /// Best qualified joint index from earlier windows (re-verified,
+    /// never trusted). Must be `< joint_cursor`. Excluded from [`tuning_id`].
     pub incumbent: Option<u64>,
 }
 
@@ -294,8 +256,7 @@ pub struct TuningReceipt {
 }
 
 impl TuningReceipt {
-    /// BTreeMap-ordered JSON. Key order is lexicographic. Byte-identical
-    /// across runs for the same receipt.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();
@@ -367,9 +328,7 @@ pub fn decode_joint(cursor: u64) -> (u64, ImplVariant) {
 }
 
 /// Classify one (table, variant) pair against the protected objective.
-///
-/// Protection is absolute: the first failing example disqualifies.
-/// Cost is computed only for qualified candidates.
+/// First failing example disqualifies; cost is computed only when qualified.
 #[must_use]
 pub fn classify(
     table: &OpTable,

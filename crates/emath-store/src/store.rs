@@ -1,11 +1,7 @@
 //! Blocking store adapter over the async fsqlite engine (sqlite-store).
 //!
-//! All public methods are blocking. The engine (fsqlite + asupersync) is
-//! async-native and its futures recurse deeply while polling, so the
-//! Connection and the asupersync runtime live on a dedicated worker thread
-//! with a large stack; Store is a channel proxy over that worker. This keeps
-//! engine stack usage off the caller's thread (default 2 MiB would overflow).
-//! Single-writer by design (one Store owner per file); see CONTRACT.md.
+//! Engine+runtime live on a dedicated large-stack worker thread; `Store` is
+//! a channel proxy (single-writer by design).
 
 use std::fmt;
 use std::sync::mpsc;
@@ -27,16 +23,12 @@ pub struct EvidenceRow {
     pub seq: i64,
 }
 
-/// Store errors. Internal to this crate; no E-* codes are introduced.
+/// Store errors. No E-* codes are introduced.
 #[derive(Debug)]
 pub enum StoreError {
-    /// Opening or initializing the database failed.
     Open(String),
-    /// A transaction or worker-runtime step failed.
     Transaction(String),
-    /// A statement or verification mismatch failed.
     Query(String),
-    /// Reserved for host I/O class failures.
     Io(std::io::Error),
 }
 
@@ -53,28 +45,19 @@ impl fmt::Display for StoreError {
 
 impl std::error::Error for StoreError {}
 
-/// One data-driven operation for `Store::transaction`. Ops run as one atomic
-/// unit on the engine worker; any error rolls all of them back.
+/// One data-driven operation for `Store::transaction`; any error rolls
+/// all ops back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreOp {
-    /// Insert (or keep) one artifact row.
     PutArtifact {
-        /// Artifact id.
         id: String,
-        /// Artifact kind.
         kind: String,
-        /// Artifact path.
         path: String,
     },
-    /// Insert (or keep) one evidence row.
     AddEvidence {
-        /// Existing artifact id (foreign key).
         artifact_id: String,
-        /// Claim text.
         claim: String,
-        /// One of `schema::VALID_CLAIM_STATUSES`.
         status: String,
-        /// Deterministic ordering key.
         seq: i64,
     },
 }
@@ -103,8 +86,7 @@ enum Response {
     Error(StoreError),
 }
 
-/// Worker stack: fsqlite futures recurse deeply while polling, so the engine
-/// runs on a large-stack thread, never on the caller's thread.
+/// Engine futures recurse deeply, so the worker thread gets a large stack.
 const WORKER_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 /// Blocking handle: a channel proxy over the engine worker thread.
@@ -114,9 +96,8 @@ pub struct Store {
 }
 
 impl Store {
-    /// Open (or create) the store at path and install the schema. The
-    /// ":memory:" name is accepted for in-memory stores. Schema installation
-    /// is idempotent (CREATE TABLE IF NOT EXISTS).
+    /// Open (or create) the store at path and install the schema
+    /// (idempotent). `":memory:"` is accepted.
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let (request_tx, request_rx) = mpsc::channel::<Request>();
         let (open_tx, open_rx) = mpsc::channel::<Result<(), StoreError>>();
@@ -144,8 +125,8 @@ impl Store {
         }
     }
 
-    /// Insert (or keep) one artifact row. Idempotent: re-inserting an
-    /// existing id is a no-op.
+    /// Insert (or keep) one artifact row; re-inserting an existing id is
+    /// a no-op.
     pub fn put_artifact(&self, id: &str, kind: &str, path: &str) -> Result<(), StoreError> {
         let response = self.call(Op::Write(StoreOp::PutArtifact {
             id: id.to_string(),
@@ -155,11 +136,8 @@ impl Store {
         expect_ok(response)
     }
 
-    /// Insert (or keep) one evidence row for an existing artifact. The status
-    /// must be one of `schema::VALID_CLAIM_STATUSES`; other values are rejected
-    /// with `StoreError::Query` before SQL runs (the CHECK constraint is a
-    /// backstop). Rows are keyed on `(artifact_id, claim, seq)`, so re-inserting
-    /// an identical row is a no-op.
+    /// Insert (or keep) one evidence row. Invalid status is rejected pre-SQL;
+    /// rows key on `(artifact_id, claim, seq)` so identical re-inserts are no-ops.
     pub fn add_evidence(
         &self,
         artifact_id: &str,
@@ -176,8 +154,7 @@ impl Store {
         expect_ok(response)
     }
 
-    /// Return all evidence rows for `artifact_id`, ordered by (`seq`, `claim`).
-    /// Deterministic: order never depends on wall-clock or insertion order.
+    /// Evidence rows for `artifact_id` ordered by (`seq`, `claim`).
     pub fn evidence_for(&self, artifact_id: &str) -> Result<Vec<EvidenceRow>, StoreError> {
         let response = self.call(Op::EvidenceFor {
             artifact_id: artifact_id.to_string(),
@@ -198,9 +175,8 @@ impl Store {
         expect_ok(response)
     }
 
-    /// Run ops as one engine transaction on the worker: COMMIT on success,
-    /// ROLLBACK on any error. No partial write leaks out of a failed
-    /// transaction.
+    /// Run ops as one engine transaction: COMMIT on success, ROLLBACK on
+    /// any error.
     pub fn transaction(&self, ops: &[StoreOp]) -> Result<(), StoreError> {
         let response = self.call(Op::Batch { ops: ops.to_vec() })?;
         expect_ok(response)

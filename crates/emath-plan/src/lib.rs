@@ -1,12 +1,9 @@
 //! Deterministic resolution planning (Phase 1 bootstrap + Phase 6 planner
 //! machinery).
 //!
-//! The canonical native plan constructor (`native_plan`) moved down to
-//! `emath-ir` (the crate that owns `ResolutionPlan` and every plan-node
-//! type); this crate hosts the provider-facing planner surface:
-//! decomposition rules, representation planning, fallback graphs, provider
-//! lifting, total dispositions, inspection and the plan identity/cache.
-//! No external providers are installed in Phase 1.
+//! Provider-facing planner surface: decomposition, representation planning,
+//! fallback graphs, provider lifting, dispositions, inspection, and the plan
+//! identity/cache. The native plan constructor lives in `emath-ir`.
 
 #![forbid(unsafe_code)]
 

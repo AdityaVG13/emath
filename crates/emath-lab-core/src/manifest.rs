@@ -1,12 +1,9 @@
 //! Frozen experiment manifest.
 //!
-//! Campaign identity is frozen before measurement: subject (candidate),
-//! baseline, generator, workload partitions (protocol stages A–E),
-//! environment, metrics, protection envelope (thresholds, kill rules,
-//! fallback), seed and budget. The manifest self-validates
-//! (`E-HOST-003`/`E-HOST-004`), has a versioned canonical encoding
-//! (`lab:...`) for identity and a deterministic canonical JSON form for
-//! audit/receipt replay.
+//! Freezes campaign identity before measurement: baseline, candidate,
+//! generator, partitions (stages A–E), environment, metrics, protection
+//! envelope, seed, budget. Self-validates (`E-HOST-003`/`E-HOST-004`),
+//! with canonical encoding (`lab:...`) and deterministic canonical JSON.
 
 use crate::error::LabError;
 use crate::json::{self, JsonValue};
@@ -137,7 +134,7 @@ impl MetricDirection {
     }
 }
 
-/// Frozen metric definition for an experiment.
+/// Frozen metric definition.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetricSpec {
     /// Stable metric id (unique within the manifest).
@@ -306,7 +303,7 @@ pub struct LabProblem {
 }
 
 impl LabManifest {
-    /// Validates the manifest; every problem carries a stable code.
+        /// Validates; every problem carries a stable code.
     #[must_use]
     pub fn validate(&self) -> Vec<LabProblem> {
         let mut problems = Vec::new();
@@ -882,7 +879,7 @@ fn expect_number(value: &JsonValue, at: &str) -> Result<f64, LabError> {
     }
 }
 
-/// Non-negative integer field; rejects fractional, negative, NaN and
+/// Non-negative integer field; rejects fractional, negative, NaN, and
 /// out-of-range values instead of silently truncating.
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn expect_u64(value: &JsonValue, at: &str) -> Result<u64, LabError> {
@@ -1026,9 +1023,7 @@ fn kill_condition_from_json(value: &JsonValue) -> Result<KillCondition, LabError
     }
 }
 
-/// Fills the manifest with the frozen statistical protocol reference.
-/// The protocol itself lives in `crate::stats`; this helper is the manifest
-/// side of wiring.
+/// Token for a frozen statistical protocol reference (lives in `stats`).
 #[must_use]
 pub fn protocol_token(protocol: &StatisticalProtocol) -> String {
     format!(

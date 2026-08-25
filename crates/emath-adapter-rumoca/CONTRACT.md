@@ -12,14 +12,14 @@ diagnostic mapping. No upstream Rumoca engine is consumed in Phase 1.
 ## Public types and semantics
 
 - `StructuralModel`, `Component`, `ComponentKind`, `VariableDecl`,
-  `VariableKind`, `Equation`, `Event`, `InitialCondition`, `Connection`,
-  `Dimensions`, `Unit`, `UnitError`, `ModelIssue`: neutral structural/
-  equation IR.
+  `VariableKind`, `Equation`, `EqExpr`, `Event`, `InitialCondition`,
+  `Connection`, `Dimensions`, `Unit`, `UnitError`, `ModelIssue`: neutral
+  structural/equation IR.
 - `PhaseRecord`, `PhaseKind`, `Stability`: compiler-phase census.
 - `DaePlan`, `DerivativeDef`, `EqProvenance`, `LowerError`: emath-to-DAE
   lowering.
 - `SimPoint`, `SimulationConfig`, `SimulationResult`, `SimError`:
-  DAE-plan and simulation providers.
+  DAE-plan and simulation providers (`provide_dae_plan`, `simulate`).
 - `ConstructMapping`, `MappingClass`: semantic mapping table.
 - `ConformanceReport`, `FeatureResult`, `FeatureStatus`, `Tier`: MSL
   conformance ladder.
@@ -66,9 +66,10 @@ None (`Cargo.toml` has no `[features]`).
 
 ## Conformance tests
 
-No `tests/` directory on disk. Inline `mod tests` exists in `src/provider.rs`
-(simulation/plan refusal families `E-PROV-230..238`) and `src/census.rs`
-(phase and stability).
+No `tests/` directory on disk in the crate and no `#[cfg(test)]` module in
+`src/`. Workspace integration suites live in `tests/emath-adapter-rumoca`:
+`tests/provider.rs` (simulation/plan refusal families `E-PROV-230..238`) and
+`tests/census.rs` (phase and stability).
 
 ## No-claim boundaries
 

@@ -1,10 +1,9 @@
 //! Reproducible decision receipts.
 //!
-//! A receipt freezes the manifest, gate checks, protocol, raw samples,
-//! commands, environment and artifact hashes alongside the decision, so
-//! an auditor can recompute the decision from the stored evidence alone.
-//! A receipt whose decision does not recompute is refused with
-//! `E-HOST-011`.
+//! Freezes manifest, gate checks, protocol, raw samples, commands,
+//! environment and artifact hashes with the decision, so an auditor can
+//! recompute it from stored evidence alone. Non-recomputing receipts
+//! refuse (`E-HOST-011`).
 
 use crate::error::LabError;
 use crate::gate::{GateCheck, QualityGate};
@@ -49,10 +48,9 @@ pub struct DecisionReceipt {
 }
 
 impl DecisionReceipt {
-    /// Canonical receipt body (everything except `receipt_id`), sorted
-    /// deterministically; the recompute/identity input. A manifest that
-    /// does not parse is refused (`E-HOST-011`), never hashed as `null`
-    /// (a truncated receipt must not seal as valid).
+    /// Canonical body (everything except `receipt_id`); identity input.
+    /// An unparseable manifest refuses (`E-HOST-011`), never sealed as
+    /// `null`.
     pub fn canonical(&self) -> Result<String, LabError> {
         let mut hashes = self.artifact_hashes.clone();
         hashes.sort_by(|left, right| left.0.cmp(&right.0));
@@ -121,14 +119,14 @@ impl DecisionReceipt {
         )))
     }
 
-    /// Seals the receipt: computes and stores its identity.
+    /// Seal: compute and store the identity.
     pub fn seal(mut self) -> Result<Self, LabError> {
         self.receipt_id = self.identify()?;
         Ok(self)
     }
 
-    /// Independently recomputes the decision from the stored evidence and
-    /// verifies it matches the recorded one (`E-HOST-011` on mismatch).
+    /// Recompute the decision from stored evidence and verify it matches
+    /// the recorded one (`E-HOST-011` on mismatch).
     pub fn recompute(&self, policy: &EnginePolicy) -> Result<PromotionDecision, LabError> {
         let verdict = QualityGate::evaluate(self.gate_checks.clone());
         let recomputed = decide(
@@ -154,8 +152,8 @@ impl DecisionReceipt {
         }
     }
 
-    /// Deterministic canonical JSON for audit; a manifest that does not
-    /// parse is refused instead of serialized as `null`.
+    /// Deterministic canonical JSON for audit; unparseable manifests are
+    /// refused, not serialized as `null`.
     pub fn to_json(&self) -> Result<String, LabError> {
         let manifest = json::parse(&self.manifest_json).map_err(|error| {
             LabError::new(
@@ -191,8 +189,7 @@ impl DecisionReceipt {
 }
 
 impl PromotionReason {
-    /// Receipts use the reason's `describe()` text; this ensures a stable
-    /// audit line exists for every reason.
+    /// Stable audit line via `describe()`.
     #[must_use]
     pub fn audit_line(&self) -> String {
         self.describe()

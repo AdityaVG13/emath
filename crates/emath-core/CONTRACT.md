@@ -18,8 +18,12 @@ and source types that all downstream crates consume.
 - `SourceFile`, `SourceStore`: source buffer and store types.
 - Re-exported helpers: `bootstrap_content_id`, `content_id_of_str`,
   `fnv1a64_bytes`, `register_source_parser`, `source_parser`.
-- Modules: `diagnostic`, `hash`, `id`, `limits`, `parse`, `source`, `span`,
-  `tree`.
+- `CompilerCapabilities` (`compiler_capabilities()`, schema
+  `emath.compiler-capabilities.v1`): self-describing capability report
+  (descriptors for sections, numeric models, goals, world classes and
+  deferred features).
+- Modules: `capabilities`, `diagnostic`, `hash`, `id`, `limits`, `parse`,
+  `source`, `span`, `tree`.
 
 ## Invariants
 
@@ -52,8 +56,8 @@ None.
 
 ## Conformance tests
 
-No `tests/` directory present. Inline `#[cfg(test)]` unit tests live in the
-`src` modules (not enumerated).
+None on disk: no `tests/` directory, no `#[cfg(test)]` module in `src/`, and
+no root-level integration suite.
 
 ## No-claim boundaries
 

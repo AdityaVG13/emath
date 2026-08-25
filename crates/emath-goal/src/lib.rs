@@ -1,11 +1,9 @@
-//! Goal schema (full goal kinds, custom-goal envelope) and capability
-//! surface for the intent-compiler lane.
+//! Goal schema and capability surface for the intent-compiler lane.
 //!
-//! The goal-elaboration kernel used by the Phase 1 session moved down to
-//! `emath-ir::goal` (`RequestSpec`, `build_goal`) and into `emath-sema`
-//! (`elaborate_requests`, its only consumer). This crate hosts the goal
-//! schema (`schema`) that validates itself and carries the versioned
-//! canonical encoding used by plan identity and future request lanes.
+//! The goal-elaboration kernel lives in `emath-ir::goal` and
+//! `emath-sema::elaborate_requests`; this crate hosts the self-
+//! validating [`schema`] with the versioned canonical encoding used by
+//! plan identity.
 
 #![forbid(unsafe_code)]
 

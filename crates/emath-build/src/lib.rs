@@ -609,10 +609,8 @@ fn serialize_plans(plans: &[PlanRecord]) -> String {
 }
 
 /// Write the generated crate into `dir` and run `cargo test --quiet`
-/// without the rustdoc/doctest pass (`--lib --bins --tests`).
-/// Runs a command under a wall-clock budget: a child still running after
-/// `timeout` is killed and reported as a typed `E-RES-120` failure, so
-/// cargo can never block a session forever on a generated crate.
+/// (`--lib --bins --tests`, no rustdoc/doctest) under a wall-clock budget:
+/// a child still running past `timeout` is killed and reported as `E-RES-120`.
 pub fn run_cargo_timed(
     mut command: std::process::Command,
     timeout: std::time::Duration,

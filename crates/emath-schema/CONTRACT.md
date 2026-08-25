@@ -71,11 +71,15 @@ None.
 
 ## Conformance tests
 
-No `tests/` directory present. Inline `#[cfg(test)]` unit tests live in the
-`src` modules. Registry tests cover thirteen-name order, pairwise-distinct
-documents, emitter field names for source-artifact / parse-forest /
-answer-receipt, envelope no-invention, `$id` example round-trip,
-determinism, and `E-SCHEMA-001`.
+No `crates/emath-schema/tests/` directory and no inline `#[cfg(test)]`
+modules in `src/`. Conformance lives in the standalone `tests/emath-schema`
+package: `tests/registry.rs` (thirteen-name fixed order, stable version
+constants, byte-stable valid JSON and matching examples per id,
+pairwise-distinct bodies, closed-world emitter fields for
+source-artifact / parse-forest / answer-receipt / interpretation-portfolio,
+envelope no-invention, `$id` example round-trip, typed unknown-name refusal
+`E-SCHEMA-001`, known-name checks), `tests/version_policy.rs`, and
+`tests/lowering_rename.rs`.
 
 ## No-claim boundaries
 

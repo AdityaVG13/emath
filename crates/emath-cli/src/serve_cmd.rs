@@ -19,11 +19,9 @@ const DEFAULT_DIST: &str = "web/dist";
 const USAGE: &str = "web [--port N] [--no-open] [--dist PATH]";
 const MISSING_ASSETS: &str = "web assets not built; run `cargo xtask build-web` first";
 
-/// Serve the web playground on `127.0.0.1` until the process is interrupted
-/// (Ctrl-C).
-///
-/// Returns [`EXIT_USAGE`] when the dist directory is missing, the port is
-/// busy, or arguments are invalid. Does not return on the success path.
+/// Serve the web playground on `127.0.0.1` until interrupted (Ctrl-C).
+/// Returns [`EXIT_USAGE`] on missing dist / busy port / bad args; does not
+/// return on success.
 pub fn web_cmd(args: &[String]) -> u8 {
     let parsed = match parse_serve_args(args) {
         Ok(parsed) => parsed,
@@ -56,9 +54,8 @@ pub fn web_cmd(args: &[String]) -> u8 {
     if !parsed.no_open {
         open_browser(&url);
     }
-    // Handle one connection at a time on the accept thread. This is a
-    // localhost playground (127.0.0.1 only): unbounded `thread::spawn` per
-    // accept was a resource/DoS footgun and left JoinHandles detached.
+    // One connection at a time: unbounded per-accept spawn was a
+    // resource/DoS footgun.
     loop {
         let Ok((stream, _)) = listener.accept() else {
             continue;
@@ -148,10 +145,8 @@ fn dist_is_ready(dist: &Path) -> bool {
     dist.is_dir() && dist.join("index.html").is_file()
 }
 
-/// Maps a request URL path onto a file inside `dist`.
-///
-/// Rejects any path containing `..`, absolute escapes, and anything that
-/// does not canonicalize inside `dist`.
+/// Map a request URL path onto a file inside `dist`; rejects `..`,
+/// absolute escapes, and anything not canonicalizing inside `dist`.
 fn safe_file_path(dist: &Path, request_path: &str) -> Option<PathBuf> {
     let path = request_path.split(['?', '#']).next().unwrap_or("");
     let decoded = percent_decode(path)?;

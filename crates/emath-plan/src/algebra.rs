@@ -1,17 +1,9 @@
 //! /06-032: resolution algebra.
 //!
-//! A small algebra for composing provider capabilities instead of ad hoc
-//! match-statement planning. A resolution question is a Q-state (the set of
-//! requirement facets still unresolved); a provider capability is a partial
-//! transformation over Q-states (inapplicable capabilities refuse with their
-//! stable reason codes instead of silently passing). Steps compose serially,
-//! in parallel, as ordered alternatives, as fallback ladders and as
-//! portfolios; `apply_total` lifts any partial step into a total one whose
-//! failure is an explicit refusal, never a panic or a silent skip.
-//!
-//! Laws proven by the unit tests below: serial associativity, identity
-//! neutrality, alternative left-bias, parallel state commutativity and
-//! lifting totality.
+//! Q-states, partial provider-capability steps, and serial/parallel/alt/
+//! fallback/portfolio composition; inapplicable steps refuse with stable
+//! reason codes, and `apply_total` lifts any partial step to an explicit
+//! refusal — never a panic or silent skip.
 
 use std::collections::BTreeSet;
 

@@ -1,70 +1,10 @@
 //! Async stdio JSON-RPC transport on the asupersync `Cx` (feature-gated).
 //!
-//! Pass 3 (framing) + pass 4 (transport hardening) of the tokio to
-//! asupersync cutover: the async transport lane over `asupersync::io` traits.
-//! It mirrors the blocking framing in `crate::protocol` byte-for-byte
-//! (identical `Content-Length` headers and the same exit-code contract as
-//! `crate::run`), so the blocking and async lanes are indistinguishable on the
-//! wire. The blocking run loop, protocol, JSON, and server-state modules are
-//! untouched by this pass.
-//!
-//! # Region ownership
-//!
-//! The whole message loop runs as one unit owned by the caller's region; the
-//! caller typically wraps it in a region-owned task (`asupersync::Cx::spawn` +
-//! `asupersync::runtime::TaskHandle`). The loop checkpoints before every frame
-//! read, before every dispatch, and before every write, so an upstream
-//! cancellation (region close / `abort`) is acknowledged at message boundaries
-//! and in-flight frame I/O is dropped; EOF shuts the loop down cleanly.
-//! Per-message `Scope` isolation needs
-//! shared handler state (an actor / `Arc<Mutex>` refactor of
-//! `crate::server::ServerState`) because `Cx::spawn` takes `Send + 'static`
-//! closures, so it is deferred to the state-ownership step; the sync handler
-//! itself is indivisible and mid-handler cancellation is a documented seam.
-//!
-//! # Real-stdio seam
-//!
-//! asupersync at the pinned rev exposes async I/O traits plus in-memory impls
-//! (`&[u8]` and `Cursor<T>` readers, `Vec<u8>` writers) but no stdio/duplex
-//! binding. `Transport` is generic over `R: AsyncRead + Unpin` and
-//! `W: AsyncWrite + Unpin`; binding OS stdin/stdout later (a native stdio
-//! surface, or an `asupersync-tokio-compat` `io::*` bridge per
-//! COMPAT-BOUNDARY.md) is a drop-in `Transport::new(reader, writer)` change with
-//! no logic changes here. Tests use in-memory readers/writers so they stay
-//! deterministic.
-//!
-//! # Cancel-safety notes
-//!
-//! - `read_frame`: header reads are cancel-safe; the terminal `read_exact` is
-//!   **not** (partial body bytes remain in the buffer), matching the crate's
-//!   documented semantics for `read_exact`.
-//! - verbatim writes: `write_all` is not fully drop-cancel-safe (a dropped
-//!   future may leave partial output), matching the crate's documented
-//!   semantics; the transport writes whole frames from the sync handler buffer.
-//!
-//! # Bounded-resource hardening (pass 4)
-//!
-//! - Frame bodies are capped at [`MAX_FRAME_BODY`] (16 MiB): `read_frame`
-//!   refuses an oversized `Content-Length` with the typed
-//!   [`TransportError::BodyTooLarge`] **before** any allocation, and `serve`
-//!   answers with a `-32700` response and exit code `1`, mirroring how the
-//!   blocking lane refuses an over-long header line. The blocking
-//!   `protocol::read_message` stays uncapped; this bound is async-lane-only.
-//! - Writes are bounded and check-flushed: one frame's output is written and
-//!   flushed before the next frame is read, and `write_all`/`flush` failures
-//!   surface as typed [`TransportError::Io`] rather than being swallowed.
-//! - Optional host [`Control`] (bounded `mpsc`): `Transport::with_control`
-//!   polls the receiver at message boundaries; [`Control::Shutdown`] exits
-//!   `serve` with code `0` after the in-flight frame's responses are written
-//!   and flushed (at most one frame of slack: it is honored between frames,
-//!   never mid-`read_exact`). A host that must break a blocked read closes
-//!   the reader or aborts the owning region (the existing cancel path); EOF
-//!   beats a queued control signal.
-//! - Per-message wall-clock budgets are a documented seam, not wired: the
-//!   pinned asupersync rev has no generic future-timeout combinator, and `Cx`
-//!   budgets are region-scoped, so whatever deadline/poll-quota the caller's
-//!   region carries is already enforced by `cx.checkpoint()` at every boundary
-//!   (`TransportError::Cancelled`).
+//! Mirrors the blocking `crate::protocol` framing byte-for-byte (same
+//! `Content-Length` headers and exit-code contract), so both lanes are
+//! wire-identical. Frame bodies are capped at [`MAX_FRAME_BODY`] (16 MiB)
+//! before any allocation; cancellation is acknowledged at message boundaries
+//! via `cx.checkpoint()` (`TransportError::Cancelled`).
 
 use std::fmt;
 use std::io;
@@ -81,10 +21,8 @@ use asupersync::io::{AsyncRead, AsyncWrite};
 /// Maximum header line length, matching the blocking protocol.
 const MAX_HEADER_LINE: usize = 4096;
 
-/// Maximum framed body length in bytes: the async lane's per-frame memory
-/// bound. A `Content-Length` beyond this is refused with
-/// [`TransportError::BodyTooLarge`] before any allocation, so a hostile
-/// client cannot force unbounded buffering.
+/// Async-lane per-frame body cap; oversized `Content-Length` is refused with
+/// [`TransportError::BodyTooLarge`] before any allocation.
 const MAX_FRAME_BODY: usize = 16 * 1024 * 1024;
 
 /// Error surface of the async transport lane.
@@ -129,13 +67,10 @@ impl std::error::Error for TransportError {
     }
 }
 
-/// Reads one `Content-Length` framed body from `reader`.
+/// Reads one `Content-Length` framed body; `Ok(None)` at clean EOF.
 ///
-/// `Ok(None)` at a clean EOF before any header byte, `Ok(Some(body))` with
-/// the exact body bytes otherwise. Header rules (CR stripping, 4096-byte
-/// line cap, missing-length errors) mirror `crate::protocol::read_message`;
-/// a body longer than [`MAX_FRAME_BODY`] is refused with
-/// [`TransportError::BodyTooLarge`] before any allocation (async-lane cap).
+/// Header rules mirror `crate::protocol::read_message`; a body over
+/// [`MAX_FRAME_BODY`] is refused with [`TransportError::BodyTooLarge`].
 pub async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, TransportError>
 where
     R: AsyncRead + Unpin,
@@ -232,12 +167,8 @@ where
 
 /// Host control signal for the transport loop.
 ///
-/// Carried on an optional bounded [`mpsc`] receiver
-/// (`Transport::with_control`). A [`Control::Shutdown`] stops [`serve`]
-/// cleanly at a message boundary with exit code `0`, independent of the LSP
-/// `shutdown`/`exit` handshake.
-///
-/// [`serve`]: Transport::serve
+/// [`Control::Shutdown`] stops [`serve`] cleanly at a message boundary with
+/// exit code `0`, independent of the LSP `shutdown`/`exit` handshake.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     /// Stop the loop after the in-flight frame completes.
@@ -276,15 +207,9 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    /// Runs the async message loop until EOF, `exit`, control, or
-    /// cancellation.
-    ///
-    /// Returns the same exit-code contract as `crate::run`: `0` when
-    /// `shutdown` preceded the terminal event, `1` otherwise. A framing,
-    /// oversized-frame, or JSON parse error writes a `-32700` error response
-    /// (id `null`) and returns `1`, mirroring the blocking lane. A host
-    /// [`Control::Shutdown`] returns `0` after the in-flight frame's
-    /// responses have been written and flushed.
+    /// Runs the async message loop until EOF/`exit`/cancellation. Same
+    /// exit-code contract as `crate::run`; framing/parse errors write
+    /// `-32700` (id `null`) and return `1`.
     pub async fn serve(&mut self, cx: &Cx) -> Result<u8, TransportError> {
         let mut state = ServerState::new();
         loop {
@@ -346,10 +271,8 @@ where
 
     /// Polls the optional host control channel at a message boundary.
     ///
-    /// `Ok(true)` when [`Control::Shutdown`] was received: the writer is
-    /// flushed so frames produced before the stop are delivered and the loop
-    /// exits `0`. An empty channel, a dropped sender, or no receiver all mean
-    /// `Ok(false)` — the control channel is optional by design.
+    /// `Ok(true)` on [`Control::Shutdown`] (writer flushed, loop exits `0`);
+    /// empty, dropped, or missing channel means `Ok(false)`.
     async fn control_shutdown(&mut self) -> Result<bool, TransportError> {
         let Some(control) = self.control.as_mut() else {
             return Ok(false);

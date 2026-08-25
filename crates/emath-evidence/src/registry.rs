@@ -87,8 +87,8 @@ pub struct CertificateRegistry {
 }
 
 impl CertificateRegistry {
-    /// Registers a versioned contract; a second contract for the same
-    /// `(kind, version)` is refused (`E-EVID-402`).
+    /// Register a versioned contract; a duplicate `(kind, version)`
+    /// refuses (`E-EVID-402`).
     pub fn register(&mut self, contract: CheckerContract) -> Result<(), EvidenceError> {
         let key = Self::key(contract.kind, &contract.version);
         if self.contracts.contains_key(&key) {
@@ -101,8 +101,7 @@ impl CertificateRegistry {
                 ),
             ));
         }
-        // A contract that admits no claim class registers nothing ("E-EVID-403"):
-        // empty admits would make later lookups vacuously pass.
+        // Empty admits would make later lookups vacuously pass.
         if contract.admits.is_empty() {
             return Err(EvidenceError::new(
                 "E-EVID-403",
@@ -117,8 +116,7 @@ impl CertificateRegistry {
         Ok(())
     }
 
-    /// Looks up a contract; missing entries are refused with
-    /// `E-EVID-401` (unknown kind/version tuple).
+    /// Lookup a contract; missing entries refuse (`E-EVID-401`).
     pub fn lookup(
         &self,
         kind: CertificateKind,
@@ -135,7 +133,7 @@ impl CertificateRegistry {
     }
 
     /// Whether a registered contract admits the claim class;
-    /// unregistered contracts are refused (`E-EVID-401`).
+    /// unregistered contracts refuse (`E-EVID-401`).
     pub fn admits(
         &self,
         kind: CertificateKind,

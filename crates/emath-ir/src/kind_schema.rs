@@ -1,10 +1,8 @@
-//! Kind schema bedrock ( core subset).
-//!
-//! A kind schema declares which sections are required, optional or
-//! repeatable, the payload policy for each section (`single`, `field`,
-//! `command`), defaults, and a static predicate over the declaration.
-//! Lowering (full) is not in this crate; the schema is
-//! the admission surface the builder and the compiler share.
+//! Kind schema bedrock (core subset): which sections are required,
+//! optional or repeatable, each section's payload policy (`suite`,
+//! `field`, `command`), defaults, and a static predicate. The schema is
+//! the admission surface builder and compiler share; lowering is not
+//! in this crate.
 
 use std::collections::BTreeMap;
 
@@ -69,7 +67,7 @@ pub struct SectionSchema {
     pub has_default: bool,
 }
 
-/// Kind schema ( core subset).
+/// Kind schema (core subset).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct KindSchema {
     name: String,

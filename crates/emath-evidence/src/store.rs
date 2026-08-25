@@ -1,16 +1,11 @@
-//! Content-addressed evidence store.
+//! Content-addressed evidence store: records are keyed by the FNV-1a of
+//! their canonical token (identity mismatch = tamper, not rebuild);
+//! revocation/supersession are append-only (conflicts refused), and a
+//! provenance graph records derivation.
 //!
-//! Records are addressed by the FNV-1a of their canonical token, so
-//! identical content always maps to one slot and a content-identity
-//! mismatch is tamper, not a rebuild. Revocation and supersession are
-//! append-only: markers are never deleted and conflicts are refused.
-//! A provenance graph records which records each entry derives from.
-//!
-//! Stable codes:
-//! - `E-EVID-501` unknown record id;
-//! - `E-EVID-502` duplicate append-only revocation marker;
-//! - `E-EVID-503` content-identity mismatch (bootstrap identity);
-//! - `E-EVID-504` double supersession (append-only conflict).
+//! Stable codes: `E-EVID-501` unknown record id; `E-EVID-502` duplicate
+//! revocation marker; `E-EVID-503` content-identity mismatch; `E-EVID-504`
+//! double supersession.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -28,10 +23,9 @@ pub struct EvidenceStore {
 }
 
 impl EvidenceStore {
-    /// Registers a record under its content address. Registering the
-    /// identical content again is idempotent; a record that would land
-    /// on an address already holding different content is tamper and
-    /// refused (`E-EVID-503`).
+    /// Register under the content address; identical content is
+    /// idempotent, a different record at the same address is tamper
+    /// (`E-EVID-503`).
     pub fn register(&mut self, record: EvidenceRecord) -> Result<ContentId, EvidenceError> {
         let address = Self::address(&record);
         if let Some(existing) = self.records.get(&address.0) {
@@ -50,8 +44,7 @@ impl EvidenceStore {
         Ok(address)
     }
 
-    /// Registers a record and attaches its provenance sources
-    /// (producer/checker records it derives from).
+    /// Register a record and attach its provenance sources.
     pub fn register_with_sources(
         &mut self,
         record: EvidenceRecord,
@@ -114,9 +107,8 @@ impl EvidenceStore {
         self.revoked.contains(id)
     }
 
-    /// Append-only supersession: marks `old` superseded by `new`.
-    /// Double supersession is refused (`E-EVID-504`); both records must
-    /// exist (`E-EVID-501`).
+    /// Append-only supersession: `old` superseded by `new`. Double
+    /// supersession refuses (`E-EVID-504`); both must exist.
     pub fn supersede(&mut self, old: &str, new: &str) -> Result<(), EvidenceError> {
         self.query(old)?;
         self.query(new)?;
@@ -148,9 +140,8 @@ impl EvidenceStore {
         Ok(self.provenance.get(id).map_or(&[], Vec::as_slice))
     }
 
-    /// Integrity check for a stored slot: the record content must still
-    /// address the slot it lives under. A mismatch is tamper
-    /// (`E-EVID-503`).
+    /// Integrity check: record content must still address its slot; a
+    /// mismatch is tamper (`E-EVID-503`).
     pub fn verify_integrity(&self, id: &str) -> Result<(), EvidenceError> {
         let record = self.query(id)?;
         let expected = Self::address(record);

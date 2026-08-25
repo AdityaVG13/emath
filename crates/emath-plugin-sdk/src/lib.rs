@@ -1,27 +1,13 @@
 #![forbid(unsafe_code)]
 
-//! Plugin SDK slice: descriptors, sandbox policy decisions, and a
-//! deterministic test-harness contract.
+//! Plugin SDK slice: descriptors, sandbox policy gates, and a deterministic
+//! test-harness contract.
 //!
-//! A plugin is a component with a declared capability set and a sandbox
-//! policy. This crate provides:
-//!
-//! - [`PluginDescriptor`] (schema `emath.plugin`) with a canonical JSON
-//!   rendering and FNV-1a64 content id;
-//! - [`admit`]: the sandbox/fuel/permission gate. Ids must be non-empty and
-//!   free of ASCII controls (`E-PLG-005`). Untrusted descriptors must
-//!   declare positive fuel; `network` requires the `network` permission;
-//!   every capability must be inside `allowed_capabilities`. Refusals are
-//!   typed (`E-PLG-002`, `E-PLG-003`, `E-PLG-005`) and deterministic;
-//! - [`execute`]: the harness entry. The Phase 1 subset has no component
-//!   runtime, so execution is a typed refusal (`E-PLG-001`); the shape of
-//!   the call (`descriptor, input -> output`) is the stable contract that
-//!   the Phase 2+ runtime will fill. Execution re-enforces positive fuel
-//!   under every trust class (`E-PLG-002`), so `Trust::Local` can never
-//!   admit an unmetered plugin onto an execution path;
-//! - [`compatible`]: interface-core compatibility check.
-//!
-//! No network, no component host, std-only.
+//! [`admit`] is the sandbox/fuel/permission gate with typed refusals
+//! (`E-PLG-002`, `E-PLG-003`, `E-PLG-005`); [`execute`] is a typed refusal
+//! (`E-PLG-001`) until the Phase 2 component runtime lands, re-enforcing
+//! positive fuel under every trust class. No network, no component host,
+//! std-only.
 
 use std::fmt::Write as _;
 
@@ -35,9 +21,8 @@ pub const INTERFACE_CORE: &str = "emath.plugin.interface";
 /// Sandbox policy attached to a plugin descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SandboxPolicy {
-    /// Fuel budget: `None` means "unmetered". [`admit`] tolerates an
-    /// unmetered [`Trust::Local`] descriptor, but [`execute`] requires
-    /// positive fuel under every trust class (`E-PLG-002`).
+    /// Fuel budget; `None` is "unmetered" — tolerated by [`admit`] for
+    /// [`Trust::Local`], but [`execute`] requires positive fuel everywhere.
     pub fuel: Option<u64>,
     /// Granted permissions (e.g. `"network"`, `"fs-read"`).
     pub permissions: Vec<String>,
@@ -128,11 +113,9 @@ impl PluginDescriptor {
     }
 }
 
-/// The admission gate: sandbox/fuel/permission decision.
-///
-/// Refusals: `E-PLG-005` (empty/control id), `E-PLG-002` (sandbox
-/// violation), `E-PLG-003` (capability outside the allowed set or none
-/// declared).
+/// The admission gate: sandbox/fuel/permission decision. Refusals:
+/// `E-PLG-005` (empty/control id), `E-PLG-002` (sandbox violation),
+/// `E-PLG-003` (capability outside the allowed set).
 pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginError> {
     // Empty or control-bearing ids break log/diagnostic line framing and
     // make content ids ambiguous; refuse before sandbox checks.
@@ -231,14 +214,9 @@ pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginEr
     Ok(())
 }
 
-/// The harness entry point (deterministic contract).
-///
-/// Phase 1 has no component runtime, so every execution is a typed refusal
-/// (`E-PLG-001`); the signature is the stable surface the Phase 2+ runtime
-/// will implement. Output never bypasses [`admit`] — and the fuel gate is
-/// re-enforced here under every trust class: claiming [`Trust::Local`]
-/// cannot skip it, so a fuel-less descriptor hits `E-PLG-002` before
-/// `E-PLG-001`. Phase 2 cannot inherit a gate-less execution path.
+/// The harness entry point (deterministic contract): Phase 1 has no
+/// component runtime, so execution is a typed refusal (`E-PLG-001`), and
+/// the fuel gate applies under every trust class (`E-PLG-002`).
 pub fn execute(
     descriptor: &PluginDescriptor,
     _input: &[u8],

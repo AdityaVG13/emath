@@ -2,27 +2,8 @@
 //! controls and claim-language linting (Phase 8).
 //!
 //! The checker never invokes generator internals: authority is rebuilt
-//! exclusively from the retained artifact (manifest, source map, plan,
-//! evidence bundle, file content, provider locks) and content identity.
-//!
-//! Stable codes (`E-EVID-*`, evidence/checker area):
-//! - `E-EVID-101` content-identity mismatch (bootstrap hash);
-//! - `E-EVID-102` artifact identity does not recompute;
-//! - `E-EVID-103` evidence/goal scope mismatch (wrong goal or source);
-//! - `E-EVID-104` stale certificate (freshness window passed);
-//! - `E-EVID-105` incomplete artifact (required path missing);
-//! - `E-EVID-106` unsupported claim class;
-//! - `E-EVID-107` resolved claim without a checker;
-//! - `E-EVID-108` manifest schema mismatch;
-//! - `E-EVID-109` file-inventory mismatch (undeclared/missing entry);
-//! - `E-EVID-110` source-map mismatch;
-//! - `E-EVID-111` provider lock mismatch;
-//! - `E-EVID-112` source map does not reference the manifest's package;
-//! - `E-EVID-113` required/declared artifact path is a symlink;
-//! - `E-EVID-114` artifact document or declared file is not valid UTF-8;
-//! - `E-EVID-201` claim language stronger than the available evidence;
-//! - `E-EVID-301` translation mismatch (no equivalence witness);
-//! - `E-EVID-302` witness cannot be independently verified.
+//! exclusively from the retained artifact and content identity. Failures
+//! carry stable `E-EVID-*` codes (101-114, 201, 301-302).
 
 #![forbid(unsafe_code)]
 

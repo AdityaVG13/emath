@@ -1,28 +1,12 @@
 //! SG-16 world morphisms: homomorphisms, observational quotients,
 //! isomorphism search, portfolio invariant mining, and deduplication.
 //!
-//! Worlds here are finite binary operation tables ([`OpTable`] from
-//! [`crate::synth`]). A [`WorldMorphism`] is a total map of carrier
-//! indices. The homomorphism law is checked on every pair — no
-//! probabilistic shortcuts.
-//!
-//! Observational equivalence on a table is the standard left-and-right
-//! multiplication test: `x ≡ y` iff for every `z`, `op(x,z) == op(y,z)`
-//! and `op(z,x) == op(z,y)`. Under that definition the class operation
-//! is always well-defined: if `x ≡ x'` and `y ≡ y'` then
-//! `op(x,y) == op(x',y')` as elements (because `x ≡ x'` gives
-//! `op(x,y) == op(x',y)` and `y ≡ y'` gives `op(x',y) == op(x',y')`).
-//! [`quotient`] still verifies this and refuses with a typed error if it
-//! ever fails.
-//!
-//! Isomorphism search enumerates bijections in lexicographic order and
-//! returns the first homomorphism. Carrier sizes above
-//! [`MAX_ISO_SEARCH_SIZE`] refuse with [`MorphismError::BudgetExceeded`];
-//! a hard [`MAX_ISO_CANDIDATES`] cap applies even inside that bound.
-//!
-//! Determinism class: pure integer tables, no floats. Receipts are
-//! BTreeMap-ordered JSON, byte-identical across runs. Execution
-//! parameters (the candidate budget) are excluded from [`morphism_id`].
+//! Homomorphism law checked on every pair (no probabilistic shortcuts).
+//! Quotient uses left-and-right multiplication equivalence, verified
+//! well-defined. Isomorphism search enumerates bijections
+//! lexicographically; sizes above [`MAX_ISO_SEARCH_SIZE`] refuse.
+//! Determinism: pure integer tables; receipts are byte-identical JSON;
+//! execution parameters excluded from [`morphism_id`].
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -33,13 +17,10 @@ use crate::synth::{check_table, OpTable, SynthLaw, MAX_CARRIER_SIZE};
 
 /// World-morphism schema id for artifacts and receipts.
 pub const MORPHISM_SCHEMA: &str = "emath.world-morphism";
-/// World-morphism schema version. Bump on any change to the canonical
-/// encoding, the homomorphism law, the quotient representative rule,
-/// the law vocabulary, or a receipt layout; consumers refuse versions
-/// they do not know.
+/// World-morphism schema version. Bump on changes to the encoding, law,
+/// quotient representative rule, vocabulary, or receipt layout.
 pub const MORPHISM_VERSION: u32 = 1;
-/// Isomorphism search refuses carriers larger than this (`n!` grows
-/// faster than we want to enumerate without an explicit budget).
+/// Isomorphism search refuses carriers larger than this (`n!` enumeration).
 pub const MAX_ISO_SEARCH_SIZE: u8 = 5;
 /// Hard cap on bijections examined during isomorphism search.
 pub const MAX_ISO_CANDIDATES: u64 = 120;
@@ -68,8 +49,7 @@ pub enum MorphismError {
     },
     /// Declared morphism sizes do not match the supplied tables.
     SizeMismatch,
-    /// Search window filled (`MAX_ISO_SEARCH_SIZE` or
-    /// `MAX_ISO_CANDIDATES`).
+    /// Search window filled (`MAX_ISO_SEARCH_SIZE` or `MAX_ISO_CANDIDATES`).
     BudgetExceeded {
         /// Budget limit that was exhausted.
         limit: u64,
@@ -162,9 +142,8 @@ pub fn morphism_id(morphism: &WorldMorphism) -> u64 {
     fnv1a64(format!("{MORPHISM_SCHEMA}.v{MORPHISM_VERSION}:{}", morphism.canonical()).as_bytes())
 }
 
-/// Observational quotient of a finite table: classes ordered by least
-/// element, table over class indices, projection morphism onto the
-/// quotient carrier.
+/// Observational quotient: classes ordered by least element, table over
+/// class indices, projection morphism onto the quotient carrier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuotientReceipt {
     /// Schema version echoed into the JSON.
@@ -180,7 +159,7 @@ pub struct QuotientReceipt {
 }
 
 impl QuotientReceipt {
-    /// BTreeMap-ordered JSON. Byte-identical across runs.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();
@@ -250,7 +229,7 @@ pub struct InvariantReport {
 }
 
 impl InvariantReport {
-    /// BTreeMap-ordered JSON. Byte-identical across runs.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();
@@ -307,7 +286,7 @@ pub struct DedupeGroup {
     pub dropped: Vec<DroppedDuplicate>,
 }
 
-/// Deterministic isomorphism-class grouping of a portfolio.
+/// Isomorphism-class grouping of a portfolio (deterministic).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DedupeReceipt {
     /// Schema version echoed into the JSON.
@@ -319,7 +298,7 @@ pub struct DedupeReceipt {
 }
 
 impl DedupeReceipt {
-    /// BTreeMap-ordered JSON. Byte-identical across runs.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();
@@ -335,7 +314,7 @@ impl DedupeReceipt {
 }
 
 /// Checks `map[op_s(a,b)] == op_t(map[a], map[b])` for every pair.
-/// The first lexicographic failure is [`MorphismError::NotAHomomorphism`].
+/// First lexicographic failure is [`MorphismError::NotAHomomorphism`].
 pub fn verify(
     morphism: &WorldMorphism,
     source: &OpTable,
@@ -355,9 +334,8 @@ pub fn verify(
     Ok(())
 }
 
-/// First bijection in lexicographic order that is a homomorphism, or
-/// `Ok(None)` when the tables are not isomorphic. Different carrier
-/// sizes are not isomorphic. Sizes above [`MAX_ISO_SEARCH_SIZE`] refuse.
+/// First lexicographic bijection that is a homomorphism, or `Ok(None)`
+/// when not isomorphic. Sizes above [`MAX_ISO_SEARCH_SIZE`] refuse.
 pub fn find_isomorphism(
     left: &OpTable,
     right: &OpTable,
@@ -497,9 +475,8 @@ pub fn mine_invariants(tables: &[OpTable]) -> Result<InvariantReport, MorphismEr
     })
 }
 
-/// Group tables by isomorphism. The representative of each class is the
-/// least table by cells lexicographic; dropped members carry a witness
-/// morphism onto that representative.
+/// Group tables by isomorphism; representative is least by cells
+/// lexicographic, dropped members carry a witness onto it.
 pub fn dedupe(tables: &[OpTable]) -> Result<DedupeReceipt, MorphismError> {
     for table in tables {
         validate_table(table)?;

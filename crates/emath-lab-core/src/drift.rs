@@ -1,9 +1,8 @@
 //! Drift monitoring.
 //!
-//! Monitors input, quality, error, latency, memory, fallback and
-//! provider-health drift against a frozen expectation. Every alert is
-//! typed (`E-HOST-010`) and deterministic; the monitor never mutates
-//! anything but its own alert log.
+//! Monitors input/quality/error/latency/memory/fallback/provider-health
+//! drift against frozen expectation bands. Alerts are typed
+//! (`E-HOST-010`) and deterministic; the monitor mutates only its log.
 
 use crate::error::LabError;
 
@@ -125,8 +124,8 @@ impl DriftMonitor {
         })
     }
 
-    /// Observes one value against its expectation; returns the new
-    /// alerts (bands that fired), appended in band order.
+    /// Observe one value against expectation; returns bands that fired,
+    /// appended in band order.
     pub fn observe(
         &mut self,
         kind: DriftKind,
@@ -135,10 +134,8 @@ impl DriftMonitor {
         expected: f64,
     ) -> Vec<DriftAlert> {
         let mut fired = Vec::new();
-        // Relative deviation is undefined at a zero baseline. Matching
-        // zeros are in-band; any nonzero observation against a zero
-        // expectation is infinite relative drift and must fire, not
-        // silently pass.
+        // Relative deviation undefined at zero baseline: matching zeros
+        // are in-band; any nonzero against zero is infinite drift → fire.
         let deviation = if expected == 0.0 {
             if observed == 0.0 {
                 return fired;
@@ -183,9 +180,8 @@ impl DriftMonitor {
         self.alerts.clear();
     }
 
-    /// A `true-divergence` failure bundle over the fired alerts, or
-    /// `None` while the monitor has not drifted. A bundle is emitted
-    /// only on observed divergence; never pre-emptively.
+    /// `true-divergence` failure bundle over fired alerts, or `None`
+    /// while undrifted (never emitted pre-emptively).
     #[must_use]
     pub fn failure_bundle(
         &self,

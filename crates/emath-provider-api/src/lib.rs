@@ -1,13 +1,9 @@
 //! Provider API: descriptors, capabilities, providers, adapters, checkers.
 //!
-//! Adapter law (Neutral IR Constitution §7): `encode: E → Result<P,
-//! AdapterRefusal>`, `decode: P → Result<E', AdapterRefusal>`, with a
-//! declared relation R(E, E'). Provider output is untrusted transport until
-//! a `ResultChecker` admits it (Constitution §8).
-//!
-//! Phase 1 ships no concrete providers; the native path is wired directly
-//! through the sema/plan layers. This API is frozen as the adapter seam for
-//! Phase 2+ adapters (expression, structural, tensor, numerics, simulation, proof, runtime).
+//! Adapter law (Neutral IR Constitution §7): encode/decode carry a declared
+//! relation R(E, E'); provider output is untrusted until a `ResultChecker`
+//! admits it (§8). Phase 1 ships no concrete providers; this is the frozen
+//! adapter seam for Phase 2+.
 
 #![forbid(unsafe_code)]
 

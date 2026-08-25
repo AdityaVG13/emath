@@ -162,8 +162,7 @@ pub struct EvidenceRecord {
 }
 
 impl EvidenceRecord {
-    /// Whether this record can count as resolved evidence: the verdict
-    /// must be `Pass` and the computation must be complete
+    /// Resolved evidence iff verdict `Pass` and computation complete
     /// (`E-EVID-404` otherwise).
     #[must_use]
     pub fn resolved(&self) -> bool {
@@ -173,7 +172,7 @@ impl EvidenceRecord {
         self.verdict == ClaimVerdict::Pass
     }
 
-    /// Refusal entry when the record cannot be resolved evidence.
+    /// Refusal entry when not resolved evidence.
     #[must_use]
     pub fn refusal(&self) -> Option<crate::EvidenceError> {
         if self.resolved() {

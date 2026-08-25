@@ -64,35 +64,27 @@ pub enum ExprNode {
         shape: Vec<usize>,
         elements: Vec<ExprId>,
     },
-    /// Forward-mode autodiff: compute the derivative of `body` (a
-    /// sub-expression) with respect to the input named `var`.  The
-    /// EMIR emitter resolves `var` to an input index and produces an
-    /// `EmirOp::Differentiate` with a nested sub-program.
+    /// Forward-mode autodiff: derivative of `body` wrt input `var`;
+    /// the EMIR emitter lowers it to `EmirOp::Differentiate`.
     Differentiate {
         body: ExprId,
         var: String,
     },
-    /// Newton's-method root-finding: find the value of input `var`
-    /// that drives `body` (the residual) to zero.  The initial guess
-    /// is the input value supplied at runtime.  Uses forward-mode
-    /// autodiff for the Jacobian step.
+    /// Newton's-method root-finding: value of input `var` driving
+    /// `body` to zero; forward-mode autodiff for the Jacobian step.
     Solve {
         body: ExprId,
         var: String,
     },
-    /// Gradient-descent optimization: find the values of inputs `vars`
-    /// that minimize (or maximize when `maximize` is true) `body`
-    /// (the objective).  The initial guess is the input values supplied
-    /// at runtime.  Uses forward-mode autodiff for the gradient.
+    /// Gradient-descent optimization: values of inputs `vars` minimizing
+    /// (or maximizing) `body`; forward-mode autodiff for the gradient.
     Optimize {
         body: ExprId,
         vars: Vec<String>,
         maximize: bool,
     },
-    /// Numerical limit approximation (B04).  Evaluates `body` with the
-    /// variable at `var` set to sample points approaching `target` from
-    /// the given `direction` (0 = two-sided, 1 = from above, -1 = from
-    /// below).  Returns the best-estimate limit value.
+    /// Numerical limit approximation (B04): samples `body` approaching
+    /// `target` from `direction` (0 = two-sided, 1 = above, -1 = below).
     SampleLimit {
         body: ExprId,
         var: String,

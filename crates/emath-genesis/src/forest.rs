@@ -1,26 +1,12 @@
 //! G1: bounded parse forest and signature inference for genesis bodies.
 //!
-//! Moved wholesale from `emath-syntax` (world-side fence, pass 5): the
-//! forest enumerates structural parses of a body expression under a
-//! deterministic grammar: atoms, parenthesized groups, prefix application
-//! (`op(...)`), infix composition, and postfix application for a trailing
-//! operator (`a op` at a scope close), with no precedence. All enumeration
-//! is bounded by [`ForestLimits`]; budget exhaustion and unparseable input
-//! are reported as typed recovery holes, never panics. Every emitted
-//! artifact (canonical JSON, FNV-1a64 ids) is byte-identical across runs.
-//! Stable diagnostic codes are unchanged (`E-SYN-2xx`; never repurposed).
-//!
-//! Ranking policy (deterministic, SGK-G1-006): candidates are kept in
-//! grammar-production insertion order, deduplicated by (canonical form,
-//! end position), and capped by `max_alternatives` with a typed
-//! `alternative-budget` hole. The forest never scores or guesses between
-//! survivors: one complete parse is the answer, several are refused as
-//! ambiguous (`E-SYN-211`), none as unparseable (`E-SYN-210`).
-//!
-//! The world-side stage consumes the genesis body string produced by the
-//! G0 parser in `emath-syntax` (`genesis::parse_genesis` -> `body_text`);
-//! it never touches the syntax parse tree. `emath-syntax` re-exports this
-//! module at its root (`pub use emath_genesis::forest;`) for the CLI.
+//! Enumerates structural parses of a body expression under a
+//! deterministic grammar (no precedence), bounded by [`ForestLimits`].
+//! Budget exhaustion and unparseable input are typed recovery holes,
+//! never panics; candidates are deduplicated and capped by
+//! `max_alternatives`. Outcomes: one complete parse wins, several are
+//! refused as ambiguous (`E-SYN-211`), none as unparseable (`E-SYN-210`).
+//! Artifacts are byte-identical across runs.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

@@ -10,7 +10,7 @@
 - `AgentProposal` - one proposal envelope (problem id, base world or hole ids, changes, claimed obligations, derivation, required providers, estimated cost, requested authority).
 - `ProposalKind` - what kind of proposal it is.
 - `ChallengeLoop` - runs the deterministic challenge over a proposal against a portfolio; returns `ChallengeOutcome`.
-- `ChallengeOutcome` - `Refused(AdmissionRefusal)` or a world candidate / revision request.
+- `ChallengeOutcome` - `Refused(AdmissionRefusal)` or a continuation: `RevisionRequest` / `WorldCandidateRef`.
 - `CheckerSuite` / `NamedCheck` - ordered deterministic checks over a proposal.
 - `AdmissionRefusal` - stable admission refusal (code, detail, proposal identity).
 - `AgentFeedback` - structured feedback to the agent (solved holes, failed constraints, counterexample, unmet evidence, cost regression, portfolio dominance).
@@ -41,7 +41,7 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- `src/challenge.rs` `#[cfg(test)]`:
+- Workspace integration suite `tests/emath-agent-protocol` (`tests/challenge.rs`):
   - admission refuses an execution-authority claim with `capability:authority-not-admitted`
   - admission refuses an incomplete schema (missing base worlds) with `schema:incomplete`
   - a valid proposal runs to a `WorldCandidate` whose proposal identity and candidate identity are deterministic across two constructions of the same envelope

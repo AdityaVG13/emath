@@ -1,23 +1,17 @@
 //! Restricted lowering language.
 //!
-//! Lowering is bounded and typed: a fixed set of ops transformed over
-//! the kind schema, never arbitrary code. Every application is checked
-//! before it publishes HIR (`E-KIND-020` invalid op, `E-KIND-021`
-//! unknown core section, `E-KIND-022` bound exceeded), and the
-//! expansion trace is retained.
+//! Bounded, typed ops over the kind schema; applications are validated
+//! before publishing HIR (`E-KIND-020`/`021`/`022`) with the trace kept.
 
 use emath_ir::kind_schema::KindSchema;
 
-/// Maximum number of (synthetic) expansion steps a lowered schema may
-/// produce from a bounded program.
+/// Maximum expansion steps a lowered schema may produce.
 pub const MAX_LOWER_OPS: usize = 64;
 
 /// One restricted lowering op.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LowerOp {
-    /// Move the payload of `from` into the core section `into`; `into`
-    /// must exist in the core schema and must not already receive a
-    /// hoist (no re-hoisting, no cycles).
+    /// Move `from`'s payload into a core section; no re-hoisting, no cycles.
     Hoist { from: String, into: String },
     /// Rename an existing section; target must be free.
     Rename { from: String, to: String },
@@ -40,8 +34,7 @@ pub struct TraceStep {
     pub summary: String,
 }
 
-/// Result of applying a program: the lowered schema, the canonical
-/// identity, and the expansion trace.
+/// Result of applying a program: lowered schema, identity, expansion trace.
 #[derive(Clone, Debug)]
 pub struct LoweringReport {
     pub schema: KindSchema,
@@ -49,9 +42,8 @@ pub struct LoweringReport {
     pub trace: Vec<TraceStep>,
 }
 
-/// Applies a bounded lowering program to a core schema. Ops are
-/// validated before the schema is mutated; on the first refusal the
-/// schema is left untouched and the issues are returned.
+/// Applies a bounded lowering program; on the first refusal the schema
+/// is left untouched and the issues are returned.
 pub fn apply_lowering(
     core: &KindSchema,
     program: &[LowerOp],
@@ -152,10 +144,8 @@ pub fn apply_lowering(
     })
 }
 
-/// Validates a lowered schema against the core: every section in the
-/// lowered schema must be a core section or carry an admission alias
-/// recorded by a program op (rename/hoist provenance), else
-/// `E-KIND-021`. Invalid lowering cannot publish HIR.
+/// Validates a lowered schema: every section must be core or carry an
+/// admission alias recorded by a program op, else `E-KIND-021`.
 #[must_use]
 pub fn validate_lowered(lowered: &KindSchema, core: &KindSchema) -> Vec<LoweringIssue> {
     let mut issues = Vec::new();
@@ -248,7 +238,7 @@ impl LowerExt for KindSchema {
     }
 }
 
-/// Whether a symbol is bound to a section via `Bind` during lowering.
+/// Whether a section was bound via `Bind` during lowering.
 #[must_use]
 pub fn is_bound(schema: &KindSchema, section: &str) -> bool {
     schema

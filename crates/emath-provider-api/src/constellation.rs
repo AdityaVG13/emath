@@ -1,11 +1,8 @@
 //! Provider constellation waves and maturity ladder.
 //!
-//! Independently versioned provider entries across waves A..H, each with a
-//! capability census, a no-claim boundary, disable/rollback state, a
-//! version lock that preserves the last known compatible version, and a
-//! deterministic maturity level (P0..P5) with promotion criteria.
-//! Composition demos stay provider-type-free: plans reference providers by
-//! id strings only.
+//! Waves A..H with capability census, no-claim boundaries, disable/rollback,
+//! version locks, and a deterministic P0..P5 maturity ladder. Composition is
+//! provider-type-free: plans reference providers by id strings only.
 
 use crate::descriptor::ProviderLock;
 use emath_core::{ContentId, fnv1a64_bytes};

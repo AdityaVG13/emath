@@ -1,22 +1,7 @@
 //! The kind schema language.
 //!
-//! A schema is one directive per line:
-//!
-//! ```text
-//! kind workflow
-//! section inputs exactly-one fields
-//! section outputs exactly-one fields
-//! section definitions exactly-one suite
-//! section goals at-most-one commands
-//! section experiments repeatable suite
-//! default compile = rust/library/strict-f64
-//! predicate decl.outputs.is_nonempty()
-//! ```
-//!
-//! Admission order is the declaration order; canonical identity is
-//! independent of order (schema mutation moves identity). Unknown
-//! tokens, duplicate section specs and duplicate defaults are refused
-//! with stable `E-KIND-01x` codes; the output is the shared
+//! One directive per line (`kind`, `section`, `default`, `predicate`).
+//! Refusals carry stable `E-KIND-01x` codes; output is the shared
 //! `KindSchema` the compiler and builder both admit against.
 
 use emath_ir::kind_schema::{KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema};
@@ -29,12 +14,8 @@ pub struct SchemaIssue {
     pub line: usize,
 }
 
-/// Parses the schema language into a `KindSchema`.
-///
-/// `E-KIND-012` malformed directive/unknown token; `E-KIND-013`
-/// duplicate section spec; `E-KIND-014` duplicate default; `E-KIND-015`
-/// predicate references an undeclared section. Always returns both the
-/// (possibly partial) schema and the issues.
+/// Parses the schema language into a `KindSchema`; always returns both
+/// the (possibly partial) schema and the issues.
 #[must_use]
 pub fn parse_schema_language(text: &str) -> (KindSchema, Vec<SchemaIssue>) {
     let mut schema = KindSchema::default();
@@ -210,7 +191,6 @@ pub fn parse_schema_language(text: &str) -> (KindSchema, Vec<SchemaIssue>) {
     (schema, issues)
 }
 
-/// `default <section> = <value>` splitter over the remaining words.
 fn split_default(words: &mut std::str::SplitWhitespace<'_>) -> Option<(String, String)> {
     let section = words.next()?;
     let eq = words.next()?;
@@ -242,7 +222,6 @@ fn referenced_undeclared(predicate: &str, declared: &[String]) -> Option<String>
     None
 }
 
-/// Whether a parsed schema is clean (no issues).
 #[must_use]
 pub fn is_clean(issues: &[SchemaIssue]) -> bool {
     issues.is_empty()

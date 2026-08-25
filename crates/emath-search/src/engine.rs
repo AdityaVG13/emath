@@ -1,21 +1,9 @@
 //! Blocking search facade over the async frankensearch engine (`search`).
 //!
-//! frankensearch is asupersync-native (no tokio verified at the pinned rev):
-//! `IndexBuilder::build` and `TwoTierSearcher::search_collect` are async and
-//! require `&Cx`. Mirroring the emath-store / emath-provenance worker-thread
-//! precedent (`CUTOVER_PLAN` §9.10 / §9.11), the engine + an asupersync runtime
-//! live on a dedicated worker thread with a large stack; `CorpusSearch` is a
-//! channel proxy over that worker. All public methods are blocking. The
-//! engine's result ordering is authoritative — this crate never re-sorts
-//! frankensearch results (skill: f64-precision ordering must be trusted).
-//!
-//! The skill's integration shape (SKILL.md Phase 1 + API-REFERENCE.md) is
-//! applied: `IndexBuilder` for indexing, `TwoTierSearcher` (NOT hand-rolled
-//! fusion) for search, `EmbedderStack` for the embedder pair, one composite
-//! doc-id encoding scheme, `RrfConfig`-driven hybrid fusion inside the
-//! searcher. This pass drives a hash-control embedder stack (offline,
-//! deterministic) with the native Quill BM25 lexical arm; the semantic model
-//! tiers are documented no-claims (CONTRACT.md).
+//! Engine + asupersync runtime live on a dedicated large-stack worker thread;
+//! `CorpusSearch` is a channel proxy. The engine's result ordering is
+//! authoritative — never re-sorted. Semantic model tiers are no-claims
+//! (CONTRACT.md).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -36,21 +24,16 @@ use crate::corpus::from_fs_doc_id;
 use crate::error::SearchError;
 use crate::ArtifactDoc;
 
-/// Worker stack: frankensearch build/search futures recurse deeply while
-/// polling, so the engine runs on a large-stack thread, never on the caller's
-/// thread (emath-provenance precedent).
+/// Engine futures recurse deeply, so the worker thread gets a large stack.
 const WORKER_STACK_BYTES: usize = 64 * 1024 * 1024;
 
-/// Index config: stock defaults, deliberately WITHOUT `with_env_overrides()`
-/// so no `FRANKENSEARCH_*` environment can inject nondeterminism into the
-/// spike lane.
+/// Stock defaults, deliberately without `with_env_overrides()` so no
+/// `FRANKENSEARCH_*` env var can inject nondeterminism.
 fn index_config() -> TwoTierConfig {
     TwoTierConfig::default()
 }
 
-/// Build the embedder stack for this pass: explicit hash-control stack (never
-/// auto-detect, which would attempt model discovery and refuse hash-only
-/// stacks). Deterministic and offline.
+/// Explicit hash-control stack (never auto-detect); deterministic and offline.
 fn control_stack() -> EmbedderStack {
     let fast = Arc::new(HashEmbedder::default_256()) as Arc<dyn Embedder>;
     EmbedderStack::from_parts(fast, None)
@@ -85,10 +68,8 @@ pub struct CorpusSearch {
 }
 
 impl CorpusSearch {
-    /// Create a fresh index at `path` from `docs`. Refuses a non-empty
-    /// directory that is not an emath-search index (missing
-    /// `emath-search.index` marker). Opens the searcher (with the Quill
-    /// lexical arm when the build wrote one).
+    /// Create a fresh index at `path`; refuses a non-empty directory without
+    /// the `emath-search.index` marker.
     pub fn create(path: impl AsRef<Path>, docs: &[ArtifactDoc]) -> Result<Self, SearchError> {
         let mut handle = Self::spawn(path)?;
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -125,9 +106,8 @@ impl CorpusSearch {
         }
     }
 
-    /// Rebuild the index at this handle's directory from `docs`. The new
-    /// tree is built aside; a failed rebuild leaves the previous on-disk
-    /// index and the live searcher unchanged.
+    /// Rebuild the index from `docs`; a failed rebuild leaves the previous
+    /// index and live searcher unchanged.
     pub fn reindex(&self, docs: &[ArtifactDoc]) -> Result<IndexStats, SearchError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.send_op(Op::Build {
@@ -138,10 +118,8 @@ impl CorpusSearch {
         reply_rx.recv().map_err(|_| SearchError::WorkerDown)?
     }
 
-    /// Remove index artifacts under this handle's directory when the
-    /// directory is empty or carries the emath-search marker. The directory
-    /// itself is left in place. Subsequent searches return
-    /// [`SearchError::NotReady`] until a create/reindex.
+    /// Remove index artifacts (only when the directory is ours); the
+    /// directory itself stays. Searches return `NotReady` until rebuilt.
     pub fn remove_index(&self) -> Result<(), SearchError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.send_op(Op::RemoveIndex { reply: reply_tx })
@@ -149,9 +127,8 @@ impl CorpusSearch {
         reply_rx.recv().map_err(|_| SearchError::WorkerDown)?
     }
 
-    /// Search the corpus. `k == 0` returns an empty result list without
-    /// touching the engine; `k` larger than the corpus returns all hits.
-    /// Result order is the engine's authoritative order — never re-sorted.
+    /// Search the corpus. `k == 0` returns empty without touching the engine;
+    /// order is the engine's authoritative order — never re-sorted.
     pub fn search(&self, query: &str, k: usize) -> Result<Vec<Hit>, SearchError> {
         let query = query.trim();
         if query.is_empty() {
@@ -233,8 +210,7 @@ impl Drop for CorpusSearch {
 pub struct Hit {
     /// Frankensearch document id (`kind \x1f id`).
     pub doc_id: String,
-    /// Decoded artifact kind (empty when the id is not a composite this crate
-    /// produced).
+    /// Decoded artifact kind (empty when the id is not one we produced).
     pub kind: String,
     /// Decoded artifact id.
     pub id: String,
@@ -264,8 +240,7 @@ pub struct IndexStats {
     pub doc_count: usize,
     /// Documents whose fast embedding failed.
     pub error_count: usize,
-    /// Documents indexed into the quality vector tier (always 0 at this
-    /// pass — hash control stack writes no quality tier).
+    /// Quality-vector tier count (always 0: hash control writes no tier).
     pub quality_indexed: usize,
     /// Lexical (Quill BM25) arm receipt, when one was written.
     pub lexical: Option<LexicalArmStats>,
@@ -289,8 +264,7 @@ struct Worker {
     searcher: Option<TwoTierSearcher>,
 }
 
-/// Worker thread entry: build the runtime, report readiness, then serve ops
-/// until Close or channel disconnect.
+/// Worker entry: build the runtime, report readiness, serve ops until Close.
 fn worker_entry(
     path: &Path,
     request_rx: mpsc::Receiver<Op>,
@@ -340,12 +314,11 @@ fn worker_entry(
     }
 }
 
-/// Marker written after a successful install. `create` / `reindex` /
-/// `remove_index` refuse to wipe a directory that is neither empty nor
-/// marked, so a wrong path cannot delete a project tree.
+/// Marker written after a successful install; unmarked non-empty directories
+/// are never wiped.
 const INDEX_MARKER: &str = "emath-search.index";
 
-/// Build the new tree in a sibling directory. The live index and searcher
+/// Build the new tree in a sibling directory; the live index and searcher
 /// stay put until the staging tree is marked and swapped in.
 fn build_drive(worker: &mut Worker, docs: &[ArtifactDoc]) -> Result<IndexStats, SearchError> {
     if docs.is_empty() {
@@ -699,8 +672,7 @@ fn map_open(worker: &Worker, error: &FsError) -> SearchError {
     }
 }
 
-/// Map engine errors onto the crate error model (skill error-mapping shape:
-/// typed variants, engine debug text preserved on the fallback arm).
+/// Map engine errors onto the crate error model.
 fn map_fs_error(error: FsError) -> SearchError {
     match error {
         FsError::InvalidConfig {

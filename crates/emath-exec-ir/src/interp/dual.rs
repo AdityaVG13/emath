@@ -1,5 +1,4 @@
-//! Forward-mode autodiff via dual numbers, extracted from the main
-//! interpreter.  See [`evaluate_dual`].
+//! Forward-mode autodiff via dual numbers (primal, tangent) pairs.
 
 use crate::{EmirOp, EmirProgram, EmirValue};
 use super::{EvalFault, Value};
@@ -11,10 +10,8 @@ pub(super) struct Dual {
     pub(super) tangent: f64,
 }
 
-/// Evaluate an EMIR sub-program with dual numbers, seeding the input at
-/// `var_index` with tangent 1.0.  Returns the full dual (primal +
-/// tangent) of the result — i.e. both the function value and its
-/// derivative with respect to that input.
+/// Evaluate `program` with dual numbers, seeding `var_index` with tangent
+/// 1.0; returns the result's (value, derivative) pair.
 pub(super) fn evaluate_dual(
     program: &EmirProgram,
     inputs: &[Value],

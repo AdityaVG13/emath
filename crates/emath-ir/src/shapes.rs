@@ -25,9 +25,8 @@ impl std::fmt::Display for Extent {
 }
 
 impl Extent {
-    /// Parse a surface type argument into an extent.
-    ///
-    /// Numeric spellings become `Fixed`; everything else is `Symbolic`.
+    /// Parse a surface type argument: numeric spellings become `Fixed`,
+    /// everything else `Symbolic`.
     #[must_use]
     pub fn from_surface(name: &str) -> Self {
         if let Ok(size) = name.parse::<usize>() {

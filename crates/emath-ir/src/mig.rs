@@ -1,16 +1,9 @@
-//! MIG: the mathematical intent graph (schema `emath.mig`, version 1).
-//!
-//! The MIG is the spine layer between HIR admission and SIR semantics: a
-//! deterministic graph of what the package *means to do*, with one node per
-//! intent-bearing element (declaration, field, definition, constructor
-//! obligation, goal, test, compile target, export) and typed edges from
-//! each declaration to the intent it owns. Every one of the six semantic
-//! planes (definition / construction / goal / evidence / execution /
-//! evolution) is represented losslessly by node kinds.
-//!
-//! Semantic identity excludes presentation-only data by construction: no
-//! span, comment or formatting information enters the graph; expression
-//! content enters through `canonical_expr`, which is span-free.
+//! MIG: the mathematical intent graph (schema `emath.mig`, version 1)
+//! between HIR admission and SIR semantics: one node per intent-bearing
+//! element, typed edges from each declaration to the intents it owns; six
+//! semantic planes (definition/construction/goal/evidence/execution/evolution)
+//! represented losslessly. Span-free by construction (identity excludes
+//! presentation-only data).
 
 use crate::canonical::canonical_expr;
 use crate::package::{Declaration, SemanticPackage};
@@ -88,8 +81,7 @@ pub struct MigNode {
     pub kind: MigNodeKind,
     /// Semantic label (name, target or specification token). Never a span.
     pub label: String,
-    /// Canonical content id of the carried expression, when the node
-    /// carries one.
+    /// Canonical content id of the carried expression, if any.
     pub content: Option<ContentId>,
 }
 

@@ -1,42 +1,9 @@
-//! C ABI leaf for the wasm engine.
+//! C ABI leaf for the wasm engine: the only `unsafe` module in the crate.
 //!
-//! # Safety
-//!
-//! This is the only `unsafe` module in the crate. Every `unsafe` block is
-//! a documented pointer/length pairing with the JS host:
-//!
-//! 1. [`em_alloc`] returns either `0` (`len == 0`) or the start of a
-//!    `Vec<u8>` allocation with **capacity == `len` exactly** (site-1
-//!    proof: [`Vec::with_capacity`] stores the requested capacity verbatim
-//!    (RawVec has no amortized-growth path at allocation time), so
-//!    `capacity()` equals `len`; pinned by `test_em_alloc_capacity_exact`)
-//!    and **length = 0**, leaked via [`std::mem::forget`]. The host owns
-//!    that region until [`em_free`].
-//! 2. [`em_free`] reconstructs that `Vec` with
-//!    `from_raw_parts(ptr, 0, stored_cap)` and drops it. `ptr` must be a
-//!    live allocation from [`em_alloc`] (including the JSON buffer returned
-//!    by [`em_run`]). Double-free / foreign `ptr` are no-ops via
-//!    `LIVE_ALLOCS`. Host `len` is ignored for drop sizing — the capacity
-//!    recorded at mint time always wins (mismatched `len` cannot UB).
-//! 3. [`em_run`] reads `[op_ptr, op_ptr + op_len)` and
-//!    `[payload_ptr, payload_ptr + payload_len)` as UTF-8. Those slices
-//!    must be valid, initialized, and not freed for the duration of the
-//!    call. The packed return value names a fresh [`em_alloc`] region
-//!    the host must copy and then free.
-//!
-//! # Why unsafe_code is allowed here (edition 2024)
-//!
-//! The four exported entry points carry `#[unsafe(no_mangle)]`. In edition
-//! 2024 an unsafe attribute is itself governed by the `unsafe_code` lint.
-//! `lib.rs` provides the allowance on this leaf module: `#[allow(unsafe_code)]`
-//! on its `pub mod ffi` item (which overrides `lib.rs`'s crate-level
-//! `#![deny(unsafe_code)]` for this child) covers the unsafe attributes and
-//! the `unsafe` blocks below. No inner attribute is needed here. The
-//! allowance cannot be dropped without redesigning symbol export (e.g. a
-//! generated shim crate or linker script), which the web host protocol does
-//! not warrant: every `unsafe` block below is a numbered, proof-obligation
-//! site, and `lib.rs` confines all of them to this leaf module. Comment
-//! only, no code change.
+//! Every `unsafe` block pairs pointers/lengths with the JS host: [`em_alloc`]
+//! mints an exact-capacity leaked region owned until [`em_free`], which
+//! reconstructs and drops it; [`em_run`] reads caller byte ranges and returns
+//! a packed pointer to a fresh region the host copies and frees.
 
 #![allow(clippy::cast_possible_truncation)]
 
@@ -51,29 +18,9 @@ use crate::run_op;
 
 static INIT_PANIC_HOOK: Once = Once::new();
 
-/// Live-ownership map of every address/id this module has minted via
-/// `em_alloc` (or the host-alloc shim) and has not yet reclaimed via
-/// `em_free`. Values are the exact capacity recorded at mint time.
-///
-/// This is the load-bearing, locally-enforced half of the `em_free`
-/// soundness invariant: a raw address only reaches `Vec::from_raw_parts`
-/// if it is (a) minted by this module and (b) still owed. Foreign pointers
-/// and double-frees of addresses with no current membership are rejected as
-/// provable no-ops before any dereference, without trusting the host ABI
-/// pledge. Reconstruction always uses the **stored capacity**, so a host
-/// that passes a mismatched `len` cannot induce allocator UB — the caller's
-/// `len` is ignored for the drop size (still a contract violation to lie,
-/// but no longer undefined). The guard is generation-blind (address-keyed):
-/// a stale pointer whose address a later `em_alloc` reused is
-/// indistinguishable from that new mint and passes membership, so a stray
-/// double-free straddling an address-reusing `em_alloc` can consume the new
-/// mint's single free pass. That sequence requires the host to already be
-/// violating the exactly-once contract, so it stays a documented ABI
-/// violation, not a guard-guaranteed no-op.
-///
-/// Single-threaded wasm linear memory, so the `Mutex` is uncontended; the
-/// poisoning policy (`unwrap_or_else(Into::into_inner)`) mirrors
-/// `INIT_PANIC_HOOK`'s style and keeps a poisoned map usable after a panic.
+/// Live-ownership map of every address this module minted and has not yet
+/// reclaimed; values are the exact capacity recorded at mint time (the
+/// load-bearing half of the `em_free` soundness invariant).
 static LIVE_ALLOCS: LazyLock<Mutex<HashMap<u32, u32>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -172,31 +119,15 @@ mod host_alloc {
     }
 }
 
-/// Allocate `len` bytes of linear memory and return the pointer.
-///
-/// A zero length returns `0`. The host writes into the region, then
-/// either passes it to [`em_run`] or frees it with [`em_free`].
-///
-/// Leak-until-`em_free` is the transfer protocol (`mem::forget` inside):
-/// the region stays alive until the host frees it, and the `LIVE_ALLOCS`
-/// entry dies with the process on a `wasm` abort (`panic = abort`), so
-/// there is no cross-invocation accumulation beyond the host's own
-/// forgetting.
-///
-/// # Pointer width
-/// - On `wasm32`, linear memory pointers are 32-bit, so `u32` matches
-///   `usize` losslessly.
-/// - On 64-bit host builds (unit tests), an internal table routes 32-bit
-///   IDs to native pointers to avoid 64-to-32-bit truncation.
+/// Allocate `len` bytes of linear memory and return the pointer (`0` for
+/// zero length); the region leaks until the host frees it with [`em_free`].
 #[unsafe(no_mangle)]
 pub extern "C" fn em_alloc(len: u32) -> u32 {
     alloc_region(len).0
 }
 
-/// Build an exact-size region; returns `(address, capacity)`.
-///
-/// Private seam so `#[cfg(test)]` can assert the exact-capacity invariant
-/// (site 1) through the real production construction path.
+/// Build an exact-size region; `(address, capacity)` seam so tests can assert
+/// the exact-capacity invariant through the real construction path.
 fn alloc_region(len: u32) -> (u32, usize) {
     if len == 0 {
         return (0, 0);
@@ -235,13 +166,8 @@ fn alloc_region(len: u32) -> (u32, usize) {
 }
 
 /// Reclaim a region previously returned by [`em_alloc`] or [`em_run`].
-///
-/// # Safety (host contract)
-///
-/// `ptr` must be a live address from [`em_alloc`]. `ptr == 0` is a no-op
-/// (the `len == 0` allocation). The host should pass the original `len`;
-/// reconstruction uses the capacity stored at mint time, so a mismatched
-/// `len` is ignored for allocator sizing (no UB) rather than trusted.
+/// # Safety: `ptr` must be a live minted address (`0` is a no-op); the stored
+/// capacity wins over a mismatched host `len`, so no allocator UB.
 #[unsafe(no_mangle)]
 pub extern "C" fn em_free(ptr: u32, len: u32) {
     if ptr == 0 {
@@ -300,15 +226,9 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     host_alloc::free(ptr, cap);
 }
 
-/// Dispatch `op` / `payload` and return a packed JSON allocation.
-///
-/// The `u64` is `(ptr as u64) << 32 | (len as u64)`. The host copies
-/// `[ptr, ptr + len)` then calls [`em_free`]`(ptr, len)`.
-///
-/// # Safety (host contract)
-///
-/// `op_ptr`/`op_len` and `payload_ptr`/`payload_len` must name valid
-/// initialized byte regions in linear memory (module docs invariant 3).
+/// Dispatch `op` / `payload`; returns a packed JSON allocation the host copies
+/// then frees. # Safety: both pointer/length pairs must name valid initialized
+/// byte regions in linear memory.
 #[unsafe(no_mangle)]
 pub extern "C" fn em_run(op_ptr: u32, op_len: u32, payload_ptr: u32, payload_len: u32) -> u64 {
     install_panic_hook();
@@ -436,13 +356,9 @@ fn pack_json(json: &str) -> u64 {
 mod tests {
     use super::*;
 
-    /// Test seam: current count of minted-and-owed live allocations.
-    ///
-    /// `allow(dead_code)`: this seam is public observation surface for
-    /// debugging/regression scripts, not every test must call it. Safe under
-    /// membership-based tests because `LIVE_ALLOCS` is shared across parallel
-    /// test threads, so absolute counts are only reliable from a harness that
-    /// controls the full set.
+    /// Test seam: current count of minted-and-owed live allocations
+    /// (`allow(dead_code)`: shared `LIVE_ALLOCS` makes counts reliable only
+    /// from a harness that controls the full set).
     #[allow(dead_code)]
     fn live_alloc_count() -> usize {
         live_allocs_lock().len()

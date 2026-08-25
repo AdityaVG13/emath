@@ -1,27 +1,9 @@
 //! Dew breadth-backend adapter.
 //!
-//! Reuses Dew's expression/code-generation machinery through a stable
-//! adapter seam (`seam`) while preserving emath semantics and
-//! artifacts. Like the Rumoca adapter, no upstream type appears here;
-//! Dew is referenced only by provider identity string.
-//!
-//! - [`capability`]: machine capability descriptor,
-//!   no-claim boundary and optimization-evidence classification.
-//! - [`seam`]: versioned adapter-facing API with a
-//!   patch ledger.
-//! - [`dexpr`]: exact scalar mapping and explicit
-//!   linear-algebra mapping with shape/layout conversions; unsupported
-//!   emath nodes are refused before Dew execution.
-//! - [`backends`]: Rust source and token
-//!   stream backends, the Cranelift JIT capability with fallback, and
-//!   the accelerator inventory (WGSL/GLSL/CUDA/HIP/OpenCL) with
-//!   explicit target/numeric semantics and device transfer plans.
-//! - [`mapping`]: SIR -> Dew -> generated symbol/span
-//!   source map with deterministic anchors.
-//! - [`oracle`]: boundary-case scan of the reference
-//!   evaluator, injected semantic-drift detection, scalar evaluation
-//!   for the native↔Dew differential lane, and a planted-value
-//!   wrong-result control. No upstream Dew engine is consumed.
+//! Reuses Dew expression/code-generation machinery through a stable seam
+//! while preserving emath semantics. No upstream type appears here; Dew
+//! is referenced only by provider identity string. Unsupported emath
+//! nodes are refused (`E-PROV-030`) before Dew execution.
 
 #![forbid(unsafe_code)]
 

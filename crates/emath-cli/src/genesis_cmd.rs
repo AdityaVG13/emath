@@ -328,22 +328,9 @@ pub fn signature_cmd(path: &Path, out: Option<&PathBuf>) -> u8 {
     EXIT_OK
 }
 
-/// Evaluates `analysis.term` in `world` with the same fixture valuations
-/// the parametric lane (`compile --parametric`) generates, so a genesis
-/// receipt can never contradict it.
-///
-/// Returns `(answer, valuation_label, vm_steps)`: when the term evaluates
-/// (its free variables are covered by the fixture), the answer is the
-/// evaluated value, the label names the fixture and the step count is
-/// the semantic VM's metered frame count; otherwise the answer is the
-/// term's structural canonical form, the label is `structural` and the
-/// step count is zero (no execution happened). Answers are never
-/// fabricated constants: the old hardcoded `6`/`false` invented meaning
-/// out of thin air and stamped it `tested`.
-///
-/// Evaluation runs on the explicit-stack semantic VM (`emath.vm`, v1)
-/// under the seed budget; a suspension (budget exhausted) is treated as
-/// a structural answer, never a fabricated one.
+/// Evaluate `analysis.term` in `world` with the parametric lane's fixtures.
+/// Returns `(answer, valuation_label, vm_steps)`; suspensions/unbound vars
+/// yield the structural canonical form — never a fabricated constant.
 fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static str, u64) {
     let canonical = analysis.term.canonical();
     let free_env: Environment<Term> = [
@@ -426,12 +413,9 @@ fn evaluated_answer(analysis: &Analysis, world: &WorldIr) -> (String, &'static s
 }
 
 /// Honest portfolio for the built-in seed worlds: every candidate is a
-/// real evaluation (or the structural term) with its valuation disclosed
-/// in the provenance, and authority is Structural (no checker ran, so
-/// nothing is stamped `tested` from `checker_receipts: []`).
-///
-/// Also returns the semantic-VM step count per world name so the answer
-/// receipt can report the metered cost of the evaluation it certifies.
+/// real evaluation (or the structural term) with disclosed valuation and
+/// `Structural` authority (no checker ran, so never `tested`). Also
+/// returns VM step counts per world for the receipt's metered cost.
 fn portfolio(
     analysis: &Analysis,
     worlds: &[WorldIr],
@@ -956,11 +940,8 @@ fn path_to_string(path: &Path) -> String {
     path.display().to_string()
 }
 
-/// `compile --parametric <file> --out <dir>`: emit the generated crate.
-/// Codegen world specs for `labels`. SURF-0008: codegen emits a fixed
-/// per-label interpretation, so each analyzed `WorldIr`'s declared
-/// operator meanings are handed to the generator; it refuses (E-GEN-094)
-/// any map it cannot honor instead of silently dropping the `WorldIr`.
+/// Codegen world specs for `labels`. SURF-0008: the generator refuses
+/// (`E-GEN-094`) any declared meaning it cannot honor.
 fn codegen_specs(
     worlds: &[WorldIr],
     labels: &[String],

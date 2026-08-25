@@ -1,24 +1,10 @@
-//! Lab error contract.
+//! Lab error contract: stable `E-HOST-*` codes.
 //!
-//! Stable codes under the `E-HOST-*` prefix (host/lab area):
-//! - `E-HOST-003` invalid experiment manifest or protocol configuration;
-//! - `E-HOST-004` experiment not frozen or baseline equals candidate;
-//! - `E-HOST-005` correctness/quality gate failure;
-//! - `E-HOST-006` insufficient evidence (protocol minimum not met);
-//! - `E-HOST-007` metric regression (latency/throughput/memory/energy);
-//! - `E-HOST-008` incomparable experiment (mismatched protocol or inputs);
-//! - `E-HOST-009` raw samples not retained as declared;
-//! - `E-HOST-010` drift detected (input/quality/latency/memory/health);
-//! - `E-HOST-011` decision receipt cannot be recomputed independently;
-//! - `E-HOST-012` invalid statistical protocol configuration;
-//! - `E-HOST-013` invalid canary routing configuration;
-//! - `E-HOST-014` invalid drift band tolerance;
-//! - `E-HOST-015` invalid engine policy;
-//! - `E-HOST-016` refuse self-comparison: subject and oracle of a
-//!   comparison must be distinct engine identities.
-//!
-//! `E-HOST-001`/`E-HOST-002` are owned by the host-binding layer
-//! (`emath-rust-ir`).
+//! Codes: `003` invalid manifest/protocol, `004` not frozen or baseline
+//! == candidate, `005` gate failure, `006` insufficient evidence, `007`
+//! metric regression, `008` incomparable, `010` drift, `012` protocol,
+//! `013` canary routing, `014` drift band, `015` engine policy, `016`
+//! self-comparison refusal. `001`/`002` owned by `emath-rust-ir`.
 
 use std::fmt;
 

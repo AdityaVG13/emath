@@ -7,8 +7,7 @@ use emath_core::{fnv1a64_bytes, ContentId, Span};
 use std::collections::BTreeMap;
 
 /// Constructor authority: parameters, preconditions, assignments,
-/// postconditions, defaults, error type and construction failure
-/// variants ( subset).
+/// postconditions, defaults, error type and construction failure variants.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Constructor {
     pub name: String,
@@ -48,11 +47,9 @@ pub struct TestCase {
     pub source: Span,
 }
 
-/// How a construction obligation is discharged. Phase 1 discharges every
-/// textual `require`/`ensure`/`invariant` as a runtime check in the
-/// generated constructor; the other classes are the contract's full
-/// obligation taxonomy (V6 doc 04) and become live as their discharge
-/// engines land.
+/// How a construction obligation is discharged: Phase 1 checks every
+/// textual `require`/`ensure`/`invariant` at runtime; the rest of the
+/// taxonomy (V6 doc 04) awaits discharge engines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ObligationClass {
     /// Proven at compile time; no generated check.
@@ -121,10 +118,9 @@ pub struct ConstructionObligation {
 }
 
 impl Constructor {
-    /// The obligation matrix of this constructor: every precondition and
-    /// postcondition with its discharge class. Phase 1 classifies every
-    /// textual obligation as `Runtime` because the generated constructor
-    /// checks each one before the value escapes.
+    /// The obligation matrix: every precondition/postcondition with its
+    /// discharge class. Phase 1 classifies all textual obligations as
+    /// `Runtime` because the generated constructor checks each one.
     #[must_use]
     pub fn obligation_matrix(&self) -> Vec<ConstructionObligation> {
         let mut matrix: Vec<ConstructionObligation> = self
@@ -159,9 +155,8 @@ impl Constructor {
     }
 }
 
-/// Evidence that a constructor's obligation matrix is fully accounted for:
-/// every obligation is either discharged by the generated code (static,
-/// runtime, solver, certificate) or explicitly recorded as deferred.
+/// Evidence a constructor's obligations are fully accounted for: each is
+/// discharged (static, runtime, solver, certificate) or recorded deferred.
 /// Receipts compose across constructor delegation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstructionReceipt {
@@ -174,10 +169,8 @@ pub struct ConstructionReceipt {
 }
 
 impl ConstructionReceipt {
-    /// Composes the receipt of a delegating constructor with the receipt
-    /// of its delegate: the composed receipt carries every obligation of
-    /// both, delegate obligations first (they are checked first at
-    /// runtime). No obligation is ever dropped by composition.
+    /// Compose delegating with delegate receipts: carries every obligation,
+    /// delegate first (checked first at runtime). No obligation is dropped.
     #[must_use]
     pub fn compose(delegating: &Self, delegate: &Self) -> Self {
         let mut obligations = delegate.obligations.clone();

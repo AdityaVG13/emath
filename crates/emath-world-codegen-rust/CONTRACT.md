@@ -49,9 +49,8 @@
 
 ## Conformance tests
 
-- #[cfg(test)] modules in lib.rs: contract_tests, seed_contract_tests, unused_worldir_tests, specialized_abi_generation_tests (declaration-driven ABI shape + version embedding).
-- Generated-crate tests (emitted into the golden): contract_tests (swap negative control) and specialized_abi_tests (specialized-vs-generic differential, unknown-symbol and wrong-arity refusals).
-- No integration tests/ directory.
+- Two inline `#[cfg(test)]` modules in `lib.rs` (exercising the embedded generated-crate template): `contract_tests` (`swapped_world_is_not_a_noop_mutation`, `swap_mutation_is_killed_on_other_operator_paths`, `dual_run_is_deterministic`) and `specialized_abi_tests` (`specialized_abi_agrees_with_generic_evaluation`, unknown-symbol and wrong-arity refusals). `SWAP_SEED_CONTRACT` (`SeedContract`) pins the double-run seed identity.
+- The standalone `tests/emath-world-codegen-rust` package drives the generated crate end to end. The committed golden `examples/generated/semantic-genesis-worlds` is the byte-compared fixture.
 
 ## Rollback and migration
 

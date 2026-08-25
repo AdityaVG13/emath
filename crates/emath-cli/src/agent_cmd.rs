@@ -24,8 +24,8 @@ const PROPOSE_LOOP: ChallengeLoop = ChallengeLoop {
     counterexample_generator: None,
 };
 
-/// `agent check|plan|build|triage|propose <file> ...`: same admission/plan/build
-/// paths as the interactive commands. Agents cannot bypass checks.
+/// `agent check|plan|build|triage|propose <file>`: same admission/plan/
+/// build paths as the interactive commands; agents cannot bypass checks.
 pub(crate) fn agent_cmd(args: &[String]) -> u8 {
     let Some(sub) = args.first() else {
         return usage("agent check|plan|build|triage|propose <file> [--out <dir>]");
@@ -182,12 +182,10 @@ fn print_propose_outcome(proposal: &AgentProposal, outcome: ChallengeOutcome) ->
     }
 }
 
-/// Deterministic `key: value` envelope. `#` comments and blank lines are
-/// ignored. Repeated `change` / `obligation` / `base` / `holes` /
-/// `providers` / `authority` keys append. `change` is
-/// `kind|symbol|description|provenance`; `obligation` is
-/// `id|scope|provenance`; optional `exec` is
-/// `lowering|precision|provider|target|schedule`.
+/// Deterministic `key: value` envelope; `#` comments and blanks
+/// ignored, repeatable keys append. `change` =
+/// `kind|symbol|description|provenance`, `obligation` = `id|scope|
+/// provenance`, `exec` = `lowering|precision|provider|target|schedule`.
 fn parse_proposal_text(text: &str) -> Result<AgentProposal, String> {
     let mut problem_id = String::new();
     let mut kind = ProposalKind::WorldDelta;

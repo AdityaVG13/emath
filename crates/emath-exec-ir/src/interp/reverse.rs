@@ -1,18 +1,12 @@
-//! Reverse-mode autodiff (adjoint method) via Wengert tape.
-//!
-//! Forward pass records all primal values; backward pass propagates
-//! adjoints in a single reverse traversal.  Efficient for scalar
-//! functions of many inputs: O(cost) regardless of input count.
+//! Reverse-mode autodiff (adjoint method) via Wengert tape: forward pass
+//! records primals, backward pass propagates adjoints in one traversal
+//! (O(cost) for any input count).
 
 use crate::{BuiltinId, EmirOp, EmirProgram, EmirValue};
 use super::{EvalFault, Value};
 
-/// Evaluate an EMIR sub-program in reverse mode, returning the gradient
-/// w.r.t. each specified input index.
-///
-/// 1. Forward pass: evaluate all ops, storing primal f64 values.
-/// 2. Backward pass: seed adjoint[result] = 1.0, propagate backward.
-/// 3. Collect input adjoints for the requested var indices.
+/// Gradients of `program` w.r.t. each `var_indices` entry: forward pass
+/// records primals, backward pass propagates adjoints from the result.
 pub(super) fn evaluate_reverse(
     program: &EmirProgram,
     inputs: &[Value],

@@ -1,11 +1,9 @@
 //! Statistical protocol.
 //!
-//! Freezes warmup, repetition count, randomization seed, paired
-//! comparison, outlier policy and raw-sample retention before runs. All
-//! computations are pure functions of the injected samples, so two runs
-//! with identical inputs produce byte-identical summaries
-//! (`E-HOST-003` structural errors, `E-HOST-006` insufficient evidence,
-//! `E-HOST-008` incomparable inputs).
+//! Freezes warmup, repetitions, seed, paired comparison, outlier policy
+//! and raw-sample retention. Computations are pure functions of injected
+//! samples → byte-identical summaries. Codes: `E-HOST-003` structural,
+//! `E-HOST-006` insufficient evidence, `E-HOST-008` incomparable inputs.
 
 use crate::Sampler;
 use crate::error::LabError;
@@ -16,7 +14,7 @@ pub enum OutlierPolicy {
     /// Keep every post-warmup sample.
     KeepAll,
     /// Trim pairs whose baseline deviates more than `factor * MAD`
-    /// from the baseline median (degenerate zero MAD keeps all).
+    /// from the baseline median (zero MAD keeps all).
     MadTrim { factor: f64 },
 }
 
@@ -110,12 +108,9 @@ pub struct PairedResult {
     pub seed: u64,
 }
 
-/// Evaluates the paired comparison under the protocol.
-///
-/// Sequence: identity separation (`subject != oracle`, `E-HOST-016`),
-/// warmup drop, optional deterministic shuffle, MAD cull, per-pair ratio
-/// statistics. Zero-duration samples make ratios undefined and are
-/// refused (`E-HOST-008`).
+/// Paired comparison under the protocol: identity separation, warmup
+/// drop, shuffle, MAD cull, ratio statistics. Zero-duration samples
+/// refuse (`E-HOST-008`).
 #[allow(clippy::cast_precision_loss)] // ns counts -> ratios; below 2^53 the cast is exact
 pub fn evaluate_paired(
     subject: &crate::identity::EngineIdentity,
@@ -245,8 +240,7 @@ fn cull_outliers(policy: OutlierPolicy, observations: &mut Vec<PairedObservation
         .iter()
         .map(|sample| sample.baseline_ns)
         .collect();
-    // Non-empty by construction: the caller refuses when no samples
-    // survive warmup before culling ever runs.
+    // Non-empty by construction: caller refuses when warmup empties it.
     let Ok(median) = percentile(&baselines, 0.5) else {
         return 0;
     };
@@ -266,10 +260,8 @@ fn cull_outliers(policy: OutlierPolicy, observations: &mut Vec<PairedObservation
     (before - observations.len()) as u64
 }
 
-/// Arithmetic mean of u64 samples.
-///
-/// An empty sample set is a typed refusal (`E-HOST-006`), never `0.0/0.0`
-/// NaN from dividing by `len`.
+/// Arithmetic mean of u64 samples; empty input refuses
+/// (`E-HOST-006`), never `0.0/0.0` NaN.
 #[allow(clippy::cast_precision_loss)] // sample counts/sums as f64; exact below 2^53
 pub fn mean(values: &[u64]) -> Result<f64, LabError> {
     if values.is_empty() {
@@ -282,11 +274,8 @@ pub fn mean(values: &[u64]) -> Result<f64, LabError> {
     Ok(sum / values.len() as f64)
 }
 
-/// Linear-interpolated percentile of u64 samples.
-///
-/// An empty sample set is a typed refusal (`E-HOST-006`), never an index
-/// underflow; otherwise `position` lies in `[0, len - 1]`, so the
-/// truncating/sign casts of the index bounds are exact.
+/// Linear-interpolated percentile of u64 samples; empty input refuses
+/// (`E-HOST-006`).
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
@@ -313,11 +302,8 @@ pub fn percentile(values: &[u64], p: f64) -> Result<f64, LabError> {
     Ok(lower + (upper - lower) * fraction)
 }
 
-/// Linear-interpolated percentile of f64 ratios.
-///
-/// An empty sample set is a typed refusal (`E-HOST-006`), never an index
-/// underflow; otherwise `position` lies in `[0, len - 1]`, so the
-/// truncating/sign casts of the index bounds are exact.
+/// Linear-interpolated percentile of f64 ratios; empty input refuses
+/// (`E-HOST-006`).
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,

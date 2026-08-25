@@ -1,28 +1,11 @@
 //! SG-14 finite-world synthesis: budgeted search over binary operation
 //! tables on a finite carrier.
 //!
-//! A [`SynthRequest`] names a carrier `{0, …, n−1}`, a list of laws, and
-//! a list of example triples `op(a, b) = c`. The search enumerates the
-//! `n^(n²)` tables in a fixed row-major mixed-radix order and returns
-//! the first table that satisfies every constraint, or a typed refusal.
-//!
-//! Rules (honest, no silent truncation):
-//!
-//! - Carrier elements are canonical indices `0..n`. Size `0` is refused.
-//!   Size above [`MAX_CARRIER_SIZE`] is refused (`carrier-too-large`).
-//! - Enumeration is total: table index `i` decodes to `n²` cells, least
-//!   significant digit first, row-major `(a, b)` pairs.
-//! - [`SynthBudget::max_tables`] is a hard window, not a hint. Exhausting
-//!   the window with tables still unexamined is [`SynthError::BudgetExceeded`],
-//!   never a truncated “no table” answer. Exhausting the space inside the
-//!   window is [`SynthError::Unsatisfiable`].
-//! - [`SynthRequest::resume_cursor`] is the next unexamined index. A
-//!   continued request with the same constraints and that cursor resumes
-//!   the same enumeration. Budget and cursor are execution parameters
-//!   and are excluded from [`synth_id`].
-//!
-//! Determinism class: pure integer enumeration, no floats. Receipts are
-//! BTreeMap-ordered JSON, byte-identical across runs.
+//! Enumerates the `n^(n²)` tables in fixed row-major mixed-radix order,
+//! returning the first table satisfying every law/example, or a typed
+//! refusal. Budget is a hard window (never a truncated answer);
+//! `resume_cursor` resumes the same enumeration. Determinism: pure
+//! integer enumeration; receipts are byte-identical JSON.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -31,12 +14,10 @@ use emath_world_ir::fnv1a64;
 
 /// Finite-world synthesis schema id for artifacts and receipts.
 pub const SYNTH_SCHEMA: &str = "emath.finite-world";
-/// Finite-world synthesis schema version. Bump on any change to the
-/// canonical request encoding, the enumeration order, law semantics, or
-/// the receipt layout; consumers refuse versions they do not know.
+/// Finite-world synthesis schema version. Bump on changes to request
+/// encoding, enumeration order, law semantics, or receipt layout.
 pub const SYNTH_VERSION: u32 = 1;
-/// Hard carrier-size ceiling. Enumeration space is `n^(n²)`; a larger
-/// carrier is a typed refusal, not an attempted search.
+/// Hard carrier-size ceiling; larger carriers are a typed refusal.
 pub const MAX_CARRIER_SIZE: u8 = 8;
 
 /// Refuses schema versions this module does not understand.
@@ -73,11 +54,8 @@ pub enum SynthError {
     },
 }
 
-/// A declared law over the binary operation being synthesized.
-///
-/// Vocabulary mirrors `emath-holes` / `emath-law-check` (commutative,
-/// associative, identity) and adds left/right identity, each either
-/// named or existential.
+/// A declared law over the synthesized binary operation (vocabulary
+/// mirrors `emath-holes`/`emath-law-check`, plus left/right identity).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SynthLaw {
     /// `op(x, y) == op(y, x)` for all pairs.
@@ -224,8 +202,7 @@ pub struct SynthReceipt {
 }
 
 impl SynthReceipt {
-    /// BTreeMap-ordered JSON. Key order is lexicographic. Byte-identical
-    /// across runs for the same receipt.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();
@@ -351,9 +328,8 @@ impl SynthRequest {
     }
 }
 
-/// Independent law check over an existing table. The first
-/// lexicographic violation is returned; this is the seeded-negative-
-/// control seam (plant a bad table, read the counterexample).
+/// Independent law check over an existing table; returns the first
+/// lexicographic violation (seeded-negative-control seam).
 pub fn check_table(table: &OpTable, laws: &[SynthLaw]) -> Result<(), LawViolation> {
     for law in laws {
         if let Some(violation) = law_violation(table, law) {

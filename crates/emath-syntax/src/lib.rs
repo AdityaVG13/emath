@@ -1,21 +1,9 @@
 //! Bootstrap syntax crate: layout lexer and recursive-descent parser.
 //!
-//! The parser is replaceable by the Phase 4 lossless parser but already
-//! guarantees: no panics on arbitrary UTF-8, exact spans on every token and
-//! node, indentation enforcement, duplicate-section checks, precedence,
-//! bounded source/token/nesting limits, and recovery at statement
-//! boundaries. This crate is provider-free.
-//!
-//! Semantic Genesis: [`genesis`] parses `emath custom` world declarations
-//! (G0). The G1 world/forest stage (bounded parse forest + signature
-//! inference over `emath-term`/`emath-world-ir` values) lives in
-//! `emath-genesis` since the world-side fence; the CLI consumes it
-//! directly (`emath_genesis::forest`), so this crate carries no
-//! emath-genesis dependency.
-//!
-//! The syntax tree is owned by `emath-core` (`emath_core::tree`); this crate
-//! re-exports it and implements the kernel [`emath_core::parse::SourceParser`]
-//! seam so that `emath-sema` can admit without depending on this crate.
+//! Panic-free on arbitrary UTF-8, exact spans everywhere, bounded
+//! source/token/nesting limits, recovery at statement boundaries.
+//! The syntax tree is owned by `emath-core`; this crate re-exports it and
+//! implements the kernel [`emath_core::parse::SourceParser`] seam.
 
 #![forbid(unsafe_code)]
 

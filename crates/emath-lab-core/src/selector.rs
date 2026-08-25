@@ -1,10 +1,9 @@
 //! Runtime selector.
 //!
-//! Dispatches each request between baseline, candidate and canary routes
-//! under the frozen promotion decision, with correctness guards,
-//! per-route telemetry, runtime failure fallback and deoptimization
-//! (step back to baseline) on drift or failure. A candidate is never
-//! served while its quality gate is closed (`E-HOST-005`).
+//! Dispatches requests between baseline/candidate/canary routes with
+//! correctness guards, telemetry, failure fallback and deoptimization.
+//! A candidate is never served while its quality gate is closed
+//! (`E-HOST-005`).
 
 use crate::error::LabError;
 use crate::gate::GateVerdict;
@@ -69,9 +68,8 @@ pub struct Selector {
 }
 
 impl Selector {
-    /// Builds a selector from the gate verdict and the promotion decision.
-    /// A promote/canary outcome with a closed gate is refused
-    /// (`E-HOST-005`): the guard exists from construction.
+    /// Build from gate verdict + promotion decision; promote/canary with
+    /// a closed gate refuses (`E-HOST-005`) from construction.
     pub fn new(
         gate: GateVerdict,
         outcome: PromotionOutcome,
@@ -105,9 +103,8 @@ impl Selector {
         })
     }
 
-    /// Routes one request deterministically; the request id selects the
-    /// canary cohort. Never fails: shadow/retain/quarantine always serve
-    /// the baseline, and a closed gate falls back to the baseline.
+    /// Route one request deterministically; never fails —
+    /// shadow/retain/quarantine and closed gates serve baseline.
     pub fn dispatch(&mut self, request_id: u64) -> Route {
         let route = match self.outcome {
             PromotionOutcome::Promote if self.gate.eligible() => Route::Candidate,
@@ -132,9 +129,8 @@ impl Selector {
         route
     }
 
-    /// Runtime guard: refuses routing to the candidate when the gate is
-    /// closed (`E-HOST-005`). The constructor already forbids that state;
-    /// this is for hosts that deserialize selector state.
+    /// Runtime guard for hosts that deserialize selector state: refuses
+    /// candidate routing on a closed gate (`E-HOST-005`).
     pub fn guard(&self) -> Result<(), LabError> {
         if matches!(
             self.outcome,
@@ -152,9 +148,8 @@ impl Selector {
         Ok(())
     }
 
-    /// Deoptimization: steps a promoted/canary candidate back to the
-    /// baseline, records the step and the reason; returns whether the
-    /// route actually changed.
+    /// Deoptimize a promoted/canary candidate back to baseline; returns
+    /// whether the route changed.
     pub fn deoptimize(&mut self, reason: &PromotionReason) -> bool {
         let reverted = matches!(
             self.outcome,

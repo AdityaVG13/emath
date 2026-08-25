@@ -62,8 +62,7 @@ impl UnresolvedReason {
     }
 }
 
-/// Provider execution outcomes: only `Resolved` carries admitted value
-/// authority; `Unresolved` is an explicit, typed disposition.
+/// Provider execution outcomes: only `Resolved` carries value authority.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Outcome<T, E> {
     Resolved {

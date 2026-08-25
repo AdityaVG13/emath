@@ -2,12 +2,9 @@
 
 //! Minimal Semantic Genesis evaluator and built-in example worlds.
 //!
-//! Hosts the G1 world-side stage (moved from `emath-syntax`, world-side
-//! fence): [`forest`] builds the bounded parse forest over a genesis body
-//! expression and infers the world signature, constructing `emath-term` /
-//! `emath-world-ir` values directly. `emath-syntax` keeps the G0
-//! `emath custom` section parser and re-exports this module at its root for
-//! the CLI.
+//! Hosts the G1 world-side stage: [`forest`] builds the bounded parse
+//! forest and infers world signatures; `emath-syntax` keeps the G0
+//! parser and re-exports this module at its root.
 
 pub mod analogue;
 pub mod binder;

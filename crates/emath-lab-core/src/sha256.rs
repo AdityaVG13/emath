@@ -1,8 +1,7 @@
 //! Minimal std-only SHA-256 for keep-gate identity dumps.
 //!
-//! The keep-gate harness records `identity=` as the SHA-256 of emitted
-//! artifacts beside every measured cell. FIPS 180-4 round constants and
-//! big-endian block processing; deterministic and dependency-free.
+//! Records `identity=` as the SHA-256 of emitted artifacts beside every
+//! measured cell. FIPS 180-4; deterministic and dependency-free.
 
 /// 32-bit rotate right.
 fn rotate_right(value: u32, shift: u32) -> u32 {
@@ -119,9 +118,8 @@ pub fn digest(bytes: &[u8]) -> [u8; 32] {
     out
 }
 
-/// Compresses one 64-byte block into the state.
-/// The compression schedule follows FIPS 180-4, which names the working
-/// variables `a..=h`; the single-character names are the standard notation.
+/// Compress one 64-byte block into the state (FIPS 180-4 schedule;
+/// `a..=h` are the standard working-variable names).
 #[allow(clippy::many_single_char_names)]
 fn compress(state: &mut [u32; 8], block: &[u8; 64]) {
     let mut w = [0_u32; 64];
