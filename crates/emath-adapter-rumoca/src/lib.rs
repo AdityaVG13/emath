@@ -1,16 +1,8 @@
 //! Rumoca structural-model adapter: provider seam and neutral IR.
 //!
-//! Phase 1 implements the structural lane with in-tree native stand-ins:
-//! the neutral structural/equation IR ([`structural`]), the compiler-phase
-//! census ([`census`]), the dynamic-model subset contract ([`subset`]),
-//! emath-to-DAE lowering ([`lower`]), DAE-plan and simulation providers
-//! ([`provider`]), the semantic mapping table ([`map`]), Modelica subset
-//! import ([`import`]), the MSL conformance ladder ([`conformance`]), the
-//! versioned provider seam ([`seam`]) and diagnostic mapping
-//! ([`diagnostics`]). No upstream Rumoca engine is consumed in Phase 1
-//! (the census says so per phase); the seam is the Phase 2+ bridge to the
-//! fork. No upstream type appears here; Rumoca is referenced only by
-//! provider identity string.
+//! Phase 1 implements the structural lane with in-tree native stand-ins;
+//! no upstream Rumoca engine is consumed and no upstream type appears
+//! here (Rumoca is referenced only by provider identity string).
 
 #![forbid(unsafe_code)]
 

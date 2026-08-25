@@ -1,14 +1,6 @@
 // crate root forbids unsafe
-//! Thirteen-schema registry.
-//!
-//! Canonical semantic-genesis artifact formats named
-//! `emath.<name>`. The registry is std-only, dependency-free and
-//! byte-stable: every entry emits deterministic JSON bytes and a
-//! matching example. Closed-world entries encode the in-tree JSON
-//! emitter's top-level fields; ids with no JSON emitter get an open
-//! envelope (`schema` const only). Unknown names return a stable typed
-//! error (`E-SCHEMA-001`). The order of [`SCHEMA_NAMES`] is the fixed
-//! registry order.
+//! Thirteen-schema registry: deterministic, byte-stable JSON per `emath.<name>`.
+//! Unknown names return `E-SCHEMA-001`; [`SCHEMA_NAMES`] order is fixed.
 
 /// Stable schema document version.
 pub const SCHEMA_VERSION: &str = "1.0.0";
@@ -19,10 +11,7 @@ pub const SCHEMAS_VERSION: &str = "1.0.0";
 /// Crate-level version alias.
 pub const VERSION: &str = "1.0.0";
 
-/// Fixed registry order — thirteen stable names.
-///
-/// Each name is the canonical `$id` (`emath.<name>`). The order is
-/// the admission order and must not change.
+/// Fixed registry order — thirteen stable `$id` names; must not change.
 pub const SCHEMA_NAMES: [&str; 13] = [
     "emath.source-artifact",
     "emath.parse-forest",
@@ -42,14 +31,11 @@ pub const SCHEMA_NAMES: [&str; 13] = [
 /// Typed refusal for an unknown schema name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchemaError {
-    /// The unknown name that was requested.
     pub name: String,
-    /// Stable error code (`E-SCHEMA-001`).
     pub code: &'static str,
 }
 
 impl SchemaError {
-    /// Stable code for unknown schema.
     pub const CODE: &'static str = "E-SCHEMA-001";
 
     #[must_use]
@@ -82,19 +68,17 @@ impl std::error::Error for SchemaError {}
 /// Alias required by assignment — typed unknown-name refusal.
 pub type UnknownSchemaError = SchemaError;
 
-/// Returns the fixed thirteen names in registry order.
 #[must_use]
 pub fn schema_names() -> &'static [&'static str] {
     &SCHEMA_NAMES
 }
 
-/// Alias for `schema_names()` — enumerates the registry.
+/// Alias for `schema_names()`.
 #[must_use]
 pub fn all_schema_names() -> &'static [&'static str] {
     &SCHEMA_NAMES
 }
 
-/// Whether `name` is a known schema.
 #[must_use]
 pub fn is_known_schema(name: &str) -> bool {
     find_index(name).is_some()
@@ -170,8 +154,7 @@ struct ClosedSpec {
     fields: &'static [FieldDef],
 }
 
-/// Optional JSON Schema instance annotation. Real genesis emitters omit
-/// it; examples include it so `$schema` round-trips to `$id`.
+/// Optional instance annotation; examples include it so `$schema` round-trips.
 const SCHEMA_ANNOTATION: FieldDef = FieldDef {
     name: "$schema",
     value: ValueSpec::Type(JsonType::String),
@@ -725,7 +708,6 @@ fn build_example_json(name: &str) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// Returns deterministic JSON schema bytes for `name`.
 pub fn schema_json(name: &str) -> Result<Vec<u8>, SchemaError> {
     if find_index(name).is_none() {
         return Err(SchemaError::new(name));
@@ -733,7 +715,6 @@ pub fn schema_json(name: &str) -> Result<Vec<u8>, SchemaError> {
     Ok(build_schema_json(name))
 }
 
-/// Returns deterministic JSON bytes for a schema document.
 pub fn schema_json_bytes(name: &str) -> Result<Vec<u8>, SchemaError> {
     schema_json(name)
 }
@@ -753,7 +734,6 @@ pub fn example_json(name: &str) -> Result<Vec<u8>, SchemaError> {
     Ok(build_example_json(name))
 }
 
-/// Returns deterministic example bytes (alias).
 pub fn example_json_bytes(name: &str) -> Result<Vec<u8>, SchemaError> {
     example_json(name)
 }
@@ -765,7 +745,6 @@ pub fn write_example_json(name: &str, out: &mut Vec<u8>) -> Result<(), SchemaErr
     Ok(())
 }
 
-/// String variants — still deterministic and byte-stable.
 pub fn schema_json_string(name: &str) -> Result<String, SchemaError> {
     let bytes = schema_json(name)?;
     // Registry emitters write UTF-8 only; surface corruption as E-SCHEMA-001.

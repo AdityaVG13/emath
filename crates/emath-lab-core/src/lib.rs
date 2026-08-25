@@ -1,32 +1,12 @@
-//! Laboratory core: experiment manifests, quality gates, measurement,
-//! statistical protocol and promotion policy engine for the Phase 10
-//! laboratory. Everything is std-only and deterministic; wall-clock timing
-//! enters only as injected raw samples.
+//! Laboratory core: manifests, quality gates, measurement, statistics and
+//! promotion policy for the Phase 10 laboratory. Std-only and
+//! deterministic; wall-clock timing enters only as injected samples.
 //!
-//! - `manifest::LabManifest`: frozen experiment manifest;
-//! - `gate::QualityGate`: correctness/evidence before
-//!   performance;
-//! - `measure`: measurement harness with deterministic
-//!   summaries and explicit energy/cost models;
-//! - `stats::StatisticalProtocol`: warmup, repetitions,
-//!   randomization, paired comparison, MAD outlier policy, raw retention;
-//! - `promotion::decide`: promote/shadow/canary/retain/
-//!   demote/quarantine with typed reasons;
-//! - `selector::Selector`: runtime dispatch with guards,
-//!   telemetry and deoptimization;
-//! - `drift::DriftMonitor`: typed drift alerts
-//!   (`E-HOST-010`);
-//! - `receipt::DecisionReceipt`: independently
-//!   recomputable decision receipts;
-//! - `adversarial`: detectors for changed inputs,
-//!   benchmark cheating, asymmetric warmup, missing failures, poisoned
-//!   calibration and non-comparable builds;
-//! - `pilot::CachePilot`: cache-router host with
-//!   hit rate/latency/correctness metrics;
-//! - `candidate::{CandidateLoop, ParetoArchive}`:
-//!   gate-gated generation loop; the proposer never promotes;
-//! - `supervisor::Supervisor`: automatic demotion on
-//!   injected drift.
+//! Key modules: `manifest` (frozen experiment), `gate` (correctness
+//! before performance), `measure` (deterministic harness), `stats`
+//! (paired protocol, MAD outliers), `promotion::decide` (typed reasons),
+//! `selector`, `drift` (`E-HOST-010`), `receipt` (recomputable), and
+//! `adversarial` (cheating/poison detectors).
 
 #![forbid(unsafe_code)]
 
@@ -217,8 +197,7 @@ impl PromotionPolicy {
     }
 }
 
-/// Deterministic pseudo-random samples for experiments (std-only; the seed
-/// is fixed so runs are reproducible).
+/// Deterministic pseudo-random samples (seed fixed, runs reproducible).
 pub struct Sampler {
     state: u64,
 }
@@ -229,9 +208,8 @@ impl Sampler {
         Self { state: seed }
     }
 
-    /// Next f64 in `[-1, 1)` using a splitmix64-style mix. The high 53 bits
-    /// are exactly representable in f64, so the `u64 -> f64` casts below
-    /// lose nothing.
+    /// Next f64 in `[-1, 1)` via a splitmix64-style mix; the high 53
+    /// bits are f64-exact.
     #[allow(clippy::cast_precision_loss)]
     pub fn next_unit(&mut self) -> f64 {
         self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);

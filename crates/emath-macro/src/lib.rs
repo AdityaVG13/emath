@@ -1,19 +1,10 @@
 //! `emath!` procedural macro.
 //!
-//! Small-source convenience: `emath! { "... .emath source ..." }` lowers an
-//! inline source literal to the *same* compiler path. The macro parses its
-//! input as tokens (never concatenates strings), validates that it is a
-//! single string literal, and expands to
-//! `::emath_builder::MacroExpansion::from_literals(source, identity)`,
-//! which hosts pass to `emath_builder::build_from_source` (the exact
-//! `emath-build` artifact pipeline).
-//!
-//! Security documentation:
-//! - The expansion embeds the literal source into the host binary. Treat
-//!   `.emath` source as code: never paste untrusted input into `emath!`.
-//! - Malformed input (non-literal, unescaped quotes) fails compilation
-//!   with a typed `E-CODEGEN-011` message; nothing is generated.
-//! - The macro performs no I/O and touches no files.
+//! Expands an inline `.emath` source literal (parsed as tokens, never
+//! concatenated) to `::emath_builder::MacroExpansion::from_literals`.
+//! Security: the literal is embedded in the host binary — never paste
+//! untrusted input; malformed input fails compilation with `E-CODEGEN-011`.
+//! The macro performs no I/O and touches no files.
 
 #![forbid(unsafe_code)]
 

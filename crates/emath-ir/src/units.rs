@@ -238,11 +238,9 @@ impl Unit {
         self.family == UnitFamily::Si && self.dims == UnitDim::one()
     }
 
-    /// Canonical encoding.
-    ///
-    /// Dimension signature leads: unit identity is dimension-first, so a
-    /// changed display label alone never changes the identity as long as
-    /// the dimension signature, scale and offset are unchanged.
+    /// Canonical encoding, dimension-signature-first: a changed display
+    /// label alone never changes identity if dims, scale and offset
+    /// are unchanged.
     #[must_use]
     pub fn canonical(&self) -> String {
         match self.family {

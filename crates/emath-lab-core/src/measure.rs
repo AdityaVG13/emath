@@ -1,11 +1,9 @@
 //! Measurement harness.
 //!
-//! Latency, throughput, startup, allocations, peak/retained memory, binary
-//! size, energy, device cost and application metrics. The harness itself is
-//! deterministic and std-only: wall-clock timing is injected as raw samples
-//! (the pilot runtime supplies them), and every summary/derived value is a
-//! pure function of those samples. Derived energy/cost values come from an
-//! explicit, frozen model.
+//! Covers latency, throughput, memory, size, energy, cost and application
+//! metrics. Deterministic and std-only: timing is injected as raw
+//! samples; every summary is a pure function of them; energy/cost come
+//! from an explicit frozen model.
 
 use crate::error::LabError;
 use crate::stats::{mean, percentile};
@@ -54,9 +52,8 @@ impl MeasurementKind {
     }
 }
 
-/// Keep-gate quarantine threshold: a cell with coefficient of variation
-/// above 5% is too noisy to support any comparison claim and is
-/// quarantined instead of being read as an honest baseline.
+/// Keep-gate quarantine threshold: CV above 5% is too noisy to support
+/// any comparison claim.
 pub const QUARANTINE_CV_PCT: f64 = 5.0;
 
 /// Deterministic summary of raw samples.
@@ -82,9 +79,8 @@ pub struct Summary {
 }
 
 impl Summary {
-    /// Whether the cell is too noisy for comparison claims
-    /// (`cv_pct > QUARANTINE_CV_PCT`; a zero mean has no relative
-    /// spread and is never quarantined).
+    /// Too noisy for comparison (`cv_pct > QUARANTINE_CV_PCT`; zero
+    /// mean is never quarantined).
     #[must_use]
     pub fn quarantined(&self) -> bool {
         self.mean > 0.0 && self.cv_pct > QUARANTINE_CV_PCT
@@ -121,7 +117,7 @@ impl Measurement {
         }
     }
 
-    /// Runs the deterministic summary; empty samples are `E-HOST-006`.
+    /// Deterministic summary; empty samples are `E-HOST-006`.
     pub fn summarize(&self) -> Result<Summary, LabError> {
         if self.samples.is_empty() {
             return Err(LabError::new(
@@ -157,9 +153,8 @@ impl Measurement {
         })
     }
 
-    /// Population coefficient of variation in percent. A zero mean has no
-    /// relative spread (`0.0`); exactness is not claimed for the f64
-    /// spread ratio.
+    /// Population CV in percent; zero mean yields `0.0`, f64-exactness
+    /// of the spread ratio not claimed.
     #[must_use]
     #[allow(clippy::cast_precision_loss)] // ns counts -> f64 deviations; exact below 2^53
     pub fn coefficient_of_variation_pct(values: &[u64], mean_value: f64) -> f64 {
@@ -177,8 +172,7 @@ impl Measurement {
         variance.sqrt() / mean_value * 100.0
     }
 
-    /// Throughput from a frozen operation count and total elapsed
-    /// nanoseconds (`ops/s`). Ratios are inherently approximate.
+    /// Throughput from a frozen op count and elapsed ns (`ops/s`).
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
     pub fn throughput_ops_per_sec(operations: u64, elapsed_ns: u64) -> f64 {
@@ -214,8 +208,7 @@ impl Default for EnergyCostModel {
 }
 
 impl EnergyCostModel {
-    /// Energy for `operations` executed over `active_seconds`. Counts are
-    /// model inputs, so approximation at extreme magnitudes is acceptable.
+    /// Energy for `operations` over `active_seconds` (frozen model).
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
     pub fn energy_joules(&self, operations: u64, active_seconds: f64) -> f64 {

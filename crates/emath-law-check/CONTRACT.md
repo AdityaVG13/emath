@@ -41,8 +41,9 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- Inline `#[cfg(test)]` in `src/lib.rs`: `empty_table_is_not_a_vacuous_pass`, `untotal_table_is_refused_not_passed`.
-- Integration property grids in `tests/emath-law-check`:
+- Workspace suites in `tests/emath-law-check`: `tests/lib.rs`
+  (`empty_table_is_not_a_vacuous_pass`, `untotal_table_is_refused_not_passed`).
+- Integration property grids in `tests/laws.rs`:
   `finite_max_is_commutative_over_seeded_carrier`,
   `finite_max_is_associative_over_seeded_carrier`,
   `finite_max_has_bottom_identity_over_seeded_carrier`

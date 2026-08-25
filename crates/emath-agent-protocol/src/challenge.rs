@@ -192,10 +192,8 @@ impl ChallengeLoop {
         Ok(())
     }
 
-    /// Runs the challenge loop over one proposal.
-    ///
-    /// `portfolio` provides existing candidates for ranking; the surviving
-    /// proposal is inserted and ranked deterministically.
+    /// Runs the challenge loop over one proposal; the survivor is ranked
+    /// deterministically against the existing `portfolio`.
     #[must_use]
     pub fn run(
         &self,

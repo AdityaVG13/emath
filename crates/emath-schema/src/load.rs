@@ -1,10 +1,7 @@
 //! Kind package loading.
 //!
-//! Resolves kind identity/version from package locks, verifies the
-//! content identity against the canonical schema, refuses incompatible
-//! schema versions and detects recursive expansion. `E-KIND-030`
-//! unknown kind, `E-KIND-031` incompatible schema version, `E-KIND-032`
-//! recursive expansion, `E-PKG-020` lock checksum mismatch.
+//! Resolves identity/version from package locks and verifies content
+//! identity. Refusals: `E-KIND-030/031/032`, `E-PKG-020`.
 
 use emath_ir::kind_schema::KindSchema;
 
@@ -14,17 +11,13 @@ pub const MAX_EXPANSION_DEPTH: usize = 16;
 /// A resolved kind package.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KindPackage {
-    /// Package name the kind lives in.
     pub package: String,
-    /// Kind name.
     pub name: String,
-    /// Resolved version.
     pub version: String,
-    /// Content identity (bootstrap FNV-1a64 over the canonical schema).
+    /// Content identity (FNV-1a64 over the canonical schema).
     pub content: String,
 }
 
-/// One expansion step.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExpandTrace {
     /// Stack of kind ids being expanded (`name@version`).
@@ -34,9 +27,7 @@ pub struct ExpandTrace {
 /// Version policy for schema compatibility.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VersionPolicy {
-    /// Same major version is compatible.
     SemverMajor,
-    /// Exact version match is required.
     Exact,
 }
 
@@ -60,24 +51,20 @@ fn major_of(version: &str) -> Option<u64> {
     version.split('.').next().and_then(|part| part.parse().ok())
 }
 
-/// One kind resolution refusal.
+/// One kind resolution refusal (stable codes).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResolveIssue {
-    /// `E-KIND-030`: kind not present in the lock.
     UnknownKind { name: String },
-    /// `E-PKG-020`: lock content identity does not match the schema.
     ChecksumMismatch {
         name: String,
         found: String,
         computed: String,
     },
-    /// `E-KIND-031`: schema version incompatible with the requirement.
     VersionMismatch {
         name: String,
         found: String,
         required: String,
     },
-    /// `E-KIND-032`: expanding this kind would recurse.
     RecursiveExpansion { stack: Vec<String> },
 }
 
@@ -94,10 +81,8 @@ impl ResolveIssue {
     }
 }
 
-/// Resolves a kind from a lock and verifies its identity. `deps` is a
-/// projection recovering the kind dependencies of a locked kind (the
-/// lock shape is caller-defined); the recursion guard walks that
-/// projection.
+/// Resolves a kind from a lock and verifies its identity. `deps` recovers
+/// kind dependencies (lock shape is caller-defined) for the recursion guard.
 pub fn resolve_kind(
     lock: &[KindLockEntry],
     name: &str,
@@ -140,13 +125,9 @@ pub fn resolve_kind(
 /// One locked kind entry (shaped after `emath.lock` packages).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KindLockEntry {
-    /// Package the kind is declared in.
     pub package: String,
-    /// Kind name (declaration name in the package).
     pub name: String,
-    /// Schema version.
     pub version: String,
-    /// Content identity from the lock.
     pub content: String,
 }
 

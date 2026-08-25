@@ -80,11 +80,8 @@ pub(super) fn whole_index(
     Ok(index)
 }
 
-/// Convert a fold bound to `i64` only when it is a finite whole number.
-///
-/// Lossy `as i64` is refused: NaN becomes 0 and ±Inf saturate, which would
-/// otherwise make `sum`/`product`/`forall`/`exists` loops run the wrong range.
-/// Values outside the `i64` range are also refused rather than saturating.
+/// Fold-bound → `i64` only when finite and whole; lossy `as i64` (NaN→0,
+/// Inf saturation, out-of-range) is refused so loops run the right range.
 pub(super) fn finite_whole_i64(raw: f64, register: u32, op: &'static str) -> Result<i64, EvalFault> {
     if !raw.is_finite() || raw.fract() != 0.0 {
         return Err(EvalFault::TypeConfusion { register, op });

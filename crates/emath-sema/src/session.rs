@@ -227,11 +227,6 @@ impl CompilerSession {
 
 /// Extract the `goals:` section into request specs and validate targets
 /// against the admitted declaration (`E-GOAL-041`/`E-GOAL-042`/`E-GOAL-043`).
-///
-/// Lives in the session (its only consumer; the crate docs list goal
-/// elaboration as an orchestrated admission responsibility) rather than in
-/// `emath-goal`, keeping the admission crate's import surface on
-/// core/ir/syntax only.
 pub fn elaborate_requests(
     package: &SemanticPackage,
     declaration_name: &str,
@@ -497,10 +492,8 @@ fn command_u32(head: &[String], argument: Option<&CommandArgument>) -> Option<u3
     };
     text.parse().ok()
 }
-/// Parse through the installed source-parser backend.
-///
-/// Returns a typed refusal (E-SYN-120) when no backend is installed; hosts
-/// wire `emath_syntax::install_source_parser` once per process at startup.
+/// Parse through the installed source-parser backend; `E-SYN-120` when none
+/// is installed (wire `emath_syntax::install_source_parser` at startup).
 fn parse_through(
     text: &str,
     limits: &Limits,

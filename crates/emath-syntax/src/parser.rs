@@ -1,10 +1,9 @@
 //! Bootstrap recursive-descent parser for the `.emath` surface.
 //!
-//! Covers the full structural grammar of the corpus (sections, generics,
-//! records, commands, precedence expressions, binders, quantity literals,
-//! chained comparisons, continuation lines). Phase 1 semantics admits a
-//! subset; the parser itself accepts the documented surface. Never panics;
-//! recovers at statement boundaries; spans everywhere.
+//! Covers the full structural grammar (sections, generics, records,
+//! commands, precedence expressions, binders, quantity literals, chained
+//! comparisons, continuations). Never panics; recovers at statement
+//! boundaries; spans everywhere.
 
 use crate::lexer::lex;
 use crate::token::{Keyword, Token, TokenKind};
@@ -142,13 +141,9 @@ impl Parser {
         }
     }
 
-    /// After `=` (assignment/default/let) a newline + indented expression is
-    /// a continuation. Consume the layout unconditionally.
-    ///
-    /// Returns true when an `Indent` was consumed so the caller can
-    /// balance the matching `Dedent`. Otherwise the next sibling section
-    /// (at the enclosing indent) emits two Dedents in a row and the
-    /// parent suite closes early.
+    /// After `=` a newline + indented expression is a continuation; consume
+    /// the layout and report whether an `Indent` was taken so the caller can
+    /// balance the matching `Dedent`.
     fn skip_assignment_layout(&mut self) -> bool {
         if self.peek() == &TokenKind::Newline {
             self.skip_newlines();

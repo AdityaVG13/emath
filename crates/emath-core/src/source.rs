@@ -164,10 +164,8 @@ impl SourceStore {
         }
     }
 
-    /// Add a source by name (path) and text. Returns the new file id.
-    ///
-    /// Fails when the store already holds `u32::MAX` files or when `text`
-    /// cannot be addressed with `u32` byte offsets.
+    /// Add a source by name (path) and text; returns the new file id.
+    /// Fails on `u32::MAX` file-id exhaustion or non-`u32`-addressable text.
     pub fn try_add(
         &mut self,
         name: impl Into<String>,
@@ -187,12 +185,9 @@ impl SourceStore {
         Ok(id)
     }
 
-    /// Add a source by name (path) and text. Returns the new file id.
-    ///
+    /// Add a source by name (path) and text; returns the new file id.
     /// # Panics
-    ///
-    /// Panics if [`Self::try_add`] would fail (oversized text or file-id
-    /// exhaustion). Prefer [`Self::try_add`] at fallible boundaries.
+    /// If [`Self::try_add`] would fail (oversized text or file-id exhaustion); prefer it at fallible boundaries.
     pub fn add(&mut self, name: impl Into<String>, text: impl Into<String>) -> FileId {
         self.try_add(name, text)
             .expect("source store add refused oversized text or file-id overflow")

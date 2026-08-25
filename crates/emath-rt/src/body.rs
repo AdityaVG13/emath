@@ -1,21 +1,7 @@
-//! Pre-compiled math kernels for emath-generated crates and the emath
-//! interpreter.
-
-//!
-//! This file is the single source of truth for the numeric algorithms that
-//! generated Rust would otherwise inline per-use: vector/matrix/tensor
-//! arithmetic, stencil convolution, modular arithmetic, and the
-//! higher-order drivers (fold, Simpson quadrature, numerical limits).
-//!
-//! It is embedded verbatim into every generated crate as
-//! `mod emath_rt { ... }` (via the `SOURCE` constant in `lib.rs`), so
-//! generated artifacts stay self-contained with no external dependencies.
-//! Two rules keep that embedding sound:
-//!
-//! 1. std-only: no external crates, no `crate::` paths, no crate-level
-//!    attributes (the text is pasted inside an existing module block).
-//! 2. Deterministic: same inputs, same IEEE-754 operation order, same
-//!    output, bit-for-bit.
+//! Pre-compiled math kernels, embedded verbatim into generated crates as
+//! `mod emath_rt { ... }`. Keep this file std-only (no external crates, no
+//! `crate::` paths, no crate attributes) and deterministic: same inputs,
+//! same IEEE-754 operation order, bit-for-bit same output.
 
 // ── Vectors ────────────────────────────────────────────────────────────────
 
@@ -69,7 +55,7 @@ pub fn mat_scale(m: &[Vec<f64>], s: f64) -> Vec<Vec<f64>> {
 }
 
 /// Matrix times vector: result[r] = sum_c m[r][c] * v[c] (zip semantics
-/// per row: extra vector entries past the row length are dropped).
+/// per row).
 pub fn mat_mul_vec(m: &[Vec<f64>], v: &[f64]) -> Vec<f64> {
     m.iter()
         .map(|row| row.iter().zip(v.iter()).map(|(a, b)| a * b).sum())
@@ -172,9 +158,8 @@ pub fn stencil_1d(input: &[f64], weights: &[f64], center: i64, edge: EdgePolicy)
         .collect()
 }
 
-/// 2D 3x3 stencil convolution. `center` is the (row, col) tap offset of
-/// the center weight. Dirichlet is refused (mirrors the backend, which
-/// refuses 2D Dirichlet at codegen time; the interpreter pre-checks it).
+/// 2D 3x3 stencil convolution; `center` is the (row, col) tap offset of
+/// the center weight. Dirichlet is refused (mirrors codegen/interp).
 pub fn stencil_2d(
     input: &[Vec<f64>],
     weights: &[f64; 9],

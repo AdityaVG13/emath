@@ -102,12 +102,7 @@ pub fn run_negative_controls(
     run
 }
 
-/// Seeds the given artifacts.
-/// - altered: flips one byte of `src/lib.rs`.
-/// - stale: moves every certificate freshness window into the past.
-/// - wrong-goal: re-scopes the evidence bundle to another goal.
-/// - incomplete: removes `src/lib.rs`.
-/// - unsupported: re-classifies the first resolved claim.
+/// Seeds a tampered-content control (flips one byte of `src/lib.rs`).
 pub fn seed_tampered(input: &ArtifactInput) -> NegativeControl {
     let mut artifact = input.clone();
     if let Some(content) = artifact.files.get_mut("src/lib.rs") {
@@ -173,12 +168,7 @@ pub fn seed_unsupported(input: &ArtifactInput) -> NegativeControl {
 }
 
 /// Seeds a claimed derivative result that disagrees with a retained
-/// evaluate relation.
-///
-/// Phase 1 has no differentiate producer. The planted sample keeps the
-/// relation label and inputs and substitutes `claimed_output`. The
-/// translation validator must refuse that row with `E-EVID-301`. The
-/// full wrong-derivative control lands with the differentiate goal.
+/// evaluate relation (the validator must refuse the row, `E-EVID-301`).
 #[must_use]
 pub fn seed_wrong_derivative(
     relation: &TranslationRelation,

@@ -175,9 +175,8 @@ impl CapabilityTable {
 
     /// Versioned canonical encoding (`descriptor:`).
     ///
-    /// Includes isolation, lock, evidence ceiling, and determinism so a
-    /// ceiling/determinism drift changes identity the same way
-    /// `emath-plan::ProviderFingerprint` does (cross-crate contract).
+    /// Includes isolation, lock, evidence ceiling, and determinism so drift
+    /// changes identity like `emath-plan::ProviderFingerprint` (cross-crate contract).
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut capabilities: Vec<&CapabilitySpec> = self.capabilities.iter().collect();

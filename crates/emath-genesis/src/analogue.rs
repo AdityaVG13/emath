@@ -1,37 +1,11 @@
 //! SG-13 finite analogue binders: budgeted numeric stand-ins for the
-//! conventional binder kinds, each emitting a deterministic receipt.
+//! conventional binder kinds, emitting a deterministic receipt.
 //!
-//! This module evaluates a [`BinderTerm`] (same shape as SG-10) as a
-//! strict-f64 function of one bound variable. It does **not** expand to a
-//! first-order term the way [`crate::binder::ScopedBinder::expand`] does;
-//! it computes a finite numeric analogue and records what it actually did.
-//!
-//! Rules (honest, no continuum claim):
-//!
-//! - [`BinderKind::Sum`] / [`BinderKind::Product`]: left fold over an
-//!   explicit integer range. The range length is the budget cost. An
-//!   empty range (`lower > upper`) is a typed refusal; no monoid identity
-//!   is invented.
-//! - [`BinderKind::Integral`]: composite trapezoid on `[a, b]` with `n`
-//!   subintervals. Exact for degree ≤ 1. Textbook remainder
-//!   `−(b−a)h²/12 f''(ξ)` for `f ∈ C²` is **not** computed or certified.
-//!   No convergence claim.
-//! - [`BinderKind::Derivative`]: central difference
-//!   `(f(x+h) − f(x−h)) / (2h)`. Exact for degree ≤ 2. Textbook
-//!   truncation `−h²/6 f'''(ξ)` for `f ∈ C³` is **not** computed or
-//!   certified. No derivative-exists claim.
-//! - [`BinderKind::Limit`]: monotone dyadic approach from the right
-//!   (`x_k = point + 2^{−(k+1)}`). Samples are evidence of the sampled
-//!   sequence. The verdict is always [`AnalogueVerdict::NoClaim`] and
-//!   **never** asserts that a limit exists.
-//!
-//! Determinism class: IEEE-754 binary64, one fixed operation sequence
-//! per rule, values stored as `to_bits()`. Byte-identical receipts on
-//! IEEE hosts that implement the same operations. Not claimed across
-//! non-IEEE or flushed-subnormal environments.
-//!
-//! Budgets are execution parameters and are excluded from
-//! [`analogue_id`] (same invariant as SG-10).
+//! Sum/product fold integer ranges; integral is composite trapezoid;
+//! derivative is central difference; limit samples a monotone right
+//! dyadic approach with verdict [`AnalogueVerdict::NoClaim`]. No
+//! continuum claim. Determinism: IEEE-754 binary64, fixed ops, values
+//! as bits; budget excluded from [`analogue_id`].
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -239,8 +213,7 @@ pub struct AnalogueReceipt {
 }
 
 impl AnalogueReceipt {
-    /// BTreeMap-ordered JSON. Key order is lexicographic. Byte-identical
-    /// across runs for the same receipt.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();
@@ -535,11 +508,9 @@ where
     }
     let mut recorded = Vec::with_capacity(samples as usize);
     for k in 0..samples {
-        // Monotone decreasing toward `point` from the right; the point
-        // itself is never evaluated. Once the dyadic increment rounds to
-        // zero (2^-(k+1) underflows, or point + increment == point), the
-        // "strictly right of the point" invariant would break, so refuse
-        // instead of silently sampling the point.
+        // Monotone decreasing toward `point` from the right; the point is
+        // never evaluated. If the dyadic increment rounds to zero, the
+        // "strictly right" invariant would break, so refuse.
         let exponent = i32::try_from(k).ok().and_then(|k| k.checked_add(1)).ok_or(
             AnalogueError::InvalidDomain {
                 reason: "approach-underflow",

@@ -54,9 +54,8 @@ pub fn reference_fixture() -> PdfPageFixture {
 
 /// Extract a layout graph from a positioned-glyph fixture.
 ///
-/// Ambiguous y-offsets are retained, never resolved. Where the formula does
-/// not lower into the structured subset, the region is still emitted and an
-/// [`LayoutError::Unlowered`] reason is retained on the graph.
+/// Ambiguous y-offsets are retained, never resolved; unlowerable formula
+/// regions stay on the graph with an [`LayoutError::Unlowered`] reason.
 #[must_use]
 pub fn extract(fixture: &PdfPageFixture) -> MathLayoutGraph {
     let source = fixture_source(fixture);

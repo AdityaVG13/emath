@@ -464,12 +464,9 @@ pub(super) fn admit_equations(
     }
 }
 
-/// Causalization: build an implicit residual from `left == right` (or a
-/// bare `expr`, meaning `expr == 0`). `der(state)` occurrences without an
-/// explicit rate are rewritten to the synthetic input `__rate_<state>`;
-/// the remaining unknowns are the declaration's `algebraic:` variables.
-/// Returns `None` (after a diagnostic) when the residual cannot be typed
-/// as a scalar or fixed-length vector.
+/// Causalize `left == right` into an implicit residual: `der(state)` becomes
+/// `__rate_<state>`, and unknowns are the `algebraic:` variables. `None` when
+/// it cannot be typed as a scalar or fixed-length vector.
 pub(super) fn admit_residual(
     admitter: &mut Admitter,
     left: &Expr,
@@ -556,11 +553,9 @@ pub(super) fn residual_difference(
 }
 
 impl Admitter {
-    /// Replace `der(state)` / `derivative(state)` occurrences inside a
-    /// residual expression with the placeholder variable `__rate_<state>`,
-    /// collecting rate unknowns. Refuses residuals that reference a rate
-    /// that already has an explicit equation, or constructs outside the
-    /// Phase 1 subset.
+    /// Replace `der(state)` inside residual expressions with the placeholder
+    /// `__rate_<state>`, collecting rate unknowns; refuses rates that already
+    /// have an explicit equation.
     fn rewrite_residual_rates(
         &mut self,
         expr: &Expr,
@@ -737,10 +732,8 @@ pub(super) fn residual_span(admitter: &Admitter, expr: ExprId) -> Span {
         .unwrap_or_default()
 }
 
-/// Collect variable names referenced by a lowered expression tree
-/// (used to verify every `algebraic:` variable appears in a residual).
-/// Children are arena references, so the expression arena is threaded
-/// through the walk.
+/// Collect variable names referenced by a lowered expression tree, threading
+/// the expression arena through the walk.
 pub(super) fn collect_node_names(
     exprs: &[(ExprNode, Span)],
     node: &ExprNode,

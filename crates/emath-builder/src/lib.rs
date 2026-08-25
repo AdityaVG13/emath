@@ -538,12 +538,8 @@ impl ModelBuilder for BuilderModel {
 }
 
 impl BuilderModel {
-    /// Lower one constructor model, enforcing its admission contract:
-    /// boolean requirements (E-CTOR-032), no state reads while
-    /// constructing (E-CTOR-033), exact state coverage (E-CTOR-030 /
-    /// E-CTOR-035), defaults for declared parameters only
-    /// (E-CTOR-039), typed errors, postconditions, and delegation to
-    /// declared constructors only (E-CTOR-037 / E-CTOR-038).
+    /// Lower one constructor model, enforcing its admission contract
+    /// (E-CTOR-030/032/033/034/035/037/038/039) and delegation rules.
     fn lower_constructor(
         model: &ConstructorModel,
         package: &mut SemanticPackage,

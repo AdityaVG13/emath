@@ -41,7 +41,7 @@
 - None: no `[features]` in Cargo.toml.
 
 ## Conformance tests
-- `#[cfg(test)] mod tests`: `builder_model_tests_surface_on_declaration_tests`, `builder_model_goals_surface_on_declaration_goals`. No `tests/` directory on disk.
+- Workspace integration suite `tests/emath-builder` (`tests/lib.rs`): `builder_model_tests_surface_on_declaration_tests`, `builder_model_goals_surface_on_declaration_goals`. No `tests/` directory on disk in the crate.
 
 ## No-claim boundaries
 - Single-declaration strict-f64 subset only; multi-declaration and other numeric/kind profiles are not supported here.

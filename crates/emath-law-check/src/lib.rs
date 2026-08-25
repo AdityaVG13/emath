@@ -1,15 +1,12 @@
 #![forbid(unsafe_code)]
 
-//! Independent world checking (WorldChecker): law
-//! obligations over finite worlds, minimized counterexamples, scoped
-//! authority, and deterministic answer receipts.
+//! Independent world checking (WorldChecker): law obligations over
+//! finite worlds, minimized counterexamples, scoped authority, and
+//! deterministic answer receipts.
 //!
-//! The checker treats provider output as untrusted candidate data (a
-//! `FittedTable` from emath-calibration) and validates claimed law
-//! obligations against it. Wrong agent/provider worlds are rejected with
-//! minimized counterexamples: enumeration is deterministic over the
-//! sorted carrier, so the first violation found is the lexicographically
-//! smallest one.
+//! Treats provider output as untrusted candidate data and validates
+//! claimed obligations against it; the first violation over the sorted
+//! carrier is the lexicographically smallest counterexample.
 
 use emath_calibration::FittedTable;
 use emath_portfolio::Authority;
@@ -320,22 +317,16 @@ fn check_law(table: &FittedTable, obligation: &WorldObligation, carrier: &[Strin
     LawCheck::Held
 }
 
-/// The independent finite-world law checker.
-///
-/// It is independent in the spec sense: it consumes candidate data as
-/// untrusted input and its verdicts derive only from the table and the
-/// claimed obligations. Wrong worlds are rejected with minimized
-/// counterexamples; empty obligation sets and custom laws (which would
-/// pass vacuously) are refused; authority is scoped to the obligations
-/// actually checked and never exceeds `Tested`.
+/// Independent finite-world law checker: verdicts derive only from the
+/// table and claimed obligations (candidate data is untrusted); empty
+/// obligation sets and custom laws refuse (vacuous pass is unsound);
+/// authority never exceeds `Tested`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FiniteLawChecker;
 
 impl FiniteLawChecker {
-    /// Checks `obligations` against a candidate world table.
-    ///
-    /// The receipt identity is deterministic: same candidate, obligations,
-    /// and verdicts replay to the same id.
+    /// Check `obligations` against a candidate table; receipt identity
+    /// is deterministic (same inputs replay to the same id).
     pub fn check(
         &self,
         candidate: WorldId,
@@ -364,8 +355,7 @@ impl FiniteLawChecker {
         }
 
         let values = carrier(table);
-        // A table with no rows yields an empty carrier and every law
-        // "holds" — a vacuous pass over nothing. Refuse instead.
+        // No rows → empty carrier → every law vacuously "holds"; refuse.
         if values.is_empty() {
             return Err(CheckerError::EmptyTable);
         }

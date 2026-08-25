@@ -1,16 +1,10 @@
 //! EMIR peephole optimization: constant folding + dead-register elimination.
 //!
 //! Runs after lowering, before interpretation or codegen, so both consumers
-//! see the same shrunk program. Preserves observable behavior exactly,
-//! including strict eager evaluation: DCE only removes ops that are provably
-//! total (f64/i64 arithmetic, builtins, comparisons, boolean ops,
-//! static-shape aggregates); ops that can fault at runtime (number-theory,
-//! dynamic indexing, higher-order drivers, out-of-range loads) are never
-//! removed, so fault timing is unchanged.
-//!
-//! Folding collapses scalar constants (f64/i64 arithmetic, builtins,
-//! comparisons, boolean ops, `IsFinite`, `Select` over constant operands),
-//! mirroring the interpreter's semantics (`f64_of`/`i64_of`/`bool_of`,
+//! see the same shrunk program. Preserves observable behavior exactly —
+//! including strict eager fault timing: only provably-total ops are removed
+//! or folded; ops that can fault at runtime are never touched, and folding
+//! mirrors the interpreter's conversions (`f64_of`/`i64_of`/`bool_of`,
 //! `eq_ne`) and IEEE behavior bit-exactly.
 
 use emath_core::Span;

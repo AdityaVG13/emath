@@ -1,22 +1,12 @@
 //! Declaration runner: constructor requires → Self state → definitions →
-//! example `given`/`expect` verdicts.
-//!
-//! Binding rules copy the Rust backend's generated `#[test]`:
-//! - `given` values are lowered in `BTreeMap` key order; later givens may
-//!   reference earlier ones.
-//! - Constructor parameters and declaration inputs must appear in `given`
-//!   (a constant-only declaration has neither, so an empty `given` is
-//!   enough).
-//! - Definitions lower against declaration inputs, previously computed
-//!   definition names (source order — let-binding semantics, matching
-//!   admission), and `state.<name>`.
-//! - `expect` (when present) lowers against the given names plus each
-//!   computed definition name, matching the generated `let y = actual;`
-//!   bindings. `expect: None` is a worked example (`Computed`): values
-//!   are displayed, no pass/fail claim.
-//! - A declaration with no tests still produces a `_pane` worked run when
-//!   every input is bound (zero inputs = trivially bound). `extra_given`
-//!   adds that `_pane` run in addition to any source examples.
+//! example `given`/`expect` verdicts. Binding rules copy the generated
+//! `#[test]`: givens lower in `BTreeMap` order; constructor params and
+//! declaration inputs must appear in `given`; definitions lower against
+//! inputs, prior definitions (source order, let-binding semantics) and
+//! `state.<name>`; `expect` lowers against givens plus definitions
+//! (`expect: None` is a worked `Computed` run, no pass/fail claim); a
+//! zero-example declaration still gets a `_pane` run when all inputs are
+//! bound (`extra_given` adds it to any source examples).
 
 use crate::interp::{EvalFault, Value};
 use emath_ir::{Declaration, ExprId, SemanticPackage};
@@ -183,11 +173,9 @@ pub struct RunReport {
     pub summary: RunSummary,
 }
 
-/// Definitions are let-bindings: admission validates each name against the
-/// definitions admitted before it *in source order*, so evaluation must
-/// follow the same order. The IR stores definitions name-keyed; expression
-/// spans recover source order. Programmatic IR with default spans keeps the
-/// name-keyed order (the sort is stable).
+/// Definitions are let-bindings admitted in source order, so evaluation
+/// follows the same order; the expression spans recover it (programmatic
+/// IR with default spans keeps the stable name-keyed order).
 pub fn definition_order<'d>(
     package: &SemanticPackage,
     declaration: &'d Declaration,

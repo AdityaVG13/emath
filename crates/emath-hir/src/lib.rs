@@ -1,12 +1,6 @@
-//! Resolved declaration representation (`CRATE_MAP` Tier 1 `emath-hir`):
-//! the open declaration framework (core), scoped notation
-//! and bootstrap-syntax migration.
-//!
-//! This crate is the compiler glue between the syntax tree and the
-//! neutral SIR: it collects section families, attributes, generics,
-//! documentation and extension payloads with provenance into a `Hir`,
-//! mounts scoped notation on it, and can migrate a bootstrap-era
-//! declaration into the open framework under its bootstrap schema.
+//! Resolved declaration representation (Tier 1 `emath-hir`): the open
+//! declaration framework, scoped notation, and bootstrap-syntax
+//! migration. Compiler glue between the syntax tree and neutral SIR.
 
 #![forbid(unsafe_code)]
 

@@ -111,7 +111,9 @@
 
 ## Conformance tests
 
-In-crate `#[cfg(test)]` modules (no `tests/` dir on disk). 26 tests:
+Workspace integration suite `tests/emath-lsp` (no `tests/` dir on disk in the
+crate and no `#[cfg(test)]` in `src/`). 26 tests, in `tests/server.rs`,
+`tests/transport.rs`, `tests/lab.rs`:
 
 `server.rs`:
 - `range_offsets_use_utf8_byte_characters_on_glyph_lines`

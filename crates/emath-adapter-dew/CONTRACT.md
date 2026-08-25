@@ -23,8 +23,8 @@ versioned seam without consuming an upstream engine.
   deterministic anchors (`build_source_map`).
 - `DifferentialFinding`, `MutantDrift`, `ScanCase`, `ScanProfile`,
   `EvalValue`: reference-boundary scan and semantic-drift detection
-  (`run_boundary_cases`, `detect_drift`, `evaluate_scalar`,
-  `detect_seeded_wrong_result`). `evaluate_scalar` is the Dew-adapter
+  (`run_boundary_cases`, `scan_reference_boundaries`, `detect_drift`,
+  `evaluate_scalar`, `detect_seeded_wrong_result`). `evaluate_scalar` is the Dew-adapter
   evaluation path (bit-exact IEEE-754 binary64 for arithmetic, same
   class as native exec-ir). `detect_seeded_wrong_result` is a Phase 3
   planted-value control, not a differentiate producer.

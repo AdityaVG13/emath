@@ -16,10 +16,8 @@ use super::{
     admit_declaration, Admitter, CheckResult, SemanticTrace, confusable_fold,
 };
 
-/// Walk a single expression node and offset all child ExprIds and TypeIds
-/// by the given amounts. Expression nodes store child references as ExprIds
-/// that are local to the admitter's arena; when the arena is appended to
-/// the package, those references must be shifted to the global index space.
+/// Offset all child ExprIds and TypeIds in one node from the admitter's
+/// local arena into the package's global index space.
 fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
     let remap_e = |id: &mut ExprId| {
         id.0 += expr_offset;
@@ -101,10 +99,8 @@ fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
     }
 }
 
-/// Offset all ExprIds and TypeIds in a declaration and its test cases by
-/// the given amounts. The admitter creates IDs local to its own arena
-/// (starting at 0); when the arenas are appended to the package, those
-/// IDs must be shifted to match the global index space.
+/// Offset all ExprIds and TypeIds in a declaration and its test cases into
+/// the package's global index space.
 fn remap_ids(
     declaration: &mut emath_ir::Declaration,
     tests: &mut [emath_ir::constructor::TestCase],

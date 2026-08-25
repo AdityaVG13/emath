@@ -62,8 +62,11 @@ None.
 
 ## Conformance tests
 
-No `tests/` directory present. Inline `#[cfg(test)]` unit tests live in the
-`src` modules (not enumerated).
+No `crates/emath-syntax/tests/` directory and no inline `#[cfg(test)]`
+modules in `src/`. Conformance lives in the standalone `tests/emath-syntax`
+package: `parser_refusals_negative.rs`, `unit_brackets.rs`, `genesis.rs`,
+`edge_cases.rs`, `formatter.rs`, `limits_series.rs`, `cases_expr.rs`,
+`head_args.rs`, and `src/lib.rs`.
 
 ## No-claim boundaries
 

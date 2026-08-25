@@ -49,15 +49,8 @@ const PHASE1_SECTIONS: &[&str] = &[
     "invariant",
 ];
 
-/// Folds a declaration name for confusable-collision detection (spec
-/// `01_LEXICAL_LAYOUT_AND_SOURCE.md`: confusable lint for public
-/// declarations). Glyphs visually identical to Latin letters map to their
-/// Latin equivalent; everything else is identity (ASCII folds
-/// byte-for-byte). Two names that fold alike are distinguishable only by
-/// lookalike glyphs, so admission refuses the second as `E-NAME-024`.
-///
-/// Seed set (Latin/Cyrillic/Greek lookalikes; not a full Unicode
-/// confusables table, which would require external data).
+/// Folds a declaration name for confusable-collision detection; names that
+/// fold alike are refused as `E-NAME-024`.
 #[must_use]
 pub fn confusable_fold(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
@@ -226,11 +219,8 @@ impl Admitter {
         self.states.get(name).cloned()
     }
 
-    /// Recursively inline definition references in a SIR expression tree.
-    /// Replaces `Variable(name)` nodes that reference definitions with
-    /// the definition's own SIR expression, so that downstream consumers
-    /// (e.g. forward-mode autodiff) see the actual computation rather
-    /// than a constant reference.
+    /// Recursively inline definition references so downstream consumers
+    /// (e.g. forward-mode autodiff) see the actual computation.
     fn inline_defs(&mut self, expr_id: ExprId) -> ExprId {
         let Some((node, span)) = self.exprs.get(expr_id.0 as usize).cloned() else {
             return expr_id;
@@ -298,11 +288,8 @@ impl Admitter {
         }
     }
 
-    /// Add penalty terms for each constraint to the optimization body.
-    /// For inequality `a >= b`: penalty = `max(0, b - a)^2`.
-    /// For inequality `a <= b`: penalty = `max(0, a - b)^2`.
-    /// For equality `a == b`:  penalty = `(a - b)^2`.
-    /// The penalized body is `body + weight * sum(penalties)`.
+    /// Add penalty terms for each constraint to the optimization body:
+    /// `max(0, b - a)^2` / `max(0, a - b)^2` / `(a - b)^2` for >= / <= / ==.
     fn add_constraint_penalties(&mut self, body: ExprId, span: Span) -> ExprId {
         if self.constraints.is_empty() {
             return body;

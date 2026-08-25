@@ -1,17 +1,8 @@
-//! Strict-f64 interpreter for [`EmirProgram`](crate::EmirProgram).
-//!
-//! Registers are typed exactly like the locals the Rust backend emits
-//! (`f64` / `bool`). Type confusion is a typed fault, never a coercion.
-//!
-//! # Determinism
-//!
-//! Arithmetic, comparisons, `min`/`max`, `abs`/`floor`/`ceil`, `is_finite`,
-//! and boolean ops are bit-exact IEEE-754 binary64 across platforms.
-//! Transcendentals (`sin`, `cos`, `tan`, `tanh`, `exp`, `ln`, `powf`,
-//! `atan2`) follow the platform libm -- the same caveat as generated Rust
-//! (Tier 1). Domain obligations recorded during lowering are assumptions,
-//! not runtime checks: division by zero yields inf/NaN per IEEE, matching
-//! the emitted Rust which also does not insert those checks.
+//! Strict-f64 interpreter for [`EmirProgram`]. Typed registers (`f64` /
+//! `bool` / vectors / ...); type confusion is a typed fault, never a
+//! coercion. Arithmetic/comparisons are bit-exact IEEE-754, transcendentals
+//! follow platform libm (same caveat as generated Rust), and domain
+//! obligations are assumptions, not runtime checks.
 
 use crate::{EdgePolicy, EmirOp, EmirProgram, FoldCombine};
 
@@ -25,15 +16,10 @@ use reverse::evaluate_reverse;
 use helpers::*;
 pub use value::{EvalFault, Value, format_f64};
 
-/// Evaluate `program` in a single forward pass over its linear ops.
-///
-/// `inputs` and `state` are indexed by [`EmirOp::LoadInput`] /
-/// [`EmirOp::LoadState`]. Missing slots are faults. IEEE-754 exceptions
-/// (division by zero, invalid) are not faults.
-///
-/// `And` / `Or` evaluate both operands (the linear IR already materialized
-/// them as registers) then apply `&&` / `||`, matching the Rust backend
-/// which emits `&&` / `||` against those registers.
+/// Evaluate `program` in one forward pass; slots are indexed by
+/// [`EmirOp::LoadInput`] / [`EmirOp::LoadState`], missing slots are
+/// faults, IEEE-754 exceptions are not. `And`/`Or` evaluate both operands
+/// (registers already materialized), matching the Rust backend.
 pub fn evaluate(program: &EmirProgram, inputs: &[Value], state: &[Value]) -> Result<Value, EvalFault> {
     let mut registers: Vec<Value> = Vec::with_capacity(program.ops.len());
     for (op, _) in &program.ops {

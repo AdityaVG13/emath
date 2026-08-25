@@ -11,11 +11,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// Version of the generated world ABI surface (the generic `World` trait
-/// plus the declaration-specific `SpecializedWorld` trait and its
-/// dispatcher). Bump on any change to the emitted trait shapes or
-/// dispatch semantics: every generated crate embeds this constant so a
-/// consumer can pin the ABI it compiled against.
+/// Version of the generated world ABI surface (generic + specialized traits
+/// and dispatcher); every generated crate embeds it so consumers can pin the
+/// ABI they compiled against.
 pub const WORLD_ABI_VERSION: u32 = 1;
 
 /// A world whose implementation is generated.
@@ -23,13 +21,8 @@ pub const WORLD_ABI_VERSION: u32 = 1;
 pub struct WorldSpec {
     /// Stable label: `free_symbolic`, `boolean_algebra`, or `modular_numeric`.
     pub label: String,
-    /// Declared operator semantics (symbol, meaning) actually interpreted
-    /// by the genesis analysis for this world (declared expressions from
-    /// the builtin world maps; structural constructors of the free world
-    /// are carried as an empty map). Codegen emits a fixed per-label
-    /// interpretation; a declared meaning codegen does not hardcode
-    /// would be silently dropped (SURF-0008), so it is refused with
-    /// `E-GEN-094` instead of ignored.
+    /// Declared operator semantics actually interpreted by the genesis
+    /// analysis; meanings codegen does not hardcode are refused `E-GEN-094`.
     pub operators: Vec<(String, String)>,
 }
 
@@ -84,13 +77,9 @@ impl GeneratedPackage {
     }
 }
 
-/// Emits the parametric crate for `term` under `signature`.
-///
-/// Refuses (typed refusal, `E-GEN-094`) any world whose declared operator
-/// semantics differ from the fixed per-label interpretation the emitted
-/// code hardcodes: a difference would be a silent drop of analyzed
-/// `WorldIr` (SURF-0008), so the generator exits nonzero instead of
-/// emitting a crate that disagrees with the analysis.
+/// Emits the parametric crate for `term` under `signature`; refuses
+/// (`E-GEN-094`) worlds whose declared operator semantics differ from the
+/// hardcoded per-label interpretation (a silent drop would violate SURF-0008).
 pub fn generate(
     term: &Term,
     signature: &Signature,
@@ -612,11 +601,9 @@ pub fn fixture_modular() -> Environment<i64> {
 mod contract_tests {
     use super::*;
 
-    /// The swap transform is not a no-op mutation. The demo term
-    /// `⊛(⧖(⋈(a, b)), ζ)` evaluates to 6 under the modular world and to
-    /// 5 under the swapped world (⋈ becomes `*`, ⊛ becomes `+`, ζ = 3,
-    /// a = 4, b = 7). A mutant that delegates the swapped world to the
-    /// modular world returns 6 here and is killed.
+    /// The swap transform is not a no-op: the demo term evaluates to 6 under
+    /// the modular world and 5 under the swapped world, so a mutant that
+    /// delegates the swap away is killed.
     #[test]
     fn swapped_world_is_not_a_noop_mutation() {
         let term = Term::parse_canonical("apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))")
@@ -666,9 +653,8 @@ mod specialized_abi_tests {
     use super::*;
 
     /// Differential pin: the declaration-specific ABI must agree with the
-    /// generic ABI on the reference term (both dispatch into the same
-    /// world semantics; a divergence would mean the generated dispatcher
-    /// mis-mapped a symbol or an arity).
+    /// generic ABI on the reference term, or the dispatcher mis-mapped a
+    /// symbol or arity.
     #[test]
     fn specialized_abi_agrees_with_generic_evaluation() {
         let term = reference_term();
@@ -728,14 +714,9 @@ fn render_lib(term: &Term, signature: &Signature, labels: &[String]) -> String {
     format!("{}\n", body.trim_end())
 }
 
-/// Renders the declaration-specific ABI: a `SpecializedWorld` trait with
-/// one method per declared symbol at its exact arity (wrong-arity direct
-/// calls are compile errors), a blanket delegation from the generic
-/// `World` trait, and an `evaluate_specialized` dispatcher that refuses
-/// unknown symbols and wrong runtime arities with typed errors. Methods
-/// are named `sym_<index>` in canonical signature order (glyph symbols
-/// are not valid Rust identifiers); each carries a doc comment naming
-/// its glyph and arity.
+/// Renders the declaration-specific ABI: a `SpecializedWorld` trait with one
+/// method per declared symbol (named `sym_<index>`, wrong-arity calls are
+/// compile errors), delegating from the generic `World` trait.
 fn render_specialized(signature: &Signature) -> String {
     let entries: Vec<(String, usize)> = signature
         .iter()
@@ -935,11 +916,9 @@ fn render_main(labels: &[String]) -> String {
         .replace("@@MODULAR_BODY@@", modular_body.trim_end())
 }
 
-/// Seed contract of the genesis dual-run transform (modular → swapped
-/// modular world): the swap is deterministic and consumes no RNG, so the
-/// differential comparison is a true metamorphic pin rather than a
-/// randomized experiment. The generated `contract_tests` module (inside
-/// `LIB_TEMPLATE`) kills any mutant that turns the swap into a no-op.
+/// Seed contract of the dual-run transform (modular → swapped): the swap is
+/// deterministic and RNG-free, so the differential comparison is a true
+/// metamorphic pin that kills no-op mutants.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SeedContract {
     /// Transform family name.

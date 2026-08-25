@@ -73,7 +73,6 @@ pub enum SpatialRelation {
 }
 
 impl SpatialRelation {
-    /// Canonical relation name.
     #[must_use]
     pub fn canonical(self) -> &'static str {
         match self {

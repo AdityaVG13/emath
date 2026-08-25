@@ -1,12 +1,8 @@
 //! Proof-provider path.
 //!
-//! Theorem-proving kernels (`lean-4`, `frankenlean` or other backends) plug in
-//! as *optional* E3 producers/checkers. Ordinary compilation never
-//! requires one: with no provider configured, the seam returns a typed
-//! refusal (`E-EVID-506`) and the claim's evidence stays diagnostic.
-//!
-//! Stable codes:
-//! - `E-EVID-506` proof provider unavailable (optional path refusal).
+//! Theorem-proving kernels plug in as *optional* E3 producers/checkers.
+//! Ordinary compilation never requires one; with no provider configured
+//! the seam refuses (`E-EVID-506`) and evidence stays diagnostic.
 
 use crate::{EvidenceError, EvidenceRecord};
 
@@ -42,8 +38,7 @@ pub struct ProofVerdict {
     pub certificate_id: Option<String>,
 }
 
-/// Kernel seam: a proof back end may implement this to act as an
-/// optional formal-proof producer/checker.
+/// Kernel seam for an optional formal-proof producer/checker.
 pub trait ProofProvider {
     /// Kernel name (stable token, e.g. `lean-4`).
     fn kernel_name(&self) -> &'static str;
@@ -56,9 +51,8 @@ pub trait ProofProvider {
     ) -> Result<ProofVerdict, EvidenceError>;
 }
 
-/// Optional seam entry point. Without a configured provider the call
-/// refuses with `E-EVID-506`: theorem proving is never mandatory for
-/// ordinary compilation and the evidence stays diagnostic.
+/// Optional seam entry point; without a configured provider the call
+/// refuses (`E-EVID-506`), evidence stays diagnostic.
 pub fn verify_proof_optional(
     provider: Option<&dyn ProofProvider>,
     record: &EvidenceRecord,

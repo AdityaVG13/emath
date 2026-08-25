@@ -27,11 +27,8 @@ fn exactness_canonical(policy: &ExactnessPolicy) -> String {
     }
 }
 
-/// Structural type encoding for identity. The display name collapses
-/// distinct type nodes (`Record("m")` vs `Other("m")` both display as
-/// `m`), so identity must encode the node structurally and never discard
-/// the node kind. Numeric aliases Real/Float64/f64 intentionally share
-/// `TypeNode::Float64` (one node, one identity).
+/// Structural type encoding: display names collapse distinct nodes, so
+/// identity encodes structure and never discards the node kind.
 fn encode_type(out: &mut String, ty: &TypeNode) {
     match ty {
         TypeNode::Bool => out.push_str("bool"),

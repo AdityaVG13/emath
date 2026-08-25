@@ -63,9 +63,8 @@ pub struct AssumptionLedger {
 }
 
 impl AssumptionLedger {
-    /// Registers an assumption; registering the same id under a
-    /// different class is refused (`E-EVID-405`); re-registering the
-    /// identical assumption is a no-op.
+    /// Register an assumption; same id under a different class refuses
+    /// (`E-EVID-405`); identical re-registration is a no-op.
     pub fn register(&mut self, assumption: Assumption) -> Result<(), EvidenceError> {
         if let Some(existing) = self.entries.get(&assumption.id) {
             if existing.class != assumption.class {
@@ -84,7 +83,7 @@ impl AssumptionLedger {
         Ok(())
     }
 
-    /// Assumptions in deterministic (id) order.
+    /// Assumptions in id order.
     #[must_use]
     pub fn assumptions(&self) -> Vec<&Assumption> {
         self.entries.values().collect()

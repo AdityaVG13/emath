@@ -28,7 +28,7 @@ const DEFAULT_WORLD: &str = "free_symbolic";
 
 const UNKNOWN_REPL: &str = "unknown command; :portfolio :world <name> :explain :quit";
 
-/// One VM evaluation with the provenance ADR-004 requires on every print.
+/// One VM evaluation with ADR-004 provenance on every print.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct EvalReceipt {
     answer: String,

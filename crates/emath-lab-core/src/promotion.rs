@@ -1,11 +1,9 @@
 //! Promotion policy engine.
 //!
-//! Maps gate verdict + paired statistics + memory/energy evidence to one
-//! of six outcomes (promote, shadow, canary, retain, demote, quarantine)
-//! with a typed reason for every non-promote path. Hard invariants: a
-//! candidate that fails the quality gate is never promoted, and a metric
-//! regression retains the baseline (or demotes a promoted candidate)
-//! according to the frozen policy.
+//! Maps gate verdict + paired stats + memory/energy evidence to one of
+//! six outcomes (promote/shadow/canary/retain/demote/quarantine) with a
+//! typed reason. Invariants: a gate-failing candidate is never promoted;
+//! a regression retains the baseline or demotes a promoted candidate.
 
 use crate::error::LabError;
 use crate::gate::GateVerdict;
@@ -72,8 +70,8 @@ pub enum PromotionReason {
     EnergyOverBudget { joules: f64, budget: f64 },
     /// Candidate meets the promotion target.
     MeetsTarget { median_ratio: f64 },
-    /// Currently-promoted candidate that did not regress kept the
-    /// promoted route instead of being taken off-air.
+    /// Currently-promoted candidate that did not regress keeps the
+    /// promoted route.
     RetainedPromotion { median_ratio: f64 },
     /// Candidate is fit for a canary cohort.
     CanaryCohort { median_ratio: f64 },
@@ -253,12 +251,8 @@ impl PromotionDecision {
     }
 }
 
-/// Applies the frozen policy to the gate verdict and paired evidence.
-///
-/// `memory_ratio` is candidate/baseline peak memory; `energy` is
-/// `(joules_used, budget_joules)`. `currently_promoted` selects
-/// demote-vs-retain on regression and keep-promoted on a non-regressed
-/// incumbent: a still-faster candidate is never taken off-air.
+/// Applies the frozen policy to gate + paired evidence. `energy` is
+/// `(used, budget)`; `currently_promoted` picks demote-vs-retain.
 #[must_use]
 pub fn decide(
     policy: &EnginePolicy,
@@ -345,10 +339,8 @@ pub fn decide(
         };
     }
     if currently_promoted {
-        // Demote only ever fires on regression (checked above). A
-        // promoted candidate between targets is still faster than the
-        // baseline; canary/shadow are baseline-entry paths, and the old
-        // fall-through mislabeled it TooSlow and routed the baseline.
+        // Demote only fires on regression (checked above); a promoted
+        // candidate between targets is still faster than baseline.
         return PromotionDecision {
             outcome: PromotionOutcome::Promote,
             reason: PromotionReason::RetainedPromotion { median_ratio },

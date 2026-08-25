@@ -23,10 +23,8 @@ use super::{
     expr_number, Admitter, E_DUPLICATE_FIELD,
 };
 
-/// Admits one `name: Type` (or untyped `Infer`) field into the structural
-/// maps used for `inputs` / `outputs` / `state`. Untyped names are allowed
-/// only when `allow_infer` is set (bare `inputs:` fields and head-args);
-/// they default to Float64 and emit `N-TYPE-001`.
+/// Admits one `name: Type` (or untyped `Infer`) field; untyped names are
+/// allowed only when `allow_infer` is set and default to Float64.
 pub(super) fn admit_named_field(
     admitter: &mut Admitter,
     fields_infer: &mut BTreeMap<String, Infer>,

@@ -21,20 +21,16 @@ pub const ARTIFACT_MANIFEST_SCHEMA: &str = "emath.artifact";
 /// [`manifest_identity`]; consumers refuse versions they do not know.
 pub const ARTIFACT_MANIFEST_VERSION: u32 = 1;
 /// Durable artifact source map (byte-range + `source_package` shape; see
-/// [`write_source_map`]). One shape, one id: the world-codegen provenance
-/// map emitted by semantic-genesis compilation uses its own id,
-/// [`GENERATED_CRATE_SOURCE_MAP_SCHEMA`], whose entries carry
-/// `(generated, source, kind)` labels, never this shape.
+/// [`write_source_map`]). Distinct from the world-codegen provenance map
+/// ([`GENERATED_CRATE_SOURCE_MAP_SCHEMA`]); the two never share an id.
 pub const SOURCE_MAP_SCHEMA: &str = "emath.source-map";
 /// World-codegen provenance map written next to a generated world crate
 /// (see [`write_generated_crate_source_map`]). Distinct from
 /// [`SOURCE_MAP_SCHEMA`]; the two documents must never share an id.
 pub const GENERATED_CRATE_SOURCE_MAP_SCHEMA: &str = "emath.generated-crate-source-map";
 /// JSON `$schema` id of the durable resolution-plan document
-/// ([`write_resolution_plan`]). The plan's identity preimage is a
-/// different layer: `plan_identity` hashes a `plan:` payload, not this
-/// document id (see `emath_ir::goal::plan_identity`); the split is
-/// deliberate and documented.
+/// ([`write_resolution_plan`]). The plan identity preimage is
+/// `plan_identity` over a `plan:` payload, not this document id.
 pub const RESOLUTION_PLAN_SCHEMA: &str = "emath.resolution-plan";
 pub const EVIDENCE_BUNDLE_SCHEMA: &str = "emath.evidence-bundle";
 
@@ -181,9 +177,8 @@ const METADATA_PATHS: [&str; 4] = [
     "emath/evidence-bundle.json",
 ];
 
-/// Paths required for a Phase 1 artifact (`PUBLIC_API_INVENTORY.md` and the
-/// imported seed agree on this set). Alias for the native-class package
-/// contents; per-class inventories live on [`required_paths_for_class`].
+/// Paths required for a Phase 1 artifact; per-class inventories live on
+/// [`required_paths_for_class`].
 #[must_use]
 pub fn required_artifact_paths() -> &'static [&'static str] {
     &[
@@ -196,11 +191,10 @@ pub fn required_artifact_paths() -> &'static [&'static str] {
     ]
 }
 
-/// Package contents per artifact class. Code-bearing classes (native,
-/// portfolio, hybrid, parametric, continuation) ship a Cargo crate plus
-/// the four metadata documents; exploration and diagnostic artifacts are
-/// metadata-only (they record what was searched or refused, not runnable
-/// code).
+/// Package contents per artifact class: code-bearing classes (native,
+/// portfolio, hybrid, parametric, continuation) ship a Cargo crate plus the
+/// four metadata documents; exploration/diagnostic artifacts are
+/// metadata-only.
 #[must_use]
 pub fn required_paths_for_class(class: ArtifactClass) -> &'static [&'static str] {
     match class {
@@ -213,12 +207,10 @@ pub fn required_paths_for_class(class: ArtifactClass) -> &'static [&'static str]
     }
 }
 
-/// The one artifact identity: a deterministic hash of the
-/// manifest body, excluding `artifact_id` itself and the manifest's own
-/// content-id entry (both are self-referential: the manifest records its
-/// own id and its own fingerprint). This function is the only identity
-/// the publisher records and the only identity the independent checker
-/// recomputes (`E-EVID-102`).
+/// The sole artifact identity: deterministic hash of the manifest body,
+/// excluding the self-referential `artifact_id` and content-id entries.
+/// The only identity the publisher records and the checker recomputes
+/// (`E-EVID-102`).
 #[must_use]
 pub fn manifest_identity(manifest: &ArtifactManifest) -> ContentId {
     let mut files: Vec<(String, &ContentId)> = manifest
@@ -365,14 +357,10 @@ fn content_id_or_empty(id: &ContentId) -> String {
     }
 }
 
-/// Parse the `files` inventory of a serialized artifact manifest
-/// (`emath.artifact`) into `path -> declared content id`.
-///
-/// This is the reader for the deterministic in-tree writer above: it
-/// accepts exactly the writer's shape (a string-string object) and refuses
-/// anything else, so a corrupted manifest cannot silently disable content-identity verification
-/// checks. Used by the independent artifact checker
-/// (`emath artifact check <dir>`).
+/// Parse the `files` inventory of a serialized artifact manifest into
+/// `path -> declared content id`. Accepts exactly the writer's shape;
+/// anything else is refused, so a corrupted manifest cannot disable
+/// content-identity verification.
 pub fn manifest_files_declared(
     manifest_json: &str,
 ) -> Result<BTreeMap<String, String>, ArtifactError> {
@@ -1059,11 +1047,9 @@ pub fn write_source_map(source_map: &SourceMap) -> String {
 }
 
 /// Write a world-codegen provenance source map
-/// (`emath.generated-crate-source-map`). Each entry carries
-/// `(generated, source, kind)` labels; this is the provenance document
-/// emitted next to a generated world crate, never the durable artifact
-/// source map ([`write_source_map`] shape). `files` must be in
-/// deterministic emission order (callers pass sorted keys).
+/// (`emath.generated-crate-source-map`); entries carry
+/// `(generated, source, kind)` labels, never the durable artifact source
+/// map shape. `files` must be in deterministic emission order.
 pub fn write_generated_crate_source_map(source: &str, files: &[String]) -> String {
     let mut object = JsonWriter::object();
     // World-codegen provenance, not the durable artifact source map:

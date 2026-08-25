@@ -1,10 +1,8 @@
 //! Engine identity: honest comparator separation.
 //!
-//! Every statistical comparison in the lab is a comparison between two
-//! *engine identities* (subject vs oracle / baseline vs mutant). A
-//! comparator that cannot prove its two inputs are distinct identities
-//! can silently compare an engine with itself; that is refused with
-//! `E-HOST-016` (never a silent self-comparison).
+//! Every lab comparison runs between two distinct engine identities;
+//! comparing an engine with itself is refused with `E-HOST-016`, never
+//! a silent self-comparison.
 
 use crate::error::LabError;
 
@@ -70,9 +68,7 @@ impl EngineIdentity {
         format!("{}:{}", self.role.as_str(), self.label)
     }
 
-    /// Refuses a comparison between two identities that do not differ
-    /// (`E-HOST-016`). A comparator that could run with `subject ==
-    /// oracle` would be comparing an engine with itself: the refusal is
+    /// Refuse a comparison between identical identities (`E-HOST-016`):
     /// typed, never a silent self-comparison.
     pub fn require_distinct(
         &self,

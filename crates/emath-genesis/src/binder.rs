@@ -1,31 +1,12 @@
 //! SG-10 scoped binders: capture-safe binding forms over the first-order
 //! term IR.
 //!
-//! A [`ScopedBinder`] binds one variable inside a body that may itself
-//! contain nested binders ([`BinderTerm`]). Four binder families carry
-//! different meaning claims:
-//!
-//! - [`BinderFamily::Structural`]: the binder is *defined* as its finite
-//!   structural expansion (sum/product over an explicit finite range).
-//! - [`BinderFamily::OpaqueSeeded`]: no structural claim; the binder only
-//!   has a deterministic seeded identity ([`ScopedBinder::opaque_identity`]).
-//! - [`BinderFamily::FiniteAnalogue`]: expands like `Structural` but the
-//!   expansion is declared a *finite analogue* of a conventional infinite
-//!   form (e.g. a Riemann-style sum for an integral); no continuum claim.
-//! - [`BinderFamily::Conventional`]: notation is preserved, meaning stays
-//!   conventional; expansion is a typed refusal, never a silent guess.
-//!
-//! Capture safety: substitution under a binder alpha-renames the bound
-//! variable (deterministic fresh names `name#1`, `name#2`, ...) whenever the
-//! replacement's free variables would be captured. Canonical identity is
-//! alpha-invariant: bound occurrences render as de Bruijn indices, so two
-//! binders differing only in bound-variable names share one canonical form
-//! and one [`binder_id`].
-//!
-//! Budgets: structural expansion is metered by [`BinderBudget`]; exceeding
-//! the budget is a typed refusal ([`BinderError::BudgetExceeded`]), not a
-//! truncated answer. The budget is an execution parameter and is therefore
-//! *excluded* from canonical identity (documented invariant).
+//! Families: `Structural` expands to its finite range; `FiniteAnalogue`
+//! expands like structural but claims no continuum meaning; `OpaqueSeeded`
+//! carries only a seeded identity; `Conventional` refuses expansion.
+//! Substitution alpha-renames to avoid capture; canonical identity is
+//! alpha-invariant (de Bruijn indices). Expansion is budgeted; the budget
+//! is an execution parameter, excluded from [`binder_id`].
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -241,10 +222,9 @@ impl BinderTerm {
         }
     }
 
-    /// Alpha-invariant canonical form: bound occurrences render as
-    /// `bound(i)` de Bruijn indices (innermost binder is index 0), so
-    /// alpha-equivalent terms share one canonical string. Budgets are
-    /// execution parameters and never appear here.
+    /// Alpha-invariant canonical form: bound occurrences render as de
+    /// Bruijn indices, so alpha-equivalent terms share one string.
+    /// Budgets are execution parameters and never appear.
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut out = String::new();
@@ -308,11 +288,9 @@ impl ScopedBinder {
         out
     }
 
-    /// Structural expansion: instantiates the body for every domain value
-    /// and left-folds with `combine`. Only `Structural` and
-    /// `FiniteAnalogue` binders over a finite range expand; everything else
-    /// is a typed refusal. Nested binders expand with the same combining
-    /// symbol under the shared budget (v1 limitation, documented).
+    /// Structural expansion: instantiate the body per domain value and
+    /// left-fold with `combine`; only `Structural`/`FiniteAnalogue` over
+    /// a finite range expand, else a typed refusal.
     pub fn expand(&self, combine: &SymbolId, budget: BinderBudget) -> Result<Term, BinderError> {
         let mut remaining = budget.max_terms;
         self.expand_inner(combine, &mut remaining, budget.max_terms)

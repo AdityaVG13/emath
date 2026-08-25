@@ -1,8 +1,6 @@
 //! Typed error model for emath-search.
 //!
-//! No E-* codes are introduced; `ERROR_CODES.md` is untouched. Engine failures
-//! are mapped onto this enum (frankensearch's `SearchError` stays behind the
-//! facade; see `engine.rs`).
+//! No E-* codes are introduced; engine failures map onto this enum.
 
 use std::fmt;
 

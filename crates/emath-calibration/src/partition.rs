@@ -86,12 +86,9 @@ pub struct PartitionedExamples {
 
 impl PartitionedExamples {
     /// Deterministically partitions `examples` by content identity.
-    ///
-    /// `boundaries_permille` are cumulative bucket ends: construction is
-    /// `[0, b0)`, validation `[b0, b1)`, adversarial `[b1, b2)`, and
-    /// held-out `[b2, 1000)`. Boundaries must be ascending and at most
-    /// 1000. The `salt` re-keys the partition so a new split cannot
-    /// replay a memorized one.
+    /// `boundaries_permille` are ascending cumulative bucket ends
+    /// (construction/validation/adversarial/held-out, ≤1000); `salt`
+    /// re-keys the partition against memorized splits.
     #[must_use]
     pub fn partition(
         examples: &[CalibrationExample],

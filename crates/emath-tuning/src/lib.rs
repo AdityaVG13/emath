@@ -2,21 +2,10 @@
 
 //! Semantic and joint tuning.
 //!
-//! Semantic tuning varies World IR components (carriers, symbols, signature,
-//! operator meanings, constants, constructors, laws, or effects/capabilities)
-//! while protecting declared laws and held-out examples. Joint tuning varies
-//! the world and the implementation together:
-//!
-//! ```text
-//! candidate = WorldDelta + ExecutionDelta
-//! ```
-//!
-//! Promotion requires (1) semantic admission, (2) evidence threshold,
-//! (3) resource envelope (protected host metrics), (4) fallback
-//! availability, and (5) a deterministic receipt. A world that merely
-//! memorizes construction examples must not promote as a general meaning,
-//! so every candidate is tested against held-out references before it can
-//! be selected.
+//! Semantic tuning varies World IR components while protecting laws and
+//! held-out examples; joint tuning varies the world and implementation
+//! together. Promotion needs semantic admission, an evidence threshold, a
+//! resource envelope, fallback availability, and a deterministic receipt.
 
 pub mod campaign;
 pub mod frontier;
@@ -33,11 +22,8 @@ pub fn encode_patch(prior: &str, next: &str) -> String {
     format!("{prior}{PATCH_SEPARATOR}{next}")
 }
 
-/// Which World IR component a tuning variable or semantic delta may vary.
-///
-/// Declaration order is the deterministic [`Ord`] order and matches the
-/// World IR contract components (carriers, symbols, signature, meanings,
-/// constants, constructors, laws, effects/capabilities).
+/// Which World IR component a tuning variable or semantic delta may vary;
+/// declaration order is the deterministic [`Ord`] order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SemanticVariableKind {
     /// A carrier/domain choice.
@@ -228,23 +214,16 @@ impl WorldDelta {
         DeltaReceipt::new(self.base_world.0, &self.changes)
     }
 
-    /// Applies this delta to `base`, returning a new world.
-    ///
-    /// `base.identity()` must equal [`Self::base_world`]. Each change targets an
-    /// existing component; a missing target is [`DeltaError::MissingTarget`],
-    /// never a silent no-op. A non-empty change set that does not alter
-    /// content identity is refused. Apply is deterministic: changes run in
-    /// canonical sort order.
+    /// Applies this delta to `base`. `base.identity()` must match
+    /// [`Self::base_world`]; missing targets are [`DeltaError::MissingTarget`],
+    /// never silent no-ops; changes run in canonical sort order.
     pub fn apply(&self, base: &WorldIr) -> Result<WorldIr, DeltaError> {
         apply_or_revert(self, base, false)
     }
 
-    /// Inverse of [`Self::apply`]: restores the pre-image world.
-    ///
-    /// `revert(apply(base))` equals `base` in canonical form and identity.
-    /// Operational changes encode a prior payload (via [`PATCH_SEPARATOR`] or,
-    /// for constructor/law/effect, the target [`SymbolId`]); a description that
-    /// is not reversible is [`DeltaError::NotReversible`].
+    /// Inverse of [`Self::apply`]: `revert(apply(base))` equals `base` in
+    /// canonical form and identity; non-reversible changes are
+    /// [`DeltaError::NotReversible`].
     pub fn revert(&self, applied: &WorldIr) -> Result<WorldIr, DeltaError> {
         apply_or_revert(self, applied, true)
     }
@@ -368,10 +347,8 @@ pub struct DeltaReceipt {
 }
 
 impl DeltaReceipt {
-    /// Builds a receipt with a deterministic identity.
-    ///
-    /// The same `(base_fingerprint, changes)` pair always yields the same
-    /// identity. Change order is normalized by sorting canonical strings.
+    /// Builds a receipt with a deterministic identity: the same
+    /// `(base_fingerprint, changes)` pair always yields the same identity.
     #[must_use]
     pub fn new(base_fingerprint: u64, changes: &[SemanticChange]) -> Self {
         let mut applied: Vec<String> = changes.iter().map(SemanticChange::canonical).collect();
@@ -932,11 +909,8 @@ pub struct CalibratedConfidence {
 /// Minimum held-out coverage (permille) to count as general rather than memorized.
 pub const MIN_HELD_OUT_PERMILLE: u64 = 800;
 
-/// Recalibrates meaning confidence against held-out outcomes.
-///
-/// A memorizing candidate (high construction, low held-out) is refused.
-/// An oversized table relative to construction examples is penalized so a
-/// lookup table that fits training rows cannot claim generality.
+/// Recalibrates meaning confidence against held-out outcomes: memorizing
+/// candidates are refused or penalized for unused table capacity.
 #[must_use]
 pub fn calibrate_confidence(sample: CoverageSample) -> CalibratedConfidence {
     let complexity_penalty_permille = if sample.construction_examples == 0 {

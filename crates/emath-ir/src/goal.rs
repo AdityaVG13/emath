@@ -264,12 +264,8 @@ pub const PRODUCE_RUST_LIBRARY: &str = "rust.library";
 pub const POLICY: &str = "native-deterministic";
 
 /// Schema id of the resolution plan *document* (written by
-/// `emath_artifact::write_resolution_plan`).
-///
-/// This is deliberately **not** the plan identity preimage: the plan's
-/// content id hashes a `plan:` payload built by [`plan_identity`],
-/// not this schema string. The two-layer split (identity preimage vs
-/// JSON `$schema`) is stable; do not merge them.
+/// `emath_artifact::write_resolution_plan`). Deliberately **not** the
+/// plan identity preimage: identity hashes a `plan:` payload ([`plan_identity`]).
 pub const PLAN_SCHEMA: &str = "emath.resolution-plan";
 
 /// Provider identities known to the constellation but not installed in
@@ -349,14 +345,9 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
     goal
 }
 
-/// Canonical plan identity: binds goal schema, policy, provider set
-/// (sorted ids) and target family. The provider set is hashed sorted, so
-/// a permutation of provider ids never changes a plan identity.
-/// Content identity of a resolution plan.
-///
-/// The identity layer is independent of the JSON `$schema` layer: the
-/// payload is prefixed `plan:` (see [`PLAN_SCHEMA`] for the document
-/// id), so a document's identity never depends on its schema-id string.
+/// Canonical plan identity: binds goal schema, policy, sorted provider
+/// set and target family. Independent of the JSON `$schema` layer: the
+/// payload is prefixed `plan:` (see [`PLAN_SCHEMA`]).
 #[must_use]
 pub fn plan_identity(
     goal_canonical: &str,

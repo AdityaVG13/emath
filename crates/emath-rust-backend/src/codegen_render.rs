@@ -30,19 +30,10 @@ pub(crate) fn value_expr(
     Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
 }
 
-/// Register-inlined SSA body renderer.
-///
-/// Instead of binding every register as `let __eN = ...;`, registers that
-/// are read exactly once and provably cannot fault are inlined into their
-/// single consumer as expression trees. Multi-use registers, fault-capable
-/// ops (factorial, mod_inv, solver bodies, ...), and out-of-range loads
-/// stay bound as lets, preserving strict eager fault timing and order
-/// exactly. The expression trees are the same computations in the same
-/// order (no reassociation), so values are bit-identical.
-///
-/// When `var_index` is set, the tangent (`__d`) space is rendered too —
-/// the AD torso for `Differentiate`/`Solve`/`Optimize` bodies — with the
-/// same single-use inlining applied to tangent formulas.
+/// Register-inlined SSA body renderer: single-use, provably-total
+/// registers inline into their consumer; multi-use/fault-capable ops stay
+/// bound as lets, preserving strict eager fault timing. `var_index` also
+/// renders the tangent (`__d`) space for the AD torsos.
 pub(crate) struct FlatSsa {
     /// `let __eN = <src>;` lines for registers that must stay bound, in
     /// register order.
@@ -97,9 +88,8 @@ impl Resolver<'_> {
         Ok(out)
     }
 
-    /// Rewrite `__e{N}` / `__d{N}` register tokens: inlined registers are
-    /// expanded to their (parenthesized) defining expression, everything
-    /// else keeps its bound name. One pass, longest-token-safe scanning.
+    /// Expand `__e{N}`/`__d{N}` tokens for inlined registers to their
+    /// (parenthesized) defining expression; others keep their bound name.
     fn substitute(&mut self, src: &str) -> Result<String, BackendError> {
         let mut out = String::with_capacity(src.len());
         let mut i = 0usize;
@@ -279,8 +269,6 @@ pub(crate) fn operand(_program: &EmirProgram, value: EmirValue) -> Expr {
 }
 
 /// A call into the embedded runtime module: `emath_rt::<name>(args)`.
-/// The runtime kernels live in `emath-rt` (single source of truth) and
-/// are embedded into every generated crate as `mod emath_rt { ... }`.
 fn rt_call(name: &str, args: Vec<Expr>) -> Expr {
     Expr::Call {
         path: vec!["emath_rt".to_string(), name.to_string()],
@@ -891,16 +879,12 @@ pub(crate) fn op_expr(
     }
 }
 
-/// Generate the tangent expression string for an EMIR op in forward-mode
-/// autodiff.  Uses `__e{N}` for primal references and `__d{N}` for tangent
-/// references of earlier registers.  `idx` is the current register index.
+/// Forward-mode tangent source for an EMIR op; `__e{N}`/`__d{N}` naming.
 pub(crate) fn dual_tangent_str(op: &EmirOp, var_index: u16, idx: usize) -> String {
     tangent_str(op, var_index, idx, &|n| format!("__e{n}"), &|n| format!("__d{n}"))
 }
 
-/// Shared forward-mode tangent generator. `e` maps a register to its
-/// primal reference and `d` to its tangent reference, so the multi-pass
-/// variant reuses the exact same formulas with prefixed register names.
+/// Shared tangent generator: `e`/`d` map register → primal/tangent refs.
 fn tangent_str(
     op: &EmirOp,
     var_index: u16,
@@ -951,11 +935,8 @@ fn tangent_str(
     }
 }
 
-/// Generate the backward-pass adjoint update statements for an EMIR op
-/// in reverse-mode autodiff.  Uses `__re{N}` for primal references and
-/// `__ra{N}` for adjoint references.  `idx` is the current register index.
-/// Returns statements that accumulate adjoints into the op's input registers
-/// and input adjoint accumulators (`__ria{N}`).
+/// Backward-pass adjoint update statements for an EMIR op, accumulating
+/// into `__ra{N}` operand adjoints and `__ria{N}` input adjoints.
 pub(crate) fn reverse_adjoint_str(op: &EmirOp, idx: usize) -> String {
     let adj = format!("__ra{idx}");
     let p = |n: u32| format!("__re{n}");

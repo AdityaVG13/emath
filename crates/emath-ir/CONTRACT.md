@@ -30,7 +30,9 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   `NumericProfile::StrictF64` is the Phase 1 default; `IntervalF64` is
   explicit only. `parse_numeric_profile("")` yields the default.
   `lookup_unit` / `per_unit` refuse unknown or ill-formed units.
-  `Interval::checked` and `Shape::declare` refuse inverted/empty shapes.
+  `Interval::checked` and `Shape::declare` refuse inverted/empty shapes;
+  `branch_point` resolves branch conventions; `Extent` / `SparseLayout`
+  complete the shape surface.
 - `ContractRegistry`, `ProviderRepresentationContract`, `EvidenceBundle`,
   `EvidenceClaim`, `ClaimVerdict`, `SemanticPackage`, `ImportEntry`.
 - Modules: `canonical`, `constructor`, `contracts`, `domains`, `evidence`,
@@ -75,11 +77,11 @@ None.
 
 ## Conformance tests
 
-No `tests/` directory in this crate. Inline `#[cfg(test)]` unit tests live in
-the `src` modules (not enumerated). IR canonicalization also has a
-dedicated non-crate test member at `tests/emath-ir` (including
-`interval_containment_holds_on_seeded_grid` for `Interval`/`Domain`
-membership).
+No `tests/` directory in this crate and no `#[cfg(test)]` module in `src/`.
+Coverage lives in the workspace test member `tests/emath-ir` (canonical,
+goal, layers, numeric_models, constructor, mig, domain_logic, containment
+— including `interval_containment_holds_on_seeded_grid` for
+`Interval`/`Domain` membership).
 
 ## No-claim boundaries
 

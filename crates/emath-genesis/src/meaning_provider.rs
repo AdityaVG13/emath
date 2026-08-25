@@ -1,23 +1,11 @@
 //! SG-15 agent meaning provider: quarantined proposal admission and a
 //! producer-distinct challenge loop.
 //!
-//! An agent proposes a concrete finite operation table ([`OpTable`]) and
-//! a list of claimed laws. [`admit`] performs **only** well-formedness
-//! checks (carrier bounds, cell ranges, version) and yields a
-//! [`QuarantinedCandidate`] with status `Quarantined` and **no**
-//! authority. Admission never evaluates or certifies the claimed laws.
-//!
-//! [`challenge`] is the only promotion path. The checker must be
-//! producer-distinct and must declare [`REQUIRED_CAPABILITY`]. Same-id
-//! challenge is [`ChallengeRefusal::SelfCertification`] — the named
-//! negative control of this phase. A capable distinct checker runs the
-//! real [`check_table`] against the claimed laws: a violation demotes to
-//! `Rejected { violation }`; success promotes to `Checked { checker_id }`
-//! with authority `structural-checked`, never higher.
-//!
-//! Determinism class: pure integer identity, no floats. `proposal_id` is
-//! FNV-1a64 over the versioned canonical encoding (producer + table +
-//! laws; rationale excluded). Receipts are BTreeMap-ordered JSON.
+//! [`admit`] performs well-formedness only, granting no authority.
+//! [`challenge`] is the only promotion path: producer-distinct checker
+//! declaring [`REQUIRED_CAPABILITY`] (same-id is refused); success
+//! promotes to `structural-checked`, never higher. Determinism: pure
+//! integer identity; receipts are BTreeMap-ordered JSON.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -28,9 +16,8 @@ use crate::synth::{check_table, LawViolation, OpTable, SynthLaw, MAX_CARRIER_SIZ
 
 /// Agent-meaning schema id for artifacts and receipts.
 pub const PROVIDER_SCHEMA: &str = "emath.agent-meaning";
-/// Agent-meaning schema version. Bump on any change to the canonical
-/// proposal encoding, admission rules, challenge semantics, or the
-/// receipt layout; consumers refuse versions they do not know.
+/// Agent-meaning schema version. Bump on changes to proposal encoding,
+/// admission/challenge semantics, or the receipt layout.
 pub const PROVIDER_VERSION: u32 = 1;
 /// Capability a checker must declare to run the law-check challenge.
 pub const REQUIRED_CAPABILITY: &str = "law-check/v1";
@@ -322,9 +309,7 @@ pub struct MeaningReceipt {
 
 impl MeaningReceipt {
     /// Receipt for a protocol refusal (self-certification or missing
-    /// capability). Authority remains `none`; the challenge did not run.
-    /// The refusal reason is recorded — a `refused` receipt that does
-    /// not say why would be a silent omission.
+    /// capability). Authority stays `none`; reason is always recorded.
     #[must_use]
     pub fn refused(proposal_id: u64, producer: &str, reason: &ChallengeRefusal) -> Self {
         Self {
@@ -339,8 +324,7 @@ impl MeaningReceipt {
         }
     }
 
-    /// BTreeMap-ordered JSON. Key order is lexicographic. Byte-identical
-    /// across runs for the same receipt.
+    /// BTreeMap-ordered JSON, byte-identical across runs.
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut root = BTreeMap::new();

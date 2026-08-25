@@ -1,12 +1,9 @@
 //! /06-011: deterministic planner and plan inspection.
 //!
-//! Phase 1 planner: ordered rules, bounded candidate retention, explicit
-//! pruning and deterministic tie-breaks. Every exclusion is retained with
-//! its reason; an exhausted budget yields a continuation/diagnostic per
-//! the goal's fallback policy (`E-RES-100`, `E-GOAL-201`). Candidate
-//! selection is expressed in the resolution algebra (`algebra`): retained
-//! candidates and exclusions become capability steps, and the ordered
-//! alternative over them is applied to the full Q-state.
+//! Ordered rules, bounded candidate retention, explicit pruning, deterministic
+//! tie-breaks. Every exclusion keeps its reason; an exhausted budget yields a
+//! continuation/diagnostic per the fallback policy (`E-RES-100`, `E-GOAL-201`).
+//! Candidate selection runs through the resolution algebra (`algebra`).
 
 use crate::algebra::{Lifted, QState, Step};
 use crate::dispositions::{

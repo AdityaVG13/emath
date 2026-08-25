@@ -1,10 +1,8 @@
-//! Declared operator surface ( core declarations).
-//!
-//! An operator declaration attaches a semantics name (and optional
-//! fixity) to an existing symbol at the SIR level. Fixity normalization:
-//! `infixl`, `infixr` and `infix` keywords all map to `Infix`
-//! (associativity is resolved by parentheses in the line-oriented
-//! syntax); only `prefix` and `postfix` change arity placement.
+//! Declared operator surface (core declarations): attaches a semantics
+//! name (and optional fixity) to an existing symbol at the SIR level.
+//! `infixl`/`infixr`/`infix` all normalize to `Infix` (associativity is
+//! resolved by parentheses in the line-oriented syntax); only `prefix`
+//! and `postfix` change arity placement.
 
 use emath_core::QualifiedName;
 

@@ -1,9 +1,9 @@
 //! Adversarial experiment tests.
 //!
-//! Deterministic detectors for changed inputs, benchmark cheating,
-//! asymmetric warmup, missing failures, poisoned calibration and
-//! non-comparable builds. A failing check makes the experiment
-//! incomparable (`E-HOST-008`): no promotion path may consume it.
+//! Deterministic detectors: changed inputs, benchmark cheating,
+//! asymmetric warmup, missing failures, poisoned calibration,
+//! non-comparable builds. Any failure makes the experiment incomparable
+//! (`E-HOST-008`).
 
 use crate::error::LabError;
 
@@ -182,8 +182,7 @@ pub fn run_all(facts: &RunFacts) -> Vec<AdversarialCheck> {
     ]
 }
 
-/// Refuses the experiment when any adversarial check fails
-/// (`E-HOST-008`, first failure).
+/// Refuse the experiment when any check fails (`E-HOST-008`, first).
 pub fn require_comparable(facts: &RunFacts) -> Result<(), LabError> {
     for check in run_all(facts) {
         if !check.passes {

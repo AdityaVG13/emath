@@ -1,11 +1,9 @@
-//! Core: migration from bootstrap syntax.
+//! Migration from bootstrap syntax.
 //!
-//! The bootstrap parser stays behind a compatibility tool, not the
-//! production compiler. `migrate_declaration` rewrites a bootstrap-era
-//! declaration into the open framework carrying its bootstrap schema:
-//! `request` sections become `goals`, `input`/`output` singletons
-//! become plural `inputs`/`outputs`, and inline constructors are lifted
-//! into a `constructors:` section.
+//! `migrate_declaration` rewrites a bootstrap declaration into the open
+//! framework under its bootstrap schema: `request` → `goals`,
+//! `input`/`output` → plurals, inline constructors lifted into
+//! `constructors:`.
 
 use emath_core::tree::Declaration;
 
@@ -26,10 +24,8 @@ pub struct Migrated {
     pub issues: Vec<MigrationIssue>,
 }
 
-/// Migrates a bootstrap declaration into the open framework.
-/// Bootstrap artifacts remain readable under their schema but are
-/// regenerated for the stable language (acceptance gate: V3/Phase1
-/// examples migrate and preserve behavior).
+/// Migrate a bootstrap declaration into the open framework; bootstrap
+/// artifacts stay readable under their schema but are regenerated.
 #[must_use]
 pub fn migrate_declaration(decl: &Declaration, bump: &str) -> Migrated {
     let mut issues = Vec::new();

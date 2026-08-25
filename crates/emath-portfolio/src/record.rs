@@ -36,8 +36,7 @@ pub struct Disqualification {
 
 /// The full portfolio candidate record ("Candidate record").
 ///
-/// `identity` is an FNV-1a64 content identity over the canonical form, so
-/// portfolio generation and replay are deterministic.
+/// `identity` is an FNV-1a64 content identity over the canonical form.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CandidateRecord {
     /// Candidate world identity.
@@ -192,9 +191,8 @@ impl CandidateRecord {
 
     /// Projects this genesis-era record onto the G7 [`WorldCandidate`].
     ///
-    /// Score-vector floats become milli-unit integers (`value * 1000` via
-    /// [`milli_units`]); `world_id` is the fingerprint; `identity` is the
-    /// artifact hash. The first disqualification becomes a guard failure.
+    /// Floats become milli-unit integers ([`milli_units`]); `world_id` is the
+    /// fingerprint, `identity` the artifact hash, first disqualification a guard failure.
     #[must_use]
     pub fn world_candidate(&self) -> WorldCandidate {
         let mut metrics = BTreeMap::new();

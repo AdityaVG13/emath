@@ -8,10 +8,8 @@ use std::collections::BTreeSet;
 
 use super::E_UNSUPPORTED_TYPE;
 
-/// Extract a text representation of a numeric literal expression for
-/// use in a domain predicate string. Supports Int, Float, and negated
-/// Int/Float literals. More complex expressions are rendered via
-/// `expr_text` as a fallback.
+/// Text of a numeric literal for a domain predicate string; falls back to
+/// `expr_text` for complex expressions.
 fn expr_literal_text(expr: &emath_core::tree::Expr) -> String {
     match &expr.kind {
         ExprKind::Int(text) | ExprKind::Float(text) => text.clone(),

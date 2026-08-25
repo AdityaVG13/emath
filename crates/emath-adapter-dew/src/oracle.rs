@@ -1,21 +1,10 @@
 //! Boundary-case and mutation harness for the reference evaluator.
 //!
-//! Phase 1 consumes no upstream Dew engine, so there is no
-//! cross-engine differential lane in-tree. What this module honestly
-//! provides:
-//!
-//! - a boundary scan of the reference evaluator over NaN/Inf, signed
-//!   zero, extremes and domain edges (`scan_reference_boundaries`):
-//!   a case where the evaluator is undefined (`None`, e.g. a
-//!   non-scalar node) is a finding, never a silent pass;
-//! - injected semantic-drift detection (`detect_drift`): a mutated
-//!   evaluation path must diverge from the reference at some boundary
-//!   case, so the negative fixture is never masked.
-//!
-//! The evaluator is never compared against itself to fabricate a
-//! differential pass. Cross-engine comparison against the native
-//! exec-ir interpreter lives in `tests/emath-adapter-dew` and uses
-//! [`evaluate_scalar`].
+//! Scans the reference evaluator over NaN/Inf, signed zero, extremes and
+//! domain edges; an undefined case (`None`) is a finding, never a silent
+//! pass. `detect_drift` injects semantic drift so the negative fixture is
+//! never masked. The evaluator is never compared against itself to
+//! fabricate a differential pass.
 
 use std::collections::BTreeMap;
 
@@ -151,11 +140,8 @@ impl EvalValue {
 
 /// Evaluates a Dew expression against a scalar environment.
 ///
-/// This is the Dew-adapter evaluation path used by the native↔Dew
-/// differential lane. Arithmetic, comparisons, `min`/`max`,
-/// `abs`/`floor`/`ceil`, `is_finite`, and boolean ops are bit-exact
-/// IEEE-754 binary64 -- the same class as the native exec-ir
-/// interpreter. Transcendentals follow platform libm.
+/// Bit-exact IEEE-754 binary64 arithmetic/comparison; transcendentals
+/// follow platform libm. Undefined inputs yield `None`.
 #[must_use]
 pub fn evaluate_scalar(expr: &DewExpr, env: &BTreeMap<String, f64>) -> Option<EvalValue> {
     eval(expr, env, None)
@@ -301,13 +287,10 @@ fn bits(value: EvalValue) -> u64 {
     }
 }
 
-/// Runs the boundary battery for the variable `variable`.
+/// Runs the boundary battery for `variable`.
 ///
-/// With `drift == None` the reference evaluator is scanned alone: an
-/// undefined case (`None`, e.g. a non-scalar node) is a finding, never
-/// a silent pass. With `drift == Some(mutant)` the mutated path is
-/// compared against the reference: divergence and underdefinition are
-/// both findings. The evaluator is never compared against itself.
+/// `drift == None` scans the reference alone (undefined case = finding);
+/// `drift == Some(mutant)` compares the mutated path to the reference.
 #[must_use]
 pub fn run_boundary_cases(
     expr: &DewExpr,
@@ -382,11 +365,8 @@ pub fn scan_reference_boundaries(expr: &DewExpr, variable: &str) -> Vec<Differen
 
 /// Seeded wrong-result control (Phase 3 stand-in for a wrong derivative).
 ///
-/// Phase 1 has no differentiate producer. A caller plants a claimed
-/// numeric result; if it disagrees with the reference evaluator at any
-/// boundary case, the oracle reports a finding. This is drift detection
-/// with a planted value, not a derivative engine. The full
-/// wrong-derivative control lands with the differentiate goal.
+/// Reports when the claimed result disagrees with the reference
+/// evaluator at any boundary case.
 #[must_use]
 pub fn detect_seeded_wrong_result(
     expr: &DewExpr,

@@ -2,26 +2,10 @@
 
 //! Agent-native meaning proposals.
 //!
-//! Agents may propose parse hypotheses, signatures, carriers, operator
-//! meanings, laws, constructors, world deltas, selection policies, and
-//! implementation plans. Every proposal travels in a submission envelope
-//! (problem ID, base world or hole IDs, proposed changes, claimed
-//! obligations, supporting derivation, required providers, estimated
-//! cost, requested authority) and enters the challenge loop:
-//!
-//! ```text
-//! agent proposal
-//!     → schema admission
-//!     → deterministic checker suite
-//!     → counterexample generation
-//!     → revision request or world candidate
-//!     → portfolio ranking
-//! ```
-//!
-//! Agent proposals carry no direct execution authority: source code is not
-//! inserted into a host binary without the separate compiler, capability,
-//! evidence, and benchmark gates, and a proposal result can never be
-//! granted `Certified` or `Proved` authority by the loop itself.
+//! Proposals travel in a submission envelope through the challenge loop:
+//! schema admission, deterministic checker suite, counterexample
+//! generation, revision request or world candidate, portfolio ranking.
+//! The loop never grants execution authority or `Certified`/`Proved`.
 
 pub mod challenge;
 pub mod proposal;

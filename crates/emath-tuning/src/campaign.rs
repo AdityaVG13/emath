@@ -1,17 +1,9 @@
 //! Host campaigns: promotion of candidate meanings under protected metrics.
 //!
-//! One campaign selects or rejects a candidate meaning (per the
-//! tuning exit criterion). Promotion requires, in order:
-//!
-//! 1. semantic admission: the candidate passed the held-out challenge and
-//!    does not touch preserved (declared-law) symbols;
-//! 2. evidence threshold: enough evidence units;
-//! 3. resource envelope: measured host metrics are within bounds;
-//! 4. protected host metrics: objectives score the candidate against
-//!    cache hit rate (maximize) and token cost / p95 latency (minimize);
-//! 5. fallback availability: a strict baseline world exists to deopt to;
-//! 6. deterministic receipt: the outcome carries a content identity over
-//!    its canonical form.
+//! Promotion requires, in order: semantic admission, evidence threshold,
+//! resource envelope, protected host metrics (cache hit rate maximize;
+//! token cost / p95 latency minimize), fallback availability, and a
+//! deterministic receipt.
 
 use crate::JointCandidate;
 use emath_term::SymbolId;
@@ -47,12 +39,8 @@ impl ResourceEnvelope {
         (value.saturating_mul(1000) / bound).min(1000)
     }
 
-    /// Whether the measured metrics all stay within the envelope.
-    ///
-    /// Admission is fail-closed: a bounded metric with no measurement is
-    /// never treated as in-bounds, so an envelope with `max_tokens` set
-    /// and `token_cost` omitted refuses instead of admitting on a hole
-    /// the host never measured.
+    /// Whether the measured metrics all stay within the envelope. Fail-closed:
+    /// a bounded metric with no measurement is never treated as in-bounds.
     #[must_use]
     pub fn admits(&self, metrics: &[HostMetric]) -> bool {
         let hit_ok = metrics
@@ -81,10 +69,8 @@ pub struct HostObjectives {
 }
 
 /// Fixed-point protected-metric reward over a campaign's objectives.
-/// Every contribution is oriented so that higher is better: maximize
-/// metrics add their permille value (cache hit rate is already permille);
-/// minimize metrics add the permille of budget left unused (cost against
-/// `max_tokens`, latency against `max_p95_latency_ms`).
+/// Maximize metrics add their permille value; minimize metrics add the
+/// permille of budget left unused.
 #[must_use]
 fn protected_score(
     objectives: &HostObjectives,
@@ -241,12 +227,9 @@ pub struct HostCampaign {
 }
 
 impl HostCampaign {
-    /// Runs the campaign over candidate meanings and their measurements.
-    ///
-    /// Selection is deterministic: among promoted candidates the highest
-    /// protected score wins, ties break toward the lower identity. When no
-    /// candidate promotes, the campaign rejects (selects the fallback) and
-    /// the receipt records that.
+    /// Runs the campaign: the highest protected score among promoted
+    /// candidates wins (ties break toward lower identity); no promotions
+    /// means the campaign rejects and the receipt records it.
     #[must_use]
     pub fn run(
         &self,

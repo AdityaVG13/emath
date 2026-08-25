@@ -41,21 +41,17 @@ pub enum NotationFixity {
     Infix,
 }
 
-/// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
-///
-/// N1: Notation declarations are scoped to the package that declares them
-/// and are imported via `use`.  N2: The optional `alias` clause provides
-/// an alternative spelling (accept-many/canon-one: multiple aliases resolve
-/// to one canonical path).  N5: Notation is typography, not meaning —
-/// removing a notation import never changes semantic identity.
+/// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`.
+/// Scoped to the declaring package, imported via `use`; `alias` offers
+/// alternative spellings resolving to one canonical path. Typography, not meaning.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NotationDecl {
     pub fixity: NotationFixity,
     pub precedence: u32,
     pub glyph: String,
     pub target: Vec<String>,
-    /// N2 alias clause: `alias "*"` — an alternative spelling for the
-    /// same operator.  Multiple aliases map to one canonical path.
+    /// N2 alias clause: `alias "*"` — alternative spelling for the same
+    /// operator, resolving to one canonical path.
     pub alias: Option<String>,
     pub source: Span,
 }
@@ -74,13 +70,11 @@ pub struct Declaration {
     pub item_kind: String,
     pub as_kind: String,
     pub attributes: Vec<Attribute>,
-    /// Ordered body statements. Section-headed blocks (and any other
-    /// statement form) appear in source order; `sections()` filters the
+    /// Ordered body statements in source order; `sections()` filters
     /// section statements.
     pub body: Vec<Stmt>,
-    /// Fn-like declaration signature: `extern operator ...(params) -> Ret`
-    /// or a stateless `emath function name(args) -> T` head. `None` when
-    /// the declaration uses section `inputs:` / `outputs:` (or omits both).
+    /// Fn-like signature (`extern operator` or function head-args), `None`
+    /// when the declaration uses section `inputs:` / `outputs:`.
     pub signature: Option<DeclarationSignature>,
     pub source: Span,
     pub head_source: Span,
@@ -118,8 +112,7 @@ pub struct GenericParam {
     pub source: Span,
 }
 
-/// A named section such as `inputs:` or a heading statement such as
-/// `evaluate <score>:`.
+/// A named section (`inputs:`) or heading statement (`evaluate <score>:`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Section {
     pub name: String,
@@ -204,13 +197,13 @@ pub enum StmtKind {
         assignments: Vec<(String, Expr)>,
     },
     /// Generic word-headed command (`produce rust.library`,
-    /// `budget iterations = N`, `compare Self against X`).
+    /// `budget iterations = N`).
     Command {
         head: Vec<String>,
         argument: Option<CommandArgument>,
     },
-    /// A full-expression equation (`mass * derivative(velocity) = rhs`,
-    /// `a * a + b * b = c * c`) used in `equation:`/`constraint:` sections.
+    /// Full-expression equation (`mass * derivative(velocity) = rhs`)
+    /// used in `equation:`/`constraint:` sections.
     Equation {
         left: Expr,
         right: Expr,
@@ -239,12 +232,8 @@ pub struct TypeExpr {
     pub source: Span,
 }
 
-/// A generic argument at a use site: `Vector<Float64>`, `Mod<7>`,
-/// `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = x^3 + x + 1>`.
-///
-/// C10: The grammar previously admitted types only at use sites. This
-/// enum allows value-level arguments (literals, expressions, named
-/// args, bracket-list extents) alongside type arguments.
+/// A generic argument at a use site (`Vector<Float64>`, `Mod<7>`,
+/// `GF<2, 3, modulus = ...>`): type or value-level arguments (C10).
 #[derive(Clone, Debug, PartialEq)]
 pub enum GenericArg {
     /// A type argument: `Float64`, `Real`, `NonNegative`
@@ -257,8 +246,7 @@ pub enum GenericArg {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
-    /// `Float64`, `core::math::Real`, `NonNegative<Real>`, `Field<K, Ω * Time>`
-    /// `Mod<7>`, `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = ...>`
+    /// Path type: `core::math::Real`, `Mod<7>`, `Tensor<Float64, [N, N]>`.
     Path {
         segments: Vec<String>,
         generic_args: Vec<GenericArg>,
@@ -288,9 +276,7 @@ pub struct Expr {
 }
 
 /// Compound unit expression for bracket-notation units (F7/U4).
-/// `m/s^2` = Div(Base("m"), Pow(Base("s"), 2))
-/// `kg*m^2/s^2` = Div(Mul(Base("kg"), Pow(Base("m"), 2)), Pow(Base("s"), 2))
-/// Simple units like `9.81 m` use `Base("m")`.
+/// `m/s^2` = Div(Base("m"), Pow(Base("s"), 2)); `9.81 m` uses `Base("m")`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnitExpr {
     /// Single unit identifier: `m`, `s`, `kg`.
@@ -304,8 +290,7 @@ pub enum UnitExpr {
 }
 
 impl UnitExpr {
-    /// Flatten to a list of (unit_name, power) pairs.
-    /// `m/s^2` → `[("m", 1), ("s", -2)]`
+    /// Flatten to (unit_name, power) pairs.
     #[must_use]
     pub fn flatten(&self) -> Vec<(String, i32)> {
         match self {
@@ -345,15 +330,12 @@ impl UnitExpr {
         matches!(self, Self::Base(_))
     }
 
-    /// Canonical form: sort factors by name, combine like terms,
-    /// and render as `name^power * name^power / name^power`.
-    /// Two unit expressions that flatten to the same factors
-    /// produce the same canonical form.
-    /// `m/(s*s)` and `m/s^2` both produce `m^1/s^2`.
+    /// Canonical form: sorted, combined factors rendered as numerator/
+    /// denominator powers; equal-factor units converge (`m/(s*s)` and
+    /// `m/s^2` → `m^1/s^2`).
     #[must_use]
     pub fn canonical_form(&self) -> String {
         let mut factors = self.flatten();
-        // Combine like terms by name.
         factors.sort_by(|a, b| a.0.cmp(&b.0));
         let mut combined: Vec<(String, i32)> = Vec::new();
         for (name, power) in factors {
@@ -365,7 +347,6 @@ impl UnitExpr {
             }
             combined.push((name, power));
         }
-        // Split into positive (numerator) and negative (denominator) powers.
         let num: Vec<&(String, i32)> = combined.iter().filter(|(_, p)| *p > 0).collect();
         let den: Vec<&(String, i32)> = combined.iter().filter(|(_, p)| *p < 0).collect();
         let fmt_part = |parts: &[&(String, i32)]| -> String {
@@ -397,8 +378,7 @@ pub enum ExprKind {
     Float(String),
     Str(String),
     Bool(bool),
-    /// `1 ms`, `0 m`: numeric value with attached unit.
-    /// `9.81 [unit m/s^2]`: numeric value with compound unit bracket.
+    /// `1 ms`, `9.81 [unit m/s^2]`: numeric value with attached unit.
     Quantity {
         value: Box<Expr>,
         unit: UnitExpr,
@@ -445,9 +425,8 @@ pub enum ExprKind {
         kind: BinderKind,
         binders: Vec<Binder>,
         body: Box<Expr>,
-        /// B02: optional `if <condition>` guard clause on the binder.
-        /// When present, the fold only includes iterations where the
-        /// guard evaluates to true.
+        /// B02: optional `if <condition>` guard; the fold includes only
+        /// iterations where the guard evaluates true.
         guard: Option<Box<Expr>>,
     },
     /// `derivative(x)`, `∂(T) wrt x` (partial), `total(T) wrt t` (total).
@@ -456,21 +435,18 @@ pub enum ExprKind {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,
         kind: DerivativeKind,
-        /// Held-fixed set: variables held constant during differentiation.
-        /// `∂(H) wrt T holding p` — part of the term's identity (hash-relevant).
-        /// Different holding sets produce different terms.
+        /// Held-fixed variables; part of term identity (hash-relevant) —
+        /// different holding sets produce different terms.
         holding: Vec<Expr>,
     },
-    /// `solve(f) wrt x` — Newton's-method root-finding.
-    /// The parser creates `Solve { value, wrt: None }` and the `wrt`
-    /// postfix clause attaches `wrt: Some(...)`.
+    /// `solve(f) wrt x` — Newton's-method root-finding. The parser
+    /// starts with `wrt: None`; the `wrt` postfix clause fills it.
     Solve {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,
     },
-    /// `minimize(f) wrt x` or `maximize(f) wrt x` — gradient-descent
-    /// optimization.  `maximize` is true for `maximize`, false for
-    /// `minimize`.
+    /// `minimize(f) wrt x` / `maximize(f) wrt x` — gradient-descent
+    /// optimization; `maximize` selects which.
     Optimize {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,
@@ -491,35 +467,30 @@ pub enum ExprKind {
         value: Box<Expr>,
         condition: Box<Expr>,
     },
-    /// `unit of E` or `dimension of E` — compile-time query.
-    /// Returns the unit expression or named dimension of E.
-    /// Usable in `require`, `tests:`, and `expect`.
+    /// `unit of E` or `dimension of E` — compile-time query usable
+    /// in `require`, `tests:`, and `expect`.
     UnitQuery {
         kind: UnitQueryKind,
         expr: Box<Expr>,
     },
-    /// `limit x -> 0: f(x)` — limit as a claim (B04).
-    /// Not a computation; usable in `require`/`ensure`/`invariant`.
-    /// One-sided: `limit x -> 0+: f(x)` (FromAbove), `limit x -> 0-: f(x)` (FromBelow).
+    /// `limit x -> 0: f(x)` — limit as a claim (B04), not a computation;
+    /// one-sided via `0+`/`0-` (FromAbove/FromBelow).
     Limit {
         var: String,
         target: Box<Expr>,
         direction: LimitDirection,
         body: Box<Expr>,
     },
-    /// `sample_limit x -> 0: f(x)` — numerical limit approximation (B04).
-    /// A computation that samples the body at points approaching the target
-    /// and returns the best-estimate limit value.
+    /// `sample_limit x -> 0: f(x)` — numerical limit approximation (B04):
+    /// samples the body approaching the target, returns best estimate.
     SampleLimit {
         var: String,
         target: Box<Expr>,
         direction: LimitDirection,
         body: Box<Expr>,
     },
-    /// `cases x: | c1 => e1 | c2 => e2 | else => e3` (U1).
-    /// Lowers to nested conditional expressions.
-    /// The subject is optional (for readability; arm conditions are
-    /// full expressions, not pattern matches).
+    /// `cases x: | c1 => e1 | else => e2` (U1), lowers to nested
+    /// conditionals; subject optional, arms are full expressions.
     Cases {
         subject: Option<Box<Expr>>,
         arms: Vec<(Expr, Expr)>,

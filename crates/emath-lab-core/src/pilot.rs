@@ -1,11 +1,9 @@
 //! Real host pilot.
 //!
-//! A deterministic cache-router host integrating the selector, drift
-//! monitor and receipts end to end, with meaningful application metrics:
-//! hit rate, mean latency, correctness rate and fallback counts.
-//! Wall-clock values are injected (the pilot is a pure function of its
-//! inputs), and the host keeps serving under candidate failure by
-//! falling back to the baseline.
+//! Deterministic cache-router host integrating selector, drift monitor
+//! and receipts, with hit-rate/latency/correctness/fallback metrics.
+//! Wall-clock values are injected; candidate failure falls back to
+//! baseline and keeps serving.
 
 use std::collections::BTreeMap;
 
@@ -53,9 +51,8 @@ impl CachePilot {
         }
     }
 
-    /// Serves one keyed request with injected per-artifact latencies and
-    /// candidate correctness. A failed candidate returns the baseline
-    /// answer, records a fallback and keeps the host alive.
+    /// Serve one keyed request with injected latencies/correctness;
+    /// candidate failure falls back to baseline.
     pub fn serve(
         &mut self,
         key: &str,
@@ -157,8 +154,7 @@ impl CachePilot {
         self.monitor.alerts()
     }
 
-    /// Consumes the pilot state into a sealed decision receipt.
-    /// The experiment/protocol evidence comes from the caller.
+    /// Consume the pilot state into a sealed decision receipt.
     #[allow(clippy::too_many_arguments)]
     pub fn into_receipt(
         self,

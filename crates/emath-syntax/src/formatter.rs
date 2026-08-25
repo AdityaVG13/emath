@@ -1,10 +1,8 @@
 //! Canonical formatter.
 //!
-//! Idempotent, comment-preserving printer over the `SyntaxTree`. Layout is
-//! canonical (4-space indents, one statement per line); parentheses are
-//! re-introduced from the precedence table, so `parse(format(x))` equals
-//! `parse(x)` for every lossless-parsable `x`. Comments are retained at
-//! line-lead or trailing positions by span order.
+//! Idempotent, comment-preserving printer over the `SyntaxTree`: canonical
+//! layout, parentheses re-introduced from the precedence table so
+//! `parse(format(x))` == `parse(x)`. Comments retained by span order.
 
 use crate::token::Comment;
 use crate::tree::{
@@ -258,10 +256,7 @@ fn format_attribute(out: &mut String, attribute: &Attribute, level: usize) {
 }
 
 /// Section names whose parser dispatch requires the bare two-word head
-/// (`record Foo:`, `type Alias:`, `implement path.for.target:`). Every
-/// other section renders its generic in angle brackets
-/// (`evaluate <score>:`, `example <three_squared>:`), which the angle-head
-/// branch reparses identically.
+/// (the rest render generics in angle brackets, re-parsed identically).
 const BARE_GENERIC_SECTIONS: [&str; 7] = [
     "record",
     "variant",

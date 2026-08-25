@@ -40,18 +40,9 @@ pub enum FoldCombine {
     Or,
 }
 
-/// Edge policy for [`EmirOp::Stencil1d`]: how out-of-range stencil indices
-/// are resolved.
-///
-/// - `Clamp` replicates the nearest in-range cell (a first-order
-///   zero-gradient / insulated boundary).
-/// - `Neumann` mirrors the next interior cell across the boundary
-///   (`u[-1] = u[1]`, `u[n] = u[n-2]`): a second-order zero-gradient
-///   (insulated) boundary that enforces a vanishing central-difference
-///   gradient at the edge.
-/// - `Dirichlet { left, right }` holds the boundary at fixed values:
-///   out-of-range taps read `left` (below index 0) or `right` (above the
-///   last index).
+/// How out-of-range stencil indices resolve: `Clamp` (replicate the edge
+/// cell), `Neumann` (mirror the next interior cell), or `Dirichlet`
+/// (fixed boundary values). 2D admits only `Clamp`/`Neumann` in Phase 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EdgePolicy {
     Clamp,
@@ -65,8 +56,7 @@ pub enum EmirOp {
     ConstI64(i64),
     /// Complex constant (real, imaginary). B14.
     ConstComplex(f64, f64),
-    /// Boolean constant. Produced by the optimizer folding comparisons,
-    /// `IsFinite`, and boolean ops over constant operands.
+    /// Boolean constant; produced by optimizer folding.
     ConstBool(bool),
     LoadInput(u16),
     LoadState(u16),
@@ -76,11 +66,8 @@ pub enum EmirOp {
     F64Div(EmirValue, EmirValue),
     F64Pow(EmirValue, EmirValue),
     Neg(EmirValue),
-    /// Generic unary math builtin dispatched via BuiltinId registry.
-    /// Replaces 19 individual variants (Exp, Sin, Cos, ...).
+    /// Generic unary/binary math builtin via the `BuiltinId` registry.
     UnaryBuiltin(BuiltinId, EmirValue),
-    /// Generic binary math builtin dispatched via BuiltinId registry.
-    /// Replaces 5 individual variants (Hypot, Min, Max, Atan2, Mod).
     BinaryBuiltin(BuiltinId, EmirValue, EmirValue),
     Lt(EmirValue, EmirValue),
     Le(EmirValue, EmirValue),
@@ -122,23 +109,16 @@ pub enum EmirOp {
     VectorDot(EmirValue, EmirValue),
     VectorNorm(EmirValue),
     VectorLength(EmirValue),
-    /// 1D spatial stencil: `out[i] = sum_k weights[k] * input[i + k - center]`,
-    /// with out-of-range indices resolved by `edge`. Weights are fixed at
-    /// admission (e.g. `laplacian(u, dx)` lowers to weights `[1, -2, 1] / dx²`
-    /// with `center = 1`). Output length equals input length.
+    /// 1D convolution with fixed weights and an edge policy; output length
+    /// equals input length.
     Stencil1d {
         input: EmirValue,
         weights: Vec<f64>,
         center: usize,
         edge: EdgePolicy,
     },
-    /// 2D spatial stencil: `out[r][c] = sum_{kr,kc} weights[kr*3+kc] *
-    /// input[r+kr-cr, c+kc-cc]`, with out-of-range indices resolved by
-    /// `edge`. Weights are the 3x3 tap (row-major, length 9), fixed at
-    /// admission (e.g. `laplacian_2d(u, dx)` lowers to the 5-point
-    /// stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` with `center = (1,1)`).
-    /// Output shape equals input shape. `Dirichlet` is not admitted for
-    /// 2D in Phase 1 (use Clamp or Neumann).
+    /// 2D 3x3 stencil convolution (row-major weights, length 9); output
+    /// shape equals input shape. `Dirichlet` is not admitted in Phase 1.
     Stencil2d {
         input: EmirValue,
         weights: Vec<f64>,
@@ -165,37 +145,22 @@ pub enum EmirOp {
     },
     TensorAdd(EmirValue, EmirValue),
     TensorSub(EmirValue, EmirValue),
-    /// `einsum("ik,kj->ij", A, B)` — Einstein summation contraction.
-    /// `subscripts` is the subscript string (e.g., "ik,kj->ij").
-    /// `inputs` are the operand value IDs. The interp parses the
-    /// subscripts, determines index sizes from operand shapes, and
-    /// computes the contracted result.
+    /// Einstein summation over the given subscripts (e.g. `"ik,kj->ij"`).
     Einsum {
         subscripts: String,
         inputs: Vec<EmirValue>,
     },
-    /// `factorial(n)` — exact i64 factorial. B15/B17.
+    /// Exact i64 factorial / modular inverse / congruence check.
     Factorial(EmirValue),
-    /// `mod_inv(a, m)` — modular inverse via extended GCD. B15.
     ModInv(EmirValue, EmirValue),
-    /// `cong(a, b, m)` — congruence check: (a - b) % m == 0. B15.
     Congruence(EmirValue, EmirValue, EmirValue),
-    /// `poly_eval_mod(coeffs, x, p)` — Horner-method polynomial
-    /// evaluation over GF(p). `coeffs` is a Vector of i64 coefficients
-    /// (c[0] + c[1]*x + ... + c[k-1]*x^(k-1)), `x` and `p` are i64.
-    /// Returns i64 result mod p. For RS code construction.
+    /// Horner polynomial evaluation over GF(p) / Reed-Solomon encode /
+    /// Hamming distance (RS proximity machinery).
     PolyEvalMod(EmirValue, EmirValue, EmirValue),
-    /// `rs_encode(coeffs, n, p)` — construct Reed-Solomon codeword by
-    /// evaluating polynomial at points 0..n over GF(p). Returns Vector
-    /// of n i64-as-f64 values. For RS proximity testing.
     RSEncode(EmirValue, EmirValue, EmirValue),
-    /// `hamming_distance(a, b)` — count positions where two vectors
-    /// differ. Returns i64. For RS proximity testing.
     HammingDistance(EmirValue, EmirValue),
-    /// Runtime fold (sum/product/forall/exists) over a variable-bound
-    /// integer range.  `body` is a sub-program evaluated once per
-    /// iteration with the loop variable supplied as an extra input at
-    /// `loop_var_index`.
+    /// Fold sum/product/forall/exists over an integer range; `body` runs
+    /// once per iteration with the loop variable as an extra input.
     Fold {
         start: EmirValue,
         end: EmirValue,
@@ -204,10 +169,8 @@ pub enum EmirOp {
         loop_var_index: u16,
         body: EmirProgram,
     },
-    /// Numerical integration (composite Simpson's rule) over a continuous
-    /// range.  `integrand` is a sub-program evaluated at each sample
-    /// point with the integration variable supplied as an extra input at
-    /// `loop_var_index`.  `steps` must be even.
+    /// Composite Simpson integration; `integrand` runs per sample point,
+    /// `steps` must be even.
     Integral {
         start: EmirValue,
         end: EmirValue,
@@ -215,29 +178,19 @@ pub enum EmirOp {
         loop_var_index: u16,
         integrand: EmirProgram,
     },
-    /// Forward-mode autodiff.  Evaluates `body` with dual numbers,
-    /// seeding the input at `var_index` with tangent 1.0.  Returns the
-    /// tangent (derivative) of the body's result.
+    /// Dual-number forward-mode derivative of `body` w.r.t. `var_index`.
     Differentiate {
         body: EmirProgram,
         var_index: u16,
     },
-    /// Newton's-method root-finding.  Iteratively adjusts the input at
-    /// `var_index` until `body` (the residual) is within `tolerance` of
-    /// zero.  Each iteration uses dual-number evaluation for both the
-    /// residual value and its derivative.  Returns the converged input
-    /// value.
+    /// Newton root-finding on `body` (the residual) w.r.t. `var_index`.
     Solve {
         body: EmirProgram,
         var_index: u16,
         tolerance: f64,
         max_iter: u32,
     },
-    /// Gradient-descent optimization.  Iteratively adjusts the inputs at
-    /// `var_indices` to minimize (or maximize when `maximize` is true)
-    /// `body` (the objective).  Uses dual-number evaluation for the
-    /// gradient (one pass per variable).  Returns the first converged
-    /// input value; all variables are updated in place each iteration.
+    /// Gradient descent (or ascent) over `body` w.r.t. `var_indices`.
     Optimize {
         body: EmirProgram,
         var_indices: Vec<u16>,
@@ -246,22 +199,16 @@ pub enum EmirOp {
         tolerance: f64,
         max_iter: u32,
     },
-    /// Numerical limit approximation (B04).  Evaluates `body` with the
-    /// input at `var_index` set to sample points approaching `target`
-    /// from the given `direction` (0 = two-sided, +1 = from above,
-    /// -1 = from below).  Returns the best-estimate limit as F64.
+    /// Numerical limit: sample `body` approaching `target` from
+    /// `direction` (0 = two-sided, +1 = above, -1 = below).
     SampleLimit {
         body: EmirProgram,
         var_index: u16,
         target: EmirValue,
         direction: EmirValue,
     },
-    /// Reverse-mode autodiff (adjoint method).  Evaluates `body` in a
-    /// forward pass, then computes gradients w.r.t. all specified input
-    /// indices in a single backward pass.  Returns a Vector of gradients
-    /// (one per var index).  Efficient for scalar functions of many
-    /// inputs: O(cost) regardless of input count, vs O(N * cost) for
-    /// forward-mode.
+    /// Adjoint-method reverse AD: one forward + one backward pass gives
+    /// gradients w.r.t. all `var_indices` at O(cost).
     ReverseMode {
         body: EmirProgram,
         var_indices: Vec<u16>,

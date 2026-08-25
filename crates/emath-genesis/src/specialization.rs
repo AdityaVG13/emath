@@ -1,8 +1,7 @@
 //! Deterministic specialization cache keyed by [`WorldId`].
 //!
-//! Semantic JIT (SG-17) may cache a specialized artifact against the
-//! world it was compiled for. [`SpecializationCache::challenge`] refuses
-//! reuse when the presented identity differs from the bound identity.
+//! [`SpecializationCache::challenge`] refuses reuse when the presented
+//! identity differs from the bound identity.
 
 use std::collections::BTreeMap;
 
@@ -13,11 +12,11 @@ use emath_world_ir::WorldId;
 pub enum SpecializationChallenge {
     /// No specialization is stored for this world.
     Missing { world: WorldId },
-    /// Presented identity is not the identity the artifact was specialized against.
+    /// Presented identity differs from the bound one.
     IdentityChanged { bound: WorldId, presented: WorldId },
 }
 
-/// Hit / miss / challenge counters. Deterministic for a given operation sequence.
+/// Hit/miss/challenge counters, deterministic per operation sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SpecializationStats {
     pub hits: u64,
@@ -25,7 +24,7 @@ pub struct SpecializationStats {
     pub challenges: u64,
 }
 
-/// Process-local cache of specialized artifacts keyed by compiled-against [`WorldId`].
+/// Process-local cache keyed by compiled-against [`WorldId`].
 #[derive(Debug, Clone)]
 pub struct SpecializationCache<T> {
     entries: BTreeMap<WorldId, T>,
@@ -70,7 +69,7 @@ impl<T> SpecializationCache<T> {
         }
     }
 
-    /// Reuse the artifact bound to `bound` only when `presented` is the same [`WorldId`].
+    /// Reuse the artifact bound to `bound` only when `presented` matches.
     pub fn challenge(
         &mut self,
         bound: WorldId,

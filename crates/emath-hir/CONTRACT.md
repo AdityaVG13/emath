@@ -57,9 +57,10 @@ None.
 
 ## Conformance tests
 
-- `tests/registry_complete.rs`: integration test present on disk.
-- `open.rs`: `requests_section_is_refused_with_goals_migration_hint`.
-- `migrate.rs`: `migrate_maps_singular_request_to_goals`.
+- `crates/emath-hir/tests/registry_complete.rs`: integration test present on disk.
+- Workspace suites at `tests/emath-hir`: `tests/open.rs`
+  (`requests_section_is_refused_with_goals_migration_hint`) and
+  `tests/migrate.rs` (`migrate_maps_singular_request_to_goals`).
 
 ## No-claim boundaries
 

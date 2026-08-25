@@ -1,9 +1,8 @@
 //! Automatic demotion.
 //!
-//! The supervisor watches monitored observations through the drift
-//! monitor; on any drift alert a promoted/canary candidate is demoted to
-//! the baseline (typed `E-HOST-010` reason), otherwise the incumbent
-//! stays. Rollback under injected drift is demonstrated by the tests.
+//! Watches observations through the drift monitor; on any alert a
+//! promoted/canary candidate demotes to baseline (`E-HOST-010`),
+//! otherwise the incumbent stays.
 
 use crate::drift::{DriftAlert, DriftKind, DriftMonitor};
 use crate::promotion::{PromotionOutcome, PromotionReason};
@@ -47,8 +46,8 @@ impl Supervisor {
         Self { selector, monitor }
     }
 
-    /// Runs one tick: any matching drift alert demotes the candidate to
-    /// baseline; otherwise the outcome stays as the selector's.
+    /// Run one tick: any matching alert demotes the candidate, else the
+    /// selector's outcome stays.
     pub fn tick(&mut self, observations: &[Observation]) -> TickOutcome {
         let mut alerts = Vec::new();
         for observation in observations {

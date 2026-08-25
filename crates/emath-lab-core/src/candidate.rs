@@ -1,15 +1,14 @@
 //! Candidate generation loop.
 //!
-//! Human/AI/evolutionary proposers hand candidates through the
-//! compiler, evidence gates and lab into a Pareto archive. The proposer
-//! never promotes: promotion is exclusively the policy engine's job
-//! (a candidate whose gate is closed is refused with `E-HOST-005`).
+//! Proposers hand candidates through evidence gates into a Pareto
+//! archive. The proposer never promotes; a candidate with a closed gate
+//! is refused (`E-HOST-005`).
 
 use crate::error::LabError;
 use crate::manifest::ArtifactRef;
 
-/// A measured candidate on one metric vector (lower is better on every
-/// metric; direction normalization happens before the archive).
+/// A measured candidate; lower is better on every metric (direction
+/// normalization happens before the archive).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Candidate {
     /// Sealed artifact.
@@ -18,9 +17,8 @@ pub struct Candidate {
     pub metrics: Vec<(String, f64)>,
 }
 
-/// True when `left` dominates `right`: no worse on every shared metric
-/// and strictly better on at least one. Candidates without shared
-/// metrics never dominate each other.
+/// `left` dominates `right`: no worse on every shared metric, strictly
+/// better on at least one. No shared metrics → no domination.
 #[must_use]
 pub fn dominates(left: &Candidate, right: &Candidate) -> bool {
     let left_by_id: Vec<(&String, f64)> = left
@@ -58,7 +56,7 @@ pub struct ParetoArchive {
 }
 
 impl ParetoArchive {
-    /// Adds a gated, measured candidate; returns whether it entered the
+    /// Add a gated, measured candidate; returns whether it entered the
     /// (possibly shrunk) front.
     pub fn add(&mut self, candidate: Candidate) -> bool {
         if self
@@ -100,9 +98,8 @@ impl CandidateLoop {
         Self::default()
     }
 
-    /// Gate-then-archive step: the proposed candidate is refused with
-    /// `E-HOST-005` unless its evidence gate passed. Returns whether the
-    /// candidate entered the Pareto front.
+    /// Gate-then-archive; a gate-failing candidate refuses
+    /// (`E-HOST-005`). Returns whether it entered the front.
     pub fn propose(&mut self, candidate: Candidate, gate_passed: bool) -> Result<bool, LabError> {
         if !gate_passed {
             return Err(LabError::new(

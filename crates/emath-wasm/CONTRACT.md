@@ -5,6 +5,7 @@
 - Host-side WASM engine for the in-browser emath demo.
 - Compiles the real compiler pipeline (`emath-syntax` -> `emath-sema` -> `emath-ir` -> `emath-rust-backend`) to `wasm32-unknown-unknown`.
 - Exposes a tiny hand-rolled C ABI (`em_alloc` / `em_free` / `em_run` / `em_init`). No wasm-bindgen, no serde, no filesystem.
+- Depends on `emath-artifact` (JSON document parse/serialize) and `emath-exec-ir` (Tier-0 interpreter behind the `run` op) in addition to the pipeline crates.
 
 ## Public types and semantics
 
@@ -82,19 +83,19 @@
 
 ## Conformance tests
 
-- Native unit tests in `src/lib.rs`: version shape; check on hello-square; check on a known-bad source; MIG canonical stability; generate files; unknown-op refusal; JSON escaping; `run` on hello-square (pass), affine scorer with constructor+state, failing expect, error-source diagnostics, expect-less worked example (`given x = 4` → `y = 16.0`, `computed: 1`), head-args `square(x: Float64) -> Float64` (`given x = 4` → `square = 16.0`, free-fn generate), constant-only `TwentyOne` (`y = 3 * 7` → `y = 21.0`), bare `y = x * x` (admits, `N-TYPE-001`, `desugared_source`), bare `a = 2` / `b = a * a` (computes `b = 4` with no `tests:` section), `run` envelope `given x = 5` on Square (`y = 25`, `_pane`), and envelope missing `x` (typed refusal).
+- Native unit tests in `src/lib.rs`: `version_op_shape`; `check_hello_square_admits`; `check_bad_source_surfaces_code`; `mig_canonical_contains_goal_and_is_stable`; `generate_hello_square_files`; `unknown_op_refuses`; `json_escaping_survives_quotes_backslashes_newlines`; `curated_non_demo_examples_admit` (every curated embed admits with zero errors); `run` on hello-square (pass), affine scorer with constructor+state (`run_affine_scorer_constructor_state`), `run_failing_expect_counts_failed`, `run_error_source_surfaces_diagnostics`, expect-less worked example (`run_worked_example_computes_without_expect`), head-args `square(x: Float64) -> Float64` (`run_head_args_square_computes_sixteen`, `generate_head_args_square_emits_free_function`), constant-only `TwentyOne` (`run_twenty_one_constant_only`), bare `y = x * x` (`check_bare_square_desugars_and_admits` with `N-TYPE-001` + `desugared_source`), bare `a = 2` / `b = a * a` (`run_bare_constants_computes_without_tests_section`), `run` envelope `given x = 5` on Square (`run_envelope_given_square_computes`, `_pane`), envelope missing `x` (typed refusal `run_envelope_missing_binding_refuses`), and the newer capability lanes: vector/factorial/range-sum/forall-exists/integral/autodiff/solve/optimize/constrained-opt (`run_vector_given_computes`, `run_factorial_inclusive_computes`, `run_range_sum_computes`, `run_forall_exists_computes`, `run_integral_computes`, `run_autodiff_computes`, `run_solve_computes`, `run_optimize_computes`, `run_constrained_opt_computes`, `run_tensor_face_serializes_matrix`, `run_finite_sum_is_fifteen`) plus `parity_transcendentals_bit_exact` (Tier-1 arithmetic parity with the generated Rust class).
 
 ## No-claim boundaries
 
 - Not a sandbox: the wasm runtime is assumed; this crate does not isolate the host.
 - No filesystem, network, or clock. `generate` is in-memory only (`emath-rust-backend`); it does not invoke `emath-build` or `cargo`.
 - No claim that generated Rust is compiled or executed in the browser. `run` is the Tier-0 interpreter (strict-f64), not the compiled crate.
-- No claim that every language example admits. Curated embeds are the
-  language/examples sources that check with zero errors
-  (`hello-square`, `stateful-affine-scorer`,
-  `parametric-unknown-operator`) plus one intentional diagnostics demo.
-  `cache-policy` and `tensor-program` exist but do not admit on this
-  pipeline, so they are not embedded. `sum-one-to-five` and
-  `tensor-face` do admit and are embedded.
+- No claim that every language example admits. The 14 curated embeds are
+  `hello-square`, `stateful-affine-scorer`, `sum-one-to-five`, `tensor-face`,
+  `vector-given`, `factorial`, `range-sum`, `forall-exists`, `integral`,
+  `autodiff`, `solve`, `optimize`, `constrained-opt`, plus the intentional
+  Tutorial 6 diagnostics demo; `curated_non_demo_examples_admit` proves each
+  non-demo embed admits with zero errors. `cache-policy` and `tensor-program`
+  do not admit on this pipeline, so they are not embedded.
 - Bare-expression wrap is playground-only. A `.emath` file without an
   `emath …:` header is still refused by the CLI / `emath-syntax` parser.

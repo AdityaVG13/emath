@@ -1,12 +1,8 @@
 //! G0: custom-world genesis grammar.
 //!
-//! Parses `emath custom` declarations (see
-//! `language/grammar/genesis.ebnf` and
-//! `language/examples/integration/arbitrary-glyphs.emath`). The parser is UTF-8
-//! byte-exact: glyphs (including non-ASCII identifier bytes) are preserved
-//! verbatim into [`GenesisFile::body_text`] for the forest stage. Malformed
-//! sections are recovered: parsing continues, every problem is reported as a
-//! typed [`GenesisError`], and the function never panics on user input.
+//! UTF-8 byte-exact: glyphs are preserved verbatim into
+//! [`GenesisFile::body_text`] for the forest stage. Malformed sections are
+//! recovered into typed [`GenesisError`]s; never panics on user input.
 
 use emath_core::limits::Limits;
 
@@ -57,11 +53,8 @@ enum Mode {
     Skip,
 }
 
-/// Parses a genesis source into a [`GenesisFile`].
-///
-/// `limits` bounds source size and token budget; every violation yields a typed
-/// error instead of a panic. Returns `Err` with all recovered errors when any
-/// section is malformed.
+/// Parses a genesis source into a [`GenesisFile`]; `limits` bound source size
+/// and token budget, with all recovered errors returned on malformed input.
 pub fn parse_genesis(text: &str, limits: &Limits) -> Result<GenesisFile, Vec<GenesisError>> {
     let mut errors = Vec::new();
     if let Err(max) = limits.check_source(text.len()) {

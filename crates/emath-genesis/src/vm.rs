@@ -2,13 +2,10 @@
 //! for first-order terms with step metering, a deterministic trace and
 //! continuation-ready state.
 //!
-//! The VM computes exactly what the recursive [`crate::evaluate`] computes
-//! (proven by a differential test) but as a machine with owned state: a
-//! frame stack and a value stack. Metering charges one step per processed
-//! frame; when the per-run budget is exhausted mid-term the machine
-//! suspends into a [`VmContinuation`] that resumes losslessly with a fresh
-//! budget. Errors are typed ([`EvalError`] or the world's own error), never
-//! stringly encoded.
+//! Owned frame/value stacks; computes exactly what [`crate::evaluate`]
+//! computes. One step per processed frame; budget exhaustion suspends
+//! into a [`VmContinuation`] that resumes losslessly. Errors are typed,
+//! never stringly encoded.
 
 use crate::{Environment, EvalError, FirstOrderWorld};
 use emath_term::{SymbolId, Term, VariableId};
@@ -19,8 +16,7 @@ pub const VM_SCHEMA: &str = "emath.vm";
 /// VM schema version.
 pub const VM_SCHEMA_VERSION: u32 = 1;
 
-/// Per-run step budget. Metering is per `run`/`resume` call; total steps
-/// accumulate across resumes on the machine state.
+/// Per-run step budget; total steps accumulate across resumes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VmBudget {
     /// Maximum frames processed in one run.
@@ -28,8 +24,7 @@ pub struct VmBudget {
 }
 
 impl VmBudget {
-    /// The genesis seed lane default: generous for seed terms, still a
-    /// hard ceiling so evaluation can never run away.
+        /// Genesis seed-lane default: generous for seed terms, a hard ceiling.
     #[must_use]
     pub const fn seed_default() -> Self {
         Self { max_steps: 4096 }
@@ -105,8 +100,7 @@ enum Frame {
     Apply { operator: SymbolId, arity: usize },
 }
 
-/// Owned machine state: continuation-ready by construction (no borrows
-/// into the input term survive in the state).
+/// Owned machine state, continuation-ready by construction.
 #[derive(Clone, Debug, PartialEq)]
 pub struct VmState<V> {
     frames: Vec<Frame>,

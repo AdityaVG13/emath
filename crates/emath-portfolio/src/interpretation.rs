@@ -1,10 +1,8 @@
-//! G7 interpretation portfolios: integer ranking, Pareto archive,
-//! selection with an explicit collapse gate, disqualification ledger,
-//! and byte-identical receipt replay.
+//! G7 interpretation portfolios: integer ranking, Pareto archive, an explicit
+//! collapse gate, disqualification ledger, and byte-identical receipt replay.
 //!
-//! Authority never escalates: ranking and selection copy
-//! [`WorldCandidate::labeled_authority`], which must already be `<=`
-//! evidence authority.
+//! Authority never escalates: ranking/selection copy
+//! [`WorldCandidate::labeled_authority`], which must be `<=` evidence authority.
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,14 +18,9 @@ pub const RECEIPT_SCHEMA: &str = "emath.interpretation-portfolio-receipt";
 /// Receipt layout version. Bump on any change to [`PortfolioReceipt::encode`].
 pub const RECEIPT_VERSION: u32 = 1;
 
-/// Documented lexicographic ranking key (total order; integer metrics only):
-///
-/// 1. `evidence_authority` descending (`Proved > Certified > Tested > Structural`)
-/// 2. each declared metric axis in declaration order:
-///    `Maximize` → larger `i64` first; `Minimize` → smaller `i64` first
-/// 3. `world_fingerprint` ascending (bit-exact tie-break)
-/// 4. `provider_id` ascending
-/// 5. `artifact_hash` ascending
+/// Lexicographic ranking key (total order; integer metrics only): authority
+/// descending, declared axes (`Maximize` larger first, `Minimize` smaller
+/// first), then fingerprint, provider, artifact ascending.
 pub const RANKING_KEY_SPEC: &str =
     "authority.desc,axes.declared,fingerprint.asc,provider.asc,artifact.asc";
 

@@ -1,20 +1,9 @@
 //! Recognition-level admission (corpus front-end).
 //!
-//! Implements the semantic doors that the corpus harness reaches after
-//! the parser lane: package identity, `use` imports, declaration-kind
-//! admission (`function`, `record`, `policy`, `model`, `kind`, `search`,
-//! `experiment`, `type`, `extern operator`, and kind applications), the
-//! custom-kind schema registry, and per-kind structural validation of
-//! sections and statements.
-//!
-//! Every recognized construct is recorded (package metadata, import
-//! entries, trace entries per statement). Anything outside the recognized
-//! The surface receives a typed refusal; nothing is silently dropped.
-//!
-//! Scope note: body expressions are validated structurally and recorded as
-//! canonical trace text; typed SIR lowering (typed expression arenas,
-//! constructor/dependency records) is the intent-compiler lane and stays
-//! open there.
+//! Package identity, `use` imports, declaration-kind admission, the
+//! custom-kind schema registry, and per-kind structural validation.
+//! Out-of-subset constructs get a typed refusal; body expressions are
+//! validated structurally (typed SIR lowering is the intent-compiler lane).
 
 use crate::admit::SemanticTrace;
 use emath_core::Diagnostics;
@@ -431,9 +420,6 @@ fn package_entry(decl: &Declaration, kind: &str) -> emath_ir::Declaration {
 
 /// Validate a declaration body against its kind's section rules, emitting
 /// trace entries for every recognized statement.
-///
-/// Fields, definitions, and constructors are recorded as trace entries;
-/// typed SIR lowering is the intent-compiler lane.
 fn validate_body(
     decl: &Declaration,
     rules: &[SectionRule],

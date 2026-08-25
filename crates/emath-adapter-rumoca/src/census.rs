@@ -56,11 +56,8 @@ pub struct PhaseRecord {
     pub note: &'static str,
 }
 
-/// Canonical census table (stable order, never sorted at runtime).
-///
-/// Phase 1 consumes no upstream Rumoca fork: the in-tree adapter drives
-/// native stand-ins only, so no phase is `Stable` and none is marked
-/// `public_contract`.
+/// Canonical census table (stable order, never sorted at runtime). Phase 1
+/// uses native stand-ins only, so no phase is `Stable` or `public_contract`.
 pub const PHASES: [PhaseRecord; 9] = [
     PhaseRecord {
         kind: PhaseKind::Parse,

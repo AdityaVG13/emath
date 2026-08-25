@@ -245,11 +245,9 @@ impl MeaningLock {
         project_root.join(LOCK_DIR).join(LOCK_FILE_NAME)
     }
 
-    /// Walks from `start` (file or directory) to a project root.
-    ///
-    /// A directory that contains `.emath/` or `emath-package.toml` wins;
-    /// otherwise the source file's parent is used so a lock can live next
-    /// to a lone genesis file.
+    /// Walks from `start` to a project root: a directory containing
+    /// `.emath/` or `emath-package.toml` wins, else the source-file parent
+    /// (so a lock can live next to a lone genesis file).
     #[must_use]
     pub fn discover_project_root(start: &Path) -> PathBuf {
         let mut current = if start.is_file() {

@@ -1,9 +1,7 @@
 //! Dew capability census and optimization evidence.
 //!
-//! The capability descriptor is machine-readable and deterministic.
-//! Backends not listed in the inventory are never claimed; promoted
-//! optimizations require a certificate, a trusted rule inventory or
-//! per-artifact differential validation.
+//! Deterministic, machine-readable capability descriptor; backends not
+//! listed in the inventory are never claimed.
 
 use crate::backends::AcceleratorTarget;
 

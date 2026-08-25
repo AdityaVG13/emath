@@ -23,7 +23,7 @@ pub fn dispatch(args: &[String]) -> u8 {
     }
 }
 
-/// If a lock file exists next to `source`, it must parse. Missing is fine.
+/// Refuse when an existing lock file next to `source` does not parse.
 pub fn refuse_malformed_project_lock(source: &Path) -> Option<u8> {
     let root = MeaningLock::discover_project_root(source);
     match MeaningLock::load(&root) {
@@ -401,7 +401,7 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Shared lock resolution used by genesis/eval/compile.
+/// Shared lock resolution for genesis/eval/compile.
 pub(crate) fn resolve_locked_worlds(
     path: &Path,
     analysis: &Analysis,

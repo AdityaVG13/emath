@@ -49,7 +49,7 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-- `lib.rs` `artifact_class_tests`: seven-class token round-trip, per-class package inventories, manifest schema/version pin.
+- `tests/emath-artifact/tests/artifact_class.rs`: seven-class token round-trip, per-class package inventories, manifest schema/version pin (moved out of the crate's `lib.rs`).
 - Workspace-level integration suites live in `tests/emath-artifact` (publish durability, schema lanes, checker identity, battery seed).
 
 ## No-claim boundaries

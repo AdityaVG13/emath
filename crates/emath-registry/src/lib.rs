@@ -2,22 +2,9 @@
 
 //! Package/provider registry slice.
 //!
-//! A std-only, deterministic index/lock model:
-//!
-//! - [`IndexSnapshot`] holds package name → version → [`PackageVersion`]
-//!   records (kind schemas, provider descriptors, yanked/revoked state,
-//!   license/security metadata, evidence summary, artifact links);
-//! - [`IndexSnapshot::canonical_json`] renders a byte-stable document and
-//!   [`IndexSnapshot::snapshot_id`] fingerprints it with the shared
-//!   FNV-1a64 (`emath_core`);
-//! - [`Resolver`] picks versions deterministically and refuses yanked or
-//!   revoked pins; [`RegistryLock`] verifies that a pinned snapshot is
-//!   reproducible offline;
-//! - [`check_kind_schema`] / [`check_provider_capability`] emit typed
-//!   compatibility diagnostics.
-//!
-//! Registry *services* are not implemented; this slice is the reproducible
-//! index+lock core with tests on both sides of every refusal.
+//! Deterministic index/lock core: [`IndexSnapshot`] holds package records,
+//! [`RegistryLock`] pins reproducible snapshots, refusals are typed
+//! (`E-REG-0xx`). Registry services are not implemented.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -34,32 +21,24 @@ pub const LOCK_SCHEMA: &str = "emath.registry-lock";
 pub struct PackageVersion {
     /// Version string (compared lexicographically; documented limitation).
     pub version: String,
-    /// Content id of the package source.
     pub content_id: String,
-    /// Source location (path or URI).
     pub source_location: String,
-    /// Custom-kind schemas this version provides.
     pub kind_schemas: Vec<String>,
-    /// Provider capability ids this version can serve.
     pub provider_descriptors: Vec<String>,
     /// Yanked: removed from new resolution (typed refusal).
     pub yanked: bool,
     /// Revoked: withdrawn with prejudice (typed refusal).
     pub revoked: bool,
-    /// Package license expression.
     pub license: String,
     /// Security notes (CVE ids or vendor advisories).
     pub security_notes: Vec<String>,
-    /// Evidence summary pointer.
     pub evidence_summary: String,
-    /// Artifact link (optional).
     pub artifact_link: Option<String>,
 }
 
 /// A reproducible registry snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexSnapshot {
-    /// Package name → version string → record.
     pub packages: BTreeMap<String, BTreeMap<String, PackageVersion>>,
 }
 
@@ -162,22 +141,17 @@ impl Default for IndexSnapshot {
 /// Version selection constraint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constraint {
-    /// Newest usable version.
     Any,
-    /// A specific version.
     Exact(String),
-    /// Newest usable version with this major number.
     Major(u64),
 }
 
 /// A reproducible lock: snapshot fingerprint + pinned versions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryLock {
-    /// Schema of the lock document.
     pub schema: String,
     /// Snapshot fingerprint this lock was built against.
     pub snapshot_id: u64,
-    /// Package name → pinned version.
     pub pins: BTreeMap<String, String>,
 }
 
@@ -212,8 +186,7 @@ impl RegistryLock {
         out
     }
 
-    /// Verifies the lock against a snapshot: fingerprint must match and
-    /// every pin must resolve. This is the "lock reproduces offline" gate.
+    /// Verifies the lock: fingerprint must match and every pin must resolve.
     pub fn verify(&self, snapshot: &IndexSnapshot) -> Result<(), RegistryError> {
         if self.snapshot_id != snapshot.snapshot_id() {
             return Err(RegistryError::new(
@@ -249,9 +222,7 @@ fn major_of(version: &str) -> Option<u64> {
 /// A typed registry error; codes are stable (E-REG-0xx).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryError {
-    /// Stable code.
     pub code: &'static str,
-    /// Human-readable message.
     pub message: String,
 }
 

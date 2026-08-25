@@ -102,13 +102,15 @@ runtime.
 
 ## Conformance tests
 
-- lib.rs (always): schema DDL determinism; claim-status validation boundaries.
-- store.rs (cfg(all(test, feature = "sqlite-store"))): happy-path round trip
-  with out-of-order seq; empty evidence + boundary seq (negative); bad status
-  and missing-artifact (FK) rejection; open failure; identical writes across
-  two fresh stores and reopen; verify_manifest pass; verify mismatch (wrong
-  status) fails; failed transaction (bad status mid-batch) rolls back all
-  writes; successful batch transaction commits; full EvidenceRow records
+- `tests/emath-store/tests/lib.rs` (always): schema DDL determinism
+  (`schema_is_deterministic_ddl`); claim-status validation boundaries
+  (`claim_status_validation_boundaries`).
+- `src/store.rs` (cfg(all(test, feature = "sqlite-store"))): happy-path round
+  trip with out-of-order seq; empty evidence + boundary seq (negative); bad
+  status and missing-artifact (FK) rejection; open failure; identical writes
+  across two fresh stores and reopen; verify_manifest pass; verify mismatch
+  (wrong status) fails; failed transaction (bad status mid-batch) rolls back
+  all writes; successful batch transaction commits; full EvidenceRow records
   equality.
 
 ## No-claim boundaries

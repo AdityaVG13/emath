@@ -16,17 +16,9 @@ struct NewtonUnknown {
 }
 
 /// Solve a model's implicit residual system at the current state.
-///
-/// Causalization: every equation that is not an explicit rate or an
-/// algebraic definition is a residual `left - right`. The unknowns are the
-/// declaration's `algebraic:` variables (guesses from `inputs`) plus the
-/// implicit state rates `der(x)`. Newton's method iterates
-/// `x -= J⁻¹ F(x)`; the Jacobian comes from forward differences (one
-/// residual evaluation per unknown component), so residuals may mix any
-/// builtin function and vector shapes.
-///
-/// Returns the solved algebraic values (fed back into definitions) and
-/// the solved rate values keyed as `der_<state>`.
+/// Unknowns are `algebraic:` vars plus implicit rates `der(x)`; Newton
+/// iterates `x -= J⁻¹ F(x)` with a forward-difference Jacobian. Returns
+/// solved algebraic values and `der_<state>` rates.
 pub(super) fn causal_newton(
     package: &SemanticPackage,
     declaration: &Declaration,

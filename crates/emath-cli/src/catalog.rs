@@ -136,7 +136,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
     })
 }
 
-/// Closest known command for a typo, if the edit distance is small.
+/// Closest known command for a typo, if edit distance is small.
 #[must_use]
 pub fn suggest_command(unknown: &str) -> Option<&'static str> {
     let needle = unknown.trim_start_matches('-');
@@ -340,8 +340,8 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<u8> {
             return Some(2);
         }
         if flag_takes_value(arg) {
-            // Value-taking flags at EOL previously advanced off the end and
-            // fell through to silent defaults (e.g. `agent build f --out`).
+            // Value-taking flags at EOL used to fall through to silent
+            // defaults (e.g. `agent build f --out`).
             if index + 1 >= args.len() {
                 eprintln!("error: `{arg}` needs a value for `emath {command}`");
                 if let Some(usage) = command_usage(command) {

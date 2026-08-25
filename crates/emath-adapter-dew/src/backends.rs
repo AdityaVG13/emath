@@ -1,16 +1,6 @@
-//! Breadth backends.
-//!
-//! - Rust source backend: deterministic Rust fragments with per-node
-//!   source anchors and a bounded syntax sanity check.
-//! - Token-stream backend: deterministic token lists for proc-macro /
-//!   build integration with identical semantics (the joined text of
-//!   the token stream is the fragment text).
-//! - Cranelift JIT capability: explicit target, runtime
-//!   evidence-scoped execution, fallback to generated/native
-//!   interpretation.
-//! - Accelerator inventory: only explicitly admitted subsets with
-//!   declared target/numeric semantics and device transfer plans;
-//!   CUDA/HIP/OpenCL are inventoried but not admitted.
+//! Breadth backends: deterministic Rust fragments and token streams, a
+//! Cranelift JIT capability with fallback, and an accelerator inventory
+//! (WGSL/GLSL admitted; CUDA/HIP/OpenCL inventoried but not admitted).
 
 use crate::dexpr::DewExpr;
 
@@ -127,8 +117,7 @@ pub struct JitCapability {
     pub fallback: String,
 }
 
-/// Device transfer plan for an admitted accelerator subset
-///.
+/// Device transfer plan for an admitted accelerator subset.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeviceTransferPlan {
     /// Host-to-device staging.

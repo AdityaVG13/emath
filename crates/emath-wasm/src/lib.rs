@@ -164,11 +164,8 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-/// Dispatch one engine op. `payload` is `.emath` source unless the op
-/// ignores it (`version`, `examples`) or is `run` (raw source or a JSON
-/// envelope with `source` + optional `given`).
-///
-/// The returned string is one JSON object with deterministic field order.
+/// Dispatch one engine op; `payload` is `.emath` source unless the op ignores
+/// it, and the reply is one JSON object with deterministic field order.
 #[must_use]
 pub fn run_op(op: &str, payload: &str) -> String {
     install_source_parser();

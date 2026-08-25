@@ -6,7 +6,7 @@
 - Semantic admission (Phase 1): syntax tree to typed neutral SIR.
 - Orchestrates field checks, constructor/invariant admission, definition typing, goal elaboration, and plan construction through the public `CompilerSession` surface.
 - Everything outside the Phase 1 subset receives a typed capability refusal; nothing is silently dropped.
-- May depend on core/ir/syntax/goal; declares only `emath-core` and `emath-ir` (plus `emath-syntax` as a dev-dependency for the parser backend).
+- May depend on core/ir/syntax/goal; declares `emath-core`, `emath-ir`, and `emath-exec-ir` (plus `emath-syntax` as a dev-dependency for the parser backend).
 
 ## Public types and semantics
 
@@ -77,7 +77,7 @@
 
 ## Error model
 
-- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004`, `E-DOM-002`.
+- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004/005/006`, `E-DOM-002`.
 - `E-SYN-120` is a typed refusal when the parser backend is not installed; hosts call `emath_syntax::install_source_parser` once per process.
 
 ## Determinism class
@@ -99,7 +99,7 @@
 
 ## Conformance tests
 
-- No `crates/emath-sema/tests/` directory on disk; conformance is unit-level in `session.rs` and `recognition.rs` `#[cfg(test)]` modules plus `tests/emath-sema`: existing session tests and `tests/numeric.rs` (default `strict-f64`, explicit `interval-f64`, `E-NUM-*` / `E-UNIT-*` / `E-SHAPE-004` / `E-DOM-002` refusals, units e2e).
+- No `crates/emath-sema/tests/` directory and no inline `#[cfg(test)]` modules in `src/`. Conformance lives in the standalone `tests/emath-sema` package: `tests/session.rs`, `tests/recognition.rs`, `tests/numeric.rs` (default `strict-f64`, explicit `interval-f64`, `E-NUM-*` / `E-UNIT-*` / `E-SHAPE-004` / `E-DOM-002` refusals, units e2e), `tests/vector_matrix.rs`, and `tests/model_ode.rs`.
 
 ## No-claim boundaries
 

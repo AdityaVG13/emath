@@ -122,9 +122,9 @@ not this crate.)
 
 ## Conformance tests
 
-- corpus.rs (always): composite id round trip; empty-part rejection;
-  separator-inside-part rejection; malformed decode -> None; ArtifactDoc
-  construction validation.
+- `tests/emath-search/tests/corpus.rs` (always): composite id round trip
+  (`round_trip_composite_id`); empty-part rejection; separator-inside-part
+  rejection; malformed decode -> None; ArtifactDoc construction validation.
 - engine.rs (cfg(all(test, feature = "search"))): happy-path lexical hit with
   composite ids + finite scores; mismatch -> empty; k = 0 and k > corpus
   boundaries with repeated-query determinism; empty-query rejection; two

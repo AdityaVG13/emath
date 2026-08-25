@@ -2,23 +2,10 @@
 
 //! Minimal language-server-protocol skeleton for emath.
 //!
-//! Implements a std-only, deterministic LSP server slice:
-//!
-//! - base-protocol framing (`Content-Length` headers, JSON-RPC messages);
-//! - `initialize` capabilities with incremental text synchronization;
-//! - `textDocument/didOpen` / `didChange` with incremental edits and
-//!   publishDiagnostics computed by the real compiler session
-//!   (`emath_sema::CompilerSession::check_owned`): LSP and CLI agree on
-//!   diagnostics because they share the same admission path;
-//! - skeleton `completion` (Phase 1 grammar keywords), `hover` (keyword
-//!   documentation) and `signatureHelp` (null response);
-//! - typed refusal for unknown methods (`-32601`), deterministic writes.
-//!
-//! No network, filesystem watch, or third-party dependencies in the default
-//! build. The optional `async-runtime` feature (`FrankenStack` asupersync
-//! cutover) adds the `lab` module, a `Cx`/`lab-runtime` entry for deterministic
-//! tests, and the async `transport` lane (pass 3: stdio JSON-RPC framing on
-//! `Cx`); the blocking run loop below is not touched by them.
+//! Deterministic, std-only LSP slice: base framing, incremental text sync, and
+//! diagnostics via the real compiler session (`emath_sema::CompilerSession`).
+//! The optional `async-runtime` feature adds the `lab` entry and the async
+//! `transport` lane; the blocking run loop is untouched.
 
 pub mod json;
 pub mod protocol;

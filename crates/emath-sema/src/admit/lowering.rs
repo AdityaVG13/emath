@@ -18,15 +18,8 @@ use super::{
     E_UNKNOWN_FUNCTION, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE,
 };
 
-/// Strip namespace prefixes from builtin function names.
-///
-/// Builtin functions can be called with or without a namespace prefix:
-/// `sin(x)` and `math::sin(x)` are equivalent. This function normalizes
-/// namespaced paths to their bare form so the rest of the lowering only
-/// needs to handle one spelling.
-///
-/// Recognized prefixes: `math::`, `linalg::`, `pde::`, `coding::`,
-/// `core::math::` (legacy).
+/// Strip namespace prefixes (`math::`, `linalg::`, `pde::`, `coding::`,
+/// legacy `core::math::`) from builtin function names to a bare form.
 fn normalize_builtin(name: &str) -> String {
     for prefix in &["math::", "linalg::", "pde::", "coding::", "core::math::"] {
         if let Some(bare) = name.strip_prefix(prefix) {
