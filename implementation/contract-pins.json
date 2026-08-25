@@ -4,6 +4,22 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-08-25",
+      "note": "ERROR_CODES annex re-spliced to 272 emitted codes: E-KIND-017 story + row (CLI causalized-residual capability gate); examples-lane repair re-pinned the registry"
+    },
+    {
+      "date": "2026-08-25",
+      "note": "CRATE_MAP re-pin: provenance rows removed (cf5c731 deleted the crates), emath-rt + tests/emath-rt rows added (they existed but were never mapped); ERROR_CODES re-pin after dropping the unemitted E-HOST-009 issued bullet"
+    },
+    {
+      "date": "2026-08-25",
+      "note": "CLI_REFERENCE re-pin: 4dcabaf changed the file without bumping the pin (stale since that commit); hash refreshed to the committed text"
+    },
+    {
+      "date": "2026-08-25",
+      "note": "ELP pipeline: ERROR_CODES annex re-spliced to 271 emitted codes (added E-SYN-117/118, E-PKG-064/065 stories + rows; E-SYN-107 story filled; E-KIND-010/E-SYN-107 annex rows now cover the emitted set)"
+    },
+    {
       "date": "2026-08-19",
       "note": "E-GEN-095 hidden-winner refusal; ERROR_CODES annex re-spliced; CLI_REFERENCE genesis G7"
     },
@@ -85,9 +101,9 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "e944413cd4425e3c7df5b34c8451a981823fd7b25bfc1c1abfdbeca6403da1b7",
-    "implementation/CLI_REFERENCE.md": "0e2af33c773bd55eddc8513cc786b587a566175babb951554587824a00a5bbff",
-    "implementation/CRATE_MAP.md": "498d2a34be46bcb054d05a0feca8cb250655701ade6b87029d759db46269ca9f",
+    "implementation/ERROR_CODES.md": "1d9e8fc6083c271cfc720dcd95b07be6c72012a113603214e3285ea962d08287",
+    "implementation/CLI_REFERENCE.md": "fafe5e487efba30d46f0ee0c1a672cfa9720acf873f91c00f3b3933cc7181bc9",
+    "implementation/CRATE_MAP.md": "c127e8e858afd2db2b5c55cd3618f7a8fe2e0e36a8f7a71e712273b1e83bf91b",
     "implementation/PUBLIC_API_INVENTORY.md": "c73d6c04e7f77f73c48116623c9bdcfb8a09fe90a57c7db2602d88c18ecef806"
   }
 }

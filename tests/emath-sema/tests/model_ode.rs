@@ -146,6 +146,8 @@ emath model MassSpring:
     let mut state = BTreeMap::new();
     state.insert("x".into(), Value::F64(1.0));
     state.insert("v".into(), Value::F64(0.0));
+    let mut vector_state = BTreeMap::new();
+    vector_state.insert("s".into(), Value::Vector(vec![1.0, 0.0]));
     let left = simulate_continuous(
         &implicit.package,
         &implicit.package.declarations[0],
@@ -161,7 +163,7 @@ emath model MassSpring:
         &explicit.package,
         &explicit.package.declarations[0],
         &inputs,
-        &state,
+        &vector_state,
         0.0,
         0.5,
         0.05,
@@ -172,8 +174,8 @@ emath model MassSpring:
         Some(Value::F64(value)) => *value,
         other => panic!("{other:?}"),
     };
-    let rx = match right.samples.last().unwrap().state.get("x") {
-        Some(Value::F64(value)) => *value,
+    let rx = match right.samples.last().unwrap().state.get("s") {
+        Some(Value::Vector(components)) => components[0],
         other => panic!("{other:?}"),
     };
     assert!((lx - rx).abs() < 1e-12, "implicit={lx} explicit={rx}");
@@ -566,8 +568,9 @@ fn explicit_mass_spring_example_admits() {
     );
     let decl = &result.package.declarations[0];
     assert_eq!(decl.kind_label, "model");
-    assert!(decl.definitions.contains_key("der_x"));
-    assert!(decl.definitions.contains_key("der_v"));
+    // The example writes the coupled pair as ONE vector-state rate
+    // (`s = [x, v]`), the single-evaluate-goal Phase 1 shape.
+    assert!(decl.definitions.contains_key("der_s"));
 }
 
 #[test]

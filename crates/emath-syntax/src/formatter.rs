@@ -174,6 +174,11 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
     // parser accepts. The tree canonicalizes every unified kind onto the
     // `custom` compat lane (`item_kind="custom"`, original kind in
     // `as_kind`), so rendering reverses that: `emath function P:`.
+    // Attributes render before the head, matching
+    // `emath_item = { attribute }, "emath", ...`.
+    for attribute in &decl.attributes {
+        format_attribute(out, attribute, level);
+    }
     indent(out, level);
     if decl.item_kind == "extern" {
         // `extern operator name<Generics>(params) -> Ret:` — no `emath`
@@ -223,10 +228,6 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
     }
     out.push(':');
     out.push('\n');
-    for attribute in &decl.attributes {
-        format_attribute(out, attribute, level + 1);
-        out.push('\n');
-    }
     // Body statements (sections, fn-like heads, and other statements) in
     // source order, separated by ONE blank line at declaration level —
     // never a trailing blank line after the last statement (SURF-0013).
@@ -240,7 +241,9 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
 
 fn format_attribute(out: &mut String, attribute: &Attribute, level: usize) {
     indent(out, level);
-    out.push('[');
+    // Grammar spelling: `@path(...)` — the attribute prefix is `@`, not
+    // a Rust-style `#[...]` bracket.
+    out.push('@');
     out.push_str(&attribute.name);
     if !attribute.args.is_empty() {
         out.push('(');
@@ -252,7 +255,7 @@ fn format_attribute(out: &mut String, attribute: &Attribute, level: usize) {
         }
         out.push(')');
     }
-    out.push(']');
+    out.push('\n');
 }
 
 /// Section names whose parser dispatch requires the bare two-word head

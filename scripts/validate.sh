@@ -208,7 +208,7 @@ assert_invalid tests/invalid/duplicate_output.emath "E-NAME-020"
 assert_invalid tests/invalid/missing_state_assignment.emath "E-CTOR-030"
 assert_invalid tests/invalid/recursive_kind.emath "E-KIND-100"
 assert_invalid tests/invalid/unit_mismatch.emath "E-UNIT-101"
-assert_invalid tests/invalid/model_decl.emath "E-KIND-100"
+assert_invalid tests/invalid/model_decl.emath "E-KIND-011"
 assert_invalid tests/invalid/unknown_section.emath "E-SEC-101"
 assert_invalid tests/invalid/exports_junk.emath "E-SYN-101"
 assert_invalid tests/invalid/compile_junk.emath "E-SYN-101"
@@ -356,6 +356,165 @@ printf '%s\n' "$PIN_OUT"
 lane_done "doc-pins" "contract-pins" "passed" "contract doc hashes match pins"
 echo "contract pins: hashed docs match the named-bump pins"
 
+echo "== ELP pipeline gates =="
+# ELP document-shape gate: every elps/ELP-NNNN-<slug>.md must carry the
+# seven canonical sections and a four-artifact plan; the template's
+# seven-section shape is validated too.
+lane_begin
+if ! ELP_OUT="$("$PYTHON" scripts/check_elp.py 2>&1)"; then
+    echo "FAIL: an ELP document failed the shape gate" >&2
+    printf '%s\n' "$ELP_OUT" >&2
+    lane_done "elp" "shape" "failed" "ELP document shape drift"
+    exit 1
+fi
+printf '%s\n' "$ELP_OUT"
+lane_done "elp" "shape" "passed" "ELP documents match the seven-section shape"
+# Negative control: a copy with a placeholder section must fail.
+lane_begin
+BAD_ELP_DIR="$TMP_DIR/bad-elp"
+mkdir -p "$BAD_ELP_DIR"
+cp elps/ELP-TEMPLATE.md "$BAD_ELP_DIR/"
+printf '# ELP-0001-neg-control\n\n## Motivation and coverage claim\n\nTODO placeholder\n\n## Grammar delta\n\n...\n\n## Lowering and world interactions\n\n...\n\n## Meaning-preservation analysis\n\n...\n\n## Migration\n\n...\n\n## Four-artifact plan\n\n...\n\n## Refusals\n\n...\n' >"$BAD_ELP_DIR/ELP-0001-neg-control.md"
+if "$PYTHON" scripts/check_elp.py "$BAD_ELP_DIR" >/dev/null 2>&1; then
+    echo "FAIL: placeholder ELP admitted by the shape gate" >&2
+    lane_done "elp" "negative-control" "failed" "placeholder ELP admitted"
+    exit 1
+fi
+lane_done "elp" "negative-control" "passed" "placeholder ELP refused"
+echo "elp: shape gate green; placeholder ELP refused"
+
+echo "== G4 audit battery =="
+G4_GRAMMARS="language/grammar/surface.ebnf language/grammar/genesis.ebnf"
+G4_BASELINE="tests/language-gates/fixtures/g4-ambiguity-baseline.json"
+# Ambiguity: the shipped grammar is pinned (31 design decisions); only
+# NEW conflict signatures fail the gate.
+lane_begin
+if ! G4A_OUT="$("$PYTHON" scripts/g4_ambiguity.py --baseline "$G4_BASELINE" $G4_GRAMMARS 2>&1)"; then
+    echo "FAIL: g4-ambiguity found NEW grammar conflicts" >&2
+    printf '%s\n' "$G4A_OUT" >&2
+    lane_done "g4-ambiguity" "baseline" "failed" "new ambiguity signatures"
+    exit 1
+fi
+lane_done "g4-ambiguity" "baseline" "passed" "no new ambiguity signatures"
+# Negative control: an identical-alternative delta must be caught.
+lane_begin
+if "$PYTHON" scripts/g4_ambiguity.py --delta tests/language-gates/diffs/g4-ambiguity-identical.diff \
+    --baseline "$G4_BASELINE" $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-ambiguity admitted identical alternatives" >&2
+    lane_done "g4-ambiguity" "negative-control" "failed" "identical alternatives admitted"
+    exit 1
+fi
+# Positive control: an additive delta with a disjoint first set passes.
+if ! "$PYTHON" scripts/g4_ambiguity.py --delta tests/language-gates/diffs/g4-ambiguity-clean.diff \
+    --baseline "$G4_BASELINE" $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-ambiguity refused an ambiguity-free additive delta" >&2
+    lane_done "g4-ambiguity" "positive-control" "failed" "clean delta refused"
+    exit 1
+fi
+lane_done "g4-ambiguity" "negative-control" "passed" "identical alternatives refused; clean delta passes"
+echo "g4-ambiguity: baseline pinned; bad delta refused, clean delta passes"
+
+# Confusable scan: NFC + sema-aligned fold over every grammar literal.
+lane_begin
+if ! G4C_OUT="$("$PYTHON" scripts/g4_confusable.py $G4_GRAMMARS 2>&1)"; then
+    echo "FAIL: g4-confusable found glyph collisions" >&2
+    printf '%s\n' "$G4C_OUT" >&2
+    lane_done "g4-confusable" "scan" "failed" "glyph collision or NFC drift"
+    exit 1
+fi
+printf '%s\n' "$G4C_OUT"
+lane_done "g4-confusable" "scan" "passed" "no confusable collisions"
+# Negative control: a Cyrillic lookalike of an existing glyph must be
+# refused.
+lane_begin
+if "$PYTHON" scripts/g4_confusable.py --delta tests/language-gates/diffs/g4-confusable-lookalike.diff \
+    $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-confusable admitted a Cyrillic lookalike glyph" >&2
+    lane_done "g4-confusable" "negative-control" "failed" "lookalike glyph admitted"
+    exit 1
+fi
+lane_done "g4-confusable" "negative-control" "passed" "lookalike delta refused"
+echo "g4-confusable: shipped glyphs clean; lookalike delta refused"
+
+# Precedence boundary corpus: the regenerated fixture must equal the
+# committed one (drift gate); a tampered fixture must fail --check.
+G4_FIXTURE="tests/language-gates/fixtures/g4-precedence-boundary.corpus"
+lane_begin
+if ! G4P_OUT="$("$PYTHON" scripts/g4_precedence.py --check --out "$G4_FIXTURE" $G4_GRAMMARS 2>&1)"; then
+    echo "FAIL: g4-precedence fixture drifted" >&2
+    printf '%s\n' "$G4P_OUT" >&2
+    lane_done "g4-precedence" "drift" "failed" "boundary corpus drifted"
+    exit 1
+fi
+printf '%s\n' "$G4P_OUT"
+lane_done "g4-precedence" "drift" "passed" "boundary corpus current"
+lane_begin
+TAMPERED_P="$TMP_DIR/tampered.corpus"
+cp "$G4_FIXTURE" "$TAMPERED_P"
+printf 'boundary: a + a + a\n' >>"$TAMPERED_P"
+if "$PYTHON" scripts/g4_precedence.py --check --out "$TAMPERED_P" $G4_GRAMMARS >/dev/null 2>&1; then
+    echo "FAIL: g4-precedence accepted a tampered corpus" >&2
+    lane_done "g4-precedence" "negative-control" "failed" "tampered corpus admitted"
+    exit 1
+fi
+lane_done "g4-precedence" "negative-control" "passed" "tampered corpus refused"
+echo "g4-precedence: fixture current; tampered corpus refused"
+
+echo "== four-artifact rule =="
+# The four-artifact rule applies to the change UNDER GATE, not the last
+# commit: the current tree delta = staged + unstaged + untracked paths
+# (excluding the .rch/ daemon dir), so an uncommitted grammar-only
+# change fails here.
+lane_begin
+FOUR_ART_LIST="$TMP_DIR/four-art-files.txt"
+"$PYTHON" - "$FOUR_ART_LIST" <<'PY'
+import subprocess, sys
+out = subprocess.run(
+    ["git", "status", "--porcelain", "-z"],
+    check=True, capture_output=True, text=True,
+).stdout
+entries = out.split("\0")
+paths = []
+i = 0
+while i < len(entries):
+    entry = entries[i]
+    i += 1
+    if not entry:
+        continue
+    status = entry[:2]
+    if status[0] in ("R", "C"):
+        # The destination path is the next NUL-separated entry.
+        path = entries[i] if i < len(entries) else ""
+        i += 1
+    else:
+        path = entry[3:]
+    if status[0] == "D" or status[1] == "D":
+        continue
+    if path.startswith(".rch/"):
+        continue
+    paths.append(path)
+with open(sys.argv[1], "w", encoding="utf-8") as fh:
+    fh.write("\n".join(sorted(set(paths))) + "\n")
+PY
+: >"$TMP_DIR/four-art-msg.txt"
+if ! "$PYTHON" scripts/check_four_artifact.py --files-from "$FOUR_ART_LIST" --head-msg "$TMP_DIR/four-art-msg.txt" >/dev/null 2>&1; then
+    echo "FAIL: the working-tree change violates the four-artifact rule" >&2
+    "$PYTHON" scripts/check_four_artifact.py --files-from "$FOUR_ART_LIST" --head-msg "$TMP_DIR/four-art-msg.txt" >&2 || true
+    lane_done "four-artifact" "tree-delta" "failed" "grammar change without reference/examples/tests companions"
+    exit 1
+fi
+lane_done "four-artifact" "tree-delta" "passed" "tree delta satisfies the four-artifact rule"
+# Negative control: a synthetic grammar-only change must fail the gate.
+lane_begin
+printf 'language/grammar/surface.ebnf\n' >"$TMP_DIR/grammar-only.txt"
+if "$PYTHON" scripts/check_four_artifact.py --files-from "$TMP_DIR/grammar-only.txt" --head-msg "$TMP_DIR/four-art-msg.txt" >/dev/null 2>&1; then
+    echo "FAIL: grammar-only change passed the four-artifact gate" >&2
+    lane_done "four-artifact" "negative-control" "failed" "grammar-only change admitted"
+    exit 1
+fi
+lane_done "four-artifact" "negative-control" "passed" "grammar-only change refused"
+echo "four-artifact: tree delta compliant; grammar-only change refused"
+
 echo "== planner gate =="
 # Planned goals must be selected (native, sir-checker bound); a goal that
 # cannot be planned (or refused elaboration) must exit 1, never 0.
@@ -456,6 +615,11 @@ for FIXTURE in language/examples/*/*.emath; do
 done
 lane_done "examples" "admit-or-refuse" "passed" "every example admits+builds or refuses with a code"
 echo "language examples: admitted or refused with documented codes"
+# Causalized residual models: `check` must refuse with the typed E-KIND-017
+# capability gate (the corpus keeps one as its honest refusal card), not
+# fail later at codegen with an untyped backend error. `emath simulate`
+# still supports these models.
+assert_invalid language/examples/intro/causalized-rc.emath "E-KIND-017"
 
 # Produce refusal lives in the build lane (goal elaboration), not in
 # `check`, so it gets its own assertion here.
@@ -568,7 +732,7 @@ echo "demo-host-independent: behavioral asserts gated"
 echo "== semantic genesis generated crate identity =="
 SG_DIR="$TMP_DIR/sg"
 mkdir -p "$SG_DIR"
-cargo run -q -p emath-cli -- compile --parametric language/examples/integration/arbitrary-glyphs.emath \
+cargo run -q -p emath-cli -- compile --parametric tests/valid/arbitrary-glyphs.emath \
     --out "$SG_DIR" >/dev/null
 # Identity include-set is documented, never silent: `manifest.json`,
 # `source-map.json`, and `hole-manifest.json` are EXCLUDED from the byte
@@ -696,7 +860,7 @@ echo "generated crate is rustfmt-stable"
 echo "== genesis honesty lane =="
 GEN_DIR="$TMP_DIR/genesis"
 mkdir -p "$GEN_DIR"
-cargo run -q -p emath-cli -- genesis language/examples/integration/arbitrary-glyphs.emath \
+cargo run -q -p emath-cli -- genesis tests/valid/arbitrary-glyphs.emath \
     --out "$GEN_DIR" >/dev/null
 
 # 1. No invented `tested` stamp: authority is structural and the receipt's
@@ -740,7 +904,7 @@ fi
 #    crate and diff its printed values against the receipt answers.
 PARAM_DIR="$TMP_DIR/param"
 mkdir -p "$PARAM_DIR"
-cargo run -q -p emath-cli -- compile --parametric language/examples/integration/arbitrary-glyphs.emath \
+cargo run -q -p emath-cli -- compile --parametric tests/valid/arbitrary-glyphs.emath \
     --out "$PARAM_DIR" >/dev/null
 PARAM_OUT="$TMP_DIR/param-out.txt"
 (cd "$PARAM_DIR" && cargo run -q) >"$PARAM_OUT"
@@ -775,7 +939,7 @@ echo "genesis receipts agree with compile --parametric values"
 #    three equally-scored winners as a single tested answer.
 GEN1_DIR="$TMP_DIR/genesis-keep1"
 mkdir -p "$GEN1_DIR"
-sed 's/pareto 8/pareto 1/' language/examples/integration/arbitrary-glyphs.emath >"$TMP_DIR/keep1.emath"
+sed 's/pareto 8/pareto 1/' tests/valid/arbitrary-glyphs.emath >"$TMP_DIR/keep1.emath"
 cargo run -q -p emath-cli -- genesis "$TMP_DIR/keep1.emath" --out "$GEN1_DIR" >/dev/null
 KEEP1_COUNT="$("$PYTHON" -c "import json,sys;print(len(json.load(open(sys.argv[1]))['candidates']))" "$GEN1_DIR/interpretation-portfolio.json")"
 if [ "$KEEP1_COUNT" != "1" ]; then
@@ -794,7 +958,7 @@ fi
 
 # 5. `keep: pareto 0` keeps nothing and is a typed refusal, not an empty
 #    or winner-less artifact.
-sed 's/pareto 8/pareto 0/' language/examples/integration/arbitrary-glyphs.emath >"$TMP_DIR/keep0.emath"
+sed 's/pareto 8/pareto 0/' tests/valid/arbitrary-glyphs.emath >"$TMP_DIR/keep0.emath"
 if KEEP0_OUT="$(cargo run -q -p emath-cli -- genesis "$TMP_DIR/keep0.emath" --out "$TMP_DIR/genesis-keep0" 2>&1)"; then
     echo "FAIL: keep: pareto 0 genesis succeeded" >&2
     exit 1
@@ -813,7 +977,7 @@ if ! grep -q "policy=portfolio" "$GEN_DIR/g7-portfolio-receipt.txt"; then
     cat "$GEN_DIR/g7-portfolio-receipt.txt" >&2
     exit 1
 fi
-sed 's/interpretation_portfolio/best/' language/examples/integration/arbitrary-glyphs.emath >"$TMP_DIR/hidden-winner.emath"
+sed 's/interpretation_portfolio/best/' tests/valid/arbitrary-glyphs.emath >"$TMP_DIR/hidden-winner.emath"
 if HIDDEN_OUT="$(cargo run -q -p emath-cli -- genesis "$TMP_DIR/hidden-winner.emath" --out "$TMP_DIR/genesis-hidden" 2>&1)"; then
     echo "FAIL: genesis without interpretation_portfolio collapsed to a single winner" >&2
     printf '%s\n' "$HIDDEN_OUT" >&2

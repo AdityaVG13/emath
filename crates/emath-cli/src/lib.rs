@@ -79,6 +79,33 @@ pub fn check(path: &Path, json: bool) -> u8 {
     }
 }
 
+/// Phase 1 capability gate for `check` / `agent check`: implicit-residual
+/// (causalized) `emath model` declarations are admitted and simulable in
+/// sema, but `rust.library` codegen for coupled Newton-solved unknowns is
+/// not implemented, so check refuses them with a typed E-code instead of
+/// letting `build` fail later on an untyped backend error. Scoped to
+/// `model` kinds: residual-carrying custom/kind declarations keep
+/// admitting.
+fn refuse_causalized_models(result: &mut emath_sema::CheckResult) {
+    for declaration in &result.package.declarations {
+        if declaration.kind_label != "model" {
+            continue;
+        }
+        let has_residuals = result
+            .package
+            .residuals
+            .get(&declaration.id)
+            .is_some_and(|residuals| !residuals.is_empty());
+        if has_residuals {
+            result.diagnostics.error(
+                "E-KIND-017",
+                "causalized implicit residuals in an `emath model` are admitted and simulable, but Phase 1 `rust.library` codegen is not implemented — use `emath simulate`",
+                declaration.source,
+            );
+        }
+    }
+}
+
 pub(crate) fn run_check(path: &Path) -> (Diagnostics, String) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
@@ -90,8 +117,9 @@ pub(crate) fn run_check(path: &Path) -> (Diagnostics, String) {
         );
         return (diagnostics, String::new());
     };
-    let result = session.check(package.file);
+    let mut result = session.check(package.file);
     let package_id = result.package.content_id().0;
+    refuse_causalized_models(&mut result);
     (result.diagnostics, package_id)
 }
 

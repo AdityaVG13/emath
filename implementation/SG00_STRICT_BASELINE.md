@@ -15,7 +15,7 @@ the freeze verifier is `cargo xtask demo semantic-genesis`.
 Captured 2026-08-18 against HEAD via the real CLI (`emath genesis`) and
 `cargo xtask demo semantic-genesis`.
 
-**Reference source:** `language/examples/integration/arbitrary-glyphs.emath`
+**Reference source:** `tests/valid/arbitrary-glyphs.emath`
 (`REFERENCE_SOURCE` in `xtask/src/main.rs`).
 
 **Answer id** (`answer-receipt.json`): `447d467cf93fc4ce`
@@ -86,7 +86,7 @@ mixed mode.
 To recapture identities (scratch only; not the freeze verifier):
 
 ```
-cargo run -q -p emath-cli -- genesis language/examples/integration/arbitrary-glyphs.emath --out <dir>
+cargo run -q -p emath-cli -- genesis tests/valid/arbitrary-glyphs.emath --out <dir>
 ```
 
 ## Rollback

@@ -1,0 +1,4 @@
+--- a/language/grammar/surface.ebnf
++++ b/language/grammar/surface.ebnf
+@@ -146,0 +147,2 @@
++almost = "emath" , "е" ;
