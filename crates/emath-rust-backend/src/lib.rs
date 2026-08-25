@@ -109,6 +109,17 @@ impl BackendInput<'_> {
 
         items.push(Item::RawAttribute("#![forbid(unsafe_code)]".to_string()));
         items.push(Item::RawAttribute("#![allow(dead_code)]".to_string()));
+        // The emath-runtime kernel module is embedded into every generated
+        // crate so artifacts stay self-contained (no external dependency)
+        // while all math kernels live in exactly one place: emath-rt.
+        // Generated expressions call `emath_rt::<kernel>(...)`.
+        // The outer `#[allow(dead_code)]` keeps hosts that strip `#![...]`
+        // inner attributes (e.g. the demo-host `include!` driver) warning-
+        // free: an outer attribute on the module survives that strip.
+        items.push(Item::RawAttribute(format!(
+            "#[allow(dead_code)]\nmod emath_rt {{\n{}\n}}",
+            emath_rt::SOURCE
+        )));
 
         for declaration in &package.declarations {
             let name = declaration.name.leaf().to_string();

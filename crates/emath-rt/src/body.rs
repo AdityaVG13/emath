@@ -1,5 +1,6 @@
 //! Pre-compiled math kernels for emath-generated crates and the emath
 //! interpreter.
+
 //!
 //! This file is the single source of truth for the numeric algorithms that
 //! generated Rust would otherwise inline per-use: vector/matrix/tensor
@@ -112,6 +113,11 @@ pub fn tensor_sub(a: &[f64], b: &[f64]) -> Vec<f64> {
     a.iter().zip(b.iter()).map(|(x, y)| x - y).collect()
 }
 
+/// Scale a flat tensor by a scalar.
+pub fn tensor_scale(v: &[f64], s: f64) -> Vec<f64> {
+    v.iter().map(|x| x * s).collect()
+}
+
 // ── Stencils ──────────────────────────────────────────────────────────────
 
 /// Edge policy for stencil convolution: how out-of-range taps are resolved.
@@ -128,7 +134,7 @@ pub enum EdgePolicy {
 /// 1D stencil convolution. `center` is the tap index that maps to the
 /// output cell. Mirrors the historical inline semantics, including the
 /// exact boundary math per edge policy.
-pub fn stencil_1d(input: &[f64], weights: &[f64], center: i64, edge: &EdgePolicy) -> Vec<f64> {
+pub fn stencil_1d(input: &[f64], weights: &[f64], center: i64, edge: EdgePolicy) -> Vec<f64> {
     let n = input.len();
     let last = n.saturating_sub(1) as isize;
     (0..n)
@@ -138,7 +144,7 @@ pub fn stencil_1d(input: &[f64], weights: &[f64], center: i64, edge: &EdgePolicy
                 .enumerate()
                 .map(|(k, &w)| {
                     let raw = i as isize + k as isize - center as isize;
-                    match edge {
+                    match &edge {
                         EdgePolicy::Clamp => w * input[raw.clamp(0, last) as usize],
                         EdgePolicy::Neumann => {
                             let idx = if raw < 0 {
@@ -152,9 +158,9 @@ pub fn stencil_1d(input: &[f64], weights: &[f64], center: i64, edge: &EdgePolicy
                         }
                         EdgePolicy::Dirichlet { left, right } => {
                             if raw < 0 {
-                                w * left
+                                w * *left
                             } else if raw > last {
-                                w * right
+                                w * *right
                             } else {
                                 w * input[raw as usize]
                             }
@@ -173,7 +179,7 @@ pub fn stencil_2d(
     input: &[Vec<f64>],
     weights: &[f64; 9],
     center: (i64, i64),
-    edge: &EdgePolicy,
+    edge: EdgePolicy,
 ) -> Vec<Vec<f64>> {
     let nr = input.len();
     let nc = if nr == 0 { 0 } else { input[0].len() };
@@ -190,7 +196,7 @@ pub fn stencil_2d(
                     let w = weights[kr * 3 + kc];
                     let raw_r = r as isize + kr as isize - cr as isize;
                     let raw_c = c as isize + kc as isize - cc as isize;
-                    acc += match edge {
+                    acc += match &edge {
                         EdgePolicy::Clamp => {
                             let rr = raw_r.clamp(0, lr) as usize;
                             let cc2 = raw_c.clamp(0, lc) as usize;

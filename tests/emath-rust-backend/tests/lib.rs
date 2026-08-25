@@ -281,8 +281,11 @@ fn expect_less_example_generates_computation_without_assert() {
         lib.contains("let _ ="),
         "worked example must bind the computed value without asserting, got:\n{lib}"
     );
+    // The embedded `emath_rt` module may legitimately contain `assert!`
+    // kernel guards; the invariant applies to the generated user code.
+    let user_code = lib.split("mod emath_rt").next().unwrap_or(lib);
     assert!(
-        !lib.contains("assert!("),
+        !user_code.contains("assert!("),
         "worked example must not assert, got:\n{lib}"
     );
 }

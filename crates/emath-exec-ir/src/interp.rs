@@ -284,7 +284,7 @@ fn eval_op(
                     emath_rt::EdgePolicy::Dirichlet { left, right }
                 }
             };
-            Ok(Value::Vector(emath_rt::stencil_1d(v, weights, center as i64, &edge)))
+            Ok(Value::Vector(emath_rt::stencil_1d(v, weights, center as i64, edge)))
         }
         EmirOp::Stencil2d {
             input,
@@ -316,7 +316,7 @@ fn eval_op(
                 &nested,
                 w9,
                 (center.0 as i64, center.1 as i64),
-                &edge,
+                edge,
             );
             Ok(Value::Matrix {
                 rows,
@@ -368,7 +368,7 @@ fn eval_op(
             }
         }
         EmirOp::MatrixMulVector(matrix, vector) => {
-            let (rows, cols, m_data) = matrix_of(registers, matrix, name)?;
+            let (_, cols, m_data) = matrix_of(registers, matrix, name)?;
             let v = vector_of(registers, vector, name)?;
             require_equal_len(v.len(), cols, name, "matrix×vector width mismatch")?;
             let nested = rows_of(m_data, cols);

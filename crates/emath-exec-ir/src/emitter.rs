@@ -504,13 +504,34 @@ impl Emitter {
                 )
             }
             ExprNode::SampleLimit { body, var, target, direction } => {
-                let var_index = self.input_index(var)?;
+                // The limit variable may be a declared input (sampled in
+                // place) or binder-introduced like a fold loop variable
+                // (registered as a phantom input at the end of the body's
+                // input table, mirroring the Binder arm).
+                let var_index = match self.inputs.iter().position(|n| n == var) {
+                    Some(pos) => u16_index(pos, "input")?,
+                    None => u16_index(self.inputs.len(), "limit variable")?,
+                };
                 let target_val = self.emit(package, *target)?;
                 let direction_val = self.emit(package, *direction)?;
-                let sc = self.states.len();
-                let mut body_emitter = self.sub_emitter();
+                let mut body_inputs = self.inputs.clone();
+                if body_inputs.len() as u16 <= var_index {
+                    body_inputs.push(var.clone());
+                }
+                let mut body_emitter = Emitter {
+                    ops: Vec::new(),
+                    inputs: body_inputs,
+                    states: self.states.clone(),
+                    obligations: Vec::new(),
+                };
                 let body_result = body_emitter.emit(package, *body)?;
-                let body_program = body_emitter.finish(body_result, sc)?;
+                let body_program = EmirProgram {
+                    ops: std::mem::take(&mut body_emitter.ops),
+                    result: body_result,
+                    input_count: u16_count(body_emitter.inputs.len(), "input")?,
+                    state_count: u16_count(self.states.len(), "state")?,
+                    domain_obligations: std::mem::take(&mut body_emitter.obligations),
+                };
                 self.push(
                     EmirOp::SampleLimit {
                         body: body_program,

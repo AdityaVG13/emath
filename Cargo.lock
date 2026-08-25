@@ -1201,6 +1201,7 @@ dependencies = [
  "emath-core",
  "emath-exec-ir",
  "emath-ir",
+ "emath-rt",
  "emath-rust-ir",
 ]
 
