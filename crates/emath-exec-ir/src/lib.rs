@@ -65,6 +65,9 @@ pub enum EmirOp {
     ConstI64(i64),
     /// Complex constant (real, imaginary). B14.
     ConstComplex(f64, f64),
+    /// Boolean constant. Produced by the optimizer folding comparisons,
+    /// `IsFinite`, and boolean ops over constant operands.
+    ConstBool(bool),
     LoadInput(u16),
     LoadState(u16),
     F64Add(EmirValue, EmirValue),
@@ -271,6 +274,7 @@ impl EmirOp {
             Self::ConstF64(_) => "const-f64",
             Self::ConstI64(_) => "const-i64",
             Self::ConstComplex(..) => "const-complex",
+            Self::ConstBool(_) => "const-bool",
             Self::LoadInput(_) => "load-input",
             Self::LoadState(_) => "load-state",
             Self::F64Add(..) => "f64-add",

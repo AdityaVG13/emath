@@ -61,6 +61,7 @@ fn eval_op(
         EmirOp::ConstF64(bits) => Ok(Value::F64(f64::from_bits(bits))),
         EmirOp::ConstI64(value) => Ok(Value::I64(value)),
         EmirOp::ConstComplex(re, im) => Ok(Value::Complex { re, im }),
+        EmirOp::ConstBool(value) => Ok(Value::Bool(value)),
         EmirOp::LoadInput(index) => inputs
             .get(usize::from(index))
             .cloned()

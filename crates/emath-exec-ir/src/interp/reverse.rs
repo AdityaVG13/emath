@@ -88,6 +88,7 @@ fn forward_primal(
         EmirOp::ConstF64(bits) => Ok(f64::from_bits(*bits)),
         EmirOp::ConstI64(value) => Ok(*value as f64),
         EmirOp::ConstComplex(re, _im) => Ok(*re), // reverse-mode on real part
+        EmirOp::ConstBool(value) => Ok(if *value { 1.0 } else { 0.0 }),
         EmirOp::LoadInput(idx) => {
             match inputs.get(*idx as usize) {
                 Some(Value::F64(v)) => Ok(*v),
@@ -181,7 +182,7 @@ fn backward_step(
     };
 
     match op {
-        EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) => {}
+        EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) | EmirOp::ConstBool(_) => {}
         EmirOp::LoadInput(i) => {
             let ii = *i as usize;
             if ii < input_adjoints.len() {

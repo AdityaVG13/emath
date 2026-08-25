@@ -319,6 +319,7 @@ pub(crate) fn op_expr(
         EmirOp::ConstComplex(re, im) => Ok(Expr::Raw(format!(
             "num_complex::Complex::new({re:?}, {im:?})"
         ))),
+        EmirOp::ConstBool(value) => Ok(Expr::Bool(*value)),
         EmirOp::LoadInput(index) => {
             let name = names
                 .get(*index as usize)
@@ -910,6 +911,7 @@ fn tangent_str(
     match op {
         EmirOp::ConstF64(_) => "0.0".to_string(),
         EmirOp::ConstI64(_) => "0.0".to_string(),
+        EmirOp::ConstBool(_) => "0.0".to_string(),
         EmirOp::LoadInput(i) => {
             if *i == var_index {
                 "1.0".to_string()
@@ -959,7 +961,10 @@ pub(crate) fn reverse_adjoint_str(op: &EmirOp, idx: usize) -> String {
     let p = |n: u32| format!("__re{n}");
     let a = |n: u32| format!("__ra{n}");
     let updates = match op {
-        EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) => String::new(),
+        EmirOp::ConstF64(_)
+        | EmirOp::ConstI64(_)
+        | EmirOp::ConstBool(_)
+        | EmirOp::ConstComplex(..) => String::new(),
         EmirOp::LoadInput(i) => format!("__ria{i} += {adj};\n"),
         EmirOp::LoadState(_) => String::new(),
         EmirOp::F64Add(x, y) => format!("{} += {adj};\n{} += {adj};\n", a(x.0), a(y.0)),

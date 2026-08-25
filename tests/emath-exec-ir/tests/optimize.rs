@@ -222,3 +222,95 @@ fn values_equivalent(a: &Value, b: &Value) -> bool {
         _ => a == b,
     }
 }
+
+/// Comparisons over constants fold to `ConstBool` with interpreter-equal
+/// results, and `Select` over a folded condition picks the right branch.
+#[test]
+fn comparisons_and_select_fold_to_const_bool() {
+    let original = program(vec![
+        c(2.0),
+        c(3.0),
+        EmirOp::Lt(EmirValue(0), EmirValue(1)),
+        c(7.0),
+        EmirOp::Select {
+            condition: EmirValue(2),
+            then_value: EmirValue(0),
+            else_value: EmirValue(3),
+        },
+    ]);
+    let expected = evaluate(&original, &[], &[]).unwrap();
+    assert_eq!(expected, Value::F64(2.0));
+
+    let mut optimized = original.clone();
+    optimize_program(&mut optimized);
+    // Lt folds to ConstBool, Select folds to the then-branch const (2.0);
+    // the now-total dead chain is eliminated, leaving one constant.
+    assert_eq!(optimized.ops.len(), 1, "expected fully folded Select result");
+    let EmirOp::ConstF64(bits) = optimized.ops[0].0 else {
+        panic!("expected ConstF64");
+    };
+    assert_eq!(f64::from_bits(bits), 2.0);
+    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
+}
+
+/// Boolean op chains (And/Or/Not/Imply) over constant operands fold to a
+/// single `ConstBool`.
+#[test]
+fn boolean_chains_fold_to_const_bool() {
+    let original = program(vec![
+        c(1.0), // truthy
+        c(0.0), // falsy
+        EmirOp::Or(EmirValue(0), EmirValue(1)),
+        EmirOp::Not(EmirValue(2)),
+        EmirOp::And(EmirValue(2), EmirValue(0)),
+        EmirOp::Imply(EmirValue(1), EmirValue(0)),
+    ]);
+    // Or(true,false)=true; Not(true)=false; And(true,true)=true;
+    // Imply(false,true)=true.
+    let expected = evaluate(&original, &[], &[]).unwrap();
+    assert_eq!(expected, Value::Bool(true));
+
+    let mut optimized = original.clone();
+    optimize_program(&mut optimized);
+    assert_eq!(optimized.ops.len(), 1, "whole chain collapses to one ConstBool");
+    assert!(matches!(optimized.ops[0].0, EmirOp::ConstBool(true)));
+    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
+}
+
+/// `IsFinite` over constants folds: finite → true, infinities and NaN →
+/// false, each collapsing to one `ConstBool`.
+#[test]
+fn is_finite_folds() {
+    for value in [3.0, f64::INFINITY, f64::NAN] {
+        let original = program(vec![c(value), EmirOp::IsFinite(EmirValue(0))]);
+        let expected = evaluate(&original, &[], &[]).unwrap();
+        let mut optimized = original.clone();
+        optimize_program(&mut optimized);
+        assert_eq!(optimized.ops.len(), 1, "IsFinite must fold for {value}");
+        let EmirOp::ConstBool(folded) = optimized.ops[0].0 else {
+            panic!("expected ConstBool for {value}");
+        };
+        assert_eq!(folded, value.is_finite());
+        assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
+    }
+}
+
+/// Fold never rewrites a typed fault: `And` over an I64 constant is a
+/// `bool_of` type confusion in the interpreter, and the op must survive —
+/// both folded and original fault identically.
+#[test]
+fn bool_fold_preserves_typed_faults() {
+    let p = program(vec![
+        EmirOp::ConstI64(3),
+        c(1.0),
+        EmirOp::And(EmirValue(0), EmirValue(1)),
+    ]);
+    let mut optimized = p.clone();
+    optimize_program(&mut optimized);
+    // ConstI64 stays (no fold), And survives because folding would change
+    // a typed fault into a value; DCE keeps it (fault-capable).
+    assert_eq!(optimized.ops.len(), 3);
+    assert!(matches!(optimized.ops[2].0, EmirOp::And(..)));
+    assert!(evaluate(&optimized, &[], &[]).is_err());
+    assert!(evaluate(&p, &[], &[]).is_err());
+}
