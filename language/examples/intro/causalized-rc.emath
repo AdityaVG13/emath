@@ -1,8 +1,8 @@
 # Fully implicit DAE: causalized residuals with an `algebraic:` section.
-# REFUSED at `emath check` with E-KIND-017: residual unknowns are admitted
-# and the runner Newton-solves them (`emath simulate` works), but Phase 1
-# `rust.library` codegen for the coupled solve is not implemented, so the
-# declaration refuses as a buildable crate instead of failing untyped.
+# The residual unknowns are admitted, Newton-solved at each simulation
+# step, and -- since rust.library codegen now contains the same causalized
+# Newton solve -- the declaration builds a crate whose `step_euler` /
+# `step_rk4` methods integrate it.
 # Same RC circuit as algebraic-dae.emath: q(t) = C*V*(1 - exp(-t/(R*C))),
 # but the resistor law is written as a residual instead of a definition:
 #   V - R*I - q/C == 0
@@ -22,3 +22,22 @@ emath model CausalizedRC:
     equations:
         V - R * I - q / C == 0
         der(q) = I
+
+    outputs:
+        tau: Float64
+
+    definitions:
+        tau = R * C
+
+    goals:
+        evaluate <tau>:
+            produce rust.library
+
+    tests:
+        example <tau_is_rc>:
+            given I = 0.0
+            given q = 0.0
+            given V = 1.0
+            given R = 2.0
+            given C = 3.0
+            expect tau == 6.0

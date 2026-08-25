@@ -19,7 +19,7 @@ Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (
 - A declaration with no `state` and no constructors emits a free `fn` per evaluate target (no `self`, no unit struct). Worked-example tests call that function directly.
 - Constructors are controlled entry points: every `require` precondition and `ensure`/`invariant` postcondition is checked in generated code before a value escapes.
 - Goals and tests attach by declared ids, never by span geometry.
-- `model` declarations emit explicit `step_euler` and `step_rk4` step methods over `der_<state>` rates; causalized implicit DAEs (Newton-solved residuals) are refused with `BackendError::Lowering` ("use `emath simulate`") — no silent omission.
+- `model` declarations emit explicit `step_euler` and `step_rk4` step methods over `der_<state>` rates; models with `algebraic:` residual equations emit the same two steps embedding the interpreter's causalized Newton solve (forward-difference Jacobian, Gaussian elimination, 30 iterations, 1e-9 solve tolerance, 1e-6 convergence check), returning `Result<Self, String>` that errors on non-convergence instead of inventing a value — no silent omission.
 - Phase 1 subset: one constructor and one evaluate goal per declaration, strict-f64 types only.
 
 ## Error model
@@ -52,7 +52,7 @@ Integration tests in `tests/emath-rust-backend/tests/lib.rs`:
   `expect_less_example_generates_computation_without_assert`,
   `constant_only_declaration_generates_parameterless_method`,
   `chained_definitions_emit_let_bindings_in_source_order`,
-  `causalized_model_is_refused_by_rust_lowering`,
+  `causalized_model_emits_newton_step_methods`,
   `model_emits_explicit_step_methods`
 
 ## No-claim boundaries

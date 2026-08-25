@@ -98,6 +98,10 @@ const NUMERIC_MODELS: &[NumericModelDescriptor] = &[
         name: "ode-explicit",
         notes: "explicit der_<state> rates; Euler, RK4, and fixed-step RK45",
     },
+    NumericModelDescriptor {
+        name: "dae-implicit",
+        notes: "algebraic: residual system Newton-solved per step (forward-difference Jacobian, Gaussian elimination; Euler + RK4 in interpreter and generated rust.library steps)",
+    },
 ];
 
 const GOALS: &[GoalDescriptor] = &[GoalDescriptor {
@@ -110,16 +114,10 @@ const WORLDS: &[WorldClassDescriptor] = &[WorldClassDescriptor {
     implemented: true,
 }];
 
-const DEFERRED: &[DeferredFeature] = &[
-    DeferredFeature {
-        name: "autodiff",
-        reason: "Track A3",
-    },
-    DeferredFeature {
-        name: "dae",
-        reason: "implicit residual form is E-TYPE-010",
-    },
-];
+const DEFERRED: &[DeferredFeature] = &[DeferredFeature {
+    name: "autodiff",
+    reason: "Track A3",
+}];
 
 /// Current compiler capability snapshot.
 #[must_use]

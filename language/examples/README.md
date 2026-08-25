@@ -20,7 +20,7 @@ Each example teaches one concept. Read in table order within a section.
 | [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | `emath policy` with constructor. |
 | [vector-given.emath](intro/vector-given.emath) | `Vector[3]` input, indexing, `dot`. |
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Semi-explicit DAE with `emath simulate`. |
-| [causalized-rc.emath](intro/causalized-rc.emath) | Refused: implicit-residual DAE — admitted and simulable, but Phase 1 `rust.library` codegen not implemented (E-KIND-017). |
+| [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE — the `algebraic:` residual system is Newton-solved at each step, and `rust.library` codegen embeds the same causalized Newton solve (`step_euler`/`step_rk4` return `Result<Self, String>`). |
 | [modular-arithmetic.emath](intro/modular-arithmetic.emath) | `GF<p>`, `factorial`, `mod_inv`, `congruence`, `rs_encode`, `hamming_distance`. |
 | [attribute-gated.emath](intro/attribute-gated.emath) | `@capabilities(experimental-syntax)` + `@experimental` — the ELP experimental lane gate. |
 

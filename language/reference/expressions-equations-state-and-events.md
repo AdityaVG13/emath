@@ -386,12 +386,19 @@ are re-evaluated with the solved algebraic values, and the solved rates
 feed the integrator. So a fully implicit DAE needs no manual `solve`
 op - see `language/examples/intro/causalized-rc.emath`.
 
-**Capability status (Phase 1):** `emath simulate` runs fully implicit
-DAEs, but `rust.library` codegen for the coupled Newton solve is not
-implemented, so `emath check` / `emath build` refuse such a model with
-`E-KIND-017` instead of failing untyped. Semi-explicit DAEs (algebraic
-definitions plus one rate in `equations:`) build fine; see
-`language/examples/intro/algebraic-dae.emath`.
+**Capability status (Phase 1):** fully implicit DAEs run both ways. `emath
+simulate` solves the residual system with the runner's causalized Newton;
+`rust.library` codegen embeds the same Newton solve (forward-difference
+Jacobian, Gaussian elimination, 30 iterations, 1e-9 tolerance) into the
+generated `step_euler` / `step_rk4`, which return `Result<Self, String>`
+and refuse on non-convergence instead of inventing a value. Parity between
+the generated steps and `emath simulate` is pinned by the examples lane
+(`language/examples/intro/causalized-rc.emath` builds a crate whose steps
+match the interpreter bit-for-bit on the same inputs). Semi-explicit DAEs
+(algebraic definitions plus one rate in `equations:`) build fine without a
+Newton solve; see `language/examples/intro/algebraic-dae.emath`.
+`emath simulate <file> --set <guess>...` takes the `algebraic:` initial
+guesses alongside inputs and state.
 
 Conformance checks at admission time:
 

@@ -28,6 +28,14 @@ pub struct Declaration {
     pub inputs: Vec<Field>,
     pub outputs: Vec<Field>,
     pub state: Vec<Field>,
+    /// `algebraic:` unknowns of a causalized implicit-residual `emath model`
+    /// (empty for every other declaration). Newton-solved at simulation
+    /// and at `rust.library` codegen step time; kept off `inputs` because
+    /// they are solved unknowns with initial guesses, not I/O contract.
+    /// Admission requires each to be `Float64` or a fixed-length vector of
+    /// `Float64`, so codegen can lay out the flattened solve vector at
+    /// compile time.
+    pub algebraic: Vec<Field>,
     pub constructors: Vec<Constructor>,
     pub definitions: BTreeMap<String, ExprId>,
     pub invariants: Vec<ExprId>,

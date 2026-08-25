@@ -490,6 +490,7 @@ fn package_entry(decl: &Declaration, kind: &str) -> emath_ir::Declaration {
         inputs: Vec::new(),
         outputs: Vec::new(),
         state: Vec::new(),
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions: BTreeMap::new(),
         invariants: Vec::new(),

@@ -656,11 +656,10 @@ for FIXTURE in language/examples/*/*.emath; do
 done
 lane_done "examples" "admit-or-refuse" "passed" "every example admits+builds or refuses with a code"
 echo "language examples: admitted or refused with documented codes"
-# Causalized residual models: `check` must refuse with the typed E-KIND-017
-# capability gate (the corpus keeps one as its honest refusal card), not
-# fail later at codegen with an untyped backend error. `emath simulate`
-# still supports these models.
-assert_invalid language/examples/intro/causalized-rc.emath "E-KIND-017"
+# Causalized residual models are now fully codegen-able: the example is
+# admitted by the loop above and builds a crate whose step_euler/step_rk4
+# embed the causalized Newton solve (parity with `emath simulate` is
+# pinned by tests/emath-rust-backend + the examples lane).
 
 # Produce refusal lives in the build lane (goal elaboration), not in
 # `check`, so it gets its own assertion here.

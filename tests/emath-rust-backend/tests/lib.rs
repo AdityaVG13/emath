@@ -30,6 +30,7 @@ fn package_for(named: &str) -> SemanticPackage {
         }],
         outputs: Vec::new(),
         state: Vec::new(),
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions: BTreeMap::new(),
         invariants: Vec::new(),
@@ -250,6 +251,7 @@ fn expect_less_example_generates_computation_without_assert() {
             source: Span::default(),
         }],
         state: Vec::new(),
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions,
         invariants: Vec::new(),
@@ -345,6 +347,7 @@ fn constant_only_declaration_generates_parameterless_method() {
             source: Span::default(),
         }],
         state: Vec::new(),
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions,
         invariants: Vec::new(),
@@ -434,6 +437,7 @@ fn stateless_declaration_emits_free_function() {
             source: Span::default(),
         }],
         state: Vec::new(),
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions,
         invariants: Vec::new(),
@@ -532,6 +536,7 @@ fn chained_definitions_emit_let_bindings_in_source_order() {
             source: Span::default(),
         }],
         state: Vec::new(),
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions,
         invariants: Vec::new(),
@@ -562,28 +567,44 @@ fn chained_definitions_emit_let_bindings_in_source_order() {
 }
 
 #[test]
-fn causalized_model_is_refused_by_rust_lowering() {
-    // Fully implicit DAEs (Newton-solved residuals) are not yet codegen-
-    // able: emit_model_step_methods only lowers explicit rates. The
-    // rust backend must refuse loudly instead of miscompiling.
+fn causalized_model_emits_newton_step_methods() {
+    // Fully implicit DAEs (Newton-solved residuals) now codegen the same
+    // causalized Newton solve the interpreter runs: embedded Gaussian
+    // helpers, residual closures over the flat solve vector, the 30/1e-9
+    // budget mirrored from `causal_newton`, and Result-typed steps.
     let mut package = SemanticPackage::new();
     let ty = package.push_type(TypeNode::Float64);
     let v = package.push_expr(
         ExprNode::Variable(QualifiedName::single("V")),
         Span::default(),
     );
-    let one = package.push_expr(
-        ExprNode::Literal(Literal::FloatBits(1.0_f64.to_bits())),
+    let i = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("I")),
+        Span::default(),
+    );
+    let q = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("state.q")),
+        Span::default(),
+    );
+    // `(V - I) - q`
+    let v_minus_i = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::StrictFloatSub,
+            left: v,
+            right: i,
+        },
         Span::default(),
     );
     let residual_expr = package.push_expr(
         ExprNode::Binary {
             operation: BinaryOp::StrictFloatSub,
-            left: v,
-            right: one,
+            left: v_minus_i,
+            right: q,
         },
         Span::default(),
     );
+    let mut definitions = BTreeMap::new();
+    definitions.insert("der_q".to_string(), i);
     package
         .expr_spans
         .resize(package.exprs.len(), Span::default());
@@ -592,7 +613,12 @@ fn causalized_model_is_refused_by_rust_lowering() {
         name: QualifiedName::single("Causalized"),
         kind: QualifiedName::single("model"),
         kind_label: "model".to_string(),
-        inputs: Vec::new(),
+        inputs: vec![Field {
+            name: "V".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
         outputs: Vec::new(),
         state: vec![Field {
             name: "q".to_string(),
@@ -600,8 +626,14 @@ fn causalized_model_is_refused_by_rust_lowering() {
             visibility: Visibility::Public,
             source: Span::default(),
         }],
+        algebraic: vec![Field {
+            name: "I".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
         constructors: Vec::new(),
-        definitions: BTreeMap::new(),
+        definitions,
         invariants: Vec::new(),
         goals: Vec::new(),
         tests: Vec::new(),
@@ -617,21 +649,44 @@ fn causalized_model_is_refused_by_rust_lowering() {
         vec![emath_ir::ModelResidual {
             expr: residual_expr,
             components: 1,
-            algebraic: vec!["V".to_string()],
-            rates: Vec::new(),
+            algebraic: vec!["I".to_string()],
+            rates: vec!["q".to_string()],
         }],
     );
-    let err = BackendInput {
+    let output = BackendInput {
         package: &package,
         crate_name: "causalized".to_string(),
         version: "0.1.0".to_string(),
     }
     .generate()
-    .expect_err("causalized model must be refused by rust codegen");
-    let text = err.to_string();
+    .expect("causalized model must now codegen its causalized Newton solve");
+    let lib = output
+        .files
+        .get("src/lib.rs")
+        .expect("generated crate has src/lib.rs");
     assert!(
-        text.contains("residuals") && text.contains("not implemented"),
-        "refusal must name the implicit-DAE boundary, got: {text}"
+        lib.contains("fn __emath_gaussian_solve") && lib.contains("fn __emath_max_abs"),
+        "causalized codegen must embed the Newton helpers, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("fn step_euler(") && lib.contains("fn step_rk4("),
+        "causalized model must emit both step methods, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("Result<Self, String>"),
+        "causalized steps must surface non-convergence as a typed Result, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("for _ in 0..30u32") && lib.contains("__emath_max_abs(&__f) < 0.000000001"),
+        "causalized steps must mirror the interpreter Newton budget and tolerance, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("_rates[") && lib.contains("x[0]"),
+        "causalized stages must drive residual closures through the solve vector, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("__emath_gaussian_solve"),
+        "causalized Jacobian solve must call the embedded Gaussian helper, got:\n{lib}"
     );
 }
 
@@ -665,6 +720,7 @@ fn model_emits_explicit_step_methods() {
             visibility: Visibility::Public,
             source: Span::default(),
         }],
+        algebraic: Vec::new(),
         constructors: Vec::new(),
         definitions,
         invariants: Vec::new(),

@@ -192,6 +192,19 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
         };
         inputs.insert(field.name.clone(), Value::F64(value));
     }
+    // Causalized implicit-residual models solve their `algebraic:`
+    // unknowns at each step; the interpreter needs the initial guesses in
+    // the same value map (causal_newton refuses a silent 0.0 default).
+    for field in &declaration.algebraic {
+        let Some(value) = args.bindings.get(&field.name).copied() else {
+            eprintln!(
+                "error: missing algebraic guess `{}` (pass --set {}=...)",
+                field.name, field.name
+            );
+            return EXIT_USAGE;
+        };
+        inputs.insert(field.name.clone(), Value::F64(value));
+    }
     let mut state = BTreeMap::new();
     for field in &declaration.state {
         let Some(value) = args.bindings.get(&field.name).copied() else {
