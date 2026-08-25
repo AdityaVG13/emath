@@ -92,9 +92,10 @@ fn constant_fold(program: &mut EmirProgram) {
 // ── Dead-register elimination ───────────────────────────────────────────
 
 /// Whether evaluating this op can fault at runtime for a well-formed
-/// program. Total ops are eligible for removal; everything else is kept so
-/// strict eager fault semantics are preserved.
-fn removable(op: &EmirOp, program: &EmirProgram) -> bool {
+/// program. Total ops are eligible for removal and for single-use
+/// inlining; everything else is kept so strict eager fault semantics are
+/// preserved.
+pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
     match op {
         EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) => true,
         EmirOp::LoadInput(i) => usize::from(*i) < usize::from(program.input_count),
@@ -169,8 +170,9 @@ fn removable(op: &EmirOp, program: &EmirProgram) -> bool {
 }
 
 /// Collect the register operands of an op (nested sub-programs excluded —
-/// they number their own registers).
-fn collect_operands(op: &EmirOp, out: &mut Vec<EmirValue>) {
+/// they number their own registers). Shared with the Rust backend for
+/// single-use inlining decisions.
+pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
     let mut push = |v: EmirValue| out.push(v);
     match *op {
         EmirOp::F64Add(a, b) | EmirOp::F64Sub(a, b) | EmirOp::F64Mul(a, b)
@@ -522,10 +524,10 @@ fn dead_code_eliminate(program: &mut EmirProgram) {
     }
     let mut operands = Vec::new();
     for i in (0..n).rev() {
-        if needed[i] || !removable(&program.ops[i].0, program) {
+        if needed[i] || !is_total(&program.ops[i].0, program) {
             needed[i] = true;
             operands.clear();
-            collect_operands(&program.ops[i].0, &mut operands);
+            operand_registers(&program.ops[i].0, &mut operands);
             for v in &operands {
                 if (v.0 as usize) < n {
                     needed[v.0 as usize] = true;

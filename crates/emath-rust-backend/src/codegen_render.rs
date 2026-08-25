@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use emath_exec_ir::optimize::is_total;
 use emath_exec_ir::{EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
 use emath_rust_ir::ast::{escape_ident, BinOp, Block, Expr, Stmt, Ty, UnOp};
 use emath_rust_ir::render::render_expr;
@@ -15,20 +18,259 @@ pub(crate) fn value_expr(
     if program.ops.len() == 1 {
         return op_expr(&program.ops[0].0, program, names, states);
     }
-    let mut statements = Vec::new();
-    for (index, (op, _)) in program.ops.iter().enumerate() {
-        let expr = op_expr(op, program, names, states)?;
-        if index == program.ops.len() - 1 {
-            // Tail: the final value is the block expression itself.
-            statements.push(Stmt::Expr(expr));
-        } else {
-            statements.push(Stmt::Let {
-                pattern: format!("__e{index}"),
-                value: Box::new(expr),
-            });
+    let flat = flat_ssa(program, names, states, None)?;
+    let mut statements: Vec<Stmt> = Vec::with_capacity(flat.e_lets.len() + 1);
+    for (pattern, src) in flat.e_lets {
+        statements.push(Stmt::Let {
+            pattern,
+            value: Box::new(Expr::Raw(src)),
+        });
+    }
+    statements.push(Stmt::Expr(Expr::Raw(flat.e_tail)));
+    Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
+}
+
+/// Register-inlined SSA body renderer.
+///
+/// Instead of binding every register as `let __eN = ...;`, registers that
+/// are read exactly once and provably cannot fault are inlined into their
+/// single consumer as expression trees. Multi-use registers, fault-capable
+/// ops (factorial, mod_inv, solver bodies, ...), and out-of-range loads
+/// stay bound as lets, preserving strict eager fault timing and order
+/// exactly. The expression trees are the same computations in the same
+/// order (no reassociation), so values are bit-identical.
+///
+/// When `var_index` is set, the tangent (`__d`) space is rendered too —
+/// the AD torso for `Differentiate`/`Solve`/`Optimize` bodies — with the
+/// same single-use inlining applied to tangent formulas.
+pub(crate) struct FlatSsa {
+    /// `let __eN = <src>;` lines for registers that must stay bound, in
+    /// register order.
+    pub e_lets: Vec<(String, String)>,
+    /// `let __dN = <src>;` tangent lines (same rule, tangent space).
+    pub d_lets: Vec<(String, String)>,
+    /// Fully resolved primal source of the result register.
+    pub e_tail: String,
+    /// Fully resolved tangent source of the result register (empty when
+    /// `var_index` was `None`).
+    pub d_tail: String,
+}
+
+/// Scratch state for one body's flattening; resolves a register to fully
+/// inlined source on demand, memoized.
+struct Resolver<'a> {
+    program: &'a EmirProgram,
+    e_src: &'a [String],
+    d_src: &'a [String],
+    inline_e: &'a [bool],
+    inline_d: &'a [bool],
+    e_memo: HashMap<u32, String>,
+    d_memo: HashMap<u32, String>,
+}
+
+impl Resolver<'_> {
+    fn e(&mut self, i: u32) -> Result<String, BackendError> {
+        if let Some(s) = self.e_memo.get(&i) {
+            return Ok(s.clone());
+        }
+        let src = self
+            .e_src
+            .get(i as usize)
+            .ok_or_else(|| BackendError::Lowering("flat e-register out of range".into()))?
+            .clone();
+        let out = self.substitute(&src)?;
+        self.e_memo.insert(i, out.clone());
+        Ok(out)
+    }
+
+    fn d(&mut self, i: u32) -> Result<String, BackendError> {
+        if let Some(s) = self.d_memo.get(&i) {
+            return Ok(s.clone());
+        }
+        let src = self
+            .d_src
+            .get(i as usize)
+            .ok_or_else(|| BackendError::Lowering("flat d-register out of range".into()))?
+            .clone();
+        let out = self.substitute(&src)?;
+        self.d_memo.insert(i, out.clone());
+        Ok(out)
+    }
+
+    /// Rewrite `__e{N}` / `__d{N}` register tokens: inlined registers are
+    /// expanded to their (parenthesized) defining expression, everything
+    /// else keeps its bound name. One pass, longest-token-safe scanning.
+    fn substitute(&mut self, src: &str) -> Result<String, BackendError> {
+        let mut out = String::with_capacity(src.len());
+        let mut i = 0usize;
+        while i < src.len() {
+            let token_len = if src[i..].starts_with("__e") || src[i..].starts_with("__d") {
+                let (kind, start) = if src[i..].starts_with("__e") {
+                    ('e', i + 3)
+                } else {
+                    ('d', i + 3)
+                };
+                let digits_len = src[start..]
+                    .bytes()
+                    .take_while(|b| b.is_ascii_digit())
+                    .count();
+                if digits_len > 0 {
+                    if let Ok(idx) = src[start..(start + digits_len)].parse::<u32>() {
+                        if (idx as usize) < self.program.ops.len() {
+                            let replacement =
+                                match (kind, self.inline_e.get(idx as usize), self.inline_d.get(idx as usize)) {
+                                    ('e', Some(true), _) => format!("({})", self.e(idx)?),
+                                    ('d', _, Some(true)) => format!("({})", self.d(idx)?),
+                                    _ => src[i..(start + digits_len)].to_string(),
+                                };
+                            out.push_str(&replacement);
+                            start + digits_len - i
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            if token_len > 0 {
+                i += token_len;
+                continue;
+            }
+            let ch = src[i..]
+                .chars()
+                .next()
+                .expect("index i always lands on a char boundary");
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        Ok(out)
+    }
+}
+
+/// Whether a user-facing name could collide with an internal `__e\d+`
+/// register token (the flattening scanner rewrites those tokens in the
+/// rendered source). Such programs fall back to non-flat rendering.
+fn reg_token_collision(names: &[String], states: &[String]) -> bool {
+    let is_like = |name: &str| {
+        let name = name.strip_prefix("__e").or_else(|| name.strip_prefix("__d"));
+        matches!(name, Some(rest) if rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
+    };
+    names.iter().any(|n| is_like(n)) || states.iter().any(|n| is_like(n))
+}
+
+/// Count how many times each register token appears across the rendered
+/// sources.
+fn count_reg_tokens(srcs: &[String], kind: char) -> Vec<u32> {
+    let mut uses = vec![0u32; srcs.len()];
+    for src in srcs {
+        let bytes = src.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let prefix = if kind == 'e' {
+                src[i..].starts_with("__e")
+            } else {
+                src[i..].starts_with("__d")
+            };
+            if prefix {
+                let start = i + 3;
+                let digits_len = src[start..]
+                    .bytes()
+                    .take_while(|b| b.is_ascii_digit())
+                    .count();
+                if digits_len > 0 {
+                    if let Ok(idx) = src[start..(start + digits_len)].parse::<usize>() {
+                        if idx < uses.len() {
+                            uses[idx] += 1;
+                        }
+                    }
+                    i = start + digits_len;
+                    continue;
+                }
+            }
+            i += src[i..]
+                .chars()
+                .next()
+                .expect("index i always lands on a char boundary")
+                .len_utf8();
         }
     }
-    Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
+    uses
+}
+
+/// Flatten an SSA body; see [`FlatSsa`].
+pub(crate) fn flat_ssa(
+    program: &EmirProgram,
+    names: &[String],
+    states: &[String],
+    var_index: Option<u16>,
+) -> Result<FlatSsa, BackendError> {
+    let n = program.ops.len();
+    // Primal sources for every register.
+    let mut e_src = Vec::with_capacity(n);
+    for (op, _) in &program.ops {
+        e_src.push(render_expr(&op_expr(op, program, names, states)?));
+    }
+    let e_direct = count_reg_tokens(&e_src, 'e');
+    let collision = reg_token_collision(names, states);
+    let mut inline_e = vec![false; n];
+    for i in 0..n {
+        inline_e[i] = !collision && e_direct[i] <= 1 && is_total(&program.ops[i].0, program);
+    }
+    // Tangent sources (AD torso sites only).
+    let mut d_src = Vec::new();
+    let mut inline_d = vec![false; n];
+    if let Some(vi) = var_index {
+        d_src = (0..n)
+            .map(|i| dual_tangent_str(&program.ops[i].0, vi, i))
+            .collect();
+        let d_direct = count_reg_tokens(&d_src, 'd');
+        for i in 0..n {
+            inline_d[i] = !collision && d_direct[i] <= 1;
+        }
+    }
+    let mut resolver = Resolver {
+        program,
+        e_src: &e_src,
+        d_src: &d_src,
+        inline_e: &inline_e,
+        inline_d: &inline_d,
+        e_memo: HashMap::new(),
+        d_memo: HashMap::new(),
+    };
+    let mut e_lets = Vec::new();
+    let mut d_lets = Vec::new();
+    let result = program.result;
+    for i in 0..n {
+        if i == result.0 as usize {
+            continue;
+        }
+        if !inline_e[i] {
+            e_lets.push((format!("__e{i}"), resolver.e(i as u32)?));
+        }
+        if var_index.is_some() && !inline_d[i] {
+            d_lets.push((format!("__d{i}"), resolver.d(i as u32)?));
+        }
+    }
+    let e_tail = resolver.e(result.0)?;
+    let d_tail = if var_index.is_some() {
+        resolver.d(result.0)?
+    } else {
+        String::new()
+    };
+    // e_lets must precede d_lets, then the inferred result bindings follow
+    // register order within each space; fault order is unchanged because
+    // d-sources never fault and e-lets keep relative order.
+    Ok(FlatSsa {
+        e_lets,
+        d_lets,
+        e_tail,
+        d_tail,
+    })
 }
 
 /// Operand reference: every op is materialized as `__e<i>`.
@@ -438,23 +680,21 @@ pub(crate) fn op_expr(
             ))
         }
         EmirOp::Differentiate { body, var_index } => {
-            let mut statements = Vec::new();
-            for (index, (op, _)) in body.ops.iter().enumerate() {
-                let primal = op_expr(op, body, names, states)?;
+            let flat = flat_ssa(body, names, states, Some(*var_index))?;
+            let mut statements = Vec::with_capacity(flat.e_lets.len() + flat.d_lets.len() + 1);
+            for (pattern, src) in flat.e_lets {
                 statements.push(Stmt::Let {
-                    pattern: format!("__e{index}"),
-                    value: Box::new(primal),
-                });
-                let tangent = Expr::Raw(dual_tangent_str(op, *var_index, index));
-                statements.push(Stmt::Let {
-                    pattern: format!("__d{index}"),
-                    value: Box::new(tangent),
+                    pattern,
+                    value: Box::new(Expr::Raw(src)),
                 });
             }
-            statements.push(Stmt::Expr(Expr::Var(format!(
-                "__d{}",
-                body.result.0
-            ))));
+            for (pattern, src) in flat.d_lets {
+                statements.push(Stmt::Let {
+                    pattern,
+                    value: Box::new(Expr::Raw(src)),
+                });
+            }
+            statements.push(Stmt::Expr(Expr::Raw(flat.d_tail)));
             Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
         }
         EmirOp::Solve {
@@ -473,25 +713,27 @@ pub(crate) fn op_expr(
                 solve_names.push(String::new());
             }
             solve_names[vi] = "__x".to_string();
+            let flat = flat_ssa(body, &solve_names, states, Some(*var_index))?;
             let mut inner = String::new();
-            for (index, (op, _)) in body.ops.iter().enumerate() {
-                let primal = op_expr(op, body, &solve_names, states)?;
-                inner.push_str(&format!("let __e{index} = {};\n", render_expr(&primal)));
-                let tangent = dual_tangent_str(op, *var_index, index);
-                inner.push_str(&format!("let __d{index} = {tangent};\n"));
+            for (pattern, src) in flat.e_lets {
+                inner.push_str(&format!("let {pattern} = {src};\n"));
             }
-            let result_idx = body.result.0;
+            for (pattern, src) in flat.d_lets {
+                inner.push_str(&format!("let {pattern} = {src};\n"));
+            }
+            let e_result = flat.e_tail;
+            let d_result = flat.d_tail;
             // Match interpreter: vanish/exhaustion panic; final Newton
             // update is re-checked so a last-step root still succeeds.
             Ok(Expr::Raw(format!(
                 "{{ let mut __x = {};\nlet mut __converged = false;\n\
                  for _ in 0..{max_iter} {{\n{inner}\
-                 let __f = __e{result_idx};\nlet __df = __d{result_idx};\n\
+                 let __f = {e_result};\nlet __df = {d_result};\n\
                  if __f.abs() < {tolerance} {{ __converged = true; break; }}\n\
                  if __df.abs() < 1e-30 {{ panic!(\"solve derivative vanished before convergence\"); }}\n\
                  __x -= __f / __df;\n}}\n\
                  if !__converged {{\n{inner}\
-                 if __e{result_idx}.abs() < {tolerance} {{ __converged = true; }}\n}}\n\
+                 if ({e_result}).abs() < {tolerance} {{ __converged = true; }}\n}}\n\
                  if !__converged {{ panic!(\"solve did not converge within max_iter\"); }}\n\
                  __x }}",
                 render_expr(&init),
@@ -528,14 +770,15 @@ pub(crate) fn op_expr(
                     opt_names.push(String::new());
                 }
                 opt_names[viu] = format!("__x{i}");
+                let flat = flat_ssa(body, &opt_names, states, Some(*vi))?;
                 let mut code = format!("let __g{i} = {{ ");
-                for (index, (op, _)) in body.ops.iter().enumerate() {
-                    let primal = op_expr(op, body, &opt_names, states)?;
-                    code.push_str(&format!("let __e{index} = {}; ", render_expr(&primal)));
-                    let tangent = dual_tangent_str(op, *vi, index);
-                    code.push_str(&format!("let __d{index} = {tangent}; "));
+                for (pattern, src) in flat.e_lets {
+                    code.push_str(&format!("let {pattern} = {src}; "));
                 }
-                code.push_str(&format!("__d{} }};\n", body.result.0));
+                for (pattern, src) in flat.d_lets {
+                    code.push_str(&format!("let {pattern} = {src}; "));
+                }
+                code.push_str(&format!("{} }};\n", flat.d_tail));
                 passes.push(code);
                 grads.push(format!("__g{i}"));
             }
