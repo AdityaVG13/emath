@@ -1,8 +1,8 @@
 use emath_exec_ir::{EmirProgram, EmirValue};
 use emath_ir::{ExprId, ExprNode, SemanticPackage, TypeNode};
 use emath_rust_ir::ast::{
-    escape_ident, BinOp, Expr, FnDef, ImplDef, Item, Param, Stmt, StructDef, Ty, UnOp,
-    Visibility, RUST_KEYWORDS,
+    escape_ident, BinOp, Expr, FnDef, ImplDef, Item, Param, Stmt, StructDef, Ty, Visibility,
+    RUST_KEYWORDS,
 };
 use emath_rust_ir::render::render_expr;
 use std::collections::BTreeSet;
@@ -243,21 +243,6 @@ pub(crate) fn emit_host_structs(
     Ok(())
 }
 
-pub(crate) fn unary_method(method: &str, value: EmirValue, program: &EmirProgram) -> Expr {
-    Expr::Un {
-        op: UnOp::Method(method.to_string()),
-        value: Box::new(operand(program, value)),
-    }
-}
-
-pub(crate) fn binary_method(method: &str, left: EmirValue, right: EmirValue, program: &EmirProgram) -> Expr {
-    Expr::MethodCall {
-        receiver: Box::new(operand(program, left)),
-        method: method.to_string(),
-        args: vec![operand(program, right)],
-    }
-}
-
 pub(crate) fn comparison(op: BinOp, left: EmirValue, right: EmirValue, program: &EmirProgram) -> Expr {
     Expr::Bin {
         op,
@@ -296,23 +281,25 @@ pub(crate) fn rate_lets(
 
 pub(crate) fn add_scaled_expr(value: Expr, rate: Expr, scale: Expr, node: &TypeNode) -> Expr {
     match node {
+        // value + scale * rate, via the embedded runtime kernels (the
+        // same kernels the interpreter uses).
         TypeNode::Vector { .. } => Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()",
-            render_expr(&value),
-            render_expr(&rate),
-            render_expr(&scale),
+            "emath_rt::vec_add(&{v}, &emath_rt::vec_scale(&{r}, {s}))",
+            v = render_expr(&value),
+            r = render_expr(&rate),
+            s = render_expr(&scale),
         )),
         TypeNode::Matrix { .. } => Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
-            render_expr(&value),
-            render_expr(&rate),
-            render_expr(&scale),
+            "emath_rt::mat_add(&{v}, &emath_rt::mat_scale(&{r}, {s}))",
+            v = render_expr(&value),
+            r = render_expr(&rate),
+            s = render_expr(&scale),
         )),
         TypeNode::Tensor { .. } => Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a + {} * b).collect::<Vec<f64>>()",
-            render_expr(&value),
-            render_expr(&rate),
-            render_expr(&scale),
+            "emath_rt::tensor_add(&{v}, &emath_rt::tensor_scale(&{r}, {s}))",
+            v = render_expr(&value),
+            r = render_expr(&rate),
+            s = render_expr(&scale),
         )),
         _ => Expr::Bin {
             op: BinOp::Add,

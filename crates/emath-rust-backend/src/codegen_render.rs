@@ -36,6 +36,35 @@ pub(crate) fn operand(_program: &EmirProgram, value: EmirValue) -> Expr {
     Expr::Var(format!("__e{}", value.0))
 }
 
+/// A call into the embedded runtime module: `emath_rt::<name>(args)`.
+/// The runtime kernels live in `emath-rt` (single source of truth) and
+/// are embedded into every generated crate as `mod emath_rt { ... }`.
+fn rt_call(name: &str, args: Vec<Expr>) -> Expr {
+    Expr::Call {
+        path: vec!["emath_rt".to_string(), name.to_string()],
+        args,
+    }
+}
+
+/// Reference to a register operand: `&__e<i>` (runtime kernels take
+/// slices).
+fn operand_ref(program: &EmirProgram, value: EmirValue) -> Expr {
+    Expr::Raw(format!("&{}", render_expr(&operand(program, value))))
+}
+
+/// Render an `EdgePolicy` literal as a constructed enum value in the
+/// embedded runtime module.
+fn edge_policy_literal(edge: &EdgePolicy) -> Expr {
+    let text = match *edge {
+        EdgePolicy::Clamp => "emath_rt::EdgePolicy::Clamp".to_string(),
+        EdgePolicy::Neumann => "emath_rt::EdgePolicy::Neumann".to_string(),
+        EdgePolicy::Dirichlet { left, right } => format!(
+            "emath_rt::EdgePolicy::Dirichlet {{ left: {left:?}, right: {right:?} }}"
+        ),
+    };
+    Expr::Raw(text)
+}
+
 pub(crate) fn op_expr(
     op: &EmirOp,
     program: &EmirProgram,
@@ -184,30 +213,26 @@ pub(crate) fn op_expr(
                 target: Ty::Named("usize".to_string()),
             }),
         }),
-        EmirOp::VectorAdd(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::VectorSub(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a - b).collect::<Vec<f64>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::VectorScale(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().map(|x| x * {}).collect::<Vec<f64>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::VectorDot(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a * b).sum::<f64>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::VectorNorm(v) => Ok(Expr::Raw(format!(
-            "{}.iter().map(|x| x * x).sum::<f64>().sqrt()",
-            render_expr(&operand(program, *v)),
-        ))),
+        EmirOp::VectorAdd(l, r) => Ok(rt_call(
+            "vec_add",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::VectorSub(l, r) => Ok(rt_call(
+            "vec_sub",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::VectorScale(l, r) => Ok(rt_call(
+            "vec_scale",
+            vec![
+                operand_ref(program, *l),
+                operand(program, *r),
+            ],
+        )),
+        EmirOp::VectorDot(l, r) => Ok(rt_call(
+            "vec_dot",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::VectorNorm(v) => Ok(rt_call("vec_norm", vec![operand_ref(program, *v)])),
         EmirOp::VectorLength(v) => Ok(Expr::Raw(format!(
             "({}.len() as f64)",
             render_expr(&operand(program, *v)),
@@ -218,30 +243,20 @@ pub(crate) fn op_expr(
             center,
             edge,
         } => {
-            let src = render_expr(&operand(program, *input));
             let w_lit = weights
                 .iter()
                 .map(|w| format!("{w:?}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let tap = match *edge {
-                EdgePolicy::Clamp => {
-                    format!("w * {src}[raw.clamp(0, last) as usize]")
-                }
-                EdgePolicy::Neumann => format!(
-                    "w * {src}[(if raw < 0 {{ -raw }} else if raw > last {{ 2 * last - raw }} else {{ raw }}).clamp(0, last) as usize]"
-                ),
-                EdgePolicy::Dirichlet { left, right } => format!(
-                    "w * if raw < 0 {{ {left:?} }} else if raw > last {{ {right:?} }} else {{ {src}[raw as usize] }}"
-                ),
-            };
-            Ok(Expr::Raw(format!(
-                "(0..{src}.len()).map(|i| {{ let n = {src}.len(); let last = (n - 1) as isize; [{w}].iter().enumerate().map(|(k, &w)| {{ let raw = i as isize + k as isize - {c} as isize; {tap} }}).sum::<f64>() }}).collect::<Vec<f64>>()",
-                src = src,
-                w = w_lit,
-                c = *center,
-                tap = tap
-            )))
+            Ok(rt_call(
+                "stencil_1d",
+                vec![
+                    operand_ref(program, *input),
+                    Expr::Raw(format!("&[{w_lit}]")),
+                    Expr::Raw(format!("{center}")),
+                    edge_policy_literal(edge),
+                ],
+            ))
         }
         EmirOp::Stencil2d {
             input,
@@ -249,64 +264,47 @@ pub(crate) fn op_expr(
             center,
             edge,
         } => {
-            let src = render_expr(&operand(program, *input));
+            if matches!(edge, EdgePolicy::Dirichlet { .. }) {
+                return Err(BackendError::Lowering(
+                    "2D Dirichlet boundary is not yet supported for Stencil2d".to_string(),
+                ));
+            }
             let w_lit = weights
                 .iter()
                 .map(|w| format!("{w:?}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let (cr, cc) = *center;
-            let tap = match *edge {
-                EdgePolicy::Clamp => format!(
-                    "w[kr * 3 + kc] * m[(raw_r).clamp(0, lr) as usize][(raw_c).clamp(0, lc) as usize]"
-                ),
-                EdgePolicy::Neumann => format!(
-                    "w[kr * 3 + kc] * m[(if raw_r < 0 {{ -raw_r }} else if raw_r > lr {{ 2 * lr - raw_r }} else {{ raw_r }}).clamp(0, lr) as usize][(if raw_c < 0 {{ -raw_c }} else if raw_c > lc {{ 2 * lc - raw_c }} else {{ raw_c }}).clamp(0, lc) as usize]"
-                ),
-                EdgePolicy::Dirichlet { .. } => {
-                    return Err(BackendError::Lowering(
-                        "2D Dirichlet boundary is not yet supported for Stencil2d".to_string(),
-                    ));
-                }
-            };
-            Ok(Expr::Raw(format!(
-                "{{ let m = &{src}; let nr = m.len(); let nc = if nr == 0 {{ 0 }} else {{ m[0].len() }}; let lr = (nr - 1) as isize; let lc = (nc - 1) as isize; let w = [{w}]; (0..nr).map(|r| (0..nc).map(|c| (0..3).flat_map(|kr| (0..3).map(move |kc| {{ let raw_r = r as isize + kr as isize - {cr} as isize; let raw_c = c as isize + kc as isize - {cc} as isize; {tap} }})).sum::<f64>()).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }}",
-                src = src,
-                w = w_lit,
-                cr = cr,
-                cc = cc,
-                tap = tap
-            )))
+            Ok(rt_call(
+                "stencil_2d",
+                vec![
+                    operand_ref(program, *input),
+                    Expr::Raw(format!("&[{w_lit}]")),
+                    Expr::Raw(format!("({}, {})", center.0, center.1)),
+                    edge_policy_literal(edge),
+                ],
+            ))
         }
-        EmirOp::MatrixAdd(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::MatrixSub(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(a, b)| a - b).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::MatrixScale(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().map(|row| row.iter().map(|x| x * {}).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::MatrixMulVector(m, v) => Ok(Expr::Raw(format!(
-            "{{ let m = &{}; let v = &{}; m.iter().map(|row| row.iter().zip(v.iter()).map(|(a, b)| a * b).sum::<f64>()).collect::<Vec<f64>>() }}",
-            render_expr(&operand(program, *m)),
-            render_expr(&operand(program, *v)),
-        ))),
-        EmirOp::MatrixMulMatrix(l, r) => Ok(Expr::Raw(format!(
-            "{{ let m1 = &{}; let m2 = &{}; let r1 = m1.len(); let c2 = if m2.is_empty() {{ 0 }} else {{ m2[0].len() }}; let c1 = if m1.is_empty() {{ 0 }} else {{ m1[0].len() }}; (0..r1).map(|i| (0..c2).map(|j| (0..c1).map(|k| m1[i][k] * m2[k][j]).sum::<f64>()).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }}",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::MatrixTranspose(m) => Ok(Expr::Raw(format!(
-            "{{ let m = &{}; if m.is_empty() {{ vec![] }} else {{ let rows = m.len(); let cols = m[0].len(); (0..cols).map(|c| (0..rows).map(|r| m[r][c]).collect::<Vec<f64>>()).collect::<Vec<Vec<f64>>>() }} }}",
-            render_expr(&operand(program, *m)),
-        ))),
+        EmirOp::MatrixAdd(l, r) => Ok(rt_call(
+            "mat_add",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::MatrixSub(l, r) => Ok(rt_call(
+            "mat_sub",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::MatrixScale(l, r) => Ok(rt_call(
+            "mat_scale",
+            vec![operand_ref(program, *l), operand(program, *r)],
+        )),
+        EmirOp::MatrixMulVector(m, v) => Ok(rt_call(
+            "mat_mul_vec",
+            vec![operand_ref(program, *m), operand_ref(program, *v)],
+        )),
+        EmirOp::MatrixMulMatrix(l, r) => Ok(rt_call(
+            "mat_mul_mat",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::MatrixTranspose(m) => Ok(rt_call("mat_transpose", vec![operand_ref(program, *m)])),
         EmirOp::TensorCreate { elements, .. } => Ok(Expr::Macro {
             name: "vec".to_string(),
             args: elements.iter().map(|elem| operand(program, *elem)).collect(),
@@ -329,16 +327,14 @@ pub(crate) fn op_expr(
             render_expr(&operand(program, *tensor)),
             axes.len()
         ))),
-        EmirOp::TensorAdd(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a + b).collect::<Vec<f64>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
-        EmirOp::TensorSub(l, r) => Ok(Expr::Raw(format!(
-            "{}.iter().zip({}.iter()).map(|(a, b)| a - b).collect::<Vec<f64>>()",
-            render_expr(&operand(program, *l)),
-            render_expr(&operand(program, *r)),
-        ))),
+        EmirOp::TensorAdd(l, r) => Ok(rt_call(
+            "tensor_add",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
+        EmirOp::TensorSub(l, r) => Ok(rt_call(
+            "tensor_sub",
+            vec![operand_ref(program, *l), operand_ref(program, *r)],
+        )),
         // einsum codegen: the interp handles evaluation; Rust codegen
         // emits a placeholder that panics at runtime. Full tensor
         // codegen is a Stage 2 concern.
@@ -347,13 +343,13 @@ pub(crate) fn op_expr(
         ))),
         EmirOp::Factorial(n) => {
             Ok(Expr::Raw(format!(
-                "((1..=__e{} as i64).fold(1i64, |a, b| a * b)) as f64",
+                "(emath_rt::factorial(__e{} as i64)) as f64",
                 n.0
             )))
         }
         EmirOp::ModInv(a, m) => {
             Ok(Expr::Raw(format!(
-                "(emath_runtime::mod_inv(__e{} as i64, __e{} as i64)) as f64",
+                "(emath_rt::mod_inv(__e{} as i64, __e{} as i64)) as f64",
                 a.0, m.0
             )))
         }
@@ -365,19 +361,19 @@ pub(crate) fn op_expr(
         }
         EmirOp::PolyEvalMod(coeffs, x, p) => {
             Ok(Expr::Raw(format!(
-                "(emath_runtime::poly_eval_mod(&__e{}, __e{} as i64, __e{} as i64)) as f64",
+                "(emath_rt::poly_eval_mod(&__e{}, __e{} as i64, __e{} as i64)) as f64",
                 coeffs.0, x.0, p.0
             )))
         }
         EmirOp::RSEncode(coeffs, n, p) => {
             Ok(Expr::Raw(format!(
-                "emath_runtime::rs_encode(&__e{}, __e{} as i64, __e{} as i64)",
+                "emath_rt::rs_encode(&__e{}, __e{} as i64, __e{} as i64)",
                 coeffs.0, n.0, p.0
             )))
         }
         EmirOp::HammingDistance(a, b) => {
             Ok(Expr::Raw(format!(
-                "(emath_runtime::hamming_distance(&__e{}, &__e{})) as f64",
+                "(emath_rt::hamming_distance(&__e{}, &__e{})) as f64",
                 a.0, b.0
             )))
         }
@@ -397,20 +393,24 @@ pub(crate) fn op_expr(
             body_names[lv_idx] = "__fold_var".to_string();
             let body_expr = value_expr(body, &body_names, states)?;
             let body_code = render_expr(&body_expr);
-            let (init_str, acc_op) = match combine {
-                FoldCombine::Add => (render_expr(&operand(program, *init)), "+"),
-                FoldCombine::Mul => (render_expr(&operand(program, *init)), "*"),
-                FoldCombine::And => ("true".to_string(), "&&"),
-                FoldCombine::Or => ("false".to_string(), "||"),
+            let (fn_name, init_arg) = match combine {
+                FoldCombine::Add => ("fold_add", render_expr(&operand(program, *init))),
+                FoldCombine::Mul => ("fold_mul", render_expr(&operand(program, *init))),
+                FoldCombine::And => ("fold_all", "true".to_string()),
+                FoldCombine::Or => ("fold_any", "false".to_string()),
             };
-            Ok(Expr::Raw(format!(
-                "{{ let mut __fold_acc = {}; for __fold_iter in ({} as i64)..({} as i64) {{ let __fold_var = __fold_iter as f64; __fold_acc = __fold_acc {} {}; }} __fold_acc }}",
-                init_str,
-                render_expr(&operand(program, *start)),
-                render_expr(&operand(program, *end)),
-                acc_op,
-                body_code,
-            )))
+            Ok(rt_call(
+                fn_name,
+                vec![
+                    Expr::Raw(format!("&|__fold_var: f64| {body_code}")),
+                    Expr::Raw(format!(
+                        "({} as i64)",
+                        render_expr(&operand(program, *start))
+                    )),
+                    Expr::Raw(format!("({} as i64)", render_expr(&operand(program, *end)))),
+                    Expr::Raw(init_arg),
+                ],
+            ))
         }
         EmirOp::Integral {
             start,
@@ -427,13 +427,15 @@ pub(crate) fn op_expr(
             body_names[lv_idx] = "__int_var".to_string();
             let body_expr = value_expr(integrand, &body_names, states)?;
             let body_code = render_expr(&body_expr);
-            Ok(Expr::Raw(format!(
-                "{{ let __a = {}; let __b = {}; let __n = {} as i64; let __h = (__b - __a) / __n as f64; let mut __int_acc = 0.0; for __i in 0..=__n {{ let __int_var = __a + __i as f64 * __h; let __w = if __i == 0 || __i == __n {{ 1.0 }} else if __i % 2 == 0 {{ 2.0 }} else {{ 4.0 }}; __int_acc += __w * {}; }} __int_acc * __h / 3.0 }}",
-                render_expr(&operand(program, *start)),
-                render_expr(&operand(program, *end)),
-                steps,
-                body_code,
-            )))
+            Ok(rt_call(
+                "simpson",
+                vec![
+                    Expr::Raw(format!("&|__int_var: f64| {body_code}")),
+                    operand(program, *start),
+                    operand(program, *end),
+                    Expr::Raw(format!("{steps} as i64")),
+                ],
+            ))
         }
         EmirOp::Differentiate { body, var_index } => {
             let mut statements = Vec::new();
@@ -573,45 +575,25 @@ pub(crate) fn op_expr(
             direction,
         } => {
             // Numerical limit: sample body at target ± h for decreasing h.
-            // Match interpreter algorithm: geometric step sizes 1e-1..1e-12,
-            // return on 1% agreement between successive finite samples.
-            let target_str = render_expr(&operand(program, *target));
-            let dir_str = render_expr(&operand(program, *direction));
+            // The sampling driver lives in the embedded runtime
+            // (`sample_limit`); the generated closure is the body with the
+            // limit variable substituted.
             let vi = *var_index as usize;
             let mut lim_names = names.to_vec();
             while lim_names.len() <= vi {
                 lim_names.push(String::new());
             }
             lim_names[vi] = "__lv".to_string();
-            let mut inner = String::new();
-            for (index, (op, _)) in body.ops.iter().enumerate() {
-                let e = op_expr(op, body, &lim_names, states)?;
-                inner.push_str(&format!("let __le{index} = {};\n", render_expr(&e)));
-            }
-            let result_idx = body.result.0;
-            Ok(Expr::Raw(format!(
-                "{{ let __t = {target_str}; let __d = {dir_str};\n\
-                 let __dirs: &[f64] = if __d > 0.5 {{ &[1.0] }} else if __d < -0.5 {{ &[-1.0] }} else {{ &[1.0, -1.0] }};\n\
-                 let mut __best = f64::NAN;\n\
-                 let mut __prev = f64::NAN;\n\
-                 for __exp in 1u32..=12 {{\n\
-                 let __h = 10f64.powi(-(__exp as i32));\n\
-                 for &__dd in __dirs {{\n\
-                 let __lv = __t + __dd * __h;\n\
-                 {inner}\
-                 let __fx = __le{result_idx};\n\
-                 if __fx.is_finite() {{\n\
-                 if __prev.is_finite() && (__fx - __prev).abs() <= __fx.abs() * 0.01 + 1e-14 {{\n\
-                 return __fx;\n\
-                 }}\n\
-                 __prev = __fx;\n\
-                 __best = __fx;\n\
-                 }}\n\
-                 }}\n\
-                 }}\n\
-                 if __best.is_finite() {{ __best }} else {{ panic!(\"sample_limit produced no finite values\"); }}\n\
-                 }}"
-            )))
+            let body_expr = value_expr(body, &lim_names, states)?;
+            let body_code = render_expr(&body_expr);
+            Ok(rt_call(
+                "sample_limit",
+                vec![
+                    Expr::Raw(format!("&|__lv: f64| {body_code}")),
+                    operand(program, *target),
+                    operand(program, *direction),
+                ],
+            ))
         }
         EmirOp::ReverseMode { body, var_indices } => {
             // Forward pass: compute all primals.

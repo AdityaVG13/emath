@@ -65,7 +65,7 @@ fn stencil_1d_clamp_replicates_boundary() {
     // i=3: tap k=1 reads raw=4 > last=3 and clamps to cell 3: 4.0 + 2.0 = 6.0.
     let u = vec![1.0, 2.0, 3.0, 4.0];
     let w = vec![1.0, 0.5];
-    assert_eq!(stencil_1d(&u, &w, 0, &EdgePolicy::Clamp), vec![2.0, 3.5, 5.0, 6.0]);
+    assert_eq!(stencil_1d(&u, &w, 0, EdgePolicy::Clamp), vec![2.0, 3.5, 5.0, 6.0]);
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn stencil_1d_neumann_mirrors_boundary() {
     // raw=-1 tap mirrors to cell 1: -u[1] + 2u[0] - u[1].
     let u = vec![1.0, 2.0, 3.0];
     let w = vec![-1.0, 2.0, -1.0];
-    assert_eq!(stencil_1d(&u, &w, 1, &EdgePolicy::Neumann), vec![-2.0, 0.0, 2.0]);
+    assert_eq!(stencil_1d(&u, &w, 1, EdgePolicy::Neumann), vec![-2.0, 0.0, 2.0]);
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn stencil_1d_dirichlet_holds_boundary() {
     let w = vec![-1.0, 2.0, -1.0];
     let edge = EdgePolicy::Dirichlet { left: 0.0, right: 0.0 };
     // i=0: -left + 2u[0] - u[1] = 0 + 2 - 2 = 0; i=2: -u[1] + 2u[2] - right = 4.
-    assert_eq!(stencil_1d(&u, &w, 1, &edge), vec![0.0, 0.0, 4.0]);
+    assert_eq!(stencil_1d(&u, &w, 1, edge), vec![0.0, 0.0, 4.0]);
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn stencil_2d_clamp_matches_manual_convolution() {
     let u = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
     // Laplace-ish: center weight 4, orthogonal -1, corners 0.
     let w = [0.0, -1.0, 0.0, -1.0, 4.0, -1.0, 0.0, -1.0, 0.0];
-    let out = stencil_2d(&u, &w, (1, 1), &EdgePolicy::Clamp);
+    let out = stencil_2d(&u, &w, (1, 1), EdgePolicy::Clamp);
     // Clamp duplicates the boundary cell per tap, so edge taps accumulate
     // multiple contributions of the same value:
     // cell (0,0): -u01 - u10 + 4*u00 - u01 - u10 = -2 - 3 + 4 - 2 - 3 = -3
@@ -198,7 +198,13 @@ fn sample_limit_respects_direction() {
 
 #[test]
 fn source_is_paste_safe_for_module_embedding() {
-    assert!(!SOURCE.contains("#!["), "crate attributes must not be embedded");
+    // No inner attributes may be embedded (`#![forbid]`, `#![no_std]`,
+    // ... would break module embedding; hosts that strip `#![...]` lines
+    // would also strip them mid-module).
+    assert!(
+        !SOURCE.contains("#!["),
+        "inner attributes must not be embedded"
+    );
     assert!(SOURCE.contains("pub fn vec_add"), "kernels must be public");
     assert!(SOURCE.contains("pub enum EdgePolicy"));
     // The embedded module must stay std-only: no external crate paths.
