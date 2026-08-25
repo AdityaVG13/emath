@@ -477,7 +477,7 @@ fn head_args_mixed_with_inputs_refused() {
     );
 }
 
-/// The `emath-4yy` exit gate: one source package parses into the
+/// The exit gate: one source package parses into the
 /// mathematical intent graph with every semantic plane represented.
 const SIX_PLANE_SOURCE: &str = "emath policy SixPlanes:
     inputs:

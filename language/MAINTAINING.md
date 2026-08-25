@@ -1,7 +1,7 @@
 # Maintaining the Language Folder
 
 > Checklist for adding, changing, or refusing a language capability.
-> Follow this when implementing a bead that touches the language.
+> Follow this whenever you make such a change.
 
 ## The four-artifact rule
 
@@ -13,8 +13,8 @@ Every language change updates four artifacts in the same commit:
    it to the appropriate chapter body.
 
 2. **Grammar** (`language/grammar/surface.ebnf`) - the machine-checkable
-   surface model. Add or modify the grammar rule. Add a comment citing
-   the bead ID (e.g., `(* B14: ... *)`).
+   surface model. Add or modify the grammar rule, with a comment
+   explaining the rule's intent.
 
 3. **Example** (`language/examples/`) - at least one runnable or
    parse-only `.emath` file that demonstrates the feature. Place it in

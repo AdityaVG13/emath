@@ -309,7 +309,7 @@ fn plugin_execute_untrusted_without_fuel_is_e_plg_002() {
 
 #[test]
 fn plugin_execute_local_cannot_skip_the_fuel_gate() {
-    // The bead's seam: this descriptor would pass a `Trust::Local` admit
+    // The regression seam: this descriptor would pass a `Trust::Local` admit
     // (unmetered is tolerated at admission), so the old execute reported
     // E-PLG-001 as if the only problem were a missing runtime. Execution
     // must re-enforce the fuel gate — E-PLG-002 before E-PLG-001 — or

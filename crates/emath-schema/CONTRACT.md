@@ -93,6 +93,6 @@ and `emath.world-morphism` (canonical text forms, not JSON documents),
 `emath.meaning-lock`, `emath.agent-world-proposal` (genesis writes
 `emath.world-candidate`), `emath.continuation` (Rust `ContinuationHandle`,
 not a JSON document), `emath.math-layout-graph`,
-`emath.provenance-receipt` (13th registry id; the bead's "plus examples"
-are the per-id `example_json` writers, not a 13th artifact name). These
+`emath.provenance-receipt` (13th registry id; the "plus examples" are
+the per-id `example_json` writers, not a 13th artifact name). These
 nine are disclosed envelope-only.

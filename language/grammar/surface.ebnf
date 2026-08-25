@@ -101,11 +101,11 @@ postfix_expr     = primary_expr , { call_suffix | index_suffix | field_suffix | 
    for future unit-bracket syntax.  List, tuple, and path primaries still
    accept index_suffix. *)
 call_suffix      = "(" , [ argument_list ] , ")" ;
-(* B08: `einsum("ik,kj->ij", A, B)` parses as a regular call_suffix on
-   a path primary. The first argument is a string literal (subscripts);
+(* `einsum("ik,kj->ij", A, B)` parses as a regular call_suffix on a
+   path primary. The first argument is a string literal (subscripts);
    remaining arguments are tensor operands. Recognized as a builtin by
    sema and lowered to EmirOp::Einsum. *)
-(* B15: Modular arithmetic builtins: `factorial(n)` → i64, `mod_inv(a, m)` → i64,
+(* Modular arithmetic builtins: `factorial(n)` → i64, `mod_inv(a, m)` → i64,
    `congruence(a, b, m)` → Bool. `GF<p>` is admitted as Int type.
    `poly_eval_mod(coeffs, x, p)` → i64 (Horner over GF(p)),
    `rs_encode(coeffs, n, p)` → Vector (RS codeword).

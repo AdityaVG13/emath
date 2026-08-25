@@ -1,11 +1,10 @@
 # Research Theorems T1–T4
 
-Parked formal results of bead `emath-axs`. Local numbering is this
-bead's T1–T4 (free-world existence, universal evaluation, parametric
-compilation, constraint/resolution monotonicity). Overlap with
-`emath-yoy0` T1–T9 is intentional and not flattened: that program uses a
-different numbering (its T2 is free-world existence; its T6 is
-constraint monotonicity).
+Parked formal results, numbered T1–T4 (free-world existence, universal
+evaluation, parametric compilation, constraint/resolution
+monotonicity). Overlap with a companion theorem set's T1–T9 is
+intentional and not flattened: that program uses a different numbering
+(its T2 is free-world existence; its T6 is constraint monotonicity).
 
 These are informal statements with code witnesses. They are **not**
 machine-checked proofs. Each claim is an engineering invariant checked
@@ -219,5 +218,5 @@ commands returned ok on this tree on 2026-08-18; it does not license
 language such as "proved", "certified", or "for all signatures /
 worlds / planner states".
 
-`emath-yoy0` remains a separate formal program. Do not treat this
-file as a statement of T1–T9.
+The companion theorem set remains a separate formal program. Do not
+treat this file as a statement of T1–T9.

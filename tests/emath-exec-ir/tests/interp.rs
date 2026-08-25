@@ -1338,7 +1338,7 @@ fn sample_limit_one_sided_from_above() {
     );
 }
 
-// ─── reverse-mode AD (emath-xx0x.1) ───
+// ─── reverse-mode AD ───
 
 #[test]
 fn reverse_mode_quadratic_gradient() {

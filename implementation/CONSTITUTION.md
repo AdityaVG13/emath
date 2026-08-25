@@ -151,7 +151,7 @@ free oracle.
   `capabilities` explicitly; both are identity-bound (mutation matrix
   test in `crates/emath-world-ir/src/lib.rs`). No ambient effects.
 
-## Authority Firewall (folded from emath-dha7)
+## Authority Firewall
 
 Strict declarations claim known meaning; genesis declarations authorize
 constructed meaning. The lanes are separate parsers and separate CLI

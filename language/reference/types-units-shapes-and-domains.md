@@ -122,8 +122,8 @@ element type, all arguments are extents and the element defaults to
 
 Value-level and named generic arguments **parse** today. Semantic
 admission of non-type arguments (modular arithmetic, finite fields,
-function spaces) will arrive with the domain-specific language beads
-that use them.
+function spaces) will arrive with the domain-specific features that
+use them.
 
 ## Domains
 

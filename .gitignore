@@ -14,10 +14,10 @@ tests/*/target/
 .skill-loop*
 /.module-coupling-topology/
 
-# bv (beads viewer) local config and caches
+# local viewer/tool config and caches
 .bv/
 
-# bead store is local-only (issue tracking; not part of the shipped repo)
+# local issue-tracking store (not part of the shipped repo)
 /.beads/
 
 # internal planning docs (not for public release)
@@ -30,7 +30,7 @@ tests/*/target/
 docs/*
 # MANUAL.md lives at repo root (next to README), not under docs/
 
-# beads description files (local-only, not shipped)
+# local issue description files (not shipped)
 .beads-desc/
 
 # agent contract is local-only
@@ -64,7 +64,7 @@ AGENTS.md
 !/implementation/ERROR_CODES.md
 !/implementation/CLI_REFERENCE.md
 !/implementation/contract-pins.json
-# bead-closure deliverables: positioning, constitution mapping, SG-00
+# closure deliverables: positioning, constitution mapping, SG-00
 # freeze, research-theorem evidence, and the genesis kernel contract
 # must ship with the repo.
 !/implementation/VISION.md
@@ -114,7 +114,7 @@ TASK_CLOSURE.json
 TREE.txt
 beads_compliance_audit/
 
-# Beads compliance audit dir (managed by /beads-compliance-and-completion-verification skill)
+# compliance audit directory (local-only)
 /beads_compliance_audit/
 
 # Scar-archaeology dig books (local campaign artifacts; do not commit)
