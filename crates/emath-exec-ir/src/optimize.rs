@@ -1,28 +1,64 @@
 //! EMIR peephole optimization: constant folding + dead-register elimination.
 //!
 //! Runs after lowering, before interpretation or codegen, so both consumers
-//! see the same shrunk program.
+//! see the same shrunk program. Preserves observable behavior exactly,
+//! including strict eager evaluation: DCE only removes ops that are provably
+//! total (f64/i64 arithmetic, builtins, comparisons, boolean ops,
+//! static-shape aggregates); ops that can fault at runtime (number-theory,
+//! dynamic indexing, higher-order drivers, out-of-range loads) are never
+//! removed, so fault timing is unchanged.
 //!
-//! # Semantic contract
-//!
-//! The optimizer never changes the observable behavior of a program —
-//! including its *strict eager evaluation*: the interpreter executes every
-//! op in order and surfaces faults from any op, and generated Rust does the
-//! same. DCE is therefore restricted to ops that are provably total for
-//! well-formed programs (f64 arithmetic, builtins, static-shape aggregates).
-//! Ops that can fault at runtime — number-theory ops, dynamic index
-//! operations, higher-order drivers (fold/solve/optimize/...), and
-//! out-of-range loads — are never removed, even when their register is
-//! unused, so fault timing is preserved exactly.
-//!
-//! Constant folding only collapses scalar f64 chains (arithmetic + builtins
-//! over constant operands), mirroring the interpreter's IEEE semantics
-//! bit-exactly. Boolean registers have no constant form in EMIR, so
-//! comparisons/`Select` are left alone.
+//! Folding collapses scalar constants (f64/i64 arithmetic, builtins,
+//! comparisons, boolean ops, `IsFinite`, `Select` over constant operands),
+//! mirroring the interpreter's semantics (`f64_of`/`i64_of`/`bool_of`,
+//! `eq_ne`) and IEEE behavior bit-exactly.
 
 use emath_core::Span;
 
 use crate::{EmirOp, EmirProgram, EmirValue};
+
+/// Folded compile-time constant, mirroring the interpreter's value kinds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConstVal {
+    F64(f64),
+    I64(i64),
+    Bool(bool),
+}
+
+impl ConstVal {
+    /// `f64_of` semantics: F64 as-is, I64 widened, Bool has no f64 form.
+    fn f64_of(self) -> Option<f64> {
+        match self {
+            ConstVal::F64(x) => Some(x),
+            ConstVal::I64(x) => Some(x as f64),
+            ConstVal::Bool(_) => None,
+        }
+    }
+
+    /// `bool_of` semantics: Bool as-is, F64 truthiness, I64 has no bool form.
+    fn bool_of(self) -> Option<bool> {
+        match self {
+            ConstVal::Bool(b) => Some(b),
+            ConstVal::F64(x) => Some(x != 0.0),
+            ConstVal::I64(_) => None,
+        }
+    }
+
+    /// `eq_ne` scalar semantics: exact structural equality for the covered
+    /// kinds (Bool coerces with F64 by truthiness, I64 widens to f64).
+    fn eq(self, other: ConstVal) -> Option<bool> {
+        Some(match (self, other) {
+            (ConstVal::F64(a), ConstVal::F64(b)) => a == b,
+            (ConstVal::I64(a), ConstVal::I64(b)) => a == b,
+            (ConstVal::I64(a), ConstVal::F64(b)) => a as f64 == b,
+            (ConstVal::F64(a), ConstVal::I64(b)) => a == b as f64,
+            (ConstVal::Bool(a), ConstVal::Bool(b)) => a == b,
+            (ConstVal::Bool(a), ConstVal::F64(b)) => a == (b != 0.0),
+            (ConstVal::F64(a), ConstVal::Bool(b)) => (a != 0.0) == b,
+            _ => return None,
+        })
+    }
+}
 
 /// Optimize a program in place: constant-fold scalar arithmetic and
 /// eliminate dead registers, recursing into nested sub-programs (fold
@@ -48,43 +84,119 @@ pub fn optimize_program(program: &mut EmirProgram) {
 
 // ── Constant folding ─────────────────────────────────────────────────────
 
-fn const_at(consts: &[Option<f64>], v: EmirValue) -> Option<f64> {
+fn const_at(consts: &[Option<ConstVal>], v: EmirValue) -> Option<ConstVal> {
     consts.get(v.0 as usize).copied().flatten()
 }
 
-fn fold_binary(
-    consts: &[Option<f64>],
-    left: EmirValue,
-    right: EmirValue,
+/// Fold helpers over the const table, mirroring the interpreter's
+/// conversions exactly. A `None` result means the operand kinds would make
+/// evaluation a typed fault (the op is left unfolded so the fault is
+/// preserved) or an operand is not constant.
+fn fold_f64_bin(
+    consts: &[Option<ConstVal>],
+    a: EmirValue,
+    b: EmirValue,
     f: impl FnOnce(f64, f64) -> f64,
-) -> Option<f64> {
-    Some(f(const_at(consts, left)?, const_at(consts, right)?))
+) -> Option<ConstVal> {
+    Some(ConstVal::F64(f(const_at(consts, a)?.f64_of()?, const_at(consts, b)?.f64_of()?)))
 }
 
-/// Replace provably-constant scalar ops with `ConstF64`, keeping every
-/// register slot so downstream references stay valid. The interpreter's
-/// IEEE behavior is matched exactly (division by zero folds to inf/NaN,
-/// same as evaluating the op would).
-fn constant_fold(program: &mut EmirProgram) {
-    let mut consts: Vec<Option<f64>> = vec![None; program.ops.len()];
-    for (i, (op, _)) in program.ops.iter_mut().enumerate() {
-        let folded = match op {
-            EmirOp::ConstF64(bits) => Some(f64::from_bits(*bits)),
-            EmirOp::F64Add(a, b) => fold_binary(&consts, *a, *b, |x, y| x + y),
-            EmirOp::F64Sub(a, b) => fold_binary(&consts, *a, *b, |x, y| x - y),
-            EmirOp::F64Mul(a, b) => fold_binary(&consts, *a, *b, |x, y| x * y),
-            EmirOp::F64Div(a, b) => fold_binary(&consts, *a, *b, |x, y| x / y),
-            EmirOp::F64Pow(a, b) => fold_binary(&consts, *a, *b, |x, y| x.powf(y)),
-            EmirOp::Neg(a) => const_at(&consts, *a).map(|x| -x),
-            EmirOp::UnaryBuiltin(id, a) => const_at(&consts, *a).map(|x| id.eval_unary(x)),
-            EmirOp::BinaryBuiltin(id, a, b) => {
-                fold_binary(&consts, *a, *b, |x, y| id.eval_binary(x, y))
+fn fold_f64_un(
+    consts: &[Option<ConstVal>],
+    a: EmirValue,
+    f: impl FnOnce(f64) -> f64,
+) -> Option<ConstVal> {
+    Some(ConstVal::F64(f(const_at(consts, a)?.f64_of()?)))
+}
+
+fn fold_bool_bin(
+    consts: &[Option<ConstVal>],
+    a: EmirValue,
+    b: EmirValue,
+    f: impl FnOnce(bool, bool) -> bool,
+) -> Option<ConstVal> {
+    Some(ConstVal::Bool(f(const_at(consts, a)?.bool_of()?, const_at(consts, b)?.bool_of()?)))
+}
+
+fn fold_cmp(
+    consts: &[Option<ConstVal>],
+    a: EmirValue,
+    b: EmirValue,
+    f: impl FnOnce(f64, f64) -> bool,
+) -> Option<ConstVal> {
+    Some(ConstVal::Bool(f(
+        const_at(consts, a)?.f64_of()?,
+        const_at(consts, b)?.f64_of()?,
+    )))
+}
+
+/// Fold one op's result, mirroring the interpreter's conversions; differs
+/// from `consts[i]` when the op is non-foldable or would fault (the fault
+/// is preserved by leaving the op unfolded).
+fn fold_op(op: &EmirOp, consts: &[Option<ConstVal>]) -> Option<ConstVal> {
+    match *op {
+        EmirOp::ConstF64(bits) => Some(ConstVal::F64(f64::from_bits(bits))),
+        EmirOp::ConstI64(v) => Some(ConstVal::I64(v)),
+        EmirOp::ConstBool(b) => Some(ConstVal::Bool(b)),
+        EmirOp::F64Add(a, b) => fold_f64_bin(consts, a, b, |x, y| x + y),
+        EmirOp::F64Sub(a, b) => fold_f64_bin(consts, a, b, |x, y| x - y),
+        EmirOp::F64Mul(a, b) => fold_f64_bin(consts, a, b, |x, y| x * y),
+        EmirOp::F64Div(a, b) => fold_f64_bin(consts, a, b, |x, y| x / y),
+        EmirOp::F64Pow(a, b) => fold_f64_bin(consts, a, b, |x, y| x.powf(y)),
+        EmirOp::Neg(a) => fold_f64_un(consts, a, |x| -x),
+        EmirOp::UnaryBuiltin(id, a) => fold_f64_un(consts, a, |x| id.eval_unary(x)),
+        EmirOp::BinaryBuiltin(id, a, b) => {
+            fold_f64_bin(consts, a, b, |x, y| id.eval_binary(x, y))
+        }
+        EmirOp::Lt(a, b) => fold_cmp(consts, a, b, |x, y| x < y),
+        EmirOp::Le(a, b) => fold_cmp(consts, a, b, |x, y| x <= y),
+        EmirOp::Gt(a, b) => fold_cmp(consts, a, b, |x, y| x > y),
+        EmirOp::Ge(a, b) => fold_cmp(consts, a, b, |x, y| x >= y),
+        EmirOp::Eq(a, b) => Some(ConstVal::Bool(const_at(consts, a)?.eq(const_at(consts, b)?)?)),
+        EmirOp::Ne(a, b) => {
+            Some(ConstVal::Bool(!const_at(consts, a)?.eq(const_at(consts, b)?)?))
+        }
+        EmirOp::And(a, b) => fold_bool_bin(consts, a, b, |x, y| x && y),
+        EmirOp::Or(a, b) => fold_bool_bin(consts, a, b, |x, y| x || y),
+        EmirOp::Imply(a, b) => fold_bool_bin(consts, a, b, |x, y| !x || y),
+        EmirOp::Iff(a, b) => fold_bool_bin(consts, a, b, |x, y| x == y),
+        EmirOp::Not(a) => Some(ConstVal::Bool(!const_at(consts, a)?.bool_of()?)),
+        EmirOp::IsFinite(a) => {
+            Some(ConstVal::Bool(const_at(consts, a)?.f64_of()?.is_finite()))
+        }
+        EmirOp::Select {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            let cond = const_at(consts, condition)?.bool_of()?;
+            if cond {
+                const_at(consts, then_value)
+            } else {
+                const_at(consts, else_value)
             }
-            _ => None,
-        };
+        }
+        _ => None,
+    }
+}
+
+/// Replace provably-constant ops with their constant form (`ConstF64` /
+/// `ConstI64` / `ConstBool`), keeping every register slot so downstream
+/// references stay valid. Division by zero folds to inf/NaN exactly as
+/// evaluating the op would.
+fn constant_fold(program: &mut EmirProgram) {
+    let mut consts: Vec<Option<ConstVal>> = vec![None; program.ops.len()];
+    for (i, (op, _)) in program.ops.iter_mut().enumerate() {
+        let folded = fold_op(op, &consts);
         consts[i] = folded;
-        if let Some(value) = folded {
-            *op = EmirOp::ConstF64(value.to_bits());
+        let replacement = match folded {
+            Some(ConstVal::F64(x)) => Some(EmirOp::ConstF64(x.to_bits())),
+            Some(ConstVal::I64(x)) => Some(EmirOp::ConstI64(x)),
+            Some(ConstVal::Bool(b)) => Some(EmirOp::ConstBool(b)),
+            None => None,
+        };
+        if let Some(replacement) = replacement {
+            *op = replacement;
         }
     }
 }
@@ -97,7 +209,10 @@ fn constant_fold(program: &mut EmirProgram) {
 /// preserved.
 pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
     match op {
-        EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) => true,
+        EmirOp::ConstF64(_)
+        | EmirOp::ConstI64(_)
+        | EmirOp::ConstBool(_)
+        | EmirOp::ConstComplex(..) => true,
         EmirOp::LoadInput(i) => usize::from(*i) < usize::from(program.input_count),
         EmirOp::LoadState(i) => usize::from(*i) < usize::from(program.state_count),
         EmirOp::F64Add(..)
@@ -280,6 +395,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         }
         EmirOp::ConstF64(_)
         | EmirOp::ConstI64(_)
+        | EmirOp::ConstBool(_)
         | EmirOp::ConstComplex(..)
         | EmirOp::LoadInput(_)
         | EmirOp::LoadState(_)
@@ -296,7 +412,10 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
 fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> EmirOp {
     let mut g = |v: EmirValue| f(v);
     match *op {
-        EmirOp::ConstF64(_) | EmirOp::ConstI64(_) | EmirOp::ConstComplex(..) => op.clone(),
+        EmirOp::ConstF64(_)
+        | EmirOp::ConstI64(_)
+        | EmirOp::ConstBool(_)
+        | EmirOp::ConstComplex(..) => op.clone(),
         EmirOp::LoadInput(_) | EmirOp::LoadState(_) => op.clone(),
         EmirOp::F64Add(a, b) => EmirOp::F64Add(g(a), g(b)),
         EmirOp::F64Sub(a, b) => EmirOp::F64Sub(g(a), g(b)),

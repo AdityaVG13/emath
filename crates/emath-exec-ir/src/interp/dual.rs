@@ -33,6 +33,11 @@ pub(super) fn evaluate_dual(
                 primal: *value as f64,
                 tangent: 0.0,
             },
+            // Bool constants encode as 1.0/0.0, like the dual-space bool ops.
+            EmirOp::ConstBool(value) => Dual {
+                primal: if *value { 1.0 } else { 0.0 },
+                tangent: 0.0,
+            },
             EmirOp::LoadInput(idx) => {
                 let primal = match inputs.get(*idx as usize) {
                     Some(Value::F64(v)) => *v,
