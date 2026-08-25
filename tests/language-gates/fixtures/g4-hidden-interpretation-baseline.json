@@ -1,0 +1,530 @@
+[
+  {
+    "glyph": "(",
+    "roles": [
+      "argument_tuple",
+      "attribute",
+      "call_suffix",
+      "operator-section",
+      "parameter_list",
+      "pattern",
+      "primary_expr",
+      "tuple_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ")",
+    "roles": [
+      "argument_tuple",
+      "attribute",
+      "call_suffix",
+      "operator-section",
+      "parameter_list",
+      "pattern",
+      "primary_expr",
+      "tuple_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "*",
+    "roles": [
+      "carrier-decl",
+      "genesis-declaration",
+      "type_operator",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "+",
+    "roles": [
+      "additive_expr",
+      "answer-section",
+      "carrier-section",
+      "complex_literal",
+      "construct-meaning-section",
+      "example-section",
+      "exponent",
+      "law-section",
+      "meaning-clause",
+      "prefix_operator",
+      "symbol-section",
+      "syntax-section",
+      "tuning-section"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ",",
+    "roles": [
+      "additive_expr",
+      "answer-clause",
+      "answer-section",
+      "argument",
+      "argument_list",
+      "argument_tuple",
+      "assignment_statement",
+      "attribute",
+      "binary_expr",
+      "binder_expr",
+      "binder_list",
+      "body-section",
+      "call_suffix",
+      "carrier-decl",
+      "carrier-section",
+      "complex_literal",
+      "conditional_expr",
+      "construct-meaning-section",
+      "constructor-section",
+      "constructor_decl",
+      "decimal",
+      "declaration_head",
+      "declaration_statement",
+      "derivative_expr",
+      "emath_item",
+      "ensure_statement",
+      "example-decl",
+      "example-section",
+      "exponent",
+      "extern_decl",
+      "field_suffix",
+      "float_literal",
+      "for_statement",
+      "function_decl",
+      "generic_arg",
+      "generic_args",
+      "generic_arguments",
+      "generic_parameter",
+      "generic_suffix",
+      "genesis-declaration",
+      "if_statement",
+      "impl_decl",
+      "index_suffix",
+      "integer",
+      "invariant_statement",
+      "lambda_expr",
+      "law-decl",
+      "law-section",
+      "let_statement",
+      "list_expr",
+      "match_statement",
+      "meaning-clause",
+      "notation_decl",
+      "operator-body",
+      "operator-section",
+      "operator_decl",
+      "parameter",
+      "parameter_list",
+      "path",
+      "pattern",
+      "place_expr",
+      "postfix_expr",
+      "primary_expr",
+      "quantity_literal",
+      "range_expr",
+      "rational_literal",
+      "record_decl",
+      "record_expr",
+      "require_statement",
+      "return_statement",
+      "section",
+      "section_head",
+      "semantic-hole",
+      "suite",
+      "symbol-decl",
+      "symbol-section",
+      "syntax-decl",
+      "syntax-section",
+      "trait_decl",
+      "tuning-section",
+      "tuple_expr",
+      "type_decl",
+      "type_expr",
+      "type_primary",
+      "unary_expr",
+      "unit_query_expr",
+      "use_item",
+      "use_member",
+      "use_tree",
+      "variant_decl",
+      "while_statement",
+      "whitespace"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "-",
+    "roles": [
+      "additive_expr",
+      "complex_literal",
+      "exponent",
+      "prefix_operator"
+    ],
+    "resolved_by": "parser-context",
+    "note": "binary minus, prefix negation, complex/exponent signs — resolved by the parser operator table (g4_precedence)"
+  },
+  {
+    "glyph": "->",
+    "roles": [
+      "constructor_decl",
+      "function_decl",
+      "lambda_expr",
+      "operator-section",
+      "operator_decl",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ".",
+    "roles": [
+      "decimal",
+      "field_suffix"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ":",
+    "roles": [
+      "answer-section",
+      "binder_expr",
+      "body-section",
+      "carrier-decl",
+      "carrier-section",
+      "conditional_expr",
+      "construct-meaning-section",
+      "constructor-section",
+      "constructor_decl",
+      "emath_item",
+      "example-section",
+      "for_statement",
+      "function_decl",
+      "generic_parameter",
+      "genesis-declaration",
+      "if_statement",
+      "impl_decl",
+      "law-section",
+      "let_statement",
+      "match_statement",
+      "meaning-clause",
+      "operator-section",
+      "operator_decl",
+      "parameter",
+      "record_decl",
+      "record_expr",
+      "section",
+      "symbol-decl",
+      "symbol-section",
+      "syntax-section",
+      "trait_decl",
+      "tuning-section",
+      "variant_decl",
+      "while_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "::",
+    "roles": [
+      "path",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "<",
+    "roles": [
+      "declaration_head",
+      "generic_args",
+      "generic_arguments",
+      "genesis-declaration",
+      "section_head"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "=",
+    "roles": [
+      "argument",
+      "assignment_op",
+      "carrier-decl",
+      "generic_arg",
+      "generic_parameter",
+      "let_statement",
+      "parameter",
+      "type_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "assignment/declaration binding vs named argument vs carrier default — position-disambiguated by the enclosing rule"
+  },
+  {
+    "glyph": "=>",
+    "roles": [
+      "example-decl",
+      "lambda_expr",
+      "match_statement",
+      "notation_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "lambda arrow, match arm, notation declaration, example binding — arity/context-disambiguated"
+  },
+  {
+    "glyph": ">",
+    "roles": [
+      "declaration_head",
+      "generic_args",
+      "generic_arguments",
+      "generic_suffix",
+      "genesis-declaration",
+      "section_head"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "[",
+    "roles": [
+      "answer-clause",
+      "index_suffix",
+      "list_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "]",
+    "roles": [
+      "answer-clause",
+      "index_suffix",
+      "list_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "_",
+    "roles": [
+      "integer",
+      "pattern"
+    ],
+    "resolved_by": "parser-context",
+    "note": "integer digit separator vs wildcard pattern — literal vs pattern context"
+  },
+  {
+    "glyph": "as",
+    "roles": [
+      "emath_item",
+      "use_member",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": "declaration kind clause (`emath function F as kind`) vs `use` alias vs import path — clause position"
+  },
+  {
+    "glyph": "constant",
+    "roles": [
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation symbol kind vs syntax-decl kind — admitted kind vocabulary"
+  },
+  {
+    "glyph": "constructor",
+    "roles": [
+      "constructor-section",
+      "constructor_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "constructor section vs declaration keyword — section context"
+  },
+  {
+    "glyph": "else",
+    "roles": [
+      "conditional_expr",
+      "if_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "emath",
+    "roles": [
+      "emath_item",
+      "genesis-declaration"
+    ],
+    "resolved_by": "parser-context",
+    "note": "stable declaration introducer vs genesis declaration — file/section context"
+  },
+  {
+    "glyph": "extern",
+    "roles": [
+      "extern_decl",
+      "operator_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "extern declaration vs operator declaration — keyword context"
+  },
+  {
+    "glyph": "fn",
+    "roles": [
+      "function_decl",
+      "lambda_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": "function declaration, lambda introducer, function type — the following token shape disambiguates"
+  },
+  {
+    "glyph": "for",
+    "roles": [
+      "for_statement",
+      "impl_decl",
+      "list_expr"
+    ],
+    "resolved_by": "parser-context",
+    "note": "loop statement vs list-comprehension generator vs impl walk — enclosing rule"
+  },
+  {
+    "glyph": "hole",
+    "roles": [
+      "operator-body",
+      "semantic-hole"
+    ],
+    "resolved_by": "parser-context",
+    "note": "operator-body placeholder vs semantic-hole pattern — section context"
+  },
+  {
+    "glyph": "if",
+    "roles": [
+      "binder_expr",
+      "conditional_expr",
+      "if_statement",
+      "list_expr",
+      "match_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": "conditional statement, conditional expression, binder guard, match arm guard, comprehension filter — parser context"
+  },
+  {
+    "glyph": "in",
+    "roles": [
+      "binder_list",
+      "for_statement",
+      "list_expr"
+    ],
+    "resolved_by": "parser-context",
+    "note": "binder domain, comprehension generator, for-loop range — enclosing rule"
+  },
+  {
+    "glyph": "infix",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "infixl",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "infixr",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "meaning",
+    "roles": [
+      "construct-meaning-section",
+      "tuning-section"
+    ],
+    "resolved_by": "parser-context",
+    "note": "construct-meaning section vs tuning section — section context"
+  },
+  {
+    "glyph": "operator",
+    "roles": [
+      "operator-section",
+      "operator_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "operator section vs operator declaration — section context"
+  },
+  {
+    "glyph": "postfix",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "prefix",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "return",
+    "roles": [
+      "answer-clause",
+      "return_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": "statement return vs genesis answer clause (routed through the portfolio machinery when inside `answer:`)"
+  },
+  {
+    "glyph": "semantic",
+    "roles": [
+      "operator-body",
+      "semantic-hole"
+    ],
+    "resolved_by": "parser-context",
+    "note": "operator-body vs semantic-hole — section context"
+  },
+  {
+    "glyph": "where",
+    "roles": [
+      "type_decl",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": "type-declaration constraints vs type_primary continuation — declaration vs expression position"
+  }
+]

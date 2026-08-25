@@ -55,12 +55,13 @@ proved by a negative-control lane in `scripts/validate.sh`):
 | Ambiguity scan | `g4_ambiguity.py` | duplicate production definitions and overlapping first-sets (an alternative that can start the same way as a sibling), including under a unified diff |
 | Confusable scan | `g4_confusable.py` | a new glyph whose NFC/confusable fold collides with an existing grammar glyph |
 | Precedence surprise | `g4_precedence.py` | operators without an explicit `notation_decl` precedence; regenerates the pinned boundary corpus |
-| Hidden interpretation | (proposal review) | a new form mapping to more than one established meaning without routing through worlds machinery — default is a typed refusal or portfolio artifact, never a silent pick |
+| Hidden interpretation | `g4_hidden_interpretation.py` | a glyph gaining a second role (production) — an unregistered "many meanings" form — or a registered glyph's role set drifting from its registry entry. Every multi-role glyph must declare how its meaning is pinned: `parser-context` (operator table / lexical position), `worlds-machinery` (routing through a notation pack, declared world, or portfolio artifact), or `typed-refusal` (a documented E-code) |
 
-The ambiguity and confusable scans are first-pass mechanical detectors of
-the C2–C15 class (redefinitions, lookalike glyphs, precedence surprises);
-they are not a proof of unambiguity — the boundary corpus plus human
-review of the meaning-preservation section covers the residual.
+The ambiguity, confusable, and hidden-interpretation scans are first-pass
+mechanical detectors of the C2–C15 class (redefinitions, lookalike
+glyphs, precedence surprises, silent meaning picks); they are not a
+proof of unambiguity — the boundary corpus plus human review of the
+meaning-preservation section covers the residual.
 
 ## Four-artifact rule (CI)
 
@@ -87,11 +88,23 @@ emath function Foo:
   code `E-PKG-064`, never silently admitted.
 - Unknown attributes (`E-SYN-118`), unknown capability keys (`E-PKG-065`),
   and malformed attribute arguments (`E-SYN-117`) are typed refusals.
-- Channel (nightly vs stable) enforcement and `edition: experimental`
-  provenance marking land with the version-stack deck
-  (`emath-r3-version-stack-9z1a`); until then the capability gate plus
-  quarantine-by-review is the mechanism, matching SG-15's quarantine
-  posture.
+
+**Implemented today vs deferred design elements** (kept honest per
+RULE 0.3: what computes, what is refused, what is still design):
+
+| Element | Status |
+| --- | --- |
+| Capability declaration + file-scope gate | Implemented (`@capabilities(experimental-syntax)`, `admit_capability_gates`) |
+| Typed refusals for the capability matrix | Implemented (E-SYN-117/118, E-PKG-064/065) |
+| Nightly-vs-stable channel enforcement | Deferred — lands with the version-stack deck (`emath-r3-version-stack-9z1a`) |
+| `edition: experimental` provenance marking on artifacts | Deferred — lands with the version-stack deck |
+| SG-15-style structural quarantine of experimental artifacts | Not implemented — today the mechanism is the capability gate plus quarantine-by-review |
+| Two-release-cycle retirement without promotion | Procedure stated in Lifecycle step 4; not yet mechanically enforced (no clock/tracking) |
+
+The reference vocabulary for the deferred rows is normative in
+`language/reference/declarations-sections-and-attributes.md`
+("design vocabulary (not yet admitted)"); nothing in the deferred rows
+compiles silently today.
 
 ## Codes
 
@@ -108,6 +121,9 @@ emath function Foo:
   slug, four-artifact commitments).
 - `scripts/g4_ambiguity.py` — grammar/delta ambiguity scan.
 - `scripts/g4_confusable.py` — glyph confusability scan (NFC + fold).
+- `scripts/g4_hidden_interpretation.py` — multi-role glyph registry scan
+  (the "one glyph, many meanings" gate, pinning each shared glyph's
+  interpretation policy).
 - `scripts/g4_precedence.py` — precedence boundary corpus generator.
 - `scripts/check_four_artifact.py` — commit-range four-artifact gate.
 - `scripts/validate.sh` — `elp`, `g4-*`, and `four-artifact` lanes with

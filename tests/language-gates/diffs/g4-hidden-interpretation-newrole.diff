@@ -1,0 +1,18 @@
+--- language/grammar/surface.ebnf	2026-08-25 00:39:43
++++ /tmp/neg-surface.ebnf	2026-08-25 05:12:44
+@@ -121,6 +121,7 @@
+                  | record_expr
+                  | range_expr
+                  | binder_expr
++                 | "⟦" , expression , "⟧"
+                  | "(" , expression , ")" ;
+ 
+ tuple_expr       = "(" , expression , "," , [ expression , { "," , expression } ] , ")" ;
+@@ -145,6 +146,7 @@
+                  | "(" , type_expr , { "," , type_expr } , ")"
+                  | "[" , type_expr , ";" , expression , "]"
+                  | "fn" , parameter_list , "->" , type_expr
++                 | "⟦" , type_expr , "⟧"
+                  | type_primary , "where" , expression ;
+ type_operator    = "|" | "&" | "*" | "/" ;
+ 

@@ -1,4 +1,10 @@
---- a/language/grammar/surface.ebnf
-+++ b/language/grammar/surface.ebnf
-@@ -146,0 +147,2 @@
+--- language/grammar/surface.ebnf	2026-08-25 00:39:43
++++ /tmp/mod.ebnf	2026-08-25 05:15:00
+@@ -147,6 +147,7 @@
+                  | "fn" , parameter_list , "->" , type_expr
+                  | type_primary , "where" , expression ;
+ type_operator    = "|" | "&" | "*" | "/" ;
 +sparkle = "sparkle" , "!" ;
+ 
+ (* C10: Generic arguments at use sites accept types, value literals,
+    expressions, bracket-list extents, and named arguments.

@@ -265,8 +265,33 @@ def parse_grammar(text: str, source: str) -> dict:
     return productions
 
 
+def diff_targets(diff: str, path: str) -> bool:
+    """Whether a unified diff's `--- ` header names `path`.
+
+    Diffs without a header are treated as legacy insertion-only hunks
+    and applied everywhere (the original G4 behavior). Diffs with a
+    header are only applied to their named file, so a real EBNF diff
+    targeting `surface.ebnf` never gets replayed against `genesis.ebnf`."""
+    for raw in diff.splitlines():
+        if raw.startswith("--- "):
+            target = raw[4:].split("\t")[0].strip()
+            if target.startswith(("a/", "b/")):
+                target = target[2:]
+            if target == path:
+                return True
+            return target.rsplit("/", 1)[-1] == path.rsplit("/", 1)[-1]
+    return True
+
+
 def apply_diff(base: str, diff: str) -> str:
-    """Apply a unified diff to grammar text (line-additive hunks)."""
+    """Apply a unified diff to grammar text.
+
+    Hunks use standard unified-diff semantics: `@@ -old,count +new,count @@`
+    with context, `-`, and `+` lines; each hunk is walked in order so
+    context lines advance both sides and removals/insertions apply at the
+    exact original position. Hunks are applied from the end backwards so
+    earlier line numbers stay valid.
+    """
     lines = base.splitlines(keepends=True)
     hunks = []
     current = None
@@ -275,7 +300,7 @@ def apply_diff(base: str, diff: str) -> str:
             continue
         m = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
         if m:
-            current = {"new_start": int(m.group(2)), "ops": []}
+            current = {"start": int(m.group(1)), "ops": []}
             hunks.append(current)
             continue
         if current is None:
@@ -284,20 +309,20 @@ def apply_diff(base: str, diff: str) -> str:
             current["ops"].append(("+", raw[1:]))
         elif raw.startswith("-"):
             current["ops"].append(("-", raw[1:]))
-        # context lines: no-op for insertion semantics
-    # Apply hunks from the end backwards so line numbers stay valid.
+        else:
+            current["ops"].append((" ", raw[1:]))
     for hunk in reversed(hunks):
-        index = hunk["new_start"] - 1
-        removals = 0
+        index = hunk["start"] - 1
         for op, text in hunk["ops"]:
-            if op == "-":
-                if index + removals < len(lines) and lines[index + removals] == text:
-                    removals += 1
-                else:
+            if op == " ":
+                index += 1
+            elif op == "-":
+                if index >= len(lines) or lines[index] != text:
                     raise ValueError(f"diff context mismatch at line {index + 1}")
+                del lines[index]
             elif op == "+":
-                lines.insert(index + removals, text)
-                removals += 1
+                lines.insert(index, text)
+                index += 1
     return "".join(lines)
 
 
@@ -482,7 +507,9 @@ def main(argv: list) -> int:
                 text = fh.read()
             if args.delta:
                 with open(args.delta, encoding="utf-8") as fh:
-                    text = apply_diff(text, fh.read())
+                    diff_text = fh.read()
+                if diff_targets(diff_text, path):
+                    text = apply_diff(text, diff_text)
             merged.update(parse_grammar(text, path))
     except ValueError as exc:
         print(f"g4-ambiguity: cannot parse grammar: {exc}", file=sys.stderr)

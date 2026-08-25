@@ -1,0 +1,12 @@
+--- language/grammar/surface.ebnf	2026-08-25 00:39:43
++++ /tmp/pos-surface.ebnf	2026-08-25 05:12:44
+@@ -121,7 +121,8 @@
+                  | record_expr
+                  | range_expr
+                  | binder_expr
+-                 | "(" , expression , ")" ;
++                 | "(" , expression , ")"
++                 | "⟥" ;
+ 
+ tuple_expr       = "(" , expression , "," , [ expression , { "," , expression } ] , ")" ;
+ list_expr        = "[" , [ expression , { "," , expression } ] , "]"
