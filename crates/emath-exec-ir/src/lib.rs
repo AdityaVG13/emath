@@ -9,6 +9,7 @@
 mod emitter;
 pub mod builtin;
 pub mod interp;
+pub mod optimize;
 pub mod runner;
 
 pub use builtin::BuiltinId;
@@ -386,7 +387,9 @@ pub fn lower_requirement(
     expr: EmirExprRef,
     param_names: &[String],
 ) -> Result<EmirProgram, String> {
-    emitter::lower(package, expr, param_names, &[])
+    let mut program = emitter::lower(package, expr, param_names, &[])?;
+    optimize::optimize_program(&mut program);
+    Ok(program)
 }
 
 /// Lower a definition expression. `inputs` are declaration inputs; `states`
@@ -397,7 +400,9 @@ pub fn lower_definition(
     inputs: &[String],
     states: &[String],
 ) -> Result<EmirProgram, String> {
-    emitter::lower(package, expr, inputs, states)
+    let mut program = emitter::lower(package, expr, inputs, states)?;
+    optimize::optimize_program(&mut program);
+    Ok(program)
 }
 
 pub type EmirExprRef = emath_ir::ExprId;
