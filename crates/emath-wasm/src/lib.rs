@@ -1062,9 +1062,18 @@ emath function square(x: Float64) -> Float64:
     fn generate_worked_example_computes_without_assert() {
         let json = run_op("generate", &worked_square_source());
         assert!(json.contains("\"ok\": true"), "{json}");
-        assert!(!json.contains("assert!"), "{json}");
-        assert!(json.contains("let _ ="), "{json}");
-        assert!(json.contains("actual") || json.contains("fn y"), "{json}");
+        // Intent: a worked example (no `expect:`) must generate a test that
+        // computes values but makes no pass/fail claim. Scope the check to the
+        // generated test fn: the embedded `emath_rt` module may legitimately
+        // contain `assert!` (e.g. Simpson's even-steps guard), which is a
+        // runtime precondition, not a claim about this example.
+        let at = json.find("fn square_three_squared").expect(
+            "generated crate must contain the worked-example test fn",
+        );
+        let test_tail = &json[at..];
+        assert!(!test_tail.contains("assert!"), "{json}");
+        assert!(test_tail.contains("let _ ="), "{json}");
+        assert!(test_tail.contains("actual"), "{json}");
     }
 
     #[test]
