@@ -80,7 +80,7 @@ members = [
   "examples/generated/semantic-genesis-worlds",
   "xtask",
 ]
-exclude = ["bootstrap", "implementation/rust-next", "artifacts"]
+exclude = ["bootstrap", "artifacts"]
 
 [workspace.package]
 version = "0.1.0"
