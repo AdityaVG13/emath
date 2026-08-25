@@ -433,7 +433,7 @@ emath function f(x: Float64) -> Float64:
     );
 }
 
-// ─── reverse-mode AD (emath-xx0x.1) ───
+// ─── reverse-mode AD ───
 
 #[test]
 fn grad_admits_in_definitions() {

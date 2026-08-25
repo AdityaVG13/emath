@@ -4,8 +4,7 @@ The kernel is the trusted deterministic core of semantic genesis:
 fixed inputs yield fixed outputs. It constructs candidate
 interpretations honestly and never invents semantics inside the
 trusted scope. Genesis admission is an honest constructed-world
-outcome, never a silent strict fallback (bead `emath-jck`;
-`emath-k4u` ADR-001).
+outcome, never a silent strict fallback.
 
 ## Inputs
 

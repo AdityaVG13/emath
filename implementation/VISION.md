@@ -1,8 +1,7 @@
 # Vision (positioning)
 
-Umbrella for bead `emath-b3e`. Constitution (`emath-k4u`) and Neutral IR
-(`emath-ir`) outrank this copy. Launch/adoption copy is `emath-ln2`; moat
-copy is `emath-7j5`. Terminology follows `language/reference/overview.md`.
+Positioning umbrella. Constitution and Neutral IR (`emath-ir`) outrank
+this copy. Terminology follows `language/reference/overview.md`.
 
 ## Frame
 
