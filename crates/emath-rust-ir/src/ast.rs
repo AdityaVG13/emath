@@ -99,6 +99,8 @@ pub enum Visibility {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     F64,
+    /// Exact `i64` (`Int` / `Nat` in the source language).
+    I64,
     Bool,
     SelfType,
     Named(String),

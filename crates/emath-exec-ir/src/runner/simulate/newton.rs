@@ -1,8 +1,8 @@
 //! Causalized implicit-DAE Newton solver: forward-difference Jacobian
 //! and Gaussian elimination.
 
-use crate::interp::{evaluate, Value};
-use crate::{lower_definition, EmirProgram};
+use crate::interp::{Value, evaluate};
+use crate::{EmirProgram, lower_definition};
 use emath_ir::{Declaration, ModelResidual, SemanticPackage};
 use std::collections::BTreeMap;
 
@@ -66,12 +66,25 @@ pub(super) fn causal_newton(
     // (`__rate_*`) start at 0.0 by construction below.
     let mut bind_values: Vec<Value> = Vec::with_capacity(bind_names.len());
     for name in &bind_names {
-        if let Some(value) = inputs.get(name) {
-            bind_values.push(value.clone());
-            continue;
-        }
         if name.starts_with("__rate_") {
             bind_values.push(Value::F64(0.0));
+            continue;
+        }
+        if algebraic_names.iter().any(|existing| existing == name) {
+            let Some(value) = state
+                .get(name)
+                .cloned()
+                .or_else(|| inputs.get(name).cloned())
+            else {
+                return Err(format!(
+                    "missing algebraic-variable guess `{name}` in the simulate inputs map"
+                ));
+            };
+            bind_values.push(value);
+            continue;
+        }
+        if let Some(value) = inputs.get(name) {
+            bind_values.push(value.clone());
             continue;
         }
         return Err(format!("missing input `{name}`"));
@@ -80,10 +93,13 @@ pub(super) fn causal_newton(
     let mut unknowns: Vec<NewtonUnknown> = Vec::new();
     let mut x: Vec<f64> = Vec::new();
     for (index, name) in algebraic_names.iter().enumerate() {
-        let value = inputs
+        let value = state
             .get(name)
             .cloned()
-            .ok_or_else(|| format!("missing algebraic-variable guess `{name}` in the simulate inputs map"))?;
+            .or_else(|| inputs.get(name).cloned())
+            .ok_or_else(|| {
+                format!("missing algebraic-variable guess `{name}` in the simulate inputs map")
+            })?;
         let width = value_width(&value, name)?;
         unknowns.push(NewtonUnknown {
             bind_index: input_names.len() + index,
@@ -169,7 +185,10 @@ pub(super) fn causal_newton(
     }
     let mut rate_solved = BTreeMap::new();
     for (index, rate) in rate_names.iter().enumerate() {
-        rate_solved.insert(format!("der_{rate}"), bind_values[rate_offset + index].clone());
+        rate_solved.insert(
+            format!("der_{rate}"),
+            bind_values[rate_offset + index].clone(),
+        );
     }
     Ok((algebraic_solved, rate_solved))
 }
@@ -221,10 +240,8 @@ fn eval_residuals(
 ) -> Result<Vec<f64>, String> {
     let mut out = Vec::new();
     for program in programs {
-        let value =
-            evaluate(program, bind_values, state_values).map_err(|fault| {
-                format!("residual evaluation fault: {fault:?}")
-            })?;
+        let value = evaluate(program, bind_values, state_values)
+            .map_err(|fault| format!("residual evaluation fault: {fault:?}"))?;
         match value {
             Value::F64(v) => out.push(v),
             Value::I64(v) => out.push(v as f64),
@@ -240,7 +257,9 @@ fn eval_residuals(
 }
 
 fn max_abs(values: &[f64]) -> f64 {
-    values.iter().fold(0.0_f64, |acc, value| acc.max(value.abs()))
+    values
+        .iter()
+        .fold(0.0_f64, |acc, value| acc.max(value.abs()))
 }
 
 /// Solve `matrix * x = rhs` by Gaussian elimination with partial pivoting.

@@ -6,11 +6,12 @@ use emath_rust_ir::ast::{
 use emath_rust_ir::render::render_expr;
 use std::collections::BTreeSet;
 
-use crate::BackendError;
 use crate::codegen_helpers::{
-    add_obligations, add_scaled_expr, collect_var_names, expand_host_inputs, rate_call, rate_lets,
+    add_obligations, add_scaled_expr, collect_var_names, expand_host_inputs, i64_field_names,
+    rate_call, rate_lets,
 };
 use crate::codegen_render::value_expr;
+use crate::BackendError;
 
 /// Interpreter parity constants for generated causalized-Newton steps
 /// (`crates/emath-exec-ir/src/runner/simulate/newton.rs`). Changing any
@@ -55,6 +56,7 @@ impl super::BackendInput<'_> {
             );
         }
         let order = definition_order(package, declaration);
+        let i64_names = i64_field_names(package, declaration);
         for field in &declaration.state {
             let rate_name = format!("der_{}", field.name);
             let Some(end) = order.iter().position(|(name, _)| *name == &rate_name) else {
@@ -73,7 +75,7 @@ impl super::BackendInput<'_> {
                 let program = lower_definition(package, *def_expr, &lowering_inputs, state_names)
                     .map_err(BackendError::Lowering)?;
                 add_obligations(&program, assumptions);
-                let value = value_expr(&program, &lowering_inputs, state_names)?;
+                let value = value_expr(&program, &lowering_inputs, state_names, &i64_names)?;
                 if *def_name == &rate_name {
                     body_stmts.push(Stmt::Expr(value));
                 } else {
@@ -177,10 +179,9 @@ impl super::BackendInput<'_> {
                 pattern: rate.clone(),
                 value: Box::new(rate_call(&field.name, input_args)),
             });
-            let node = self
-                .package
-                .ty(field.ty)
-                .ok_or_else(|| BackendError::UnsupportedType(format!("unknown state type in `{owner}`")))?;
+            let node = self.package.ty(field.ty).ok_or_else(|| {
+                BackendError::UnsupportedType(format!("unknown state type in `{owner}`"))
+            })?;
             fields.push((
                 field.name.clone(),
                 add_scaled_expr(
@@ -250,10 +251,9 @@ impl super::BackendInput<'_> {
         statements.extend(rate_lets("s4", "k4", declaration, input_args));
         let mut fields = Vec::new();
         for field in &declaration.state {
-            let node = self
-                .package
-                .ty(field.ty)
-                .ok_or_else(|| BackendError::UnsupportedType(format!("unknown state type in `{owner}`")))?;
+            let node = self.package.ty(field.ty).ok_or_else(|| {
+                BackendError::UnsupportedType(format!("unknown state type in `{owner}`"))
+            })?;
             let mut next = Expr::Field {
                 receiver: Box::new(Expr::SelfValue),
                 field: field.name.clone(),
@@ -287,12 +287,22 @@ impl super::BackendInput<'_> {
         rate_prefix: &str,
         scale: &Expr,
     ) -> Result<Expr, BackendError> {
+        self.shifted_state_with_algebraic(declaration, owner, rate_prefix, scale, &[])
+    }
+
+    fn shifted_state_with_algebraic(
+        &self,
+        declaration: &emath_ir::Declaration,
+        owner: &str,
+        rate_prefix: &str,
+        scale: &Expr,
+        algebraic_fields: &[(String, Expr)],
+    ) -> Result<Expr, BackendError> {
         let mut fields = Vec::new();
         for field in &declaration.state {
-            let node = self
-                .package
-                .ty(field.ty)
-                .ok_or_else(|| BackendError::UnsupportedType(format!("unknown state type in `{owner}`")))?;
+            let node = self.package.ty(field.ty).ok_or_else(|| {
+                BackendError::UnsupportedType(format!("unknown state type in `{owner}`"))
+            })?;
             fields.push((
                 field.name.clone(),
                 add_scaled_expr(
@@ -306,6 +316,7 @@ impl super::BackendInput<'_> {
                 ),
             ));
         }
+        fields.extend(algebraic_fields.iter().cloned());
         Ok(Expr::StructLiteral {
             name: "Self".to_string(),
             fields,
@@ -340,6 +351,7 @@ impl super::BackendInput<'_> {
             items.push(Item::Fn(newton_max_abs_fn()));
             items.push(Item::Fn(newton_gaussian_solve_fn()));
         }
+        let i64_names = i64_field_names(package, declaration);
 
         let residuals: Vec<emath_ir::ModelResidual> = package
             .residuals
@@ -411,7 +423,7 @@ impl super::BackendInput<'_> {
             let program = lower_definition(package, residual.expr, &bind_lower, state_names)
                 .map_err(BackendError::Lowering)?;
             add_obligations(&program, assumptions);
-            let rendered = value_expr(&program, &bind_render_residual, state_names)?;
+            let rendered = value_expr(&program, &bind_render_residual, state_names, &i64_names)?;
             let source = replace_state_receiver(&render_expr(&rendered), state_names);
             residual_sources.push((residual.components, source));
         }
@@ -445,7 +457,7 @@ impl super::BackendInput<'_> {
             let program = lower_definition(package, def_expr, &lowering_inputs, state_names)
                 .map_err(BackendError::Lowering)?;
             add_obligations(&program, assumptions);
-            let rendered = value_expr(&program, &render_inputs, state_names)?;
+            let rendered = value_expr(&program, &render_inputs, state_names, &i64_names)?;
             let source = replace_state_receiver(&render_expr(&rendered), state_names);
             def_sources.push((def_name.to_string(), source));
             available.push(def_name.to_string());
@@ -468,12 +480,6 @@ impl super::BackendInput<'_> {
                 ty,
             });
         }
-        for field in &algebraic {
-            step_params.push(Param {
-                name: escape_ident(&field.name),
-                ty: self.rust_ty(field.ty, owner)?,
-            });
-        }
         step_params.push(Param {
             name: "dt".to_string(),
             ty: Ty::F64,
@@ -491,8 +497,50 @@ impl super::BackendInput<'_> {
                 &def_sources,
             )
         };
+        let expected_rate_width: usize = state_widths.iter().sum();
+        let alg_unpack = |prefix: &str| {
+            newton_unpack_lets(
+                prefix,
+                "alg",
+                &algebraic,
+                &unknown_widths[..algebraic.len()],
+            )
+        };
 
         let euler_rates = newton_rate_args("k1", state_names, &state_widths);
+        let mut euler_statements = vec![
+            Stmt::Let {
+                pattern: "(__k1_rates, __k1_alg)".to_string(),
+                value: Box::new(Expr::Raw(format!("{{ {} }}", stage("self")))),
+            },
+            Stmt::Expr(Expr::Raw(format!(
+                "if __k1_rates.len() != {expected_rate_width} {{ return Err(\"internal: Newton rate vector has the wrong width\".to_string()); }}"
+            ))),
+        ];
+        euler_statements.extend(alg_unpack("k1"));
+        euler_statements.push(Stmt::Let {
+            pattern: "__advanced".to_string(),
+            value: Box::new(self.newton_combine_expr(
+                declaration,
+                owner,
+                &euler_rates,
+                &newton_alg_field_exprs("k1", &algebraic),
+            )?),
+        });
+        euler_statements.push(Stmt::Let {
+            pattern: "(__proj_rates, __proj_alg)".to_string(),
+            value: Box::new(Expr::Raw(format!("{{ {} }}", stage("__advanced")))),
+        });
+        euler_statements.extend(alg_unpack("proj"));
+        euler_statements.push(Stmt::Expr(Expr::Call {
+            path: vec!["Ok".to_string()],
+            args: vec![self.newton_projected_expr(
+                declaration,
+                owner,
+                "__advanced",
+                &newton_alg_field_exprs("proj", &algebraic),
+            )?],
+        }));
         methods.push(FnDef {
             name: "step_euler".to_string(),
             generics: vec![],
@@ -502,19 +550,10 @@ impl super::BackendInput<'_> {
                 error: Box::new(Ty::Named("String".to_string())),
             },
             body: Stmt::Block(Block {
-                statements: vec![
-                    Stmt::Let {
-                        pattern: "__k1_rates".to_string(),
-                        value: Box::new(Expr::Raw(format!("{{ {} }}", stage("self")))),
-                    },
-                    Stmt::Expr(Expr::Call {
-                        path: vec!["Ok".to_string()],
-                        args: vec![self.newton_combine_expr(declaration, owner, &euler_rates)?],
-                    }),
-                ],
+                statements: euler_statements,
             }),
             doc: vec![
-                "Forward Euler step from a causalized Newton solve of the implicit residual system.".to_string(),
+                "Forward Euler step from a causalized Newton solve; algebraic unknowns are re-solved at the new state so the residual is ~0.".to_string(),
             ],
             visibility: Visibility::Public,
             attrs: Vec::new(),
@@ -538,9 +577,13 @@ impl super::BackendInput<'_> {
         for (index, prefix) in ["k1", "k2", "k3", "k4"].iter().enumerate() {
             let receiver = if index == 0 { "self" } else { &previous };
             rk4_statements.push(Stmt::Let {
-                pattern: format!("__{prefix}_rates"),
+                pattern: format!("(__{prefix}_rates, __{prefix}_alg)"),
                 value: Box::new(Expr::Raw(format!("{{ {} }}", stage(receiver)))),
             });
+            rk4_statements.push(Stmt::Expr(Expr::Raw(format!(
+                "if __{prefix}_rates.len() != {expected_rate_width} {{ return Err(\"internal: Newton rate vector has the wrong width\".to_string()); }}"
+            ))));
+            rk4_statements.extend(alg_unpack(prefix));
             for (field_name, rate) in newton_rate_args(prefix, state_names, &state_widths) {
                 let rate_let = format!("{prefix}_{field_name}");
                 rk4_statements.push(Stmt::Let {
@@ -548,22 +591,41 @@ impl super::BackendInput<'_> {
                     value: Box::new(Expr::Raw(rate)),
                 });
             }
+            let alg_fields = newton_alg_field_exprs(prefix, &algebraic);
             if index == 0 {
-                let s2_shift = self.shifted_state(declaration, owner, "k1", &half)?;
+                let s2_shift = self.shifted_state_with_algebraic(
+                    declaration,
+                    owner,
+                    "k1",
+                    &half,
+                    &alg_fields,
+                )?;
                 rk4_statements.push(Stmt::Let {
                     pattern: "s2".to_string(),
                     value: Box::new(s2_shift),
                 });
                 previous = "s2".to_string();
             } else if index == 1 {
-                let s3_shift = self.shifted_state(declaration, owner, "k2", &half)?;
+                let s3_shift = self.shifted_state_with_algebraic(
+                    declaration,
+                    owner,
+                    "k2",
+                    &half,
+                    &alg_fields,
+                )?;
                 rk4_statements.push(Stmt::Let {
                     pattern: "s3".to_string(),
                     value: Box::new(s3_shift),
                 });
                 previous = "s3".to_string();
             } else if index == 2 {
-                let s4_shift = self.shifted_state(declaration, owner, "k3", &dt_var)?;
+                let s4_shift = self.shifted_state_with_algebraic(
+                    declaration,
+                    owner,
+                    "k3",
+                    &dt_var,
+                    &alg_fields,
+                )?;
                 rk4_statements.push(Stmt::Let {
                     pattern: "s4".to_string(),
                     value: Box::new(s4_shift),
@@ -582,7 +644,7 @@ impl super::BackendInput<'_> {
                 receiver: Box::new(Expr::SelfValue),
                 field: field.name.clone(),
             };
-            for (stage, weight) in [
+            for (stage_name, weight) in [
                 ("k1", 1.0_f64 / 6.0),
                 ("k2", 1.0_f64 / 3.0),
                 ("k3", 1.0_f64 / 3.0),
@@ -595,19 +657,36 @@ impl super::BackendInput<'_> {
                 };
                 combined = add_scaled_expr(
                     combined,
-                    Expr::Var(format!("{stage}_{}", field.name)),
+                    Expr::Var(format!("{stage_name}_{}", field.name)),
                     scale,
                     node,
                 );
             }
             rk4_fields.push((field.name.clone(), combined));
         }
-        rk4_statements.push(Stmt::Expr(Expr::Call {
-            path: vec!["Ok".to_string()],
-            args: vec![Expr::StructLiteral {
+        // Carry k4's algebraic guess into the combined state, then project
+        // at the accepted point so the returned residual is ~0.
+        rk4_fields.extend(newton_alg_field_exprs("k4", &algebraic));
+        rk4_statements.push(Stmt::Let {
+            pattern: "__advanced".to_string(),
+            value: Box::new(Expr::StructLiteral {
                 name: "Self".to_string(),
                 fields: rk4_fields,
-            }],
+            }),
+        });
+        rk4_statements.push(Stmt::Let {
+            pattern: "(__proj_rates, __proj_alg)".to_string(),
+            value: Box::new(Expr::Raw(format!("{{ {} }}", stage("__advanced")))),
+        });
+        rk4_statements.extend(alg_unpack("proj"));
+        rk4_statements.push(Stmt::Expr(Expr::Call {
+            path: vec!["Ok".to_string()],
+            args: vec![self.newton_projected_expr(
+                declaration,
+                owner,
+                "__advanced",
+                &newton_alg_field_exprs("proj", &algebraic),
+            )?],
         }));
         methods.push(FnDef {
             name: "step_rk4".to_string(),
@@ -621,7 +700,7 @@ impl super::BackendInput<'_> {
                 statements: rk4_statements,
             }),
             doc: vec![
-                "Classic RK4 step from four causalized Newton rate evaluations.".to_string(),
+                "Classic RK4 step from four causalized Newton rate evaluations; algebraic unknowns are re-solved at the accepted state so the residual is ~0.".to_string(),
             ],
             visibility: Visibility::Public,
             attrs: Vec::new(),
@@ -632,7 +711,7 @@ impl super::BackendInput<'_> {
     /// Width of one solve-vector unknown: 1 for a scalar, the fixed extent
     /// for a vector. Admission already enforces the scalar / fixed-vector
     /// restriction, so anything else here is an internal inconsistency.
-    fn solve_width(
+    pub(crate) fn solve_width(
         &self,
         ty: emath_ir::TypeId,
         owner: &str,
@@ -666,14 +745,15 @@ impl super::BackendInput<'_> {
         }
     }
 
-    /// The final state literal of a Newton step: `Self { <state>: self.<state>
-    /// + dt * <rate>, ... }`. Euler passes its single `k1_<state>` rate;
-    /// RK4 builds the weighted average inline in the caller instead.
+    /// The advanced state of a Newton Euler step: differential fields
+    /// `self.<state> + dt * <rate>`, algebraic fields from the stage
+    /// solve (used as the projection guess).
     fn newton_combine_expr(
         &self,
         declaration: &emath_ir::Declaration,
         owner: &str,
         rates: &[(String, String)],
+        algebraic_fields: &[(String, Expr)],
     ) -> Result<Expr, BackendError> {
         let mut fields = Vec::new();
         for (field_name, rate_var) in rates {
@@ -684,12 +764,9 @@ impl super::BackendInput<'_> {
                 .ok_or_else(|| {
                     BackendError::Lowering(format!("rate `{field_name}` has no state field"))
                 })?;
-            let node = self
-                .package
-                .ty(field.ty)
-                .ok_or_else(|| {
-                    BackendError::UnsupportedType(format!("unknown state type in `{owner}`"))
-                })?;
+            let node = self.package.ty(field.ty).ok_or_else(|| {
+                BackendError::UnsupportedType(format!("unknown state type in `{owner}`"))
+            })?;
             fields.push((
                 field_name.clone(),
                 add_scaled_expr(
@@ -703,6 +780,43 @@ impl super::BackendInput<'_> {
                 ),
             ));
         }
+        fields.extend(algebraic_fields.iter().cloned());
+        Ok(Expr::StructLiteral {
+            name: "Self".to_string(),
+            fields,
+        })
+    }
+
+    /// Copy differential fields from the advanced state and overwrite
+    /// algebraic fields with the projection solve.
+    fn newton_projected_expr(
+        &self,
+        declaration: &emath_ir::Declaration,
+        _owner: &str,
+        advanced: &str,
+        algebraic_fields: &[(String, Expr)],
+    ) -> Result<Expr, BackendError> {
+        let mut fields = Vec::new();
+        for field in &declaration.state {
+            let scalar = self.solve_width(field.ty, "proj", &field.name)? == 1;
+            let from = Expr::Field {
+                receiver: Box::new(Expr::Var(advanced.to_string())),
+                field: field.name.clone(),
+            };
+            fields.push((
+                field.name.clone(),
+                if scalar {
+                    from
+                } else {
+                    Expr::MethodCall {
+                        receiver: Box::new(from),
+                        method: "clone".to_string(),
+                        args: Vec::new(),
+                    }
+                },
+            ));
+        }
+        fields.extend(algebraic_fields.iter().cloned());
         Ok(Expr::StructLiteral {
             name: "Self".to_string(),
             fields,
@@ -726,9 +840,7 @@ fn newton_max_abs_fn() -> FnDef {
                 "values.iter().fold(0.0f64, |acc, value| acc.max(value.abs()))".to_string(),
             ))],
         }),
-        doc: vec![
-            "Generated Newton helper: max-abs of a residual vector.".to_string(),
-        ],
+        doc: vec!["Generated Newton helper: max-abs of a residual vector.".to_string()],
         visibility: Visibility::Private,
         attrs: Vec::new(),
     }
@@ -830,18 +942,17 @@ fn newton_stage_text(
             if scalar { "" } else { ".clone()" }
         ));
     }
-    // Flat solve vector.
+    // Flat solve vector. Algebraic guesses come from the stage receiver
+    // (extended DAE state), not from extra step parameters.
     out.push_str("let mut __x: Vec<f64> = Vec::new();\n");
     let mut slot = 0usize;
     for field in algebraic {
         let width = unknown_widths[slot];
+        let name = escape_ident(&field.name);
         if width == 1 {
-            out.push_str(&format!("__x.push({});\n", escape_ident(&field.name)));
+            out.push_str(&format!("__x.push(({receiver}).{name});\n"));
         } else {
-            out.push_str(&format!(
-                "__x.extend({}.clone());\n",
-                escape_ident(&field.name)
-            ));
+            out.push_str(&format!("__x.extend(({receiver}).{name}.clone());\n"));
         }
         slot += 1;
     }
@@ -855,7 +966,9 @@ fn newton_stage_text(
     // Residual closures.
     for (index, (components, source)) in residual_sources.iter().enumerate() {
         let ret = if *components == 1 { "f64" } else { "Vec<f64>" };
-        out.push_str(&format!("let __r{index} = |x: &[f64]| -> {ret} {{ {source} }};\n"));
+        out.push_str(&format!(
+            "let __r{index} = |x: &[f64]| -> {ret} {{ {source} }};\n"
+        ));
     }
     // F assembly (mirrors `eval_residuals`).
     out.push_str("let __eval = |x: &[f64]| -> Vec<f64> {\n");
@@ -934,8 +1047,52 @@ fn newton_stage_text(
             ));
         }
     }
-    out.push_str("__rates\n");
+    out.push_str("let mut __alg: Vec<f64> = Vec::new();\n");
+    if algebraic_width_total > 0 {
+        out.push_str(&format!(
+            "__alg.extend(__x[..{algebraic_width_total}].iter().copied());\n"
+        ));
+    }
+    out.push_str("(__rates, __alg)\n");
     out
+}
+
+/// Unpack flattened algebraic components from `__{prefix}_alg` into
+/// named locals `{prefix}_{field}` (scalar or `Vec<f64>`).
+fn newton_unpack_lets(
+    prefix: &str,
+    kind: &str,
+    fields: &[emath_ir::Field],
+    widths: &[usize],
+) -> Vec<Stmt> {
+    let mut offset = 0usize;
+    let mut out = Vec::new();
+    for (index, field) in fields.iter().enumerate() {
+        let width = widths[index];
+        let src = if width == 1 {
+            format!("__{prefix}_{kind}[{offset}]")
+        } else {
+            format!("__{prefix}_{kind}[{offset}..{offset}+{width}].to_vec()")
+        };
+        out.push(Stmt::Let {
+            pattern: format!("{prefix}_{}", escape_ident(&field.name)),
+            value: Box::new(Expr::Raw(src)),
+        });
+        offset += width;
+    }
+    out
+}
+
+fn newton_alg_field_exprs(prefix: &str, algebraic: &[emath_ir::Field]) -> Vec<(String, Expr)> {
+    algebraic
+        .iter()
+        .map(|field| {
+            (
+                field.name.clone(),
+                Expr::Var(format!("{prefix}_{}", escape_ident(&field.name))),
+            )
+        })
+        .collect()
 }
 
 /// `(state, rate read)` pairs for one RK stage, in state order:

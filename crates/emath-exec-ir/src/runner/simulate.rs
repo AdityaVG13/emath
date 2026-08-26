@@ -7,7 +7,7 @@ use newton::causal_newton;
 
 use crate::interp::Value;
 use emath_ir::{Declaration, SemanticPackage};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Explicit first-order stepper for `emath model` rates stored as `der_<state>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +49,11 @@ impl SimulateOptions {
 }
 
 /// One sample on a simulated trajectory.
+///
+/// For causalized implicit DAEs the map holds the differential state and
+/// the projected `algebraic:` values, so the algebraic residual at the
+/// sample is ~0 after a successful step (index-1 projection). ODE models
+/// have only differential keys.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrajectorySample {
     pub t: f64,
@@ -90,18 +95,19 @@ pub fn step_continuous_values(
     if !dt.is_finite() || dt <= 0.0 {
         return Err("step size must be a positive finite Float64".to_string());
     }
-    match method {
+    let skip = algebraic_name_set(declaration);
+    let mut next = match method {
         StepMethod::Euler => {
             let rates = eval_rates(package, declaration, inputs, state)?;
-            apply_scaled(state, &[(1.0, &rates)], dt)
+            apply_scaled(state, &[(1.0, &rates)], dt, &skip)?
         }
         StepMethod::Rk4 => {
             let k1 = eval_rates(package, declaration, inputs, state)?;
-            let s2 = apply_scaled(state, &[(1.0, &k1)], dt / 2.0)?;
+            let s2 = apply_scaled(state, &[(1.0, &k1)], dt / 2.0, &skip)?;
             let k2 = eval_rates(package, declaration, inputs, &s2)?;
-            let s3 = apply_scaled(state, &[(1.0, &k2)], dt / 2.0)?;
+            let s3 = apply_scaled(state, &[(1.0, &k2)], dt / 2.0, &skip)?;
             let k3 = eval_rates(package, declaration, inputs, &s3)?;
-            let s4 = apply_scaled(state, &[(1.0, &k3)], dt)?;
+            let s4 = apply_scaled(state, &[(1.0, &k3)], dt, &skip)?;
             let k4 = eval_rates(package, declaration, inputs, &s4)?;
             apply_scaled(
                 state,
@@ -112,13 +118,16 @@ pub fn step_continuous_values(
                     (1.0 / 6.0, &k4),
                 ],
                 dt,
-            )
+                &skip,
+            )?
         }
         StepMethod::Rk45 => {
             let stages = cash_karp_stages(package, declaration, inputs, state, dt)?;
-            Ok(stages.fifth)
+            stages.fifth
         }
-    }
+    };
+    project_algebraic_into(package, declaration, inputs, &mut next)?;
+    Ok(next)
 }
 
 /// Integrate from `t0` to `t1` with fixed `dt`. Includes the sample at `t0`.
@@ -184,11 +193,12 @@ pub fn simulate_continuous_with(
     if options.adaptive() && method != StepMethod::Rk45 {
         return Err("adaptive dt requires --method rk45".to_string());
     }
+    let mut current = state.clone();
+    project_algebraic_into(package, declaration, inputs, &mut current)?;
     let mut samples = vec![TrajectorySample {
         t: t0,
-        state: state.clone(),
+        state: current.clone(),
     }];
-    let mut current = state.clone();
     let mut t = t0;
     let mut h = match options.dt_max {
         Some(dt_max) => dt.min(dt_max),
@@ -208,7 +218,8 @@ pub fn simulate_continuous_with(
         let (next, used, err) = if options.adaptive() {
             adaptive_rk45_try(package, declaration, inputs, &current, step, options)?
         } else {
-            let next = step_continuous_values(package, declaration, inputs, &current, step, method)?;
+            let next =
+                step_continuous_values(package, declaration, inputs, &current, step, method)?;
             (next, step, 0.0)
         };
         if options.adaptive() && used < step && used <= 0.0 {
@@ -222,6 +233,10 @@ pub fn simulate_continuous_with(
             }
             continue;
         }
+        let mut next = next;
+        if options.adaptive() {
+            project_algebraic_into(package, declaration, inputs, &mut next)?;
+        }
         if let Some((name, value)) = &options.event {
             if let Some((event_t, event_state)) = locate_event(
                 package,
@@ -234,8 +249,7 @@ pub fn simulate_continuous_with(
                 name,
                 *value,
                 method,
-            )?
-            {
+            )? {
                 samples.push(TrajectorySample {
                     t: event_t,
                     state: event_state,
@@ -283,19 +297,17 @@ fn cash_karp_stages(
     state: &BTreeMap<String, Value>,
     dt: f64,
 ) -> Result<CashKarp, String> {
+    let skip = algebraic_name_set(declaration);
     let k1 = eval_rates(package, declaration, inputs, state)?;
-    let s2 = apply_scaled(state, &[(1.0 / 5.0, &k1)], dt)?;
+    let s2 = apply_scaled(state, &[(1.0 / 5.0, &k1)], dt, &skip)?;
     let k2 = eval_rates(package, declaration, inputs, &s2)?;
-    let s3 = apply_scaled(state, &[(3.0 / 40.0, &k1), (9.0 / 40.0, &k2)], dt)?;
+    let s3 = apply_scaled(state, &[(3.0 / 40.0, &k1), (9.0 / 40.0, &k2)], dt, &skip)?;
     let k3 = eval_rates(package, declaration, inputs, &s3)?;
     let s4 = apply_scaled(
         state,
-        &[
-            (3.0 / 10.0, &k1),
-            (-9.0 / 10.0, &k2),
-            (6.0 / 5.0, &k3),
-        ],
+        &[(3.0 / 10.0, &k1), (-9.0 / 10.0, &k2), (6.0 / 5.0, &k3)],
         dt,
+        &skip,
     )?;
     let k4 = eval_rates(package, declaration, inputs, &s4)?;
     let s5 = apply_scaled(
@@ -307,6 +319,7 @@ fn cash_karp_stages(
             (35.0 / 27.0, &k4),
         ],
         dt,
+        &skip,
     )?;
     let k5 = eval_rates(package, declaration, inputs, &s5)?;
     let s6 = apply_scaled(
@@ -319,6 +332,7 @@ fn cash_karp_stages(
             (253.0 / 4096.0, &k5),
         ],
         dt,
+        &skip,
     )?;
     let k6 = eval_rates(package, declaration, inputs, &s6)?;
     let fifth = apply_scaled(
@@ -330,6 +344,7 @@ fn cash_karp_stages(
             (512.0 / 1771.0, &k6),
         ],
         dt,
+        &skip,
     )?;
     let fourth = apply_scaled(
         state,
@@ -341,6 +356,7 @@ fn cash_karp_stages(
             (1.0 / 4.0, &k6),
         ],
         dt,
+        &skip,
     )?;
     Ok(CashKarp { fourth, fifth })
 }
@@ -447,14 +463,8 @@ fn value_abs_diff(left: &Value, right: &Value) -> f64 {
             .zip(b.iter())
             .map(|(x, y)| (x - y).abs())
             .fold(0.0, f64::max),
-        (
-            Value::Matrix { data: a, .. },
-            Value::Matrix { data: b, .. },
-        )
-        | (
-            Value::Tensor { data: a, .. },
-            Value::Tensor { data: b, .. },
-        ) => a
+        (Value::Matrix { data: a, .. }, Value::Matrix { data: b, .. })
+        | (Value::Tensor { data: a, .. }, Value::Tensor { data: b, .. }) => a
             .iter()
             .zip(b.iter())
             .map(|(x, y)| (x - y).abs())
@@ -532,11 +542,7 @@ fn locate_event(
     Ok(Some((hi_t, hi)))
 }
 
-fn event_gap(
-    state: &BTreeMap<String, Value>,
-    name: &str,
-    target: f64,
-) -> Result<f64, String> {
+fn event_gap(state: &BTreeMap<String, Value>, name: &str, target: f64) -> Result<f64, String> {
     let Some(value) = state.get(name) else {
         return Err(format!("event state `{name}` is missing"));
     };
@@ -569,13 +575,81 @@ fn values_to_scalars(map: &BTreeMap<String, Value>) -> Result<BTreeMap<String, f
     Ok(out)
 }
 
+fn algebraic_name_set(declaration: &Declaration) -> BTreeSet<String> {
+    declaration
+        .algebraic
+        .iter()
+        .map(|field| field.name.clone())
+        .collect()
+}
+
+/// Re-solve `algebraic:` unknowns at `state` and write them into the map.
+/// After a successful DAE step the returned (differential + algebraic)
+/// point sits on the constraint manifold: max |residual| ≤ 1e-6.
+fn project_algebraic_into(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &mut BTreeMap<String, Value>,
+) -> Result<(), String> {
+    if declaration.algebraic.is_empty() {
+        return Ok(());
+    }
+    let residuals = package
+        .residuals
+        .get(&declaration.id)
+        .cloned()
+        .unwrap_or_default();
+    if residuals.is_empty() {
+        return Ok(());
+    }
+    let algebraic_names: Vec<String> = declaration
+        .algebraic
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let mut rate_names: Vec<String> = Vec::new();
+    for residual in &residuals {
+        for rate in &residual.rates {
+            if !rate_names.iter().any(|name| name == rate) {
+                rate_names.push(rate.clone());
+            }
+        }
+    }
+    let mut guess_inputs = inputs.clone();
+    for name in &algebraic_names {
+        if let Some(value) = state.get(name) {
+            guess_inputs.insert(name.clone(), value.clone());
+        }
+    }
+    let (solved, _) = causal_newton(
+        package,
+        declaration,
+        &guess_inputs,
+        state,
+        &residuals,
+        &algebraic_names,
+        &rate_names,
+    )?;
+    for (name, value) in solved {
+        state.insert(name, value);
+    }
+    Ok(())
+}
+
 fn apply_scaled(
     state: &BTreeMap<String, Value>,
     terms: &[(f64, &BTreeMap<String, Value>)],
     dt: f64,
+    skip: &BTreeSet<String>,
 ) -> Result<BTreeMap<String, Value>, String> {
     let mut next = BTreeMap::new();
     for (name, value) in state {
+        if skip.contains(name) {
+            // Algebraic keys ride along in the extended DAE state map;
+            // they are not integrated and are re-solved after the step.
+            continue;
+        }
         let mut acc = value.clone();
         for (weight, rates) in terms {
             let rate = rates
@@ -595,10 +669,7 @@ fn add_scaled(value: &Value, rate: &Value, scale: f64) -> Result<Value, String> 
         (Value::F64(x), Value::I64(r)) => Ok(Value::F64(x + scale * *r as f64)),
         (Value::I64(x), Value::I64(r)) => Ok(Value::F64(*x as f64 + scale * *r as f64)),
         (Value::Vector(x), Value::Vector(r)) if x.len() == r.len() => Ok(Value::Vector(
-            x.iter()
-                .zip(r.iter())
-                .map(|(a, b)| a + scale * b)
-                .collect(),
+            x.iter().zip(r.iter()).map(|(a, b)| a + scale * b).collect(),
         )),
         (
             Value::Matrix {
@@ -652,10 +723,11 @@ fn eval_rates(
         .get(&declaration.id)
         .cloned()
         .unwrap_or_default();
-    let algebraic_names: Vec<String> = residuals
-        .first()
-        .map(|residual| residual.algebraic.clone())
-        .unwrap_or_default();
+    let algebraic_names: Vec<String> = declaration
+        .algebraic
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
     let mut rate_names: Vec<String> = Vec::new();
     for residual in &residuals {
         for rate in &residual.rates {
@@ -665,13 +737,8 @@ fn eval_rates(
         }
     }
 
-    let definitions = super::eval_definitions_values(package, declaration, inputs, state).map_err(
-        |verdict| {
-            verdict
-                .reason_text()
-                .unwrap_or_else(|| verdict.to_string())
-        },
-    )?;
+    let definitions = super::eval_definitions_values(package, declaration, inputs, state)
+        .map_err(|verdict| verdict.reason_text().unwrap_or_else(|| verdict.to_string()))?;
 
     // Causalized implicit DAEs: solve the residual system with Newton's
     // method at the current state (once per RK stage).
@@ -698,11 +765,8 @@ fn eval_rates(
         for (name, value) in &solved_algebraic {
             step_inputs.insert(name.clone(), value.clone());
         }
-        super::eval_definitions_values(package, declaration, &step_inputs, state).map_err(|verdict| {
-            verdict
-                .reason_text()
-                .unwrap_or_else(|| verdict.to_string())
-        })?
+        super::eval_definitions_values(package, declaration, &step_inputs, state)
+            .map_err(|verdict| verdict.reason_text().unwrap_or_else(|| verdict.to_string()))?
     };
 
     let mut rates = BTreeMap::new();

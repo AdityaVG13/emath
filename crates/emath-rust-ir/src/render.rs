@@ -585,6 +585,7 @@ fn render_param(param: &Param) -> String {
 pub fn render_ty(ty: &Ty) -> String {
     match ty {
         Ty::F64 => "f64".to_string(),
+        Ty::I64 => "i64".to_string(),
         Ty::Bool => "bool".to_string(),
         Ty::SelfType => "Self".to_string(),
         Ty::Named(name) => name.clone(),
@@ -594,11 +595,38 @@ pub fn render_ty(ty: &Ty) -> String {
     }
 }
 
+/// Expression-position `if` arm: always a block so the `if` can sit inside
+/// a larger expression (`(if c { t } else { e }) + x`).
+fn render_expr_if_arm(code: &mut Code, stmt: &Stmt) {
+    match stmt {
+        Stmt::Block(block) => render_block(code, block),
+        Stmt::Expr(expr) => {
+            code.raw("{ ");
+            code.raw(&render_expr(expr));
+            code.raw(" }");
+        }
+        other => {
+            code.raw("{ ");
+            render_stmt(code, other, true);
+            code.raw(" }");
+        }
+    }
+}
+
 #[must_use]
 pub fn render_expr(expr: &Expr) -> String {
     match expr {
-        Expr::F64(bits) => format!("{:?}", f64::from_bits(*bits)),
-        Expr::Int(value) => format!("{value}"),
+        Expr::F64(bits) => {
+            let value = f64::from_bits(*bits);
+            // Debug of NaN/Inf is `NaN`/`inf`, which is not a Rust literal.
+            // Folded `sqrt(-1)` / `1/0` must still generate a compiling crate.
+            if value.is_finite() {
+                format!("{value:?}")
+            } else {
+                format!("f64::from_bits({bits:#x})")
+            }
+        }
+        Expr::Int(value) => format!("{value}i64"),
         Expr::Bool(value) => format!("{value}"),
         Expr::Var(name) => escape_ident(name),
         Expr::SelfValue => "self".to_string(),
@@ -706,21 +734,23 @@ pub fn render_expr(expr: &Expr) -> String {
             then,
             else_value,
         } => {
+            // Expression-position `if` must use blocks: `if c { t } else { e }`.
+            // Flattening inlines Select into larger expressions via this
+            // path; braceless `if c t else e` is not valid Rust.
             let mut code = Code {
                 buf: String::new(),
                 indent: 0,
                 anchors: Vec::new(),
             };
             code.raw(&format!("if {} ", render_expr(condition)));
-            render_stmt(&mut code, then, true);
-            if let Stmt::Block(block) = &**else_value {
-                if !block.statements.is_empty() {
-                    code.raw(" else ");
-                    render_stmt(&mut code, else_value, true);
-                }
-            } else {
+            render_expr_if_arm(&mut code, then);
+            let has_else = match &**else_value {
+                Stmt::Block(block) => !block.statements.is_empty(),
+                _ => true,
+            };
+            if has_else {
                 code.raw(" else ");
-                render_stmt(&mut code, else_value, true);
+                render_expr_if_arm(&mut code, else_value);
             }
             code.buf
         }

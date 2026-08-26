@@ -7,8 +7,8 @@ use emath_rust_ir::ast::{
 use emath_rust_ir::render::render_expr;
 use std::collections::BTreeSet;
 
-use crate::BackendError;
 use crate::codegen_render::operand;
+use crate::BackendError;
 
 pub(crate) fn sanitize_crate_name(name: &str) -> String {
     let mut out: String = name
@@ -243,7 +243,51 @@ pub(crate) fn emit_host_structs(
     Ok(())
 }
 
-pub(crate) fn comparison(op: BinOp, left: EmirValue, right: EmirValue, program: &EmirProgram) -> Expr {
+pub(crate) fn type_is_i64(package: &SemanticPackage, ty: emath_ir::TypeId) -> bool {
+    node_is_i64(package.ty(ty))
+}
+
+fn node_is_i64(node: Option<&TypeNode>) -> bool {
+    match node {
+        Some(TypeNode::Int | TypeNode::Nat) => true,
+        Some(TypeNode::Refinement { base, .. }) => node_is_i64(Some(base)),
+        _ => false,
+    }
+}
+
+pub(crate) fn i64_field_names(
+    package: &SemanticPackage,
+    declaration: &emath_ir::Declaration,
+) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut consider = |field: &emath_ir::Field| {
+        if type_is_i64(package, field.ty) {
+            names.insert(field.name.clone());
+        }
+    };
+    for field in declaration
+        .inputs
+        .iter()
+        .chain(declaration.state.iter())
+        .chain(declaration.algebraic.iter())
+        .chain(declaration.outputs.iter())
+    {
+        consider(field);
+    }
+    for constructor in &declaration.constructors {
+        for parameter in &constructor.parameters {
+            consider(parameter);
+        }
+    }
+    names
+}
+
+pub(crate) fn comparison(
+    op: BinOp,
+    left: EmirValue,
+    right: EmirValue,
+    program: &EmirProgram,
+) -> Expr {
     Expr::Bin {
         op,
         left: Box::new(operand(program, left)),
@@ -296,7 +340,7 @@ pub(crate) fn add_scaled_expr(value: Expr, rate: Expr, scale: Expr, node: &TypeN
             s = render_expr(&scale),
         )),
         TypeNode::Tensor { .. } => Expr::Raw(format!(
-            "emath_rt::tensor_add(&{v}, &emath_rt::tensor_scale(&{r}, {s}))",
+            "emath_rt::Tensor {{ shape: {v}.shape.clone(), data: emath_rt::tensor_add(&{v}.data, &emath_rt::tensor_scale(&{r}.data, {s})) }}",
             v = render_expr(&value),
             r = render_expr(&rate),
             s = render_expr(&scale),
@@ -312,4 +356,3 @@ pub(crate) fn add_scaled_expr(value: Expr, rate: Expr, scale: Expr, node: &TypeN
         },
     }
 }
-
