@@ -96,8 +96,8 @@ fn rk4_decay_beats_euler() {
         StepMethod::Euler,
     )
     .unwrap();
-    let rk4 = step_continuous(&package, declaration, &inputs, &state, 0.5, StepMethod::Rk4)
-        .unwrap();
+    let rk4 =
+        step_continuous(&package, declaration, &inputs, &state, 0.5, StepMethod::Rk4).unwrap();
     let exact = (-0.5_f64).exp();
     let euler_err = (euler["x"] - exact).abs();
     let rk4_err = (rk4["x"] - exact).abs();
@@ -185,6 +185,32 @@ fn simulate_decay_includes_endpoints() {
     assert_eq!(
         trajectory.samples[2].state.get("x"),
         Some(&Value::F64(0.81))
+    );
+}
+
+#[test]
+fn simulate_zero_span_returns_initial_sample() {
+    let package = decay_package();
+    let declaration = &package.declarations[0];
+    let mut state = BTreeMap::new();
+    state.insert("x".to_string(), Value::F64(1.0));
+    let trajectory = simulate_continuous(
+        &package,
+        declaration,
+        &BTreeMap::new(),
+        &state,
+        0.5,
+        0.5,
+        0.1,
+        StepMethod::Euler,
+    )
+    .expect("t1 == t0 is a 0-step trajectory, not a panic");
+    assert_eq!(trajectory.samples.len(), 1);
+    assert_eq!(trajectory.samples[0].t, 0.5);
+    assert_eq!(
+        trajectory.samples[0].state.get("x"),
+        Some(&Value::F64(1.0)),
+        "0-step simulate must keep the initial state"
     );
 }
 

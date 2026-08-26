@@ -1,5 +1,5 @@
 use emath_core::Span;
-use emath_exec_ir::interp::{EvalFault, Value, evaluate};
+use emath_exec_ir::interp::{evaluate, EvalFault, Value};
 use emath_exec_ir::{BuiltinId, EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
 
 fn program(ops: Vec<EmirOp>) -> EmirProgram {
@@ -63,6 +63,125 @@ fn add_spot() {
     assert_eq!(evaluate(&program, &[], &[]).unwrap(), Value::F64(5.0));
 }
 
+/// I64 add/mul stay exact past 2^53 (where f64 rounding would break the
+/// ring laws). Identity, commutativity, associativity, and order.
+#[test]
+fn i64_add_mul_ring_laws() {
+    let a = (1i64 << 53) + 1; // 2^53+1, not an f64 integer
+    let add = |x: i64, y: i64| {
+        program(vec![
+            EmirOp::ConstI64(x),
+            EmirOp::ConstI64(y),
+            EmirOp::F64Add(EmirValue(0), EmirValue(1)),
+        ])
+    };
+    let mul = |x: i64, y: i64| {
+        program(vec![
+            EmirOp::ConstI64(x),
+            EmirOp::ConstI64(y),
+            EmirOp::F64Mul(EmirValue(0), EmirValue(1)),
+        ])
+    };
+    let eval = |p: &EmirProgram| match evaluate(p, &[], &[]).unwrap() {
+        Value::I64(v) => v,
+        other => panic!("expected I64, got {other:?}"),
+    };
+
+    // x+0 = x = 0+x; x*1 = x = 1*x
+    assert_eq!(eval(&add(a, 0)), a);
+    assert_eq!(eval(&add(0, a)), a);
+    assert_eq!(eval(&mul(a, 1)), a);
+    assert_eq!(eval(&mul(1, a)), a);
+
+    // a+b = b+a
+    assert_eq!(eval(&add(a, 3)), eval(&add(3, a)));
+    assert_eq!(eval(&mul(a, 3)), eval(&mul(3, a)));
+
+    // (a+1)+1 = a+(1+1) — f64 would give 2^53 vs 2^53+2
+    let left_assoc = program(vec![
+        EmirOp::ConstI64(a),
+        EmirOp::ConstI64(1),
+        EmirOp::F64Add(EmirValue(0), EmirValue(1)),
+        EmirOp::ConstI64(1),
+        EmirOp::F64Add(EmirValue(2), EmirValue(3)),
+    ]);
+    let right_assoc = program(vec![
+        EmirOp::ConstI64(a),
+        EmirOp::ConstI64(1),
+        EmirOp::ConstI64(1),
+        EmirOp::F64Add(EmirValue(1), EmirValue(2)),
+        EmirOp::F64Add(EmirValue(0), EmirValue(3)),
+    ]);
+    assert_eq!(eval(&left_assoc), a + 2);
+    assert_eq!(eval(&right_assoc), a + 2);
+
+    // 2^53+1 < 2^53+2 (both collapse to 2^53 as f64)
+    let cmp = program(vec![
+        EmirOp::ConstI64(a),
+        EmirOp::ConstI64(a + 1),
+        EmirOp::Lt(EmirValue(0), EmirValue(1)),
+    ]);
+    assert_eq!(evaluate(&cmp, &[], &[]).unwrap(), Value::Bool(true));
+
+    // overflow is a fault, not wrap
+    let overflow = program(vec![
+        EmirOp::ConstI64(i64::MAX),
+        EmirOp::ConstI64(1),
+        EmirOp::F64Add(EmirValue(0), EmirValue(1)),
+    ]);
+    assert_eq!(
+        evaluate(&overflow, &[], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "f64-add",
+            detail: "i64 overflow",
+        }
+    );
+}
+
+/// Mixed Int/Float64 `==` used to widen (`n as f64 == x`), so 2^53+1
+/// compared equal to 2^53.0 — a type-affinity false positive hiding true
+/// divergence. Exact compare; IEEE signed-zero still equals integer 0.
+#[test]
+fn mixed_i64_f64_equality_is_exact() {
+    let two53 = 1i64 << 53;
+    let past = two53 + 1;
+    let mixed = |n: i64, x: f64, op: fn(EmirValue, EmirValue) -> EmirOp| {
+        program(vec![
+            EmirOp::ConstI64(n),
+            const_bits(x),
+            op(EmirValue(0), EmirValue(1)),
+        ])
+    };
+    let as_bool = |p: &EmirProgram| match evaluate(p, &[], &[]).unwrap() {
+        Value::Bool(b) => b,
+        other => panic!("expected Bool, got {other:?}"),
+    };
+    assert!(
+        !as_bool(&mixed(past, two53 as f64, EmirOp::Eq)),
+        "2^53+1 == 2^53.0 must be false (exact mixed compare)"
+    );
+    assert!(as_bool(&mixed(past, two53 as f64, EmirOp::Ne)));
+    assert!(as_bool(&mixed(past, two53 as f64, EmirOp::Gt)));
+    assert!(!as_bool(&mixed(past, two53 as f64, EmirOp::Lt)));
+    assert!(as_bool(&mixed(0, -0.0, EmirOp::Eq)));
+    assert!(as_bool(&mixed(8, 8.0, EmirOp::Eq)));
+    let cx_eq = program(vec![
+        EmirOp::ConstI64(past),
+        EmirOp::ConstComplex(two53 as f64, 0.0),
+        EmirOp::Eq(EmirValue(0), EmirValue(1)),
+    ]);
+    assert!(!as_bool(&cx_eq));
+    let cx_zero = program(vec![
+        EmirOp::ConstI64(0),
+        EmirOp::ConstComplex(-0.0, -0.0),
+        EmirOp::Eq(EmirValue(0), EmirValue(1)),
+    ]);
+    assert!(as_bool(&cx_zero));
+    assert!(Value::I64(0) == Value::F64(-0.0));
+    assert!(Value::I64(past) != Value::F64(two53 as f64));
+    assert!(Value::I64(0) == Value::Complex { re: -0.0, im: -0.0 });
+}
+
 #[test]
 fn pow_spot() {
     let program = program(vec![
@@ -90,10 +209,7 @@ fn differentiate_pow_variable_exponent() {
     };
     let prog = EmirProgram {
         ops: vec![(
-            EmirOp::Differentiate {
-                body,
-                var_index: 0,
-            },
+            EmirOp::Differentiate { body, var_index: 0 },
             Span::default(),
         )],
         result: EmirValue(0),
@@ -128,10 +244,7 @@ fn differentiate_pow_constant_exponent() {
     };
     let prog = EmirProgram {
         ops: vec![(
-            EmirOp::Differentiate {
-                body,
-                var_index: 0,
-            },
+            EmirOp::Differentiate { body, var_index: 0 },
             Span::default(),
         )],
         result: EmirValue(0),
@@ -165,8 +278,59 @@ fn select_spot() {
 
 #[test]
 fn is_finite_spot() {
-    let program = program(vec![const_bits(1.0), EmirOp::IsFinite(EmirValue(0))]);
-    assert_eq!(evaluate(&program, &[], &[]).unwrap(), Value::Bool(true));
+    let prog = program(vec![const_bits(1.0), EmirOp::IsFinite(EmirValue(0))]);
+    assert_eq!(evaluate(&prog, &[], &[]).unwrap(), Value::Bool(true));
+    for (value, want) in [
+        (f64::INFINITY, false),
+        (f64::NEG_INFINITY, false),
+        (f64::NAN, false),
+        (f64::from_bits(1), true), // subnormal
+    ] {
+        let prog = program(vec![
+            EmirOp::ConstF64(value.to_bits()),
+            EmirOp::IsFinite(EmirValue(0)),
+        ]);
+        assert_eq!(
+            evaluate(&prog, &[], &[]).unwrap(),
+            Value::Bool(want),
+            "is_finite({value:?})"
+        );
+    }
+}
+
+#[test]
+fn zero_div_zero_is_nan() {
+    let program = program(vec![
+        const_bits(0.0),
+        const_bits(0.0),
+        EmirOp::F64Div(EmirValue(0), EmirValue(1)),
+    ]);
+    match evaluate(&program, &[], &[]).unwrap() {
+        Value::F64(value) => assert!(value.is_nan(), "0/0 must be NaN, got {value}"),
+        other => panic!("expected NaN, got {other:?}"),
+    }
+}
+
+#[test]
+fn subnormal_arithmetic_is_not_flushed() {
+    let tiny = f64::from_bits(1);
+    assert!(tiny.is_subnormal());
+    let program = program(vec![
+        EmirOp::ConstF64(tiny.to_bits()),
+        EmirOp::ConstF64(tiny.to_bits()),
+        EmirOp::F64Add(EmirValue(0), EmirValue(1)),
+    ]);
+    match evaluate(&program, &[], &[]).unwrap() {
+        Value::F64(value) => {
+            assert_eq!(
+                value.to_bits(),
+                2,
+                "subnormal+subnormal must not flush to 0"
+            );
+            assert!(value.is_subnormal());
+        }
+        other => panic!("expected subnormal f64, got {other:?}"),
+    }
 }
 
 #[test]
@@ -273,6 +437,28 @@ fn vector_index_out_of_bounds_is_a_fault() {
         EvalFault::IndexOutOfBounds {
             op: "vec-index",
             index: 2,
+            len: 2,
+        }
+    );
+}
+
+#[test]
+fn vector_negative_index_is_a_fault() {
+    let program = program(vec![
+        const_bits(1.0),
+        const_bits(2.0),
+        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
+        const_bits(-1.0),
+        EmirOp::VectorIndex {
+            vector: EmirValue(2),
+            index: EmirValue(3),
+        },
+    ]);
+    assert_eq!(
+        evaluate(&program, &[], &[]).unwrap_err(),
+        EvalFault::IndexOutOfBounds {
+            op: "vec-index",
+            index: -1,
             len: 2,
         }
     );
@@ -560,10 +746,99 @@ fn solve_refuses_max_iter_without_root() {
     );
 }
 
+fn square_minus_four_body() -> EmirProgram {
+    // f(x) = x*x - 4
+    EmirProgram {
+        ops: vec![
+            (EmirOp::LoadInput(0), Span::default()),
+            (EmirOp::F64Mul(EmirValue(0), EmirValue(0)), Span::default()),
+            (const_bits(4.0), Span::default()),
+            (EmirOp::F64Sub(EmirValue(1), EmirValue(2)), Span::default()),
+        ],
+        result: EmirValue(3),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+fn square_shift_body(shift: f64) -> EmirProgram {
+    // f(x) = (x - shift)^2
+    EmirProgram {
+        ops: vec![
+            (EmirOp::LoadInput(0), Span::default()),
+            (const_bits(shift), Span::default()),
+            (EmirOp::F64Sub(EmirValue(0), EmirValue(1)), Span::default()),
+            (EmirOp::F64Mul(EmirValue(2), EmirValue(2)), Span::default()),
+        ],
+        result: EmirValue(3),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+#[test]
+fn solve_root_has_near_zero_residual() {
+    let prog = EmirProgram {
+        ops: vec![(
+            EmirOp::Solve {
+                body: square_minus_four_body(),
+                var_index: 0,
+                tolerance: 1e-12,
+                max_iter: 100,
+            },
+            Span::default(),
+        )],
+        result: EmirValue(0),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    let root = match evaluate(&prog, &[Value::F64(1.0)], &[]).unwrap() {
+        Value::F64(v) => v,
+        other => panic!("expected F64 root, got {other:?}"),
+    };
+    assert!(
+        (root * root - 4.0).abs() < 1e-12,
+        "claimed root {root} has residual {}",
+        root * root - 4.0
+    );
+    let neg = match evaluate(&prog, &[Value::F64(-1.0)], &[]).unwrap() {
+        Value::F64(v) => v,
+        other => panic!("expected F64 root, got {other:?}"),
+    };
+    assert!(
+        (neg + 2.0).abs() < 1e-9 && (neg * neg - 4.0).abs() < 1e-12,
+        "from x=-1 Newton must follow the negative basin, got {neg}"
+    );
+}
+
+#[test]
+fn optimize_min_is_stationary() {
+    let prog = program(vec![EmirOp::Optimize {
+        body: square_shift_body(3.0),
+        var_indices: vec![0],
+        maximize: false,
+        learning_rate: 0.01,
+        tolerance: 1e-6,
+        max_iter: 8,
+    }]);
+    let min_x = match evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap() {
+        Value::F64(v) => v,
+        other => panic!("expected F64 min, got {other:?}"),
+    };
+    let grad = 2.0 * (min_x - 3.0);
+    assert!(
+        grad.abs() < 1e-6,
+        "claimed min {min_x} has gradient {grad}, not a stationary point"
+    );
+}
+
 #[test]
 fn optimize_refuses_max_iter_without_stationarity() {
-    // Constant nonzero gradient: f(x) = x, df = 1. Tiny learning rate
-    // and tight tolerance ensure max_iter exhausts without |grad| < tol.
+    // f(x) = x with max_iter=0: no Newton steps, |grad| stays 1.
+    // Must refuse rather than return the initial guess as a fake min.
     let body = EmirProgram {
         ops: vec![(EmirOp::LoadInput(0), Span::default())],
         result: EmirValue(0),
@@ -575,15 +850,63 @@ fn optimize_refuses_max_iter_without_stationarity() {
         body,
         var_indices: vec![0],
         maximize: false,
-        learning_rate: 1e-12,
+        learning_rate: 0.01,
         tolerance: 1e-8,
-        max_iter: 3,
+        max_iter: 0,
     }]);
     assert_eq!(
         evaluate(&prog, &[Value::F64(10.0)], &[]).unwrap_err(),
         EvalFault::Arithmetic {
             op: "optimize",
             detail: "optimize did not converge within max_iter",
+        }
+    );
+}
+
+#[test]
+fn optimize_refuses_vanished_hessian() {
+    // f(x) = x; Newton has H=0 while |∇f| is not small.
+    let body = EmirProgram {
+        ops: vec![(EmirOp::LoadInput(0), Span::default())],
+        result: EmirValue(0),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    let prog = program(vec![EmirOp::Optimize {
+        body,
+        var_indices: vec![0],
+        maximize: false,
+        learning_rate: 0.01,
+        tolerance: 1e-8,
+        max_iter: 8,
+    }]);
+    assert_eq!(
+        evaluate(&prog, &[Value::F64(10.0)], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "optimize",
+            detail: "optimize hessian vanished before stationarity",
+        }
+    );
+}
+
+#[test]
+fn optimize_refuses_min_as_a_max() {
+    // maximize (x-3)^2 has a minimum at x=3, not a maximum. Newton must
+    // refuse the wrong-curvature stationary point rather than return 3.
+    let prog = program(vec![EmirOp::Optimize {
+        body: square_shift_body(3.0),
+        var_indices: vec![0],
+        maximize: true,
+        learning_rate: 0.01,
+        tolerance: 1e-6,
+        max_iter: 8,
+    }]);
+    assert_eq!(
+        evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "optimize",
+            detail: "optimize hessian has the wrong curvature for maximize",
         }
     );
 }
@@ -762,7 +1085,10 @@ fn stencil_dirichlet_matching_value_is_zero() {
         vec![1.0, -2.0, 1.0],
         1,
         vec![5.0; 5],
-        EdgePolicy::Dirichlet { left: 5.0, right: 5.0 },
+        EdgePolicy::Dirichlet {
+            left: 5.0,
+            right: 5.0,
+        },
     );
     assert_eq!(
         evaluate(&prog, &[], &[]).unwrap(),
@@ -779,7 +1105,10 @@ fn stencil_dirichlet_mismatched_value_shifts_boundary() {
         vec![1.0, -2.0, 1.0],
         1,
         vec![5.0; 5],
-        EdgePolicy::Dirichlet { left: 0.0, right: 0.0 },
+        EdgePolicy::Dirichlet {
+            left: 0.0,
+            right: 0.0,
+        },
     );
     let out = match evaluate(&prog, &[], &[]).unwrap() {
         Value::Vector(v) => v,
@@ -900,25 +1229,31 @@ fn gradient_constant_field_is_zero() {
 }
 
 #[test]
-fn gradient_linear_field_is_one_interior() {
-    // u = [0,1,2,3,4] (slope 1). The central-difference gradient is 1 on
-    // the interior and 0.5 at the clamped (one-sided) boundaries.
+fn gradient_linear_field_is_one_everywhere() {
+    // u = [0,1,2,3,4] (slope 1). Central interior + one-sided edges
+    // (linear ghost) is 1 everywhere. Clamp on this stencil would
+    // return 0.5 at the boundary — that is not the derivative.
     let weights = vec![-0.5, 0.0, 0.5];
-    let prog = stencil_prog(weights, 1, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+    let prog = stencil_prog_edge(
+        weights,
+        1,
+        vec![0.0, 1.0, 2.0, 3.0, 4.0],
+        EdgePolicy::OneSided,
+    );
     assert_eq!(
         evaluate(&prog, &[], &[]).unwrap(),
-        Value::Vector(vec![0.5, 1.0, 1.0, 1.0, 0.5])
+        Value::Vector(vec![1.0, 1.0, 1.0, 1.0, 1.0])
     );
 }
 
 #[test]
 fn gradient_2d_x_linear_in_columns() {
-    // u[r][c] = c (increasing along columns). du/dc is 1 on the interior
-    // and 0.5 at the clamped left/right edges; constant along rows.
+    // u[r][c] = c (increasing along columns). du/dc is 1 everywhere
+    // under one-sided edges, constant along rows.
     let data = vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0];
     let weights = vec![0.0, 0.0, 0.0, -0.5, 0.0, 0.5, 0.0, 0.0, 0.0];
-    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::Clamp);
-    let expected = vec![0.5, 1.0, 0.5, 0.5, 1.0, 0.5, 0.5, 1.0, 0.5];
+    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::OneSided);
+    let expected = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
     assert_eq!(
         evaluate(&prog, &[], &[]).unwrap(),
         Value::Matrix {
@@ -931,12 +1266,12 @@ fn gradient_2d_x_linear_in_columns() {
 
 #[test]
 fn gradient_2d_y_linear_in_rows() {
-    // u[r][c] = r (increasing along rows). du/dr is 1 on the interior and
-    // 0.5 at the clamped top/bottom edges; constant along columns.
+    // u[r][c] = r (increasing along rows). du/dr is 1 everywhere under
+    // one-sided edges, constant along columns.
     let data = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0];
     let weights = vec![0.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0];
-    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::Clamp);
-    let expected = vec![0.5, 0.5, 0.5, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5];
+    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::OneSided);
+    let expected = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
     assert_eq!(
         evaluate(&prog, &[], &[]).unwrap(),
         Value::Matrix {
@@ -1057,13 +1392,13 @@ fn einsum_vector_dot_product() {
     // a = [1, 2, 3], b = [4, 5, 6]
     // einsum("i,i->", a, b) = 1*4 + 2*5 + 3*6 = 32
     let program = program(vec![
-        const_bits(1.0), // 0
-        const_bits(2.0), // 1
-        const_bits(3.0), // 2
+        const_bits(1.0),                                                      // 0
+        const_bits(2.0),                                                      // 1
+        const_bits(3.0),                                                      // 2
         EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: a
-        const_bits(4.0), // 4
-        const_bits(5.0), // 5
-        const_bits(6.0), // 6
+        const_bits(4.0),                                                      // 4
+        const_bits(5.0),                                                      // 5
+        const_bits(6.0),                                                      // 6
         EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b
         EmirOp::Einsum {
             subscripts: "i,i->".to_string(),
@@ -1089,8 +1424,12 @@ fn einsum_transpose() {
             rows: 2,
             cols: 3,
             elements: vec![
-                EmirValue(0), EmirValue(1), EmirValue(2),
-                EmirValue(3), EmirValue(4), EmirValue(5),
+                EmirValue(0),
+                EmirValue(1),
+                EmirValue(2),
+                EmirValue(3),
+                EmirValue(4),
+                EmirValue(5),
             ],
         }, // 6: A
         EmirOp::Einsum {
@@ -1109,6 +1448,276 @@ fn einsum_transpose() {
     );
 }
 
+fn push_matrix(ops: &mut Vec<EmirOp>, rows: usize, cols: usize, data: &[f64]) -> u32 {
+    let start = ops.len() as u32;
+    ops.extend(data.iter().copied().map(const_bits));
+    ops.push(EmirOp::MatrixCreate {
+        rows,
+        cols,
+        elements: (start..start + data.len() as u32).map(EmirValue).collect(),
+    });
+    ops.len() as u32 - 1
+}
+
+fn push_vector(ops: &mut Vec<EmirOp>, data: &[f64]) -> u32 {
+    let start = ops.len() as u32;
+    ops.extend(data.iter().copied().map(const_bits));
+    ops.push(EmirOp::VectorCreate(
+        (start..start + data.len() as u32).map(EmirValue).collect(),
+    ));
+    ops.len() as u32 - 1
+}
+
+fn eval_ops(ops: Vec<EmirOp>) -> Value {
+    evaluate(&program(ops), &[], &[]).unwrap()
+}
+
+/// `einsum("ik,kj->ij")` == matmul, including rectangular; implicit
+/// `"ik,kj"` is deterministic (alphabetical free indices, not HashSet
+/// iteration order); `"i,i->"` == `dot`.
+#[test]
+fn einsum_matches_matmul_and_dot() {
+    // A 2×3, B 3×2: C = A @ B = [[58, 64], [139, 154]]
+    let a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let b = [7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+    let expected = Value::Matrix {
+        rows: 2,
+        cols: 2,
+        data: vec![58.0, 64.0, 139.0, 154.0],
+    };
+
+    let mut mul = Vec::new();
+    let a_reg = push_matrix(&mut mul, 2, 3, &a);
+    let b_reg = push_matrix(&mut mul, 3, 2, &b);
+    mul.push(EmirOp::MatrixMulMatrix(EmirValue(a_reg), EmirValue(b_reg)));
+    assert_eq!(eval_ops(mul), expected);
+
+    for subscripts in ["ik,kj->ij", "ik,kj", "i k, k j -> i j"] {
+        let mut ops = Vec::new();
+        let a_reg = push_matrix(&mut ops, 2, 3, &a);
+        let b_reg = push_matrix(&mut ops, 3, 2, &b);
+        ops.push(EmirOp::Einsum {
+            subscripts: subscripts.to_string(),
+            inputs: vec![EmirValue(a_reg), EmirValue(b_reg)],
+        });
+        assert_eq!(eval_ops(ops), expected, "subscripts {subscripts:?}");
+    }
+
+    let mut dot = Vec::new();
+    let u = push_vector(&mut dot, &[1.0, 2.0, 3.0]);
+    let v = push_vector(&mut dot, &[4.0, 5.0, 6.0]);
+    let mut ein = dot.clone();
+    dot.push(EmirOp::VectorDot(EmirValue(u), EmirValue(v)));
+    ein.push(EmirOp::Einsum {
+        subscripts: "i,i->".to_string(),
+        inputs: vec![EmirValue(u), EmirValue(v)],
+    });
+    assert_eq!(eval_ops(dot), Value::F64(32.0));
+    assert_eq!(eval_ops(ein), Value::F64(32.0));
+}
+
+/// Implicit `"ji"` is alphabetical `"ij"` (numpy): a transpose, not identity.
+/// `transpose(transpose(A)) == A` for a rectangular matrix.
+#[test]
+fn einsum_implicit_ji_and_transpose_involution() {
+    let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let a = Value::Matrix {
+        rows: 2,
+        cols: 3,
+        data: data.to_vec(),
+    };
+    let at = Value::Matrix {
+        rows: 3,
+        cols: 2,
+        data: vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0],
+    };
+
+    let mut implicit = Vec::new();
+    let a_reg = push_matrix(&mut implicit, 2, 3, &data);
+    implicit.push(EmirOp::Einsum {
+        subscripts: "ji".to_string(),
+        inputs: vec![EmirValue(a_reg)],
+    });
+    assert_eq!(eval_ops(implicit), at);
+
+    let mut twice = Vec::new();
+    let a_reg = push_matrix(&mut twice, 2, 3, &data);
+    twice.push(EmirOp::MatrixTranspose(EmirValue(a_reg)));
+    twice.push(EmirOp::MatrixTranspose(EmirValue(a_reg + 1)));
+    assert_eq!(eval_ops(twice), a);
+}
+
+/// `einsum("i->ii", v)` is diag(v), not a row-broadcast (last-write-wins
+/// used to write v[j] into every column of row-major output).
+#[test]
+fn einsum_diagonal_embed_and_broadcast() {
+    let mut diag = Vec::new();
+    let v = push_vector(&mut diag, &[1.0, 2.0, 3.0]);
+    diag.push(EmirOp::Einsum {
+        subscripts: "i->ii".to_string(),
+        inputs: vec![EmirValue(v)],
+    });
+    assert_eq!(
+        eval_ops(diag),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0],
+        }
+    );
+
+    // Size-1 axis broadcasts: (2×3) ⊙ (1×3) elementwise.
+    let mut bc = Vec::new();
+    let a = push_matrix(&mut bc, 2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let b = push_matrix(&mut bc, 1, 3, &[10.0, 20.0, 30.0]);
+    bc.push(EmirOp::Einsum {
+        subscripts: "ij,ij->ij".to_string(),
+        inputs: vec![EmirValue(a), EmirValue(b)],
+    });
+    assert_eq!(
+        eval_ops(bc),
+        Value::Matrix {
+            rows: 2,
+            cols: 3,
+            data: vec![10.0, 40.0, 90.0, 40.0, 100.0, 180.0],
+        }
+    );
+
+    // Genuine k-extent mismatch: 2×3 × 2×2 must not take max(3,2) and panic.
+    let mut bad = Vec::new();
+    let a = push_matrix(&mut bad, 2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let b = push_matrix(&mut bad, 2, 2, &[1.0, 2.0, 3.0, 4.0]);
+    bad.push(EmirOp::Einsum {
+        subscripts: "ik,kj->ij".to_string(),
+        inputs: vec![EmirValue(a), EmirValue(b)],
+    });
+    assert_eq!(
+        evaluate(&program(bad), &[], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "einsum",
+            detail: "einsum dimension mismatch",
+        }
+    );
+}
+
+/// Empty contraction is the sum identity (0), empty vector norm is 0,
+/// empty VectorCreate does not panic. Language `Vector[0]` / `[]` are
+/// named-refused at admit; these are the eval-side empty leaves.
+#[test]
+fn empty_vector_norm_and_einsum_are_identities() {
+    let empty = program(vec![EmirOp::VectorCreate(vec![])]);
+    assert_eq!(evaluate(&empty, &[], &[]).unwrap(), Value::Vector(vec![]));
+
+    let mut norm = Vec::new();
+    let v = push_vector(&mut norm, &[]);
+    norm.push(EmirOp::VectorNorm(EmirValue(v)));
+    match eval_ops(norm) {
+        Value::F64(n) => assert_eq!(
+            n.to_bits(),
+            0.0f64.to_bits(),
+            "||[]|| must be +0.0, got {n:?}"
+        ),
+        other => panic!("expected F64, got {other:?}"),
+    }
+
+    let mut ein = Vec::new();
+    let a = push_vector(&mut ein, &[]);
+    let b = push_vector(&mut ein, &[]);
+    ein.push(EmirOp::Einsum {
+        subscripts: "i,i->".to_string(),
+        inputs: vec![EmirValue(a), EmirValue(b)],
+    });
+    assert_eq!(
+        eval_ops(ein),
+        Value::F64(0.0),
+        "einsum empty contraction is the empty sum, not a panic"
+    );
+}
+
+/// `t[0, :, :]` is the first 2×2 face (tensor-face.emath identity).
+#[test]
+fn tensor_face_slice_is_first_face() {
+    let program = program(vec![
+        const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
+        const_bits(4.0),
+        const_bits(5.0),
+        const_bits(6.0),
+        const_bits(7.0),
+        const_bits(8.0),
+        EmirOp::TensorCreate {
+            shape: vec![2, 2, 2],
+            elements: (0..8).map(EmirValue).collect(),
+        },
+        const_bits(0.0),
+        const_bits(2.0),
+        EmirOp::TensorSlice {
+            tensor: EmirValue(8),
+            axes: vec![
+                emath_exec_ir::EmirSliceAxis::Point(EmirValue(9)),
+                emath_exec_ir::EmirSliceAxis::Range {
+                    start: EmirValue(9),
+                    end: EmirValue(10),
+                },
+                emath_exec_ir::EmirSliceAxis::Range {
+                    start: EmirValue(9),
+                    end: EmirValue(10),
+                },
+            ],
+        },
+    ]);
+    assert_eq!(
+        evaluate(&program, &[], &[]).unwrap(),
+        Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![1.0, 2.0, 3.0, 4.0],
+        }
+    );
+}
+
+#[test]
+fn tensor_slice_out_of_bounds_is_a_fault() {
+    let program = program(vec![
+        const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
+        const_bits(4.0),
+        const_bits(5.0),
+        const_bits(6.0),
+        const_bits(7.0),
+        const_bits(8.0),
+        EmirOp::TensorCreate {
+            shape: vec![2, 2, 2],
+            elements: (0..8).map(EmirValue).collect(),
+        },
+        const_bits(2.0),
+        EmirOp::TensorSlice {
+            tensor: EmirValue(8),
+            axes: vec![
+                emath_exec_ir::EmirSliceAxis::Point(EmirValue(9)),
+                emath_exec_ir::EmirSliceAxis::Range {
+                    start: EmirValue(9),
+                    end: EmirValue(9),
+                },
+                emath_exec_ir::EmirSliceAxis::Range {
+                    start: EmirValue(9),
+                    end: EmirValue(9),
+                },
+            ],
+        },
+    ]);
+    assert_eq!(
+        evaluate(&program, &[], &[]).unwrap_err(),
+        EvalFault::IndexOutOfBounds {
+            op: "tensor-slice",
+            index: 2,
+            len: 2,
+        }
+    );
+}
+
 // ─── Modular arithmetic (consolidated) ───
 
 #[test]
@@ -1116,16 +1725,16 @@ fn modular_arithmetic_evaluates() {
     // Factorial, modular inverse, and congruence all exercise the
     // i64 integer path. One test covers the happy paths.
     let prog = program(vec![
-        EmirOp::ConstI64(0),              // 0
-        EmirOp::Factorial(EmirValue(0)),  // 1: 0! = 1
-        EmirOp::ConstI64(5),              // 2
-        EmirOp::Factorial(EmirValue(2)),  // 3: 5! = 120
-        EmirOp::ConstI64(3),              // 4: a
-        EmirOp::ConstI64(7),              // 5: m
-        EmirOp::ModInv(EmirValue(4), EmirValue(5)), // 6: 3^(-1) mod 7 = 5
-        EmirOp::ConstI64(-1),             // 7: a
-        EmirOp::ConstI64(6),              // 8: b
-        EmirOp::ConstI64(7),              // 9: m
+        EmirOp::ConstI64(0),                                          // 0
+        EmirOp::Factorial(EmirValue(0)),                              // 1: 0! = 1
+        EmirOp::ConstI64(5),                                          // 2
+        EmirOp::Factorial(EmirValue(2)),                              // 3: 5! = 120
+        EmirOp::ConstI64(3),                                          // 4: a
+        EmirOp::ConstI64(7),                                          // 5: m
+        EmirOp::ModInv(EmirValue(4), EmirValue(5)),                   // 6: 3^(-1) mod 7 = 5
+        EmirOp::ConstI64(-1),                                         // 7: a
+        EmirOp::ConstI64(6),                                          // 8: b
+        EmirOp::ConstI64(7),                                          // 9: m
         EmirOp::Congruence(EmirValue(7), EmirValue(8), EmirValue(9)), // 10: -1 ≡ 6 (mod 7)
     ]);
     let result = evaluate(&prog, &[], &[]).unwrap();
@@ -1140,7 +1749,8 @@ fn modular_arithmetic_evaluates() {
     assert_eq!(evaluate(&p5, &[], &[]).unwrap(), Value::I64(120));
 
     let pinv = program(vec![
-        EmirOp::ConstI64(3), EmirOp::ConstI64(7),
+        EmirOp::ConstI64(3),
+        EmirOp::ConstI64(7),
         EmirOp::ModInv(EmirValue(0), EmirValue(1)),
     ]);
     assert_eq!(evaluate(&pinv, &[], &[]).unwrap(), Value::I64(5));
@@ -1148,11 +1758,32 @@ fn modular_arithmetic_evaluates() {
 
 #[test]
 fn factorial_overflow_guard() {
-    let program = program(vec![
-        EmirOp::ConstI64(21),
-        EmirOp::Factorial(EmirValue(0)),
-    ]);
+    let program = program(vec![EmirOp::ConstI64(21), EmirOp::Factorial(EmirValue(0))]);
     assert!(evaluate(&program, &[], &[]).is_err());
+}
+
+/// `as i64` maps NaN→0 / Inf→sat / subnormal→0, so factorial would
+/// silently return 0! = 1. Whole finite F64 still converts.
+#[test]
+fn factorial_refuses_nan_inf_subnormal() {
+    let whole = program(vec![const_bits(5.0), EmirOp::Factorial(EmirValue(0))]);
+    assert_eq!(evaluate(&whole, &[], &[]).unwrap(), Value::I64(120));
+
+    for value in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::from_bits(1),
+    ] {
+        let program = program(vec![
+            EmirOp::ConstF64(value.to_bits()),
+            EmirOp::Factorial(EmirValue(0)),
+        ]);
+        assert!(
+            evaluate(&program, &[], &[]).is_err(),
+            "factorial({value:?}) must not become a silent finite i64"
+        );
+    }
 }
 
 #[test]
@@ -1166,6 +1797,109 @@ fn mod_inv_no_inverse_errors() {
     assert!(evaluate(&program, &[], &[]).is_err());
 }
 
+/// Remaining domain edges after Float64 `sqrt(-1)`/`ln(-1)`/`log(0)`/
+/// `factorial(21)`/`mod_inv(0,n)`. Spec: IEEE for libm; GF builtins
+/// refuse `p <= 0`; `mod` is the floating remainder.
+#[test]
+fn remaining_domain_edges_match_documented_policy() {
+    let mod0 = program(vec![
+        const_bits(1.0),
+        const_bits(0.0),
+        EmirOp::BinaryBuiltin(BuiltinId::Mod, EmirValue(0), EmirValue(1)),
+    ]);
+    match evaluate(&mod0, &[], &[]).unwrap() {
+        Value::F64(v) => assert!(v.is_nan(), "mod(1,0) must be IEEE NaN, got {v}"),
+        other => panic!("mod(1,0) must be F64, got {other:?}"),
+    }
+
+    let tan_half_pi = program(vec![
+        const_bits(std::f64::consts::FRAC_PI_2),
+        EmirOp::UnaryBuiltin(BuiltinId::Tan, EmirValue(0)),
+    ]);
+    match evaluate(&tan_half_pi, &[], &[]).unwrap() {
+        Value::F64(v) => {
+            assert!(
+                v.is_finite(),
+                "tan(π/2) as f64 is IEEE huge-finite (π/2 not exact), got {v}"
+            );
+            assert!(
+                v.abs() > 1e15,
+                "tan(π/2) must be the IEEE pole-near huge finite, got {v}"
+            );
+        }
+        other => panic!("tan(π/2) must be F64, got {other:?}"),
+    }
+
+    let p0 = program(vec![
+        const_bits(1.0),
+        EmirOp::VectorCreate(vec![EmirValue(0)]),
+        EmirOp::ConstI64(0),
+        EmirOp::ConstI64(0),
+        EmirOp::PolyEvalMod(EmirValue(1), EmirValue(2), EmirValue(3)),
+    ]);
+    match evaluate(&p0, &[], &[]) {
+        Err(EvalFault::Arithmetic { detail, .. }) => {
+            assert!(
+                detail.contains("positive"),
+                "poly_eval_mod p=0 must name the modulus, got {detail}"
+            );
+        }
+        other => panic!("poly_eval_mod p=0 must named-refuse, got {other:?}"),
+    }
+
+    let p1 = program(vec![
+        const_bits(5.0),
+        EmirOp::VectorCreate(vec![EmirValue(0)]),
+        EmirOp::ConstI64(3),
+        EmirOp::ConstI64(1),
+        EmirOp::PolyEvalMod(EmirValue(1), EmirValue(2), EmirValue(3)),
+    ]);
+    assert_eq!(
+        evaluate(&p1, &[], &[]).unwrap(),
+        Value::I64(0),
+        "poly_eval_mod(_, _, 1) is the zero ring (everything ≡ 0 mod 1)"
+    );
+
+    let inv1 = program(vec![
+        EmirOp::ConstI64(1),
+        EmirOp::ConstI64(1),
+        EmirOp::ModInv(EmirValue(0), EmirValue(1)),
+    ]);
+    assert_eq!(
+        evaluate(&inv1, &[], &[]).unwrap(),
+        Value::I64(0),
+        "mod_inv(1,1): gcd(0,1)=1 so inverse exists in the zero ring"
+    );
+
+    let rs0 = program(vec![
+        const_bits(1.0),
+        EmirOp::VectorCreate(vec![EmirValue(0)]),
+        EmirOp::ConstI64(1),
+        EmirOp::ConstI64(0),
+        EmirOp::RSEncode(EmirValue(1), EmirValue(2), EmirValue(3)),
+    ]);
+    match evaluate(&rs0, &[], &[]) {
+        Err(EvalFault::Arithmetic { detail, .. }) => {
+            assert!(
+                detail.contains("positive"),
+                "rs_encode p=0 must name the modulus, got {detail}"
+            );
+        }
+        other => panic!("rs_encode p=0 must named-refuse, got {other:?}"),
+    }
+
+    let sqrt_i = program(vec![
+        EmirOp::ConstComplex(0.0, 1.0),
+        EmirOp::UnaryBuiltin(BuiltinId::Sqrt, EmirValue(0)),
+    ]);
+    let got = match evaluate(&sqrt_i, &[], &[]).unwrap() {
+        Value::Complex { re, im } => (re, im),
+        other => panic!("sqrt(i) must be Complex, got {other:?}"),
+    };
+    let s = 0.5_f64.sqrt();
+    assert!((got.0 - s).abs() < 1e-12 && (got.1 - s).abs() < 1e-12);
+}
+
 // ─── Complex arithmetic (consolidated) ───
 
 #[test]
@@ -1173,14 +1907,14 @@ fn complex_arithmetic_evaluates() {
     // i² = -1 (fundamental identity), multiplication, division, and
     // F64×Complex coercion all in one test.
     let prog = program(vec![
-        EmirOp::ConstComplex(0.0, 1.0),                    // 0: i
-        EmirOp::F64Mul(EmirValue(0), EmirValue(0)),        // 1: i*i = -1
-        EmirOp::ConstComplex(1.0, 2.0),                    // 2
-        EmirOp::ConstComplex(3.0, 4.0),                    // 3
-        EmirOp::F64Mul(EmirValue(2), EmirValue(3)),        // 4: (1+2i)(3+4i) = -5+10i
-        EmirOp::ConstComplex(1.0, 2.0),                    // 5
-        EmirOp::ConstComplex(1.0, 1.0),                    // 6
-        EmirOp::F64Div(EmirValue(5), EmirValue(6)),        // 7: (1+2i)/(1+i) = 1.5+0.5i
+        EmirOp::ConstComplex(0.0, 1.0),             // 0: i
+        EmirOp::F64Mul(EmirValue(0), EmirValue(0)), // 1: i*i = -1
+        EmirOp::ConstComplex(1.0, 2.0),             // 2
+        EmirOp::ConstComplex(3.0, 4.0),             // 3
+        EmirOp::F64Mul(EmirValue(2), EmirValue(3)), // 4: (1+2i)(3+4i) = -5+10i
+        EmirOp::ConstComplex(1.0, 2.0),             // 5
+        EmirOp::ConstComplex(1.0, 1.0),             // 6
+        EmirOp::F64Div(EmirValue(5), EmirValue(6)), // 7: (1+2i)/(1+i) = 1.5+0.5i
     ]);
     let result = evaluate(&prog, &[], &[]).unwrap();
     assert_eq!(result, Value::Complex { re: 1.5, im: 0.5 });
@@ -1215,27 +1949,30 @@ fn rs_code_pipeline_evaluates() {
     // Singleton bound. If any stage is broken, this fails.
     let prog = program(vec![
         // poly_eval_mod: f(x) = 1 + 2x + 3x² over GF(7), f(2) = 17 mod 7 = 3
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
         EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
-        const_bits(2.0), // 4: x
-        const_bits(7.0), // 5: p
+        const_bits(2.0),                                                      // 4: x
+        const_bits(7.0),                                                      // 5: p
         EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)),        // 6: f(2) mod 7
-
         // rs_encode: same poly, n=7, p=7
-        const_bits(7.0), // 7: n
-        EmirOp::RSEncode(EmirValue(3), EmirValue(7), EmirValue(5)),           // 8: codeword
-
+        const_bits(7.0),                                            // 7: n
+        EmirOp::RSEncode(EmirValue(3), EmirValue(7), EmirValue(5)), // 8: codeword
         // hamming_distance: codeword vs itself → 0
-        EmirOp::HammingDistance(EmirValue(8), EmirValue(8)),                  // 9: dist=0
+        EmirOp::HammingDistance(EmirValue(8), EmirValue(8)), // 9: dist=0
     ]);
     let result = evaluate(&prog, &[], &[]).unwrap();
     assert_eq!(result, Value::I64(0));
 
     // Verify poly_eval_mod result
     let p_pe = program(vec![
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
         EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]),
-        const_bits(2.0), const_bits(7.0),
+        const_bits(2.0),
+        const_bits(7.0),
         EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)),
     ]);
     assert_eq!(evaluate(&p_pe, &[], &[]).unwrap(), Value::I64(3));
@@ -1243,11 +1980,16 @@ fn rs_code_pipeline_evaluates() {
     // Singleton bound: two distinct degree-2 polynomials over GF(7)
     // agree on at most 2 points, so distance >= n-k+1 = 5.
     let p_singleton = program(vec![
-        const_bits(1.0), const_bits(2.0), const_bits(3.0),
+        const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
         EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // f1
-        const_bits(2.0), const_bits(3.0), const_bits(1.0),
+        const_bits(2.0),
+        const_bits(3.0),
+        const_bits(1.0),
         EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // f2
-        const_bits(7.0), const_bits(7.0),
+        const_bits(7.0),
+        const_bits(7.0),
         EmirOp::RSEncode(EmirValue(3), EmirValue(8), EmirValue(9)), // cw1
         EmirOp::RSEncode(EmirValue(7), EmirValue(8), EmirValue(9)), // cw2
         EmirOp::HammingDistance(EmirValue(10), EmirValue(11)),
@@ -1266,7 +2008,10 @@ fn sample_limit_sin_x_over_x_approaches_one() {
     let body = EmirProgram {
         ops: vec![
             (EmirOp::LoadInput(0), Span::default()),
-            (EmirOp::UnaryBuiltin(BuiltinId::Sin, EmirValue(0)), Span::default()),
+            (
+                EmirOp::UnaryBuiltin(BuiltinId::Sin, EmirValue(0)),
+                Span::default(),
+            ),
             (EmirOp::LoadInput(0), Span::default()),
             (EmirOp::F64Div(EmirValue(1), EmirValue(2)), Span::default()),
         ],
@@ -1277,8 +2022,8 @@ fn sample_limit_sin_x_over_x_approaches_one() {
     };
     // Main program: target=0, direction=0 (two-sided), sample_limit.
     let prog = program(vec![
-        const_bits(0.0),                // 0: target = 0
-        const_bits(0.0),                // 1: direction = two-sided
+        const_bits(0.0), // 0: target = 0
+        const_bits(0.0), // 1: direction = two-sided
         EmirOp::SampleLimit {
             body,
             var_index: 0,
@@ -1315,8 +2060,8 @@ fn sample_limit_one_sided_from_above() {
         domain_obligations: Vec::new(),
     };
     let prog = program(vec![
-        const_bits(0.0),                // target = 0
-        const_bits(1.0),                // direction = from above
+        const_bits(0.0), // target = 0
+        const_bits(1.0), // direction = from above
         EmirOp::SampleLimit {
             body,
             var_index: 0,
@@ -1332,10 +2077,7 @@ fn sample_limit_one_sided_from_above() {
     // 1/x as x→0+ grows without bound. The sampler returns the last
     // finite value before convergence or the best estimate.
     // It should be a large positive number.
-    assert!(
-        val > 1e5,
-        "1/x as x->0+ should be very large, got {val}"
-    );
+    assert!(val > 1e5, "1/x as x->0+ should be very large, got {val}");
 }
 
 // ─── reverse-mode AD ───
@@ -1347,11 +2089,11 @@ fn reverse_mode_quadratic_gradient() {
     // At x=3, y=2: df/dx = 2, df/dy = 7
     let body = EmirProgram {
         ops: vec![
-            (EmirOp::LoadInput(0), Span::default()),      // 0: x
-            (EmirOp::LoadInput(1), Span::default()),      // 1: y
+            (EmirOp::LoadInput(0), Span::default()), // 0: x
+            (EmirOp::LoadInput(1), Span::default()), // 1: y
             (EmirOp::F64Mul(EmirValue(0), EmirValue(1)), Span::default()), // 2: x*y
-            (EmirOp::LoadInput(1), Span::default()),      // 3: y
-            (EmirOp::LoadInput(1), Span::default()),      // 4: y
+            (EmirOp::LoadInput(1), Span::default()), // 3: y
+            (EmirOp::LoadInput(1), Span::default()), // 4: y
             (EmirOp::F64Mul(EmirValue(3), EmirValue(4)), Span::default()), // 5: y*y
             (EmirOp::F64Add(EmirValue(2), EmirValue(5)), Span::default()), // 6: x*y + y*y
         ],
@@ -1360,12 +2102,10 @@ fn reverse_mode_quadratic_gradient() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![
-        EmirOp::ReverseMode {
-            body,
-            var_indices: vec![0, 1],
-        },
-    ]);
+    let prog = program(vec![EmirOp::ReverseMode {
+        body,
+        var_indices: vec![0, 1],
+    }]);
     let result = evaluate(&prog, &[Value::F64(3.0), Value::F64(2.0)], &[]).unwrap();
     let grads = match result {
         Value::Vector(v) => v,
@@ -1374,11 +2114,13 @@ fn reverse_mode_quadratic_gradient() {
     assert_eq!(grads.len(), 2, "should have 2 gradients");
     assert!(
         (grads[0] - 2.0).abs() < 1e-10,
-        "df/dx should be 2.0, got {}", grads[0]
+        "df/dx should be 2.0, got {}",
+        grads[0]
     );
     assert!(
         (grads[1] - 7.0).abs() < 1e-10,
-        "df/dy should be 7.0, got {}", grads[1]
+        "df/dy should be 7.0, got {}",
+        grads[1]
     );
 }
 
@@ -1391,10 +2133,10 @@ fn reverse_mode_ten_inputs_matches_forward() {
     let mut ops = Vec::new();
     for i in 0..n {
         ops.push((EmirOp::LoadInput(i as u16), Span::default()));
-        ops.push((EmirOp::F64Mul(
-            EmirValue(2 * i as u32),
-            EmirValue(2 * i as u32),
-        ), Span::default()));
+        ops.push((
+            EmirOp::F64Mul(EmirValue(2 * i as u32), EmirValue(2 * i as u32)),
+            Span::default(),
+        ));
     }
     // Sum: start with x0^2, then add each subsequent square.
     let mut acc = EmirValue(1); // first square at index 1
@@ -1411,9 +2153,7 @@ fn reverse_mode_ten_inputs_matches_forward() {
         domain_obligations: Vec::new(),
     };
     let var_indices: Vec<u16> = (0..n as u16).collect();
-    let prog = program(vec![
-        EmirOp::ReverseMode { body, var_indices },
-    ]);
+    let prog = program(vec![EmirOp::ReverseMode { body, var_indices }]);
     let inputs: Vec<Value> = (1..=n).map(|i| Value::F64(i as f64)).collect();
     let result = evaluate(&prog, &inputs, &[]).unwrap();
     let grads = match result {
@@ -1425,7 +2165,9 @@ fn reverse_mode_ten_inputs_matches_forward() {
         let expected = 2.0 * (i + 1) as f64;
         assert!(
             (grads[i] - expected).abs() < 1e-10,
-            "df/dx{} should be {expected}, got {}", i + 1, grads[i]
+            "df/dx{} should be {expected}, got {}",
+            i + 1,
+            grads[i]
         );
     }
 }
@@ -1440,10 +2182,16 @@ fn reverse_mode_transcendental_gradient() {
     //   df/dy = sin(1.0) * exp(0.5) ≈ 0.8415 * 1.6487 ≈ 1.3878
     let body = EmirProgram {
         ops: vec![
-            (EmirOp::LoadInput(0), Span::default()),      // 0: x
-            (EmirOp::UnaryBuiltin(BuiltinId::Sin, EmirValue(0)), Span::default()),  // 1: sin(x)
-            (EmirOp::LoadInput(1), Span::default()),      // 2: y
-            (EmirOp::UnaryBuiltin(BuiltinId::Exp, EmirValue(2)), Span::default()),  // 3: exp(y)
+            (EmirOp::LoadInput(0), Span::default()), // 0: x
+            (
+                EmirOp::UnaryBuiltin(BuiltinId::Sin, EmirValue(0)),
+                Span::default(),
+            ), // 1: sin(x)
+            (EmirOp::LoadInput(1), Span::default()), // 2: y
+            (
+                EmirOp::UnaryBuiltin(BuiltinId::Exp, EmirValue(2)),
+                Span::default(),
+            ), // 3: exp(y)
             (EmirOp::F64Mul(EmirValue(1), EmirValue(3)), Span::default()), // 4: sin(x)*exp(y)
         ],
         result: EmirValue(4),
@@ -1451,12 +2199,10 @@ fn reverse_mode_transcendental_gradient() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![
-        EmirOp::ReverseMode {
-            body,
-            var_indices: vec![0, 1],
-        },
-    ]);
+    let prog = program(vec![EmirOp::ReverseMode {
+        body,
+        var_indices: vec![0, 1],
+    }]);
     let x = 1.0_f64;
     let y = 0.5_f64;
     let result = evaluate(&prog, &[Value::F64(x), Value::F64(y)], &[]).unwrap();
@@ -1468,10 +2214,330 @@ fn reverse_mode_transcendental_gradient() {
     let expected_dy = x.sin() * y.exp();
     assert!(
         (grads[0] - expected_dx).abs() < 1e-10,
-        "df/dx should be {expected_dx}, got {}", grads[0]
+        "df/dx should be {expected_dx}, got {}",
+        grads[0]
     );
     assert!(
         (grads[1] - expected_dy).abs() < 1e-10,
-        "df/dy should be {expected_dy}, got {}", grads[1]
+        "df/dy should be {expected_dy}, got {}",
+        grads[1]
     );
+}
+
+fn scalar_body(ops: Vec<EmirOp>, input_count: u16) -> EmirProgram {
+    let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
+    EmirProgram {
+        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
+        result: EmirValue(last),
+        input_count,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+/// Forward-mode tangent and reverse-mode adjoint for the same scalar body.
+fn adjoint_pair(body: EmirProgram, inputs: &[Value], var: u16) -> (f64, f64) {
+    let dual_prog = program(vec![EmirOp::Differentiate {
+        body: body.clone(),
+        var_index: var,
+    }]);
+    let fwd = match evaluate(&dual_prog, inputs, &[]).unwrap() {
+        Value::F64(v) => v,
+        other => panic!("expected F64 tangent, got {other:?}"),
+    };
+    let rev_prog = program(vec![EmirOp::ReverseMode {
+        body,
+        var_indices: vec![var],
+    }]);
+    let rev = match evaluate(&rev_prog, inputs, &[]).unwrap() {
+        Value::Vector(v) => v[0],
+        other => panic!("expected Vector adjoint, got {other:?}"),
+    };
+    (fwd, rev)
+}
+
+fn assert_adjoint_eq(fwd: f64, rev: f64, expected: f64, label: &str) {
+    assert!(
+        (fwd == expected) || (fwd.is_nan() && expected.is_nan()),
+        "{label}: dual {fwd} != closed form {expected}"
+    );
+    assert!(
+        (rev == expected) || (rev.is_nan() && expected.is_nan()),
+        "{label}: reverse {rev} != closed form {expected}"
+    );
+    assert!(
+        (fwd == rev) || (fwd.is_nan() && rev.is_nan()),
+        "{label}: dual {fwd} != reverse {rev}"
+    );
+}
+
+/// d/dx[x^n] at x=0: reverse used to skip the base adjoint, so x^1
+/// returned 0 instead of the closed form 1. x^0 is identically 1.
+#[test]
+fn adjoint_identity_pow_integer_exponent_at_zero() {
+    let pow_body = |exp: f64| {
+        scalar_body(
+            vec![
+                EmirOp::LoadInput(0),
+                const_bits(exp),
+                EmirOp::F64Pow(EmirValue(0), EmirValue(1)),
+            ],
+            1,
+        )
+    };
+    let x0 = [Value::F64(0.0)];
+    let (d1, r1) = adjoint_pair(pow_body(1.0), &x0, 0);
+    assert_adjoint_eq(d1, r1, 1.0, "d/dx[x^1] at 0");
+    let (d2, r2) = adjoint_pair(pow_body(2.0), &x0, 0);
+    assert_adjoint_eq(d2, r2, 0.0, "d/dx[x^2] at 0");
+    let (d0, r0) = adjoint_pair(pow_body(0.0), &x0, 0);
+    assert_adjoint_eq(d0, r0, 0.0, "d/dx[x^0] at 0");
+}
+
+/// abs'(0) = sgn(0) = 0 in this crate, not IEEE signum(+0)=1.
+#[test]
+fn adjoint_identity_abs_at_zero() {
+    let body = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            EmirOp::UnaryBuiltin(BuiltinId::Abs, EmirValue(0)),
+        ],
+        1,
+    );
+    let (fwd, rev) = adjoint_pair(body, &[Value::F64(0.0)], 0);
+    assert_adjoint_eq(fwd, rev, 0.0, "d/dx abs(x) at 0");
+}
+
+/// Dual atan2 used (1+(y/x)^2) which is 0/0 at x=0; closed form is
+/// ∂/∂x atan2(y,x) = -y/(x²+y²) = -1 at (1,0).
+#[test]
+fn adjoint_identity_atan2_at_x_zero() {
+    let body = scalar_body(
+        vec![
+            const_bits(1.0),
+            EmirOp::LoadInput(0),
+            EmirOp::BinaryBuiltin(BuiltinId::Atan2, EmirValue(0), EmirValue(1)),
+        ],
+        1,
+    );
+    let (fwd, rev) = adjoint_pair(body, &[Value::F64(0.0)], 0);
+    assert_adjoint_eq(fwd, rev, -1.0, "d/dx atan2(1, x) at 0");
+}
+
+/// Reverse used to zero recip/sqrt at 0; dual and 1/x use IEEE Inf.
+#[test]
+fn adjoint_identity_recip_sqrt_at_zero() {
+    let recip = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            EmirOp::UnaryBuiltin(BuiltinId::Recip, EmirValue(0)),
+        ],
+        1,
+    );
+    let (df, rf) = adjoint_pair(recip, &[Value::F64(0.0)], 0);
+    assert_adjoint_eq(df, rf, f64::NEG_INFINITY, "d/dx recip(x) at 0");
+
+    let sqrt = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            EmirOp::UnaryBuiltin(BuiltinId::Sqrt, EmirValue(0)),
+        ],
+        1,
+    );
+    let (ds, rs) = adjoint_pair(sqrt, &[Value::F64(0.0)], 0);
+    assert_adjoint_eq(ds, rs, f64::INFINITY, "d/dx sqrt(x) at 0");
+}
+
+/// hypot and min at a kink: dual and reverse already shared a convention;
+/// keep the identity pinned.
+#[test]
+fn adjoint_identity_hypot_and_min_kink() {
+    let hypot = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            const_bits(4.0),
+            EmirOp::BinaryBuiltin(BuiltinId::Hypot, EmirValue(0), EmirValue(1)),
+        ],
+        1,
+    );
+    let (dh, rh) = adjoint_pair(hypot, &[Value::F64(3.0)], 0);
+    assert_adjoint_eq(dh, rh, 3.0 / 5.0, "d/dx hypot(x, 4) at 3");
+
+    let min_kink = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            const_bits(5.0),
+            EmirOp::BinaryBuiltin(BuiltinId::Min, EmirValue(0), EmirValue(1)),
+        ],
+        1,
+    );
+    let (dm, rm) = adjoint_pair(min_kink, &[Value::F64(5.0)], 0);
+    assert_adjoint_eq(dm, rm, 1.0, "d/dx min(x, 5) at 5 (left)");
+}
+
+#[test]
+fn adjoint_identity_select() {
+    // if x > 0 then x*x else -x; at x=2, d/dx = 2x = 4.
+    let body = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            const_bits(0.0),
+            EmirOp::Gt(EmirValue(0), EmirValue(1)),
+            EmirOp::F64Mul(EmirValue(0), EmirValue(0)),
+            EmirOp::Neg(EmirValue(0)),
+            EmirOp::Select {
+                condition: EmirValue(2),
+                then_value: EmirValue(3),
+                else_value: EmirValue(4),
+            },
+        ],
+        1,
+    );
+    let (fwd, rev) = adjoint_pair(body, &[Value::F64(2.0)], 0);
+    assert_adjoint_eq(fwd, rev, 4.0, "d/dx select(x>0, x*x, -x) at 2");
+}
+
+/// Metamorphic involution: `f(f⁻¹(x)) == x` where the inverse is defined.
+/// `i64::MIN` negate must named-fault (two's-complement has no `−MIN`), not wrap.
+#[test]
+fn invertible_ops_are_involutions() {
+    // Negate: −(−x) = x on I64 except MIN; MIN is a typed overflow.
+    for x in [0i64, 1, -1, 42, i64::MAX, i64::MAX - 1, -i64::MAX] {
+        let p = program(vec![
+            EmirOp::ConstI64(x),
+            EmirOp::Neg(EmirValue(0)),
+            EmirOp::Neg(EmirValue(1)),
+        ]);
+        assert_eq!(
+            evaluate(&p, &[], &[]).unwrap(),
+            Value::I64(x),
+            "-(-{x}) must be {x}"
+        );
+    }
+    let min_neg = program(vec![EmirOp::ConstI64(i64::MIN), EmirOp::Neg(EmirValue(0))]);
+    assert_eq!(
+        evaluate(&min_neg, &[], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "neg",
+            detail: "i64 overflow",
+        },
+        "-I64::MIN must named-fault, not wrap to itself"
+    );
+    let min_twice = program(vec![
+        EmirOp::ConstI64(i64::MIN),
+        EmirOp::Neg(EmirValue(0)),
+        EmirOp::Neg(EmirValue(1)),
+    ]);
+    assert_eq!(
+        evaluate(&min_twice, &[], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "neg",
+            detail: "i64 overflow",
+        },
+        "-(-I64::MIN) must not wrap-succeed"
+    );
+
+    // recip(recip(x)) == x for finite x whose reciprocal is finite and exact.
+    for x in [1.0, -1.0, 2.0, 0.5, 4.0, 0.25, 8.0, -4.0, 0.125] {
+        let p = program(vec![
+            const_bits(x),
+            EmirOp::UnaryBuiltin(BuiltinId::Recip, EmirValue(0)),
+            EmirOp::UnaryBuiltin(BuiltinId::Recip, EmirValue(1)),
+        ]);
+        match evaluate(&p, &[], &[]).unwrap() {
+            Value::F64(y) => assert_eq!(y.to_bits(), x.to_bits(), "recip(recip({x})) bits"),
+            other => panic!("expected F64, got {other:?}"),
+        }
+    }
+
+    // transpose(transpose(A)) == A, including 0-width and 0-height.
+    for (rows, cols, data) in [
+        (1usize, 1usize, vec![7.0]),
+        (2, 2, vec![1.0, 2.0, 3.0, 4.0]),
+        (2, 3, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+        (3, 1, vec![1.0, 2.0, 3.0]),
+        (1, 4, vec![1.0, 2.0, 3.0, 4.0]),
+        (2, 0, vec![]),
+        (0, 3, vec![]),
+        (0, 0, vec![]),
+    ] {
+        let mut ops = Vec::new();
+        let a = push_matrix(&mut ops, rows, cols, &data);
+        ops.push(EmirOp::MatrixTranspose(EmirValue(a)));
+        ops.push(EmirOp::MatrixTranspose(EmirValue(a + 1)));
+        assert_eq!(
+            eval_ops(ops),
+            Value::Matrix {
+                rows,
+                cols,
+                data: data.clone(),
+            },
+            "transpose² of {rows}x{cols}"
+        );
+    }
+
+    // mod_inv(mod_inv(a, p), p) == a when gcd(a, p)=1 and a ∈ (0, p).
+    for p in [2i64, 3, 7, 11, 13, 101, 1009] {
+        for a in 1..p {
+            let pinv = program(vec![
+                EmirOp::ConstI64(a),
+                EmirOp::ConstI64(p),
+                EmirOp::ModInv(EmirValue(0), EmirValue(1)),
+                EmirOp::ConstI64(p),
+                EmirOp::ModInv(EmirValue(2), EmirValue(3)),
+            ]);
+            match evaluate(&pinv, &[], &[]) {
+                Ok(Value::I64(back)) => {
+                    assert_eq!(back, a, "mod_inv²({a}, {p})");
+                }
+                Ok(other) => panic!("expected I64, got {other:?}"),
+                Err(_) => {
+                    // gcd != 1: skip (not defined)
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn complex_sqrt_ln_principal_branch() {
+    let sqrt_neg1 = program(vec![
+        EmirOp::ConstComplex(-1.0, 0.0),
+        EmirOp::UnaryBuiltin(BuiltinId::Sqrt, EmirValue(0)),
+    ]);
+    match evaluate(&sqrt_neg1, &[], &[]).unwrap() {
+        Value::Complex { re, im } => {
+            assert!(re.abs() < 1e-12, "re={re}");
+            assert!((im - 1.0).abs() < 1e-12, "im={im}");
+        }
+        other => panic!("{other:?}"),
+    }
+    let ln_neg1 = program(vec![
+        EmirOp::ConstComplex(-1.0, 0.0),
+        EmirOp::UnaryBuiltin(BuiltinId::Ln, EmirValue(0)),
+    ]);
+    match evaluate(&ln_neg1, &[], &[]).unwrap() {
+        Value::Complex { re, im } => {
+            assert!(re.abs() < 1e-12, "re={re}");
+            assert!((im - std::f64::consts::PI).abs() < 1e-12, "im={im}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn vectordot_adjoint_identity() {
+    // d/dx dot([x, 1], [1, x]) = d/dx (2x) = 2
+    let body = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            const_bits(1.0),
+            EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
+            EmirOp::VectorCreate(vec![EmirValue(1), EmirValue(0)]),
+            EmirOp::VectorDot(EmirValue(2), EmirValue(3)),
+        ],
+        1,
+    );
+    let (fwd, rev) = adjoint_pair(body, &[Value::F64(3.0)], 0);
+    assert_adjoint_eq(fwd, rev, 2.0, "d/dx dot([x,1],[1,x])");
 }

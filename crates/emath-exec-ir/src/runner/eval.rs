@@ -1,5 +1,5 @@
-use super::{definition_order, TestVerdict};
-use crate::interp::{evaluate, EvalFault, Value};
+use super::{TestVerdict, definition_order};
+use crate::interp::{EvalFault, Value, evaluate};
 use crate::{lower_definition, lower_requirement};
 use emath_ir::{
     BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, TypeNode, UnaryOp,
@@ -108,14 +108,12 @@ pub(super) fn check_obligation(
         | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
-        | Ok(Value::Tensor { .. }) => {
-            Err(TestVerdict::Fault {
-                fault: EvalFault::TypeConfusion {
-                    register: program.result.0,
-                    op: keyword,
-                },
-            })
-        }
+        | Ok(Value::Tensor { .. }) => Err(TestVerdict::Fault {
+            fault: EvalFault::TypeConfusion {
+                register: program.result.0,
+                op: keyword,
+            },
+        }),
         Err(fault) => Err(TestVerdict::Fault { fault }),
     }
 }
@@ -137,7 +135,10 @@ pub(super) fn seed_state_from_given(
     for field in &declaration.state {
         let Some(value) = given.get(&field.name).cloned() else {
             return Err(TestVerdict::LoweringRefused {
-                detail: format!("test body does not supply state `{name}`", name = field.name),
+                detail: format!(
+                    "test body does not supply state `{name}`",
+                    name = field.name
+                ),
             });
         };
         state.insert(field.name.clone(), value);
@@ -175,7 +176,7 @@ pub fn eval_definitions_values(
                 detail: format!("test body does not supply input `{name}`"),
             });
         };
-        bind_values.push(value);
+        bind_values.push(coerce_to_slot(value, slot_ty(package, declaration, name)));
     }
     let state_names: Vec<String> = declaration
         .state
@@ -189,7 +190,7 @@ pub fn eval_definitions_values(
                 detail: format!("missing state `{name}`"),
             });
         };
-        state_values.push(value);
+        state_values.push(coerce_to_slot(value, slot_ty(package, declaration, name)));
     }
 
     let mut definitions = BTreeMap::new();
@@ -198,6 +199,7 @@ pub fn eval_definitions_values(
             .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
         match evaluate(&program, &bind_values, &state_values) {
             Ok(value) => {
+                let value = coerce_to_slot(value, slot_ty(package, declaration, name));
                 definitions.insert(name.clone(), value.clone());
                 if !bind_names.iter().any(|existing| existing == name) {
                     bind_names.push(name.clone());
@@ -210,6 +212,55 @@ pub fn eval_definitions_values(
     Ok(definitions)
 }
 
+/// Widen I64→F64 (and whole F64→I64) so a named map matches typed slots.
+pub(super) fn coerce_bindings(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    values: &mut BTreeMap<String, Value>,
+) {
+    for (name, value) in values.iter_mut() {
+        *value = coerce_to_slot(value.clone(), slot_ty(package, declaration, name));
+    }
+}
+
+fn slot_ty<'a>(
+    package: &'a SemanticPackage,
+    declaration: &Declaration,
+    name: &str,
+) -> Option<&'a TypeNode> {
+    declaration
+        .inputs
+        .iter()
+        .chain(declaration.outputs.iter())
+        .chain(declaration.state.iter())
+        .chain(declaration.algebraic.iter())
+        .find(|field| field.name == name)
+        .and_then(|field| package.ty(field.ty))
+        .or_else(|| {
+            declaration.constructors.first().and_then(|ctor| {
+                ctor.parameters
+                    .iter()
+                    .find(|field| field.name == name)
+                    .and_then(|field| package.ty(field.ty))
+            })
+        })
+}
+
+fn coerce_to_slot(value: Value, ty: Option<&TypeNode>) -> Value {
+    match (&value, ty) {
+        (Value::I64(n), Some(TypeNode::Float64)) => Value::F64(*n as f64),
+        (Value::F64(n), Some(TypeNode::Int | TypeNode::Nat))
+            if n.is_finite()
+                && n.fract() == 0.0
+                && *n >= i64::MIN as f64
+                && *n <= i64::MAX as f64 =>
+        {
+            Value::I64(*n as i64)
+        }
+        _ => value,
+    }
+}
+
 pub(super) fn outputs_of(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -218,19 +269,10 @@ pub(super) fn outputs_of(
     let mut outputs = BTreeMap::new();
     for field in &declaration.outputs {
         if let Some(value) = definitions.get(&field.name).cloned() {
-            let value = match (&value, package.ty(field.ty)) {
-                (Value::I64(n), Some(TypeNode::Float64)) => Value::F64(*n as f64),
-                (Value::F64(n), Some(TypeNode::Int | TypeNode::Nat))
-                    if n.is_finite()
-                        && n.fract() == 0.0
-                        && *n >= i64::MIN as f64
-                        && *n <= i64::MAX as f64 =>
-                {
-                    Value::I64(*n as i64)
-                }
-                (v, _) => v.clone(),
-            };
-            outputs.insert(field.name.clone(), value);
+            outputs.insert(
+                field.name.clone(),
+                coerce_to_slot(value, package.ty(field.ty)),
+            );
         }
     }
     outputs
@@ -281,14 +323,12 @@ pub(super) fn eval_expect(
         | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
-        | Ok(Value::Tensor { .. }) => {
-            TestVerdict::Fault {
-                fault: EvalFault::TypeConfusion {
-                    register: program.result.0,
-                    op: "expect",
-                },
-            }
-        }
+        | Ok(Value::Tensor { .. }) => TestVerdict::Fault {
+            fault: EvalFault::TypeConfusion {
+                register: program.result.0,
+                op: "expect",
+            },
+        },
         Err(fault) => TestVerdict::Fault { fault },
     }
 }

@@ -5,7 +5,7 @@
 //! including strict eager fault timing: only provably-total ops are removed
 //! or folded; ops that can fault at runtime are never touched, and folding
 //! mirrors the interpreter's conversions (`f64_of`/`i64_of`/`bool_of`,
-//! `eq_ne`) and IEEE behavior bit-exactly.
+//! `eq_ne`), exact I64×I64 arithmetic, and IEEE behavior bit-exactly.
 
 use emath_core::Span;
 
@@ -38,14 +38,15 @@ impl ConstVal {
         }
     }
 
-    /// `eq_ne` scalar semantics: exact structural equality for the covered
-    /// kinds (Bool coerces with F64 by truthiness, I64 widens to f64).
+    /// `eq_ne` scalar semantics: IEEE for F64×F64, exact I64×I64, exact
+    /// mixed I64×F64 (not a 2^53 widening round), Bool coerces with F64
+    /// by truthiness.
     fn eq(self, other: ConstVal) -> Option<bool> {
         Some(match (self, other) {
             (ConstVal::F64(a), ConstVal::F64(b)) => a == b,
             (ConstVal::I64(a), ConstVal::I64(b)) => a == b,
-            (ConstVal::I64(a), ConstVal::F64(b)) => a as f64 == b,
-            (ConstVal::F64(a), ConstVal::I64(b)) => a == b as f64,
+            (ConstVal::I64(a), ConstVal::F64(b)) => emath_rt::eq_i64_f64(a, b),
+            (ConstVal::F64(a), ConstVal::I64(b)) => emath_rt::eq_i64_f64(b, a),
             (ConstVal::Bool(a), ConstVal::Bool(b)) => a == b,
             (ConstVal::Bool(a), ConstVal::F64(b)) => a == (b != 0.0),
             (ConstVal::F64(a), ConstVal::Bool(b)) => (a != 0.0) == b,
@@ -92,7 +93,46 @@ fn fold_f64_bin(
     b: EmirValue,
     f: impl FnOnce(f64, f64) -> f64,
 ) -> Option<ConstVal> {
-    Some(ConstVal::F64(f(const_at(consts, a)?.f64_of()?, const_at(consts, b)?.f64_of()?)))
+    Some(ConstVal::F64(f(
+        const_at(consts, a)?.f64_of()?,
+        const_at(consts, b)?.f64_of()?,
+    )))
+}
+
+/// I64×I64 stays exact (overflow leaves the op unfolded so interp faults);
+/// mixed kinds widen to f64, matching the interpreter.
+fn fold_arith(
+    consts: &[Option<ConstVal>],
+    a: EmirValue,
+    b: EmirValue,
+    i64_op: impl FnOnce(i64, i64) -> Option<i64>,
+    f64_op: impl FnOnce(f64, f64) -> f64,
+) -> Option<ConstVal> {
+    match (const_at(consts, a), const_at(consts, b)) {
+        (Some(ConstVal::I64(x)), Some(ConstVal::I64(y))) => i64_op(x, y).map(ConstVal::I64),
+        _ => fold_f64_bin(consts, a, b, f64_op),
+    }
+}
+
+fn fold_ord(
+    consts: &[Option<ConstVal>],
+    a: EmirValue,
+    b: EmirValue,
+    pred: impl Fn(core::cmp::Ordering) -> bool,
+    on_f64: impl FnOnce(f64, f64) -> bool,
+) -> Option<ConstVal> {
+    match (const_at(consts, a)?, const_at(consts, b)?) {
+        (ConstVal::I64(x), ConstVal::I64(y)) => Some(ConstVal::Bool(pred(x.cmp(&y)))),
+        (ConstVal::I64(x), ConstVal::F64(y)) => Some(ConstVal::Bool(
+            emath_rt::cmp_i64_f64(x, y).is_some_and(&pred),
+        )),
+        (ConstVal::F64(x), ConstVal::I64(y)) => Some(ConstVal::Bool(
+            emath_rt::cmp_i64_f64(y, x)
+                .map(core::cmp::Ordering::reverse)
+                .is_some_and(&pred),
+        )),
+        _ => fold_cmp(consts, a, b, on_f64),
+    }
 }
 
 fn fold_f64_un(
@@ -109,7 +149,10 @@ fn fold_bool_bin(
     b: EmirValue,
     f: impl FnOnce(bool, bool) -> bool,
 ) -> Option<ConstVal> {
-    Some(ConstVal::Bool(f(const_at(consts, a)?.bool_of()?, const_at(consts, b)?.bool_of()?)))
+    Some(ConstVal::Bool(f(
+        const_at(consts, a)?.bool_of()?,
+        const_at(consts, b)?.bool_of()?,
+    )))
 }
 
 fn fold_cmp(
@@ -132,32 +175,34 @@ fn fold_op(op: &EmirOp, consts: &[Option<ConstVal>]) -> Option<ConstVal> {
         EmirOp::ConstF64(bits) => Some(ConstVal::F64(f64::from_bits(bits))),
         EmirOp::ConstI64(v) => Some(ConstVal::I64(v)),
         EmirOp::ConstBool(b) => Some(ConstVal::Bool(b)),
-        EmirOp::F64Add(a, b) => fold_f64_bin(consts, a, b, |x, y| x + y),
-        EmirOp::F64Sub(a, b) => fold_f64_bin(consts, a, b, |x, y| x - y),
-        EmirOp::F64Mul(a, b) => fold_f64_bin(consts, a, b, |x, y| x * y),
+        EmirOp::F64Add(a, b) => fold_arith(consts, a, b, i64::checked_add, |x, y| x + y),
+        EmirOp::F64Sub(a, b) => fold_arith(consts, a, b, i64::checked_sub, |x, y| x - y),
+        EmirOp::F64Mul(a, b) => fold_arith(consts, a, b, i64::checked_mul, |x, y| x * y),
         EmirOp::F64Div(a, b) => fold_f64_bin(consts, a, b, |x, y| x / y),
         EmirOp::F64Pow(a, b) => fold_f64_bin(consts, a, b, |x, y| x.powf(y)),
-        EmirOp::Neg(a) => fold_f64_un(consts, a, |x| -x),
+        EmirOp::Neg(a) => match const_at(consts, a)? {
+            ConstVal::I64(x) => x.checked_neg().map(ConstVal::I64),
+            ConstVal::F64(x) => Some(ConstVal::F64(-x)),
+            ConstVal::Bool(_) => None,
+        },
         EmirOp::UnaryBuiltin(id, a) => fold_f64_un(consts, a, |x| id.eval_unary(x)),
-        EmirOp::BinaryBuiltin(id, a, b) => {
-            fold_f64_bin(consts, a, b, |x, y| id.eval_binary(x, y))
-        }
-        EmirOp::Lt(a, b) => fold_cmp(consts, a, b, |x, y| x < y),
-        EmirOp::Le(a, b) => fold_cmp(consts, a, b, |x, y| x <= y),
-        EmirOp::Gt(a, b) => fold_cmp(consts, a, b, |x, y| x > y),
-        EmirOp::Ge(a, b) => fold_cmp(consts, a, b, |x, y| x >= y),
-        EmirOp::Eq(a, b) => Some(ConstVal::Bool(const_at(consts, a)?.eq(const_at(consts, b)?)?)),
-        EmirOp::Ne(a, b) => {
-            Some(ConstVal::Bool(!const_at(consts, a)?.eq(const_at(consts, b)?)?))
-        }
+        EmirOp::BinaryBuiltin(id, a, b) => fold_f64_bin(consts, a, b, |x, y| id.eval_binary(x, y)),
+        EmirOp::Lt(a, b) => fold_ord(consts, a, b, |o| o.is_lt(), |x, y| x < y),
+        EmirOp::Le(a, b) => fold_ord(consts, a, b, |o| o.is_le(), |x, y| x <= y),
+        EmirOp::Gt(a, b) => fold_ord(consts, a, b, |o| o.is_gt(), |x, y| x > y),
+        EmirOp::Ge(a, b) => fold_ord(consts, a, b, |o| o.is_ge(), |x, y| x >= y),
+        EmirOp::Eq(a, b) => Some(ConstVal::Bool(
+            const_at(consts, a)?.eq(const_at(consts, b)?)?,
+        )),
+        EmirOp::Ne(a, b) => Some(ConstVal::Bool(
+            !const_at(consts, a)?.eq(const_at(consts, b)?)?,
+        )),
         EmirOp::And(a, b) => fold_bool_bin(consts, a, b, |x, y| x && y),
         EmirOp::Or(a, b) => fold_bool_bin(consts, a, b, |x, y| x || y),
         EmirOp::Imply(a, b) => fold_bool_bin(consts, a, b, |x, y| !x || y),
         EmirOp::Iff(a, b) => fold_bool_bin(consts, a, b, |x, y| x == y),
         EmirOp::Not(a) => Some(ConstVal::Bool(!const_at(consts, a)?.bool_of()?)),
-        EmirOp::IsFinite(a) => {
-            Some(ConstVal::Bool(const_at(consts, a)?.f64_of()?.is_finite()))
-        }
+        EmirOp::IsFinite(a) => Some(ConstVal::Bool(const_at(consts, a)?.f64_of()?.is_finite())),
         EmirOp::Select {
             condition,
             then_value,
@@ -284,20 +329,45 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
 pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
     let mut push = |v: EmirValue| out.push(v);
     match *op {
-        EmirOp::F64Add(a, b) | EmirOp::F64Sub(a, b) | EmirOp::F64Mul(a, b)
-        | EmirOp::F64Div(a, b) | EmirOp::F64Pow(a, b) | EmirOp::Lt(a, b)
-        | EmirOp::Le(a, b) | EmirOp::Gt(a, b) | EmirOp::Ge(a, b) | EmirOp::Eq(a, b)
-        | EmirOp::Ne(a, b) | EmirOp::And(a, b) | EmirOp::Or(a, b) | EmirOp::Imply(a, b)
-        | EmirOp::Iff(a, b) | EmirOp::VectorAdd(a, b) | EmirOp::VectorSub(a, b)
-        | EmirOp::VectorScale(a, b) | EmirOp::VectorDot(a, b) | EmirOp::MatrixAdd(a, b)
-        | EmirOp::MatrixSub(a, b) | EmirOp::MatrixScale(a, b) | EmirOp::MatrixMulVector(a, b)
-        | EmirOp::MatrixMulMatrix(a, b) | EmirOp::TensorAdd(a, b) | EmirOp::TensorSub(a, b)
-        | EmirOp::ModInv(a, b) | EmirOp::HammingDistance(a, b) | EmirOp::BinaryBuiltin(_, a, b) => {
+        EmirOp::F64Add(a, b)
+        | EmirOp::F64Sub(a, b)
+        | EmirOp::F64Mul(a, b)
+        | EmirOp::F64Div(a, b)
+        | EmirOp::F64Pow(a, b)
+        | EmirOp::Lt(a, b)
+        | EmirOp::Le(a, b)
+        | EmirOp::Gt(a, b)
+        | EmirOp::Ge(a, b)
+        | EmirOp::Eq(a, b)
+        | EmirOp::Ne(a, b)
+        | EmirOp::And(a, b)
+        | EmirOp::Or(a, b)
+        | EmirOp::Imply(a, b)
+        | EmirOp::Iff(a, b)
+        | EmirOp::VectorAdd(a, b)
+        | EmirOp::VectorSub(a, b)
+        | EmirOp::VectorScale(a, b)
+        | EmirOp::VectorDot(a, b)
+        | EmirOp::MatrixAdd(a, b)
+        | EmirOp::MatrixSub(a, b)
+        | EmirOp::MatrixScale(a, b)
+        | EmirOp::MatrixMulVector(a, b)
+        | EmirOp::MatrixMulMatrix(a, b)
+        | EmirOp::TensorAdd(a, b)
+        | EmirOp::TensorSub(a, b)
+        | EmirOp::ModInv(a, b)
+        | EmirOp::HammingDistance(a, b)
+        | EmirOp::BinaryBuiltin(_, a, b) => {
             push(a);
             push(b);
         }
-        EmirOp::Neg(a) | EmirOp::UnaryBuiltin(_, a) | EmirOp::Not(a) | EmirOp::IsFinite(a)
-        | EmirOp::VectorNorm(a) | EmirOp::VectorLength(a) | EmirOp::MatrixTranspose(a)
+        EmirOp::Neg(a)
+        | EmirOp::UnaryBuiltin(_, a)
+        | EmirOp::Not(a)
+        | EmirOp::IsFinite(a)
+        | EmirOp::VectorNorm(a)
+        | EmirOp::VectorLength(a)
+        | EmirOp::MatrixTranspose(a)
         | EmirOp::Factorial(a) => push(a),
         EmirOp::Select {
             condition,
@@ -308,7 +378,8 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
             push(then_value);
             push(else_value);
         }
-        EmirOp::VectorCreate(ref elements) | EmirOp::MatrixCreate { ref elements, .. }
+        EmirOp::VectorCreate(ref elements)
+        | EmirOp::MatrixCreate { ref elements, .. }
         | EmirOp::TensorCreate { ref elements, .. } => {
             for &e in elements {
                 push(e);
@@ -318,11 +389,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
             push(vector);
             push(index);
         }
-        EmirOp::MatrixIndex {
-            matrix,
-            row,
-            col,
-        } => {
+        EmirOp::MatrixIndex { matrix, row, col } => {
             push(matrix);
             push(row);
             push(col);
@@ -337,10 +404,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
                 push(i);
             }
         }
-        EmirOp::TensorSlice {
-            tensor,
-            ref axes,
-        } => {
+        EmirOp::TensorSlice { tensor, ref axes } => {
             push(tensor);
             for axis in axes {
                 match *axis {
@@ -368,10 +432,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
             push(p);
         }
         EmirOp::Fold {
-            start,
-            end,
-            init,
-            ..
+            start, end, init, ..
         } => {
             push(start);
             push(end);
@@ -456,11 +517,7 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
             vector: g(vector),
             index: g(index),
         },
-        EmirOp::MatrixIndex {
-            matrix,
-            row,
-            col,
-        } => EmirOp::MatrixIndex {
+        EmirOp::MatrixIndex { matrix, row, col } => EmirOp::MatrixIndex {
             matrix: g(matrix),
             row: g(row),
             col: g(col),
@@ -513,10 +570,7 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
             tensor: g(tensor),
             indices: indices.iter().copied().map(g).collect(),
         },
-        EmirOp::TensorSlice {
-            tensor,
-            ref axes,
-        } => EmirOp::TensorSlice {
+        EmirOp::TensorSlice { tensor, ref axes } => EmirOp::TensorSlice {
             tensor: g(tensor),
             axes: axes
                 .iter()

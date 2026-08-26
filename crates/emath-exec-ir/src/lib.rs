@@ -6,16 +6,16 @@
 
 #![forbid(unsafe_code)]
 
-mod emitter;
 pub mod builtin;
+mod emitter;
 pub mod interp;
 pub mod optimize;
 pub mod runner;
 
 pub use builtin::BuiltinId;
 pub use runner::{
-    definition_order, simulate_continuous, simulate_continuous_with, step_continuous,
-    step_continuous_values, SimulateOptions, StepMethod, Trajectory, TrajectorySample,
+    SimulateOptions, StepMethod, Trajectory, TrajectorySample, definition_order,
+    simulate_continuous, simulate_continuous_with, step_continuous, step_continuous_values,
 };
 
 use emath_core::Span;
@@ -41,12 +41,14 @@ pub enum FoldCombine {
 }
 
 /// How out-of-range stencil indices resolve: `Clamp` (replicate the edge
-/// cell), `Neumann` (mirror the next interior cell), or `Dirichlet`
-/// (fixed boundary values). 2D admits only `Clamp`/`Neumann` in Phase 1.
+/// cell), `Neumann` (mirror the next interior cell), `OneSided` (linear
+/// extrapolation; first-order one-sided first differences), or `Dirichlet`
+/// (fixed boundary values). 2D admits `Clamp`/`Neumann`/`OneSided` in Phase 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EdgePolicy {
     Clamp,
     Neumann,
+    OneSided,
     Dirichlet { left: f64, right: f64 },
 }
 
@@ -190,7 +192,7 @@ pub enum EmirOp {
         tolerance: f64,
         max_iter: u32,
     },
-    /// Gradient descent (or ascent) over `body` w.r.t. `var_indices`.
+    /// Newton on ∇f = 0 over `body` w.r.t. `var_indices`.
     Optimize {
         body: EmirProgram,
         var_indices: Vec<u16>,
@@ -284,6 +286,150 @@ impl EmirOp {
             Self::ReverseMode { .. } => "reverse-mode",
         }
     }
+
+    /// SSA dump of this op: name, register operands, and non-register payloads.
+    /// Nested sub-programs are omitted here; [`EmirProgram::print`] dumps them.
+    #[must_use]
+    pub fn format_ssa(&self) -> String {
+        match self {
+            Self::ConstF64(bits) => format!("const-f64 {bits:016x}"),
+            Self::ConstI64(value) => format!("const-i64 {value}"),
+            Self::ConstBool(value) => format!("const-bool {value}"),
+            Self::ConstComplex(re, im) => {
+                format!("const-complex {:016x} {:016x}", re.to_bits(), im.to_bits())
+            }
+            Self::LoadInput(index) => format!("load-input {index}"),
+            Self::LoadState(index) => format!("load-state {index}"),
+            Self::Select {
+                condition,
+                then_value,
+                else_value,
+            } => format!(
+                "select %{} %{} %{}",
+                condition.0, then_value.0, else_value.0
+            ),
+            Self::MatrixCreate {
+                rows,
+                cols,
+                elements,
+            } => format!("mat-create {rows} {cols} {}", format_regs(elements)),
+            Self::TensorCreate { shape, elements } => format!(
+                "tensor-create {} {}",
+                format_shape(shape),
+                format_regs(elements)
+            ),
+            Self::TensorSlice { tensor, axes } => {
+                let mut out = format!("tensor-slice %{}", tensor.0);
+                for axis in axes {
+                    match axis {
+                        EmirSliceAxis::Point(v) => out.push_str(&format!(" point %{}", v.0)),
+                        EmirSliceAxis::Range { start, end } => {
+                            out.push_str(&format!(" range %{} %{}", start.0, end.0));
+                        }
+                    }
+                }
+                out
+            }
+            Self::Stencil1d {
+                input,
+                weights,
+                center,
+                edge,
+            } => format!(
+                "stencil-1d %{} center={center} {} {}",
+                input.0,
+                format_edge(edge),
+                format_f64_bits(weights)
+            ),
+            Self::Stencil2d {
+                input,
+                weights,
+                center,
+                edge,
+            } => format!(
+                "stencil-2d %{} center={},{} {} {}",
+                input.0,
+                center.0,
+                center.1,
+                format_edge(edge),
+                format_f64_bits(weights)
+            ),
+            Self::Einsum { subscripts, inputs } => {
+                format!("einsum {subscripts} {}", format_regs(inputs))
+            }
+            Self::Fold {
+                start,
+                end,
+                init,
+                combine,
+                loop_var_index,
+                ..
+            } => format!(
+                "fold {} start=%{} end=%{} init=%{} loop={loop_var_index}",
+                fold_combine_name(*combine),
+                start.0,
+                end.0,
+                init.0
+            ),
+            Self::Integral {
+                start,
+                end,
+                steps,
+                loop_var_index,
+                ..
+            } => format!(
+                "integral steps={steps} start=%{} end=%{} loop={loop_var_index}",
+                start.0, end.0
+            ),
+            Self::Differentiate { var_index, .. } => {
+                format!("differentiate var={var_index}")
+            }
+            Self::Solve {
+                var_index,
+                tolerance,
+                max_iter,
+                ..
+            } => format!(
+                "solve var={var_index} tol={:016x} max={max_iter}",
+                tolerance.to_bits()
+            ),
+            Self::Optimize {
+                var_indices,
+                maximize,
+                learning_rate,
+                tolerance,
+                max_iter,
+                ..
+            } => format!(
+                "optimize maximize={maximize} lr={:016x} tol={:016x} max={max_iter} vars={}",
+                learning_rate.to_bits(),
+                tolerance.to_bits(),
+                format_u16s(var_indices)
+            ),
+            Self::SampleLimit {
+                var_index,
+                target,
+                direction,
+                ..
+            } => format!(
+                "sample-limit var={var_index} target=%{} direction=%{}",
+                target.0, direction.0
+            ),
+            Self::ReverseMode { var_indices, .. } => {
+                format!("reverse-mode vars={}", format_u16s(var_indices))
+            }
+            other => {
+                let mut operands = Vec::new();
+                optimize::operand_registers(other, &mut operands);
+                let mut out = other.name().to_string();
+                if !operands.is_empty() {
+                    out.push(' ');
+                    out.push_str(&format_regs(&operands));
+                }
+                out
+            }
+        }
+    }
 }
 
 /// Domain obligations recorded during lowering. Phase 1 semantics: the
@@ -319,16 +465,113 @@ pub struct EmirProgram {
 }
 
 impl EmirProgram {
+    /// Deterministic SSA dump. Distinct register operands, constant
+    /// payloads, nested bodies, counts, and obligations produce distinct
+    /// bytes; `op.name()`-only dumps used to collide on those.
     #[must_use]
     pub fn print(&self) -> String {
         let mut out = String::new();
-        for (index, (op, _)) in self.ops.iter().enumerate() {
-            let line = format!("%{index}: {}\n", op.name());
-            out.push_str(&line);
-        }
-        let tail = format!("result: %{}\n", self.result.0);
-        out.push_str(&tail);
+        self.write_print(&mut out, 0);
         out
+    }
+
+    fn write_print(&self, out: &mut String, indent: usize) {
+        let pad = "  ".repeat(indent);
+        out.push_str(&pad);
+        out.push_str(&format!("inputs: {}\n", self.input_count));
+        out.push_str(&pad);
+        out.push_str(&format!("states: {}\n", self.state_count));
+        for (index, (op, _)) in self.ops.iter().enumerate() {
+            out.push_str(&pad);
+            out.push_str(&format!("%{index}: {}\n", op.format_ssa()));
+            write_nested_programs(out, op, indent + 1);
+        }
+        out.push_str(&pad);
+        out.push_str(&format!("result: %{}\n", self.result.0));
+        for obligation in &self.domain_obligations {
+            out.push_str(&pad);
+            out.push_str("obligation: ");
+            out.push_str(obligation.as_str());
+            out.push('\n');
+        }
+    }
+}
+
+fn format_regs(values: &[EmirValue]) -> String {
+    let mut out = String::new();
+    for (i, value) in values.iter().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        out.push('%');
+        out.push_str(&value.0.to_string());
+    }
+    out
+}
+
+fn format_shape(shape: &[usize]) -> String {
+    shape
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("x")
+}
+
+fn format_u16s(values: &[u16]) -> String {
+    values
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn format_f64_bits(values: &[f64]) -> String {
+    values
+        .iter()
+        .map(|value| format!("{:016x}", value.to_bits()))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn format_edge(edge: &EdgePolicy) -> String {
+    match edge {
+        EdgePolicy::Clamp => "clamp".to_string(),
+        EdgePolicy::Neumann => "neumann".to_string(),
+        EdgePolicy::OneSided => "onesided".to_string(),
+        EdgePolicy::Dirichlet { left, right } => {
+            format!("dirichlet {:016x} {:016x}", left.to_bits(), right.to_bits())
+        }
+    }
+}
+
+fn fold_combine_name(combine: FoldCombine) -> &'static str {
+    match combine {
+        FoldCombine::Add => "add",
+        FoldCombine::Mul => "mul",
+        FoldCombine::And => "and",
+        FoldCombine::Or => "or",
+    }
+}
+
+fn write_nested_programs(out: &mut String, op: &EmirOp, indent: usize) {
+    let pad = "  ".repeat(indent);
+    match op {
+        EmirOp::Fold { body, .. }
+        | EmirOp::Differentiate { body, .. }
+        | EmirOp::Solve { body, .. }
+        | EmirOp::Optimize { body, .. }
+        | EmirOp::SampleLimit { body, .. }
+        | EmirOp::ReverseMode { body, .. } => {
+            out.push_str(&pad);
+            out.push_str("body:\n");
+            body.write_print(out, indent + 1);
+        }
+        EmirOp::Integral { integrand, .. } => {
+            out.push_str(&pad);
+            out.push_str("integrand:\n");
+            integrand.write_print(out, indent + 1);
+        }
+        _ => {}
     }
 }
 
@@ -357,4 +600,3 @@ pub fn lower_definition(
 }
 
 pub type EmirExprRef = emath_ir::ExprId;
-

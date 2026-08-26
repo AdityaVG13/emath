@@ -1,10 +1,12 @@
-//! Strict-f64 interpreter for [`EmirProgram`]. Typed registers (`f64` /
+//! Interpreter for [`EmirProgram`]. Typed registers (`f64` / `i64` /
 //! `bool` / vectors / ...); type confusion is a typed fault, never a
-//! coercion. Arithmetic/comparisons are bit-exact IEEE-754, transcendentals
-//! follow platform libm (same caveat as generated Rust), and domain
-//! obligations are assumptions, not runtime checks.
+//! silent coercion. I64 add/sub/mul/neg stay exact (overflow is a fault).
+//! Mixed I64×F64 arithmetic widens to f64; mixed comparisons are exact
+//! (not a 2^53 widening round). Same-kind F64 comparisons are IEEE-754;
+//! transcendentals follow platform libm (same caveat as generated Rust),
+//! and domain obligations are assumptions, not runtime checks.
 
-use crate::{EdgePolicy, EmirOp, EmirProgram, FoldCombine};
+use crate::{BuiltinId, EdgePolicy, EmirOp, EmirProgram, FoldCombine};
 
 mod dual;
 mod helpers;
@@ -12,15 +14,19 @@ mod reverse;
 mod value;
 
 use dual::evaluate_dual;
-use reverse::evaluate_reverse;
 use helpers::*;
-pub use value::{EvalFault, Value, format_f64};
+use reverse::evaluate_reverse;
+pub use value::{format_f64, EvalFault, Value};
 
 /// Evaluate `program` in one forward pass; slots are indexed by
 /// [`EmirOp::LoadInput`] / [`EmirOp::LoadState`], missing slots are
 /// faults, IEEE-754 exceptions are not. `And`/`Or` evaluate both operands
 /// (registers already materialized), matching the Rust backend.
-pub fn evaluate(program: &EmirProgram, inputs: &[Value], state: &[Value]) -> Result<Value, EvalFault> {
+pub fn evaluate(
+    program: &EmirProgram,
+    inputs: &[Value],
+    state: &[Value],
+) -> Result<Value, EvalFault> {
     let mut registers: Vec<Value> = Vec::with_capacity(program.ops.len());
     for (op, _) in &program.ops {
         let value = eval_op(op, &registers, inputs, state)?;
@@ -30,13 +36,17 @@ pub fn evaluate(program: &EmirProgram, inputs: &[Value], state: &[Value]) -> Res
 }
 
 /// Convenience for scalar-only programs (existing tests and given maps).
-pub fn evaluate_f64(program: &EmirProgram, inputs: &[f64], state: &[f64]) -> Result<Value, EvalFault> {
+pub fn evaluate_f64(
+    program: &EmirProgram,
+    inputs: &[f64],
+    state: &[f64],
+) -> Result<Value, EvalFault> {
     let inputs: Vec<Value> = inputs.iter().copied().map(Value::F64).collect();
     let state: Vec<Value> = state.iter().copied().map(Value::F64).collect();
     evaluate(program, &inputs, &state)
 }
 
-fn eval_op(
+pub(super) fn eval_op(
     op: &EmirOp,
     registers: &[Value],
     inputs: &[Value],
@@ -63,9 +73,15 @@ fn eval_op(
                 (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
                     let (lr, li) = complex_of(registers, left, name)?;
                     let (rr, ri) = complex_of(registers, right, name)?;
-                    Ok(Value::Complex { re: lr + rr, im: li + ri })
+                    Ok(Value::Complex {
+                        re: lr + rr,
+                        im: li + ri,
+                    })
                 }
-                _ => Ok(Value::F64(f64_of(registers, left, name)? + f64_of(registers, right, name)?)),
+                (Value::I64(a), Value::I64(b)) => i64_checked(*a, *b, name, i64::checked_add),
+                _ => Ok(Value::F64(
+                    f64_of(registers, left, name)? + f64_of(registers, right, name)?,
+                )),
             }
         }
         EmirOp::F64Sub(left, right) => {
@@ -75,9 +91,15 @@ fn eval_op(
                 (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
                     let (lr, li) = complex_of(registers, left, name)?;
                     let (rr, ri) = complex_of(registers, right, name)?;
-                    Ok(Value::Complex { re: lr - rr, im: li - ri })
+                    Ok(Value::Complex {
+                        re: lr - rr,
+                        im: li - ri,
+                    })
                 }
-                _ => Ok(Value::F64(f64_of(registers, left, name)? - f64_of(registers, right, name)?)),
+                (Value::I64(a), Value::I64(b)) => i64_checked(*a, *b, name, i64::checked_sub),
+                _ => Ok(Value::F64(
+                    f64_of(registers, left, name)? - f64_of(registers, right, name)?,
+                )),
             }
         }
         EmirOp::F64Mul(left, right) => {
@@ -88,9 +110,15 @@ fn eval_op(
                     let (lr, li) = complex_of(registers, left, name)?;
                     let (rr, ri) = complex_of(registers, right, name)?;
                     // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
-                    Ok(Value::Complex { re: lr * rr - li * ri, im: lr * ri + li * rr })
+                    Ok(Value::Complex {
+                        re: lr * rr - li * ri,
+                        im: lr * ri + li * rr,
+                    })
                 }
-                _ => Ok(Value::F64(f64_of(registers, left, name)? * f64_of(registers, right, name)?)),
+                (Value::I64(a), Value::I64(b)) => i64_checked(*a, *b, name, i64::checked_mul),
+                _ => Ok(Value::F64(
+                    f64_of(registers, left, name)? * f64_of(registers, right, name)?,
+                )),
             }
         }
         EmirOp::F64Div(left, right) => {
@@ -102,38 +130,51 @@ fn eval_op(
                     let (rr, ri) = complex_of(registers, right, name)?;
                     let denom = rr * rr + ri * ri;
                     // (a + bi) / (c + di) = ((ac + bd) + (bc - ad)i) / (c² + d²)
-                    Ok(Value::Complex { re: (lr * rr + li * ri) / denom, im: (li * rr - lr * ri) / denom })
+                    Ok(Value::Complex {
+                        re: (lr * rr + li * ri) / denom,
+                        im: (li * rr - lr * ri) / denom,
+                    })
                 }
-                _ => Ok(Value::F64(f64_of(registers, left, name)? / f64_of(registers, right, name)?)),
+                _ => Ok(Value::F64(
+                    f64_of(registers, left, name)? / f64_of(registers, right, name)?,
+                )),
             }
         }
         EmirOp::F64Pow(left, right) => Ok(Value::F64(
             f64_of(registers, left, name)?.powf(f64_of(registers, right, name)?),
         )),
-        EmirOp::Neg(value) => {
-            match register(registers, value)? {
-                Value::Complex { re, im } => Ok(Value::Complex { re: -*re, im: -*im }),
-                _ => Ok(Value::F64(-f64_of(registers, value, name)?)),
-            }
+        EmirOp::Neg(value) => match register(registers, value)? {
+            Value::Complex { re, im } => Ok(Value::Complex { re: -*re, im: -*im }),
+            Value::I64(n) => n
+                .checked_neg()
+                .map(Value::I64)
+                .ok_or(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "i64 overflow",
+                }),
+            _ => Ok(Value::F64(-f64_of(registers, value, name)?)),
+        },
+        EmirOp::UnaryBuiltin(id, value) => match register(registers, value)? {
+            Value::Complex { re, im } => eval_complex_unary(id, *re, *im, value.0, name),
+            _ => Ok(Value::F64(id.eval_unary(f64_of(registers, value, name)?))),
         }
-        EmirOp::UnaryBuiltin(id, value) => Ok(Value::F64(id.eval_unary(f64_of(registers, value, name)?))),
         EmirOp::BinaryBuiltin(id, left, right) => {
             let l = f64_of(registers, left, name)?;
             let r = f64_of(registers, right, name)?;
             Ok(Value::F64(id.eval_binary(l, r)))
         }
-        EmirOp::Lt(left, right) => Ok(Value::Bool(
-            f64_of(registers, left, name)? < f64_of(registers, right, name)?,
-        )),
-        EmirOp::Le(left, right) => Ok(Value::Bool(
-            f64_of(registers, left, name)? <= f64_of(registers, right, name)?,
-        )),
-        EmirOp::Gt(left, right) => Ok(Value::Bool(
-            f64_of(registers, left, name)? > f64_of(registers, right, name)?,
-        )),
-        EmirOp::Ge(left, right) => Ok(Value::Bool(
-            f64_of(registers, left, name)? >= f64_of(registers, right, name)?,
-        )),
+        EmirOp::Lt(left, right) => {
+            ord_cmp(registers, left, right, name, |o| o.is_lt(), |a, b| a < b)
+        }
+        EmirOp::Le(left, right) => {
+            ord_cmp(registers, left, right, name, |o| o.is_le(), |a, b| a <= b)
+        }
+        EmirOp::Gt(left, right) => {
+            ord_cmp(registers, left, right, name, |o| o.is_gt(), |a, b| a > b)
+        }
+        EmirOp::Ge(left, right) => {
+            ord_cmp(registers, left, right, name, |o| o.is_ge(), |a, b| a >= b)
+        }
         EmirOp::Eq(left, right) => eq_ne(registers, left, right, name, true),
         EmirOp::Ne(left, right) => eq_ne(registers, left, right, name, false),
         EmirOp::And(left, right) => Ok(Value::Bool(
@@ -187,36 +228,22 @@ fn eval_op(
             for &elem in elements {
                 data.push(f64_of(registers, elem, name)?);
             }
-            Ok(Value::Matrix {
-                rows,
-                cols,
-                data,
-            })
+            Ok(Value::Matrix { rows, cols, data })
         }
         EmirOp::VectorIndex { vector, index } => {
             let vec = vector_of(registers, vector, name)?;
-            let i = whole_index(registers, index, name, vec.len())?;
-            Ok(Value::F64(vec[i]))
+            let raw = f64_of(registers, index, name)?;
+            emath_rt::vec_index_checked(vec, raw)
+                .map(Value::F64)
+                .map_err(|err| map_index_error(name, err))
         }
         EmirOp::MatrixIndex { matrix, row, col } => {
             let (r_count, c_count, data) = matrix_of(registers, matrix, name)?;
-            let r = whole_index(registers, row, name, r_count)?;
-            let c = whole_index(registers, col, name, c_count)?;
-            let offset = r
-                .checked_mul(c_count)
-                .and_then(|base| base.checked_add(c))
-                .ok_or(EvalFault::Arithmetic {
-                    op: name,
-                    detail: "matrix index offset overflow",
-                })?;
-            data.get(offset)
-                .copied()
+            let raw_r = f64_of(registers, row, name)?;
+            let raw_c = f64_of(registers, col, name)?;
+            emath_rt::tensor_index_checked(&[r_count, c_count], data, &[raw_r, raw_c])
                 .map(Value::F64)
-                .ok_or(EvalFault::IndexOutOfBounds {
-                    op: name,
-                    index: i64::try_from(offset).unwrap_or(i64::MAX),
-                    len: data.len(),
-                })
+                .map_err(|err| map_index_error(name, err))
         }
         EmirOp::VectorAdd(left, right) => {
             let v1 = vector_of(registers, left, name)?;
@@ -267,11 +294,17 @@ fn eval_op(
             let edge = match edge {
                 EdgePolicy::Clamp => emath_rt::EdgePolicy::Clamp,
                 EdgePolicy::Neumann => emath_rt::EdgePolicy::Neumann,
+                EdgePolicy::OneSided => emath_rt::EdgePolicy::OneSided,
                 EdgePolicy::Dirichlet { left, right } => {
                     emath_rt::EdgePolicy::Dirichlet { left, right }
                 }
             };
-            Ok(Value::Vector(emath_rt::stencil_1d(v, weights, center as i64, edge)))
+            Ok(Value::Vector(emath_rt::stencil_1d(
+                v,
+                weights,
+                center as i64,
+                edge,
+            )))
         }
         EmirOp::Stencil2d {
             input,
@@ -283,28 +316,25 @@ fn eval_op(
             if matches!(edge, EdgePolicy::Dirichlet { .. }) {
                 return Err(EvalFault::Arithmetic {
                     op: name,
-                    detail: "2D Dirichlet boundary is not yet supported; use Clamp or Neumann",
+                    detail: "2D Dirichlet boundary is not yet supported; use Clamp, Neumann, or OneSided",
                 });
             }
             let edge = match edge {
                 EdgePolicy::Clamp => emath_rt::EdgePolicy::Clamp,
                 EdgePolicy::Neumann => emath_rt::EdgePolicy::Neumann,
+                EdgePolicy::OneSided => emath_rt::EdgePolicy::OneSided,
                 EdgePolicy::Dirichlet { .. } => unreachable!("checked above"),
             };
             let nested = rows_of(data, cols);
-            let w9: &[f64; 9] = weights
-                .as_slice()
-                .try_into()
-                .map_err(|_| EvalFault::Arithmetic {
-                    op: name,
-                    detail: "2D stencil weights must have length 9",
-                })?;
-            let out = emath_rt::stencil_2d(
-                &nested,
-                w9,
-                (center.0 as i64, center.1 as i64),
-                edge,
-            );
+            let w9: &[f64; 9] =
+                weights
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| EvalFault::Arithmetic {
+                        op: name,
+                        detail: "2D stencil weights must have length 9",
+                    })?;
+            let out = emath_rt::stencil_2d(&nested, w9, (center.0 as i64, center.1 as i64), edge);
             Ok(Value::Matrix {
                 rows,
                 cols,
@@ -380,16 +410,29 @@ fn eval_op(
             })
         }
         EmirOp::MatrixTranspose(value) => {
+            // Flat row-major involution. Nested `Vec<Vec<f64>>` cannot
+            // store a 0-column (or 0-row) extent, and `chunks_exact(0)`
+            // panics, so `transpose(transpose(A))` must not go through it.
             let (rows, cols, data) = matrix_of(registers, value, name)?;
-            let nested = rows_of(data, cols);
-            let out = flatten_rows(&emath_rt::mat_transpose(&nested));
+            let mut out = vec![0.0; data.len()];
+            if rows > 0 && cols > 0 {
+                for r in 0..rows {
+                    let src = r * cols;
+                    for c in 0..cols {
+                        out[c * rows + r] = data[src + c];
+                    }
+                }
+            }
             Ok(Value::Matrix {
                 rows: cols,
                 cols: rows,
                 data: out,
             })
         }
-        EmirOp::TensorCreate { ref shape, ref elements } => {
+        EmirOp::TensorCreate {
+            ref shape,
+            ref elements,
+        } => {
             let expected = shape_product(shape).ok_or(EvalFault::Arithmetic {
                 op: name,
                 detail: "tensor size overflow",
@@ -420,30 +463,17 @@ fn eval_op(
                     op: name,
                 });
             }
-            let mut offset = 0usize;
-            for (axis, &index) in indices.iter().enumerate() {
-                let i = whole_index(registers, index, name, shape[axis])?;
-                offset = offset
-                    .checked_mul(shape[axis])
-                    .and_then(|base| base.checked_add(i))
-                    .ok_or(EvalFault::Arithmetic {
-                        op: name,
-                        detail: "tensor index offset overflow",
-                    })?;
+            let mut raw = Vec::with_capacity(indices.len());
+            for &index in indices {
+                raw.push(f64_of(registers, index, name)?);
             }
-            data.get(offset)
-                .copied()
+            emath_rt::tensor_index_checked(shape, data, &raw)
                 .map(Value::F64)
-                .ok_or(EvalFault::IndexOutOfBounds {
-                    op: name,
-                    index: i64::try_from(offset).unwrap_or(i64::MAX),
-                    len: data.len(),
-                })
+                .map_err(|err| map_index_error(name, err))
         }
-        EmirOp::TensorSlice {
-            tensor,
-            ref axes,
-        } => eval_tensor_slice(registers, tensor, axes, name),
+        EmirOp::TensorSlice { tensor, ref axes } => {
+            eval_tensor_slice(registers, tensor, axes, name)
+        }
         EmirOp::TensorAdd(left, right) => {
             let (s1, d1) = tensor_of(registers, left, name)?;
             let (s2, d2) = tensor_of(registers, right, name)?;
@@ -472,120 +502,21 @@ fn eval_op(
                 data: emath_rt::tensor_sub(d1, d2),
             })
         }
-        EmirOp::Einsum { ref subscripts, ref inputs } => {
-            // Gather operand shapes and flat data from Vector/Matrix/Tensor.
-            let operands: Vec<(Vec<usize>, Vec<f64>)> = inputs
-                .iter()
-                .map(|&v| {
-                    let val = register(registers, v)?;
-                    let (shape, data) = match val {
-                        Value::Vector(d) => (vec![d.len()], d.clone()),
-                        Value::Matrix { rows, cols, data } => (vec![*rows, *cols], data.clone()),
-                        Value::Tensor { shape, data } => (shape.clone(), data.clone()),
-                        _ => return Err(EvalFault::TypeConfusion { register: v.0, op: name }),
-                    };
-                    Ok((shape, data))
-                })
-                .collect::<Result<_, _>>()?;
-
-            // Parse subscripts: "ik,kj->ij" or "ik,kj" (implicit).
-            let (input_specs, output_spec) = parse_einsum_subscripts(&subscripts);
-
-            // Determine the size of each index letter.
-            let mut dim_sizes: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
-            for (spec, (shape, _)) in input_specs.iter().zip(operands.iter()) {
-                if spec.len() != shape.len() {
-                    return Err(EvalFault::TypeConfusion { register: inputs[0].0, op: name });
-                }
-                for (letter, &size) in spec.chars().zip(shape.iter()) {
-                    dim_sizes.entry(letter).and_modify(|s| *s = (*s).max(size)).or_insert(size);
-                }
-            }
-
-            // Collect all unique index letters.
-            let all_indices: Vec<char> = {
-                let mut seen = std::collections::HashSet::new();
-                let mut order = Vec::new();
-                for spec in input_specs.iter().chain(std::iter::once(&output_spec)) {
-                    for c in spec.chars() {
-                        if seen.insert(c) {
-                            order.push(c);
-                        }
-                    }
-                }
-                order
-            };
-
-            // Contracted indices: in inputs but not in output.
-            let output_set: std::collections::HashSet<char> = output_spec.chars().collect();
-            let contracted: Vec<char> = all_indices.iter().copied().filter(|c| !output_set.contains(c)).collect();
-
-            // Compute output shape.
-            let out_shape: Vec<usize> = output_spec.chars().map(|c| *dim_sizes.get(&c).unwrap_or(&1)).collect();
-            let out_len: usize = out_shape.iter().product::<usize>().max(1);
-            let mut out_data = vec![0.0f64; out_len];
-
-            // Iterate over all combinations of contracted indices.
-            let contracted_sizes: Vec<usize> = contracted.iter().map(|c| *dim_sizes.get(c).unwrap_or(&1)).collect();
-
-            // Iterate over all combinations of output indices.
-            let out_coords = cartesian_product(&out_shape);
-            let contracted_coords = cartesian_product(&contracted_sizes);
-
-            for (out_pos, out_coord) in out_coords.iter().enumerate() {
-                let mut sum = 0.0f64;
-                for c_coord in contracted_coords.iter() {
-                    // Build a map from index letter to current value.
-                    let mut idx_map: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
-                    for (i, c) in output_spec.chars().enumerate() {
-                        idx_map.insert(c, out_coord[i]);
-                    }
-                    for (i, c) in contracted.iter().enumerate() {
-                        idx_map.insert(*c, c_coord[i]);
-                    }
-
-                    // Compute the product of operand elements.
-                    let mut product = 1.0f64;
-                    for (spec, (shape, data)) in input_specs.iter().zip(operands.iter()) {
-                        let spec_chars: Vec<char> = spec.chars().collect();
-                        let mut flat_idx = 0usize;
-                        let mut stride = 1usize;
-                        for (c, &dim) in spec_chars.iter().zip(shape.iter()).rev() {
-                            flat_idx += idx_map[&c] * stride;
-                            stride *= dim;
-                        }
-                        product *= data[flat_idx];
-                    }
-                    sum += product;
-                }
-                out_data[out_pos] = sum;
-            }
-
-            // Return as Vector, Matrix, or Tensor based on output rank.
-            Ok(match out_shape.len() {
-                0 => Value::F64(out_data[0]),
-                1 => Value::Vector(out_data),
-                2 => Value::Matrix { rows: out_shape[0], cols: out_shape[1], data: out_data },
-                _ => Value::Tensor { shape: out_shape, data: out_data },
-            })
-        }
+        EmirOp::Einsum {
+            ref subscripts,
+            ref inputs,
+        } => eval_einsum(registers, subscripts, inputs, name),
         EmirOp::Factorial(n) => {
             let n = i64_of(registers, n, name)?;
-            let result =
-                emath_rt::factorial_checked(n).map_err(|detail| EvalFault::Arithmetic {
-                    op: name,
-                    detail,
-                })?;
+            let result = emath_rt::factorial_checked(n)
+                .map_err(|detail| EvalFault::Arithmetic { op: name, detail })?;
             Ok(Value::I64(result))
         }
         EmirOp::ModInv(a, m) => {
             let a = i64_of(registers, a, name)?;
             let m = i64_of(registers, m, name)?;
-            let result =
-                emath_rt::mod_inv_checked(a, m).map_err(|detail| EvalFault::Arithmetic {
-                    op: name,
-                    detail,
-                })?;
+            let result = emath_rt::mod_inv_checked(a, m)
+                .map_err(|detail| EvalFault::Arithmetic { op: name, detail })?;
             Ok(Value::I64(result))
         }
         EmirOp::Congruence(a, b, m) => {
@@ -605,15 +536,15 @@ fn eval_op(
             let p = i64_of(registers, p, name)?;
             let coeff_vec = match register(registers, coeffs)? {
                 Value::Vector(data) => data,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: coeffs.0,
-                    op: name,
-                }),
+                _ => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: coeffs.0,
+                        op: name,
+                    });
+                }
             };
-            let result =
-                emath_rt::poly_eval_mod_checked(coeff_vec, x, p).map_err(|detail| {
-                    EvalFault::Arithmetic { op: name, detail }
-                })?;
+            let result = emath_rt::poly_eval_mod_checked(coeff_vec, x, p)
+                .map_err(|detail| EvalFault::Arithmetic { op: name, detail })?;
             Ok(Value::I64(result))
         }
         EmirOp::RSEncode(coeffs, n, p) => {
@@ -621,35 +552,38 @@ fn eval_op(
             let p = i64_of(registers, p, name)?;
             let coeff_vec = match register(registers, coeffs)? {
                 Value::Vector(data) => data.clone(),
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: coeffs.0,
-                    op: name,
-                }),
+                _ => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: coeffs.0,
+                        op: name,
+                    });
+                }
             };
-            let codeword =
-                emath_rt::rs_encode_checked(&coeff_vec, n, p).map_err(|detail| {
-                    EvalFault::Arithmetic { op: name, detail }
-                })?;
+            let codeword = emath_rt::rs_encode_checked(&coeff_vec, n, p)
+                .map_err(|detail| EvalFault::Arithmetic { op: name, detail })?;
             Ok(Value::Vector(codeword))
         }
         EmirOp::HammingDistance(a, b) => {
             let a_vec = match register(registers, a)? {
                 Value::Vector(data) => data,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: a.0,
-                    op: name,
-                }),
+                _ => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: a.0,
+                        op: name,
+                    });
+                }
             };
             let b_vec = match register(registers, b)? {
                 Value::Vector(data) => data,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: b.0,
-                    op: name,
-                }),
+                _ => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: b.0,
+                        op: name,
+                    });
+                }
             };
-            let dist = emath_rt::hamming_distance_checked(a_vec, b_vec).map_err(|detail| {
-                EvalFault::Arithmetic { op: name, detail }
-            })?;
+            let dist = emath_rt::hamming_distance_checked(a_vec, b_vec)
+                .map_err(|detail| EvalFault::Arithmetic { op: name, detail })?;
             Ok(Value::I64(dist))
         }
         EmirOp::Fold {
@@ -660,22 +594,27 @@ fn eval_op(
             loop_var_index,
             ref body,
         } => {
-            let start_val = f64_of(registers, start, name)?;
-            let end_val = f64_of(registers, end, name)?;
-            // Bounds must be finite whole numbers; bare `as i64` maps NaN→0 and
-            // Inf→saturating extremes, which silently runs the wrong loop.
-            let start_i = finite_whole_i64(start_val, start.0, name)?;
-            let end_i = finite_whole_i64(end_val, end.0, name)?;
+            // I64 bounds stay exact; F64 bounds must be finite whole numbers
+            // (bare `as i64` maps NaN→0 and Inf→saturating extremes).
+            let start_i = fold_bound(registers, start, name)?;
+            let end_i = fold_bound(registers, end, name)?;
             match combine {
                 FoldCombine::Add | FoldCombine::Mul => {
                     let mut acc_i: Option<i64> = match register(registers, init)? {
                         Value::I64(n) => Some(*n),
                         Value::F64(_) => None,
-                        _ => return Err(EvalFault::TypeConfusion { register: init.0, op: name }),
+                        _ => {
+                            return Err(EvalFault::TypeConfusion {
+                                register: init.0,
+                                op: name,
+                            });
+                        }
                     };
                     let mut acc_f: f64 = if acc_i.is_none() {
                         f64_of(registers, init, name)?
-                    } else { 0.0 };
+                    } else {
+                        0.0
+                    };
                     for i in start_i..end_i {
                         let mut body_inputs = inputs.to_vec();
                         let idx = usize::from(loop_var_index);
@@ -691,8 +630,18 @@ fn eval_op(
                             Value::I64(term) => {
                                 if let Some(ref mut acc) = acc_i {
                                     *acc = match combine {
-                                        FoldCombine::Add => *acc + term,
-                                        FoldCombine::Mul => *acc * term,
+                                        FoldCombine::Add => {
+                                            acc.checked_add(term).ok_or(EvalFault::Arithmetic {
+                                                op: name,
+                                                detail: "i64 overflow",
+                                            })?
+                                        }
+                                        FoldCombine::Mul => {
+                                            acc.checked_mul(term).ok_or(EvalFault::Arithmetic {
+                                                op: name,
+                                                detail: "i64 overflow",
+                                            })?
+                                        }
                                         FoldCombine::And | FoldCombine::Or => {
                                             return Err(EvalFault::Arithmetic {
                                                 op: name,
@@ -733,7 +682,7 @@ fn eval_op(
                                 return Err(EvalFault::TypeConfusion {
                                     register: body.result.0,
                                     op: name,
-                                })
+                                });
                             }
                         }
                     }
@@ -760,7 +709,7 @@ fn eval_op(
                                 return Err(EvalFault::TypeConfusion {
                                     register: body.result.0,
                                     op: name,
-                                })
+                                });
                             }
                         };
                         acc = match combine {
@@ -819,13 +768,16 @@ fn eval_op(
                         return Err(EvalFault::TypeConfusion {
                             register: integrand.result.0,
                             op: name,
-                        })
+                        });
                     }
                 }
             }
             Ok(Value::F64(acc * h / 3.0))
         }
-        EmirOp::Differentiate { ref body, var_index } => {
+        EmirOp::Differentiate {
+            ref body,
+            var_index,
+        } => {
             let dual = evaluate_dual(body, inputs, state, var_index, name)?;
             Ok(Value::F64(dual.tangent))
         }
@@ -837,12 +789,14 @@ fn eval_op(
         } => {
             // Newton's method: x_new = x_old - f(x) / f'(x)
             // Uses dual-number evaluation for both f and f' in one pass.
-            let mut x = match inputs.get(var_index as usize) {
-                Some(Value::F64(v)) => *v,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: var_index as u32,
-                    op: name,
-                }),
+            let mut x = match inputs.get(var_index as usize).and_then(Value::as_real_f64) {
+                Some(v) => v,
+                None => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: var_index as u32,
+                        op: name,
+                    });
+                }
             };
             let mut work_inputs = inputs.to_vec();
             for _ in 0..max_iter {
@@ -879,13 +833,15 @@ fn eval_op(
             ref body,
             ref var_indices,
             maximize,
-            learning_rate,
+            learning_rate: _,
             tolerance,
             max_iter,
         } => {
-            // Multi-variable gradient descent (or ascent):
-            //   x_i_new = x_i_old -/+ lr * df/dx_i
-            // One dual-number pass per variable gives each partial.
+            // Newton's method on ∇f = 0. A claimed min/max must be a
+            // stationary point: x -= H^{-1} ∇f, with H from a
+            // forward-difference of the dual gradient. Fixed-step
+            // gradient descent with a small penalty weight could stop
+            // at a point that was neither stationary for f nor feasible.
             if var_indices.is_empty() {
                 return Err(EvalFault::Arithmetic {
                     op: name,
@@ -893,47 +849,67 @@ fn eval_op(
                 });
             }
             let mut work_inputs = inputs.to_vec();
-            let sign = if maximize { 1.0 } else { -1.0 };
-            // Extract initial guesses from inputs; refuse silent 0.0 defaults.
             let mut x: Vec<f64> = Vec::with_capacity(var_indices.len());
             for &vi in var_indices {
-                match inputs.get(vi as usize) {
-                    Some(Value::F64(v)) => x.push(*v),
-                    Some(_) => {
-                        return Err(EvalFault::TypeConfusion {
-                            register: u32::from(vi),
-                            op: name,
+                match inputs.get(vi as usize).and_then(Value::as_real_f64) {
+                    Some(v) => x.push(v),
+                    None => {
+                        return Err(if inputs.get(vi as usize).is_none() {
+                            EvalFault::MissingInput(vi)
+                        } else {
+                            EvalFault::TypeConfusion {
+                                register: u32::from(vi),
+                                op: name,
+                            }
                         });
                     }
-                    None => return Err(EvalFault::MissingInput(vi)),
                 }
             }
+            const FD_EPS: f64 = 1e-8;
             for _ in 0..max_iter {
-                // Compute partial derivative w.r.t. each variable.
-                let mut grads = Vec::with_capacity(var_indices.len());
-                let mut max_grad = 0.0f64;
-                for (i, &vi) in var_indices.iter().enumerate() {
-                    work_inputs[vi as usize] = Value::F64(x[i]);
-                    let dual = evaluate_dual(body, &work_inputs, state, vi, name)?;
-                    grads.push(dual.tangent);
-                    max_grad = max_grad.max(dual.tangent.abs());
-                }
+                let grads = optimize_grads(body, &mut work_inputs, state, var_indices, &x, name)?;
+                let max_grad = grads.iter().fold(0.0_f64, |acc, g| acc.max(g.abs()));
                 if max_grad < tolerance {
-                    // Return the first variable's converged value.
                     return Ok(Value::F64(x[0]));
                 }
-                for (i, &vi) in var_indices.iter().enumerate() {
-                    x[i] += sign * learning_rate * grads[i];
-                    work_inputs[vi as usize] = Value::F64(x[i]);
+                let n = x.len();
+                let mut hess = vec![vec![0.0_f64; n]; n];
+                for j in 0..n {
+                    x[j] += FD_EPS;
+                    let perturbed =
+                        optimize_grads(body, &mut work_inputs, state, var_indices, &x, name)?;
+                    x[j] -= FD_EPS;
+                    for i in 0..n {
+                        hess[i][j] = (perturbed[i] - grads[i]) / FD_EPS;
+                    }
+                }
+                let delta = dense_solve(&hess, &grads).map_err(|_| EvalFault::Arithmetic {
+                    op: name,
+                    detail: "optimize hessian vanished before stationarity",
+                })?;
+                let dot: f64 = grads.iter().zip(delta.iter()).map(|(g, d)| g * d).sum();
+                // Newton on ∇f = 0 finds any stationary point. Refuse a
+                // min returned as a max (or vice versa): g·(H^{-1}g) is
+                // positive iff H is positive definite along g.
+                if maximize {
+                    if dot >= 0.0 {
+                        return Err(EvalFault::Arithmetic {
+                            op: name,
+                            detail: "optimize hessian has the wrong curvature for maximize",
+                        });
+                    }
+                } else if dot <= 0.0 {
+                    return Err(EvalFault::Arithmetic {
+                        op: name,
+                        detail: "optimize hessian has the wrong curvature for minimize",
+                    });
+                }
+                for (xi, d) in x.iter_mut().zip(delta.iter()) {
+                    *xi -= d;
                 }
             }
-            // Accept stationarity reached by the final gradient step.
-            let mut max_grad = 0.0f64;
-            for (i, &vi) in var_indices.iter().enumerate() {
-                work_inputs[vi as usize] = Value::F64(x[i]);
-                let dual = evaluate_dual(body, &work_inputs, state, vi, name)?;
-                max_grad = max_grad.max(dual.tangent.abs());
-            }
+            let grads = optimize_grads(body, &mut work_inputs, state, var_indices, &x, name)?;
+            let max_grad = grads.iter().fold(0.0_f64, |acc, g| acc.max(g.abs()));
             if max_grad < tolerance {
                 return Ok(Value::F64(x[0]));
             }
@@ -954,29 +930,39 @@ fn eval_op(
             // whose predecessor was also finite and within 1% of it
             // (convergence check). If no pair converges, return the last
             // finite sample.
-            let target_val = match registers.get(target.0 as usize) {
-                Some(Value::F64(v)) => *v,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: target.0,
-                    op: name,
-                }),
+            let target_val = match registers
+                .get(target.0 as usize)
+                .and_then(Value::as_real_f64)
+            {
+                Some(v) => v,
+                None => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: target.0,
+                        op: name,
+                    });
+                }
             };
-            let dir_val = match registers.get(direction.0 as usize) {
-                Some(Value::F64(v)) => *v,
-                _ => return Err(EvalFault::TypeConfusion {
-                    register: direction.0,
-                    op: name,
-                }),
+            let dir_val = match registers
+                .get(direction.0 as usize)
+                .and_then(Value::as_real_f64)
+            {
+                Some(v) => v,
+                None => {
+                    return Err(EvalFault::TypeConfusion {
+                        register: direction.0,
+                        op: name,
+                    });
+                }
             };
             let mut work_inputs = inputs.to_vec();
             while work_inputs.len() <= var_index as usize {
                 work_inputs.push(Value::F64(0.0));
             }
             let directions: &[f64] = match dir_val as i64 {
-                0 => &[1.0, -1.0],      // two-sided
-                1 => &[1.0],             // from above
-                -1 => &[-1.0],           // from below
-                _ => &[1.0, -1.0],      // fallback: two-sided
+                0 => &[1.0, -1.0], // two-sided
+                1 => &[1.0],       // from above
+                -1 => &[-1.0],     // from below
+                _ => &[1.0, -1.0], // fallback: two-sided
             };
             let mut best = f64::NAN;
             let mut prev = f64::NAN;
@@ -986,14 +972,18 @@ fn eval_op(
                     let x = target_val + d * h;
                     work_inputs[var_index as usize] = Value::F64(x);
                     match evaluate(body, &work_inputs, state) {
-                        Ok(Value::F64(fx)) => {
-                            if fx.is_finite() {
-                                if prev.is_finite() && (fx - prev).abs() <= fx.abs() * 0.01 + 1e-14 {
-                                    // Converged: successive samples agree to 1%.
-                                    return Ok(Value::F64(fx));
+                        Ok(val) => {
+                            if let Some(fx) = val.as_real_f64() {
+                                if fx.is_finite() {
+                                    if prev.is_finite()
+                                        && (fx - prev).abs() <= fx.abs() * 0.01 + 1e-14
+                                    {
+                                        // Converged: successive samples agree to 1%.
+                                        return Ok(Value::F64(fx));
+                                    }
+                                    prev = fx;
+                                    best = fx;
                                 }
-                                prev = fx;
-                                best = fx;
                             }
                         }
                         _ => {} // non-finite or wrong type: skip
@@ -1009,61 +999,138 @@ fn eval_op(
                 })
             }
         }
-        EmirOp::ReverseMode { ref body, ref var_indices } => {
-            evaluate_reverse(body, inputs, state, var_indices, name)
+        EmirOp::ReverseMode {
+            ref body,
+            ref var_indices,
+        } => evaluate_reverse(body, inputs, state, var_indices, name),
+    }
+}
+
+fn optimize_grads(
+    body: &EmirProgram,
+    work_inputs: &mut [Value],
+    state: &[Value],
+    var_indices: &[u16],
+    x: &[f64],
+    name: &'static str,
+) -> Result<Vec<f64>, EvalFault> {
+    for (i, &vi) in var_indices.iter().enumerate() {
+        work_inputs[vi as usize] = Value::F64(x[i]);
+    }
+    let mut grads = Vec::with_capacity(var_indices.len());
+    for &vi in var_indices {
+        let dual = evaluate_dual(body, work_inputs, state, vi, name)?;
+        grads.push(dual.tangent);
+    }
+    Ok(grads)
+}
+
+/// Solve `matrix * x = rhs` by Gaussian elimination with partial pivoting.
+fn dense_solve(matrix: &[Vec<f64>], rhs: &[f64]) -> Result<Vec<f64>, ()> {
+    let n = rhs.len();
+    if matrix.len() != n || matrix.iter().any(|row| row.len() != n) {
+        return Err(());
+    }
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let mut a = matrix.to_vec();
+    let mut b = rhs.to_vec();
+    for col in 0..n {
+        let mut pivot = col;
+        let mut best = a[col][col].abs();
+        for row in (col + 1)..n {
+            let candidate = a[row][col].abs();
+            if candidate > best {
+                best = candidate;
+                pivot = row;
+            }
         }
+        if best < 1e-30 {
+            return Err(());
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        for row in (col + 1)..n {
+            let factor = a[row][col] / a[col][col];
+            if factor == 0.0 {
+                continue;
+            }
+            for k in col..n {
+                a[row][k] -= factor * a[col][k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    let mut x = vec![0.0; n];
+    for row in (0..n).rev() {
+        let mut acc = b[row];
+        for k in (row + 1)..n {
+            acc -= a[row][k] * x[k];
+        }
+        x[row] = acc / a[row][row];
+    }
+    Ok(x)
+}
+
+fn eval_complex_unary(
+    id: BuiltinId,
+    re: f64,
+    im: f64,
+    register: u32,
+    op: &'static str,
+) -> Result<Value, EvalFault> {
+    match id {
+        BuiltinId::Sqrt => {
+            let (out_re, out_im) = emath_rt::complex_sqrt(re, im);
+            Ok(Value::Complex {
+                re: out_re,
+                im: out_im,
+            })
+        }
+        BuiltinId::Ln => {
+            let (out_re, out_im) = emath_rt::complex_ln(re, im);
+            Ok(Value::Complex {
+                re: out_re,
+                im: out_im,
+            })
+        }
+        BuiltinId::Exp => {
+            let (out_re, out_im) = emath_rt::complex_exp(re, im);
+            Ok(Value::Complex {
+                re: out_re,
+                im: out_im,
+            })
+        }
+        BuiltinId::Log10 => {
+            let (out_re, out_im) = emath_rt::complex_ln(re, im);
+            let scale = std::f64::consts::LN_10;
+            Ok(Value::Complex {
+                re: out_re / scale,
+                im: out_im / scale,
+            })
+        }
+        BuiltinId::Log2 => {
+            let (out_re, out_im) = emath_rt::complex_ln(re, im);
+            let scale = std::f64::consts::LN_2;
+            Ok(Value::Complex {
+                re: out_re / scale,
+                im: out_im / scale,
+            })
+        }
+        BuiltinId::Abs => Ok(Value::F64(re.hypot(im))),
+        BuiltinId::Recip => {
+            let denom = re * re + im * im;
+            Ok(Value::Complex {
+                re: re / denom,
+                im: -im / denom,
+            })
+        }
+        _ => Err(EvalFault::TypeConfusion { register, op }),
     }
 }
 
 // --- Helper functions extracted to interp/helpers.rs ---
 // --- Dual-number autodiff subsystem extracted to interp/dual.rs ---
 
-/// Parse an einsum subscript string into (input_specs, output_spec).
-/// "ik,kj->ij" → (["ik", "kj"], "ij")
-/// "ik,kj"     → (["ik", "kj"], "ij") (implicit: non-repeated indices)
-fn parse_einsum_subscripts(s: &str) -> (Vec<String>, String) {
-    if let Some((lhs, rhs)) = s.split_once("->") {
-        let inputs: Vec<String> = lhs.split(',').map(|t| t.trim().to_string()).collect();
-        (inputs, rhs.trim().to_string())
-    } else {
-        // Implicit mode: output = indices that appear exactly once.
-        let inputs: Vec<String> = s.split(',').map(|t| t.trim().to_string()).collect();
-        let mut counts: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
-        for spec in &inputs {
-            for c in spec.chars() {
-                *counts.entry(c).or_insert(0) += 1;
-            }
-        }
-        let output: String = inputs.iter()
-            .flat_map(|spec| spec.chars())
-            .filter(|c| counts.get(c) == Some(&1))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter().collect();
-        (inputs, output)
-    }
-}
-
-/// Generate all index combinations for a shape (cartesian product).
-fn cartesian_product(shape: &[usize]) -> Vec<Vec<usize>> {
-    if shape.is_empty() {
-        return vec![vec![]];
-    }
-    let total: usize = shape.iter().product::<usize>().max(1);
-    let mut result = Vec::with_capacity(total);
-    let mut current = vec![0usize; shape.len()];
-    for _ in 0..total {
-        result.push(current.clone());
-        // Increment the rightmost index with carry.
-        for i in (0..shape.len()).rev() {
-            current[i] += 1;
-            if current[i] < shape[i] {
-                break;
-            }
-            current[i] = 0;
-        }
-    }
-    result
-}
-
 // Extended GCD moved to crates/emath-rt/src/body.rs (mod_inv_checked).
-
