@@ -107,7 +107,7 @@ Working sections:
 
 ```text
 inputs outputs state definitions equations equation algebraic
-constructors constraints goals exports tests compile about evidence host
+constructors constraints invariant goals exports tests compile about evidence host
 ```
 
 Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
@@ -136,7 +136,7 @@ partial(expr) wrt x holding p  (partial derivative, held-fixed set - computes vi
 total(expr) wrt t / d(expr) wrt t  (total/material derivative - computes via autodiff)
 ∂(expr) wrt x                  (Unicode alias for partial - computes via autodiff)
 solve(expr) wrt x              (Newton's method root-finding)
-minimize(expr) wrt x / maximize(expr) wrt x  (gradient descent/ascent)
+minimize(expr) wrt x / maximize(expr) wrt x  (Newton on ∇f = 0)
 einsum("ik,kj->ij", A, B)      (Einstein summation contraction)
 factorial(n)                   (exact i64 factorial, n in [0,20])
 mod_inv(a, m)                  (modular inverse via extended GCD)

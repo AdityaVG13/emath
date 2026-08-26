@@ -1,65 +1,70 @@
-(* Modular arithmetic and finite fields - B15/B29/B40
-   Building blocks for Reed-Solomon code construction over GF(p). *)
+# Modular arithmetic and finite fields.
+# Building blocks for Reed-Solomon code construction over GF(p).
 
 emath function modular_basics:
-  outputs:
-    result: Int
-  definitions:
-    p = 7
-    (* Modular arithmetic via builtins *)
-    inv3 = mod_inv(3, p)       (* 3^(-1) mod 7 = 5 *)
-    check = congruence(3 * inv3, 1, p) (* 3*5 ≡ 1 (mod 7) → true *)
-
-    (* Wilson's theorem: (p-1)! ≡ -1 (mod p) for prime p *)
-    fac6 = factorial(6)        (* 6! = 720 *)
-    wilson = mod(fac6, p)      (* 720 mod 7 = 6 = p-1 = -1 mod p *)
-
-    result = wilson
-  tests:
-    expect inv3 == 5
-    expect check == true
-    expect wilson == 6
-    expect congruence(17, 5, 12) == true   (* 17 ≡ 5 (mod 12) *)
-    expect congruence(17, 6, 12) == false  (* 17 ≢ 6 (mod 12) *)
+    outputs:
+        inv3: Int
+        check: Bool
+        fac6: Int
+        wilson_ok: Bool
+    definitions:
+        p = 7
+        # 3^(-1) mod 7 = 5, and 3*5 ≡ 1 (mod 7)
+        inv3 = mod_inv(3, p)
+        check = congruence(3 * inv3, 1, p)
+        # Wilson's theorem: (p-1)! ≡ -1 (mod p) for prime p
+        fac6 = factorial(6)
+        wilson_ok = congruence(fac6, -1, p)
+    tests:
+        example <gf7>:
+            expect inv3 == 5
+            expect check == true
+            expect fac6 == 720
+            expect wilson_ok == true
+            expect congruence(17, 5, 12) == true
+            expect congruence(17, 6, 12) == false
 
 emath function rs_distance:
-  (* Reed-Solomon code distance: d = n - k + 1 (Singleton bound)
-     For RS(n, k) over GF(p), the minimum distance is n - k + 1. *)
-  outputs:
-    distance: Int
-    n: Int
-    k: Int
-  definitions:
-    n = 7
-    k = 3
-    distance = n - k + 1    (* = 5 *)
-  tests:
-    expect distance == 5
-    expect n == 7
-    expect k == 3
+    # Reed-Solomon minimum distance: d = n - k + 1 (Singleton bound).
+    outputs:
+        distance: Int
+    definitions:
+        n = 7
+        k = 3
+        distance = n - k + 1
+    tests:
+        example <singleton>:
+            expect distance == 5
 
 emath function rs_encode_demo:
-  (* RS(7, 3) over GF(7): encode f(x) = 1 + 2x + 3x^2 *)
-  outputs:
-    codeword: Vector[7]
-    val_at_2: Int
-  definitions:
-    coeffs = [1, 2, 3]
-    codeword = rs_encode(coeffs, 7, 7)
-    val_at_2 = poly_eval_mod(coeffs, 2, 7)  (* f(2) = 17 mod 7 = 3 *)
-  tests:
-    expect val_at_2 == 3
-    expect length(codeword) == 7
-    expect codeword[0] == 1  (* f(0) = 1 *)
-    expect codeword[1] == 6  (* f(1) = 6 *)
+    # RS(7, 3) over GF(7): encode f(x) = 1 + 2x + 3x^2
+    outputs:
+        codeword: Vector[7]
+        val_at_2: Int
+        d0: Int
+    definitions:
+        coeffs = [1, 2, 3]
+        codeword = rs_encode(coeffs, 7, 7)
+        val_at_2 = poly_eval_mod(coeffs, 2, 7)
+        d0 = hamming_distance(codeword, codeword)
+    tests:
+        example <codeword>:
+            expect val_at_2 == 3
+            expect length(codeword) == 7
+            expect codeword[0] == 1
+            expect codeword[1] == 6
+            expect d0 == 0
 
 emath function gf7_inverse_table:
-  (* Compute the inverse table for GF(7) *)
-  outputs:
-    table: Vector[7]
-  definitions:
-    table = [mod_inv(1, 7), mod_inv(2, 7), mod_inv(3, 7),
-             mod_inv(4, 7), mod_inv(5, 7), mod_inv(6, 7)]
-  tests:
-    expect length(table) == 6
-
+    # Multiplicative inverses of 1..6 in GF(7). 0 has no inverse.
+    outputs:
+        table: Vector[6]
+    definitions:
+        table = [mod_inv(1, 7), mod_inv(2, 7), mod_inv(3, 7),
+                 mod_inv(4, 7), mod_inv(5, 7), mod_inv(6, 7)]
+    tests:
+        example <inverses>:
+            expect length(table) == 6
+            expect table[0] == 1
+            expect table[1] == 4
+            expect table[2] == 5

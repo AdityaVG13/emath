@@ -50,6 +50,16 @@ Literal spelling, parsed exact value and target representation are distinct. A d
 
 The parser exposes configurable caps for file bytes, token count, literal bytes, identifier bytes, nesting, indentation depth and recovery nodes. Refusals carry stable codes and spans.
 
+## Empty source
+
+A file that contains only comments and whitespace is not a package. After
+lexing, it has zero items. A file whose only items are `package` / `use` /
+`notation` (no `emath function` / `policy` / `model` / `kind`) also has no
+declarations. `check` and `plan` refuse both with `E-PKG-081`
+(`source has no declarations`) instead of admitting vacuously (build used
+to fail later with "package has no declarations"). `eval` and `simulate`
+also refuse empty source. An empty file is invalid, not a successful no-op.
+
 ## Paths and modules
 
 Paths use `::`. Filesystem paths do not define semantic package identities by themselves. Package/module mapping is declared in the manifest and loader.

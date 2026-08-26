@@ -28,6 +28,14 @@ produces the identity element (0 for `sum`, 1 for `product`, `true` for
 `forall`, `false` for `exists`). Multi-binder guards cover all variables
 in the binder list: `sum i in 0..n, j in 0..m if i + j < k: f(i, j)`.
 
+An empty range is the same identity (`sum i in 0..0: f(i)` is 0,
+`product i in 0..0: f(i)` is 1, `forall` over empty is true, `exists`
+over empty is false) and does not evaluate the body. The bound name is
+visible only in the body and optional `if` guard: it shadows an outer
+input, definition, or binder of the same spelling, and it does not leak
+after the binder. `sum i in 0..n: sum i in 0..m: i` is `n` copies of
+the inner sum, not a replay of the outer index.
+
 ## Logic connectives
 
 Boolean operators and logic connectives:
@@ -177,11 +185,12 @@ Expressions that run:
 
 ```text
 literals, names, + - * / ^, comparisons
+add sub mul div neg
 min max abs floor ceil round sign is_finite
 sqrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
 cbrt recip fract hypot mod lerp clamp pow
 and or not ==> <==>
-mean norm length dot transpose
+mean norm length dot transpose einsum
 laplacian laplacian_neumann laplacian_dirichlet laplacian_2d laplacian_2d_neumann
 gradient gradient_2d_x gradient_2d_y
 if cond: a else: b
@@ -198,12 +207,14 @@ product([[1, 2], [3, 4]])
 mean(v)          abs(v)
 derivative(x)    der(x)    derivative(x) wrt time
 derivative(y) wrt x    # forward-mode autodiff in definitions
+partial(y) wrt x holding p    # same autodiff; holding required
+x^2                  # integer exponents admitted as dimensionless numeric
 grad(f)                # reverse-mode AD: gradient w.r.t. all inputs
 cases x: | x > 0 => 1 | else => 0  # piecewise conditional
 solve(residual) wrt x    # Newton's method root-finding
-minimize(loss) wrt x     # gradient descent optimization
-minimize(loss) wrt x, y  # multi-variable gradient descent
-maximize(score) wrt x    # gradient ascent optimization
+minimize(loss) wrt x     # Newton on ∇f = 0 (stationarity)
+minimize(loss) wrt x, y  # multi-variable Newton on ∇f = 0
+maximize(score) wrt x    # Newton on ∇f = 0; Hessian must be a max
 sample_limit x -> 0: sin(x) / x    # numerical limit approximation
 ```
 
@@ -311,7 +322,8 @@ followed by `(` in expression position. In all other positions they are
 regular identifiers, so `partial + 1` and `d = 5` still work.
 
 The Unicode partial derivative symbol `∂` (U+2202) is accepted as an
-alias for `partial`: `∂(T) wrt x` is the same as `partial(T) wrt x`.
+alias for `partial`: `∂(T) wrt x holding p` is the same as
+`partial(T) wrt x holding p`.
 
 A partial derivative without an explicit `holding` set is a MeaningHole
 refusal - the compiler will not guess which variables are held fixed.
@@ -324,10 +336,12 @@ step uses the same dual-number evaluation for both the residual value
 and its derivative. A vanished derivative or exhausting the iteration
 budget without `|f| < tolerance` is a typed refusal, not a silent
 non-root. `minimize(objective) wrt var` and `maximize(objective)
-wrt var` find the input value that minimizes or maximizes `objective`
-using gradient descent (`x -= lr * f'(x)`) or ascent (`x += lr * f'(x)`).
-The initial guess is the input value supplied at runtime. Exhausting
-iterations without a stationary gradient is likewise refused.
+wrt var` find a stationary point of `objective` (`∇f ≈ 0`) by Newton's
+method on the gradient (`x -= H^{-1} ∇f`), with `H` from a
+forward-difference of the dual-number gradient. The initial guess is
+the input value supplied at runtime. A vanished Hessian, a stationary
+point of the wrong curvature (a min when `maximize` was asked), or
+exhausting iterations without `|∇f| < tolerance` is a typed refusal.
 
 Definitions are directed: `name = expr`. Later definitions may use
 earlier ones, in source order.
@@ -391,12 +405,16 @@ simulate` solves the residual system with the runner's causalized Newton;
 `rust.library` codegen embeds the same Newton solve (forward-difference
 Jacobian, Gaussian elimination, 30 iterations, 1e-9 tolerance) into the
 generated `step_euler` / `step_rk4`, which return `Result<Self, String>`
-and refuse on non-convergence instead of inventing a value. Parity between
-the generated steps and `emath simulate` is pinned by the examples lane
-(`language/examples/intro/causalized-rc.emath` builds a crate whose steps
-match the interpreter bit-for-bit on the same inputs). Semi-explicit DAEs
-(algebraic definitions plus one rate in `equations:`) build fine without a
-Newton solve; see `language/examples/intro/algebraic-dae.emath`.
+and refuse on non-convergence instead of inventing a value. Algebraic
+unknowns are part of the returned DAE state: after the differential
+update, both the interpreter and the generated steps re-solve them at
+the accepted point (index-1 projection) so the algebraic residual is ~0
+— a successful step does not leave `g(q_new, I_old) = O(dt)`. Parity
+between the generated steps and `emath simulate` is pinned by the
+examples lane (`language/examples/intro/causalized-rc.emath` builds a
+crate whose steps match the interpreter on the same inputs). Semi-explicit
+DAEs (algebraic definitions plus one rate in `equations:`) build fine
+without a Newton solve; see `language/examples/intro/algebraic-dae.emath`.
 `emath simulate <file> --set <guess>...` takes the `algebraic:` initial
 guesses alongside inputs and state.
 
@@ -415,8 +433,11 @@ greedily consumes its argument, so a scalar implicit rate such as
 refused with guidance. The non-scalar mass form `M * der(v) == f` is
 the admitted spelling for implicit rates.
 
-`emath simulate` integrates those rates with Euler, RK4, or RK45.
-Default is a fixed step. `--atol` / `--rtol` turn on adaptive RK45.
+`emath simulate` integrates those rates with Euler, classic 4-stage RK4,
+or Cash-Karp RK45. Default is fixed-step RK4 (not a predictor-corrector
+and not symplectic). `--atol` / `--rtol` turn on adaptive RK45.
+`--set name=value` binds inputs, algebraic guesses, and state: scalars,
+vectors (`--set s=[1,0]`), or matrices (`--set u=[[1,0],[0,1]]`).
 `--event name=value` stops at one scalar crossing. That is not a
 general event language.
 
@@ -425,17 +446,44 @@ optimization engine. Each constraint is a Bool expression (typically
 a comparison like `x + y >= 1`). When `minimize` or `maximize` is
 used in a definition, the compiler automatically adds penalty terms
 to the objective for each constraint. Inequality constraints (`>=`,
-`<=`) use `max(0, violation)^2` penalties; equality constraints
-(`==`) use `violation^2` penalties.
+`<=`) use `w * max(0, violation)^2` penalties; equality constraints
+(`==`) use `w * violation^2`. Weight is 1000. This is a soft exterior
+penalty: the returned point is stationary for the penalized objective,
+which sits slightly on the infeasible side of an inequality (for
+`min x^2+y^2` s.t. `x+y>=1`, `x+y ≈ 0.9995`). It is not a projection
+onto the feasible set.
 
 Not admitted yet: full jacobian and
 hessian, `transitions:` / `events:`, discrete hybrid models.
 
 `einsum("ik,kj->ij", A, B)` is admitted and evaluates: the subscript
 string defines the Einstein summation contraction (input indices,
-arrow, output indices). The interp handles Vector, Matrix, and Tensor
-operands and returns the contracted result. Block matrices (`[A | b]`)
-are not yet admitted.
+arrow, output indices). Identities the interpreter keeps:
+
+- `einsum("ik,kj->ij", A, B)` equals matrix product `A * B`.
+- `einsum("i,i->", u, v)` equals `dot(u, v)`.
+- Implicit mode (no `->`) emits the unique free indices in
+  alphabetical order: `einsum("ik,kj", A, B)` is `A * B`, and
+  `einsum("ji", A)` is `transpose(A)`.
+- Repeated output labels write the diagonal: `einsum("i->ii", v)` is
+  `diag(v)`, off-diagonal zeros.
+- Size-1 axes broadcast; genuine extent mismatches are a typed fault.
+- Spaces in the subscript string are ignored (`"i j -> j i"` transposes).
+
+The interp and rust.library share the `emath-rt` kernel: Vector, Matrix,
+and Tensor operands (generated Rust treats `Vec<f64>` as rank-1,
+`Vec<Vec<f64>>` as rank-2, and `emath_rt::Tensor { shape, data }` as
+rank-3+). Extent mismatches are a typed fault
+(`EvalFault` in interp, `EinsumError` from `einsum_checked`). Block
+matrices (`[A | b]`) are not yet admitted.
+
+Index and slice (`v[i]`, `m[i, j]`, `t[0, :, :]`) use the same checked
+kernels. `:` is a half-open range; point axes drop rank and range axes
+keep it, so `t[0, :, :]` is the first 2×2 face of a rank-3 tensor (a
+`Matrix`). Out-of-bounds, negative, and non-whole indices are a typed
+fault — interp `EvalFault::IndexOutOfBounds`, rust.library
+`Result<T, String>` — never panicking `[]`. A negative constant is
+refused at admission (`E-SHAPE-006`).
 
 ### Unit and dimension queries (04 section 1.4)
 
@@ -456,8 +504,13 @@ requires a unit inference engine (not yet implemented in Phase 1).
 Spatial operators (admitted in `definitions:` and `equations:`):
 
 1-D Laplacian - second derivative via the stencil `[1, -2, 1] / dx²`:
-- `laplacian(u, dx)` - clamped (insulated) edges.
-- `laplacian_neumann(u, dx)` - mirror (zero-flux) edges.
+- `laplacian(u, dx)` - clamped (face-insulated) edges. Conserves the
+  unweighted sum `Σ u_i` (finite-volume flux zero at the face).
+- `laplacian_neumann(u, dx)` - even reflection through the boundary
+  *cell* (`u[-1] = u[1]`). This is a second-order `du/dn = 0` at the
+  cell center. It conserves the trapezoidal inner product
+  `(u_0 + u_{n-1})/2 + Σ_{i=1}^{n-2} u_i`, not the unweighted sum, when
+  heat sits on the boundary.
 - `laplacian_dirichlet(u, dx, g_left, g_right)` - fixed boundary values.
 
 2-D Laplacian - 5-point stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` over a
@@ -467,7 +520,8 @@ Spatial operators (admitted in `definitions:` and `equations:`):
 
 1-D gradient - first derivative via central differences
 `[-1/(2dx), 0, +1/(2dx)]`:
-- `gradient(u, dx)` - clamped (one-sided) edges; returns a `Vector`.
+- `gradient(u, dx)` - one-sided edges (linear ghost; a slope-1 ramp is
+  1 at the boundary, not the clamp-central artifact 0.5); returns a `Vector`.
 
 2-D gradient - first derivative along one axis (central differences):
 - `gradient_2d_x(u, dx)` - `du/dc` (along columns); returns a `Matrix`.
@@ -480,8 +534,9 @@ dedicated `divergence` builtin is deferred.
 
 Heat equation as a continuous model: an `emath model` with a `Vector`
 (1-D) or `Matrix` (2-D) state and `der(u) = alpha * laplacian[_2d](u, 1.0)`
-admits and integrates under `emath simulate` (RK4). With clamped or mirror
-edges the domain is insulated, so total heat `sum(u)` is conserved. See
+admits and integrates under `emath simulate` (RK4). Clamp edges conserve
+`sum(u)`. Mirror (Neumann) edges conserve trapezoidal heat, not always
+`sum(u)`. See
 `heat-rod.emath`, `heat-rod-sim.emath`, `heat-plate.emath`,
 `heat-plate-sim.emath`, and `gradient-field.emath`.
 

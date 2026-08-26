@@ -64,7 +64,7 @@ imported via `use`, and scoped to the importing file.
 
 ```emath
 notation infixl 40 "⋅" => core::math::dot
-notation prefix 80 "¬" => core::logic::not alias "!"
+notation prefix 80 "¬" => core::logic::not alias "neg"
 ```
 
 The production is:
@@ -100,7 +100,7 @@ The following glyphs are reserved by the core language and cannot be
 rebound by notation declarations:
 
 ```text
-+  -  *  /  ^  ==  !=  <  <=  >  >=  and  or  not
++  -  *  /  //  ^  ==  !=  <  <=  >  >=  and  or  not
 =  :=  ->  =>  ::  .  ..  ..=  ?
 ```
 
@@ -158,8 +158,16 @@ Binding consequences (all overridable with parentheses):
 - Prefix glyphs bind at the unary level (alongside `-`/`not`), tighter
   than custom infix; postfix glyphs bind tightest, at the postfix
   level.
+- Non-letter glyphs are their own tokens and do not glue to adjacent
+  identifiers: `x⊕y` is `x ⊕ y` and `√a` is `√ a`. Word aliases and
+  postfix spellings (`pw`, `inv`) are letter-idents and still need
+  spaces (`x pw y`, `r inv`).
 - Glyph and alias spellings must each lex as a single identifier:
   punctuation such as `!` or `++` is refused with `E-NOTATION-GLYPH`,
   and a spelling that shadows a core token (N3) with
-  `E-NOTATION-RESERVED`. A glyph bound to two different targets in one
-  scope is refused with `E-NOTATION-AMBIG` (N4).
+  `E-NOTATION-RESERVED`. A keyword spelling (`if`, `or`) is refused
+  rather than bound as an identifier. A glyph bound to two different
+  targets in one scope is refused with `E-NOTATION-AMBIG` (N4).
+- A keyword cannot be used as a package path segment, declaration
+  name, or field name (`package tst.if`, `emath function if:`,
+  `if: Float64` are `E-SYN-101`).

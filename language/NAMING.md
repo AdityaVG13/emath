@@ -64,13 +64,15 @@ be explicit about the domain or when disambiguation matters.
 ### Full builtin list by namespace
 
 **math::** (scalar math + modular arithmetic)
+`add` `sub` `mul` `div` `neg`  (function duals of `+` `-` `*` `/` unary `-`)
 `exp` `ln` `log` `sqrt` `sin` `cos` `tan` `tanh` `sinh` `cosh` `atan`
 `atan2` `abs` `floor` `ceil` `round` `sign` `log2` `log10` `cbrt`
 `recip` `fract` `pow` `min` `max` `hypot` `mod` `is_finite`
+`lerp` `clamp`
 `factorial` `mod_inv` `congruence`
 
 **linalg::** (linear algebra)
-`dot` `norm` `transpose` `length` `einsum`
+`dot` `norm` `transpose` `length` `mean` `einsum`
 
 **pde::** (PDE operators)
 `laplacian` `laplacian_neumann` `laplacian_2d` `laplacian_2d_neumann`
@@ -80,7 +82,7 @@ be explicit about the domain or when disambiguation matters.
 `poly_eval_mod` `rs_encode` `hamming_distance`
 
 **Reduction binders** (not namespaced - they are language constructs)
-`sum` `product` `mean`
+`sum` `product`
 
 ## Error codes
 

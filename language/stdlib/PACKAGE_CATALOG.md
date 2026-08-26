@@ -1,7 +1,13 @@
 # Planned Standard Package Catalog
 
+Phase 1 does not ship these as importable `.emath` packages. The
+compiler binds `core::math::` / `math::` / bare names for the functions
+listed in `README.md`. `core::prelude` and `core::numbers` are not
+callable namespaces yet.
+
 | Package | Responsibility | First phase |
 |---|---|---:|
+| `core::math` | elementary arithmetic and libm builtins (implemented as compiler builtins, not a package source) | 1 |
 | `core::prelude` | common stable imports | 1 |
 | `core::logic` | propositions, predicates, quantifiers | 4 |
 | `core::numbers` | numeric towers and profiles | 1/5 |

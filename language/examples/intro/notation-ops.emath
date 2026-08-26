@@ -1,4 +1,4 @@
-package tst.notation-ops
+package tst.notation_ops
 notation infixl 40 "⊕" => core::math::pow alias "pw"
 notation prefix 80 "√" => core::math::sqrt
 notation postfix 90 "inv" => core::math::recip
@@ -12,9 +12,9 @@ emath function F:
         s: Float64
         t: Float64
     definitions:
-        a = x ⊕ y
+        a = x⊕y
         b = x pw y
-        r = √ a
+        r = √a
         s = √ b
         t = r inv
     goals:

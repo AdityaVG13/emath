@@ -4,6 +4,12 @@
 > refused. Updated with every language change. When this file and a
 > reference chapter disagree, the reference is normative.
 
+## Source
+
+| Form | Parses | Admits | Computes |
+|------|--------|--------|----------|
+| Empty / comment-only / whitespace-only / package-only file | yes (zero declarations) | no (`E-PKG-081`) | no |
+
 ## Declaration kinds
 
 | Kind | Parses | Admits | Runs |
@@ -24,7 +30,7 @@
 | `algebraic` | admitted (implicit DAE unknowns) |
 | `constructors` | admitted |
 | `constraints` | admitted (auto penalty method) |
-| `invariants` | admitted |
+| `invariant` | admitted |
 | `goals` | admitted (`evaluate`, `differentiate`, `optimize`) |
 | `exports` `tests` `compile` | admitted |
 | `about` `evidence` `host` | admitted |
@@ -38,7 +44,7 @@
 | `Float64` | yes | yes | yes |
 | `Bool` | yes | yes | yes |
 | `Nat` `Int` | yes | yes | yes (Int → exact i64 output) |
-| `Complex` | yes | yes | yes (Complex value type, `i` constant, arithmetic) |
+| `Complex` | yes | yes | yes (Complex value type, `i` constant, arithmetic, principal `sqrt`/`ln`/`exp`) |
 | `GF<p>` `GF<p>` | yes | yes (as Int) | yes (via builtins) |
 | `Vector[n]` `Matrix[r,c]` `Tensor[...]` | yes | yes | yes |
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
@@ -61,20 +67,21 @@
 | Form | Example | Parses | Computes |
 |------|---------|--------|----------|
 | Arithmetic | `a + b * c` | yes | yes |
-| Comparison | `x >= 1` | yes | yes |
+| Comparison | `x >= 1` | yes | yes (Float64 IEEE; mixed Int/Float64 exact, not a 2^53 widen) |
 | Logic connectives | `a ==> b`, `a <==> b` | yes | yes |
 | Binders (sum/product/integral/forall/exists) | `sum i in 0..n: f(i)` | yes | yes |
 | Filtered binders (`if` guard) | `sum i in 0..n if i > 0: f(i)` | yes | yes |
 | Derivative (autodiff) | `derivative(y) wrt x` | yes | yes |
 | Partial derivative | `partial(H) wrt T holding p` | yes | yes (same autodiff path) |
 | Total derivative | `total(t) wrt t` / `d(t) wrt t` | yes | yes (same autodiff path) |
-| Unicode partial | `∂(T) wrt x` | yes | yes (same autodiff path) |
+| Unicode partial | `∂(T) wrt x holding p` | yes | yes (same autodiff path; holding required) |
 | Solve (Newton) | `solve(f) wrt x` | yes | yes |
-| Optimize | `minimize(loss) wrt x` | yes | yes |
+| Optimize | `minimize(loss) wrt x` | yes | yes (Newton on ∇f = 0) |
 | einsum | `einsum("ik,kj->ij", A, B)` | yes | yes |
 | Complex literal | `2i`, `3.5i`, `1 + 2i` | yes | yes (Complex arithmetic) |
-| Unit query | `unit of E` / `dimension of E` | yes | parse only |
-| Notation declarations | `notation infixl 40 "⊕" => core::math::pow` | yes | yes (glyphs and aliases desugar to calls of the canonical target; custom operators bind above the core ladder at precedence ≥ 11) |
+| Quantity literal | `1 s`, `1 ms`, `1 km`, `3//2 s`, `0 degC` | yes | yes (SI scale; affine `degC` uses offset, cannot add two points) |
+| Unit query | `unit of E` / `dimension of E` | yes | parse only (named refuse if used as a value) |
+| Notation declarations | `notation infixl 40 "⊕" => core::math::pow` | yes | yes (glyphs and aliases desugar to calls of the canonical target; non-letter glyphs do not glue to adjacent identifiers (`x⊕y`, `√a`); custom operators bind above the core ladder at precedence ≥ 11) |
 
 ## Builtins
 
@@ -82,8 +89,9 @@
 |----------|-------|----------|
 | `exp` `ln` `log` `sqrt` `sin` `cos` `tan` `tanh` | 1 | yes |
 | `abs` `floor` `ceil` `round` `sign` `log2` `log10` | 1 | yes |
-| `sinh` `cosh` `atan` `cbrt` `recip` `fract` `is_finite` | 1 | yes |
-| `norm` `transpose` `length` `len` `mean` | 1 | yes |
+| `sinh` `cosh` `atan` `cbrt` `recip` `fract` `is_finite` `neg` | 1 | yes |
+| `norm` `transpose` `length` `mean` | 1 | yes |
+| `add` `sub` `mul` `div` | 2 | yes (same as `+` `-` `*` `/`) |
 | `min` `max` `atan2` `pow` `mod` `hypot` `dot` | 2 | yes |
 | `lerp` `clamp` | 3 | yes |
 | `laplacian` `laplacian_neumann` `laplacian_2d` `laplacian_2d_neumann` | 2 | yes |

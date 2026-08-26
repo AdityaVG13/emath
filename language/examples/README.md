@@ -14,22 +14,24 @@ Each example teaches one concept. Read in table order within a section.
 | [integral.emath](intro/integral.emath) | `integral` binder (Simpson's rule). |
 | [autodiff.emath](intro/autodiff.emath) | `derivative(y) wrt x` - forward-mode autodiff. |
 | [solve.emath](intro/solve.emath) | `solve(f) wrt x` - Newton's method. |
-| [optimize.emath](intro/optimize.emath) | `minimize` / `maximize` - gradient descent/ascent. |
-| [constrained-opt.emath](intro/constrained-opt.emath) | `constraints:` section - auto penalty method. |
+| [optimize.emath](intro/optimize.emath) | `minimize` / `maximize` - Newton on ∇f = 0. |
+| [constrained-opt.emath](intro/constrained-opt.emath) | `constraints:` section - quadratic exterior penalty (soft). |
 | [tensor-face.emath](intro/tensor-face.emath) | Rank-3 tensor, `:` slice, matrix `expect`. |
+| [einsum.emath](intro/einsum.emath) | `einsum("ik,kj->ij", A, B)` equals `A * B`; implicit mode and `dot`. |
 | [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | `emath policy` with constructor. |
 | [vector-given.emath](intro/vector-given.emath) | `Vector[3]` input, indexing, `dot`. |
-| [notation-ops.emath](intro/notation-ops.emath) | `notation` glyph declarations: `⊕`, `√`, postfix `inv` and `alias` spellings desugar to builtin calls and compute in generated Rust. |
+| [notation-ops.emath](intro/notation-ops.emath) | `notation` glyph declarations: unspaced `x⊕y` / `√a`, postfix `inv`, and `alias` `pw` desugar to builtin calls and compute. |
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Semi-explicit DAE with `emath simulate`. |
-| [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE — the `algebraic:` residual system is Newton-solved at each step, and `rust.library` codegen embeds the same causalized Newton solve (`step_euler`/`step_rk4` return `Result<Self, String>`). |
+| [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE — the `algebraic:` residual system is Newton-solved at each step; after `step_euler`/`step_rk4` the algebraic current is projected so `V - R*I - q/C` is ~0 (`Result<Self, String>` on non-convergence). |
 | [modular-arithmetic.emath](intro/modular-arithmetic.emath) | `GF<p>`, `factorial`, `mod_inv`, `congruence`, `rs_encode`, `hamming_distance`. |
 | [attribute-gated.emath](intro/attribute-gated.emath) | `@capabilities(experimental-syntax)` + `@experimental` — the ELP experimental lane gate. |
+| [units.emath](intro/units.emath) | Quantity literals: `1 km + 1 m`, `1 m * 1 m` as `m^2`, cancelled dims, affine `0 degC == 273.15 K`. |
 
 ## numerical - dynamics and PDEs
 
 | Example | Concept |
 |---------|---------|
-| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Coupled mass-spring as one vector-state ODE (`emath simulate`). |
+| [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Coupled mass-spring as one vector-state ODE. Classic RK4 via `emath simulate --set s=[x,v]`; undamped (c=0) tracks x=cos(t). |
 | [heat-rod-sim.emath](numerical/heat-rod-sim.emath) | 1D heat equation: `laplacian` + `emath simulate`. |
 | [heat-plate-sim.emath](numerical/heat-plate-sim.emath) | 2D heat equation: `laplacian_2d` + `emath simulate`. |
 | [gradient-field.emath](numerical/gradient-field.emath) | `gradient` / `gradient_2d_x` / `gradient_2d_y`. |
