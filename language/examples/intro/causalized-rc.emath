@@ -2,7 +2,9 @@
 # The residual unknowns are admitted, Newton-solved at each simulation
 # step, and -- since rust.library codegen now contains the same causalized
 # Newton solve -- the declaration builds a crate whose `step_euler` /
-# `step_rk4` methods integrate it.
+# `step_rk4` methods integrate it. After each step the algebraic current
+# is re-solved at the new charge so V - R*I - q/C stays ~0 (a successful
+# step does not return a point off the constraint).
 # Same RC circuit as algebraic-dae.emath: q(t) = C*V*(1 - exp(-t/(R*C))),
 # but the resistor law is written as a residual instead of a definition:
 #   V - R*I - q/C == 0

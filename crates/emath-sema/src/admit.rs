@@ -3,10 +3,7 @@
 
 use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, QualifiedName, Span};
-use emath_ir::{
-    BinaryOp, ExprId, ExprNode,
-    Literal, ModelResidual, TypeId, TypeNode,
-};
+use emath_ir::{BinaryOp, ExprId, ExprNode, Literal, ModelResidual, TypeId, TypeNode};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod declaration;
@@ -15,11 +12,11 @@ mod expr_helpers;
 use expr_helpers::*;
 mod infer;
 use infer::*;
-mod types;
 mod equations;
+mod lowering;
 mod sections;
 mod sections_meta;
-mod lowering;
+mod types;
 pub use sections_meta::check_tree;
 
 pub const E_DUPLICATE_FIELD: &str = "E-NAME-020";
@@ -238,29 +235,56 @@ impl Admitter {
                 let value = self.inline_defs(value);
                 self.push_expr(ExprNode::Unary { operation, value }, span)
             }
-            ExprNode::Binary { operation, left, right } => {
+            ExprNode::Binary {
+                operation,
+                left,
+                right,
+            } => {
                 let left = self.inline_defs(left);
                 let right = self.inline_defs(right);
-                self.push_expr(ExprNode::Binary { operation, left, right }, span)
+                self.push_expr(
+                    ExprNode::Binary {
+                        operation,
+                        left,
+                        right,
+                    },
+                    span,
+                )
             }
-            ExprNode::Call { function, arguments } => {
+            ExprNode::Call {
+                function,
+                arguments,
+            } => {
                 let arguments: Vec<_> =
                     arguments.into_iter().map(|a| self.inline_defs(a)).collect();
-                self.push_expr(ExprNode::Call { function, arguments }, span)
+                self.push_expr(
+                    ExprNode::Call {
+                        function,
+                        arguments,
+                    },
+                    span,
+                )
             }
-            ExprNode::If { condition, then_value, else_value } => {
+            ExprNode::If {
+                condition,
+                then_value,
+                else_value,
+            } => {
                 let condition = self.inline_defs(condition);
                 let then_value = self.inline_defs(then_value);
                 let else_value = self.inline_defs(else_value);
                 self.push_expr(
-                    ExprNode::If { condition, then_value, else_value },
+                    ExprNode::If {
+                        condition,
+                        then_value,
+                        else_value,
+                    },
                     span,
                 )
             }
             ExprNode::Index { value, indices } => {
                 let value = self.inline_defs(value);
-                let indices: Vec<_> =
-                    indices.into_iter().map(|i| self.inline_defs(i)).collect();
+                let indices: Vec<_> = indices.into_iter().map(|i| self.inline_defs(i)).collect();
                 self.push_expr(ExprNode::Index { value, indices }, span)
             }
             ExprNode::Vector(els) => {
@@ -275,8 +299,7 @@ impl Admitter {
                 self.push_expr(ExprNode::Matrix(rows), span)
             }
             ExprNode::Tensor { shape, elements } => {
-                let elements: Vec<_> =
-                    elements.into_iter().map(|e| self.inline_defs(e)).collect();
+                let elements: Vec<_> = elements.into_iter().map(|e| self.inline_defs(e)).collect();
                 self.push_expr(ExprNode::Tensor { shape, elements }, span)
             }
             ExprNode::Differentiate { body, var } => {
@@ -294,13 +317,11 @@ impl Admitter {
         if self.constraints.is_empty() {
             return body;
         }
-        // Must stay stable with the optimizer's fixed learning_rate
-        // (0.01): the penalty Hessian adds eigenvalue 4*w, so stability
-        // needs lr < 2/(2+4w). At w=20, 2/L = 0.024 > 0.01 (stable) and
-        // the equilibrium w/(1+2w) = 0.488 is within typical tolerance.
-        // w=1000 (the prior value) gave L≈4002, needing lr<0.0005, so the
-        // fixed lr=0.01 overshot and never converged.
-        const PENALTY_WEIGHT: f64 = 20.0;
+        // Quadratic exterior penalty. The optimizer is Newton on ∇L = 0,
+        // so a large weight is stable (no GD learning-rate restriction).
+        // For min x²+y² s.t. x+y≥1 the equilibrium is x=y=w/(1+2w);
+        // w=1000 sits at ≈0.49975 (constraint gap ≈5e-4).
+        const PENALTY_WEIGHT: f64 = 1000.0;
         let weight_id = self.push_expr(
             ExprNode::Literal(Literal::FloatBits(PENALTY_WEIGHT.to_bits())),
             span,
@@ -330,7 +351,10 @@ impl Admitter {
         if result != body {
             self.record(
                 "sema",
-                format!("added {} constraint penalty term(s) to optimization body", self.constraints.len()),
+                format!(
+                    "added {} constraint penalty term(s) to optimization body",
+                    self.constraints.len()
+                ),
                 span,
             );
         }
@@ -341,7 +365,12 @@ impl Admitter {
     /// Returns None for non-comparison constraints (e.g. NotEqual).
     fn constraint_penalty(&mut self, constraint_id: ExprId, span: Span) -> Option<ExprId> {
         let (node, _) = self.exprs.get(constraint_id.0 as usize)?.clone();
-        let ExprNode::Binary { operation, left, right } = node else {
+        let ExprNode::Binary {
+            operation,
+            left,
+            right,
+        } = node
+        else {
             return None;
         };
         let zero = self.push_expr(
@@ -410,7 +439,6 @@ impl Admitter {
             span,
         ))
     }
-
 }
 
 pub(super) fn expr_number(expr: &Expr) -> Option<f64> {
@@ -423,4 +451,3 @@ pub(super) fn expr_number(expr: &Expr) -> Option<f64> {
         _ => None,
     }
 }
-

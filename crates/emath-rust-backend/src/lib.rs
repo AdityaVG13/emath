@@ -12,8 +12,8 @@
 use emath_exec_ir::{definition_order, lower_definition, lower_requirement};
 use emath_ir::{ConstructionReceipt, GoalKind, SemanticPackage, TypeId, TypeNode};
 use emath_rust_ir::ast::{
-    escape_ident, snake_case, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item,
-    Module, Param, Stmt, StructDef, TestDef, Ty, UnOp, Visibility,
+    escape_ident, snake_case, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item, Module,
+    Param, Stmt, StructDef, TestDef, Ty, UnOp, Visibility,
 };
 use emath_rust_ir::render::render_module;
 use std::collections::{BTreeMap, BTreeSet};
@@ -159,15 +159,24 @@ impl BackendInput<'_> {
                 "Generated deterministically by emath Phase 1; do not edit.".to_string(),
             ));
             if !emit_free_fn {
-                let state_types: Vec<Ty> = declaration
+                let mut struct_fields: Vec<(String, Ty)> = declaration
                     .state
                     .iter()
-                    .map(|f| self.rust_ty(f.ty, &name))
+                    .map(|field| {
+                        self.rust_ty(field.ty, &name)
+                            .map(|ty| (field.name.clone(), ty))
+                    })
                     .collect::<Result<_, _>>()?;
+                // Algebraic unknowns are part of the DAE extended state:
+                // a successful `step_*` projects them so the residual at
+                // the returned point is ~0.
+                for field in &declaration.algebraic {
+                    struct_fields.push((field.name.clone(), self.rust_ty(field.ty, &name)?));
+                }
                 items.push(Item::Struct(StructDef {
                     name: struct_name.clone(),
                     generics: vec![],
-                    fields: state_names.iter().cloned().zip(state_types).collect(),
+                    fields: struct_fields,
                     derives: vec!["Clone".to_string(), "Debug".to_string()],
                     doc: Vec::new(),
                     visibility: Visibility::Public,
@@ -176,6 +185,8 @@ impl BackendInput<'_> {
 
             let mut methods: Vec<FnDef> = Vec::new();
             let mut evaluate_targets: Vec<String> = Vec::new();
+            let mut result_eval_targets: BTreeSet<String> = BTreeSet::new();
+            let i64_names = i64_field_names(package, declaration);
 
             // --- constructor ----------------------------------------------
             if declaration.constructors.len() > 1 {
@@ -251,7 +262,7 @@ impl BackendInput<'_> {
                     let ok_name = format!("__ok{index}");
                     let negated = Expr::Un {
                         op: UnOp::Not,
-                        value: Box::new(value_expr(&program, &param_names, &[])?),
+                        value: Box::new(value_expr(&program, &param_names, &[], &i64_names)?),
                     };
                     statements.push(Stmt::Let {
                         pattern: ok_name.clone(),
@@ -292,7 +303,11 @@ impl BackendInput<'_> {
                     add_obligations(&program, &mut assumptions);
                     field_values.push((
                         field_def.name.clone(),
-                        value_expr(&program, &param_names, &[])?,
+                        coerce_to_ty(
+                            value_expr(&program, &param_names, &[], &i64_names)?,
+                            program_kind(&program, &param_names, &[], &i64_names),
+                            &self.rust_ty(field_def.ty, &name)?,
+                        ),
                     ));
                 }
                 // Postconditions (`ensure` / `invariant`) hold after field
@@ -305,7 +320,7 @@ impl BackendInput<'_> {
                     let check_name = format!("__post_ok{index}");
                     let negated = Expr::Un {
                         op: UnOp::Not,
-                        value: Box::new(value_expr(&program, &param_names, &[])?),
+                        value: Box::new(value_expr(&program, &param_names, &[], &i64_names)?),
                     };
                     statements.push(Stmt::Let {
                         pattern: check_name.clone(),
@@ -380,16 +395,51 @@ impl BackendInput<'_> {
                     return Err(BackendError::UnknownTarget(target));
                 };
                 let chain = &order[..=end];
-                // Algebraic unknowns are part of the I/O contract of a
-                // causalized model's evaluate goal: definitions may
-                // reference them (e.g. an explicit `der_q = I` rate), so
-                // the evaluate method carries them as guess parameters just
-                // like the step methods do.
+                // Algebraic unknowns live on `Self` (extended DAE state).
+                // Bind them as locals so definitions that mention them
+                // (e.g. `der_q = I`) lower as ordinary names.
                 let mut available = input_names.clone();
                 for field in &declaration.algebraic {
                     available.push(field.name.clone());
                 }
+                let inner_ret = declaration
+                    .outputs
+                    .iter()
+                    .find(|field| field.name == target)
+                    .map(|field| self.rust_ty(field.ty, &name))
+                    .transpose()?
+                    .unwrap_or(Ty::F64);
+                let mut eval_i64 = i64_names.clone();
                 let mut body_stmts = Vec::new();
+                let mut index_fault = false;
+                if !emit_free_fn {
+                    for field in &declaration.algebraic {
+                        let scalar = matches!(
+                            self.solve_width(
+                                field.ty,
+                                &name,
+                                &format!("algebraic `{}`", field.name)
+                            ),
+                            Ok(1)
+                        );
+                        let from_self = Expr::Field {
+                            receiver: Box::new(Expr::SelfValue),
+                            field: field.name.clone(),
+                        };
+                        body_stmts.push(Stmt::Let {
+                            pattern: escape_ident(&field.name),
+                            value: Box::new(if scalar {
+                                from_self
+                            } else {
+                                Expr::MethodCall {
+                                    receiver: Box::new(from_self),
+                                    method: "clone".to_string(),
+                                    args: Vec::new(),
+                                }
+                            }),
+                        });
+                    }
+                }
                 for (def_name, def_expr) in chain {
                     let def_name = *def_name;
                     let def_expr = *def_expr;
@@ -399,13 +449,27 @@ impl BackendInput<'_> {
                         names
                     };
                     let lowering_inputs = expand_host_inputs(&available, &used);
-                    let program = lower_definition(package, def_expr, &lowering_inputs, &state_names)
-                        .map_err(BackendError::Lowering)?;
+                    let program =
+                        lower_definition(package, def_expr, &lowering_inputs, &state_names)
+                            .map_err(BackendError::Lowering)?;
                     add_obligations(&program, &mut assumptions);
-                    let value = value_expr(&program, &lowering_inputs, &state_names)?;
+                    let kind = program_kind(&program, &lowering_inputs, &state_names, &eval_i64);
+                    let value = value_expr(&program, &lowering_inputs, &state_names, &eval_i64)?;
+                    index_fault |= program_may_index_fault(&program);
                     if def_name == &target {
-                        body_stmts.push(Stmt::Expr(value));
+                        let expr = coerce_to_ty(value, kind, &inner_ret);
+                        body_stmts.push(Stmt::Expr(if index_fault {
+                            Expr::Call {
+                                path: vec!["Ok".to_string()],
+                                args: vec![expr],
+                            }
+                        } else {
+                            expr
+                        }));
                     } else {
+                        if kind == ScalarKind::I64 {
+                            eval_i64.insert(def_name.clone());
+                        }
                         body_stmts.push(Stmt::Let {
                             pattern: escape_ident(def_name),
                             value: Box::new(value),
@@ -434,12 +498,6 @@ impl BackendInput<'_> {
                         ty,
                     });
                 }
-                for field in &declaration.algebraic {
-                    params.push(Param {
-                        name: escape_ident(&field.name),
-                        ty: self.rust_ty(field.ty, &name)?,
-                    });
-                }
                 let body = Stmt::Block(Block {
                     statements: body_stmts,
                 });
@@ -449,13 +507,33 @@ impl BackendInput<'_> {
                     escape_ident(&target)
                 };
                 evaluate_targets.push(target.clone());
+                if index_fault {
+                    result_eval_targets.insert(target.clone());
+                }
+                let ret = if index_fault {
+                    Ty::Result {
+                        ok: Box::new(inner_ret),
+                        error: Box::new(Ty::Named("String".to_string())),
+                    }
+                } else {
+                    inner_ret
+                };
+                let doc = if matches!(ret, Ty::I64) {
+                    format!("Evaluate `{target}` (exact i64).")
+                } else if index_fault {
+                    format!(
+                        "Evaluate `{target}` (strict-f64, Phase 1). Index/slice out of bounds is `Err`."
+                    )
+                } else {
+                    format!("Evaluate `{target}` (strict-f64, Phase 1).")
+                };
                 methods.push(FnDef {
                     name: fn_name,
                     generics: vec![],
                     params,
-                    ret: Ty::F64,
+                    ret,
                     body,
-                    doc: vec![format!("Evaluate `{target}` (strict-f64, Phase 1).")],
+                    doc: vec![doc],
                     visibility: Visibility::Public,
                     attrs: Vec::new(),
                 });
@@ -510,9 +588,29 @@ impl BackendInput<'_> {
                     let program = lower_definition(package, test.given[given_name], &seen, &[])
                         .map_err(BackendError::Lowering)?;
                     add_obligations(&program, &mut assumptions);
+                    let kind = program_kind(&program, &seen, &[], &i64_names);
+                    let value = value_expr(&program, &seen, &[], &i64_names)?;
+                    let field_ty = declaration
+                        .inputs
+                        .iter()
+                        .chain(declaration.state.iter())
+                        .chain(declaration.algebraic.iter())
+                        .chain(
+                            declaration
+                                .constructors
+                                .iter()
+                                .flat_map(|c| c.parameters.iter()),
+                        )
+                        .find(|field| &field.name == given_name)
+                        .map(|field| field.ty);
+                    let value = if let Some(ty) = field_ty {
+                        coerce_to_ty(value, kind, &self.rust_ty(ty, &name)?)
+                    } else {
+                        value
+                    };
                     statements.push(Stmt::Let {
                         pattern: escape_ident(given_name),
-                        value: Box::new(value_expr(&program, &seen, &[])?),
+                        value: Box::new(value),
                     });
                     seen.push(given_name.clone());
                 }
@@ -522,11 +620,7 @@ impl BackendInput<'_> {
                     ));
                 };
                 let mut eval_args: Vec<Expr> = Vec::new();
-                for input in declaration
-                    .inputs
-                    .iter()
-                    .chain(declaration.algebraic.iter())
-                {
+                for input in &declaration.inputs {
                     if !given_names.contains(&input.name) {
                         return Err(BackendError::MissingInput(input.name.clone()));
                     }
@@ -565,19 +659,22 @@ impl BackendInput<'_> {
                             )],
                         }
                     } else if !declaration.state.is_empty() {
-                        let fields = declaration
+                        let mut fields = declaration
                             .state
                             .iter()
                             .map(|field| {
                                 if !given_names.contains(&field.name) {
                                     return Err(BackendError::MissingGiven(field.name.clone()));
                                 }
-                                Ok((
-                                    field.name.clone(),
-                                    Expr::Var(escape_ident(&field.name)),
-                                ))
+                                Ok((field.name.clone(), Expr::Var(escape_ident(&field.name))))
                             })
                             .collect::<Result<Vec<_>, _>>()?;
+                        for field in &declaration.algebraic {
+                            if !given_names.contains(&field.name) {
+                                return Err(BackendError::MissingGiven(field.name.clone()));
+                            }
+                            fields.push((field.name.clone(), Expr::Var(escape_ident(&field.name))));
+                        }
                         Expr::StructLiteral {
                             name: struct_name.clone(),
                             fields,
@@ -597,6 +694,15 @@ impl BackendInput<'_> {
                         method: escape_ident(target),
                         args: eval_args,
                     }
+                };
+                let eval_call = if result_eval_targets.contains(target) {
+                    Expr::MethodCall {
+                        receiver: Box::new(eval_call),
+                        method: "expect".to_string(),
+                        args: vec![Expr::Str("index in bounds".to_string())],
+                    }
+                } else {
+                    eval_call
                 };
                 statements.push(Stmt::Let {
                     pattern: "actual".to_string(),
@@ -618,6 +724,16 @@ impl BackendInput<'_> {
                     expect_names.push(definition.clone());
                 }
                 if let Some(expect) = test.expect {
+                    let mut expect_i64 = i64_names.clone();
+                    if declaration
+                        .outputs
+                        .iter()
+                        .any(|field| &field.name == target && type_is_i64(package, field.ty))
+                    {
+                        for definition in declaration.definitions.keys() {
+                            expect_i64.insert(definition.clone());
+                        }
+                    }
                     let expect_program =
                         lower_definition(package, expect, &expect_names, &state_names)
                             .map_err(BackendError::Lowering)?;
@@ -626,7 +742,12 @@ impl BackendInput<'_> {
                     // with a real macro invocation (rendered via `Expr::Macro`).
                     statements.push(Stmt::Expr(Expr::Macro {
                         name: "assert".to_string(),
-                        args: vec![value_expr(&expect_program, &expect_names, &state_names)?],
+                        args: vec![value_expr(
+                            &expect_program,
+                            &expect_names,
+                            &state_names,
+                            &expect_i64,
+                        )?],
                     }));
                 } else {
                     // Worked example: execute the computation, assert nothing.
@@ -715,8 +836,8 @@ impl BackendInput<'_> {
             TypeNode::Bool => Ok(Ty::Bool),
             TypeNode::Vector { .. } => Ok(Ty::Named("Vec<f64>".to_string())),
             TypeNode::Matrix { .. } => Ok(Ty::Named("Vec<Vec<f64>>".to_string())),
-            TypeNode::Tensor { .. } => Ok(Ty::Named("Vec<f64>".to_string())),
-            TypeNode::Nat | TypeNode::Int => Ok(Ty::F64),
+            TypeNode::Tensor { .. } => Ok(Ty::Named("emath_rt::Tensor".to_string())),
+            TypeNode::Nat | TypeNode::Int => Ok(Ty::I64),
             TypeNode::Refinement { base, .. } => self.rust_node(base, owner),
             TypeNode::UnitRef { .. } => Ok(Ty::F64),
             TypeNode::Opaque { name, .. } => {

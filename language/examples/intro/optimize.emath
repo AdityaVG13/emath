@@ -1,11 +1,13 @@
-# Optimization with gradient descent.
-# `minimize(expr) wrt var` finds the input value that minimizes `expr`.
-# `maximize(expr) wrt var` finds the input value that maximizes it.
-# Each step uses forward-mode autodiff for the gradient:
-#   minimize: x_new = x_old - lr * f'(x)
-#   maximize: x_new = x_old + lr * f'(x)
-# Minimizing (x-3)^2 from x=0 converges to x=3.
-# Maximizing -(x-2)^2 from x=0 converges to x=2.
+# Optimization by Newton's method on the gradient.
+# `minimize(expr) wrt var` / `maximize(expr) wrt var` return a point
+# where ∇f ≈ 0 (a stationary point of the right curvature). Each step:
+#   x_new = x_old - H^{-1} ∇f
+# with ∇f from dual-number autodiff and H from a forward-difference of
+# that gradient. Exhausting iterations, a vanished Hessian, or a
+# stationary point of the wrong kind (a min when maximize was asked)
+# is a refusal, not a silent non-optimum.
+# Minimizing (x-3)^2 from x=0 reaches x=3 with gradient ~0.
+# Maximizing -(x-2)^2 from x=0 reaches x=2 with gradient ~0.
 emath function OptimizeDemo:
     inputs:
         x: Float64
@@ -27,5 +29,5 @@ emath function OptimizeDemo:
     tests:
         example <from_zero>:
             given x = 0
-            expect abs(min_x - 3) < 0.1
-            expect abs(max_x - 2) < 0.1
+            expect abs(min_x - 3) < 1e-6
+            expect abs(max_x - 2) < 1e-6

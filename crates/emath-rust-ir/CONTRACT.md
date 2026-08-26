@@ -17,6 +17,7 @@ Frequently re-exported types (not exhaustive):
 
 - All generation goes through the structured AST and its renderer; no string-concatenated Rust emission elsewhere.
 - Identifier hygiene: Rust keywords and reserved names are escaped, never emitted raw.
+- `Expr::F64` renders finite values with Debug (`1.0`); NaN/Inf use `f64::from_bits(0x…)` so generated crates compile (Debug `NaN`/`inf` are not Rust literals).
 - Byte-range anchors are produced for source maps (`Anchor`, `coverage_gaps`).
 - Profile validation refuses unknown ranges (E-CODEGEN-003), unsafe code in a safe profile (E-CODEGEN-002) and public items without a source-map anchor (E-CODEGEN-004).
 
