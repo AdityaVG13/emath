@@ -11,6 +11,7 @@
 | `E-UNIT-*` | units | dimensional mismatch, affine misuse |
 | `E-SHAPE-*` | shapes/layout | rank mismatch, invalid broadcast |
 | `E-DOM-*` | domains | branch/domain violation |
+| `E-NOTATION-*` | notation declarations | glyph not lexable as one identifier (E-NOTATION-GLYPH), reserved core glyph (E-NOTATION-RESERVED), ambiguous glyph→target (E-NOTATION-AMBIG), precedence below the custom floor (E-NOTATION-PRECEDENCE) |
 | `E-NUM-*` | numeric models | unknown model, precision/error-limit, silent Real map |
 | `E-CTOR-*` | constructors | missing assignment, invariant bypass |
 | `E-GOAL-*` | requests/planning | no eligible plan, weakened requirement |
@@ -211,6 +212,25 @@ Syntax (`crates/emath-syntax/src/lexer.rs`, `crates/emath-syntax/src/parser.rs`)
   refused instead of dropping the right-hand side.
 - `E-TYPE-112` — generic `extern operator` declarations are outside the
   Phase 1 subset; refused instead of discarding the generic parameters.
+
+Notation (`crates/emath-syntax/src/parser.rs`):
+
+- `E-NOTATION-RESERVED` — a notation glyph or alias shadows a core
+  token (N3: `+ - * / ^ == != < <= > >= and or not = := -> => :: . ..
+  ..= ?`); the core vocabulary cannot be rebound, so the declaration is
+  refused instead of silently overloading an operator.
+- `E-NOTATION-GLYPH` — a glyph or alias does not lex as a single
+  identifier (e.g. `!`, `++`); such a spelling could never appear in an
+  expression without re-lexing as other syntax, so it is refused at the
+  declaration instead of registering a dead operator.
+- `E-NOTATION-AMBIG` — the same glyph is bound to two different target
+  paths in one scope (N4); the glyph must map to exactly one canonical
+  operator, so the later binding is refused instead of resolved by
+  precedence or fixity.
+- `E-NOTATION-PRECEDENCE` — the declared integer precedence is below
+  the custom-operator floor `CUSTOM_OP_MIN_PRECEDENCE` (11); tiers
+  1–10 belong to the core lexical ladder and a lower declaration would
+  parse without ever binding, so it is refused up front.
 
 Schema registry (`crates/emath-schema/src/registry.rs`):
 

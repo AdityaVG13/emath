@@ -5,6 +5,10 @@
   "bumps": [
     {
       "date": "2026-08-25",
+      "note": "notation declarations execute (gap B): glyphs and aliases desugar to calls of the canonical target at parse time (N5), custom infix binds above the core 10-tier ladder at precedence >= 11 (E-NOTATION-PRECEDENCE floor), prefix/postfix glyphs bound at unary/postfix levels; qualified builtin calls spell with :: including core::logic::not (keyword path segments); ERROR_CODES E-NOTATION-GLYPH/AMBIG/RESERVED/PRECEDENCE stories; example notation-ops.emath admits and builds; CAPABILITY notation row flips to computes; reference N6 precedence scale"
+    },
+    {
+      "date": "2026-08-25",
       "note": "causalized implicit-DAE rust.library codegen (E-KIND-017 retired): models with algebraic: residuals now build step_euler/step_rk4 embedding the interpreter's causalized Newton solve; ERROR_CODES annex re-spliced to 271 emitted codes; simulate CLI accepts algebraic guesses; example causalized-rc.emath flips to admitted+building; capabilities snapshot: deferred dae row removed, numeric_models.dae-implicit added"
     },
     {
@@ -105,7 +109,7 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "1223b94a7788259169d9523db380527ceba4fe4fdbb15b0b97b6039f13579847",
+    "implementation/ERROR_CODES.md": "b05a0bf977933ab9c4c5f2374c39129a3f8ebb7cf6fbe0f043f78bc7143807b1",
     "implementation/CLI_REFERENCE.md": "fafe5e487efba30d46f0ee0c1a672cfa9720acf873f91c00f3b3933cc7181bc9",
     "implementation/CRATE_MAP.md": "c127e8e858afd2db2b5c55cd3618f7a8fe2e0e36a8f7a71e712273b1e83bf91b",
     "implementation/PUBLIC_API_INVENTORY.md": "c73d6c04e7f77f73c48116623c9bdcfb8a09fe90a57c7db2602d88c18ecef806"

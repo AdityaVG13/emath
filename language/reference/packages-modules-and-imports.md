@@ -127,3 +127,39 @@ declaration in that file. The semantic IR is notation-agnostic: the
 same operator call admits regardless of which glyph was used to invoke
 it. Notation affects only how source text is parsed, not how it is
 compiled or evaluated.
+
+### N6 - Precedence scale and binding
+
+The core language owns a fixed lexical ladder. From loosest to
+tightest, tiers 1 to 10 are:
+
+```text
+1 iff    2 implies    3 or (|)    4 and (&)    5 comparisons (== != < <= > >=)
+6 unit/dimension of    7 additive (+ -)    8 multiplicative (* /)
+9 unary (- + not)    10 power (^) and postfix
+```
+
+Custom operators occupy the tier at and above 11:
+[`CUSTOM_OP_MIN_PRECEDENCE`] is 11, and any `notation` declaration
+whose integer precedence is below the floor is refused with
+`E-NOTATION-PRECEDENCE` — a lower number would parse without ever
+binding, because the custom-operator infix layer only considers
+declarations at or above the floor.
+
+Binding consequences (all overridable with parentheses):
+
+- Every custom operator binds tighter than `*` `/` and looser than
+  unary prefix: `a ⊕ b * c` parses as `(a ⊕ b) * c` and `4 * x ⊕ 2`
+  as `4 * (x ⊕ 2)`.
+- Declared precedences order custom operators against each other:
+  higher binds tighter (`x ⊕ y ⊙ z` groups `(y ⊙ z)` when `⊙`'s
+  number is higher). Equal numbers chain left for `infixl`/`infix`
+  and right for `infixr`.
+- Prefix glyphs bind at the unary level (alongside `-`/`not`), tighter
+  than custom infix; postfix glyphs bind tightest, at the postfix
+  level.
+- Glyph and alias spellings must each lex as a single identifier:
+  punctuation such as `!` or `++` is refused with `E-NOTATION-GLYPH`,
+  and a spelling that shadows a core token (N3) with
+  `E-NOTATION-RESERVED`. A glyph bound to two different targets in one
+  scope is refused with `E-NOTATION-AMBIG` (N4).

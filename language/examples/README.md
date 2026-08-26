@@ -19,6 +19,7 @@ Each example teaches one concept. Read in table order within a section.
 | [tensor-face.emath](intro/tensor-face.emath) | Rank-3 tensor, `:` slice, matrix `expect`. |
 | [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | `emath policy` with constructor. |
 | [vector-given.emath](intro/vector-given.emath) | `Vector[3]` input, indexing, `dot`. |
+| [notation-ops.emath](intro/notation-ops.emath) | `notation` glyph declarations: `⊕`, `√`, postfix `inv` and `alias` spellings desugar to builtin calls and compute in generated Rust. |
 | [algebraic-dae.emath](intro/algebraic-dae.emath) | Semi-explicit DAE with `emath simulate`. |
 | [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE — the `algebraic:` residual system is Newton-solved at each step, and `rust.library` codegen embeds the same causalized Newton solve (`step_euler`/`step_rk4` return `Result<Self, String>`). |
 | [modular-arithmetic.emath](intro/modular-arithmetic.emath) | `GF<p>`, `factorial`, `mod_inv`, `congruence`, `rs_encode`, `hamming_distance`. |

@@ -1,0 +1,31 @@
+package tst.notation-ops
+notation infixl 40 "⊕" => core::math::pow alias "pw"
+notation prefix 80 "√" => core::math::sqrt
+notation postfix 90 "inv" => core::math::recip
+
+emath function F:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        r: Float64
+        s: Float64
+        t: Float64
+    definitions:
+        a = x ⊕ y
+        b = x pw y
+        r = √ a
+        s = √ b
+        t = r inv
+    goals:
+        evaluate <t>:
+            produce rust.library
+    tests:
+        example <pow_sqrt_recip>:
+            given x = 4.0
+            given y = 3.0
+            expect t == 0.125
+        example <alias_equals_glyph>:
+            given x = 4.0
+            given y = 3.0
+            expect a == b

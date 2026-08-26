@@ -74,7 +74,7 @@
 | einsum | `einsum("ik,kj->ij", A, B)` | yes | yes |
 | Complex literal | `2i`, `3.5i`, `1 + 2i` | yes | yes (Complex arithmetic) |
 | Unit query | `unit of E` / `dimension of E` | yes | parse only |
-| Notation declarations | `notation infix 10 "⊕" => core::algebra::add` | yes | parse only |
+| Notation declarations | `notation infixl 40 "⊕" => core::math::pow` | yes | yes (glyphs and aliases desugar to calls of the canonical target; custom operators bind above the core ladder at precedence ≥ 11) |
 
 ## Builtins
 

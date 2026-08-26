@@ -123,3 +123,87 @@ emath model PlainRC:
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn notation_function_builds_to_an_artifact() {
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath-cli-notation-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let spec = dir.join("notation.emath");
+    let out = dir.join("artifacts");
+    std::fs::write(
+        &spec,
+        "\
+package tst.notation
+notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"
+notation prefix 80 \"√\" => core::math::sqrt
+notation postfix 90 \"inv\" => core::math::recip
+emath function F:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        r: Float64
+    definitions:
+        a = x pw y
+        b = √ a
+        r = b inv
+    goals:
+        evaluate <r>:
+            produce rust.library
+    tests:
+        example <pow_sqrt_recip>:
+            given x = 4.0
+            given y = 3.0
+            expect r == 0.125
+",
+    )
+    .expect("write notation spec");
+    assert_eq!(
+        run(&["check".into(), spec.to_string_lossy().into_owned()]),
+        EXIT_OK,
+        "notation function must admit at check"
+    );
+    assert_eq!(
+        run(&[
+            "build".into(),
+            spec.to_string_lossy().into_owned(),
+            "--out".into(),
+            out.to_string_lossy().into_owned(),
+        ]),
+        EXIT_OK,
+        "notation function must build to an artifact"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn reserved_notation_glyph_refused_at_build() {
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath-cli-notation-reject-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let spec = dir.join("reserved.emath");
+    let out = dir.join("artifacts");
+    std::fs::write(
+        &spec,
+        "\
+package tst.reserved
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+    goals:
+        evaluate <r>:
+            produce rust.library
+notation prefix 90 \"or\" => core::logic::not
+",
+    )
+    .expect("write reserved spec");
+    assert_eq!(
+        run(&["build".into(), spec.to_string_lossy().into_owned(), "--out".into(), out.to_string_lossy().into_owned()]),
+        EXIT_REFUSED,
+        "reserved glyph must refuse at build"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

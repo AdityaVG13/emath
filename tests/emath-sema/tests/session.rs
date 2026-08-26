@@ -651,3 +651,149 @@ emath function TwentyOne:
     assert!(result.package.tests[0].given.is_empty());
     assert!(result.package.tests[0].expect.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Notation declarations (gap B): admitted functions whose bodies use
+// declared glyphs (and their aliases) must lower through the normal
+// builtin table, and qualified spellings of the same builtins must stay
+// equivalent so that hand-written `core::math::pow` and a glyph that
+// maps to it admit identically.
+// ---------------------------------------------------------------------------
+
+fn notation_function(definitions: &str) -> String {
+    format!(
+        "\
+emath function F:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        r: Float64
+    definitions:
+        {definitions}
+notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"
+"
+    )
+}
+
+#[test]
+fn notation_glyph_and_alias_uses_admit() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned("notation-admit", &notation_function("r = x ⊕ y"));
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "glyph use must admit, got {codes:?}"
+    );
+    let result = session.check_owned("notation-alias-admit", &notation_function("r = x pw y"));
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "alias use must admit, got {codes:?}"
+    );
+}
+
+#[test]
+fn qualified_builtin_calls_spell_with_path_separators() {
+    // Regression: `core::math::pow` in an expression used to be
+    // re-joined with `.` at lowering, producing `unknown function
+    // core.math.pow` (E-TYPE-003). The qualified spelling must equal
+    // the glyph desugar and admit through the normal builtin table.
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(
+        "qualified-pow",
+        "\
+emath function F:
+    inputs:
+        x: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = core::math::pow(x, 2.0)
+",
+    );
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        !codes.iter().any(|code| *code == "E-TYPE-003"),
+        "qualified builtin must not be an unknown function, got {codes:?}"
+    );
+}
+
+#[test]
+fn core_logic_not_admits_on_bool_and_refuses_on_non_bool() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let bool_source = "\
+emath function N:
+    inputs:
+        p: Bool
+    outputs:
+        q: Bool
+    definitions:
+        q = core::logic::not(p)
+";
+    let result = session.check_owned("logic-not-bool", bool_source);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "core::logic::not on a Bool must admit, got {codes:?}"
+    );
+
+    let float_source = "\
+emath function N:
+    inputs:
+        p: Float64
+    outputs:
+        q: Bool
+    definitions:
+        q = core::logic::not(p)
+";
+    let result = session.check_owned("logic-not-float", float_source);
+    assert!(
+        result
+            .diagnostics
+            .errors()
+            .any(|diagnostic| diagnostic.code == "E-TYPE-012"),
+        "core::logic::not on a Float64 must refuse with E-TYPE-012"
+    );
+}
+
+#[test]
+fn reserved_notation_glyph_is_refused_through_the_session() {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let source = "\
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+notation prefix 90 \"or\" => core::logic::not
+";
+    let result = session.check_owned("notation-reserved", source);
+    assert!(
+        result
+            .diagnostics
+            .errors()
+            .any(|diagnostic| diagnostic.code == "E-NOTATION-RESERVED"),
+        "reserved glyph must refuse through the session"
+    );
+}

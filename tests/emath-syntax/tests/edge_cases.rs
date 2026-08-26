@@ -420,7 +420,7 @@ fn n2_notation_alias_clause_parses() {
     let source = "\
 package test.pkg
 
-notation infixl 40 \"⋅\" => core::math::dot alias \"*\"
+notation infixl 40 \"⋅\" => core::math::dot alias \"pw\"
 ";
     let (tree, diags) = parse_str(source);
     assert!(
@@ -438,7 +438,7 @@ notation infixl 40 \"⋅\" => core::math::dot alias \"*\"
         .expect("expected a Notation item");
     assert_eq!(
         notation.alias.as_deref(),
-        Some("*"),
+        Some("pw"),
         "alias clause should be captured"
     );
 }
@@ -511,7 +511,7 @@ notation postfix 90 \"†\" => core::math::conjugate
 
 notation infix 45 \"≡\" => core::logic::iff
 
-notation infixl 40 \"⊕\" => core::math::add alias \"++\"
+notation infixl 40 \"⊕\" => core::math::add alias \"plus\"
 ";
     let (tree, diags) = parse_str(source);
     assert!(
@@ -533,11 +533,13 @@ notation infixl 40 \"⊕\" => core::math::add alias \"++\"
         "expected 6 notation declarations, got {}",
         notations.len()
     );
-    // The last one should have an alias clause (N2).
+    // The last one should have an alias clause (N2: an alias is an
+    // alternative spelling, so it must lex as a single identifier —
+    // punctuation like `++` would silently re-lex as operators).
     assert_eq!(
         notations[5].alias.as_deref(),
-        Some("++"),
-        "last notation should have alias \"++\""
+        Some("plus"),
+        "last notation should have alias \"plus\""
     );
 }
 
@@ -1291,5 +1293,287 @@ emath function test(unit: Float64) -> Float64:
         !diags.has_errors(),
         "`unit` as identifier must parse, got: {:?}",
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Notation declarations (gap B): glyphs are typography (N5) and desugar to
+// calls of the canonical target at parse time, so syntax must expose the
+// target call shape and the precedence/governance contract.
+// ---------------------------------------------------------------------------
+
+/// Read a definition expression from the declaration item in the tree,
+/// skipping over any leading `notation` items (files may declare notation
+/// before the function that uses it).
+fn declaration_def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'a emath_core::tree::Expr> {
+    let item = tree
+        .items
+        .iter()
+        .find(|item| matches!(item, Item::Declaration(_)))?;
+    let emath_core::tree::Item::Declaration(decl) = item else {
+        return None;
+    };
+    for section in decl.sections() {
+        if section.name == "definitions" {
+            for stmt in &section.suite.statements {
+                match &stmt.kind {
+                    StmtKind::Let { name: n, value, .. } if n == name => return Some(value),
+                    StmtKind::Assign { target, value }
+                        if target.segments.first().is_some_and(|s| s == name) =>
+                    {
+                        return Some(value)
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
+
+fn assert_notation_call(expr: &emath_core::tree::Expr, target: &[&str], arity: usize) {
+    let ExprKind::Call { function, args } = &expr.kind else {
+        panic!("expected Call, got {:?}", expr.kind);
+    };
+    let ExprKind::Path { segments, .. } = &function.kind else {
+        panic!("call function must be a Path, got {:?}", function.kind);
+    };
+    let segments: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+    assert_eq!(segments, target, "call target must desugar to the canonical path");
+    assert_eq!(args.len(), arity, "call arity mismatch");
+}
+
+#[test]
+fn notation_glyph_use_desugars_to_canonical_call() {
+    // Order independence: the glyph is used before the declaration that
+    // binds it, and the use still desugars to `core::math::pow(x, y)`.
+    let source = "\
+emath function F:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = x ⊕ y
+notation infixl 40 \"⊕\" => core::math::pow
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "glyph use must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = declaration_def_expr(&tree, "r").expect("expected `r` binding");
+    assert_notation_call(expr, &["core", "math", "pow"], 2);
+}
+
+#[test]
+fn notation_alias_spelling_desugars_to_same_target() {
+    let source = "\
+emath function F:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = x pw y
+notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "alias use must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = declaration_def_expr(&tree, "r").expect("expected `r` binding");
+    assert_notation_call(expr, &["core", "math", "pow"], 2);
+}
+
+#[test]
+fn notation_custom_infix_binds_tighter_than_core_ladder() {
+    // Custom operators sit above the fixed core ladder
+    // (`CUSTOM_OP_MIN_PRECEDENCE = 11`), so `a ⊕ b * c` is
+    // `(a ⊕ b) * c` and `4 * x ⊕ 2` is `4 * (x ⊕ 2)`.
+    let source = "\
+emath function F:
+    inputs:
+        a: Float64
+        b: Float64
+        c: Float64
+        x: Float64
+    outputs:
+        p: Float64
+        q: Float64
+    definitions:
+        p = a ⊕ b * c
+        q = 4 * x ⊕ 2
+notation infixl 40 \"⊕\" => core::math::pow
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "custom precedence must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let p = declaration_def_expr(&tree, "p").expect("expected `p` binding");
+    let ExprKind::Binary { op: BinaryOp::Mul, left, right } = &p.kind else {
+        panic!("`a ⊕ b * c` must parse as (a ⊕ b) * c, got {:?}", p.kind);
+    };
+    assert_notation_call(left, &["core", "math", "pow"], 2);
+    assert!(matches!(right.kind, ExprKind::Path { .. }));
+
+    let q = declaration_def_expr(&tree, "q").expect("expected `q` binding");
+    let ExprKind::Binary { op: BinaryOp::Mul, left, right } = &q.kind else {
+        panic!("`4 * x ⊕ 2` must parse as 4 * (x ⊕ 2), got {:?}", q.kind);
+    };
+    assert!(matches!(left.kind, ExprKind::Int(_)));
+    assert_notation_call(right, &["core", "math", "pow"], 2);
+}
+
+#[test]
+fn notation_infixr_associates_right_and_infix_left() {
+    let source = "\
+emath function F:
+    inputs:
+        a: Float64
+        b: Float64
+        c: Float64
+    outputs:
+        r: Float64
+        s: Float64
+    definitions:
+        r = a ⊕ b ⊕ c
+        s = a ⊗ b ⊗ c
+notation infixr 40 \"⊕\" => core::math::pow
+notation infix 30 \"⊗\" => core::math::min
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "associativity must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    // infixr: a ⊕ (b ⊕ c)
+    let r = declaration_def_expr(&tree, "r").expect("expected `r` binding");
+    assert_notation_call(&r, &["core", "math", "pow"], 2);
+    let ExprKind::Call { function: _, args } = &r.kind else {
+        unreachable!()
+    };
+    assert_notation_call(&args[1], &["core", "math", "pow"], 2);
+    // infix (left-assoc): (a ⊗ b) ⊗ c
+    let s = declaration_def_expr(&tree, "s").expect("expected `s` binding");
+    let ExprKind::Call { args: s_args, .. } = &s.kind else {
+        panic!("expected Call, got {:?}", s.kind);
+    };
+    assert!(matches!(&s_args[0].kind, ExprKind::Call { .. }), "infix must be left-associative");
+}
+
+#[test]
+fn notation_prefix_and_postfix_desugar_to_unary_target_calls() {
+    let source = "\
+emath function F:
+    inputs:
+        a: Float64
+        b: Float64
+    outputs:
+        r: Float64
+        s: Float64
+    definitions:
+        r = √ a
+        s = b inv
+notation prefix 80 \"√\" => core::math::sqrt
+notation postfix 90 \"inv\" => core::math::recip
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "prefix/postfix glyphs must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let r = declaration_def_expr(&tree, "r").expect("expected `r` binding");
+    assert_notation_call(r, &["core", "math", "sqrt"], 1);
+    let s = declaration_def_expr(&tree, "s").expect("expected `s` binding");
+    assert_notation_call(s, &["core", "math", "recip"], 1);
+}
+
+#[test]
+fn notation_reserved_glyph_is_refused() {
+    // `or` is part of the core vocabulary (N3); no scoped rebinding.
+    let source = "\
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+notation prefix 90 \"or\" => core::logic::not
+";
+    let (_tree, diags) = parse_str(source);
+    let codes: Vec<_> = diags.errors().map(|e| e.code).collect();
+    assert!(
+        codes.contains(&"E-NOTATION-RESERVED"),
+        "reserved glyph must refuse with E-NOTATION-RESERVED, got {codes:?}"
+    );
+}
+
+#[test]
+fn notation_ambiguous_targets_are_refused() {
+    // The same glyph bound to two different targets is ambiguous (N4).
+    let source = "\
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+notation infixl 40 \"⊕\" => core::math::pow
+notation infixl 60 \"⊕\" => core::math::min
+";
+    let (_tree, diags) = parse_str(source);
+    let codes: Vec<_> = diags.errors().map(|e| e.code).collect();
+    assert!(
+        codes.contains(&"E-NOTATION-AMBIG"),
+        "conflicting redeclaration must refuse with E-NOTATION-AMBIG, got {codes:?}"
+    );
+}
+
+#[test]
+fn notation_precedence_below_custom_floor_is_refused() {
+    // The core ladder owns precedences 1..=10; a custom operator mapped
+    // inside it would silently never bind, so the declaration is
+    // refused with E-NOTATION-PRECEDENCE instead.
+    let source = "\
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+notation infixl 3 \"⊕\" => core::math::pow
+";
+    let (_tree, diags) = parse_str(source);
+    let codes: Vec<_> = diags.errors().map(|e| e.code).collect();
+    assert!(
+        codes.contains(&"E-NOTATION-PRECEDENCE"),
+        "core-ladder precedence must refuse with E-NOTATION-PRECEDENCE, got {codes:?}"
+    );
+}
+
+#[test]
+fn notation_punctuation_glyph_is_refused() {
+    // `!` lexes as its own token, never as a single identifier, so it
+    // cannot be a custom operator (E-NOTATION-GLYPH).
+    let source = "\
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+notation infixl 40 \"!\" => core::math::pow
+";
+    let (_tree, diags) = parse_str(source);
+    let codes: Vec<_> = diags.errors().map(|e| e.code).collect();
+    assert!(
+        codes.contains(&"E-NOTATION-GLYPH"),
+        "punctuation glyph must refuse with E-NOTATION-GLYPH, got {codes:?}"
     );
 }
