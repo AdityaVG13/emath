@@ -317,12 +317,20 @@ impl CanonicalParser<'_> {
                 let Some(escaped) = self.peek() else {
                     return Err(self.malformed());
                 };
-                name.push(char::from(escaped));
-                self.pos += 1;
+                match escaped {
+                    b'\\' | b'(' | b')' | b',' => {
+                        name.push(char::from(escaped));
+                        self.pos += 1;
+                    }
+                    _ => return Err(self.malformed()),
+                }
                 continue;
             }
             if byte == b')' || (stop_at_comma && byte == b',') {
                 return Ok(name);
+            }
+            if byte == b'(' || byte == b',' {
+                return Err(self.malformed());
             }
             let rest =
                 std::str::from_utf8(&self.bytes[self.pos..]).map_err(|_| self.malformed())?;

@@ -53,4 +53,10 @@ fn generated_parser_refuses_garbage_like_the_oracle() {
     assert!(semantic_genesis_worlds::Term::parse_canonical("apply(").is_err());
     assert!(emath_term::Term::parse_canonical("const(a) trailing").is_err());
     assert!(semantic_genesis_worlds::Term::parse_canonical("const(a) trailing").is_err());
+    // Nested-looking apply without an argument comma must refuse in both
+    // copies (unescaped `(` is not a name character).
+    assert!(emath_term::Term::parse_canonical("apply(const(ζ)").is_err());
+    assert!(semantic_genesis_worlds::Term::parse_canonical("apply(const(ζ)").is_err());
+    assert!(emath_term::Term::parse_canonical("var(\\n)").is_err());
+    assert!(semantic_genesis_worlds::Term::parse_canonical("var(\\n)").is_err());
 }

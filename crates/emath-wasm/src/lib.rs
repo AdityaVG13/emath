@@ -36,22 +36,14 @@ const AFFINE_SCORER: &str =
 const SUM_ONE_TO_FIVE: &str =
     include_str!("../../../language/examples/intro/sum-one-to-five.emath");
 const TENSOR_FACE: &str = include_str!("../../../language/examples/intro/tensor-face.emath");
-const VECTOR_GIVEN: &str =
-    include_str!("../../../language/examples/intro/vector-given.emath");
-const FACTORIAL: &str =
-    include_str!("../../../language/examples/intro/factorial.emath");
-const RANGE_SUM: &str =
-    include_str!("../../../language/examples/intro/range-sum.emath");
-const FORALL_EXISTS: &str =
-    include_str!("../../../language/examples/intro/forall-exists.emath");
-const INTEGRAL: &str =
-    include_str!("../../../language/examples/intro/integral.emath");
-const AUTODIFF: &str =
-    include_str!("../../../language/examples/intro/autodiff.emath");
-const SOLVE: &str =
-    include_str!("../../../language/examples/intro/solve.emath");
-const OPTIMIZE: &str =
-    include_str!("../../../language/examples/intro/optimize.emath");
+const VECTOR_GIVEN: &str = include_str!("../../../language/examples/intro/vector-given.emath");
+const FACTORIAL: &str = include_str!("../../../language/examples/intro/factorial.emath");
+const RANGE_SUM: &str = include_str!("../../../language/examples/intro/range-sum.emath");
+const FORALL_EXISTS: &str = include_str!("../../../language/examples/intro/forall-exists.emath");
+const INTEGRAL: &str = include_str!("../../../language/examples/intro/integral.emath");
+const AUTODIFF: &str = include_str!("../../../language/examples/intro/autodiff.emath");
+const SOLVE: &str = include_str!("../../../language/examples/intro/solve.emath");
+const OPTIMIZE: &str = include_str!("../../../language/examples/intro/optimize.emath");
 const CONSTRAINED_OPT: &str =
     include_str!("../../../language/examples/intro/constrained-opt.emath");
 
@@ -144,11 +136,23 @@ emath function DiagnosticsDemo:
 /// Curated examples served by the `examples` op.
 fn curated_examples() -> &'static [(&'static str, &'static str)] {
     &[
-        ("Tutorial 1: Quickstart & Scratchpad", TUTORIAL_01_QUICKSTART),
-        ("Tutorial 2: 2D Curve Plotter & Parameters", TUTORIAL_02_PLOTTER),
-        ("Tutorial 3: Math Intent & Typography", TUTORIAL_03_MATH_INTENT),
+        (
+            "Tutorial 1: Quickstart & Scratchpad",
+            TUTORIAL_01_QUICKSTART,
+        ),
+        (
+            "Tutorial 2: 2D Curve Plotter & Parameters",
+            TUTORIAL_02_PLOTTER,
+        ),
+        (
+            "Tutorial 3: Math Intent & Typography",
+            TUTORIAL_03_MATH_INTENT,
+        ),
         ("Tutorial 4: Stateful Scorer & Assertions", AFFINE_SCORER),
-        ("Tutorial 6: Diagnostics & Error Recovery", TUTORIAL_06_DIAGNOSTICS_DEMO),
+        (
+            "Tutorial 6: Diagnostics & Error Recovery",
+            TUTORIAL_06_DIAGNOSTICS_DEMO,
+        ),
         ("Hello Square (Classic)", HELLO_SQUARE),
         ("Sum 1 to 5", SUM_ONE_TO_FIVE),
         ("Tensor Face", TENSOR_FACE),
@@ -159,7 +163,7 @@ fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ("Integral (numerical integration)", INTEGRAL),
         ("Autodiff (forward-mode derivative)", AUTODIFF),
         ("Solve (Newton's method root-finding)", SOLVE),
-        ("Optimize (gradient descent)", OPTIMIZE),
+        ("Optimize (Newton on ∇f = 0)", OPTIMIZE),
         ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
     ]
 }
@@ -281,9 +285,7 @@ fn parse_given_field(value: &JsonValue) -> Option<BTreeMap<String, Value>> {
 /// matrices (array-of-arrays), and tensors (`{ shape, data }`).
 fn parse_json_value(entry: &JsonValue) -> Option<Value> {
     match entry {
-        JsonValue::Num(text) | JsonValue::Str(text) => {
-            text.parse::<f64>().ok().map(Value::F64)
-        }
+        JsonValue::Num(text) | JsonValue::Str(text) => text.parse::<f64>().ok().map(Value::F64),
         JsonValue::Bool(flag) => Some(Value::Bool(*flag)),
         JsonValue::Arr(list) => parse_json_array(list),
         JsonValue::Obj(entries) => parse_json_tensor(entries),
@@ -326,7 +328,11 @@ fn parse_json_array(list: &[JsonValue]) -> Option<Value> {
                 data.push(n);
             }
         }
-        Some(Value::Matrix { rows, cols: cols?, data })
+        Some(Value::Matrix {
+            rows,
+            cols: cols?,
+            data,
+        })
     } else {
         None
     }
@@ -336,11 +342,23 @@ fn parse_json_tensor(entries: &[(String, JsonValue)]) -> Option<Value> {
     let shape = entries
         .iter()
         .find(|(k, _)| k == "shape")
-        .and_then(|(_, v)| if let JsonValue::Arr(s) = v { Some(s) } else { None })?;
+        .and_then(|(_, v)| {
+            if let JsonValue::Arr(s) = v {
+                Some(s)
+            } else {
+                None
+            }
+        })?;
     let data = entries
         .iter()
         .find(|(k, _)| k == "data")
-        .and_then(|(_, v)| if let JsonValue::Arr(d) = v { Some(d) } else { None })?;
+        .and_then(|(_, v)| {
+            if let JsonValue::Arr(d) = v {
+                Some(d)
+            } else {
+                None
+            }
+        })?;
     let shape: Vec<usize> = shape
         .iter()
         .map(|s| match s {
@@ -1067,9 +1085,9 @@ emath function square(x: Float64) -> Float64:
         // generated test fn: the embedded `emath_rt` module may legitimately
         // contain `assert!` (e.g. Simpson's even-steps guard), which is a
         // runtime precondition, not a claim about this example.
-        let at = json.find("fn square_three_squared").expect(
-            "generated crate must contain the worked-example test fn",
-        );
+        let at = json
+            .find("fn square_three_squared")
+            .expect("generated crate must contain the worked-example test fn");
         let test_tail = &json[at..];
         assert!(!test_tail.contains("assert!"), "{json}");
         assert!(test_tail.contains("let _ ="), "{json}");
@@ -1230,7 +1248,10 @@ emath function square(x: Float64) -> Float64:
         let given_str_refs: Vec<(&str, &str)> =
             given_pairs.iter().map(|(k, v)| (*k, v.as_str())).collect();
         let wasm_json = run_envelope(source, Some(&given_str_refs));
-        assert!(wasm_json.contains("\"ok\": true"), "wasm failed: {wasm_json}");
+        assert!(
+            wasm_json.contains("\"ok\": true"),
+            "wasm failed: {wasm_json}"
+        );
 
         let doc = parse_json_document(&wasm_json).expect("valid wasm json");
         let decls = match doc.field("declarations").expect("declarations") {
@@ -1301,14 +1322,22 @@ emath function square(x: Float64) -> Float64:
                             let JsonValue::Arr(list) = json_val else {
                                 panic!("unexpected json value for vector `{key}`");
                             };
-                            assert_eq!(list.len(), expected.len(), "vector length mismatch for `{key}`");
+                            assert_eq!(
+                                list.len(),
+                                expected.len(),
+                                "vector length mismatch for `{key}`"
+                            );
                             for (entry, want) in list.iter().zip(expected) {
                                 let got: f64 = match entry {
                                     JsonValue::Num(text) => text.parse().expect("valid f64"),
                                     JsonValue::Str(text) => text.parse().expect("valid f64"),
                                     _ => panic!("unexpected vector element for `{key}`"),
                                 };
-                                assert_eq!(got.to_bits(), want.to_bits(), "vector mismatch for `{key}`");
+                                assert_eq!(
+                                    got.to_bits(),
+                                    want.to_bits(),
+                                    "vector mismatch for `{key}`"
+                                );
                             }
                         }
                         Value::Matrix { rows, cols, data } => {
@@ -1328,7 +1357,11 @@ emath function square(x: Float64) -> Float64:
                                         _ => panic!("unexpected matrix cell for `{key}`"),
                                     };
                                     let want = data[row_index * cols + col_index];
-                                    assert_eq!(got.to_bits(), want.to_bits(), "matrix mismatch for `{key}`");
+                                    assert_eq!(
+                                        got.to_bits(),
+                                        want.to_bits(),
+                                        "matrix mismatch for `{key}`"
+                                    );
                                 }
                             }
                         }
@@ -1352,25 +1385,43 @@ emath function square(x: Float64) -> Float64:
                             let JsonValue::Arr(data_list) = data_json else {
                                 panic!("tensor data must be an array for `{key}`");
                             };
-                            assert_eq!(shape_list.len(), shape.len(), "tensor rank mismatch for `{key}`");
-                            assert_eq!(data_list.len(), data.len(), "tensor data mismatch for `{key}`");
+                            assert_eq!(
+                                shape_list.len(),
+                                shape.len(),
+                                "tensor rank mismatch for `{key}`"
+                            );
+                            assert_eq!(
+                                data_list.len(),
+                                data.len(),
+                                "tensor data mismatch for `{key}`"
+                            );
                         }
                         Value::Complex { re, im } => {
                             let JsonValue::Obj(map) = json_val else {
                                 panic!("unexpected json value for complex `{key}`");
                             };
-                            let got_re: f64 = match map.iter().find(|(k, _)| k == "re").map(|(_, v)| v) {
-                                Some(JsonValue::Num(t)) => t.parse().expect("valid f64"),
-                                Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
-                                _ => panic!("missing re for complex `{key}`"),
-                            };
-                            let got_im: f64 = match map.iter().find(|(k, _)| k == "im").map(|(_, v)| v) {
-                                Some(JsonValue::Num(t)) => t.parse().expect("valid f64"),
-                                Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
-                                _ => panic!("missing im for complex `{key}`"),
-                            };
-                            assert_eq!(got_re.to_bits(), re.to_bits(), "complex re mismatch for `{key}`");
-                            assert_eq!(got_im.to_bits(), im.to_bits(), "complex im mismatch for `{key}`");
+                            let got_re: f64 =
+                                match map.iter().find(|(k, _)| k == "re").map(|(_, v)| v) {
+                                    Some(JsonValue::Num(t)) => t.parse().expect("valid f64"),
+                                    Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
+                                    _ => panic!("missing re for complex `{key}`"),
+                                };
+                            let got_im: f64 =
+                                match map.iter().find(|(k, _)| k == "im").map(|(_, v)| v) {
+                                    Some(JsonValue::Num(t)) => t.parse().expect("valid f64"),
+                                    Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
+                                    _ => panic!("missing im for complex `{key}`"),
+                                };
+                            assert_eq!(
+                                got_re.to_bits(),
+                                re.to_bits(),
+                                "complex re mismatch for `{key}`"
+                            );
+                            assert_eq!(
+                                got_im.to_bits(),
+                                im.to_bits(),
+                                "complex im mismatch for `{key}`"
+                            );
                         }
                     }
                 }
@@ -1518,10 +1569,7 @@ emath policy AffineTransform:
             (0.5, 0.25, -1.5),
         ];
         for &(scale, bias, x) in test_cases {
-            assert_native_wasm_parity(
-                source,
-                &[("scale", scale), ("bias", bias), ("x", x)],
-            );
+            assert_native_wasm_parity(source, &[("scale", scale), ("bias", bias), ("x", x)]);
         }
     }
 
@@ -1622,16 +1670,10 @@ emath policy AffineTransform:
                 "diagnostic count mismatch for source: {source}"
             );
 
-            for (wasm_diag, native_diag) in
-                diags.iter().zip(native_result.diagnostics.items())
-            {
+            for (wasm_diag, native_diag) in diags.iter().zip(native_result.diagnostics.items()) {
                 let code = wasm_diag.string_field("code").expect("code string");
-                let message = wasm_diag
-                    .string_field("message")
-                    .expect("message string");
-                let severity = wasm_diag
-                    .string_field("severity")
-                    .expect("severity string");
+                let message = wasm_diag.string_field("message").expect("message string");
+                let severity = wasm_diag.string_field("severity").expect("severity string");
 
                 assert_eq!(code, native_diag.code);
                 assert_eq!(message, native_diag.message);

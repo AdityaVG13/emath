@@ -258,7 +258,9 @@ impl CanonicalParser<'_> {
     }
 
     /// Reads an escaped name up to its terminator: `)` for `var`/`const`
-    /// names, `,` or `)` for operator names.
+    /// names, `,` or `)` for operator names. Only `\\ \( \) \,` are
+    /// escapes; unescaped `(` (and `,` in `var`/`const` names) is
+    /// refused so `apply(const(ζ)` cannot flatten into an operator name.
     fn parse_name(&mut self, stop_at_comma: bool) -> Result<String, CanonicalError> {
         let mut name = String::new();
         while let Some(byte) = self.peek() {
@@ -267,12 +269,20 @@ impl CanonicalParser<'_> {
                 let Some(escaped) = self.peek() else {
                     return Err(self.malformed());
                 };
-                name.push(char::from(escaped));
-                self.pos += 1;
+                match escaped {
+                    b'\\' | b'(' | b')' | b',' => {
+                        name.push(char::from(escaped));
+                        self.pos += 1;
+                    }
+                    _ => return Err(self.malformed()),
+                }
                 continue;
             }
             if byte == b')' || (stop_at_comma && byte == b',') {
                 return Ok(name);
+            }
+            if byte == b'(' || byte == b',' {
+                return Err(self.malformed());
             }
             let Ok(rest) = std::str::from_utf8(&self.bytes[self.pos..]) else {
                 return Err(self.malformed());

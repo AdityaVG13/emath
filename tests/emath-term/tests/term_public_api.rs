@@ -22,6 +22,33 @@ fn sample_term() -> Term {
     }
 }
 
+fn assert_round_trip(term: Term) {
+    let canonical = term.canonical();
+    let parsed = Term::parse_canonical(&canonical)
+        .unwrap_or_else(|err| panic!("parse failed for {canonical:?}: {err:?}"));
+    assert_eq!(parsed, term, "parse(canonical(t)) != t for {canonical}");
+    assert_eq!(
+        parsed.canonical(),
+        canonical,
+        "canonical not stable for {canonical}"
+    );
+}
+
+fn var(name: &str) -> Term {
+    Term::Variable(VariableId(name.to_string()))
+}
+
+fn constant(name: &str) -> Term {
+    Term::Constant(SymbolId(name.to_string()))
+}
+
+fn apply(op: &str, arguments: Vec<Term>) -> Term {
+    Term::Apply {
+        operator: SymbolId(op.to_string()),
+        arguments,
+    }
+}
+
 #[test]
 fn canonical_round_trip_is_byte_exact() {
     let term = sample_term();
@@ -29,6 +56,61 @@ fn canonical_round_trip_is_byte_exact() {
     let parsed = Term::parse_canonical(&canonical).expect("canonical form must re-parse");
     assert_eq!(parsed, term);
     assert_eq!(parsed.canonical(), canonical);
+}
+
+/// G2 identity on constructors the ASCII sample term never built.
+#[test]
+fn canonical_round_trip_untested_constructors() {
+    assert_round_trip(constant("ζ"));
+    assert_round_trip(apply("ζ", vec![]));
+    assert_round_trip(var("("));
+    assert_round_trip(var("a,b"));
+    assert_round_trip(var("\\n"));
+    assert_round_trip(apply("f(g,h)", vec![constant("ζ")]));
+    assert_round_trip(apply(
+        "⊛",
+        vec![
+            apply("⧖", vec![apply("⋈", vec![var("a"), var("b")])]),
+            constant("ζ"),
+        ],
+    ));
+    assert_round_trip(apply(
+        "apply",
+        vec![apply("f", vec![]), apply("const", vec![constant("a")])],
+    ));
+}
+
+#[test]
+fn nested_looking_apply_is_not_flattened_into_an_operator_name() {
+    // `apply(const(ζ)` looks like apply wrapping const(ζ). parse_name used
+    // to treat unescaped `(` as a name character, so this succeeded as
+    // Apply { operator: "const(ζ", arguments: [] } — nested structure lost.
+    assert!(matches!(
+        Term::parse_canonical("apply(const(ζ)"),
+        Err(CanonicalError::Malformed { .. })
+    ));
+    assert!(matches!(
+        Term::parse_canonical("apply(var(x)"),
+        Err(CanonicalError::Malformed { .. })
+    ));
+    // Unknown escapes used to drop the backslash (`var(\n)` → var(n)).
+    assert!(matches!(
+        Term::parse_canonical("var(\\n)"),
+        Err(CanonicalError::Malformed { .. })
+    ));
+    assert!(matches!(
+        Term::parse_canonical("const(\\ζ)"),
+        Err(CanonicalError::Malformed { .. })
+    ));
+    assert!(matches!(
+        Term::parse_canonical("var(a,b)"),
+        Err(CanonicalError::Malformed { .. })
+    ));
+    // The honest nested and escaped forms still round-trip.
+    assert_round_trip(apply("f", vec![constant("ζ")]));
+    assert_round_trip(apply("const(ζ", vec![]));
+    assert_round_trip(var("a,b"));
+    assert_round_trip(var("\\n"));
 }
 
 #[test]

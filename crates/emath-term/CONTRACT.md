@@ -20,8 +20,9 @@
 
 - Every symbol used in a term must have a declared arity; applications must match that arity.
 - A symbol may be declared with only one, consistent arity.
-- `canonical` shapes are `var(...)`, `const(...)`, `apply(operator,arg,...)` with `\( \) \,` escaping, round-tripping byte-exactly.
+- `canonical` shapes are `var(...)`, `const(...)`, `apply(operator,arg,...)` with `\\ \( \) \,` escaping, round-tripping byte-exactly.
 - `parse_canonical` rejects trailing non-whitespace content after the term.
+- `parse_canonical` refuses unknown escapes and unescaped `(` (and unescaped `,` in `var`/`const` names), so nested-looking forms such as `apply(const(ζ)` are not flattened into an operator name.
 
 ## Error model
 

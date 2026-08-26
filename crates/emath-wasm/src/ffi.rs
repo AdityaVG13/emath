@@ -25,7 +25,9 @@ static LIVE_ALLOCS: LazyLock<Mutex<HashMap<u32, u32>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn live_allocs_lock() -> std::sync::MutexGuard<'static, HashMap<u32, u32>> {
-    LIVE_ALLOCS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    LIVE_ALLOCS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Install a panic hook that formats panic info cleanly.
@@ -74,7 +76,10 @@ mod host_alloc {
         // (site 1).
         let mut buf = vec![0u8; len as usize];
         let capacity = buf.capacity();
-        debug_assert_eq!(capacity, len as usize, "exact-capacity invariant (ffi host shim)");
+        debug_assert_eq!(
+            capacity, len as usize,
+            "exact-capacity invariant (ffi host shim)"
+        );
         let ptr = buf.as_mut_ptr();
         std::mem::forget(buf);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -115,7 +120,8 @@ mod host_alloc {
         let map = ALLOCATIONS
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.get(&ptr).map_or(std::ptr::null(), |&(addr, _)| addr as *const u8)
+        map.get(&ptr)
+            .map_or(std::ptr::null(), |&(addr, _)| addr as *const u8)
     }
 }
 
@@ -142,7 +148,10 @@ fn alloc_region(len: u32) -> (u32, usize) {
         // over-allocate, so the capacity coupling is sound.
         let mut buf = vec![0u8; len as usize];
         let capacity = buf.capacity();
-        debug_assert_eq!(capacity, len as usize, "exact-capacity invariant (ffi site 1)");
+        debug_assert_eq!(
+            capacity, len as usize,
+            "exact-capacity invariant (ffi site 1)"
+        );
         let ptr = buf.as_mut_ptr();
         // Invariant, no `unsafe` block here (safe calls, unsafe-adjacent):
         // `mem::forget(buf)` leaks the allocation until `em_free`. Leak-until-
@@ -190,34 +199,34 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
         return;
     };
     let _ = len; // host report ignored; drop uses mint capacity `cap`
-    // SAFETY: `Vec::from_raw_parts(ptr, 0, cap)` reconstructs ownership of a
-    // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
-    //
-    // (0) Invariant locally enforced by LIVE_ALLOCS membership (single-
-    //     threaded wasm; Mutex uncontended): this block runs only on
-    //     addresses this module minted and still owes, exactly-once.
-    //     Foreign/double/stale pointers never reach this block.
-    // (1) Valid ownership: `ptr` is a live mint from `em_alloc`, still
-    //     leaked and not double-freed (guard, step 0). Reconstructing it
-    //     here transfers that responsibility back to the Vec, whose drop
-    //     now frees it.
-    // (2) Capacity coupling: `cap` is the exact capacity recorded when
-    //     `vec![0; len]` minted this region (sized repeat ⇒ capacity ==
-    //     requested len). `from_raw_parts(ptr, 0, cap)` matches the
-    //     allocator footprint; the host's `len` argument is not used for
-    //     the drop size, so a mismatched report cannot induce UB.
-    // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
-    //     the zero-length (null) allocation is never reconstructed here.
-    // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
-    //     drops the Vec by binding.
-    // Residual: if the guard and reality disagree (allocator swap, memory
-    //     corruption) such that a registered `ptr`'s backing no longer
-    //     matches the stored capacity, `from_raw_parts` can panic/UB. The
-    //     guard enforces minted-and-owed + recorded capacity, not the
-    //     allocator's physical layout against external corruption.
-    // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0–2)
-    // and `alloc_region`'s exact-capacity construction. Failure = host
-    // feeding a foreign/double pair or memory corruption, not a library bug.
+                 // SAFETY: `Vec::from_raw_parts(ptr, 0, cap)` reconstructs ownership of a
+                 // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
+                 //
+                 // (0) Invariant locally enforced by LIVE_ALLOCS membership (single-
+                 //     threaded wasm; Mutex uncontended): this block runs only on
+                 //     addresses this module minted and still owes, exactly-once.
+                 //     Foreign/double/stale pointers never reach this block.
+                 // (1) Valid ownership: `ptr` is a live mint from `em_alloc`, still
+                 //     leaked and not double-freed (guard, step 0). Reconstructing it
+                 //     here transfers that responsibility back to the Vec, whose drop
+                 //     now frees it.
+                 // (2) Capacity coupling: `cap` is the exact capacity recorded when
+                 //     `vec![0; len]` minted this region (sized repeat ⇒ capacity ==
+                 //     requested len). `from_raw_parts(ptr, 0, cap)` matches the
+                 //     allocator footprint; the host's `len` argument is not used for
+                 //     the drop size, so a mismatched report cannot induce UB.
+                 // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
+                 //     the zero-length (null) allocation is never reconstructed here.
+                 // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
+                 //     drops the Vec by binding.
+                 // Residual: if the guard and reality disagree (allocator swap, memory
+                 //     corruption) such that a registered `ptr`'s backing no longer
+                 //     matches the stored capacity, `from_raw_parts` can panic/UB. The
+                 //     guard enforces minted-and-owed + recorded capacity, not the
+                 //     allocator's physical layout against external corruption.
+                 // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0–2)
+                 // and `alloc_region`'s exact-capacity construction. Failure = host
+                 // feeding a foreign/double pair or memory corruption, not a library bug.
     #[cfg(target_arch = "wasm32")]
     unsafe {
         let _ = Vec::from_raw_parts(ptr as *mut u8, 0, cap as usize);
