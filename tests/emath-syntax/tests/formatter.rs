@@ -2,6 +2,7 @@
 //! `crates/emath-syntax/src/formatter.rs`).
 
 use emath_core::limits::Limits;
+use emath_core::tree::{BinaryOp, Expr, ExprKind, Item, StmtKind};
 use emath_core::FileId;
 use emath_syntax::formatter::format;
 use emath_syntax::parse_lossless;
@@ -229,4 +230,168 @@ emath function P:
         "quoted form must round-trip: {once}"
     );
     assert_eq!(format_once(&once), once, "fmt(fmt(s)) must equal fmt(s)");
+}
+
+fn def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'a Expr> {
+    let item = tree.items.iter().find_map(|item| match item {
+        Item::Declaration(decl) => Some(decl),
+        _ => None,
+    })?;
+    for section in item.sections() {
+        if section.name != "definitions" {
+            continue;
+        }
+        for stmt in &section.suite.statements {
+            match &stmt.kind {
+                StmtKind::Let { name: n, value, .. } if n == name => return Some(value),
+                StmtKind::Assign { target, value }
+                    if target.segments.first().is_some_and(|s| s == name) =>
+                {
+                    return Some(value);
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// parse(print(parse(src))) must keep tree identity: rationals, grouping,
+/// colon-form conditionals, escaped strings, and `#` comments.
+#[test]
+fn parse_print_parse_preserves_tree() {
+    let source = "\
+# keep this comment
+emath function f(a: Float64, b: Float64, c: Float64, x: Float64, v: Float64) -> Float64:
+    definitions:
+        r = 3//7
+        q = 3//2 s
+        d = a - (b - c)
+        p = (a ^ b) ^ c
+        s = if x > 0: 1 else: 0
+        dv = derivative (v + v)
+        msg = \"say \\\"hi\\\"\"
+        t = (a,)
+";
+    let parsed = parse_lossless(source, FileId(0), &Limits::default());
+    assert!(
+        !parsed.diagnostics.has_errors(),
+        "fixture must parse: {:?}",
+        parsed
+            .diagnostics
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
+    );
+    let printed = format(&parsed.tree, &parsed.comments);
+    assert!(
+        printed.contains("# keep this comment"),
+        "formatter claims to keep comments, got {printed}"
+    );
+    assert!(
+        printed.contains("3//7"),
+        "rational 3//7 must print, got {printed}"
+    );
+    assert!(
+        printed.contains("if x > 0: 1 else: 0"),
+        "conditional must print colon form, not `then`: {printed}"
+    );
+    assert!(
+        !printed.contains(" then "),
+        "conditional must not print the non-keyword `then`: {printed}"
+    );
+
+    let rebound = parse_lossless(&printed, FileId(0), &Limits::default());
+    assert!(
+        !rebound.diagnostics.has_errors(),
+        "print must parse back: {:?}\nprinted:\n{printed}",
+        rebound
+            .diagnostics
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        format(&rebound.tree, &rebound.comments),
+        printed,
+        "fmt(fmt(s)) must equal fmt(s)"
+    );
+
+    let r = def_expr(&rebound.tree, "r").expect("r");
+    assert!(
+        matches!(&r.kind, ExprKind::Rational { numer, denom } if numer == "3" && denom == "7"),
+        "3//7 must remain Rational, got {:?}",
+        r.kind
+    );
+
+    let q = def_expr(&rebound.tree, "q").expect("q");
+    let ExprKind::Quantity { value, .. } = &q.kind else {
+        panic!("3//2 s must remain Quantity, got {:?}", q.kind);
+    };
+    assert!(
+        matches!(&value.kind, ExprKind::Rational { numer, denom } if numer == "3" && denom == "2"),
+        "quantity value must stay Rational 3//2, got {:?}",
+        value.kind
+    );
+
+    let d = def_expr(&rebound.tree, "d").expect("d");
+    let ExprKind::Binary {
+        op: BinaryOp::Sub,
+        right,
+        ..
+    } = &d.kind
+    else {
+        panic!("d must stay subtraction, got {:?}", d.kind);
+    };
+    assert!(
+        matches!(&right.kind, ExprKind::Binary { op: BinaryOp::Sub, .. }),
+        "a - (b - c) must not flatten to (a - b) - c, got {:?}",
+        d.kind
+    );
+
+    let p = def_expr(&rebound.tree, "p").expect("p");
+    let ExprKind::Binary {
+        op: BinaryOp::Pow,
+        left,
+        ..
+    } = &p.kind
+    else {
+        panic!("p must stay power, got {:?}", p.kind);
+    };
+    assert!(
+        matches!(&left.kind, ExprKind::Binary { op: BinaryOp::Pow, .. }),
+        "(a ^ b) ^ c must keep left grouping, got {:?}",
+        p.kind
+    );
+
+    let s = def_expr(&rebound.tree, "s").expect("s");
+    assert!(
+        matches!(&s.kind, ExprKind::If { .. }),
+        "colon-form if must reparse as If, got {:?}",
+        s.kind
+    );
+
+    let dv = def_expr(&rebound.tree, "dv").expect("dv");
+    let ExprKind::Derivative { value, .. } = &dv.kind else {
+        panic!("dv must stay Derivative, got {:?}", dv.kind);
+    };
+    assert!(
+        matches!(&value.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        "derivative (v + v) must not become (derivative v) + v, got {:?}",
+        dv.kind
+    );
+
+    let msg = def_expr(&rebound.tree, "msg").expect("msg");
+    assert!(
+        matches!(&msg.kind, ExprKind::Str(text) if text == "say \"hi\""),
+        "escaped quotes must round-trip, got {:?}",
+        msg.kind
+    );
+
+    let t = def_expr(&rebound.tree, "t").expect("t");
+    assert!(
+        matches!(&t.kind, ExprKind::Tuple(items) if items.len() == 1),
+        "1-tuple (a,) must not collapse to grouping, got {:?}",
+        t.kind
+    );
 }

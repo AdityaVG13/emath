@@ -566,7 +566,10 @@ impl super::Parser {
                     // syntax.  List/tuple/path primaries still accept `[]`.
                     if matches!(
                         &value.kind,
-                        ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Quantity { .. }
+                        ExprKind::Int(_)
+                            | ExprKind::Float(_)
+                            | ExprKind::Rational { .. }
+                            | ExprKind::Quantity { .. }
                     ) {
                         break;
                     }
@@ -676,8 +679,12 @@ impl super::Parser {
             }
         }
         // Quantity literal: numeric literal followed by a unit identifier.
+        // Grammar: (integer | decimal | rational_literal) whitespace path.
         if let TokenKind::Ident(unit) = self.peek().clone() {
-            if matches!(&value.kind, ExprKind::Int(_) | ExprKind::Float(_)) {
+            if matches!(
+                &value.kind,
+                ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Rational { .. }
+            ) {
                 self.advance();
                 let source = value.source.cover(self.last_span());
                 value = Expr {
@@ -694,7 +701,10 @@ impl super::Parser {
         // follows a numeric literal, so we handle it here.
         if matches!(
             &value.kind,
-            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Quantity { .. }
+            ExprKind::Int(_)
+                | ExprKind::Float(_)
+                | ExprKind::Rational { .. }
+                | ExprKind::Quantity { .. }
         ) {
             if matches!(self.peek(), TokenKind::LBracket) {
                 if let Some(unit_expr) = self.parse_unit_bracket(depth) {
@@ -812,10 +822,36 @@ impl super::Parser {
         match self.peek().clone() {
             TokenKind::Int(text) => {
                 self.advance();
-                Some(Expr {
-                    kind: ExprKind::Int(text),
-                    source: start,
-                })
+                // `rational_literal = integer "//" integer` (surface.ebnf).
+                // `//` lexes as SlashSlash; fold here so `3//7` is one
+                // primary, not Int("3") plus a leftover `//`.
+                if matches!(self.peek(), TokenKind::SlashSlash) {
+                    self.advance();
+                    match self.peek().clone() {
+                        TokenKind::Int(denom) => {
+                            self.advance();
+                            Some(Expr {
+                                kind: ExprKind::Rational { numer: text, denom },
+                                source: start.cover(self.last_span()),
+                            })
+                        }
+                        other => {
+                            self.error_here(
+                                "E-SYN-101",
+                                format!(
+                                    "exact rational `//` requires an integer denominator, found {}",
+                                    other.describe()
+                                ),
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    Some(Expr {
+                        kind: ExprKind::Int(text),
+                        source: start,
+                    })
+                }
             }
             TokenKind::Float(text) => {
                 self.advance();
@@ -1276,15 +1312,22 @@ impl super::Parser {
         }
         let mut arms = Vec::new();
         let else_arm;
-        // Suppress `|` as `or` so it acts as arm delimiter.
+        // `|` is an arm delimiter here, not `or`.
         self.suppress_pipe_or = true;
         loop {
             self.skip_newlines();
             if !self.eat(&TokenKind::Pipe) {
-                self.error_here(
-                    "E-SYN-110",
-                    "expected `|` to start a cases arm",
-                );
+                self.suppress_pipe_or = false;
+                if arms.is_empty() {
+                    self.error_here("E-SYN-110", "expected `|` to start a cases arm");
+                } else {
+                    // Totality is `| else => ...`. After a condition arm a
+                    // missing `|` is a missing else, not another arm.
+                    self.error_here(
+                        "E-SYN-110",
+                        "cases expression requires a mandatory `else` arm",
+                    );
+                }
                 return None;
             }
             self.skip_newlines();
@@ -1292,6 +1335,7 @@ impl super::Parser {
             if matches!(self.peek(), TokenKind::Keyword(Keyword::Else)) {
                 self.advance(); // `else`
                 if !self.eat(&TokenKind::Arrow) {
+                    self.suppress_pipe_or = false;
                     self.error_here(
                         "E-SYN-101",
                         "expected `=>` after `else` in cases arm",
@@ -1299,13 +1343,20 @@ impl super::Parser {
                     return None;
                 }
                 self.skip_newlines();
-                let value = self.parse_expr_depth(depth + 1)?;
+                let Some(value) = self.parse_expr_depth(depth + 1) else {
+                    self.suppress_pipe_or = false;
+                    return None;
+                };
                 else_arm = Some(Box::new(value));
                 break;
             }
             // Regular arm: `| condition => value`
-            let condition = self.parse_expr_depth(depth + 1)?;
+            let Some(condition) = self.parse_expr_depth(depth + 1) else {
+                self.suppress_pipe_or = false;
+                return None;
+            };
             if !self.eat(&TokenKind::Arrow) {
+                self.suppress_pipe_or = false;
                 self.error_here(
                     "E-SYN-101",
                     "expected `=>` in cases arm",
@@ -1313,10 +1364,12 @@ impl super::Parser {
                 return None;
             }
             self.skip_newlines();
-            let value = self.parse_expr_depth(depth + 1)?;
+            let Some(value) = self.parse_expr_depth(depth + 1) else {
+                self.suppress_pipe_or = false;
+                return None;
+            };
             arms.push((condition, value));
         }
-        // Restore `|` as `or` operator.
         self.suppress_pipe_or = false;
         let Some(else_arm) = else_arm else {
             self.error_here(

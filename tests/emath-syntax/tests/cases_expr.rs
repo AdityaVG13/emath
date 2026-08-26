@@ -94,9 +94,27 @@ emath function f(x: Float64) -> Float64:
             | x < 0 => -1
 ";
     let (_, diags) = parse_str(source);
+    let errors: Vec<_> = diags.errors().collect();
     assert!(
-        diags.errors().next().is_some(),
-        "cases without else arm must be a parse error"
+        errors.iter().any(|d| d.code == "E-SYN-110"
+            && d.message.contains("else")),
+        "missing else must be E-SYN-110 naming the else arm, got {errors:?}"
+    );
+}
+
+#[test]
+fn cases_empty_body_expects_arm_pipe() {
+    let source = "\
+emath function f(x: Float64) -> Float64:
+    definitions:
+        f = cases x:
+";
+    let (_, diags) = parse_str(source);
+    let errors: Vec<_> = diags.errors().collect();
+    assert!(
+        errors.iter().any(|d| d.code == "E-SYN-110"
+            && d.message.contains("expected `|`")),
+        "empty cases body must be E-SYN-110 expecting an arm, got {errors:?}"
     );
 }
 

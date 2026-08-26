@@ -7,8 +7,8 @@
 use crate::token::Comment;
 use crate::tree::{
     Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration,
-    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, Section, Stmt, StmtKind,
-    Suite, SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
+    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, Section, Stmt, StmtKind, Suite,
+    SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
 };
 
 mod expr;
@@ -30,6 +30,26 @@ pub enum Prec {
     Power,
     Unary,
     Atomic,
+}
+
+impl Prec {
+    /// Next tighter level. Used so equal-precedence children keep the
+    /// parentheses the parser needs for left vs right associativity.
+    #[must_use]
+    pub(super) const fn tighter(self) -> Self {
+        match self {
+            Self::Root => Self::Iff,
+            Self::Iff => Self::Imply,
+            Self::Imply => Self::Or,
+            Self::Or => Self::And,
+            Self::And => Self::Comparison,
+            Self::Comparison => Self::Additive,
+            Self::Additive => Self::Multiplicative,
+            Self::Multiplicative => Self::Power,
+            Self::Power => Self::Unary,
+            Self::Unary | Self::Atomic => Self::Atomic,
+        }
+    }
 }
 
 /// Format the tree. `comments` come from `lex_with_comments`.
@@ -154,7 +174,7 @@ fn format_notation(out: &mut String, notation: &NotationDecl, level: usize) {
     out.push('\n');
 }
 
-fn push_string_literal(out: &mut String, text: &str) {
+pub(super) fn push_string_literal(out: &mut String, text: &str) {
     out.push('"');
     for ch in text.chars() {
         match ch {
@@ -656,13 +676,21 @@ pub fn format_type(out: &mut String, ty: &TypeExpr) {
             out.push('&');
             format_type(out, inner);
         }
-        TypeKind::Product(items) => {
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    out.push_str(" * ");
-                }
-                format_type(out, item);
+        TypeKind::Product { left, op, right } => {
+            format_type(out, left);
+            out.push_str(op.as_str());
+            format_type(out, right);
+        }
+        TypeKind::Pow { base, exponent } => {
+            if matches!(base.kind, TypeKind::Product { .. }) {
+                out.push('(');
+                format_type(out, base);
+                out.push(')');
+            } else {
+                format_type(out, base);
             }
+            out.push('^');
+            out.push_str(&exponent.to_string());
         }
         TypeKind::In { base, unit } => {
             format_type(out, base);

@@ -254,7 +254,19 @@ pub enum TypeKind {
     List(Vec<TypeExpr>),
     Tuple(Vec<TypeExpr>),
     Ref(Box<TypeExpr>),
-    Product(Vec<TypeExpr>),
+    /// Left-associative `*` / `/` in a type (`m/s`, `m*m`).
+    /// Operators are recorded so `m*m` is area, not a quotient, and
+    /// `m/s*s` is length (C2), not acceleration.
+    Product {
+        left: Box<TypeExpr>,
+        op: TypeProductOp,
+        right: Box<TypeExpr>,
+    },
+    /// Unit power in a type (`m^2`).
+    Pow {
+        base: Box<TypeExpr>,
+        exponent: i32,
+    },
     /// `Float64 in m` / `Float64 in m/s`: a numeric type with a unit annotation.
     In {
         base: Box<TypeExpr>,
@@ -267,6 +279,26 @@ pub enum TypeKind {
         lo: Box<Expr>,
         hi: Box<Expr>,
     },
+}
+
+/// `*` or `/` between type factors in a unit annotation (`m/s`, `m*m`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TypeProductOp {
+    /// `a * b`.
+    Mul,
+    /// `a / b`.
+    Div,
+}
+
+impl TypeProductOp {
+    /// Surface spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mul => "*",
+            Self::Div => "/",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -307,9 +339,11 @@ impl UnitExpr {
                 }
                 result
             }
-            Self::Pow(base, exponent) => {
-                base.flatten().into_iter().map(|(name, p)| (name, p * exponent)).collect()
-            }
+            Self::Pow(base, exponent) => base
+                .flatten()
+                .into_iter()
+                .map(|(name, p)| (name, p * exponent))
+                .collect(),
         }
     }
 
@@ -376,6 +410,12 @@ impl UnitExpr {
 pub enum ExprKind {
     Int(String),
     Float(String),
+    /// Exact rational `3//7`. Numerator and denominator keep integer
+    /// spellings (underscores preserved). Grammar: `rational_literal`.
+    Rational {
+        numer: String,
+        denom: String,
+    },
     Str(String),
     Bool(bool),
     /// `1 ms`, `9.81 [unit m/s^2]`: numeric value with attached unit.
@@ -445,8 +485,8 @@ pub enum ExprKind {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,
     },
-    /// `minimize(f) wrt x` / `maximize(f) wrt x` — gradient-descent
-    /// optimization; `maximize` selects which.
+    /// `minimize(f) wrt x` / `maximize(f) wrt x` — Newton on ∇f = 0;
+    /// `maximize` requires negative curvature.
     Optimize {
         value: Box<Expr>,
         wrt: Option<Vec<Expr>>,

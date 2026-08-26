@@ -173,6 +173,8 @@ pub enum TokenKind {
     Minus,
     Star,
     Slash,
+    /// `//` — exact rational separator (`3//7`).
+    SlashSlash,
     Caret,
     Bang,
     LParen,
@@ -222,6 +224,7 @@ impl TokenKind {
             Self::Minus => "`-`".to_string(),
             Self::Star => "`*`".to_string(),
             Self::Slash => "`/`".to_string(),
+            Self::SlashSlash => "`//`".to_string(),
             Self::Caret => "`^`".to_string(),
             Self::Bang => "`!`".to_string(),
             Self::LParen => "`(`".to_string(),
@@ -258,7 +261,7 @@ pub struct Token {
 /// A comment retained for lossless formatting.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Comment {
-    /// Comment text including the marker (`#`, `//`, `///`) and trailing
+    /// Comment text including the marker (`#`, `///`) and trailing
     /// newline-adjacent whitespace trimmed.
     pub text: String,
     pub span: Span,

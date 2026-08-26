@@ -13,7 +13,10 @@ pub enum Literal {
     Rational(String),
     FloatBits(u64),
     /// Complex constant stored as IEEE-754 bit patterns. B14.
-    Complex { re_bits: u64, im_bits: u64 },
+    Complex {
+        re_bits: u64,
+        im_bits: u64,
+    },
     Text(String),
 }
 
@@ -76,8 +79,8 @@ pub enum ExprNode {
         body: ExprId,
         var: String,
     },
-    /// Gradient-descent optimization: values of inputs `vars` minimizing
-    /// (or maximizing) `body`; forward-mode autodiff for the gradient.
+    /// Newton-on-∇f optimization: values of inputs `vars` at a
+    /// stationary point of `body`; dual-number gradient, FD Hessian.
     Optimize {
         body: ExprId,
         vars: Vec<String>,
