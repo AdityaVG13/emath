@@ -3,7 +3,9 @@
 //! `genesis_cmd::analyze` and `emath_genesis::run`.
 
 use super::genesis_cmd::{self, Analysis};
-use super::{EXIT_OK, EXIT_REFUSED, usage};
+use super::{
+    json_diagnostic_entry, print_json_diagnostics, split_error_code, usage, EXIT_OK, EXIT_REFUSED,
+};
 use emath_artifact::JsonWriter;
 use emath_genesis::{
     BooleanAlienWorld, Environment, FreeTermWorld, ModularAlienWorld, OnePointWorld,
@@ -99,21 +101,33 @@ fn parse_eval_args(args: &[String]) -> Option<EvalArgs> {
     })
 }
 
+fn refuse_eval(error: &str, json: bool) -> u8 {
+    let line = if error.starts_with("error:") {
+        error.to_string()
+    } else {
+        format!("error: {error}")
+    };
+    eprintln!("{line}");
+    if json {
+        let (code, message) = split_error_code(&line).unwrap_or(("E-GEN-080", line.as_str()));
+        print_json_diagnostics(
+            "eval",
+            false,
+            &[json_diagnostic_entry(code, "error", message)],
+        );
+    }
+    EXIT_REFUSED
+}
+
 fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> u8 {
     let analysis = match genesis_cmd::analyze(path) {
         Ok(analysis) => analysis,
-        Err(error) => {
-            eprintln!("error: {error}");
-            return EXIT_REFUSED;
-        }
+        Err(error) => return refuse_eval(&error, json),
     };
     let all_worlds = genesis_cmd::builtin_worlds(&analysis.inference.signature);
     let selection = match crate::meaning_cmd::resolve_locked_worlds(path, &analysis, all_worlds) {
         Ok(selection) => selection,
-        Err(error) => {
-            eprintln!("{error}");
-            return EXIT_REFUSED;
-        }
+        Err(error) => return refuse_eval(&error, json),
     };
     if let Some(lock) = &selection.lock {
         if let Some(wanted) = world_name {
@@ -123,16 +137,15 @@ fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> u8 {
                     return EXIT_OK;
                 }
                 Ok(_) => {
-                    eprintln!(
-                        "error: E-LOCK-004: --world `{wanted}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `emath meaning unset`",
-                        lock.fingerprint
+                    return refuse_eval(
+                        &format!(
+                            "E-LOCK-004: --world `{wanted}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `emath meaning unset`",
+                            lock.fingerprint
+                        ),
+                        json,
                     );
-                    return EXIT_REFUSED;
                 }
-                Err(error) => {
-                    eprintln!("{error}");
-                    return EXIT_REFUSED;
-                }
+                Err(error) => return refuse_eval(&error, json),
             }
         }
         match evaluate_world(&analysis, &selection.worlds[0]) {
@@ -148,10 +161,7 @@ fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> u8 {
                 emit_receipt(&receipt, json);
                 EXIT_OK
             }
-            Err(error) => {
-                eprintln!("{error}");
-                EXIT_REFUSED
-            }
+            Err(error) => refuse_eval(&error, json),
         }
     }
 }

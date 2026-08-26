@@ -53,7 +53,12 @@ pub fn collect_kind_defs(tree: &emath_core::tree::SyntaxTree) -> BTreeMap<String
         let Item::Declaration(decl) = item else {
             continue;
         };
-        if decl.item_kind != "kind" {
+        // Parser remaps `emath kind Name:` to `item_kind=custom` with
+        // the original spelling in `as_kind`; hand-built trees keep
+        // `item_kind == "kind"`.
+        let is_kind_def = decl.item_kind == "kind"
+            || (decl.item_kind == "custom" && decl.as_kind == "kind");
+        if !is_kind_def {
             continue;
         }
         let mut def = KindDef {

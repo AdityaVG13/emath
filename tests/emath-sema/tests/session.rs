@@ -3,8 +3,8 @@
 
 use std::collections::BTreeSet;
 
-use emath_core::limits::Limits;
 use emath_core::Severity;
+use emath_core::limits::Limits;
 use emath_ir::{Mig, MigNodeKind};
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
@@ -297,8 +297,7 @@ fn untyped_input_name_defaults_to_float64() {
     let mut session = CompilerSession::new(Limits::default());
     let bare =
         "emath function Square:\n    inputs:\n        x\n    definitions:\n        y = x * x\n";
-    let typed =
-        "emath function Square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
+    let typed = "emath function Square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
     let bare_result = session.check_owned("bare-input", bare);
     let typed_result = session.check_owned("typed-input", typed);
     assert!(
@@ -652,6 +651,48 @@ emath function TwentyOne:
     assert!(result.package.tests[0].expect.is_none());
 }
 
+fn assert_empty_source_refuses_epkg081(name: &str, source: &str) {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(name, source);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.iter().any(|code| *code == "E-PKG-081"),
+        "{name} must refuse empty source with E-PKG-081, got {codes:?}"
+    );
+    assert!(
+        result.package.declarations.is_empty(),
+        "{name} must not admit a declaration"
+    );
+}
+
+#[test]
+fn empty_file_is_refused_with_e_pkg_081() {
+    assert_empty_source_refuses_epkg081("empty", "");
+}
+
+#[test]
+fn whitespace_only_file_is_refused_with_e_pkg_081() {
+    assert_empty_source_refuses_epkg081("whitespace", "  \n\n    \n");
+}
+
+#[test]
+fn comment_only_file_is_refused_with_e_pkg_081() {
+    assert_empty_source_refuses_epkg081(
+        "comments",
+        "# expect: E-PKG-081 empty source has no declarations\n# still nothing\n",
+    );
+}
+
+#[test]
+fn package_only_file_is_refused_with_e_pkg_081() {
+    assert_empty_source_refuses_epkg081("package-only", "package foo.bar\n");
+}
+
 // ---------------------------------------------------------------------------
 // Notation declarations (gap B): admitted functions whose bodies use
 // declared glyphs (and their aliases) must lower through the normal
@@ -686,20 +727,14 @@ fn notation_glyph_and_alias_uses_admit() {
         .errors()
         .map(|diagnostic| diagnostic.code)
         .collect();
-    assert!(
-        codes.is_empty(),
-        "glyph use must admit, got {codes:?}"
-    );
+    assert!(codes.is_empty(), "glyph use must admit, got {codes:?}");
     let result = session.check_owned("notation-alias-admit", &notation_function("r = x pw y"));
     let codes: Vec<&str> = result
         .diagnostics
         .errors()
         .map(|diagnostic| diagnostic.code)
         .collect();
-    assert!(
-        codes.is_empty(),
-        "alias use must admit, got {codes:?}"
-    );
+    assert!(codes.is_empty(), "alias use must admit, got {codes:?}");
 }
 
 #[test]

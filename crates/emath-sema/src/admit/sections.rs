@@ -2,26 +2,22 @@
 //! and representation, extracted from `admit.rs` isomorphically.
 
 use emath_core::tree::{
-    CommandArgument, Expr, ExprKind, Section, StmtKind, TypeExpr,
-    UnaryOp as SynUnOp,
+    CommandArgument, Expr, ExprKind, Section, StmtKind, TypeExpr, UnaryOp as SynUnOp,
 };
 use emath_core::Span;
 use emath_ir::constructor::{Constructor, Field, Visibility};
 use emath_ir::goal::CompileSpec;
 use emath_ir::{
-    ExprId, NumericProfile,
-    SafetyProfile, TypeId, TypeNode, check_error_limit, check_precision_demand,
-    parse_numeric_profile,
+    check_error_limit, check_precision_demand, parse_numeric_profile, ExprId, NumericProfile,
+    SafetyProfile, TypeId, TypeNode,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::equations::{is_infer_marker, ty_display};
 use super::expr_helpers::parse_float_constant;
-use super::infer::{Infer, infer_from_node};
-use super::types::map_type;
-use super::{
-    expr_number, Admitter, E_DUPLICATE_FIELD,
-};
+use super::infer::{infer_from_node, Infer};
+use super::types::{map_constructor_return, map_type};
+use super::{expr_number, Admitter, E_DUPLICATE_FIELD};
 
 /// Admits one `name: Type` (or untyped `Infer`) field; untyped names are
 /// allowed only when `allow_infer` is set and default to Float64.
@@ -67,11 +63,7 @@ pub(super) fn admit_named_field(
             .get(ty_id.index())
             .map(ty_display)
             .unwrap_or_else(|| format!("type#{}", ty_id.index()));
-        admitter.record(
-            "sema",
-            format!("field `{name}` typed as {ty_name}"),
-            span,
-        );
+        admitter.record("sema", format!("field `{name}` typed as {ty_name}"), span);
         (infer, ty_id)
     };
     if fields_infer.contains_key(name) {
@@ -122,7 +114,8 @@ pub(super) fn admit_constructor(
             );
             continue;
         }
-        let Some(node) = map_type(&param.ty, &mut admitter.diagnostics, &admitter.host_types) else {
+        let Some(node) = map_type(&param.ty, &mut admitter.diagnostics, &admitter.host_types)
+        else {
             continue;
         };
         let infer = infer_from_node(&node);
@@ -141,7 +134,9 @@ pub(super) fn admit_constructor(
     let mut postconditions = Vec::new();
     let mut error_type = None;
     if let Some(ret) = ret {
-        if let Some(node) = map_type(ret, &mut admitter.diagnostics, &admitter.host_types) {
+        if let Some(node) =
+            map_constructor_return(ret, &mut admitter.diagnostics, &admitter.host_types)
+        {
             error_type = Some(admitter.type_id(node));
         }
     }
@@ -204,6 +199,7 @@ pub(super) fn admit_constructor(
                                 Infer::F64
                                 | Infer::Nat
                                 | Infer::Int
+                                | Infer::Complex
                                 | Infer::Unit { .. }
                                 | Infer::HostDeferred
                                 | Infer::Vector { .. }
@@ -258,7 +254,11 @@ pub(super) fn admit_constructor(
 pub(super) fn contains_state_reference(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::Path { segments, .. } => segments.first().is_some_and(|s| s == "state"),
-        ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Str(_) => false,
+        ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Rational { .. }
+        | ExprKind::Bool(_)
+        | ExprKind::Str(_) => false,
         ExprKind::Quantity { value, .. } | ExprKind::Unary { value, .. } => {
             contains_state_reference(value)
         }
@@ -312,21 +312,29 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
             contains_state_reference(value) || contains_state_reference(condition)
         }
         ExprKind::UnitQuery { expr, .. } => contains_state_reference(expr),
-        ExprKind::Limit { target, body, .. }
-        | ExprKind::SampleLimit { target, body, .. } => {
+        ExprKind::Limit { target, body, .. } | ExprKind::SampleLimit { target, body, .. } => {
             contains_state_reference(target) || contains_state_reference(body)
         }
-        ExprKind::Cases { subject, arms, else_arm } => {
-            subject.as_ref().is_some_and(|s| contains_state_reference(s))
-                || arms.iter().any(|(c, v)| {
-                    contains_state_reference(c) || contains_state_reference(v)
-                })
+        ExprKind::Cases {
+            subject,
+            arms,
+            else_arm,
+        } => {
+            subject
+                .as_ref()
+                .is_some_and(|s| contains_state_reference(s))
+                || arms
+                    .iter()
+                    .any(|(c, v)| contains_state_reference(c) || contains_state_reference(v))
                 || contains_state_reference(else_arm)
         }
     }
 }
 
-pub(super) fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Section>) -> CompileSpec {
+pub(super) fn admit_compile_spec(
+    admitter: &mut Admitter,
+    section: Option<&Section>,
+) -> CompileSpec {
     let mut spec = CompileSpec {
         target: "rust".into(),
         profile: "library".into(),
@@ -476,7 +484,10 @@ pub(super) fn admit_compile_spec(admitter: &mut Admitter, section: Option<&Secti
 
 pub(super) fn command_u16(argument: Option<&CommandArgument>, fallback: &str) -> Option<u16> {
     command_f64(argument, fallback).and_then(|value| {
-        if value.is_finite() && value >= 0.0 && value == value.trunc() && value <= f64::from(u16::MAX)
+        if value.is_finite()
+            && value >= 0.0
+            && value == value.trunc()
+            && value <= f64::from(u16::MAX)
         {
             Some(value as u16)
         } else {
@@ -510,7 +521,11 @@ pub(super) fn admit_domain_directive(
     span: Span,
 ) -> bool {
     let Some(CommandArgument::Expr(expr)) = argument else {
-        admitter.error("E-DOM-002", "domain directive requires an interval `lo..hi`", span);
+        admitter.error(
+            "E-DOM-002",
+            "domain directive requires an interval `lo..hi`",
+            span,
+        );
         return false;
     };
     let ExprKind::Range {
@@ -527,11 +542,7 @@ pub(super) fn admit_domain_directive(
         return false;
     };
     let (Some(low), Some(high)) = (expr_number(start), expr_number(end)) else {
-        admitter.error(
-            "E-DOM-002",
-            "domain bounds must be numeric literals",
-            span,
-        );
+        admitter.error("E-DOM-002", "domain bounds must be numeric literals", span);
         return false;
     };
     match emath_ir::Interval::checked(low, high) {
@@ -581,7 +592,11 @@ pub(super) fn restore_index_local(
     }
 }
 
-pub(super) fn restore_input(locals: &mut BTreeMap<String, Infer>, name: &str, previous: Option<Infer>) {
+pub(super) fn restore_input(
+    locals: &mut BTreeMap<String, Infer>,
+    name: &str,
+    previous: Option<Infer>,
+) {
     match previous {
         Some(infer) => {
             locals.insert(name.to_string(), infer);

@@ -45,8 +45,12 @@ pub struct Analysis {
 
 /// Reads, parses, and structurally analyzes a genesis source file.
 pub fn analyze(path: &Path) -> Result<Analysis, String> {
-    let source = fs::read_to_string(path)
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let source = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "E-PKG-080: cannot read source file ({}: {error})",
+            path.display()
+        )
+    })?;
     let limits = Limits::default();
     let file = genesis_syntax::parse_genesis(&source, &limits).map_err(|errors| {
         let detail = errors

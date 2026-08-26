@@ -246,12 +246,15 @@ pub(super) fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
             SectionRule {
                 name: "lower".to_string(),
                 generics: None,
-                statement_shapes: ASSIGN_STMTS,
+                // Documented `model.inputs = section.inputs` is a dotted
+                // path equation (`left = right`), not a bare `name = expr`
+                // assignment.
+                statement_shapes: &[StmtShapeKind::Assigns, StmtShapeKind::Equations],
                 command_first_words: &[],
                 fn_heads: &[],
                 nested: &[NestedRule {
                     name: "",
-                    statement_shapes: ASSIGN_STMTS,
+                    statement_shapes: &[StmtShapeKind::Assigns, StmtShapeKind::Equations],
                     command_first_words: &[],
                 }],
             },

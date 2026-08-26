@@ -152,7 +152,14 @@ Session (`crates/emath-sema/src/session.rs`):
 
 - `E-PKG-080` — `check`/`plan` on a source file that was never loaded;
   refused with a typed diagnostic instead of returning an empty-source
-  plan that passes admission.
+  plan that passes admission. `eval`/`compile --parametric`/`simulate`
+  use the same code when the source path cannot be read, instead of an
+  uncoded `cannot read` line.
+
+- `E-PKG-081` — `check`/`plan` on a file that parses to zero items
+  (empty, comment-only, or whitespace-only). Refused instead of a
+  vacuous admit: `eval`/`simulate` already refuse empty source, and
+  K-8 treats one-error-one-OK as a hard failure.
 
 - `E-SYN-120` — `check`/`plan`/`parse_text` refuse when no source-parser
   backend is installed: a host must wire
@@ -673,6 +680,8 @@ spelling is retired and is not emitted.
 - `E-TYPE-011` — non-finite constant refused under the strict-f64
   policy.
 - `E-TYPE-012` — argument arity/type mismatch for the named function.
+  Unit mismatches name the dimensions (`duration` vs `length`), never a
+  Debug dump of `Infer::Unit`.
 - `E-TYPE-101` — derivative target is not a state variable.
 - `E-TYPE-102` — initial condition target is not a state variable.
 - `E-TYPE-103` — state must not appear as a plain equation target.
@@ -839,7 +848,9 @@ Not yet documented at generation time: **0**.
 | `E-PKG-050` | crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/recognition.rs | `E-PKG-050`<br>`custom` |
 | `E-PKG-064` | crates/emath-sema/src/recognition.rs | `E-PKG-064` |
 | `E-PKG-065` | crates/emath-sema/src/recognition.rs | `E-PKG-065` |
-| `E-PKG-080` | crates/emath-cli/src/lib.rs<br>crates/emath-sema/src/session.rs | `E-PKG-080` |
+| `E-PKG-080` | crates/emath-cli/src/lib.rs<br>crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-cli/src/simulate_cmd.rs<br>crates/emath-sema/src/session.rs | `E-PKG-080` |
+| `E-PKG-081` | crates/emath-sema/src/admit/sections_meta.rs | `source has no declarations` |
+| `E-PKG-081` | crates/emath-sema/src/admit/sections_meta.rs | `source has no declarations` |
 | `E-PLG-001` | crates/emath-plugin-sdk/src/lib.rs | `E-PLG-001` |
 | `E-PLG-002` | crates/emath-plugin-sdk/src/lib.rs | `E-PLG-002` |
 | `E-PLG-003` | crates/emath-plugin-sdk/src/lib.rs | `plugin `{}` declares no capabilities`<br>`E-PLG-003` |

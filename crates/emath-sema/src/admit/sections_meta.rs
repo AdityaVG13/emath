@@ -2,19 +2,17 @@
 //! and the top-level `check_tree` entry point, extracted from `sections.rs`
 //! isomorphically.
 
-use emath_core::tree::{CommandArgument, Expr, ExprKind, Section, StmtKind, SyntaxTree};
 use emath_core::Diagnostics;
+use emath_core::tree::{CommandArgument, Expr, ExprKind, Section, StmtKind, SyntaxTree};
 use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
 use emath_ir::goal::EvidenceLevel;
-use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual};
 use emath_ir::ids::{ExprId, TypeId};
 use emath_ir::{ExprNode, SliceAxis};
+use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::types::type_display;
-use super::{
-    admit_declaration, Admitter, CheckResult, SemanticTrace, confusable_fold,
-};
+use super::{Admitter, CheckResult, SemanticTrace, admit_declaration, confusable_fold};
 
 /// Offset all child ExprIds and TypeIds in one node from the admitter's
 /// local arena into the package's global index space.
@@ -91,7 +89,12 @@ fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
         ExprNode::Differentiate { body, .. } => remap_e(body),
         ExprNode::Solve { body, .. } => remap_e(body),
         ExprNode::Optimize { body, .. } => remap_e(body),
-        ExprNode::SampleLimit { body, target, direction, .. } => {
+        ExprNode::SampleLimit {
+            body,
+            target,
+            direction,
+            ..
+        } => {
             remap_e(target);
             remap_e(direction);
             remap_e(body);
@@ -187,7 +190,9 @@ pub(super) fn admit_about(admitter: &mut Admitter, section: Option<&Section>) ->
     let mut summary = None;
     for stmt in &section.suite.statements {
         match &stmt.kind {
-            StmtKind::Command { head, argument } if head.first().map(String::as_str) == Some("summary") => {
+            StmtKind::Command { head, argument }
+                if head.first().map(String::as_str) == Some("summary") =>
+            {
                 if let Some(CommandArgument::Expr(expr)) = argument {
                     if let ExprKind::Str(text) = &expr.kind {
                         summary = Some(text.clone());
@@ -213,7 +218,10 @@ pub(super) fn admit_about(admitter: &mut Admitter, section: Option<&Section>) ->
     summary
 }
 
-pub(super) fn admit_evidence(admitter: &mut Admitter, section: Option<&Section>) -> Vec<EvidenceClaim> {
+pub(super) fn admit_evidence(
+    admitter: &mut Admitter,
+    section: Option<&Section>,
+) -> Vec<EvidenceClaim> {
     let Some(section) = section else {
         return Vec::new();
     };
@@ -248,7 +256,9 @@ pub(super) fn admit_evidence(admitter: &mut Admitter, section: Option<&Section>)
         let mut class = String::new();
         for inner in &claim.suite.statements {
             match &inner.kind {
-                StmtKind::Command { head, argument } if head.first().map(String::as_str) == Some("statement") => {
+                StmtKind::Command { head, argument }
+                    if head.first().map(String::as_str) == Some("statement") =>
+                {
                     statement = match argument {
                         Some(CommandArgument::Expr(expr)) => expr_text(expr),
                         _ if head.len() > 1 => head[1..].join(" "),
@@ -258,7 +268,9 @@ pub(super) fn admit_evidence(admitter: &mut Admitter, section: Option<&Section>)
                 StmtKind::Require(expr) => {
                     class = expr_text(expr);
                 }
-                StmtKind::Command { head, .. } if head.first().map(String::as_str) == Some("require") => {
+                StmtKind::Command { head, .. }
+                    if head.first().map(String::as_str) == Some("require") =>
+                {
                     class = head.get(1).cloned().unwrap_or_default();
                 }
                 _ => {
@@ -332,7 +344,11 @@ pub(super) fn admit_host(admitter: &mut Admitter, section: Option<&Section>) -> 
             let mut methods = Vec::new();
             for method_stmt in &implement.suite.statements {
                 let StmtKind::FnDecl {
-                    name, params, ret, suite, ..
+                    name,
+                    params,
+                    ret,
+                    suite,
+                    ..
                 } = &method_stmt.kind
                 else {
                     admitter.error(
@@ -354,11 +370,7 @@ pub(super) fn admit_host(admitter: &mut Admitter, section: Option<&Section>) -> 
                         .iter()
                         .map(|param| {
                             let ty = type_display(&param.ty);
-                            let ty = if param.by_ref {
-                                format!("&{ty}")
-                            } else {
-                                ty
-                            };
+                            let ty = if param.by_ref { format!("&{ty}") } else { ty };
                             (param.name.clone(), ty)
                         })
                         .collect(),
@@ -441,6 +453,22 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     // `admit_front_end` (which runs only for package/use/notation
     // items) would silently skip ordinary files.
     crate::recognition::admit_capability_gates(tree, &mut diagnostics);
+
+    // Empty / comment-only / package-only files have no declarations.
+    // `package foo` with no `emath function`/`policy`/`model`/`kind`
+    // used to admit at check and fail later at build (K-8 one-error-one-OK).
+    let has_declaration = tree
+        .items
+        .iter()
+        .any(|item| matches!(item, emath_core::tree::Item::Declaration(_)));
+    if !has_declaration {
+        diagnostics.error("E-PKG-081", "source has no declarations", tree.source);
+        return CheckResult {
+            package,
+            diagnostics,
+            trace,
+        };
+    }
 
     // Front-end: package identity and `use` imports. External file
     // imports remain a Phase 2 refusal (E-PKG-050).
@@ -528,12 +556,31 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
+        // Parser remaps `emath kind Name:` to `item_kind=custom`,
+        // `as_kind=kind`. CAPABILITY admits that form for partial schema
+        // validation and does not lower it to a runnable declaration.
+        if decl.as_kind == "kind" {
+            let mut kind_decl = decl.clone();
+            kind_decl.item_kind = "kind".to_string();
+            crate::recognition::admit_declaration(
+                &kind_decl,
+                &BTreeMap::new(),
+                &mut package,
+                &mut diagnostics,
+                &mut trace,
+            );
+            continue;
+        }
         if decl.as_kind != "function" && decl.as_kind != "policy" && decl.as_kind != "model" {
+            let type_name = if decl.as_kind.is_empty() {
+                "custom"
+            } else {
+                decl.as_kind.as_str()
+            };
             diagnostics.error(
                 "E-KIND-100",
                 format!(
-                    "declaration type `{}` is outside the Phase 1 subset (function, policy, model)",
-                    decl.as_kind
+                    "declaration type `{type_name}` is outside the Phase 1 subset (function, policy, model)"
                 ),
                 decl.head_source,
             );
@@ -558,7 +605,13 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         // ExprId(0) would alias declaration 1's first expression.
         let expr_offset = u32::try_from(package.exprs.len()).unwrap_or(u32::MAX);
         let type_offset = u32::try_from(package.types.len()).unwrap_or(u32::MAX);
-        remap_ids(&mut declaration, &mut tests, &mut residuals, expr_offset, type_offset);
+        remap_ids(
+            &mut declaration,
+            &mut tests,
+            &mut residuals,
+            expr_offset,
+            type_offset,
+        );
         if !residuals.is_empty() {
             package.residuals.insert(declaration.id, residuals);
         }

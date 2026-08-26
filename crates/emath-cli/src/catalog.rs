@@ -100,12 +100,16 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "parse" => "genesis glyphs + bounded parse forest",
         "signature" => "arity/fixity/type-variable signature inference",
         "genesis" => "world interpretation + portfolio + answer receipt",
-        "eval" => "evaluate the admitted term on the semantic VM (value + world + vm_steps)",
+        "eval" => {
+            "evaluate an admitted `emath custom` term on the semantic VM; `--json` emits the answer envelope and diagnostic codes on refusal"
+        }
         "simulate" => {
-            "integrate an admitted `emath model` with explicit Euler/RK4/RK45; `--atol/--rtol` enable adaptive RK45; `--event` locates one zero crossing; `--set` binds inputs and state"
+            "integrate an admitted `emath model` with explicit Euler/classic RK4/RK45; `--atol/--rtol` enable adaptive RK45; `--event` locates one zero crossing; `--set` binds inputs, algebraic guesses, and state (scalars, `[vector]`, or `[[matrix]]`)"
         }
         "repl" => "interactive eval session over the same admission and VM path",
-        "compile" => "parametric generated crate for an admitted world",
+        "compile" => {
+            "parametric generated crate for an admitted world; `--world` selects one compiled world"
+        }
         "world" => "print one world candidate artifact",
         "portfolio" => "print one interpretation portfolio artifact",
         "meaning" => "project-local interpretation lock (list|set|unset|explain)",
@@ -263,18 +267,8 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
         "eval" => &["--world", "--json", "--help", "-h"],
         "simulate" => &[
-            "--dt",
-            "--t0",
-            "--t1",
-            "--method",
-            "--atol",
-            "--rtol",
-            "--dt-max",
-            "--event",
-            "--set",
-            "--json",
-            "--help",
-            "-h",
+            "--dt", "--t0", "--t1", "--method", "--atol", "--rtol", "--dt-max", "--event", "--set",
+            "--json", "--help", "-h",
         ],
         "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
         "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],

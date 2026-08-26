@@ -1,6 +1,6 @@
 //! CLI ergonomics tests, moved from `crates/emath-cli/src/lib.rs`.
 
-use emath_cli::{run, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use emath_cli::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run};
 
 fn args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
@@ -125,6 +125,220 @@ emath model PlainRC:
 }
 
 #[test]
+fn missing_file_is_epkg080_on_check_eval_compile_simulate() {
+    emath_syntax::install_source_parser();
+    let missing = std::env::temp_dir().join(format!(
+        "emath-cli-missing-pass28-{}.emath",
+        std::process::id()
+    ));
+    let path = missing.to_string_lossy().into_owned();
+    let err = match emath_cli::genesis_cmd::analyze(&missing) {
+        Ok(_) => panic!("missing source must refuse"),
+        Err(error) => error,
+    };
+    assert!(
+        err.contains("E-PKG-080"),
+        "eval/compile analyze must name E-PKG-080, got {err}"
+    );
+    assert_eq!(
+        run(&["check".into(), path.clone(), "--json".into()]),
+        EXIT_REFUSED
+    );
+    assert_eq!(
+        run(&["eval".into(), path.clone(), "--json".into()]),
+        EXIT_REFUSED
+    );
+    let out = missing.with_extension("out");
+    assert_eq!(
+        run(&[
+            "compile".into(),
+            "--parametric".into(),
+            path.clone(),
+            "--out".into(),
+            out.to_string_lossy().into_owned(),
+        ]),
+        EXIT_REFUSED
+    );
+    assert_eq!(
+        run(&["simulate".into(), path, "--json".into()]),
+        EXIT_REFUSED
+    );
+}
+
+#[test]
+fn eval_json_refuses_invalid_function_file() {
+    emath_syntax::install_source_parser();
+    let example = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../language/examples/intro/hello-square.emath");
+    let path = example.to_string_lossy().into_owned();
+    assert_eq!(
+        run(&["check".into(), path.clone(), "--json".into()]),
+        EXIT_OK,
+        "hello-square must admit at check"
+    );
+    assert_eq!(
+        run(&["eval".into(), path, "--json".into()]),
+        EXIT_REFUSED,
+        "eval is genesis-only; a function file must not silently succeed"
+    );
+}
+
+#[test]
+fn check_and_eval_json_refuse_junk() {
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath-cli-junk-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let spec = dir.join("junk.emath");
+    std::fs::write(&spec, "this is not emath at all").expect("write junk");
+    let path = spec.to_string_lossy().into_owned();
+    assert_eq!(
+        run(&["check".into(), path.clone(), "--json".into()]),
+        EXIT_REFUSED
+    );
+    assert_eq!(run(&["eval".into(), path, "--json".into()]), EXIT_REFUSED);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn invalid_fixture(name: &str) -> String {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/invalid")
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn assert_check_eval_simulate_refuse(path: &str) {
+    assert_eq!(
+        run(&["check".into(), path.into(), "--json".into()]),
+        EXIT_REFUSED,
+        "check must refuse {path}"
+    );
+    assert_eq!(
+        run(&["eval".into(), path.into(), "--json".into()]),
+        EXIT_REFUSED,
+        "eval must refuse {path}"
+    );
+    assert_eq!(
+        run(&["simulate".into(), path.into(), "--json".into()]),
+        EXIT_REFUSED,
+        "simulate must refuse {path}"
+    );
+}
+
+#[test]
+fn empty_file_check_eval_simulate_all_refuse() {
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath-cli-empty-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let empty = dir.join("empty.emath");
+    let comments = dir.join("comments.emath");
+    std::fs::write(&empty, "").expect("write empty");
+    std::fs::write(&comments, "# comment only\n").expect("write comments");
+    assert_check_eval_simulate_refuse(&empty.to_string_lossy());
+    assert_check_eval_simulate_refuse(&comments.to_string_lossy());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn invalid_fixtures_check_eval_simulate_all_refuse() {
+    emath_syntax::install_source_parser();
+    for name in [
+        "empty.emath",
+        "duplicate_output.emath",
+        "unit_mismatch.emath",
+        "unknown_section.emath",
+        "compile_junk.emath",
+        "named_call_arg.emath",
+    ] {
+        assert_check_eval_simulate_refuse(&invalid_fixture(name));
+    }
+}
+
+#[test]
+fn simulate_mass_spring_accepts_vector_state_set() {
+    emath_syntax::install_source_parser();
+    let example = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../language/examples/numerical/explicit-mass-spring.emath");
+    let path = example.to_string_lossy().into_owned();
+    assert_eq!(
+        run(&[
+            "simulate".into(),
+            path.clone(),
+            "--set".into(),
+            "m=1".into(),
+            "--set".into(),
+            "k=1".into(),
+            "--set".into(),
+            "c=0".into(),
+            "--set".into(),
+            "s=[1,0]".into(),
+            "--dt".into(),
+            "0.01".into(),
+            "--t1".into(),
+            "0.1".into(),
+        ]),
+        EXIT_OK,
+        "vector --set s=[1,0] must bind MassSpring state"
+    );
+    assert_eq!(
+        run(&[
+            "simulate".into(),
+            path,
+            "--set".into(),
+            "m=1".into(),
+            "--set".into(),
+            "k=1".into(),
+            "--set".into(),
+            "c=0".into(),
+            "--set".into(),
+            "s=1".into(),
+        ]),
+        EXIT_USAGE,
+        "scalar --set s=1 must not silently stand in for Vector[2]"
+    );
+}
+
+#[test]
+fn simulate_scalar_set_still_binds() {
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath-cli-sim-scalar-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let spec = dir.join("decay.emath");
+    std::fs::write(
+        &spec,
+        "\
+emath model Decay:
+    inputs:
+        k: Float64
+    state:
+        x: Float64
+    equations:
+        der(x) = -k * x
+",
+    )
+    .expect("write decay");
+    assert_eq!(
+        run(&[
+            "simulate".into(),
+            spec.to_string_lossy().into_owned(),
+            "--set".into(),
+            "k=1".into(),
+            "--set".into(),
+            "x=1".into(),
+            "--method".into(),
+            "euler".into(),
+            "--dt".into(),
+            "0.1".into(),
+            "--t1".into(),
+            "0.2".into(),
+        ]),
+        EXIT_OK,
+        "scalar --set must keep working after vector bindings"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn notation_function_builds_to_an_artifact() {
     emath_syntax::install_source_parser();
     let dir = std::env::temp_dir().join(format!("emath-cli-notation-{}", std::process::id()));
@@ -180,7 +394,8 @@ emath function F:
 #[test]
 fn reserved_notation_glyph_refused_at_build() {
     emath_syntax::install_source_parser();
-    let dir = std::env::temp_dir().join(format!("emath-cli-notation-reject-{}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("emath-cli-notation-reject-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let spec = dir.join("reserved.emath");
     let out = dir.join("artifacts");
@@ -201,7 +416,12 @@ notation prefix 90 \"or\" => core::logic::not
     )
     .expect("write reserved spec");
     assert_eq!(
-        run(&["build".into(), spec.to_string_lossy().into_owned(), "--out".into(), out.to_string_lossy().into_owned()]),
+        run(&[
+            "build".into(),
+            spec.to_string_lossy().into_owned(),
+            "--out".into(),
+            out.to_string_lossy().into_owned()
+        ]),
         EXIT_REFUSED,
         "reserved glyph must refuse at build"
     );

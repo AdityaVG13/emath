@@ -220,6 +220,7 @@ assert_invalid tests/invalid/function_type.emath "E-TYPE-110"
 assert_invalid tests/invalid/confusable_decl.emath "E-NAME-024"
 assert_invalid tests/invalid/combining_mark.emath "E-SYN-115"
 assert_invalid tests/invalid/named_call_arg.emath "E-SYN-121"
+assert_invalid tests/invalid/empty.emath "E-PKG-081"
 
 # `check --json` must carry codes and messages, not counts: an outer
 # diagnostic line is fine, but the JSON document itself has to name the

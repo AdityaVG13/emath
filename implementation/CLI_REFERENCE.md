@@ -9,7 +9,8 @@ deterministic sorted-key JSON via the in-tree writer.
 
 | Command | Behavior |
 | --- | --- |
-| `emath check <file> [--json]` | parse + admission, no codegen; refuses with a typed `E-*` code on any diagnostic |
+| `emath check <file> [--json]` | parse + admission, no codegen; refuses with a typed `E-*` code on any diagnostic (empty / comment-only source is `E-PKG-081`, not a vacuous admit); `--json` always includes a `diagnostics` array of `{code, severity, message}` |
+| `emath eval <file> [--world <name>] [--json]` | evaluate an admitted `emath custom` term on the semantic VM (default world `free_symbolic`); `--json` is the `emath.eval-answer` envelope on success and a `diagnostics` array of codes on refusal; missing files are `E-PKG-080` |
 | `emath plan <file> [--json]` | admission + goal elaboration + deterministic native resolution plan (no artifact) |
 | `emath planner <file> [--json] [--parametric]` | provider-registry planning: per-goal disposition. Refuses (exit 1) when any goal is unplanned; `--parametric` lifts missing operators to a provider trait |
 | `emath build <file> --out <dir> [--verify] [--json]` | full pipeline: parse → admit → plan → generate → compile → artifact; `--verify` runs the generated tests |
@@ -18,7 +19,7 @@ deterministic sorted-key JSON via the in-tree writer.
 | `emath bench <file>` | typed refusal E-TLT-004 (benchmark harness is Phase 4+) |
 | `emath explain <file> [<symbol>] [--json]` | plan-level explanation of goals and plans |
 | `emath diff <a.emath> <b.emath> [--json]` | content-id fingerprint comparison of parse-admitted sources |
-| `emath simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler\|rk4\|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]` | integrate an admitted `emath model`; default is fixed-step; `--atol/--rtol` opt into adaptive RK45; `--event` locates one scalar crossing |
+| `emath simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler\|rk4\|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]` | integrate an admitted `emath model`; default is fixed-step classic RK4; `--set` binds scalars or `[vector]`/`[[matrix]]` literals; `--atol/--rtol` opt into adaptive RK45; `--event` locates one scalar crossing; missing files are `E-PKG-080`; `--json` includes diagnostic `code`s on admission refusal |
 
 ## Tooling
 
@@ -41,7 +42,7 @@ deterministic sorted-key JSON via the in-tree writer.
 | `emath parse --forest <file>` | bounded parse forest over the lexical/structural parse |
 | `emath signature <file>` | signature inference of parses |
 | `emath genesis <file> --out <dir>` | world interpretation + answer receipt (no invented `tested` authority; `keep: pareto N`; G7 `evaluate`; `E-GEN-095` if a single answer would hide several kept worlds) |
-| `emath compile --parametric <file> --out <dir>` | compile a world via the parametric fallback into a generated crate |
+| `emath compile --parametric <file> --out <dir> [--world LABEL]` | compile a world via the parametric fallback into a generated crate; `--world` selects one compiled world (`free_symbolic`, `Boolean_algebra`, `modular_numeric`); missing files are `E-PKG-080` |
 | `emath world show` / `emath portfolio show` | inspect worlds / interpretation portfolio |
 | `emath meaning list\|set\|unset\|explain` | project-local interpretation lock (`.emath/meaning.lock`); `set` refuses disqualified worlds (`E-LOCK-005`); drifted/tampered/malformed locks refuse (`E-LOCK-*`) and never silently fall back |
 | `emath import modelica <file.mo> [--json]` | retain a Modelica subset source as foreign-model declarations (no rewrite) |

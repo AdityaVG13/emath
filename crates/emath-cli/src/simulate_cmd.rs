@@ -1,10 +1,14 @@
 //! `emath simulate`: explicit Euler / RK4 / RK45 on an admitted `emath model`.
 
-use super::{print_diagnostics, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use super::{
+    json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
+    split_error_code, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+};
 use emath_artifact::JsonWriter;
 use emath_core::limits::Limits;
-use emath_exec_ir::interp::{format_f64, Value};
-use emath_exec_ir::{simulate_continuous_with, SimulateOptions, StepMethod};
+use emath_exec_ir::interp::{Value, format_f64};
+use emath_exec_ir::{SimulateOptions, StepMethod, simulate_continuous_with};
+use emath_ir::{Extent, Field, TypeNode};
 use emath_sema::CompilerSession;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -27,7 +31,7 @@ struct SimulateArgs {
     t0: f64,
     t1: f64,
     method: StepMethod,
-    bindings: BTreeMap<String, f64>,
+    bindings: BTreeMap<String, Value>,
     json: bool,
     atol: Option<f64>,
     rtol: Option<f64>,
@@ -97,13 +101,13 @@ fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
             "--set" => {
                 index += 1;
                 let binding = args.get(index).ok_or("--set needs name=value")?;
-                let (name, value) = binding.split_once('=').ok_or_else(|| {
-                    format!("`--set {binding}` must be `name=value`")
-                })?;
+                let (name, value) = binding
+                    .split_once('=')
+                    .ok_or_else(|| format!("`--set {binding}` must be `name=value`"))?;
                 if name.is_empty() {
                     return Err("--set name must be non-empty".to_string());
                 }
-                bindings.insert(name.to_string(), parse_f64(value, "--set")?);
+                bindings.insert(name.to_string(), parse_set_value(value)?);
             }
             other if other.starts_with('-') && other != "-" => {}
             other => path = Some(PathBuf::from(other)),
@@ -130,6 +134,108 @@ fn parse_f64(text: &str, flag: &str) -> Result<f64, String> {
         .ok()
         .filter(|value| value.is_finite())
         .ok_or_else(|| format!("{flag} `{text}` is not a finite Float64"))
+}
+
+/// `--set name=value` literals: a scalar, `[v0, v1, …]` vector, or
+/// `[[r0c0, …], …]` row-major matrix. Nested depth > 2 is refused.
+fn parse_set_value(text: &str) -> Result<Value, String> {
+    parse_literal(text.trim(), "--set")
+}
+
+fn parse_literal(text: &str, flag: &str) -> Result<Value, String> {
+    let text = text.trim();
+    if let Some(inner) = text
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        return parse_list_literal(inner, flag);
+    }
+    if text.starts_with('[') {
+        return Err(format!("{flag} `{text}` has an unbalanced `[`"));
+    }
+    parse_f64(text, flag).map(Value::F64)
+}
+
+fn parse_list_literal(inner: &str, flag: &str) -> Result<Value, String> {
+    let items = split_top_level_commas(inner, flag)?;
+    if items.is_empty() {
+        return Ok(Value::Vector(Vec::new()));
+    }
+    let parsed = items
+        .iter()
+        .map(|item| parse_literal(item, flag))
+        .collect::<Result<Vec<_>, _>>()?;
+    if parsed.iter().all(|item| matches!(item, Value::F64(_))) {
+        return Ok(Value::Vector(
+            parsed
+                .into_iter()
+                .map(|item| match item {
+                    Value::F64(number) => number,
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ));
+    }
+    if parsed.iter().all(|item| matches!(item, Value::Vector(_))) {
+        let Value::Vector(first) = &parsed[0] else {
+            unreachable!()
+        };
+        let cols = first.len();
+        let rows = parsed.len();
+        let mut data = Vec::with_capacity(rows * cols);
+        for item in parsed {
+            let Value::Vector(row) = item else {
+                unreachable!()
+            };
+            if row.len() != cols {
+                return Err(format!("{flag} matrix rows must all have length {cols}"));
+            }
+            data.extend(row);
+        }
+        return Ok(Value::Matrix { rows, cols, data });
+    }
+    Err(format!(
+        "{flag} list entries must be all scalars (vector) or all equal-length rows (matrix)"
+    ))
+}
+
+fn split_top_level_commas<'a>(text: &'a str, flag: &str) -> Result<Vec<&'a str>, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut items = Vec::new();
+    let mut start = 0;
+    let mut depth = 0_i32;
+    for (index, ch) in trimmed.char_indices() {
+        match ch {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth < 0 {
+                    return Err(format!("{flag} `{text}` has an unbalanced `]`"));
+                }
+            }
+            ',' if depth == 0 => {
+                let item = trimmed[start..index].trim();
+                if item.is_empty() {
+                    return Err(format!("{flag} list has an empty entry"));
+                }
+                items.push(item);
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    if depth != 0 {
+        return Err(format!("{flag} `{text}` has an unbalanced `[`"));
+    }
+    let last = trimmed[start..].trim();
+    if last.is_empty() {
+        return Err(format!("{flag} list has a trailing comma"));
+    }
+    items.push(last);
+    Ok(items)
 }
 
 fn parse_positive_f64(text: &str, flag: &str) -> Result<f64, String> {
@@ -164,12 +270,33 @@ fn parse_method(name: &str) -> Result<StepMethod, String> {
 fn simulate_cmd(args: &SimulateArgs) -> u8 {
     let mut session = CompilerSession::new(Limits::default());
     let Ok(package) = session.load_package(&args.path) else {
-        eprintln!("error: cannot read {}", args.path.display());
-        return EXIT_USAGE;
+        eprintln!(
+            "error: E-PKG-080: cannot read source file ({})",
+            args.path.display()
+        );
+        if args.json {
+            print_json_diagnostics(
+                "simulate",
+                false,
+                &[json_diagnostic_entry(
+                    "E-PKG-080",
+                    "error",
+                    &format!("cannot read source file ({})", args.path.display()),
+                )],
+            );
+        }
+        return EXIT_REFUSED;
     };
     let result = session.check(package.file);
     if result.diagnostics.has_errors() {
         print_diagnostics(&result.diagnostics);
+        if args.json {
+            print_json_diagnostics(
+                "simulate",
+                false,
+                &json_diagnostics_entries(&result.diagnostics),
+            );
+        }
         return EXIT_REFUSED;
     }
     let Some(declaration) = result
@@ -186,32 +313,46 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
     };
     let mut inputs = BTreeMap::new();
     for field in &declaration.inputs {
-        let Some(value) = args.bindings.get(&field.name).copied() else {
-            eprintln!("error: missing input `{}` (pass --set {}=...)", field.name, field.name);
-            return EXIT_USAGE;
-        };
-        inputs.insert(field.name.clone(), Value::F64(value));
+        match bind_field(&args.bindings, field, result.package.ty(field.ty), "input") {
+            Ok(value) => {
+                inputs.insert(field.name.clone(), value);
+            }
+            Err(message) => {
+                eprintln!("error: {message}");
+                return EXIT_USAGE;
+            }
+        }
     }
     // Causalized implicit-residual models solve their `algebraic:`
     // unknowns at each step; the interpreter needs the initial guesses in
     // the same value map (causal_newton refuses a silent 0.0 default).
     for field in &declaration.algebraic {
-        let Some(value) = args.bindings.get(&field.name).copied() else {
-            eprintln!(
-                "error: missing algebraic guess `{}` (pass --set {}=...)",
-                field.name, field.name
-            );
-            return EXIT_USAGE;
-        };
-        inputs.insert(field.name.clone(), Value::F64(value));
+        match bind_field(
+            &args.bindings,
+            field,
+            result.package.ty(field.ty),
+            "algebraic guess",
+        ) {
+            Ok(value) => {
+                inputs.insert(field.name.clone(), value);
+            }
+            Err(message) => {
+                eprintln!("error: {message}");
+                return EXIT_USAGE;
+            }
+        }
     }
     let mut state = BTreeMap::new();
     for field in &declaration.state {
-        let Some(value) = args.bindings.get(&field.name).copied() else {
-            eprintln!("error: missing state `{}` (pass --set {}=...)", field.name, field.name);
-            return EXIT_USAGE;
-        };
-        state.insert(field.name.clone(), Value::F64(value));
+        match bind_field(&args.bindings, field, result.package.ty(field.ty), "state") {
+            Ok(value) => {
+                state.insert(field.name.clone(), value);
+            }
+            Err(message) => {
+                eprintln!("error: {message}");
+                return EXIT_USAGE;
+            }
+        }
     }
     match simulate_continuous_with(
         &result.package,
@@ -234,7 +375,16 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
             EXIT_OK
         }
         Err(error) => {
-            eprintln!("error: {error}");
+            let text = error.to_string();
+            eprintln!("error: {text}");
+            if args.json {
+                let (code, message) = split_error_code(&text).unwrap_or(("error", text.as_str()));
+                print_json_diagnostics(
+                    "simulate",
+                    false,
+                    &[json_diagnostic_entry(code, "error", message)],
+                );
+            }
             EXIT_REFUSED
         }
     }
@@ -297,6 +447,74 @@ fn method_name(method: StepMethod) -> &'static str {
     }
 }
 
+fn bind_field(
+    bindings: &BTreeMap<String, Value>,
+    field: &Field,
+    ty: Option<&TypeNode>,
+    kind: &str,
+) -> Result<Value, String> {
+    let Some(value) = bindings.get(&field.name) else {
+        return Err(format!(
+            "missing {kind} `{}` (pass --set {}=...)",
+            field.name, field.name
+        ));
+    };
+    coerce_binding(&field.name, value, ty)
+}
+
+fn coerce_binding(name: &str, value: &Value, ty: Option<&TypeNode>) -> Result<Value, String> {
+    match ty {
+        Some(TypeNode::Vector {
+            extent: Some(Extent::Fixed(len)),
+            ..
+        }) => match value {
+            Value::Vector(items) if items.len() == *len => Ok(value.clone()),
+            Value::Vector(items) => Err(format!(
+                "`{name}` is Vector[{len}]; --set {name}=[...] has length {}",
+                items.len()
+            )),
+            other => Err(format!(
+                "`{name}` is Vector[{len}]; pass --set {name}=[v0, v1, …], got {other}"
+            )),
+        },
+        Some(TypeNode::Matrix {
+            rows: Some(Extent::Fixed(rows)),
+            cols: Some(Extent::Fixed(cols)),
+            ..
+        }) => match value {
+            Value::Matrix {
+                rows: got_rows,
+                cols: got_cols,
+                ..
+            } if got_rows == rows && got_cols == cols => Ok(value.clone()),
+            Value::Matrix {
+                rows: got_rows,
+                cols: got_cols,
+                ..
+            } => Err(format!(
+                "`{name}` is Matrix[{rows}, {cols}]; --set {name}=[[...]] is {got_rows}×{got_cols}"
+            )),
+            other => Err(format!(
+                "`{name}` is Matrix[{rows}, {cols}]; pass --set {name}=[[r0c0, …], …], got {other}"
+            )),
+        },
+        Some(TypeNode::Vector { .. } | TypeNode::Matrix { .. } | TypeNode::Tensor { .. }) => {
+            Err(format!(
+                "`--set` cannot bind `{name}` ({})",
+                ty.map(TypeNode::display_name).unwrap_or_default()
+            ))
+        }
+        // Float64, Int, Nat, UnitRef, Refinement, and other scalar slots.
+        _ => match value {
+            Value::F64(number) => Ok(Value::F64(*number)),
+            Value::I64(number) => Ok(Value::F64(*number as f64)),
+            other => Err(format!(
+                "`{name}` is a scalar; pass --set {name}=<Float64>, got {other}"
+            )),
+        },
+    }
+}
+
 fn value_json(value: &Value) -> String {
     match value {
         Value::F64(number) => format_f64(*number),
@@ -325,7 +543,12 @@ fn value_json(value: &Value) -> String {
             if *im == 0.0 {
                 format_f64(*re)
             } else {
-                format!("{}{}{}i", format_f64(*re), if *im >= 0.0 { " + " } else { " - " }, format_f64(im.abs()))
+                format!(
+                    "{}{}{}i",
+                    format_f64(*re),
+                    if *im >= 0.0 { " + " } else { " - " },
+                    format_f64(im.abs())
+                )
             }
         }
     }
