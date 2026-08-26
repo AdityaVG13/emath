@@ -77,6 +77,19 @@ impl super::Emitter {
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::VectorNorm(v), span)
             }
+            "not" | "core::logic::not" => {
+                // Boolean complement, callable so `notation` targets like
+                // `core::logic::not` compute (operand typing is enforced
+                // at admission).
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`not` expects 1 operand, got {}",
+                        args.len()
+                    ));
+                }
+                let v = self.emit(package, args[0])?;
+                self.push(EmirOp::Not(v), span)
+            }
             "laplacian" => {
                 if args.len() != 2 {
                     return Err(format!(

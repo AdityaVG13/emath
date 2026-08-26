@@ -173,6 +173,44 @@ emath function P:
     );
 }
 
+/// Notation declarations round-trip in the canonical spelling
+/// `notation <fixity> <prec> "<glyph>" => <path> [alias "<str>"]`,
+/// separated from sibling items by one blank line, and the reformatted
+/// output stays idempotent and parse-stable.
+#[test]
+fn notation_items_round_trip() {
+    let source = "\
+package tst.ex2
+
+notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"
+
+notation prefix 80 \"√\" => core::math::sqrt
+
+notation postfix 90 \"inv\" => core::math::recip
+
+emath function F:
+    outputs:
+        y: Float64
+    definitions:
+        y = 1.0
+";
+    let once = format_once(source);
+    assert_eq!(format_once(&once), once, "fmt(fmt(s)) must equal fmt(s)");
+    assert!(once.contains("notation infixl 40 \"⊕\" => core::math::pow alias \"pw\""));
+    assert!(once.contains("notation prefix 80 \"√\" => core::math::sqrt"));
+    assert!(once.contains("notation postfix 90 \"inv\" => core::math::recip"));
+    let rebound = parse_lossless(&once, FileId(0), &Limits::default());
+    assert!(
+        !rebound.diagnostics.has_errors(),
+        "formatted notation must parse back: {:?}",
+        rebound
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>()
+    );
+}
+
 /// Quoted string arguments keep their quotes through the round trip so
 /// identifier args and string args never merge on reformat.
 #[test]

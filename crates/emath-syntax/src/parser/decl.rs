@@ -531,6 +531,13 @@ impl super::Parser {
                     target.push(name.clone());
                     self.advance();
                 }
+                // Keyword segments are allowed so the documented
+                // `core::logic::not` target parses (`not` is a keyword
+                // token; the desugared call still resolves).
+                TokenKind::Keyword(keyword) => {
+                    target.push(keyword.spelling().to_string());
+                    self.advance();
+                }
                 TokenKind::PathSep | TokenKind::Dot => {
                     self.advance();
                 }

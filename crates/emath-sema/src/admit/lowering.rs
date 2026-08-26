@@ -21,7 +21,15 @@ use super::{
 /// Strip namespace prefixes (`math::`, `linalg::`, `pde::`, `coding::`,
 /// legacy `core::math::`) from builtin function names to a bare form.
 fn normalize_builtin(name: &str) -> String {
-    for prefix in &["math::", "linalg::", "pde::", "coding::", "core::math::"] {
+    for prefix in &[
+        "math::",
+        "linalg::",
+        "pde::",
+        "coding::",
+        "logic::",
+        "core::math::",
+        "core::logic::",
+    ] {
         if let Some(bare) = name.strip_prefix(prefix) {
             return bare.to_string();
         }
@@ -230,7 +238,11 @@ impl super::Admitter {
                     );
                     return None;
                 };
-                let name = segments.join(".");
+                // Join with `::` so namespaced builtins normalize exactly
+                // like the exec emitter's `core::math::` stripping (a `.`
+                // join made `core::math::pow` an unknown function despite
+                // the documented "namespace::name" spelling).
+                let name = segments.join("::");
                 let name = normalize_builtin(&name);
                 if matches!(name.as_str(), "sum" | "product") {
                     if args.len() != 1 {
@@ -245,7 +257,8 @@ impl super::Admitter {
                 }
                 let arity: Option<usize> = match name.as_str() {
                     s if BuiltinId::from_name(s).is_some() => Some(BuiltinId::from_name(s).unwrap().arity()),
-                    "is_finite" | "norm" | "transpose" | "length" | "mean" | "factorial" | "grad" => Some(1),
+                    "is_finite" | "norm" | "transpose" | "length" | "mean" | "factorial" | "grad"
+                    | "not" => Some(1),
                     "pow" | "dot" | "laplacian" | "laplacian_neumann" | "laplacian_2d" | "laplacian_2d_neumann" | "gradient" | "gradient_2d_x" | "gradient_2d_y" | "mod_inv" | "hamming_distance" => Some(2),
                     "lerp" | "clamp" | "congruence" | "poly_eval_mod" | "rs_encode" => Some(3),
                     "laplacian_dirichlet" => Some(4),
@@ -275,7 +288,7 @@ impl super::Admitter {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins — math: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; autodiff: grad; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y; coding: poly_eval_mod, rs_encode, hamming_distance. Use bare names or namespace::name)"
+                                "unknown function `{name}` (Phase 1 builtins — math: exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; autodiff: grad; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y; coding: poly_eval_mod, rs_encode, hamming_distance; logic: not. Use bare names or namespace::name)"
                             ),
                             function.source,
                         );
@@ -720,6 +733,30 @@ impl super::Admitter {
                             expr.source,
                         );
                         Some((id, Infer::Int))
+                    }
+                    "not" => {
+                        // `core::logic::not` as a callable: the bool
+                        // complement used by `notation` targets (for
+                        // example `notation prefix 80 "¬" =>
+                        // core::logic::not`). Lowered as EmirOp::Not by
+                        // the exec emitter; operand must be Bool.
+                        let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
+                        if !matches!(arg_infer, Infer::Bool) {
+                            self.error(
+                                "E-TYPE-012",
+                                "argument to `not` must be Boolean",
+                                args[0].source,
+                            );
+                            return None;
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![arg_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Bool))
                     }
                     "grad" => {
                         // Reverse-mode AD: grad(expr) computes the gradient

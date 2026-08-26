@@ -1,5 +1,8 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{BinaryOp, BinderKind, DerivativeKind, Expr, ExprKind, LimitDirection, UnaryOp, UnitExpr, UnitQueryKind};
+use crate::tree::{
+    BinaryOp, BinderKind, DerivativeKind, Expr, ExprKind, LimitDirection, NotationFixity, UnaryOp,
+    UnitExpr, UnitQueryKind,
+};
 use super::{binder_kind, comparison_operator, MAX_EXPR_DEPTH};
 
 impl super::Parser {
@@ -381,7 +384,7 @@ impl super::Parser {
     }
 
     fn parse_multiplicative(&mut self, depth: usize) -> Option<Expr> {
-        let mut left = self.parse_unary(depth)?;
+        let mut left = self.parse_notation_infix(depth, super::CUSTOM_OP_MIN_PRECEDENCE)?;
         loop {
             if self.skip_continuation_lines() {
                 continue;
@@ -395,7 +398,7 @@ impl super::Parser {
             if self.skip_continuation_lines() {
                 // operator-first continuation
             }
-            let right = self.parse_unary(depth)?;
+            let right = self.parse_notation_infix(depth, super::CUSTOM_OP_MIN_PRECEDENCE)?;
             let span = left.source.cover(right.source);
             left = Expr {
                 kind: ExprKind::Binary {
@@ -409,8 +412,76 @@ impl super::Parser {
         Some(left)
     }
 
+    /// Custom-operator infix layer (notation declarations). Binds tighter
+    /// than `* /` and looser than unary prefix, so `a ⊕ b * c` is
+    /// `(a ⊕ b) * c` and `4 * x ⊕ 2` is `4 * (x ⊕ 2)`. Declared
+    /// precedences order custom operators against each other (higher
+    /// binds tighter); `infixl`/`infix` are left-associative, `infixr`
+    /// right-associative via the classic precedence-climbing cut. Glyph
+    /// uses desugar to plain calls of the canonical target (N5: the
+    /// semantic IR is notation-agnostic).
+    fn parse_notation_infix(&mut self, depth: usize, min_precedence: u32) -> Option<Expr> {
+        let mut left = self.parse_unary(depth)?;
+        loop {
+            if self.skip_continuation_lines() {
+                continue;
+            }
+            let (target, precedence, left_assoc) = match self.peek().clone() {
+                TokenKind::Ident(name) => match self.notations.get(&name) {
+                    Some(op)
+                        if matches!(
+                            op.fixity,
+                            NotationFixity::Infix
+                                | NotationFixity::InfixLeft
+                                | NotationFixity::InfixRight
+                        ) && op.precedence >= min_precedence =>
+                    {
+                        (
+                            op.target.clone(),
+                            op.precedence,
+                            op.fixity != NotationFixity::InfixRight,
+                        )
+                    }
+                    _ => break,
+                },
+                _ => break,
+            };
+            self.advance();
+            if self.skip_continuation_lines() {
+                // operator-first continuation
+            }
+            let right = self.parse_notation_infix(
+                depth,
+                if left_assoc {
+                    precedence + 1
+                } else {
+                    precedence
+                },
+            )?;
+            let span = left.source.cover(right.source);
+            left = self.notation_call(&target, vec![left, right], span);
+        }
+        Some(left)
+    }
+
     fn parse_unary(&mut self, depth: usize) -> Option<Expr> {
         let start = self.current_span();
+        // Custom-operator prefix use: `¬ a` → target(a) (notation
+        // declarations; binds at the unary level, tighter than custom
+        // infix, alongside `-`/`+`/`not`).
+        if let TokenKind::Ident(name) = self.peek().clone() {
+            let prefix = self
+                .notations
+                .get(&name)
+                .filter(|op| op.fixity == NotationFixity::Prefix)
+                .map(|op| op.target.clone());
+            if let Some(target) = prefix {
+                self.advance();
+                let value = self.parse_unary(depth)?;
+                let span = start.cover(self.last_span());
+                return Some(self.notation_call(&target, vec![value], span));
+            }
+        }
         match self.peek() {
             TokenKind::Minus => {
                 self.advance();
@@ -587,6 +658,19 @@ impl super::Parser {
                         source: span,
                     };
                     break;
+                }
+                // Custom-operator postfix use: `x′` → target(x) (notation
+                // declarations; binds at the postfix level, tightest).
+                TokenKind::Ident(name) => {
+                    let postfix = self
+                        .notations
+                        .get(name)
+                        .filter(|op| op.fixity == NotationFixity::Postfix)
+                        .map(|op| op.target.clone());
+                    let Some(target) = postfix else { break; };
+                    self.advance();
+                    let span = value.source.cover(self.last_span());
+                    value = self.notation_call(&target, vec![value], span);
                 }
                 _ => break,
             }
@@ -1069,11 +1153,20 @@ impl super::Parser {
                 }
                 while matches!(self.peek(), TokenKind::PathSep) {
                     self.advance();
-                    if let TokenKind::Ident(segment) = self.peek().clone() {
-                        segments.push(segment);
-                        self.advance();
-                    } else {
-                        break;
+                    // Keyword segments (`core::logic::not`) are accepted
+                    // after a path separator, mirroring the notation
+                    // target-path rule, so a qualified call spells
+                    // exactly like the notation desugar.
+                    match self.peek().clone() {
+                        TokenKind::Ident(segment) => {
+                            segments.push(segment);
+                            self.advance();
+                        }
+                        TokenKind::Keyword(keyword) => {
+                            segments.push(keyword.spelling().to_string());
+                            self.advance();
+                        }
+                        _ => break,
                     }
                 }
                 let mut generics = None;
