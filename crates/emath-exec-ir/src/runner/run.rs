@@ -1,5 +1,5 @@
 use super::eval::{
-    eval_constructor, eval_definitions, eval_expect, eval_givens, outputs_of,
+    coerce_bindings, eval_constructor, eval_definitions, eval_expect, eval_givens, outputs_of,
     seed_state_from_given,
 };
 use super::{
@@ -100,7 +100,10 @@ fn run_test(
     }
 
     match eval_givens(package, test) {
-        Ok(given) => run.given = given,
+        Ok(mut given) => {
+            coerce_bindings(package, declaration, &mut given);
+            run.given = given;
+        }
         Err(verdict) => {
             run.verdict = verdict;
             return run;
@@ -109,7 +112,10 @@ fn run_test(
 
     if let Some(constructor) = declaration.constructors.first() {
         match eval_constructor(package, declaration, constructor, &run.given) {
-            Ok(state) => run.state = state,
+            Ok(mut state) => {
+                coerce_bindings(package, declaration, &mut state);
+                run.state = state;
+            }
             Err(verdict) => {
                 run.verdict = verdict;
                 return run;
@@ -117,7 +123,10 @@ fn run_test(
         }
     } else if !declaration.state.is_empty() {
         match seed_state_from_given(declaration, &run.given) {
-            Ok(state) => run.state = state,
+            Ok(mut state) => {
+                coerce_bindings(package, declaration, &mut state);
+                run.state = state;
+            }
             Err(verdict) => {
                 run.verdict = verdict;
                 return run;
@@ -152,16 +161,18 @@ fn run_direct(
     declaration: &Declaration,
     given: &BTreeMap<String, Value>,
 ) -> TestRun {
+    let mut given = given.clone();
+    coerce_bindings(package, declaration, &mut given);
     let mut run = TestRun {
         name: PANE_TEST_NAME.to_string(),
-        given: given.clone(),
+        given,
         state: BTreeMap::new(),
         definitions: BTreeMap::new(),
         outputs: BTreeMap::new(),
         verdict: TestVerdict::Computed,
     };
 
-    if let Some(missing) = missing_binding(declaration, given) {
+    if let Some(missing) = missing_binding(declaration, &run.given) {
         run.verdict = TestVerdict::LoweringRefused {
             detail: format!("missing input `{missing}`"),
         };
@@ -180,7 +191,10 @@ fn run_direct(
 
     if let Some(constructor) = declaration.constructors.first() {
         match eval_constructor(package, declaration, constructor, &run.given) {
-            Ok(state) => run.state = state,
+            Ok(mut state) => {
+                coerce_bindings(package, declaration, &mut state);
+                run.state = state;
+            }
             Err(verdict) => {
                 run.verdict = verdict;
                 return run;
@@ -188,7 +202,10 @@ fn run_direct(
         }
     } else if !declaration.state.is_empty() {
         match seed_state_from_given(declaration, &run.given) {
-            Ok(state) => run.state = state,
+            Ok(mut state) => {
+                coerce_bindings(package, declaration, &mut state);
+                run.state = state;
+            }
             Err(verdict) => {
                 run.verdict = verdict;
                 return run;

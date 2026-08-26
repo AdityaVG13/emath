@@ -18,12 +18,10 @@ mod run;
 mod simulate;
 
 pub use eval::eval_definitions_values;
-pub use run::{
-    run_declaration, run_declaration_with_given, run_package, run_package_with_given,
-};
+pub use run::{run_declaration, run_declaration_with_given, run_package, run_package_with_given};
 pub use simulate::{
-    step_continuous, step_continuous_values, simulate_continuous, simulate_continuous_with,
-    SimulateOptions, StepMethod, Trajectory, TrajectorySample,
+    SimulateOptions, StepMethod, Trajectory, TrajectorySample, simulate_continuous,
+    simulate_continuous_with, step_continuous, step_continuous_values,
 };
 
 /// Hint stored on declarations that have no `tests:` examples and cannot

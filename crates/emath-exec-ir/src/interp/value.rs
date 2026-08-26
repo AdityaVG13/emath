@@ -20,10 +20,7 @@ pub enum Value {
         data: Vec<f64>,
     },
     /// Rank-3+ tensor of Float64, row-major.
-    Tensor {
-        shape: Vec<usize>,
-        data: Vec<f64>,
-    },
+    Tensor { shape: Vec<usize>, data: Vec<f64> },
 }
 
 impl PartialEq for Value {
@@ -31,8 +28,8 @@ impl PartialEq for Value {
         match (self, other) {
             (Self::F64(left), Self::F64(right)) => left.to_bits() == right.to_bits(),
             (Self::I64(left), Self::I64(right)) => left == right,
-            (Self::I64(left), Self::F64(right)) => (*left as f64) == *right,
-            (Self::F64(left), Self::I64(right)) => *left == (*right as f64),
+            (Self::I64(left), Self::F64(right)) => emath_rt::eq_i64_f64(*left, *right),
+            (Self::F64(left), Self::I64(right)) => emath_rt::eq_i64_f64(*right, *left),
             (Self::Bool(left), Self::Bool(right)) => left == right,
             (Self::Complex { re: r1, im: i1 }, Self::Complex { re: r2, im: i2 }) => {
                 r1.to_bits() == r2.to_bits() && i1.to_bits() == i2.to_bits()
@@ -42,6 +39,12 @@ impl PartialEq for Value {
             }
             (Self::F64(left), Self::Complex { re, im }) => {
                 im.to_bits() == 0.0_f64.to_bits() && left.to_bits() == re.to_bits()
+            }
+            (Self::Complex { re, im }, Self::I64(right)) => {
+                *im == 0.0 && emath_rt::eq_i64_f64(*right, *re)
+            }
+            (Self::I64(left), Self::Complex { re, im }) => {
+                *im == 0.0 && emath_rt::eq_i64_f64(*left, *re)
             }
             (Self::Vector(left), Self::Vector(right)) => {
                 left.len() == right.len()
@@ -88,6 +91,19 @@ impl PartialEq for Value {
                         .all(|(l, r)| l.to_bits() == r.to_bits())
             }
             _ => false,
+        }
+    }
+}
+
+impl Value {
+    /// Real scalar at a Float64 or AD/solver boundary: `F64` as-is, `I64`
+    /// widened. Int-typed registers stay `I64` until this conversion.
+    #[must_use]
+    pub fn as_real_f64(&self) -> Option<f64> {
+        match *self {
+            Self::F64(v) => Some(v),
+            Self::I64(v) => Some(v as f64),
+            _ => None,
         }
     }
 }

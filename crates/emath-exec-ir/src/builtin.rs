@@ -14,10 +14,32 @@ use std::f64::consts::{LN_2, LN_10};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BuiltinId {
     // Unary f64 -> f64 (19 builtins)
-    Exp, Ln, Sqrt, Sin, Cos, Tan, Tanh, Abs, Floor, Ceil, Round, Sign,
-    Log2, Log10, Sinh, Cosh, Atan, Cbrt, Recip, Fract,
+    Exp,
+    Ln,
+    Sqrt,
+    Sin,
+    Cos,
+    Tan,
+    Tanh,
+    Abs,
+    Floor,
+    Ceil,
+    Round,
+    Sign,
+    Log2,
+    Log10,
+    Sinh,
+    Cosh,
+    Atan,
+    Cbrt,
+    Recip,
+    Fract,
     // Binary f64 x f64 -> f64 (5 builtins)
-    Hypot, Min, Max, Atan2, Mod,
+    Hypot,
+    Min,
+    Max,
+    Atan2,
+    Mod,
 }
 
 impl BuiltinId {
@@ -91,11 +113,26 @@ impl BuiltinId {
     #[must_use]
     pub fn arity(&self) -> usize {
         match self {
-            Self::Exp | Self::Ln | Self::Sqrt | Self::Sin | Self::Cos
-            | Self::Tan | Self::Tanh | Self::Abs | Self::Floor | Self::Ceil
-            | Self::Round | Self::Sign | Self::Log2 | Self::Log10
-            | Self::Sinh | Self::Cosh | Self::Atan | Self::Cbrt
-            | Self::Recip | Self::Fract => 1,
+            Self::Exp
+            | Self::Ln
+            | Self::Sqrt
+            | Self::Sin
+            | Self::Cos
+            | Self::Tan
+            | Self::Tanh
+            | Self::Abs
+            | Self::Floor
+            | Self::Ceil
+            | Self::Round
+            | Self::Sign
+            | Self::Log2
+            | Self::Log10
+            | Self::Sinh
+            | Self::Cosh
+            | Self::Atan
+            | Self::Cbrt
+            | Self::Recip
+            | Self::Fract => 1,
             Self::Hypot | Self::Min | Self::Max | Self::Atan2 | Self::Mod => 2,
         }
     }
@@ -117,7 +154,14 @@ impl BuiltinId {
             Self::Floor => x.floor(),
             Self::Ceil => x.ceil(),
             Self::Round => x.round(),
-            Self::Sign => x.signum(),
+            // Mathematical sgn: sgn(0) = 0. IEEE `signum` returns ±1 at ±0.
+            Self::Sign => {
+                if x == 0.0 {
+                    0.0
+                } else {
+                    x.signum()
+                }
+            }
             Self::Log2 => x.log2(),
             Self::Log10 => x.log10(),
             Self::Sinh => x.sinh(),
@@ -171,11 +215,12 @@ impl BuiltinId {
                 let t = primal.tanh();
                 (t, (1.0 - t * t) * tangent)
             }
-            Self::Abs => (primal.abs(), primal.signum() * tangent),
+            // abs'(x) = sgn(x); this crate's sgn(0) = 0, not IEEE signum(±0)=±1.
+            Self::Abs => (primal.abs(), Self::Sign.eval_unary(primal) * tangent),
             Self::Floor => (primal.floor(), 0.0),
             Self::Ceil => (primal.ceil(), 0.0),
             Self::Round => (primal.round(), 0.0),
-            Self::Sign => (primal.signum(), 0.0),
+            Self::Sign => (if primal == 0.0 { 0.0 } else { primal.signum() }, 0.0),
             Self::Log2 => (primal.log2(), tangent / (primal * LN_2)),
             Self::Log10 => (primal.log10(), tangent / (primal * LN_10)),
             Self::Sinh => (primal.sinh(), primal.cosh() * tangent),
@@ -226,9 +271,16 @@ impl BuiltinId {
                 }
             }
             Self::Atan2 => {
+                // ∂/∂a atan2(a,b) = b/(a²+b²), ∂/∂b = -a/(a²+b²).
+                // The (1+(a/b)²) form is NaN at b=0 (e.g. atan2(1,0)).
                 let p = pa.atan2(pb);
-                let d = 1.0 / (1.0 + (pa / pb).powi(2));
-                (p, d * (ta * pb - tb * pa) / (pb * pb))
+                let denom = pa * pa + pb * pb;
+                let tangent = if denom != 0.0 {
+                    (ta * pb - tb * pa) / denom
+                } else {
+                    0.0
+                };
+                (p, tangent)
             }
             Self::Mod => {
                 // d/da [a mod b] = 1 at non-boundary points; b is not differentiable
@@ -247,36 +299,25 @@ impl BuiltinId {
     pub fn backward_unary(&self, primal_in: f64, primal_out: f64, adj: f64) -> f64 {
         match self {
             Self::Exp => adj * primal_out, // d/dx exp(x) = exp(x)
-            Self::Ln => {
-                if primal_in != 0.0 { adj / primal_in } else { 0.0 }
-            }
-            Self::Sqrt => {
-                if primal_out != 0.0 { adj / (2.0 * primal_out) } else { 0.0 }
-            }
+            // IEEE like dual: do not zero singularities (ln/sqrt/recip at 0).
+            Self::Ln => adj / primal_in,
+            Self::Sqrt => adj / (2.0 * primal_out),
             Self::Sin => adj * primal_in.cos(),
             Self::Cos => -adj * primal_in.sin(),
             Self::Tan => {
                 let c = primal_in.cos();
-                if c != 0.0 { adj / (c * c) } else { 0.0 }
+                adj / (c * c)
             }
             Self::Tanh => adj * (1.0 - primal_out * primal_out),
-            Self::Abs => adj * primal_in.signum(),
+            Self::Abs => adj * Self::Sign.eval_unary(primal_in),
             Self::Floor | Self::Ceil | Self::Round | Self::Sign => 0.0,
-            Self::Log2 => {
-                if primal_in != 0.0 { adj / (primal_in * LN_2) } else { 0.0 }
-            }
-            Self::Log10 => {
-                if primal_in != 0.0 { adj / (primal_in * LN_10) } else { 0.0 }
-            }
+            Self::Log2 => adj / (primal_in * LN_2),
+            Self::Log10 => adj / (primal_in * LN_10),
             Self::Sinh => adj * primal_in.cosh(),
             Self::Cosh => adj * primal_in.sinh(),
             Self::Atan => adj / (1.0 + primal_in * primal_in),
-            Self::Cbrt => {
-                if primal_out != 0.0 { adj / (3.0 * primal_out * primal_out) } else { 0.0 }
-            }
-            Self::Recip => {
-                if primal_in != 0.0 { -adj / (primal_in * primal_in) } else { 0.0 }
-            }
+            Self::Cbrt => adj / (3.0 * primal_out * primal_out),
+            Self::Recip => -adj / (primal_in * primal_in),
             Self::Fract => adj,
             _ => unreachable!("not a unary builtin"),
         }
@@ -296,10 +337,18 @@ impl BuiltinId {
                 }
             }
             Self::Min => {
-                if pa <= pb { (adj, 0.0) } else { (0.0, adj) }
+                if pa <= pb {
+                    (adj, 0.0)
+                } else {
+                    (0.0, adj)
+                }
             }
             Self::Max => {
-                if pa >= pb { (adj, 0.0) } else { (0.0, adj) }
+                if pa >= pb {
+                    (adj, 0.0)
+                } else {
+                    (0.0, adj)
+                }
             }
             Self::Atan2 => {
                 let denom = pa * pa + pb * pb;
@@ -331,7 +380,7 @@ impl BuiltinId {
             Self::Floor => format!("{arg}.floor()"),
             Self::Ceil => format!("{arg}.ceil()"),
             Self::Round => format!("{arg}.round()"),
-            Self::Sign => format!("{arg}.signum()"),
+            Self::Sign => format!("if {arg} == 0.0 {{ 0.0 }} else {{ {arg}.signum() }}"),
             Self::Log2 => format!("{arg}.log2()"),
             Self::Log10 => format!("{arg}.log10()"),
             Self::Sinh => format!("{arg}.sinh()"),
@@ -385,7 +434,9 @@ impl BuiltinId {
             Self::Cos => format!("-{e_in}.sin() * {d_in}"),
             Self::Tan => format!("{d_in} / ({e_in}.cos() * {e_in}.cos())"),
             Self::Tanh => format!("(1.0 - {e_out} * {e_out}) * {d_in}"),
-            Self::Abs => format!("{e_in}.signum() * {d_in}"),
+            Self::Abs => {
+                format!("(if {e_in} == 0.0 {{ 0.0 }} else {{ {e_in}.signum() }}) * {d_in}")
+            }
             Self::Floor | Self::Ceil | Self::Round | Self::Sign => "0.0".to_string(),
             Self::Log2 => format!("{d_in} / ({e_in} * std::f64::consts::LN_2)"),
             Self::Log10 => format!("{d_in} / ({e_in} * std::f64::consts::LN_10)"),
@@ -414,11 +465,9 @@ impl BuiltinId {
             Self::Hypot => format!(
                 "if {e_out} == 0.0 {{ 0.0 }} else {{ ({ea} * {da} + {eb} * {db}) / {e_out} }}"
             ),
-            Self::Min => format!("if {ea} < {eb} {{ {da} }} else {{ {db} }}"),
-            Self::Max => format!("if {ea} > {eb} {{ {da} }} else {{ {db} }}"),
-            Self::Atan2 => format!(
-                "({eb} * {da} - {ea} * {db}) / ({ea} * {ea} + {eb} * {eb})"
-            ),
+            Self::Min => format!("if {ea} <= {eb} {{ {da} }} else {{ {db} }}"),
+            Self::Max => format!("if {ea} >= {eb} {{ {da} }} else {{ {db} }}"),
+            Self::Atan2 => format!("({eb} * {da} - {ea} * {db}) / ({ea} * {ea} + {eb} * {eb})"),
             Self::Mod => da,
             _ => unreachable!("not a binary builtin"),
         }
@@ -443,18 +492,24 @@ impl BuiltinId {
             Self::Sqrt => format!("{} += {adj} / (2.0 * {p_out});\n", acc(input)),
             Self::Sin => format!("{} += {adj} * {p_in}.cos();\n", acc(input)),
             Self::Cos => format!("{} -= {adj} * {p_in}.sin();\n", acc(input)),
-            Self::Tan => format!(
-                "{} += {adj} / ({p_in}.cos() * {p_in}.cos());\n",
+            Self::Tan => format!("{} += {adj} / ({p_in}.cos() * {p_in}.cos());\n", acc(input)),
+            Self::Tanh => format!("{} += {adj} * (1.0 - {p_out} * {p_out});\n", acc(input)),
+            Self::Abs => format!(
+                "{} += {adj} * (if {p_in} == 0.0 {{ 0.0 }} else {{ {p_in}.signum() }});\n",
                 acc(input)
             ),
-            Self::Tanh => format!("{} += {adj} * (1.0 - {p_out} * {p_out});\n", acc(input)),
-            Self::Abs => format!("{} += {adj} * {p_in}.signum();\n", acc(input)),
             Self::Floor | Self::Ceil | Self::Round | Self::Sign => return None,
             Self::Log2 => {
-                format!("{} += {adj} / ({p_in} * std::f64::consts::LN_2);\n", acc(input))
+                format!(
+                    "{} += {adj} / ({p_in} * std::f64::consts::LN_2);\n",
+                    acc(input)
+                )
             }
             Self::Log10 => {
-                format!("{} += {adj} / ({p_in} * std::f64::consts::LN_10);\n", acc(input))
+                format!(
+                    "{} += {adj} / ({p_in} * std::f64::consts::LN_10);\n",
+                    acc(input)
+                )
             }
             Self::Sinh => format!("{} += {adj} * {p_in}.cosh();\n", acc(input)),
             Self::Cosh => format!("{} += {adj} * {p_in}.sinh();\n", acc(input)),

@@ -65,9 +65,12 @@ impl Emitter {
     }
 
     fn input_index(&self, name: &str) -> Result<u16, String> {
+        // Innermost binder wins: fold bodies append the dummy index even
+        // when a like-named input or prior definition is already in the
+        // table. First-match would leak the outer slot into the body.
         self.inputs
             .iter()
-            .position(|s| s == name)
+            .rposition(|s| s == name)
             .ok_or_else(|| format!("unknown input `{name}`"))
             .and_then(|i| u16_index(i, "input"))
     }
@@ -114,8 +117,11 @@ impl Emitter {
                 self.push(EmirOp::ConstF64(*bits), span)
             }
             ExprNode::Literal(Literal::Integer(text)) => {
-                let parsed: f64 = text
-                    .replace('_', "")
+                let stripped = text.replace('_', "");
+                if let Ok(value) = stripped.parse::<i64>() {
+                    return self.push(EmirOp::ConstI64(value), span);
+                }
+                let parsed: f64 = stripped
                     .parse()
                     .map_err(|_| format!("invalid integer literal `{text}`"))?;
                 if !parsed.is_finite() {
@@ -123,13 +129,9 @@ impl Emitter {
                         "integer literal `{text}` exceeds the strict-f64 finite range"
                     ));
                 }
-                let value: f64 = parsed;
-                self.push(EmirOp::ConstF64(value.to_bits()), span)
+                self.push(EmirOp::ConstF64(parsed.to_bits()), span)
             }
-            ExprNode::Literal(Literal::Bool(on)) => {
-                let value: f64 = if *on { 1.0 } else { 0.0 };
-                self.push(EmirOp::ConstF64(value.to_bits()), span)
-            }
+            ExprNode::Literal(Literal::Bool(on)) => self.push(EmirOp::ConstBool(*on), span),
             ExprNode::Literal(Literal::Complex { re_bits, im_bits }) => {
                 let re = f64::from_bits(*re_bits);
                 let im = f64::from_bits(*im_bits);
@@ -304,11 +306,24 @@ impl Emitter {
                 let target = self.emit(package, *value)?;
                 if indices.len() == 1 {
                     let idx = self.emit(package, indices[0])?;
-                    self.push(EmirOp::VectorIndex { vector: target, index: idx }, span)
+                    self.push(
+                        EmirOp::VectorIndex {
+                            vector: target,
+                            index: idx,
+                        },
+                        span,
+                    )
                 } else if indices.len() == 2 {
                     let row = self.emit(package, indices[0])?;
                     let col = self.emit(package, indices[1])?;
-                    self.push(EmirOp::MatrixIndex { matrix: target, row, col }, span)
+                    self.push(
+                        EmirOp::MatrixIndex {
+                            matrix: target,
+                            row,
+                            col,
+                        },
+                        span,
+                    )
                 } else {
                     let mut emitted = Vec::with_capacity(indices.len());
                     for &index in indices {
@@ -328,7 +343,9 @@ impl Emitter {
                 let mut emitted = Vec::with_capacity(axes.len());
                 for axis in axes {
                     emitted.push(match axis {
-                        SliceAxis::Point(index) => EmirSliceAxis::Point(self.emit(package, *index)?),
+                        SliceAxis::Point(index) => {
+                            EmirSliceAxis::Point(self.emit(package, *index)?)
+                        }
                         SliceAxis::Range { start, end } => EmirSliceAxis::Range {
                             start: self.emit(package, *start)?,
                             end: self.emit(package, *end)?,
@@ -349,9 +366,7 @@ impl Emitter {
                 body,
             } => {
                 if variables.len() != 1 {
-                    return Err(
-                        "only a single binder variable is computed".to_string()
-                    );
+                    return Err("only a single binder variable is computed".to_string());
                 }
                 let binder = &variables[0];
                 let domain_expr = package
@@ -359,11 +374,7 @@ impl Emitter {
                     .ok_or_else(|| "binder domain out of range".to_string())?;
                 let (start_id, end_id) = match domain_expr {
                     ExprNode::Vector(els) if els.len() == 2 => (els[0], els[1]),
-                    _ => {
-                        return Err(
-                            "binder domain must be a range vector".to_string()
-                        )
-                    }
+                    _ => return Err("binder domain must be a range vector".to_string()),
                 };
                 let start_val = self.emit(package, start_id)?;
                 let end_val = self.emit(package, end_id)?;
@@ -396,24 +407,20 @@ impl Emitter {
                             BinderKind::Exists => FoldCombine::Or,
                             BinderKind::Integral => {
                                 return Err(
-                                    "integral binder must lower via Integral op".to_string(),
+                                    "integral binder must lower via Integral op".to_string()
                                 );
                             }
                             BinderKind::Series => {
                                 return Err(
-                                    "series binder is a claim, not a computation".to_string(),
+                                    "series binder is a claim, not a computation".to_string()
                                 );
                             }
                         };
                         let init_val = match combine {
                             FoldCombine::Add => self.push(EmirOp::ConstI64(0), span)?,
                             FoldCombine::Mul => self.push(EmirOp::ConstI64(1), span)?,
-                            FoldCombine::And => {
-                                self.push(EmirOp::ConstF64(1.0f64.to_bits()), span)?
-                            }
-                            FoldCombine::Or => {
-                                self.push(EmirOp::ConstF64(0.0f64.to_bits()), span)?
-                            }
+                            FoldCombine::And => self.push(EmirOp::ConstBool(true), span)?,
+                            FoldCombine::Or => self.push(EmirOp::ConstBool(false), span)?,
                         };
                         self.push(
                             EmirOp::Fold {
@@ -482,7 +489,11 @@ impl Emitter {
                     span,
                 )
             }
-            ExprNode::Optimize { body, vars, maximize } => {
+            ExprNode::Optimize {
+                body,
+                vars,
+                maximize,
+            } => {
                 let mut var_indices = Vec::with_capacity(vars.len());
                 for var in vars {
                     var_indices.push(self.input_index(var)?);
@@ -503,7 +514,12 @@ impl Emitter {
                     span,
                 )
             }
-            ExprNode::SampleLimit { body, var, target, direction } => {
+            ExprNode::SampleLimit {
+                body,
+                var,
+                target,
+                direction,
+            } => {
                 // The limit variable may be a declared input (sampled in
                 // place) or binder-introduced like a fold loop variable
                 // (registered as a phantom input at the end of the body's

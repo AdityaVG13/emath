@@ -34,8 +34,8 @@ impl super::Emitter {
         let builtin_id = BuiltinId::from_name(function);
         let unary = builtin_id.is_some_and(|id| id.arity() == 1)
             || matches!(function, "is_finite" | "norm" | "transpose" | "length");
-        let binary = builtin_id.is_some_and(|id| id.arity() == 2)
-            || matches!(function, "pow" | "dot");
+        let binary =
+            builtin_id.is_some_and(|id| id.arity() == 2) || matches!(function, "pow" | "dot");
         let ternary = matches!(function, "lerp" | "clamp");
         let expected = match (unary, binary, ternary) {
             (true, false, false) => Some(1),
@@ -82,10 +82,7 @@ impl super::Emitter {
                 // `core::logic::not` compute (operand typing is enforced
                 // at admission).
                 if args.len() != 1 {
-                    return Err(format!(
-                        "`not` expects 1 operand, got {}",
-                        args.len()
-                    ));
+                    return Err(format!("`not` expects 1 operand, got {}", args.len()));
                 }
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::Not(v), span)
@@ -203,7 +200,10 @@ impl super::Emitter {
                         input,
                         weights: vec![inv, -2.0 * inv, inv],
                         center: 1,
-                        edge: EdgePolicy::Dirichlet { left: g_left, right: g_right },
+                        edge: EdgePolicy::Dirichlet {
+                            left: g_left,
+                            right: g_right,
+                        },
                     },
                     span,
                 )
@@ -226,17 +226,15 @@ impl super::Emitter {
                         }
                         v
                     }
-                    _ => return Err(format!(
-                        "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                    )),
+                    _ => {
+                        return Err(format!(
+                            "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                        ));
+                    }
                 };
                 let inv = 1.0 / (dx * dx);
                 // 5-point Laplacian: [[0,1,0],[1,-4,1],[0,1,0]] / dx^2.
-                let weights = vec![
-                    0.0, inv, 0.0,
-                    inv, -4.0 * inv, inv,
-                    0.0, inv, 0.0,
-                ];
+                let weights = vec![0.0, inv, 0.0, inv, -4.0 * inv, inv, 0.0, inv, 0.0];
                 let edge = if function == "laplacian_2d_neumann" {
                     EdgePolicy::Neumann
                 } else {
@@ -255,7 +253,9 @@ impl super::Emitter {
             "gradient" => {
                 // 1-D central-difference first derivative (du/dx).
                 // Reuses Stencil1d with weights [-1/(2dx), 0, +1/(2dx)] and
-                // Clamp edges (one-sided at the boundary).
+                // OneSided edges (linear ghost → first-order one-sided
+                // difference, exact on linear fields). Clamp on this stencil
+                // would return half the true slope at the boundary.
                 if args.len() != 2 {
                     return Err(format!(
                         "`gradient` expects 2 operands (vector, dx), got {}",
@@ -284,7 +284,7 @@ impl super::Emitter {
                         input,
                         weights: vec![-inv, 0.0, inv],
                         center: 1,
-                        edge: EdgePolicy::Clamp,
+                        edge: EdgePolicy::OneSided,
                     },
                     span,
                 )
@@ -293,8 +293,9 @@ impl super::Emitter {
                 // 2-D central-difference first derivative of a scalar field
                 // along one axis. Reuses Stencil2d with the 1-D central-
                 // difference taps embedded in the middle row (du/dc, x) or
-                // middle column (du/dr, y); the other taps are zero. Clamp
-                // edges (one-sided at the boundary).
+                // middle column (du/dr, y); the other taps are zero.
+                // OneSided edges: linear ghost so a slope-1 ramp is 1 at
+                // the boundary, not the Clamp-central artifact 0.5.
                 if args.len() != 2 {
                     return Err(format!(
                         "`{function}` expects 2 operands (matrix, dx), got {}",
@@ -312,9 +313,11 @@ impl super::Emitter {
                         }
                         v
                     }
-                    _ => return Err(format!(
-                        "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                    )),
+                    _ => {
+                        return Err(format!(
+                            "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
+                        ));
+                    }
                 };
                 let inv = 1.0 / (2.0 * dx);
                 let weights = if function == "gradient_2d_x" {
@@ -329,7 +332,7 @@ impl super::Emitter {
                         input,
                         weights,
                         center: (1, 1),
-                        edge: EdgePolicy::Clamp,
+                        edge: EdgePolicy::OneSided,
                     },
                     span,
                 )
@@ -403,10 +406,16 @@ impl super::Emitter {
                 let mut body_emitter = self.sub_emitter();
                 let body_result = body_emitter.emit(package, args[0])?;
                 let body_program = body_emitter.finish(body_result, sc)?;
-                let var_indices: Vec<u16> =
-                    (0..u16::try_from(self.inputs.len()).map_err(|_| "too many inputs for grad")?)
-                        .collect();
-                self.push(EmirOp::ReverseMode { body: body_program, var_indices }, span)
+                let var_indices: Vec<u16> = (0..u16::try_from(self.inputs.len())
+                    .map_err(|_| "too many inputs for grad")?)
+                    .collect();
+                self.push(
+                    EmirOp::ReverseMode {
+                        body: body_program,
+                        var_indices,
+                    },
+                    span,
+                )
             }
             "factorial" | "core::math::factorial" => {
                 let n = self.emit(package, args[0])?;
