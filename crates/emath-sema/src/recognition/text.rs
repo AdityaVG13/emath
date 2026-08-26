@@ -25,6 +25,7 @@ pub(super) fn argument_text(argument: &CommandArgument) -> String {
 pub fn expr_text(expr: &Expr) -> String {
     match &expr.kind {
         ExprKind::Int(value) | ExprKind::Float(value) | ExprKind::Str(value) => value.clone(),
+        ExprKind::Rational { numer, denom } => format!("{numer}//{denom}"),
         ExprKind::Bool(value) => value.to_string(),
         ExprKind::Path { segments, generics } => {
             let mut out = segments.join("::");
@@ -81,7 +82,12 @@ pub fn expr_text(expr: &Expr) -> String {
             if *inclusive { "=" } else { "" },
             end.as_ref().map_or_else(String::new, |e| expr_text(e))
         ),
-        ExprKind::Derivative { value, wrt, kind, holding } => {
+        ExprKind::Derivative {
+            value,
+            wrt,
+            kind,
+            holding,
+        } => {
             let prefix = match kind {
                 emath_core::tree::DerivativeKind::Plain => "derivative",
                 emath_core::tree::DerivativeKind::Partial => "partial",
@@ -101,7 +107,13 @@ pub fn expr_text(expr: &Expr) -> String {
                     holding.iter().map(expr_text).collect::<Vec<_>>().join(", ")
                 )
             };
-            format!("{}({}){}{}", prefix, expr_text(value), wrt_text, holding_text)
+            format!(
+                "{}({}){}{}",
+                prefix,
+                expr_text(value),
+                wrt_text,
+                holding_text
+            )
         }
         ExprKind::Solve { value, wrt } => {
             let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
@@ -112,7 +124,11 @@ pub fn expr_text(expr: &Expr) -> String {
             });
             format!("solve({}){}", expr_text(value), wrt_text)
         }
-        ExprKind::Optimize { value, wrt, maximize } => {
+        ExprKind::Optimize {
+            value,
+            wrt,
+            maximize,
+        } => {
             let kw = if *maximize { "maximize" } else { "minimize" };
             let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
                 format!(
@@ -149,24 +165,48 @@ pub fn expr_text(expr: &Expr) -> String {
             };
             format!("{} {}", kw, expr_text(expr))
         }
-        ExprKind::Limit { var, target, direction, body } => {
+        ExprKind::Limit {
+            var,
+            target,
+            direction,
+            body,
+        } => {
             let dir = match direction {
                 emath_core::tree::LimitDirection::TwoSided => "",
                 emath_core::tree::LimitDirection::FromAbove => "+",
                 emath_core::tree::LimitDirection::FromBelow => "-",
             };
-            format!("limit {var} -> {}{dir}: {}", expr_text(target), expr_text(body))
+            format!(
+                "limit {var} -> {}{dir}: {}",
+                expr_text(target),
+                expr_text(body)
+            )
         }
-        ExprKind::SampleLimit { var, target, direction, body } => {
+        ExprKind::SampleLimit {
+            var,
+            target,
+            direction,
+            body,
+        } => {
             let dir = match direction {
                 emath_core::tree::LimitDirection::TwoSided => "",
                 emath_core::tree::LimitDirection::FromAbove => "+",
                 emath_core::tree::LimitDirection::FromBelow => "-",
             };
-            format!("sample_limit {var} -> {}{dir}: {}", expr_text(target), expr_text(body))
+            format!(
+                "sample_limit {var} -> {}{dir}: {}",
+                expr_text(target),
+                expr_text(body)
+            )
         }
-        ExprKind::Cases { subject, arms, else_arm } => {
-            let subj = subject.as_ref().map_or_else(String::new, |s| format!("{}: ", expr_text(s)));
+        ExprKind::Cases {
+            subject,
+            arms,
+            else_arm,
+        } => {
+            let subj = subject
+                .as_ref()
+                .map_or_else(String::new, |s| format!("{}: ", expr_text(s)));
             let arms_text = arms
                 .iter()
                 .map(|(c, v)| format!("| {} => {}", expr_text(c), expr_text(v)))
@@ -208,10 +248,24 @@ pub fn type_text(ty: &TypeExpr) -> String {
             items.iter().map(type_text).collect::<Vec<_>>().join(", ")
         ),
         TypeKind::Ref(inner) => format!("&{}", type_text(inner)),
-        TypeKind::Product(items) => items.iter().map(type_text).collect::<Vec<_>>().join(" * "),
+        TypeKind::Product { left, op, right } => {
+            format!("{}{}{}", type_text(left), op.as_str(), type_text(right))
+        }
+        TypeKind::Pow { base, exponent } => {
+            if matches!(base.kind, TypeKind::Product { .. }) {
+                format!("({})^{exponent}", type_text(base))
+            } else {
+                format!("{}^{exponent}", type_text(base))
+            }
+        }
         TypeKind::In { base, unit } => format!("{} in {}", type_text(base), type_text(unit)),
         TypeKind::Domain { base, lo, hi } => {
-            format!("{} in [{}, {}]", type_text(base), expr_text(lo), expr_text(hi))
+            format!(
+                "{} in [{}, {}]",
+                type_text(base),
+                expr_text(lo),
+                expr_text(hi)
+            )
         }
     }
 }

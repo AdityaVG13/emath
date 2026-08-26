@@ -2,7 +2,7 @@
 
 ## Purpose and layer
 - Command-line application (CRATE_MAP tier: sema/build/lab-core).
-- Commands: `check`, `plan`, `planner`, `build`, `artifact check/battery`, `import modelica`, `architecture`, `web` (alias `serve`), plus Semantic Genesis (`parse`, `signature`, `genesis`, `compile --parametric`, `world show`, `portfolio show`, `meaning list|set|unset|explain`) and tooling commands (`new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`, `fork`, `agent`, `help [<command>]`, `version`, `capabilities`, `robot-docs`).
+- Commands: `check`, `plan`, `planner`, `build`, `eval`, `simulate`, `artifact check/battery`, `import modelica`, `architecture`, `web` (alias `serve`), plus Semantic Genesis (`parse`, `signature`, `genesis`, `eval`, `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning list|set|unset|explain`) and tooling commands (`new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`, `fork`, `agent`, `help [<command>]`, `version`, `capabilities`, `robot-docs`).
 - Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error (`EXIT_OK`, `EXIT_REFUSED`, `EXIT_USAGE`).
 - `run(&[String]) -> u8` is the testable entry behind `main`; the generated crate builds an agent envelope (`emath.agent`) over the same admission/plan/build paths as interactive commands.
 - Registers the in-tree static `native.rust` capability so the generic planner serves the same goals as the native pipeline.
@@ -14,7 +14,8 @@
 - Module `genesis_cmd` (genesis/parse/signature/compile/world/portfolio commands), `meaning_cmd` (`emath meaning …` plus lock resolution for genesis/eval/compile), and `tooling_cmd` (`tooling_dispatch`).
 
 ## Invariants
-- Typed refusals carry stable E-* codes: `check`/`plan` exit `EXIT_REFUSED` when the session reports errors; `artifact check` refuses empty state dirs (`E-EVID-105`) and illegible state dirs (`E-TLT-005`).
+- Typed refusals carry stable E-* codes: `check`/`plan` exit `EXIT_REFUSED` when the session reports errors; empty / comment-only source is `E-PKG-081` (not a vacuous admit); `eval`/`compile`/`simulate` refuse a missing source with `E-PKG-080` (same code as `check`); `artifact check` refuses empty state dirs (`E-EVID-105`) and illegible state dirs (`E-TLT-005`).
+- `--json` on `check`/`eval`/`simulate` refusal includes diagnostic `code`s (not counts); a checker lane can assert the exact E-* the CLI refused with.
 - `bench` is a typed refusal (`E-TLT-004`) until the benchmark comparison ruleset lands; `fork` refuses network sync offline (`E-TLT-006`).
 - The `native.rust` registry entry is an exact-capability declaration, not a new capability or prefix match.
 - A goal that cannot be planned must not exit 0 (silent success); unplanned goals force `EXIT_REFUSED`.

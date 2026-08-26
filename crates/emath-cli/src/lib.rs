@@ -37,6 +37,53 @@ pub fn print_diagnostics(diagnostics: &Diagnostics) {
     }
 }
 
+/// Split `error: E-FOO-001: rest` (or the same without the `error:` prefix)
+/// into a stable code and message.
+pub(crate) fn split_error_code(error: &str) -> Option<(&str, &str)> {
+    let error = error.strip_prefix("error: ").unwrap_or(error).trim();
+    let (code, rest) = error.split_once(':')?;
+    let code = code.trim();
+    if code.starts_with("E-") || code.starts_with("N-") {
+        Some((code, rest.trim()))
+    } else {
+        None
+    }
+}
+
+pub(crate) fn json_diagnostic_entry(code: &str, severity: &str, message: &str) -> String {
+    let mut entry = emath_artifact::JsonWriter::object();
+    entry.string("code", code);
+    entry.string("severity", severity);
+    entry.string("message", message);
+    entry.finish().trim_end().to_string()
+}
+
+pub(crate) fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String> {
+    diagnostics
+        .items()
+        .iter()
+        .map(|item| {
+            json_diagnostic_entry(
+                item.code,
+                match item.severity {
+                    emath_core::Severity::Error => "error",
+                    emath_core::Severity::Warning => "warning",
+                    emath_core::Severity::Note => "note",
+                },
+                &item.message,
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn print_json_diagnostics(command: &str, admitted: bool, entries: &[String]) {
+    let mut out = emath_artifact::JsonWriter::object();
+    out.string("command", command);
+    out.bool("admitted", admitted);
+    out.objects("diagnostics", entries);
+    println!("{}", out.finish());
+}
+
 /// `check <file> [--json]`: parse + admit, no codegen.
 pub fn check(path: &Path, json: bool) -> u8 {
     if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
@@ -46,28 +93,13 @@ pub fn check(path: &Path, json: bool) -> u8 {
     let (diagnostics, package_id) = run_check(&path);
     print_diagnostics(&diagnostics);
     if json {
-        let items = diagnostics.items();
-        let mut body = Vec::new();
-        for item in items {
-            let mut entry = emath_artifact::JsonWriter::object();
-            entry.string("code", item.code);
-            entry.string(
-                "severity",
-                match item.severity {
-                    emath_core::Severity::Error => "error",
-                    emath_core::Severity::Warning => "warning",
-                    emath_core::Severity::Note => "note",
-                },
-            );
-            entry.string("message", &item.message);
-            body.push(entry.finish().trim_end().to_string());
-        }
-        let mut out = emath_artifact::JsonWriter::object();
-        out.string("command", "check");
-        out.bool("admitted", !diagnostics.has_errors());
         // The diagnostics array carries codes and messages, not counts:
         // a checker lane must be able to assert the exact E-* code the
         // CLI refused with.
+        let body = json_diagnostics_entries(&diagnostics);
+        let mut out = emath_artifact::JsonWriter::object();
+        out.string("command", "check");
+        out.bool("admitted", !diagnostics.has_errors());
         out.objects("diagnostics", &body);
         out.string("package", &package_id);
         println!("{}", out.finish());

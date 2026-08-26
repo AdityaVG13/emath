@@ -3,7 +3,20 @@
 # The Phase 1 backend admits exactly one evaluate goal per declaration, so
 # the coupled pair `dx/dt = v, dv/dt = (-c v - k x)/m` is written as ONE
 # vector rate equation over the state s = [x, v]: no second `der()` line,
-# same physics. Predictor-corrector RK4 via `emath simulate`.
+# same physics.
+#
+# `c` is viscous damping. Energy ½ m v² + ½ k x² is conserved only at c = 0;
+# c > 0 dissipates. The undamped unit oscillator (m = 1, k = 1, c = 0,
+# s = [1, 0]) has analytic solution x = cos(t), v = -sin(t).
+#
+# `emath simulate` default method is classic 4-stage RK4 (not a
+# predictor-corrector, not symplectic). At small dt it tracks x = cos(t).
+# Forward Euler (`--method euler`) is first-order: on the undamped system
+# each step multiplies energy by (1 + dt²), so the amplitude grows.
+#
+#   emath simulate explicit-mass-spring.emath \
+#     --set m=1 --set k=1 --set c=0 --set s=[1,0] \
+#     --dt 0.01 --t1 3.141592653589793
 emath model MassSpring:
     inputs:
         m: Float64
