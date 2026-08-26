@@ -1,7 +1,7 @@
 //! Expression lowering helpers: indexing, tensor literals, broadcasting,
 //! and diagnostics extracted from `admit.rs` isomorphically.
 
-use emath_core::tree::{Expr, ExprKind};
+use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
 use super::infer::{is_index_type, is_numeric_element, Infer};
@@ -77,10 +77,7 @@ pub(super) fn collect_tensor_literal(
         admitter.error(
             "E-SHAPE-004",
             "empty tensor axis is not allowed",
-            items
-                .first()
-                .map(|item| item.source)
-                .unwrap_or_default(),
+            items.first().map(|item| item.source).unwrap_or_default(),
         );
         return None;
     }
@@ -98,7 +95,9 @@ pub(super) fn collect_tensor_literal(
         );
         return None;
     }
-    let nested = items.iter().all(|item| matches!(&item.kind, ExprKind::List(_)));
+    let nested = items
+        .iter()
+        .all(|item| matches!(&item.kind, ExprKind::List(_)));
     if nested {
         for item in items {
             let ExprKind::List(inner) = &item.kind else {
@@ -287,10 +286,33 @@ pub(super) fn parse_float_constant(text: &str) -> Option<f64> {
     cleaned.replace('_', "").parse().ok()
 }
 
+/// Magnitude of a quantity literal: integer, decimal, or exact rational
+/// (`3//2`) under the selected numeric profile (Phase 1: strict f64).
+pub(super) fn parse_quantity_magnitude(value: &Expr) -> Option<f64> {
+    match &value.kind {
+        ExprKind::Int(text) | ExprKind::Float(text) => parse_float_constant(text),
+        ExprKind::Rational { numer, denom } => {
+            let numer = parse_float_constant(numer)?;
+            let denom = parse_float_constant(denom)?;
+            if denom == 0.0 {
+                return None;
+            }
+            let quotient = numer / denom;
+            quotient.is_finite().then_some(quotient)
+        }
+        ExprKind::Unary {
+            op: SynUnOp::Neg,
+            value,
+        } => parse_quantity_magnitude(value).map(|number| -number),
+        _ => None,
+    }
+}
+
 pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
     match kind {
         ExprKind::Int(_) => "integer",
         ExprKind::Float(_) => "float",
+        ExprKind::Rational { .. } => "rational",
         ExprKind::Str(_) => "string",
         ExprKind::Bool(_) => "bool",
         ExprKind::Quantity { .. } => "quantity",

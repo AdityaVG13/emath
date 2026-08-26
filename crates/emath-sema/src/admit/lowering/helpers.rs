@@ -57,12 +57,21 @@ impl super::super::Admitter {
         }
         // For bool folds (forall/exists), use the runtime Fold op for
         // correct bool handling in both interp and codegen.
-        if matches!(kind, BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral | BinderKind::Series) {
+        if matches!(
+            kind,
+            BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral | BinderKind::Series
+        ) {
             return self.lower_variable_bound_binder(expr, kind, binder, domain, body, guard);
         }
         let (combine, identity) = match kind {
-            BinderKind::Sum => (emath_ir::BinaryOp::StrictFloatAdd, 0.0_f64),
-            BinderKind::Product => (emath_ir::BinaryOp::StrictFloatMul, 1.0_f64),
+            BinderKind::Sum => (
+                emath_ir::BinaryOp::StrictFloatAdd,
+                Literal::Integer("0".into()),
+            ),
+            BinderKind::Product => (
+                emath_ir::BinaryOp::StrictFloatMul,
+                Literal::Integer("1".into()),
+            ),
             BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists | BinderKind::Series => {
                 self.error(
                     E_UNSUPPORTED_TYPE,
@@ -73,10 +82,7 @@ impl super::super::Admitter {
             }
         };
         let previous = self.index_locals.insert(binder.name.clone(), start);
-        let mut acc_id = self.push_expr(
-            ExprNode::Literal(Literal::FloatBits(identity.to_bits())),
-            expr.source,
-        );
+        let mut acc_id = self.push_expr(ExprNode::Literal(identity.clone()), expr.source);
         let mut acc_infer = Infer::F64;
         for value in start..end {
             self.index_locals.insert(binder.name.clone(), value);
@@ -105,10 +111,7 @@ impl super::super::Admitter {
                         return None;
                     }
                 };
-                let identity_id = self.push_expr(
-                    ExprNode::Literal(Literal::FloatBits(identity.to_bits())),
-                    expr.source,
-                );
+                let identity_id = self.push_expr(ExprNode::Literal(identity.clone()), expr.source);
                 let select_id = self.push_expr(
                     ExprNode::If {
                         condition: guard_id,
@@ -142,7 +145,10 @@ impl super::super::Admitter {
                 match kind {
                     BinderKind::Sum => NumericCombine::Add,
                     BinderKind::Product => NumericCombine::Mul,
-                    BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists | BinderKind::Series => {
+                    BinderKind::Integral
+                    | BinderKind::ForAll
+                    | BinderKind::Exists
+                    | BinderKind::Series => {
                         self.error(
                             E_UNSUPPORTED_TYPE,
                             format!("`{kind:?}` is not a finite arithmetic fold yet"),
@@ -200,7 +206,12 @@ impl super::super::Admitter {
             BinderKind::Integral => emath_ir::BinderKind::Integral,
             BinderKind::Series => emath_ir::BinderKind::Series,
         };
-        let ExprKind::Range { start, end, inclusive } = &domain.kind else {
+        let ExprKind::Range {
+            start,
+            end,
+            inclusive,
+        } = &domain.kind
+        else {
             self.error(
                 E_UNSUPPORTED_TYPE,
                 format!("{kind:?} range must be a known integer interval such as `0..n`"),
@@ -229,7 +240,7 @@ impl super::super::Admitter {
         // For inclusive range (`..`=`), the end becomes end+1.
         let end_id = if *inclusive {
             let one = self.push_expr(
-                ExprNode::Literal(Literal::FloatBits(1.0f64.to_bits())),
+                ExprNode::Literal(Literal::Integer("1".into())),
                 domain.source,
             );
             self.push_expr(
@@ -244,15 +255,18 @@ impl super::super::Admitter {
             end_id
         };
         // Encode domain as Vector([start, end]) for the EMIR emitter.
-        let domain_id =
-            self.push_expr(ExprNode::Vector(vec![start_id, end_id]), domain.source);
+        let domain_id = self.push_expr(ExprNode::Vector(vec![start_id, end_id]), domain.source);
         // Temporarily add the loop variable to inputs so the body can
         // reference it as a Variable (resolved to LoadInput by the EMIR
-        // emitter's Binder handler).
+        // emitter's Binder handler). Hide any unrolled `index_locals`
+        // of the same name so an inner runtime fold actually shadows a
+        // constant-range outer binder instead of baking the outer value.
+        let prev_index = self.index_locals.remove(&binder.name);
         let prev = self.inputs.insert(binder.name.clone(), Infer::Nat);
         let (body_id, body_infer) = match self.lower_expr(body) {
             Some(result) => result,
             None => {
+                restore_index_local(&mut self.index_locals, &binder.name, prev_index);
                 restore_input(&mut self.inputs, &binder.name, prev);
                 return None;
             }
@@ -263,6 +277,7 @@ impl super::super::Admitter {
             let (guard_id, guard_infer) = match self.lower_expr(guard_expr) {
                 Some(result) => result,
                 None => {
+                    restore_index_local(&mut self.index_locals, &binder.name, prev_index);
                     restore_input(&mut self.inputs, &binder.name, prev);
                     return None;
                 }
@@ -273,12 +288,14 @@ impl super::super::Admitter {
                     "binder guard (`if`) must be a Boolean expression",
                     guard_expr.source,
                 );
+                restore_index_local(&mut self.index_locals, &binder.name, prev_index);
                 restore_input(&mut self.inputs, &binder.name, prev);
                 return None;
             }
             let identity_literal = match kind {
-                BinderKind::Sum | BinderKind::Integral => Literal::FloatBits(0.0f64.to_bits()),
-                BinderKind::Product => Literal::FloatBits(1.0f64.to_bits()),
+                BinderKind::Sum => Literal::Integer("0".into()),
+                BinderKind::Integral => Literal::FloatBits(0.0f64.to_bits()),
+                BinderKind::Product => Literal::Integer("1".into()),
                 BinderKind::ForAll => Literal::Bool(true),
                 BinderKind::Exists => Literal::Bool(false),
                 BinderKind::Series => Literal::Bool(true),
@@ -295,6 +312,7 @@ impl super::super::Admitter {
         } else {
             body_id
         };
+        restore_index_local(&mut self.index_locals, &binder.name, prev_index);
         restore_input(&mut self.inputs, &binder.name, prev);
         let is_bool_fold = matches!(kind, BinderKind::ForAll | BinderKind::Exists);
         if is_bool_fold {
@@ -333,7 +351,11 @@ impl super::super::Admitter {
             ),
             expr.source,
         );
-        let return_infer = if is_bool_fold { Infer::Bool } else { Infer::F64 };
+        let return_infer = if is_bool_fold {
+            Infer::Bool
+        } else {
+            Infer::F64
+        };
         Some((binder_id, return_infer))
     }
 
@@ -426,12 +448,19 @@ impl super::super::Admitter {
             );
             return None;
         }
-        if items.iter().all(|item| matches!(&item.kind, ExprKind::List(_))) {
+        if items
+            .iter()
+            .all(|item| matches!(&item.kind, ExprKind::List(_)))
+        {
             let Some(first) = items.first().and_then(|item| match &item.kind {
                 ExprKind::List(row) => Some(row.as_slice()),
                 _ => None,
             }) else {
-                self.error("E-SHAPE-004", "matrix literal row must be a list", expr.source);
+                self.error(
+                    "E-SHAPE-004",
+                    "matrix literal row must be a list",
+                    expr.source,
+                );
                 return None;
             };
             let nested_tensor = first
@@ -480,7 +509,11 @@ impl super::super::Admitter {
                 return None;
             };
             if row_elements.is_empty() {
-                self.error("E-SHAPE-004", "empty matrix row is not allowed", row_item.source);
+                self.error(
+                    "E-SHAPE-004",
+                    "empty matrix row is not allowed",
+                    row_item.source,
+                );
                 return None;
             }
             if let Some(cols) = expected_cols {

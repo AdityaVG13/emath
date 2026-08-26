@@ -74,6 +74,41 @@ impl UnitDim {
             parts.join("*")
         }
     }
+
+    /// Stable English name for common SI dimension vectors (`length`,
+    /// `duration`, `area`, …). Unknown combinations have no kind name.
+    #[must_use]
+    pub fn kind_name(self) -> Option<&'static str> {
+        if self == Self::base(1, 0, 0, 0, 0, 0, 0) {
+            Some("length")
+        } else if self == Self::base(0, 1, 0, 0, 0, 0, 0) {
+            Some("mass")
+        } else if self == Self::base(0, 0, 1, 0, 0, 0, 0) {
+            Some("duration")
+        } else if self == Self::base(0, 0, 0, 1, 0, 0, 0) {
+            Some("electric current")
+        } else if self == Self::base(0, 0, 0, 0, 1, 0, 0) {
+            Some("temperature")
+        } else if self == Self::base(0, 0, 0, 0, 0, 1, 0) {
+            Some("amount")
+        } else if self == Self::base(0, 0, 0, 0, 0, 0, 1) {
+            Some("luminous intensity")
+        } else if self == Self::base(2, 0, 0, 0, 0, 0, 0) {
+            Some("area")
+        } else if self == Self::base(3, 0, 0, 0, 0, 0, 0) {
+            Some("volume")
+        } else if self == Self::base(1, 0, -1, 0, 0, 0, 0) {
+            Some("speed")
+        } else if self == Self::base(1, 0, -2, 0, 0, 0, 0) {
+            Some("acceleration")
+        } else if self == Self::base(1, 1, -2, 0, 0, 0, 0) {
+            Some("force")
+        } else if self == Self::one() {
+            Some("dimensionless")
+        } else {
+            None
+        }
+    }
 }
 
 /// SI base unit names.
@@ -186,10 +221,30 @@ impl Unit {
             });
         }
         Ok(Self::with_family(
-            format!("{}.{}", self.name, other.name),
+            format!("{}*{}", self.name, other.name),
             self.dims.mul(other.dims),
             self.scale * other.scale,
             0.0,
+            self.family,
+        ))
+    }
+
+    /// Raise a linear unit to an integer power. Affine units only admit `^1`.
+    pub fn pow(&self, exponent: i32) -> Result<Self, UnitError> {
+        if self.is_affine() && exponent != 1 {
+            return Err(UnitError {
+                code: "E-UNIT-102",
+                message: format!(
+                    "affine unit misuse: cannot raise `{}` to power {exponent}",
+                    self.name
+                ),
+            });
+        }
+        Ok(Self::with_family(
+            format!("{}^{exponent}", self.name),
+            self.dims.pow(exponent),
+            self.scale.powi(exponent),
+            if exponent == 1 { self.offset } else { 0.0 },
             self.family,
         ))
     }
@@ -236,6 +291,13 @@ impl Unit {
     #[must_use]
     pub fn is_dimensionless(&self) -> bool {
         self.family == UnitFamily::Si && self.dims == UnitDim::one()
+    }
+
+    /// Convert a magnitude expressed in this unit to SI
+    /// (`value_si = value * scale + offset`).
+    #[must_use]
+    pub fn to_si(&self, value: f64) -> f64 {
+        value.mul_add(self.scale, self.offset)
     }
 
     /// Canonical encoding, dimension-signature-first: a changed display
@@ -288,12 +350,21 @@ pub fn lookup_unit(name: &str) -> Result<Unit, UnitError> {
             0.0,
         )),
         "m" | "Length" => Ok(Unit::si("m".into(), UnitDim::base(1, 0, 0, 0, 0, 0, 0))),
+        "km" | "Kilometre" | "Kilometer" => Ok(Unit::new(
+            "km".into(),
+            UnitDim::base(1, 0, 0, 0, 0, 0, 0),
+            1_000.0,
+            0.0,
+        )),
         "kg" | "Mass" => Ok(Unit::si("kg".into(), UnitDim::base(0, 1, 0, 0, 0, 0, 0))),
         "K" | "Temperature" => Ok(Unit::si("K".into(), UnitDim::base(0, 0, 0, 0, 1, 0, 0))),
-        "N" | "Force" => Ok(Unit::si(
-            "N".into(),
-            UnitDim::base(1, 1, -2, 0, 0, 0, 0),
+        "degC" | "Celsius" => Ok(Unit::new(
+            "degC".into(),
+            UnitDim::base(0, 0, 0, 0, 1, 0, 0),
+            1.0,
+            273.15,
         )),
+        "N" | "Force" => Ok(Unit::si("N".into(), UnitDim::base(1, 1, -2, 0, 0, 0, 0))),
         "Hz" => Ok(Unit::si("Hz".into(), UnitDim::base(0, 0, -1, 0, 0, 0, 0))),
         "W" => Ok(Unit::si("W".into(), UnitDim::base(2, 1, -3, 0, 0, 0, 0))),
         "Byte" | "Bytes" | "B" => Ok(Unit::with_family(
@@ -326,16 +397,13 @@ pub fn per_unit(inner: &str) -> Result<Unit, UnitError> {
             message: format!("`Per<{inner}>` is invalid: affine units have no inverse"),
         });
     }
-    let one = Unit::with_family(
-        "1".into(),
-        UnitDim::one(),
-        1.0,
-        0.0,
-        inner_unit.family,
-    );
+    let one = Unit::with_family("1".into(), UnitDim::one(), 1.0, 0.0, inner_unit.family);
     one.div(&inner_unit).map_err(|error| UnitError {
         code: "E-UNIT-105",
-        message: format!("`Per<{inner}>` is not a well-formed unit: {}", error.message),
+        message: format!(
+            "`Per<{inner}>` is not a well-formed unit: {}",
+            error.message
+        ),
     })
 }
 

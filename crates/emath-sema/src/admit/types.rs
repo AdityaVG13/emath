@@ -1,7 +1,7 @@
 //! Type mapping functions: surface `TypeExpr` → semantic IR `TypeNode`,
 //! unit annotations, and type display.
 
-use emath_core::tree::{ExprKind, GenericArg, TypeExpr, TypeKind as SynTypeKind};
+use emath_core::tree::{ExprKind, GenericArg, TypeExpr, TypeKind as SynTypeKind, TypeProductOp};
 use emath_core::{Diagnostics, QualifiedName, SchemaId};
 use emath_ir::{TypeNode, Unit, lookup_unit, per_unit};
 use std::collections::BTreeSet;
@@ -77,7 +77,7 @@ pub(super) fn map_type(
             TypeNode::Float64 | TypeNode::Nat | TypeNode::Int | TypeNode::Refinement { .. }
         ) {
             diagnostics.error(
-                E_UNSUPPORTED_TYPE,
+                "E-TYPE-001",
                 format!(
                     "domain annotation applies to a scalar numeric type, not `{}`",
                     type_display(base)
@@ -95,8 +95,11 @@ pub(super) fn map_type(
             predicate,
         });
     }
-    if let SynTypeKind::Product(items) = &ty.kind {
-        return map_unit_product(items, diagnostics);
+    if matches!(
+        &ty.kind,
+        SynTypeKind::Product { .. } | SynTypeKind::Pow { .. }
+    ) {
+        return map_unit_annotation(ty, diagnostics);
     }
     let SynTypeKind::Path {
         segments,
@@ -168,7 +171,7 @@ pub(super) fn map_type(
                 None => return None,
             };
             match per_unit(inner_name) {
-                Ok(unit) => Some(TypeNode::UnitRef { name: unit.name }),
+                Ok(unit) => Some(unit_ref_node(unit)),
                 Err(error) => {
                     diagnostics.error(error.code, error.message, ty.source);
                     None
@@ -186,14 +189,10 @@ pub(super) fn map_type(
         "Vector" | "Matrix" | "Tensor" => {
             map_shape_type(leaf, generic_args, ty, diagnostics, host_types)
         }
-        "Result" => {
-            let error_name = generic_args
-                .get(1)
-                .and_then(|arg| generic_arg_as_type(arg, diagnostics))
-                .map_or_else(|| "ConfigError".to_string(), type_display);
-            Some(TypeNode::Other(QualifiedName(error_name)))
-        }
         "Option"
+        | "Result"
+        | "Graph"
+        | "Rat"
         | "Sequence"
         | "Set"
         | "Array"
@@ -216,7 +215,7 @@ pub(super) fn map_type(
             None
         }
         other => match lookup_unit(other) {
-            Ok(unit) => Some(TypeNode::UnitRef { name: unit.name }),
+            Ok(unit) => Some(unit_ref_node(unit)),
             Err(error) if error.code == "E-UNIT-104" => {
                 diagnostics.error("E-TYPE-001", format!("unknown type `{other}`"), ty.source);
                 None
@@ -229,30 +228,22 @@ pub(super) fn map_type(
     }
 }
 
-pub(super) fn map_unit_annotation(unit: &TypeExpr, diagnostics: &mut Diagnostics) -> Option<TypeNode> {
-    match lookup_unit_type(unit) {
-        Ok(looked_up) => Some(TypeNode::UnitRef {
-            name: looked_up.name,
-        }),
-        Err(error) => {
-            diagnostics.error(error.code, error.message, unit.source);
-            None
-        }
+fn unit_ref_node(unit: Unit) -> TypeNode {
+    TypeNode::UnitRef {
+        name: unit.name,
+        dims: unit.dims,
+        family: unit.family,
     }
 }
 
-pub(super) fn map_unit_product(
-    items: &[TypeExpr],
+pub(super) fn map_unit_annotation(
+    unit: &TypeExpr,
     diagnostics: &mut Diagnostics,
 ) -> Option<TypeNode> {
-    match lookup_unit_product(items) {
-        Ok(unit) => Some(TypeNode::UnitRef { name: unit.name }),
+    match lookup_unit_type(unit) {
+        Ok(looked_up) => Some(unit_ref_node(looked_up)),
         Err(error) => {
-            diagnostics.error(
-                error.code,
-                error.message,
-                items.first().map(|item| item.source).unwrap_or_default(),
-            );
+            diagnostics.error(error.code, error.message, unit.source);
             None
         }
     }
@@ -264,27 +255,21 @@ pub(super) fn lookup_unit_type(ty: &TypeExpr) -> Result<Unit, emath_ir::UnitErro
             let name = segments.last().map_or("", String::as_str);
             lookup_unit(name)
         }
-        SynTypeKind::Product(items) => lookup_unit_product(items),
+        SynTypeKind::Product { left, op, right } => {
+            let left_unit = lookup_unit_type(left)?;
+            let right_unit = lookup_unit_type(right)?;
+            match op {
+                TypeProductOp::Mul => left_unit.mul(&right_unit),
+                TypeProductOp::Div => left_unit.div(&right_unit),
+            }
+        }
+        SynTypeKind::Pow { base, exponent } => lookup_unit_type(base)?.pow(*exponent),
+        SynTypeKind::Tuple(items) if items.len() == 1 => lookup_unit_type(&items[0]),
         _ => Err(emath_ir::UnitError {
             code: "E-UNIT-105",
             message: format!("unit `{}` is not well-formed", type_display(ty)),
         }),
     }
-}
-
-pub(super) fn lookup_unit_product(items: &[TypeExpr]) -> Result<Unit, emath_ir::UnitError> {
-    if items.len() < 2 {
-        return Err(emath_ir::UnitError {
-            code: "E-UNIT-105",
-            message: "unit product needs at least two factors".into(),
-        });
-    }
-    let mut acc = lookup_unit_type(&items[0])?;
-    for item in &items[1..] {
-        let next = lookup_unit_type(item)?;
-        acc = acc.div(&next)?;
-    }
-    Ok(acc)
 }
 
 pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>) -> bool {
@@ -302,6 +287,9 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
             | "float64"
             | "f64"
             | "Bool"
+            | "Nat"
+            | "Int"
+            | "GF"
             | "Self"
             | "NonNegative"
             | "Positive"
@@ -312,7 +300,36 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
             | "Vector"
             | "Matrix"
             | "Tensor"
+            | "Option"
+            | "Result"
+            | "Graph"
+            | "Field"
+            | "Rat"
+            | "Rational"
     ) || lookup_unit(leaf).is_ok()
+}
+
+/// Constructor return `Result<Self, E>` is error-type sugar, not a compute
+/// type. Compute-site `Result` is refused by `map_type`.
+pub(super) fn map_constructor_return(
+    ty: &TypeExpr,
+    diagnostics: &mut Diagnostics,
+    host_types: &BTreeSet<String>,
+) -> Option<TypeNode> {
+    if let SynTypeKind::Path {
+        segments,
+        generic_args,
+    } = &ty.kind
+    {
+        if segments.last().map(String::as_str) == Some("Result") {
+            let error_name = generic_args
+                .get(1)
+                .and_then(|arg| generic_arg_as_type(arg, diagnostics))
+                .map_or_else(|| "ConfigError".to_string(), type_display);
+            return Some(TypeNode::Other(QualifiedName(error_name)));
+        }
+    }
+    map_type(ty, diagnostics, host_types)
 }
 
 pub(super) fn map_shape_type(
@@ -374,10 +391,26 @@ pub(super) fn map_shape_type(
                     let name = segments.last().map_or("", String::as_str);
                     extents.push(emath_ir::Extent::from_surface(name));
                 }
+                ExprKind::List(items) if items.is_empty() => {
+                    diagnostics.error(
+                        "E-SHAPE-004",
+                        "declared tensor/vector shape must have rank >= 1",
+                        expr.source,
+                    );
+                    return None;
+                }
+                ExprKind::List(items) => {
+                    for item in items {
+                        extents.push(extent_from_expr(item, diagnostics)?);
+                    }
+                }
                 _ => {
                     diagnostics.error(
                         "E-SHAPE-004",
-                        format!("shape extent `{}` is not a literal or identifier", crate::recognition::expr_text(expr)),
+                        format!(
+                            "shape extent `{}` is not a literal or identifier",
+                            crate::recognition::expr_text(expr)
+                        ),
                         expr.source,
                     );
                     return None;
@@ -393,9 +426,12 @@ pub(super) fn map_shape_type(
             }
         }
     }
-    if leaf == "Tensor" && extents.is_empty() && extent_args.iter().any(|arg| {
-        matches!(arg, GenericArg::Type(ty) if matches!(ty.kind, SynTypeKind::List(_)))
-    }) {
+    if leaf == "Tensor"
+        && extents.is_empty()
+        && extent_args.iter().any(
+            |arg| matches!(arg, GenericArg::Type(ty) if matches!(ty.kind, SynTypeKind::List(_))),
+        )
+    {
         return None;
     }
     if !extents.is_empty() {
@@ -405,6 +441,25 @@ pub(super) fn map_shape_type(
         }
     }
     match leaf {
+        "Vector" if extents.len() > 1 => {
+            diagnostics.error(
+                "E-SHAPE-004",
+                format!("`Vector` takes at most one extent, found {}", extents.len()),
+                ty.source,
+            );
+            None
+        }
+        "Matrix" if !extents.is_empty() && extents.len() != 2 => {
+            diagnostics.error(
+                "E-SHAPE-004",
+                format!(
+                    "`Matrix` takes two extents (rows, cols), found {}",
+                    extents.len()
+                ),
+                ty.source,
+            );
+            None
+        }
         "Vector" => Some(TypeNode::Vector {
             element: Box::new(element),
             extent: extents.first().cloned(),
@@ -441,6 +496,30 @@ pub(super) fn extent_from_type(
     }
 }
 
+fn extent_from_expr(
+    expr: &emath_core::tree::Expr,
+    diagnostics: &mut Diagnostics,
+) -> Option<emath_ir::Extent> {
+    match &expr.kind {
+        ExprKind::Int(value) => Some(emath_ir::Extent::from_surface(value)),
+        ExprKind::Path { segments, .. } => {
+            let name = segments.last().map_or("", String::as_str);
+            Some(emath_ir::Extent::from_surface(name))
+        }
+        _ => {
+            diagnostics.error(
+                "E-SHAPE-004",
+                format!(
+                    "shape extent `{}` is not a literal or identifier",
+                    crate::recognition::expr_text(expr)
+                ),
+                expr.source,
+            );
+            None
+        }
+    }
+}
+
 pub(super) fn type_display(expr: &TypeExpr) -> String {
     match &expr.kind {
         SynTypeKind::Path { segments, .. } => segments.join("::"),
@@ -465,19 +544,31 @@ pub(super) fn type_display(expr: &TypeExpr) -> String {
             )
         }
         SynTypeKind::Ref(inner) => format!("&{}", type_display(inner)),
-        SynTypeKind::Product(items) => format!(
-            "({})",
-            items
-                .iter()
-                .map(type_display)
-                .collect::<Vec<_>>()
-                .join(" * ")
-        ),
+        SynTypeKind::Product { left, op, right } => {
+            format!(
+                "{}{}{}",
+                type_display(left),
+                op.as_str(),
+                type_display(right)
+            )
+        }
+        SynTypeKind::Pow { base, exponent } => {
+            if matches!(base.kind, SynTypeKind::Product { .. }) {
+                format!("({})^{exponent}", type_display(base))
+            } else {
+                format!("{}^{exponent}", type_display(base))
+            }
+        }
         SynTypeKind::In { base, unit } => {
             format!("{} in {}", type_display(base), type_display(unit))
         }
         SynTypeKind::Domain { base, lo, hi } => {
-            format!("{} in [{}, {}]", type_display(base), super::super::recognition::expr_text(lo), super::super::recognition::expr_text(hi))
+            format!(
+                "{} in [{}, {}]",
+                type_display(base),
+                super::super::recognition::expr_text(lo),
+                super::super::recognition::expr_text(hi)
+            )
         }
     }
 }

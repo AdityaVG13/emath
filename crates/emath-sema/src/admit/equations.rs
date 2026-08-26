@@ -9,8 +9,8 @@ use emath_core::{QualifiedName, Span};
 use emath_ir::{BinaryOp, ExprId, ExprNode, Extent, ModelResidual, TypeNode, UnitDim};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::infer::{combine_numeric, is_numeric_element, Infer, NumericCombine};
-use super::{E_DUPLICATE_FIELD, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE, Admitter};
+use super::infer::{Infer, NumericCombine, combine_numeric, is_numeric_element};
+use super::{Admitter, E_DUPLICATE_FIELD, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE};
 
 pub(super) fn ty_display(node: &TypeNode) -> String {
     node.display_name()
@@ -162,8 +162,11 @@ pub(super) fn split_mass_times_derivative(
     Ok((name, Some(segments[0].clone())))
 }
 
-pub(super) fn rate_unit_mismatch(state: Option<&Infer>, rate: &Infer) -> Option<(&'static str, String)> {
-    let Some(Infer::Unit { dims, family }) = state else {
+pub(super) fn rate_unit_mismatch(
+    state: Option<&Infer>,
+    rate: &Infer,
+) -> Option<(&'static str, String)> {
+    let Some(Infer::Unit { dims, family, .. }) = state else {
         return None;
     };
     let time = UnitDim::base(0, 0, 1, 0, 0, 0, 0);
@@ -172,8 +175,11 @@ pub(super) fn rate_unit_mismatch(state: Option<&Infer>, rate: &Infer) -> Option<
         Infer::Unit {
             dims: rate_dims,
             family: rate_family,
+            ..
         } if rate_family == family && *rate_dims == expected => None,
-        Infer::Unit { dims: rate_dims, .. } => Some((
+        Infer::Unit {
+            dims: rate_dims, ..
+        } => Some((
             "E-UNIT-101",
             format!(
                 "rate dimensions {} do not match state/time {}",
@@ -219,9 +225,7 @@ pub(super) fn admit_equations(
             // side is a bare name (`a == 5` constrains `a`, it does not
             // define it).
             let (left, right, eq_style) = match &stmt.kind {
-                StmtKind::Equation { left, right } => {
-                    (left.clone(), right.clone(), true)
-                }
+                StmtKind::Equation { left, right } => (left.clone(), right.clone(), true),
                 StmtKind::Expr(expr) => match &expr.kind {
                     // `V - R * I - q / C == 0`: split the comparison so the
                     // residual is `left - right`.
@@ -277,48 +281,53 @@ pub(super) fn admit_equations(
                     // statements (eq_style) may become definitions — `==`
                     // comparisons are always residuals.
                     if eq_style {
-                    if let Some(segments) = path_segments(left) {
-                        if segments.len() == 1 {
-                            let name = segments[0].clone();
-                            if admitter.states.contains_key(&name) {
-                                admitter.error(
+                        if let Some(segments) = path_segments(left) {
+                            if segments.len() == 1 {
+                                let name = segments[0].clone();
+                                if admitter.states.contains_key(&name) {
+                                    admitter.error(
                                     "E-TYPE-010",
                                     format!("state field `{name}` must use `derivative({name}) = rhs`, not `{name} = rhs`"),
                                     left.source,
                                 );
-                                continue;
-                            }
-                            if definitions.contains_key(&name) {
-                                admitter.error(
-                                    E_DUPLICATE_FIELD,
-                                    format!("duplicate definition `{name}`"),
+                                    continue;
+                                }
+                                if definitions.contains_key(&name) {
+                                    admitter.error(
+                                        E_DUPLICATE_FIELD,
+                                        format!("duplicate definition `{name}`"),
+                                        left.source,
+                                    );
+                                    continue;
+                                }
+                                let Some((id, infer)) = admitter.lower_expr(right) else {
+                                    continue;
+                                };
+                                if !is_numeric_element(&infer)
+                                    && !matches!(
+                                        infer,
+                                        Infer::Vector { .. }
+                                            | Infer::Matrix { .. }
+                                            | Infer::Tensor { .. }
+                                    )
+                                {
+                                    admitter.error(
+                                        "E-TYPE-012",
+                                        format!("algebraic definition `{name}` must be numeric"),
+                                        right.source,
+                                    );
+                                    continue;
+                                }
+                                admitter.record(
+                                    "sema",
+                                    format!("algebraic definition `{name}` in equations"),
                                     left.source,
                                 );
+                                definitions.insert(name.clone(), id);
+                                admitter.definitions.insert(name, (id, infer));
                                 continue;
                             }
-                            let Some((id, infer)) = admitter.lower_expr(right) else {
-                                continue;
-                            };
-                            if !is_numeric_element(&infer)
-                                && !matches!(infer, Infer::Vector { .. } | Infer::Matrix { .. } | Infer::Tensor { .. })
-                            {
-                                admitter.error(
-                                    "E-TYPE-012",
-                                    format!("algebraic definition `{name}` must be numeric"),
-                                    right.source,
-                                );
-                                continue;
-                            }
-                            admitter.record(
-                                "sema",
-                                format!("algebraic definition `{name}` in equations"),
-                                left.source,
-                            );
-                            definitions.insert(name.clone(), id);
-                            admitter.definitions.insert(name, (id, infer));
-                            continue;
                         }
-                    }
                     }
                     // Not an explicit rate and not an algebraic definition:
                     // causalize it as an implicit residual `left - right`,
@@ -434,6 +443,7 @@ pub(super) fn admit_equations(
                 infer @ (Infer::F64
                 | Infer::Nat
                 | Infer::Int
+                | Infer::Complex
                 | Infer::Unit { .. }
                 | Infer::HostDeferred
                 | Infer::Vector { .. }
@@ -444,11 +454,7 @@ pub(super) fn admit_equations(
                     {
                         admitter.error(code, message, right.source);
                     }
-                    admitter.record(
-                        "sema",
-                        format!("rate `{rate_name}` typed"),
-                        right.source,
-                    );
+                    admitter.record("sema", format!("rate `{rate_name}` typed"), right.source);
                     definitions.insert(rate_name.clone(), id);
                     admitter.definitions.insert(rate_name, (id, infer));
                 }
@@ -581,6 +587,7 @@ impl Admitter {
             ExprKind::Path { .. }
             | ExprKind::Int(_)
             | ExprKind::Float(_)
+            | ExprKind::Rational { .. }
             | ExprKind::Bool(_)
             | ExprKind::Str(_) => Some(node),
             ExprKind::Quantity { value, unit } => {
