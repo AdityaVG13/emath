@@ -34,8 +34,8 @@ pub(crate) const CUSTOM_OP_MIN_PRECEDENCE: u32 = 11;
 
 /// N3 reserved glyphs: the core syntactic vocabulary cannot be rebound.
 const NOTATION_RESERVED_GLYPHS: &[&str] = &[
-    "+", "-", "*", "/", "^", "==", "!=", "<", "<=", ">", ">=", "and", "or", "not", "=", ":=",
-    "->", "=>", "::", ".", "..", "..=", "?",
+    "+", "-", "*", "/", "//", "^", "==", "!=", "<", "<=", ">", ">=", "and", "or", "not", "=",
+    ":=", "->", "=>", "::", ".", "..", "..=", "?",
 ];
 
 /// One file-scoped custom operator collected from a `notation` item.
@@ -401,6 +401,19 @@ impl Parser {
         self.diagnostics.error(code, message, span);
     }
 
+    /// Keywords are not identifiers. A keyword in a name position must
+    /// refuse rather than parse as a different construct or drop the
+    /// segment silently.
+    pub(crate) fn error_keyword_as_ident(&mut self, keyword: Keyword) {
+        self.error_here(
+            "E-SYN-101",
+            format!(
+                "keyword `{}` cannot be used as an identifier",
+                keyword.spelling()
+            ),
+        );
+    }
+
     fn at_line_end(&self) -> bool {
         matches!(
             self.peek(),
@@ -491,9 +504,10 @@ impl Parser {
 }
 
 /// A glyph is usable as a custom operator only when the source spelling
-/// lexes as exactly one identifier token (run of letters, digits, `_`, or
-/// non-ASCII characters, not a keyword). Punctuation glyphs such as `!`
-/// or `**` tokenize differently and are refused at the declaration
+/// lexes as exactly one identifier token. Letter-idents (ASCII / Unicode
+/// letters) and math-symbol idents (`⊕`, `√`) are both `Ident` tokens;
+/// a keyword spelling is not. Punctuation glyphs such as `!` or `**`
+/// tokenize differently and are refused at the declaration
 /// (E-NOTATION-GLYPH); they would silently parse as other syntax.
 fn glyph_lexes_as_ident(glyph: &str) -> bool {
     let (tokens, diagnostics) = lex(glyph, FileId(u32::MAX), &Limits::default());

@@ -83,6 +83,11 @@ impl super::Parser {
                     segments.push(name.clone());
                     self.advance();
                 }
+                TokenKind::Keyword(keyword) => {
+                    self.error_keyword_as_ident(*keyword);
+                    self.skip_to_line_end();
+                    return None;
+                }
                 TokenKind::PathSep | TokenKind::Dot => {
                     self.advance();
                 }
@@ -362,9 +367,16 @@ impl super::Parser {
             }
         };
         self.advance();
-        let TokenKind::Ident(name) = self.peek().clone() else {
-            self.error_here("E-SYN-101", "expected a declaration name");
-            return None;
+        let name = match self.peek().clone() {
+            TokenKind::Ident(name) => name,
+            TokenKind::Keyword(keyword) => {
+                self.error_keyword_as_ident(keyword);
+                return None;
+            }
+            _ => {
+                self.error_here("E-SYN-101", "expected a declaration name");
+                return None;
+            }
         };
         self.advance();
         let generics = if matches!(self.peek(), TokenKind::Lt) {
@@ -461,7 +473,7 @@ impl super::Parser {
         }
     }
 
-    /// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
+    /// `notation infixl 40 "⋅" => core::math::dot [alias "dot"]`
     /// Scoped to the package; alias is an alternative spelling; notation is
     /// typography (removing it never changes semantic identity).
     fn parse_notation_item(&mut self) -> Option<Item> {

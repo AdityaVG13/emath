@@ -1,6 +1,7 @@
 //! Provider-free semantic type nodes (SIR types).
 
 use crate::shapes::Extent;
+use crate::units::{UnitDim, UnitFamily};
 use emath_core::QualifiedName;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +46,8 @@ pub enum TypeNode {
     },
     UnitRef {
         name: String,
+        dims: UnitDim,
+        family: UnitFamily,
     },
     Other(QualifiedName),
 }
@@ -104,7 +107,13 @@ impl TypeNode {
                 format!("Result<{}, {}>", ok.display_name(), error.display_name())
             }
             Self::OptionType(inner) => format!("Option<{}>", inner.display_name()),
-            Self::UnitRef { name } => name.clone(),
+            Self::UnitRef { name, dims, .. } => {
+                if name.is_empty() {
+                    dims.render()
+                } else {
+                    name.clone()
+                }
+            }
         }
     }
 

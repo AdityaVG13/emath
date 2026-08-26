@@ -47,11 +47,15 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         | ExprKind::Solve { .. }
         | ExprKind::Optimize { .. }
         | ExprKind::UnitQuery { .. } => true,
-        // Binder expressions (`sum(i in S) body`) parse greedily; parens
-        // keep them scoped inside larger factors, and the body must never
-        // be parenthesized (see the binder arm below).
-        ExprKind::Binder { .. } => parent > Prec::Atomic,
-        ExprKind::Limit { .. } | ExprKind::SampleLimit { .. } | ExprKind::Cases { .. } => parent > Prec::Atomic,
+        // Colon-greedy forms (`sum i in S: body`, `if c: a else: b`,
+        // `limit x -> 0: body`, `cases ...`). Without parens the body
+        // swallows a following operator: `(sum i in S: i) * x` must not
+        // print as `sum i in S: i * x`.
+        ExprKind::Binder { .. }
+        | ExprKind::Limit { .. }
+        | ExprKind::SampleLimit { .. }
+        | ExprKind::Cases { .. }
+        | ExprKind::If { .. } => parent > Prec::Root,
         _ => false,
     };
     if needs_parens {
@@ -66,11 +70,12 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
 pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
     match &expr.kind {
         ExprKind::Int(text) | ExprKind::Float(text) => out.push_str(text),
-        ExprKind::Str(text) => {
-            out.push('"');
-            out.push_str(text);
-            out.push('"');
+        ExprKind::Rational { numer, denom } => {
+            out.push_str(numer);
+            out.push_str("//");
+            out.push_str(denom);
         }
+        ExprKind::Str(text) => super::push_string_literal(out, text),
         ExprKind::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
         ExprKind::Quantity { value, unit } => {
             let inner = format_expr_to_string(value);
@@ -114,7 +119,7 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             out.push(')');
         }
         ExprKind::Index { value, indices } => {
-            format_expr(out, value, Prec::Root);
+            format_expr(out, value, Prec::Atomic);
             out.push('[');
             for (i, index) in indices.iter().enumerate() {
                 if i > 0 {
@@ -143,22 +148,32 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
         }
         ExprKind::Binary { op, left, right } => {
             let prec = binary_prec(*op);
-            format_expr(out, left, prec);
+            // Same-prec children need an extra tick of tightness on the
+            // non-associating side: `a - (b - c)` must not print as
+            // `a - b - c`, and `(a ^ b) ^ c` must keep the left parens.
+            let (left_prec, right_prec) = if matches!(*op, BinaryOp::Pow | BinaryOp::Imply) {
+                (prec.tighter(), prec)
+            } else {
+                (prec, prec.tighter())
+            };
+            format_expr(out, left, left_prec);
             out.push(' ');
             out.push_str(binary_spelling(*op));
             out.push(' ');
-            format_expr(out, right, prec);
+            format_expr(out, right, right_prec);
         }
         ExprKind::If {
             condition,
             then_value,
             else_value,
         } => {
+            // Grammar: `if` expression `:` expression `else` `:` expression.
+            // Printing `then` was not a keyword and failed to reparse.
             out.push_str("if ");
             format_expr(out, condition, Prec::Root);
-            out.push_str(" then ");
+            out.push_str(": ");
             format_expr(out, then_value, Prec::Atomic);
-            out.push_str(" else ");
+            out.push_str(" else: ");
             format_expr(out, else_value, Prec::Atomic);
         }
         ExprKind::List(items) => {
@@ -179,6 +194,10 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 }
                 format_expr(out, item, Prec::Root);
             }
+            // `(x)` is grouping, not a 1-tuple; keep the trailing comma.
+            if items.len() == 1 {
+                out.push(',');
+            }
             out.push(')');
         }
         ExprKind::Range {
@@ -187,11 +206,11 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             inclusive,
         } => {
             if let Some(start) = start {
-                format_expr(out, start, Prec::Root);
+                format_expr(out, start, Prec::Atomic);
             }
             out.push_str(if *inclusive { "..=" } else { ".." });
             if let Some(end) = end {
-                format_expr(out, end, Prec::Root);
+                format_expr(out, end, Prec::Atomic);
             }
         }
         ExprKind::Binder {
@@ -210,13 +229,20 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             out.push_str(": ");
             format_expr(out, body, Prec::Root);
         }
-        ExprKind::Derivative { value, wrt, kind, holding } => {
+        ExprKind::Derivative {
+            value,
+            wrt,
+            kind,
+            holding,
+        } => {
             match kind {
                 crate::tree::DerivativeKind::Plain => out.push_str("derivative "),
                 crate::tree::DerivativeKind::Partial => out.push_str("partial "),
                 crate::tree::DerivativeKind::Total => out.push_str("total "),
             }
-            format_expr(out, value, Prec::Root);
+            // Operand is a postfix_expr (`derivative (v + v)`); Root
+            // would drop the grouping and reparse as `(derivative v) + v`.
+            format_expr(out, value, Prec::Atomic);
             if let Some(items) = wrt {
                 out.push_str(" wrt ");
                 for (i, item) in items.iter().enumerate() {
@@ -249,7 +275,11 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 }
             }
         }
-        ExprKind::Optimize { value, wrt, maximize } => {
+        ExprKind::Optimize {
+            value,
+            wrt,
+            maximize,
+        } => {
             out.push_str(if *maximize { "maximize " } else { "minimize " });
             format_expr(out, value, Prec::Root);
             if let Some(items) = wrt {

@@ -112,7 +112,16 @@ impl super::Parser {
                 let value = self.parse_expr()?;
                 Some(self.stmt(start, StmtKind::Let { name, ty, value }))
             }
-            TokenKind::Keyword(Keyword::If) => self.parse_if_statement(start),
+            TokenKind::Keyword(Keyword::If) => {
+                // `if: Float64` / `if = 1` is a keyword used as a field or
+                // binding name, not an if-statement (those need a condition).
+                if matches!(self.peek_at(1), TokenKind::Colon | TokenKind::Eq) {
+                    self.error_keyword_as_ident(Keyword::If);
+                    self.skip_to_line_end();
+                    return None;
+                }
+                self.parse_if_statement(start)
+            }
             TokenKind::Keyword(Keyword::SelfKw) => self.parse_self_block(start),
             TokenKind::Keyword(Keyword::Fn) => self.parse_fn_statement(start, None),
             TokenKind::Keyword(Keyword::Extern) => {

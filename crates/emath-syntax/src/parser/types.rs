@@ -1,5 +1,5 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{GenericArg, TypeExpr, TypeKind};
+use crate::tree::{GenericArg, TypeExpr, TypeKind, TypeProductOp};
 
 impl super::Parser {
     // ---- types ---------------------------------------------------------
@@ -36,22 +36,24 @@ impl super::Parser {
 
     pub(super) fn parse_type_expr(&mut self) -> Option<TypeExpr> {
         let start = self.current_span();
-        let mut items = vec![self.parse_type_primary()?];
+        let mut base = self.parse_type_factor()?;
         while matches!(self.peek(), TokenKind::Star | TokenKind::Slash) {
-            self.advance();
-            items.push(self.parse_type_primary()?);
-        }
-        let base = if items.len() == 1 {
-            let Some(item) = items.pop() else {
-                return None;
+            let op = if matches!(self.peek(), TokenKind::Star) {
+                TypeProductOp::Mul
+            } else {
+                TypeProductOp::Div
             };
-            item
-        } else {
-            TypeExpr {
-                kind: TypeKind::Product(items),
+            self.advance();
+            let right = self.parse_type_factor()?;
+            base = TypeExpr {
+                kind: TypeKind::Product {
+                    left: Box::new(base),
+                    op,
+                    right: Box::new(right),
+                },
                 source: start.cover(self.last_span()),
-            }
-        };
+            };
+        }
         if self.eat_keyword(Keyword::In) {
             // U5: Domain annotation `Float64 in [lo, hi]` - when `in`
             // is followed by `[`, parse bounds as expressions.
@@ -87,6 +89,28 @@ impl super::Parser {
             });
         }
         Some(base)
+    }
+
+    fn parse_type_factor(&mut self) -> Option<TypeExpr> {
+        let start = self.current_span();
+        let primary = self.parse_type_primary()?;
+        if !matches!(self.peek(), TokenKind::Caret) {
+            return Some(primary);
+        }
+        self.advance();
+        let TokenKind::Int(exp_str) = self.peek().clone() else {
+            self.error_here("E-SYN-101", "expected integer exponent after `^`");
+            return None;
+        };
+        self.advance();
+        let exponent: i32 = exp_str.parse().unwrap_or(1);
+        Some(TypeExpr {
+            kind: TypeKind::Pow {
+                base: Box::new(primary),
+                exponent,
+            },
+            source: start.cover(self.last_span()),
+        })
     }
 
     fn parse_type_primary(&mut self) -> Option<TypeExpr> {

@@ -4,7 +4,7 @@
 use emath_core::limits::Limits;
 use emath_core::tree::{ExprKind, BinaryOp, DerivativeKind, Item, NotationFixity, StmtKind};
 use emath_core::{Diagnostic, FileId, SourceStore, Span};
-use emath_syntax::lexer::lex;
+use emath_syntax::lexer::{lex, lex_with_comments};
 use emath_syntax::token::TokenKind;
 use emath_syntax::parse_str;
 
@@ -14,6 +14,181 @@ fn empty_source_lexes_only_eof() {
     assert!(!diagnostics.has_errors());
     assert_eq!(tokens.len(), 1);
     assert!(matches!(tokens[0].kind, TokenKind::Eof));
+}
+
+#[test]
+fn exact_rational_double_slash_is_not_a_comment() {
+    // Spec literal family `3//7`. Treating `//` as a line comment used to
+    // silently drop the denominator, leaving only Int("3").
+    let (tokens, diagnostics) = lex("3//7", FileId(0), &Limits::default());
+    assert!(
+        !diagnostics.has_errors(),
+        "exact rational must lex cleanly, got {:?}",
+        diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let kinds: Vec<&TokenKind> = tokens.iter().map(|token| &token.kind).collect();
+    assert!(
+        matches!(
+            kinds.as_slice(),
+            [TokenKind::Int(n), TokenKind::SlashSlash, TokenKind::Int(d), TokenKind::Eof]
+                if n == "3" && d == "7"
+        ),
+        "3//7 must be Int // Int, got {kinds:?}"
+    );
+}
+
+#[test]
+fn exact_rational_literal_folds_in_the_parser() {
+    // Grammar: `rational_literal = integer "//" integer` is a primary.
+    // After the lexer emits SlashSlash, the parser must fold `3//7` into
+    // one expression, not bind `3` and leave `//7` as leftover junk.
+    let source = "\
+emath function f() -> Float64:
+    definitions:
+        r = 3//7
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "3//7 must parse as a rational literal, got {:?}",
+        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "r").expect("expected `r` binding");
+    assert!(
+        matches!(&expr.kind, ExprKind::Rational { numer, denom } if numer == "3" && denom == "7"),
+        "expected Rational {{ numer: 3, denom: 7 }}, got {:?}",
+        expr.kind
+    );
+}
+
+#[test]
+fn exact_rational_quantity_attaches_the_unit() {
+    // Grammar: quantity_literal = (integer | decimal | rational_literal) whitespace path.
+    // `3//2 s` is a quantity whose value is the rational, not Int(3).
+    let source = "\
+emath function f() -> Float64:
+    definitions:
+        q = 3//2 s
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "3//2 s must parse as a quantity, got {:?}",
+        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "q").expect("expected `q` binding");
+    let ExprKind::Quantity { value, unit } = &expr.kind else {
+        panic!("expected Quantity, got {:?}", expr.kind);
+    };
+    assert!(
+        matches!(&value.kind, ExprKind::Rational { numer, denom } if numer == "3" && denom == "2"),
+        "quantity value should be Rational 3//2, got {:?}",
+        value.kind
+    );
+    assert_eq!(unit.to_string(), "s");
+}
+
+#[test]
+fn exact_rational_missing_denominator_is_named_refuse() {
+    // `3//x` is not `integer "//" integer`. Must diagnose, not silently
+    // keep Int("3") with no error.
+    let source = "\
+emath function f() -> Float64:
+    definitions:
+        r = 3//x
+";
+    let (_tree, diags) = parse_str(source);
+    assert!(
+        diags.errors().any(|e| e.code == "E-SYN-101"),
+        "non-integer denominator must be E-SYN-101, got {:?}",
+        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn hash_and_doc_comments_still_skip_the_line() {
+    let (tokens, diagnostics, comments) = lex_with_comments(
+        "# ordinary\n/// documentation\nx",
+        FileId(0),
+        &Limits::default(),
+    );
+    assert!(!diagnostics.has_errors());
+    let kinds: Vec<&TokenKind> = tokens.iter().map(|token| &token.kind).collect();
+    assert!(
+        matches!(
+            kinds.as_slice(),
+            [TokenKind::Ident(name), TokenKind::Eof] if name == "x"
+        ),
+        "comments must not emit tokens, got {kinds:?}"
+    );
+    assert!(
+        comments.iter().any(|c| c.text.starts_with('#')),
+        "ordinary `#` comment must retain the marker, got {comments:?}"
+    );
+    assert!(
+        comments.iter().any(|c| c.text.starts_with("///")),
+        "doc `///` comment must retain the marker, got {comments:?}"
+    );
+}
+
+#[test]
+fn double_slash_comment_is_not_admitted() {
+    // Spec comments are `#` and `///` only. `// rest` is SlashSlash plus
+    // whatever follows, not a silent skip of `rest`.
+    let (tokens, diagnostics) = lex("a//b", FileId(0), &Limits::default());
+    assert!(!diagnostics.has_errors());
+    let kinds: Vec<&TokenKind> = tokens.iter().map(|token| &token.kind).collect();
+    assert!(
+        matches!(
+            kinds.as_slice(),
+            [
+                TokenKind::Ident(left),
+                TokenKind::SlashSlash,
+                TokenKind::Ident(right),
+                TokenKind::Eof
+            ] if left == "a" && right == "b"
+        ),
+        "`//` must not eat the following ident, got {kinds:?}"
+    );
+}
+
+#[test]
+fn braces_suppress_newlines_like_parens() {
+    // Spec: NEWLINE is suppressed inside `()`, `[]`, and `{}`.
+    let (paren, _) = lex("(\n1\n)", FileId(0), &Limits::default());
+    let (brace, _) = lex("{\n1\n}", FileId(0), &Limits::default());
+    let paren_kinds: Vec<&TokenKind> = paren.iter().map(|t| &t.kind).collect();
+    let brace_kinds: Vec<&TokenKind> = brace.iter().map(|t| &t.kind).collect();
+    assert!(
+        !paren_kinds.iter().any(|k| matches!(k, TokenKind::Newline)),
+        "parens already suppress newlines, got {paren_kinds:?}"
+    );
+    assert!(
+        !brace_kinds.iter().any(|k| matches!(k, TokenKind::Newline)),
+        "braces must suppress newlines, got {brace_kinds:?}"
+    );
+    assert!(
+        matches!(
+            brace_kinds.as_slice(),
+            [
+                TokenKind::LBrace,
+                TokenKind::Int(n),
+                TokenKind::RBrace,
+                TokenKind::Eof
+            ] if n == "1"
+        ),
+        "expected brace-wrapped int, got {brace_kinds:?}"
+    );
+}
+
+#[test]
+fn tabs_are_rejected_in_canonical_source() {
+    let (_, diagnostics) = lex("a\tb", FileId(0), &Limits::default());
+    assert!(
+        diagnostics.errors().any(|error| error.code == "E-SYN-101"),
+        "tab must be a typed refusal, got {:?}",
+        diagnostics.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1575,5 +1750,148 @@ notation infixl 40 \"!\" => core::math::pow
     assert!(
         codes.contains(&"E-NOTATION-GLYPH"),
         "punctuation glyph must refuse with E-NOTATION-GLYPH, got {codes:?}"
+    );
+}
+
+#[test]
+fn math_symbol_does_not_glue_to_adjacent_letters() {
+    // `x⊕y` and `√a` must be operator uses, not one unknown identifier.
+    let (tokens, diagnostics) = lex("x⊕y √a αβ", FileId(0), &Limits::default());
+    assert!(
+        !diagnostics.has_errors(),
+        "juxtaposed glyphs must lex, got {:?}",
+        diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let idents: Vec<&str> = tokens
+        .iter()
+        .filter_map(|token| match &token.kind {
+            TokenKind::Ident(name) => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(idents, ["x", "⊕", "y", "√", "a", "αβ"]);
+}
+
+#[test]
+fn notation_unspaced_glyph_desugars_to_pow() {
+    let source = "\
+emath function F:
+    inputs:
+        x: Float64
+        y: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = x⊕y
+notation infixl 40 \"⊕\" => core::math::pow
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "unspaced glyph use must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = declaration_def_expr(&tree, "r").expect("expected `r` binding");
+    assert_notation_call(expr, &["core", "math", "pow"], 2);
+}
+
+#[test]
+fn notation_unspaced_prefix_desugars_to_sqrt() {
+    let source = "\
+emath function F:
+    inputs:
+        a: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = √a
+notation prefix 80 \"√\" => core::math::sqrt
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "unspaced prefix glyph must parse, got: {:?}",
+        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+    );
+    let expr = declaration_def_expr(&tree, "r").expect("expected `r` binding");
+    assert_notation_call(expr, &["core", "math", "sqrt"], 1);
+}
+
+#[test]
+fn keyword_as_declaration_name_is_refused() {
+    let source = "\
+emath function if:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+";
+    let (_tree, diags) = parse_str(source);
+    assert!(
+        diags.errors().any(|e| e.code == "E-SYN-101"
+            && e.message.contains("keyword `if` cannot be used as an identifier")),
+        "keyword declaration name must refuse, got {:?}",
+        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn keyword_as_field_name_is_refused() {
+    let source = "\
+emath function F:
+    inputs:
+        if: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+";
+    let (_tree, diags) = parse_str(source);
+    assert!(
+        diags.errors().any(|e| e.code == "E-SYN-101"
+            && e.message.contains("keyword `if` cannot be used as an identifier")),
+        "keyword field name must refuse, got {:?}",
+        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn keyword_as_package_segment_is_refused() {
+    let source = "\
+package tst.if
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        diags.errors().any(|e| e.code == "E-SYN-101"
+            && e.message.contains("keyword `if` cannot be used as an identifier")),
+        "keyword package segment must refuse, got {:?}",
+        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+    );
+    assert!(
+        !tree.items.iter().any(|item| matches!(item, Item::Package { path, .. } if path.as_slice() == ["tst"])),
+        "truncated package path `tst` must not be recorded"
+    );
+}
+
+#[test]
+fn keyword_as_notation_glyph_is_refused() {
+    let source = "\
+emath function F:
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0
+notation infixl 40 \"if\" => core::math::pow
+";
+    let (_tree, diags) = parse_str(source);
+    let codes: Vec<_> = diags.errors().map(|e| e.code).collect();
+    assert!(
+        codes.contains(&"E-NOTATION-GLYPH"),
+        "keyword glyph must refuse with E-NOTATION-GLYPH, got {codes:?}"
     );
 }

@@ -2,7 +2,8 @@
 //!
 //! Emits `Newline`/`Indent`/`Dedent` layout tokens. Newlines are suppressed
 //! inside `()`, `[]`, and `{}` so multi-line argument lists lex as one flow.
-//! Comments: `#` and `//` and `///` to end of line.
+//! Comments: `#` (ordinary) and `///` (documentation) to end of line.
+//! `//` is the exact-rational separator (`3//7`), not a comment.
 
 use crate::token::{Comment, Keyword, Token, TokenKind};
 use emath_core::{Diagnostics, FileId, Span, limits::Limits};
@@ -126,8 +127,20 @@ impl Lexer<'_> {
         self.bytes.get(self.pos).copied()
     }
 
+    fn peek_char(&self) -> Option<char> {
+        self.peek_char_at(self.pos)
+    }
+
+    fn peek_char_at(&self, pos: usize) -> Option<char> {
+        self.source.get(pos..).and_then(|rest| rest.chars().next())
+    }
+
     fn peek2(&self) -> Option<u8> {
         self.bytes.get(self.pos + 1).copied()
+    }
+
+    fn peek3(&self) -> Option<u8> {
+        self.bytes.get(self.pos + 2).copied()
     }
 
     fn eat(&mut self, byte: u8) -> bool {
@@ -201,18 +214,23 @@ impl Lexer<'_> {
                 continue;
             }
             if at_line_start {
-                // Skip leading spaces/tabs.
-                while matches!(self.peek(), Some(b' ' | b'\t')) {
+                // Leading spaces only. Tabs are rejected as content so they
+                // cannot silently widen or shrink indent.
+                while self.peek() == Some(b' ') {
                     self.pos += 1;
                 }
                 // Comment-only or blank line: consume and emit no layout
                 // tokens; `at_line_start` stays true for the next line.
+                // Ordinary comments are `#`; documentation is `///`.
+                // `//` is the rational separator, not a comment.
                 if self.peek() == Some(b'#') {
                     self.skip_line_comment();
                     continue;
                 }
-                if self.peek() == Some(b'/') && self.peek2() == Some(b'/') {
-                    self.pos += 2;
+                if self.peek() == Some(b'/')
+                    && self.peek2() == Some(b'/')
+                    && self.peek3() == Some(b'/')
+                {
                     self.skip_line_comment();
                     continue;
                 }
@@ -309,42 +327,15 @@ impl Lexer<'_> {
             b'#' => {
                 self.skip_line_comment();
             }
-            b'/' if self.peek2() == Some(b'/') => {
-                self.pos += 2;
+            b'/' if self.peek2() == Some(b'/') && self.peek3() == Some(b'/') => {
                 self.skip_line_comment();
             }
+            b'/' if self.peek2() == Some(b'/') => {
+                self.pos += 2;
+                self.push(TokenKind::SlashSlash, start);
+            }
             _ if byte.is_ascii_alphabetic() || byte == b'_' || byte >= 0x80 => {
-                while self.peek().is_some_and(is_ident_byte) {
-                    self.pos += 1;
-                }
-                let text = &self.source[start..self.pos];
-                if !text.is_ascii() {
-                    // NFC identity (spec `01_LEXICAL_LAYOUT_AND_SOURCE`):
-                    // an identifier built from combining diacritic marks
-                    // is canonically non-NFC by construction and cannot
-                    // be re-normalized without a Unicode table. Refuse
-                    // it (E-SYN-115) instead of admitting an identity
-                    // the pipeline cannot verify.
-                    if text.chars().any(|ch| matches!(ch, '\u{0300}'..='\u{036F}')) {
-                        self.error(
-                            "E-SYN-115",
-                            "identifier contains a combining mark; source must be NFC",
-                            start,
-                        );
-                    } else {
-                        self.diagnostics.warning(
-                            "E-SYN-114",
-                            "identifier contains non-ASCII characters; confusable Unicode lookalikes are a quality hazard",
-                            self.span(start),
-                        );
-                    }
-                }
-
-                if let Some(keyword) = Keyword::from_ident(text) {
-                    self.push(TokenKind::Keyword(keyword), start);
-                } else {
-                    self.push(TokenKind::Ident(text.to_string()), start);
-                }
+                self.lex_ident(start);
             }
             b'=' => {
                 self.pos += 1;
@@ -467,6 +458,7 @@ impl Lexer<'_> {
             }
             b'{' => {
                 self.pos += 1;
+                self.paren_depth += 1;
                 self.nesting = self.nesting.saturating_add(1_usize);
                 if self.nesting > self.limits.max_nesting {
                     self.error("E-SYN-106", "nesting limit exceeded", start);
@@ -475,6 +467,7 @@ impl Lexer<'_> {
             }
             b'}' => {
                 self.pos += 1;
+                self.paren_depth = self.paren_depth.saturating_sub(1_u32);
                 self.nesting = self.nesting.saturating_sub(1_usize);
                 self.push(TokenKind::RBrace, start);
             }
@@ -521,8 +514,16 @@ impl Lexer<'_> {
                 self.pos += 1;
                 self.push(TokenKind::Pipe, start);
             }
-            b' ' | b'\t' => {
+            b' ' => {
                 self.pos += 1;
+            }
+            b'\t' => {
+                self.pos += 1;
+                self.error(
+                    "E-SYN-101",
+                    "tab is rejected in canonical source; indent with four spaces",
+                    start,
+                );
             }
             other => {
                 self.pos += 1;
@@ -532,6 +533,61 @@ impl Lexer<'_> {
                     start,
                 );
             }
+        }
+    }
+
+    /// Letter-idents (`x`, `αβ`, `Δx`) stay one token; math-symbol idents
+    /// (`⊕`, `√`, `¬`) do not glue to adjacent letters, so `x⊕y` and `√a`
+    /// tokenize as operator uses rather than a single unknown name.
+    fn lex_ident(&mut self, start: usize) {
+        let Some(first) = self.peek_char() else {
+            return;
+        };
+        self.pos += first.len_utf8();
+        if is_letter_ident_start(first) {
+            while let Some(ch) = self.peek_char() {
+                if is_letter_ident_continue(ch) {
+                    self.pos += ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+        } else {
+            while let Some(ch) = self.peek_char() {
+                if is_symbol_ident_continue(ch) {
+                    self.pos += ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+        }
+        let text = &self.source[start..self.pos];
+        if !text.is_ascii() {
+            // NFC identity (spec `01_LEXICAL_LAYOUT_AND_SOURCE`):
+            // an identifier built from combining diacritic marks
+            // is canonically non-NFC by construction and cannot
+            // be re-normalized without a Unicode table. Refuse
+            // it (E-SYN-115) instead of admitting an identity
+            // the pipeline cannot verify.
+            if text.chars().any(is_combining_mark) {
+                self.error(
+                    "E-SYN-115",
+                    "identifier contains a combining mark; source must be NFC",
+                    start,
+                );
+            } else {
+                self.diagnostics.warning(
+                    "E-SYN-114",
+                    "identifier contains non-ASCII characters; confusable Unicode lookalikes are a quality hazard",
+                    self.span(start),
+                );
+            }
+        }
+
+        if let Some(keyword) = Keyword::from_ident(text) {
+            self.push(TokenKind::Keyword(keyword), start);
+        } else {
+            self.push(TokenKind::Ident(text.to_string()), start);
         }
     }
 
@@ -571,9 +627,14 @@ impl Lexer<'_> {
             }
         }
         // B14: Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
-        // Only when `i` is not followed by more identifier characters
-        // (so `2image` stays Int("2") + Ident("image"), not complex).
-        if self.peek() == Some(b'i') && !self.peek2().is_some_and(is_ident_byte) {
+        // Only when `i` is not followed by a letter-ident continue
+        // (`2image` stays Int("2") + Ident("image"); `2i⊕3` is still
+        // complex `2i` then the math-symbol token `⊕`).
+        if self.peek() == Some(b'i')
+            && !self
+                .peek_char_at(self.pos + 1)
+                .is_some_and(is_letter_ident_continue)
+        {
             self.pos += 1; // consume `i`
             is_float = true; // complex literals use the Float channel
         }
@@ -664,6 +725,18 @@ impl Lexer<'_> {
     }
 }
 
-fn is_ident_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_' || byte >= 0x80
+fn is_combining_mark(ch: char) -> bool {
+    matches!(ch, '\u{0300}'..='\u{036F}')
+}
+
+fn is_letter_ident_start(ch: char) -> bool {
+    ch == '_' || ch.is_alphabetic()
+}
+
+fn is_letter_ident_continue(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch.is_alphabetic() || is_combining_mark(ch)
+}
+
+fn is_symbol_ident_continue(ch: char) -> bool {
+    !ch.is_ascii() && !ch.is_alphabetic()
 }

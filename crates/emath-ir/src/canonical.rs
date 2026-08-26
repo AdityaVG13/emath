@@ -122,8 +122,12 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push(':');
             out.push_str(provider_contract.as_ref().map_or("-", |s| &s.0));
         }
-        TypeNode::UnitRef { name } => {
+        TypeNode::UnitRef { name, dims, family } => {
             out.push_str("unit-ref:");
+            out.push_str(family.as_str());
+            out.push(':');
+            out.push_str(&dims.render());
+            out.push(':');
             out.push_str(name);
         }
         TypeNode::Other(name) => {
@@ -339,14 +343,23 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             push_str(out, var);
             encode_expr(out, exprs, *body);
         }
-        ExprNode::Optimize { body, vars, maximize } => {
+        ExprNode::Optimize {
+            body,
+            vars,
+            maximize,
+        } => {
             push_str(out, if *maximize { "maximize" } else { "minimize" });
             for v in vars {
                 push_str(out, v);
             }
             encode_expr(out, exprs, *body);
         }
-        ExprNode::SampleLimit { body, var, target, direction } => {
+        ExprNode::SampleLimit {
+            body,
+            var,
+            target,
+            direction,
+        } => {
             push_str(out, "sample-limit");
             push_str(out, var);
             encode_expr(out, exprs, *target);
