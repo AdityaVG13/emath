@@ -22,6 +22,7 @@
 
 - Goals attach to declarations by construction (the ids built for that declaration), never by span geometry.
 - Missing or unloaded source is a typed refusal (`E-PKG-080`), never an empty-source plan that passes silently.
+- Empty, comment-only, whitespace-only, and package-only files refuse with `E-PKG-081` (`source has no declarations`). A vacuous `check` pass is not admission.
 - Declarations distinguishable only by lookalike glyphs are refused (`E-NAME-024`); duplicate names (`E-NAME-022`) and `_` names (`E-NAME-023`) are refused.
 - Session limits reach the lexer through the installed parser backend (`E-SYN-108`).
 - Request targets must be outputs or definitions of the declaration (`E-GOAL-041`); produce targets outside `rust.library` are refused (`E-GOAL-042`); request kinds other than `evaluate` are refused (`E-GOAL-043`).
@@ -33,9 +34,16 @@
   with `E-NUM-001`. `precision` / `error-limit` demands the selected model
   cannot honor refuse with `E-NUM-002` / `E-NUM-003`. `representation Real`
   without a named model is `E-NUM-004` (no silent `Real` → `f64` map).
-- Known unit types (`Duration`, `MiB`, `Per<Duration>`, …) and quantity
-  literals (`1 s`) admit; unknown units are `E-UNIT-104`, ill-formed
-  `Per<>` is `E-UNIT-105`, dimensional mismatch is `E-UNIT-101`.
+- Known unit types (`Duration`, `MiB`, `Per<Duration>`, `km`, `degC`, …) and quantity
+  literals (`1 s`, `1 ms`, `1 km`, `3//2 s`, `0 degC`) admit. Literals convert to SI
+  by catalog scale and affine offset (`1 km + 1 m` is 1001 m; `1 MiB` is 1048576 B;
+  `0 degC` is 273.15 K). `1 m * 1 m` is area; cancelled dims (`1 m / 1 m`) are
+  dimensionless. Affine points cannot be added or multiplied (`E-UNIT-102`).
+  Unknown units are `E-UNIT-104`, ill-formed `Per<>` is `E-UNIT-105`,
+  dimensional mismatch (including information vs SI dimensionless) is
+  `E-UNIT-101`. Assigning a duration to a length is `E-TYPE-012` and names
+  the dimensions. `unit of` / `dimension of` parse but refuse as values
+  (`E-TYPE-010`).
 - Declared `Vector`/`Matrix`/`Tensor` shapes and compile `domain lo..hi`
   are checked: empty/zero extents are `E-SHAPE-004`, inverted intervals
   are `E-DOM-002`. Rank-3+ literals, `:` slices, and equal-or-`Fixed(1)`
@@ -57,8 +65,10 @@
   iteratively adjusts `var` until the residual is within tolerance of
   zero. Each step uses dual-number evaluation for both the residual and
   its derivative. `minimize(objective) wrt var` and `maximize(objective)
-  wrt var` lower to `Optimize` ops: gradient descent (or ascent) with a
-  fixed learning rate. Both reuse the autodiff machinery for gradients.
+  wrt var` lower to `Optimize` ops: Newton's method on `∇f = 0`
+  (`x -= H^{-1} ∇f`; `H` from a forward-difference of the dual
+  gradient). A vanished Hessian, wrong curvature, or `max_iter`
+  exhaustion is a typed refusal.
   `integral` lowers to a dedicated `Integral` op (composite Simpson's
   rule, 1000 steps) for continuous-range numerical integration.
   `constraints:` sections in function declarations store Bool
@@ -77,7 +87,7 @@
 
 ## Error model
 
-- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004/005/006`, `E-DOM-002`.
+- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-PKG-081`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004/005/006`, `E-DOM-002`.
 - `E-SYN-120` is a typed refusal when the parser backend is not installed; hosts call `emath_syntax::install_source_parser` once per process.
 
 ## Determinism class

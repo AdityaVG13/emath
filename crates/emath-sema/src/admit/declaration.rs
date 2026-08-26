@@ -5,20 +5,18 @@ use emath_core::tree::{Section, StmtKind};
 use emath_core::{Diagnostics, QualifiedName, Span};
 use emath_ir::constructor::{Constructor, Field, TestCase, Visibility};
 use emath_ir::{
-    Declaration, ExprId, ExprNode, Extent,
-    KindSchema, ModelResidual, RepeatPolicy, TypeNode,
+    BinaryOp, Declaration, ExprId, ExprNode, Extent, KindSchema, ModelResidual, RepeatPolicy,
+    TypeNode,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::equations::{admit_equations, collect_node_names, residual_span};
 use super::infer::{Infer, infer_conforms};
-use super::sections::{
-    admit_compile_spec, admit_constructor, admit_named_field,
-};
+use super::sections::{admit_compile_spec, admit_constructor, admit_named_field};
 use super::sections_meta::{admit_about, admit_evidence, admit_host};
 use super::{
-    Admitter, E_DUPLICATE_FIELD, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE,
-    PHASE1_SECTIONS, TraceEntry,
+    Admitter, E_DUPLICATE_FIELD, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE, PHASE1_SECTIONS,
+    TraceEntry,
 };
 
 /// Admit one declaration into SIR. Returns (declaration, test cases, type
@@ -265,12 +263,10 @@ pub(super) fn admit_declaration(
         // Algebraic variables resolve like inputs inside definitions and
         // residuals; the runner binds their guesses from the same value
         // map. They stay out of `Declaration.inputs` (I/O contract).
-        admitter.inputs.entry(field.name.clone()).or_insert_with(|| {
-            fields_infer
-                .get(&field.name)
-                .cloned()
-                .unwrap_or(Infer::F64)
-        });
+        admitter
+            .inputs
+            .entry(field.name.clone())
+            .or_insert_with(|| fields_infer.get(&field.name).cloned().unwrap_or(Infer::F64));
     }
     admitter.states = state
         .iter()
@@ -295,7 +291,7 @@ pub(super) fn admit_declaration(
                 Some((_, infer)) => {
                     admitter.error(
                         "E-TYPE-012",
-                        format!("constraint must be Bool, got {infer:?}"),
+                        format!("constraint must be Bool, got {infer}"),
                         expr.source,
                     );
                 }
@@ -362,6 +358,7 @@ pub(super) fn admit_declaration(
                     infer @ (Infer::F64
                     | Infer::Nat
                     | Infer::Int
+                    | Infer::Complex
                     | Infer::Bool
                     | Infer::Unit { .. }
                     | Infer::HostDeferred
@@ -378,17 +375,13 @@ pub(super) fn admit_declaration(
                             admitter.error(
                                 "E-TYPE-012",
                                 format!(
-                                    "definition `{name}` has type {infer:?}, expected {declared:?}"
+                                    "definition `{name}` has type {infer}, expected {declared}"
                                 ),
                                 value.source,
                             );
                         }
                     }
-                    admitter.record(
-                        "sema",
-                        format!("definition `{name}` typed"),
-                        value.source,
-                    );
+                    admitter.record("sema", format!("definition `{name}` typed"), value.source);
                     definitions.insert(name.clone(), id);
                     // Later definitions may name earlier ones (`b = a * a`).
                     admitter.definitions.insert(name.clone(), (id, infer));
@@ -417,9 +410,7 @@ pub(super) fn admit_declaration(
             decl.head_source,
         );
     }
-    if is_model
-        && (by_name.contains_key("equations") || by_name.contains_key("equation"))
-    {
+    if is_model && (by_name.contains_key("equations") || by_name.contains_key("equation")) {
         let residual_rates: BTreeSet<String> = admitter
             .residuals
             .iter()
@@ -427,11 +418,15 @@ pub(super) fn admit_declaration(
             .collect();
         for field in &state {
             let rate_name = format!("der_{}", field.name);
-            if !definitions.contains_key(&rate_name) && !residual_rates.contains(field.name.as_str())
+            if !definitions.contains_key(&rate_name)
+                && !residual_rates.contains(field.name.as_str())
             {
                 admitter.error(
                     "E-NAME-025",
-                    format!("state `{}` has no `derivative({})` equation", field.name, field.name),
+                    format!(
+                        "state `{}` has no `derivative({})` equation",
+                        field.name, field.name
+                    ),
                     field.source,
                 );
             }
@@ -571,6 +566,7 @@ pub(super) fn admit_declaration(
                 .unwrap_or(Infer::F64);
             let node = match infer {
                 Infer::Bool => TypeNode::Bool,
+                Infer::Complex => TypeNode::Complex(Box::new(TypeNode::Float64)),
                 Infer::Vector { extent } => TypeNode::Vector {
                     element: Box::new(TypeNode::Float64),
                     extent,
@@ -828,6 +824,7 @@ pub(super) fn admit_declaration(
                                 Infer::F64
                                 | Infer::Nat
                                 | Infer::Int
+                                | Infer::Complex
                                 | Infer::Unit { .. }
                                 | Infer::HostDeferred
                                 | Infer::Vector { .. }
@@ -854,12 +851,27 @@ pub(super) fn admit_declaration(
                         }
                     }
                     StmtKind::Expect(expr) => match admitter.lower_expr(expr) {
-                        Some((id, Infer::Bool)) => expect = Some(id),
+                        Some((id, Infer::Bool)) => {
+                            // Multiple `expect` lines are a conjunction; keeping
+                            // only the last one silently dropped earlier checks.
+                            expect = Some(match expect {
+                                Some(prev) => admitter.push_expr(
+                                    ExprNode::Binary {
+                                        operation: BinaryOp::And,
+                                        left: prev,
+                                        right: id,
+                                    },
+                                    inner.source,
+                                ),
+                                None => id,
+                            });
+                        }
                         Some((
                             _,
                             Infer::F64
                             | Infer::Nat
                             | Infer::Int
+                            | Infer::Complex
                             | Infer::Vector { .. }
                             | Infer::Matrix { .. }
                             | Infer::Tensor { .. }

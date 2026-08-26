@@ -1,6 +1,8 @@
 //! Numeric-model admission, unit/shape/domain refusals, and e2e corpus.
 
 use emath_core::limits::Limits;
+use emath_exec_ir::interp::Value;
+use emath_exec_ir::runner::run_package;
 use emath_ir::NumericProfile;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
@@ -98,7 +100,11 @@ fn unknown_numeric_model_is_e_num_001() {
 
 #[test]
 fn precision_demand_no_model_can_honor_is_e_num_002() {
-    let source = function_with_compile("numeric strict-f64\n        precision 128", "", "y = t / 1 s");
+    let source = function_with_compile(
+        "numeric strict-f64\n        precision 128",
+        "",
+        "y = t / 1 s",
+    );
     let codes = errors_of("precision", &source);
     assert!(
         codes.iter().any(|code| code == "E-NUM-002"),
@@ -108,8 +114,11 @@ fn precision_demand_no_model_can_honor_is_e_num_002() {
 
 #[test]
 fn error_limit_no_model_can_honor_is_e_num_003() {
-    let source =
-        function_with_compile("numeric strict-f64\n        error-limit 1e-20", "", "y = t / 1 s");
+    let source = function_with_compile(
+        "numeric strict-f64\n        error-limit 1e-20",
+        "",
+        "y = t / 1 s",
+    );
     let codes = errors_of("error-limit", &source);
     assert!(
         codes.iter().any(|code| code == "E-NUM-003"),
@@ -139,11 +148,7 @@ fn unknown_quantity_unit_is_e_unit_104() {
 
 #[test]
 fn dimension_mismatch_is_e_unit_101() {
-    let source = function_with_compile(
-        "numeric strict-f64",
-        "bytes: MiB",
-        "y = t + bytes",
-    );
+    let source = function_with_compile("numeric strict-f64", "bytes: MiB", "y = t + bytes");
     let codes = errors_of("mismatch", &source);
     assert!(
         codes.iter().any(|code| code == "E-UNIT-101"),
@@ -189,7 +194,8 @@ emath function BadTensor:
 
 #[test]
 fn inverted_domain_is_e_dom_002() {
-    let source = function_with_compile("numeric strict-f64\n        domain 5..1", "", "y = t / 1 s");
+    let source =
+        function_with_compile("numeric strict-f64\n        domain 5..1", "", "y = t / 1 s");
     let codes = errors_of("domain", &source);
     assert!(
         codes.iter().any(|code| code == "E-DOM-002"),
@@ -323,10 +329,9 @@ emath policy AdaptiveCachePolicy:
         .map(|diagnostic| diagnostic.code)
         .collect();
     assert!(
-        !result
-            .diagnostics
-            .errors()
-            .any(|diagnostic| diagnostic.message.contains("unit system arrives in Phase 5")),
+        !result.diagnostics.errors().any(|diagnostic| diagnostic
+            .message
+            .contains("unit system arrives in Phase 5")),
         "Duration/MiB must not be refused as a Phase 5 absence, got {codes:?}"
     );
 }
@@ -509,8 +514,8 @@ emath function f(x: Bool in [0.0, 1.0]) -> Float64:
 ";
     let codes = errors_of("domain-non-numeric", source);
     assert!(
-        !codes.is_empty(),
-        "domain annotation on non-numeric type must error"
+        codes.iter().any(|code| code == "E-TYPE-001"),
+        "domain annotation on Bool must be E-TYPE-001, got {codes:?}"
     );
 }
 
@@ -543,11 +548,7 @@ fn compound_unit_c2_trap_admits_as_length() {
 fn compound_unit_parenthesized_admits() {
     // `9.81 [unit m/(s*s)]` — parenthesized denominator.
     // Should parse without unit errors.
-    let source = function_with_compile(
-        "numeric strict-f64",
-        "",
-        "y = 9.81 [unit m/(s*s)]",
-    );
+    let source = function_with_compile("numeric strict-f64", "", "y = 9.81 [unit m/(s*s)]");
     let codes = errors_of("compound-paren", &source);
     assert!(
         !codes.iter().any(|code| code == "E-UNIT-104"),
@@ -558,11 +559,7 @@ fn compound_unit_parenthesized_admits() {
 #[test]
 fn compound_unit_with_unknown_unit_errors() {
     // `1.0 [unit m/furlong]` — furlong is not a known unit.
-    let source = function_with_compile(
-        "numeric strict-f64",
-        "",
-        "y = 1.0 [unit m/furlong]",
-    );
+    let source = function_with_compile("numeric strict-f64", "", "y = 1.0 [unit m/furlong]");
     let codes = errors_of("compound-unknown", &source);
     assert!(
         codes.iter().any(|code| code == "E-UNIT-104"),
@@ -574,14 +571,568 @@ fn compound_unit_with_unknown_unit_errors() {
 fn compound_unit_kg_m2_s2_admits() {
     // `100.0 [unit kg*m^2/s^2]` — energy (joules).
     // Should parse without unit errors.
-    let source = function_with_compile(
-        "numeric strict-f64",
-        "",
-        "y = 100.0 [unit kg*m^2/s^2]",
-    );
+    let source = function_with_compile("numeric strict-f64", "", "y = 100.0 [unit kg*m^2/s^2]");
     let codes = errors_of("compound-energy", &source);
     assert!(
         !codes.iter().any(|code| code == "E-UNIT-104"),
         "known units in kg*m^2/s^2 must not produce E-UNIT-104, got {codes:?}"
     );
+}
+
+#[test]
+fn result_as_input_is_e_type_010() {
+    let source = "\
+emath function F:
+    inputs:
+        x: Result<Float64, ConfigError>
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("result-field", source);
+    assert!(
+        codes.iter().any(|code| code == "E-TYPE-010"),
+        "Result as a compute type must be E-TYPE-010, got {codes:?}"
+    );
+}
+
+#[test]
+fn graph_and_rat_as_inputs_are_e_type_010() {
+    let graph = "\
+emath function F:
+    inputs:
+        g: Graph
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let rat = "\
+emath function F:
+    inputs:
+        q: Rat
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let graph_codes = errors_of("graph-field", graph);
+    let rat_codes = errors_of("rat-field", rat);
+    assert!(
+        graph_codes.iter().any(|code| code == "E-TYPE-010"),
+        "Graph must be E-TYPE-010, got {graph_codes:?}"
+    );
+    assert!(
+        rat_codes.iter().any(|code| code == "E-TYPE-010"),
+        "Rat must be E-TYPE-010, got {rat_codes:?}"
+    );
+}
+
+#[test]
+fn vector_extra_extent_is_e_shape_004() {
+    let source = "\
+emath function F:
+    inputs:
+        v: Vector[2, 3]
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("vec-arity", source);
+    assert!(
+        codes.iter().any(|code| code == "E-SHAPE-004"),
+        "Vector[2, 3] must be E-SHAPE-004, got {codes:?}"
+    );
+}
+
+#[test]
+fn matrix_one_extent_is_e_shape_004() {
+    let source = "\
+emath function F:
+    inputs:
+        m: Matrix[2]
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("mat-arity", source);
+    assert!(
+        codes.iter().any(|code| code == "E-SHAPE-004"),
+        "Matrix[2] must be E-SHAPE-004, got {codes:?}"
+    );
+}
+
+#[test]
+fn vector_zero_extent_is_e_shape_004() {
+    let source = "\
+emath function F:
+    inputs:
+        v: Vector[0]
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("vec-zero", source);
+    assert!(
+        codes.iter().any(|code| code == "E-SHAPE-004"),
+        "Vector[0] must be E-SHAPE-004, got {codes:?}"
+    );
+}
+
+#[test]
+fn matrix_zero_extent_is_e_shape_004() {
+    let source = "\
+emath function F:
+    inputs:
+        m: Matrix[0, 3]
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("mat-zero", source);
+    assert!(
+        codes.iter().any(|code| code == "E-SHAPE-004"),
+        "Matrix[0, 3] must be E-SHAPE-004, got {codes:?}"
+    );
+}
+
+#[test]
+fn tensor_bracket_list_extent_admits() {
+    let source = "\
+emath function F:
+    inputs:
+        t: Tensor<Float64, [2, 2, 2]>
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("tensor-c10", source);
+    assert!(
+        codes.is_empty(),
+        "Tensor<Float64, [2, 2, 2]> must admit, got {codes:?}"
+    );
+}
+
+#[test]
+fn vector_int_element_admits() {
+    let source = "\
+emath function F:
+    inputs:
+        v: Vector<Int, 3>
+    outputs:
+        y: Float64
+    definitions:
+        y = 1
+";
+    let codes = errors_of("vec-int", source);
+    assert!(
+        codes.is_empty(),
+        "Vector<Int, 3> must admit Int as the element type, got {codes:?}"
+    );
+}
+
+#[test]
+fn constructor_result_return_still_admits() {
+    let source = "\
+emath policy Affine:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    state:
+        s: Float64
+    constructors:
+        public fn new(s: Float64) -> Result<Self, ConfigError>:
+            require s >= 0
+            Self:
+                s = s
+    definitions:
+        y = state.s * x
+";
+    let codes = errors_of("ctor-result", source);
+    assert!(
+        codes.is_empty(),
+        "constructor `-> Result<Self, ConfigError>` must still admit, got {codes:?}"
+    );
+}
+
+fn eval_output_f64(name: &str, source: &str, output: &str) -> f64 {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(name, source);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "{name} must admit, got {codes:?}: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    match test.outputs.get(output) {
+        Some(Value::F64(value)) => *value,
+        other => panic!(
+            "{name}: expected F64 `{output}`, got {other:?} (verdict {})",
+            test.verdict
+        ),
+    }
+}
+
+#[test]
+fn kilometre_plus_metre_rescales_to_si() {
+    // Unit-rescaling invariance: `1 km + 1 m` is 1001 m, not 2.
+    let source = "\
+emath function Rescale:
+    outputs:
+        y: Float64
+    definitions:
+        y = (1 km + 1 m) / 1 m
+    tests:
+        example <si>:
+            expect y == 1001
+";
+    let y = eval_output_f64("km-plus-m", source, "y");
+    assert_eq!(y, 1001.0, "1 km + 1 m must be 1001 m, got {y}");
+}
+
+#[test]
+fn millisecond_scale_is_applied() {
+    let source = "\
+emath function Ms:
+    outputs:
+        y: Float64
+    definitions:
+        y = (1 ms) / (1 s)
+    tests:
+        example <si>:
+            expect y == 0.001
+";
+    let y = eval_output_f64("ms-over-s", source, "y");
+    assert_eq!(y, 0.001, "1 ms / 1 s must be 0.001, got {y}");
+}
+
+#[test]
+fn mib_over_byte_rescales() {
+    let source = "\
+emath function Info:
+    outputs:
+        y: Float64
+    definitions:
+        y = (1 MiB) / (1 B)
+    tests:
+        example <si>:
+            expect y == 1048576
+";
+    let y = eval_output_f64("mib-over-b", source, "y");
+    assert_eq!(y, 1_048_576.0, "1 MiB / 1 B must be 1048576, got {y}");
+}
+
+#[test]
+fn rational_quantity_evaluates_as_si() {
+    // Pass 2 parse: `3//2 s` is a quantity. Under strict-f64 it is 1.5 s.
+    let source = "\
+emath function RatQ:
+    outputs:
+        y: Float64
+    definitions:
+        y = (3//2 s) / (1 s)
+    tests:
+        example <si>:
+            expect y == 1.5
+";
+    let y = eval_output_f64("rational-s", source, "y");
+    assert_eq!(y, 1.5, "3//2 s / 1 s must be 1.5, got {y}");
+}
+
+#[test]
+fn metre_plus_second_is_e_unit_101() {
+    let source = function_with_compile("numeric strict-f64", "", "y = 1 m + 1 s");
+    let codes = errors_of("m-plus-s", &source);
+    assert!(
+        codes.iter().any(|code| code == "E-UNIT-101"),
+        "1 m + 1 s must be E-UNIT-101, got {codes:?}"
+    );
+}
+
+#[test]
+fn mib_plus_dimensionless_is_e_unit_101() {
+    let source = function_with_compile("numeric strict-f64", "", "y = 1 + 1 MiB");
+    let codes = errors_of("one-plus-mib", &source);
+    assert!(
+        codes.iter().any(|code| code == "E-UNIT-101"),
+        "1 + 1 MiB must be E-UNIT-101, got {codes:?}"
+    );
+}
+
+#[test]
+fn length_output_rejects_duration_value() {
+    let source = "\
+emath function Bad:
+    outputs:
+        y: Float64 in m
+    definitions:
+        y = 1 s
+";
+    let codes = errors_of("len-from-dur", source);
+    assert!(
+        codes
+            .iter()
+            .any(|code| code == "E-TYPE-012" || code == "E-UNIT-101"),
+        "assigning Duration to Length must refuse, got {codes:?}"
+    );
+}
+
+#[test]
+fn mib_output_rejects_dimensionless() {
+    let source = "\
+emath function Bad:
+    outputs:
+        y: MiB
+    definitions:
+        y = 1.0
+";
+    let codes = errors_of("mib-from-f64", source);
+    assert!(
+        codes
+            .iter()
+            .any(|code| code == "E-TYPE-012" || code == "E-UNIT-101"),
+        "assigning dimensionless to MiB must refuse, got {codes:?}"
+    );
+}
+
+#[test]
+fn unit_of_is_named_refuse() {
+    let source = "\
+emath function Q:
+    inputs:
+        x: Float64 in m
+    outputs:
+        y: Float64
+    definitions:
+        y = unit of x
+";
+    let codes = errors_of("unit-of", source);
+    assert!(
+        codes.iter().any(|code| code == "E-TYPE-010"),
+        "`unit of` must be a named refuse, got {codes:?}"
+    );
+}
+
+fn error_messages(name: &str, source: &str) -> Vec<String> {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(name, source);
+    result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.to_string())
+        .collect()
+}
+
+fn eval_output_bool(name: &str, source: &str, output: &str) -> bool {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned(name, source);
+    let codes: Vec<&str> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.is_empty(),
+        "{name} must admit, got {codes:?}: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    match test.outputs.get(output) {
+        Some(Value::Bool(value)) => *value,
+        other => panic!(
+            "{name}: expected Bool `{output}`, got {other:?} (verdict {})",
+            test.verdict
+        ),
+    }
+}
+
+#[test]
+fn metre_times_metre_is_area() {
+    let source = "\
+emath function Area:
+    outputs:
+        y: Float64
+    definitions:
+        y = (1 m * 1 m) / (1 [unit m^2])
+    tests:
+        example <si>:
+            expect y == 1
+";
+    let y = eval_output_f64("m-times-m", source, "y");
+    assert_eq!(y, 1.0, "1 m * 1 m must be 1 m^2, got {y}");
+}
+
+#[test]
+fn metre_times_metre_admits_as_m_star_m() {
+    let source = "\
+emath function Area:
+    outputs:
+        y: Float64 in m*m
+    definitions:
+        y = 1 m * 1 m
+";
+    let codes = errors_of("area-ann", source);
+    assert!(
+        codes.is_empty(),
+        "`Float64 in m*m` must match 1 m * 1 m, got {codes:?}"
+    );
+}
+
+#[test]
+fn metre_times_metre_admits_as_m_squared() {
+    let source = "\
+emath function Area:
+    outputs:
+        y: Float64 in m^2
+    definitions:
+        y = 1 m * 1 m
+";
+    let codes = errors_of("area-pow", source);
+    assert!(
+        codes.is_empty(),
+        "`Float64 in m^2` must match 1 m * 1 m, got {codes:?}"
+    );
+}
+
+#[test]
+fn units_example_computes() {
+    let source = include_str!("../../../language/examples/intro/units.emath");
+    let rescale = eval_output_f64("units-ex-rescale", source, "rescale");
+    let area = eval_output_f64("units-ex-area", source, "area");
+    let cancelled = eval_output_f64("units-ex-cancelled", source, "cancelled");
+    let celsius = eval_output_bool("units-ex-celsius", source, "celsius");
+    assert_eq!(rescale, 1001.0);
+    assert_eq!(area, 1.0);
+    assert_eq!(cancelled, 1.0);
+    assert!(celsius);
+}
+
+#[test]
+fn cancelled_length_is_dimensionless() {
+    let source = "\
+emath function Cancel:
+    outputs:
+        y: Float64
+    definitions:
+        y = (1 m) / (1 m)
+    tests:
+        example <si>:
+            expect y == 1
+";
+    let y = eval_output_f64("m-over-m", source, "y");
+    assert_eq!(y, 1.0, "1 m / 1 m must be dimensionless 1, got {y}");
+}
+
+#[test]
+fn duration_assigned_to_length_names_the_dimensions() {
+    let source = "\
+emath function Bad:
+    outputs:
+        y: Float64 in m
+    definitions:
+        y = 1 s
+";
+    let messages = error_messages("dur-to-len", source);
+    assert!(
+        messages.iter().any(|message| {
+            message.contains("E-TYPE-012")
+                && message.contains("duration")
+                && message.contains("length")
+                && !message.contains("Infer::Unit")
+        }),
+        "duration vs length must be named, not Debug-dumped, got {messages:?}"
+    );
+}
+
+#[test]
+fn type_c2_trap_is_length_not_acceleration() {
+    let source = "\
+emath function C2:
+    outputs:
+        y: Float64 in m/s*s
+    definitions:
+        y = 1 m
+";
+    let codes = errors_of("type-c2", source);
+    assert!(
+        codes.is_empty(),
+        "`in m/s*s` must be length (C2), matching 1 m, got {codes:?}"
+    );
+}
+
+#[test]
+fn zero_celsius_equals_kelvin_offset() {
+    let source = "\
+emath function Temp:
+    outputs:
+        y: Bool
+    definitions:
+        y = (0 degC == 273.15 K)
+    tests:
+        example <si>:
+            expect y == true
+";
+    let y = eval_output_bool("zero-c", source, "y");
+    assert!(y, "0 degC must equal 273.15 K");
+}
+
+#[test]
+fn celsius_plus_celsius_is_e_unit_102() {
+    let source = function_with_compile("numeric strict-f64", "", "y = 1 degC + 1 degC");
+    let codes = errors_of("c-plus-c", &source);
+    assert!(
+        codes.iter().any(|code| code == "E-UNIT-102"),
+        "1 degC + 1 degC must be E-UNIT-102, got {codes:?}"
+    );
+}
+
+#[test]
+fn celsius_times_scalar_is_e_unit_102() {
+    let source = function_with_compile("numeric strict-f64", "", "y = (1 degC) * 2");
+    let codes = errors_of("c-times-2", &source);
+    assert!(
+        codes.iter().any(|code| code == "E-UNIT-102"),
+        "1 degC * 2 must be E-UNIT-102, got {codes:?}"
+    );
+}
+
+#[test]
+fn celsius_plus_kelvin_interval_shifts_the_point() {
+    let source = "\
+emath function Shift:
+    outputs:
+        y: Bool
+    definitions:
+        y = (0 degC + 1 K == 1 degC)
+    tests:
+        example <si>:
+            expect y == true
+";
+    let y = eval_output_bool("c-plus-k", source, "y");
+    assert!(y, "0 degC + 1 K must equal 1 degC");
 }

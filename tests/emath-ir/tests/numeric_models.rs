@@ -1,9 +1,9 @@
 //! Numeric model matrix, unit catalog, and domain/shape well-formedness.
 
 use emath_ir::{
-    Interval, NumericProfile, Shape, STRICT_F64_MACHINE_EPS, STRICT_F64_PRECISION_BITS,
-    check_error_limit, check_precision_demand, lookup_unit, numeric_behavior, parse_numeric_profile,
-    per_unit,
+    Interval, NumericProfile, STRICT_F64_MACHINE_EPS, STRICT_F64_PRECISION_BITS, Shape,
+    check_error_limit, check_precision_demand, lookup_unit, numeric_behavior,
+    parse_numeric_profile, per_unit,
 };
 
 #[test]
@@ -86,6 +86,22 @@ fn unknown_unit_and_ill_formed_per_are_typed() {
     assert_eq!(empty.code, "E-UNIT-104");
     assert!(lookup_unit("Duration").is_ok());
     assert!(per_unit("Duration").is_ok());
+    let km = lookup_unit("km").expect("km is a known length unit");
+    assert_eq!(km.to_si(1.0), 1_000.0);
+    let ms = lookup_unit("ms").expect("ms is a known duration unit");
+    assert_eq!(ms.to_si(1.0), 1e-3);
+    let mib = lookup_unit("MiB").expect("MiB is a known information unit");
+    assert_eq!(mib.to_si(1.0), 1_048_576.0);
+    let metre = lookup_unit("m").expect("m is a known length unit");
+    let area = metre.mul(&metre).expect("m * m is area");
+    assert_eq!(area.dims, emath_ir::UnitDim::base(2, 0, 0, 0, 0, 0, 0));
+    assert_eq!(area.dims.kind_name(), Some("area"));
+    let cancelled = metre.div(&metre).expect("m / m is dimensionless");
+    assert!(cancelled.is_dimensionless());
+    let celsius = lookup_unit("degC").expect("degC is a known affine temperature");
+    assert!(celsius.is_affine());
+    assert_eq!(celsius.to_si(0.0), 273.15);
+    assert_eq!(celsius.mul(&metre).unwrap_err().code, "E-UNIT-102");
 }
 
 #[test]

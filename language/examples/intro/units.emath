@@ -1,0 +1,25 @@
+# Quantity literals: SI scale, area product, cancelled dims, affine Celsius.
+emath function Units:
+    outputs:
+        rescale: Float64
+        area: Float64
+        cancelled: Float64
+        celsius: Bool
+
+    definitions:
+        rescale = (1 km + 1 m) / 1 m
+        area = (1 m * 1 m) / (1 [unit m^2])
+        cancelled = (1 m) / (1 m)
+        celsius = (0 degC == 273.15 K)
+
+    tests:
+        example <si>:
+            expect rescale == 1001
+            expect area == 1
+            expect cancelled == 1
+            expect celsius == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

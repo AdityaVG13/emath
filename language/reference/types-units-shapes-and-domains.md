@@ -175,12 +175,19 @@ Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
 ```
 
-`Nat` and `Int` are indexes and small integer values. Arithmetic with
-them still evaluates as `Float64` internally, but when an output is
-declared `Int`, the result is converted to exact `i64` - no
-floating-point rounding in the final value. This makes `product i in
-1..=20: i` with `Int` output give the exact factorial, not a float
-approximation. A negative constant index is `E-SHAPE-006`.
+`Nat` and `Int` are indexes and small integer values. Integer add, sub,
+mul, and negate that stay in `i64` are exact; overflow is a named
+runtime fault, not wrap or a rounded float. Mixed `Int`/`Float64`
+arithmetic still widens to `Float64`. Mixed `Int`/`Float64` comparisons
+(`==` `!=` `<` `<=` `>` `>=`) are exact: `(2^53+1) == 2^53.0` is false
+because the integer is not that float. Same-kind `Float64` comparison
+stays IEEE-754, so `-0.0 == 0.0`. When an output is declared `Int`,
+a whole finite `Float64` result is converted to exact `i64`. This makes
+`product i in 1..=20: i` with `Int` output give the exact factorial, not
+a float approximation. A negative constant index is `E-SHAPE-006`.
+Runtime negative, fractional, or out-of-range indices are a named fault
+(`EvalFault::IndexOutOfBounds` in interp; `Result<_, String>` from
+`rust.library`), never wrap, saturate, or panicking `[]`.
 
 Shapes:
 
@@ -190,10 +197,22 @@ Shapes:
 - `t[0, :, :]` and other `:` axes keep rank
 - tensor add/sub only when extents match, or one side is `1`
 
-Units that the compiler knows (`Duration`, `MiB`, `1 s`, `m/s`, …)
-admit. A quantity state in a model must have a matching state/time
-rate. Unknown units and unit clashes are named refusals
-(`E-UNIT-104`, `E-UNIT-105`, `E-UNIT-101`).
+Units that the compiler knows (`Duration`, `MiB`, `1 s`, `ms`, `m`,
+`km`, `m/s`, `degC`, …) admit. A quantity literal is converted to SI by scale
+(and offset, for affine units): `1 km + 1 m` is `1001` metres, `1 s +
+1 ms` is `1.001` seconds, `1 MiB / 1 B` is `1048576`, `0 degC` is
+`273.15 K`. `1 m * 1 m` is area (`m^2`); `1 m / 1 m` is dimensionless.
+Affine points cannot be added to each other or multiplied
+(`1 degC + 1 degC` and `(1 degC) * 2` are `E-UNIT-102`); adding a
+linear interval is a shift (`0 degC + 1 K` is `1 degC`). A quantity
+state in a model must have a matching state/time rate. Unknown units
+and unit clashes are named refusals (`E-UNIT-104`, `E-UNIT-105`,
+`E-UNIT-101`). Information units never mix with dimensionless SI
+(`1 + 1 MiB` is `E-UNIT-101`). `T in unit` annotations are dimension
+tags: assigning a duration to a length is `E-TYPE-012` and names
+those dimensions (`duration` vs `length`), not an internal dump.
+`Float64 in m*m` and `Float64 in m^2` are area; `Float64 in m/s*s` is
+length (C2 trap), not acceleration.
 
 Compound-unit bracket syntax (`9.81 [unit m/s^2]`) parses and lowers
 to combined dimensions. Unit expressions support `*`, `/`, `^`, and
@@ -206,6 +225,12 @@ Numeric models:
 - `numeric interval-f64` is accepted as a label
 - the machine still computes in `Float64`
 - writing `Real` without a model is `E-NUM-004`
+- `strict-f64` libm builtins are IEEE-754 binary64, not a real-number
+  domain check: `sqrt(-1)` and `ln(-1)` are NaN, `log(0)` is `-Inf`,
+  `pow(0, 0)` / `0^0` are `1`, `atan2(0, 0)` is `+0`. Those domain
+  obligations are recorded as assumptions. `mod_inv` is exact i64 and
+  named-refuses when `gcd(a, m) != 1` or `m` is not positive. Generated
+  Rust uses `f64::from_bits` for folded NaN/Inf so the crate compiles.
 
 Not admitted as compute types yet: `Rat`, bare `Real`,
 `Option`, `Result`, `Graph`, `Field`, records as values, refinement
@@ -217,11 +242,14 @@ to `N * i` where `i` is the imaginary unit. The identifier `i` is a
 named constant (not a reserved keyword) - it is recognized only when not
 shadowed by an input or definition. Complex arithmetic (add, sub, mul,
 div, neg, eq, ne) is fully supported in the interpreter via a native
-`Complex { re, im }` value type.
+`Complex { re, im }` value type. Principal `sqrt`, `ln`/`log`, `exp`,
+`log2`, `log10`, `recip`, and `abs` (modulus) are admitted on Complex:
+`sqrt(-1 + 0i) = i`, `ln(-1 + 0i) = iπ`. Float64 `sqrt(-1)` remains IEEE
+NaN.
 
 `GF<p>` and `GF<p>` are admitted as `Int` types (e.g., `Mod<7>`, `GF<2>`).
 Values are exact i64 integers; modular reduction is an operational concern
-handled by the builtins (`mod`, `mod_inv`, `cong`), not by the type system.
+handled by the builtins (`mod`, `mod_inv`, `congruence`), not by the type system.
 
 ### Modular arithmetic builtins
 
@@ -230,4 +258,4 @@ handled by the builtins (`mod`, `mod_inv`, `cong`), not by the type system.
 | `mod(a, m)` | 2 | Float64 | `a % m` (floating-point remainder) |
 | `factorial(n)` | 1 | Int | `n!` as exact i64 (n must be in [0, 20]) |
 | `mod_inv(a, m)` | 2 | Int | Modular inverse of `a` mod `m` via extended GCD; errors if `gcd(a, m) != 1` |
-| `cong(a, b, m)` | 3 | Bool | Congruence check: `(a - b) mod m == 0` |
+| `congruence(a, b, m)` | 3 | Bool | Congruence check: `(a - b) mod m == 0` |
