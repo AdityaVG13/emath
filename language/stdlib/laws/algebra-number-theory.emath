@@ -1,0 +1,103 @@
+package number_theory.laws
+
+emath law FermatLittleModThree:
+    about:
+        summary: "Every integer a satisfies a cubed congruent to a modulo three."
+    assumptions:
+        assume: "The modulus is the prime three."
+    domain:
+        name: "elementary number theory"
+    provenance:
+        source: "Fermat's little theorem"
+    citations:
+        cite: "a^p is congruent to a modulo prime p"
+    inputs:
+        value: Int
+    outputs:
+        holds: Bool
+    definitions:
+        holds = congruence(value * value * value, value, 3)
+    goals:
+        evaluate <holds>:
+            produce rust.library
+    evidence:
+        claim <prime_three_specialization>:
+            statement: "The p=3 specialization is checked with exact integer congruence."
+            require prime_modulus
+            level E3
+    tests:
+        example <canonical>:
+            given value = 5
+            expect holds == true
+
+emath law ModularInverse:
+    about:
+        summary: "A modular inverse is constructed for coprime integer inputs."
+    assumptions:
+        assume: "The value and positive modulus are coprime."
+        require modulus > 1
+    domain:
+        name: "modular arithmetic"
+    provenance:
+        source: "Extended Euclidean algorithm"
+    citations:
+        cite: "a*x is congruent to 1 modulo m"
+    inputs:
+        value: Int
+        modulus: Int
+    outputs:
+        inverse: Int
+    definitions:
+        inverse = mod_inv(value, modulus)
+    goals:
+        evaluate <inverse>:
+            produce rust.library
+    evidence:
+        claim <coprime_inverse>:
+            statement: "The exact integer kernel constructs the inverse."
+            require coprime_inputs
+            level E3
+    tests:
+        example <three_mod_seven>:
+            given value = 3
+            given modulus = 7
+            expect inverse == 5
+
+emath law ChineseRemainderWitness:
+    about:
+        summary: "A candidate is checked against two modular congruences."
+    assumptions:
+        assume: "The two positive moduli are coprime."
+        require modulus_left > 1 and modulus_right > 1
+    domain:
+        name: "modular arithmetic"
+    provenance:
+        source: "Chinese remainder theorem"
+    citations:
+        cite: "Simultaneous congruences over coprime moduli have one residue class."
+    inputs:
+        candidate: Int
+        residue_left: Int
+        modulus_left: Int
+        residue_right: Int
+        modulus_right: Int
+    outputs:
+        is_witness: Bool
+    definitions:
+        is_witness = congruence(candidate, residue_left, modulus_left) and congruence(candidate, residue_right, modulus_right)
+    goals:
+        evaluate <is_witness>:
+            produce rust.library
+    evidence:
+        claim <two_modulus_witness>:
+            statement: "Both exact congruences are checked; no uniqueness proof is fabricated."
+            require coprime_moduli
+            level E3
+    tests:
+        example <canonical>:
+            given candidate = 8
+            given residue_left = 2
+            given modulus_left = 3
+            given residue_right = 3
+            given modulus_right = 5
+            expect is_witness == true

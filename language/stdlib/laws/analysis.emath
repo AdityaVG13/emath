@@ -1,0 +1,104 @@
+package analysis.laws
+
+emath law FundamentalTheoremEvaluation:
+    about:
+        summary: "A definite integral equals the endpoint difference of an antiderivative."
+    assumptions:
+        assume: "The integrand is continuous and the supplied antiderivative differentiates to it."
+    domain:
+        name: "real analysis"
+    provenance:
+        source: "Fundamental theorem of calculus"
+    citations:
+        cite: "integral_a^b f = F(b)-F(a)"
+    inputs:
+        antiderivative_left: Float64
+        antiderivative_right: Float64
+    outputs:
+        definite_value: Float64
+    definitions:
+        definite_value = antiderivative_right - antiderivative_left
+    goals:
+        evaluate <definite_value>:
+            produce rust.library
+    evidence:
+        claim <endpoint_evaluation>:
+            statement: "The endpoint evaluation slice is computed."
+            require supplied_antiderivative
+            level E3
+    tests:
+        example <canonical>:
+            given antiderivative_left = 1
+            given antiderivative_right = 5
+            expect definite_value == 4
+
+emath law TaylorQuadratic:
+    about:
+        summary: "A second-order Taylor polynomial evaluates from local derivative data."
+    assumptions:
+        assume: "The function has the supplied first and second derivatives near the expansion point."
+    domain:
+        name: "real analysis"
+    provenance:
+        source: "Brook Taylor, Methodus Incrementorum Directa et Inversa (1715)"
+    citations:
+        cite: "f(x+h) approximately f(x)+f'(x)h+f''(x)h^2/2"
+    inputs:
+        value: Float64
+        first_derivative: Float64
+        second_derivative: Float64
+        delta: Float64
+    outputs:
+        approximation: Float64
+    definitions:
+        approximation = value + first_derivative * delta + second_derivative * delta * delta / 2
+    goals:
+        evaluate <approximation>:
+            produce rust.library
+    evidence:
+        claim <second_order_polynomial>:
+            statement: "This computes the polynomial, not a remainder bound."
+            require local_derivative_data
+            level E1
+    tests:
+        example <quadratic_exact>:
+            given value = 1
+            given first_derivative = 2
+            given second_derivative = 2
+            given delta = 1
+            expect approximation == 4
+
+emath law BanachContractionStep:
+    about:
+        summary: "One constructive fixed-point iteration applies a declared contraction map."
+    assumptions:
+        assume: "The affine factor has absolute value below one on a complete invariant domain."
+        require abs(factor) < 1
+    domain:
+        name: "fixed-point analysis"
+    provenance:
+        source: "Stefan Banach, contraction mapping theorem (1922)"
+    citations:
+        cite: "x_next = offset + factor*x"
+    inputs:
+        offset: Float64
+        factor: Float64
+        current: Float64
+    outputs:
+        next: Float64
+    definitions:
+        next = offset + factor * current
+    goals:
+        evaluate <next>:
+            produce rust.library
+    evidence:
+        claim <constructive_iteration>:
+            statement: "One declared contraction step is computed; convergence is not fabricated."
+            require contraction_assumption
+            level E2
+    tests:
+        example <canonical>:
+            given offset = 1
+            given factor = 0.5
+            given current = 2
+            expect next == 2

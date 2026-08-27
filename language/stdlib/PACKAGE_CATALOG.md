@@ -1,6 +1,7 @@
 # Planned Standard Package Catalog
 
-Phase 1 does not ship these as importable `.emath` packages. The
+Most Phase 1 entries below are compiler contracts rather than importable
+`.emath` packages. The
 compiler binds `core::math::` / `math::` / bare names for the functions
 listed in `README.md`. `core::prelude` and `core::numbers` are not
 callable namespaces yet.
@@ -24,3 +25,10 @@ callable namespaces yet.
 | `core::evidence` | claims, assumptions, evidence kinds | 8 |
 | `core::artifact` | manifests/source maps/continuations | 9 |
 | `core::host` | host bindings and fallback contracts | 9/10 |
+| [`physics::classical`](laws/physics-classical.emath) | executable classical-mechanics laws | 1 |
+| [`physics::relativity`](laws/physics-relativity.emath) | executable special-relativity slice and GR deferrals | 1 |
+| [`cs::laws`](laws/computer-science.emath) | executable systems laws and open-problem deferrals | 1 |
+| [`probability::laws`](laws/probability-statistics.emath) | finite Bayes, CLT scaling, and information slices | 1 |
+| [`analysis::laws`](laws/analysis.emath) | constructive endpoint, Taylor, and contraction slices | 1 |
+| [`number_theory::laws`](laws/algebra-number-theory.emath) | exact modular laws and conjecture no-claims | 1 |
+| [`optimization_control::laws`](laws/optimization-control.emath) | finite KKT, Bellman, and Lyapunov slices | 1 |

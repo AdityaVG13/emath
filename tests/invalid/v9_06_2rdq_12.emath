@@ -1,0 +1,14 @@
+use std.kinds.family
+
+# The family parameter must be Op, every member must be in the mounted
+# ElementwiseUnary inventory, and fewer than three members stay as cells.
+emath family ElementwiseUnary<Operation>:
+    inputs:
+        x: Float64
+    outputs:
+        value: Float64
+    definitions:
+        value = x
+    instances:
+        "sin"
+        "mystery"

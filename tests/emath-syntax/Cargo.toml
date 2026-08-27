@@ -7,3 +7,5 @@ publish = false
 [dependencies]
 emath-syntax = { path = "../../crates/emath-syntax" }
 emath-core = { path = "../../crates/emath-core" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-sema = { path = "../../crates/emath-sema" }

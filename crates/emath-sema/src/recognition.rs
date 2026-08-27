@@ -7,9 +7,7 @@
 
 use crate::admit::SemanticTrace;
 use emath_core::Diagnostics;
-use emath_core::tree::{
-    Declaration, Expr, ExprKind, Item, Stmt, StmtKind, TypeKind, UseTree,
-};
+use emath_core::tree::{Declaration, Expr, ExprKind, Item, Stmt, StmtKind, TypeKind, UseTree};
 use emath_ir::{ImportEntry, ImportSelection};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -50,14 +48,20 @@ pub struct V6FrontEnd {
 pub fn collect_kind_defs(tree: &emath_core::tree::SyntaxTree) -> BTreeMap<String, KindDef> {
     let mut defs = BTreeMap::new();
     for item in &tree.items {
+        if let Item::Use { path, .. } = item {
+            if let Some(def) = imported_kind(path) {
+                defs.entry(def.name.clone()).or_insert(def);
+            }
+            continue;
+        }
         let Item::Declaration(decl) = item else {
             continue;
         };
         // Parser remaps `emath kind Name:` to `item_kind=custom` with
         // the original spelling in `as_kind`; hand-built trees keep
         // `item_kind == "kind"`.
-        let is_kind_def = decl.item_kind == "kind"
-            || (decl.item_kind == "custom" && decl.as_kind == "kind");
+        let is_kind_def =
+            decl.item_kind == "kind" || (decl.item_kind == "custom" && decl.as_kind == "kind");
         if !is_kind_def {
             continue;
         }
@@ -145,6 +149,17 @@ pub fn admit_front_end(
                         format!(
                             "external file import `{}` is outside the front-end subset (library-path imports only)",
                             path.join(".")
+                        ),
+                        *source,
+                    );
+                    continue;
+                }
+                if is_unresolved_law_import(path, tree) {
+                    diagnostics.error(
+                        "E-PKG-052",
+                        format!(
+                            "law package import `{}` is not resolved yet; declare the law locally until the curated package registry lands",
+                            path.join("::")
                         ),
                         *source,
                     );
@@ -281,6 +296,16 @@ fn is_external_import(path: &[String]) -> bool {
             .any(|segment| segment.to_ascii_lowercase().ends_with(".emath"))
 }
 
+fn is_unresolved_law_import(path: &[String], tree: &UseTree) -> bool {
+    path == ["physics", "NewtonSecond"]
+        || (path == ["physics"]
+            && matches!(
+                tree,
+                UseTree::Named(names)
+                    if names.iter().any(|(name, _)| name == "NewtonSecond")
+            ))
+}
+
 /// Admit one declaration into the package and trace.
 pub fn admit_declaration(
     decl: &Declaration,
@@ -294,7 +319,12 @@ pub fn admit_declaration(
         admit_extern(decl, package, diagnostics, trace);
         return;
     }
-    if let Some(def) = kind_defs.get(item_kind) {
+    let schema_kind = if item_kind == "custom" {
+        decl.as_kind.as_str()
+    } else {
+        item_kind
+    };
+    if let Some(def) = kind_defs.get(schema_kind) {
         admit_kind_application(decl, def, package, diagnostics, trace);
         return;
     }
@@ -382,10 +412,22 @@ fn admit_kind_application(
     diagnostics: &mut Diagnostics,
     trace: &mut SemanticTrace,
 ) {
-    let mut declaration = package_entry(decl, &def.name);
     let rules = sections_for_application(def);
     validate_body(decl, &rules, diagnostics, trace);
     enforce_schema(decl, def, diagnostics);
+    if def.name == "family" {
+        if !diagnostics.has_errors() {
+            expand_family(decl, package, diagnostics, trace);
+        }
+        return;
+    }
+    if matches!(def.name.as_str(), "theory" | "model" | "morphism") {
+        if !diagnostics.has_errors() {
+            admit_categorical_kind(decl, &def.name, package, diagnostics, trace);
+        }
+        return;
+    }
+    let mut declaration = package_entry(decl, &def.name);
     declaration.id =
         emath_ir::DeclarationId(u32::try_from(package.declarations.len()).unwrap_or(u32::MAX));
     package.declarations.push(declaration);
@@ -397,6 +439,146 @@ fn admit_kind_application(
         ),
         Some(decl.head_source),
     );
+}
+
+const ELEMENTWISE_UNARY_INSTANCES: &[&str] = &[
+    "abs", "cos", "exp", "ln", "log10", "log2", "recip", "sin", "sqrt", "tan",
+];
+
+fn expand_family(
+    decl: &Declaration,
+    package: &mut emath_ir::SemanticPackage,
+    diagnostics: &mut Diagnostics,
+    trace: &mut SemanticTrace,
+) {
+    let mut valid = true;
+    if decl.name != "ElementwiseUnary" {
+        diagnostics.error(
+            "E-KIND-026",
+            format!(
+                "unknown family `{}`; the mounted std family is `ElementwiseUnary`",
+                decl.name
+            ),
+            decl.head_source,
+        );
+        valid = false;
+    }
+    if decl.generics.len() != 1 || decl.generics[0].name != "Op" || decl.generics[0].bound.is_some()
+    {
+        diagnostics.error(
+            "E-KIND-026",
+            "`ElementwiseUnary` requires exactly one unbounded family parameter `<Op>`",
+            decl.head_source,
+        );
+        valid = false;
+    }
+
+    let Some(instances) = decl.sections().find(|section| section.name == "instances") else {
+        return;
+    };
+    let mut operations = BTreeSet::new();
+    for statement in &instances.suite.statements {
+        let StmtKind::Expr(Expr {
+            kind: ExprKind::Str(operation),
+            ..
+        }) = &statement.kind
+        else {
+            diagnostics.error(
+                "E-KIND-026",
+                "family instances are string operation names, for example `\"sin\"`",
+                statement.source,
+            );
+            valid = false;
+            continue;
+        };
+        if !ELEMENTWISE_UNARY_INSTANCES.contains(&operation.as_str()) {
+            diagnostics.error(
+                "E-KIND-026",
+                format!("unknown ElementwiseUnary operation `{operation}`"),
+                statement.source,
+            );
+            valid = false;
+            continue;
+        }
+        if !operations.insert(operation.clone()) {
+            diagnostics.error(
+                "E-KIND-026",
+                format!("duplicate ElementwiseUnary operation `{operation}`"),
+                statement.source,
+            );
+            valid = false;
+        }
+    }
+    if operations.len() < 3 {
+        diagnostics.error(
+            "E-KIND-026",
+            "a family requires at least three distinct instances; keep one-off operations as capability cells",
+            instances.source,
+        );
+        valid = false;
+    }
+    if !valid {
+        return;
+    }
+
+    let float = package.push_type(emath_ir::TypeNode::Float64);
+    for operation in operations {
+        let input = package.push_expr(
+            emath_ir::ExprNode::Variable(emath_core::QualifiedName("x".into())),
+            instances.source,
+        );
+        let result = package.push_expr(
+            emath_ir::ExprNode::Call {
+                function: emath_core::QualifiedName(operation.clone()),
+                arguments: vec![input],
+            },
+            instances.source,
+        );
+        let mut name = operation.clone();
+        if let Some(first) = name.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
+        let id =
+            emath_ir::DeclarationId(u32::try_from(package.declarations.len()).unwrap_or(u32::MAX));
+        package.declarations.push(emath_ir::Declaration {
+            id,
+            name: emath_core::QualifiedName(name.clone()),
+            kind: emath_core::QualifiedName("capability".into()),
+            kind_label: "capability".into(),
+            inputs: vec![emath_ir::Field {
+                name: "x".into(),
+                ty: float,
+                visibility: emath_ir::Visibility::Public,
+                source: instances.source,
+            }],
+            outputs: vec![emath_ir::Field {
+                name: "value".into(),
+                ty: float,
+                visibility: emath_ir::Visibility::Public,
+                source: instances.source,
+            }],
+            state: Vec::new(),
+            algebraic: Vec::new(),
+            constructors: Vec::new(),
+            definitions: BTreeMap::from([("value".into(), result)]),
+            invariants: Vec::new(),
+            goals: Vec::new(),
+            tests: Vec::new(),
+            exports: Vec::new(),
+            compile_spec: emath_ir::CompileSpec::default(),
+            about: Some(format!(
+                "Generated by ElementwiseUnary<Op> for `{operation}`"
+            )),
+            evidence: Vec::new(),
+            host: Vec::new(),
+            source: decl.source,
+        });
+        trace.record(
+            "recognize:family-instance",
+            format!("family `{}` generated capability `{name}`", decl.name),
+            Some(instances.source),
+        );
+    }
 }
 
 /// Kind applications inherit the schema of their kind definition, with the
@@ -421,6 +603,15 @@ fn sections_for_application(def: &KindDef) -> Vec<SectionRule> {
             "invariant" => sec("invariant", EXPR_STMTS),
             "protect" => sec("protect", EXPR_STMTS),
             "host" => cmd_sec("host", &["rust"]),
+            "structure" | "finite" | "mapping" => SectionRule {
+                name: name.clone(),
+                generics: None,
+                statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
+                command_first_words: &[],
+                fn_heads: &[],
+                nested: &[],
+            },
+            "laws" => sec("laws", EXPR_STMTS),
             other => SectionRule {
                 name: other.to_string(),
                 generics: None,
@@ -435,10 +626,584 @@ fn sections_for_application(def: &KindDef) -> Vec<SectionRule> {
     rules
 }
 
+fn command_values(
+    section: &emath_core::tree::Section,
+    allowed: &[&str],
+    diagnostics: &mut Diagnostics,
+) -> BTreeMap<String, String> {
+    let mut values = BTreeMap::new();
+    for statement in &section.suite.statements {
+        let StmtKind::Command {
+            head,
+            argument: Some(argument),
+        } = &statement.kind
+        else {
+            diagnostics.error(
+                "E-KIND-027",
+                format!("`{}` fields use `key: value`", section.name),
+                statement.source,
+            );
+            continue;
+        };
+        let Some(key) = head.first() else {
+            continue;
+        };
+        if !allowed.contains(&key.as_str()) {
+            diagnostics.error(
+                "E-KIND-027",
+                format!("unknown `{}` key `{key}`", section.name),
+                statement.source,
+            );
+            continue;
+        }
+        let value = match argument {
+            emath_core::tree::CommandArgument::Expr(expr) => match &expr.kind {
+                ExprKind::Str(value) | ExprKind::Int(value) => value.clone(),
+                _ => {
+                    diagnostics.error(
+                        "E-KIND-027",
+                        format!("`{key}` requires a string or integer literal"),
+                        expr.source,
+                    );
+                    continue;
+                }
+            },
+            emath_core::tree::CommandArgument::Assignment { .. }
+            | emath_core::tree::CommandArgument::List(_) => {
+                diagnostics.error(
+                    "E-KIND-027",
+                    format!("`{key}` requires a direct value"),
+                    statement.source,
+                );
+                continue;
+            }
+        };
+        if values.insert(key.clone(), value).is_some() {
+            diagnostics.error(
+                "E-KIND-027",
+                format!("duplicate `{}` key `{key}`", section.name),
+                statement.source,
+            );
+        }
+    }
+    values
+}
+
+fn required_value(
+    values: &BTreeMap<String, String>,
+    key: &str,
+    section: &emath_core::tree::Section,
+    diagnostics: &mut Diagnostics,
+) -> Option<String> {
+    values.get(key).cloned().or_else(|| {
+        diagnostics.error(
+            "E-KIND-027",
+            format!("`{}` requires `{key}: ...`", section.name),
+            section.source,
+        );
+        None
+    })
+}
+
+fn evidence_claim(
+    id: &str,
+    statement: String,
+    verdict: emath_ir::ClaimVerdict,
+    level: emath_ir::EvidenceLevel,
+) -> emath_ir::EvidenceClaim {
+    emath_ir::EvidenceClaim {
+        id: id.into(),
+        statement,
+        class: "finite-exhaustive".into(),
+        scope: "declaration".into(),
+        assumptions: Vec::new(),
+        producer: "source".into(),
+        checker: (verdict == emath_ir::ClaimVerdict::Pass).then(|| "native.finite-law/v1".into()),
+        verdict,
+        level,
+        falsifiers: Vec::new(),
+        artifacts: Vec::new(),
+        fresh_until: None,
+    }
+}
+
+fn admit_categorical_kind(
+    decl: &Declaration,
+    kind: &str,
+    package: &mut emath_ir::SemanticPackage,
+    diagnostics: &mut Diagnostics,
+    trace: &mut SemanticTrace,
+) {
+    match kind {
+        "theory" => admit_theory(decl, package, diagnostics, trace),
+        "model" => admit_finite_model(decl, package, diagnostics, trace),
+        "morphism" => admit_finite_morphism(decl, package, diagnostics, trace),
+        _ => unreachable!(),
+    }
+}
+
+fn admit_theory(
+    decl: &Declaration,
+    package: &mut emath_ir::SemanticPackage,
+    diagnostics: &mut Diagnostics,
+    trace: &mut SemanticTrace,
+) {
+    let Some(structure) = decl.sections().find(|section| section.name == "structure") else {
+        return;
+    };
+    let values = command_values(
+        structure,
+        &["carrier", "operation", "identity"],
+        diagnostics,
+    );
+    let Some(carrier) = required_value(&values, "carrier", structure, diagnostics) else {
+        return;
+    };
+    let Some(operation) = required_value(&values, "operation", structure, diagnostics) else {
+        return;
+    };
+    let Some(identity) = required_value(&values, "identity", structure, diagnostics) else {
+        return;
+    };
+    if carrier != "finite" || operation != "binary" {
+        diagnostics.error(
+            "E-KIND-027",
+            "the finite checker currently requires `carrier: \"finite\"` and `operation: \"binary\"`",
+            structure.source,
+        );
+        return;
+    }
+    let Ok(identity) = identity.parse::<u32>() else {
+        diagnostics.error(
+            "E-KIND-027",
+            "theory identity must be a non-negative integer",
+            structure.source,
+        );
+        return;
+    };
+    let Some(laws) = decl.sections().find(|section| section.name == "laws") else {
+        return;
+    };
+    let mut law_names = BTreeSet::new();
+    for statement in &laws.suite.statements {
+        let StmtKind::Expr(Expr {
+            kind: ExprKind::Str(law),
+            ..
+        }) = &statement.kind
+        else {
+            diagnostics.error(
+                "E-KIND-027",
+                "theory laws are string names",
+                statement.source,
+            );
+            continue;
+        };
+        if !matches!(law.as_str(), "associative" | "identity") {
+            diagnostics.error(
+                "E-KIND-027",
+                format!("unknown finite theory law `{law}`"),
+                statement.source,
+            );
+            continue;
+        }
+        law_names.insert(law.clone());
+    }
+    if law_names.is_empty() || diagnostics.has_errors() {
+        return;
+    }
+
+    let mut declaration = package_entry(decl, "theory");
+    let identity_expr = package.push_expr(
+        emath_ir::ExprNode::Literal(emath_ir::Literal::Integer(identity.to_string())),
+        structure.source,
+    );
+    declaration
+        .definitions
+        .insert("identity".into(), identity_expr);
+    for law in law_names {
+        let expr = package.push_expr(
+            emath_ir::ExprNode::Call {
+                function: emath_core::QualifiedName(format!("law::{law}")),
+                arguments: Vec::new(),
+            },
+            laws.source,
+        );
+        declaration.definitions.insert(format!("law_{law}"), expr);
+        declaration.evidence.push(evidence_claim(
+            &law,
+            format!("declared `{law}` law; authority awaits a checked model"),
+            emath_ir::ClaimVerdict::NotRun,
+            emath_ir::EvidenceLevel::E1,
+        ));
+    }
+    declaration.about = Some("Finite algebraic theory; declaration does not self-certify".into());
+    push_categorical_declaration(package, declaration, trace, "theory");
+}
+
+fn finite_operation(
+    left_coefficient: u32,
+    right_coefficient: u32,
+    left: u32,
+    right: u32,
+    modulus: u32,
+) -> u32 {
+    let value = u64::from(left_coefficient) * u64::from(left)
+        + u64::from(right_coefficient) * u64::from(right);
+    u32::try_from(value % u64::from(modulus)).unwrap_or(0)
+}
+
+fn finite_scale(scale: u32, value: u32, modulus: u32) -> u32 {
+    let value = u64::from(scale) * u64::from(value);
+    u32::try_from(value % u64::from(modulus)).unwrap_or(0)
+}
+
+fn admit_finite_model(
+    decl: &Declaration,
+    package: &mut emath_ir::SemanticPackage,
+    diagnostics: &mut Diagnostics,
+    trace: &mut SemanticTrace,
+) {
+    let Some(section) = decl.sections().find(|section| section.name == "finite") else {
+        return;
+    };
+    let values = command_values(
+        section,
+        &[
+            "theory",
+            "modulus",
+            "left_coefficient",
+            "right_coefficient",
+            "identity",
+        ],
+        diagnostics,
+    );
+    let Some(theory_name) = required_value(&values, "theory", section, diagnostics) else {
+        return;
+    };
+    let Some(modulus_text) = required_value(&values, "modulus", section, diagnostics) else {
+        return;
+    };
+    let Some(left_coefficient_text) =
+        required_value(&values, "left_coefficient", section, diagnostics)
+    else {
+        return;
+    };
+    let Some(right_coefficient_text) =
+        required_value(&values, "right_coefficient", section, diagnostics)
+    else {
+        return;
+    };
+    let Some(identity_text) = required_value(&values, "identity", section, diagnostics) else {
+        return;
+    };
+    let Some(theory) = package
+        .declarations
+        .iter()
+        .find(|candidate| candidate.kind_label == "theory" && candidate.name.leaf() == theory_name)
+    else {
+        diagnostics.error(
+            "E-KIND-027",
+            format!("finite model references unknown prior theory `{theory_name}`"),
+            section.source,
+        );
+        return;
+    };
+    let theory_evidence = theory.evidence.clone();
+    let Ok(modulus) = modulus_text.parse::<u32>() else {
+        diagnostics.error("E-KIND-027", "modulus must be an integer", section.source);
+        return;
+    };
+    let Ok(identity) = identity_text.parse::<u32>() else {
+        diagnostics.error("E-KIND-027", "identity must be an integer", section.source);
+        return;
+    };
+    let Ok(left_coefficient) = left_coefficient_text.parse::<u32>() else {
+        diagnostics.error(
+            "E-KIND-027",
+            "left_coefficient must be an integer",
+            section.source,
+        );
+        return;
+    };
+    let Ok(right_coefficient) = right_coefficient_text.parse::<u32>() else {
+        diagnostics.error(
+            "E-KIND-027",
+            "right_coefficient must be an integer",
+            section.source,
+        );
+        return;
+    };
+    if modulus == 0 || modulus > 256 || identity >= modulus {
+        diagnostics.error(
+            "E-KIND-027",
+            "finite model requires 1 <= modulus <= 256 and identity < modulus",
+            section.source,
+        );
+        return;
+    }
+    for claim in &theory_evidence {
+        match claim.id.as_str() {
+            "associative" => {
+                for a in 0..modulus {
+                    for b in 0..modulus {
+                        for c in 0..modulus {
+                            let left = finite_operation(
+                                left_coefficient,
+                                right_coefficient,
+                                finite_operation(
+                                    left_coefficient,
+                                    right_coefficient,
+                                    a,
+                                    b,
+                                    modulus,
+                                ),
+                                c,
+                                modulus,
+                            );
+                            let right = finite_operation(
+                                left_coefficient,
+                                right_coefficient,
+                                a,
+                                finite_operation(
+                                    left_coefficient,
+                                    right_coefficient,
+                                    b,
+                                    c,
+                                    modulus,
+                                ),
+                                modulus,
+                            );
+                            if left != right {
+                                diagnostics.error(
+                                    "E-LAW-003",
+                                    format!(
+                                        "model `{}` falsifies associativity at ({a}, {b}, {c}): {left} != {right}",
+                                        decl.name
+                                    ),
+                                    section.source,
+                                );
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            "identity" => {
+                for value in 0..modulus {
+                    if finite_operation(
+                        left_coefficient,
+                        right_coefficient,
+                        identity,
+                        value,
+                        modulus,
+                    ) != value
+                        || finite_operation(
+                            left_coefficient,
+                            right_coefficient,
+                            value,
+                            identity,
+                            modulus,
+                        ) != value
+                    {
+                        diagnostics.error(
+                            "E-LAW-003",
+                            format!(
+                                "model `{}` falsifies identity `{identity}` at value {value}",
+                                decl.name
+                            ),
+                            section.source,
+                        );
+                        return;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut declaration = package_entry(decl, "model");
+    for (name, value) in [
+        ("modulus", modulus),
+        ("identity", identity),
+        ("left_coefficient", left_coefficient),
+        ("right_coefficient", right_coefficient),
+    ] {
+        let expression = package.push_expr(
+            emath_ir::ExprNode::Literal(emath_ir::Literal::Integer(value.to_string())),
+            section.source,
+        );
+        declaration.definitions.insert(name.into(), expression);
+    }
+    declaration.evidence = theory_evidence
+        .iter()
+        .map(|claim| {
+            evidence_claim(
+                &claim.id,
+                format!(
+                    "exhaustive `{}` check over {}^{} tuples for model `{}`",
+                    claim.id,
+                    modulus,
+                    if claim.id == "associative" { 3 } else { 1 },
+                    decl.name
+                ),
+                emath_ir::ClaimVerdict::Pass,
+                emath_ir::EvidenceLevel::E2,
+            )
+        })
+        .collect();
+    declaration.about = Some(format!(
+        "Finite model of `{theory_name}`; authority raised only by exhaustive checking"
+    ));
+    push_categorical_declaration(package, declaration, trace, "model");
+}
+
+fn model_spec(package: &emath_ir::SemanticPackage, name: &str) -> Option<(u32, u32, u32)> {
+    let declaration = package
+        .declarations
+        .iter()
+        .find(|declaration| declaration.kind_label == "model" && declaration.name.leaf() == name)?;
+    let modulus = declaration
+        .definitions
+        .get("modulus")
+        .and_then(|id| package.expr(*id))
+        .and_then(|expr| match expr {
+            emath_ir::ExprNode::Literal(emath_ir::Literal::Integer(value)) => value.parse().ok(),
+            _ => None,
+        })?;
+    let integer_definition = |name: &str| {
+        declaration
+            .definitions
+            .get(name)
+            .and_then(|id| package.expr(*id))
+            .and_then(|expr| match expr {
+                emath_ir::ExprNode::Literal(emath_ir::Literal::Integer(value)) => {
+                    value.parse().ok()
+                }
+                _ => None,
+            })
+    };
+    Some((
+        modulus,
+        integer_definition("left_coefficient")?,
+        integer_definition("right_coefficient")?,
+    ))
+}
+
+fn admit_finite_morphism(
+    decl: &Declaration,
+    package: &mut emath_ir::SemanticPackage,
+    diagnostics: &mut Diagnostics,
+    trace: &mut SemanticTrace,
+) {
+    let Some(section) = decl.sections().find(|section| section.name == "mapping") else {
+        return;
+    };
+    let values = command_values(section, &["source", "target", "scale"], diagnostics);
+    let Some(source_name) = required_value(&values, "source", section, diagnostics) else {
+        return;
+    };
+    let Some(target_name) = required_value(&values, "target", section, diagnostics) else {
+        return;
+    };
+    let Some(scale_text) = required_value(&values, "scale", section, diagnostics) else {
+        return;
+    };
+    let Some((source_modulus, source_left, source_right)) = model_spec(package, &source_name)
+    else {
+        diagnostics.error(
+            "E-KIND-027",
+            format!("morphism references unknown prior model `{source_name}`"),
+            section.source,
+        );
+        return;
+    };
+    let Some((target_modulus, target_left, target_right)) = model_spec(package, &target_name)
+    else {
+        diagnostics.error(
+            "E-KIND-027",
+            format!("morphism references unknown prior model `{target_name}`"),
+            section.source,
+        );
+        return;
+    };
+    let Ok(scale) = scale_text.parse::<u32>() else {
+        diagnostics.error(
+            "E-KIND-027",
+            "morphism scale must be an integer",
+            section.source,
+        );
+        return;
+    };
+    for a in 0..source_modulus {
+        for b in 0..source_modulus {
+            let source_value = finite_operation(source_left, source_right, a, b, source_modulus);
+            let mapped_source = finite_scale(scale, source_value, target_modulus);
+            let mapped_a = finite_scale(scale, a, target_modulus);
+            let mapped_b = finite_scale(scale, b, target_modulus);
+            let target_value = finite_operation(
+                target_left,
+                target_right,
+                mapped_a,
+                mapped_b,
+                target_modulus,
+            );
+            if mapped_source != target_value {
+                diagnostics.error(
+                    "E-LAW-003",
+                    format!(
+                        "morphism `{}` fails preservation at ({a}, {b}): {mapped_source} != {target_value}",
+                        decl.name
+                    ),
+                    section.source,
+                );
+                return;
+            }
+        }
+    }
+
+    let mut declaration = package_entry(decl, "morphism");
+    let scale_expr = package.push_expr(
+        emath_ir::ExprNode::Literal(emath_ir::Literal::Integer(scale.to_string())),
+        section.source,
+    );
+    declaration.definitions.insert("scale".into(), scale_expr);
+    declaration.evidence.push(evidence_claim(
+        "preserves_operation",
+        format!("exhaustive preservation check from `{source_name}` to `{target_name}`"),
+        emath_ir::ClaimVerdict::Pass,
+        emath_ir::EvidenceLevel::E2,
+    ));
+    declaration.about = Some(format!(
+        "Finite morphism `{source_name}` -> `{target_name}` with scale {scale}"
+    ));
+    push_categorical_declaration(package, declaration, trace, "morphism");
+}
+
+fn push_categorical_declaration(
+    package: &mut emath_ir::SemanticPackage,
+    mut declaration: emath_ir::Declaration,
+    trace: &mut SemanticTrace,
+    kind: &str,
+) {
+    declaration.id =
+        emath_ir::DeclarationId(u32::try_from(package.declarations.len()).unwrap_or(u32::MAX));
+    let name = declaration.name.leaf().to_string();
+    let source = declaration.source;
+    package.declarations.push(declaration);
+    trace.record(
+        "recognize:categorical",
+        format!("checked `{kind}` declaration `{name}`"),
+        Some(source),
+    );
+}
+
 fn function_sections_for_application() -> Vec<SectionRule> {
     // The application vocabulary mirrors the function/record/policy surface;
     // the kind's schema rules decide what is required/forbidden.
     let mut rules = section_rules("function").unwrap_or_default();
+    rules.push(sec("inputs", FIELD_STMTS));
+    rules.push(sec("outputs", FIELD_STMTS));
+    rules.push(sec("definitions", ASSIGN_STMTS));
     rules.push(sec("state", FIELD_STMTS));
     rules.push(ctor_sec());
     rules.push(sec("evidence", EVIDENCE_STMTS));
@@ -677,9 +1442,11 @@ fn admit_stmt<R: ShapeRule>(
     match &stmt.kind {
         StmtKind::FieldDecl { name, ty, .. } => {
             let detail = match &ty.kind {
-                TypeKind::Path { segments, generic_args }
-                    if generic_args.is_empty()
-                        && segments.last().map(String::as_str) == Some("Infer") =>
+                TypeKind::Path {
+                    segments,
+                    generic_args,
+                } if generic_args.is_empty()
+                    && segments.last().map(String::as_str) == Some("Infer") =>
                 {
                     name.clone()
                 }
@@ -864,5 +1631,3 @@ fn admit_fn_statement(
         }
     }
 }
-
-

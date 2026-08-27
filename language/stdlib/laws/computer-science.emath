@@ -1,0 +1,102 @@
+package cs.laws
+
+emath law AmdahlSpeedup:
+    about:
+        summary: "Fixed-workload speedup is bounded by serial and parallel fractions."
+    assumptions:
+        assume: "Workload size and parallel fraction are fixed."
+        require parallel_fraction >= 0 and parallel_fraction <= 1
+        require processors > 0
+    domain:
+        name: "parallel computing"
+    provenance:
+        source: "Gene Amdahl, AFIPS Spring Joint Computer Conference (1967)"
+    citations:
+        cite: "S = 1 / ((1-p) + p/n)"
+    inputs:
+        parallel_fraction: Float64
+        processors: Float64
+    outputs:
+        speedup: Float64
+    definitions:
+        speedup = 1 / ((1 - parallel_fraction) + parallel_fraction / processors)
+    goals:
+        evaluate <speedup>:
+            produce rust.library
+    evidence:
+        claim <fixed_workload_bound>:
+            statement: "The fixed-workload algebraic bound is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <half_parallel_on_two>:
+            given parallel_fraction = 0.5
+            given processors = 2
+            expect speedup == 1.3333333333333333
+
+emath law GustafsonSpeedup:
+    about:
+        summary: "Scaled-workload speedup grows with processor count."
+    assumptions:
+        assume: "Runtime is fixed while problem size scales with processors."
+        require serial_fraction >= 0 and serial_fraction <= 1
+        require processors > 0
+    domain:
+        name: "parallel computing"
+    provenance:
+        source: "John Gustafson, Communications of the ACM (1988)"
+    citations:
+        cite: "S = n - alpha*(n-1)"
+    inputs:
+        serial_fraction: Float64
+        processors: Float64
+    outputs:
+        speedup: Float64
+    definitions:
+        speedup = processors - serial_fraction * (processors - 1)
+    goals:
+        evaluate <speedup>:
+            produce rust.library
+    evidence:
+        claim <scaled_workload_bound>:
+            statement: "The scaled-workload relation is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <one_tenth_serial_on_four>:
+            given serial_fraction = 0.1
+            given processors = 4
+            expect speedup == 3.7
+
+emath law Little:
+    about:
+        summary: "Long-run average population equals arrival rate times average time."
+    assumptions:
+        assume: "The queue is stable and long-run averages exist."
+        require arrival_rate >= 0 and average_time >= 0
+    domain:
+        name: "queueing theory"
+    provenance:
+        source: "John Little, Operations Research (1961)"
+    citations:
+        cite: "L = lambda*W"
+    inputs:
+        arrival_rate: Float64
+        average_time: Float64
+    outputs:
+        average_population: Float64
+    definitions:
+        average_population = arrival_rate * average_time
+    goals:
+        evaluate <average_population>:
+            produce rust.library
+    evidence:
+        claim <stable_queue_relation>:
+            statement: "The stable-queue average relation is evaluated."
+            require stated_assumption
+            level E3
+    tests:
+        example <canonical>:
+            given arrival_rate = 2
+            given average_time = 3
+            expect average_population == 6

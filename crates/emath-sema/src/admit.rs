@@ -41,6 +41,10 @@ const PHASE1_SECTIONS: &[&str] = &[
     "compile",
     "about",
     "evidence",
+    "assumptions",
+    "domain",
+    "provenance",
+    "citations",
     "host",
     "constraints",
     "invariant",
@@ -188,6 +192,24 @@ impl Admitter {
 
     fn error(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
         self.diagnostics.error(code, message, span);
+        if code == "E-UNIT-101" {
+            self.diagnostics.attach_pedagogy(emath_core::Pedagogy {
+                understood: "the operands have different quantity kinds (Duration vs Information)"
+                    .into(),
+                unknown: "how those kinds could be added".into(),
+                why: "addition is only admitted when dimensions match".into(),
+                smallest_repair: "convert one operand to the other's unit, or do not add them"
+                    .into(),
+                alternatives: vec![
+                    "convert Duration to a common scale".into(),
+                    "keep the quantities in separate fields".into(),
+                ],
+                example: Some("1 s + 1 s is admitted; 1 s + 1 MiB is E-UNIT-101".into()),
+                deeper_concept: Some("quantity kinds are not numbers".into()),
+                authority_consequence: Some("a unit refusal does not grant numeric meaning".into()),
+                library_link: Some("language/reference/types-units-shapes-and-domains.md".into()),
+            });
+        }
     }
 
     fn note(&mut self, code: &'static str, message: impl Into<String>, span: Span) {

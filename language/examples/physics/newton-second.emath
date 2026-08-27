@@ -1,0 +1,43 @@
+# Newton's second law as executable, unit-checked known mathematics.
+emath law NewtonSecond:
+    about:
+        summary: "Net force equals mass times acceleration."
+
+    assumptions:
+        assume: "The mass is constant in the chosen inertial frame."
+        require mass >= 0 kg
+
+    domain:
+        name: "classical mechanics"
+
+    provenance:
+        source: "Newton, Philosophiae Naturalis Principia Mathematica (1687)"
+
+    citations:
+        cite: "SI Brochure, coherent derived unit newton: kg*m/s^2"
+
+    inputs:
+        mass: Float64 in kg
+        acceleration: Float64 in m/s^2
+
+    outputs:
+        force: Float64 in kg*m/s^2
+
+    definitions:
+        force = mass * acceleration
+
+    goals:
+        evaluate <force>:
+            produce rust.library
+
+    evidence:
+        claim <dimensional_consistency>:
+            statement: "kg times m/s^2 has the force dimension"
+            require dimensional_analysis
+            level E2
+
+    tests:
+        example <two_kilograms_at_three_metres_per_second_squared>:
+            given mass = 2 kg
+            given acceleration = 3 [unit m/s^2]
+            expect force == 6 [unit kg*m/s^2]

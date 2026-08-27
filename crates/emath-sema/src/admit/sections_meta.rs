@@ -7,7 +7,7 @@ use emath_core::tree::{CommandArgument, Expr, ExprKind, Section, StmtKind, Synta
 use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
 use emath_ir::goal::EvidenceLevel;
 use emath_ir::ids::{ExprId, TypeId};
-use emath_ir::{ExprNode, SliceAxis};
+use emath_ir::{ExprNode, LawMetadata, Provenance, SliceAxis};
 use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -254,6 +254,8 @@ pub(super) fn admit_evidence(
         }
         let mut statement = String::new();
         let mut class = String::new();
+        let mut level = EvidenceLevel::E1;
+        let mut has_level = false;
         for inner in &claim.suite.statements {
             match &inner.kind {
                 StmtKind::Command { head, argument }
@@ -273,10 +275,35 @@ pub(super) fn admit_evidence(
                 {
                     class = head.get(1).cloned().unwrap_or_default();
                 }
+                StmtKind::Command { head, argument }
+                    if head.first().map(String::as_str) == Some("level") =>
+                {
+                    if has_level {
+                        admitter.error(
+                            "E-SYN-103",
+                            "evidence claim declares `level` more than once",
+                            inner.source,
+                        );
+                        continue;
+                    }
+                    has_level = true;
+                    let value = head.get(1).cloned().or_else(|| match argument {
+                        Some(CommandArgument::Expr(expr)) => Some(expr_text(expr)),
+                        _ => None,
+                    });
+                    match value.as_deref().and_then(|value| value.parse().ok()) {
+                        Some(parsed) => level = parsed,
+                        None => admitter.error(
+                            "E-EVID-115",
+                            "unknown evidence level; expected E0, E1, E2, E3, E4, or E5",
+                            inner.source,
+                        ),
+                    }
+                }
                 _ => {
                     admitter.error(
                         "E-SYN-101",
-                        "evidence claims admit `statement ...` and `require ...`",
+                        "evidence claims admit `statement ...`, `require ...`, and `level E0` through `level E5`",
                         inner.source,
                     );
                 }
@@ -296,13 +323,309 @@ pub(super) fn admit_evidence(
             producer: "source".into(),
             checker: None,
             verdict: ClaimVerdict::NotRun,
-            level: EvidenceLevel::E1,
+            level,
             falsifiers: Vec::new(),
             artifacts: Vec::new(),
             fresh_until: None,
         });
     }
     claims
+}
+
+fn law_entries(
+    admitter: &mut Admitter,
+    section: Option<&Section>,
+    section_name: &str,
+    command: &str,
+    missing_span: emath_core::Span,
+) -> Vec<String> {
+    let Some(section) = section else {
+        admitter.error(
+            "E-LAW-002",
+            format!("`emath law` requires a `{section_name}:` section"),
+            missing_span,
+        );
+        return Vec::new();
+    };
+    let mut entries = Vec::new();
+    for stmt in &section.suite.statements {
+        match &stmt.kind {
+            StmtKind::Command {
+                head,
+                argument: Some(CommandArgument::Expr(expr)),
+            } if head.first().map(String::as_str) == Some(command)
+                && matches!(&expr.kind, ExprKind::Str(_)) =>
+            {
+                let ExprKind::Str(value) = &expr.kind else {
+                    unreachable!()
+                };
+                entries.push(value.clone());
+            }
+            StmtKind::Require(_) if section_name == "assumptions" => {}
+            _ => admitter.error(
+                "E-SYN-101",
+                format!("`{section_name}:` admits `{command} \"...\"` entries"),
+                stmt.source,
+            ),
+        }
+    }
+    if entries.is_empty() {
+        admitter.error(
+            "E-LAW-002",
+            format!("`emath law` requires at least one `{command} \"...\"` entry"),
+            section.source,
+        );
+    }
+    entries
+}
+
+pub(super) fn admit_law_metadata(
+    admitter: &mut Admitter,
+    assumptions: Option<&Section>,
+    domain: Option<&Section>,
+    provenance: Option<&Section>,
+    citations: Option<&Section>,
+    declaration_span: emath_core::Span,
+) -> LawMetadata {
+    let assumptions = law_entries(
+        admitter,
+        assumptions,
+        "assumptions",
+        "assume",
+        declaration_span,
+    );
+    let domains = law_entries(admitter, domain, "domain", "name", declaration_span);
+    if domains.len() > 1 {
+        admitter.error(
+            "E-LAW-002",
+            "`domain:` requires exactly one `name \"...\"` entry",
+            domain.map_or(emath_core::Span::default(), |section| section.source),
+        );
+    }
+    LawMetadata {
+        assumptions,
+        domain: domains.into_iter().next().unwrap_or_default(),
+        provenance: law_entries(
+            admitter,
+            provenance,
+            "provenance",
+            "source",
+            declaration_span,
+        ),
+        citations: law_entries(admitter, citations, "citations", "cite", declaration_span),
+    }
+}
+
+fn required_provenance_value(
+    admitter: &mut Admitter,
+    values: &BTreeMap<String, String>,
+    key: &str,
+    binding: &str,
+    span: emath_core::Span,
+) -> Option<String> {
+    values
+        .get(key)
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .or_else(|| {
+            admitter.error(
+                "E-SYN-152",
+                format!("provenance for `{binding}` requires a non-empty `{key}: \"...\"`"),
+                span,
+            );
+            None
+        })
+}
+
+/// Admit declaration-local provenance keyed by binding name.
+///
+/// Shape:
+/// `provenance: / <binding>: / kind: "Citation" / reference: "doi:..."`.
+pub(super) fn admit_binding_provenance(
+    admitter: &mut Admitter,
+    section: Option<&Section>,
+    known_bindings: &BTreeSet<String>,
+) -> BTreeMap<String, Provenance> {
+    let Some(section) = section else {
+        return BTreeMap::new();
+    };
+    let mut admitted = BTreeMap::new();
+    let mut seen_bindings = BTreeSet::new();
+    for statement in &section.suite.statements {
+        let StmtKind::Section(binding_section) = &statement.kind else {
+            admitter.error(
+                "E-SYN-152",
+                "`provenance:` entries must be binding-named sections",
+                statement.source,
+            );
+            continue;
+        };
+        let binding = binding_section.name.as_str();
+        if !known_bindings.contains(binding) {
+            admitter.error(
+                "E-NAME-028",
+                format!("provenance names unknown binding `{binding}`"),
+                binding_section.head_source,
+            );
+            continue;
+        }
+        if !seen_bindings.insert(binding.to_string()) {
+            admitter.error(
+                "E-SYN-103",
+                format!("duplicate provenance for binding `{binding}`"),
+                binding_section.head_source,
+            );
+            continue;
+        }
+
+        let mut values = BTreeMap::new();
+        for entry in &binding_section.suite.statements {
+            let StmtKind::Command {
+                head,
+                argument: Some(CommandArgument::Expr(expr)),
+            } = &entry.kind
+            else {
+                admitter.error(
+                    "E-SYN-152",
+                    "provenance fields use `key: \"value\"`",
+                    entry.source,
+                );
+                continue;
+            };
+            let Some(key) = head.first() else {
+                admitter.error("E-SYN-152", "empty provenance key", entry.source);
+                continue;
+            };
+            if !matches!(
+                key.as_str(),
+                "kind"
+                    | "source"
+                    | "reference"
+                    | "adjustment"
+                    | "file"
+                    | "processing"
+                    | "fit_id"
+                    | "reason"
+            ) {
+                admitter.error(
+                    "E-SYN-152",
+                    format!("unknown provenance key `{key}`"),
+                    entry.source,
+                );
+                continue;
+            }
+            let ExprKind::Str(value) = &expr.kind else {
+                admitter.error(
+                    "E-SYN-152",
+                    format!("provenance key `{key}` requires a string value"),
+                    expr.source,
+                );
+                continue;
+            };
+            if values.insert(key.clone(), value.clone()).is_some() {
+                admitter.error(
+                    "E-SYN-103",
+                    format!("duplicate provenance key `{key}` for `{binding}`"),
+                    entry.source,
+                );
+            }
+        }
+
+        let Some(kind) =
+            required_provenance_value(admitter, &values, "kind", binding, binding_section.source)
+        else {
+            continue;
+        };
+        let (provenance, allowed): (Option<Provenance>, &[&str]) = match kind
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "exact" => (
+                required_provenance_value(
+                    admitter,
+                    &values,
+                    "source",
+                    binding,
+                    binding_section.source,
+                )
+                .map(|source| Provenance::Exact { source }),
+                &["kind", "source"],
+            ),
+            "citation" => (
+                required_provenance_value(
+                    admitter,
+                    &values,
+                    "reference",
+                    binding,
+                    binding_section.source,
+                )
+                .map(|reference| Provenance::Citation {
+                    reference,
+                    adjustment: values.get("adjustment").cloned(),
+                }),
+                &["kind", "reference", "adjustment"],
+            ),
+            "instrumentrun" | "instrument_run" => (
+                required_provenance_value(
+                    admitter,
+                    &values,
+                    "file",
+                    binding,
+                    binding_section.source,
+                )
+                .zip(required_provenance_value(
+                    admitter,
+                    &values,
+                    "processing",
+                    binding,
+                    binding_section.source,
+                ))
+                .map(|(file, processing)| Provenance::InstrumentRun { file, processing }),
+                &["kind", "file", "processing"],
+            ),
+            "fitted" => (
+                required_provenance_value(
+                    admitter,
+                    &values,
+                    "fit_id",
+                    binding,
+                    binding_section.source,
+                )
+                .map(|fit_id| Provenance::Fitted { fit_id }),
+                &["kind", "fit_id"],
+            ),
+            "assumed" => (
+                Some(Provenance::Assumed {
+                    reason: values.get("reason").cloned(),
+                }),
+                &["kind", "reason"],
+            ),
+            "unstated" => (Some(Provenance::Unstated), &["kind"]),
+            _ => {
+                admitter.error(
+                    "E-SYN-152",
+                    format!(
+                        "unknown provenance kind `{kind}`; expected Exact, Citation, InstrumentRun, Fitted, Assumed, or Unstated"
+                    ),
+                    binding_section.source,
+                );
+                (None, &["kind"])
+            }
+        };
+        for key in values.keys() {
+            if !allowed.contains(&key.as_str()) {
+                admitter.error(
+                    "E-SYN-152",
+                    format!("provenance kind `{kind}` does not admit key `{key}`"),
+                    binding_section.source,
+                );
+            }
+        }
+        if let Some(provenance) = provenance {
+            admitted.insert(binding.to_string(), provenance);
+        }
+    }
+    admitted
 }
 
 pub(super) fn admit_host(admitter: &mut Admitter, section: Option<&Section>) -> Vec<HostBinding> {
@@ -441,6 +764,130 @@ pub(super) fn command_argument_text(argument: &CommandArgument) -> String {
     }
 }
 
+fn embedded_law_package(path: &[String]) -> Option<&'static str> {
+    match path {
+        [domain, pack] if domain == "physics" && pack == "classical" => Some(include_str!(
+            "../../../../language/stdlib/laws/physics-classical.emath"
+        )),
+        [domain, pack] if domain == "physics" && pack == "relativity" => Some(include_str!(
+            "../../../../language/stdlib/laws/physics-relativity.emath"
+        )),
+        [domain, pack] if domain == "cs" && pack == "laws" => Some(include_str!(
+            "../../../../language/stdlib/laws/computer-science.emath"
+        )),
+        [domain, pack] if domain == "probability" && pack == "laws" => Some(include_str!(
+            "../../../../language/stdlib/laws/probability-statistics.emath"
+        )),
+        [domain, pack] if domain == "analysis" && pack == "laws" => Some(include_str!(
+            "../../../../language/stdlib/laws/analysis.emath"
+        )),
+        [domain, pack] if domain == "number_theory" && pack == "laws" => Some(include_str!(
+            "../../../../language/stdlib/laws/algebra-number-theory.emath"
+        )),
+        [domain, pack] if domain == "optimization_control" && pack == "laws" => Some(include_str!(
+            "../../../../language/stdlib/laws/optimization-control.emath"
+        )),
+        _ => None,
+    }
+}
+
+fn resolve_embedded_law_import(
+    imports: &[ImportEntry],
+    source: emath_core::Span,
+) -> Option<CheckResult> {
+    let [import] = imports else {
+        if imports.len() > 1
+            && imports
+                .iter()
+                .all(|import| embedded_law_package(&import.path).is_some())
+        {
+            let mut diagnostics = Diagnostics::new();
+            diagnostics.error(
+                "E-PKG-053",
+                "import one embedded law package per source; multi-package imports are not admitted yet",
+                source,
+            );
+            let mut package = emath_ir::SemanticPackage::new();
+            package.imports = imports.to_vec();
+            return Some(CheckResult {
+                package,
+                diagnostics,
+                trace: SemanticTrace::default(),
+            });
+        }
+        return None;
+    };
+    let package_source = embedded_law_package(&import.path)?;
+    let Some(parser) = emath_core::source_parser() else {
+        let mut diagnostics = Diagnostics::new();
+        diagnostics.error(
+            "E-SYN-120",
+            "no source parser installed for embedded law package",
+            source,
+        );
+        return Some(CheckResult {
+            package: emath_ir::SemanticPackage::new(),
+            diagnostics,
+            trace: SemanticTrace::default(),
+        });
+    };
+    let (tree, parse_diagnostics) = parser.parse(
+        package_source,
+        source.file,
+        &emath_core::limits::Limits::default(),
+    );
+    let mut result = check_tree(&tree);
+    result.diagnostics.extend_from(&parse_diagnostics);
+
+    if let ImportSelection::Named(names) = &import.selection {
+        let selected: BTreeSet<&str> = names.iter().map(|(name, _)| name.as_str()).collect();
+        for (name, alias) in names {
+            if alias.is_some() {
+                result.diagnostics.error(
+                    "E-PKG-053",
+                    "aliases on embedded law imports are not admitted yet",
+                    import.source,
+                );
+            }
+            if !result
+                .package
+                .declarations
+                .iter()
+                .any(|declaration| declaration.name.leaf() == name)
+            {
+                result.diagnostics.error(
+                    "E-PKG-053",
+                    format!(
+                        "law symbol `{name}` is not exported by `{}`",
+                        import.path.join("::")
+                    ),
+                    import.source,
+                );
+            }
+        }
+        let retained: BTreeSet<emath_ir::DeclarationId> = result
+            .package
+            .declarations
+            .iter()
+            .filter(|declaration| selected.contains(declaration.name.leaf()))
+            .map(|declaration| declaration.id)
+            .collect();
+        result
+            .package
+            .declarations
+            .retain(|declaration| retained.contains(&declaration.id));
+        result
+            .package
+            .law_metadata
+            .retain(|declaration, _| retained.contains(declaration));
+    }
+    result.package.imports = imports.to_vec();
+    if !result.diagnostics.has_errors() {
+        result.package.seal();
+    }
+    Some(result)
+}
+
 /// Parse the whole file and admit every declaration (used by the session).
 pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut diagnostics = Diagnostics::new();
@@ -454,21 +901,10 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     // items) would silently skip ordinary files.
     crate::recognition::admit_capability_gates(tree, &mut diagnostics);
 
-    // Empty / comment-only / package-only files have no declarations.
-    // `package foo` with no `emath function`/`policy`/`model`/`kind`
-    // used to admit at check and fail later at build (K-8 one-error-one-OK).
     let has_declaration = tree
         .items
         .iter()
         .any(|item| matches!(item, emath_core::tree::Item::Declaration(_)));
-    if !has_declaration {
-        diagnostics.error("E-PKG-081", "source has no declarations", tree.source);
-        return CheckResult {
-            package,
-            diagnostics,
-            trace,
-        };
-    }
 
     // Front-end: package identity and `use` imports. External file
     // imports remain a Phase 2 refusal (E-PKG-050).
@@ -485,6 +921,19 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     } else {
         None
     };
+    if !has_declaration {
+        if let Some(mut resolved) = resolve_embedded_law_import(&package.imports, tree.source) {
+            resolved.diagnostics.extend_from(&diagnostics);
+            resolved.trace.entries.extend(trace.entries);
+            return resolved;
+        }
+        diagnostics.error("E-PKG-081", "source has no declarations", tree.source);
+        return CheckResult {
+            package,
+            diagnostics,
+            trace,
+        };
+    }
     let host_types = host_imported_types(&package.imports);
 
     let mut declaration_id = 0_u32;
@@ -495,7 +944,9 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             continue;
         };
         if let Some(kind_defs) = &recognition {
-            if decl.item_kind != "custom" {
+            let imported_custom_kind =
+                decl.item_kind == "custom" && kind_defs.contains_key(&decl.as_kind);
+            if decl.item_kind != "custom" || imported_custom_kind {
                 crate::recognition::admit_declaration(
                     decl,
                     kind_defs,
@@ -571,7 +1022,10 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
-        if decl.as_kind != "function" && decl.as_kind != "policy" && decl.as_kind != "model" {
+        if !matches!(
+            decl.as_kind.as_str(),
+            "function" | "policy" | "model" | "law"
+        ) {
             let type_name = if decl.as_kind.is_empty() {
                 "custom"
             } else {
@@ -580,14 +1034,23 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             diagnostics.error(
                 "E-KIND-100",
                 format!(
-                    "declaration type `{type_name}` is outside the Phase 1 subset (function, policy, model)"
+                    "declaration type `{type_name}` is outside the Phase 1 subset (function, policy, model, law)"
                 ),
                 decl.head_source,
             );
             continue;
         }
-        let (declaration, mut tests, types, exprs, entries, admit_diagnostics, mut residuals) =
-            admit_declaration(decl, &host_types);
+        let (
+            declaration,
+            mut tests,
+            types,
+            exprs,
+            entries,
+            admit_diagnostics,
+            mut residuals,
+            law_metadata,
+            binding_provenance,
+        ) = admit_declaration(decl, &host_types);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
         let Some(mut declaration) = declaration else {
@@ -614,6 +1077,15 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         );
         if !residuals.is_empty() {
             package.residuals.insert(declaration.id, residuals);
+        }
+        if let Some(metadata) = law_metadata {
+            package.law_metadata.insert(declaration.id, metadata);
+        }
+        for (binding, provenance) in binding_provenance {
+            package.binding_provenance.insert(
+                emath_ir::BindingSite::new(declaration.id, binding),
+                provenance,
+            );
         }
         package.types.extend(types);
         for (e, _) in &exprs {

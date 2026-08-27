@@ -1,0 +1,35 @@
+package physics.relativity
+
+emath law MassEnergyEquivalence:
+    about:
+        summary: "Rest energy equals invariant mass times the speed of light squared."
+    assumptions:
+        assume: "Invariant rest mass is measured in an inertial frame."
+        require mass >= 0 kg
+        require light_speed > 0 [unit m/s]
+    domain:
+        name: "special relativity"
+    provenance:
+        source: "Einstein, Ist die Trägheit eines Körpers von seinem Energieinhalt abhängig? (1905)"
+    citations:
+        cite: "E = m*c^2"
+    inputs:
+        mass: Float64 in kg
+        light_speed: Float64 in m/s
+    outputs:
+        energy: Float64 in kg*m^2/s^2
+    definitions:
+        energy = mass * light_speed * light_speed
+    goals:
+        evaluate <energy>:
+            produce rust.library
+    evidence:
+        claim <rest_energy_relation>:
+            statement: "The special-relativistic rest-energy relation is retained."
+            require published_derivation
+            level E3
+    tests:
+        example <normalized_units>:
+            given mass = 2 kg
+            given light_speed = 3 [unit m/s]
+            expect energy == 18 [unit kg*m^2/s^2]

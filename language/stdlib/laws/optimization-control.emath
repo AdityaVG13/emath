@@ -1,0 +1,107 @@
+package optimization_control.laws
+
+emath law KktStationarityResidual:
+    about:
+        summary: "A scalar KKT stationarity residual combines objective and active-constraint gradients."
+    assumptions:
+        assume: "The problem is smooth and the stated constraint qualification holds."
+    domain:
+        name: "nonlinear optimization"
+    provenance:
+        source: "Karush-Kuhn-Tucker necessary conditions"
+    citations:
+        cite: "grad f + lambda*grad g = 0"
+    inputs:
+        objective_gradient: Float64
+        multiplier: Float64
+        constraint_gradient: Float64
+    outputs:
+        residual: Float64
+    definitions:
+        residual = objective_gradient + multiplier * constraint_gradient
+    goals:
+        evaluate <residual>:
+            produce rust.library
+    evidence:
+        claim <scalar_stationarity>:
+            statement: "The scalar stationarity residual is computed, not certified globally optimal."
+            require constraint_qualification
+            level E2
+    tests:
+        example <stationary>:
+            given objective_gradient = 2
+            given multiplier = -1
+            given constraint_gradient = 2
+            expect residual == 0
+
+emath law BellmanTwoActionBackup:
+    about:
+        summary: "A finite two-action Bellman backup chooses the larger discounted return."
+    assumptions:
+        assume: "Rewards, continuation values, and discount describe one finite Markov state."
+        require discount >= 0 and discount <= 1
+    domain:
+        name: "dynamic programming"
+    provenance:
+        source: "Richard Bellman, dynamic programming optimality principle"
+    citations:
+        cite: "V(s) = max_a [r(s,a) + gamma*V(s')]"
+    inputs:
+        reward_left: Float64
+        future_left: Float64
+        reward_right: Float64
+        future_right: Float64
+        discount: Float64
+    outputs:
+        value: Float64
+    definitions:
+        value = max(reward_left + discount * future_left, reward_right + discount * future_right)
+    goals:
+        evaluate <value>:
+            produce rust.library
+    evidence:
+        claim <finite_backup>:
+            statement: "Exactly two supplied action values are compared."
+            require finite_action_slice
+            level E2
+    tests:
+        example <canonical>:
+            given reward_left = 1
+            given future_left = 2
+            given reward_right = 2
+            given future_right = 1
+            given discount = 0.5
+            expect value == 2.5
+
+emath law LyapunovLinearDerivative:
+    about:
+        summary: "For xdot=-a*x and V=x^2, the orbital derivative is -2*a*x^2."
+    assumptions:
+        assume: "The decay coefficient is positive and the scalar dynamics are xdot=-a*x."
+        require decay > 0
+    domain:
+        name: "stability theory"
+    provenance:
+        source: "Aleksandr Lyapunov, stability by auxiliary functions"
+    citations:
+        cite: "Vdot = 2*x*xdot"
+    inputs:
+        decay: Float64
+        state_value: Float64
+    outputs:
+        derivative_value: Float64
+    definitions:
+        derivative_value = -2 * decay * state_value * state_value
+    goals:
+        evaluate <derivative_value>:
+            produce rust.library
+    evidence:
+        claim <scalar_linear_slice>:
+            statement: "The derivative is computed for the declared scalar linear system."
+            require positive_decay
+            level E2
+    tests:
+        example <canonical>:
+            given decay = 1
+            given state_value = 2
+            expect derivative_value == -8

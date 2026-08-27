@@ -1,0 +1,19 @@
+use std.kinds.theory
+use std.kinds.model
+
+emath theory Monoid:
+    structure:
+        carrier: "finite"
+        operation: "binary"
+        identity: 0
+    laws:
+        "associative"
+
+# a * b = a + 2b (mod 5) is not associative.
+emath model FalseAssociativity:
+    finite:
+        theory: "Monoid"
+        modulus: 5
+        left_coefficient: 1
+        right_coefficient: 2
+        identity: 0

@@ -1,0 +1,170 @@
+package physics.classical
+
+emath law NewtonSecond:
+    about:
+        summary: "Net force equals mass times acceleration."
+    assumptions:
+        assume: "Constant mass in an inertial frame."
+        require mass >= 0 kg
+    domain:
+        name: "classical mechanics"
+    provenance:
+        source: "Newton, Principia (1687)"
+    citations:
+        cite: "SI Brochure, coherent derived unit newton"
+    inputs:
+        mass: Float64 in kg
+        acceleration: Float64 in m/s^2
+    outputs:
+        force: Float64 in kg*m/s^2
+    definitions:
+        force = mass * acceleration
+    goals:
+        evaluate <force>:
+            produce rust.library
+    evidence:
+        claim <dimensional_consistency>:
+            statement: "kg*m/s^2 is force"
+            require dimensional_analysis
+            level E2
+    tests:
+        example <canonical>:
+            given mass = 2 kg
+            given acceleration = 3 [unit m/s^2]
+            expect force == 6 [unit kg*m/s^2]
+
+emath law Hooke:
+    about:
+        summary: "A linear spring exerts force opposite to displacement."
+    assumptions:
+        assume: "Small displacement and linear elastic response."
+        require stiffness >= 0 [unit kg/s^2]
+    domain:
+        name: "classical mechanics"
+    provenance:
+        source: "Hooke, Lectures de Potentia Restitutiva (1678)"
+    citations:
+        cite: "Hooke's law, F = -k*x"
+    inputs:
+        stiffness: Float64 in kg/s^2
+        displacement: Float64 in m
+    outputs:
+        force: Float64 in kg*m/s^2
+    definitions:
+        force = -stiffness * displacement
+    goals:
+        evaluate <force>:
+            produce rust.library
+    evidence:
+        claim <linear_elastic_slice>:
+            statement: "The source equation is evaluated on its linear slice."
+            require stated_assumption
+            level E1
+    tests:
+        example <canonical>:
+            given stiffness = 3 [unit kg/s^2]
+            given displacement = 2 m
+            expect force == -6 [unit kg*m/s^2]
+
+emath law UniversalGravitation:
+    about:
+        summary: "Two point masses attract with inverse-square magnitude."
+    assumptions:
+        assume: "Point masses, nonzero separation, and Newtonian regime."
+        require separation > 0 m
+    domain:
+        name: "classical mechanics"
+    provenance:
+        source: "Newton, Principia (1687)"
+    citations:
+        cite: "Universal law of gravitation"
+    inputs:
+        gravitational_constant: Float64 in m^3/kg/s^2
+        mass_left: Float64 in kg
+        mass_right: Float64 in kg
+        separation: Float64 in m
+    outputs:
+        force: Float64 in kg*m/s^2
+    definitions:
+        force = gravitational_constant * mass_left * mass_right / (separation * separation)
+    goals:
+        evaluate <force>:
+            produce rust.library
+    evidence:
+        claim <inverse_square_slice>:
+            statement: "The point-mass inverse-square relation is retained."
+            require stated_assumption
+            level E2
+    tests:
+        example <canonical>:
+            given gravitational_constant = 1 [unit m^3/kg/s^2]
+            given mass_left = 2 kg
+            given mass_right = 2 kg
+            given separation = 4 m
+            expect force == 0.25 [unit kg*m/s^2]
+
+emath law KineticEnergy:
+    about:
+        summary: "Translational kinetic energy is one half mass times speed squared."
+    assumptions:
+        assume: "Non-relativistic translational motion."
+        require mass >= 0 kg
+    domain:
+        name: "classical mechanics"
+    provenance:
+        source: "Classical work-energy relation"
+    citations:
+        cite: "K = m*v^2/2"
+    inputs:
+        mass: Float64 in kg
+        speed: Float64 in m/s
+    outputs:
+        energy: Float64 in kg*m^2/s^2
+    definitions:
+        energy = mass * speed * speed / 2
+    goals:
+        evaluate <energy>:
+            produce rust.library
+    evidence:
+        claim <work_energy_slice>:
+            statement: "The scalar translational relation is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <canonical>:
+            given mass = 2 kg
+            given speed = 3 [unit m/s]
+            expect energy == 9 [unit kg*m^2/s^2]
+
+emath law LinearMomentum:
+    about:
+        summary: "Linear momentum equals mass times velocity."
+    assumptions:
+        assume: "Constant mass in a Newtonian frame."
+        require mass >= 0 kg
+    domain:
+        name: "classical mechanics"
+    provenance:
+        source: "Newtonian momentum definition"
+    citations:
+        cite: "p = m*v"
+    inputs:
+        mass: Float64 in kg
+        velocity: Float64 in m/s
+    outputs:
+        momentum: Float64 in kg*m/s
+    definitions:
+        momentum = mass * velocity
+    goals:
+        evaluate <momentum>:
+            produce rust.library
+    evidence:
+        claim <momentum_dimension>:
+            statement: "kg*m/s is linear momentum."
+            require dimensional_analysis
+            level E2
+    tests:
+        example <canonical>:
+            given mass = 2 kg
+            given velocity = 3 [unit m/s]
+            expect momentum == 6 [unit kg*m/s]

@@ -1,0 +1,103 @@
+package probability.laws
+
+emath law BayesPosterior:
+    about:
+        summary: "Posterior probability is prior times likelihood divided by evidence."
+    assumptions:
+        assume: "Prior, likelihood, and evidence describe the same finite event model; evidence is positive."
+        require prior >= 0 and prior <= 1
+        require likelihood >= 0 and likelihood <= 1
+        require normalizer > 0
+    domain:
+        name: "finite probability"
+    provenance:
+        source: "Thomas Bayes, posthumous essay (1763)"
+    citations:
+        cite: "P(H|D) = P(D|H)P(H)/P(D)"
+    inputs:
+        prior: Float64
+        likelihood: Float64
+        normalizer: Float64
+    outputs:
+        updated_probability: Float64
+    definitions:
+        updated_probability = prior * likelihood / normalizer
+    goals:
+        evaluate <updated_probability>:
+            produce rust.library
+    evidence:
+        claim <finite_bayes_update>:
+            statement: "The finite-support Bayes ratio is evaluated."
+            require positive_evidence
+            level E3
+    tests:
+        example <canonical>:
+            given prior = 0.5
+            given likelihood = 0.8
+            given normalizer = 0.4
+            expect updated_probability == 1
+
+emath law CltStandardError:
+    about:
+        summary: "The standard deviation of an iid sample mean scales as one over square-root n."
+    assumptions:
+        assume: "Samples are iid with finite variance and positive sample count."
+        require standard_deviation >= 0
+        require sample_count > 0
+    domain:
+        name: "asymptotic statistics"
+    provenance:
+        source: "Classical central limit theorem scaling"
+    citations:
+        cite: "standard_error = sigma/sqrt(n)"
+    inputs:
+        standard_deviation: Float64
+        sample_count: Float64
+    outputs:
+        standard_error: Float64
+    definitions:
+        standard_error = standard_deviation / sqrt(sample_count)
+    goals:
+        evaluate <standard_error>:
+            produce rust.library
+    evidence:
+        claim <iid_finite_variance_slice>:
+            statement: "Only the declared iid finite-variance scaling is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <four_samples>:
+            given standard_deviation = 2
+            given sample_count = 4
+            expect standard_error == 1
+
+emath law BinarySelfInformationContribution:
+    about:
+        summary: "One binary outcome contributes minus p log2 p bits to entropy."
+    assumptions:
+        assume: "Probability is strictly between zero and one."
+        require probability > 0 and probability < 1
+    domain:
+        name: "information theory"
+    provenance:
+        source: "Claude Shannon, A Mathematical Theory of Communication (1948)"
+    citations:
+        cite: "H contribution = -p*log2(p)"
+    inputs:
+        probability: Float64
+    outputs:
+        bits: Float64
+    definitions:
+        bits = -probability * log2(probability)
+    goals:
+        evaluate <bits>:
+            produce rust.library
+    evidence:
+        claim <binary_entropy_term>:
+            statement: "The finite binary entropy contribution is evaluated in bits."
+            require positive_probability
+            level E3
+    tests:
+        example <fair_outcome>:
+            given probability = 0.5
+            expect bits == 0.5

@@ -1,23 +1,23 @@
 //! Section admission: constructors, compile specs, domain directives,
 //! and representation, extracted from `admit.rs` isomorphically.
 
+use emath_core::Span;
 use emath_core::tree::{
     CommandArgument, Expr, ExprKind, Section, StmtKind, TypeExpr, UnaryOp as SynUnOp,
 };
-use emath_core::Span;
 use emath_ir::constructor::{Constructor, Field, Visibility};
 use emath_ir::goal::CompileSpec;
 use emath_ir::{
-    check_error_limit, check_precision_demand, parse_numeric_profile, ExprId, NumericProfile,
-    SafetyProfile, TypeId, TypeNode,
+    ExprId, NumericProfile, SafetyProfile, TypeId, TypeNode, check_error_limit,
+    check_precision_demand, parse_numeric_profile,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::equations::{is_infer_marker, ty_display};
 use super::expr_helpers::parse_float_constant;
-use super::infer::{infer_from_node, Infer};
+use super::infer::{Infer, infer_from_node};
 use super::types::{map_constructor_return, map_type};
-use super::{expr_number, Admitter, E_DUPLICATE_FIELD};
+use super::{Admitter, E_DUPLICATE_FIELD, expr_number};
 
 /// Admits one `name: Type` (or untyped `Infer`) field; untyped names are
 /// allowed only when `allow_infer` is set and default to Float64.

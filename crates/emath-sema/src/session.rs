@@ -1,11 +1,14 @@
 //! Compiler session: load → check → plan. The build step (backend +
 //! artifact emission) lives in `emath-build`.
 
-use crate::admit::{check_tree, CheckResult};
+use crate::admit::{CheckResult, check_tree};
 use emath_core::parse::source_parser;
 use emath_core::tree::{CommandArgument, ExprKind, Section, StmtKind};
-use emath_core::{limits::Limits, Diagnostics, FileId, SourceStore, Span};
-use emath_ir::{build_goal, native_plan, GoalId, GoalPayload, RequestSpec, SemanticPackage};
+use emath_core::{Diagnostics, FileId, SourceStore, Span, limits::Limits};
+use emath_ir::{
+    GoalId, GoalKind, GoalPayload, RequestSpec, SemanticPackage, build_goal, native_plan,
+    simplify_integer_expression,
+};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -180,12 +183,7 @@ impl CompilerSession {
                 .items
                 .iter()
                 .filter_map(|item| match item {
-                    // Declarations are admitted by the front-end; goal
-                    // elaboration remains a custom (`emath custom`) path
-                    // until the intent-compiler lane lands.
-                    emath_core::tree::Item::Declaration(d)
-                        if d.item_kind == "custom" && d.name == declaration.name.leaf() =>
-                    {
+                    emath_core::tree::Item::Declaration(d) if d.name == declaration.name.leaf() => {
                         Some(d.sections_vec())
                     }
                     _ => None,
@@ -203,13 +201,52 @@ impl CompilerSession {
             // in another file must not cross-attach a goal.
             let mut goal_ids: Vec<GoalId> = Vec::new();
             for request in &decl_requests {
-                let goal = build_goal(&mut package, request);
+                let mut goal = build_goal(&mut package, request);
+                if let Some(expression) = declaration.definitions.get(&request.target).copied() {
+                    goal.expression = Some(expression);
+                    package.goals[goal.id.index()].expression = Some(expression);
+                }
                 goal_ids.push(goal.id);
-                let artifact_class = if goal.kind.as_str() == "evaluate" {
+                let mut artifact_class = if goal.kind.as_str() == "evaluate" {
                     "native"
                 } else {
                     "diagnostic"
                 };
+                if goal.kind == GoalKind::Simplify {
+                    if let Some(expression) = goal.expression {
+                        let integer_contract = declaration.inputs.iter().all(|field| {
+                            matches!(
+                                package.ty(field.ty),
+                                Some(emath_ir::TypeNode::Int | emath_ir::TypeNode::Nat)
+                            )
+                        }) && declaration.outputs.iter().any(|field| {
+                            field.name == goal.target
+                                && matches!(
+                                    package.ty(field.ty),
+                                    Some(emath_ir::TypeNode::Int | emath_ir::TypeNode::Nat)
+                                )
+                        });
+                        if !integer_contract {
+                            diagnostics.error(
+                                "E-SYM-003",
+                                "`simplify` native v1 requires Int/Nat inputs and target output",
+                                goal.source,
+                            );
+                        } else {
+                            match simplify_integer_expression(&mut package, expression) {
+                                Ok(simplified) => {
+                                    goal.expression = Some(simplified.expression);
+                                    package.goals[goal.id.index()].expression =
+                                        Some(simplified.expression);
+                                    artifact_class = "native-symbolic";
+                                }
+                                Err(error) => {
+                                    diagnostics.error(error.code, error.message, goal.source);
+                                }
+                            }
+                        }
+                    }
+                }
                 plans.push(native_plan(goal.id, artifact_class));
             }
             package.declarations[index].goals = goal_ids;
@@ -331,6 +368,24 @@ pub fn elaborate_requests(
                     target,
                     produce: String::new(),
                     payload,
+                    source: request.source,
+                });
+            }
+            "simplify" => {
+                let target = request.generic.clone().unwrap_or_default();
+                if target.is_empty() {
+                    diagnostics.error(
+                        "E-GOAL-041",
+                        "`simplify` requires a target in `<...>`",
+                        request.head_source,
+                    );
+                    continue;
+                }
+                requests.push(RequestSpec {
+                    kind: "simplify".into(),
+                    target,
+                    produce: String::new(),
+                    payload: GoalPayload::default(),
                     source: request.source,
                 });
             }

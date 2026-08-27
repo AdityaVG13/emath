@@ -5,15 +5,17 @@ use emath_core::tree::{Section, StmtKind};
 use emath_core::{Diagnostics, QualifiedName, Span};
 use emath_ir::constructor::{Constructor, Field, TestCase, Visibility};
 use emath_ir::{
-    BinaryOp, Declaration, ExprId, ExprNode, Extent, KindSchema, ModelResidual, RepeatPolicy,
-    TypeNode,
+    BinaryOp, Declaration, ExprId, ExprNode, Extent, KindSchema, LawMetadata, ModelResidual,
+    Provenance, RepeatPolicy, TypeNode,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::equations::{admit_equations, collect_node_names, residual_span};
 use super::infer::{Infer, infer_conforms};
 use super::sections::{admit_compile_spec, admit_constructor, admit_named_field};
-use super::sections_meta::{admit_about, admit_evidence, admit_host};
+use super::sections_meta::{
+    admit_about, admit_binding_provenance, admit_evidence, admit_host, admit_law_metadata,
+};
 use super::{
     Admitter, E_DUPLICATE_FIELD, E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE, PHASE1_SECTIONS,
     TraceEntry,
@@ -29,6 +31,8 @@ pub(super) type AdmitResult = (
     Vec<TraceEntry>,
     Diagnostics,
     Vec<ModelResidual>,
+    Option<LawMetadata>,
+    BTreeMap<String, Provenance>,
 );
 
 /// Admit one declaration into SIR. Returns (declaration, test cases, type
@@ -42,6 +46,7 @@ pub(super) fn admit_declaration(
     let kind_label = decl.as_kind.clone();
     let is_policy = kind_label == "policy";
     let is_model = kind_label == "model";
+    let is_law = kind_label == "law";
     let schema = if is_policy {
         KindSchema::core_policy()
     } else if is_model {
@@ -93,6 +98,21 @@ pub(super) fn admit_declaration(
             );
             continue;
         }
+        if matches!(
+            section.name.as_str(),
+            "assumptions" | "domain" | "citations"
+        ) && !is_law
+        {
+            admitter.error(
+                "E-SEC-101",
+                format!(
+                    "section `{}` is admitted only on `emath law` declarations",
+                    section.name
+                ),
+                section.head_source,
+            );
+            continue;
+        }
         if !PHASE1_SECTIONS.contains(&section.name.as_str()) {
             admitter.error(
                 "E-SEC-101",
@@ -116,11 +136,11 @@ pub(super) fn admit_declaration(
     let mut outputs_from_head = false;
     if let Some(signature) = &decl.signature {
         let stateful = by_name.contains_key("state") || by_name.contains_key("constructors");
-        let refuse_head = kind_label != "function" || stateful;
+        let refuse_head = !matches!(kind_label.as_str(), "function" | "law") || stateful;
         if refuse_head {
             admitter.error(
                 "E-SYN-123",
-                "declaration head arguments are only admitted on stateless `emath function` declarations (no `state:` or `constructors:`)",
+                "declaration head arguments are only admitted on stateless `emath function` or `emath law` declarations (no `state:` or `constructors:`)",
                 decl.head_source,
             );
         }
@@ -272,6 +292,19 @@ pub(super) fn admit_declaration(
         .iter()
         .map(|f| (f.name.clone(), admitter.type_of(f.ty)))
         .collect();
+
+    // A law may pair prose assumptions with machine-checkable `require`
+    // expressions over its inputs. They reuse invariant IR so execution can
+    // refuse before evaluating a partial formula.
+    if is_law && let Some(section) = by_name.get("assumptions") {
+        for stmt in &section.suite.statements {
+            if let StmtKind::Require(expr) = &stmt.kind
+                && let Some(id) = admitter.lower_requirement(expr)
+            {
+                admitter.constraints.push(id);
+            }
+        }
+    }
 
     // Constraints section: process before definitions so the optimizer
     // can access them during definition lowering.  Each statement is an
@@ -947,9 +980,48 @@ pub(super) fn admit_declaration(
     let input_fields = inputs.clone();
     let output_fields = outputs_raw.clone();
     let state_fields = state.clone();
+    let known_bindings = input_fields
+        .iter()
+        .chain(&output_fields)
+        .chain(&state_fields)
+        .chain(&algebraic_fields)
+        .map(|field| field.name.clone())
+        .chain(definitions.keys().cloned())
+        .collect();
+    let binding_provenance = if is_law {
+        BTreeMap::new()
+    } else {
+        admit_binding_provenance(
+            &mut admitter,
+            by_name.get("provenance").copied(),
+            &known_bindings,
+        )
+    };
 
     let about = admit_about(&mut admitter, by_name.get("about").copied());
-    let evidence = admit_evidence(&mut admitter, by_name.get("evidence").copied());
+    let mut evidence = admit_evidence(&mut admitter, by_name.get("evidence").copied());
+    let law_metadata = is_law.then(|| {
+        admit_law_metadata(
+            &mut admitter,
+            by_name.get("assumptions").copied(),
+            by_name.get("domain").copied(),
+            by_name.get("provenance").copied(),
+            by_name.get("citations").copied(),
+            decl.head_source,
+        )
+    });
+    if let Some(metadata) = &law_metadata {
+        if evidence.is_empty() {
+            admitter.error(
+                "E-LAW-002",
+                "`emath law` requires at least one `evidence:` claim",
+                decl.head_source,
+            );
+        }
+        for claim in &mut evidence {
+            claim.assumptions = metadata.assumptions.clone();
+        }
+    }
     let host = admit_host(&mut admitter, by_name.get("host").copied());
 
     let declaration = Declaration {
@@ -959,6 +1031,8 @@ pub(super) fn admit_declaration(
             "policy"
         } else if is_model {
             "model"
+        } else if is_law {
+            "law"
         } else {
             "function"
         }),
@@ -988,5 +1062,7 @@ pub(super) fn admit_declaration(
         admitter.trace,
         admitter.diagnostics,
         admitter.residuals,
+        law_metadata,
+        binding_provenance,
     )
 }
