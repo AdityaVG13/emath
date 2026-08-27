@@ -93,7 +93,9 @@ pub trait Adapter<Source, Target> {
 
 pub use constellation::{
     CompositionOutcome, ConstellationError, ConstellationLock, ConstellationProvider,
-    MaturityLevel, MaturityRegistry, VersionEntry, compose_chain, default_constellation,
+    ForkAdapterContract, MaturityLevel, MaturityRegistry, PinnedForkAdapter, UpstreamLockError,
+    UpstreamPin, VersionEntry, compose_chain, default_constellation, fork_adapter_contracts,
+    pinned_fork_adapters,
 };
 pub use descriptor::{
     CapabilitySpec, CapabilityTable, DescriptorProblem, ProviderIsolation, ProviderLock,

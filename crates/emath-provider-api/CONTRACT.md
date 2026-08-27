@@ -23,6 +23,9 @@ registry, filter, descriptor and constellation surfaces.
 - `Provider` trait: `descriptor`, `supports`, `execute` (budgeted, cancelable).
 - `Adapter<Source, Target>` trait: `encode`/`decode` over a declared relation.
 - `ResultChecker` trait: `check` admits a `ProviderResult` into `Admitted`.
+- `fork_adapter_contracts` is the neutral Dew/Rumoca/Wrenfold census.
+  `pinned_fork_adapters` validates that every contract has an immutable
+  40-hex source commit and non-empty license in `forks/UPSTREAM_LOCK.json`.
 - Re-exports from `constellation`, `descriptor`, `filter`, `registry`
   modules add constellation, lock, filter and registry types (not exhaustive).
 
@@ -35,6 +38,8 @@ registry, filter, descriptor and constellation surfaces.
   `R(E, E')` (Constitution 7).
 - An adapter must refuse unsupported semantics before provider execution,
   never silently approximate.
+- Stable IR references providers only by neutral ids. Provider-native Rust
+  types and crate dependencies are confined to adapter crates.
 - Phase 1 ships no concrete providers; this API is the frozen adapter seam.
 
 ## Error model
@@ -68,10 +73,12 @@ None (`Cargo.toml` has no `[features]`).
 
 No `crates/emath-provider-api/tests/` directory and no inline `#[cfg(test)]`
 modules in `src/`. Conformance lives in the standalone `tests/emath-provider-api`
+Conformance lives in the standalone `tests/emath-provider-api`
 package: `tests/filter.rs` covers goal-filtering verdicts, including
-`E-PROV-515` exactness refusals (`estimate_only_provider_excluded_for_bounded_goal`,
 `undeclared_exactness_provider_excluded_for_any_explicit_goal`).
-
+`undeclared_exactness_provider_excluded_for_any_explicit_goal`);
+`tests/fork_constellation_unit.rs` checks the fork census, source/license
+locks, and the stable-IR no-leak boundary.
 ## No-claim boundaries
 
 Phase 1 ships no concrete providers, so no provider semantics are executed

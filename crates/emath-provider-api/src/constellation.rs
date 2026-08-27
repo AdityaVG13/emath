@@ -8,6 +8,148 @@ use crate::descriptor::ProviderLock;
 use emath_core::{ContentId, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
+/// Neutral contract for one fork-backed adapter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ForkAdapterContract {
+    /// Stable provider id used by plans and artifacts.
+    pub provider_id: &'static str,
+    /// Repository id in `forks/UPSTREAM_LOCK.json`.
+    pub upstream_id: &'static str,
+    /// In-tree adapter crate, or `None` for an oracle-only planned adapter.
+    pub adapter_crate: Option<&'static str>,
+    /// Semantic relation the adapter must preserve.
+    pub relation: &'static str,
+    /// Current integration status.
+    pub status: &'static str,
+}
+
+/// Fork adapter census. The stable spine sees only these neutral contracts,
+/// never provider-native types.
+#[must_use]
+pub const fn fork_adapter_contracts() -> &'static [ForkAdapterContract] {
+    &[
+        ForkAdapterContract {
+            provider_id: "dew.scalar",
+            upstream_id: "dew",
+            adapter_crate: Some("emath-adapter-dew"),
+            relation: "scalar strict-f64 semantics and source-map preservation",
+            status: "integrated",
+        },
+        ForkAdapterContract {
+            provider_id: "rumoca.structural",
+            upstream_id: "rumoca",
+            adapter_crate: Some("emath-adapter-rumoca"),
+            relation: "neutral equation structure and source-map preservation",
+            status: "integrated",
+        },
+        ForkAdapterContract {
+            provider_id: "wrenfold.symbolic-oracle",
+            upstream_id: "wrenfold",
+            adapter_crate: None,
+            relation: "symbolic differential oracle; results require independent checking",
+            status: "planned",
+        },
+    ]
+}
+
+/// Reproducibility fields for one locked upstream repository.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpstreamPin {
+    /// Repository id.
+    pub id: String,
+    /// Canonical upstream repository URL.
+    pub repository: String,
+    /// Immutable source commit.
+    pub commit: String,
+    /// Declared upstream license.
+    pub license: String,
+}
+
+/// A neutral adapter contract joined to its immutable upstream pin.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PinnedForkAdapter {
+    /// Adapter contract.
+    pub contract: ForkAdapterContract,
+    /// Upstream source lock.
+    pub pin: UpstreamPin,
+}
+
+/// Malformed or incomplete upstream lock.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpstreamLockError {
+    /// Actionable refusal detail.
+    pub message: String,
+}
+
+impl std::fmt::Display for UpstreamLockError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for UpstreamLockError {}
+
+/// Validates parsed upstream pins and resolves every fork adapter contract to
+/// an immutable source commit and declared license.
+pub fn pinned_fork_adapters(
+    pins: &[UpstreamPin],
+) -> Result<Vec<PinnedForkAdapter>, UpstreamLockError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for pin in pins {
+        if !seen.insert(&pin.id) {
+            return Err(lock_error(&format!(
+                "upstream lock contains duplicate pin `{}`",
+                pin.id
+            )));
+        }
+        if !pin.repository.starts_with("https://") {
+            return Err(lock_error(&format!(
+                "pin `{}` repository is not an https URL",
+                pin.id
+            )));
+        }
+        if pin.commit.len() != 40
+            || !pin
+                .commit
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(lock_error(&format!(
+                "pin `{}` commit is not a lowercase 40-hex source lock",
+                pin.id
+            )));
+        }
+        if pin.license.trim().is_empty() {
+            return Err(lock_error(&format!("pin `{}` license is empty", pin.id)));
+        }
+    }
+    fork_adapter_contracts()
+        .iter()
+        .map(|contract| {
+            let pin = pins
+                .iter()
+                .find(|pin| pin.id == contract.upstream_id)
+                .cloned()
+                .ok_or_else(|| UpstreamLockError {
+                    message: format!(
+                        "upstream lock has no `{}` pin for provider `{}`",
+                        contract.upstream_id, contract.provider_id
+                    ),
+                })?;
+            Ok(PinnedForkAdapter {
+                contract: *contract,
+                pin,
+            })
+        })
+        .collect()
+}
+
+fn lock_error(message: &str) -> UpstreamLockError {
+    UpstreamLockError {
+        message: message.to_string(),
+    }
+}
+
 /// Provider maturity level (Phase 7 ladder).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MaturityLevel {
