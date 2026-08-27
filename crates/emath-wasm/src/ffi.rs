@@ -199,34 +199,34 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
         return;
     };
     let _ = len; // host report ignored; drop uses mint capacity `cap`
-                 // SAFETY: `Vec::from_raw_parts(ptr, 0, cap)` reconstructs ownership of a
-                 // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
-                 //
-                 // (0) Invariant locally enforced by LIVE_ALLOCS membership (single-
-                 //     threaded wasm; Mutex uncontended): this block runs only on
-                 //     addresses this module minted and still owes, exactly-once.
-                 //     Foreign/double/stale pointers never reach this block.
-                 // (1) Valid ownership: `ptr` is a live mint from `em_alloc`, still
-                 //     leaked and not double-freed (guard, step 0). Reconstructing it
-                 //     here transfers that responsibility back to the Vec, whose drop
-                 //     now frees it.
-                 // (2) Capacity coupling: `cap` is the exact capacity recorded when
-                 //     `vec![0; len]` minted this region (sized repeat ⇒ capacity ==
-                 //     requested len). `from_raw_parts(ptr, 0, cap)` matches the
-                 //     allocator footprint; the host's `len` argument is not used for
-                 //     the drop size, so a mismatched report cannot induce UB.
-                 // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
-                 //     the zero-length (null) allocation is never reconstructed here.
-                 // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
-                 //     drops the Vec by binding.
-                 // Residual: if the guard and reality disagree (allocator swap, memory
-                 //     corruption) such that a registered `ptr`'s backing no longer
-                 //     matches the stored capacity, `from_raw_parts` can panic/UB. The
-                 //     guard enforces minted-and-owed + recorded capacity, not the
-                 //     allocator's physical layout against external corruption.
-                 // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0–2)
-                 // and `alloc_region`'s exact-capacity construction. Failure = host
-                 // feeding a foreign/double pair or memory corruption, not a library bug.
+    // SAFETY: `Vec::from_raw_parts(ptr, 0, cap)` reconstructs ownership of a
+    // Vec the caller previously leaked via `mem::forget` in `alloc_region`.
+    //
+    // (0) Invariant locally enforced by LIVE_ALLOCS membership (single-
+    //     threaded wasm; Mutex uncontended): this block runs only on
+    //     addresses this module minted and still owes, exactly-once.
+    //     Foreign/double/stale pointers never reach this block.
+    // (1) Valid ownership: `ptr` is a live mint from `em_alloc`, still
+    //     leaked and not double-freed (guard, step 0). Reconstructing it
+    //     here transfers that responsibility back to the Vec, whose drop
+    //     now frees it.
+    // (2) Capacity coupling: `cap` is the exact capacity recorded when
+    //     `vec![0; len]` minted this region (sized repeat ⇒ capacity ==
+    //     requested len). `from_raw_parts(ptr, 0, cap)` matches the
+    //     allocator footprint; the host's `len` argument is not used for
+    //     the drop size, so a mismatched report cannot induce UB.
+    // (3) len == 0 handled above: `ptr == 0` returns early as a no-op, so
+    //     the zero-length (null) allocation is never reconstructed here.
+    // (4) `u32 -> usize` widens losslessly on wasm32; `_ =` deliberately
+    //     drops the Vec by binding.
+    // Residual: if the guard and reality disagree (allocator swap, memory
+    //     corruption) such that a registered `ptr`'s backing no longer
+    //     matches the stored capacity, `from_raw_parts` can panic/UB. The
+    //     guard enforces minted-and-owed + recorded capacity, not the
+    //     allocator's physical layout against external corruption.
+    // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0–2)
+    // and `alloc_region`'s exact-capacity construction. Failure = host
+    // feeding a foreign/double pair or memory corruption, not a library bug.
     #[cfg(target_arch = "wasm32")]
     unsafe {
         let _ = Vec::from_raw_parts(ptr as *mut u8, 0, cap as usize);
