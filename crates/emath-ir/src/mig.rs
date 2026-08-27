@@ -221,11 +221,7 @@ impl Mig {
             self.push_edge(owner, MigEdgeKind::Ensures, node);
         }
         for claim in &declaration.evidence {
-            let node = self.push_node(
-                MigNodeKind::Invariant,
-                format!("claim:{}", claim.id),
-                None,
-            );
+            let node = self.push_node(MigNodeKind::Invariant, format!("claim:{}", claim.id), None);
             self.push_edge(owner, MigEdgeKind::Ensures, node);
         }
         for goal_id in &declaration.goals {

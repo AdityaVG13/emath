@@ -157,6 +157,15 @@ fn push_str(out: &mut String, s: &str) {
     out.push('\n');
 }
 
+fn push_framed(out: &mut String, label: &str, value: &str) {
+    out.push_str(label);
+    out.push(' ');
+    out.push_str(&value.len().to_string());
+    out.push(':');
+    out.push_str(value);
+    out.push('\n');
+}
+
 fn name(q: &QualifiedName) -> &str {
     &q.0
 }
@@ -421,6 +430,28 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
             out.push(' ');
             out.push_str(&claim.class);
             out.push('\n');
+        }
+        if let Some(metadata) = package.law_metadata.get(&declaration.id) {
+            for assumption in &metadata.assumptions {
+                push_framed(&mut out, "law-assumption", assumption);
+            }
+            push_framed(&mut out, "law-domain", &metadata.domain);
+            for provenance in &metadata.provenance {
+                push_framed(&mut out, "law-provenance", provenance);
+            }
+            for citation in &metadata.citations {
+                push_framed(&mut out, "law-citation", citation);
+            }
+        }
+        for (site, provenance) in &package.binding_provenance {
+            if site.declaration == declaration.id {
+                push_framed(&mut out, "binding-provenance-name", &site.binding);
+                push_framed(
+                    &mut out,
+                    "binding-provenance-value",
+                    &provenance.canonical(),
+                );
+            }
         }
         for binding in &declaration.host {
             out.push_str("host ");

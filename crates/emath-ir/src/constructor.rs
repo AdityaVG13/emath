@@ -3,7 +3,7 @@
 //! receipts and receipt composition for delegating constructors.
 
 use crate::ids::{ExprId, TypeId};
-use emath_core::{fnv1a64_bytes, ContentId, Span};
+use emath_core::{ContentId, Span, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
 /// Constructor authority: parameters, preconditions, assignments,

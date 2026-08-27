@@ -85,9 +85,7 @@ impl Shape {
                         message: "declared extent 0 is not a well-formed shape".into(),
                     });
                 }
-                Extent::Symbolic(name)
-                    if name == "0" || name.eq_ignore_ascii_case("zero") =>
-                {
+                Extent::Symbolic(name) if name == "0" || name.eq_ignore_ascii_case("zero") => {
                     return Err(ShapeError {
                         code: "E-SHAPE-004",
                         message: format!("declared extent `{name}` is not a well-formed shape"),
