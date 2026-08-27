@@ -6,7 +6,18 @@
 
 #![forbid(unsafe_code)]
 
+pub mod object_graph;
 pub mod schema;
+pub mod space;
+
+pub use object_graph::{
+    LibraryObject, ObjectDraft, ObjectGraph, ObjectKind, Relation, RelationDraft, RelationKind,
+    RelationScope, StoreGraphError,
+};
+pub use space::{
+    LibraryLock, MergeAction, MergeReceipt, Reconciliation, Space, SpaceError, SpacePolicy,
+    SpaceSnapshot,
+};
 
 #[cfg(feature = "sqlite-store")]
 pub mod store;

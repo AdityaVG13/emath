@@ -5,4 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
+emath-core = { path = "../../crates/emath-core" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-sema = { path = "../../crates/emath-sema" }
 emath-store = { path = "../../crates/emath-store" }
+emath-syntax = { path = "../../crates/emath-syntax" }
