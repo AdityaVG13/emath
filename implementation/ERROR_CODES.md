@@ -200,6 +200,18 @@ Syntax (`crates/emath-syntax/src/lexer.rs`, `crates/emath-syntax/src/parser.rs`)
   (`state:` / `constructors:`) or on a non-`function` kind (policy,
   world, builder, method). Head-args are only admitted on stateless
   `emath function`.
+- `E-SYN-149` — L2 named shorthand with an explicit head-arg signature
+  whose names do not cover the body's free names (typed refusal, not a
+  guessed coercion of `n` onto `x`).
+- `E-SYN-150` — L2 named shorthand whose body calls an unknown name
+  (`mystery(x)`) with no hole `mystery = ?`; the callee is not inferred
+  as a Float64 input.
+- `E-SYN-151` — `solve` presented with an unlabeled unique numeric root
+  (`uniquely 1.414…`); the candidate menu must be labeled, never a naked
+  float as intended meaning.
+- `E-SYN-152` — a structured binding `provenance:` payload has an unknown
+  key or kind, a non-string value, a missing required field, or a field not
+  admitted by the selected closed provenance variant.
 - `E-SYN-115` — an identifier contains a combining mark (U+0300–U+036F);
   such a spelling is canonically non-NFC by construction and cannot be
   verified without a Unicode table, so the identifier is refused instead
@@ -508,6 +520,7 @@ spelling is retired and is not emitted.
   file present.
 - `E-EVID-113` — required/declared artifact path is a symlink (refused).
 - `E-EVID-114` — artifact document or declared file is not valid UTF-8.
+- `E-EVID-115` — source declaration names an unknown evidence level.
 - `E-EVID-201` — claim language stronger than the available evidence
   (downgrade suggested).
 - `E-EVID-301` — translation mismatch (no equivalence witness).
@@ -560,6 +573,23 @@ spelling is retired and is not emitted.
 - `E-KIND-030` — unknown kind at schema load.
 - `E-KIND-031` — incompatible schema version refused at load.
 
+### Executable laws (`crates/emath-sema`)
+
+- `E-LAW-002` — an `emath law` declaration has missing, empty, or
+  multiply-declared required metadata.
+- `E-LAW-003` — exhaustive finite checking found a concrete associativity,
+  identity, or morphism-preservation counterexample.
+
+### Symbolic algebra (`crates/emath-ir`, `crates/emath-sema`)
+
+- `E-SYM-001` — malformed symbolic expression or rewrite replacement.
+- `E-SYM-002` — exact coefficient overflow or the native degree/resource
+  bound was exceeded.
+- `E-SYM-003` — expression or claim is outside the native exact univariate
+  polynomial/simplification fragment.
+- `E-SYM-004` — a structural rewrite requested `proved` authority without a
+  checkable certificate.
+
 ### Names/visibility (`crates/emath-sema`, `crates/emath-hir`)
 
 - `E-NAME-021` — Phase 1 exports must be `public` (also: empty operator
@@ -569,12 +599,22 @@ spelling is retired and is not emitted.
   The former "has no expect" refusal on this code is removed.)
 - `E-NAME-027` — policy example must supply the constructor parameter
   via `given`.
+- `E-NAME-028` — a `provenance:` binding section names no declared input,
+  output, state, algebraic variable, or definition.
+- `E-KIND-026` — an imported family generator has an unknown family or
+  parameter, an unsupported/duplicate instance, or fewer than the required
+  pattern-of-three instances.
+- `E-KIND-027` — an imported theory, finite model, or morphism has malformed
+  fields, an unknown prior declaration, or exceeds the bounded finite domain.
 
 ### Packages (`crates/emath-schema`, `crates/emath-sema`)
 
 - `E-PKG-020` — schema lock checksum mismatch.
 - `E-PKG-050` — external file import outside the front-end subset
   (library-path imports only).
+- `E-PKG-052` — curated law-package symbol import is not resolved yet.
+- `E-PKG-053` — unknown symbol or unsupported alias in an embedded law
+  package import.
 - `E-PKG-064` — `@experimental` on an item while the source file does
   not declare the `experimental-syntax` capability; experimental syntax
   never compiles silently in a stable package (ELP experimental lane).
