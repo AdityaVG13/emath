@@ -8,6 +8,12 @@ pub const COMMANDS: &[&str] = &[
     "planner",
     "build",
     "parse",
+    "expand",
+    "solve",
+    "exactness",
+    "freeze",
+    "why",
+    "assumptions",
     "signature",
     "genesis",
     "eval",
@@ -51,6 +57,12 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "planner" => "planner <file.emath> [--json] [--parametric]",
         "build" => "build <file.emath> [--out <dir>] [--verify] [--json]",
         "parse" => "parse --forest <file.emath> [--out <dir>]",
+        "expand" => "expand <file.emath> [--json]",
+        "solve" => "solve --check <file.emath> [--json] [--apply <label>]",
+        "exactness" => "exactness <file.emath> [--json] [--raise units]",
+        "freeze" => "freeze <file.emath> [--out <file>] [--json]",
+        "why" => "why <file.emath> inference:N [--json]",
+        "assumptions" => "assumptions <file.emath> [--json]",
         "signature" => "signature <file.emath> [--out <dir>]",
         "genesis" => "genesis <file.emath> --out <dir>",
         "eval" => "eval <file.emath> [--world <name>] [--json]",
@@ -69,7 +81,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>]",
         "fmt" => "fmt <file.emath>",
-        "explain" => "explain <file.emath> [<symbol>] [--json]",
+        "explain" => "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
         "run" => "run <file.emath> [--out <dir>]",
         "test" => "test <file.emath> [--out <dir>]",
         "bench" => "bench <file.emath>",
@@ -98,6 +110,20 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "planner" => "provider-registry planning; `--parametric` lifts missing operators",
         "build" => "full pipeline to a published artifact (default out: target/emath)",
         "parse" => "genesis glyphs + bounded parse forest",
+        "expand" => {
+            "print the contracted form of L0/L1 scratch and L2 named shorthand; `--json` includes inferred-default notes"
+        }
+        "solve" => {
+            "list labeled completions for a `solve` goal (`--check`); `--apply <label>` pins domain/holes. Never a naked numeric root"
+        }
+        "exactness" => {
+            "print the declared/inferred/constructed/open meaning budget; `--raise units` declares one dimension"
+        }
+        "freeze" => {
+            "write expanded source plus versioned emath.freeze.lock.v1; does not raise evidence authority or close open holes"
+        }
+        "why" => "explain one desugar/ledger inference (`inference:N`)",
+        "assumptions" => "list inferred (not declared) meaning-budget rows",
         "signature" => "arity/fixity/type-variable signature inference",
         "genesis" => "world interpretation + portfolio + answer receipt",
         "eval" => {
@@ -120,7 +146,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011)",
         "fmt" => "canonical-form check (full rewrite is Phase 4)",
-        "explain" => "plan-level goal/provider explanation",
+        "explain" => {
+            "plan/provider explanation, binding provenance DAG, or `E-LAW-001` checker witness"
+        }
         "run" => "build then execute the generated crate (library crates run example tests)",
         "test" => "build with `--verify`; empty test surface is E-TLT-012",
         "bench" => "typed refusal E-TLT-004 until the comparison ruleset lands",
@@ -257,8 +285,13 @@ Rules
 
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     match command {
-        "check" | "plan" | "architecture" | "explain" | "inspect" | "diff" | "doctor"
-        | "capabilities" | "import" | "provider" => &["--json", "--help", "-h"],
+        "explain" => &["--json", "--provenance", "--help", "-h"],
+        "check" | "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities"
+        | "import" | "provider" | "expand" | "exactness" | "why" | "assumptions" => {
+            &["--json", "--help", "-h", "--raise"]
+        }
+        "solve" => &["--check", "--json", "--apply", "--help", "-h"],
+        "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
         "build" => &["--json", "--out", "-o", "--verify", "--help", "-h"],
         "run" | "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
@@ -310,6 +343,7 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--dt-max"
             | "--event"
             | "--set"
+            | "--raise"
     )
 }
 

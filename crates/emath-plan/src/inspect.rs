@@ -78,6 +78,7 @@ impl PlanInspection {
     #[must_use]
     pub fn to_json(&self) -> String {
         let mut object = emath_artifact::JsonWriter::object();
+        object.string("schema", "emath.plan-explanation v1");
         object.string("policy", &self.policy);
         object.strings("candidates", &self.candidates);
         object.int("candidate_count", self.candidate_count() as u64);

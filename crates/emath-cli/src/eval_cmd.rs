@@ -4,7 +4,7 @@
 
 use super::genesis_cmd::{self, Analysis};
 use super::{
-    json_diagnostic_entry, print_json_diagnostics, split_error_code, usage, EXIT_OK, EXIT_REFUSED,
+    EXIT_OK, EXIT_REFUSED, json_diagnostic_entry, print_json_diagnostics, split_error_code, usage,
 };
 use emath_artifact::JsonWriter;
 use emath_genesis::{

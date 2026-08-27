@@ -9,19 +9,19 @@
 use super::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::limits::Limits;
 use emath_genesis::{
-    forest, free_symbolic_world, run as vm_run, BooleanAlienWorld, Environment, FreeTermWorld,
-    ModularAlienWorld, OnePointWorld, SeededCsaWorld, VmBudget, VmOutcome, CSA_MEANING_CLAIM,
-    CSA_SCHEMA, CSA_SCHEMA_VERSION, VM_SCHEMA, VM_SCHEMA_VERSION,
+    BooleanAlienWorld, CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, Environment,
+    FreeTermWorld, ModularAlienWorld, OnePointWorld, SeededCsaWorld, VM_SCHEMA, VM_SCHEMA_VERSION,
+    VmBudget, VmOutcome, forest, free_symbolic_world, run as vm_run,
 };
 use emath_portfolio::{
-    apply_portfolio_cap, evaluate, Authority, CollapsePolicy, InterpretationCandidate,
-    InterpretationPolicy, InterpretationPortfolio, MetricAxis, MetricPolarity, PortfolioError,
-    ScoreVector, PROVENANCE_USER_LOCKED,
+    Authority, CollapsePolicy, InterpretationCandidate, InterpretationPolicy,
+    InterpretationPortfolio, MetricAxis, MetricPolarity, PROVENANCE_USER_LOCKED, PortfolioError,
+    ScoreVector, apply_portfolio_cap, evaluate,
 };
 use emath_syntax::genesis as genesis_syntax;
-use emath_term::{Signature, Term, VariableId, TERM_IR_VERSION};
+use emath_term::{Signature, TERM_IR_VERSION, Term, VariableId};
 use emath_world_ir::{
-    fnv1a64, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr,
+    Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr, fnv1a64,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

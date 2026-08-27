@@ -6,15 +6,15 @@ use emath_agent_protocol::{
     AgentProposal, ChallengeLoop, ChallengeOutcome, CheckerSuite, ProposalKind,
 };
 use emath_artifact::JsonWriter;
-use emath_build::{build_file, BuildOptions};
+use emath_build::{BuildOptions, build_file};
 use emath_portfolio::InterpretationPortfolio;
 use emath_sema::session::CompilerSession;
 use emath_tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
-use emath_world_ir::translation::EvidenceHandle;
 use emath_world_ir::WorldId;
+use emath_world_ir::translation::EvidenceHandle;
 
 use crate::tooling_cmd::{classify_build_error, doctor_probes, flag_value, positional_args};
-use crate::{run_check, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run_check, usage};
 
 /// Permissive loop: schema and capability admission decide; empty checkers.
 const PROPOSE_LOOP: ChallengeLoop = ChallengeLoop {
@@ -56,11 +56,7 @@ pub(crate) fn agent_cmd(args: &[String]) -> u8 {
             }
             object.string("diagnostics_text", &lines);
             println!("{}", object.finish());
-            if admitted {
-                EXIT_OK
-            } else {
-                EXIT_REFUSED
-            }
+            if admitted { EXIT_OK } else { EXIT_REFUSED }
         }
         "plan" => {
             let Some(file) = file else {

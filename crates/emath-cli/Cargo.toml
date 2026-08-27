@@ -16,6 +16,7 @@ emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-checker = { workspace = true }
 emath-core = { workspace = true }
+emath-diagnostics = { workspace = true }
 emath-exec-ir = { workspace = true }
 emath-genesis = { workspace = true }
 emath-goal = { workspace = true }

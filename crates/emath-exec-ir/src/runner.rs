@@ -158,6 +158,8 @@ pub struct DeclarationRun {
     pub name: String,
     /// Example results in declaration test-id order.
     pub tests: Vec<TestRun>,
+    /// Executable law metadata, copied from SIR without reinterpretation.
+    pub law_metadata: Option<emath_ir::LawMetadata>,
     /// Present when `tests` is empty (the wasm layer surfaces this as a hint).
     pub note: Option<String>,
 }

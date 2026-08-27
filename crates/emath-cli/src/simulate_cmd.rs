@@ -1,8 +1,8 @@
 //! `emath simulate`: explicit Euler / RK4 / RK45 on an admitted `emath model`.
 
 use super::{
-    json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
-    split_error_code, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+    EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
+    print_diagnostics, print_json_diagnostics, split_error_code, usage,
 };
 use emath_artifact::JsonWriter;
 use emath_core::limits::Limits;

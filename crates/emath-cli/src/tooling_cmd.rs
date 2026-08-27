@@ -11,12 +11,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use emath_artifact::JsonWriter;
-use emath_build::{build_file, generated_crate_target_dir, run_cargo_timed, BuildOptions};
+use emath_build::{BuildOptions, build_file, generated_crate_target_dir, run_cargo_timed};
 use emath_core::content_id_of_str;
 use emath_sema::session::CompilerSession;
 
 use crate::catalog;
-use crate::{artifact_check, print_diagnostics, usage, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, artifact_check, print_diagnostics, usage};
 
 /// Relative path of the committed upstream lock file (repo layout).
 const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
@@ -218,73 +218,75 @@ fn fmt_cmd(args: &[String]) -> u8 {
     }
 }
 
-/// `explain <file> [<symbol>]`: plan-level explanation of goals.
+/// `explain <file> [<symbol>]` or `explain E-LAW-001`: plan-level or checker witness.
 fn explain_cmd(args: &[String]) -> u8 {
     let Some(file) = first_positional(args) else {
-        return usage("explain <file.emath> [<symbol>]");
+        return usage(
+            "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
+        );
     };
+    if file.starts_with("E-LAW-") || file == emath_diagnostics::E_LAW_001 {
+        return explain_law_cmd(args);
+    }
+    if args.iter().any(|arg| arg == "--provenance") {
+        return match crate::provenance_explanation(Path::new(&file), catalog::wants_json(args)) {
+            Ok(explanation) => {
+                print!("{explanation}");
+                EXIT_OK
+            }
+            Err(code) => code,
+        };
+    }
     let symbol = args
         .iter()
         .filter(|arg| !arg.starts_with('-'))
         .nth(1)
         .cloned();
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let Ok(package) = session.load_package(&file) else {
-        eprintln!("error: cannot read {file}");
-        return EXIT_USAGE;
+    let inspections = match crate::explain_inspections(Path::new(&file)) {
+        Ok(inspections) => inspections,
+        Err(code) => return code,
     };
-    let result = session.plan(package.file);
-    print_diagnostics(&result.diagnostics);
-    if result.diagnostics.has_errors() {
-        return EXIT_REFUSED;
-    }
     let json = catalog::wants_json(args);
     if json {
-        let mut object = JsonWriter::object();
-        object.string("schema", "emath.explain");
-        object.string("file", &file);
-        object.int("goals", result.package.goals.len() as u64);
-        object.int("plans", result.plans.len() as u64);
-        let mut goals = Vec::new();
-        for goal in &result.package.goals {
-            goals.push(format!("{} {}", goal.kind.as_str(), goal.target));
+        for inspection in &inspections {
+            println!("{}", inspection.to_json());
         }
-        object.strings("goals", &goals);
-        let mut plans = Vec::new();
-        for plan in &result.plans {
-            plans.push(format!(
-                "{} policy={} class={}",
-                plan.plan_id.0, plan.policy, plan.artifact_class
-            ));
-        }
-        object.strings("plans", &plans);
-        if let Some(symbol) = symbol {
-            object.string("symbol", &symbol);
-            object.string(
-                "symbol_note",
-                "declaration indexing is Phase 4+; goals are the available evidence",
-            );
-        }
-        println!("{}", object.finish());
         return EXIT_OK;
     }
-    for goal in &result.package.goals {
-        println!(
-            "explain: goal `{} {}` -> deterministic native plan",
-            goal.kind.as_str(),
-            goal.target
-        );
-    }
-    for plan in &result.plans {
-        println!(
-            "explain: plan {} policy={} class={}",
-            plan.plan_id.0, plan.policy, plan.artifact_class
-        );
+    for inspection in &inspections {
+        println!("{}", inspection.explain());
     }
     if let Some(symbol) = symbol {
         println!(
             "explain: symbol `{symbol}`: declaration indexing is Phase 4+; goals above are the available evidence"
         );
+    }
+    EXIT_OK
+}
+
+fn explain_law_cmd(args: &[String]) -> u8 {
+    let json = catalog::wants_json(args);
+    let (report, explanations) = emath_diagnostics::e_law_001_demo();
+    if report.passed {
+        eprintln!("error: E-LAW-001 demo table unexpectedly held");
+        return EXIT_REFUSED;
+    }
+    let Some(explanation) = explanations.first() else {
+        eprintln!("error: checker produced no witness");
+        return EXIT_REFUSED;
+    };
+    if let Err(error) = emath_diagnostics::tutor_check_v1(explanation) {
+        eprintln!("error: tutor-check/v1 refused ({})", error.as_str());
+        return EXIT_REFUSED;
+    }
+    if json {
+        print!("{}", emath_diagnostics::explanation_json(explanation));
+        return EXIT_OK;
+    }
+    println!("{} {}", explanation.code, explanation.kind.as_str());
+    println!("{}", explanation.structured_narrative);
+    if let Some(witness) = &explanation.witness {
+        print!("{}", emath_diagnostics::render_cayley_ascii(witness));
     }
     EXIT_OK
 }
@@ -565,11 +567,7 @@ fn diff_cmd(args: &[String]) -> u8 {
                 println!("diff: {b} {}", id_b.0);
                 println!("diff: {}", if identical { "identical" } else { "differ" });
             }
-            if identical {
-                EXIT_OK
-            } else {
-                EXIT_REFUSED
-            }
+            if identical { EXIT_OK } else { EXIT_REFUSED }
         }
         (Err(()), _) | (_, Err(())) => EXIT_REFUSED,
     }
@@ -627,7 +625,18 @@ pub(crate) fn doctor_probes() -> Vec<DoctorProbe> {
 /// `doctor`: toolchain presence checks.
 fn doctor_cmd(args: &[String]) -> u8 {
     let probes = doctor_probes();
-    let ok = probes.iter().all(|probe| probe.ok);
+    let lock = upstream_lock_path();
+    let fork_lock = std::fs::read_to_string(&lock)
+        .map_err(|error| format!("cannot read {}: {error}", lock.display()))
+        .and_then(|text| {
+            parse_upstream_pins(&text)
+                .and_then(|pins| {
+                    emath_provider_api::pinned_fork_adapters(&pins)
+                        .map_err(|error| error.to_string())
+                })
+                .map(|adapters| (content_id_of_str(&text).0, adapters))
+        });
+    let ok = probes.iter().all(|probe| probe.ok) && fork_lock.is_ok();
     if catalog::wants_json(args) {
         let mut rows = Vec::new();
         for probe in &probes {
@@ -643,6 +652,31 @@ fn doctor_cmd(args: &[String]) -> u8 {
         object.string("schema", "emath.doctor");
         object.bool("ok", ok);
         object.objects("checks", &rows);
+        object.string("fork_lock_source", UPSTREAM_LOCK_REL);
+        match &fork_lock {
+            Ok((lock_id, adapters)) => {
+                object.string("fork_lock_id", lock_id);
+                let mut fork_rows = Vec::new();
+                for adapter in adapters {
+                    let mut row = JsonWriter::object();
+                    row.string("provider_id", adapter.contract.provider_id);
+                    row.string("upstream_id", adapter.contract.upstream_id);
+                    row.string(
+                        "adapter_crate",
+                        adapter.contract.adapter_crate.unwrap_or("oracle-only"),
+                    );
+                    row.string("status", adapter.contract.status);
+                    row.string("repository", &adapter.pin.repository);
+                    row.string("source_lock", &adapter.pin.commit);
+                    row.string("license", &adapter.pin.license);
+                    fork_rows.push(row.finish());
+                }
+                object.objects("fork_adapters", &fork_rows);
+            }
+            Err(error) => {
+                object.string("fork_lock_error", error);
+            }
+        }
         println!("{}", object.finish());
     } else {
         for probe in &probes {
@@ -651,12 +685,49 @@ fn doctor_cmd(args: &[String]) -> u8 {
                 None => println!("doctor: {}: MISSING", probe.name),
             }
         }
+        match &fork_lock {
+            Ok((lock_id, adapters)) => {
+                for adapter in adapters {
+                    println!(
+                        "doctor: fork {}: pinned {} license={} (lock {lock_id})",
+                        adapter.contract.provider_id, adapter.pin.commit, adapter.pin.license
+                    );
+                }
+            }
+            Err(error) => println!("doctor: fork lock: INVALID ({error})"),
+        }
     }
-    if ok {
-        EXIT_OK
-    } else {
-        EXIT_REFUSED
-    }
+    if ok { EXIT_OK } else { EXIT_REFUSED }
+}
+
+fn parse_upstream_pins(text: &str) -> Result<Vec<emath_provider_api::UpstreamPin>, String> {
+    let document = emath_artifact::parse_json_document(text).map_err(|error| error.to_string())?;
+    let repositories = match document
+        .field("repositories")
+        .map_err(|error| error.to_string())?
+    {
+        emath_artifact::JsonValue::Arr(repositories) => repositories,
+        _ => return Err("`repositories` is not an array".into()),
+    };
+    repositories
+        .iter()
+        .map(|repository| {
+            Ok(emath_provider_api::UpstreamPin {
+                id: repository
+                    .string_field("id")
+                    .map_err(|error| error.to_string())?,
+                repository: repository
+                    .string_field("repository")
+                    .map_err(|error| error.to_string())?,
+                commit: repository
+                    .string_field("commit")
+                    .map_err(|error| error.to_string())?,
+                license: repository
+                    .string_field("license")
+                    .map_err(|error| error.to_string())?,
+            })
+        })
+        .collect()
 }
 
 fn probe_program(command: &str) -> Option<String> {
