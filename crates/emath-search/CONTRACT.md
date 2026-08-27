@@ -10,10 +10,10 @@ emath-goal / emath-plan / emath-artifact / emath-checker / emath-cli /
 emath-lsp / emath-store / emath-provenance stay Franken-free.
 
 This is a SPIKE, not a production search service. frankensearch is pinned to
-an exact commit (33ef37a4c663535b832ae057b5c36296215e41f4) and is in active
-churn; the crate is feature-gated (`search`, default OFF) and the default
-build is std-only with zero third-party dependencies and no engine code
-compiled.
+repository release v1.7.0 (facade v0.3.2), exact commit
+22859f74056c31fd3a713bacecd4a1f22f0cf82d, and is in active churn; the crate
+is feature-gated (`search`, default OFF) and the default build is std-only
+with zero third-party dependencies and no engine code compiled.
 
 ## Public types and semantics
 
@@ -103,8 +103,9 @@ not this crate.)
 
 ## Feature flags
 
-- search (default OFF) — pulls pinned frankensearch (facade `frankensearch`
-  v0.3.2 at rev 33ef37a4c663535b832ae057b5c36296215e41f4) with features
+- search (default OFF) — pulls pinned frankensearch (repository release
+  v1.7.0, facade `frankensearch` v0.3.2 at rev
+  22859f74056c31fd3a713bacecd4a1f22f0cf82d) with features
   `hash` + `quill`, plus asupersync. Feature set deliberately differs from the
   skill's recommended `hybrid`: hybrid pulls model2vec/fastembed (tokenizers,
   ORT binary acquisition) and auto-detect model discovery, which this offline
@@ -113,10 +114,9 @@ not this crate.)
   VERSION RANGE (`>=0.4.4, <0.5`), not an internal git rev like
   frankengraphdb. This crate declares the same crates.io range, so Cargo
   unifies one crates.io asupersync instance for the whole emath-search graph
-  (resolved to the workspace-locked 0.4.6 crates.io). The workspace git pins
-  f0270d53... and c17e51931... (store/provenance graphs) are separate
-  instances in other crates' graphs and never cross this boundary. Verified
-  via `cargo tree -i asupersync`.
+  (resolved to the workspace-locked 0.4.9 crates.io). The workspace git pin
+  9eb0600e... is a separate instance in other crates' graphs and never crosses
+  this boundary. Verified via `cargo tree -i asupersync`.
 - Default build (no features): std-only, first-party-only, zero third-party
   deps, zero engine code.
 

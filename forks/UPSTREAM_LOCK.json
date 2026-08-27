@@ -97,7 +97,7 @@
       "id": "asupersync",
       "repository": "https://github.com/Dicklesworthstone/asupersync.git",
       "branch": "main",
-      "commit": "f0270d53c65d48696f79e6860370ffdc8fe735fd",
+      "commit": "9eb0600e6ef4d17633dff3dc43ad99c64e72adbe",
       "license": "custom; user approved for project",
       "role": "async runtime doctrine (tokio replacement); structured concurrency",
       "required": "optional"
@@ -106,7 +106,7 @@
       "id": "frankensqlite",
       "repository": "https://github.com/Dicklesworthstone/frankensqlite.git",
       "branch": "main",
-      "commit": "e705df6960d8a22bb19d12a36d6534116b4b4cd5",
+      "commit": "8281cf285433b1746d9c29a598152e58cc205bd8",
       "license": "custom; user approved for project",
       "role": "storage doctrine (SQLite replacement); MVCC + compatibility modes",
       "required": "optional"
@@ -124,7 +124,7 @@
       "id": "frankensearch",
       "repository": "https://github.com/Dicklesworthstone/frankensearch.git",
       "branch": "main",
-      "commit": "33ef37a4c663535b832ae057b5c36296215e41f4",
+      "commit": "22859f74056c31fd3a713bacecd4a1f22f0cf82d",
       "license": "custom; user approved for project",
       "role": "artifact corpus search (hybrid lexical + semantic)",
       "required": "optional"

@@ -101,7 +101,7 @@ emath function Greeter:
 
 Declare only what you need: `inputs:`, `outputs:`, `goals:`, `exports:`, and `compile:` are optional. A bare input name (`x`) defaults to `Float64`. Definitions are the surface; an omitted `goals:` section evaluates every definition and `emath run` admits, builds, publishes under `target/emath`, and executes the example tests (`emath test <file>` reports them, `emath build <file> [--out <dir>]` publishes without running).
 
-**Prerequisites:** a nightly Rust toolchain. The repo pins `nightly-2026-08-04` via `rust-toolchain.toml` (with `rustfmt` and `clippy`). Rustup follows it automatically on first build; stable is not supported. The workspace has zero third-party dependencies and the demos are std-only.
+**Prerequisites:** a nightly Rust toolchain. The repo pins `nightly-2026-08-27` via `rust-toolchain.toml` (with `rustfmt` and `clippy`). Rustup follows it automatically on first build; stable is not supported. Default features and demos are std-only; optional storage, search, and async-runtime features pull the exact dependencies recorded in `forks/UPSTREAM_LOCK.json`.
 
 **First build:** allow a few minutes for a debug build of the workspace (subsequent runs are incremental).
 
