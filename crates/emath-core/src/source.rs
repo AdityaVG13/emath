@@ -52,9 +52,7 @@ impl SourceFile {
             .partition_point(|&start| start <= offset)
             .saturating_sub(1);
         // `line_starts` always contains at least `[0]`; index is in range.
-        let line = u32::try_from(index)
-            .unwrap_or(u32::MAX)
-            .saturating_add(1);
+        let line = u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1);
         let col = offset
             .saturating_sub(self.line_starts[index])
             .saturating_add(1);

@@ -12,6 +12,72 @@ pub enum Severity {
     Note,
 }
 
+/// Teacher layers on a diagnostic (Wave 9 LANGUAGE/04).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pedagogy {
+    pub understood: String,
+    pub unknown: String,
+    pub why: String,
+    pub smallest_repair: String,
+    pub alternatives: Vec<String>,
+    pub example: Option<String>,
+    pub deeper_concept: Option<String>,
+    pub authority_consequence: Option<String>,
+    pub library_link: Option<String>,
+}
+
+impl Pedagogy {
+    /// Teacher layers with a library link. Extra fields stay empty until filled.
+    #[must_use]
+    pub fn teacher(
+        understood: impl Into<String>,
+        unknown: impl Into<String>,
+        why: impl Into<String>,
+        smallest_repair: impl Into<String>,
+        library_link: impl Into<String>,
+    ) -> Self {
+        Self {
+            understood: understood.into(),
+            unknown: unknown.into(),
+            why: why.into(),
+            smallest_repair: smallest_repair.into(),
+            alternatives: Vec::new(),
+            example: None,
+            deeper_concept: None,
+            authority_consequence: None,
+            library_link: Some(library_link.into()),
+        }
+    }
+
+    /// Flatten for CLI `--help` style output.
+    #[must_use]
+    pub fn as_help_text(&self) -> String {
+        let mut lines = vec![
+            format!("understood: {}", self.understood),
+            format!("unknown: {}", self.unknown),
+            format!("missing: {}", self.unknown),
+            format!("why: {}", self.why),
+            format!("smallest fix: {}", self.smallest_repair),
+        ];
+        if !self.alternatives.is_empty() {
+            lines.push(format!("alternatives: {}", self.alternatives.join("; ")));
+        }
+        if let Some(example) = &self.example {
+            lines.push(format!("example: {example}"));
+        }
+        if let Some(deeper) = &self.deeper_concept {
+            lines.push(format!("deeper: {deeper}"));
+        }
+        if let Some(authority) = &self.authority_consequence {
+            lines.push(format!("authority: {authority}"));
+        }
+        if let Some(link) = &self.library_link {
+            lines.push(format!("library: {link}"));
+        }
+        lines.join("\n")
+    }
+}
+
 /// One diagnostic. `code` is a stable identifier such as `E-TYPE-002`; codes
 /// are never repurposed and message text may improve without changing meaning.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,6 +88,7 @@ pub struct Diagnostic {
     pub primary: Span,
     pub related: Vec<(Span, String)>,
     pub help: Option<String>,
+    pub pedagogy: Option<Pedagogy>,
 }
 
 impl Diagnostic {
@@ -34,6 +101,7 @@ impl Diagnostic {
             primary,
             related: Vec::new(),
             help: None,
+            pedagogy: None,
         }
     }
 
@@ -46,6 +114,7 @@ impl Diagnostic {
             primary,
             related: Vec::new(),
             help: None,
+            pedagogy: None,
         }
     }
 
@@ -58,6 +127,7 @@ impl Diagnostic {
             primary,
             related: Vec::new(),
             help: None,
+            pedagogy: None,
         }
     }
 
@@ -70,6 +140,13 @@ impl Diagnostic {
     #[must_use]
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_pedagogy(mut self, pedagogy: Pedagogy) -> Self {
+        self.help = Some(pedagogy.as_help_text());
+        self.pedagogy = Some(pedagogy);
         self
     }
 }
@@ -123,6 +200,22 @@ impl Diagnostics {
 
     pub fn note(&mut self, code: &'static str, message: impl Into<String>, primary: Span) {
         self.push(Diagnostic::note(code, message, primary));
+    }
+
+    /// Attach pedagogy (`understood` / missing / smallest fix / library) to
+    /// the most recently pushed diagnostic. No-op if the buffer is empty.
+    pub fn attach_help(&mut self, help: impl Into<String>) {
+        if let Some(item) = self.items.last_mut() {
+            item.help = Some(help.into());
+        }
+    }
+
+    /// Attach structured teacher layers to the most recent diagnostic.
+    pub fn attach_pedagogy(&mut self, pedagogy: Pedagogy) {
+        if let Some(item) = self.items.last_mut() {
+            item.help = Some(pedagogy.as_help_text());
+            item.pedagogy = Some(pedagogy);
+        }
     }
 
     pub fn extend_from(&mut self, other: &Diagnostics) {

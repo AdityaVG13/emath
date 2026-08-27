@@ -1,0 +1,6 @@
+schema: emath.diagnostic.explanation v1
+kind: law_falsified
+narrative: epic claimed green without a checker receipt
+witness: none
+receipt: none
+# tutor-check/v1 must refuse this claim.
