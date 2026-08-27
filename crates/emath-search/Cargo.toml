@@ -32,7 +32,7 @@ search = ["dep:frankensearch", "dep:asupersync"]
 # inline-git-rev unification does not apply here. Declaring the same crates.io
 # range makes Cargo unify our Runtime/Cx with frankensearch's into one
 # compiled instance (resolved to the workspace-locked crates.io 0.4.x; the git
-# pins f0270d53... / c17e51931... stay in OTHER crates' graphs and never cross
-# this boundary). Verified via `cargo tree -i asupersync`.
+# git-pinned runtime stays in OTHER crates' graphs and never crosses this
+# boundary). Verified via `cargo tree -i asupersync`.
 asupersync = { version = ">=0.4.4, <0.5", default-features = false, optional = true }
-frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "33ef37a4c663535b832ae057b5c36296215e41f4", default-features = false, features = ["hash", "quill"], optional = true }
+frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "22859f74056c31fd3a713bacecd4a1f22f0cf82d", default-features = false, features = ["hash", "quill"], optional = true }

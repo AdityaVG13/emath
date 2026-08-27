@@ -22,6 +22,7 @@ members = [
   "crates/emath-macro",
   "crates/emath-lab-core",
   "crates/emath-checker",
+  "crates/emath-diagnostics",
   "crates/emath-evidence",
   "crates/emath-schema",
   "crates/emath-store",
@@ -108,6 +109,7 @@ emath-builder = { path = "crates/emath-builder" }
 emath-macro = { path = "crates/emath-macro" }
 emath-lab-core = { path = "crates/emath-lab-core" }
 emath-checker = { path = "crates/emath-checker" }
+emath-diagnostics = { path = "crates/emath-diagnostics" }
 emath-evidence = { path = "crates/emath-evidence" }
 emath-hir = { path = "crates/emath-hir" }
 emath-schema = { path = "crates/emath-schema" }
@@ -134,17 +136,17 @@ emath-wasm = { path = "crates/emath-wasm" }
 # Optionality is decided per consumer (emath-lsp gate: async-runtime feature),
 # so this entry must not be marked optional (Cargo rejects that at workspace
 # level).
-asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "f0270d53c65d48696f79e6860370ffdc8fe735fd", default-features = false }
+asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "9eb0600e6ef4d17633dff3dc43ad99c64e72adbe", default-features = false }
 # frankensqlite evidence-state engine (CUTOVER_PLAN.md §5.2/§9.10, pass 1):
 # fsqlite facade (frankensqlite workspace) at exact-commit pin
-# e705df6960d8a22bb19d12a36d6534116b4b4cd5 (v0.3.4 release). Optional for the
+# 8281cf285433b1746d9c29a598152e58cc205bd8 (v0.3.11 release). Optional for the
 # workspace; the consumer (emath-store sqlite-store feature) decides
 # optionality, so this entry must not be marked optional (Cargo rejects that at
 # workspace level).
-fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev = "e705df6960d8a22bb19d12a36d6534116b4b4cd5", default-features = false }
+fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev = "8281cf285433b1746d9c29a598152e58cc205bd8", default-features = false }
 # frankensearch artifact-corpus search engine (CUTOVER_PLAN.md §5.4/§9.12,
-# pass 3): facade `frankensearch` v0.3.2 at exact-commit pin
-# 33ef37a4c663535b832ae057b5c36296215e41f4 (UPSTREAM_LOCK.json row 12).
+# pass 3): facade `frankensearch` v0.3.2 from repository release v1.7.0 at
+# exact-commit pin 22859f74056c31fd3a713bacecd4a1f22f0cf82d.
 # Unlike frankensqlite/frankengraphdb, frankensearch declares asupersync
 # internally as a crates.io VERSION RANGE (>=0.4.4, <0.5), NOT an internal
 # git rev: emath-search declares the same crates.io range and Cargo
@@ -153,7 +155,7 @@ fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev 
 # workspace; the consumer (emath-search `search` feature) decides
 # optionality, so this entry must not be marked optional (Cargo rejects that
 # at workspace level).
-frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "33ef37a4c663535b832ae057b5c36296215e41f4", default-features = false }
+frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "22859f74056c31fd3a713bacecd4a1f22f0cf82d", default-features = false }
 
 [profile.release]
 opt-level = 3
