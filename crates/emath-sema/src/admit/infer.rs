@@ -300,11 +300,7 @@ pub(super) fn combine_numeric(
         (Infer::F64 | Infer::Nat | Infer::Int, Infer::F64 | Infer::Nat | Infer::Int, _) => {
             Some(Infer::F64)
         }
-        (
-            Infer::Complex,
-            Infer::Complex | Infer::F64 | Infer::Nat | Infer::Int,
-            _,
-        )
+        (Infer::Complex, Infer::Complex | Infer::F64 | Infer::Nat | Infer::Int, _)
         | (Infer::F64 | Infer::Nat | Infer::Int, Infer::Complex, _) => Some(Infer::Complex),
         (
             Infer::HostDeferred,

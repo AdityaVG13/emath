@@ -27,6 +27,10 @@
 - Session limits reach the lexer through the installed parser backend (`E-SYN-108`).
 - Request targets must be outputs or definitions of the declaration (`E-GOAL-041`); produce targets outside `rust.library` are refused (`E-GOAL-042`); request kinds other than `evaluate` are refused (`E-GOAL-043`).
 - Kind schema is the required/optional source of truth: omitted `inputs:` is admitted (`AtMostOne`; a constant-only declaration) and omitted `outputs:` is admitted (`AtMostOne`, default `definitions`) and those definitions are lifted onto the output surface and evaluated. Untyped `inputs:` names default to `Float64` and emit note `N-TYPE-001`. Later `definitions:` may reference earlier definition names. Missing `ExactlyOne` sections refuse with `E-KIND-011`.
+- Ordinary declarations admit structured, binding-named `provenance:`
+  sections into the closed `Provenance` IR. Unknown keys/kinds and malformed
+  variant fields are `E-SYN-152`; unknown binding names are `E-NAME-028`.
+  Law `provenance:` retains its existing list-of-sources semantics.
 - Stateless `emath function name(args) -> T:` head-args lower into the same Field IR as an `inputs:` section. `-> T` declares one output named after the declaration (so `square = x * x` satisfies the binding). Untyped head-args default to `Float64` with `N-TYPE-001`. Mixing head-args with `inputs:` or `-> T` with `outputs:` is `E-SYN-122`. Head-args on a stateful or non-function declaration are `E-SYN-123`.
 - Live `request:` / `requests:` sections refuse with `E-SEC-101` and a `goals:` migration hint.
 - Numeric model selection: omitted `numeric:` defaults to `strict-f64`.

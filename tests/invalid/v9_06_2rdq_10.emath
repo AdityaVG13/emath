@@ -1,0 +1,12 @@
+# expect: E-SYN-101
+use std.kinds.capability
+
+emath capability HiddenLowering:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = x
+    provider_native:
+        x

@@ -24,6 +24,44 @@ pub struct KindDef {
     pub schema: Vec<SchemaRule>,
 }
 
+/// Resolves a declaration-kind schema imported from the standard kind
+/// package. This is data-driven registration: parser and stable IR remain
+/// unaware of the imported kind name.
+pub(super) fn imported_kind(path: &[String]) -> Option<KindDef> {
+    let [root, package, name] = path else {
+        return None;
+    };
+    if root != "std" || package != "kinds" {
+        return None;
+    }
+    let schema = match name.as_str() {
+        "capability" => vec![
+            SchemaRule::RequireSection("inputs".into()),
+            SchemaRule::RequireExactlyOneSection("outputs".into()),
+            SchemaRule::RequireSection("definitions".into()),
+            SchemaRule::AllowSection("evidence".into()),
+        ],
+        "family" => vec![
+            SchemaRule::RequireSection("inputs".into()),
+            SchemaRule::RequireExactlyOneSection("outputs".into()),
+            SchemaRule::RequireSection("definitions".into()),
+            SchemaRule::RequireExactlyOneSection("instances".into()),
+        ],
+        "theory" => vec![
+            SchemaRule::RequireExactlyOneSection("structure".into()),
+            SchemaRule::RequireExactlyOneSection("laws".into()),
+        ],
+        "model" => vec![SchemaRule::RequireExactlyOneSection("finite".into())],
+        "morphism" => vec![SchemaRule::RequireExactlyOneSection("mapping".into())],
+        _ => return None,
+    };
+    Some(KindDef {
+        name: name.clone(),
+        extends: Some("function".into()),
+        schema,
+    })
+}
+
 // ---- per-kind statement-shape rules --------------------------------------
 
 pub(super) const FIELD_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Fields];
@@ -62,7 +100,8 @@ pub(super) const FALLBACK_FIRST_WORDS: &[&str] = &[
     "unresolved",
 ];
 pub(super) const PROFILE_FIRST_WORDS: &[&str] = &["prefer", "fallback"];
-pub(super) const DISPATCH_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny];
+pub(super) const DISPATCH_STMTS: &[StmtShapeKind] =
+    &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny];
 pub(super) const EVIDENCE_STMTS: &[StmtShapeKind] = &[
     StmtShapeKind::Requires,
     StmtShapeKind::Exprs,
@@ -73,8 +112,10 @@ pub(super) const CONSTRUCTOR_STMTS: &[StmtShapeKind] = &[
     StmtShapeKind::Exprs,
     StmtShapeKind::CommandsAny,
 ];
-pub(super) const CONSTRAINT_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Exprs, StmtShapeKind::Equations];
-pub(super) const SCHEMA_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny];
+pub(super) const CONSTRAINT_STMTS: &[StmtShapeKind] =
+    &[StmtShapeKind::Exprs, StmtShapeKind::Equations];
+pub(super) const SCHEMA_STMTS: &[StmtShapeKind] =
+    &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny];
 pub(super) const GENERATE_FIRST_WORDS: &[&str] = &[
     "algebraic_rewrites",
     "providers",
