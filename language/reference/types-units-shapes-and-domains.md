@@ -15,6 +15,37 @@ record, variant, trait, opaque/external
 `Real` is the mathematical concept of real numbers. As a compute type,
 use `Float64` - `Real` is no longer an admitted type alias.
 
+### Measured values and closed provenance
+
+The `core::measure` stdlib schema defines:
+
+```text
+Measured<T> {
+  value: T,
+  std_uncertainty: T,
+  distribution: DistributionKind,
+  provenance: Provenance,
+  timestamp: Option<Timestamp>,
+  instrument: Option<InstrumentRef>
+}
+
+Provenance =
+  Exact | Citation | InstrumentRun | Fitted | Assumed | Unstated
+```
+
+`Provenance` is closed at six variants. It is mandatory on `Measured<T>`;
+`Assumed` and `Unstated` remain visible rather than pretending authority.
+The neutral stdlib API exposes these as `core_measure_schemes()` and the
+value type `Measured<T>`. `Measured::unstated(value, uncertainty)` is the
+default constructor reserved for the uncertainty-literal lowering.
+
+Implemented today in `.emath`: structured provenance can be attached to
+ordinary declaration bindings and inspected with `emath explain
+<file> --provenance`. Direct `Measured<T>` record literals and `±` /
+parenthetical uncertainty syntax belong to the uncertainty-literal and
+record-value lowering slices; the compiler does not claim that syntax yet.
+See [`measured-provenance.emath`](../examples/science/measured-provenance.emath).
+
 ## Refinement types
 
 ```emath
@@ -218,6 +249,13 @@ Compound-unit bracket syntax (`9.81 [unit m/s^2]`) parses and lowers
 to combined dimensions. Unit expressions support `*`, `/`, `^`, and
 parenthesized groups. Left-associativity means `m/s*s` has dimension
 length, not acceleration (C2 trap).
+
+Finite categorical algebra is available through imported declaration kinds,
+not built-in type keywords. `std.kinds.theory` declares finite binary laws,
+`std.kinds.model` exhaustively checks a coefficient-defined modular operation,
+and `std.kinds.morphism` exhaustively checks a scale map. This is a bounded
+decision procedure over at most 256 elements, not a proof about arbitrary or
+infinite carriers. See `examples/intro/v9_06_2rdq_11.emath`.
 
 Numeric models:
 

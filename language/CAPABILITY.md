@@ -9,6 +9,25 @@
 | Form | Parses | Admits | Computes |
 |------|--------|--------|----------|
 | Empty / comment-only / whitespace-only / package-only file | yes (zero declarations) | no (`E-PKG-081`) | no |
+| L0 scratch (`2+2`, `plot`/`solve`/`convert` lines) | yes (desugars to `emath function Scratch:`) | yes | yes (definitions evaluate; inspect with `emath expand`) |
+| L1 guided relationship (`y = x^2 + 4` plus `example x = 3`) | yes (desugars; conflicting example types `E-SYN-142`) | yes | yes (example `given`) |
+| L2 named shorthand (`emath function Name:` body without required sections) | yes (desugars to inferred `inputs:`/`definitions:`; bodyless `E-SYN-143`; conflicting head-args `E-SYN-149`; unknown callee without a hole `E-SYN-150`) | yes | yes |
+| Goal-first verbs (`plot`, `solve`, `simulate`, `compile`, `differentiate`, `integrate`, `convert`) | yes (lower to definitions/goals; `solve` emits a labeled candidate menu) | yes | plot/solve/convert/differentiate/integrate compute; simulate records inspectable intent |
+| `simplify <target>` goal | yes | yes | native exact scalar structural simplification during planning |
+| `emath solve --check` | yes | yes | labeled completions for `solve x^2 = 2` (real ±, complex, modular+modulus hole, symbolic, numeric); never a naked `1.414…` |
+| Unlabeled unique numeric `solve` | no (`E-SYN-151`) | no | no |
+| Hidden desugar (`# emath:hide-desugar`, `@hide_desugar`, `hide alternatives`) | no (`E-SYN-144` / `E-SYN-146`) | no | no |
+| Exactness ledger (`emath exactness`, `--raise units`) | yes | yes | display only |
+| Typed hole (`f(x) = ?`) | yes (`Hole`, `N-HOLE-001`) | yes (durable hole object: constraints, labeled candidates, rejections, continuation) | no (not invented) |
+| Intent verbs `find` `show` `prove` `compare` `share` `build` | yes (Goal IR) | yes | inspectable intent |
+| `emath freeze` / `why` / `assumptions` | yes | yes | freeze writes expanded source plus versioned `emath.freeze.lock.v1`; does not raise evidence |
+| `emath explain E-LAW-001` | yes | yes | Cayley witness from the finite checker (`tutor-check/v1`) |
+| `emath explain <file> --json` | yes | yes | `PlanInspection::to_json` (`emath.plan-explanation v1`) |
+| `emath explain <file> --provenance` | yes | yes | deterministic binding provenance DAG; `--json` schema `emath.provenance-explanation.v1` |
+| Claim exact with open holes | no (`E-SYN-147`) | no | no |
+| Unknown intent verb | no (`E-SYN-148`) | no | no |
+| Scratch mixed with an explicit `emath` declaration | no (`E-SYN-141`) | no | no |
+| Scratch line that is not an expression, assignment, example, or intent | no (`E-SYN-145`) | no | no |
 
 ## Declaration kinds
 
@@ -18,6 +37,8 @@
 | `emath policy` | yes | yes | yes (stateful objects) |
 | `emath model` | yes | yes | yes (`emath simulate` integrates ODEs) |
 | `emath kind` | yes | partial (schema validation) | no |
+| imported `theory` / `model` / `morphism` kinds | yes | yes (finite carriers, exhaustive laws and preservation) | compile-time decision procedure |
+| `emath family` with `use std.kinds.family` | yes | yes (`ElementwiseUnary<Op>`) | expands to ordinary capability cells |
 | `emath custom` | yes | treats as function or refuses | no |
 | other kinds | yes | refuses with named error | no |
 
@@ -34,6 +55,7 @@
 | `goals` | admitted (`evaluate`, `differentiate`, `optimize`) |
 | `exports` `tests` `compile` | admitted |
 | `about` `evidence` `host` | admitted |
+| `provenance` | admitted (closed binding provenance on ordinary declarations; source list on laws) |
 | `transitions` `events` | parses, not admitted |
 | other | `E-SEC-101` |
 
@@ -49,6 +71,7 @@
 | `Vector[n]` `Matrix[r,c]` `Tensor[...]` | yes | yes | yes |
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
 | `Interval<F>` | yes | yes | yes |
+| `Measured<T>` | yes | no (neutral `core::measure` schema/API exists; record-value lowering is separate) | - |
 | `T in unit` | yes | yes | yes |
 | `Rat` bare `Real` | yes | no | - |
 | `Option` `Result` `Graph` `Field` | yes | no | - |

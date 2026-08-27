@@ -42,6 +42,31 @@ A stable standard item has:
 
 An algorithm does not enter `core` merely because it is popular. Contracts and small reference implementations belong in core; broad/high-performance portfolios live in packages.
 
+## Curated law packages
+
+Named mathematics is source, not a compiler builtin. The first embedded
+package is `physics::classical`, documented in
+[`../stdlib/laws/INDEX.md`](../stdlib/laws/INDEX.md). Its algebraic laws
+execute through ordinary function lowering and retain law metadata. Continuum
+laws remain explicit deferrals until their assumptions can be checked.
+
+## Measurement types
+
+`core::measure` defines the neutral `Measured<T>` record schema and the
+closed six-variant `Provenance` type. These are data-driven stdlib schemes,
+not parser keywords. Provenance attached to a source binding participates in
+package identity, while mathematical `MeaningID` remains provenance-neutral.
+The `±` surface and record-literal lowering are owned by their dedicated
+language slices and are not fabricated here.
+
+## Imported declaration-kind schemas
+
+`std.kinds.capability`, `std.kinds.family`, `std.kinds.theory`,
+`std.kinds.model`, and `std.kinds.morphism` mount declaration schemas only when
+explicitly imported. The last three expose a bounded finite-algebra checker:
+theory claims do not self-certify, while model laws and morphism preservation
+gain E2 authority only after exhaustive native checking.
+
 ## Provider contracts
 
 Examples:

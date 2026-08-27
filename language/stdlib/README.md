@@ -33,12 +33,31 @@ compute types (`E-TYPE-010`). See `language/CAPABILITY.md`.
 - graph and state-machine contracts;
 - calculus/optimization goal contracts.
 
+## Native symbolic slice
+
+`core::symbolic` exposes provider-neutral expression/rewrite contracts,
+structural simplification, and an exact univariate polynomial-identity
+decision procedure (degree at most 64). Unsupported Gröbner, CAD, quantified,
+or transcendental claims refuse by name rather than falling through to a
+numeric guess. A future Wrenfold-class adapter implements the same
+`SymbolicOracleContract`.
+
 ## Provider packages
 
-- symbolic simplification/differentiation;
+- broader symbolic simplification/differentiation;
 - root/integration/ODE/optimization;
 - tensor/AD backends;
 - Modelica/Rumoca structural simulation;
 - theorem/proof checkers;
 - interval/certified numerics;
 - hardware and remote execution.
+
+## Curated known mathematics
+
+Executable named laws and honest deferrals are indexed in
+[`laws/INDEX.md`](laws/INDEX.md). Import-only files can resolve selected
+embedded symbols, for example:
+
+```emath
+use physics::classical::{NewtonSecond, Hooke}
+```

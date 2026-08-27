@@ -1,31 +1,42 @@
 # Language Examples
 
-Each example teaches one concept. Read in table order within a section.
+A small set of runnable programs. Syntax, refusals, and “what computes”
+live in [`../reference/`](../reference/overview.md), [`../QUICKSTART.md`](../QUICKSTART.md),
+and [`../CAPABILITY.md`](../CAPABILITY.md) — not a new `.emath` file per feature.
 
-## intro - getting started
+## intro
+
+Declaration syntax is in [`../QUICKSTART.md`](../QUICKSTART.md). These three
+show what is not a homework algebra drill: an unsolved object, calculus,
+and a PDE. Other `.emath` files under `intro/` are the WASM/regression
+corpus, not the reading list.
 
 | Example | Concept |
 |---------|---------|
-| [hello-square.emath](intro/hello-square.emath) | Minimal `emath function`. |
-| [sum-one-to-five.emath](intro/sum-one-to-five.emath) | Finite `sum` binder. |
-| [factorial.emath](intro/factorial.emath) | `product` binder with `Int` output (exact i64). |
-| [range-sum.emath](intro/range-sum.emath) | Variable-bound runtime fold. |
-| [forall-exists.emath](intro/forall-exists.emath) | Quantifier binders over a vector. |
-| [integral.emath](intro/integral.emath) | `integral` binder (Simpson's rule). |
-| [autodiff.emath](intro/autodiff.emath) | `derivative(y) wrt x` - forward-mode autodiff. |
-| [solve.emath](intro/solve.emath) | `solve(f) wrt x` - Newton's method. |
-| [optimize.emath](intro/optimize.emath) | `minimize` / `maximize` - Newton on ∇f = 0. |
-| [constrained-opt.emath](intro/constrained-opt.emath) | `constraints:` section - quadratic exterior penalty (soft). |
-| [tensor-face.emath](intro/tensor-face.emath) | Rank-3 tensor, `:` slice, matrix `expect`. |
-| [einsum.emath](intro/einsum.emath) | `einsum("ik,kj->ij", A, B)` equals `A * B`; implicit mode and `dot`. |
-| [stateful-affine-scorer.emath](intro/stateful-affine-scorer.emath) | `emath policy` with constructor. |
-| [vector-given.emath](intro/vector-given.emath) | `Vector[3]` input, indexing, `dot`. |
-| [notation-ops.emath](intro/notation-ops.emath) | `notation` glyph declarations: unspaced `x⊕y` / `√a`, postfix `inv`, and `alias` `pw` desugar to builtin calls and compute. |
-| [algebraic-dae.emath](intro/algebraic-dae.emath) | Semi-explicit DAE with `emath simulate`. |
-| [causalized-rc.emath](intro/causalized-rc.emath) | Fully implicit DAE — the `algebraic:` residual system is Newton-solved at each step; after `step_euler`/`step_rk4` the algebraic current is projected so `V - R*I - q/C` is ~0 (`Result<Self, String>` on non-convergence). |
-| [modular-arithmetic.emath](intro/modular-arithmetic.emath) | `GF<p>`, `factorial`, `mod_inv`, `congruence`, `rs_encode`, `hamming_distance`. |
-| [attribute-gated.emath](intro/attribute-gated.emath) | `@capabilities(experimental-syntax)` + `@experimental` — the ELP experimental lane gate. |
-| [units.emath](intro/units.emath) | Quantity literals: `1 km + 1 m`, `1 m * 1 m` as `m^2`, cancelled dims, affine `0 degC == 273.15 K`. |
+| [scratch.emath](intro/scratch.emath) | Typed hole: `f(x)=?` with `f'=f`, `f(0)=1`. emath does not invent `f`. |
+| [v9_06_2rdq_10.emath](intro/v9_06_2rdq_10.emath) | `emath capability` admitted through `use std.kinds.capability`, not a parser or stable-IR branch. |
+| [v9_06_2rdq_11.emath](intro/v9_06_2rdq_11.emath) | Imported `theory`, finite `model`, and `morphism`; Mod17 laws and the `Power` scale map are checked exhaustively. |
+| [v9_06_2rdq_12.emath](intro/v9_06_2rdq_12.emath) | `ElementwiseUnary<Op>` family generates `Sin`, `Exp`, and `Sqrt` capability cells through one imported schema. |
+| [autodiff.emath](intro/autodiff.emath) | Forward-mode `derivative(y) wrt x` (dual-number tangent). |
+| [heat-rod-sim.emath](numerical/heat-rod-sim.emath) | 1D heat equation: `der(u) = alpha * laplacian(u, dx)`, `emath simulate`. |
+
+## physics - executable laws
+
+| Example | Concept |
+|---------|---------|
+| [newton-second.emath](physics/newton-second.emath) | `emath law` metadata plus unit-checked, executable `force = mass * acceleration`. |
+
+## science - measured values and provenance
+
+| Example | Concept |
+|---------|---------|
+| [measured-provenance.emath](science/measured-provenance.emath) | Identity-bearing `Citation` and visible `Assumed` provenance, rendered by `emath explain --provenance`. |
+
+## algebra - symbolic computation
+
+| Example | Concept |
+|---------|---------|
+| [symbolic-cas.emath](algebra/symbolic-cas.emath) | `simplify <value>` computes a native structural simplification plan for an exact scalar expression. |
 
 ## numerical - dynamics and PDEs
 
@@ -34,4 +45,6 @@ Each example teaches one concept. Read in table order within a section.
 | [explicit-mass-spring.emath](numerical/explicit-mass-spring.emath) | Coupled mass-spring as one vector-state ODE. Classic RK4 via `emath simulate --set s=[x,v]`; undamped (c=0) tracks x=cos(t). |
 | [heat-rod-sim.emath](numerical/heat-rod-sim.emath) | 1D heat equation: `laplacian` + `emath simulate`. |
 | [heat-plate-sim.emath](numerical/heat-plate-sim.emath) | 2D heat equation: `laplacian_2d` + `emath simulate`. |
+| [heat-volume-sim.emath](numerical/heat-volume-sim.emath) | 3D anisotropic heat equation: rank-3 Tensor, `laplacian_3d`, and RK4 simulation. |
 | [gradient-field.emath](numerical/gradient-field.emath) | `gradient` / `gradient_2d_x` / `gradient_2d_y`. |
+| [spatial-3d.emath](numerical/spatial-3d.emath) | 3D gradients, anisotropic Laplacian, and 1D/2D/3D divergence. |

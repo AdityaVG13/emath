@@ -34,6 +34,23 @@ search, synthesize, prove, verify
 compile, benchmark
 ```
 
+## Native symbolic slice
+
+`simplify <target>` computes during planning for exact integer scalar
+expressions. It recursively folds exact integer constants and applies neutral
+element rewrites such as `x + 0`, `x - 0`, and `x * 1`; the resulting goal
+expression is carried by a `native-symbolic` plan. Rewrite rules use
+`RewritePattern` captures and are labeled `structural-checked`, never `proved`
+without a certificate.
+
+The native algebraic decision procedure compares univariate polynomial
+coefficient vectors exactly for `+`, `-`, `*`, and non-negative integer powers,
+up to degree 64. Overflow/resource failures are `E-SYM-002`; expressions
+outside that fragment, including transcendental and general first-order
+claims, are `E-SYM-003`. Gröbner bases, ideal membership, CAD, and arbitrary
+quantified claims are explicit no-claims pending a compatible provider and
+checker.
+
 ## Goal contract
 
 Each goal includes:

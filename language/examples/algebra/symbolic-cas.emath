@@ -1,0 +1,11 @@
+# Native exact structural simplification.
+emath function SimplifyPolynomial:
+    inputs:
+        x: Int
+    outputs:
+        value: Int
+    definitions:
+        value = (x + 0) * 1
+    goals:
+        simplify <value>:
+            require exact

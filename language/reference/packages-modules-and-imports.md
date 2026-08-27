@@ -40,6 +40,20 @@ use provider::interval as ivl
 
 Import resolution is deterministic under a lock. Wildcard imports cannot silently override an explicit or previously resolved name.
 
+Implemented today: an import-only source can resolve selected symbols from the
+embedded curated law packages, beginning with
+`use physics::classical::{NewtonSecond, Hooke}`. Unknown symbols are
+`E-PKG-053`; aliases and multi-package imports remain outside this narrow
+embedded-package slice. The obsolete unversioned spelling
+`use physics::NewtonSecond` refuses with `E-PKG-052` instead of guessing a
+package. General registry and lock-file resolution has not landed.
+
+The embedded paths are `physics::classical`, `physics::relativity`,
+`cs::laws`, `probability::laws`, `analysis::laws`,
+`number_theory::laws`, and `optimization_control::laws`. Importing one
+selected symbol or a brace-list from one path retains its executable examples
+and law metadata.
+
 ## Visibility
 
 ```text

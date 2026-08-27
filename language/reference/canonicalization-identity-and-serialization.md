@@ -20,6 +20,27 @@ definitions/equations/state
 goals/evidence/compile policy where identity-relevant
 ```
 
+Implemented today: admitted packages expose a `MeaningID` with wire form
+`emath:meaning:v1:<sha256>`. The preimage starts with
+`emath.meaning.canonical.v1` and uses length-framed canonical SIR.
+
+MeaningID ignores whitespace, comments, formatting, spans, declaration/local
+names, hygienic binder names, notation aliases after admission,
+non-authoritative prose, tests, evidence attachments, and host bindings.
+It includes admitted expression/type/unit/shape structure, numeric policy,
+goal requirements, unresolved-meaning state, and sorted dependency
+MeaningIDs. Changing `x * x` to `x * x + 1` changes MeaningID.
+
+MeaningID does not claim arbitrary formulas are mathematically equivalent.
+Such claims require an explicit evidenced relation.
+
+Binding provenance is semantic artifact data, so it participates in canonical
+package/content identity. Replacing `Citation(reference="doi:a")` with
+`Citation(reference="doi:b")` changes the package identity even when the
+number and formula are unchanged. Provenance does not enter `MeaningID`:
+the same admitted formula retains one mathematical identity while its
+source-bearing artifacts remain distinguishable.
+
 ## Canonical encoding
 
 The encoding is versioned, length-framed and deterministic. Maps/sets use declared canonical order. Floating values encode exact bit patterns or exact literal forms according to semantic type. NaN normalization policy is explicit.

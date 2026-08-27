@@ -90,6 +90,15 @@ Every admitted request yields a typed artifact disposition. Unsupported executio
 
 ## Implemented today
 
+Progressive exactness is one language. L0 scratch (`2+2`, `plot`/`solve`/
+`convert`), L1 relationships (`y = x^2 + 4` plus `example x = 3`), L2
+named shorthand (`emath function Name:` without required sections), and
+goal-first verbs (`plot`, `solve`, `simulate`, `compile`, `differentiate`,
+`integrate`) all desugar to the same contracted declaration IR. Inspect
+the rewrite with `emath expand`. `solve` without a domain emits a labeled
+candidate menu (`emath solve --check`); it does not print a naked numeric
+root. Hidden desugaring is `E-SYN-144`.
+
 This chapter is the design of the whole language. The compiler currently
 admits three declaration kinds:
 
@@ -107,7 +116,7 @@ Working sections:
 
 ```text
 inputs outputs state definitions equations equation algebraic
-constructors constraints invariant goals exports tests compile about evidence host
+constructors constraints invariant goals exports tests compile about evidence provenance host
 ```
 
 Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
