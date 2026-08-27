@@ -5,6 +5,62 @@ use emath_ir::{ExprNode, Literal, SemanticPackage};
 
 use crate::{BuiltinId, DomainObligation, EdgePolicy, EmirExprRef, EmirOp, EmirValue};
 
+fn positive_literal(
+    package: &SemanticPackage,
+    expression: EmirExprRef,
+    function: &str,
+    axis: &str,
+) -> Result<f64, String> {
+    match package.expr(expression) {
+        Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
+            let value = f64::from_bits(*bits);
+            if value.is_finite() && value > 0.0 {
+                Ok(value)
+            } else {
+                Err(format!(
+                    "`{function}` {axis} must be a positive finite literal, got {value:?}"
+                ))
+            }
+        }
+        _ => Err(format!(
+            "`{function}` {axis} must be a positive literal constant"
+        )),
+    }
+}
+
+fn stencil3d_weights(axis_weights: [[f64; 3]; 3]) -> Vec<f64> {
+    let mut weights = vec![0.0; 27];
+    let center = 13;
+    weights[center] = axis_weights[0][1] + axis_weights[1][1] + axis_weights[2][1];
+    weights[4] = axis_weights[0][0];
+    weights[22] = axis_weights[0][2];
+    weights[10] = axis_weights[1][0];
+    weights[16] = axis_weights[1][2];
+    weights[12] = axis_weights[2][0];
+    weights[14] = axis_weights[2][2];
+    weights
+}
+
+fn derivative1d_weights(spacing: f64) -> Vec<f64> {
+    let inv = 1.0 / (2.0 * spacing);
+    vec![-inv, 0.0, inv]
+}
+
+fn derivative2d_weights(axis: usize, spacing: f64) -> Vec<f64> {
+    let inv = 1.0 / (2.0 * spacing);
+    match axis {
+        0 => vec![0.0, 0.0, 0.0, -inv, 0.0, inv, 0.0, 0.0, 0.0],
+        _ => vec![0.0, -inv, 0.0, 0.0, 0.0, 0.0, 0.0, inv, 0.0],
+    }
+}
+
+fn derivative3d_weights(axis: usize, spacing: f64) -> Vec<f64> {
+    let inv = 1.0 / (2.0 * spacing);
+    let mut taps = [[0.0; 3]; 3];
+    taps[axis] = [-inv, 0.0, inv];
+    stencil3d_weights(taps)
+}
+
 impl super::Emitter {
     pub(crate) fn emit_call(
         &mut self,
@@ -97,21 +153,7 @@ impl super::Emitter {
                 let input = self.emit(package, args[0])?;
                 // Phase 1: dx must be a positive literal so the stencil weights
                 // are fixed at emission (no runtime division, no IEEE inf/NaN).
-                let dx = match package.expr(args[1]) {
-                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
-                        let v = f64::from_bits(*bits);
-                        if !v.is_finite() || v <= 0.0 {
-                            return Err(format!(
-                                "`laplacian` dx must be a positive finite literal, got {v:?}"
-                            ));
-                        }
-                        v
-                    }
-                    _ => return Err(
-                        "`laplacian` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                            .to_string(),
-                    ),
-                };
+                let dx = positive_literal(package, args[1], function, "dx")?;
                 let inv = 1.0 / (dx * dx);
                 self.push(
                     EmirOp::Stencil1d {
@@ -131,21 +173,7 @@ impl super::Emitter {
                     ));
                 }
                 let input = self.emit(package, args[0])?;
-                let dx = match package.expr(args[1]) {
-                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
-                        let v = f64::from_bits(*bits);
-                        if !v.is_finite() || v <= 0.0 {
-                            return Err(format!(
-                                "`laplacian_neumann` dx must be a positive finite literal, got {v:?}"
-                            ));
-                        }
-                        v
-                    }
-                    _ => return Err(
-                        "`laplacian_neumann` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                            .to_string(),
-                    ),
-                };
+                let dx = positive_literal(package, args[1], function, "dx")?;
                 let inv = 1.0 / (dx * dx);
                 self.push(
                     EmirOp::Stencil1d {
@@ -165,21 +193,7 @@ impl super::Emitter {
                     ));
                 }
                 let input = self.emit(package, args[0])?;
-                let dx = match package.expr(args[1]) {
-                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
-                        let v = f64::from_bits(*bits);
-                        if !v.is_finite() || v <= 0.0 {
-                            return Err(format!(
-                                "`laplacian_dirichlet` dx must be a positive finite literal, got {v:?}"
-                            ));
-                        }
-                        v
-                    }
-                    _ => return Err(
-                        "`laplacian_dirichlet` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                            .to_string(),
-                    ),
-                };
+                let dx = positive_literal(package, args[1], function, "dx")?;
                 let g_left = match package.expr(args[2]) {
                     Some(ExprNode::Literal(Literal::FloatBits(bits))) => f64::from_bits(*bits),
                     _ => return Err(
@@ -216,22 +230,7 @@ impl super::Emitter {
                     ));
                 }
                 let input = self.emit(package, args[0])?;
-                let dx = match package.expr(args[1]) {
-                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
-                        let v = f64::from_bits(*bits);
-                        if !v.is_finite() || v <= 0.0 {
-                            return Err(format!(
-                                "`{function}` dx must be a positive finite literal, got {v:?}"
-                            ));
-                        }
-                        v
-                    }
-                    _ => {
-                        return Err(format!(
-                            "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                        ));
-                    }
-                };
+                let dx = positive_literal(package, args[1], function, "dx")?;
                 let inv = 1.0 / (dx * dx);
                 // 5-point Laplacian: [[0,1,0],[1,-4,1],[0,1,0]] / dx^2.
                 let weights = vec![0.0, inv, 0.0, inv, -4.0 * inv, inv, 0.0, inv, 0.0];
@@ -263,26 +262,11 @@ impl super::Emitter {
                     ));
                 }
                 let input = self.emit(package, args[0])?;
-                let dx = match package.expr(args[1]) {
-                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
-                        let v = f64::from_bits(*bits);
-                        if !v.is_finite() || v <= 0.0 {
-                            return Err(format!(
-                                "`gradient` dx must be a positive finite literal, got {v:?}"
-                            ));
-                        }
-                        v
-                    }
-                    _ => return Err(
-                        "`gradient` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                            .to_string(),
-                    ),
-                };
-                let inv = 1.0 / (2.0 * dx);
+                let dx = positive_literal(package, args[1], function, "dx")?;
                 self.push(
                     EmirOp::Stencil1d {
                         input,
-                        weights: vec![-inv, 0.0, inv],
+                        weights: derivative1d_weights(dx),
                         center: 1,
                         edge: EdgePolicy::OneSided,
                     },
@@ -303,39 +287,165 @@ impl super::Emitter {
                     ));
                 }
                 let input = self.emit(package, args[0])?;
-                let dx = match package.expr(args[1]) {
-                    Some(ExprNode::Literal(Literal::FloatBits(bits))) => {
-                        let v = f64::from_bits(*bits);
-                        if !v.is_finite() || v <= 0.0 {
-                            return Err(format!(
-                                "`{function}` dx must be a positive finite literal, got {v:?}"
-                            ));
-                        }
-                        v
-                    }
-                    _ => {
-                        return Err(format!(
-                            "`{function}` dx must be a positive literal constant in Phase 1; variable dx is not yet supported"
-                        ));
-                    }
-                };
-                let inv = 1.0 / (2.0 * dx);
-                let weights = if function == "gradient_2d_x" {
-                    // du/dc: taps at (1,0)=-inv and (1,2)=+inv.
-                    vec![0.0, 0.0, 0.0, -inv, 0.0, inv, 0.0, 0.0, 0.0]
-                } else {
-                    // du/dr: taps at (0,1)=-inv and (2,1)=+inv.
-                    vec![0.0, -inv, 0.0, 0.0, 0.0, 0.0, 0.0, inv, 0.0]
-                };
+                let dx = positive_literal(package, args[1], function, "dx")?;
+                let axis = usize::from(function == "gradient_2d_y");
                 self.push(
                     EmirOp::Stencil2d {
                         input,
-                        weights,
+                        weights: derivative2d_weights(axis, dx),
                         center: (1, 1),
                         edge: EdgePolicy::OneSided,
                     },
                     span,
                 )
+            }
+            "laplacian_3d" | "laplacian_3d_neumann" => {
+                if !matches!(args.len(), 2 | 4) {
+                    return Err(format!(
+                        "`{function}` expects (tensor, spacing) or (tensor, dx, dy, dz)"
+                    ));
+                }
+                let input = self.emit(package, args[0])?;
+                let spacing = if args.len() == 2 {
+                    let h = positive_literal(package, args[1], function, "spacing")?;
+                    [h, h, h]
+                } else {
+                    [
+                        positive_literal(package, args[1], function, "dx")?,
+                        positive_literal(package, args[2], function, "dy")?,
+                        positive_literal(package, args[3], function, "dz")?,
+                    ]
+                };
+                let inv = spacing.map(|h| 1.0 / (h * h));
+                let weights = stencil3d_weights([
+                    [inv[0], -2.0 * inv[0], inv[0]],
+                    [inv[1], -2.0 * inv[1], inv[1]],
+                    [inv[2], -2.0 * inv[2], inv[2]],
+                ]);
+                let edge = if function == "laplacian_3d_neumann" {
+                    EdgePolicy::Neumann
+                } else {
+                    EdgePolicy::Clamp
+                };
+                self.push(
+                    EmirOp::Stencil3d {
+                        input,
+                        weights,
+                        center: (1, 1, 1),
+                        edge,
+                    },
+                    span,
+                )
+            }
+            "gradient_3d_x" | "gradient_3d_y" | "gradient_3d_z" => {
+                if args.len() != 2 {
+                    return Err(format!("`{function}` expects (tensor, spacing)"));
+                }
+                let input = self.emit(package, args[0])?;
+                let spacing = positive_literal(package, args[1], function, "spacing")?;
+                let axis = match function {
+                    "gradient_3d_x" => 0,
+                    "gradient_3d_y" => 1,
+                    _ => 2,
+                };
+                self.push(
+                    EmirOp::Stencil3d {
+                        input,
+                        weights: derivative3d_weights(axis, spacing),
+                        center: (1, 1, 1),
+                        edge: EdgePolicy::OneSided,
+                    },
+                    span,
+                )
+            }
+            "div_1d" => {
+                if args.len() != 2 {
+                    return Err("`div_1d` expects (vx, dx)".to_string());
+                }
+                let input = self.emit(package, args[0])?;
+                let dx = positive_literal(package, args[1], function, "dx")?;
+                self.push(
+                    EmirOp::Stencil1d {
+                        input,
+                        weights: derivative1d_weights(dx),
+                        center: 1,
+                        edge: EdgePolicy::OneSided,
+                    },
+                    span,
+                )
+            }
+            "div_2d" => {
+                if !matches!(args.len(), 3 | 4) {
+                    return Err(
+                        "`div_2d` expects (vx, vy, spacing) or (vx, vy, dx, dy)".to_string()
+                    );
+                }
+                let vx = self.emit(package, args[0])?;
+                let vy = self.emit(package, args[1])?;
+                let (dx, dy) = if args.len() == 3 {
+                    let h = positive_literal(package, args[2], function, "spacing")?;
+                    (h, h)
+                } else {
+                    (
+                        positive_literal(package, args[2], function, "dx")?,
+                        positive_literal(package, args[3], function, "dy")?,
+                    )
+                };
+                let x = self.push(
+                    EmirOp::Stencil2d {
+                        input: vx,
+                        weights: derivative2d_weights(0, dx),
+                        center: (1, 1),
+                        edge: EdgePolicy::OneSided,
+                    },
+                    span,
+                )?;
+                let y = self.push(
+                    EmirOp::Stencil2d {
+                        input: vy,
+                        weights: derivative2d_weights(1, dy),
+                        center: (1, 1),
+                        edge: EdgePolicy::OneSided,
+                    },
+                    span,
+                )?;
+                self.push(EmirOp::MatrixAdd(x, y), span)
+            }
+            "div" | "div_3d" => {
+                if !matches!(args.len(), 4 | 6) {
+                    return Err(format!(
+                        "`{function}` expects (vx, vy, vz, spacing) or (vx, vy, vz, dx, dy, dz)"
+                    ));
+                }
+                let fields = [
+                    self.emit(package, args[0])?,
+                    self.emit(package, args[1])?,
+                    self.emit(package, args[2])?,
+                ];
+                let spacing = if args.len() == 4 {
+                    let h = positive_literal(package, args[3], function, "spacing")?;
+                    [h, h, h]
+                } else {
+                    [
+                        positive_literal(package, args[3], function, "dx")?,
+                        positive_literal(package, args[4], function, "dy")?,
+                        positive_literal(package, args[5], function, "dz")?,
+                    ]
+                };
+                let mut derivatives = [EmirValue(0); 3];
+                for axis in 0..3 {
+                    derivatives[axis] = self.push(
+                        EmirOp::Stencil3d {
+                            input: fields[axis],
+                            weights: derivative3d_weights(axis, spacing[axis]),
+                            center: (1, 1, 1),
+                            edge: EdgePolicy::OneSided,
+                        },
+                        span,
+                    )?;
+                }
+                let xy = self.push(EmirOp::TensorAdd(derivatives[0], derivatives[1]), span)?;
+                self.push(EmirOp::TensorAdd(xy, derivatives[2]), span)
             }
             "transpose" => {
                 let v = self.emit(package, args[0])?;

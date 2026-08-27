@@ -235,6 +235,18 @@ impl super::Admitter {
                     // B14: `i` is the imaginary unit (0 + 1i). It is a
                     // named constant, not a reserved keyword — only
                     // recognized when not shadowed by an input/definition.
+                    if segments[0] == "Hole" {
+                        self.note(
+                            "N-HOLE-001",
+                            "open hole; meaning stays open and is not claimed exact",
+                            expr.source,
+                        );
+                        let id = self.push_expr(
+                            ExprNode::Variable(QualifiedName("Hole".to_string())),
+                            expr.source,
+                        );
+                        return Some((id, Infer::HostDeferred));
+                    }
                     if segments[0] == "i" {
                         self.record("sema", "imaginary unit `i` → Complex(0, 1)", expr.source);
                         let id = self.push_expr(
@@ -272,7 +284,9 @@ impl super::Admitter {
                 // Function duals of `+ - * /` and unary `-`. Notation
                 // targets (`core::math::add`) and qualified calls must
                 // compute the same IR as the operators, matching `pow`/`^`.
-                if matches!(name.as_str(), "add" | "sub" | "mul" | "div") {
+                if matches!(name.as_str(), "add" | "sub" | "mul")
+                    || (name == "div" && args.len() == 2)
+                {
                     if args.len() != 2 {
                         self.error(
                             "E-TYPE-012",
@@ -342,10 +356,56 @@ impl super::Admitter {
                     | "gradient"
                     | "gradient_2d_x"
                     | "gradient_2d_y"
+                    | "gradient_3d_x"
+                    | "gradient_3d_y"
+                    | "gradient_3d_z"
+                    | "div_1d"
                     | "mod_inv"
                     | "hamming_distance" => Some(2),
                     "lerp" | "clamp" | "congruence" | "poly_eval_mod" | "rs_encode" => Some(3),
                     "laplacian_dirichlet" => Some(4),
+                    "laplacian_3d" | "laplacian_3d_neumann" => {
+                        if !matches!(args.len(), 2 | 4) {
+                            self.error(
+                                "E-TYPE-012",
+                                format!(
+                                    "`{name}` expects (tensor, spacing) or (tensor, dx, dy, dz), found {} arguments",
+                                    args.len()
+                                ),
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        Some(args.len())
+                    }
+                    "div_2d" => {
+                        if !matches!(args.len(), 3 | 4) {
+                            self.error(
+                                "E-TYPE-012",
+                                format!(
+                                    "`div_2d` expects (vx, vy, spacing) or (vx, vy, dx, dy), found {} arguments",
+                                    args.len()
+                                ),
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        Some(args.len())
+                    }
+                    "div" | "div_3d" => {
+                        if !matches!(args.len(), 4 | 6) {
+                            self.error(
+                                "E-TYPE-012",
+                                format!(
+                                    "`{name}` expects (vx, vy, vz, spacing) or (vx, vy, vz, dx, dy, dz), found {} arguments",
+                                    args.len()
+                                ),
+                                expr.source,
+                            );
+                            return None;
+                        }
+                        Some(args.len())
+                    }
                     "einsum" => {
                         // einsum(subscripts, tensor1, ...) — variable arity, min 2.
                         if args.len() < 2 {
@@ -372,7 +432,7 @@ impl super::Admitter {
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(
-                                "unknown function `{name}` (Phase 1 builtins — math: add, sub, mul, div, neg, exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; autodiff: grad; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, gradient, gradient_2d_x, gradient_2d_y; coding: poly_eval_mod, rs_encode, hamming_distance; logic: not. Use bare names or namespace::name)"
+                                "unknown function `{name}` (Phase 1 builtins — math: add, sub, mul, div, neg, exp, ln, log, sqrt, sin, cos, tan, tanh, abs, floor, ceil, round, sign, log2, log10, sinh, cosh, atan, cbrt, recip, fract, min, max, atan2, pow, mod, hypot, is_finite, factorial, mod_inv, congruence; autodiff: grad; linalg: norm, transpose, dot, length, einsum; pde: laplacian, laplacian_neumann, laplacian_dirichlet, laplacian_2d, laplacian_2d_neumann, laplacian_3d, laplacian_3d_neumann, gradient, gradient_2d_x, gradient_2d_y, gradient_3d_x, gradient_3d_y, gradient_3d_z, div_1d, div_2d, div/div_3d; coding: poly_eval_mod, rs_encode, hamming_distance; logic: not. Use bare names or namespace::name)"
                             ),
                             function.source,
                         );
@@ -619,6 +679,190 @@ impl super::Admitter {
                             expr.source,
                         );
                         Some((id, Infer::Matrix { rows, cols }))
+                    }
+                    "laplacian_3d"
+                    | "laplacian_3d_neumann"
+                    | "gradient_3d_x"
+                    | "gradient_3d_y"
+                    | "gradient_3d_z" => {
+                        let (tensor_id, tensor_infer) = self.lower_expr(&args[0])?;
+                        let shape = match tensor_infer {
+                            Infer::Tensor { shape } if shape.len() == 3 => shape,
+                            Infer::HostDeferred => Vec::new(),
+                            _ => {
+                                self.error(
+                                    "E-TYPE-012",
+                                    format!("`{name}` expects a rank-3 Tensor first argument"),
+                                    args[0].source,
+                                );
+                                return None;
+                            }
+                        };
+                        let mut arguments = vec![tensor_id];
+                        for spacing in &args[1..] {
+                            let (spacing_id, spacing_infer) = self.lower_expr(spacing)?;
+                            if !matches!(spacing_infer, Infer::F64 | Infer::HostDeferred) {
+                                self.error(
+                                    "E-TYPE-012",
+                                    format!("`{name}` spacing arguments must be Float64"),
+                                    spacing.source,
+                                );
+                                return None;
+                            }
+                            arguments.push(spacing_id);
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments,
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Tensor { shape }))
+                    }
+                    "div_1d" => {
+                        let (field_id, field_infer) = self.lower_expr(&args[0])?;
+                        let extent = match field_infer {
+                            Infer::Vector { extent } => extent,
+                            Infer::HostDeferred => None,
+                            _ => {
+                                self.error(
+                                    "E-TYPE-012",
+                                    "`div_1d` expects a Vector first argument",
+                                    args[0].source,
+                                );
+                                return None;
+                            }
+                        };
+                        let (dx_id, dx_infer) = self.lower_expr(&args[1])?;
+                        if !matches!(dx_infer, Infer::F64 | Infer::HostDeferred) {
+                            self.error(
+                                "E-TYPE-012",
+                                "`div_1d` spacing must be Float64",
+                                args[1].source,
+                            );
+                            return None;
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments: vec![field_id, dx_id],
+                            },
+                            expr.source,
+                        );
+                        Some((id, Infer::Vector { extent }))
+                    }
+                    "div_2d" => {
+                        let mut shape = None;
+                        let mut arguments = Vec::with_capacity(args.len());
+                        for field in &args[..2] {
+                            let (field_id, field_infer) = self.lower_expr(field)?;
+                            let found = match field_infer {
+                                Infer::Matrix { rows, cols } => Some((rows, cols)),
+                                Infer::HostDeferred => None,
+                                _ => {
+                                    self.error(
+                                        "E-TYPE-012",
+                                        "`div_2d` field arguments must be Matrix values",
+                                        field.source,
+                                    );
+                                    return None;
+                                }
+                            };
+                            if let (Some(expected), Some(found)) = (&shape, &found) {
+                                if expected != found {
+                                    self.error(
+                                        "E-SHAPE-005",
+                                        "`div_2d` field arguments must have equal shapes",
+                                        field.source,
+                                    );
+                                    return None;
+                                }
+                            } else if found.is_some() {
+                                shape = found;
+                            }
+                            arguments.push(field_id);
+                        }
+                        for spacing in &args[2..] {
+                            let (spacing_id, spacing_infer) = self.lower_expr(spacing)?;
+                            if !matches!(spacing_infer, Infer::F64 | Infer::HostDeferred) {
+                                self.error(
+                                    "E-TYPE-012",
+                                    "`div_2d` spacing arguments must be Float64",
+                                    spacing.source,
+                                );
+                                return None;
+                            }
+                            arguments.push(spacing_id);
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments,
+                            },
+                            expr.source,
+                        );
+                        let (rows, cols) = shape.unwrap_or((None, None));
+                        Some((id, Infer::Matrix { rows, cols }))
+                    }
+                    "div" | "div_3d" => {
+                        let mut shape: Option<Vec<Extent>> = None;
+                        let mut arguments = Vec::with_capacity(args.len());
+                        for field in &args[..3] {
+                            let (field_id, field_infer) = self.lower_expr(field)?;
+                            let found = match field_infer {
+                                Infer::Tensor { shape } if shape.len() == 3 => Some(shape),
+                                Infer::HostDeferred => None,
+                                _ => {
+                                    self.error(
+                                        "E-TYPE-012",
+                                        format!(
+                                            "`{name}` field arguments must be rank-3 Tensor values"
+                                        ),
+                                        field.source,
+                                    );
+                                    return None;
+                                }
+                            };
+                            if let (Some(expected), Some(found)) = (&shape, &found) {
+                                if expected != found {
+                                    self.error(
+                                        "E-SHAPE-005",
+                                        format!("`{name}` field arguments must have equal shapes"),
+                                        field.source,
+                                    );
+                                    return None;
+                                }
+                            } else if found.is_some() {
+                                shape = found;
+                            }
+                            arguments.push(field_id);
+                        }
+                        for spacing in &args[3..] {
+                            let (spacing_id, spacing_infer) = self.lower_expr(spacing)?;
+                            if !matches!(spacing_infer, Infer::F64 | Infer::HostDeferred) {
+                                self.error(
+                                    "E-TYPE-012",
+                                    format!("`{name}` spacing arguments must be Float64"),
+                                    spacing.source,
+                                );
+                                return None;
+                            }
+                            arguments.push(spacing_id);
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments,
+                            },
+                            expr.source,
+                        );
+                        Some((
+                            id,
+                            Infer::Tensor {
+                                shape: shape.unwrap_or_default(),
+                            },
+                        ))
                     }
                     "transpose" => {
                         let (arg_id, arg_infer) = self.lower_expr(&args[0])?;
@@ -1332,6 +1576,32 @@ impl super::Admitter {
                                 Infer::Matrix {
                                     rows: rows.clone(),
                                     cols: cols.clone(),
+                                },
+                            )
+                        }
+                        (Infer::Tensor { shape }, Infer::F64 | Infer::HostDeferred) => {
+                            self.record("sema", "tensor scale", expr.source);
+                            arithmetic(
+                                self,
+                                emath_ir::BinaryOp::TensorScale,
+                                expr,
+                                l,
+                                r,
+                                Infer::Tensor {
+                                    shape: shape.clone(),
+                                },
+                            )
+                        }
+                        (Infer::F64 | Infer::HostDeferred, Infer::Tensor { shape }) => {
+                            self.record("sema", "tensor scale", expr.source);
+                            arithmetic(
+                                self,
+                                emath_ir::BinaryOp::TensorScale,
+                                expr,
+                                r,
+                                l,
+                                Infer::Tensor {
+                                    shape: shape.clone(),
                                 },
                             )
                         }

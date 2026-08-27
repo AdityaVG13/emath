@@ -16,7 +16,7 @@ mod value;
 use dual::evaluate_dual;
 use helpers::*;
 use reverse::evaluate_reverse;
-pub use value::{format_f64, EvalFault, Value};
+pub use value::{EvalFault, Value, format_f64};
 
 /// Evaluate `program` in one forward pass; slots are indexed by
 /// [`EmirOp::LoadInput`] / [`EmirOp::LoadState`], missing slots are
@@ -157,7 +157,7 @@ pub(super) fn eval_op(
         EmirOp::UnaryBuiltin(id, value) => match register(registers, value)? {
             Value::Complex { re, im } => eval_complex_unary(id, *re, *im, value.0, name),
             _ => Ok(Value::F64(id.eval_unary(f64_of(registers, value, name)?))),
-        }
+        },
         EmirOp::BinaryBuiltin(id, left, right) => {
             let l = f64_of(registers, left, name)?;
             let r = f64_of(registers, right, name)?;
@@ -341,6 +341,42 @@ pub(super) fn eval_op(
                 data: flatten_rows(&out),
             })
         }
+        EmirOp::Stencil3d {
+            input,
+            ref weights,
+            center,
+            edge,
+        } => {
+            let (shape, data) = tensor_of(registers, input, name)?;
+            let w27: &[f64; 27] =
+                weights
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| EvalFault::Arithmetic {
+                        op: name,
+                        detail: "3D stencil weights must have length 27",
+                    })?;
+            let edge = match edge {
+                EdgePolicy::Clamp => emath_rt::EdgePolicy::Clamp,
+                EdgePolicy::Neumann => emath_rt::EdgePolicy::Neumann,
+                EdgePolicy::OneSided => emath_rt::EdgePolicy::OneSided,
+                EdgePolicy::Dirichlet { left, right } => {
+                    emath_rt::EdgePolicy::Dirichlet { left, right }
+                }
+            };
+            emath_rt::stencil_3d_slices_checked(
+                shape,
+                data,
+                w27,
+                (center.0 as i64, center.1 as i64, center.2 as i64),
+                edge,
+            )
+            .map(|out| Value::Tensor {
+                shape: out.shape,
+                data: out.data,
+            })
+            .map_err(|detail| EvalFault::Arithmetic { op: name, detail })
+        }
         EmirOp::MatrixAdd(left, right) => {
             let (r1, c1, d1) = matrix_of(registers, left, name)?;
             let (r2, c2, d2) = matrix_of(registers, right, name)?;
@@ -501,6 +537,19 @@ pub(super) fn eval_op(
                 shape: s1.to_vec(),
                 data: emath_rt::tensor_sub(d1, d2),
             })
+        }
+        EmirOp::TensorScale(left, right) => {
+            match (register(registers, left)?, register(registers, right)?) {
+                (Value::Tensor { shape, data }, Value::F64(scale))
+                | (Value::F64(scale), Value::Tensor { shape, data }) => Ok(Value::Tensor {
+                    shape: shape.clone(),
+                    data: emath_rt::tensor_scale(data, *scale),
+                }),
+                _ => Err(EvalFault::TypeConfusion {
+                    register: left.0,
+                    op: name,
+                }),
+            }
         }
         EmirOp::Einsum {
             ref subscripts,

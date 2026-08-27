@@ -177,6 +177,7 @@ pub enum BinaryOp {
     MatrixMulMatrix,
     TensorAdd,
     TensorSub,
+    TensorScale,
 }
 
 impl BinaryOp {
@@ -215,6 +216,7 @@ impl BinaryOp {
             Self::MatrixMulMatrix => "mat-mul-mat",
             Self::TensorAdd => "tensor-add",
             Self::TensorSub => "tensor-sub",
+            Self::TensorScale => "tensor-scale",
         }
     }
 

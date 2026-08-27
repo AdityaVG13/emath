@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use super::{eval_op, EvalFault, Value};
+use super::{EvalFault, Value, eval_op};
 use crate::{EmirOp, EmirProgram, EmirValue};
 
 /// Gradients of `program` w.r.t. each `var_indices` entry: forward pass
@@ -129,20 +129,14 @@ fn backward_step(
         EmirOp::Neg(a) => push_adj(adjoints, a, -adj),
         EmirOp::UnaryBuiltin(id, a) => {
             let primal_in = p(a)?;
-            let primal_out = primals
-                .get(idx)
-                .and_then(Value::as_real_f64)
-                .unwrap_or(0.0);
+            let primal_out = primals.get(idx).and_then(Value::as_real_f64).unwrap_or(0.0);
             let input_adj = id.backward_unary(primal_in, primal_out, adj);
             push_adj(adjoints, a, input_adj);
         }
         EmirOp::F64Pow(a, b) => {
             let pa = p(a)?;
             let pb = p(b)?;
-            let primal_out = primals
-                .get(idx)
-                .and_then(Value::as_real_f64)
-                .unwrap_or(0.0);
+            let primal_out = primals.get(idx).and_then(Value::as_real_f64).unwrap_or(0.0);
             // d/da [a^b] = b * a^(b-1). Skipping at a==0 was wrong:
             // d/dx[x^1]|_0 = 1, not 0. x^0 is identically 1.
             if pb == 0.0 {
@@ -159,10 +153,7 @@ fn backward_step(
         EmirOp::BinaryBuiltin(id, a, b) => {
             let pa = p(a)?;
             let pb = p(b)?;
-            let primal_out = primals
-                .get(idx)
-                .and_then(Value::as_real_f64)
-                .unwrap_or(0.0);
+            let primal_out = primals.get(idx).and_then(Value::as_real_f64).unwrap_or(0.0);
             let (adj_a, adj_b) = id.backward_binary(pa, pb, primal_out, adj);
             push_adj(adjoints, a, adj_a);
             push_adj(adjoints, b, adj_b);
@@ -285,7 +276,9 @@ fn backward_step(
 }
 
 fn add_vec_adj(vec_adjoints: &mut HashMap<usize, Vec<f64>>, idx: usize, delta: &[f64]) {
-    let slot = vec_adjoints.entry(idx).or_insert_with(|| vec![0.0; delta.len()]);
+    let slot = vec_adjoints
+        .entry(idx)
+        .or_insert_with(|| vec![0.0; delta.len()]);
     if slot.len() != delta.len() {
         slot.resize(delta.len(), 0.0);
     }

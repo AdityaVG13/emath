@@ -2,11 +2,11 @@ use std::collections::{BTreeSet, HashMap};
 
 use emath_exec_ir::optimize::{is_total, operand_registers};
 use emath_exec_ir::{EdgePolicy, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
-use emath_rust_ir::ast::{escape_ident, BinOp, Block, Expr, Stmt, Ty, UnOp};
+use emath_rust_ir::ast::{BinOp, Block, Expr, Stmt, Ty, UnOp, escape_ident};
 use emath_rust_ir::render::render_expr;
 
-use crate::codegen_helpers::comparison;
 use crate::BackendError;
+use crate::codegen_helpers::comparison;
 
 /// Scalar kind of an EMIR register in generated Rust. Mirrors interp:
 /// I64×I64 add/sub/mul/neg and integer folds stay `i64`; everything else
@@ -116,11 +116,7 @@ fn kind_of_op(
         } => {
             let t = kind_at(kinds, *then_value);
             let e = kind_at(kinds, *else_value);
-            if t == e {
-                t
-            } else {
-                ScalarKind::F64
-            }
+            if t == e { t } else { ScalarKind::F64 }
         }
         EmirOp::Fold {
             combine,
@@ -612,7 +608,8 @@ fn op_may_index_fault(op: &EmirOp) -> bool {
         EmirOp::VectorIndex { .. }
         | EmirOp::MatrixIndex { .. }
         | EmirOp::TensorIndex { .. }
-        | EmirOp::TensorSlice { .. } => true,
+        | EmirOp::TensorSlice { .. }
+        | EmirOp::Stencil3d { .. } => true,
         EmirOp::Fold { body, .. }
         | EmirOp::Differentiate { body, .. }
         | EmirOp::Solve { body, .. }
@@ -1035,6 +1032,31 @@ pub(crate) fn op_expr(
                 ],
             ))
         }
+        EmirOp::Stencil3d {
+            input,
+            weights,
+            center,
+            edge,
+        } => {
+            if matches!(edge, EdgePolicy::Dirichlet { .. }) {
+                return Err(BackendError::Lowering(
+                    "3D Dirichlet boundary is not yet supported for Stencil3d".to_string(),
+                ));
+            }
+            let weights = weights
+                .iter()
+                .map(|weight| format!("{weight:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(map_index_result(format!(
+                "emath_rt::stencil_3d_checked({}, &[{weights}], ({}, {}, {}), {})",
+                render_expr(&operand_ref(program, *input)),
+                center.0,
+                center.1,
+                center.2,
+                render_expr(&edge_policy_literal(edge)),
+            )))
+        }
         EmirOp::MatrixAdd(l, r) => Ok(rt_call(
             "mat_add",
             vec![operand_ref(program, *l), operand_ref(program, *r)],
@@ -1089,6 +1111,11 @@ pub(crate) fn op_expr(
             "emath_rt::Tensor {{ shape: {left}.shape.clone(), data: emath_rt::tensor_sub(&{left}.data, &{right}.data) }}",
             left = render_expr(&operand(program, *l)),
             right = render_expr(&operand(program, *r)),
+        ))),
+        EmirOp::TensorScale(tensor, scale) => Ok(Expr::Raw(format!(
+            "emath_rt::Tensor {{ shape: {tensor}.shape.clone(), data: emath_rt::tensor_scale(&{tensor}.data, {scale}) }}",
+            tensor = render_expr(&operand(program, *tensor)),
+            scale = render_expr(&typed_operand(program, *scale, ScalarKind::F64, &kinds)),
         ))),
         EmirOp::Einsum { subscripts, inputs } => {
             let operands = inputs

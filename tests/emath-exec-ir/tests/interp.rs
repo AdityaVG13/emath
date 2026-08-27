@@ -1,5 +1,5 @@
 use emath_core::Span;
-use emath_exec_ir::interp::{evaluate, EvalFault, Value};
+use emath_exec_ir::interp::{EvalFault, Value, evaluate};
 use emath_exec_ir::{BuiltinId, EdgePolicy, EmirOp, EmirProgram, EmirValue, FoldCombine};
 
 fn program(ops: Vec<EmirOp>) -> EmirProgram {
@@ -1179,6 +1179,43 @@ fn stencil2d_prog(
     }
 }
 
+fn stencil3d_prog(
+    weights: Vec<f64>,
+    shape: [usize; 3],
+    data: Vec<f64>,
+    edge: EdgePolicy,
+) -> EmirProgram {
+    let n = data.len();
+    let mut ops: Vec<EmirOp> = data.iter().map(|value| const_bits(*value)).collect();
+    let elements = (0..n).map(|index| EmirValue(index as u32)).collect();
+    ops.push(EmirOp::TensorCreate {
+        shape: shape.to_vec(),
+        elements,
+    });
+    ops.push(EmirOp::Stencil3d {
+        input: EmirValue(n as u32),
+        weights,
+        center: (1, 1, 1),
+        edge,
+    });
+    EmirProgram {
+        result: EmirValue(ops.len() as u32 - 1),
+        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
+        input_count: 0,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+fn derivative3d_weights(axis: usize, spacing: f64) -> Vec<f64> {
+    let mut weights = vec![0.0; 27];
+    let inv = 1.0 / (2.0 * spacing);
+    let (negative, positive) = [(4, 22), (10, 16), (12, 14)][axis];
+    weights[negative] = -inv;
+    weights[positive] = inv;
+    weights
+}
+
 #[test]
 fn stencil2d_laplacian_constant_is_zero() {
     // The 5-point laplacian of a constant field is zero everywhere,
@@ -1280,6 +1317,151 @@ fn gradient_2d_y_linear_in_rows() {
             data: expected
         }
     );
+}
+
+#[test]
+fn stencil3d_laplacian_recovers_quadratic_interior() {
+    let data = (0..3)
+        .flat_map(|x| (0..3).flat_map(move |y| (0..3).map(move |z| (x * x + y * y + z * z) as f64)))
+        .collect();
+    let mut weights = vec![0.0; 27];
+    for index in [4, 22, 10, 16, 12, 14] {
+        weights[index] = 1.0;
+    }
+    weights[13] = -6.0;
+    let output = evaluate(
+        &stencil3d_prog(weights, [3, 3, 3], data, EdgePolicy::Clamp),
+        &[],
+        &[],
+    )
+    .unwrap();
+    let Value::Tensor { data, .. } = output else {
+        panic!("expected rank-3 tensor");
+    };
+    assert_eq!(data[13], 6.0);
+}
+
+#[test]
+fn gradient3d_axes_are_exact_on_linear_ramps() {
+    for axis in 0..3 {
+        let data = (0..3)
+            .flat_map(|x| {
+                (0..3).flat_map(move |y| (0..3).map(move |z| [x as f64, y as f64, z as f64][axis]))
+            })
+            .collect();
+        let output = evaluate(
+            &stencil3d_prog(
+                derivative3d_weights(axis, 1.0),
+                [3, 3, 3],
+                data,
+                EdgePolicy::OneSided,
+            ),
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            output,
+            Value::Tensor {
+                shape: vec![3, 3, 3],
+                data: vec![1.0; 27],
+            },
+            "axis {axis}"
+        );
+    }
+}
+
+#[test]
+fn divergence3d_sums_axis_derivatives() {
+    let fields: Vec<Vec<f64>> = (0..3)
+        .map(|axis| {
+            (0..3)
+                .flat_map(|x| {
+                    (0..3).flat_map(move |y| {
+                        (0..3).map(move |z| [x as f64, 2.0 * y as f64, 3.0 * z as f64][axis])
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    let mut ops = Vec::new();
+    let mut derivatives = Vec::new();
+    for (axis, field) in fields.iter().enumerate() {
+        let elements = field
+            .iter()
+            .map(|value| {
+                let register = EmirValue(ops.len() as u32);
+                ops.push((const_bits(*value), Span::default()));
+                register
+            })
+            .collect();
+        let tensor = EmirValue(ops.len() as u32);
+        ops.push((
+            EmirOp::TensorCreate {
+                shape: vec![3, 3, 3],
+                elements,
+            },
+            Span::default(),
+        ));
+        let derivative = EmirValue(ops.len() as u32);
+        ops.push((
+            EmirOp::Stencil3d {
+                input: tensor,
+                weights: derivative3d_weights(axis, 1.0),
+                center: (1, 1, 1),
+                edge: EdgePolicy::OneSided,
+            },
+            Span::default(),
+        ));
+        derivatives.push(derivative);
+    }
+    let xy = EmirValue(ops.len() as u32);
+    ops.push((
+        EmirOp::TensorAdd(derivatives[0], derivatives[1]),
+        Span::default(),
+    ));
+    let result = EmirValue(ops.len() as u32);
+    ops.push((EmirOp::TensorAdd(xy, derivatives[2]), Span::default()));
+    let program = EmirProgram {
+        ops,
+        result,
+        input_count: 0,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    assert_eq!(
+        evaluate(&program, &[], &[]).unwrap(),
+        Value::Tensor {
+            shape: vec![3, 3, 3],
+            data: vec![6.0; 27],
+        }
+    );
+}
+
+#[test]
+fn stencil3d_refuses_non_tensor_input() {
+    let program = EmirProgram {
+        ops: vec![
+            (EmirOp::VectorCreate(Vec::new()), Span::default()),
+            (
+                EmirOp::Stencil3d {
+                    input: EmirValue(0),
+                    weights: vec![0.0; 27],
+                    center: (1, 1, 1),
+                    edge: EdgePolicy::Clamp,
+                },
+                Span::default(),
+            ),
+        ],
+        result: EmirValue(1),
+        input_count: 0,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    assert!(matches!(
+        evaluate(&program, &[], &[]),
+        Err(EvalFault::TypeConfusion { .. })
+    ));
 }
 
 // ---- B12: logic connectives evaluation ----------------------------------

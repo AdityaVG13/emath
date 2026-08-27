@@ -883,6 +883,136 @@ pub fn stencil_2d(
     out
 }
 
+fn extrapolation_terms(raw: isize, len: usize) -> [(usize, f64); 2] {
+    if len <= 1 {
+        return [(0, 1.0), (0, 0.0)];
+    }
+    let last = (len - 1) as isize;
+    if raw < 0 {
+        let k = -raw as f64;
+        [(0, 1.0 + k), (1, -k)]
+    } else if raw > last {
+        let k = (raw - last) as f64;
+        [(len - 1, 1.0 + k), (len - 2, -k)]
+    } else {
+        [(raw as usize, 1.0), (raw as usize, 0.0)]
+    }
+}
+
+fn reflect_index(raw: isize, len: usize) -> usize {
+    let last = len.saturating_sub(1) as isize;
+    (if raw < 0 {
+        -raw
+    } else if raw > last {
+        2 * last - raw
+    } else {
+        raw
+    })
+    .clamp(0, last) as usize
+}
+
+fn sample_3d(data: &[f64], shape: [usize; 3], raw: [isize; 3], edge: &EdgePolicy) -> f64 {
+    let at = |x: usize, y: usize, z: usize| data[(x * shape[1] + y) * shape[2] + z];
+    match edge {
+        EdgePolicy::Clamp => at(
+            raw[0].clamp(0, shape[0] as isize - 1) as usize,
+            raw[1].clamp(0, shape[1] as isize - 1) as usize,
+            raw[2].clamp(0, shape[2] as isize - 1) as usize,
+        ),
+        EdgePolicy::Neumann => at(
+            reflect_index(raw[0], shape[0]),
+            reflect_index(raw[1], shape[1]),
+            reflect_index(raw[2], shape[2]),
+        ),
+        EdgePolicy::OneSided => {
+            let xs = extrapolation_terms(raw[0], shape[0]);
+            let ys = extrapolation_terms(raw[1], shape[1]);
+            let zs = extrapolation_terms(raw[2], shape[2]);
+            let mut value = 0.0;
+            for (x, wx) in xs {
+                for (y, wy) in ys {
+                    for (z, wz) in zs {
+                        value += wx * wy * wz * at(x, y, z);
+                    }
+                }
+            }
+            value
+        }
+        EdgePolicy::Dirichlet { .. } => {
+            panic!("stencil_3d: Dirichlet boundary is not supported")
+        }
+    }
+}
+
+/// Checked rank-3 3x3x3 stencil convolution over a flat [`Tensor`].
+///
+/// Axes follow tensor shape order. Empty axes produce an empty tensor.
+pub fn stencil_3d_slices_checked(
+    input_shape: &[usize],
+    input_data: &[f64],
+    weights: &[f64; 27],
+    center: (i64, i64, i64),
+    edge: EdgePolicy,
+) -> Result<Tensor, &'static str> {
+    if input_shape.len() != 3 {
+        return Err("3D stencil input must be a rank-3 tensor");
+    }
+    let shape = [input_shape[0], input_shape[1], input_shape[2]];
+    let expected = shape[0]
+        .checked_mul(shape[1])
+        .and_then(|n| n.checked_mul(shape[2]))
+        .ok_or("3D stencil tensor size overflow")?;
+    if input_data.len() != expected {
+        return Err("3D stencil data length does not match shape product");
+    }
+    if expected == 0 {
+        return Ok(Tensor {
+            shape: input_shape.to_vec(),
+            data: Vec::new(),
+        });
+    }
+    if matches!(edge, EdgePolicy::Dirichlet { .. }) {
+        return Err("3D Dirichlet boundary is not yet supported");
+    }
+
+    let mut data = Vec::with_capacity(expected);
+    for x in 0..shape[0] {
+        for y in 0..shape[1] {
+            for z in 0..shape[2] {
+                let mut value = 0.0;
+                for kx in 0..3 {
+                    for ky in 0..3 {
+                        for kz in 0..3 {
+                            let weight = weights[(kx * 3 + ky) * 3 + kz];
+                            let raw = [
+                                x as isize + kx as isize - center.0 as isize,
+                                y as isize + ky as isize - center.1 as isize,
+                                z as isize + kz as isize - center.2 as isize,
+                            ];
+                            value += weight * sample_3d(input_data, shape, raw, &edge);
+                        }
+                    }
+                }
+                data.push(value);
+            }
+        }
+    }
+    Ok(Tensor {
+        shape: input_shape.to_vec(),
+        data,
+    })
+}
+
+/// Checked rank-3 stencil over an owned-shape [`Tensor`].
+pub fn stencil_3d_checked(
+    input: &Tensor,
+    weights: &[f64; 27],
+    center: (i64, i64, i64),
+    edge: EdgePolicy,
+) -> Result<Tensor, &'static str> {
+    stencil_3d_slices_checked(&input.shape, &input.data, weights, center, edge)
+}
+
 // ── Number theory / finite-field arithmetic ───────────────────────────────
 
 /// Factorial of n in [0, 20] (i64 range; panics outside).

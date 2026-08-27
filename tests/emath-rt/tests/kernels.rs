@@ -6,13 +6,13 @@
 //! the embeddable `SOURCE` paste-safe.
 
 use emath_rt::{
-    cmp_i64_f64, complex_exp, complex_ln, complex_sqrt, einsum_as_matrix, einsum_as_scalar,
-    einsum_checked, einsum_output_rank, eq_i64_f64, factorial, fold_add, fold_add_i64, fold_all,
-    fold_any, fold_mul, fold_mul_i64, hamming_distance, mat_add, mat_index_checked, mat_mul_mat,
-    mat_mul_vec, mat_scale, mat_sub, mat_transpose, mod_inv, poly_eval_mod, rs_encode,
-    sample_limit, simpson, stencil_1d, stencil_2d, tensor_add, tensor_slice_as_matrix,
-    trapezoid_sum, vec_add, vec_dot, vec_index_checked, vec_norm, vec_scale, vec_sub, EdgePolicy,
-    EinsumError, EinsumIn, IndexError, SliceAxis, SOURCE,
+    EdgePolicy, EinsumError, EinsumIn, IndexError, SOURCE, SliceAxis, Tensor, cmp_i64_f64,
+    complex_exp, complex_ln, complex_sqrt, einsum_as_matrix, einsum_as_scalar, einsum_checked,
+    einsum_output_rank, eq_i64_f64, factorial, fold_add, fold_add_i64, fold_all, fold_any,
+    fold_mul, fold_mul_i64, hamming_distance, mat_add, mat_index_checked, mat_mul_mat, mat_mul_vec,
+    mat_scale, mat_sub, mat_transpose, mod_inv, poly_eval_mod, rs_encode, sample_limit, simpson,
+    stencil_1d, stencil_2d, stencil_3d_checked, tensor_add, tensor_slice_as_matrix, trapezoid_sum,
+    vec_add, vec_dot, vec_index_checked, vec_norm, vec_scale, vec_sub,
 };
 
 // ── vectors / matrices / tensors ──────────────────────────────────────────
@@ -300,6 +300,45 @@ fn stencil_2d_onesided_column_ramp_is_one() {
             vec![1.0, 1.0, 1.0]
         ]
     );
+}
+
+#[test]
+fn stencil_3d_anisotropic_laplacian_matches_quadratic_center() {
+    // u(x,y,z) = x² + y² + z² on a 3³ grid. Each axis contributes 2
+    // at the sole interior cell, even with unequal physical spacings.
+    let spacing = [0.5f64, 1.0, 2.0];
+    let shape = vec![3, 3, 3];
+    let data = (0..3)
+        .flat_map(|x| {
+            (0..3).flat_map(move |y| {
+                (0..3).map(move |z| {
+                    let px = x as f64 * spacing[0];
+                    let py = y as f64 * spacing[1];
+                    let pz = z as f64 * spacing[2];
+                    px * px + py * py + pz * pz
+                })
+            })
+        })
+        .collect();
+    let mut weights = [0.0; 27];
+    for (negative, center, positive, h) in [
+        (4, 13, 22, spacing[0]),
+        (10, 13, 16, spacing[1]),
+        (12, 13, 14, spacing[2]),
+    ] {
+        let inv = 1.0 / (h * h);
+        weights[negative] = inv;
+        weights[center] -= 2.0 * inv;
+        weights[positive] = inv;
+    }
+    let out = stencil_3d_checked(
+        &Tensor { shape, data },
+        &weights,
+        (1, 1, 1),
+        EdgePolicy::Clamp,
+    )
+    .unwrap();
+    assert!((out.data[13] - 6.0).abs() < 1e-12);
 }
 
 // ── number theory ─────────────────────────────────────────────────────────
