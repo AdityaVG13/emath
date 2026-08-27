@@ -1,7 +1,5 @@
 use crate::token::{Keyword, TokenKind};
-use crate::tree::{
-    CommandArgument, Expr, ExprKind, Section, Stmt, StmtKind, TypeKind, Visibility,
-};
+use crate::tree::{CommandArgument, Expr, ExprKind, Section, Stmt, StmtKind, TypeKind, Visibility};
 use emath_core::Span;
 
 use super::visibility_name;
@@ -179,7 +177,14 @@ impl super::Parser {
             | TokenKind::Bang
             | TokenKind::LParen
             | TokenKind::LBracket
-            | TokenKind::Keyword(Keyword::True | Keyword::False | Keyword::Derivative | Keyword::Solve | Keyword::Minimize | Keyword::Maximize) => {
+            | TokenKind::Keyword(
+                Keyword::True
+                | Keyword::False
+                | Keyword::Derivative
+                | Keyword::Solve
+                | Keyword::Minimize
+                | Keyword::Maximize,
+            ) => {
                 let expr = self.parse_expr()?;
                 if let Some(stmt) = self.parse_equation_tail(&expr, start) {
                     return Some(stmt);

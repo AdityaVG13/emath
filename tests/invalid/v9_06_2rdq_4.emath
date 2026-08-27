@@ -1,0 +1,3 @@
+# expect: E-SYN-144 hidden desugar is refused
+# emath:hide-desugar
+2+2

@@ -1,0 +1,2 @@
+# expect: E-SYN-143 L2 name without body is not L0 scratch
+emath function Square:

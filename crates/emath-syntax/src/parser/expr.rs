@@ -1,9 +1,9 @@
+use super::{MAX_EXPR_DEPTH, binder_kind, comparison_operator};
 use crate::token::{Keyword, TokenKind};
 use crate::tree::{
     BinaryOp, BinderKind, DerivativeKind, Expr, ExprKind, LimitDirection, NotationFixity, UnaryOp,
     UnitExpr, UnitQueryKind,
 };
-use super::{binder_kind, comparison_operator, MAX_EXPR_DEPTH};
 
 impl super::Parser {
     // ---- expressions ---------------------------------------------------
@@ -40,7 +40,12 @@ impl super::Parser {
                     }
                     let start = expr.source;
                     let Some(next) = (match &expr.kind {
-                        ExprKind::Derivative { value, kind, holding, .. } => Some(Expr {
+                        ExprKind::Derivative {
+                            value,
+                            kind,
+                            holding,
+                            ..
+                        } => Some(Expr {
                             kind: ExprKind::Derivative {
                                 value: value.clone(),
                                 wrt: Some(items),
@@ -56,7 +61,9 @@ impl super::Parser {
                             },
                             source: start.cover(self.last_span()),
                         }),
-                        ExprKind::Optimize { value, maximize, .. } => Some(Expr {
+                        ExprKind::Optimize {
+                            value, maximize, ..
+                        } => Some(Expr {
                             kind: ExprKind::Optimize {
                                 value: value.clone(),
                                 wrt: Some(items),
@@ -80,15 +87,16 @@ impl super::Parser {
                 // `holding` clause: `∂(H) wrt T holding p, V`
                 // Contextual keyword — only matches when the current
                 // expression is a Partial derivative without holding set.
-                TokenKind::Ident(name) if name == "holding"
-                    && matches!(
-                        &expr.kind,
-                        ExprKind::Derivative {
-                            kind: DerivativeKind::Partial,
-                            holding: h,
-                            ..
-                        } if h.is_empty()
-                    ) =>
+                TokenKind::Ident(name)
+                    if name == "holding"
+                        && matches!(
+                            &expr.kind,
+                            ExprKind::Derivative {
+                                kind: DerivativeKind::Partial,
+                                holding: h,
+                                ..
+                            } if h.is_empty()
+                        ) =>
                 {
                     self.advance();
                     let mut items = vec![self.parse_expr_depth(depth + 1)?];
@@ -96,7 +104,10 @@ impl super::Parser {
                         items.push(self.parse_expr_depth(depth + 1)?);
                     }
                     let start = expr.source;
-                    if let ExprKind::Derivative { value, wrt, kind, .. } = &expr.kind {
+                    if let ExprKind::Derivative {
+                        value, wrt, kind, ..
+                    } = &expr.kind
+                    {
                         expr = Expr {
                             kind: ExprKind::Derivative {
                                 value: value.clone(),
@@ -211,10 +222,8 @@ impl super::Parser {
             if self.skip_continuation_lines() {
                 continue;
             }
-            if !matches!(
-                self.peek(),
-                TokenKind::Keyword(Keyword::Or)
-            ) && (!matches!(self.peek(), TokenKind::Pipe) || self.suppress_pipe_or)
+            if !matches!(self.peek(), TokenKind::Keyword(Keyword::Or))
+                && (!matches!(self.peek(), TokenKind::Pipe) || self.suppress_pipe_or)
             {
                 break;
             }
@@ -670,7 +679,9 @@ impl super::Parser {
                         .get(name)
                         .filter(|op| op.fixity == NotationFixity::Postfix)
                         .map(|op| op.target.clone());
-                    let Some(target) = postfix else { break; };
+                    let Some(target) = postfix else {
+                        break;
+                    };
                     self.advance();
                     let span = value.source.cover(self.last_span());
                     value = self.notation_call(&target, vec![value], span);
@@ -891,6 +902,16 @@ impl super::Parser {
                     source: start,
                 })
             }
+            TokenKind::Question => {
+                self.advance();
+                Some(Expr {
+                    kind: ExprKind::Path {
+                        segments: vec!["Hole".to_string()],
+                        generics: None,
+                    },
+                    source: start,
+                })
+            }
             TokenKind::Keyword(Keyword::True) => {
                 self.advance();
                 Some(Expr {
@@ -1067,9 +1088,7 @@ impl super::Parser {
                         self.advance(); // var
                         self.advance(); // `->`
                         return Some(self.parse_limit_body(
-                            start,
-                            var,
-                            false, // is_sample = false
+                            start, var, false, // is_sample = false
                             depth,
                         )?);
                     }
@@ -1084,9 +1103,7 @@ impl super::Parser {
                         self.advance(); // var
                         self.advance(); // `->`
                         return Some(self.parse_limit_body(
-                            start,
-                            var,
-                            true, // is_sample = true
+                            start, var, true, // is_sample = true
                             depth,
                         )?);
                     }
@@ -1101,7 +1118,10 @@ impl super::Parser {
                         let binders = self.parse_binders()?;
                         let guard = self.parse_binder_guard();
                         if !self.eat(&TokenKind::Colon) {
-                            self.error_here("E-SYN-111", "expected `:` after series binder variables");
+                            self.error_here(
+                                "E-SYN-111",
+                                "expected `:` after series binder variables",
+                            );
                             return None;
                         }
                         self.skip_newlines();
@@ -1336,10 +1356,7 @@ impl super::Parser {
                 self.advance(); // `else`
                 if !self.eat(&TokenKind::Arrow) {
                     self.suppress_pipe_or = false;
-                    self.error_here(
-                        "E-SYN-101",
-                        "expected `=>` after `else` in cases arm",
-                    );
+                    self.error_here("E-SYN-101", "expected `=>` after `else` in cases arm");
                     return None;
                 }
                 self.skip_newlines();
@@ -1357,10 +1374,7 @@ impl super::Parser {
             };
             if !self.eat(&TokenKind::Arrow) {
                 self.suppress_pipe_or = false;
-                self.error_here(
-                    "E-SYN-101",
-                    "expected `=>` in cases arm",
-                );
+                self.error_here("E-SYN-101", "expected `=>` in cases arm");
                 return None;
             }
             self.skip_newlines();

@@ -1,7 +1,7 @@
 use crate::token::{Keyword, TokenKind};
 use crate::tree::{
-    Attribute, Declaration, DeclarationSignature, GenericParam, Item, NotationDecl,
-    NotationFixity, Suite, UseTree,
+    Attribute, Declaration, DeclarationSignature, GenericParam, Item, NotationDecl, NotationFixity,
+    Suite, UseTree,
 };
 use emath_core::Span;
 
@@ -201,10 +201,7 @@ impl super::Parser {
             match self.parse_attribute() {
                 Some(attribute) => {
                     if !matches!(self.peek(), TokenKind::Newline | TokenKind::Eof) {
-                        self.error_here(
-                            "E-SYN-101",
-                            "expected end of line after attribute",
-                        );
+                        self.error_here("E-SYN-101", "expected end of line after attribute");
                         self.skip_to_line_end();
                         return attributes;
                     }
@@ -242,7 +239,10 @@ impl super::Parser {
                     self.advance();
                 }
                 _ => {
-                    self.error_here("E-SYN-101", "expected an identifier after `::` in attribute path");
+                    self.error_here(
+                        "E-SYN-101",
+                        "expected an identifier after `::` in attribute path",
+                    );
                     return None;
                 }
             }
@@ -355,9 +355,9 @@ impl super::Parser {
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.current_span();
         self.advance(); // `emath`
-                        // The declaration kind is the next word (`custom`,
-                        // `function`, `policy`, `record`, `model`, `kind`,
-                        // `search`, `experiment`, `type`, or a user kind).
+        // The declaration kind is the next word (`custom`,
+        // `function`, `policy`, `record`, `model`, `kind`,
+        // `search`, `experiment`, `type`, or a user kind).
         let item_kind = match self.peek().clone() {
             TokenKind::Ident(item_kind) => item_kind,
             TokenKind::Keyword(Keyword::Custom) => "custom".to_string(),
@@ -505,7 +505,10 @@ impl super::Parser {
                 n.parse::<u32>().unwrap_or(0)
             }
             _ => {
-                self.error_here("E-SYN-101", "expected precedence integer in notation declaration");
+                self.error_here(
+                    "E-SYN-101",
+                    "expected precedence integer in notation declaration",
+                );
                 return None;
             }
         };

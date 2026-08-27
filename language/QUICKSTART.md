@@ -21,9 +21,17 @@ emath function Square:
             expect y == 9
 ```
 
-That's it. Every emath program is an `emath function` (or `emath model`
-for simulations) with sections: `inputs`, `outputs`, `definitions`,
-`tests`. You write math. It computes.
+That's it. Same square with no sections:
+
+```emath
+emath function Square:
+    y = x^2
+    example x = 3
+```
+
+Or skip the declaration and write scratch (`language/examples/intro/scratch.emath`):
+`2+2`, `y = x^2 + 4`, `solve x^2 = 2 over Real`. Those desugar to the
+same `emath function`; `emath expand` shows the rewrite.
 
 ## 2. Run it (10 seconds)
 
@@ -35,6 +43,11 @@ emath run examples/intro/hello-square.emath       # evaluate definitions
 
 `check` validates types and shapes. `test` runs examples. `run`
 evaluates and prints outputs.
+
+The examples folder is not a copy of this square. Start with an
+[open hole](examples/intro/scratch.emath) (`f` is not invented),
+[autodiff](examples/intro/autodiff.emath), and the
+[heat rod](examples/numerical/heat-rod-sim.emath) PDE.
 
 ## 3. The shape of the language (20 seconds)
 

@@ -16,13 +16,14 @@ Every language change updates four artifacts in the same commit:
    surface model. Add or modify the grammar rule, with a comment
    explaining the rule's intent.
 
-3. **Example** (`language/examples/`) - at least one runnable or
-   parse-only `.emath` file that demonstrates the feature. Place it in
-   `examples/intro/` for core features.
+3. **Example** (`language/examples/`) - reuse an existing program when
+   the feature is a new form of something already shown (`scratch`,
+   `autodiff`, `heat-rod-sim`, a domain example). Add a new `.emath` file only when the
+   user-visible program is genuinely a new kind of work, not a new
+   keyword. Do not add one intro file per bead or diagnostic.
 
-4. **Example index** (`language/examples/README.md`) - add a row to the
-   table with the filename, status (Runs / Parses / Admits), and a
-   one-line description.
+4. **Example index** (`language/examples/README.md`) - if you added a
+   file, add one row. If you reused a file, leave the index alone.
 
 ## Additional updates
 

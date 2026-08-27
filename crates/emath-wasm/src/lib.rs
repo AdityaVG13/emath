@@ -15,10 +15,10 @@ pub use ffi::install_panic_hook;
 mod desugar;
 
 use desugar::prepare_source;
-use emath_artifact::{parse_json_document, JsonValue, JsonWriter};
-use emath_core::{limits::Limits, Diagnostics, FileId, Severity};
-use emath_exec_ir::interp::{format_f64, Value};
-use emath_exec_ir::runner::{run_package_with_given, DeclarationRun, RunReport, TestRun};
+use emath_artifact::{JsonValue, JsonWriter, parse_json_document};
+use emath_core::{Diagnostics, FileId, Severity, limits::Limits};
+use emath_exec_ir::interp::{Value, format_f64};
+use emath_exec_ir::runner::{DeclarationRun, RunReport, TestRun, run_package_with_given};
 use emath_ir::Mig;
 use emath_rust_backend::BackendInput;
 use emath_sema::session::CompilerSession;
@@ -1181,7 +1181,7 @@ emath function square(x: Float64) -> Float64:
         assert!(json.contains("\"ok\": true"), "{json}");
         assert!(json.contains("N-TYPE-001"), "{json}");
         assert!(json.contains("\"desugared_source\""), "{json}");
-        assert!(json.contains("emath function Pane"), "{json}");
+        assert!(json.contains("emath function Scratch"), "{json}");
         assert!(json.contains("y = x * x"), "{json}");
         assert!(!json.contains("\"severity\": \"error\""), "{json}");
     }
@@ -1644,10 +1644,7 @@ emath policy AffineTransform:
                 "E-UNIT-101",
             ),
             // Bare source type default note
-            (
-                "y = x * x\n",
-                "N-TYPE-001",
-            ),
+            ("y = x * x\n", "N-TYPE-001"),
         ];
 
         for (source, expected_code_prefix) in cases {

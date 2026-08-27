@@ -304,21 +304,19 @@ emath function f() -> Float64:
     match &expr.kind {
         ExprKind::Float(v) => assert_eq!(v, "9.81"),
         ExprKind::Int(_) => {} // also acceptable
-        other => panic!(
-            "x should be bound to a numeric literal, not {:?}",
-            other
-        ),
+        other => panic!("x should be bound to a numeric literal, not {:?}", other),
     }
 }
 
 #[test]
 fn formatter_roundtrips_compound_unit() {
-    use emath_syntax::formatter::format;
     use emath_core::FileId;
     use emath_core::limits::Limits;
+    use emath_syntax::formatter::format;
     use emath_syntax::parse_lossless;
 
-    let source = "emath function f() -> Float64:\n    definitions:\n        g = 9.81 [unit m/s^2]\n";
+    let source =
+        "emath function f() -> Float64:\n    definitions:\n        g = 9.81 [unit m/s^2]\n";
     let parsed = parse_lossless(source, FileId(0), &Limits::default());
     assert!(
         !parsed.diagnostics.has_errors(),
@@ -341,9 +339,9 @@ fn formatter_roundtrips_compound_unit() {
 
 #[test]
 fn formatter_roundtrips_simple_unit() {
-    use emath_syntax::formatter::format;
     use emath_core::FileId;
     use emath_core::limits::Limits;
+    use emath_syntax::formatter::format;
     use emath_syntax::parse_lossless;
 
     let source = "emath function f() -> Float64:\n    definitions:\n        g = 9.81 m\n";
@@ -433,13 +431,14 @@ fn canonical_form_energy_unit() {
 
 #[test]
 fn formatter_normalizes_to_canonical_form() {
-    use emath_syntax::formatter::format;
     use emath_core::FileId;
     use emath_core::limits::Limits;
+    use emath_syntax::formatter::format;
     use emath_syntax::parse_lossless;
 
     // Parse `m/(s*s)` and verify formatter outputs canonical `m/s^2`.
-    let source = "emath function f() -> Float64:\n    definitions:\n        a = 9.81 [unit m/(s*s)]\n";
+    let source =
+        "emath function f() -> Float64:\n    definitions:\n        a = 9.81 [unit m/(s*s)]\n";
     let parsed = parse_lossless(source, FileId(0), &Limits::default());
     assert!(!parsed.diagnostics.has_errors(), "must parse cleanly");
     let formatted = format(&parsed.tree, &parsed.comments);
