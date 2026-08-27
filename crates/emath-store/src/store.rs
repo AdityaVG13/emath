@@ -498,7 +498,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use emath_artifact::{write_artifact_manifest, ArtifactClass, ArtifactManifest};
+    use emath_artifact::{ArtifactClass, ArtifactManifest, write_artifact_manifest};
     use emath_core::{ContentId, SchemaId};
     use emath_ir::{EvidenceLevel, TargetProfile};
 

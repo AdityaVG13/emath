@@ -20,6 +20,23 @@ Always available (std-only, zero third-party deps):
 - schema::SCHEMA_SQL — deterministic DDL (artifacts + evidence tables).
 - schema::VALID_CLAIM_STATUSES — closed status set: ok / fail / pending.
 - schema::valid_claim_status(&str) -> bool — value-set membership check.
+- `ObjectGraph` — deterministic in-memory object/relation index.
+- `ObjectDraft` / `LibraryObject` — one envelope for cell, theory, proof,
+  method, lesson, recipe, and validated custom kinds. ObjectID includes kind,
+  MeaningID, and canonical semantic payload; presentation is excluded.
+- `RelationDraft` / `Relation` — immutable typed edges (`depends_on`, `proves`,
+  `equivalent_to`, `refines`, `implements`, `uses`, custom) with global,
+  namespace, or object scope plus assumptions, authority, and evidence.
+- `Space` — local named alias/policy/lock view over an `Arc<ObjectGraph>`.
+  Branches clone only view metadata and share immutable objects.
+- `SpaceSnapshot` / `LibraryLock` — deterministic alias/policy snapshot and
+  closed dependency set. Lock verification refuses missing or revoked objects.
+- `Space::semantic_merge` / `MergeReceipt` — additive, content-addressed merge
+  over a named common snapshot. Alias, evidence, and policy alternatives union;
+  no side wins by recency.
+- `Reconciliation::{Choose,Rename,Morphism,ProveEquivalent}` — explicit merge
+  operations, each backed by a stored reconciliation object and recorded in the
+  receipt identity.
 
 Feature sqlite-store only:
 
@@ -55,6 +72,16 @@ Feature sqlite-store only:
   failing statement leaves prior committed state untouched.
 - Foreign keys enforced (PRAGMA foreign_keys = ON at open); add_evidence for
   a missing artifact fails.
+- Object and relation maps use canonical ID ordering. Assumption and evidence
+  sets are sorted and deduplicated before RelationID construction.
+- ObjectID and RelationID are domain-separated SHA-256 durable identities.
+  Adding an edge never mutates either endpoint or its MeaningID.
+- Alias values are sets, not last-writer-wins slots: conflicting ObjectIDs
+  remain concurrently addressable. SnapshotID excludes the local space name
+  but includes aliases, policy, and parent lock.
+- Semantic merge requires both sides to identify the supplied common ancestor.
+  The default result retains all alternatives; reducing or translating them
+  requires a content-addressed explicit reconciliation.
 
 ## Error model
 
@@ -89,13 +116,12 @@ forbids it. No unsafe leaves exist in this crate.
 ## Feature flags
 
 Build-graph note: the lockfile carries two asupersync instances - git
-f0270d53 (0.4.7) for emath-store's direct dep, and registry 0.4.6 pulled by
+9eb0600e (0.4.9) for emath-store's direct dep, and registry 0.4.9 pulled by
 fsqlite's own manifest. They are separate compiled crates; the conformance
-suite (12 tests) validates driving fsqlite engine futures from the 0.4.7
-runtime.
+suite validates driving fsqlite engine futures from the git-pinned runtime.
 
 - sqlite-store (default OFF) — pulls pinned fsqlite (frankensqlite facade,
-  rev e705df6960d8a22bb19d12a36d6534116b4b4cd5) with default-features=false
+  v0.3.11 at rev 8281cf285433b1746d9c29a598152e58cc205bd8) with default-features=false
   + native, plus the pinned asupersync runtime that drives it.
 - Default build (no features): std-only, first-party-only (emath-core /
   emath-ir / emath-artifact), zero third-party deps.
@@ -112,6 +138,15 @@ runtime.
   (wrong status) fails; failed transaction (bad status mid-batch) rolls back
   all writes; successful batch transaction commits; full EvidenceRow records
   equality.
+- `tests/emath-store/tests/epic_emlib_nz1n_4_unit.rs`: presentation-independent
+  ObjectID, typed `proves` relation, canonical assumption/evidence sets, and
+  typed missing-endpoint/custom-kind refusals.
+- `tests/emath-store/tests/epic_emlib_nz1n_6_unit.rs`: alias conflict
+  preservation, shared-object branching, stable snapshots, and dangling/revoked
+  lock refusals.
+- `tests/emath-store/tests/epic_emlib_nz1n_9_unit.rs`: additive alias/evidence
+  merge, no-last-writer-wins conflict preservation, ancestor refusal, and an
+  explicit choose reconciliation receipt.
 
 ## No-claim boundaries
 
