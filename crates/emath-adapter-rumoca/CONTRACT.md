@@ -18,6 +18,9 @@ diagnostic mapping. No upstream Rumoca engine is consumed in Phase 1.
 - `PhaseRecord`, `PhaseKind`, `Stability`: compiler-phase census.
 - `DaePlan`, `DerivativeDef`, `EqProvenance`, `LowerError`: emath-to-DAE
   lowering.
+- `SimulationArtifact`, `DerivativeMetadata`, `build_simulation_artifact`:
+  bounded flattening into byte-deterministic safe Rust source plus a runnable
+  in-process component over the same DAE plan.
 - `SimPoint`, `SimulationConfig`, `SimulationResult`, `SimError`:
   DAE-plan and simulation providers (`provide_dae_plan`, `simulate`).
 - `ConstructMapping`, `MappingClass`: semantic mapping table.
@@ -37,13 +40,17 @@ diagnostic mapping. No upstream Rumoca engine is consumed in Phase 1.
   (`E-PROV-220..223`).
 - Simulation provider refuses plans outside supported states
   (`E-PROV-230..238`).
+- The runnable artifact profile accepts exactly two scalar states and no
+  algebraic outputs. Unsupported Rust identifiers, non-causal derivative
+  references, and wider state/output shapes refuse under `E-PROV-239`.
 - Census records per-phase stability; the engine is not consumed per phase.
 
 ## Error model
 
 Stable codes: `E-PROV-210` (structural), `E-PROV-220..223` (lower),
 `E-PROV-230..238` (provider/simulation), `E-PROV-240/241` (import),
-`E-PROV-401/402` (seam), `E-KIND-310..312` (subset). Provider diagnostics
+`E-PROV-239` (artifact profile), `E-PROV-401/402` (seam),
+`E-KIND-310..312` (subset). Provider diagnostics
 map into emath diagnostics via `MappedDiagnostic`/`ProviderDiagnostic`.
 
 ## Determinism class
@@ -68,8 +75,9 @@ None (`Cargo.toml` has no `[features]`).
 
 No `tests/` directory on disk in the crate and no `#[cfg(test)]` module in
 `src/`. Workspace integration suites live in `tests/emath-adapter-rumoca`:
-`tests/provider.rs` (simulation/plan refusal families `E-PROV-230..238`) and
-`tests/census.rs` (phase and stability).
+`tests/provider.rs` (simulation/plan refusal families `E-PROV-230..239`,
+deterministic mass-spring artifact, physical differential check, and
+hostile-budget refusal) and `tests/census.rs` (phase and stability).
 
 ## No-claim boundaries
 

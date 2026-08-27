@@ -24,7 +24,8 @@ pub use import::{ForeignModelDeclaration, ImportError};
 pub use lower::{DaePlan, DerivativeDef, EqProvenance, LowerError};
 pub use map::{ConstructMapping, MappingClass};
 pub use provider::{
-    SimError, SimPoint, SimulationConfig, SimulationResult, provide_dae_plan, simulate,
+    ArtifactError, DerivativeMetadata, SimError, SimPoint, SimulationArtifact, SimulationConfig,
+    SimulationResult, build_simulation_artifact, provide_dae_plan, simulate,
 };
 pub use seam::{AdapterSeam, ProviderVersion, SeamError};
 pub use structural::{
