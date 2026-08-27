@@ -6,6 +6,7 @@ use crate::evidence::EvidenceClaim;
 use crate::expression::ExprNode;
 use crate::goal::{CompileSpec, Export, Goal, ResolutionPlan};
 use crate::ids::{DeclarationId, ExprId, GoalId, TestId, TypeId};
+use crate::provenance::{BindingSite, Provenance};
 use crate::types::TypeNode;
 use emath_core::{ContentId, QualifiedName, Span};
 use std::collections::BTreeMap;
@@ -140,6 +141,19 @@ impl ImportSelection {
     }
 }
 
+/// Metadata carried by an executable `emath law` declaration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LawMetadata {
+    /// Preconditions under which the law is claimed.
+    pub assumptions: Vec<String>,
+    /// Mathematical or physical domain in which the law applies.
+    pub domain: String,
+    /// Source or derivation records.
+    pub provenance: Vec<String>,
+    /// Human-readable references.
+    pub citations: Vec<String>,
+}
+
 /// The neutral semantic package. IDs index the sibling arenas.
 #[derive(Clone, Debug, Default)]
 pub struct SemanticPackage {
@@ -149,6 +163,12 @@ pub struct SemanticPackage {
     /// Admitted imports (front-end).
     pub imports: Vec<ImportEntry>,
     pub declarations: Vec<Declaration>,
+    /// Law-only metadata keyed by declaration id. Keeping this package-side
+    /// leaves ordinary function/model declarations unchanged.
+    pub law_metadata: BTreeMap<DeclarationId, LawMetadata>,
+    /// Scientific provenance keyed by declaration-local binding site.
+    /// This is semantic artifact data and participates in content identity.
+    pub binding_provenance: BTreeMap<BindingSite, Provenance>,
     /// Causalized implicit residuals per model declaration; package-side
     /// so adding a section does not churn every `Declaration` literal.
     pub residuals: std::collections::BTreeMap<DeclarationId, Vec<ModelResidual>>,
@@ -168,6 +188,8 @@ impl SemanticPackage {
             package_path: None,
             imports: Vec::new(),
             declarations: Vec::new(),
+            law_metadata: BTreeMap::new(),
+            binding_provenance: BTreeMap::new(),
             residuals: std::collections::BTreeMap::new(),
             types: Vec::new(),
             exprs: Vec::new(),
@@ -232,6 +254,15 @@ impl SemanticPackage {
             return identity.content.clone();
         }
         crate::canonical::canonical_package(self)
+    }
+
+    /// Identity of admitted mathematics, independent of presentation,
+    /// local names, evidence attachments and tests.
+    pub fn meaning_id(
+        &self,
+        dependencies: &[emath_core::MeaningId],
+    ) -> Result<emath_core::MeaningId, crate::meaning::MeaningError> {
+        crate::meaning::meaning_id(self, dependencies)
     }
 
     /// Set the package identity from canonical bytes.

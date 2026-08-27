@@ -36,6 +36,10 @@ pub enum GoalKindSpec {
     Compile,
     /// `benchmark <expr>`.
     Benchmark,
+    /// `transform <expr>`.
+    Transform,
+    /// `simplify <expr>`.
+    Simplify,
     /// Custom-goal envelope with its schema id and typed fields.
     Custom {
         /// Envelope schema identity.
@@ -61,6 +65,8 @@ impl GoalKindSpec {
             Self::Verify => "verify",
             Self::Compile => "compile",
             Self::Benchmark => "benchmark",
+            Self::Transform => "transform",
+            Self::Simplify => "simplify",
             Self::Custom { .. } => "custom",
         }
     }
@@ -278,6 +284,8 @@ impl GoalSchema {
             GoalKind::Verify => GoalKindSpec::Verify,
             GoalKind::Compile => GoalKindSpec::Compile,
             GoalKind::Benchmark => GoalKindSpec::Benchmark,
+            GoalKind::Transform => GoalKindSpec::Transform,
+            GoalKind::Simplify => GoalKindSpec::Simplify,
             GoalKind::Custom(schema) => GoalKindSpec::Custom {
                 schema: schema.clone(),
                 fields: vec![],

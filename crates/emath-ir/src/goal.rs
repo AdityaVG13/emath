@@ -46,6 +46,8 @@ pub enum GoalKind {
     Verify,
     Compile,
     Benchmark,
+    Transform,
+    Simplify,
     Custom(SchemaId),
 }
 
@@ -63,6 +65,8 @@ impl GoalKind {
             Self::Verify => "verify",
             Self::Compile => "compile",
             Self::Benchmark => "benchmark",
+            Self::Transform => "transform",
+            Self::Simplify => "simplify",
             Self::Custom(_) => "custom",
         }
     }
@@ -304,18 +308,21 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
         "evaluate" => GoalKind::Evaluate,
         "differentiate" => GoalKind::Differentiate,
         "benchmark" => GoalKind::Benchmark,
+        "transform" => GoalKind::Transform,
+        "simplify" => GoalKind::Simplify,
         other => GoalKind::Custom(SchemaId(other.to_string())),
     };
     let is_evaluate = matches!(kind, GoalKind::Evaluate);
+    let is_native = matches!(kind, GoalKind::Evaluate | GoalKind::Simplify);
     let produce = if request.produce.is_empty() && is_evaluate {
         PRODUCE_RUST_LIBRARY.to_string()
     } else {
         request.produce.clone()
     };
-    let family = if is_evaluate {
-        "rust-library"
-    } else {
-        "diagnostic"
+    let family = match &kind {
+        GoalKind::Evaluate => "rust-library",
+        GoalKind::Simplify => "symbolic",
+        _ => "diagnostic",
     };
     let goal = Goal {
         id,
@@ -331,7 +338,7 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
                 triple: None,
                 features: vec![],
             },
-            fallback: if is_evaluate {
+            fallback: if is_native {
                 FallbackPolicy::NativeOnly
             } else {
                 FallbackPolicy::Diagnostic

@@ -289,14 +289,10 @@ pub fn parse_numeric_profile(name: &str) -> Result<NumericProfile, NumericError>
         "" | "strict-f64" | "StrictF64" | "Float64" | "float64" | "f64" => {
             Ok(NumericProfile::StrictF64)
         }
-        "interval-f64" | "IntervalF64" | "Interval" | "interval" => {
-            Ok(NumericProfile::IntervalF64)
-        }
+        "interval-f64" | "IntervalF64" | "Interval" | "interval" => Ok(NumericProfile::IntervalF64),
         other => Err(NumericError {
             code: "E-NUM-001",
-            message: format!(
-                "unknown numeric model `{other}` (known: strict-f64, interval-f64)"
-            ),
+            message: format!("unknown numeric model `{other}` (known: strict-f64, interval-f64)"),
         }),
     }
 }
@@ -323,10 +319,7 @@ pub fn numeric_behavior(profile: NumericProfile) -> NumericBehavior {
 }
 
 /// Refuses a precision demand no selected model can honor (`E-NUM-002`).
-pub fn check_precision_demand(
-    profile: NumericProfile,
-    bits: u16,
-) -> Result<(), NumericError> {
+pub fn check_precision_demand(profile: NumericProfile, bits: u16) -> Result<(), NumericError> {
     let behavior = numeric_behavior(profile);
     if bits == 0 || bits > behavior.max_precision_bits {
         return Err(NumericError {
@@ -341,10 +334,7 @@ pub fn check_precision_demand(
 }
 
 /// Refuses an error-limit demand no selected model can honor (`E-NUM-003`).
-pub fn check_error_limit(
-    profile: NumericProfile,
-    max_abs_error: f64,
-) -> Result<(), NumericError> {
+pub fn check_error_limit(profile: NumericProfile, max_abs_error: f64) -> Result<(), NumericError> {
     if !max_abs_error.is_finite() || max_abs_error < 0.0 {
         return Err(NumericError {
             code: "E-NUM-003",
