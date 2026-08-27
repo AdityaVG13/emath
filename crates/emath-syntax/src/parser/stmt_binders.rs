@@ -6,7 +6,11 @@ use super::binder_kind;
 
 impl super::Parser {
     /// `fn name(params) [-> Ret] [:] suite`
-    pub(super) fn parse_fn_statement(&mut self, start: Span, visibility: Option<Visibility>) -> Option<Stmt> {
+    pub(super) fn parse_fn_statement(
+        &mut self,
+        start: Span,
+        visibility: Option<Visibility>,
+    ) -> Option<Stmt> {
         self.advance(); // `fn`
         let TokenKind::Ident(name) = self.peek().clone() else {
             self.error_here("E-SYN-110", "expected a function name after `fn`");

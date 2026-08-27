@@ -17,15 +17,12 @@
   - `em_free(ptr, len)`: reclaim a prior `em_alloc` (or `em_run` response).
   - `em_run(op_ptr, op_len, payload_ptr, payload_len) -> u64`: dispatch; packed as `(ptr as u64) << 32 | (len as u64)`.
 - Ops: `version`, `examples`, `check`, `plan`, `mig`, `generate`, `format`, `run`, `inputs`.
-- Playground wrap (this crate only): if the payload source is not already a
-  declaration (after leading whitespace/comments, first content line does
-  not start with `emath `), it is wrapped as `emath function Pane` (
-  assignment lines become `definitions:`, a lone final expression is bound
-  as `result`, and free identifiers become untyped `inputs:` (Float64 via
-  `N-TYPE-001`). Language keywords (`in`, `sum`, `if`, …) and binder
-  variables (`sum i in 1..6` binds `i`) are not free inputs. No `tests:`
-  section is synthesized. This is not legal `.emath` outside the pane;
-  `emath-syntax` / `emath-sema` are unchanged at the parse layer.
+- Playground wrap delegates to official `emath_syntax::expand_scratch` (L0/L1
+  scratch and L2 named shorthand). Bare panes become `emath function Scratch`
+  with inferred `inputs:` / `definitions:` (Float64 via `N-TYPE-001`). Language
+  keywords and binder variables are not free inputs. No `tests:` section is
+  synthesized unless the source wrote `example`. The same rewrite is applied
+  by `emath-syntax::parse` and `emath expand`; this is legal `.emath`.
 - When wrapping happens, `check` / `plan` / `mig` / `generate` / `run` /
   `inputs` include `"desugared_source"` (the wrapped text). The field is
   omitted when the source was already a declaration.

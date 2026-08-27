@@ -5,9 +5,9 @@
 //! the correct AST nodes, that contextual keywords don't break user
 //! identifiers, and that the formatter roundtrips.
 
-use emath_core::limits::Limits;
-use emath_core::tree::{BinderKind, BinaryOp, ExprKind, LimitDirection, StmtKind};
 use emath_core::FileId;
+use emath_core::limits::Limits;
+use emath_core::tree::{BinaryOp, BinderKind, ExprKind, LimitDirection, StmtKind};
 use emath_syntax::formatter::format;
 use emath_syntax::{parse_lossless, parse_str};
 
@@ -29,7 +29,7 @@ fn def_expr<'a>(
                     StmtKind::Assign { target, value }
                         if target.segments.first().is_some_and(|s| s == name) =>
                     {
-                        return Some(value)
+                        return Some(value);
                     }
                     _ => {}
                 }
@@ -71,7 +71,13 @@ emath function f(x: Float64) -> Float64:
             assert!(matches!(&target.kind, ExprKind::Int(t) if t == "0"));
             assert_eq!(*direction, LimitDirection::TwoSided);
             assert!(
-                matches!(&body.kind, ExprKind::Binary { op: BinaryOp::Mul, .. }),
+                matches!(
+                    &body.kind,
+                    ExprKind::Binary {
+                        op: BinaryOp::Mul,
+                        ..
+                    }
+                ),
                 "body should be x * x"
             );
         }
@@ -135,7 +141,13 @@ emath function f(x: Float64) -> Float64:
             assert_eq!(*direction, LimitDirection::TwoSided);
             // body is sin(x) / x → Binary(Div, Call(sin, [x]), x)
             assert!(
-                matches!(&body.kind, ExprKind::Binary { op: BinaryOp::Div, .. }),
+                matches!(
+                    &body.kind,
+                    ExprKind::Binary {
+                        op: BinaryOp::Div,
+                        ..
+                    }
+                ),
                 "body should be a division"
             );
         }
@@ -165,7 +177,13 @@ emath function s(n: Nat) -> Float64:
             assert_eq!(binders.len(), 1);
             assert_eq!(binders[0].name, "k");
             assert!(
-                matches!(&body.kind, ExprKind::Binary { op: BinaryOp::Div, .. }),
+                matches!(
+                    &body.kind,
+                    ExprKind::Binary {
+                        op: BinaryOp::Div,
+                        ..
+                    }
+                ),
                 "body should be a division"
             );
         }
@@ -192,7 +210,13 @@ emath function f(n: Nat) -> Float64:
                 "left should be factorial(n)"
             );
             assert!(
-                matches!(&right.kind, ExprKind::Binary { op: BinaryOp::Pow, .. }),
+                matches!(
+                    &right.kind,
+                    ExprKind::Binary {
+                        op: BinaryOp::Pow,
+                        ..
+                    }
+                ),
                 "right should be n^n"
             );
         }
@@ -227,7 +251,13 @@ emath function f(x: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     assert!(
-        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        matches!(
+            &expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ),
         "result should be limit + series"
     );
 }

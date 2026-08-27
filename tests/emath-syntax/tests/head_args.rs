@@ -1,8 +1,8 @@
 //! Level 2 head-args: `emath function name(args) -> T:`.
 
+use emath_core::FileId;
 use emath_core::limits::Limits;
 use emath_core::tree::{Item, TypeKind};
-use emath_core::FileId;
 use emath_syntax::formatter::format;
 use emath_syntax::{parse_lossless, parse_str};
 

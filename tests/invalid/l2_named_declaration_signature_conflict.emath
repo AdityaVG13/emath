@@ -1,0 +1,3 @@
+# expect: E-SYN-149 explicit signature vs inferred body is a typed refusal
+emath function Square(n: Float64):
+    y = x^2

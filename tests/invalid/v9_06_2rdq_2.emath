@@ -1,0 +1,4 @@
+# expect: E-SYN-142 conflicting example types
+y = x^2 + 4
+example x = 3
+example x = true

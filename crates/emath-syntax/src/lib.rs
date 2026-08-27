@@ -7,27 +7,46 @@
 
 #![forbid(unsafe_code)]
 
+pub mod exactness;
 pub mod formatter;
 pub mod genesis;
 pub mod lexer;
 pub mod parser;
+pub mod scratch;
 pub mod token;
 pub mod tree;
+
+pub use exactness::{
+    ExactnessDimension, ExactnessEntry, ExactnessLedger, ExactnessStatus, exactness_ledger,
+    exactness_ledger_raised, explanation_notes,
+};
+pub use scratch::{
+    HoleCandidate, HoleContinuation, HoleRecord, HoleRejection, ScratchExpansion, ScratchLevel,
+    ScratchNote, SolveCandidate, apply_solve_candidate, expand_scratch,
+};
 
 use emath_core::{Diagnostics, FileId, limits::Limits};
 use token::Comment;
 use tree::SyntaxTree;
 
 /// Parse an in-memory source into a syntax tree.
+///
+/// L0/L1 scratch and L2 named shorthand are expanded first so every host
+/// (CLI, WASM, LSP) sees the same contracted declaration IR. Inspect the
+/// expansion with [`expand_scratch`] / `emath expand`.
 #[must_use]
 pub fn parse(text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics) {
-    parser::parse(text, file, limits)
+    let expansion = expand_scratch(text);
+    let source = expansion.parse_source(text);
+    let (tree, mut diagnostics) = parser::parse(source, file, limits);
+    diagnostics.extend_from(&expansion.diagnostics);
+    (tree, diagnostics)
 }
 
 /// Parse a source with default limits.
 #[must_use]
 pub fn parse_str(text: &str) -> (SyntaxTree, Diagnostics) {
-    parser::parse(text, FileId(0), &Limits::default())
+    parse(text, FileId(0), &Limits::default())
 }
 
 /// The lossless parse result (/002): the tree plus every
@@ -43,8 +62,11 @@ pub struct LosslessParse {
 /// are pure over the source bytes.
 #[must_use]
 pub fn parse_lossless(text: &str, file: FileId, limits: &Limits) -> LosslessParse {
-    let (_, _, comments) = lexer::lex_with_comments(text, file, limits);
-    let (tree, diagnostics) = parser::parse(text, file, limits);
+    let expansion = expand_scratch(text);
+    let source = expansion.parse_source(text);
+    let (_, _, comments) = lexer::lex_with_comments(source, file, limits);
+    let (tree, mut diagnostics) = parser::parse(source, file, limits);
+    diagnostics.extend_from(&expansion.diagnostics);
     LosslessParse {
         tree,
         diagnostics,
@@ -66,7 +88,7 @@ pub struct SyntaxParser;
 
 impl emath_core::parse::SourceParser for SyntaxParser {
     fn parse(&self, text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics) {
-        parser::parse(text, file, limits)
+        parse(text, file, limits)
     }
 }
 

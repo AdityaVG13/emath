@@ -1,9 +1,9 @@
 //! `emath-syntax` canonical formatter tests (migrated from
 //! `crates/emath-syntax/src/formatter.rs`).
 
+use emath_core::FileId;
 use emath_core::limits::Limits;
 use emath_core::tree::{BinaryOp, Expr, ExprKind, Item, StmtKind};
-use emath_core::FileId;
 use emath_syntax::formatter::format;
 use emath_syntax::parse_lossless;
 
@@ -344,7 +344,13 @@ emath function f(a: Float64, b: Float64, c: Float64, x: Float64, v: Float64) -> 
         panic!("d must stay subtraction, got {:?}", d.kind);
     };
     assert!(
-        matches!(&right.kind, ExprKind::Binary { op: BinaryOp::Sub, .. }),
+        matches!(
+            &right.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Sub,
+                ..
+            }
+        ),
         "a - (b - c) must not flatten to (a - b) - c, got {:?}",
         d.kind
     );
@@ -359,7 +365,13 @@ emath function f(a: Float64, b: Float64, c: Float64, x: Float64, v: Float64) -> 
         panic!("p must stay power, got {:?}", p.kind);
     };
     assert!(
-        matches!(&left.kind, ExprKind::Binary { op: BinaryOp::Pow, .. }),
+        matches!(
+            &left.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Pow,
+                ..
+            }
+        ),
         "(a ^ b) ^ c must keep left grouping, got {:?}",
         p.kind
     );
@@ -376,7 +388,13 @@ emath function f(a: Float64, b: Float64, c: Float64, x: Float64, v: Float64) -> 
         panic!("dv must stay Derivative, got {:?}", dv.kind);
     };
     assert!(
-        matches!(&value.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        matches!(
+            &value.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ),
         "derivative (v + v) must not become (derivative v) + v, got {:?}",
         dv.kind
     );

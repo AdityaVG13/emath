@@ -1,0 +1,5 @@
+# expect: E-SYN-141 scratch mixed with an explicit declaration
+2+2
+emath function Hidden:
+    definitions:
+        y = 1

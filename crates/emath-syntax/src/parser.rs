@@ -11,7 +11,7 @@ use crate::tree::{
     BinaryOp, BinderKind, Expr, ExprKind, Item, NotationFixity, StmtKind, Suite, SyntaxTree,
     Visibility,
 };
-use emath_core::{limits::Limits, Diagnostics, FileId, Span};
+use emath_core::{Diagnostics, FileId, Span, limits::Limits};
 use std::collections::BTreeMap;
 
 mod decl;
@@ -34,8 +34,8 @@ pub(crate) const CUSTOM_OP_MIN_PRECEDENCE: u32 = 11;
 
 /// N3 reserved glyphs: the core syntactic vocabulary cannot be rebound.
 const NOTATION_RESERVED_GLYPHS: &[&str] = &[
-    "+", "-", "*", "/", "//", "^", "==", "!=", "<", "<=", ">", ">=", "and", "or", "not", "=",
-    ":=", "->", "=>", "::", ".", "..", "..=", "?",
+    "+", "-", "*", "/", "//", "^", "==", "!=", "<", "<=", ">", ">=", "and", "or", "not", "=", ":=",
+    "->", "=>", "::", ".", "..", "..=", "?",
 ];
 
 /// One file-scoped custom operator collected from a `notation` item.
@@ -185,7 +185,10 @@ impl Parser {
             _ => return None,
         };
         j += 1;
-        if !matches!(self.tokens.get(j).map(|token| &token.kind), Some(TokenKind::Arrow)) {
+        if !matches!(
+            self.tokens.get(j).map(|token| &token.kind),
+            Some(TokenKind::Arrow)
+        ) {
             return None;
         }
         j += 1;
@@ -195,7 +198,10 @@ impl Parser {
                 Some(TokenKind::Ident(name)) => {
                     // `alias` followed by a string starts the N2 clause.
                     if name == "alias"
-                        && matches!(self.tokens.get(j + 1).map(|t| &t.kind), Some(TokenKind::Str(_)))
+                        && matches!(
+                            self.tokens.get(j + 1).map(|t| &t.kind),
+                            Some(TokenKind::Str(_))
+                        )
                     {
                         break;
                     }

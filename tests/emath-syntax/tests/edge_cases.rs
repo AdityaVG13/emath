@@ -2,11 +2,11 @@
 //! and parser edge cases (F5 non-greedy derivative operand).
 
 use emath_core::limits::Limits;
-use emath_core::tree::{ExprKind, BinaryOp, DerivativeKind, Item, NotationFixity, StmtKind};
+use emath_core::tree::{BinaryOp, DerivativeKind, ExprKind, Item, NotationFixity, StmtKind};
 use emath_core::{Diagnostic, FileId, SourceStore, Span};
 use emath_syntax::lexer::{lex, lex_with_comments};
-use emath_syntax::token::TokenKind;
 use emath_syntax::parse_str;
+use emath_syntax::token::TokenKind;
 
 #[test]
 fn empty_source_lexes_only_eof() {
@@ -51,7 +51,10 @@ emath function f() -> Float64:
     assert!(
         !diags.has_errors(),
         "3//7 must parse as a rational literal, got {:?}",
-        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
     let expr = def_expr(&tree, "r").expect("expected `r` binding");
     assert!(
@@ -74,7 +77,10 @@ emath function f() -> Float64:
     assert!(
         !diags.has_errors(),
         "3//2 s must parse as a quantity, got {:?}",
-        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
     let expr = def_expr(&tree, "q").expect("expected `q` binding");
     let ExprKind::Quantity { value, unit } = &expr.kind else {
@@ -101,7 +107,10 @@ emath function f() -> Float64:
     assert!(
         diags.errors().any(|e| e.code == "E-SYN-101"),
         "non-integer denominator must be E-SYN-101, got {:?}",
-        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -187,7 +196,10 @@ fn tabs_are_rejected_in_canonical_source() {
     assert!(
         diagnostics.errors().any(|error| error.code == "E-SYN-101"),
         "tab must be a typed refusal, got {:?}",
-        diagnostics.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diagnostics
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -341,7 +353,10 @@ fn diagnostic_message_newlines_cannot_inject_frames() {
 
 /// Find the expression bound to `name` inside a declaration's
 /// `definitions:` section.  Handles both `Let` and `Assign` statement kinds.
-fn def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'a emath_core::tree::Expr> {
+fn def_expr<'a>(
+    tree: &'a emath_core::tree::SyntaxTree,
+    name: &str,
+) -> Option<&'a emath_core::tree::Expr> {
     let item = tree.items.first()?;
     let emath_core::tree::Item::Declaration(decl) = item else {
         return None;
@@ -351,7 +366,11 @@ fn def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'
             for stmt in &section.suite.statements {
                 match &stmt.kind {
                     StmtKind::Let { name: n, value, .. } if n == name => return Some(value),
-                    StmtKind::Assign { target, value } if target.segments.first().is_some_and(|s| s == name) => return Some(value),
+                    StmtKind::Assign { target, value }
+                        if target.segments.first().is_some_and(|s| s == name) =>
+                    {
+                        return Some(value);
+                    }
                     _ => {}
                 }
             }
@@ -412,7 +431,13 @@ emath function f(v: Float64) -> Float64:
         panic!("expected Derivative at top level, got {:?}", expr.kind);
     };
     assert!(
-        matches!(value.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        matches!(
+            value.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ),
         "operand should be v + v, got {:?}",
         value.kind
     );
@@ -461,21 +486,35 @@ emath function sign(x: Float64) -> Float64:
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
     );
     let expr = def_expr(&tree, "s").expect("expected `s` binding");
-    let ExprKind::If { condition, then_value, else_value } = &expr.kind else {
+    let ExprKind::If {
+        condition,
+        then_value,
+        else_value,
+    } = &expr.kind
+    else {
         panic!("expected If expression, got {:?}", expr.kind);
     };
     // Verify structure: condition is `x > 0`, then is `1`, else is `0`
     assert!(
-        matches!(&condition.kind, ExprKind::Binary { op: BinaryOp::Gt, .. }),
-        "condition should be x > 0, got {:?}", condition.kind
+        matches!(
+            &condition.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Gt,
+                ..
+            }
+        ),
+        "condition should be x > 0, got {:?}",
+        condition.kind
     );
     assert!(
         matches!(&then_value.kind, ExprKind::Int(_)),
-        "then_value should be 1, got {:?}", then_value.kind
+        "then_value should be 1, got {:?}",
+        then_value.kind
     );
     assert!(
         matches!(&else_value.kind, ExprKind::Int(_)),
-        "else_value should be 0, got {:?}", else_value.kind
+        "else_value should be 0, got {:?}",
+        else_value.kind
     );
 }
 
@@ -525,7 +564,8 @@ emath function idx(v: Vector[3]) -> Float64:
     };
     assert!(
         matches!(&value.kind, ExprKind::Path { .. }),
-        "indexed value should be a path (v), got {:?}", value.kind
+        "indexed value should be a path (v), got {:?}",
+        value.kind
     );
     assert_eq!(indices.len(), 1, "should have one index");
 }
@@ -552,7 +592,8 @@ emath function mat() -> Vector[2]:
     };
     assert!(
         matches!(&value.kind, ExprKind::List(_)),
-        "indexed value should be a list, got {:?}", value.kind
+        "indexed value should be a list, got {:?}",
+        value.kind
     );
 }
 
@@ -628,9 +669,8 @@ fn n1_all_fixity_forms_parse() {
         ("infixr", NotationFixity::InfixRight),
         ("infix", NotationFixity::Infix),
     ] {
-        let source = format!(
-            "package test.pkg\n\nnotation {fixity_str} 50 \"⊗\" => core::math::op"
-        );
+        let source =
+            format!("package test.pkg\n\nnotation {fixity_str} 50 \"⊗\" => core::math::op");
         let (tree, diags) = parse_str(&source);
         assert!(
             !diags.has_errors(),
@@ -645,7 +685,10 @@ fn n1_all_fixity_forms_parse() {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("expected Notation for fixity `{fixity_str}`"));
-        assert_eq!(notation.fixity, expected, "fixity mismatch for `{fixity_str}`");
+        assert_eq!(
+            notation.fixity, expected,
+            "fixity mismatch for `{fixity_str}`"
+        );
     }
 }
 
@@ -763,7 +806,13 @@ emath function test() -> Bool:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     assert!(
-        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Imply, .. }),
+        matches!(
+            &expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Imply,
+                ..
+            }
+        ),
         "expected Imply, got {:?}",
         expr.kind
     );
@@ -785,7 +834,13 @@ emath function test() -> Bool:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     assert!(
-        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Iff, .. }),
+        matches!(
+            &expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Iff,
+                ..
+            }
+        ),
         "expected Iff, got {:?}",
         expr.kind
     );
@@ -812,7 +867,13 @@ emath function test() -> Bool:
     assert_eq!(*op, BinaryOp::Imply, "top-level should be Imply");
     // Right child should also be Imply (right-associative).
     assert!(
-        matches!(&right.kind, ExprKind::Binary { op: BinaryOp::Imply, .. }),
+        matches!(
+            &right.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Imply,
+                ..
+            }
+        ),
         "right child should be Imply, got {:?}",
         right.kind
     );
@@ -874,7 +935,9 @@ emath function test(n: Float64) -> Float64:
 // ---- C10: value-level generic arguments at use sites ---------------------
 
 /// Find the type of the first field in an `inputs:` section.
-fn first_input_ty<'a>(tree: &'a emath_core::tree::SyntaxTree) -> Option<&'a emath_core::tree::TypeExpr> {
+fn first_input_ty<'a>(
+    tree: &'a emath_core::tree::SyntaxTree,
+) -> Option<&'a emath_core::tree::TypeExpr> {
     let item = tree.items.first()?;
     let Item::Declaration(decl) = item else {
         return None;
@@ -907,7 +970,10 @@ emath model ModTest:
     );
     let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
     match &ty.kind {
-        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+        emath_core::tree::TypeKind::Path {
+            segments,
+            generic_args,
+        } => {
             assert_eq!(segments.last().map(String::as_str), Some("Mod"));
             assert_eq!(generic_args.len(), 1, "Mod should have one generic arg");
             match &generic_args[0] {
@@ -941,7 +1007,10 @@ emath model TensorTest:
     );
     let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
     match &ty.kind {
-        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+        emath_core::tree::TypeKind::Path {
+            segments,
+            generic_args,
+        } => {
             assert_eq!(segments.last().map(String::as_str), Some("Tensor"));
             assert_eq!(generic_args.len(), 2, "Tensor should have two generic args");
             // First arg: Float64 (type)
@@ -982,12 +1051,21 @@ emath model GfTest:
     );
     let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
     match &ty.kind {
-        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+        emath_core::tree::TypeKind::Path {
+            segments,
+            generic_args,
+        } => {
             assert_eq!(segments.last().map(String::as_str), Some("GF"));
             assert_eq!(generic_args.len(), 3, "GF should have three generic args");
             // First two: value literals (2, 3)
-            assert!(matches!(&generic_args[0], emath_core::tree::GenericArg::Value(_)));
-            assert!(matches!(&generic_args[1], emath_core::tree::GenericArg::Value(_)));
+            assert!(matches!(
+                &generic_args[0],
+                emath_core::tree::GenericArg::Value(_)
+            ));
+            assert!(matches!(
+                &generic_args[1],
+                emath_core::tree::GenericArg::Value(_)
+            ));
             // Third: named arg
             match &generic_args[2] {
                 emath_core::tree::GenericArg::Named { name, arg } => {
@@ -1021,7 +1099,10 @@ emath model VectorTest:
     );
     let ty = first_input_ty(&tree).expect("expected `x` field in inputs");
     match &ty.kind {
-        emath_core::tree::TypeKind::Path { segments, generic_args } => {
+        emath_core::tree::TypeKind::Path {
+            segments,
+            generic_args,
+        } => {
             assert_eq!(segments.last().map(String::as_str), Some("Vector"));
             assert_eq!(generic_args.len(), 1);
             assert!(
@@ -1051,7 +1132,9 @@ emath function test(x: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
-        ExprKind::Derivative { kind, wrt, holding, .. } => {
+        ExprKind::Derivative {
+            kind, wrt, holding, ..
+        } => {
             assert_eq!(*kind, DerivativeKind::Partial, "should be Partial");
             assert!(wrt.is_some(), "wrt should be attached");
             assert!(holding.is_empty(), "holding should be empty");
@@ -1142,7 +1225,9 @@ emath function test(T: Float64, p: Float64, V: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
-        ExprKind::Derivative { kind, wrt, holding, .. } => {
+        ExprKind::Derivative {
+            kind, wrt, holding, ..
+        } => {
             assert_eq!(*kind, DerivativeKind::Partial);
             assert!(wrt.is_some(), "wrt should be attached");
             assert_eq!(holding.len(), 1, "holding should have one variable");
@@ -1164,7 +1249,10 @@ fn holding_set_different_variables_distinct() {
     let expr_a = def_expr(&tree_a, "a").unwrap();
     let expr_b = def_expr(&tree_b, "b").unwrap();
     // The holding sets differ (p vs V), so the Derivative nodes differ.
-    assert_ne!(expr_a.kind, expr_b.kind, "different holding sets must produce different AST nodes");
+    assert_ne!(
+        expr_a.kind, expr_b.kind,
+        "different holding sets must produce different AST nodes"
+    );
 }
 
 #[test]
@@ -1183,7 +1271,13 @@ emath function test(partial: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     assert!(
-        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        matches!(
+            &expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ),
         "expected addition, got {:?}",
         expr.kind
     );
@@ -1205,7 +1299,13 @@ emath function test(d: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     assert!(
-        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        matches!(
+            &expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ),
         "expected addition, got {:?}",
         expr.kind
     );
@@ -1318,10 +1418,16 @@ emath function test() -> Float64:
     );
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
-        ExprKind::Binary { op: BinaryOp::Add, right, .. } => {
+        ExprKind::Binary {
+            op: BinaryOp::Add,
+            right,
+            ..
+        } => {
             // right should be 2 * i
             match &right.kind {
-                ExprKind::Binary { op: BinaryOp::Mul, .. } => {}
+                ExprKind::Binary {
+                    op: BinaryOp::Mul, ..
+                } => {}
                 other => panic!("expected Mul for 2i, got {:?}", other),
             }
         }
@@ -1443,10 +1549,20 @@ emath function test(e: Float64) -> Float64:
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     // Top-level should be a comparison (Binary with Eq)
     match &expr.kind {
-        ExprKind::Binary { op: BinaryOp::Eq, left, .. } => {
+        ExprKind::Binary {
+            op: BinaryOp::Eq,
+            left,
+            ..
+        } => {
             // Left should be UnitQuery
             assert!(
-                matches!(&left.kind, ExprKind::UnitQuery { kind: UnitQueryKind::Unit, .. }),
+                matches!(
+                    &left.kind,
+                    ExprKind::UnitQuery {
+                        kind: UnitQueryKind::Unit,
+                        ..
+                    }
+                ),
                 "left should be UnitQuery(Unit), got {:?}",
                 left.kind
             );
@@ -1480,7 +1596,10 @@ emath function test(unit: Float64) -> Float64:
 /// Read a definition expression from the declaration item in the tree,
 /// skipping over any leading `notation` items (files may declare notation
 /// before the function that uses it).
-fn declaration_def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'a emath_core::tree::Expr> {
+fn declaration_def_expr<'a>(
+    tree: &'a emath_core::tree::SyntaxTree,
+    name: &str,
+) -> Option<&'a emath_core::tree::Expr> {
     let item = tree
         .items
         .iter()
@@ -1496,7 +1615,7 @@ fn declaration_def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) 
                     StmtKind::Assign { target, value }
                         if target.segments.first().is_some_and(|s| s == name) =>
                     {
-                        return Some(value)
+                        return Some(value);
                     }
                     _ => {}
                 }
@@ -1514,7 +1633,10 @@ fn assert_notation_call(expr: &emath_core::tree::Expr, target: &[&str], arity: u
         panic!("call function must be a Path, got {:?}", function.kind);
     };
     let segments: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
-    assert_eq!(segments, target, "call target must desugar to the canonical path");
+    assert_eq!(
+        segments, target,
+        "call target must desugar to the canonical path"
+    );
     assert_eq!(args.len(), arity, "call arity mismatch");
 }
 
@@ -1593,14 +1715,24 @@ notation infixl 40 \"⊕\" => core::math::pow
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
     );
     let p = declaration_def_expr(&tree, "p").expect("expected `p` binding");
-    let ExprKind::Binary { op: BinaryOp::Mul, left, right } = &p.kind else {
+    let ExprKind::Binary {
+        op: BinaryOp::Mul,
+        left,
+        right,
+    } = &p.kind
+    else {
         panic!("`a ⊕ b * c` must parse as (a ⊕ b) * c, got {:?}", p.kind);
     };
     assert_notation_call(left, &["core", "math", "pow"], 2);
     assert!(matches!(right.kind, ExprKind::Path { .. }));
 
     let q = declaration_def_expr(&tree, "q").expect("expected `q` binding");
-    let ExprKind::Binary { op: BinaryOp::Mul, left, right } = &q.kind else {
+    let ExprKind::Binary {
+        op: BinaryOp::Mul,
+        left,
+        right,
+    } = &q.kind
+    else {
         panic!("`4 * x ⊕ 2` must parse as 4 * (x ⊕ 2), got {:?}", q.kind);
     };
     assert!(matches!(left.kind, ExprKind::Int(_)));
@@ -1642,7 +1774,10 @@ notation infix 30 \"⊗\" => core::math::min
     let ExprKind::Call { args: s_args, .. } = &s.kind else {
         panic!("expected Call, got {:?}", s.kind);
     };
-    assert!(matches!(&s_args[0].kind, ExprKind::Call { .. }), "infix must be left-associative");
+    assert!(
+        matches!(&s_args[0].kind, ExprKind::Call { .. }),
+        "infix must be left-associative"
+    );
 }
 
 #[test]
@@ -1829,9 +1964,13 @@ emath function if:
     let (_tree, diags) = parse_str(source);
     assert!(
         diags.errors().any(|e| e.code == "E-SYN-101"
-            && e.message.contains("keyword `if` cannot be used as an identifier")),
+            && e.message
+                .contains("keyword `if` cannot be used as an identifier")),
         "keyword declaration name must refuse, got {:?}",
-        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -1849,9 +1988,13 @@ emath function F:
     let (_tree, diags) = parse_str(source);
     assert!(
         diags.errors().any(|e| e.code == "E-SYN-101"
-            && e.message.contains("keyword `if` cannot be used as an identifier")),
+            && e.message
+                .contains("keyword `if` cannot be used as an identifier")),
         "keyword field name must refuse, got {:?}",
-        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -1868,12 +2011,19 @@ emath function F:
     let (tree, diags) = parse_str(source);
     assert!(
         diags.errors().any(|e| e.code == "E-SYN-101"
-            && e.message.contains("keyword `if` cannot be used as an identifier")),
+            && e.message
+                .contains("keyword `if` cannot be used as an identifier")),
         "keyword package segment must refuse, got {:?}",
-        diags.errors().map(|e| (e.code, e.message.clone())).collect::<Vec<_>>()
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
     );
     assert!(
-        !tree.items.iter().any(|item| matches!(item, Item::Package { path, .. } if path.as_slice() == ["tst"])),
+        !tree
+            .items
+            .iter()
+            .any(|item| matches!(item, Item::Package { path, .. } if path.as_slice() == ["tst"])),
         "truncated package path `tst` must not be recorded"
     );
 }

@@ -17,10 +17,7 @@ pub fn lex(source: &str, file: FileId, limits: &Limits) -> (Vec<Token>, Diagnost
     if let Err(max) = limits.check_source(source.len()) {
         diagnostics.error(
             "E-SYN-116",
-            format!(
-                "source is {} bytes; limit is {max} bytes",
-                source.len()
-            ),
+            format!("source is {} bytes; limit is {max} bytes", source.len()),
             Span::new(file, 0, 0),
         );
         let end = u32::try_from(source.len()).unwrap_or(u32::MAX);
@@ -67,10 +64,7 @@ pub fn lex_with_comments(
     if let Err(max) = limits.check_source(source.len()) {
         diagnostics.error(
             "E-SYN-116",
-            format!(
-                "source is {} bytes; limit is {max} bytes",
-                source.len()
-            ),
+            format!("source is {} bytes; limit is {max} bytes", source.len()),
             Span::new(file, 0, 0),
         );
         let end = u32::try_from(source.len()).unwrap_or(u32::MAX);

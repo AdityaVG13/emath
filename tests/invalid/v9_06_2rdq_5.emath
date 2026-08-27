@@ -1,0 +1,3 @@
+# expect: E-SYN-147 claiming exactness while a hole is open
+f(x) = ?
+claim exact

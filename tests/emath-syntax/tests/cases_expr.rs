@@ -1,8 +1,8 @@
 //! U1: cases expression parse, format, and contextual keyword tests.
 
-use emath_core::tree::{BinaryOp, ExprKind, Item, StmtKind};
 use emath_core::FileId;
 use emath_core::limits::Limits;
+use emath_core::tree::{BinaryOp, ExprKind, Item, StmtKind};
 use emath_syntax::formatter::format;
 use emath_syntax::{parse_lossless, parse_str};
 
@@ -21,7 +21,7 @@ fn def_expr<'a>(
                     StmtKind::Assign { target, value }
                         if target.segments.first().is_some_and(|s| s == name) =>
                     {
-                        return Some(value)
+                        return Some(value);
                     }
                     _ => {}
                 }
@@ -49,10 +49,20 @@ emath function f(x: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "f").expect("definition `f` not found");
     match &expr.kind {
-        ExprKind::Cases { subject, arms, else_arm } => {
+        ExprKind::Cases {
+            subject,
+            arms,
+            else_arm,
+        } => {
             assert!(subject.is_some(), "subject should be present");
             assert_eq!(arms.len(), 2, "should have 2 condition arms");
-            assert!(matches!(&arms[0].0.kind, ExprKind::Binary { op: BinaryOp::Gt, .. }));
+            assert!(matches!(
+                &arms[0].0.kind,
+                ExprKind::Binary {
+                    op: BinaryOp::Gt,
+                    ..
+                }
+            ));
             assert!(matches!(&else_arm.kind, ExprKind::Int(_)));
         }
         other => panic!("expected Cases, got {other:?}"),
@@ -96,8 +106,9 @@ emath function f(x: Float64) -> Float64:
     let (_, diags) = parse_str(source);
     let errors: Vec<_> = diags.errors().collect();
     assert!(
-        errors.iter().any(|d| d.code == "E-SYN-110"
-            && d.message.contains("else")),
+        errors
+            .iter()
+            .any(|d| d.code == "E-SYN-110" && d.message.contains("else")),
         "missing else must be E-SYN-110 naming the else arm, got {errors:?}"
     );
 }
@@ -112,8 +123,9 @@ emath function f(x: Float64) -> Float64:
     let (_, diags) = parse_str(source);
     let errors: Vec<_> = diags.errors().collect();
     assert!(
-        errors.iter().any(|d| d.code == "E-SYN-110"
-            && d.message.contains("expected `|`")),
+        errors
+            .iter()
+            .any(|d| d.code == "E-SYN-110" && d.message.contains("expected `|`")),
         "empty cases body must be E-SYN-110 expecting an arm, got {errors:?}"
     );
 }
@@ -133,7 +145,13 @@ emath function f(x: Float64) -> Float64:
     );
     let expr = def_expr(&tree, "f").expect("definition `f` not found");
     assert!(
-        matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }),
+        matches!(
+            &expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ),
         "expected addition, got {:?}",
         expr.kind
     );
@@ -150,7 +168,10 @@ emath function f(x: Float64) -> Float64:
             | else => 0
 ";
     let parsed = parse_lossless(source, FileId(0), &Limits::default());
-    assert!(!parsed.diagnostics.has_errors(), "source must parse cleanly");
+    assert!(
+        !parsed.diagnostics.has_errors(),
+        "source must parse cleanly"
+    );
     let formatted = format(&parsed.tree, &parsed.comments);
     let reparsed = parse_lossless(&formatted, FileId(0), &Limits::default());
     assert!(
