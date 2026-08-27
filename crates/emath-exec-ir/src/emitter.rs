@@ -224,6 +224,7 @@ impl Emitter {
                     BinaryOp::MatrixMulMatrix => EmirOp::MatrixMulMatrix(l, r),
                     BinaryOp::TensorAdd => EmirOp::TensorAdd(l, r),
                     BinaryOp::TensorSub => EmirOp::TensorSub(l, r),
+                    BinaryOp::TensorScale => EmirOp::TensorScale(l, r),
                     BinaryOp::ExactAdd
                     | BinaryOp::ExactSub
                     | BinaryOp::ExactMul

@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use emath_core::{QualifiedName, Span};
 use emath_ir::{
     BinaryOp, BinderKind, BinderVariable, CompileSpec, Constructor, Declaration, DeclarationId,
-    DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExprId, ExprNode, FallbackPolicy, Field,
-    Goal, GoalId, GoalKind, GoalPayload, GoalRequirements, Literal, ObligationClass,
+    DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExprId, ExprNode, Extent, FallbackPolicy,
+    Field, Goal, GoalId, GoalKind, GoalPayload, GoalRequirements, Literal, ObligationClass,
     ObligationKind, SemanticPackage, SliceAxis, TargetProfile, TestCase, TypeId, TypeNode, UnaryOp,
     Visibility,
 };
@@ -1177,6 +1177,60 @@ fn factorial_twenty_calls_i64_kernel() {
         src.contains("-> i64"),
         "factorial Int output must return i64, got:\n{src}"
     );
+}
+
+#[test]
+fn rank3_stencil_and_tensor_scale_generate_shared_runtime_calls() {
+    let mut package = SemanticPackage::new();
+    let values: Vec<_> = (0..27)
+        .map(|value| {
+            package.push_expr(
+                ExprNode::Literal(Literal::FloatBits((value as f64).to_bits())),
+                Span::default(),
+            )
+        })
+        .collect();
+    let tensor = package.push_expr(
+        ExprNode::Tensor {
+            shape: vec![3, 3, 3],
+            elements: values,
+        },
+        Span::default(),
+    );
+    let spacing = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(1.0f64.to_bits())),
+        Span::default(),
+    );
+    let laplacian = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("laplacian_3d"),
+            arguments: vec![tensor, spacing],
+        },
+        Span::default(),
+    );
+    let scale = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(0.25f64.to_bits())),
+        Span::default(),
+    );
+    let output = package.push_expr(
+        ExprNode::Binary {
+            operation: BinaryOp::TensorScale,
+            left: laplacian,
+            right: scale,
+        },
+        Span::default(),
+    );
+    let source = generate_typed(
+        "spatial3d",
+        TypeNode::Tensor {
+            element: Box::new(TypeNode::Float64),
+            shape: vec![Extent::Fixed(3), Extent::Fixed(3), Extent::Fixed(3)],
+        },
+        output,
+        &mut package,
+    );
+    assert!(source.contains("stencil_3d_checked"), "{source}");
+    assert!(source.contains("tensor_scale"), "{source}");
 }
 
 /// `einsum("ik,kj->ij", A, B)` must call the emath-rt kernel, not emit

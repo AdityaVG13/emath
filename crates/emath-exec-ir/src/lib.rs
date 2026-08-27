@@ -43,7 +43,8 @@ pub enum FoldCombine {
 /// How out-of-range stencil indices resolve: `Clamp` (replicate the edge
 /// cell), `Neumann` (mirror the next interior cell), `OneSided` (linear
 /// extrapolation; first-order one-sided first differences), or `Dirichlet`
-/// (fixed boundary values). 2D admits `Clamp`/`Neumann`/`OneSided` in Phase 1.
+/// (fixed boundary values). 2D and 3D admit
+/// `Clamp`/`Neumann`/`OneSided`; fixed Dirichlet faces remain unsupported.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EdgePolicy {
     Clamp,
@@ -127,6 +128,14 @@ pub enum EmirOp {
         center: (usize, usize),
         edge: EdgePolicy,
     },
+    /// 3D 3x3x3 stencil convolution (axis-major weights, length 27);
+    /// output shape equals the rank-3 Tensor input shape.
+    Stencil3d {
+        input: EmirValue,
+        weights: Vec<f64>,
+        center: (usize, usize, usize),
+        edge: EdgePolicy,
+    },
     MatrixAdd(EmirValue, EmirValue),
     MatrixSub(EmirValue, EmirValue),
     MatrixScale(EmirValue, EmirValue),
@@ -147,6 +156,7 @@ pub enum EmirOp {
     },
     TensorAdd(EmirValue, EmirValue),
     TensorSub(EmirValue, EmirValue),
+    TensorScale(EmirValue, EmirValue),
     /// Einstein summation over the given subscripts (e.g. `"ik,kj->ij"`).
     Einsum {
         subscripts: String,
@@ -259,6 +269,7 @@ impl EmirOp {
             Self::VectorLength(_) => "vec-len",
             Self::Stencil1d { .. } => "stencil-1d",
             Self::Stencil2d { .. } => "stencil-2d",
+            Self::Stencil3d { .. } => "stencil-3d",
             Self::MatrixAdd(..) => "mat-add",
             Self::MatrixSub(..) => "mat-sub",
             Self::MatrixScale(..) => "mat-scale",
@@ -270,6 +281,7 @@ impl EmirOp {
             Self::TensorSlice { .. } => "tensor-slice",
             Self::TensorAdd(..) => "tensor-add",
             Self::TensorSub(..) => "tensor-sub",
+            Self::TensorScale(..) => "tensor-scale",
             Self::Einsum { .. } => "einsum",
             Self::Factorial(..) => "factorial",
             Self::ModInv(..) => "mod-inv",
@@ -351,6 +363,20 @@ impl EmirOp {
                 input.0,
                 center.0,
                 center.1,
+                format_edge(edge),
+                format_f64_bits(weights)
+            ),
+            Self::Stencil3d {
+                input,
+                weights,
+                center,
+                edge,
+            } => format!(
+                "stencil-3d %{} center={},{},{} {} {}",
+                input.0,
+                center.0,
+                center.1,
+                center.2,
                 format_edge(edge),
                 format_f64_bits(weights)
             ),

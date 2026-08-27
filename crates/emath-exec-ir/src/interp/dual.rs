@@ -111,7 +111,7 @@ pub(super) fn evaluate_dual(
                 let (primal, tangent) = id.eval_dual_unary(val.primal, val.tangent);
                 Dual { primal, tangent }
             }
-            EmirOp::Stencil1d { .. } | EmirOp::Stencil2d { .. } => {
+            EmirOp::Stencil1d { .. } | EmirOp::Stencil2d { .. } | EmirOp::Stencil3d { .. } => {
                 return Err(EvalFault::Arithmetic {
                     op: name,
                     detail: "spatial stencil ops are not differentiable in Phase 1",

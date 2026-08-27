@@ -293,6 +293,7 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         | EmirOp::VectorLength(_)
         | EmirOp::Stencil1d { .. }
         | EmirOp::Stencil2d { .. }
+        | EmirOp::Stencil3d { .. }
         | EmirOp::MatrixAdd(..)
         | EmirOp::MatrixSub(..)
         | EmirOp::MatrixScale(..)
@@ -301,6 +302,7 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         | EmirOp::MatrixTranspose(_)
         | EmirOp::TensorAdd(..)
         | EmirOp::TensorSub(..)
+        | EmirOp::TensorScale(..)
         | EmirOp::Einsum { .. } => true,
         // Dynamic domain faults (factorial of a negative, non-invertible
         // modulus, congruence mod 0, ...) and runtime panics (solver
@@ -355,6 +357,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::MatrixMulMatrix(a, b)
         | EmirOp::TensorAdd(a, b)
         | EmirOp::TensorSub(a, b)
+        | EmirOp::TensorScale(a, b)
         | EmirOp::ModInv(a, b)
         | EmirOp::HammingDistance(a, b)
         | EmirOp::BinaryBuiltin(_, a, b) => {
@@ -394,7 +397,9 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
             push(row);
             push(col);
         }
-        EmirOp::Stencil1d { input, .. } | EmirOp::Stencil2d { input, .. } => push(input),
+        EmirOp::Stencil1d { input, .. }
+        | EmirOp::Stencil2d { input, .. }
+        | EmirOp::Stencil3d { input, .. } => push(input),
         EmirOp::TensorIndex {
             tensor,
             ref indices,
@@ -550,6 +555,17 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
             center,
             edge,
         },
+        EmirOp::Stencil3d {
+            input,
+            ref weights,
+            center,
+            edge,
+        } => EmirOp::Stencil3d {
+            input: g(input),
+            weights: weights.clone(),
+            center,
+            edge,
+        },
         EmirOp::MatrixAdd(a, b) => EmirOp::MatrixAdd(g(a), g(b)),
         EmirOp::MatrixSub(a, b) => EmirOp::MatrixSub(g(a), g(b)),
         EmirOp::MatrixScale(a, b) => EmirOp::MatrixScale(g(a), g(b)),
@@ -585,6 +601,7 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
         },
         EmirOp::TensorAdd(a, b) => EmirOp::TensorAdd(g(a), g(b)),
         EmirOp::TensorSub(a, b) => EmirOp::TensorSub(g(a), g(b)),
+        EmirOp::TensorScale(a, b) => EmirOp::TensorScale(g(a), g(b)),
         EmirOp::Einsum {
             ref subscripts,
             ref inputs,

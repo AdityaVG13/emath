@@ -192,7 +192,9 @@ cbrt recip fract hypot mod lerp clamp pow
 and or not ==> <==>
 mean norm length dot transpose einsum
 laplacian laplacian_neumann laplacian_dirichlet laplacian_2d laplacian_2d_neumann
-gradient gradient_2d_x gradient_2d_y
+laplacian_3d laplacian_3d_neumann
+gradient gradient_2d_x gradient_2d_y gradient_3d_x gradient_3d_y gradient_3d_z
+div_1d div_2d div div_3d
 if cond: a else: b
 vector / matrix / tensor literals
 index and slice  v[i]  m[i, j]  t[0, :, :]
@@ -527,23 +529,33 @@ Spatial operators (admitted in `definitions:` and `equations:`):
 - `gradient_2d_x(u, dx)` - `du/dc` (along columns); returns a `Matrix`.
 - `gradient_2d_y(u, dx)` - `du/dr` (along rows); returns a `Matrix`.
 
-`dx` must be a positive literal constant in Phase 1 (variable `dx` is not
-yet supported). The divergence of a 2-D vector field `(u, v)` is expressible
-by composition - `gradient_2d_x(u, dx) + gradient_2d_y(v, dx)` - so a
-dedicated `divergence` builtin is deferred.
+3-D operators over rank-3 `Tensor` values:
+- `laplacian_3d(u, spacing)` uses the 7-point stencil with equal spacing.
+- `laplacian_3d(u, dx, dy, dz)` uses independent axis coefficients
+  `1/dx²`, `1/dy²`, and `1/dz²`.
+- `laplacian_3d_neumann` accepts the same signatures with mirrored faces.
+- `gradient_3d_x/y/z(u, spacing)` returns the selected partial derivative.
+
+Divergence is available in each admitted spatial dimension:
+- `div_1d(vx, dx)`
+- `div_2d(vx, vy, spacing)` or `div_2d(vx, vy, dx, dy)`
+- `div(vx, vy, vz, spacing)` or `div(vx, vy, vz, dx, dy, dz)`;
+  `div_3d` is an explicit alias.
+
+Spatial spacing values must be positive literal constants. The 3-D forms
+support non-cubic physical grids through distinct `dx`, `dy`, and `dz`.
 
 Heat equation as a continuous model: an `emath model` with a `Vector`
-(1-D) or `Matrix` (2-D) state and `der(u) = alpha * laplacian[_2d](u, 1.0)`
-admits and integrates under `emath simulate` (RK4). Clamp edges conserve
-`sum(u)`. Mirror (Neumann) edges conserve trapezoidal heat, not always
-`sum(u)`. See
+(1-D), `Matrix` (2-D), or rank-3 `Tensor` state and
+`der(u) = alpha * laplacian[_2d|_3d](u, 1.0)` admits and integrates under
+`emath simulate` (RK4). Clamp edges conserve `sum(u)`. Mirror (Neumann)
+edges conserve trapezoidal heat, not always `sum(u)`. See
 `heat-rod.emath`, `heat-rod-sim.emath`, `heat-plate.emath`,
-`heat-plate-sim.emath`, and `gradient-field.emath`.
+`heat-plate-sim.emath`, `heat-volume-sim.emath`, and `gradient-field.emath`.
 
-Not admitted yet: 3-D fields, `Field[R^d -> R]` types, and Dirichlet
-boundaries for the 2-D Laplacian (the arms return a clear "not yet
-supported" error). `heat-pde.emath` remains a target sketch for the full
-field-type design.
+Not admitted yet: continuous `Field[R^d -> R]` types and Dirichlet
+boundaries for 2-D/3-D Laplacians. `heat-pde.emath` remains a target sketch
+for the full field-type design.
 
 ### Modular arithmetic and finite fields
 

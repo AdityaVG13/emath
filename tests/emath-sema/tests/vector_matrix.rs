@@ -3,8 +3,8 @@
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::Value;
 use emath_exec_ir::runner::run_package;
-use emath_sema::admit::CheckResult;
 use emath_sema::CompilerSession;
+use emath_sema::admit::CheckResult;
 use emath_syntax::install_source_parser;
 
 fn check_source(name: &str, source: &str) -> CheckResult {
@@ -222,6 +222,38 @@ emath function TensorSlice:
             .map(|d| d.to_string())
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn rank3_spatial_operators_and_divergence_admit() {
+    let source = include_str!("../../../language/examples/numerical/spatial-3d.emath");
+    let result = check_source("spatial-3d", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "{:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn rank3_spatial_operator_refuses_matrix_input() {
+    let source = "\
+emath function BadSpatial3d:
+    inputs:
+        u: Matrix[3, 3]
+    outputs:
+        lap: Matrix[3, 3]
+    definitions:
+        lap = laplacian_3d(u, 1.0)
+";
+    let result = check_source("bad-spatial-3d", source);
+    assert!(result.diagnostics.errors().any(|diagnostic| {
+        diagnostic.code == "E-TYPE-012" && diagnostic.message.contains("rank-3 Tensor")
+    }));
 }
 
 #[test]
@@ -2882,7 +2914,10 @@ emath function CplxElem:
     let test = &report.declarations[0].tests[0];
     match test.outputs.get("s") {
         Some(Value::Complex { re, im }) => {
-            assert!(re.abs() < 1e-12 && (im - 1.0).abs() < 1e-12, "sqrt(-1)={re}+{im}i");
+            assert!(
+                re.abs() < 1e-12 && (im - 1.0).abs() < 1e-12,
+                "sqrt(-1)={re}+{im}i"
+            );
         }
         other => panic!("expected Complex sqrt, got {other:?}"),
     }

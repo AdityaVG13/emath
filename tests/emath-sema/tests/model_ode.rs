@@ -1161,3 +1161,52 @@ fn heat_plate_model_simulates_and_conserves_total_heat() {
     assert!(final_u[5] > 0.0, "heat should reach the right neighbor");
     assert!(final_u[7] > 0.0, "heat should reach the bottom neighbor");
 }
+
+#[test]
+fn heat_volume_model_simulates_one_hundred_steps_and_conserves_heat() {
+    let result = check_source(
+        "heat-volume-sim",
+        include_str!("../../../language/examples/numerical/heat-volume-sim.emath"),
+    );
+    assert!(
+        !result.diagnostics.has_errors(),
+        "{:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    );
+    let mut inputs = BTreeMap::new();
+    inputs.insert("alpha".into(), Value::F64(1.0));
+    let mut data = vec![0.0; 27];
+    data[13] = 1.0;
+    let mut state = BTreeMap::new();
+    state.insert(
+        "u".into(),
+        Value::Tensor {
+            shape: vec![3, 3, 3],
+            data,
+        },
+    );
+    let trajectory = simulate_continuous(
+        &result.package,
+        &result.package.declarations[0],
+        &inputs,
+        &state,
+        0.0,
+        0.5,
+        0.005,
+        StepMethod::Rk4,
+    )
+    .expect("3D heat simulation should run");
+    let Some(Value::Tensor { data, .. }) = trajectory.samples.last().unwrap().state.get("u") else {
+        panic!("expected rank-3 Tensor state");
+    };
+    let total: f64 = data.iter().sum();
+    assert!((total - 1.0).abs() < 1e-9, "total heat was {total}");
+    assert!(data[13] < 1.0, "center hot voxel did not diffuse");
+    for neighbor in [4, 10, 12, 14, 16, 22] {
+        assert!(data[neighbor] > 0.0, "neighbor {neighbor} stayed cold");
+    }
+}
