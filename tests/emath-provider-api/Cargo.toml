@@ -6,5 +6,9 @@ publish = false
 
 [dependencies]
 emath-provider-api = { path = "../../crates/emath-provider-api" }
+emath-artifact = { path = "../../crates/emath-artifact" }
 emath-core = { path = "../../crates/emath-core" }
+emath-hir = { path = "../../crates/emath-hir" }
 emath-ir = { path = "../../crates/emath-ir" }
+emath-registry = { path = "../../crates/emath-registry" }
+emath-schema = { path = "../../crates/emath-schema" }
