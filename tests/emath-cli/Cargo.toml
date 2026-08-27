@@ -10,6 +10,7 @@ emath-core = { path = "../../crates/emath-core" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-sema = { path = "../../crates/emath-sema" }
 emath-syntax = { path = "../../crates/emath-syntax" }
+emath-plan = { path = "../../crates/emath-plan" }
 emath-artifact = { path = "../../crates/emath-artifact" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }
 emath-world-codegen-rust = { path = "../../crates/emath-world-codegen-rust" }

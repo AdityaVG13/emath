@@ -85,6 +85,16 @@ impl PlanningOutcome {
             }
         }
     }
+
+    /// The machine inspection for this outcome (selected, empty, or exhausted).
+    #[must_use]
+    pub fn inspection(&self) -> &PlanInspection {
+        match self {
+            Self::Selected { inspection, .. }
+            | Self::NoEligible { inspection, .. }
+            | Self::Exhausted { inspection, .. } => inspection,
+        }
+    }
 }
 
 /// Runs the deterministic planner over the goal and registry.

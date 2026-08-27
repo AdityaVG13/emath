@@ -1,6 +1,6 @@
 use super::eval::{
-    coerce_bindings, eval_constructor, eval_definitions, eval_expect, eval_givens, outputs_of,
-    seed_state_from_given,
+    check_obligation, coerce_bindings, eval_constructor, eval_definitions, eval_expect,
+    eval_givens, outputs_of, seed_state_from_given,
 };
 use super::{
     DeclarationRun, PANE_TEST_NAME, RunReport, RunSummary, TestRun, TestVerdict, ZERO_TEST_NOTE,
@@ -72,7 +72,12 @@ pub fn run_declaration_with_given(
     } else {
         None
     };
-    DeclarationRun { name, tests, note }
+    DeclarationRun {
+        name,
+        tests,
+        law_metadata: package.law_metadata.get(&declaration.id).cloned(),
+        note,
+    }
 }
 
 fn run_test(
@@ -108,6 +113,10 @@ fn run_test(
             run.verdict = verdict;
             return run;
         }
+    }
+    if let Err(verdict) = check_law_assumptions(package, declaration, &run.given) {
+        run.verdict = verdict;
+        return run;
     }
 
     if let Some(constructor) = declaration.constructors.first() {
@@ -178,6 +187,10 @@ fn run_direct(
         };
         return run;
     }
+    if let Err(verdict) = check_law_assumptions(package, declaration, &run.given) {
+        run.verdict = verdict;
+        return run;
+    }
 
     if declaration.constructors.len() > 1 {
         run.verdict = TestVerdict::LoweringRefused {
@@ -224,6 +237,31 @@ fn run_direct(
         }
     }
     run
+}
+
+fn check_law_assumptions(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    given: &BTreeMap<String, Value>,
+) -> Result<(), TestVerdict> {
+    if declaration.kind_label != "law" {
+        return Ok(());
+    }
+    let mut names = Vec::with_capacity(declaration.inputs.len());
+    let mut values = Vec::with_capacity(declaration.inputs.len());
+    for field in &declaration.inputs {
+        let Some(value) = given.get(&field.name).cloned() else {
+            return Err(TestVerdict::LoweringRefused {
+                detail: format!("test body does not supply input `{}`", field.name),
+            });
+        };
+        names.push(field.name.clone());
+        values.push(value);
+    }
+    for assumption in &declaration.invariants {
+        check_obligation(package, *assumption, &names, &values, "assume")?;
+    }
+    Ok(())
 }
 
 fn missing_binding(declaration: &Declaration, given: &BTreeMap<String, Value>) -> Option<String> {

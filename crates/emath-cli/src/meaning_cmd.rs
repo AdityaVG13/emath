@@ -1,12 +1,12 @@
 //! `emath meaning list|set|unset|explain`: project-local interpretation locks.
 
 use super::genesis_cmd::{self, Analysis};
-use super::{usage, EXIT_OK, EXIT_REFUSED};
+use super::{EXIT_OK, EXIT_REFUSED, usage};
 use emath_artifact::JsonWriter;
 use emath_portfolio::{
-    evaluate, refuse_disqualified, Authority, InterpretationPolicy, LockEntry, LockError, LockKey,
-    MeaningLock, MetricAxis, MetricPolarity, SelectionMethod, WorldCandidate,
-    DEFAULT_PORTFOLIO_CAP, PROVENANCE_USER_LOCKED, WHOLE_TERM_HOLE,
+    Authority, DEFAULT_PORTFOLIO_CAP, InterpretationPolicy, LockEntry, LockError, LockKey,
+    MeaningLock, MetricAxis, MetricPolarity, PROVENANCE_USER_LOCKED, SelectionMethod,
+    WHOLE_TERM_HOLE, WorldCandidate, evaluate, refuse_disqualified,
 };
 use emath_world_ir::WorldIr;
 use std::path::{Path, PathBuf};
