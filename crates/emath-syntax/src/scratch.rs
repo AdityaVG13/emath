@@ -4,6 +4,7 @@
 //! shorthand lower to the same declaration IR as contracted components.
 //! Inspect the expansion with `emath expand`.
 
+use crate::exactness::ExactnessStatus;
 use emath_core::{Diagnostics, FileId, Pedagogy, Span};
 
 const SYNTH_DECL: &str = "Scratch";
@@ -29,22 +30,6 @@ const SECTION_HEADS: &[&str] = &[
     "state",
     "tests",
     "transitions",
-];
-
-const INTENT_VERBS: &[&str] = &[
-    "plot",
-    "solve",
-    "simulate",
-    "compile",
-    "differentiate",
-    "integrate",
-    "convert",
-    "find",
-    "show",
-    "prove",
-    "compare",
-    "share",
-    "build",
 ];
 
 const SOLVE_CANDIDATES: &str = "Real, Complex, modular, symbolic, numeric";
@@ -139,21 +124,80 @@ impl ScratchLevel {
     }
 }
 
+/// Level a successful rewrite may occupy. Canonical is identity, not a rewrite.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScratchRewriteLevel {
+    L0,
+    L1,
+    L2,
+}
+
+impl ScratchRewriteLevel {
+    #[must_use]
+    pub fn as_scratch_level(self) -> ScratchLevel {
+        match self {
+            Self::L0 => ScratchLevel::L0,
+            Self::L1 => ScratchLevel::L1,
+            Self::L2 => ScratchLevel::L2,
+        }
+    }
+}
+
+/// How scratch expansion concluded. A rewrite cannot be Canonical.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpansionOutcome {
+    Identity,
+    Rewritten { level: ScratchRewriteLevel },
+    Refused { level: ScratchLevel },
+}
+
+impl ExpansionOutcome {
+    #[must_use]
+    pub fn rewritten(self) -> bool {
+        matches!(self, Self::Rewritten { .. })
+    }
+
+    #[must_use]
+    pub fn level(self) -> ScratchLevel {
+        match self {
+            Self::Identity => ScratchLevel::Canonical,
+            Self::Rewritten { level } => level.as_scratch_level(),
+            Self::Refused { level } => level,
+        }
+    }
+}
+
 /// One inferred default recorded so the expansion is inspectable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScratchNote {
     pub inferred: String,
     pub rationale: String,
     pub replacement: String,
-    pub stability: &'static str,
+    pub stability: ExactnessStatus,
+}
+
+/// Symbolic or numeric labeled hole candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoleKind {
+    Symbolic,
+    Numeric,
+}
+
+impl HoleKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Symbolic => "symbolic",
+            Self::Numeric => "numeric",
+        }
+    }
 }
 
 /// Labeled candidate for a typed hole. Labels alternatives; never a filled-in solution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HoleCandidate {
     pub label: String,
-    pub kind: String,
-    pub status: &'static str,
+    pub kind: HoleKind,
 }
 
 /// An attempt that was considered and refused for a hole.
@@ -217,71 +261,216 @@ impl HoleRecord {
     }
 }
 
-/// One labeled completion for an ambiguous `solve` goal.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SolveCandidate {
-    pub label: String,
-    pub result_type: String,
-    pub domain: String,
-    pub exactness: String,
-    pub method: String,
-    pub evidence_class: String,
-    pub holes: Vec<String>,
-    pub beginner_default: bool,
-    pub selected: bool,
+/// Closed set of labeled `solve` worlds. The menu is these five rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SolveWorld {
+    RealPm,
+    Complex,
+    Modular,
+    Symbolic,
+    Numeric,
+}
+
+impl SolveWorld {
+    pub const ALL: [Self; 5] = [
+        Self::RealPm,
+        Self::Complex,
+        Self::Modular,
+        Self::Symbolic,
+        Self::Numeric,
+    ];
+
+    #[must_use]
+    pub fn parse_label(label: &str) -> Option<Self> {
+        match label {
+            "real" | "real-pm" | "ℝ" => Some(Self::RealPm),
+            "complex" => Some(Self::Complex),
+            "modular" => Some(Self::Modular),
+            "symbolic" => Some(Self::Symbolic),
+            "numeric" => Some(Self::Numeric),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RealPm => "real-pm",
+            Self::Complex => "complex",
+            Self::Modular => "modular",
+            Self::Symbolic => "symbolic",
+            Self::Numeric => "numeric",
+        }
+    }
+
+    #[must_use]
+    pub fn result_type(self) -> &'static str {
+        match self {
+            Self::RealPm => "Real",
+            Self::Complex => "Complex",
+            Self::Modular => "Int",
+            Self::Symbolic => "expression",
+            Self::Numeric => "Float64",
+        }
+    }
+
+    #[must_use]
+    pub fn domain(self) -> &'static str {
+        match self {
+            Self::RealPm => "Real",
+            Self::Complex => "Complex",
+            Self::Modular => "modular",
+            Self::Symbolic => "symbolic",
+            Self::Numeric => "numeric",
+        }
+    }
+
+    #[must_use]
+    pub fn exactness(self) -> &'static str {
+        match self {
+            Self::RealPm | Self::Complex => "exact-algebraic",
+            Self::Modular => "exact",
+            Self::Symbolic => "symbolic",
+            Self::Numeric => "numeric-tolerance",
+        }
+    }
+
+    #[must_use]
+    pub fn method(self) -> &'static str {
+        match self {
+            Self::RealPm | Self::Complex => "algebraic",
+            Self::Modular => "modular",
+            Self::Symbolic => "symbolic",
+            Self::Numeric => "numeric",
+        }
+    }
+
+    #[must_use]
+    pub fn evidence_class(self) -> &'static str {
+        match self {
+            Self::Symbolic => "identity",
+            Self::RealPm | Self::Complex | Self::Modular | Self::Numeric => "residual",
+        }
+    }
+
+    #[must_use]
+    pub fn holes(self) -> &'static [&'static str] {
+        match self {
+            Self::Modular => &["modulus"],
+            Self::Numeric => &["tolerance"],
+            Self::RealPm | Self::Complex | Self::Symbolic => &[],
+        }
+    }
+
+    #[must_use]
+    pub fn beginner_default(self) -> bool {
+        matches!(self, Self::RealPm)
+    }
+
+    #[must_use]
+    pub fn pin_phrase(self) -> &'static str {
+        match self {
+            Self::RealPm => "over Real",
+            Self::Complex => "over Complex",
+            Self::Modular => "over modular",
+            Self::Symbolic => "over symbolic",
+            Self::Numeric => "over numeric",
+        }
+    }
+}
+
+/// At most one labeled `solve` world. Two worlds selected is unrepresentable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SolveIntent {
+    #[default]
+    Absent,
+    Unlabeled,
+    Over(SolveWorld),
+}
+
+impl SolveIntent {
+    #[must_use]
+    pub fn selected(self, world: SolveWorld) -> bool {
+        matches!(self, Self::Over(w) if w == world)
+    }
+
+    #[must_use]
+    pub fn menu(self) -> &'static [SolveWorld] {
+        match self {
+            Self::Absent => &[],
+            Self::Unlabeled | Self::Over(_) => &SolveWorld::ALL,
+        }
+    }
 }
 
 /// Result of official scratch / L2 expansion.
 #[derive(Debug)]
 pub struct ScratchExpansion {
     pub expanded: String,
-    pub rewritten: bool,
-    pub level: ScratchLevel,
+    pub outcome: ExpansionOutcome,
     pub notes: Vec<ScratchNote>,
     pub holes: Vec<HoleRecord>,
-    pub solve_candidates: Vec<SolveCandidate>,
+    pub solve: SolveIntent,
     pub diagnostics: Diagnostics,
 }
 
 impl ScratchExpansion {
+    /// Display/JSON: true iff [`ExpansionOutcome::Rewritten`]. Never Canonical.
+    #[must_use]
+    pub fn rewritten(&self) -> bool {
+        self.outcome.rewritten()
+    }
+
+    #[must_use]
+    pub fn level(&self) -> ScratchLevel {
+        self.outcome.level()
+    }
+
     /// Source the parser should read: expanded text when the rewrite is clean.
     #[must_use]
     pub fn parse_source<'a>(&'a self, original: &'a str) -> &'a str {
-        if self.rewritten && !self.diagnostics.has_errors() {
-            self.expanded.as_str()
-        } else {
-            original
+        match self.outcome {
+            ExpansionOutcome::Rewritten { .. } if !self.diagnostics.has_errors() => {
+                self.expanded.as_str()
+            }
+            _ => original,
         }
     }
 }
 
 fn expansion(
     expanded: impl Into<String>,
-    rewritten: bool,
-    level: ScratchLevel,
+    outcome: ExpansionOutcome,
     notes: Vec<ScratchNote>,
     diagnostics: Diagnostics,
     holes: Vec<HoleRecord>,
 ) -> ScratchExpansion {
     ScratchExpansion {
         expanded: expanded.into(),
-        rewritten,
-        level,
+        outcome,
         notes,
         holes,
-        solve_candidates: Vec::new(),
+        solve: SolveIntent::Absent,
         diagnostics,
+    }
+}
+
+fn solve_intent_payload(line: &str) -> Option<String> {
+    let LineKind::Intent { verb, payload } = classify_line(line) else {
+        return None;
+    };
+    if verb == IntentVerb::Solve {
+        Some(payload)
+    } else {
+        None
     }
 }
 
 fn claims_unlabeled_unique_solve(source: &str) -> bool {
     source.lines().any(|line| {
-        let LineKind::Intent { verb, payload } = classify_line(line) else {
+        let Some(payload) = solve_intent_payload(line) else {
             return false;
         };
-        if verb != "solve" {
-            return false;
-        }
         let lower = payload.to_ascii_lowercase();
         lower.contains("uniquely")
             || lower.contains("unique")
@@ -290,100 +479,39 @@ fn claims_unlabeled_unique_solve(source: &str) -> bool {
     })
 }
 
-fn extract_solve_candidates(source: &str) -> Vec<SolveCandidate> {
-    for line in source.lines() {
-        let LineKind::Intent { verb, payload } = classify_line(line) else {
-            continue;
-        };
-        if verb != "solve" {
-            continue;
-        }
-        let (_, domain) = split_keyword_tail(&payload, "over");
-        return labeled_solve_menu(domain.as_deref());
-    }
-    Vec::new()
+fn extract_solve_intent(source: &str) -> SolveIntent {
+    let Some(payload) = source.lines().find_map(solve_intent_payload) else {
+        return SolveIntent::Absent;
+    };
+    let (_, domain) = split_keyword_tail(&payload, "over");
+    labeled_solve_menu(domain.as_deref())
 }
 
-fn labeled_solve_menu(domain: Option<&str>) -> Vec<SolveCandidate> {
-    let selected = domain.map(str::trim).map(str::to_ascii_lowercase);
-    let pick = |label: &str| {
-        selected
-            .as_deref()
-            .is_some_and(|d| d == label || (label == "real" && (d == "real" || d == "ℝ")))
-    };
-    vec![
-        SolveCandidate {
-            label: "real-pm".into(),
-            result_type: "Real".into(),
-            domain: "Real".into(),
-            exactness: "exact-algebraic".into(),
-            method: "algebraic".into(),
-            evidence_class: "residual".into(),
-            holes: Vec::new(),
-            beginner_default: true,
-            selected: pick("real") || pick("real-pm"),
-        },
-        SolveCandidate {
-            label: "complex".into(),
-            result_type: "Complex".into(),
-            domain: "Complex".into(),
-            exactness: "exact-algebraic".into(),
-            method: "algebraic".into(),
-            evidence_class: "residual".into(),
-            holes: Vec::new(),
-            beginner_default: false,
-            selected: pick("complex"),
-        },
-        SolveCandidate {
-            label: "modular".into(),
-            result_type: "Int".into(),
-            domain: "modular".into(),
-            exactness: "exact".into(),
-            method: "modular".into(),
-            evidence_class: "residual".into(),
-            holes: vec!["modulus".into()],
-            beginner_default: false,
-            selected: pick("modular"),
-        },
-        SolveCandidate {
-            label: "symbolic".into(),
-            result_type: "expression".into(),
-            domain: "symbolic".into(),
-            exactness: "symbolic".into(),
-            method: "symbolic".into(),
-            evidence_class: "identity".into(),
-            holes: Vec::new(),
-            beginner_default: false,
-            selected: pick("symbolic"),
-        },
-        SolveCandidate {
-            label: "numeric".into(),
-            result_type: "Float64".into(),
-            domain: "numeric".into(),
-            exactness: "numeric-tolerance".into(),
-            method: "numeric".into(),
-            evidence_class: "residual".into(),
-            holes: vec!["tolerance".into()],
-            beginner_default: false,
-            selected: pick("numeric"),
-        },
-    ]
+fn labeled_solve_menu(domain: Option<&str>) -> SolveIntent {
+    match domain.map(str::trim).filter(|d| !d.is_empty()) {
+        None => SolveIntent::Unlabeled,
+        Some(d) => SolveWorld::parse_label(&d.to_ascii_lowercase())
+            .map(SolveIntent::Over)
+            .unwrap_or(SolveIntent::Unlabeled),
+    }
 }
 
 /// Pin a labeled `solve` candidate into source (domain/method/holes).
-/// Returns (rewritten source, meaning delta). Never a silent numeric root.
-pub fn apply_solve_candidate(source: &str, label: &str) -> Result<(String, String), String> {
-    let pin = match label {
-        "real" | "real-pm" => "over Real",
-        "complex" => "over Complex",
-        "symbolic" => "over symbolic",
-        "numeric" => "over numeric",
-        "modular" => "over modular",
-        _ => return Err(format!("unknown solve candidate `{label}`")),
-    };
+///
+/// `world` is a closed [`SolveWorld`]. Parse labels at the argv / API boundary
+/// with [`SolveWorld::parse_label`]. There is no `&str` overload and no
+/// `SolveCandidate` wrapper.
+///
+/// Returns `(rewritten source, meaning delta)`. Never a silent numeric root.
+///
+/// # Errors
+///
+/// Returns `Err` if the source has no `solve` intent to pin.
+pub fn apply_solve_candidate(source: &str, world: SolveWorld) -> Result<(String, String), String> {
+    let pin = world.pin_phrase();
     let mut found = false;
     let mut out = String::new();
-    if label == "modular"
+    if world == SolveWorld::Modular
         && !source
             .lines()
             .any(|line| line.trim().starts_with("modulus"))
@@ -392,17 +520,15 @@ pub fn apply_solve_candidate(source: &str, label: &str) -> Result<(String, Strin
     }
     for line in source.lines() {
         if !found {
-            if let LineKind::Intent { verb, payload } = classify_line(line) {
-                if verb == "solve" {
-                    found = true;
-                    let (equation, _) = split_keyword_tail(&payload, "over");
-                    out.push_str("solve ");
-                    out.push_str(equation.trim());
-                    out.push(' ');
-                    out.push_str(pin);
-                    out.push('\n');
-                    continue;
-                }
+            if let Some(payload) = solve_intent_payload(line) {
+                found = true;
+                let (equation, _) = split_keyword_tail(&payload, "over");
+                out.push_str("solve ");
+                out.push_str(equation.trim());
+                out.push(' ');
+                out.push_str(pin);
+                out.push('\n');
+                continue;
             }
         }
         out.push_str(line);
@@ -412,8 +538,9 @@ pub fn apply_solve_candidate(source: &str, label: &str) -> Result<(String, Strin
         return Err("source has no `solve` intent to pin".into());
     }
     let delta = format!(
-        "meaning: selected `{label}` ({pin}); beginner_default={}; constructed worlds stay labeled",
-        label == "real" || label == "real-pm"
+        "meaning: selected `{}` ({pin}); beginner_default={}; constructed worlds stay labeled",
+        world.as_str(),
+        world.beginner_default()
     );
     Ok((out, delta))
 }
@@ -443,8 +570,7 @@ pub fn expand_scratch(source: &str) -> ScratchExpansion {
     if first_content_line(source).is_none() {
         return expansion(
             source,
-            false,
-            ScratchLevel::Canonical,
+            ExpansionOutcome::Identity,
             notes,
             diagnostics,
             Vec::new(),
@@ -467,8 +593,7 @@ pub fn expand_scratch(source: &str) -> ScratchExpansion {
         );
         return expansion(
             source,
-            false,
-            ScratchLevel::Canonical,
+            ExpansionOutcome::Identity,
             notes,
             diagnostics,
             Vec::new(),
@@ -496,43 +621,69 @@ pub fn expand_scratch(source: &str) -> ScratchExpansion {
     } else {
         rewrite_l2(source, diagnostics, notes)
     };
-    expansion.solve_candidates = extract_solve_candidates(source);
+    expansion.solve = extract_solve_intent(source);
     expansion
 }
 
 fn refuse_hidden_desugar(source: &str, diagnostics: &mut Diagnostics) {
     for (offset, line) in line_offsets(source) {
         let trimmed = line.trim();
-        if trimmed.contains("emath:hide-desugar") || trimmed.contains("@hide_desugar") {
-            refuse(
-                diagnostics,
-                "E-SYN-144",
-                "hidden desugaring is refused; every shorthand must expand through `emath expand`",
-                span_bytes(offset, line.len()),
-                Pedagogy::teacher(
-                    "a hide-desugar marker is present",
-                    "the contracted form of this shorthand",
-                    "hidden defaults are the learnability failure mode",
-                    "delete the hide marker and run `emath expand`",
-                    "language/examples/intro/scratch.emath",
-                ),
-            );
-        }
-        if trimmed.contains("hide alternatives") || trimmed.contains("@silent_default") {
-            refuse(
-                diagnostics,
-                "E-SYN-146",
-                "unlabeled defaults that hide solve/plot candidates are refused; name the domain (`over Real`) or inspect candidates via `emath expand`",
-                span_bytes(offset, line.len()),
-                Pedagogy::teacher(
-                    "a silent-default marker is present",
-                    "labeled candidates (Real, Complex, modular, symbolic, numeric)",
-                    "intent-completion must name alternatives, not pick one",
-                    "write `over Real` or inspect candidates with `emath expand`",
-                    "language/examples/intro/scratch.emath",
-                ),
-            );
-        }
+        refuse_if_contains_pair(
+            diagnostics,
+            trimmed,
+            offset,
+            line.len(),
+            "emath:hide-desugar",
+            "@hide_desugar",
+            "E-SYN-144",
+            "hidden desugaring is refused; every shorthand must expand through `emath expand`",
+            Pedagogy::teacher(
+                "a hide-desugar marker is present",
+                "the contracted form of this shorthand",
+                "hidden defaults are the learnability failure mode",
+                "delete the hide marker and run `emath expand`",
+                "language/examples/intro/scratch.emath",
+            ),
+        );
+        refuse_if_contains_pair(
+            diagnostics,
+            trimmed,
+            offset,
+            line.len(),
+            "hide alternatives",
+            "@silent_default",
+            "E-SYN-146",
+            "unlabeled defaults that hide solve/plot candidates are refused; name the domain (`over Real`) or inspect candidates via `emath expand`",
+            Pedagogy::teacher(
+                "a silent-default marker is present",
+                "labeled candidates (Real, Complex, modular, symbolic, numeric)",
+                "intent-completion must name alternatives, not pick one",
+                "write `over Real` or inspect candidates with `emath expand`",
+                "language/examples/intro/scratch.emath",
+            ),
+        );
+    }
+}
+
+fn refuse_if_contains_pair(
+    diagnostics: &mut Diagnostics,
+    trimmed: &str,
+    offset: usize,
+    line_len: usize,
+    a: &str,
+    b: &str,
+    code: &'static str,
+    message: &'static str,
+    pedagogy: Pedagogy,
+) {
+    if trimmed.contains(a) || trimmed.contains(b) {
+        refuse(
+            diagnostics,
+            code,
+            message,
+            span_bytes(offset, line_len),
+            pedagogy,
+        );
     }
 }
 
@@ -545,10 +696,10 @@ fn mix_scratch_and_declaration(source: &str) -> bool {
     let mut saw_decl = false;
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || is_comment(trimmed) {
+        if !is_content_line(trimmed) {
             continue;
         }
-        let at_margin = !line.starts_with(' ') && !line.starts_with('\t');
+        let at_margin = is_unindented(line);
         if is_item_header(trimmed) {
             saw_decl = true;
         } else if at_margin {
@@ -556,6 +707,102 @@ fn mix_scratch_and_declaration(source: &str) -> bool {
         }
     }
     saw_scratch_at_margin && saw_decl
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_scratch_kinds(
+    kinds: impl IntoIterator<Item = LineKind>,
+    expr_count: usize,
+    examples: &mut Vec<(String, String)>,
+    defs: &mut Vec<(String, String)>,
+    extra_comments: &mut Vec<String>,
+    extra_goals: &mut Vec<(String, String)>,
+    compile_target: &mut Option<(String, String)>,
+    notes: &mut Vec<ScratchNote>,
+    holes: &mut Vec<HoleRecord>,
+    diagnostics: &mut Diagnostics,
+    span_source: &str,
+    example_conflict_verbose: bool,
+) {
+    let mut intent_index = 0usize;
+    for kind in kinds {
+        match kind {
+            LineKind::Assign { name, rhs } => {
+                defs.push((name, rhs));
+            }
+            LineKind::Example { name, value } => {
+                if let Some((_, previous)) = examples.iter().find(|(n, _)| n == &name) {
+                    if literal_class(previous) != literal_class(&value)
+                        && literal_class(previous) != "other"
+                        && literal_class(&value) != "other"
+                    {
+                        let message = if example_conflict_verbose {
+                            format!(
+                                "example `{name}` has conflicting types ({previous} vs {value}); refuse rather than pick a silent default"
+                            )
+                        } else {
+                            format!("example `{name}` has conflicting types")
+                        };
+                        refuse(
+                            diagnostics,
+                            "E-SYN-142",
+                            message,
+                            span_of_source(span_source),
+                            Pedagogy::teacher(
+                                format!("example `{name}` appears more than once"),
+                                "a single type for that example",
+                                "conflicting examples must refuse rather than pick a silent default",
+                                "keep one `example` binding, or make both the same type",
+                                "language/examples/intro/scratch.emath",
+                            ),
+                        );
+                    }
+                }
+                examples.push((name, value));
+            }
+            LineKind::Hole { name } => {
+                defs.push((name.clone(), "Hole".into()));
+                extra_comments.push(format!("# emath exactness: open hole {name}"));
+                notes.push(ScratchNote {
+                    inferred: format!("hole {name}"),
+                    rationale: "typed hole remains open meaning; freeze must not claim it exact"
+                        .into(),
+                    replacement: format!("{name} = ?"),
+                    stability: ExactnessStatus::Open,
+                });
+                record_hole(holes, name);
+            }
+            LineKind::Require { expr } => {
+                extra_comments.push(format!("# emath hole constraint: {expr}"));
+                constrain_last_hole(holes, expr);
+            }
+            LineKind::Expr(expr) => {
+                intent_index += 1;
+                let name = if expr_count <= 1 && defs.is_empty() {
+                    SYNTH_RESULT.to_string()
+                } else {
+                    format!("{SYNTH_RESULT}_{intent_index}")
+                };
+                defs.push((name, expr));
+            }
+            LineKind::Intent { verb, payload } => {
+                intent_index += 1;
+                lower_intent(
+                    verb,
+                    &payload,
+                    expr_count,
+                    intent_index,
+                    defs,
+                    extra_comments,
+                    extra_goals,
+                    compile_target,
+                    notes,
+                );
+                attach_find_continuation(holes, verb, &payload);
+            }
+            LineKind::Invalid => {}
+        }
+    }
 }
 
 fn wrap_scratch(
@@ -566,7 +813,7 @@ fn wrap_scratch(
     let mut lines = Vec::new();
     for (offset, raw) in line_offsets(source) {
         let trimmed = raw.trim();
-        if trimmed.is_empty() || is_comment(trimmed) {
+        if !is_content_line(trimmed) {
             continue;
         }
         match classify_line(trimmed) {
@@ -618,8 +865,9 @@ fn wrap_scratch(
     if diagnostics.has_errors() {
         return expansion(
             source,
-            false,
-            ScratchLevel::L0,
+            ExpansionOutcome::Refused {
+                level: ScratchLevel::L0,
+            },
             notes,
             diagnostics,
             Vec::new(),
@@ -643,106 +891,33 @@ fn wrap_scratch(
         }
     }
 
-    let mut intent_index = 0usize;
     let mut holes: Vec<HoleRecord> = Vec::new();
-    for (_, _, kind) in &lines {
-        match kind {
-            LineKind::Assign { name, rhs } => {
-                defs.push((name.clone(), rhs.clone()));
-            }
-            LineKind::Example { name, value } => {
-                if let Some((_, previous)) = examples.iter().find(|(n, _)| n == name) {
-                    if literal_class(previous) != literal_class(value)
-                        && literal_class(previous) != "other"
-                        && literal_class(value) != "other"
-                    {
-                        refuse(
-                            &mut diagnostics,
-                            "E-SYN-142",
-                            format!(
-                                "example `{name}` has conflicting types ({previous} vs {value}); refuse rather than pick a silent default"
-                            ),
-                            span_of_source(source),
-                            Pedagogy::teacher(
-                                format!("example `{name}` appears more than once"),
-                                "a single type for that example",
-                                "conflicting examples must refuse rather than pick a silent default",
-                                "keep one `example` binding, or make both the same type",
-                                "language/examples/intro/scratch.emath",
-                            ),
-                        );
-                    }
-                }
-                examples.push((name.clone(), value.clone()));
-            }
-            LineKind::Hole { name } => {
-                defs.push((name.clone(), "Hole".into()));
-                extra_comments.push(format!("# emath exactness: open hole {name}"));
-                notes.push(ScratchNote {
-                    inferred: format!("hole {name}"),
-                    rationale: "typed hole remains open meaning; freeze must not claim it exact"
-                        .into(),
-                    replacement: format!("{name} = ?"),
-                    stability: "open",
-                });
-                record_hole(&mut holes, name.clone());
-            }
-            LineKind::Require { expr } => {
-                extra_comments.push(format!("# emath hole constraint: {expr}"));
-                constrain_last_hole(&mut holes, expr.clone());
-            }
-            LineKind::Expr(expr) => {
-                intent_index += 1;
-                let name = if expr_count <= 1 && defs.is_empty() {
-                    SYNTH_RESULT.to_string()
-                } else {
-                    format!("{SYNTH_RESULT}_{intent_index}")
-                };
-                defs.push((name, expr.clone()));
-            }
-            LineKind::Intent { verb, payload } => {
-                intent_index += 1;
-                lower_intent(
-                    verb,
-                    payload,
-                    expr_count,
-                    intent_index,
-                    &mut defs,
-                    &mut extra_comments,
-                    &mut extra_goals,
-                    &mut compile_target,
-                    &mut notes,
-                );
-                attach_find_continuation(&mut holes, verb, payload);
-            }
-            LineKind::Invalid => {}
-        }
-    }
+    apply_scratch_kinds(
+        lines.into_iter().map(|(_, _, kind)| kind),
+        expr_count,
+        &mut examples,
+        &mut defs,
+        &mut extra_comments,
+        &mut extra_goals,
+        &mut compile_target,
+        &mut notes,
+        &mut holes,
+        &mut diagnostics,
+        source,
+        true,
+    );
     finalize_holes(&mut holes);
-    for hole in &holes {
-        extra_comments.push(format!("# emath hole object: {}", hole.summary()));
-        for candidate in &hole.candidates {
-            extra_comments.push(format!(
-                "# emath hole candidate: {} ({}) status={}",
-                candidate.label, candidate.kind, candidate.status
-            ));
-        }
-        for rejection in &hole.rejections {
-            extra_comments.push(format!(
-                "# emath hole rejection: {} — {}",
-                rejection.attempt, rejection.reason
-            ));
-        }
-    }
+    emit_hole_comments(&holes, &mut extra_comments);
 
     if diagnostics.has_errors() {
         return expansion(
             source,
-            false,
-            if has_example {
-                ScratchLevel::L1
-            } else {
-                ScratchLevel::L0
+            ExpansionOutcome::Refused {
+                level: if has_example {
+                    ScratchLevel::L1
+                } else {
+                    ScratchLevel::L0
+                },
             },
             notes,
             diagnostics,
@@ -760,7 +935,7 @@ fn wrap_scratch(
                 "free name in scratch; admission defaults untyped inputs to Float64 (N-TYPE-001)"
                     .into(),
             replacement: format!("    inputs:\n        {name}: Float64"),
-            stability: "inferred",
+            stability: ExactnessStatus::Inferred,
         });
     }
     notes.push(ScratchNote {
@@ -769,7 +944,7 @@ fn wrap_scratch(
             "L0/L1 scratch desugars to an implicit emath function; run `emath expand` to inspect"
                 .into(),
         replacement: format!("emath function {SYNTH_DECL}:"),
-        stability: "inferred",
+        stability: ExactnessStatus::Inferred,
     });
     diagnostics.note(
         "N-SCRATCH-001",
@@ -790,16 +965,22 @@ fn wrap_scratch(
         &extra_goals,
     );
     let level = if has_example {
-        ScratchLevel::L1
+        ScratchRewriteLevel::L1
     } else {
-        ScratchLevel::L0
+        ScratchRewriteLevel::L0
     };
-    expansion(expanded, true, level, notes, diagnostics, holes)
+    expansion(
+        expanded,
+        ExpansionOutcome::Rewritten { level },
+        notes,
+        diagnostics,
+        holes,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
 fn lower_intent(
-    verb: &str,
+    verb: IntentVerb,
     payload: &str,
     expr_count: usize,
     intent_index: usize,
@@ -809,13 +990,14 @@ fn lower_intent(
     compile_target: &mut Option<(String, String)>,
     notes: &mut Vec<ScratchNote>,
 ) {
+    let verb_word = verb.as_str();
     let result_name = if expr_count <= 1 && defs.is_empty() {
         SYNTH_RESULT.to_string()
     } else {
-        format!("{verb}_result")
+        format!("{verb_word}_result")
     };
     match verb {
-        "plot" => {
+        IntentVerb::Plot => {
             let (expr, range) = split_keyword_tail(payload, "on");
             extra_comments.push(format!(
                 "# emath expand: intent=plot range={}",
@@ -826,10 +1008,10 @@ fn lower_intent(
                 inferred: "goal plot".into(),
                 rationale: "plot lowers to evaluating the expression; the range is recorded, not a second parser".into(),
                 replacement: "definitions: result = <expr>".into(),
-                stability: "inferred",
+                stability: ExactnessStatus::Inferred,
             });
         }
-        "solve" => {
+        IntentVerb::Solve => {
             let (equation, domain) = split_keyword_tail(payload, "over");
             let (lhs, rhs) = split_equation(equation.trim());
             let residual = format!("({lhs}) - ({rhs})");
@@ -847,14 +1029,14 @@ fn lower_intent(
                         .into(),
                 replacement: "result = solve(residual) wrt x".into(),
                 stability: if domain.is_some() {
-                    "declared"
+                    ExactnessStatus::Declared
                 } else {
-                    "inferred"
+                    ExactnessStatus::Inferred
                 },
             });
             let _ = intent_index;
         }
-        "convert" => {
+        IntentVerb::Convert => {
             let (qty, unit) = split_keyword_tail(payload, "to");
             let rhs = if let Some(unit) = unit {
                 format!("({qty}) / (1 {unit})")
@@ -866,10 +1048,10 @@ fn lower_intent(
                 inferred: "convert".into(),
                 rationale: "convert lowers to a quantity ratio against the target unit".into(),
                 replacement: "result = (1 km) / (1 m)".into(),
-                stability: "inferred",
+                stability: ExactnessStatus::Inferred,
             });
         }
-        "differentiate" => {
+        IntentVerb::Differentiate => {
             let (expr, var) = split_keyword_tail(payload, "wrt");
             let var = var.unwrap_or("x");
             defs.push((
@@ -877,7 +1059,7 @@ fn lower_intent(
                 format!("derivative({}) wrt {var}", expr.trim()),
             ));
         }
-        "integrate" => {
+        IntentVerb::Integrate => {
             if let (expr, Some(range)) = split_keyword_tail(payload, "on") {
                 let var = first_free_ident(expr).unwrap_or("x");
                 defs.push((
@@ -897,11 +1079,11 @@ fn lower_intent(
                         "indefinite integrate becomes a definite integral over open bounds a..b"
                             .into(),
                     replacement: "integral x in a..b: <expr>".into(),
-                    stability: "inferred",
+                    stability: ExactnessStatus::Inferred,
                 });
             }
         }
-        "simulate" => {
+        IntentVerb::Simulate => {
             extra_comments.push(format!("# emath expand: intent=simulate phrase={payload}"));
             extra_comments.push(
                 "# emath expand: simulate is a goal; supply an `emath model` to compute a trajectory".into(),
@@ -913,33 +1095,51 @@ fn lower_intent(
                     "English simulate phrases record intent; they do not mint a domain parser"
                         .into(),
                 replacement: "emath model Name: with state/equations, then `emath simulate`".into(),
-                stability: "inferred",
+                stability: ExactnessStatus::Inferred,
             });
         }
-        "find" | "show" | "prove" | "compare" | "share" | "build" => {
-            extra_comments.push(format!("# emath expand: intent={verb} phrase={payload}"));
+        IntentVerb::Find
+        | IntentVerb::Show
+        | IntentVerb::Prove
+        | IntentVerb::Compare
+        | IntentVerb::Share
+        | IntentVerb::Build => {
+            extra_comments.push(format!(
+                "# emath expand: intent={verb_word} phrase={payload}"
+            ));
             let goal_kind = match verb {
-                "find" | "compare" => "search",
-                "show" => "evaluate",
-                "prove" => "prove",
-                _ => "compile",
+                IntentVerb::Find | IntentVerb::Compare => "search",
+                IntentVerb::Show => "evaluate",
+                IntentVerb::Prove => "prove",
+                IntentVerb::Share | IntentVerb::Build => "compile",
+                IntentVerb::Plot
+                | IntentVerb::Solve
+                | IntentVerb::Simulate
+                | IntentVerb::Compile
+                | IntentVerb::Differentiate
+                | IntentVerb::Integrate
+                | IntentVerb::Convert => {
+                    unreachable!("goal-like intent verbs only")
+                }
             };
             let target = goal_target(payload);
             extra_goals.push((goal_kind.to_string(), target));
-            if verb == "build" || verb == "share" {
+            if verb == IntentVerb::Build || verb == IntentVerb::Share {
                 *compile_target = Some(("rust".into(), "library".into()));
             }
             if defs.is_empty() {
                 defs.push((result_name, "Hole".into()));
             }
             notes.push(ScratchNote {
-                inferred: format!("goal {verb}"),
-                rationale: format!("`{verb}` lowers to Goal IR `{goal_kind}`; not a domain parser"),
+                inferred: format!("goal {verb_word}"),
+                rationale: format!(
+                    "`{verb_word}` lowers to Goal IR `{goal_kind}`; not a domain parser"
+                ),
                 replacement: format!("goals: {goal_kind} <result>"),
-                stability: "inferred",
+                stability: ExactnessStatus::Inferred,
             });
         }
-        "compile" => {
+        IntentVerb::Compile => {
             let target = payload
                 .rsplit_once(" to ")
                 .map(|(_, rest)| rest.trim())
@@ -954,10 +1154,9 @@ fn lower_intent(
                 inferred: format!("compile {lang}.{profile}"),
                 rationale: "compile this to rust.library lowers to the compile: section".into(),
                 replacement: "compile:\n        target rust\n        profile library".into(),
-                stability: "inferred",
+                stability: ExactnessStatus::Inferred,
             });
         }
-        _ => {}
     }
 }
 
@@ -969,23 +1168,25 @@ fn rewrite_l2(
     let pieces = split_top_level(source);
     let mut out = String::new();
     let mut rewritten_any = false;
-    let mut saw_l2 = false;
     let mut holes: Vec<HoleRecord> = Vec::new();
 
     for piece in pieces {
-        if !piece.is_declaration {
-            out.push_str(&piece.text);
-            continue;
-        }
-        let Some((header, inline, body)) = split_declaration_text(&piece.text) else {
-            out.push_str(&piece.text);
+        let text = match piece {
+            TopPiece::Other(text) => {
+                out.push_str(&text);
+                continue;
+            }
+            TopPiece::Declaration(text) => text,
+        };
+        let Some((header, inline, body)) = split_declaration_text(&text) else {
+            out.push_str(&text);
             continue;
         };
         // L2 is shorthand for `emath function` only. Imported custom kinds
         // own their bodies through mounted schemas and must reach the parser
         // unchanged instead of being mistaken for scratch.
         if !header.trim_start().starts_with("emath function ") {
-            out.push_str(&piece.text);
+            out.push_str(&text);
             continue;
         }
         let body_lines: Vec<String> = body
@@ -996,7 +1197,7 @@ fn rewrite_l2(
             .collect();
         let has_section = body_lines.iter().any(|line| is_section_head(line));
         if has_section {
-            out.push_str(&piece.text);
+            out.push_str(&text);
             continue;
         }
         let mut classified = Vec::new();
@@ -1021,7 +1222,7 @@ fn rewrite_l2(
                 &mut diagnostics,
                 "E-SYN-143",
                 "L2 named declaration needs a body (`y = x^2`) or L3 sections; a name without a body is not L0 scratch",
-                span_of_source(&piece.text),
+                span_of_source(&text),
                 Pedagogy::teacher(
                     "an `emath function Name:` header is present",
                     "a body of assignments/examples/intent verbs, or L3 sections",
@@ -1030,7 +1231,7 @@ fn rewrite_l2(
                     "language/examples/intro/hello-square.emath",
                 ),
             );
-            out.push_str(&piece.text);
+            out.push_str(&text);
             continue;
         }
         if classified.iter().any(|k| matches!(k, LineKind::Invalid)) {
@@ -1038,7 +1239,7 @@ fn rewrite_l2(
                 &mut diagnostics,
                 "E-SYN-143",
                 "L2 body must be assignments, examples, or intent verbs; unknown kind/body is a typed refuse, not a scratch grab",
-                span_of_source(&piece.text),
+                span_of_source(&text),
                 Pedagogy::teacher(
                     "an L2 named declaration body is present",
                     "assignments, examples, or intent verbs",
@@ -1047,7 +1248,7 @@ fn rewrite_l2(
                     "language/examples/intro/hello-square.emath",
                 ),
             );
-            out.push_str(&piece.text);
+            out.push_str(&text);
             continue;
         }
 
@@ -1060,96 +1261,23 @@ fn rewrite_l2(
             .iter()
             .filter(|k| matches!(k, LineKind::Expr(_) | LineKind::Intent { .. }))
             .count();
-        let mut intent_index = 0usize;
         let mut piece_holes: Vec<HoleRecord> = Vec::new();
-        for kind in classified {
-            match kind {
-                LineKind::Assign { name, rhs } => defs.push((name, rhs)),
-                LineKind::Example { name, value } => {
-                    if let Some((_, previous)) = examples
-                        .iter()
-                        .find(|(n, _): &&(String, String)| n == &name)
-                    {
-                        if literal_class(previous) != literal_class(&value)
-                            && literal_class(previous) != "other"
-                            && literal_class(&value) != "other"
-                        {
-                            refuse(
-                                &mut diagnostics,
-                                "E-SYN-142",
-                                format!("example `{name}` has conflicting types"),
-                                span_of_source(&piece.text),
-                                Pedagogy::teacher(
-                                    format!("example `{name}` appears more than once"),
-                                    "a single type for that example",
-                                    "conflicting examples must refuse rather than pick a silent default",
-                                    "keep one `example` binding, or make both the same type",
-                                    "language/examples/intro/scratch.emath",
-                                ),
-                            );
-                        }
-                    }
-                    examples.push((name, value));
-                }
-                LineKind::Hole { name } => {
-                    defs.push((name.clone(), "Hole".into()));
-                    extra_comments.push(format!("# emath exactness: open hole {name}"));
-                    notes.push(ScratchNote {
-                        inferred: format!("hole {name}"),
-                        rationale: "typed hole remains open meaning; freeze must not claim it exact"
-                            .into(),
-                        replacement: format!("{name} = ?"),
-                        stability: "open",
-                    });
-                    record_hole(&mut piece_holes, name);
-                }
-                LineKind::Require { expr } => {
-                    extra_comments.push(format!("# emath hole constraint: {expr}"));
-                    constrain_last_hole(&mut piece_holes, expr);
-                }
-                LineKind::Expr(expr) => {
-                    intent_index += 1;
-                    let name = if expr_count <= 1 && defs.is_empty() {
-                        SYNTH_RESULT.to_string()
-                    } else {
-                        format!("{SYNTH_RESULT}_{intent_index}")
-                    };
-                    defs.push((name, expr));
-                }
-                LineKind::Intent { verb, payload } => {
-                    intent_index += 1;
-                    lower_intent(
-                        &verb,
-                        &payload,
-                        expr_count,
-                        intent_index,
-                        &mut defs,
-                        &mut extra_comments,
-                        &mut extra_goals,
-                        &mut compile_target,
-                        &mut notes,
-                    );
-                    attach_find_continuation(&mut piece_holes, &verb, &payload);
-                }
-                LineKind::Invalid => {}
-            }
-        }
+        apply_scratch_kinds(
+            classified,
+            expr_count,
+            &mut examples,
+            &mut defs,
+            &mut extra_comments,
+            &mut extra_goals,
+            &mut compile_target,
+            &mut notes,
+            &mut piece_holes,
+            &mut diagnostics,
+            &text,
+            false,
+        );
         finalize_holes(&mut piece_holes);
-        for hole in &piece_holes {
-            extra_comments.push(format!("# emath hole object: {}", hole.summary()));
-            for candidate in &hole.candidates {
-                extra_comments.push(format!(
-                    "# emath hole candidate: {} ({}) status={}",
-                    candidate.label, candidate.kind, candidate.status
-                ));
-            }
-            for rejection in &hole.rejections {
-                extra_comments.push(format!(
-                    "# emath hole rejection: {} — {}",
-                    rejection.attempt, rejection.reason
-                ));
-            }
-        }
+        emit_hole_comments(&piece_holes, &mut extra_comments);
         holes.extend(piece_holes);
 
         let assigned: Vec<&str> = defs.iter().map(|(n, _)| n.as_str()).collect();
@@ -1166,7 +1294,7 @@ fn rewrite_l2(
                         format!(
                             "L2 header names `{free_name}` in the body but not in the explicit signature; that is a typed refusal, not a guessed coercion"
                         ),
-                        span_of_source(&piece.text),
+                        span_of_source(&text),
                         Pedagogy::teacher(
                             "an explicit head-arg signature is present",
                             format!(
@@ -1195,7 +1323,7 @@ fn rewrite_l2(
                     format!(
                         "L2 cannot infer a domain for `{callee}` without a hole; unknown callees are refusals, not silent inputs"
                     ),
-                    span_of_source(&piece.text),
+                    span_of_source(&text),
                     Pedagogy::teacher(
                         format!("`{callee}(...)` appears in an L2 body"),
                         format!("a hole `{callee} = ?` or a known builtin/definition"),
@@ -1210,7 +1338,7 @@ fn rewrite_l2(
             }
         }
         if !l2_ok {
-            out.push_str(&piece.text);
+            out.push_str(&text);
             continue;
         }
         let free: Vec<String> = if head.is_empty() {
@@ -1226,7 +1354,7 @@ fn rewrite_l2(
                     "L2 body inferred a free name; declare `inputs:` or head-args to pin the domain"
                         .into(),
                 replacement: format!("    inputs:\n        {free_name}: Float64"),
-                stability: "inferred",
+                stability: ExactnessStatus::Inferred,
             });
         }
         notes.push(ScratchNote {
@@ -1234,14 +1362,14 @@ fn rewrite_l2(
             rationale: "L2 named shorthand; evidence remains open until an L3 evidence: section"
                 .into(),
             replacement: header.trim().to_string(),
-            stability: "declared",
+            stability: ExactnessStatus::Declared,
         });
         diagnostics.note(
             "N-SCRATCH-001",
             format!(
                 "L2 `{name}` expanded to a contracted component with open evidence; run `emath expand`"
             ),
-            span_of_source(&piece.text),
+            span_of_source(&text),
         );
 
         if !out.is_empty() && !out.ends_with('\n') {
@@ -1261,20 +1389,24 @@ fn rewrite_l2(
             &extra_goals,
         ));
         rewritten_any = true;
-        saw_l2 = true;
     }
 
     if diagnostics.has_errors() {
-        return expansion(source, false, ScratchLevel::L2, notes, diagnostics, holes);
+        return expansion(
+            source,
+            ExpansionOutcome::Refused {
+                level: ScratchLevel::L2,
+            },
+            notes,
+            diagnostics,
+            holes,
+        );
     }
     if rewritten_any {
         expansion(
             out,
-            true,
-            if saw_l2 {
-                ScratchLevel::L2
-            } else {
-                ScratchLevel::Canonical
+            ExpansionOutcome::Rewritten {
+                level: ScratchRewriteLevel::L2,
             },
             notes,
             diagnostics,
@@ -1283,8 +1415,7 @@ fn rewrite_l2(
     } else {
         expansion(
             source,
-            false,
-            ScratchLevel::Canonical,
+            ExpansionOutcome::Identity,
             notes,
             diagnostics,
             holes,
@@ -1313,8 +1444,8 @@ fn constrain_last_hole(holes: &mut [HoleRecord], expr: String) {
     }
 }
 
-fn attach_find_continuation(holes: &mut [HoleRecord], verb: &str, payload: &str) {
-    if verb != "find" {
+fn attach_find_continuation(holes: &mut [HoleRecord], verb: IntentVerb, payload: &str) {
+    if verb != IntentVerb::Find {
         return;
     }
     let needle = payload
@@ -1353,29 +1484,103 @@ fn finalize_holes(holes: &mut [HoleRecord]) {
     }
 }
 
+fn emit_hole_comments(holes: &[HoleRecord], extra_comments: &mut Vec<String>) {
+    for hole in holes {
+        extra_comments.push(format!("# emath hole object: {}", hole.summary()));
+        for candidate in &hole.candidates {
+            extra_comments.push(format!(
+                "# emath hole candidate: {} ({}) status=labeled",
+                candidate.label,
+                candidate.kind.as_str()
+            ));
+        }
+        for rejection in &hole.rejections {
+            extra_comments.push(format!(
+                "# emath hole rejection: {} — {}",
+                rejection.attempt, rejection.reason
+            ));
+        }
+    }
+}
+
 fn labeled_hole_candidates(constraints: &[String]) -> Vec<HoleCandidate> {
     let joined = constraints.join(" ");
     let mut candidates = Vec::new();
     if joined.contains("derivative") {
         candidates.push(HoleCandidate {
             label: "exponential family (satisfies f'=f)".into(),
-            kind: "symbolic".into(),
-            status: "labeled",
+            kind: HoleKind::Symbolic,
         });
     }
     if joined.contains("(0)") || joined.contains("f(0)") {
         candidates.push(HoleCandidate {
             label: "initial-value family".into(),
-            kind: "symbolic".into(),
-            status: "labeled",
+            kind: HoleKind::Symbolic,
         });
     }
     candidates.push(HoleCandidate {
         label: "numeric search".into(),
-        kind: "numeric".into(),
-        status: "labeled",
+        kind: HoleKind::Numeric,
     });
     candidates
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum IntentVerb {
+    Plot,
+    Solve,
+    Simulate,
+    Compile,
+    Differentiate,
+    Integrate,
+    Convert,
+    Find,
+    Show,
+    Prove,
+    Compare,
+    Share,
+    Build,
+}
+
+impl IntentVerb {
+    #[must_use]
+    fn parse_word(word: &str) -> Option<Self> {
+        match word {
+            "plot" => Some(Self::Plot),
+            "solve" => Some(Self::Solve),
+            "simulate" => Some(Self::Simulate),
+            "compile" => Some(Self::Compile),
+            "differentiate" => Some(Self::Differentiate),
+            "integrate" => Some(Self::Integrate),
+            "convert" => Some(Self::Convert),
+            "find" => Some(Self::Find),
+            "show" => Some(Self::Show),
+            "prove" => Some(Self::Prove),
+            "compare" => Some(Self::Compare),
+            "share" => Some(Self::Share),
+            "build" => Some(Self::Build),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Plot => "plot",
+            Self::Solve => "solve",
+            Self::Simulate => "simulate",
+            Self::Compile => "compile",
+            Self::Differentiate => "differentiate",
+            Self::Integrate => "integrate",
+            Self::Convert => "convert",
+            Self::Find => "find",
+            Self::Show => "show",
+            Self::Prove => "prove",
+            Self::Compare => "compare",
+            Self::Share => "share",
+            Self::Build => "build",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1383,7 +1588,7 @@ enum LineKind {
     Assign { name: String, rhs: String },
     Example { name: String, value: String },
     Expr(String),
-    Intent { verb: String, payload: String },
+    Intent { verb: IntentVerb, payload: String },
     Hole { name: String },
     Require { expr: String },
     Invalid,
@@ -1418,10 +1623,10 @@ fn classify_line(line: &str) -> LineKind {
         return LineKind::Invalid;
     }
     let first = first_word(trimmed);
-    if INTENT_VERBS.contains(&first) {
+    if let Some(verb) = IntentVerb::parse_word(first) {
         let payload = trimmed[first.len()..].trim_start();
         return LineKind::Intent {
-            verb: first.to_string(),
+            verb,
             payload: payload.to_string(),
         };
     }
@@ -1532,8 +1737,7 @@ fn literal_class(value: &str) -> &'static str {
 fn is_item_header(line: &str) -> bool {
     let trimmed = line.trim_start();
     trimmed.starts_with('@')
-        || trimmed.starts_with("emath ")
-        || trimmed.starts_with("emath\t")
+        || is_emath_keyword_prefix(trimmed)
         || trimmed.starts_with("package ")
         || trimmed.starts_with("use ")
         || trimmed.starts_with("notation ")
@@ -1553,11 +1757,15 @@ fn is_comment(line: &str) -> bool {
     line.starts_with('#') || line.starts_with("//")
 }
 
+fn is_content_line(s: &str) -> bool {
+    !s.is_empty() && !is_comment(s)
+}
+
 fn first_content_line(source: &str) -> Option<&str> {
     source
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty() && !is_comment(line))
+        .find(|line| is_content_line(line))
 }
 
 fn line_offsets(source: &str) -> Vec<(usize, &str)> {
@@ -1581,9 +1789,17 @@ fn span_bytes(start: usize, len: usize) -> Span {
     Span::new(FileId(0), start, end)
 }
 
-struct TopPiece {
-    text: String,
-    is_declaration: bool,
+enum TopPiece {
+    Declaration(String),
+    Other(String),
+}
+
+fn is_unindented(line: &str) -> bool {
+    !line.starts_with(' ') && !line.starts_with('\t')
+}
+
+fn is_emath_keyword_prefix(s: &str) -> bool {
+    s.starts_with("emath ") || s.starts_with("emath\t")
 }
 
 fn split_top_level(source: &str) -> Vec<TopPiece> {
@@ -1593,18 +1809,15 @@ fn split_top_level(source: &str) -> Vec<TopPiece> {
     let mut started = false;
     for line in source.split_inclusive('\n') {
         let trimmed = line.trim_start();
-        let at_margin = line.starts_with("emath ")
-            || line.starts_with("emath\t")
-            || trimmed.starts_with("emath ") && !line.starts_with(' ') && !line.starts_with('\t');
-        let margin_header = !line.starts_with(' ')
-            && !line.starts_with('\t')
-            && (trimmed.starts_with("emath ")
-                || trimmed.starts_with("emath\t")
-                || trimmed.starts_with('@'));
+        let at_margin =
+            is_emath_keyword_prefix(line) || trimmed.starts_with("emath ") && is_unindented(line);
+        let margin_header =
+            is_unindented(line) && (is_emath_keyword_prefix(trimmed) || trimmed.starts_with('@'));
         if started && margin_header && at_margin {
-            pieces.push(TopPiece {
-                text: std::mem::take(&mut current),
-                is_declaration: current_decl,
+            pieces.push(if current_decl {
+                TopPiece::Declaration(std::mem::take(&mut current))
+            } else {
+                TopPiece::Other(std::mem::take(&mut current))
             });
             current_decl = true;
             started = true;
@@ -1612,16 +1825,16 @@ fn split_top_level(source: &str) -> Vec<TopPiece> {
             continue;
         }
         if !started {
-            current_decl =
-                margin_header && (trimmed.starts_with("emath ") || trimmed.starts_with("emath\t"));
+            current_decl = margin_header && is_emath_keyword_prefix(trimmed);
             started = true;
         }
         current.push_str(line);
     }
     if started || !current.is_empty() {
-        pieces.push(TopPiece {
-            text: current,
-            is_declaration: current_decl,
+        pieces.push(if current_decl {
+            TopPiece::Declaration(current)
+        } else {
+            TopPiece::Other(current)
         });
     }
     pieces
@@ -1644,27 +1857,15 @@ fn split_declaration_text(text: &str) -> Option<(String, Option<String>, String)
     }
     let header_line = header.lines().last()?.trim();
     let (head, inline) = split_header_colon(header_line)?;
-    let body = if let Some(_start) = rest_start {
-        let mut skipped = 0;
-        let mut body = String::new();
-        for line in text.split_inclusive('\n') {
-            if skipped == 0 {
-                skipped = 1;
-                continue;
-            }
-            body.push_str(line);
-        }
-        body
+    let body = if rest_start.is_some() {
+        text.split_inclusive('\n').skip(1).collect()
     } else {
         String::new()
     };
-    let mut prefix = String::new();
     let lines: Vec<&str> = header.lines().collect();
+    let mut prefix = lines[..lines.len().saturating_sub(1)].join("\n");
     if lines.len() > 1 {
-        for line in &lines[..lines.len() - 1] {
-            prefix.push_str(line);
-            prefix.push('\n');
-        }
+        prefix.push('\n');
     }
     prefix.push_str(&head);
     prefix.push(':');
@@ -2009,12 +2210,7 @@ fn scan_idents(text: &str) -> Vec<&str> {
         let b = bytes[index];
         if b.is_ascii_alphabetic() || b == b'_' {
             let start = index;
-            index += 1;
-            while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
-            {
-                index += 1;
-            }
+            index = skip_word(bytes, index);
             idents.push(&text[start..index]);
             continue;
         }

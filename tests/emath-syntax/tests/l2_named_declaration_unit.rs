@@ -26,11 +26,18 @@ fn named_shorthand_lowers_to_definitions() {
     let source = "emath function Square:\n    y = x^2\n";
     let expansion = expand_scratch(source);
     assert!(
-        expansion.rewritten,
+        expansion.rewritten(),
         "L2 must rewrite: {}",
         expansion.expanded
     );
-    assert_eq!(expansion.level.as_str(), "L2");
+    assert_eq!(expansion.level().as_str(), "L2");
+    let again = expand_scratch(&expansion.expanded);
+    assert!(
+        !again.rewritten(),
+        "L2 product must be Canonical: {}",
+        again.expanded
+    );
+    assert_eq!(again.level().as_str(), "canonical");
     assert!(
         expansion.expanded.contains("emath function Square:"),
         "{}",
@@ -74,8 +81,12 @@ fn l2_example_file_parses() {
 fn contracted_l3_is_not_rewritten() {
     let source = include_str!("../../../language/examples/intro/hello-square.emath");
     let expansion = expand_scratch(source);
-    assert!(!expansion.rewritten, "L3 must stay identity");
-    assert_eq!(expansion.level.as_str(), "canonical");
+    assert!(!expansion.rewritten(), "L3 must stay identity");
+    assert_eq!(expansion.level().as_str(), "canonical");
+    let again = expand_scratch(&expansion.expanded);
+    assert_eq!(again.expanded, expansion.expanded);
+    assert!(!again.rewritten());
+    assert_eq!(again.level().as_str(), "canonical");
 }
 
 #[test]
@@ -86,7 +97,10 @@ fn bodyless_named_declaration_is_e_syn_143() {
         "bodyless L2 must refuse with E-SYN-143, not wrap as L0"
     );
     let expansion = expand_scratch(source);
-    assert!(!expansion.rewritten, "bodyless L2 must not become Scratch");
+    assert!(
+        !expansion.rewritten(),
+        "bodyless L2 must not become Scratch"
+    );
     assert!(!expansion.expanded.contains("emath function Scratch:"));
 }
 
@@ -99,7 +113,7 @@ fn conflicting_signature_is_e_syn_149() {
         "header `n` vs body `x` must refuse, not coerce"
     );
     let expansion = expand_scratch(source);
-    assert!(!expansion.rewritten, "conflicting L2 must not rewrite");
+    assert!(!expansion.rewritten(), "conflicting L2 must not rewrite");
 }
 
 #[test]
@@ -107,7 +121,7 @@ fn matching_head_args_still_expand() {
     let source = "emath function Square(x: Float64):\n    y = x^2\n";
     let expansion = expand_scratch(source);
     assert!(
-        expansion.rewritten,
+        expansion.rewritten(),
         "matching head-args must still expand: {}",
         expansion.expanded
     );
@@ -131,7 +145,7 @@ fn cannot_infer_domain_without_hole_is_e_syn_150() {
         "unknown callee `mystery` must refuse, not become a silent input"
     );
     let expansion = expand_scratch(source);
-    assert!(!expansion.rewritten, "unknown-callee L2 must not rewrite");
+    assert!(!expansion.rewritten(), "unknown-callee L2 must not rewrite");
 }
 
 #[test]
@@ -139,7 +153,7 @@ fn hole_for_unknown_callee_is_admitted() {
     let source = "emath function Mystery:\n    mystery = ?\n    y = mystery(x)\n";
     let expansion = expand_scratch(source);
     assert!(
-        expansion.rewritten,
+        expansion.rewritten(),
         "a hole for `mystery` must admit the L2 body: {}",
         expansion.expanded
     );

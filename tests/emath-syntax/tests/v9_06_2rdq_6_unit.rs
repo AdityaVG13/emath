@@ -13,11 +13,15 @@ fn has_error(text: &str, code: &str) -> bool {
 fn freeze_keeps_open_holes_visible() {
     let source = include_str!("../../../language/examples/intro/scratch.emath");
     let expansion = expand_scratch(source);
-    assert!(expansion.rewritten);
+    assert!(expansion.rewritten());
     let ledger = exactness_ledger(source);
     assert!(ledger.count(ExactnessStatus::Open) >= 1);
     let notes = explanation_notes(source);
-    assert!(notes.iter().any(|note| note.stability == "inferred"));
+    assert!(
+        notes
+            .iter()
+            .any(|note| note.stability == ExactnessStatus::Inferred)
+    );
     let (_, diagnostics) = parse_str(source);
     assert!(!diagnostics.has_errors());
 }

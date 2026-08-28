@@ -1,7 +1,7 @@
 //! Exactness ledger: declared, inferred, constructed, open meaning.
 
 use emath_syntax::{
-    ExactnessDimension, ExactnessStatus, exactness_ledger, exactness_ledger_raised, parse_str,
+    exactness_ledger, exactness_ledger_raised, parse_str, ExactnessDimension, ExactnessStatus,
 };
 
 fn has_error(text: &str, code: &str) -> bool {
@@ -25,7 +25,7 @@ fn ledger_counts_are_deterministic() {
 fn raise_units_declares_without_rewriting_other_rows() {
     let source = "y = x^2 + 4\nexample x = 3\n";
     let before = exactness_ledger(source);
-    let after = exactness_ledger_raised(source, &["units"]);
+    let after = exactness_ledger_raised(source, &[ExactnessDimension::Unit]);
     let unit_before = before
         .entries
         .iter()
@@ -42,6 +42,21 @@ fn raise_units_declares_without_rewriting_other_rows() {
         before.count(ExactnessStatus::Inferred),
         after.count(ExactnessStatus::Inferred)
     );
+    let evidence_before = before
+        .entries
+        .iter()
+        .find(|entry| entry.dimension == ExactnessDimension::Evidence)
+        .unwrap();
+    let evidence_after = after
+        .entries
+        .iter()
+        .find(|entry| entry.dimension == ExactnessDimension::Evidence)
+        .unwrap();
+    assert_eq!(evidence_before.status, evidence_after.status);
+    assert_eq!(ExactnessDimension::from_raise_token("units"), Some(ExactnessDimension::Unit));
+    assert_eq!(ExactnessDimension::from_raise_token("unit"), Some(ExactnessDimension::Unit));
+    assert_eq!(ExactnessDimension::from_raise_token("evidence"), None);
+    assert_eq!(ExactnessDimension::from_raise_token("numeric"), None);
 }
 
 #[test]

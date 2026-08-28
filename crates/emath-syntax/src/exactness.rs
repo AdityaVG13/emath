@@ -3,7 +3,7 @@
 //! Built from inspectable desugar notes. Open holes stay open; freeze and
 //! `--raise` must not silently claim exactness.
 
-use crate::scratch::{ScratchExpansion, ScratchNote, expand_scratch};
+use crate::scratch::{expand_scratch, ScratchExpansion, ScratchNote};
 
 /// One exactness dimension the ledger tracks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -32,6 +32,15 @@ impl ExactnessDimension {
             Self::Evidence => "evidence",
             Self::Execution => "execution",
             Self::Deployment => "deployment",
+        }
+    }
+
+    /// CLI `--raise` / source `# emath exactness raise` token. Only Unit is raiseable.
+    #[must_use]
+    pub fn from_raise_token(token: &str) -> Option<Self> {
+        match token {
+            "units" | "unit" => Some(Self::Unit),
+            _ => None,
         }
     }
 }
@@ -107,24 +116,28 @@ pub fn exactness_ledger(source: &str) -> ExactnessLedger {
 }
 
 #[must_use]
-pub fn exactness_ledger_raised(source: &str, raise: &[&str]) -> ExactnessLedger {
+pub fn exactness_ledger_raised(source: &str, raise: &[ExactnessDimension]) -> ExactnessLedger {
     let expansion = expand_scratch(source);
     let mut raised = raised_dimensions(source);
-    for item in raise {
-        if !raised.iter().any(|have| have == item) {
-            raised.push((*item).to_string());
+    for &item in raise {
+        if !raised.contains(&item) {
+            raised.push(item);
         }
     }
     ledger_from_expansion(source, &expansion, &raised)
 }
 
-fn raised_dimensions(source: &str) -> Vec<String> {
+fn raised_dimensions(source: &str) -> Vec<ExactnessDimension> {
     let mut raised = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("# emath exactness raise ") {
             for part in rest.split_whitespace() {
-                raised.push(part.to_string());
+                if let Some(dimension) = ExactnessDimension::from_raise_token(part) {
+                    if !raised.contains(&dimension) {
+                        raised.push(dimension);
+                    }
+                }
             }
         }
     }
@@ -134,19 +147,19 @@ fn raised_dimensions(source: &str) -> Vec<String> {
 fn ledger_from_expansion(
     source: &str,
     expansion: &ScratchExpansion,
-    raised: &[String],
+    raised: &[ExactnessDimension],
 ) -> ExactnessLedger {
     let mut entries = Vec::new();
     push(
         &mut entries,
         ExactnessDimension::Syntactic,
-        if expansion.rewritten {
+        if expansion.rewritten() {
             ExactnessStatus::Inferred
         } else {
             ExactnessStatus::Declared
         },
         "surface",
-        if expansion.rewritten {
+        if expansion.rewritten() {
             "scratch/L2 desugars to a contracted declaration"
         } else {
             "source already uses a contracted declaration"
@@ -161,7 +174,7 @@ fn ledger_from_expansion(
             push(
                 &mut entries,
                 ExactnessDimension::Type,
-                status_from_stability(note.stability),
+                note.stability,
                 &note.inferred,
                 &note.rationale,
             );
@@ -171,7 +184,7 @@ fn ledger_from_expansion(
             push(
                 &mut entries,
                 ExactnessDimension::Domain,
-                status_from_stability(note.stability),
+                note.stability,
                 &note.inferred,
                 &note.rationale,
             );
@@ -187,7 +200,7 @@ fn ledger_from_expansion(
             );
         }
     }
-    if source.contains(" = ?") || source.contains("=?") || expansion.expanded.contains("= Hole") {
+    if !expansion.holes.is_empty() {
         saw_hole = true;
         push(
             &mut entries,
@@ -206,7 +219,7 @@ fn ledger_from_expansion(
             "admission defaults untyped names to Float64 (N-TYPE-001); not claimed exact",
         );
     }
-    let unit_status = if raised.iter().any(|item| item == "units" || item == "unit") {
+    let unit_status = if raised.contains(&ExactnessDimension::Unit) {
         ExactnessStatus::Declared
     } else if source.contains(" km") || source.contains(" m") || expansion.expanded.contains(" km")
     {
@@ -277,15 +290,6 @@ fn ledger_from_expansion(
     ExactnessLedger { entries }
 }
 
-fn status_from_stability(stability: &str) -> ExactnessStatus {
-    match stability {
-        "declared" => ExactnessStatus::Declared,
-        "constructed" => ExactnessStatus::Constructed,
-        "open" => ExactnessStatus::Open,
-        _ => ExactnessStatus::Inferred,
-    }
-}
-
 fn push(
     entries: &mut Vec<ExactnessEntry>,
     dimension: ExactnessDimension,
@@ -324,12 +328,7 @@ pub fn explanation_notes(source: &str) -> Vec<ScratchNote> {
             ),
             rationale: entry.rationale,
             replacement: entry.name,
-            stability: match entry.status {
-                ExactnessStatus::Declared => "declared",
-                ExactnessStatus::Inferred => "inferred",
-                ExactnessStatus::Constructed => "constructed",
-                ExactnessStatus::Open => "open",
-            },
+            stability: entry.status,
         });
     }
     notes

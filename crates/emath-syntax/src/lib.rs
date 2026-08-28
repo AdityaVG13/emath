@@ -4,6 +4,8 @@
 //! source/token/nesting limits, recovery at statement boundaries.
 //! The syntax tree is owned by `emath-core`; this crate re-exports it and
 //! implements the kernel [`emath_core::parse::SourceParser`] seam.
+//! Meaning-budget surfaces (`expand_scratch`, `apply_solve_candidate`,
+//! `exactness_ledger`) are crate-root re-exports from `scratch` / `exactness`.
 
 #![forbid(unsafe_code)]
 
@@ -21,8 +23,9 @@ pub use exactness::{
     exactness_ledger_raised, explanation_notes,
 };
 pub use scratch::{
-    HoleCandidate, HoleContinuation, HoleRecord, HoleRejection, ScratchExpansion, ScratchLevel,
-    ScratchNote, SolveCandidate, apply_solve_candidate, expand_scratch,
+    ExpansionOutcome, HoleCandidate, HoleContinuation, HoleKind, HoleRecord, HoleRejection,
+    ScratchExpansion, ScratchLevel, ScratchNote, ScratchRewriteLevel, SolveIntent, SolveWorld,
+    apply_solve_candidate, expand_scratch,
 };
 
 use emath_core::{Diagnostics, FileId, limits::Limits};
@@ -36,6 +39,11 @@ use tree::SyntaxTree;
 /// expansion with [`expand_scratch`] / `emath expand`.
 #[must_use]
 pub fn parse(text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics) {
+    // Same ceiling the lexer enforces: do not wrap/rewrite a source that
+    // will be refused as E-SYN-116 anyway.
+    if limits.check_source(text.len()).is_err() {
+        return parser::parse(text, file, limits);
+    }
     let expansion = expand_scratch(text);
     let source = expansion.parse_source(text);
     let (tree, mut diagnostics) = parser::parse(source, file, limits);
@@ -62,6 +70,14 @@ pub struct LosslessParse {
 /// are pure over the source bytes.
 #[must_use]
 pub fn parse_lossless(text: &str, file: FileId, limits: &Limits) -> LosslessParse {
+    if limits.check_source(text.len()).is_err() {
+        let (tree, diagnostics) = parser::parse(text, file, limits);
+        return LosslessParse {
+            tree,
+            diagnostics,
+            comments: Vec::new(),
+        };
+    }
     let expansion = expand_scratch(text);
     let source = expansion.parse_source(text);
     let (_, _, comments) = lexer::lex_with_comments(source, file, limits);

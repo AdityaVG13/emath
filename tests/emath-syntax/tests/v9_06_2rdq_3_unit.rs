@@ -34,7 +34,7 @@ fn each_intent_verb_expands() {
     for (source, needle) in cases {
         let expansion = expand_scratch(source);
         assert!(
-            expansion.rewritten && expansion.expanded.contains(needle),
+            expansion.rewritten() && expansion.expanded.contains(needle),
             "verb `{source}` must expand containing `{needle}`, got {}",
             expansion.expanded
         );
@@ -53,7 +53,7 @@ fn each_intent_verb_expands() {
 #[test]
 fn solve_without_domain_labels_candidates() {
     let expansion = expand_scratch("solve x^2 = 2\n");
-    assert!(expansion.rewritten);
+    assert!(expansion.rewritten());
     assert!(
         expansion
             .notes

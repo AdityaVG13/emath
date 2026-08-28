@@ -25,8 +25,8 @@ fn parse_ok(text: &str) -> emath_core::tree::SyntaxTree {
 fn relationship_plus_example_infers_input_and_tests() {
     let source = "y = x^2 + 4\nexample x = 3\n";
     let expansion = expand_scratch(source);
-    assert!(expansion.rewritten);
-    assert_eq!(expansion.level.as_str(), "L1");
+    assert!(expansion.rewritten());
+    assert_eq!(expansion.level().as_str(), "L1");
     assert!(
         expansion.expanded.contains("inputs:"),
         "{}",
