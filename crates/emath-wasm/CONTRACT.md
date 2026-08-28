@@ -35,23 +35,24 @@
   naming a missing input) **in addition to** the source's own example
   tests. A declaration with no tests and every input bound (zero inputs
   = trivially bound) also emits `_pane` without an envelope.
-- `inputs` returns `{ok, diagnostics, declarations:[{declaration, inputs:[{name, type, defaulted}]}]}`.
+- `inputs` returns `{ok, admitted, diagnostics, declarations:[{declaration, inputs:[{name, type, defaulted}]}]}`.
   `defaulted` is true when admission emitted `N-TYPE-001` for that name.
 
 ## Invariants
 
-- Dispatch never panics across the ABI. The sema pipeline returns diagnostics; `ok:false` is reserved for invalid UTF-8 and unknown ops (and backend generate failure).
-- `check` / `plan` / `generate` / `format` / `run` keep `ok:true` when the pipeline ran, even if the source has diagnostics.
+- Dispatch never panics across the ABI. The sema pipeline returns diagnostics; `ok:false` is reserved for invalid UTF-8, unknown ops, backend generate failure, and a `run` envelope whose `given` is present but not a JSON object of finite numbers / vectors / matrices. JSON numbers and numeric strings are both accepted; `NaN` / `Infinity` / non-numeric strings are refused (they must not silently drop the binding). Duplicate `source` / `given` keys on the envelope, and duplicate names inside `given` (or `shape`/`data` on a tensor), are `ok:false`; they must not first-win or last-win.
+- `check` / `plan` / `mig` / `generate` / `format` / `run` / `inputs` keep `ok:true` when the pipeline ran, even if the source has diagnostics.
+- Those ops also emit `admitted: true` iff diagnostics have no errors. `ok` is not admission; untrusted pane text is never implied admitted by `ok`.
 - `run` uses `check` then the Tier-0 EMIR interpreter (`emath-exec-ir`). Source errors return diagnostics only (no report). Successful admission returns `tier: interpreted-strict-f64` plus a `RunReport`. Vector / matrix / tensor values are serialized (tensors as `{shape, data}`), not dropped.
 - Per-test JSON: an asserted example emits `"expect_passed": true|false`. A worked example (`expect` omitted) or a synthetic `_pane` run emits `"computed": true` and omits `expect_passed`. Summary is `{tests, passed, failed, refused, computed}`. A missing envelope binding is `refusal: "lowering-refused"` with `reason` containing `missing input \`name\``.
 - All unsafe is confined to `ffi`. Each block documents its pointer/length pairing.
-- `em_alloc(len)` produces an exclusive region of capacity `len` (length 0 until written). `em_free(ptr, len)` must pair a live `ptr` exactly once; reconstruction uses the capacity stored at mint time, so a mismatched host `len` cannot induce allocator UB (still a contract violation to lie about `len`).
+- `em_alloc(len)` produces an exclusive region of `len` initialized bytes (`vec![0u8; len]`; capacity == len). `em_free(ptr, len)` must pair a live `ptr` exactly once; reconstruction uses the capacity stored at mint time, so a mismatched host `len` cannot induce allocator UB (still a contract violation to lie about `len`).
 - `em_run` reads `op` and `payload` as UTF-8 slices the caller owns, writes the JSON response through `em_alloc`, and returns that allocation. The JS caller copies, then `em_free`s. An oversized response (`len > u32::MAX`) or a failed response alloc returns the empty pack `0`.
 
 ## Error model
 
-- `{"ok":false,"error":"..."}`: invalid UTF-8, unknown op, or generate backend refusal.
-- `{"ok":true,"diagnostics":[...]}`: the pipeline ran. Diagnostics are not a dispatch failure.
+- `{"ok":false,"error":"..."}`: invalid UTF-8, unknown op, generate backend refusal, or malformed `run` `given` (not an object, or a value that is not a finite Float64 / vector / matrix).
+- `{"ok":true,"admitted":false,"diagnostics":[...]}`: the pipeline ran. Diagnostics are not a dispatch failure. `admitted` is false until the source is error-free.
 - Diagnostic objects: `severity` (`error`|`warning`), `code`, `message`, `start`, `end`.
 
 ## Determinism class
@@ -70,7 +71,7 @@
 - Crate lint is `deny(unsafe_code)` (workspace `forbid` is overridden only here).
 - `ffi` is the single `allow(unsafe_code)` leaf.
 - Invariants:
-  1. `em_alloc` returns either `0` (`len == 0`) or a pointer from `Vec::with_capacity(len)` whose backing store is leaked via `mem::forget`. Nothing else aliases that allocation until `em_free`.
+  1. `em_alloc` returns either `0` (`len == 0`) or a pointer from `vec![0u8; len]` (exact capacity; not `Vec::with_capacity`, which may over-allocate) whose backing store is leaked via `mem::forget`. Nothing else aliases that allocation until `em_free`.
   2. `em_free(ptr, len)` reconstructs `Vec::from_raw_parts(ptr, 0, stored_cap)` and drops it. `ptr` must be a live `em_alloc` (or the `em_run` response allocation). Double-free / foreign `ptr` are provable no-ops via `LIVE_ALLOCS`. Mismatched host `len` is ignored for drop sizing (stored capacity wins).
   3. `em_run` may read `[op_ptr, op_ptr+op_len)` and `[payload_ptr, payload_ptr+payload_len)` only as bytes the caller initialized. Those regions must be valid, non-overlapping with the response allocation, and not freed until `em_run` returns.
 
@@ -80,7 +81,7 @@
 
 ## Conformance tests
 
-- Native unit tests in `src/lib.rs`: `version_op_shape`; `check_hello_square_admits`; `check_bad_source_surfaces_code`; `mig_canonical_contains_goal_and_is_stable`; `generate_hello_square_files`; `unknown_op_refuses`; `json_escaping_survives_quotes_backslashes_newlines`; `curated_non_demo_examples_admit` (every curated embed admits with zero errors); `run` on hello-square (pass), affine scorer with constructor+state (`run_affine_scorer_constructor_state`), `run_failing_expect_counts_failed`, `run_error_source_surfaces_diagnostics`, expect-less worked example (`run_worked_example_computes_without_expect`), head-args `square(x: Float64) -> Float64` (`run_head_args_square_computes_sixteen`, `generate_head_args_square_emits_free_function`), constant-only `TwentyOne` (`run_twenty_one_constant_only`), bare `y = x * x` (`check_bare_square_desugars_and_admits` with `N-TYPE-001` + `desugared_source`), bare `a = 2` / `b = a * a` (`run_bare_constants_computes_without_tests_section`), `run` envelope `given x = 5` on Square (`run_envelope_given_square_computes`, `_pane`), envelope missing `x` (typed refusal `run_envelope_missing_binding_refuses`), and the newer capability lanes: vector/factorial/range-sum/forall-exists/integral/autodiff/solve/optimize/constrained-opt (`run_vector_given_computes`, `run_factorial_inclusive_computes`, `run_range_sum_computes`, `run_forall_exists_computes`, `run_integral_computes`, `run_autodiff_computes`, `run_solve_computes`, `run_optimize_computes`, `run_constrained_opt_computes`, `run_tensor_face_serializes_matrix`, `run_finite_sum_is_fifteen`) plus `parity_transcendentals_bit_exact` (Tier-1 arithmetic parity with the generated Rust class).
+- Native unit tests in `src/lib.rs`: `version_op_shape`; `check_hello_square_admits`; `check_bad_source_surfaces_code`; `mig_canonical_contains_goal_and_is_stable`; `generate_hello_square_files`; `unknown_op_refuses`; `json_escaping_survives_quotes_backslashes_newlines`; `curated_non_demo_examples_admit` (every curated embed admits with zero errors); `run` on hello-square (pass), affine scorer with constructor+state (`run_affine_scorer_constructor_state`), `run_failing_expect_counts_failed`, `run_error_source_surfaces_diagnostics`, expect-less worked example (`run_worked_example_computes_without_expect`), head-args `square(x: Float64) -> Float64` (`run_head_args_square_computes_sixteen`, `generate_head_args_square_emits_free_function`), constant-only `TwentyOne` (`run_twenty_one_constant_only`), bare `y = x * x` (`check_bare_square_desugars_and_admits` with `N-TYPE-001` + `desugared_source`), bare `a = 2` / `b = a * a` (`run_bare_constants_computes_without_tests_section`), `run` envelope `given x = 5` on Square (`run_envelope_given_square_computes`, `_pane`), envelope missing `x` (typed refusal `run_envelope_missing_binding_refuses`), malformed `given` numbers (`run_envelope_malformed_given_number_refuses`), and the newer capability lanes: vector/factorial/range-sum/forall-exists/integral/autodiff/solve/optimize/constrained-opt (`run_vector_given_computes`, `run_factorial_inclusive_computes`, `run_range_sum_computes`, `run_forall_exists_computes`, `run_integral_computes`, `run_autodiff_computes`, `run_solve_computes`, `run_optimize_computes`, `run_constrained_opt_computes`, `run_tensor_face_serializes_matrix`, `run_finite_sum_is_fifteen`) plus `parity_transcendentals_bit_exact` (Tier-1 arithmetic parity with the generated Rust class).
 
 ## No-claim boundaries
 

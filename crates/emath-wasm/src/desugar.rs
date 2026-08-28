@@ -32,15 +32,16 @@ impl<'a> PreparedSource<'a> {
 #[must_use]
 pub(crate) fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
     let expansion = expand_scratch(raw);
-    if expansion.rewritten && !expansion.diagnostics.has_errors() {
-        PreparedSource {
-            source: Cow::Owned(expansion.expanded),
-            is_wrapped: true,
-        }
-    } else {
+    let parsed = expansion.parse_source(raw);
+    if std::ptr::eq(parsed, raw) {
         PreparedSource {
             source: Cow::Borrowed(raw),
             is_wrapped: false,
+        }
+    } else {
+        PreparedSource {
+            source: Cow::Owned(parsed.to_string()),
+            is_wrapped: true,
         }
     }
 }
