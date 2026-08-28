@@ -45,9 +45,14 @@ fn artifact_source_map_round_trips_against_its_own_schema() {
 #[test]
 fn generated_crate_source_map_round_trips_and_cross_load_is_refused() {
     let files = vec!["Cargo.toml".to_string(), "src/lib.rs".to_string()];
-    let doc = write_generated_crate_source_map("/tmp/genesis/example.emath", &files);
+    let source = "/tmp/genesis/exa\"mple.emath";
+    let doc = write_generated_crate_source_map(source, &files);
     assert!(doc.contains("\"schema\": \"emath.generated-crate-source-map\""));
-    assert!(doc.contains("\"kind\":\"parametric-world\""));
+    assert!(doc.contains("\"kind\": \"parametric-world\""));
+    assert!(
+        doc.contains(r#""source": "/tmp/genesis/exa\"mple.emath""#),
+        "{doc}"
+    );
 
     let parsed = emath_artifact::generated_crate_source_map_from_json(&doc)
         .expect("generated-crate map must parse back per its own schema");
@@ -55,18 +60,18 @@ fn generated_crate_source_map_round_trips_and_cross_load_is_refused() {
         parsed.schema,
         SchemaId("emath.generated-crate-source-map".into())
     );
-    assert_eq!(parsed.source, "/tmp/genesis/example.emath");
+    assert_eq!(parsed.source, source);
     assert_eq!(
         parsed.entries,
         vec![
             GeneratedCrateSourceMapEntry {
                 generated: "Cargo.toml".to_string(),
-                source: "/tmp/genesis/example.emath".to_string(),
+                source: source.to_string(),
                 kind: "parametric-world".to_string(),
             },
             GeneratedCrateSourceMapEntry {
                 generated: "src/lib.rs".to_string(),
-                source: "/tmp/genesis/example.emath".to_string(),
+                source: source.to_string(),
                 kind: "parametric-world".to_string(),
             },
         ]
