@@ -1,6 +1,8 @@
 //! Command catalog used by help, `--help`, `--version`, and unknown-command
 //! hints. Keep this list the single source for first-try discoverability.
 
+use crate::CliExit;
+
 /// Every top-level token `emath <command>` accepts (plus version aliases).
 pub const COMMANDS: &[&str] = &[
     "check",
@@ -286,10 +288,9 @@ Rules
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     match command {
         "explain" => &["--json", "--provenance", "--help", "-h"],
+        "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" | "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities"
-        | "import" | "provider" | "expand" | "exactness" | "why" | "assumptions" => {
-            &["--json", "--help", "-h", "--raise"]
-        }
+        | "import" | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
@@ -344,11 +345,25 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--event"
             | "--set"
             | "--raise"
+            | "--apply"
     )
 }
 
+fn value_looks_like_flag(value: &str, known: &[&str]) -> bool {
+    value.starts_with("--") || known.contains(&value)
+}
+
+fn missing_value_exit(command: &str, arg: &str) -> CliExit {
+    eprintln!("error: `{arg}` needs a value for `emath {command}`");
+    if let Some(usage) = command_usage(command) {
+        eprintln!("usage: emath {usage}");
+    }
+    eprintln!("try: emath help {command}");
+    CliExit::Usage
+}
+
 /// Refuse unknown flags instead of silently ignoring them.
-pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<u8> {
+pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
     let known = flags_for(command);
     let mut index = 0;
     while index < args.len() {
@@ -365,18 +380,16 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<u8> {
                 eprintln!("usage: emath {usage}");
             }
             eprintln!("try: emath help {command}");
-            return Some(2);
+            return Some(CliExit::Usage);
         }
         if flag_takes_value(arg) {
             // Value-taking flags at EOL used to fall through to silent
-            // defaults (e.g. `agent build f --out`).
-            if index + 1 >= args.len() {
-                eprintln!("error: `{arg}` needs a value for `emath {command}`");
-                if let Some(usage) = command_usage(command) {
-                    eprintln!("usage: emath {usage}");
-                }
-                eprintln!("try: emath help {command}");
-                return Some(2);
+            // defaults (e.g. `agent build f --out`). A following flag
+            // token is not a value (`freeze f --out --json`).
+            let missing =
+                index + 1 >= args.len() || value_looks_like_flag(args[index + 1].as_str(), known);
+            if missing {
+                return Some(missing_value_exit(command, arg));
             }
             index += 1;
         }

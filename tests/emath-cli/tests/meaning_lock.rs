@@ -1,7 +1,7 @@
 //! Meaning-lock E2E: portfolio → set → single-world → unset → portfolio,
 //! two-user isolation, and typed refusals.
 
-use emath_cli::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run};
+use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -41,7 +41,7 @@ fn world_id_count(body: &str) -> usize {
     body.matches("\"world_id\"").count()
 }
 
-fn genesis(file: &Path, out: &Path) -> u8 {
+fn genesis(file: &Path, out: &Path) -> CliExit {
     run(&args(&[
         "genesis",
         &file.display().to_string(),
@@ -177,6 +177,35 @@ fn two_projects_same_source_different_locks() {
 }
 
 #[test]
+fn empty_nested_emath_dir_does_not_shadow_parent_lock() {
+    let project = scratch("shadow");
+    let file = write_glyphs(&project, glyphs_source());
+    assert_eq!(
+        run(&args(&[
+            "meaning",
+            "set",
+            &file.display().to_string(),
+            "--world",
+            "Boolean_algebra",
+            "--dir",
+            &project.display().to_string(),
+        ])),
+        EXIT_OK
+    );
+    let nested = project.join("nested");
+    fs::create_dir_all(nested.join(".emath")).expect("decoy .emath");
+    let nested_file = write_glyphs(&nested, glyphs_source());
+    let out = nested.join("out");
+    assert_eq!(genesis(&nested_file, &out), EXIT_OK);
+    let portfolio = fs::read_to_string(out.join("interpretation-portfolio.json")).unwrap();
+    assert_eq!(
+        world_id_count(&portfolio),
+        1,
+        "empty nested .emath/ must not bypass the parent lock: {portfolio}"
+    );
+}
+
+#[test]
 fn tampered_lock_and_source_drift_refuse() {
     let project = scratch("negatives");
     let file = write_glyphs(&project, glyphs_source());
@@ -204,6 +233,36 @@ fn tampered_lock_and_source_drift_refuse() {
 
     fs::write(&lock_path, "{not json").unwrap();
     assert_eq!(genesis(&file, &project.join("malformed-out")), EXIT_REFUSED);
+}
+
+#[test]
+fn meaning_duplicate_valued_flags_are_usage() {
+    assert_eq!(
+        run(&args(&[
+            "meaning",
+            "set",
+            "a.emath",
+            "--world",
+            "one_point",
+            "--world",
+            "Boolean_algebra",
+        ])),
+        EXIT_USAGE
+    );
+    assert_eq!(
+        run(&args(&["meaning", "list", "--dir", "a", "--dir", "b"])),
+        EXIT_USAGE
+    );
+    assert_eq!(
+        run(&args(&["meaning", "unset", "--hole", "x", "--hole", "y"])),
+        EXIT_USAGE
+    );
+    assert_eq!(
+        run(&args(&[
+            "meaning", "explain", "a.emath", "--dir", "a", "--dir", "b"
+        ])),
+        EXIT_USAGE
+    );
 }
 
 fn extract_fingerprint(lock: &str) -> String {

@@ -1,6 +1,20 @@
 //! CLI ergonomics tests, moved from `crates/emath-cli/src/lib.rs`.
 
-use emath_cli::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run};
+use emath_cli::{
+    check_json_document, diagnostics_json_document, json_diagnostic_entry, run, run_check, EXIT_OK,
+    EXIT_REFUSED, EXIT_USAGE,
+};
+
+fn diagnostic_codes(body: &str) -> Vec<String> {
+    let parsed = emath_artifact::parse_json_document(body).expect("json");
+    match parsed.field("diagnostics").expect("diagnostics") {
+        emath_artifact::JsonValue::Arr(items) => items
+            .iter()
+            .map(|item| item.string_field("code").expect("code"))
+            .collect(),
+        other => panic!("diagnostics must be array, got {other:?}"),
+    }
+}
 
 fn args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
@@ -41,7 +55,11 @@ fn capabilities_and_robot_docs_exit_ok() {
     assert_eq!(run(&args("capabilities --json")), EXIT_OK);
     assert_eq!(run(&args("robot-docs")), EXIT_OK);
     assert_eq!(run(&args("robot-docs guide")), EXIT_OK);
+    assert_eq!(run(&args("robot-docs --guide")), EXIT_OK);
     assert_eq!(run(&args("robot-docs waffle")), EXIT_USAGE);
+    assert_eq!(run(&args("robot-docs guide extra")), EXIT_USAGE);
+    assert_eq!(run(&args("version extra")), EXIT_USAGE);
+    assert_eq!(run(&args("help check extra")), EXIT_USAGE);
 }
 
 #[test]
@@ -140,6 +158,14 @@ fn missing_file_is_epkg080_on_check_eval_compile_simulate() {
         err.contains("E-PKG-080"),
         "eval/compile analyze must name E-PKG-080, got {err}"
     );
+    let (diagnostics, package_id) = run_check(&missing);
+    let body = check_json_document(false, &package_id, &diagnostics, None);
+    assert!(
+        diagnostic_codes(&body)
+            .iter()
+            .any(|code| code == "E-PKG-080"),
+        "check --json must name E-PKG-080, got {body}"
+    );
     assert_eq!(
         run(&["check".into(), path.clone(), "--json".into()]),
         EXIT_REFUSED
@@ -160,8 +186,50 @@ fn missing_file_is_epkg080_on_check_eval_compile_simulate() {
         EXIT_REFUSED
     );
     assert_eq!(
-        run(&["simulate".into(), path, "--json".into()]),
+        run(&["simulate".into(), path.clone(), "--json".into()]),
         EXIT_REFUSED
+    );
+    for args in [
+        vec!["expand".into(), path.clone(), "--json".into()],
+        vec!["plan".into(), path.clone(), "--json".into()],
+        vec!["planner".into(), path.clone(), "--json".into()],
+        vec!["build".into(), path.clone(), "--json".into()],
+        vec!["freeze".into(), path.clone(), "--json".into()],
+        vec!["exactness".into(), path.clone(), "--json".into()],
+        vec![
+            "solve".into(),
+            "--check".into(),
+            path.clone(),
+            "--json".into(),
+        ],
+        vec!["assumptions".into(), path.clone(), "--json".into()],
+        vec![
+            "why".into(),
+            path.clone(),
+            "inference:1".into(),
+            "--json".into(),
+        ],
+    ] {
+        assert_eq!(
+            run(&args),
+            EXIT_USAGE,
+            "missing provided file --json must be IO usage, got {args:?}"
+        );
+    }
+    let envelope = diagnostics_json_document(
+        "expand",
+        false,
+        &[json_diagnostic_entry(
+            "E-PKG-080",
+            "error",
+            "cannot read source file (missing.emath)",
+        )],
+    );
+    assert!(
+        diagnostic_codes(&envelope)
+            .iter()
+            .any(|code| code == "E-PKG-080"),
+        "refusal envelope must name E-PKG-080, got {envelope}"
     );
 }
 
@@ -177,9 +245,14 @@ fn eval_json_refuses_invalid_function_file() {
         "hello-square must admit at check"
     );
     assert_eq!(
-        run(&["eval".into(), path, "--json".into()]),
+        run(&["eval".into(), path.clone(), "--json".into()]),
         EXIT_REFUSED,
         "eval is genesis-only; a function file must not silently succeed"
+    );
+    assert_eq!(
+        run(&["solve".into(), "--check".into(), path, "--json".into()]),
+        EXIT_REFUSED,
+        "hello-square has no solve intent; --json must still refuse"
     );
 }
 
@@ -234,7 +307,79 @@ fn empty_file_check_eval_simulate_all_refuse() {
     let comments = dir.join("comments.emath");
     std::fs::write(&empty, "").expect("write empty");
     std::fs::write(&comments, "# comment only\n").expect("write comments");
+    let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+    let package = session.load_package(&empty).expect("empty source loads");
+    let result = session.check(package.file);
+    let body = check_json_document(
+        !result.diagnostics.has_errors(),
+        &result.package.content_id().0,
+        &result.diagnostics,
+        None,
+    );
+    assert!(
+        diagnostic_codes(&body)
+            .iter()
+            .any(|code| code == "E-PKG-081"),
+        "check --json empty must name E-PKG-081, got {body}"
+    );
     assert_check_eval_simulate_refuse(&empty.to_string_lossy());
+    assert_eq!(
+        run(&[
+            "expand".into(),
+            empty.to_string_lossy().into_owned(),
+            "--json".into()
+        ]),
+        EXIT_REFUSED,
+        "expand must not admit empty source (E-PKG-081)"
+    );
+    assert_eq!(
+        run(&[
+            "expand".into(),
+            comments.to_string_lossy().into_owned(),
+            "--json".into()
+        ]),
+        EXIT_REFUSED,
+        "expand must not admit comment-only source (E-PKG-081)"
+    );
+    let empty_path = empty.to_string_lossy().into_owned();
+    for args in [
+        vec!["freeze".into(), empty_path.clone(), "--json".into()],
+        vec!["exactness".into(), empty_path.clone(), "--json".into()],
+        vec![
+            "solve".into(),
+            "--check".into(),
+            empty_path.clone(),
+            "--json".into(),
+        ],
+        vec!["assumptions".into(), empty_path.clone(), "--json".into()],
+        vec![
+            "why".into(),
+            empty_path.clone(),
+            "inference:1".into(),
+            "--json".into(),
+        ],
+    ] {
+        assert_eq!(
+            run(&args),
+            EXIT_REFUSED,
+            "empty source --json must be E-PKG-081 refused, got {args:?}"
+        );
+    }
+    let envelope = diagnostics_json_document(
+        "expand",
+        false,
+        &[json_diagnostic_entry(
+            "E-PKG-081",
+            "error",
+            "source has no declarations (empty.emath)",
+        )],
+    );
+    assert!(
+        diagnostic_codes(&envelope)
+            .iter()
+            .any(|code| code == "E-PKG-081"),
+        "empty refusal envelope must name E-PKG-081, got {envelope}"
+    );
     assert_check_eval_simulate_refuse(&comments.to_string_lossy());
     let _ = std::fs::remove_dir_all(&dir);
 }

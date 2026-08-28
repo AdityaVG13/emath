@@ -6,27 +6,27 @@
 //! answer receipt → parametric Rust artifact. Emitted JSON is deterministic
 //! and std-only.
 
-use super::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use super::{CliExit, CompileRequest, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::limits::Limits;
 use emath_genesis::{
-    BooleanAlienWorld, CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, Environment,
-    FreeTermWorld, ModularAlienWorld, OnePointWorld, SeededCsaWorld, VM_SCHEMA, VM_SCHEMA_VERSION,
-    VmBudget, VmOutcome, forest, free_symbolic_world, run as vm_run,
+    forest, free_symbolic_world, run as vm_run, BooleanAlienWorld, Environment, FreeTermWorld,
+    ModularAlienWorld, OnePointWorld, SeededCsaWorld, VmBudget, VmOutcome, CSA_MEANING_CLAIM,
+    CSA_SCHEMA, CSA_SCHEMA_VERSION, VM_SCHEMA, VM_SCHEMA_VERSION,
 };
 use emath_portfolio::{
-    Authority, CollapsePolicy, InterpretationCandidate, InterpretationPolicy,
-    InterpretationPortfolio, MetricAxis, MetricPolarity, PROVENANCE_USER_LOCKED, PortfolioError,
-    ScoreVector, apply_portfolio_cap, evaluate,
+    apply_portfolio_cap, evaluate, Authority, CollapsePolicy, InterpretationCandidate,
+    InterpretationPolicy, InterpretationPortfolio, MetricAxis, MetricPolarity, PortfolioError,
+    ScoreVector, PROVENANCE_USER_LOCKED,
 };
 use emath_syntax::genesis as genesis_syntax;
-use emath_term::{Signature, TERM_IR_VERSION, Term, VariableId};
+use emath_term::{Signature, Term, VariableId, TERM_IR_VERSION};
 use emath_world_ir::{
-    Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr, fnv1a64,
+    fnv1a64, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// One analysis result reused by every subcommand.
 pub struct Analysis {
@@ -133,12 +133,16 @@ fn jsonl(
     label: &str,
     world_id: Option<u64>,
 ) -> String {
-    let id = world_id.map(|value| format!("\"world_id\":\"{value:016x}\""));
-    let comma = if id.is_some() { "," } else { "" };
-    format!(
-        "{{\"seq\":{seq},\"schema\":\"{schema}\",\"status\":\"{status}\",\"code\":\"{code}\",\"label\":\"{label}\"{comma}{}}}",
-        id.unwrap_or_default()
-    )
+    let mut object = emath_artifact::JsonWriter::object();
+    object.int("seq", seq);
+    object.string("schema", schema);
+    object.string("status", status);
+    object.string("code", code);
+    object.string("label", label);
+    if let Some(value) = world_id {
+        object.string("world_id", &format!("{value:016x}"));
+    }
+    object.finish().chars().filter(|ch| *ch != '\n').collect()
 }
 
 /// Canonical declared-expression semantics for the built-in worlds.
@@ -253,7 +257,7 @@ pub fn builtin_worlds(signature: &Signature) -> Vec<WorldIr> {
 }
 
 /// `parse <file> [--out <dir>]`: glyphs + bounded parse forest.
-pub fn parse_cmd(path: &Path, out: Option<&PathBuf>, forest_only: bool) -> u8 {
+pub fn parse_cmd(path: &Path, out: Option<&PathBuf>, forest_only: bool) -> CliExit {
     let analysis = match analyze(path) {
         Ok(analysis) => analysis,
         Err(error) => {
@@ -309,7 +313,7 @@ fn parse_count(json: &str, field: &str) -> String {
 }
 
 /// `signature <file> [--out <dir>]`: signature + fixity + type variables.
-pub fn signature_cmd(path: &Path, out: Option<&PathBuf>) -> u8 {
+pub fn signature_cmd(path: &Path, out: Option<&PathBuf>) -> CliExit {
     let analysis = match analyze(path) {
         Ok(analysis) => analysis,
         Err(error) => {
@@ -461,7 +465,7 @@ fn portfolio(
 }
 
 /// `genesis <file> --out <dir>`: full analysis artifact set.
-pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
+pub fn genesis_cmd(path: &Path, out: &PathBuf) -> CliExit {
     let analysis = match analyze(path) {
         Ok(analysis) => analysis,
         Err(error) => {
@@ -558,26 +562,23 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> u8 {
                     .as_bytes(),
             ),
         );
-        let mut entries = String::new();
-        for (index, candidate) in portfolio.candidates().iter().enumerate() {
-            if index > 0 {
-                entries.push(',');
-            }
-            let _ = write!(
-                entries,
-                "{{\"world_id\":\"{:016x}\",\"name\":\"{}\",\"answer\":\"{}\",\"authority\":\"{}\",\"score\":{{\"cost\":{},\"complexity\":{},\"evidence\":{},\"utility\":{}}},\"provenance\":\"{}\"}}",
-                candidate.world_id.0,
-                candidate.name,
-                candidate.answer,
-                authority_str(candidate.authority),
-                candidate.score.cost,
-                candidate.score.complexity,
-                candidate.score.evidence,
-                candidate.score.utility,
-                candidate.provenance
-            );
+        let mut entries = Vec::new();
+        for candidate in portfolio.candidates() {
+            let mut row = emath_artifact::JsonWriter::object();
+            row.string("world_id", &format!("{:016x}", candidate.world_id.0));
+            row.string("name", &candidate.name);
+            row.string("answer", &candidate.answer);
+            row.string("authority", authority_str(candidate.authority));
+            let mut score = emath_artifact::JsonWriter::object();
+            score.field("cost", &candidate.score.cost.to_string());
+            score.field("complexity", &candidate.score.complexity.to_string());
+            score.field("evidence", &candidate.score.evidence.to_string());
+            score.field("utility", &candidate.score.utility.to_string());
+            row.object_field("score", score.finish().trim());
+            row.string("provenance", &candidate.provenance);
+            entries.push(row.finish().trim_end().to_string());
         }
-        object.object_field("candidates", &format!("[{entries}]"));
+        object.objects("candidates", &entries);
         object.finish()
     };
 
@@ -977,8 +978,9 @@ fn codegen_specs(
         .collect()
 }
 
-pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
-    let analysis = match analyze(path) {
+pub fn compile_cmd(request: CompileRequest) -> CliExit {
+    let CompileRequest::Ready { path, out, worlds } = request;
+    let analysis = match analyze(&path) {
         Ok(analysis) => analysis,
         Err(error) => {
             eprintln!("error: {error}");
@@ -986,7 +988,7 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
         }
     };
     let all_worlds = builtin_worlds(&analysis.inference.signature);
-    let selection = match crate::meaning_cmd::resolve_locked_worlds(path, &analysis, all_worlds) {
+    let selection = match crate::meaning_cmd::resolve_locked_worlds(&path, &analysis, all_worlds) {
         Ok(selection) => selection,
         Err(error) => {
             eprintln!("{error}");
@@ -995,7 +997,7 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
     };
     let world_labels = if let Some(lock) = &selection.lock {
         if !worlds.is_empty() {
-            for label in worlds {
+            for label in &worlds {
                 let Some(world) = selection.worlds.iter().find(|world| world.name == *label) else {
                     eprintln!("error: E-GEN-092: unknown world `{label}`");
                     return EXIT_REFUSED;
@@ -1023,13 +1025,13 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
             .map(|label| (*label).to_string())
             .collect::<Vec<_>>()
     } else {
-        for label in worlds {
+        for label in &worlds {
             if !COMPILED_WORLDS.contains(&label.as_str()) {
                 eprintln!("error: E-GEN-092: unknown world `{label}`");
                 return EXIT_REFUSED;
             }
         }
-        worlds.to_vec()
+        worlds.clone()
     };
     // Generator labels are lowercase stable IDs; surface labels may be
     // authored as `Boolean_algebra` in explore clauses.
@@ -1050,7 +1052,7 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
             return EXIT_REFUSED;
         }
     };
-    if let Err(error) = generated.write_to(out) {
+    if let Err(error) = generated.write_to(&out) {
         eprintln!("error: cannot write generated crate: {error}");
         return EXIT_USAGE;
     }
@@ -1063,25 +1065,18 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
             u64::from(emath_world_codegen_rust::WORLD_ABI_VERSION),
         );
         object.string("crate_name", &generated.crate_name);
-        object.string("source", &path_to_string(path));
+        object.string("source", &path_to_string(&path));
         object.int("source_hash", analysis.source_hash);
         object.int("parse_id", analysis.parse_id);
         object.int("signature_id", analysis.signature_id);
         object.int("term_id", analysis.term_id);
         object.strings("worlds", &spec_labels);
-        let mut files_str = String::from("[");
-        for (index, rel) in generated.files.keys().enumerate() {
-            if index > 0 {
-                files_str.push(',');
-            }
-            let _ = write!(files_str, "\"{rel}\"");
-        }
-        files_str.push(']');
-        object.object_field("files", &files_str);
+        let files: Vec<String> = generated.files.keys().cloned().collect();
+        object.strings("files", &files);
         object.finish()
     };
     let source_map = emath_artifact::write_generated_crate_source_map(
-        &path_to_string(path),
+        &path_to_string(&path),
         &generated.files.keys().cloned().collect::<Vec<_>>(),
     );
     // Hole manifest (SG-05/G3): in the parametric lane every signature
@@ -1100,24 +1095,27 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
             .map(|(symbol, arity)| (symbol.0.clone(), *arity))
             .collect();
         symbols.sort();
-        let mut entries = String::from("[");
-        for (index, (symbol, arity)) in symbols.iter().enumerate() {
-            if index > 0 {
-                entries.push(',');
-            }
+        let mut entries = Vec::new();
+        for (symbol, arity) in &symbols {
             let kind = if *arity == 0 {
                 "constant-definition"
             } else {
                 "operator-definition"
             };
-            let _ = write!(
-                entries,
-                "{{\"hole_id\":\"{:016x}\",\"symbol\":\"{symbol}\",\"arity\":{arity},\"kind\":\"{kind}\",\"state\":\"open\",\"constraint\":\"meaning supplied by a World implementation\"}}",
-                fnv1a64(format!("hole:{symbol}:{arity}").as_bytes()),
+            let hole_id = format!(
+                "{:016x}",
+                fnv1a64(format!("hole:{symbol}:{arity}").as_bytes())
             );
+            let mut hole = emath_artifact::JsonWriter::object();
+            hole.string("hole_id", &hole_id);
+            hole.string("symbol", symbol);
+            hole.int("arity", u64::try_from(*arity).unwrap_or(u64::MAX));
+            hole.string("kind", kind);
+            hole.string("state", "open");
+            hole.string("constraint", "meaning supplied by a World implementation");
+            entries.push(hole.finish().trim_end().to_string());
         }
-        entries.push(']');
-        object.object_field("holes", &entries);
+        object.objects("holes", &entries);
         object.finish()
     };
     for (name, body) in [
@@ -1140,11 +1138,30 @@ pub fn compile_cmd(path: &Path, out: &Path, worlds: &[String]) -> u8 {
     EXIT_OK
 }
 
+/// Single path component under `--dir`. Rejects `..`, absolute, and nested
+/// ids so `world show` / `portfolio show` cannot read outside the artifact dir.
+fn confined_artifact_id(id: &str) -> bool {
+    if id.is_empty() || id.contains('\0') {
+        return false;
+    }
+    let path = Path::new(id);
+    let mut parts = path.components();
+    matches!(parts.next(), Some(Component::Normal(name)) if name == std::ffi::OsStr::new(id))
+        && parts.next().is_none()
+}
+
 /// `world show <id> [--dir <dir>]`.
-pub fn world_show_cmd(id: &str, dir: &Path) -> u8 {
+pub fn world_show_cmd(id: &str, dir: &Path) -> CliExit {
+    if !confined_artifact_id(id) {
+        eprintln!("error: E-GEN-096: world id is not a single path component");
+        return EXIT_USAGE;
+    }
     let target = dir.join("world-candidates").join(format!("{id}.json"));
     match fs::read_to_string(&target) {
         Ok(body) => {
+            if let Some(code) = refuse_truncated_json(&target, &body) {
+                return code;
+            }
             print!("{body}");
             EXIT_OK
         }
@@ -1156,13 +1173,20 @@ pub fn world_show_cmd(id: &str, dir: &Path) -> u8 {
 }
 
 /// `portfolio show <id> [--dir <dir>]`.
-pub fn portfolio_show_cmd(id: &str, dir: &Path) -> u8 {
+pub fn portfolio_show_cmd(id: &str, dir: &Path) -> CliExit {
+    if !confined_artifact_id(id) {
+        eprintln!("error: E-GEN-096: portfolio id is not a single path component");
+        return EXIT_USAGE;
+    }
     let candidates = [
         dir.join(format!("interpretation-portfolio-{id}.json")),
         dir.join("interpretation-portfolio.json"),
     ];
     for path in candidates {
         if let Ok(body) = fs::read_to_string(&path) {
+            if let Some(code) = refuse_truncated_json(&path, &body) {
+                return code;
+            }
             print!("{body}");
             let g7 = dir.join("g7-portfolio-receipt.txt");
             if let Ok(receipt) = fs::read_to_string(&g7) {
@@ -1177,6 +1201,15 @@ pub fn portfolio_show_cmd(id: &str, dir: &Path) -> u8 {
     }
     eprintln!("error: no portfolio artifact under {}", dir.display());
     EXIT_USAGE
+}
+
+fn refuse_truncated_json(path: &Path, body: &str) -> Option<CliExit> {
+    if emath_artifact::parse_json_document(body).is_err() {
+        eprintln!("error: truncated or malformed JSON in {}", path.display());
+        Some(EXIT_REFUSED)
+    } else {
+        None
+    }
 }
 
 fn json_world_ids(body: &str) -> Vec<String> {
@@ -1199,7 +1232,7 @@ fn json_world_ids(body: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::answer_policy;
+    use super::{answer_policy, confined_artifact_id};
     use crate::meaning_cmd::ResolvedLock;
     use emath_portfolio::{CollapsePolicy, InterpretationPolicy};
 
@@ -1228,5 +1261,17 @@ mod tests {
                 collapse: CollapsePolicy::RequireUnique
             }
         ));
+    }
+
+    #[test]
+    fn confined_artifact_id_rejects_traversal() {
+        assert!(confined_artifact_id("0123456789abcdef"));
+        assert!(!confined_artifact_id(""));
+        assert!(!confined_artifact_id(".."));
+        assert!(!confined_artifact_id("../secret"));
+        assert!(!confined_artifact_id("../x"));
+        assert!(!confined_artifact_id("foo/bar"));
+        assert!(!confined_artifact_id("/etc/passwd"));
+        assert!(!confined_artifact_id("foo\0bar"));
     }
 }

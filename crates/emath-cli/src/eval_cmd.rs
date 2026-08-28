@@ -4,12 +4,12 @@
 
 use super::genesis_cmd::{self, Analysis};
 use super::{
-    EXIT_OK, EXIT_REFUSED, json_diagnostic_entry, print_json_diagnostics, split_error_code, usage,
+    json_diagnostic_entry, print_json_diagnostics, split_error_code, CliExit, EXIT_OK, EXIT_REFUSED,
 };
 use emath_artifact::JsonWriter;
 use emath_genesis::{
-    BooleanAlienWorld, Environment, FreeTermWorld, ModularAlienWorld, OnePointWorld,
-    SeededCsaWorld, VmBudget, VmOutcome, run as vm_run,
+    run as vm_run, BooleanAlienWorld, Environment, FreeTermWorld, ModularAlienWorld, OnePointWorld,
+    SeededCsaWorld, VmBudget, VmOutcome,
 };
 use emath_term::{Term, VariableId};
 use emath_world_ir::WorldIr;
@@ -50,34 +50,41 @@ impl EvalReceipt {
     }
 }
 
-pub fn dispatch_eval(args: &[String]) -> u8 {
-    match parse_eval_args(args) {
-        Some(parsed) => eval_cmd(&parsed.path, parsed.world.as_deref(), parsed.json),
-        None => usage("eval <file.emath> [--world <name>] [--json]"),
+pub(crate) fn dispatch_eval(args: EvalArgs) -> CliExit {
+    eval_cmd(&args.path, args.world.as_deref(), args.json)
+}
+
+pub(crate) fn dispatch_repl(path: &Path) -> CliExit {
+    repl_cmd(path)
+}
+
+pub(crate) struct EvalArgs {
+    pub path: PathBuf,
+    pub world: Option<String>,
+    pub json: bool,
+}
+
+fn assign_once<T>(slot: &mut Option<T>, value: T) -> Option<()> {
+    if slot.is_some() {
+        None
+    } else {
+        *slot = Some(value);
+        Some(())
     }
 }
 
-pub fn dispatch_repl(args: &[String]) -> u8 {
+pub(crate) fn parse_repl_path(args: &[String]) -> Option<PathBuf> {
     let mut path = None;
     for arg in args {
         if arg.starts_with('-') && arg.as_str() != "-" {
-            continue;
+            return None;
         }
-        path = Some(PathBuf::from(arg));
+        assign_once(&mut path, PathBuf::from(arg))?;
     }
-    match path {
-        Some(path) => repl_cmd(&path),
-        None => usage("repl <file.emath>"),
-    }
+    path
 }
 
-struct EvalArgs {
-    path: PathBuf,
-    world: Option<String>,
-    json: bool,
-}
-
-fn parse_eval_args(args: &[String]) -> Option<EvalArgs> {
+pub(crate) fn parse_eval_args(args: &[String]) -> Option<EvalArgs> {
     let mut path = None;
     let mut world = None;
     let mut json = false;
@@ -87,10 +94,10 @@ fn parse_eval_args(args: &[String]) -> Option<EvalArgs> {
             "--json" => json = true,
             "--world" => {
                 index += 1;
-                world = Some(args.get(index)?.clone());
+                assign_once(&mut world, args.get(index)?.clone())?;
             }
-            other if other.starts_with('-') && other != "-" => {}
-            other => path = Some(PathBuf::from(other)),
+            other if other.starts_with('-') && other != "-" => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
         }
         index += 1;
     }
@@ -101,7 +108,7 @@ fn parse_eval_args(args: &[String]) -> Option<EvalArgs> {
     })
 }
 
-fn refuse_eval(error: &str, json: bool) -> u8 {
+fn refuse_eval(error: &str, json: bool) -> CliExit {
     let line = if error.starts_with("error:") {
         error.to_string()
     } else {
@@ -119,7 +126,7 @@ fn refuse_eval(error: &str, json: bool) -> u8 {
     EXIT_REFUSED
 }
 
-fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> u8 {
+fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> CliExit {
     let analysis = match genesis_cmd::analyze(path) {
         Ok(analysis) => analysis,
         Err(error) => return refuse_eval(&error, json),
@@ -166,7 +173,7 @@ fn eval_cmd(path: &Path, world_name: Option<&str>, json: bool) -> u8 {
     }
 }
 
-fn repl_cmd(path: &Path) -> u8 {
+fn repl_cmd(path: &Path) -> CliExit {
     let analysis = match genesis_cmd::analyze(path) {
         Ok(analysis) => analysis,
         Err(error) => {

@@ -13,6 +13,9 @@ tests/*/target/
 # skill-loop progress + module-coupling-topology campaign books
 .skill-loop*
 /.module-coupling-topology/
+/.cyclomatic-reduction/
+/.state-space-collapse/
+/.rotational-code-analysis/
 
 # local viewer/tool config and caches
 .bv/
