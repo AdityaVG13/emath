@@ -5,8 +5,8 @@ use emath_core::limits::Limits;
 use emath_core::tree::{BinaryOp, DerivativeKind, ExprKind, Item, NotationFixity, StmtKind};
 use emath_core::{Diagnostic, FileId, SourceStore, Span};
 use emath_syntax::lexer::{lex, lex_with_comments};
-use emath_syntax::parse_str;
 use emath_syntax::token::TokenKind;
+use emath_syntax::{parse, parse_lossless, parse_str};
 
 #[test]
 fn empty_source_lexes_only_eof() {
@@ -324,6 +324,32 @@ fn source_over_byte_limit_refuses_without_scanning() {
     );
     assert_eq!(tokens.len(), 1, "oversized source must emit only Eof");
     assert!(matches!(tokens[0].kind, TokenKind::Eof));
+}
+
+#[test]
+fn parse_skips_scratch_expand_when_source_exceeds_limits() {
+    let limits = Limits {
+        max_source_bytes: 8,
+        ..Limits::default()
+    };
+    let source = "aaaaaaaaaa"; // 10 bytes > 8
+    let (_, diagnostics) = parse(source, FileId(0), &limits);
+    assert!(
+        diagnostics.errors().any(|error| error.code == "E-SYN-116"),
+        "expected E-SYN-116 without expanding oversized scratch"
+    );
+    let lossless = parse_lossless(source, FileId(0), &limits);
+    assert!(
+        lossless
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-SYN-116"),
+        "expected E-SYN-116 from lossless parse of oversized source"
+    );
+    assert!(
+        lossless.comments.is_empty(),
+        "oversized lossless parse must not retain comments"
+    );
 }
 
 #[test]

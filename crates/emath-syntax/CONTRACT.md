@@ -19,7 +19,10 @@ admit without depending on this crate. The syntax tree is owned by
 - `SyntaxParser`: process-wide default `SourceParser` unit.
 - `install_source_parser()`: idempotently installs `SyntaxParser`; hosts must
   call once per process before first parse.
-- Modules: `formatter`, `genesis`, `lexer`, `parser`, `token`, `tree`.
+- Modules: `formatter`, `genesis`, `lexer`, `parser`, `token`, `tree`, `scratch`, `exactness`.
+- Scratch / meaning-budget (crate-root re-exports from `scratch`): `expand_scratch`, `apply_solve_candidate`, `ScratchExpansion`, `ExpansionOutcome`, `ScratchLevel`, `ScratchRewriteLevel`, `ScratchNote`, hole types, `SolveIntent`, `SolveWorld`.
+- `apply_solve_candidate(source, SolveWorld) -> Result<(String, String), String>`: pin one closed-menu world. String labels stop at `SolveWorld::parse_label`. No `&str` overload; `SolveCandidate` is not a type (removed, not re-exported).
+- Exactness (crate-root re-exports from `exactness`): `ExactnessDimension`, `ExactnessEntry`, `ExactnessLedger`, `ExactnessStatus`, `exactness_ledger`, `exactness_ledger_raised`, `explanation_notes`. `from_raise_token` admits only `units` / `unit`. Not crate-root: `exactness::claims_exactness_with_open_holes` (used by freeze).
 
 ## Invariants
 

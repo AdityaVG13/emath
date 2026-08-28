@@ -51,7 +51,7 @@ fn two_plus_two_example_file_parses() {
 #[test]
 fn plot_solve_convert_expand() {
     let plot = expand_scratch("plot sin(x) on -3.14..3.14\n");
-    assert!(plot.rewritten, "plot must wrap");
+    assert!(plot.rewritten(), "plot must wrap");
     assert!(plot.expanded.contains("sin(x)"), "{}", plot.expanded);
     assert!(
         plot.expanded.contains("emath function Scratch:"),
@@ -60,7 +60,7 @@ fn plot_solve_convert_expand() {
     );
 
     let solve = expand_scratch("solve x^2 = 2 over Real\n");
-    assert!(solve.rewritten);
+    assert!(solve.rewritten());
     assert!(
         solve.expanded.contains("solve(residual) wrt x"),
         "{}",
@@ -76,7 +76,7 @@ fn plot_solve_convert_expand() {
     );
 
     let convert = expand_scratch("convert 1 km to m\n");
-    assert!(convert.rewritten);
+    assert!(convert.rewritten());
     assert!(
         convert.expanded.contains("(1 km) / (1 m)"),
         "{}",

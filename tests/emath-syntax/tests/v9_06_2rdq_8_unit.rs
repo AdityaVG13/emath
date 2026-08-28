@@ -19,7 +19,7 @@ fn extra_intent_verbs_expand() {
     ] {
         let expansion = expand_scratch(verb);
         assert!(
-            expansion.rewritten && !expansion.diagnostics.has_errors(),
+            expansion.rewritten() && !expansion.diagnostics.has_errors(),
             "`{verb}` must expand, got {} {:?}",
             expansion.expanded,
             expansion

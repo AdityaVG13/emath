@@ -15,7 +15,7 @@ fn has_error(text: &str, code: &str) -> bool {
 fn l0_expansion_is_visible_and_round_trips() {
     let source = "2+2\n";
     let expansion = expand_scratch(source);
-    assert!(expansion.rewritten);
+    assert!(expansion.rewritten());
     assert!(
         expansion.expanded.contains("emath function Scratch:"),
         "{}",
@@ -57,7 +57,7 @@ fn l0_and_l3_share_declaration_center() {
 fn inspectable_example_file_expands() {
     let source = "2 + 2\n";
     let expansion = expand_scratch(source);
-    assert!(expansion.rewritten);
+    assert!(expansion.rewritten());
     assert!(
         expansion.expanded.contains("result = 2 + 2"),
         "{}",
