@@ -1057,18 +1057,17 @@ pub fn write_generated_crate_source_map(source: &str, files: &[String]) -> Strin
     // byte-range + source_package shape of `emath.source-map`.
     object.string("schema", GENERATED_CRATE_SOURCE_MAP_SCHEMA);
     object.string("source", source);
-    let mut entries = String::from("[");
-    for (index, rel) in files.iter().enumerate() {
-        if index > 0 {
-            entries.push(',');
-        }
-        let _ = write!(
-            entries,
-            "{{\"generated\":\"{rel}\",\"source\":\"{source}\",\"kind\":\"parametric-world\"}}"
-        );
-    }
-    entries.push(']');
-    object.object_field("entries", &entries);
+    let entries: Vec<String> = files
+        .iter()
+        .map(|rel| {
+            let mut entry = JsonWriter::object();
+            entry.string("generated", rel);
+            entry.string("source", source);
+            entry.string("kind", "parametric-world");
+            entry.finish().trim_end().to_string()
+        })
+        .collect();
+    object.objects("entries", &entries);
     object.finish()
 }
 
