@@ -122,3 +122,8 @@ beads_compliance_audit/
 
 # Scar-archaeology dig books (local campaign artifacts; do not commit)
 .scar/
+
+# local scratch: RCH config, generated outputs, throwaway scripts
+/.rch/
+/outputs/
+/tmp/
