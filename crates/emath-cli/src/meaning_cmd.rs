@@ -1,30 +1,203 @@
 //! `emath meaning list|set|unset|explain`: project-local interpretation locks.
 
 use super::genesis_cmd::{self, Analysis};
-use super::{EXIT_OK, EXIT_REFUSED, usage};
+use super::{CliExit, EXIT_OK, EXIT_REFUSED};
 use emath_artifact::JsonWriter;
 use emath_portfolio::{
-    Authority, DEFAULT_PORTFOLIO_CAP, InterpretationPolicy, LockEntry, LockError, LockKey,
-    MeaningLock, MetricAxis, MetricPolarity, PROVENANCE_USER_LOCKED, SelectionMethod,
-    WHOLE_TERM_HOLE, WorldCandidate, evaluate, refuse_disqualified,
+    evaluate, refuse_disqualified, Authority, InterpretationPolicy, LockEntry, LockError, LockKey,
+    MeaningLock, MetricAxis, MetricPolarity, SelectionMethod, WorldCandidate,
+    DEFAULT_PORTFOLIO_CAP, PROVENANCE_USER_LOCKED, WHOLE_TERM_HOLE,
 };
 use emath_world_ir::WorldIr;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Dispatch `emath meaning …`.
-pub fn dispatch(args: &[String]) -> u8 {
+pub(crate) enum MeaningRequest {
+    List {
+        dir: Option<PathBuf>,
+        json: bool,
+    },
+    Set {
+        path: PathBuf,
+        world: String,
+        dir: Option<PathBuf>,
+        hole: Option<String>,
+        cap: Option<String>,
+    },
+    Unset {
+        path: Option<PathBuf>,
+        dir: Option<PathBuf>,
+        declaration: Option<String>,
+        hole: Option<String>,
+    },
+    Explain {
+        path: Option<PathBuf>,
+        dir: Option<PathBuf>,
+        json: bool,
+    },
+}
+
+const USAGE_MEANING: &str = "meaning list|set|unset|explain";
+const USAGE_SET: &str = "meaning set <file.emath> --world <name-or-fingerprint> [--dir <dir>]";
+
+fn assign_once<T>(slot: &mut Option<T>, value: T) -> Result<(), &'static str> {
+    if slot.is_some() {
+        Err(USAGE_MEANING)
+    } else {
+        *slot = Some(value);
+        Ok(())
+    }
+}
+
+fn next_value<'a>(
+    args: &'a [String],
+    index: &mut usize,
+    missing: &'static str,
+) -> Result<&'a str, &'static str> {
+    *index += 1;
+    args.get(*index).map(String::as_str).ok_or(missing)
+}
+
+pub(crate) fn parse_meaning_request(args: &[String]) -> Result<MeaningRequest, &'static str> {
+    let rest = args.get(1..).unwrap_or(&[]);
     match args.first().map(String::as_str) {
-        Some("list") => list_cmd(&args[1..]),
-        Some("set") => set_cmd(&args[1..]),
-        Some("unset") => unset_cmd(&args[1..]),
-        Some("explain") => explain_cmd(&args[1..]),
-        _ => usage("meaning list|set|unset|explain"),
+        Some("list") => {
+            let mut dir = None;
+            let mut json = false;
+            let mut index = 0;
+            while index < rest.len() {
+                match rest[index].as_str() {
+                    "--dir" => assign_once(
+                        &mut dir,
+                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+                    )?,
+                    "--json" => json = true,
+                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+                    _ => return Err(USAGE_MEANING),
+                }
+                index += 1;
+            }
+            Ok(MeaningRequest::List { dir, json })
+        }
+        Some("set") => {
+            let mut path = None;
+            let mut world = None;
+            let mut dir = None;
+            let mut hole = None;
+            let mut cap = None;
+            let mut index = 0;
+            while index < rest.len() {
+                match rest[index].as_str() {
+                    "--world" => assign_once(
+                        &mut world,
+                        next_value(rest, &mut index, USAGE_SET)?.to_string(),
+                    )?,
+                    "--dir" => assign_once(
+                        &mut dir,
+                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+                    )?,
+                    "--hole" => assign_once(
+                        &mut hole,
+                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+                    )?,
+                    "--cap" => assign_once(
+                        &mut cap,
+                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+                    )?,
+                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+                    other => assign_once(&mut path, PathBuf::from(other))?,
+                }
+                index += 1;
+            }
+            match (path, world) {
+                (Some(path), Some(world)) => Ok(MeaningRequest::Set {
+                    path,
+                    world,
+                    dir,
+                    hole,
+                    cap,
+                }),
+                _ => Err(USAGE_SET),
+            }
+        }
+        Some("unset") => {
+            let mut path = None;
+            let mut dir = None;
+            let mut declaration = None;
+            let mut hole = None;
+            let mut index = 0;
+            while index < rest.len() {
+                match rest[index].as_str() {
+                    "--dir" => assign_once(
+                        &mut dir,
+                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+                    )?,
+                    "--declaration" => assign_once(
+                        &mut declaration,
+                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+                    )?,
+                    "--hole" => assign_once(
+                        &mut hole,
+                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+                    )?,
+                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+                    other => assign_once(&mut path, PathBuf::from(other))?,
+                }
+                index += 1;
+            }
+            Ok(MeaningRequest::Unset {
+                path,
+                dir,
+                declaration,
+                hole,
+            })
+        }
+        Some("explain") => {
+            let mut path = None;
+            let mut dir = None;
+            let mut json = false;
+            let mut index = 0;
+            while index < rest.len() {
+                match rest[index].as_str() {
+                    "--dir" => assign_once(
+                        &mut dir,
+                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+                    )?,
+                    "--json" => json = true,
+                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+                    other => assign_once(&mut path, PathBuf::from(other))?,
+                }
+                index += 1;
+            }
+            Ok(MeaningRequest::Explain { path, dir, json })
+        }
+        _ => Err(USAGE_MEANING),
+    }
+}
+
+/// Dispatch `emath meaning …`.
+pub fn dispatch(request: MeaningRequest) -> CliExit {
+    match request {
+        MeaningRequest::List { dir, json } => list_cmd(dir, json),
+        MeaningRequest::Set {
+            path,
+            world,
+            dir,
+            hole,
+            cap,
+        } => set_cmd(path, world, dir, hole, cap),
+        MeaningRequest::Unset {
+            path,
+            dir,
+            declaration,
+            hole,
+        } => unset_cmd(path, dir, declaration, hole),
+        MeaningRequest::Explain { path, dir, json } => explain_cmd(path, dir, json),
     }
 }
 
 /// Refuse when an existing lock file next to `source` does not parse.
-pub fn refuse_malformed_project_lock(source: &Path) -> Option<u8> {
+pub fn refuse_malformed_project_lock(source: &Path) -> Option<CliExit> {
     let root = MeaningLock::discover_project_root(source);
     match MeaningLock::load(&root) {
         Ok(_) => None,
@@ -35,9 +208,8 @@ pub fn refuse_malformed_project_lock(source: &Path) -> Option<u8> {
     }
 }
 
-fn list_cmd(args: &[String]) -> u8 {
-    let dir = flag_path("--dir", args).unwrap_or_else(|| PathBuf::from("."));
-    let json = args.iter().any(|arg| arg == "--json");
+fn list_cmd(dir: Option<PathBuf>, json: bool) -> CliExit {
+    let dir = dir.unwrap_or_else(|| PathBuf::from("."));
     match MeaningLock::load(&dir) {
         Ok(None) => {
             if json {
@@ -86,16 +258,16 @@ fn list_cmd(args: &[String]) -> u8 {
     }
 }
 
-fn set_cmd(args: &[String]) -> u8 {
-    let Some(file) = first_positional(args) else {
-        return usage("meaning set <file.emath> --world <name-or-fingerprint> [--dir <dir>]");
-    };
-    let Some(world) = flag_value("--world", args) else {
-        return usage("meaning set <file.emath> --world <name-or-fingerprint> [--dir <dir>]");
-    };
-    let dir = flag_path("--dir", args).unwrap_or_else(|| MeaningLock::discover_project_root(&file));
-    let hole = flag_value("--hole", args).unwrap_or_else(|| WHOLE_TERM_HOLE.to_string());
-    let cap = match flag_value("--cap", args) {
+fn set_cmd(
+    file: PathBuf,
+    world: String,
+    dir: Option<PathBuf>,
+    hole: Option<String>,
+    cap_flag: Option<String>,
+) -> CliExit {
+    let dir = dir.unwrap_or_else(|| MeaningLock::discover_project_root(&file));
+    let hole = hole.unwrap_or_else(|| WHOLE_TERM_HOLE.to_string());
+    let cap = match &cap_flag {
         Some(text) => match text.parse::<u32>() {
             Ok(value) if value > 0 => value,
             _ => {
@@ -145,7 +317,7 @@ fn set_cmd(args: &[String]) -> u8 {
             return EXIT_REFUSED;
         }
     };
-    if flag_value("--cap", args).is_some() {
+    if cap_flag.is_some() {
         lock.portfolio_cap = cap;
     }
     lock.upsert(
@@ -180,15 +352,19 @@ fn set_cmd(args: &[String]) -> u8 {
     EXIT_OK
 }
 
-fn unset_cmd(args: &[String]) -> u8 {
-    let dir = flag_path("--dir", args).unwrap_or_else(|| {
-        first_positional(args)
-            .as_ref()
+fn unset_cmd(
+    file: Option<PathBuf>,
+    dir: Option<PathBuf>,
+    declaration: Option<String>,
+    hole: Option<String>,
+) -> CliExit {
+    let dir = dir.unwrap_or_else(|| {
+        file.as_ref()
             .map(|path| MeaningLock::discover_project_root(path))
             .unwrap_or_else(|| PathBuf::from("."))
     });
-    if let Some(declaration) = flag_value("--declaration", args) {
-        let hole = flag_value("--hole", args).unwrap_or_else(|| WHOLE_TERM_HOLE.to_string());
+    if let Some(declaration) = declaration {
+        let hole = hole.unwrap_or_else(|| WHOLE_TERM_HOLE.to_string());
         let declaration_id = match u64::from_str_radix(&declaration, 16) {
             Ok(value) if declaration.len() == 16 => value,
             _ => {
@@ -242,14 +418,12 @@ fn unset_cmd(args: &[String]) -> u8 {
     EXIT_OK
 }
 
-fn explain_cmd(args: &[String]) -> u8 {
-    let file = first_positional(args);
-    let dir = flag_path("--dir", args).unwrap_or_else(|| {
+fn explain_cmd(file: Option<PathBuf>, dir: Option<PathBuf>, json: bool) -> CliExit {
+    let dir = dir.unwrap_or_else(|| {
         file.as_ref()
             .map(|path| MeaningLock::discover_project_root(path))
             .unwrap_or_else(|| PathBuf::from("."))
     });
-    let json = args.iter().any(|arg| arg == "--json");
     let lock = match MeaningLock::load(&dir) {
         Ok(None) => {
             if json {
@@ -345,43 +519,6 @@ fn empty_lock_json(dir: &Path) -> String {
     object.string("path", &MeaningLock::path(dir).display().to_string());
     object.bool("present", false);
     object.finish()
-}
-
-fn first_positional(args: &[String]) -> Option<PathBuf> {
-    let mut index = 0;
-    while index < args.len() {
-        let arg = args[index].as_str();
-        if arg == "--" {
-            return args.get(index + 1).map(PathBuf::from);
-        }
-        if arg.starts_with('-') {
-            if flag_takes_value(arg) {
-                index += 2;
-                continue;
-            }
-            index += 1;
-            continue;
-        }
-        return Some(PathBuf::from(arg));
-    }
-    None
-}
-
-fn flag_takes_value(flag: &str) -> bool {
-    matches!(
-        flag,
-        "--dir" | "--world" | "--hole" | "--declaration" | "--cap" | "--out" | "-o"
-    )
-}
-
-fn flag_value(name: &str, args: &[String]) -> Option<String> {
-    args.windows(2)
-        .find(|pair| pair[0] == name)
-        .map(|pair| pair[1].clone())
-}
-
-fn flag_path(name: &str, args: &[String]) -> Option<PathBuf> {
-    flag_value(name, args).map(PathBuf::from)
 }
 
 fn path_label(path: &Path) -> String {

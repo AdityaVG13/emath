@@ -1,20 +1,85 @@
 //! Structured `emath agent` envelope over the real check/plan/build paths.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use emath_agent_protocol::{
     AgentProposal, ChallengeLoop, ChallengeOutcome, CheckerSuite, ProposalKind,
 };
 use emath_artifact::JsonWriter;
-use emath_build::{BuildOptions, build_file};
+use emath_build::{build_file, BuildOptions};
 use emath_portfolio::InterpretationPortfolio;
 use emath_sema::session::CompilerSession;
 use emath_tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
-use emath_world_ir::WorldId;
 use emath_world_ir::translation::EvidenceHandle;
+use emath_world_ir::WorldId;
 
-use crate::tooling_cmd::{classify_build_error, doctor_probes, flag_value, positional_args};
-use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run_check, usage};
+use crate::tooling_cmd::{classify_build_error, doctor_probes};
+use crate::{
+    json_diagnostic_entry, json_diagnostics_entries, run_check, split_error_code, AgentRequest,
+    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+};
+
+fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
+    goals
+        .iter()
+        .map(|goal| {
+            let mut row = JsonWriter::object();
+            row.string("kind", goal.kind.as_str());
+            row.string("target", &goal.target);
+            row.finish().trim_end().to_string()
+        })
+        .collect()
+}
+
+/// `emath.agent` plan envelope. Refusal includes `diagnostics[{code,severity,message}]`
+/// so a checker can assert the E-* (same class as `agent check`).
+fn agent_plan_envelope(
+    admitted: bool,
+    goals: &[emath_ir::Goal],
+    plans: u64,
+    diagnostics: &emath_core::Diagnostics,
+) -> String {
+    let mut object = JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "plan");
+    object.bool("admitted", admitted);
+    object.int("plans", plans);
+    object.objects("goals", &goal_json_rows(goals));
+    object.objects("diagnostics", &json_diagnostics_entries(diagnostics));
+    object.finish()
+}
+
+fn emit_agent_build_error(path: &Path, error: &dyn std::fmt::Display) -> CliExit {
+    eprintln!("error: {error}");
+    let (diagnostics, package_id) = run_check(path);
+    let entries = if diagnostics.has_errors() {
+        json_diagnostics_entries(&diagnostics)
+    } else {
+        let text = error.to_string();
+        let (code, message) = split_error_code(&text).unwrap_or(("error", text.as_str()));
+        vec![json_diagnostic_entry(code, "error", message)]
+    };
+    let mut object = JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "build");
+    object.bool("admitted", false);
+    object.string("package", &package_id);
+    object.objects("diagnostics", &entries);
+    println!("{}", object.finish());
+    classify_build_error(error)
+}
+
+fn emit_agent_propose_error(code: &str, detail: &str) -> CliExit {
+    eprintln!("error: {detail}");
+    let mut object = JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "propose");
+    object.bool("admitted", false);
+    object.string("code", code);
+    object.string("detail", detail);
+    println!("{}", object.finish());
+    EXIT_USAGE
+}
 
 /// Permissive loop: schema and capability admission decide; empty checkers.
 const PROPOSE_LOOP: ChallengeLoop = ChallengeLoop {
@@ -26,79 +91,52 @@ const PROPOSE_LOOP: ChallengeLoop = ChallengeLoop {
 
 /// `agent check|plan|build|triage|propose <file>`: same admission/plan/
 /// build paths as the interactive commands; agents cannot bypass checks.
-pub(crate) fn agent_cmd(args: &[String]) -> u8 {
-    let Some(sub) = args.first() else {
-        return usage("agent check|plan|build|triage|propose <file> [--out <dir>]");
-    };
-    let positional = positional_args(&args[1..]);
-    let file = positional.first();
-    match sub.as_str() {
-        "propose" => agent_propose_cmd(file),
-        "triage" => agent_triage_cmd(file),
-        "check" => {
-            let Some(file) = file else {
-                return usage("agent check <file.emath>");
-            };
-            let (diagnostics, package_id) = run_check(Path::new(file));
+pub(crate) fn agent_cmd(request: AgentRequest) -> CliExit {
+    match request {
+        AgentRequest::Propose { path } => agent_propose_cmd(&path),
+        AgentRequest::Triage { path } => agent_triage_cmd(&path),
+        AgentRequest::Check { path } => {
+            let (diagnostics, package_id) = run_check(&path);
             let admitted = !diagnostics.has_errors();
-            let mut object = JsonWriter::object();
-            object.string("schema", "emath.agent");
-            object.string("command", "check");
-            object.bool("admitted", admitted);
-            object.string("package", &package_id);
-            object.int("diagnostics", diagnostics.len() as u64);
-            let mut lines = String::new();
-            for item in diagnostics.items() {
-                lines.push_str(item.code);
-                lines.push_str(": ");
-                lines.push_str(&item.message);
-                lines.push_str("; ");
+            println!(
+                "{}",
+                crate::agent_check_json_document(admitted, &package_id, &diagnostics)
+            );
+            if admitted {
+                EXIT_OK
+            } else {
+                EXIT_REFUSED
             }
-            object.string("diagnostics_text", &lines);
-            println!("{}", object.finish());
-            if admitted { EXIT_OK } else { EXIT_REFUSED }
         }
-        "plan" => {
-            let Some(file) = file else {
-                return usage("agent plan <file.emath>");
-            };
+        AgentRequest::Plan { path } => {
             let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-            let Ok(package) = session.load_package(file) else {
-                eprintln!("error: cannot read {file}");
+            let Ok(package) = session.load_package(&path) else {
+                eprintln!("error: cannot read {}", path.display());
+                let (diagnostics, _) = run_check(&path);
+                println!("{}", agent_plan_envelope(false, &[], 0, &diagnostics));
                 return EXIT_USAGE;
             };
             let result = session.plan(package.file);
-            let mut object = JsonWriter::object();
-            object.string("schema", "emath.agent");
-            object.string("command", "plan");
-            object.bool("admitted", !result.diagnostics.has_errors());
-            object.int("goals", result.package.goals.len() as u64);
-            object.int("plans", result.plans.len() as u64);
-            let mut goals = String::new();
-            for goal in &result.package.goals {
-                goals.push_str(goal.kind.as_str());
-                goals.push(' ');
-                goals.push_str(goal.target.as_str());
-                goals.push(' ');
-            }
-            object.string("goals", &goals);
-            println!("{}", object.finish());
-            if result.diagnostics.has_errors() {
-                EXIT_REFUSED
-            } else {
+            let admitted = !result.diagnostics.has_errors();
+            println!(
+                "{}",
+                agent_plan_envelope(
+                    admitted,
+                    &result.package.goals,
+                    result.plans.len() as u64,
+                    &result.diagnostics,
+                )
+            );
+            if admitted {
                 EXIT_OK
+            } else {
+                EXIT_REFUSED
             }
         }
-        "build" => {
-            let Some(file) = file else {
-                return usage("agent build <file.emath> --out <dir>");
-            };
-            let out = flag_value("--out", args)
-                .or_else(|| flag_value("-o", args))
-                .unwrap_or_else(|| "target/emath".to_string());
+        AgentRequest::Build { path, out } => {
             match build_file(
-                file,
-                PathBuf::from(out),
+                &path,
+                out,
                 BuildOptions {
                     verify_generated_crate: true,
                 },
@@ -114,33 +152,25 @@ pub(crate) fn agent_cmd(args: &[String]) -> u8 {
                     println!("{}", object.finish());
                     EXIT_OK
                 }
-                Err(error) => {
-                    eprintln!("error: {error}");
-                    classify_build_error(&error)
-                }
+                Err(error) => emit_agent_build_error(&path, &error),
             }
         }
-        _ => usage("agent check|plan|build|triage|propose <file> [--out <dir>]"),
     }
 }
 
-fn agent_propose_cmd(file: Option<&String>) -> u8 {
-    let Some(file) = file else {
-        return usage("agent propose <file>");
-    };
+fn agent_propose_cmd(file: &Path) -> CliExit {
     let text = match std::fs::read_to_string(file) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!("error: cannot read {file}: {error}");
-            return EXIT_USAGE;
+            return emit_agent_propose_error(
+                "E-PKG-080",
+                &format!("cannot read {}: {error}", file.display()),
+            );
         }
     };
     let proposal = match parse_proposal_text(&text) {
         Ok(proposal) => proposal,
-        Err(error) => {
-            eprintln!("error: {error}");
-            return EXIT_USAGE;
-        }
+        Err(error) => return emit_agent_propose_error("usage", &error),
     };
     print_propose_outcome(
         &proposal,
@@ -148,7 +178,7 @@ fn agent_propose_cmd(file: Option<&String>) -> u8 {
     )
 }
 
-fn print_propose_outcome(proposal: &AgentProposal, outcome: ChallengeOutcome) -> u8 {
+fn print_propose_outcome(proposal: &AgentProposal, outcome: ChallengeOutcome) -> CliExit {
     let mut object = JsonWriter::object();
     object.string("schema", "emath.agent");
     object.string("command", "propose");
@@ -179,60 +209,63 @@ fn print_propose_outcome(proposal: &AgentProposal, outcome: ChallengeOutcome) ->
 }
 
 /// Deterministic `key: value` envelope; `#` comments and blanks
-/// ignored, repeatable keys append. `change` =
-/// `kind|symbol|description|provenance`, `obligation` = `id|scope|
-/// provenance`, `exec` = `lowering|precision|provider|target|schedule`.
+/// ignored. Repeatable keys (`base`, `holes`, `change`, `obligation`,
+/// `providers`, `authority`) append. Scalar keys (`problem`, `kind`,
+/// `derivation`, `cost`, `evidence`, `agent`, `exec`) refuse duplicates.
+/// `change` = `kind|symbol|description|provenance`, `obligation` =
+/// `id|scope|provenance`, `exec` =
+/// `lowering|precision|provider|target|schedule`.
 fn parse_proposal_text(text: &str) -> Result<AgentProposal, String> {
-    let mut problem_id = String::new();
-    let mut kind = ProposalKind::WorldDelta;
+    let mut problem_id = None;
+    let mut kind = None;
     let mut base_worlds = Vec::new();
     let mut holes = Vec::new();
     let mut changes = Vec::new();
     let mut obligations = Vec::new();
-    let mut derivation = String::new();
+    let mut derivation = None;
     let mut required_providers = Vec::new();
-    let mut estimated_cost = 0_u64;
-    let mut evidence_units = 0_u32;
+    let mut estimated_cost = None;
+    let mut evidence_units = None;
     let mut requested_authority = Vec::new();
-    let mut agent_id = "cli".to_string();
+    let mut agent_id = None;
     let mut execution_delta = None;
     for (index, raw) in text.lines().enumerate() {
+        let line_no = index + 1;
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let Some((key, value)) = line.split_once(':') else {
-            return Err(format!(
-                "line {}: expected key: value, got {line}",
-                index + 1
-            ));
+            return Err(format!("line {line_no}: expected key: value, got {line}"));
         };
         let key = key.trim();
         let value = value.trim();
         match key {
-            "problem" => problem_id = value.to_string(),
-            "kind" => kind = parse_proposal_kind(value)?,
+            "problem" => assign_scalar(&mut problem_id, value.to_string(), key, line_no)?,
+            "kind" => assign_scalar(&mut kind, parse_proposal_kind(value)?, key, line_no)?,
             "base" => base_worlds.extend(parse_world_ids(value)?),
             "holes" => holes.extend(split_csv(value)),
             "change" => changes.push(parse_change(value)?),
             "obligation" => obligations.push(parse_obligation(value)?),
-            "derivation" => derivation = value.to_string(),
+            "derivation" => assign_scalar(&mut derivation, value.to_string(), key, line_no)?,
             "providers" => required_providers.extend(split_csv(value)),
             "cost" => {
-                estimated_cost = value
+                let parsed = value
                     .parse()
-                    .map_err(|_| format!("line {}: cost must be a u64, got {value}", index + 1))?;
+                    .map_err(|_| format!("line {line_no}: cost must be a u64, got {value}"))?;
+                assign_scalar(&mut estimated_cost, parsed, key, line_no)?;
             }
             "evidence" => {
-                evidence_units = value.parse().map_err(|_| {
-                    format!("line {}: evidence must be a u32, got {value}", index + 1)
-                })?;
+                let parsed = value
+                    .parse()
+                    .map_err(|_| format!("line {line_no}: evidence must be a u32, got {value}"))?;
+                assign_scalar(&mut evidence_units, parsed, key, line_no)?;
             }
             "authority" => requested_authority.extend(split_csv(value)),
-            "agent" => agent_id = value.to_string(),
-            "exec" => execution_delta = Some(parse_exec(value)?),
+            "agent" => assign_scalar(&mut agent_id, value.to_string(), key, line_no)?,
+            "exec" => assign_scalar(&mut execution_delta, parse_exec(value)?, key, line_no)?,
             other => {
-                return Err(format!("line {}: unknown key `{other}`", index + 1));
+                return Err(format!("line {line_no}: unknown key `{other}`"));
             }
         }
     }
@@ -241,20 +274,28 @@ fn parse_proposal_text(text: &str) -> Result<AgentProposal, String> {
     }
     let world_id = base_worlds.first().copied().unwrap_or(WorldId(0));
     Ok(AgentProposal::new(
-        problem_id,
-        kind,
+        problem_id.unwrap_or_default(),
+        kind.unwrap_or(ProposalKind::WorldDelta),
         base_worlds,
         holes,
         WorldDelta::new(world_id, changes),
         execution_delta,
         obligations,
-        derivation,
+        derivation.unwrap_or_default(),
         required_providers,
-        estimated_cost,
-        evidence_units,
+        estimated_cost.unwrap_or(0),
+        evidence_units.unwrap_or(0),
         requested_authority,
-        agent_id,
+        agent_id.unwrap_or_else(|| "cli".to_string()),
     ))
+}
+
+fn assign_scalar<T>(slot: &mut Option<T>, value: T, key: &str, line: usize) -> Result<(), String> {
+    if slot.is_some() {
+        return Err(format!("line {line}: duplicate `{key}`"));
+    }
+    *slot = Some(value);
+    Ok(())
 }
 
 fn parse_proposal_kind(name: &str) -> Result<ProposalKind, String> {
@@ -347,10 +388,7 @@ fn split_csv(value: &str) -> Vec<String> {
         .collect()
 }
 
-fn agent_triage_cmd(file: Option<&String>) -> u8 {
-    let Some(file) = file else {
-        return usage("agent triage <file.emath>");
-    };
+fn agent_triage_cmd(file: &Path) -> CliExit {
     let probes = doctor_probes();
     let doctor_ok = probes.iter().all(|probe| probe.ok);
     let mut doctor_rows = Vec::new();
@@ -365,42 +403,29 @@ fn agent_triage_cmd(file: Option<&String>) -> u8 {
     }
     let (diagnostics, package_id) = run_check(Path::new(file));
     let admitted = !diagnostics.has_errors();
-    let mut diag_rows = Vec::new();
-    for item in diagnostics.items() {
-        let mut row = JsonWriter::object();
-        row.string("code", item.code);
-        row.string("message", &item.message);
-        diag_rows.push(row.finish());
-    }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let (goals, plans, plan_ok, plan_error) = match session.load_package(file) {
         Ok(package) => {
             let result = session.plan(package.file);
-            (
-                result.package.goals.len() as u64,
-                result.plans.len() as u64,
-                true,
-                None,
-            )
+            (result.package.goals, result.plans.len() as u64, true, None)
         }
-        Err(error) => (0, 0, false, Some(error.to_string())),
+        Err(error) => (Vec::new(), 0, false, Some(error.to_string())),
     };
-    let mut object = JsonWriter::object();
-    object.string("schema", "emath.agent");
-    object.string("command", "triage");
-    object.string("file", file);
-    object.bool("doctor_ok", doctor_ok);
-    object.objects("doctor", &doctor_rows);
-    object.bool("admitted", admitted);
-    object.string("package", &package_id);
-    object.objects("diagnostics", &diag_rows);
-    object.bool("plan_ok", plan_ok);
-    if let Some(message) = &plan_error {
-        object.string("plan_error", message);
-    }
-    object.int("goals", goals);
-    object.int("plans", plans);
-    println!("{}", object.finish());
+    println!(
+        "{}",
+        crate::agent_triage_json_document(
+            &file.display().to_string(),
+            doctor_ok,
+            &doctor_rows,
+            admitted,
+            &package_id,
+            &diagnostics,
+            plan_ok,
+            plan_error.as_deref(),
+            &goals,
+            plans,
+        )
+    );
     if admitted && doctor_ok && plan_ok {
         EXIT_OK
     } else {

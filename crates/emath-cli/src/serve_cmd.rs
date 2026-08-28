@@ -6,32 +6,23 @@
 
 use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 
-use crate::EXIT_USAGE;
+use crate::{CliExit, EXIT_USAGE};
 
 /// Default bind port when `--port` is omitted.
 const DEFAULT_PORT: u16 = 7878;
 /// Default dist directory, resolved against the process working directory.
 const DEFAULT_DIST: &str = "web/dist";
-const USAGE: &str = "web [--port N] [--no-open] [--dist PATH]";
 const MISSING_ASSETS: &str = "web assets not built; run `cargo xtask build-web` first";
+/// First HTTP request line only. Local serve is 1:1; do not slurp headers/body.
+const MAX_REQUEST_LINE: u64 = 8192;
 
 /// Serve the web playground on `127.0.0.1` until interrupted (Ctrl-C).
-/// Returns [`EXIT_USAGE`] on missing dist / busy port / bad args; does not
-/// return on success.
-pub fn web_cmd(args: &[String]) -> u8 {
-    let parsed = match parse_serve_args(args) {
-        Ok(parsed) => parsed,
-        Err(message) => {
-            eprintln!("error: {message}");
-            eprintln!("usage: emath {USAGE}");
-            eprintln!("try: emath help web");
-            return EXIT_USAGE;
-        }
-    };
+/// Returns [`EXIT_USAGE`] on missing dist or bind failure; does not return on success.
+pub fn web_cmd(parsed: ServeArgs) -> CliExit {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let env_dist = env::var("EMATH_WEB_DIST").ok();
     let dist = resolve_dist(parsed.dist.as_deref(), env_dist.as_deref(), &cwd);
@@ -45,7 +36,9 @@ pub fn web_cmd(args: &[String]) -> u8 {
         Ok(listener) => listener,
         Err(error) => {
             eprintln!("error: cannot bind {addr}: {error}");
-            eprintln!("port is in use; pass --port with a free port");
+            if error.kind() == ErrorKind::AddrInUse {
+                eprintln!("port is in use; pass --port with a free port");
+            }
             return EXIT_USAGE;
         }
     };
@@ -66,18 +59,27 @@ pub fn web_cmd(args: &[String]) -> u8 {
 
 /// Backwards-compatible alias for [`web_cmd`].
 #[allow(dead_code)]
-pub fn serve_cmd(args: &[String]) -> u8 {
+pub fn serve_cmd(args: ServeArgs) -> CliExit {
     web_cmd(args)
 }
 
-struct ServeArgs {
-    port: u16,
-    no_open: bool,
-    dist: Option<PathBuf>,
+pub(crate) struct ServeArgs {
+    pub port: u16,
+    pub no_open: bool,
+    pub dist: Option<PathBuf>,
 }
 
-fn parse_serve_args(args: &[String]) -> Result<ServeArgs, String> {
-    let mut port = DEFAULT_PORT;
+fn assign_once<T>(slot: &mut Option<T>, value: T) -> Result<(), String> {
+    if slot.is_some() {
+        Err("duplicate flag".to_string())
+    } else {
+        *slot = Some(value);
+        Ok(())
+    }
+}
+
+pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs, String> {
+    let mut port = None;
     let mut no_open = false;
     let mut dist = None;
     let mut index = 0;
@@ -94,7 +96,7 @@ fn parse_serve_args(args: &[String]) -> Result<ServeArgs, String> {
                 if parsed == 0 {
                     return Err("--port requires a number in 1..=65535".into());
                 }
-                port = parsed;
+                assign_once(&mut port, parsed)?;
             }
             "--no-open" => no_open = true,
             "--dist" => {
@@ -102,16 +104,21 @@ fn parse_serve_args(args: &[String]) -> Result<ServeArgs, String> {
                 let Some(value) = args.get(index) else {
                     return Err("--dist requires a path".into());
                 };
-                dist = Some(PathBuf::from(value));
+                assign_once(&mut dist, PathBuf::from(value))?;
             }
-            "--" => break,
-            other if other.starts_with('-') => {}
-            _ => {}
+            other if other.starts_with('-') => {
+                return Err(format!("unknown flag `{other}`"));
+            }
+            other => {
+                return Err(format!(
+                    "unexpected argument `{other}`; pass --port N (default {DEFAULT_PORT})"
+                ));
+            }
         }
         index += 1;
     }
     Ok(ServeArgs {
-        port,
+        port: port.unwrap_or(DEFAULT_PORT),
         no_open,
         dist,
     })
@@ -228,14 +235,33 @@ fn content_type(path: &Path) -> &'static str {
     }
 }
 
+fn read_request_line(reader: impl BufRead) -> Option<String> {
+    let mut limited = reader.take(MAX_REQUEST_LINE + 1);
+    let mut line = String::new();
+    limited.read_line(&mut line).ok()?;
+    if line.is_empty() || u64::try_from(line.len()).unwrap_or(u64::MAX) > MAX_REQUEST_LINE {
+        None
+    } else {
+        Some(line)
+    }
+}
+
 fn handle_connection(mut stream: TcpStream, dist: &Path) {
     let request_line = {
-        let mut reader = BufReader::new(&stream);
-        let mut line = String::new();
-        if reader.read_line(&mut line).is_err() {
-            return;
+        let reader = BufReader::new(&stream);
+        match read_request_line(reader) {
+            Some(line) => line,
+            None => {
+                write_response(
+                    &mut stream,
+                    400,
+                    "Bad Request",
+                    "text/plain; charset=utf-8",
+                    b"Bad Request\n",
+                );
+                return;
+            }
         }
-        line
     };
     let mut parts = request_line.split_whitespace();
     let method = parts.next().unwrap_or("");
@@ -385,5 +411,49 @@ mod tests {
         );
         assert_eq!(resolve_dist(None, Some(""), cwd), cwd.join("web/dist"));
         assert_eq!(resolve_dist(None, None, cwd), cwd.join("web/dist"));
+    }
+
+    #[test]
+    fn parse_serve_args_defaults_port_and_refuses_bare_positional() {
+        let parsed = parse_serve_args(&[]).expect("empty args are defaults");
+        assert_eq!(parsed.port, DEFAULT_PORT);
+        assert!(!parsed.no_open);
+        assert!(parsed.dist.is_none());
+        assert!(parse_serve_args(&["8080".into()]).is_err());
+        let flagged = parse_serve_args(&["--port".into(), "9000".into()]).expect("flagged port");
+        assert_eq!(flagged.port, 9000);
+        for bad in ["abc", "0", "65536", "7878.0", ""] {
+            assert!(
+                parse_serve_args(&["--port".into(), bad.into()]).is_err(),
+                "malformed --port {bad} must not default to {DEFAULT_PORT}"
+            );
+        }
+        assert!(
+            parse_serve_args(&["--".into()]).is_err(),
+            "`--` is not an independently legal no-op on serve/web"
+        );
+        assert!(
+            parse_serve_args(&["--".into(), "extra".into()]).is_err(),
+            "extra tokens after `--` must not start the server"
+        );
+    }
+
+    #[test]
+    fn request_line_refuses_unbounded_input() {
+        let ok = read_request_line("GET /index.html HTTP/1.1\r\n".as_bytes());
+        assert_eq!(ok.as_deref(), Some("GET /index.html HTTP/1.1\r\n"));
+        let oversized = format!(
+            "GET /{} HTTP/1.1\r\n",
+            "a".repeat(MAX_REQUEST_LINE as usize)
+        );
+        assert!(
+            read_request_line(oversized.as_bytes()).is_none(),
+            "request line above {MAX_REQUEST_LINE} bytes must fail closed"
+        );
+        let no_newline = "G".repeat(MAX_REQUEST_LINE as usize + 1);
+        assert!(
+            read_request_line(no_newline.as_bytes()).is_none(),
+            "headerless flood without newline must fail closed"
+        );
     }
 }

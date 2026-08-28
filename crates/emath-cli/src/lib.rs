@@ -1,7 +1,8 @@
 //! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, `web`, `serve`,
-//! and the Semantic Genesis commands (`parse`, `expand`, `signature`, `genesis`, `eval`,
-//! `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning`).
-//! Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error.
+//! Semantic Genesis (`parse`, `expand`, `signature`, `genesis`, `eval`,
+//! `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning`),
+//! and meaning-budget (`solve`, `exactness`, `freeze`, `why`, `assumptions`).
+//! Host entry is [`run`] -> [`CliExit`] (not a raw `u8`). Exit codes: 0 ok, 1 refused, 2 usage/io.
 
 #![forbid(unsafe_code)]
 
@@ -15,32 +16,51 @@ mod serve_cmd;
 mod simulate_cmd;
 mod tooling_cmd;
 
-use emath_build::{BuildOptions, build_file};
+use emath_build::{build_file, BuildOptions};
 use emath_core::Diagnostics;
 use emath_plan::{
-    PlanInspection, PlannerConfig, PlanningOutcome, emit_provider_trait, lift_missing,
-    plan as run_planner,
+    emit_provider_trait, lift_missing, plan as run_planner, PlanInspection, PlannerConfig,
+    PlanningOutcome,
 };
 use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::session::CompilerSession;
+use emath_syntax::ExactnessStatus;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const EXIT_OK: u8 = 0;
-pub const EXIT_REFUSED: u8 = 1;
-pub const EXIT_USAGE: u8 = 2;
+/// Closed 3-way host exit. `repr(u8)` is the process mapping (0/1/2), not a
+/// public `u8` return; [`run`] returns `CliExit` and `main` matches exhaustively.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CliExit {
+    Ok = 0,
+    Refused = 1,
+    Usage = 2,
+}
+
+pub const EXIT_OK: CliExit = CliExit::Ok;
+pub const EXIT_REFUSED: CliExit = CliExit::Refused;
+pub const EXIT_USAGE: CliExit = CliExit::Usage;
+
+fn exit_from_diagnostics(has_errors: bool) -> CliExit {
+    if has_errors {
+        EXIT_REFUSED
+    } else {
+        EXIT_OK
+    }
+}
 
 pub use provenance_cmd::provenance_explanation;
 
 pub fn print_diagnostics(diagnostics: &Diagnostics) {
     for item in diagnostics.items() {
-        println!(
+        eprintln!(
             "{} {} ({}:{})",
             item.code, item.message, item.primary.file.0, item.primary.start
         );
         if let Some(help) = &item.help {
             for line in help.lines() {
-                println!("  {line}");
+                eprintln!("  {line}");
             }
         }
     }
@@ -59,12 +79,19 @@ pub(crate) fn split_error_code(error: &str) -> Option<(&str, &str)> {
     }
 }
 
-pub(crate) fn json_diagnostic_entry(code: &str, severity: &str, message: &str) -> String {
+/// One `{code,severity,message}` diagnostic object for `--json` envelopes.
+pub fn json_diagnostic_entry(code: &str, severity: &str, message: &str) -> String {
     let mut entry = emath_artifact::JsonWriter::object();
     entry.string("code", code);
     entry.string("severity", severity);
     entry.string("message", message);
     entry.finish().trim_end().to_string()
+}
+
+fn json_put_opt(entry: &mut emath_artifact::JsonObject, key: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        entry.string(key, value);
+    }
 }
 
 pub(crate) fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String> {
@@ -83,9 +110,7 @@ pub(crate) fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String>
                 },
             );
             entry.string("message", &item.message);
-            if let Some(help) = &item.help {
-                entry.string("help", help);
-            }
+            json_put_opt(&mut entry, "help", item.help.as_deref());
             if let Some(pedagogy) = &item.pedagogy {
                 entry.string("understood", &pedagogy.understood);
                 entry.string("unknown", &pedagogy.unknown);
@@ -94,34 +119,79 @@ pub(crate) fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String>
                 if !pedagogy.alternatives.is_empty() {
                     entry.strings("alternatives", &pedagogy.alternatives);
                 }
-                if let Some(example) = &pedagogy.example {
-                    entry.string("example", example);
-                }
-                if let Some(deeper) = &pedagogy.deeper_concept {
-                    entry.string("deeper_concept", deeper);
-                }
-                if let Some(authority) = &pedagogy.authority_consequence {
-                    entry.string("authority_consequence", authority);
-                }
-                if let Some(link) = &pedagogy.library_link {
-                    entry.string("library_link", link);
-                }
+                json_put_opt(&mut entry, "example", pedagogy.example.as_deref());
+                json_put_opt(
+                    &mut entry,
+                    "deeper_concept",
+                    pedagogy.deeper_concept.as_deref(),
+                );
+                json_put_opt(
+                    &mut entry,
+                    "authority_consequence",
+                    pedagogy.authority_consequence.as_deref(),
+                );
+                json_put_opt(&mut entry, "library_link", pedagogy.library_link.as_deref());
             }
             entry.finish().trim_end().to_string()
         })
         .collect()
 }
 
-pub(crate) fn print_json_diagnostics(command: &str, admitted: bool, entries: &[String]) {
+/// Stdout envelope for `--json` command refusals (`check`/`eval` pattern).
+pub fn diagnostics_json_document(command: &str, admitted: bool, entries: &[String]) -> String {
     let mut out = emath_artifact::JsonWriter::object();
     out.string("command", command);
     out.bool("admitted", admitted);
     out.objects("diagnostics", entries);
-    println!("{}", out.finish());
+    out.finish()
+}
+
+pub(crate) fn print_json_diagnostics(command: &str, admitted: bool, entries: &[String]) {
+    println!("{}", diagnostics_json_document(command, admitted, entries));
+}
+
+fn refuse_coded(command: &str, json: bool, exit: CliExit, code: &str, message: &str) -> CliExit {
+    eprintln!("error: {code}: {message}");
+    if json {
+        print_json_diagnostics(
+            command,
+            false,
+            &[json_diagnostic_entry(code, "error", message)],
+        );
+    }
+    exit
+}
+
+/// Stdout envelope for `emath check --json`.
+pub fn check_json_document(
+    admitted: bool,
+    package_id: &str,
+    diagnostics: &Diagnostics,
+    meaning_id: Option<&str>,
+) -> String {
+    let mut out = emath_artifact::JsonWriter::object();
+    out.string("command", "check");
+    out.bool("admitted", admitted);
+    out.objects("diagnostics", &json_diagnostics_entries(diagnostics));
+    out.string("package", package_id);
+    json_put_opt(&mut out, "meaning_id", meaning_id);
+    out.finish()
+}
+
+fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
+    goals
+        .iter()
+        .map(|goal| {
+            let mut row = emath_artifact::JsonWriter::object();
+            row.string("kind", goal.kind.as_str());
+            row.string("target", &goal.target);
+            row.finish().trim_end().to_string()
+        })
+        .collect()
 }
 
 /// `check <file> [--json]`: parse + admit, no codegen.
-pub fn check(path: &Path, json: bool) -> u8 {
+pub fn check(path: &Path, json: bool) -> CliExit {
     if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
         return code;
     }
@@ -139,22 +209,17 @@ pub fn check(path: &Path, json: bool) -> u8 {
         // The diagnostics array carries codes and messages, not counts:
         // a checker lane must be able to assert the exact E-* code the
         // CLI refused with.
-        let body = json_diagnostics_entries(&diagnostics);
-        let mut out = emath_artifact::JsonWriter::object();
-        out.string("command", "check");
-        out.bool("admitted", !diagnostics.has_errors());
-        out.objects("diagnostics", &body);
-        out.string("package", &package_id);
-        if let Some(meaning_id) = &meaning_id {
-            out.string("meaning_id", meaning_id.as_str());
-        }
-        println!("{}", out.finish());
+        println!(
+            "{}",
+            check_json_document(
+                !diagnostics.has_errors(),
+                &package_id,
+                &diagnostics,
+                meaning_id.as_ref().map(|id| id.as_str()),
+            )
+        );
     }
-    if diagnostics.has_errors() {
-        EXIT_REFUSED
-    } else {
-        EXIT_OK
-    }
+    exit_from_diagnostics(diagnostics.has_errors())
 }
 
 fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::MeaningId> {
@@ -166,86 +231,271 @@ fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::MeaningI
     result.package.meaning_id(&[]).ok()
 }
 
+fn source_has_content(source: &str) -> bool {
+    source
+        .lines()
+        .map(str::trim)
+        .any(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with("//"))
+}
+
+fn read_emath_source(command: &str, path: &Path, json: bool) -> Result<String, CliExit> {
+    match std::fs::read_to_string(path) {
+        Ok(source) => {
+            if source_has_content(&source) {
+                Ok(source)
+            } else {
+                Err(refuse_coded(
+                    command,
+                    json,
+                    EXIT_REFUSED,
+                    "E-PKG-081",
+                    &format!("source has no declarations ({})", path.display()),
+                ))
+            }
+        }
+        Err(_) => Err(refuse_coded(
+            command,
+            json,
+            EXIT_USAGE,
+            "E-PKG-080",
+            &format!("cannot read source file ({})", path.display()),
+        )),
+    }
+}
+
+fn print_missing_newline(s: &str) {
+    if !s.ends_with('\n') {
+        println!();
+    }
+}
+
+/// Stdout envelope for `emath expand --json`.
+pub fn expand_json_document(
+    source: &str,
+    expansion: &emath_syntax::ScratchExpansion,
+    meaning_id: Option<&str>,
+) -> String {
+    let mut notes = Vec::new();
+    for note in &expansion.notes {
+        let mut entry = emath_artifact::JsonWriter::object();
+        entry.string("inferred", &note.inferred);
+        entry.string("rationale", &note.rationale);
+        entry.string("replacement", &note.replacement);
+        entry.string("stability", note.stability.as_str());
+        notes.push(entry.finish().trim_end().to_string());
+    }
+    let mut out = emath_artifact::JsonWriter::object();
+    out.string("command", "expand");
+    out.bool("rewritten", expansion.rewritten());
+    out.string("level", expansion.level().as_str());
+    out.bool("ok", !expansion.diagnostics.has_errors());
+    out.string("source", source);
+    out.string("expanded", &expansion.expanded);
+    json_put_opt(&mut out, "meaning_id", meaning_id);
+    out.objects("notes", &notes);
+    let mut holes = Vec::new();
+    for hole in &expansion.holes {
+        holes.push(hole_json(hole));
+    }
+    out.objects("holes", &holes);
+    let mut solve_candidates = Vec::new();
+    for world in expansion.solve.menu() {
+        solve_candidates.push(solve_candidate_json(
+            *world,
+            expansion.solve.selected(*world),
+        ));
+    }
+    out.objects("solve_candidates", &solve_candidates);
+    out.objects(
+        "diagnostics",
+        &json_diagnostics_entries(&expansion.diagnostics),
+    );
+    out.finish()
+}
+
+/// Stdout envelope for `emath exactness --json`.
+pub fn exactness_json_document(
+    ledger: &emath_syntax::ExactnessLedger,
+    meaning_id: Option<&str>,
+) -> String {
+    let mut rows = Vec::new();
+    for entry in &ledger.entries {
+        let mut object = emath_artifact::JsonWriter::object();
+        object.string("id", &entry.inference_id);
+        object.string("dimension", entry.dimension.as_str());
+        object.string("status", entry.status.as_str());
+        object.string("name", &entry.name);
+        object.string("rationale", &entry.rationale);
+        rows.push(object.finish().trim_end().to_string());
+    }
+    let mut out = emath_artifact::JsonWriter::object();
+    out.string("command", "exactness");
+    out.int(
+        "declared",
+        ledger.count(emath_syntax::ExactnessStatus::Declared) as u64,
+    );
+    out.int(
+        "inferred",
+        ledger.count(emath_syntax::ExactnessStatus::Inferred) as u64,
+    );
+    out.int(
+        "constructed",
+        ledger.count(emath_syntax::ExactnessStatus::Constructed) as u64,
+    );
+    out.int(
+        "open",
+        ledger.count(emath_syntax::ExactnessStatus::Open) as u64,
+    );
+    json_put_opt(&mut out, "meaning_id", meaning_id);
+    out.objects("entries", &rows);
+    out.finish()
+}
+
+/// Stdout envelope for `emath plan --json`.
+/// `goals` is `[{kind, target}]` with `kind` = `GoalKind::as_str()`.
+pub fn plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
+    let mut object = emath_artifact::JsonWriter::object();
+    object.string("command", "plan");
+    object.bool("admitted", admitted);
+    object.int("plans", plans);
+    object.objects("goals", &goal_json_rows(goals));
+    object.finish()
+}
+
+/// Stdout envelope for `emath agent plan`. Same `goals[{kind,target}]` as
+/// [`plan_json_document`]; unique keys so first-win parse sees the array.
+pub fn agent_plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
+    let mut object = emath_artifact::JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "plan");
+    object.bool("admitted", admitted);
+    object.int("plans", plans);
+    object.objects("goals", &goal_json_rows(goals));
+    object.finish()
+}
+
+/// Stdout envelope for `emath agent triage`. `goals` is `[{kind,target}]`
+/// with `kind` = `GoalKind::as_str()` (not a count); `diagnostics` is
+/// `[{code,severity,message}]`.
+pub fn agent_triage_json_document(
+    file: &str,
+    doctor_ok: bool,
+    doctor: &[String],
+    admitted: bool,
+    package_id: &str,
+    diagnostics: &Diagnostics,
+    plan_ok: bool,
+    plan_error: Option<&str>,
+    goals: &[emath_ir::Goal],
+    plans: u64,
+) -> String {
+    let mut object = emath_artifact::JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "triage");
+    object.string("file", file);
+    object.bool("doctor_ok", doctor_ok);
+    object.objects("doctor", doctor);
+    object.bool("admitted", admitted);
+    object.string("package", package_id);
+    object.objects("diagnostics", &json_diagnostics_entries(diagnostics));
+    object.bool("plan_ok", plan_ok);
+    if let Some(message) = plan_error {
+        object.string("plan_error", message);
+    }
+    object.objects("goals", &goal_json_rows(goals));
+    object.int("plans", plans);
+    object.finish()
+}
+
+/// Stdout envelope for `emath agent check`. `diagnostics` is
+/// `[{code,severity,message}]`, not a count plus concatenated `diagnostics_text`.
+pub fn agent_check_json_document(
+    admitted: bool,
+    package_id: &str,
+    diagnostics: &Diagnostics,
+) -> String {
+    let mut object = emath_artifact::JsonWriter::object();
+    object.string("schema", "emath.agent");
+    object.string("command", "check");
+    object.bool("admitted", admitted);
+    object.string("package", package_id);
+    object.objects("diagnostics", &json_diagnostics_entries(diagnostics));
+    object.finish()
+}
+
+/// Stdout envelope for `emath solve --check --json`.
+pub fn solve_check_json_document(expansion: &emath_syntax::ScratchExpansion) -> String {
+    let mut candidates = Vec::new();
+    for world in expansion.solve.menu() {
+        candidates.push(solve_candidate_json(
+            *world,
+            expansion.solve.selected(*world),
+        ));
+    }
+    let mut out = emath_artifact::JsonWriter::object();
+    out.string("command", "solve");
+    out.bool("ok", !expansion.diagnostics.has_errors());
+    out.objects("solve_candidates", &candidates);
+    out.finish()
+}
+
 /// `expand <file> [--json]`: print the contracted form of L0/L1/L2 shorthand.
-pub fn expand_cmd(path: &Path, json: bool) -> u8 {
-    let Ok(source) = std::fs::read_to_string(path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
+pub fn expand_cmd(path: &Path, json: bool) -> CliExit {
+    let source = match read_emath_source("expand", path, json) {
+        Ok(source) => source,
+        Err(code) => return code,
     };
     let expansion = emath_syntax::expand_scratch(&source);
     print_diagnostics(&expansion.diagnostics);
     let meaning_id = admitted_meaning_id(path, &expansion.expanded);
     if json {
-        let mut notes = Vec::new();
-        for note in &expansion.notes {
-            let mut entry = emath_artifact::JsonWriter::object();
-            entry.string("inferred", &note.inferred);
-            entry.string("rationale", &note.rationale);
-            entry.string("replacement", &note.replacement);
-            entry.string("stability", note.stability);
-            notes.push(entry.finish().trim_end().to_string());
-        }
-        let mut out = emath_artifact::JsonWriter::object();
-        out.string("command", "expand");
-        out.bool("rewritten", expansion.rewritten);
-        out.string("level", expansion.level.as_str());
-        out.bool("ok", !expansion.diagnostics.has_errors());
-        out.string("source", &expansion.expanded);
-        if let Some(meaning_id) = &meaning_id {
-            out.string("meaning_id", meaning_id.as_str());
-        }
-        out.objects("notes", &notes);
-        let mut holes = Vec::new();
-        for hole in &expansion.holes {
-            holes.push(hole_json(hole));
-        }
-        out.objects("holes", &holes);
-        let mut solve_candidates = Vec::new();
-        for candidate in &expansion.solve_candidates {
-            solve_candidates.push(solve_candidate_json(candidate));
-        }
-        out.objects("solve_candidates", &solve_candidates);
-        out.objects(
-            "diagnostics",
-            &json_diagnostics_entries(&expansion.diagnostics),
+        println!(
+            "{}",
+            expand_json_document(
+                &source,
+                &expansion,
+                meaning_id.as_ref().map(|id| id.as_str()),
+            )
         );
-        println!("{}", out.finish());
     } else {
         println!(
             "# emath expand: level={} rewritten={}",
-            expansion.level.as_str(),
-            expansion.rewritten
+            expansion.level().as_str(),
+            expansion.rewritten()
         );
-        if let Some(meaning_id) = &meaning_id {
-            println!("# meaning_id: {meaning_id}");
+        if let Some(id) = meaning_id {
+            println!("# meaning_id: {id}");
         }
         for note in &expansion.notes {
             println!(
                 "# inferred: {} ({}) — {}",
-                note.inferred, note.stability, note.rationale
+                note.inferred,
+                note.stability.as_str(),
+                note.rationale
             );
             println!("# write instead: {}", note.replacement.replace('\n', " / "));
         }
-        for candidate in &expansion.solve_candidates {
+        for world in expansion.solve.menu() {
             println!(
                 "# solve candidate: {} type={} domain={} exactness={} method={} evidence={} default={} selected={} holes={}",
-                candidate.label,
-                candidate.result_type,
-                candidate.domain,
-                candidate.exactness,
-                candidate.method,
-                candidate.evidence_class,
-                candidate.beginner_default,
-                candidate.selected,
-                candidate.holes.join(",")
+                world.as_str(),
+                world.result_type(),
+                world.domain(),
+                world.exactness(),
+                world.method(),
+                world.evidence_class(),
+                world.beginner_default(),
+                expansion.solve.selected(*world),
+                world.holes().join(",")
             );
         }
         for hole in &expansion.holes {
             println!("# {}", hole.summary());
             for candidate in &hole.candidates {
                 println!(
-                    "# candidate: {} ({}) {}",
-                    candidate.label, candidate.kind, candidate.status
+                    "# candidate: {} ({}) labeled",
+                    candidate.label,
+                    candidate.kind.as_str()
                 );
             }
             for rejection in &hole.rejections {
@@ -253,81 +503,61 @@ pub fn expand_cmd(path: &Path, json: bool) -> u8 {
             }
         }
         print!("{}", expansion.expanded);
-        if !expansion.expanded.ends_with('\n') {
-            println!();
-        }
+        print_missing_newline(&expansion.expanded);
     }
-    if expansion.diagnostics.has_errors() {
-        EXIT_REFUSED
-    } else {
-        EXIT_OK
-    }
+    exit_from_diagnostics(expansion.diagnostics.has_errors())
 }
 
-fn exactness_cmd(args: &[String]) -> u8 {
+enum ExactnessRequest {
+    Ready {
+        path: PathBuf,
+        json: bool,
+        raise: Option<emath_syntax::ExactnessDimension>,
+    },
+}
+
+fn parse_exactness_request(args: &[String]) -> Option<ExactnessRequest> {
     let mut path = None;
     let mut json = false;
-    let mut raise = Vec::new();
+    let mut raise = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--json" => json = true,
             "--raise" => {
-                index += 1;
-                if index < args.len() {
-                    raise.push(args[index].as_str());
-                }
+                let token = take_nonflag_value(args, &mut index)?;
+                assign_once(
+                    &mut raise,
+                    emath_syntax::ExactnessDimension::from_raise_token(token)?,
+                )?;
             }
-            other if other.starts_with('-') => {}
-            other => path = Some(PathBuf::from(other)),
+            other if other.starts_with('-') => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
         }
         index += 1;
     }
-    let Some(path) = path else {
-        return usage("exactness <file.emath> [--json] [--raise units]");
+    let path = path?;
+    Some(ExactnessRequest::Ready { path, json, raise })
+}
+
+fn exactness_cmd(request: ExactnessRequest) -> CliExit {
+    let ExactnessRequest::Ready { path, json, raise } = request;
+    let source = match read_emath_source("exactness", &path, json) {
+        Ok(source) => source,
+        Err(code) => return code,
     };
-    let Ok(source) = std::fs::read_to_string(&path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
+    let raised = match &raise {
+        Some(dimension) => std::slice::from_ref(dimension),
+        None => &[],
     };
-    let raise_refs: Vec<&str> = raise.clone();
-    let ledger = emath_syntax::exactness_ledger_raised(&source, &raise_refs);
+    let ledger = emath_syntax::exactness_ledger_raised(&source, raised);
     let expanded = emath_syntax::expand_scratch(&source);
     let meaning_id = admitted_meaning_id(&path, &expanded.expanded);
     if json {
-        let mut rows = Vec::new();
-        for entry in &ledger.entries {
-            let mut object = emath_artifact::JsonWriter::object();
-            object.string("id", &entry.inference_id);
-            object.string("dimension", entry.dimension.as_str());
-            object.string("status", entry.status.as_str());
-            object.string("name", &entry.name);
-            object.string("rationale", &entry.rationale);
-            rows.push(object.finish().trim_end().to_string());
-        }
-        let mut out = emath_artifact::JsonWriter::object();
-        out.string("command", "exactness");
-        out.int(
-            "declared",
-            ledger.count(emath_syntax::ExactnessStatus::Declared) as u64,
+        println!(
+            "{}",
+            exactness_json_document(&ledger, meaning_id.as_ref().map(|id| id.as_str()))
         );
-        out.int(
-            "inferred",
-            ledger.count(emath_syntax::ExactnessStatus::Inferred) as u64,
-        );
-        out.int(
-            "constructed",
-            ledger.count(emath_syntax::ExactnessStatus::Constructed) as u64,
-        );
-        out.int(
-            "open",
-            ledger.count(emath_syntax::ExactnessStatus::Open) as u64,
-        );
-        if let Some(meaning_id) = &meaning_id {
-            out.string("meaning_id", meaning_id.as_str());
-        }
-        out.objects("entries", &rows);
-        println!("{}", out.finish());
     } else {
         println!(
             "exactness declared={} inferred={} constructed={} open={}",
@@ -365,128 +595,181 @@ fn hole_json(hole: &emath_syntax::HoleRecord) -> String {
         .candidates
         .iter()
         .map(|candidate| {
-            format!(
-                "{}:{}:{}",
-                candidate.status, candidate.kind, candidate.label
-            )
+            let mut row = emath_artifact::JsonWriter::object();
+            row.string("status", "labeled");
+            row.string("kind", candidate.kind.as_str());
+            row.string("label", &candidate.label);
+            row.finish().trim_end().to_string()
         })
         .collect();
-    object.strings("candidates", &candidates);
+    object.objects("candidates", &candidates);
     let rejections: Vec<String> = hole
         .rejections
         .iter()
-        .map(|rejection| format!("{} — {}", rejection.attempt, rejection.reason))
+        .map(|rejection| {
+            let mut row = emath_artifact::JsonWriter::object();
+            row.string("attempt", &rejection.attempt);
+            row.string("reason", &rejection.reason);
+            row.finish().trim_end().to_string()
+        })
         .collect();
-    object.strings("rejections", &rejections);
+    object.objects("rejections", &rejections);
     object.finish().trim_end().to_string()
 }
 
-fn solve_candidate_json(candidate: &emath_syntax::SolveCandidate) -> String {
+fn solve_candidate_json(world: emath_syntax::SolveWorld, selected: bool) -> String {
     let mut object = emath_artifact::JsonWriter::object();
-    object.string("label", &candidate.label);
-    object.string("result_type", &candidate.result_type);
-    object.string("domain", &candidate.domain);
-    object.string("exactness", &candidate.exactness);
-    object.string("method", &candidate.method);
-    object.string("evidence_class", &candidate.evidence_class);
-    object.strings("holes", &candidate.holes);
-    object.bool("beginner_default", candidate.beginner_default);
-    object.bool("selected", candidate.selected);
+    object.string("label", world.as_str());
+    object.string("result_type", world.result_type());
+    object.string("domain", world.domain());
+    object.string("exactness", world.exactness());
+    object.string("method", world.method());
+    object.string("evidence_class", world.evidence_class());
+    let holes: Vec<String> = world
+        .holes()
+        .iter()
+        .map(|hole| (*hole).to_string())
+        .collect();
+    object.strings("holes", &holes);
+    object.bool("beginner_default", world.beginner_default());
+    object.bool("selected", selected);
     object.finish().trim_end().to_string()
 }
 
-/// `solve --check <file>`: print labeled completions; never a naked float.
-fn solve_check_cmd(args: &[String]) -> u8 {
+enum SolveRequest {
+    Apply {
+        path: PathBuf,
+        world: emath_syntax::SolveWorld,
+        json: bool,
+    },
+    Check {
+        path: PathBuf,
+        json: bool,
+    },
+}
+
+enum ParsedSolve {
+    Request(SolveRequest),
+    Usage,
+    UnknownLabel(String),
+}
+
+fn parse_solve_request(args: &[String]) -> ParsedSolve {
     let json = catalog::wants_json(args);
     let check = args.iter().any(|arg| arg == "--check");
-    let apply = tooling_cmd::flag_value("--apply", args);
+    let mut apply = None;
     let mut path = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--apply" => index += 2,
-            flag if flag.starts_with('-') => index += 1,
+            "--apply" => match take_nonflag_value(args, &mut index) {
+                Some(value) => {
+                    if assign_once(&mut apply, value.to_string()).is_none() {
+                        return ParsedSolve::Usage;
+                    }
+                    index += 1;
+                }
+                None => return ParsedSolve::Usage,
+            },
+            "--check" | "--json" | "--help" | "-h" => index += 1,
+            flag if flag.starts_with('-') => return ParsedSolve::Usage,
             other => {
-                path = Some(other.to_string());
+                if assign_once(&mut path, PathBuf::from(other)).is_none() {
+                    return ParsedSolve::Usage;
+                }
                 index += 1;
             }
         }
     }
     let Some(path) = path else {
-        return usage("solve --check <file.emath> [--json] [--apply <label>]");
-    };
-    let Ok(source) = std::fs::read_to_string(&path) else {
-        eprintln!("error: cannot read {path}");
-        return EXIT_USAGE;
+        return ParsedSolve::Usage;
     };
     if let Some(label) = apply {
-        return match emath_syntax::apply_solve_candidate(&source, &label) {
-            Ok((rewritten, delta)) => {
-                if json {
-                    let mut out = emath_artifact::JsonWriter::object();
-                    out.string("command", "solve");
-                    out.string("apply", &label);
-                    out.string("source", &rewritten);
-                    out.string("meaning_delta", &delta);
-                    println!("{}", out.finish());
-                } else {
-                    println!("# {delta}");
-                    print!("{rewritten}");
-                }
-                EXIT_OK
-            }
-            Err(error) => {
-                eprintln!("error: {error}");
-                EXIT_REFUSED
-            }
-        };
-    }
-    if !check {
-        return usage("solve --check <file.emath> [--json] [--apply <label>]");
-    }
-    let expansion = emath_syntax::expand_scratch(&source);
-    print_diagnostics(&expansion.diagnostics);
-    if expansion.solve_candidates.is_empty() {
-        eprintln!("error: no `solve` intent in {path}");
-        return EXIT_REFUSED;
-    }
-    if json {
-        let mut candidates = Vec::new();
-        for candidate in &expansion.solve_candidates {
-            candidates.push(solve_candidate_json(candidate));
+        match emath_syntax::SolveWorld::parse_label(&label) {
+            Some(world) => ParsedSolve::Request(SolveRequest::Apply { path, world, json }),
+            None => ParsedSolve::UnknownLabel(label),
         }
-        let mut out = emath_artifact::JsonWriter::object();
-        out.string("command", "solve");
-        out.bool("ok", !expansion.diagnostics.has_errors());
-        out.objects("solve_candidates", &candidates);
-        println!("{}", out.finish());
+    } else if check {
+        ParsedSolve::Request(SolveRequest::Check { path, json })
     } else {
-        println!("solve candidates (none is a naked numeric root):");
-        for candidate in &expansion.solve_candidates {
-            let mark = if candidate.selected {
-                "*"
-            } else if candidate.beginner_default {
-                "default"
-            } else {
-                ""
+        ParsedSolve::Usage
+    }
+}
+
+/// `solve --check <file>`: print labeled completions; never a naked float.
+fn solve_check_cmd(request: SolveRequest) -> CliExit {
+    match request {
+        SolveRequest::Apply { path, world, json } => {
+            let source = match read_emath_source("solve", &path, json) {
+                Ok(source) => source,
+                Err(code) => return code,
             };
-            println!(
-                "  {} {} type={} domain={} exactness={} method={} evidence={} holes=[{}] {mark}",
-                candidate.label,
-                candidate.result_type,
-                candidate.result_type,
-                candidate.domain,
-                candidate.exactness,
-                candidate.method,
-                candidate.evidence_class,
-                candidate.holes.join(",")
-            );
+            match emath_syntax::apply_solve_candidate(&source, world) {
+                Ok((rewritten, delta)) => {
+                    if json {
+                        let mut out = emath_artifact::JsonWriter::object();
+                        out.string("command", "solve");
+                        out.string("apply", world.as_str());
+                        out.string("source", &rewritten);
+                        out.string("meaning_delta", &delta);
+                        println!("{}", out.finish());
+                    } else {
+                        println!("# {delta}");
+                        print!("{rewritten}");
+                    }
+                    EXIT_OK
+                }
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    EXIT_REFUSED
+                }
+            }
         }
-    }
-    if expansion.diagnostics.has_errors() {
-        EXIT_REFUSED
-    } else {
-        EXIT_OK
+        SolveRequest::Check { path, json } => {
+            let source = match read_emath_source("solve", &path, json) {
+                Ok(source) => source,
+                Err(code) => return code,
+            };
+            let expansion = emath_syntax::expand_scratch(&source);
+            print_diagnostics(&expansion.diagnostics);
+            if matches!(expansion.solve, emath_syntax::SolveIntent::Absent) {
+                let message = format!("no `solve` intent in {}", path.display());
+                eprintln!("error: {message}");
+                if json {
+                    print_json_diagnostics(
+                        "solve",
+                        false,
+                        &[json_diagnostic_entry("error", "error", &message)],
+                    );
+                }
+                return EXIT_REFUSED;
+            }
+            if json {
+                println!("{}", solve_check_json_document(&expansion));
+            } else {
+                println!("solve candidates (none is a naked numeric root):");
+                for world in expansion.solve.menu() {
+                    let mark = if expansion.solve.selected(*world) {
+                        "*"
+                    } else if world.beginner_default() {
+                        "default"
+                    } else {
+                        ""
+                    };
+                    println!(
+                        "  {} type={} domain={} exactness={} method={} evidence={} holes=[{}] {mark}",
+                        world.as_str(),
+                        world.result_type(),
+                        world.domain(),
+                        world.exactness(),
+                        world.method(),
+                        world.evidence_class(),
+                        world.holes().join(",")
+                    );
+                }
+            }
+            exit_from_diagnostics(expansion.diagnostics.has_errors())
+        }
     }
 }
 
@@ -524,17 +807,26 @@ fn freeze_lock_json(
         .entries
         .iter()
         .map(|entry| {
-            format!(
-                "{} {} {} {}",
-                entry.inference_id,
-                entry.dimension.as_str(),
-                entry.status.as_str(),
-                entry.name
-            )
+            let mut row = emath_artifact::JsonWriter::object();
+            row.string("id", &entry.inference_id);
+            row.string("dimension", entry.dimension.as_str());
+            row.string("status", entry.status.as_str());
+            row.string("name", &entry.name);
+            row.finish().trim_end().to_string()
         })
         .collect();
-    object.strings("ledger", &rows);
+    object.objects("ledger", &rows);
     object.finish()
+}
+
+fn write_via_rename(path: &Path, bytes: &str) -> bool {
+    let mut tmp = path.to_path_buf();
+    tmp.as_mut_os_string().push(".tmp");
+    let ok = std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, path).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    ok
 }
 
 fn sidecar_lock_path(out: &Path) -> PathBuf {
@@ -553,7 +845,15 @@ fn sidecar_lock_path(out: &Path) -> PathBuf {
     lock_path
 }
 
-fn freeze_cmd(args: &[String]) -> u8 {
+enum FreezeRequest {
+    Ready {
+        path: PathBuf,
+        out: Option<PathBuf>,
+        json: bool,
+    },
+}
+
+fn parse_freeze_request(args: &[String]) -> Option<FreezeRequest> {
     let mut path = None;
     let mut out = None;
     let mut json = false;
@@ -562,30 +862,42 @@ fn freeze_cmd(args: &[String]) -> u8 {
         match args[index].as_str() {
             "--json" => json = true,
             "--out" | "-o" => {
-                index += 1;
-                if index < args.len() {
-                    out = Some(PathBuf::from(&args[index]));
-                }
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
             }
-            other if other.starts_with('-') => {}
-            other => path = Some(PathBuf::from(other)),
+            other if other.starts_with('-') => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
         }
         index += 1;
     }
-    let Some(path) = path else {
-        return usage("freeze <file.emath> [--out <file>] [--json]");
+    let path = path?;
+    Some(FreezeRequest::Ready { path, out, json })
+}
+
+fn freeze_cmd(request: FreezeRequest) -> CliExit {
+    let FreezeRequest::Ready { path, out, json } = request;
+    let source = match read_emath_source("freeze", &path, json) {
+        Ok(source) => source,
+        Err(code) => return code,
     };
-    let Ok(source) = std::fs::read_to_string(&path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
-    };
-    if emath_syntax::exactness::claims_exactness_with_open_holes(&source) {
+    let expansion = emath_syntax::expand_scratch(&source);
+    if expansion
+        .diagnostics
+        .items()
+        .iter()
+        .any(|item| item.code == "E-SYN-147")
+    {
         eprintln!(
             "E-SYN-147 claiming exactness while holes remain open is refused; freeze does not upgrade authority"
         );
         return EXIT_REFUSED;
     }
-    let expansion = emath_syntax::expand_scratch(&source);
+    if expansion.diagnostics.has_errors() {
+        print_diagnostics(&expansion.diagnostics);
+        return EXIT_REFUSED;
+    }
     let ledger = emath_syntax::exactness_ledger(&source);
     let Some(meaning_id) = admitted_meaning_id(&path, &expansion.expanded) else {
         eprintln!(
@@ -605,68 +917,74 @@ fn freeze_cmd(args: &[String]) -> u8 {
     frozen.push_str(&expansion.expanded);
     let lock = freeze_lock_json(&source, &frozen, &ledger, &meaning_id);
     if let Some(ref out) = out {
-        if std::fs::write(out, &frozen).is_err() {
+        if !write_via_rename(out, &frozen) {
             eprintln!("error: cannot write {}", out.display());
             return EXIT_USAGE;
         }
         let lock_path = sidecar_lock_path(out);
-        if std::fs::write(&lock_path, &lock).is_err() {
+        if !write_via_rename(&lock_path, &lock) {
             eprintln!("error: cannot write {}", lock_path.display());
+            let _ = std::fs::remove_file(out);
             return EXIT_USAGE;
         }
     }
     if json {
         let mut object = emath_artifact::JsonWriter::object();
         object.string("command", "freeze");
-        object.string("schema", "emath.freeze.lock.v1");
         object.bool("ok", !expansion.diagnostics.has_errors());
         object.bool("authority_raised", false);
         object.int(
             "open_holes",
             ledger.count(emath_syntax::ExactnessStatus::Open) as u64,
         );
-        object.string("source", &frozen);
+        object.string("source", &source);
+        object.string("frozen", &frozen);
         object.string("lock", &lock);
         println!("{}", object.finish());
     } else if out.is_none() {
         print!("{frozen}");
-        if !frozen.ends_with('\n') {
-            println!();
-        }
+        print_missing_newline(&frozen);
         println!("--- emath.freeze.lock.v1 ---");
         print!("{lock}");
-        if !lock.ends_with('\n') {
-            println!();
-        }
+        print_missing_newline(&lock);
     }
-    if expansion.diagnostics.has_errors() {
-        EXIT_REFUSED
-    } else {
-        EXIT_OK
-    }
+    exit_from_diagnostics(expansion.diagnostics.has_errors())
 }
 
-fn why_cmd(args: &[String]) -> u8 {
+enum WhyRequest {
+    Ready {
+        path: PathBuf,
+        needle: String,
+        json: bool,
+    },
+}
+
+fn parse_why_request(args: &[String]) -> Option<WhyRequest> {
     let mut path = None;
     let mut json = false;
     let mut needle = None;
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
-            other if other.starts_with("inference:") => needle = Some(other.to_string()),
-            other if other.starts_with('-') => {}
-            other => path = Some(PathBuf::from(other)),
+            other if other.starts_with("inference:") => {
+                assign_once(&mut needle, other.to_string())?
+            }
+            other if other.starts_with('-') => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
         }
     }
-    let Some(path) = path else {
-        return usage("why <file.emath> inference:N [--json]");
-    };
-    let Some(needle) = needle else {
-        return usage("why <file.emath> inference:N [--json]");
-    };
-    let Ok(source) = std::fs::read_to_string(&path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
+    Some(WhyRequest::Ready {
+        path: path?,
+        needle: needle?,
+        json,
+    })
+}
+
+fn why_cmd(request: WhyRequest) -> CliExit {
+    let WhyRequest::Ready { path, needle, json } = request;
+    let source = match read_emath_source("why", &path, json) {
+        Ok(source) => source,
+        Err(code) => return code,
     };
     let notes = emath_syntax::explanation_notes(&source);
     let Some(note) = notes.iter().find(|note| {
@@ -694,23 +1012,23 @@ fn print_why(note: &emath_syntax::ScratchNote, json: bool) {
         object.string("inferred", &note.inferred);
         object.string("rationale", &note.rationale);
         object.string("replacement", &note.replacement);
-        object.string("stability", note.stability);
+        object.string("stability", note.stability.as_str());
         println!("{}", object.finish());
     } else {
-        println!("{} ({})", note.inferred, note.stability);
+        println!("{} ({})", note.inferred, note.stability.as_str());
         println!("{}", note.rationale);
         println!("write: {}", note.replacement.replace('\n', " / "));
     }
 }
 
-fn assumptions_cmd(path: &Path, json: bool) -> u8 {
-    let Ok(source) = std::fs::read_to_string(path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
+fn assumptions_cmd(path: &Path, json: bool) -> CliExit {
+    let source = match read_emath_source("assumptions", path, json) {
+        Ok(source) => source,
+        Err(code) => return code,
     };
     let notes: Vec<_> = emath_syntax::explanation_notes(&source)
         .into_iter()
-        .filter(|note| note.stability == "inferred")
+        .filter(|note| note.stability == ExactnessStatus::Inferred)
         .collect();
     if json {
         let mut rows = Vec::new();
@@ -718,7 +1036,7 @@ fn assumptions_cmd(path: &Path, json: bool) -> u8 {
             let mut object = emath_artifact::JsonWriter::object();
             object.string("inferred", &note.inferred);
             object.string("rationale", &note.rationale);
-            object.string("stability", note.stability);
+            object.string("stability", note.stability.as_str());
             rows.push(object.finish().trim_end().to_string());
         }
         let mut out = emath_artifact::JsonWriter::object();
@@ -733,13 +1051,13 @@ fn assumptions_cmd(path: &Path, json: bool) -> u8 {
     EXIT_OK
 }
 
-pub(crate) fn run_check(path: &Path) -> (Diagnostics, String) {
+pub fn run_check(path: &Path) -> (Diagnostics, String) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         let mut diagnostics = Diagnostics::new();
         diagnostics.error(
             "E-PKG-080",
-            "cannot read source file",
+            format!("cannot read source file ({})", path.display()),
             emath_core::Span::default(),
         );
         return (diagnostics, String::new());
@@ -750,59 +1068,105 @@ pub(crate) fn run_check(path: &Path) -> (Diagnostics, String) {
 }
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.
-pub fn plan(path: &PathBuf, json: bool) -> u8 {
+pub fn plan(path: &Path, json: bool) -> CliExit {
     if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
         return code;
     }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
+        return refuse_coded(
+            "plan",
+            json,
+            EXIT_USAGE,
+            "E-PKG-080",
+            &format!("cannot read source file ({})", path.display()),
+        );
     };
     let result = session.plan(package.file);
     if !result.diagnostics.is_empty() {
         print_diagnostics(&result.diagnostics);
     }
     if json {
-        let mut object = emath_artifact::JsonWriter::object();
-        object.string("command", "plan");
-        object.bool("admitted", !result.diagnostics.has_errors());
-        object.int("goals", result.package.goals.len() as u64);
-        object.int("plans", result.plans.len() as u64);
-        let mut goals = String::new();
-        for goal in &result.package.goals {
-            let entry = format!("{} {} ", goal.kind.as_str(), goal.target);
-            goals.push_str(&entry);
-        }
-        object.string("goals", &goals);
-        println!("{}", object.finish());
-    }
-    for plan in &result.plans {
         println!(
-            "plan {} goal={} policy={} class={}",
-            plan.plan_id.0,
-            plan.goal.index(),
-            plan.policy,
-            plan.artifact_class
+            "{}",
+            plan_json_document(
+                !result.diagnostics.has_errors(),
+                &result.package.goals,
+                result.plans.len() as u64,
+            )
         );
-    }
-    if result.diagnostics.has_errors() {
-        EXIT_REFUSED
     } else {
-        EXIT_OK
+        for plan in &result.plans {
+            println!(
+                "plan {} goal={} policy={} class={}",
+                plan.plan_id.0,
+                plan.goal.index(),
+                plan.policy,
+                plan.artifact_class
+            );
+        }
     }
+    exit_from_diagnostics(result.diagnostics.has_errors())
+}
+
+pub enum BuildRequest {
+    Ready {
+        spec: PathBuf,
+        out: PathBuf,
+        verify: bool,
+        json: bool,
+    },
+}
+
+fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
+    let mut path = None;
+    let mut out = None;
+    let mut verify = false;
+    let mut json = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" | "-o" => {
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
+            }
+            "--verify" => verify = true,
+            "--json" => json = true,
+            other if other.starts_with('-') => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+        index += 1;
+    }
+    let spec = path?;
+    // One-command quick run: `emath build <file>` publishes under
+    // target/emath relative to the working directory.
+    let out = out.unwrap_or_else(|| PathBuf::from("target/emath"));
+    Some(BuildRequest::Ready {
+        spec,
+        out,
+        verify,
+        json,
+    })
 }
 
 /// `build <file> [--out <dir>] [--verify] [--json]` (default out:
 /// `target/emath` under the working directory).
-pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
-    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(spec) {
+pub fn build(request: BuildRequest) -> CliExit {
+    let BuildRequest::Ready {
+        spec,
+        out,
+        verify,
+        json,
+    } = request;
+    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(&spec) {
         return code;
     }
     let options = BuildOptions {
         verify_generated_crate: verify,
     };
-    match build_file(spec, out, options) {
+    match build_file(&spec, &out, options) {
         Ok(report) => {
             println!(
                 "artifact {} (crate {}) → {}",
@@ -827,8 +1191,21 @@ pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
             EXIT_OK
         }
         Err(error) => {
-            eprintln!("error: {error}");
-            if error.to_string().contains("admission refused") {
+            let text = error.to_string();
+            eprintln!("error: {text}");
+            if json {
+                let (code, message) = if text.starts_with("cannot read spec:") {
+                    ("E-PKG-080", text.as_str())
+                } else {
+                    split_error_code(&text).unwrap_or(("error", text.as_str()))
+                };
+                print_json_diagnostics(
+                    "build",
+                    false,
+                    &[json_diagnostic_entry(code, "error", message)],
+                );
+            }
+            if text.contains("admission refused") {
                 EXIT_REFUSED
             } else {
                 EXIT_USAGE
@@ -841,7 +1218,7 @@ pub fn build(spec: &PathBuf, out: &PathBuf, verify: bool, json: bool) -> u8 {
 ///
 /// Each object is `PlanInspection::to_json` (`emath.plan-explanation v1`).
 /// Admission failures are `Err(EXIT_REFUSED)` / `Err(EXIT_USAGE)`.
-pub fn explain_inspections(path: &Path) -> Result<Vec<PlanInspection>, u8> {
+pub fn explain_inspections(path: &Path) -> Result<Vec<PlanInspection>, CliExit> {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         eprintln!("error: cannot read {}", path.display());
@@ -878,15 +1255,58 @@ fn inspections_from_plan_result(result: &emath_sema::session::PlanResult) -> Vec
         .collect()
 }
 
+fn print_inspection_json(json: bool, inspection: &PlanInspection) {
+    if json {
+        println!("{}", inspection.to_json());
+    }
+}
+
+pub enum PlannerRequest {
+    Ready {
+        path: PathBuf,
+        json: bool,
+        parametric: bool,
+    },
+}
+
+fn parse_planner_request(args: &[String]) -> Option<PlannerRequest> {
+    let mut path = None;
+    let mut json = false;
+    let mut parametric = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            "--parametric" => parametric = true,
+            other if other.starts_with('-') => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+    }
+    Some(PlannerRequest::Ready {
+        path: path?,
+        json,
+        parametric,
+    })
+}
+
 /// `planner <file.emath> [--json] [--parametric]`: run the deterministic
 /// planner over the provider registry and print the machine inspection
 /// (candidates, exclusions, selected plan, checks, disposition). With
 /// `--parametric`, missing providers lift to a compilable Rust trait.
-pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
+pub fn planner_cmd(request: PlannerRequest) -> CliExit {
+    let PlannerRequest::Ready {
+        path,
+        json,
+        parametric,
+    } = request;
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let Ok(package) = session.load_package(path) else {
-        eprintln!("error: cannot read {}", path.display());
-        return EXIT_USAGE;
+    let Ok(package) = session.load_package(&path) else {
+        return refuse_coded(
+            "planner",
+            json,
+            EXIT_USAGE,
+            "E-PKG-080",
+            &format!("cannot read source file ({})", path.display()),
+        );
     };
     let result = session.plan(package.file);
     if result.diagnostics.has_errors() {
@@ -912,17 +1332,17 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
         let outcome = run_planner(&goal, &registry, &config);
         match &outcome {
             PlanningOutcome::Selected { plan, inspection } => {
-                if json {
-                    println!("{}", inspection.to_json());
+                print_inspection_json(json, inspection);
+                if !json {
+                    println!(
+                        "plan goal={} disposition={} candidates={} root={} checks={}",
+                        goal.target,
+                        plan.artifact_class,
+                        inspection.candidate_count(),
+                        plan.root.index(),
+                        inspection.checks.join(",")
+                    );
                 }
-                println!(
-                    "plan goal={} disposition={} candidates={} root={} checks={}",
-                    goal.target,
-                    plan.artifact_class,
-                    inspection.candidate_count(),
-                    plan.root.index(),
-                    inspection.checks.join(",")
-                );
             }
             PlanningOutcome::NoEligible {
                 reasons,
@@ -930,20 +1350,20 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
                 inspection,
             } => {
                 any_unplanned = true;
-                if json {
-                    println!("{}", inspection.to_json());
-                }
-                for reason in reasons {
-                    println!("excluded: {reason}");
-                }
-                println!(
-                    "disposition goal={} class={}",
-                    goal.target,
-                    disposition.name()
-                );
-                if *disposition == emath_plan::ArtifactDisposition::Parametric {
-                    let spec = lift_missing(&goal.target, &["unknown-operator".to_string()]);
-                    println!("{}", emit_provider_trait(&spec));
+                print_inspection_json(json, inspection);
+                if !json {
+                    for reason in reasons {
+                        println!("excluded: {reason}");
+                    }
+                    println!(
+                        "disposition goal={} class={}",
+                        goal.target,
+                        disposition.name()
+                    );
+                    if *disposition == emath_plan::ArtifactDisposition::Parametric {
+                        let spec = lift_missing(&goal.target, &["unknown-operator".to_string()]);
+                        println!("{}", emit_provider_trait(&spec));
+                    }
                 }
             }
             PlanningOutcome::Exhausted {
@@ -952,15 +1372,15 @@ pub fn planner_cmd(path: &PathBuf, json: bool, parametric: bool) -> u8 {
                 inspection,
             } => {
                 any_unplanned = true;
-                if json {
-                    println!("{}", inspection.to_json());
+                print_inspection_json(json, inspection);
+                if !json {
+                    println!(
+                        "exhausted goal={} class={} continuation={}",
+                        goal.target,
+                        disposition.name(),
+                        continuation
+                    );
                 }
-                println!(
-                    "exhausted goal={} class={} continuation={}",
-                    goal.target,
-                    disposition.name(),
-                    continuation
-                );
             }
         }
     }
@@ -1024,7 +1444,7 @@ fn register_native_rust(registry: &mut ProviderRegistry) {
 
 /// `import modelica <file.mo> [--json]`: retain a Modelica subset source as
 /// foreign-model declarations with adapter identity. No source rewrite.
-pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
+pub fn import_modelica_cmd(path: &Path, json: bool) -> CliExit {
     let source = match std::fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) => {
@@ -1038,23 +1458,23 @@ pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
                 let mut object = emath_artifact::JsonWriter::object();
                 object.string("command", "import modelica");
                 object.int("declarations", declarations.len() as u64);
-                let mut names = String::new();
-                for declaration in &declarations {
-                    let entry = format!("{} ", declaration.name);
-                    names.push_str(&entry);
-                }
-                object.string("models", &names);
+                let names: Vec<String> = declarations
+                    .iter()
+                    .map(|declaration| declaration.name.clone())
+                    .collect();
+                object.strings("models", &names);
                 println!("{}", object.finish());
-            }
-            for declaration in &declarations {
-                println!(
-                    "foreign {} adapter={} parameters={} equations={} identity={:016x}",
-                    declaration.name,
-                    declaration.adapter,
-                    declaration.parameters.join(","),
-                    declaration.equations,
-                    declaration.content_identity()
-                );
+            } else {
+                for declaration in &declarations {
+                    println!(
+                        "foreign {} adapter={} parameters={} equations={} identity={:016x}",
+                        declaration.name,
+                        declaration.adapter,
+                        declaration.parameters.join(","),
+                        declaration.equations,
+                        declaration.content_identity()
+                    );
+                }
             }
             EXIT_OK
         }
@@ -1065,24 +1485,21 @@ pub fn import_modelica_cmd(path: &Path, json: bool) -> u8 {
     }
 }
 
-/// `artifact check <dir>`: independent verification of every published
-/// artifact under `<dir>/emath/<artifact-id>` via `emath-checker`
-/// (one identity, one checker; empty state dirs are refused).
-pub fn artifact_check(dir: &Path) -> u8 {
+fn list_published_artifact_ids(dir: &Path) -> Result<Vec<String>, CliExit> {
     let artifact_root = dir.join("emath");
     if !artifact_root.is_dir() {
         eprintln!(
             "error: E-EVID-105: no `emath/` state directory under {}",
             dir.display()
         );
-        return EXIT_USAGE;
+        return Err(EXIT_USAGE);
     }
     let Ok(entries) = std::fs::read_dir(&artifact_root) else {
         eprintln!(
             "error: E-TLT-005: cannot list artifact state directory {}",
             artifact_root.display()
         );
-        return EXIT_USAGE;
+        return Err(EXIT_USAGE);
     };
     let mut artifact_ids = Vec::new();
     for entry in entries.flatten() {
@@ -1096,8 +1513,20 @@ pub fn artifact_check(dir: &Path) -> u8 {
             "error: E-EVID-105: no published artifacts under {}",
             artifact_root.display()
         );
-        return EXIT_REFUSED;
+        return Err(EXIT_REFUSED);
     }
+    Ok(artifact_ids)
+}
+
+/// `artifact check <dir>`: independent verification of every published
+/// artifact under `<dir>/emath/<artifact-id>` via `emath-checker`
+/// (one identity, one checker; empty state dirs are refused).
+pub fn artifact_check(dir: &Path) -> CliExit {
+    let artifact_ids = match list_published_artifact_ids(dir) {
+        Ok(ids) => ids,
+        Err(code) => return code,
+    };
+    let artifact_root = dir.join("emath");
     let mut ok = true;
     for id in artifact_ids {
         let root = artifact_root.join(&id);
@@ -1117,43 +1546,23 @@ pub fn artifact_check(dir: &Path) -> u8 {
             }
         }
     }
-    if ok { EXIT_OK } else { EXIT_REFUSED }
+    if ok {
+        EXIT_OK
+    } else {
+        EXIT_REFUSED
+    }
 }
 
 /// `artifact battery <dir>`: run the seeded negative-control battery over
 /// every published artifact. Each seed must be refused with the code the
 /// checker assigns; an escape is an admitted dishonest artifact and
 /// refuses the command (CI-visible lane over real staged output).
-pub fn artifact_battery(dir: &Path) -> u8 {
-    let artifact_root = dir.join("emath");
-    if !artifact_root.is_dir() {
-        eprintln!(
-            "error: E-EVID-105: no `emath/` state directory under {}",
-            dir.display()
-        );
-        return EXIT_USAGE;
-    }
-    let Ok(entries) = std::fs::read_dir(&artifact_root) else {
-        eprintln!(
-            "error: E-TLT-005: cannot list artifact state directory {}",
-            artifact_root.display()
-        );
-        return EXIT_USAGE;
+pub fn artifact_battery(dir: &Path) -> CliExit {
+    let artifact_ids = match list_published_artifact_ids(dir) {
+        Ok(ids) => ids,
+        Err(code) => return code,
     };
-    let mut artifact_ids = Vec::new();
-    for entry in entries.flatten() {
-        if entry.path().is_dir() {
-            artifact_ids.push(entry.file_name().to_string_lossy().into_owned());
-        }
-    }
-    artifact_ids.sort_unstable();
-    if artifact_ids.is_empty() {
-        eprintln!(
-            "error: E-EVID-105: no published artifacts under {}",
-            artifact_root.display()
-        );
-        return EXIT_REFUSED;
-    }
+    let artifact_root = dir.join("emath");
     let mut ok = true;
     for id in artifact_ids {
         let root = artifact_root.join(&id);
@@ -1182,23 +1591,37 @@ pub fn artifact_battery(dir: &Path) -> u8 {
             }
         }
     }
-    if ok { EXIT_OK } else { EXIT_REFUSED }
+    if ok {
+        EXIT_OK
+    } else {
+        EXIT_REFUSED
+    }
 }
 
-/// `architecture [--json]`: provider-neutral pipeline description.
-pub fn architecture(json: bool) -> u8 {
+/// Stdout document for `emath architecture --json`.
+pub fn architecture_json() -> String {
     let pipeline = ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion";
     let paths: Vec<String> = emath_artifact::required_artifact_paths()
         .iter()
         .map(ToString::to_string)
         .collect();
+    let mut object = emath_artifact::JsonWriter::object();
+    object.string("schema", "emath.architecture");
+    object.string("pipeline", pipeline);
+    object.strings("required_paths", &paths);
+    object.finish()
+}
+
+/// `architecture [--json]`: provider-neutral pipeline description.
+pub fn architecture(json: bool) -> CliExit {
     if json {
-        let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.architecture");
-        object.string("pipeline", pipeline);
-        object.strings("required_paths", &paths);
-        println!("{}", object.finish());
+        print!("{}", architecture_json());
     } else {
+        let pipeline = ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion";
+        let paths: Vec<String> = emath_artifact::required_artifact_paths()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         println!("{pipeline}");
         println!("provider-neutral required paths: {paths:?}");
     }
@@ -1228,240 +1651,663 @@ pub fn help_text() -> String {
 }
 
 /// Entry used by main; keeps the CLI testable.
-pub fn run(args: &[String]) -> u8 {
-    let Some(command) = args.first() else {
-        print!("{}", help_text());
-        return EXIT_OK;
-    };
-    match command.as_str() {
-        "help" | "--help" | "-h" => return help_cmd(&args[1..]),
-        "version" | "--version" | "-V" => {
-            return catalog_read_cmd("version", &args[1..], || {
-                println!("{}", catalog::version_text());
-                EXIT_OK
-            });
+pub fn run(args: &[String]) -> CliExit {
+    match parse_cli(args) {
+        ParsedCli::Empty => {
+            print!("{}", help_text());
+            EXIT_OK
         }
-        "capabilities" => {
-            return catalog_read_cmd("capabilities", &args[1..], || {
-                print!("{}", catalog::capabilities_json());
-                EXIT_OK
-            });
-        }
-        "robot-docs" => {
-            return catalog_read_cmd("robot-docs", &args[1..], || robot_docs_cmd(&args[1..]));
-        }
-        _ => {}
-    }
-    if catalog::wants_help(&args[1..]) {
-        return print_command_help(command);
-    }
-    if let Some(code) = catalog::reject_unknown_flags(command, &args[1..]) {
-        return code;
-    }
-    match command.as_str() {
-        "check" => {
-            let (path, json) = parse_file_args(&args[1..]);
-            match path {
-                Some(path) => check(&path, json),
-                None => usage("check <file.emath> [--json]"),
-            }
-        }
-        "plan" => {
-            let (path, json) = parse_file_args(&args[1..]);
-            match path {
-                Some(path) => plan(&path, json),
-                None => usage("plan <file.emath> [--json]"),
-            }
-        }
-        "planner" => {
-            let mut path = None;
-            let mut json = false;
-            let mut parametric = false;
-            for arg in &args[1..] {
-                match arg.as_str() {
-                    "--json" => json = true,
-                    "--parametric" => parametric = true,
-                    other if other.starts_with('-') => {}
-                    other => path = Some(PathBuf::from(other)),
-                }
-            }
-            match path {
-                Some(path) => planner_cmd(&path, json, parametric),
-                None => usage("planner <file.emath> [--json] [--parametric]"),
-            }
-        }
-        "build" => {
-            let mut path = None;
-            let mut out = None;
-            let mut verify = false;
-            let mut json = false;
-            let mut index = 1;
-            while index < args.len() {
-                match args[index].as_str() {
-                    "--out" | "-o" => {
-                        index += 1;
-                        if index < args.len() {
-                            out = Some(PathBuf::from(&args[index]));
-                        }
-                    }
-                    "--verify" => verify = true,
-                    "--json" => json = true,
-                    other if other.starts_with('-') => {
-                        return usage("build <file.emath> [--out <dir>] [--verify] [--json]");
-                    }
-                    other => path = Some(PathBuf::from(other)),
-                }
-                index += 1;
-            }
-            match path {
-                Some(spec) => {
-                    // One-command quick run: `emath build <file>` publishes
-                    // under target/emath relative to the working directory.
-                    let out = out.unwrap_or_else(|| PathBuf::from("target/emath"));
-                    build(&spec, &out, verify, json)
-                }
-                None => usage("build <file.emath> [--out <dir>] [--verify] [--json]"),
-            }
-        }
-        "parse" => {
-            let (path, out, _) = parse_genesis_args(&args[1..]);
-            let forest_only = args[1..].iter().any(|arg| arg == "--forest");
-            match path {
-                Some(path) => genesis_cmd::parse_cmd(&path, out.as_ref(), forest_only),
-                None => usage("parse --forest <file.emath> [--out <dir>]"),
-            }
-        }
-        "expand" => {
-            let (path, json) = parse_file_args(&args[1..]);
-            match path {
-                Some(path) => expand_cmd(&path, json),
-                None => usage("expand <file.emath> [--json]"),
-            }
-        }
-        "solve" => solve_check_cmd(&args[1..]),
-        "exactness" => exactness_cmd(&args[1..]),
-        "freeze" => freeze_cmd(&args[1..]),
-        "why" => why_cmd(&args[1..]),
-        "assumptions" => {
-            let (path, json) = parse_file_args(&args[1..]);
-            match path {
-                Some(path) => assumptions_cmd(&path, json),
-                None => usage("assumptions <file.emath> [--json]"),
-            }
-        }
-        "signature" => {
-            let (path, out, _) = parse_genesis_args(&args[1..]);
-            match path {
-                Some(path) => genesis_cmd::signature_cmd(&path, out.as_ref()),
-                None => usage("signature <file.emath> [--out <dir>]"),
-            }
-        }
-        "genesis" => {
-            let (path, out, _) = parse_genesis_args(&args[1..]);
-            match (path, out) {
-                (Some(path), Some(out)) => genesis_cmd::genesis_cmd(&path, &out),
-                _ => usage("genesis <file.emath> --out <dir>"),
-            }
-        }
-        "eval" => eval_cmd::dispatch_eval(&args[1..]),
-        "simulate" => simulate_cmd::dispatch_simulate(&args[1..]),
-        "repl" => eval_cmd::dispatch_repl(&args[1..]),
-        "compile" => {
-            let (path, out, worlds) = parse_genesis_args(&args[1..]);
-            let parametric = args[1..].iter().any(|arg| arg == "--parametric");
-            match (path, out, parametric) {
-                (Some(path), Some(out), true) => genesis_cmd::compile_cmd(&path, &out, &worlds),
-                _ => usage("compile --parametric <file.emath> --out <dir> [--world LABEL]"),
-            }
-        }
-        "world" => {
-            if args.get(1).is_some_and(|sub| sub == "show") && args.len() >= 3 {
-                let (_, dir, _) = parse_genesis_args(&args[3..]);
-                let id = &args[2];
-                match dir {
-                    Some(dir) => genesis_cmd::world_show_cmd(id, &dir),
-                    None => usage("world show WORLD_ID --dir <dir>"),
-                }
-            } else {
-                usage("world show WORLD_ID --dir <dir>")
-            }
-        }
-        "portfolio" => {
-            if args.get(1).is_some_and(|sub| sub == "show") && args.len() >= 3 {
-                let (_, dir, _) = parse_genesis_args(&args[3..]);
-                let id = &args[2];
-                match dir {
-                    Some(dir) => genesis_cmd::portfolio_show_cmd(id, &dir),
-                    None => usage("portfolio show PORTFOLIO_ID --dir <dir>"),
-                }
-            } else {
-                usage("portfolio show PORTFOLIO_ID --dir <dir>")
-            }
-        }
-        "meaning" => meaning_cmd::dispatch(&args[1..]),
-        "import" => {
-            if args.get(1).is_some_and(|sub| sub == "modelica") && args.len() >= 3 {
-                let json = args[2..].iter().any(|arg| arg == "--json");
-                import_modelica_cmd(&PathBuf::from(&args[2]), json)
-            } else {
-                usage("import modelica <file.mo> [--json]")
-            }
-        }
-        "artifact" => {
-            if args.get(1).is_some_and(|c| c == "check") && args.len() >= 3 {
-                artifact_check(&PathBuf::from(&args[2]))
-            } else if args.get(1).is_some_and(|c| c == "battery") && args.len() >= 3 {
-                artifact_battery(&PathBuf::from(&args[2]))
-            } else {
-                usage("artifact check|battery <dir>")
-            }
-        }
-        "architecture" => architecture(catalog::wants_json(&args[1..])),
-        "web" | "serve" => serve_cmd::web_cmd(&args[1..]),
-        "new" | "fmt" | "explain" | "run" | "test" | "bench" | "verify" | "inspect" | "diff"
-        | "doctor" | "vendor" | "provider" | "fork" | "agent" => {
-            tooling_cmd::tooling_dispatch(command, &args[1..])
-        }
-        other => unknown_command(other),
+        ParsedCli::MetaHelp { rest } => help_cmd(rest),
+        ParsedCli::MetaVersion { rest } => catalog_read_cmd("version", rest, || {
+            println!("{}", catalog::version_text());
+            EXIT_OK
+        }),
+        ParsedCli::CommandHelp { name } => print_command_help(name),
+        ParsedCli::UnknownFlag { code } => code,
+        ParsedCli::Usage(message) => usage(message),
+        ParsedCli::Unknown(name) => unknown_command(name),
+        ParsedCli::Known(command) => run_command(command),
     }
 }
 
-fn catalog_read_cmd(command: &str, args: &[String], emit: impl FnOnce() -> u8) -> u8 {
+enum ParsedCli<'a> {
+    Empty,
+    MetaHelp { rest: &'a [String] },
+    MetaVersion { rest: &'a [String] },
+    CommandHelp { name: &'a str },
+    UnknownFlag { code: CliExit },
+    Usage(&'static str),
+    Known(Command),
+    Unknown(&'a str),
+}
+
+enum Command {
+    Check(FileJsonRequest),
+    Plan(FileJsonRequest),
+    Planner(PlannerRequest),
+    Build(BuildRequest),
+    Expand(FileJsonRequest),
+    Assumptions(FileJsonRequest),
+    Solve(ParsedSolve),
+    Exactness(ExactnessRequest),
+    Freeze(FreezeRequest),
+    Why(WhyRequest),
+    Parse(ParseRequest),
+    Signature(SignatureRequest),
+    Genesis(GenesisRequest),
+    Compile(CompileRequest),
+    RobotDocs,
+    Provider(ProviderRequest),
+    Fork(ForkRequest),
+    Capabilities,
+    Eval(eval_cmd::EvalArgs),
+    Simulate(simulate_cmd::SimulateArgs),
+    Repl { path: PathBuf },
+    WorldShow { id: String, dir: PathBuf },
+    PortfolioShow { id: String, dir: PathBuf },
+    Meaning(meaning_cmd::MeaningRequest),
+    ImportModelica { path: PathBuf, json: bool },
+    ArtifactCheck(PathBuf),
+    ArtifactBattery(PathBuf),
+    Architecture { json: bool },
+    Web(serve_cmd::ServeArgs),
+    Serve(serve_cmd::ServeArgs),
+    New { name: String, out: PathBuf },
+    Fmt { path: PathBuf },
+    Explain(ExplainRequest),
+    Run { path: PathBuf, out: PathBuf },
+    Test { path: PathBuf, out: PathBuf },
+    Bench { path: PathBuf },
+    Verify { dir: PathBuf },
+    Inspect { dir: PathBuf, json: bool },
+    Diff { a: PathBuf, b: PathBuf, json: bool },
+    Doctor { json: bool },
+    Vendor { out: PathBuf },
+    Agent(AgentRequest),
+}
+
+pub(crate) enum ExplainRequest {
+    File {
+        path: PathBuf,
+        symbol: Option<String>,
+        provenance: bool,
+        json: bool,
+    },
+    Law {
+        json: bool,
+    },
+}
+
+pub(crate) enum AgentRequest {
+    Check { path: PathBuf },
+    Plan { path: PathBuf },
+    Build { path: PathBuf, out: PathBuf },
+    Triage { path: PathBuf },
+    Propose { path: PathBuf },
+}
+
+pub(crate) enum ProviderRequest {
+    List { json: bool },
+    Inspect { id: String },
+    Test { id: String, json: bool },
+}
+
+pub(crate) enum ForkRequest {
+    Status { json: bool },
+    Sync { dry_run: bool, json: bool },
+}
+
+enum ParseKnownError {
+    Usage(&'static str),
+    Unknown,
+}
+
+fn parse_cli(args: &[String]) -> ParsedCli<'_> {
+    let Some(first) = args.first() else {
+        return ParsedCli::Empty;
+    };
+    let rest = &args[1..];
+    match first.as_str() {
+        "help" | "--help" | "-h" => return ParsedCli::MetaHelp { rest },
+        "version" | "--version" | "-V" => return ParsedCli::MetaVersion { rest },
+        _ => {}
+    }
+    if catalog::wants_help(rest) {
+        return ParsedCli::CommandHelp { name: first };
+    }
+    if let Some(code) = catalog::reject_unknown_flags(first, rest) {
+        return ParsedCli::UnknownFlag { code };
+    }
+    match parse_known(first.as_str(), rest) {
+        Ok(command) => ParsedCli::Known(command),
+        Err(ParseKnownError::Usage(message)) => ParsedCli::Usage(message),
+        Err(ParseKnownError::Unknown) => ParsedCli::Unknown(first),
+    }
+}
+
+fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> {
+    match name {
+        "check" => parse_file_json_request(rest)
+            .map(Command::Check)
+            .ok_or(ParseKnownError::Usage("check <file.emath> [--json]")),
+        "plan" => parse_file_json_request(rest)
+            .map(Command::Plan)
+            .ok_or(ParseKnownError::Usage("plan <file.emath> [--json]")),
+        "planner" => {
+            parse_planner_request(rest)
+                .map(Command::Planner)
+                .ok_or(ParseKnownError::Usage(
+                    "planner <file.emath> [--json] [--parametric]",
+                ))
+        }
+        "build" => parse_build_request(rest)
+            .map(Command::Build)
+            .ok_or(ParseKnownError::Usage(
+                "build <file.emath> [--out <dir>] [--verify] [--json]",
+            )),
+        "parse" => parse_parse_request(rest)
+            .map(Command::Parse)
+            .ok_or(ParseKnownError::Usage(
+                "parse --forest <file.emath> [--out <dir>]",
+            )),
+        "expand" => parse_file_json_request(rest)
+            .map(Command::Expand)
+            .ok_or(ParseKnownError::Usage("expand <file.emath> [--json]")),
+        "solve" => Ok(Command::Solve(parse_solve_request(rest))),
+        "exactness" => {
+            parse_exactness_request(rest)
+                .map(Command::Exactness)
+                .ok_or(ParseKnownError::Usage(
+                    "exactness <file.emath> [--json] [--raise units]",
+                ))
+        }
+        "freeze" => parse_freeze_request(rest)
+            .map(Command::Freeze)
+            .ok_or(ParseKnownError::Usage(
+                "freeze <file.emath> [--out <file>] [--json]",
+            )),
+        "why" => parse_why_request(rest)
+            .map(Command::Why)
+            .ok_or(ParseKnownError::Usage(
+                "why <file.emath> inference:N [--json]",
+            )),
+        "assumptions" => parse_file_json_request(rest)
+            .map(Command::Assumptions)
+            .ok_or(ParseKnownError::Usage("assumptions <file.emath> [--json]")),
+        "signature" => {
+            parse_signature_request(rest)
+                .map(Command::Signature)
+                .ok_or(ParseKnownError::Usage(
+                    "signature <file.emath> [--out <dir>]",
+                ))
+        }
+        "genesis" => parse_genesis_request(rest)
+            .map(Command::Genesis)
+            .ok_or(ParseKnownError::Usage("genesis <file.emath> --out <dir>")),
+        "eval" => eval_cmd::parse_eval_args(rest)
+            .map(Command::Eval)
+            .ok_or(ParseKnownError::Usage(
+                "eval <file.emath> [--world <name>] [--json]",
+            )),
+        "simulate" => match simulate_cmd::parse_simulate_args(rest) {
+            Ok(parsed) => Ok(Command::Simulate(parsed)),
+            Err(message) => {
+                eprintln!("error: {message}");
+                Err(ParseKnownError::Usage(
+                    "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
+                ))
+            }
+        },
+        "repl" => eval_cmd::parse_repl_path(rest)
+            .map(|path| Command::Repl { path })
+            .ok_or(ParseKnownError::Usage("repl <file.emath>")),
+        "compile" => {
+            parse_compile_request(rest)
+                .map(Command::Compile)
+                .ok_or(ParseKnownError::Usage(
+                    "compile --parametric <file.emath> --out <dir> [--world LABEL]",
+                ))
+        }
+        "world" => parse_show_named(rest)
+            .map(|(id, dir)| Command::WorldShow { id, dir })
+            .ok_or(ParseKnownError::Usage("world show WORLD_ID --dir <dir>")),
+        "portfolio" => parse_show_named(rest)
+            .map(|(id, dir)| Command::PortfolioShow { id, dir })
+            .ok_or(ParseKnownError::Usage(
+                "portfolio show PORTFOLIO_ID --dir <dir>",
+            )),
+        "meaning" => meaning_cmd::parse_meaning_request(rest)
+            .map(Command::Meaning)
+            .map_err(ParseKnownError::Usage),
+        "import" => parse_import_modelica(rest)
+            .map(|(path, json)| Command::ImportModelica { path, json })
+            .ok_or(ParseKnownError::Usage("import modelica <file.mo> [--json]")),
+        "artifact" => match rest {
+            [sub, dir] if sub == "check" => Ok(Command::ArtifactCheck(PathBuf::from(dir))),
+            [sub, dir] if sub == "battery" => Ok(Command::ArtifactBattery(PathBuf::from(dir))),
+            _ => Err(ParseKnownError::Usage("artifact check|battery <dir>")),
+        },
+        "architecture" => {
+            if no_extra_positionals(rest) {
+                Ok(Command::Architecture {
+                    json: catalog::wants_json(rest),
+                })
+            } else {
+                Err(ParseKnownError::Usage("architecture [--json]"))
+            }
+        }
+        "web" => match serve_cmd::parse_serve_args(rest) {
+            Ok(parsed) => Ok(Command::Web(parsed)),
+            Err(message) => {
+                eprintln!("error: {message}");
+                Err(ParseKnownError::Usage(
+                    "web [--port N] [--no-open] [--dist PATH]",
+                ))
+            }
+        },
+        "serve" => match serve_cmd::parse_serve_args(rest) {
+            Ok(parsed) => Ok(Command::Serve(parsed)),
+            Err(message) => {
+                eprintln!("error: {message}");
+                Err(ParseKnownError::Usage(
+                    "serve [--port N] [--no-open] [--dist PATH]",
+                ))
+            }
+        },
+        "capabilities" => {
+            if no_extra_positionals(rest) {
+                Ok(Command::Capabilities)
+            } else {
+                Err(ParseKnownError::Usage("capabilities [--json]"))
+            }
+        }
+        "robot-docs" => match rest {
+            [] => Ok(Command::RobotDocs),
+            [guide] if guide == "guide" || guide == "--guide" => Ok(Command::RobotDocs),
+            _ => Err(ParseKnownError::Usage("robot-docs [guide]")),
+        },
+        "new" => parse_new_request(rest)
+            .map(|(name, out)| Command::New { name, out })
+            .ok_or(ParseKnownError::Usage("new <name> [--out <dir>]")),
+        "fmt" => parse_required_path(rest)
+            .map(|path| Command::Fmt { path })
+            .ok_or(ParseKnownError::Usage("fmt <file.emath>")),
+        "explain" => {
+            parse_explain_request(rest)
+                .map(Command::Explain)
+                .ok_or(ParseKnownError::Usage(
+                    "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
+                ))
+        }
+        "run" => parse_path_out_request(rest)
+            .map(|(path, out)| Command::Run { path, out })
+            .ok_or(ParseKnownError::Usage("run <file.emath> [--out <dir>]")),
+        "test" => parse_path_out_request(rest)
+            .map(|(path, out)| Command::Test { path, out })
+            .ok_or(ParseKnownError::Usage("test <file.emath> [--out <dir>]")),
+        "bench" => parse_required_path(rest)
+            .map(|path| Command::Bench { path })
+            .ok_or(ParseKnownError::Usage("bench <file.emath>")),
+        "verify" => parse_required_path(rest)
+            .map(|dir| Command::Verify { dir })
+            .ok_or(ParseKnownError::Usage("verify <artifact-dir>")),
+        "inspect" => parse_inspect_request(rest)
+            .map(|(dir, json)| Command::Inspect { dir, json })
+            .ok_or(ParseKnownError::Usage("inspect <artifact-dir> [--json]")),
+        "diff" => parse_diff_request(rest)
+            .map(|(a, b, json)| Command::Diff { a, b, json })
+            .ok_or(ParseKnownError::Usage("diff <a.emath> <b.emath> [--json]")),
+        "doctor" => {
+            if no_extra_positionals(rest) {
+                Ok(Command::Doctor {
+                    json: catalog::wants_json(rest),
+                })
+            } else {
+                Err(ParseKnownError::Usage("doctor [--json]"))
+            }
+        }
+        "vendor" => parse_vendor_request(rest)
+            .map(|out| Command::Vendor { out })
+            .ok_or(ParseKnownError::Usage("vendor --out <dir>")),
+        "provider" => {
+            parse_provider_request(rest)
+                .map(Command::Provider)
+                .ok_or(ParseKnownError::Usage(
+                    "provider list|inspect <id>|test <id> [--json]",
+                ))
+        }
+        "fork" => parse_fork_request(rest)
+            .map(Command::Fork)
+            .ok_or(ParseKnownError::Usage(
+                "fork status|sync [--dry-run] [--json]",
+            )),
+        "agent" => parse_agent_request(rest)
+            .map(Command::Agent)
+            .ok_or(ParseKnownError::Usage(
+                "agent check|plan|build|triage|propose <file> [--out <dir>]",
+            )),
+        _ => Err(ParseKnownError::Unknown),
+    }
+}
+
+fn run_command(command: Command) -> CliExit {
+    match command {
+        Command::Check(FileJsonRequest::Ready { path, json }) => check(&path, json),
+        Command::Plan(FileJsonRequest::Ready { path, json }) => plan(&path, json),
+        Command::Planner(request) => planner_cmd(request),
+        Command::Build(request) => build(request),
+        Command::Parse(ParseRequest::Ready {
+            path,
+            out,
+            forest_only,
+        }) => genesis_cmd::parse_cmd(&path, out.as_ref(), forest_only),
+        Command::Expand(FileJsonRequest::Ready { path, json }) => expand_cmd(&path, json),
+        Command::Solve(ParsedSolve::Request(request)) => solve_check_cmd(request),
+        Command::Solve(ParsedSolve::Usage) => {
+            usage("solve --check <file.emath> [--json] [--apply <label>]")
+        }
+        Command::Solve(ParsedSolve::UnknownLabel(label)) => {
+            eprintln!("error: unknown solve candidate `{label}`");
+            EXIT_REFUSED
+        }
+        Command::Exactness(request) => exactness_cmd(request),
+        Command::Freeze(request) => freeze_cmd(request),
+        Command::Why(request) => why_cmd(request),
+        Command::Assumptions(FileJsonRequest::Ready { path, json }) => assumptions_cmd(&path, json),
+        Command::Signature(SignatureRequest::Ready { path, out }) => {
+            genesis_cmd::signature_cmd(&path, out.as_ref())
+        }
+        Command::Genesis(GenesisRequest::Ready { path, out }) => {
+            genesis_cmd::genesis_cmd(&path, &out)
+        }
+        Command::Eval(args) => eval_cmd::dispatch_eval(args),
+        Command::Simulate(args) => simulate_cmd::dispatch_simulate(&args),
+        Command::Repl { path } => eval_cmd::dispatch_repl(&path),
+        Command::Compile(request) => genesis_cmd::compile_cmd(request),
+        Command::WorldShow { id, dir } => genesis_cmd::world_show_cmd(&id, &dir),
+        Command::PortfolioShow { id, dir } => genesis_cmd::portfolio_show_cmd(&id, &dir),
+        Command::Meaning(request) => meaning_cmd::dispatch(request),
+        Command::ImportModelica { path, json } => import_modelica_cmd(&path, json),
+        Command::ArtifactCheck(dir) => artifact_check(&dir),
+        Command::ArtifactBattery(dir) => artifact_battery(&dir),
+        Command::Architecture { json } => architecture(json),
+        Command::Web(args) | Command::Serve(args) => serve_cmd::web_cmd(args),
+        Command::RobotDocs => robot_docs_cmd(),
+        Command::Provider(request) => tooling_cmd::provider_cmd(request),
+        Command::Fork(request) => tooling_cmd::fork_cmd(request),
+        Command::Capabilities => {
+            print!("{}", catalog::capabilities_json());
+            EXIT_OK
+        }
+        Command::New { name, out } => tooling_cmd::new_cmd(&name, &out),
+        Command::Fmt { path } => tooling_cmd::fmt_cmd(&path),
+        Command::Explain(request) => tooling_cmd::explain_cmd(request),
+        Command::Run { path, out } => tooling_cmd::run_cmd(&path, &out),
+        Command::Test { path, out } => tooling_cmd::test_cmd(&path, &out),
+        Command::Bench { path } => tooling_cmd::bench_cmd(&path),
+        Command::Verify { dir } => tooling_cmd::verify_cmd(&dir),
+        Command::Inspect { dir, json } => tooling_cmd::inspect_cmd(&dir, json),
+        Command::Diff { a, b, json } => tooling_cmd::diff_cmd(&a, &b, json),
+        Command::Doctor { json } => tooling_cmd::doctor_cmd(json),
+        Command::Vendor { out } => tooling_cmd::vendor_cmd(&out),
+        Command::Agent(request) => agent_cmd::agent_cmd(request),
+    }
+}
+
+fn parse_import_modelica(rest: &[String]) -> Option<(PathBuf, bool)> {
+    let [sub, tail @ ..] = rest else {
+        return None;
+    };
+    if sub != "modelica" {
+        return None;
+    }
+    let mut path = None;
+    let mut json = false;
+    for arg in tail {
+        match arg.as_str() {
+            "--json" => json = true,
+            other if other.starts_with('-') && other != "-" => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+    }
+    Some((path?, json))
+}
+
+fn parse_show_named(rest: &[String]) -> Option<(String, PathBuf)> {
+    if rest.first().map(String::as_str) != Some("show") {
+        return None;
+    }
+    let tail = &rest[1..];
+    let id = tail.iter().find(|arg| !arg.starts_with('-'))?.clone();
+    let (_, dir, _) = parse_genesis_args(tail)?;
+    Some((id, dir?))
+}
+
+fn parse_provider_request(rest: &[String]) -> Option<ProviderRequest> {
+    let json = catalog::wants_json(rest);
+    let mut sub = None;
+    let mut id = None;
+    for arg in rest {
+        match arg.as_str() {
+            "--json" => {}
+            other if other.starts_with('-') && other != "-" => return None,
+            other if sub.is_none() => sub = Some(other),
+            other if id.is_none() => id = Some(other.to_string()),
+            _ => return None,
+        }
+    }
+    match sub {
+        Some("list") if id.is_none() => Some(ProviderRequest::List { json }),
+        Some("inspect") => Some(ProviderRequest::Inspect { id: id? }),
+        Some("test") => Some(ProviderRequest::Test { id: id?, json }),
+        _ => None,
+    }
+}
+
+fn parse_fork_request(rest: &[String]) -> Option<ForkRequest> {
+    let json = catalog::wants_json(rest);
+    let dry_run = rest.iter().any(|arg| arg == "--dry-run");
+    let mut sub = None;
+    for arg in rest {
+        match arg.as_str() {
+            "--json" | "--dry-run" => {}
+            other if other.starts_with('-') && other != "-" => return None,
+            other if sub.is_none() => sub = Some(other),
+            _ => return None,
+        }
+    }
+    match sub {
+        Some("status") => Some(ForkRequest::Status { json }),
+        Some("sync") => Some(ForkRequest::Sync { dry_run, json }),
+        _ => None,
+    }
+}
+
+fn parse_new_request(args: &[String]) -> Option<(String, PathBuf)> {
+    let mut name = None;
+    let mut out = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" | "-o" => {
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
+            }
+            other if other.starts_with('-') && other != "-" => return None,
+            other => assign_once(&mut name, other.to_string())?,
+        }
+        index += 1;
+    }
+    let name = name?;
+    let out = out.unwrap_or_else(|| PathBuf::from(&name));
+    Some((name, out))
+}
+
+fn parse_path_out_request(args: &[String]) -> Option<(PathBuf, PathBuf)> {
+    let mut path = None;
+    let mut out = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" | "-o" => {
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
+            }
+            other if other.starts_with('-') && other != "-" => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+        index += 1;
+    }
+    let path = path?;
+    let out = out.unwrap_or_else(|| PathBuf::from("target/emath"));
+    Some((path, out))
+}
+
+fn parse_required_path(args: &[String]) -> Option<PathBuf> {
+    let mut path = None;
+    for arg in args {
+        if arg.starts_with('-') {
+            continue;
+        }
+        assign_once(&mut path, PathBuf::from(arg))?;
+    }
+    path
+}
+
+fn parse_inspect_request(args: &[String]) -> Option<(PathBuf, bool)> {
+    Some((parse_required_path(args)?, catalog::wants_json(args)))
+}
+
+fn parse_diff_request(args: &[String]) -> Option<(PathBuf, PathBuf, bool)> {
+    let mut positionals = args.iter().filter(|arg| !arg.starts_with('-'));
+    let a = PathBuf::from(positionals.next()?);
+    let b = PathBuf::from(positionals.next()?);
+    if positionals.next().is_some() {
+        return None;
+    }
+    Some((a, b, catalog::wants_json(args)))
+}
+
+fn parse_vendor_request(args: &[String]) -> Option<PathBuf> {
+    let mut out = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" | "-o" => {
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
+            }
+            other if other.starts_with('-') && other != "-" => return None,
+            _ => return None,
+        }
+        index += 1;
+    }
+    out
+}
+
+fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
+    let mut path = None;
+    let mut symbol = None;
+    let mut json = false;
+    let mut provenance = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            "--provenance" => provenance = true,
+            other if other.starts_with('-') && other != "-" => return None,
+            other if path.is_none() => path = Some(other.to_string()),
+            other if symbol.is_none() => symbol = Some(other.to_string()),
+            _ => return None,
+        }
+    }
+    let path = path?;
+    if path.starts_with("E-LAW-") || path == emath_diagnostics::E_LAW_001 {
+        Some(ExplainRequest::Law { json })
+    } else {
+        Some(ExplainRequest::File {
+            path: PathBuf::from(path),
+            symbol,
+            provenance,
+            json,
+        })
+    }
+}
+
+fn parse_agent_request(args: &[String]) -> Option<AgentRequest> {
+    let sub = args.first()?;
+    let mut path = None;
+    let mut out = None;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" | "-o" => {
+                if sub.as_str() != "build" {
+                    return None;
+                }
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
+            }
+            other if other.starts_with('-') && other != "-" => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+        index += 1;
+    }
+    let path = path?;
+    match sub.as_str() {
+        "check" => Some(AgentRequest::Check { path }),
+        "plan" => Some(AgentRequest::Plan { path }),
+        "build" => {
+            let out = out.unwrap_or_else(|| PathBuf::from("target/emath"));
+            Some(AgentRequest::Build { path, out })
+        }
+        "triage" => Some(AgentRequest::Triage { path }),
+        "propose" => Some(AgentRequest::Propose { path }),
+        _ => None,
+    }
+}
+
+fn catalog_read_cmd(command: &str, args: &[String], emit: impl FnOnce() -> CliExit) -> CliExit {
     if catalog::wants_help(args) {
         return print_command_help(command);
     }
     if let Some(code) = catalog::reject_unknown_flags(command, args) {
         return code;
     }
+    if !no_extra_positionals(args) {
+        return usage(command);
+    }
     emit()
 }
 
-fn robot_docs_cmd(args: &[String]) -> u8 {
-    match args.first().map(String::as_str) {
-        None | Some("guide" | "--guide") => {
-            print!("{}", catalog::robot_docs_guide());
-            EXIT_OK
-        }
-        Some(other) => {
-            eprintln!("error: unknown robot-docs topic `{other}`");
-            eprintln!("did you mean `emath robot-docs guide`?");
-            eprintln!("try: emath help robot-docs");
-            EXIT_USAGE
-        }
-    }
+fn robot_docs_cmd() -> CliExit {
+    print!("{}", catalog::robot_docs_guide());
+    EXIT_OK
 }
 
-fn help_cmd(args: &[String]) -> u8 {
-    match args.first().map(String::as_str) {
-        None | Some("--help" | "-h") => {
+fn help_cmd(args: &[String]) -> CliExit {
+    match args {
+        [] => {
             print!("{}", help_text());
             EXIT_OK
         }
-        Some(command) => print_command_help(command),
+        [flag] if flag == "--help" || flag == "-h" => {
+            print!("{}", help_text());
+            EXIT_OK
+        }
+        [command] => print_command_help(command),
+        _ => usage("help [<command>]"),
     }
 }
 
-fn print_command_help(command: &str) -> u8 {
+fn print_command_help(command: &str) -> CliExit {
     match catalog::command_help_text(command) {
         Some(text) => {
             print!("{text}");
@@ -1471,7 +2317,7 @@ fn print_command_help(command: &str) -> u8 {
     }
 }
 
-fn unknown_command(other: &str) -> u8 {
+fn unknown_command(other: &str) -> CliExit {
     eprintln!("error: unknown command `{other}`");
     if let Some(hint) = catalog::suggest_command(other) {
         eprintln!("did you mean `emath {hint}`?");
@@ -1482,8 +2328,108 @@ fn unknown_command(other: &str) -> u8 {
     EXIT_USAGE
 }
 
+fn next_arg<'a>(args: &'a [String], index: &mut usize) -> Option<&'a str> {
+    *index += 1;
+    args.get(*index).map(String::as_str)
+}
+
+fn take_nonflag_value<'a>(args: &'a [String], index: &mut usize) -> Option<&'a str> {
+    let value = next_arg(args, index)?;
+    if value.starts_with("--") || matches!(value, "-o" | "-h" | "-V") {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn assign_once<T>(slot: &mut Option<T>, value: T) -> Option<()> {
+    if slot.is_some() {
+        None
+    } else {
+        *slot = Some(value);
+        Some(())
+    }
+}
+
+fn no_extra_positionals(args: &[String]) -> bool {
+    args.iter().all(|arg| arg.starts_with('-') && arg != "-")
+}
+
+pub enum CompileRequest {
+    Ready {
+        path: PathBuf,
+        out: PathBuf,
+        worlds: Vec<String>,
+    },
+}
+
+fn parse_compile_request(args: &[String]) -> Option<CompileRequest> {
+    let parametric = args.iter().any(|arg| arg == "--parametric");
+    let (path, out, worlds) = parse_genesis_args(args)?;
+    match (path, out, parametric) {
+        (Some(path), Some(out), true) => Some(CompileRequest::Ready { path, out, worlds }),
+        _ => None,
+    }
+}
+
+enum FileJsonRequest {
+    Ready { path: PathBuf, json: bool },
+}
+
+fn parse_file_json_request(args: &[String]) -> Option<FileJsonRequest> {
+    let mut path = None;
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            other if other.starts_with('-') && other != "-" => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+    }
+    Some(FileJsonRequest::Ready { path: path?, json })
+}
+
+enum ParseRequest {
+    Ready {
+        path: PathBuf,
+        out: Option<PathBuf>,
+        forest_only: bool,
+    },
+}
+
+fn parse_parse_request(args: &[String]) -> Option<ParseRequest> {
+    let (path, out, _) = parse_genesis_args(args)?;
+    let forest_only = args.iter().any(|arg| arg == "--forest");
+    Some(ParseRequest::Ready {
+        path: path?,
+        out,
+        forest_only,
+    })
+}
+
+enum SignatureRequest {
+    Ready { path: PathBuf, out: Option<PathBuf> },
+}
+
+fn parse_signature_request(args: &[String]) -> Option<SignatureRequest> {
+    let (path, out, _) = parse_genesis_args(args)?;
+    Some(SignatureRequest::Ready { path: path?, out })
+}
+
+enum GenesisRequest {
+    Ready { path: PathBuf, out: PathBuf },
+}
+
+fn parse_genesis_request(args: &[String]) -> Option<GenesisRequest> {
+    let (path, out, _) = parse_genesis_args(args)?;
+    Some(GenesisRequest::Ready {
+        path: path?,
+        out: out?,
+    })
+}
+
 /// Shared arg scan for genesis commands: positional file, `--out`, `--world`.
-fn parse_genesis_args(args: &[String]) -> (Option<PathBuf>, Option<PathBuf>, Vec<String>) {
+fn parse_genesis_args(args: &[String]) -> Option<(Option<PathBuf>, Option<PathBuf>, Vec<String>)> {
     let mut path = None;
     let mut out = None;
     let mut worlds = Vec::new();
@@ -1491,40 +2437,24 @@ fn parse_genesis_args(args: &[String]) -> (Option<PathBuf>, Option<PathBuf>, Vec
     while index < args.len() {
         match args[index].as_str() {
             "--out" | "-o" | "--dir" => {
-                index += 1;
-                if index < args.len() {
-                    out = Some(PathBuf::from(&args[index]));
-                }
+                assign_once(
+                    &mut out,
+                    PathBuf::from(take_nonflag_value(args, &mut index)?),
+                )?;
             }
             "--world" => {
-                index += 1;
-                if index < args.len() {
-                    worlds.push(args[index].clone());
-                }
+                worlds.push(take_nonflag_value(args, &mut index)?.to_owned());
             }
             "--parametric" | "--forest" | "--json" => {}
-            other if other.starts_with('-') => {}
-            other => path = Some(PathBuf::from(other)),
+            other if other.starts_with('-') => return None,
+            other => assign_once(&mut path, PathBuf::from(other))?,
         }
         index += 1;
     }
-    (path, out, worlds)
+    Some((path, out, worlds))
 }
 
-fn parse_file_args(args: &[String]) -> (Option<PathBuf>, bool) {
-    let mut path = None;
-    let mut json = false;
-    for arg in args {
-        match arg.as_str() {
-            "--json" => json = true,
-            other if other.starts_with('-') && other != "-" => {}
-            other => path = Some(PathBuf::from(other)),
-        }
-    }
-    (path, json)
-}
-
-pub(crate) fn usage(message: &str) -> u8 {
+pub(crate) fn usage(message: &str) -> CliExit {
     eprintln!("error: missing or invalid arguments for this command");
     eprintln!("usage: emath {message}");
     let command = message.split_whitespace().next().unwrap_or("help");

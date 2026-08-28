@@ -1,31 +1,23 @@
 //! `emath simulate`: explicit Euler / RK4 / RK45 on an admitted `emath model`.
 
 use super::{
-    EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
-    print_diagnostics, print_json_diagnostics, split_error_code, usage,
+    json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
+    split_error_code, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
 };
 use emath_artifact::JsonWriter;
 use emath_core::limits::Limits;
-use emath_exec_ir::interp::{Value, format_f64};
-use emath_exec_ir::{SimulateOptions, StepMethod, simulate_continuous_with};
+use emath_exec_ir::interp::{format_f64, Value};
+use emath_exec_ir::{simulate_continuous_with, SimulateOptions, StepMethod};
 use emath_ir::{Extent, Field, TypeNode};
 use emath_sema::CompilerSession;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub fn dispatch_simulate(args: &[String]) -> u8 {
-    match parse_simulate_args(args) {
-        Ok(parsed) => simulate_cmd(&parsed),
-        Err(message) => {
-            eprintln!("error: {message}");
-            usage(
-                "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
-            )
-        }
-    }
+pub(crate) fn dispatch_simulate(args: &SimulateArgs) -> CliExit {
+    simulate_cmd(args)
 }
 
-struct SimulateArgs {
+pub(crate) struct SimulateArgs {
     path: PathBuf,
     dt: f64,
     t0: f64,
@@ -39,12 +31,21 @@ struct SimulateArgs {
     event: Option<(String, f64)>,
 }
 
-fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
+fn assign_once<T>(slot: &mut Option<T>, value: T) -> Result<(), String> {
+    if slot.is_some() {
+        Err("duplicate flag".to_string())
+    } else {
+        *slot = Some(value);
+        Ok(())
+    }
+}
+
+pub(crate) fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
     let mut path = None;
-    let mut dt = 0.1;
-    let mut t0 = 0.0;
-    let mut t1 = 1.0;
-    let mut method = StepMethod::Rk4;
+    let mut dt = None;
+    let mut t0 = None;
+    let mut t1 = None;
+    let mut method = None;
     let mut bindings = BTreeMap::new();
     let mut json = false;
     let mut atol = None;
@@ -57,46 +58,62 @@ fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
             "--json" => json = true,
             "--dt" => {
                 index += 1;
-                dt = parse_f64(args.get(index).ok_or("--dt needs a number")?, "--dt")?;
+                assign_once(
+                    &mut dt,
+                    parse_positive_f64(args.get(index).ok_or("--dt needs a number")?, "--dt")?,
+                )?;
             }
             "--t0" => {
                 index += 1;
-                t0 = parse_f64(args.get(index).ok_or("--t0 needs a number")?, "--t0")?;
+                assign_once(
+                    &mut t0,
+                    parse_f64(args.get(index).ok_or("--t0 needs a number")?, "--t0")?,
+                )?;
             }
             "--t1" => {
                 index += 1;
-                t1 = parse_f64(args.get(index).ok_or("--t1 needs a number")?, "--t1")?;
+                assign_once(
+                    &mut t1,
+                    parse_f64(args.get(index).ok_or("--t1 needs a number")?, "--t1")?,
+                )?;
             }
             "--method" => {
                 index += 1;
-                method = parse_method(args.get(index).ok_or("--method needs a name")?)?;
+                assign_once(
+                    &mut method,
+                    parse_method(args.get(index).ok_or("--method needs a name")?)?,
+                )?;
             }
             "--atol" => {
                 index += 1;
-                atol = Some(parse_positive_f64(
-                    args.get(index).ok_or("--atol needs a number")?,
-                    "--atol",
-                )?);
+                assign_once(
+                    &mut atol,
+                    parse_positive_f64(args.get(index).ok_or("--atol needs a number")?, "--atol")?,
+                )?;
             }
             "--rtol" => {
                 index += 1;
-                rtol = Some(parse_positive_f64(
-                    args.get(index).ok_or("--rtol needs a number")?,
-                    "--rtol",
-                )?);
+                assign_once(
+                    &mut rtol,
+                    parse_positive_f64(args.get(index).ok_or("--rtol needs a number")?, "--rtol")?,
+                )?;
             }
             "--dt-max" => {
                 index += 1;
-                dt_max = Some(parse_positive_f64(
-                    args.get(index).ok_or("--dt-max needs a number")?,
-                    "--dt-max",
-                )?);
+                assign_once(
+                    &mut dt_max,
+                    parse_positive_f64(
+                        args.get(index).ok_or("--dt-max needs a number")?,
+                        "--dt-max",
+                    )?,
+                )?;
             }
             "--event" => {
                 index += 1;
-                event = Some(parse_event(
-                    args.get(index).ok_or("--event needs name=value")?,
-                )?);
+                assign_once(
+                    &mut event,
+                    parse_event(args.get(index).ok_or("--event needs name=value")?)?,
+                )?;
             }
             "--set" => {
                 index += 1;
@@ -109,17 +126,22 @@ fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
                 }
                 bindings.insert(name.to_string(), parse_set_value(value)?);
             }
-            other if other.starts_with('-') && other != "-" => {}
+            other if other.starts_with('-') && other != "-" => {
+                return Err(format!("unknown flag `{other}`"));
+            }
+            other if path.is_some() => {
+                return Err(format!("unexpected extra file `{other}`"));
+            }
             other => path = Some(PathBuf::from(other)),
         }
         index += 1;
     }
     Ok(SimulateArgs {
         path: path.ok_or_else(|| "missing <file.emath>".to_string())?,
-        dt,
-        t0,
-        t1,
-        method,
+        dt: dt.unwrap_or(0.1),
+        t0: t0.unwrap_or(0.0),
+        t1: t1.unwrap_or(1.0),
+        method: method.unwrap_or(StepMethod::Rk4),
         bindings,
         json,
         atol,
@@ -267,24 +289,35 @@ fn parse_method(name: &str) -> Result<StepMethod, String> {
     }
 }
 
-fn simulate_cmd(args: &SimulateArgs) -> u8 {
+fn simulate_error_json(text: &str) -> String {
+    let (code, message) = split_error_code(text).unwrap_or(("error", text));
+    let mut out = JsonWriter::object();
+    out.string("command", "simulate");
+    out.bool("admitted", false);
+    out.objects(
+        "diagnostics",
+        &[json_diagnostic_entry(code, "error", message)],
+    );
+    out.finish()
+}
+
+fn emit_simulate_error(text: &str, json: bool) {
+    eprintln!("error: {text}");
+    if json {
+        print!("{}", simulate_error_json(text));
+    }
+}
+
+fn simulate_cmd(args: &SimulateArgs) -> CliExit {
     let mut session = CompilerSession::new(Limits::default());
     let Ok(package) = session.load_package(&args.path) else {
-        eprintln!(
-            "error: E-PKG-080: cannot read source file ({})",
-            args.path.display()
+        emit_simulate_error(
+            &format!(
+                "E-PKG-080: cannot read source file ({})",
+                args.path.display()
+            ),
+            args.json,
         );
-        if args.json {
-            print_json_diagnostics(
-                "simulate",
-                false,
-                &[json_diagnostic_entry(
-                    "E-PKG-080",
-                    "error",
-                    &format!("cannot read source file ({})", args.path.display()),
-                )],
-            );
-        }
         return EXIT_REFUSED;
     };
     let result = session.check(package.file);
@@ -305,9 +338,9 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
         .iter()
         .find(|declaration| declaration.kind_label == "model")
     else {
-        eprintln!(
-            "error: {} has no `emath model` declaration",
-            args.path.display()
+        emit_simulate_error(
+            &format!("{} has no `emath model` declaration", args.path.display()),
+            args.json,
         );
         return EXIT_REFUSED;
     };
@@ -318,7 +351,7 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
                 inputs.insert(field.name.clone(), value);
             }
             Err(message) => {
-                eprintln!("error: {message}");
+                emit_simulate_error(&message, args.json);
                 return EXIT_USAGE;
             }
         }
@@ -337,7 +370,7 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
                 inputs.insert(field.name.clone(), value);
             }
             Err(message) => {
-                eprintln!("error: {message}");
+                emit_simulate_error(&message, args.json);
                 return EXIT_USAGE;
             }
         }
@@ -349,7 +382,7 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
                 state.insert(field.name.clone(), value);
             }
             Err(message) => {
-                eprintln!("error: {message}");
+                emit_simulate_error(&message, args.json);
                 return EXIT_USAGE;
             }
         }
@@ -375,16 +408,7 @@ fn simulate_cmd(args: &SimulateArgs) -> u8 {
             EXIT_OK
         }
         Err(error) => {
-            let text = error.to_string();
-            eprintln!("error: {text}");
-            if args.json {
-                let (code, message) = split_error_code(&text).unwrap_or(("error", text.as_str()));
-                print_json_diagnostics(
-                    "simulate",
-                    false,
-                    &[json_diagnostic_entry(code, "error", message)],
-                );
-            }
+            emit_simulate_error(&error.to_string(), args.json);
             EXIT_REFUSED
         }
     }
@@ -551,5 +575,54 @@ fn value_json(value: &Value) -> String {
                 )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::simulate_error_json;
+
+    #[test]
+    fn simulate_error_json_has_code_severity_message() {
+        let body = simulate_error_json("hello-square.emath has no `emath model` declaration");
+        let parsed = emath_artifact::parse_json_document(&body).expect("json");
+        assert_eq!(parsed.string_field("command").expect("command"), "simulate");
+        match parsed.field("admitted").expect("admitted") {
+            emath_artifact::JsonValue::Bool(false) => {}
+            other => panic!("admitted must be false, got {other:?}"),
+        }
+        let diags = match parsed.field("diagnostics").expect("diagnostics") {
+            emath_artifact::JsonValue::Arr(items) => items,
+            other => panic!("diagnostics must be array, got {other:?}"),
+        };
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].string_field("code").expect("code"), "error");
+        assert_eq!(
+            diags[0].string_field("severity").expect("severity"),
+            "error"
+        );
+        assert!(diags[0]
+            .string_field("message")
+            .expect("message")
+            .contains("`emath model`"),);
+    }
+
+    #[test]
+    fn simulate_error_json_preserves_e_pkg_code() {
+        let body = simulate_error_json("E-PKG-080: cannot read source file (missing.emath)");
+        let parsed = emath_artifact::parse_json_document(&body).expect("json");
+        let diags = match parsed.field("diagnostics").expect("diagnostics") {
+            emath_artifact::JsonValue::Arr(items) => items,
+            other => panic!("diagnostics must be array, got {other:?}"),
+        };
+        assert_eq!(diags[0].string_field("code").expect("code"), "E-PKG-080");
+        assert_eq!(
+            diags[0].string_field("severity").expect("severity"),
+            "error"
+        );
+        assert!(diags[0]
+            .string_field("message")
+            .expect("message")
+            .contains("cannot read source file"));
     }
 }

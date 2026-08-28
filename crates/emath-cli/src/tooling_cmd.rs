@@ -11,12 +11,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use emath_artifact::JsonWriter;
-use emath_build::{BuildOptions, build_file, generated_crate_target_dir, run_cargo_timed};
+use emath_build::{build_file, generated_crate_target_dir, run_cargo_timed, BuildOptions};
 use emath_core::content_id_of_str;
 use emath_sema::session::CompilerSession;
 
-use crate::catalog;
-use crate::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, artifact_check, print_diagnostics, usage};
+use crate::{
+    artifact_check, print_diagnostics, CliExit, ExplainRequest, ForkRequest, ProviderRequest,
+    EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+};
 
 /// Relative path of the committed upstream lock file (repo layout).
 const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
@@ -83,40 +85,12 @@ const PROVIDERS: [(&str, &str, &str); 10] = [
     ("phase5.numerics", "solvers and optimization", "planned"),
 ];
 
-/// Dispatch for all tooling subcommands added by the tooling slice.
-pub fn tooling_dispatch(command: &str, args: &[String]) -> u8 {
-    match command {
-        "new" => new_cmd(args),
-        "fmt" => fmt_cmd(args),
-        "explain" => explain_cmd(args),
-        "run" => run_cmd(args),
-        "test" => test_cmd(args),
-        "bench" => bench_cmd(args),
-        "verify" => verify_cmd(args),
-        "inspect" => inspect_cmd(args),
-        "diff" => diff_cmd(args),
-        "doctor" => doctor_cmd(args),
-        "vendor" => vendor_cmd(args),
-        "provider" => provider_cmd(args),
-        "fork" => fork_cmd(args),
-        "agent" => crate::agent_cmd::agent_cmd(args),
-        _ => EXIT_USAGE,
-    }
-}
-
 /// `new <name> --out <dir>`: deterministic project scaffold.
-fn new_cmd(args: &[String]) -> u8 {
-    let Some(name) = args.first() else {
-        return usage("new <name> [--out <dir>]");
-    };
+pub(crate) fn new_cmd(name: &str, out: &Path) -> CliExit {
     if !is_valid_name(name) {
         eprintln!("error: invalid package name `{name}` (E-TLT-010)");
         return EXIT_USAGE;
     }
-    // Default project dir is ./<name>; --out moves it.
-    let out = flag_value("--out", args)
-        .or_else(|| flag_value("-o", args))
-        .map_or_else(|| PathBuf::from(name), PathBuf::from);
     let main = out.join("src/main.emath");
     let manifest = out.join("emath-package.toml");
     if main.exists() || manifest.exists() {
@@ -180,13 +154,10 @@ fn is_valid_name(name: &str) -> bool {
 
 /// `fmt <file>`: canonical-form check via the lossless formatter;
 /// canonical only on byte-for-byte round-trip, else refusal + diff.
-fn fmt_cmd(args: &[String]) -> u8 {
-    let Some(file) = first_positional(args) else {
-        return usage("fmt <file.emath>");
-    };
+pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let Ok(package) = session.load_package(&file) else {
-        eprintln!("error: cannot read {file}");
+    let Ok(package) = session.load_package(file) else {
+        eprintln!("error: cannot read {}", file.display());
         return EXIT_USAGE;
     };
     let result = session.check(package.file);
@@ -198,10 +169,16 @@ fn fmt_cmd(args: &[String]) -> u8 {
     let lossless = emath_syntax::parse_lossless(&package.text, package.file, &limits);
     let canonical = emath_syntax::formatter::format(&lossless.tree, &lossless.comments);
     if canonical == package.text {
-        println!("fmt: {file}: canonical form (lossless round-trip)");
+        println!(
+            "fmt: {}: canonical form (lossless round-trip)",
+            file.display()
+        );
         EXIT_OK
     } else {
-        eprintln!("fmt: {file}: NOT canonical; expected lossless formatter output");
+        eprintln!(
+            "fmt: {}: NOT canonical; expected lossless formatter output",
+            file.display()
+        );
         for (line_no, (expected, actual)) in canonical
             .lines()
             .zip(package.text.lines())
@@ -219,53 +196,48 @@ fn fmt_cmd(args: &[String]) -> u8 {
 }
 
 /// `explain <file> [<symbol>]` or `explain E-LAW-001`: plan-level or checker witness.
-fn explain_cmd(args: &[String]) -> u8 {
-    let Some(file) = first_positional(args) else {
-        return usage(
-            "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
-        );
-    };
-    if file.starts_with("E-LAW-") || file == emath_diagnostics::E_LAW_001 {
-        return explain_law_cmd(args);
-    }
-    if args.iter().any(|arg| arg == "--provenance") {
-        return match crate::provenance_explanation(Path::new(&file), catalog::wants_json(args)) {
-            Ok(explanation) => {
-                print!("{explanation}");
-                EXIT_OK
+pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
+    match request {
+        ExplainRequest::Law { json } => explain_law_cmd(json),
+        ExplainRequest::File {
+            path,
+            symbol,
+            provenance,
+            json,
+        } => {
+            if provenance {
+                return match crate::provenance_explanation(&path, json) {
+                    Ok(explanation) => {
+                        print!("{explanation}");
+                        EXIT_OK
+                    }
+                    Err(code) => code,
+                };
             }
-            Err(code) => code,
-        };
-    }
-    let symbol = args
-        .iter()
-        .filter(|arg| !arg.starts_with('-'))
-        .nth(1)
-        .cloned();
-    let inspections = match crate::explain_inspections(Path::new(&file)) {
-        Ok(inspections) => inspections,
-        Err(code) => return code,
-    };
-    let json = catalog::wants_json(args);
-    if json {
-        for inspection in &inspections {
-            println!("{}", inspection.to_json());
+            let inspections = match crate::explain_inspections(&path) {
+                Ok(inspections) => inspections,
+                Err(code) => return code,
+            };
+            if json {
+                for inspection in &inspections {
+                    println!("{}", inspection.to_json());
+                }
+                return EXIT_OK;
+            }
+            for inspection in &inspections {
+                println!("{}", inspection.explain());
+            }
+            if let Some(symbol) = symbol {
+                println!(
+                    "explain: symbol `{symbol}`: declaration indexing is Phase 4+; goals above are the available evidence"
+                );
+            }
+            EXIT_OK
         }
-        return EXIT_OK;
     }
-    for inspection in &inspections {
-        println!("{}", inspection.explain());
-    }
-    if let Some(symbol) = symbol {
-        println!(
-            "explain: symbol `{symbol}`: declaration indexing is Phase 4+; goals above are the available evidence"
-        );
-    }
-    EXIT_OK
 }
 
-fn explain_law_cmd(args: &[String]) -> u8 {
-    let json = catalog::wants_json(args);
+fn explain_law_cmd(json: bool) -> CliExit {
     let (report, explanations) = emath_diagnostics::e_law_001_demo();
     if report.passed {
         eprintln!("error: E-LAW-001 demo table unexpectedly held");
@@ -294,19 +266,13 @@ fn explain_law_cmd(args: &[String]) -> u8 {
 /// `run <file> [--out <dir>]`: build then execute the generated crate.
 /// Library crates have no binary; their example tests are the runnable
 /// surface, so `emath run` executes them (crate mains run as binaries).
-fn run_cmd(args: &[String]) -> u8 {
-    let Some(file) = first_positional(args) else {
-        return usage("run <file.emath> [--out <dir>]");
-    };
-    if let Some(code) = crate::meaning_cmd::refuse_malformed_project_lock(Path::new(&file)) {
+pub(crate) fn run_cmd(file: &Path, out: &Path) -> CliExit {
+    if let Some(code) = crate::meaning_cmd::refuse_malformed_project_lock(file) {
         return code;
     }
-    let out = flag_value("--out", args)
-        .or_else(|| flag_value("-o", args))
-        .map_or_else(|| PathBuf::from("target/emath"), PathBuf::from);
     let report = match build_file(
-        &file,
-        &out,
+        file,
+        out,
         BuildOptions {
             verify_generated_crate: false,
         },
@@ -423,18 +389,12 @@ fn run_cmd(args: &[String]) -> u8 {
 }
 
 /// `test <file> [--out <dir>]`: build and run the generated crate's tests.
-fn test_cmd(args: &[String]) -> u8 {
-    let Some(file) = first_positional(args) else {
-        return usage("test <file.emath> [--out <dir>]");
-    };
-    if let Some(code) = crate::meaning_cmd::refuse_malformed_project_lock(Path::new(&file)) {
+pub(crate) fn test_cmd(file: &Path, out: &Path) -> CliExit {
+    if let Some(code) = crate::meaning_cmd::refuse_malformed_project_lock(file) {
         return code;
     }
-    let out = flag_value("--out", args)
-        .or_else(|| flag_value("-o", args))
-        .map_or_else(|| PathBuf::from("target/emath"), PathBuf::from);
     match build_file(
-        &file,
+        file,
         out,
         BuildOptions {
             verify_generated_crate: true,
@@ -458,31 +418,22 @@ fn test_cmd(args: &[String]) -> u8 {
 /// needs the keep-gate ruleset (Phase 4+); never `EXIT_OK` with empty
 /// output. Use `cargo bench --profile release-perf --bench
 /// comprehensive_bench`.
-fn bench_cmd(args: &[String]) -> u8 {
-    let Some(file) = first_positional(args) else {
-        return usage("bench <file.emath>");
-    };
+pub(crate) fn bench_cmd(file: &Path) -> CliExit {
     eprintln!(
-        "error: E-TLT-004: benchmarking `{file}` is not a Phase 1 CLI comparison; measure via `cargo bench --profile release-perf --bench comprehensive_bench` (keep-gate history in .bench-history/)"
+        "error: E-TLT-004: benchmarking `{}` is not a Phase 1 CLI comparison; measure via `cargo bench --profile release-perf --bench comprehensive_bench` (keep-gate history in .bench-history/)",
+        file.display()
     );
     EXIT_REFUSED
 }
 
 /// `verify <dir>`: independent artifact re-verification.
-fn verify_cmd(args: &[String]) -> u8 {
-    let Some(dir) = first_positional(args) else {
-        return usage("verify <artifact-dir>");
-    };
-    artifact_check(&PathBuf::from(dir))
+pub(crate) fn verify_cmd(dir: &Path) -> CliExit {
+    artifact_check(dir)
 }
 
 /// `inspect <dir>`: print the committed artifact manifest; refuses
 /// non-UTF-8 manifests instead of substituting lossy text.
-fn inspect_cmd(args: &[String]) -> u8 {
-    let Some(dir) = first_positional(args) else {
-        return usage("inspect <artifact-dir>");
-    };
-    let dir = PathBuf::from(dir);
+pub(crate) fn inspect_cmd(dir: &Path, json: bool) -> CliExit {
     let root = dir.join("emath");
     let Ok(entries) = std::fs::read_dir(&root) else {
         eprintln!(
@@ -515,7 +466,7 @@ fn inspect_cmd(args: &[String]) -> u8 {
             );
             return EXIT_REFUSED;
         };
-        if catalog::wants_json(args) {
+        if json {
             manifests.push(text);
         } else {
             println!("artifact {}:", entry.file_name().to_string_lossy());
@@ -526,7 +477,7 @@ fn inspect_cmd(args: &[String]) -> u8 {
     if inspected == 0 {
         eprintln!("error: E-TLT-005: no artifacts under {}", root.display());
         EXIT_USAGE
-    } else if catalog::wants_json(args) {
+    } else if json {
         let mut object = JsonWriter::object();
         object.string("schema", "emath.inspect");
         object.string("dir", &dir.display().to_string());
@@ -540,44 +491,41 @@ fn inspect_cmd(args: &[String]) -> u8 {
 }
 
 /// `diff <a.emath> <b.emath>`: fingerprint comparison of parse-admitted sources.
-fn diff_cmd(args: &[String]) -> u8 {
-    let positional = positional_args(args);
-    let Some(a) = positional.first() else {
-        return usage("diff <a.emath> <b.emath>");
-    };
-    let Some(b) = positional.get(1) else {
-        return usage("diff <a.emath> <b.emath>");
-    };
+pub(crate) fn diff_cmd(a: &Path, b: &Path, json: bool) -> CliExit {
     let id_a = fingerprint(a);
     let id_b = fingerprint(b);
     match (id_a, id_b) {
         (Ok(id_a), Ok(id_b)) => {
             let identical = id_a == id_b;
-            if catalog::wants_json(args) {
+            if json {
                 let mut object = JsonWriter::object();
                 object.string("schema", "emath.diff");
-                object.string("a", a);
+                object.string("a", &a.display().to_string());
                 object.string("a_id", &id_a.0);
-                object.string("b", b);
+                object.string("b", &b.display().to_string());
                 object.string("b_id", &id_b.0);
                 object.bool("identical", identical);
                 println!("{}", object.finish());
             } else {
-                println!("diff: {a} {}", id_a.0);
-                println!("diff: {b} {}", id_b.0);
+                println!("diff: {} {}", a.display(), id_a.0);
+                println!("diff: {} {}", b.display(), id_b.0);
                 println!("diff: {}", if identical { "identical" } else { "differ" });
             }
-            if identical { EXIT_OK } else { EXIT_REFUSED }
+            if identical {
+                EXIT_OK
+            } else {
+                EXIT_REFUSED
+            }
         }
         (Err(()), _) | (_, Err(())) => EXIT_REFUSED,
     }
 }
 
 /// Content id of a parse-admitted source; diagnostics printed on refusal.
-fn fingerprint(file: &str) -> Result<emath_core::ContentId, ()> {
+fn fingerprint(file: &Path) -> Result<emath_core::ContentId, ()> {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(file) else {
-        eprintln!("error: cannot read {file}");
+        eprintln!("error: cannot read {}", file.display());
         return Err(());
     };
     let result = session.check(package.file);
@@ -586,7 +534,7 @@ fn fingerprint(file: &str) -> Result<emath_core::ContentId, ()> {
         return Err(());
     }
     let Ok(bytes) = std::fs::read(file) else {
-        eprintln!("error: cannot read {file}");
+        eprintln!("error: cannot read {}", file.display());
         return Err(());
     };
     // Bind the bytes, not a lossy decode: non-UTF-8 stays distinct.
@@ -623,7 +571,7 @@ pub(crate) fn doctor_probes() -> Vec<DoctorProbe> {
 }
 
 /// `doctor`: toolchain presence checks.
-fn doctor_cmd(args: &[String]) -> u8 {
+pub(crate) fn doctor_cmd(json: bool) -> CliExit {
     let probes = doctor_probes();
     let lock = upstream_lock_path();
     let fork_lock = std::fs::read_to_string(&lock)
@@ -637,7 +585,7 @@ fn doctor_cmd(args: &[String]) -> u8 {
                 .map(|adapters| (content_id_of_str(&text).0, adapters))
         });
     let ok = probes.iter().all(|probe| probe.ok) && fork_lock.is_ok();
-    if catalog::wants_json(args) {
+    if json {
         let mut rows = Vec::new();
         for probe in &probes {
             let mut row = JsonWriter::object();
@@ -697,7 +645,11 @@ fn doctor_cmd(args: &[String]) -> u8 {
             Err(error) => println!("doctor: fork lock: INVALID ({error})"),
         }
     }
-    if ok { EXIT_OK } else { EXIT_REFUSED }
+    if ok {
+        EXIT_OK
+    } else {
+        EXIT_REFUSED
+    }
 }
 
 fn parse_upstream_pins(text: &str) -> Result<Vec<emath_provider_api::UpstreamPin>, String> {
@@ -745,10 +697,7 @@ fn probe_program(command: &str) -> Option<String> {
 }
 
 /// `vendor --out <dir>`: offline dependency snapshot (zero third-party deps).
-fn vendor_cmd(args: &[String]) -> u8 {
-    let Some(out) = flag_value("--out", args).or_else(|| flag_value("-o", args)) else {
-        return usage("vendor --out <dir>");
-    };
+pub(crate) fn vendor_cmd(out: &Path) -> CliExit {
     let lock = upstream_lock_path();
     let Ok(bytes) = std::fs::read(&lock) else {
         eprintln!(
@@ -780,12 +729,11 @@ fn vendor_cmd(args: &[String]) -> u8 {
     object.int("upstream_pins", u64::try_from(entry_count).unwrap_or(0));
     object.int("third_party_deps", 0);
     object.bool("offline", true);
-    let out_dir = PathBuf::from(out);
-    if std::fs::create_dir_all(&out_dir).is_err() {
-        eprintln!("error: cannot create {}", out_dir.display());
+    if std::fs::create_dir_all(out).is_err() {
+        eprintln!("error: cannot create {}", out.display());
         return EXIT_USAGE;
     }
-    let target = out_dir.join("vendor-manifest.json");
+    let target = out.join("vendor-manifest.json");
     let body = object.finish();
     if std::fs::write(&target, body.clone()).is_err() {
         eprintln!("error: cannot write {}", target.display());
@@ -796,13 +744,10 @@ fn vendor_cmd(args: &[String]) -> u8 {
 }
 
 /// `provider list|inspect <id>|test <id>`.
-fn provider_cmd(args: &[String]) -> u8 {
-    let Some(sub) = args.first() else {
-        return usage("provider list|inspect <id>|test <id>");
-    };
-    match sub.as_str() {
-        "list" => {
-            if catalog::wants_json(args) {
+pub(crate) fn provider_cmd(request: ProviderRequest) -> CliExit {
+    match request {
+        ProviderRequest::List { json } => {
+            if json {
                 let mut rows = Vec::new();
                 for (id, capability, status) in PROVIDERS {
                     let mut row = JsonWriter::object();
@@ -822,53 +767,50 @@ fn provider_cmd(args: &[String]) -> u8 {
             }
             EXIT_OK
         }
-        "inspect" => {
-            let Some(id) = args.get(1) else {
-                return usage("provider inspect <id>");
-            };
+        ProviderRequest::Inspect { id } => {
             let Some((_, capability, status)) =
-                PROVIDERS.iter().find(|(candidate, _, _)| candidate == id)
+                PROVIDERS.iter().find(|(candidate, _, _)| *candidate == id)
             else {
                 eprintln!("error: E-TLT-016: unknown provider `{id}`");
-                if let Some(hint) = suggest_provider(id) {
+                if let Some(hint) = suggest_provider(&id) {
                     eprintln!("did you mean `emath provider inspect {hint}`?");
                 }
                 return EXIT_USAGE;
             };
+            // Descriptor is a JSON document either way (`--json` is independently legal).
             let mut object = JsonWriter::object();
             object.string("schema", "emath.provider-descriptor");
-            object.string("id", id);
+            object.string("id", &id);
             object.string("capability", capability);
             object.string("status", status);
             println!("{}", object.finish());
             EXIT_OK
         }
-        "test" => {
-            let Some(id) = args.get(1) else {
-                return usage("provider test <id>");
-            };
-            let Some((_, _, status)) = PROVIDERS.iter().find(|(candidate, _, _)| candidate == id)
-            else {
+        ProviderRequest::Test { id, json } => {
+            if !PROVIDERS.iter().any(|(candidate, _, _)| *candidate == id) {
                 eprintln!("error: E-TLT-016: unknown provider `{id}`");
                 return EXIT_USAGE;
-            };
-            let _ = (status, id);
+            }
             // No in-CLI battery exists; printing "ok" without running
             // anything would be a fake success (same as bench E-TLT-004).
+            if json {
+                let mut object = JsonWriter::object();
+                object.string("schema", "emath.provider-test");
+                object.string("id", &id);
+                object.string("code", "E-TLT-013");
+                object.bool("ok", false);
+                println!("{}", object.finish());
+            }
             eprintln!(
                 "error: E-TLT-013: provider `{id}` has no in-CLI negative-control battery; run `cargo test` against tests/emath-adapter-rumoca in the workspace"
             );
             EXIT_REFUSED
         }
-        _ => usage("provider list|inspect <id>|test <id>"),
     }
 }
 
 /// `fork status|sync [--dry-run]`.
-fn fork_cmd(args: &[String]) -> u8 {
-    let Some(sub) = args.first() else {
-        return usage("fork status|sync [--dry-run]");
-    };
+pub(crate) fn fork_cmd(request: ForkRequest) -> CliExit {
     let lock = upstream_lock_path();
     let Ok(bytes) = std::fs::read(&lock) else {
         eprintln!(
@@ -891,11 +833,11 @@ fn fork_cmd(args: &[String]) -> u8 {
         );
         return EXIT_USAGE;
     };
-    match sub.as_str() {
-        "status" => {
+    match request {
+        ForkRequest::Status { json } => {
             let ids = lock_ids(&text);
             let lock_id = content_id_of_str(&text).0;
-            if catalog::wants_json(args) {
+            if json {
                 let mut object = JsonWriter::object();
                 object.string("schema", "emath.fork-status");
                 object.string("lock_id", &lock_id);
@@ -910,21 +852,35 @@ fn fork_cmd(args: &[String]) -> u8 {
             }
             EXIT_OK
         }
-        "sync" => {
-            if args.iter().any(|arg| arg == "--dry-run") {
-                println!(
-                    "sync: dry-run: {} upstream pins unchanged (offline)",
-                    lock_ids(&text).len()
-                );
+        ForkRequest::Sync { dry_run, json } => {
+            let pins = lock_ids(&text).len();
+            if dry_run {
+                if json {
+                    let mut object = JsonWriter::object();
+                    object.string("schema", "emath.fork-sync");
+                    object.bool("dry_run", true);
+                    object.int("pins", pins as u64);
+                    object.bool("offline", true);
+                    println!("{}", object.finish());
+                } else {
+                    println!("sync: dry-run: {pins} upstream pins unchanged (offline)");
+                }
                 EXIT_OK
             } else {
+                if json {
+                    let mut object = JsonWriter::object();
+                    object.string("schema", "emath.fork-sync");
+                    object.bool("dry_run", false);
+                    object.bool("ok", false);
+                    object.string("code", "E-TLT-006");
+                    println!("{}", object.finish());
+                }
                 eprintln!(
                     "error: E-TLT-006: network/source sync is disabled in Phase 1 (offline-first); use --dry-run"
                 );
                 EXIT_REFUSED
             }
         }
-        _ => usage("fork status|sync [--dry-run]"),
     }
 }
 
@@ -962,29 +918,11 @@ fn suggest_provider(unknown: &str) -> Option<&'static str> {
 }
 
 /// Maps a build error to the conventional exit class.
-pub(crate) fn classify_build_error(error: &dyn std::fmt::Display) -> u8 {
+pub(crate) fn classify_build_error(error: &dyn std::fmt::Display) -> CliExit {
     let text = error.to_string();
     if text.contains("admission refused") {
         EXIT_REFUSED
     } else {
         EXIT_USAGE
     }
-}
-
-pub(crate) fn positional_args(args: &[String]) -> Vec<String> {
-    args.iter()
-        .filter(|arg| !arg.starts_with('-'))
-        .cloned()
-        .collect()
-}
-
-fn first_positional(args: &[String]) -> Option<String> {
-    positional_args(args).first().cloned()
-}
-
-pub(crate) fn flag_value(flag: &str, args: &[String]) -> Option<String> {
-    args.iter()
-        .position(|arg| arg == flag)
-        .and_then(|index| args.get(index + 1))
-        .cloned()
 }
