@@ -234,58 +234,90 @@ fn maybe_desugared(object: &mut emath_artifact::JsonObject, desugared: Option<&s
     }
 }
 
+/// Pipeline ran (`ok`) is not admission. Untrusted pane text stays
+/// `admitted: false` until diagnostics are clean.
+fn put_pipeline_status(object: &mut emath_artifact::JsonObject, diagnostics: &Diagnostics) {
+    object.bool("ok", true);
+    object.bool("admitted", !diagnostics.has_errors());
+}
+
 struct RunPayload<'a> {
     source: Cow<'a, str>,
     given: Option<BTreeMap<String, Value>>,
 }
 
-fn parse_run_payload<'a>(payload: &'a str) -> RunPayload<'a> {
+fn parse_run_payload<'a>(payload: &'a str) -> Result<RunPayload<'a>, String> {
     let trimmed = payload.trim_start();
     if !trimmed.starts_with('{') {
-        return RunPayload {
+        return Ok(RunPayload {
             source: Cow::Borrowed(payload),
             given: None,
-        };
+        });
     }
     let Ok(value) = parse_json_document(payload.trim()) else {
-        return RunPayload {
+        return Ok(RunPayload {
             source: Cow::Borrowed(payload),
             given: None,
-        };
+        });
     };
     let Ok(source) = value.string_field("source") else {
-        return RunPayload {
+        return Ok(RunPayload {
             source: Cow::Borrowed(payload),
             given: None,
-        };
+        });
     };
-    RunPayload {
-        source: Cow::Owned(source),
-        given: parse_given_field(&value),
-    }
-}
-
-fn parse_given_field(value: &JsonValue) -> Option<BTreeMap<String, Value>> {
-    let Ok(given) = value.field("given") else {
-        return None;
-    };
-    let JsonValue::Obj(entries) = given else {
-        return Some(BTreeMap::new());
-    };
-    let mut map = BTreeMap::new();
-    for (name, entry) in entries {
-        if let Some(value) = parse_json_value(entry) {
-            map.insert(name.clone(), value);
+    if let JsonValue::Obj(entries) = &value {
+        if let Some(key) = first_duplicate_key(entries) {
+            return Err(format!("run envelope duplicates `{key}`"));
         }
     }
-    Some(map)
+    Ok(RunPayload {
+        source: Cow::Owned(source),
+        given: parse_given_field(&value)?,
+    })
+}
+
+fn first_duplicate_key(entries: &[(String, JsonValue)]) -> Option<&str> {
+    let mut seen = BTreeMap::new();
+    for (key, _) in entries {
+        if seen.insert(key.as_str(), ()).is_some() {
+            return Some(key.as_str());
+        }
+    }
+    None
+}
+
+fn parse_given_field(value: &JsonValue) -> Result<Option<BTreeMap<String, Value>>, String> {
+    let Ok(given) = value.field("given") else {
+        return Ok(None);
+    };
+    let JsonValue::Obj(entries) = given else {
+        return Err("given must be a JSON object".into());
+    };
+    if let Some(name) = first_duplicate_key(entries) {
+        return Err(format!("given `{name}` is duplicated"));
+    }
+    let mut map = BTreeMap::new();
+    for (name, entry) in entries {
+        let Some(parsed) = parse_json_value(entry) else {
+            return Err(format!(
+                "given `{name}` is not a finite Float64, vector, or matrix"
+            ));
+        };
+        map.insert(name.clone(), parsed);
+    }
+    Ok(Some(map))
+}
+
+fn parse_finite_f64(text: &str) -> Option<f64> {
+    text.parse::<f64>().ok().filter(|value| value.is_finite())
 }
 
 /// Parse a pane `given` entry into a typed [`Value`]: scalars, vectors,
 /// matrices (array-of-arrays), and tensors (`{ shape, data }`).
 fn parse_json_value(entry: &JsonValue) -> Option<Value> {
     match entry {
-        JsonValue::Num(text) | JsonValue::Str(text) => text.parse::<f64>().ok().map(Value::F64),
+        JsonValue::Num(text) | JsonValue::Str(text) => parse_finite_f64(text).map(Value::F64),
         JsonValue::Bool(flag) => Some(Value::Bool(*flag)),
         JsonValue::Arr(list) => parse_json_array(list),
         JsonValue::Obj(entries) => parse_json_tensor(entries),
@@ -301,7 +333,7 @@ fn parse_json_array(list: &[JsonValue]) -> Option<Value> {
         let elements = list
             .iter()
             .map(|item| match item {
-                JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<f64>().ok(),
+                JsonValue::Num(t) | JsonValue::Str(t) => parse_finite_f64(t),
                 _ => None,
             })
             .collect::<Option<Vec<f64>>>()?;
@@ -322,7 +354,7 @@ fn parse_json_array(list: &[JsonValue]) -> Option<Value> {
             }
             for cell in cells {
                 let n = match cell {
-                    JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<f64>().ok()?,
+                    JsonValue::Num(t) | JsonValue::Str(t) => parse_finite_f64(t)?,
                     _ => return None,
                 };
                 data.push(n);
@@ -339,6 +371,9 @@ fn parse_json_array(list: &[JsonValue]) -> Option<Value> {
 }
 
 fn parse_json_tensor(entries: &[(String, JsonValue)]) -> Option<Value> {
+    if first_duplicate_key(entries).is_some() {
+        return None;
+    }
     let shape = entries
         .iter()
         .find(|(k, _)| k == "shape")
@@ -369,7 +404,7 @@ fn parse_json_tensor(entries: &[(String, JsonValue)]) -> Option<Value> {
     let data: Vec<f64> = data
         .iter()
         .map(|d| match d {
-            JsonValue::Num(t) | JsonValue::Str(t) => t.parse::<f64>().ok(),
+            JsonValue::Num(t) | JsonValue::Str(t) => parse_finite_f64(t),
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
@@ -425,7 +460,7 @@ fn op_check(source: &str) -> String {
     let (mut session, file) = session_from_source(&prepared.source);
     let result = session.check(file);
     let mut object = JsonWriter::object();
-    object.bool("ok", true);
+    put_pipeline_status(&mut object, &result.diagnostics);
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.strings("declarations", &declaration_names(&result.package));
     maybe_desugared(&mut object, prepared.desugared());
@@ -467,7 +502,7 @@ fn op_plan(source: &str) -> String {
     plans.int("count", result.plans.len() as u64);
     plans.objects("items", &plan_items);
     let mut object = JsonWriter::object();
-    object.bool("ok", true);
+    put_pipeline_status(&mut object, &result.diagnostics);
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.objects("requests", &requests);
     object.object_field("plans", plans.finish().trim_end());
@@ -481,7 +516,7 @@ fn op_mig(source: &str) -> String {
     let result = session.plan(file);
     let mig = Mig::from_package(&result.package);
     let mut object = JsonWriter::object();
-    object.bool("ok", true);
+    put_pipeline_status(&mut object, &result.diagnostics);
     object.string("canonical", &mig.canonical());
     object.int("nodes", mig.nodes.len() as u64);
     object.int("edges", mig.edges.len() as u64);
@@ -496,7 +531,7 @@ fn op_generate(source: &str) -> String {
     let result = session.plan(file);
     if result.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
-        object.bool("ok", true);
+        put_pipeline_status(&mut object, &result.diagnostics);
         object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
         maybe_desugared(&mut object, prepared.desugared());
         return object.finish();
@@ -520,7 +555,7 @@ fn op_generate(source: &str) -> String {
         files.push(entry.finish().trim_end().to_string());
     }
     let mut object = JsonWriter::object();
-    object.bool("ok", true);
+    put_pipeline_status(&mut object, &result.diagnostics);
     object.string("crate_name", &crate_name);
     object.objects("files", &files);
     maybe_desugared(&mut object, prepared.desugared());
@@ -528,13 +563,16 @@ fn op_generate(source: &str) -> String {
 }
 
 fn op_run(payload: &str) -> String {
-    let envelope = parse_run_payload(payload);
+    let envelope = match parse_run_payload(payload) {
+        Ok(envelope) => envelope,
+        Err(message) => return error_json(&message),
+    };
     let prepared = prepare_source(&envelope.source);
     let (mut session, file) = session_from_source(&prepared.source);
     let result = session.check(file);
     if result.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
-        object.bool("ok", true);
+        put_pipeline_status(&mut object, &result.diagnostics);
         object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
         maybe_desugared(&mut object, prepared.desugared());
         return object.finish();
@@ -572,7 +610,7 @@ fn op_inputs(source: &str) -> String {
         declarations.push(object.finish().trim_end().to_string());
     }
     let mut object = JsonWriter::object();
-    object.bool("ok", true);
+    put_pipeline_status(&mut object, &result.diagnostics);
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.objects("declarations", &declarations);
     maybe_desugared(&mut object, prepared.desugared());
@@ -592,6 +630,7 @@ fn serialize_run_report(report: &RunReport, desugared: Option<&str>) -> String {
     summary.int("computed", u64::from(report.summary.computed));
     let mut object = JsonWriter::object();
     object.bool("ok", true);
+    object.bool("admitted", true);
     object.string("tier", "interpreted-strict-f64");
     object.objects("declarations", &declarations);
     object.object_field("summary", summary.finish().trim_end());
@@ -721,12 +760,12 @@ fn op_format(source: &str) -> String {
     let parsed = parse_lossless(source, FileId(0), &Limits::default());
     if parsed.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
-        object.bool("ok", true);
+        put_pipeline_status(&mut object, &parsed.diagnostics);
         object.objects("diagnostics", &diagnostic_objects(&parsed.diagnostics));
         return object.finish();
     }
     let mut object = JsonWriter::object();
-    object.bool("ok", true);
+    put_pipeline_status(&mut object, &parsed.diagnostics);
     object.string("formatted", &format_lossless(&parsed));
     object.finish()
 }
@@ -755,6 +794,7 @@ mod tests {
     fn check_hello_square_admits() {
         let json = run_op("check", HELLO_SQUARE);
         assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"admitted\": true"), "{json}");
         assert!(json.contains("\"diagnostics\": []"), "{json}");
         assert!(json.contains("\"Square\""), "{json}");
     }
@@ -866,9 +906,20 @@ mod tests {
     }
 
     #[test]
+    fn empty_and_comment_only_pane_are_not_admitted() {
+        for source in ["", "   \n", "# comment only\n", "// still comment only\n"] {
+            let json = run_op("check", source);
+            assert!(json.contains("\"ok\": true"), "{source:?}: {json}");
+            assert!(json.contains("\"admitted\": false"), "{source:?}: {json}");
+            assert!(json.contains("E-PKG-081"), "{source:?}: {json}");
+        }
+    }
+
+    #[test]
     fn check_bad_source_surfaces_code() {
         let json = run_op("check", "this is not emath\n");
         assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"admitted\": false"), "{json}");
         assert!(json.contains("\"severity\": \"error\""), "{json}");
         assert!(
             json.contains("E-SYN") || json.contains("E-NAME") || json.contains("E-"),
@@ -1123,6 +1174,7 @@ emath function square(x: Float64) -> Float64:
     fn run_error_source_surfaces_diagnostics() {
         let json = run_op("run", "this is not emath\n");
         assert!(json.contains("\"ok\": true"), "{json}");
+        assert!(json.contains("\"admitted\": false"), "{json}");
         assert!(json.contains("\"severity\": \"error\""), "{json}");
         assert!(
             json.contains("E-SYN") || json.contains("E-NAME") || json.contains("E-"),
@@ -1226,6 +1278,37 @@ emath function square(x: Float64) -> Float64:
         assert!(json.contains("\"refusal\""), "{json}");
         assert!(json.contains("missing input `x`"), "{json}");
         assert!(json.contains("\"_pane\""), "{json}");
+    }
+
+    #[test]
+    fn run_envelope_malformed_given_number_refuses() {
+        let json = run_envelope(HELLO_SQUARE, Some(&[("x", "\"abc\"")]));
+        assert!(json.contains("\"ok\": false"), "{json}");
+        assert!(json.contains("given `x`"), "{json}");
+        let nan = run_envelope(HELLO_SQUARE, Some(&[("x", "\"NaN\"")]));
+        assert!(nan.contains("\"ok\": false"), "{nan}");
+        let inf = run_envelope(HELLO_SQUARE, Some(&[("x", "\"Infinity\"")]));
+        assert!(inf.contains("\"ok\": false"), "{inf}");
+    }
+
+    #[test]
+    fn run_envelope_duplicate_given_key_refuses() {
+        let mut object = JsonWriter::object();
+        object.string("source", HELLO_SQUARE);
+        object.field("given", "{\"x\": 1.0, \"x\": 2.0}");
+        let json = run_op("run", &object.finish());
+        assert!(json.contains("\"ok\": false"), "{json}");
+        assert!(json.contains("given `x` is duplicated"), "{json}");
+    }
+
+    #[test]
+    fn run_envelope_duplicate_source_key_refuses() {
+        let mut object = JsonWriter::object();
+        object.string("source", HELLO_SQUARE);
+        object.string("source", HELLO_SQUARE);
+        let json = run_op("run", &object.finish());
+        assert!(json.contains("\"ok\": false"), "{json}");
+        assert!(json.contains("run envelope duplicates `source`"), "{json}");
     }
 
     fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
