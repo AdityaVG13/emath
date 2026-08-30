@@ -719,8 +719,12 @@ pub(super) fn admit_declaration(
 
     // Pass 5 (bead emath-l3-contracted-component-ceus7): L3 section rules.
     //
-    // R5 (E-NAME-020): the same name bound in BOTH `inputs:` and `outputs:`
-    // forks the contract's identity for that slot — refuse.
+    // R5 (E-NAME-020): a name bound in BOTH `inputs:` and `outputs:` forks
+    // the contract's identity for that slot. The generic duplicate-field
+    // check already rejects it ("duplicate field ... declared in section
+    // ..."), so no local rule is needed here; the LOCAL rule below covers
+    // the case nothing else catches: a `definitions:` name shadowing an
+    // `inputs:` name.
     // R6 (E-SEC-130): contract mode with `outputs:`/`goals:` but NO `inputs:`
     // section leaves the I/O surface unnamed — refuse.
     // R4 (E-SEC-133): contract mode without `goals:` is legal (every
@@ -748,22 +752,6 @@ pub(super) fn admit_declaration(
                     .collect()
             })
             .unwrap_or_default();
-        if let Some(outputs) = by_name.get("outputs") {
-            for stmt in &outputs.suite.statements {
-                if let StmtKind::FieldDecl { name, .. } = &stmt.kind {
-                    if input_names.contains(name) {
-                        admitter.error(
-                            "E-NAME-020",
-                            format!(
-                                "name `{name}` is bound in both `inputs:` and `outputs:` — \
-                                 a contracted slot cannot be both an input and an output"
-                            ),
-                            stmt.source,
-                        );
-                    }
-                }
-            }
-        }
         // R5 (continued): a `definitions:` name that shadows an `inputs:`
         // name silently overwrites the declared input inside the component
         // body — same identity fork as inputs/outputs, same refusal.
