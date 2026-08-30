@@ -250,6 +250,8 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
     match op {
         EmirOp::ConstF64(_)
         | EmirOp::ConstI64(_)
+        | EmirOp::ConstText(_)
+        | EmirOp::SeriesCreate { .. }
         | EmirOp::ConstBool(_)
         | EmirOp::ConstComplex(..) => true,
         EmirOp::LoadInput(i) => usize::from(*i) < usize::from(program.input_count),
@@ -274,7 +276,16 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         | EmirOp::Iff(..)
         | EmirOp::Not(_)
         | EmirOp::IsFinite(_) => true,
-        EmirOp::Select { .. } => true,
+        EmirOp::Select { .. }
+        | EmirOp::FormatText { .. }
+        | EmirOp::TextLength(_)
+        | EmirOp::TextNfc(_)
+        | EmirOp::ReportSection { .. }
+        | EmirOp::ReportDocument { .. }
+        | EmirOp::ReportMarkdown(_)
+        | EmirOp::ReportLatex(_)
+        | EmirOp::SetCreate { .. }
+        | EmirOp::RecordCreate { .. } => true,
         EmirOp::VectorCreate(..) | EmirOp::MatrixCreate { .. } | EmirOp::TensorCreate { .. } => {
             true
         }
@@ -282,7 +293,9 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         EmirOp::VectorIndex { .. }
         | EmirOp::MatrixIndex { .. }
         | EmirOp::TensorIndex { .. }
-        | EmirOp::TensorSlice { .. } => false,
+        | EmirOp::TensorSlice { .. }
+        | EmirOp::SetContains { .. }
+        | EmirOp::SeriesSample { .. } => false,
         // Static-shape aggregate ops: shape/type faults are excluded by the
         // typed front end.
         EmirOp::VectorAdd(..)
@@ -300,6 +313,80 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         | EmirOp::MatrixMulVector(..)
         | EmirOp::MatrixMulMatrix(..)
         | EmirOp::MatrixTranspose(_)
+        // Spectral/iterative kernels (xx0x.2) refuse typed on bad input
+        // (E-LINALG-001..003) — dynamic faults, like Factorial.
+        | EmirOp::EigenSymmetric(_)
+        | EmirOp::EigenVectorsSymmetric(_)
+        | EmirOp::SvdSingularValues(_)
+        | EmirOp::SvdFactors(_)
+        | EmirOp::CgSolve(..)
+        | EmirOp::LinearSolve(..)
+        | EmirOp::LuFactors(_)
+        | EmirOp::QrFactors(_)
+        | EmirOp::OuterProduct(..)
+        // Graph kernels (r2-graphs-masa) refuse typed on bad input
+        // (E-GRAPH-001..003) — dynamic faults, like the spectral set.
+        | EmirOp::GraphReachable(..)
+        | EmirOp::GraphBfsOrder(..)
+        | EmirOp::GraphDijkstra(..)
+        | EmirOp::GraphDegreeOut(_)
+        | EmirOp::GraphLaplacian(_)
+        | EmirOp::GraphSymmetrize(_)
+        | EmirOp::GraphBellmanFord(..)
+        | EmirOp::GraphSparseTriplets(_)
+        | EmirOp::GraphSparseFromTriplets(..)
+        // Exact integer nullspace (rymw): dynamic faults (E-NULLSPACE-001/002)
+        // — never folded, matched only by children-preserving rewriting.
+        | EmirOp::IntNullspace(_)
+        // Exact integer product delta (rymw thermo): dynamic faults
+        // (E-EXACT-001/002) — never folded.
+        | EmirOp::ExactProductDelta(..)
+        // Optimization kernels (r3-lp-milp-wlif) refuse typed on bad
+        // input (E-LP-001..004, E-PARETO-001) — dynamic faults, like
+        // the spectral/graph sets.
+        | EmirOp::LpMinimize(..)
+        | EmirOp::ParetoFront(_)
+        // Polynomial kernels (r3-funcspaces-poly-hjor) refuse typed on
+        // non-finite input (E-POLY-001/002) — dynamic faults.
+        | EmirOp::PolyMul(..)
+        | EmirOp::PolyEval(..)
+        | EmirOp::SequenceGenerate { .. }
+        | EmirOp::SequenceConvolve { .. }
+        // ODE stepping (xx0x.3) refuses typed: Newton non-convergence
+        // (E-ODE-001), non-advancing step (E-ODE-003), non-finite
+        // carriers (E-ODE-004).
+        | EmirOp::OdeBackwardEuler(..)
+        | EmirOp::OdeVelocityVerlet(..)
+        // Spectral Poisson (xx0x.4) refuses typed: empty interior
+        // (E-PDE-001), non-finite load (E-PDE-002).
+        | EmirOp::PoissonDirichletSine(_)
+        // Probability ops (xx0x.5) refuse typed: invalid parameters
+        // (E-PROB-001), non-finite carriers (E-PROB-002), wrong arity
+        // (E-PROB-003).
+        | EmirOp::ProbSample { .. }
+        | EmirOp::ProbDensity { .. }
+        // Control kernels (zxkl thin B43) refuse typed on bad input
+        // (E-CONTROL-001..005) — dynamic faults, like the probability
+        // set.
+        | EmirOp::ControlTransferEval(..)
+        | EmirOp::ControlDcGain(..)
+        | EmirOp::ControlPolesStable(_)
+        // Category kernels (88wo thin B39) refuse typed on bad input
+        // (E-CAT-001..007) — dynamic faults, like the control set.
+        | EmirOp::CategoryCheck(..)
+        | EmirOp::CategoryDiagramCommutative(..)
+        // Option/Result semantics (aj8d) are TOTAL value ops — they
+        // fault only via TypeConfusion on a wrong carrier shape, the
+        // same dynamic-fault class as the typed-kernel sets above.
+        | EmirOp::OptionSome(_)
+        | EmirOp::OptionNone
+        | EmirOp::OptionIsSome(_)
+        | EmirOp::OptionUnwrapOr(..)
+        | EmirOp::ResultOk(_)
+        | EmirOp::ResultErr(_)
+        | EmirOp::ResultIsOk(_)
+        | EmirOp::ResultUnwrapOr(..)
+        | EmirOp::ResultErrorOf(_)
         | EmirOp::TensorAdd(..)
         | EmirOp::TensorSub(..)
         | EmirOp::TensorScale(..)
@@ -309,6 +396,7 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         // non-convergence).
         EmirOp::Factorial(..)
         | EmirOp::ModInv(..)
+        | EmirOp::IntRem(..)
         | EmirOp::Congruence(..)
         | EmirOp::PolyEvalMod(..)
         | EmirOp::RSEncode(..)
@@ -322,6 +410,20 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         | EmirOp::Optimize { .. }
         | EmirOp::SampleLimit { .. }
         | EmirOp::ReverseMode { .. } => false,
+        // Capability dispatch can refuse (E-CELL-006), demand a provider
+        // run, or fault on arity/shape — never total.
+        EmirOp::ApplyCapability { .. } => false,
+        // Generic vector map/broadcast/finite-guard ops are total on any
+        // (possibly empty) vector; reduce faults on an empty vector, so
+        // it is kept eager like the index ops.
+        EmirOp::VectorMap { .. } | EmirOp::VectorMapScalar { .. } => true,
+        EmirOp::VectorReduce { .. } => false,
+        EmirOp::VectorAllFinite(_) => true,
+        // Certified intervals fault on ill-formed bounds (8pjn) and
+        // intersection faults on an empty result — never total.
+        EmirOp::IntervalCreate(..)
+        | EmirOp::IntervalIntersect(..)
+        | EmirOp::SpecialFunction { .. } => false,
     }
 }
 
@@ -355,23 +457,156 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::MatrixScale(a, b)
         | EmirOp::MatrixMulVector(a, b)
         | EmirOp::MatrixMulMatrix(a, b)
+        | EmirOp::CgSolve(a, b)
+        | EmirOp::LinearSolve(a, b)
+        | EmirOp::OuterProduct(a, b)
+        | EmirOp::GraphReachable(a, b)
+        | EmirOp::GraphBfsOrder(a, b)
+        | EmirOp::GraphDijkstra(a, b)
+        | EmirOp::GraphBellmanFord(a, b)
+        | EmirOp::GraphSparseFromTriplets(a, b)
+        | EmirOp::PolyMul(a, b)
+        | EmirOp::PolyEval(a, b)
         | EmirOp::TensorAdd(a, b)
         | EmirOp::TensorSub(a, b)
         | EmirOp::TensorScale(a, b)
         | EmirOp::ModInv(a, b)
+        | EmirOp::IntRem(a, b)
         | EmirOp::HammingDistance(a, b)
         | EmirOp::BinaryBuiltin(_, a, b) => {
             push(a);
             push(b);
         }
+        EmirOp::IntNullspace(a) => {
+            push(a);
+        }
+        EmirOp::ExactProductDelta(a, b) => {
+            push(a);
+            push(b);
+        }
+        EmirOp::SeriesSample { series, time } => {
+            push(series);
+            push(time);
+        }
+        EmirOp::SequenceGenerate {
+            initial,
+            recurrence,
+            budget,
+        } => {
+            push(initial);
+            push(recurrence);
+            push(budget);
+        }
+        EmirOp::SequenceConvolve { left, right, count } => {
+            push(left);
+            push(right);
+            push(count);
+        }
+        // Three-operand ops (r3-lp-milp-wlif LP; xx0x.3 backward Euler).
+        EmirOp::LpMinimize(a, b, c) | EmirOp::OdeBackwardEuler(a, b, c) => {
+            push(a);
+            push(b);
+            push(c);
+        }
+        // Three-operand ops (zxkl control: transfer num/den/x,
+        // state-space A/b/c).
+        EmirOp::ControlTransferEval(a, b, c) | EmirOp::ControlDcGain(a, b, c) => {
+            push(a);
+            push(b);
+            push(c);
+        }
+        // Three-operand op (88wo category law gate: dom, cod, comp).
+        EmirOp::CategoryCheck(a, b, c) => {
+            push(a);
+            push(b);
+            push(c);
+        }
+        // Four-operand op (88wo category commutativity: dom, cod,
+        // comp, faces).
+        EmirOp::CategoryDiagramCommutative(a, b, c, d) => {
+            push(a);
+            push(b);
+            push(c);
+            push(d);
+        }
+        // Four-operand op (xx0x.3 velocity Verlet: a, q, v, h).
+        EmirOp::OdeVelocityVerlet(a, b, c, d) => {
+            push(a);
+            push(b);
+            push(c);
+            push(d);
+        }
+        // Three-operand op (xx0x.5 seeded sampling: params, seed, draws).
+        EmirOp::ProbSample {
+            params: a,
+            seed: b,
+            draws: c,
+            stream,
+            ..
+        } => {
+            push(a);
+            push(b);
+            push(c);
+            if let Some(stream) = stream {
+                push(stream);
+            }
+        }
+        // Two-operand op (xx0x.5 density: params, x).
+        EmirOp::ProbDensity {
+            params: a, x: b, ..
+        } => {
+            push(a);
+            push(b);
+        }
+        // Option/Result ops (aj8d): constructors/polarity carry one
+        // register, unwraps carry two, None carries none.
+        EmirOp::OptionSome(a)
+        | EmirOp::OptionIsSome(a)
+        | EmirOp::ResultOk(a)
+        | EmirOp::ResultErr(a)
+        | EmirOp::ResultIsOk(a)
+        | EmirOp::ResultErrorOf(a) => push(a),
+        EmirOp::OptionUnwrapOr(a, b) | EmirOp::ResultUnwrapOr(a, b) => {
+            push(a);
+            push(b);
+        }
+        EmirOp::OptionNone => {}
+        // Single-operand op (xx0x.4 spectral Poisson: the load).
+        EmirOp::PoissonDirichletSine(a) => {
+            push(a);
+        }
         EmirOp::Neg(a)
         | EmirOp::UnaryBuiltin(_, a)
+        | EmirOp::TextLength(a)
+        | EmirOp::TextNfc(a)
+        | EmirOp::ReportMarkdown(a)
+        | EmirOp::ReportLatex(a)
         | EmirOp::Not(a)
         | EmirOp::IsFinite(a)
         | EmirOp::VectorNorm(a)
         | EmirOp::VectorLength(a)
         | EmirOp::MatrixTranspose(a)
+        | EmirOp::EigenSymmetric(a)
+        | EmirOp::EigenVectorsSymmetric(a)
+        | EmirOp::SvdSingularValues(a)
+        | EmirOp::SvdFactors(a)
+        | EmirOp::LuFactors(a)
+        | EmirOp::QrFactors(a)
+        | EmirOp::GraphDegreeOut(a)
+        | EmirOp::GraphLaplacian(a)
+        | EmirOp::GraphSymmetrize(a)
+        | EmirOp::GraphSparseTriplets(a)
+        | EmirOp::ParetoFront(a)
+        | EmirOp::ControlPolesStable(a)
         | EmirOp::Factorial(a) => push(a),
+        EmirOp::ReportSection { heading, body } => {
+            push(heading);
+            push(body);
+        }
+        EmirOp::ReportDocument { title, section } => {
+            push(title);
+            push(section);
+        }
         EmirOp::Select {
             condition,
             then_value,
@@ -388,6 +623,48 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
                 push(e);
             }
         }
+        EmirOp::ApplyCapability { ref args, .. } => {
+            for &value in args {
+                push(value);
+            }
+        }
+        EmirOp::FormatText { ref arguments, .. } => {
+            for &value in arguments {
+                push(value);
+            }
+        }
+        EmirOp::SpecialFunction { ref arguments, .. } => {
+            for &value in arguments {
+                push(value);
+            }
+        }
+        EmirOp::SetCreate {
+            ref elements,
+            ref guards,
+        } => {
+            for &value in elements {
+                push(value);
+            }
+            for &value in guards.iter().flatten() {
+                push(value);
+            }
+        }
+        EmirOp::SetContains { element, set } => {
+            push(element);
+            push(set);
+        }
+        EmirOp::RecordCreate { ref fields, .. } => {
+            for (_, value) in fields {
+                push(*value);
+            }
+        }
+        EmirOp::VectorMap { source, .. } => push(source),
+        EmirOp::VectorMapScalar { vector, scalar, .. } => {
+            push(vector);
+            push(scalar);
+        }
+        EmirOp::VectorReduce { source, .. } => push(source),
+        EmirOp::VectorAllFinite(source) => push(source),
         EmirOp::VectorIndex { vector, index } => {
             push(vector);
             push(index);
@@ -431,6 +708,14 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
             push(b);
             push(m);
         }
+        EmirOp::IntervalCreate(lo, hi) => {
+            push(lo);
+            push(hi);
+        }
+        EmirOp::IntervalIntersect(a, b) => {
+            push(a);
+            push(b);
+        }
         EmirOp::PolyEvalMod(c, x, p) | EmirOp::RSEncode(c, x, p) => {
             push(c);
             push(x);
@@ -455,6 +740,8 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         }
         EmirOp::ConstF64(_)
         | EmirOp::ConstI64(_)
+        | EmirOp::ConstText(_)
+        | EmirOp::SeriesCreate { .. }
         | EmirOp::ConstBool(_)
         | EmirOp::ConstComplex(..)
         | EmirOp::LoadInput(_)
@@ -474,9 +761,27 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
     match *op {
         EmirOp::ConstF64(_)
         | EmirOp::ConstI64(_)
+        | EmirOp::ConstText(_)
+        | EmirOp::SeriesCreate { .. }
         | EmirOp::ConstBool(_)
         | EmirOp::ConstComplex(..) => op.clone(),
         EmirOp::LoadInput(_) | EmirOp::LoadState(_) => op.clone(),
+        EmirOp::SeriesSample { series, time } => EmirOp::SeriesSample {
+            series: g(series),
+            time: g(time),
+        },
+        EmirOp::TextLength(text) => EmirOp::TextLength(g(text)),
+        EmirOp::TextNfc(text) => EmirOp::TextNfc(g(text)),
+        EmirOp::ReportSection { heading, body } => EmirOp::ReportSection {
+            heading: g(heading),
+            body: g(body),
+        },
+        EmirOp::ReportDocument { title, section } => EmirOp::ReportDocument {
+            title: g(title),
+            section: g(section),
+        },
+        EmirOp::ReportMarkdown(document) => EmirOp::ReportMarkdown(g(document)),
+        EmirOp::ReportLatex(document) => EmirOp::ReportLatex(g(document)),
         EmirOp::F64Add(a, b) => EmirOp::F64Add(g(a), g(b)),
         EmirOp::F64Sub(a, b) => EmirOp::F64Sub(g(a), g(b)),
         EmirOp::F64Mul(a, b) => EmirOp::F64Mul(g(a), g(b)),
@@ -516,7 +821,7 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
         } => EmirOp::MatrixCreate {
             rows,
             cols,
-            elements: elements.iter().copied().map(g).collect(),
+            elements: elements.iter().map(|value| g(*value)).collect(),
         },
         EmirOp::VectorIndex { vector, index } => EmirOp::VectorIndex {
             vector: g(vector),
@@ -572,12 +877,87 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
         EmirOp::MatrixMulVector(a, b) => EmirOp::MatrixMulVector(g(a), g(b)),
         EmirOp::MatrixMulMatrix(a, b) => EmirOp::MatrixMulMatrix(g(a), g(b)),
         EmirOp::MatrixTranspose(a) => EmirOp::MatrixTranspose(g(a)),
+        EmirOp::EigenSymmetric(a) => EmirOp::EigenSymmetric(g(a)),
+        EmirOp::EigenVectorsSymmetric(a) => EmirOp::EigenVectorsSymmetric(g(a)),
+        EmirOp::SvdSingularValues(a) => EmirOp::SvdSingularValues(g(a)),
+        EmirOp::SvdFactors(a) => EmirOp::SvdFactors(g(a)),
+        EmirOp::CgSolve(a, b) => EmirOp::CgSolve(g(a), g(b)),
+        EmirOp::LinearSolve(a, b) => EmirOp::LinearSolve(g(a), g(b)),
+        EmirOp::LuFactors(a) => EmirOp::LuFactors(g(a)),
+        EmirOp::QrFactors(a) => EmirOp::QrFactors(g(a)),
+        EmirOp::OuterProduct(a, b) => EmirOp::OuterProduct(g(a), g(b)),
+        EmirOp::GraphReachable(a, b) => EmirOp::GraphReachable(g(a), g(b)),
+        EmirOp::GraphBfsOrder(a, b) => EmirOp::GraphBfsOrder(g(a), g(b)),
+        EmirOp::GraphDijkstra(a, b) => EmirOp::GraphDijkstra(g(a), g(b)),
+        EmirOp::GraphBellmanFord(a, b) => EmirOp::GraphBellmanFord(g(a), g(b)),
+        EmirOp::GraphDegreeOut(a) => EmirOp::GraphDegreeOut(g(a)),
+        EmirOp::GraphLaplacian(a) => EmirOp::GraphLaplacian(g(a)),
+        EmirOp::GraphSymmetrize(a) => EmirOp::GraphSymmetrize(g(a)),
+        EmirOp::GraphSparseTriplets(a) => EmirOp::GraphSparseTriplets(g(a)),
+        EmirOp::GraphSparseFromTriplets(a, b) => EmirOp::GraphSparseFromTriplets(g(a), g(b)),
+        EmirOp::IntNullspace(a) => EmirOp::IntNullspace(g(a)),
+        EmirOp::ExactProductDelta(a, b) => EmirOp::ExactProductDelta(g(a), g(b)),
+        EmirOp::LpMinimize(a, b, c) => EmirOp::LpMinimize(g(a), g(b), g(c)),
+        EmirOp::ParetoFront(a) => EmirOp::ParetoFront(g(a)),
+        EmirOp::ControlTransferEval(a, b, c) => EmirOp::ControlTransferEval(g(a), g(b), g(c)),
+        EmirOp::ControlDcGain(a, b, c) => EmirOp::ControlDcGain(g(a), g(b), g(c)),
+        EmirOp::ControlPolesStable(a) => EmirOp::ControlPolesStable(g(a)),
+        EmirOp::CategoryCheck(a, b, c) => EmirOp::CategoryCheck(g(a), g(b), g(c)),
+        EmirOp::CategoryDiagramCommutative(a, b, c, d) => {
+            EmirOp::CategoryDiagramCommutative(g(a), g(b), g(c), g(d))
+        }
+        EmirOp::PolyMul(a, b) => EmirOp::PolyMul(g(a), g(b)),
+        EmirOp::PolyEval(a, b) => EmirOp::PolyEval(g(a), g(b)),
+        EmirOp::SequenceGenerate {
+            initial,
+            recurrence,
+            budget,
+        } => EmirOp::SequenceGenerate {
+            initial: g(initial),
+            recurrence: g(recurrence),
+            budget: g(budget),
+        },
+        EmirOp::SequenceConvolve { left, right, count } => EmirOp::SequenceConvolve {
+            left: g(left),
+            right: g(right),
+            count: g(count),
+        },
+        EmirOp::OdeBackwardEuler(a, b, c) => EmirOp::OdeBackwardEuler(g(a), g(b), g(c)),
+        EmirOp::OdeVelocityVerlet(a, b, c, d) => EmirOp::OdeVelocityVerlet(g(a), g(b), g(c), g(d)),
+        EmirOp::PoissonDirichletSine(a) => EmirOp::PoissonDirichletSine(g(a)),
+        EmirOp::ProbSample {
+            kind,
+            params,
+            seed,
+            draws,
+            stream,
+        } => EmirOp::ProbSample {
+            kind,
+            params: g(params),
+            seed: g(seed),
+            draws: g(draws),
+            stream: stream.map(|value| g(value)),
+        },
+        EmirOp::ProbDensity { kind, params, x } => EmirOp::ProbDensity {
+            kind,
+            params: g(params),
+            x: g(x),
+        },
+        EmirOp::OptionSome(a) => EmirOp::OptionSome(g(a)),
+        EmirOp::OptionNone => EmirOp::OptionNone,
+        EmirOp::OptionIsSome(a) => EmirOp::OptionIsSome(g(a)),
+        EmirOp::OptionUnwrapOr(a, b) => EmirOp::OptionUnwrapOr(g(a), g(b)),
+        EmirOp::ResultOk(a) => EmirOp::ResultOk(g(a)),
+        EmirOp::ResultErr(a) => EmirOp::ResultErr(g(a)),
+        EmirOp::ResultIsOk(a) => EmirOp::ResultIsOk(g(a)),
+        EmirOp::ResultUnwrapOr(a, b) => EmirOp::ResultUnwrapOr(g(a), g(b)),
+        EmirOp::ResultErrorOf(a) => EmirOp::ResultErrorOf(g(a)),
         EmirOp::TensorCreate {
             ref shape,
             ref elements,
         } => EmirOp::TensorCreate {
             shape: shape.clone(),
-            elements: elements.iter().copied().map(g).collect(),
+            elements: elements.iter().map(|value| g(*value)).collect(),
         },
         EmirOp::TensorIndex {
             tensor,
@@ -611,6 +991,7 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
         },
         EmirOp::Factorial(a) => EmirOp::Factorial(g(a)),
         EmirOp::ModInv(a, b) => EmirOp::ModInv(g(a), g(b)),
+        EmirOp::IntRem(a, b) => EmirOp::IntRem(g(a), g(b)),
         EmirOp::Congruence(a, b, m) => EmirOp::Congruence(g(a), g(b), g(m)),
         EmirOp::PolyEvalMod(c, x, p) => EmirOp::PolyEvalMod(g(c), g(x), g(p)),
         EmirOp::RSEncode(c, n, p) => EmirOp::RSEncode(g(c), g(n), g(p)),
@@ -694,6 +1075,71 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
             body: body.clone(),
             var_indices: var_indices.clone(),
         },
+        EmirOp::ApplyCapability {
+            ref capability,
+            ref class,
+            ref args,
+        } => EmirOp::ApplyCapability {
+            capability: capability.clone(),
+            class: class.clone(),
+            args: args.iter().copied().map(g).collect(),
+        },
+        EmirOp::FormatText {
+            ref template,
+            ref arguments,
+        } => EmirOp::FormatText {
+            template: template.clone(),
+            arguments: arguments.iter().copied().map(g).collect(),
+        },
+        EmirOp::SpecialFunction {
+            function,
+            ref arguments,
+            error_bound,
+        } => EmirOp::SpecialFunction {
+            function,
+            arguments: arguments.iter().copied().map(g).collect(),
+            error_bound,
+        },
+        EmirOp::SetCreate {
+            ref elements,
+            ref guards,
+        } => EmirOp::SetCreate {
+            elements: elements.iter().map(|value| g(*value)).collect(),
+            guards: guards
+                .iter()
+                .map(|guard| guard.as_ref().map(|value| g(*value)))
+                .collect(),
+        },
+        EmirOp::SetContains { element, set } => EmirOp::SetContains {
+            element: g(element),
+            set: g(set),
+        },
+        EmirOp::RecordCreate {
+            ref type_name,
+            ref fields,
+        } => EmirOp::RecordCreate {
+            type_name: type_name.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, value)| (name.clone(), g(*value)))
+                .collect(),
+        },
+        EmirOp::VectorMap { builtin, source } => EmirOp::VectorMap {
+            builtin,
+            source: g(source),
+        },
+        EmirOp::VectorMapScalar { op, vector, scalar } => EmirOp::VectorMapScalar {
+            op,
+            vector: g(vector),
+            scalar: g(scalar),
+        },
+        EmirOp::VectorReduce { reduce, source } => EmirOp::VectorReduce {
+            reduce,
+            source: g(source),
+        },
+        EmirOp::VectorAllFinite(source) => EmirOp::VectorAllFinite(g(source)),
+        EmirOp::IntervalCreate(lo, hi) => EmirOp::IntervalCreate(g(lo), g(hi)),
+        EmirOp::IntervalIntersect(a, b) => EmirOp::IntervalIntersect(g(a), g(b)),
     }
 }
 

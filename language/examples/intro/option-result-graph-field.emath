@@ -1,0 +1,83 @@
+# Option / Result / Graph / Field composite declaration types
+# (emath-option-result-graph-field-aj8d).
+#
+# This file demonstrates the composite compute types admitted on the
+# current tree: `Option<T>`, `Result<T, E>`, `Graph`, and `Field<p>` /
+# `GF<p>` as EXECUTABLE declaration types, plus the graph compute that
+# genuinely runs from `.emath` source.
+#
+# CLI:
+#   emath check language/examples/intro/option-result-graph-field.emath
+#   emath eval  language/examples/intro/option-result-graph-field.emath \
+#       --function AdjacencyFieldsFromSource
+#
+# `check` admits every declaration (parse + sema). `eval` runs the named
+# stateless function through EMIR lowering + the reference VM and prints
+# an `emath.eval-function` receipt. The second declaration below,
+# `CompositeTypesDeclare`, is a CHECK-ONLY admission surface: its inputs
+# are composite types, which `emath eval` cannot bind (Float64 and
+# Vector[Float64] only → E-EVAL-006), so select the graph function when
+# evaluating.
+#
+# EXACT (compute genuinely runs from text): the dense graph literal +
+# `reachability` / `shortest_distances` / `out_degrees`; and — in the
+# companion examples — the Option/Result carriers (`option_some` /
+# `option_is_some` / `option_unwrap_or`, `result_ok` / `result_error_of`)
+# and Field arithmetic as capability-cell data (`int_rem` + `field_inv`).
+# Every claim is pinned by an `aj8d_*` test in
+# tests/emath-sema/tests/option_result_graph_field.rs and
+# tests/emath-ir/tests/option_result_values.rs.
+#
+# REFUSED (typed diagnostics): wrong/literal/prime/arity moduli
+# (`E-TYPE-010`); carrier misuse and mismatched unwrap_or defaults
+# (`E-TYPE-012`); a float definition in a `Field<p>` output (`E-TYPE-012`,
+# exactness conformance); a non-positive `int_rem` modulus or a non-whole
+# operand (typed runtime fault, never a panic).
+
+emath function AdjacencyFieldsFromSource:
+    inputs:
+        source: Float64
+
+    outputs:
+        g: Graph
+        mask: Vector<Float64>
+        degrees: Vector<Float64>
+        distances: Vector<Float64>
+
+    definitions:
+        # 4-vertex dense adjacency (row-major Float64 matrix), unweighted.
+        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }
+        mask = reachability(g, source)
+        degrees = out_degrees(g)
+        distances = shortest_distances(g, source)
+
+    tests:
+        example <route_from_0>:
+            given source = 0
+            expect mask == [1.0, 1.0, 1.0, 1.0]
+            expect degrees == [2.0, 1.0, 1.0, 0.0]
+            expect distances == [0.0, 1.0, 1.0, 2.0]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+# Composite-type admission surface (check-only). The types admit with
+# distinct, value-carrying semantics: `Option<Int>` lowers to an
+# OptionType, `Result<Float64, Bool>` to a Result node, `Field<7>` /
+# `GF<7>` to the distinct `FieldPrime { modulus: 7 }` type (never the
+# silent `Int` collapse). Recursion descends: `Option<Result<Int, Bool>>`
+# builds a nested node. Non-prime, non-literal, or wrong-arity moduli
+# refuse `E-TYPE-010`. `emath eval` cannot bind these input types, so
+# admit them with `emath check`, not `emath eval`.
+emath function CompositeTypesDeclare:
+    inputs:
+        maybe: Option<Int>
+        nested: Option<Result<Int, Bool>>
+        outcome: Result<Float64, Bool>
+        f7: Field<7>
+        gf11: GF<11>
+
+    definitions:
+        t = 1.0

@@ -1,0 +1,73 @@
+# Field<p> / GF<p> arithmetic and the universal exact-Euclidean remainder
+# (emath-option-result-graph-field-aj8d, pass 6/8).
+#
+# `Field<p>` / `GF<p>` are exact-integer prime-field types: the modulus is
+# a type-level prime integer literal; values are exact i64 (a float
+# definition in a `Field` output refuses `E-TYPE-012`). Field
+# arithmetic is expressed as CAPABILITY-CELL DATA over the universal
+# `int_rem` primitive (`int_rem(a, m)` = `a.rem_euclid(m)` on i64) and the
+# exact modular inverse `field_inv(a, p)`. There is NO field-named parser
+# branch or EmirOp in the compiler — the `field7_add` / `field7_mul` /
+# `field7_inv` names below are user declarations composing generic ops.
+#
+# `field7_ops` is NULLARY, so `emath eval` runs it without bindings:
+#   emath check language/examples/intro/field-mod-arithmetic.emath
+#   emath eval  language/examples/intro/field-mod-arithmetic.emath \
+#       --function field7_ops
+# Each `outputs:` value is a `Field<7>` element (exact, in 0..=6). The
+# `field7_add` / `field7_mul` / `field7_inv`/`field7_rem` declarations take
+# `Int` inputs and are the same capability-data forms proven by the
+# `aj8d_field7_*` and `aj8d_meta_field7_distribution_law` tests.
+
+emath function field7_ops:
+    outputs:
+        add: Field<7>
+        mul: Field<7>
+        inv: Field<7>
+        rem: Field<7>
+
+    definitions:
+        # 3 + 4 = 7 ≡ 0 (mod 7); 3 * 4 = 12 ≡ 5; 3^-1 ≡ 5; -1 rem 7 = 6.
+        add = int_rem(3 + 4, 7)
+        mul = int_rem(3 * 4, 7)
+        inv = field_inv(3, 7)
+        rem = int_rem(-1, 7)
+
+# Capability data: field7_add(a, b) = (a + b) mod 7.
+emath function field7_add:
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        c: Field<7>
+    definitions:
+        c = int_rem(a + b, 7)
+
+# Capability data: field7_mul(a, b) = (a * b) mod 7.
+emath function field7_mul:
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        c: Field<7>
+    definitions:
+        c = int_rem(a * b, 7)
+
+# Capability data: field7_inv(a) = a^-1 mod 7 (exact modular inverse).
+emath function field7_inv:
+    inputs:
+        a: Int
+    outputs:
+        c: Field<7>
+    definitions:
+        c = field_inv(a, 7)
+
+# int_rem sign law through the primitive directly.
+emath function field7_rem:
+    inputs:
+        a: Int
+        m: Int
+    outputs:
+        c: Int
+    definitions:
+        c = int_rem(a, m)

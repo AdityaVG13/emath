@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 /// A typed register value. Locals match generated Rust (`f64` / `bool` / `Vec<f64>`).
 #[derive(Clone, Debug)]
@@ -9,6 +9,21 @@ pub enum Value {
     I64(i64),
     /// Boolean, produced by comparisons, `is_finite`, `and`/`or`/`not`.
     Bool(bool),
+    /// UTF-8 text produced by a literal or pure interpolation.
+    Text(String),
+    /// Immutable time-series data and its declared interpretation policy.
+    Series {
+        points: Vec<(f64, f64)>,
+        interpolation: String,
+        extrapolation: String,
+    },
+    /// Finite extensional set.
+    Set(Vec<Value>),
+    /// Inline record value with a nominal type path.
+    Record {
+        type_name: String,
+        fields: BTreeMap<String, Value>,
+    },
     /// Complex number (real + imaginary parts). B14.
     Complex { re: f64, im: f64 },
     /// Vector of Float64.
@@ -21,6 +36,19 @@ pub enum Value {
     },
     /// Rank-3+ tensor of Float64, row-major.
     Tensor { shape: Vec<usize>, data: Vec<f64> },
+    /// Certified interval `[lo, hi]` (8pjn). Constructed only through
+    /// `IntervalCreate`, which refuses ill-formed bounds.
+    Interval { lo: f64, hi: f64 },
+    /// Option value semantics (aj8d thin slice): `Some(inner)` or a
+    /// None that genuinely carries NOTHING (never a hidden zero — the
+    /// honesty gate is the TOTAL `OptionUnwrapOr`, since no panicking
+    /// unwrap exists at this layer).
+    Option(Option<Box<Value>>),
+    /// Result value semantics (aj8d thin slice): the `ok` flag
+    /// distinguishes Ok-payload from Err-payload on ONE carrier (a
+    /// shared Option carrier could not — Err(42) would read as
+    /// Ok(42)); the payload is the value when Ok, the error when Err.
+    Result { ok: bool, payload: Box<Value> },
 }
 
 impl PartialEq for Value {
@@ -31,6 +59,45 @@ impl PartialEq for Value {
             (Self::I64(left), Self::F64(right)) => emath_rt::eq_i64_f64(*left, *right),
             (Self::F64(left), Self::I64(right)) => emath_rt::eq_i64_f64(*right, *left),
             (Self::Bool(left), Self::Bool(right)) => left == right,
+            (Self::Text(left), Self::Text(right)) => left == right,
+            (
+                Self::Series {
+                    points: left_points,
+                    interpolation: left_interpolation,
+                    extrapolation: left_extrapolation,
+                },
+                Self::Series {
+                    points: right_points,
+                    interpolation: right_interpolation,
+                    extrapolation: right_extrapolation,
+                },
+            ) => {
+                left_interpolation == right_interpolation
+                    && left_extrapolation == right_extrapolation
+                    && left_points.len() == right_points.len()
+                    && left_points.iter().zip(right_points).all(
+                        |((left_time, left_value), (right_time, right_value))| {
+                            left_time.to_bits() == right_time.to_bits()
+                                && left_value.to_bits() == right_value.to_bits()
+                        },
+                    )
+            }
+            (Self::Set(left), Self::Set(right)) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .all(|item| right.iter().any(|other| item == other))
+            }
+            (
+                Self::Record {
+                    type_name: left_name,
+                    fields: left,
+                },
+                Self::Record {
+                    type_name: right_name,
+                    fields: right,
+                },
+            ) => left_name == right_name && left == right,
             (Self::Complex { re: r1, im: i1 }, Self::Complex { re: r2, im: i2 }) => {
                 r1.to_bits() == r2.to_bits() && i1.to_bits() == i2.to_bits()
             }
@@ -90,6 +157,24 @@ impl PartialEq for Value {
                         .zip(d2.iter())
                         .all(|(l, r)| l.to_bits() == r.to_bits())
             }
+            (Self::Interval { lo: l1, hi: h1 }, Self::Interval { lo: l2, hi: h2 }) => {
+                l1.to_bits() == l2.to_bits() && h1.to_bits() == h2.to_bits()
+            }
+            (Self::Option(left), Self::Option(right)) => match (left, right) {
+                (None, None) => true,
+                (Some(l), Some(r)) => l == r,
+                _ => false,
+            },
+            (
+                Self::Result {
+                    ok: ok1,
+                    payload: p1,
+                },
+                Self::Result {
+                    ok: ok2,
+                    payload: p2,
+                },
+            ) => ok1 == ok2 && p1 == p2,
             _ => false,
         }
     }
@@ -114,6 +199,35 @@ impl fmt::Display for Value {
             Self::F64(value) => f.write_str(&format_f64(*value)),
             Self::I64(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
+            Self::Text(value) => f.write_str(value),
+            Self::Series {
+                points,
+                interpolation,
+                extrapolation,
+            } => write!(
+                f,
+                "Series({points:?}, interpolation: {interpolation}, extrapolation: {extrapolation})"
+            ),
+            Self::Set(values) => {
+                f.write_str("{")?;
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{value}")?;
+                }
+                f.write_str("}")
+            }
+            Self::Record { type_name, fields } => {
+                write!(f, "{type_name}:{{")?;
+                for (index, (name, value)) in fields.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{name}: {value}")?;
+                }
+                f.write_str("}")
+            }
             Self::Complex { re, im } => {
                 if *im == 0.0 {
                     f.write_str(&format_f64(*re))
@@ -161,6 +275,18 @@ impl fmt::Display for Value {
                     f.write_str(&format_f64(*elem))?;
                 }
                 f.write_str("]")
+            }
+            Self::Interval { lo, hi } => {
+                write!(f, "[{}, {}]", format_f64(*lo), format_f64(*hi))
+            }
+            Self::Option(Some(inner)) => write!(f, "some({inner})"),
+            Self::Option(None) => f.write_str("none"),
+            Self::Result { ok, payload } => {
+                if *ok {
+                    write!(f, "ok({payload})")
+                } else {
+                    write!(f, "err({payload})")
+                }
             }
         }
     }
@@ -223,6 +349,37 @@ pub enum EvalFault {
         /// Short reason (`integral steps must be positive and even`).
         detail: &'static str,
     },
+    /// A series with `extrapolation: refuse` was sampled outside its support.
+    SeriesOutOfSupport {
+        time_bits: u64,
+        start_bits: u64,
+        end_bits: u64,
+    },
+    /// Capability-cell contract refusal surfaced from the capability
+    /// layer (e.g. `E-CELL-006`: missing numeric policy, or non-finite
+    /// logits under the strict-f64 finite policy). The strict vs
+    /// Genesis/custom firewall holds at the VM seam.
+    CapabilityRefused {
+        /// Cell the refusal names.
+        capability: String,
+        /// Stable code from the capability layer (`E-CELL-*`).
+        code: String,
+    },
+    /// Outstanding provider call: the cell has no local reference
+    /// semantics in this world. This is the typed continuation hole —
+    /// resumable by a provider run, never a silent identity.
+    ProviderCallRequired {
+        /// Cell the provider must fulfill.
+        capability: String,
+        /// Number of arguments the provider receives.
+        args: usize,
+    },
+    /// Evaluation budget exhausted before completion; no partial
+    /// authority escapes.
+    BudgetExhausted {
+        /// Ops successfully executed before the refusal.
+        executed: u32,
+    },
 }
 
 impl fmt::Display for EvalFault {
@@ -238,6 +395,33 @@ impl fmt::Display for EvalFault {
                 write!(f, "{op} index {index} is outside 0..{len}")
             }
             Self::Arithmetic { op, detail } => write!(f, "{op}: {detail}"),
+            Self::SeriesOutOfSupport {
+                time_bits,
+                start_bits,
+                end_bits,
+            } => write!(
+                f,
+                "series-sample: t={} is outside support [{}, {}] under extrapolation: refuse",
+                f64::from_bits(*time_bits),
+                f64::from_bits(*start_bits),
+                f64::from_bits(*end_bits)
+            ),
+            Self::CapabilityRefused { capability, code } => {
+                write!(
+                    f,
+                    "capability cell `{capability}` refused its contract ({code})"
+                )
+            }
+            Self::ProviderCallRequired { capability, args } => write!(
+                f,
+                "capability cell `{capability}` requires a provider call \
+                 with {args} argument(s)"
+            ),
+            Self::BudgetExhausted { executed } => write!(
+                f,
+                "evaluation budget exhausted after {executed} step(s); \
+                 no partial authority"
+            ),
         }
     }
 }

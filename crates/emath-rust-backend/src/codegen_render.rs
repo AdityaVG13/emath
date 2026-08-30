@@ -1,7 +1,9 @@
 use std::collections::{BTreeSet, HashMap};
 
 use emath_exec_ir::optimize::{is_total, operand_registers};
-use emath_exec_ir::{EdgePolicy, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
+use emath_exec_ir::{
+    EdgePolicy, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine, ProbKind,
+};
 use emath_rust_ir::ast::{BinOp, Block, Expr, Stmt, Ty, UnOp, escape_ident};
 use emath_rust_ir::render::render_expr;
 
@@ -67,6 +69,18 @@ fn kind_of_op(
         EmirOp::ConstI64(_) => ScalarKind::I64,
         EmirOp::ConstF64(_) => ScalarKind::F64,
         EmirOp::ConstBool(_) => ScalarKind::Bool,
+        EmirOp::ConstText(_)
+        | EmirOp::FormatText { .. }
+        | EmirOp::TextNfc(_)
+        | EmirOp::ReportSection { .. }
+        | EmirOp::ReportDocument { .. }
+        | EmirOp::ReportMarkdown(_)
+        | EmirOp::ReportLatex(_)
+        | EmirOp::SeriesCreate { .. }
+        | EmirOp::SetCreate { .. }
+        | EmirOp::RecordCreate { .. } => ScalarKind::Other,
+        EmirOp::TextLength(_) => ScalarKind::I64,
+        EmirOp::SeriesSample { .. } => ScalarKind::F64,
         EmirOp::LoadInput(index) => names
             .get(*index as usize)
             .map(|name| {
@@ -94,7 +108,7 @@ fn kind_of_op(
             }
         }
         EmirOp::Neg(x) => kind_at(kinds, *x),
-        EmirOp::Factorial(_) | EmirOp::ModInv(_, _) | EmirOp::PolyEvalMod(..) => ScalarKind::I64,
+        EmirOp::Factorial(_) | EmirOp::ModInv(_, _) | EmirOp::IntRem(_, _) | EmirOp::PolyEvalMod(..) => ScalarKind::I64,
         EmirOp::HammingDistance(..) => ScalarKind::I64,
         EmirOp::Congruence(..)
         | EmirOp::IsFinite(_)
@@ -108,6 +122,8 @@ fn kind_of_op(
         | EmirOp::Or(..)
         | EmirOp::Imply(..)
         | EmirOp::Iff(..)
+        | EmirOp::ControlPolesStable(_)
+        | EmirOp::SetContains { .. }
         | EmirOp::Not(_) => ScalarKind::Bool,
         EmirOp::Select {
             then_value,
@@ -142,6 +158,18 @@ fn kind_of_op(
                 }
             }
         },
+        // Option/Result carrier ops (aj8d): is_some/is_ok are Bool;
+        // the unwrap honesty gate's scalar kind is the default's; the
+        // carriers themselves are opaque (never cast by typed_operand).
+        EmirOp::OptionIsSome(_) | EmirOp::ResultIsOk(_) => ScalarKind::Bool,
+        EmirOp::OptionUnwrapOr(_, default) | EmirOp::ResultUnwrapOr(_, default) => {
+            kind_at(kinds, *default)
+        }
+        EmirOp::OptionSome(_)
+        | EmirOp::OptionNone
+        | EmirOp::ResultOk(_)
+        | EmirOp::ResultErr(_)
+        | EmirOp::ResultErrorOf(_) => ScalarKind::Other,
         _ => ScalarKind::F64,
     }
 }
@@ -322,6 +350,9 @@ pub(crate) fn value_expr(
     states: &[String],
     i64_names: &BTreeSet<String>,
 ) -> Result<Expr, BackendError> {
+    if program.ops.len() == 1 {
+        return op_expr(&program.ops[0].0, program, names, states, i64_names);
+    }
     if program.ops.len() == 1 {
         return op_expr(&program.ops[0].0, program, names, states, i64_names);
     }
@@ -626,7 +657,137 @@ fn index_f64(program: &EmirProgram, value: EmirValue, kinds: &[ScalarKind]) -> S
 }
 
 fn map_index_result(call: String) -> Expr {
+    // Inside generated model rate/step methods (`value_expr_rate`), the
+    // body is a plain (non-Result) fn: admission validated the model's
+    // static shapes, so a checked-op fault there is unreachable. Render
+    // it as an honest panic (precedent: the optimize hessian-vanished
+    // panic) instead of `?`, which does not compile outside `Result`
+    // (E0277 in generated model crates, e.g. heat-volume `der_u`).
+    if rate_context() {
+        return Expr::Raw(format!(
+            "{call}.map_err(|e| e.to_string()).expect(\"internal: checked-op fault on admitted model\")"
+        ));
+    }
     Expr::Raw(format!("{call}.map_err(|e| e.to_string())?"))
+}
+
+/// Exact-integer null-vector call body: a `Result<Vec<f64>, String>` in
+/// a `{ ... }` block. Runtime parity with the interpreter's `IntNullspace`
+/// arm: a non-integral or out-of-i64-range entry refuses with
+/// E-NULLSPACE-001, a kernel failure (ragged rows / exact-integer
+/// overflow) refuses with E-NULLSPACE-001, and a nullspace that is not
+/// exactly one-dimensional refuses with E-NULLSPACE-002 (never a
+/// fabricated output). The value on success is the kernel's canonical
+/// primitive vector widened to f64 (entries are exact small integers,
+/// first nonzero entry positive).
+fn int_nullspace_call(program: &EmirProgram, matrix: EmirValue) -> String {
+    format!(
+        "{{ let __mat = &{};\n\
+         let __rows: Vec<Vec<i64>> = __mat.iter().map(|__r| -> Result<Vec<i64>, String> {{\n\
+         let mut __row = Vec::with_capacity(__r.len());\n\
+         for &__x in __r {{\n\
+         if __x.fract() != 0.0 || __x < -9223372036854775808.0 || __x >= 9223372036854775808.0 {{\n\
+         return Err(\"E-NULLSPACE-001: non-integral entry in integer nullspace input\".to_string());\n\
+         }}\n\
+         __row.push(__x as i64);\n\
+         }}\n\
+         Ok(__row)\n\
+         }}).collect::<Result<Vec<Vec<i64>>, String>>()\n\
+         .and_then(|__rows| emath_rt::primitive_int_nullvector(&__rows).map_err(|_| \"E-NULLSPACE-001: exact-integer overflow in nullspace input\".to_string()))\n\
+         .and_then(|__out| __out.ok_or_else(|| \"E-NULLSPACE-002: integer matrix has no exactly one-dimensional nullspace\".to_string()))\n\
+         .map(|__out| __out.into_iter().map(|__v| __v as f64).collect::<Vec<f64>>()) }}",
+        render_expr(&operand_ref(program, matrix)),
+    )
+}
+
+/// Result-context surfacing of `int_nullspace_call`: `?` in `Result`
+/// fns (constructor / CLI envelope paths), panic in plain-fn model
+/// rate/step bodies — same split the checked ops use via `map_index_result`.
+fn int_nullspace_result(call: String) -> Expr {
+    if rate_context() {
+        Expr::Raw(format!(
+            "{call}.unwrap_or_else(|e| panic!(\"internal: int-nullspace fault on admitted model: {{e}}\"))"
+        ))
+    } else {
+        Expr::Raw(format!("{call}.map_err(|e| e.to_string())?"))
+    }
+}
+
+/// Exact integer product-difference call body: a `Result<f64, String>`
+/// in a `{ ... }` block. Runtime parity with the exact-rational
+/// equality primitive: entries must be exact small nonnegative
+/// integers (< 2^53, E-EXACT-001), vectors must agree in length
+/// (E-EXACT-001), products run over u128 with overflow refusal
+/// (E-EXACT-002), and products are COMPARED IN u128 BEFORE any f64
+/// cast — distinct exact products near 1e18 must never compare equal
+/// through a lossy cast (the interpreter's two-cast compare was a
+/// false-zero defect; the generated path implements the fixed rule).
+/// The result is `0.0` when the products are exactly equal, otherwise
+/// the exact u128 difference widened to f64 with the sign of
+/// `p_product - q_product`.
+fn exact_product_delta_call(program: &EmirProgram, p: EmirValue, q: EmirValue) -> String {
+    format!(
+        "{{ let __p = &{};\n\
+         let __q = &{};\n\
+         (|| -> Result<f64, String> {{\n\
+         let __exact = |__x: f64| -> Result<u128, String> {{\n\
+         if __x.fract() != 0.0 || __x < 0.0 || __x >= 9007199254740992.0 {{\n\
+         return Err(\"E-EXACT-001: entries must be exact small nonnegative integers\".to_string());\n\
+         }}\n\
+         Ok(__x as u128)\n\
+         }};\n\
+         if __p.len() != __q.len() {{\n\
+         return Err(\"E-EXACT-001: numerator and denominator vectors differ in length\".to_string());\n\
+         }}\n\
+         let mut __pp = 1u128;\n\
+         for &__x in __p {{ __pp = __pp.checked_mul(__exact(__x)?).ok_or_else(|| \"E-EXACT-002: exact product overflow (use reduced K_i)\".to_string())?; }}\n\
+         let mut __qq = 1u128;\n\
+         for &__x in __q {{ __qq = __qq.checked_mul(__exact(__x)?).ok_or_else(|| \"E-EXACT-002: exact product overflow (use reduced K_i)\".to_string())?; }}\n\
+         if __pp == __qq {{ return Ok(0.0); }}\n\
+         let (__big, __small) = if __pp > __qq {{ (__pp, __qq) }} else {{ (__qq, __pp) }};\n\
+         Ok((__big - __small) as f64 * if __pp > __qq {{ 1.0 }} else {{ -1.0 }})\n\
+         }})() }}",
+        render_expr(&operand_ref(program, p)),
+        render_expr(&operand_ref(program, q)),
+    )
+}
+
+/// Result-context surfacing of `exact_product_delta_call` — same split
+/// as `int_nullspace_result`.
+fn exact_product_delta_result(call: String) -> Expr {
+    if rate_context() {
+        Expr::Raw(format!(
+            "{call}.unwrap_or_else(|e| panic!(\"internal: exact-product-delta fault on admitted model: {{e}}\"))"
+        ))
+    } else {
+        Expr::Raw(format!("{call}.map_err(|e| e.to_string())?"))
+    }
+}
+
+thread_local! {
+    /// Set while rendering generated model rate/step method bodies, where
+    /// checked-op faults are unreachable by admission and must not render
+    /// as `?` (no `Result` return type there).
+    static RATE_CONTEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn rate_context() -> bool {
+    RATE_CONTEXT.with(std::cell::Cell::get)
+}
+
+/// [`value_expr`] for generated model rate methods: checked ops
+/// (`Stencil3d`, tensor index/slice) render panic-on-unreachable instead
+/// of `?`. See [`map_index_result`].
+pub(crate) fn value_expr_rate(
+    program: &EmirProgram,
+    names: &[String],
+    states: &[String],
+    i64_names: &BTreeSet<String>,
+) -> Result<Expr, BackendError> {
+    RATE_CONTEXT.with(|cell| cell.set(true));
+    let out = value_expr(program, names, states, i64_names);
+    RATE_CONTEXT.with(|cell| cell.set(false));
+    out
 }
 
 fn render_slice_axis(program: &EmirProgram, axis: &EmirSliceAxis, kinds: &[ScalarKind]) -> String {
@@ -776,6 +937,315 @@ fn render_optimize_newton_step(n: usize, maximize: bool) -> String {
     block
 }
 
+/// Concrete Rust type of a non-carrier EMIR register — the payload slots
+/// of Option/Result carriers. Scalars resolve by `ScalarKind`; vector /
+/// matrix / tensor producers resolve structurally; everything else that
+/// computes a plain number falls back to `f64`.
+fn register_rust_ty(
+    program: &EmirProgram,
+    value: EmirValue,
+    kinds: &[ScalarKind],
+    names: &[String],
+    states: &[String],
+    i64_names: &BTreeSet<String>,
+) -> Option<String> {
+    let i = value.0 as usize;
+    let op: &EmirOp = &program.ops.get(i)?.0;
+    match op {
+        EmirOp::ConstI64(_)
+        | EmirOp::Factorial(_)
+        | EmirOp::ModInv(..)
+        | EmirOp::Congruence(..)
+        | EmirOp::PolyEvalMod(..)
+        | EmirOp::TextLength(_)
+        | EmirOp::HammingDistance(..)
+        | EmirOp::RSEncode(..) => Some("i64".to_string()),
+        EmirOp::ConstF64(_) => Some("f64".to_string()),
+        EmirOp::ConstBool(_) | EmirOp::Fold {
+            combine: FoldCombine::And | FoldCombine::Or,
+            ..
+        } => Some("bool".to_string()),
+        EmirOp::ConstText(_) => Some("String".to_string()),
+        EmirOp::VectorCreate(_) => Some("Vec<f64>".to_string()),
+        EmirOp::MatrixCreate { .. } => Some("Vec<Vec<f64>>".to_string()),
+        EmirOp::TensorCreate { .. } => Some("emath_rt::Tensor".to_string()),
+        EmirOp::SeriesCreate { .. } => Some("Vec<(f64, f64)>".to_string()),
+        EmirOp::Fold {
+            combine: FoldCombine::Add | FoldCombine::Mul,
+            init,
+            loop_var_index,
+            body,
+            ..
+        } => {
+            if fold_is_i64(kinds, *init, *loop_var_index, body, names, states, i64_names) {
+                Some("i64".to_string())
+            } else {
+                Some("f64".to_string())
+            }
+        }
+        EmirOp::LoadInput(index) => {
+            let name = names.get(*index as usize)?;
+            if i64_names.contains(name) {
+                Some("i64".to_string())
+            } else {
+                Some("f64".to_string())
+            }
+        }
+        EmirOp::LoadState(index) => {
+            let name = states.get(*index as usize)?;
+            if i64_names.contains(name) {
+                Some("i64".to_string())
+            } else {
+                Some("f64".to_string())
+            }
+        }
+        _ => match kind_at(kinds, value) {
+            ScalarKind::I64 => Some("i64".to_string()),
+            ScalarKind::Bool => Some("bool".to_string()),
+            _ => Some("f64".to_string()),
+        },
+    }
+}
+
+/// Payload Rust types of every Option/Result carrier register, resolved
+/// by dataflow over the SSA program: producers (the payload of
+/// `option_some`/`result_ok`/`result_err`) and consumers (the eager
+/// default of the `unwrap_or` honesty gate; the error payload composed
+/// by `result_error_of`) must agree. A conflict is a typed lowering
+/// refusal (interp TypeConfusion parity), never a panic. A payload kind
+/// the program never materializes (e.g. the Err slot of a `result_ok`
+/// that is only `is_ok`-ed) defaults to the sibling slot so every
+/// carrier register still gets one concrete Rust type.
+struct CarrierPayloadTypes {
+    /// Option carrier register → payload Rust type.
+    opt: HashMap<u32, String>,
+    /// Result carrier register → Ok payload Rust type.
+    ok: HashMap<u32, String>,
+    /// Result carrier register → Err payload Rust type.
+    err: HashMap<u32, String>,
+}
+
+impl CarrierPayloadTypes {
+    fn option(&self, register: u32) -> String {
+        self.opt
+            .get(&register)
+            .cloned()
+            .unwrap_or_else(|| "f64".to_string())
+    }
+
+    fn result_ok(&self, register: u32) -> String {
+        self.ok
+            .get(&register)
+            .cloned()
+            .unwrap_or_else(|| "f64".to_string())
+    }
+
+    fn result_err(&self, register: u32) -> String {
+        self.err
+            .get(&register)
+            .cloned()
+            .unwrap_or_else(|| "f64".to_string())
+    }
+}
+
+/// Resolve a register's NATIVE Rust type, recursing through carrier
+/// producers so NESTED carriers type correctly: `Option<Option<i64>>`,
+/// `Result<Option<i64>, i64>`, and the error-as-option projection. A
+/// non-carrier producer falls through to `register_rust_ty`. SSA is
+/// acyclic, so recursion terminates (aj8d pass 4 nested parity).
+fn nested_operand_ty(
+    program: &EmirProgram,
+    register: EmirValue,
+    kinds: &[ScalarKind],
+    names: &[String],
+    states: &[String],
+    i64_names: &BTreeSet<String>,
+) -> Option<String> {
+    let Some((op, _)) = program.ops.get(register.0 as usize) else {
+        return None;
+    };
+    match op {
+        EmirOp::OptionSome(payload) => Some(format!(
+            "Option<{}>",
+            nested_operand_ty(program, *payload, kinds, names, states, i64_names)
+                .unwrap_or_else(|| "f64".to_string())
+        )),
+        EmirOp::OptionNone => Some("Option<f64>".to_string()),
+        EmirOp::ResultOk(payload) | EmirOp::ResultErr(payload) => {
+            let inner = nested_operand_ty(program, *payload, kinds, names, states, i64_names)
+                .unwrap_or_else(|| "f64".to_string());
+            Some(format!("Result<{inner}, {inner}>"))
+        }
+        EmirOp::ResultErrorOf(carrier) => {
+            let err_ty = match program.ops.get(carrier.0 as usize) {
+                Some((EmirOp::ResultErr(payload), _)) => {
+                    nested_operand_ty(program, *payload, kinds, names, states, i64_names)
+                        .unwrap_or_else(|| "f64".to_string())
+                }
+                _ => "f64".to_string(),
+            };
+            Some(format!("Option<{err_ty}>"))
+        }
+        EmirOp::OptionUnwrapOr(_, default) | EmirOp::ResultUnwrapOr(_, default) => {
+            nested_operand_ty(program, *default, kinds, names, states, i64_names)
+        }
+        _ => register_rust_ty(program, register, kinds, names, states, i64_names),
+    }
+}
+
+fn carrier_payload_types(
+    program: &EmirProgram,
+    names: &[String],
+    states: &[String],
+    i64_names: &BTreeSet<String>,
+) -> Result<CarrierPayloadTypes, BackendError> {
+    let kinds = scalar_kinds(program, names, states, i64_names);
+    let mut tys = CarrierPayloadTypes {
+        opt: HashMap::new(),
+        ok: HashMap::new(),
+        err: HashMap::new(),
+    };
+    let bind = |map: &mut HashMap<u32, String>,
+                register: u32,
+                ty: String,
+                op: &EmirOp|
+     -> Result<bool, BackendError> {
+        match map.get(&register) {
+            Some(existing) if existing != &ty => Err(BackendError::Lowering(format!(
+                "op `{}` carrier payload kind conflict: `{existing}` vs `{ty}` (interp TypeConfusion parity)",
+                op.name()
+            ))),
+            Some(_) => Ok(false),
+            None => {
+                map.insert(register, ty);
+                Ok(true)
+            }
+        }
+    };
+    let payload_ty = |register: EmirValue,
+                      op: &EmirOp|
+     -> Result<String, BackendError> {
+        nested_operand_ty(program, register, &kinds, names, states, i64_names).ok_or_else(|| {
+            BackendError::Lowering(format!(
+                "op `{}` payload register {} out of range",
+                op.name(),
+                register.0
+            ))
+        })
+    };
+    // Producer-determined payload types.
+    for (i, (op, _)) in program.ops.iter().enumerate() {
+        match op {
+            EmirOp::OptionSome(payload) => {
+                bind(&mut tys.opt, i as u32, payload_ty(*payload, op)?, op)?;
+            }
+            EmirOp::ResultOk(payload) => {
+                bind(&mut tys.ok, i as u32, payload_ty(*payload, op)?, op)?;
+            }
+            EmirOp::ResultErr(payload) => {
+                bind(&mut tys.err, i as u32, payload_ty(*payload, op)?, op)?;
+            }
+            _ => {}
+        }
+    }
+    // Consumer and error_of propagation to a fixpoint (SSA is acyclic, so
+    // this terminates in at most the number of registers).
+    loop {
+        let mut changed = false;
+        for (i, (op, _)) in program.ops.iter().enumerate() {
+            match op {
+                EmirOp::OptionUnwrapOr(carrier, default) => {
+                    changed |= bind(
+                        &mut tys.opt,
+                        carrier.0,
+                        payload_ty(*default, op)?,
+                        op,
+                    )?;
+                }
+                EmirOp::ResultUnwrapOr(carrier, default) => {
+                    changed |= bind(&mut tys.ok, carrier.0, payload_ty(*default, op)?, op)?;
+                }
+                EmirOp::ResultErrorOf(carrier) => {
+                    if let Some(err_ty) = tys.err.get(&carrier.0).cloned() {
+                        changed |= bind(&mut tys.opt, i as u32, err_ty, op)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    // Fill never-materialized slots; a Result carrier with one known
+    // side mirrors it onto the other (both type params must be concrete
+    // in Rust; the unknown side never carries a value).
+    for (i, (op, _)) in program.ops.iter().enumerate() {
+        match op {
+            EmirOp::OptionSome(_) | EmirOp::OptionNone | EmirOp::ResultErrorOf(_) => {
+                tys.opt.entry(i as u32).or_insert_with(|| "f64".to_string());
+            }
+            EmirOp::ResultOk(_) | EmirOp::ResultErr(_) => {
+                let ok_entry = tys.ok.entry(i as u32).or_insert_with(|| "f64".to_string());
+                let err_entry = tys.err.entry(i as u32).or_insert_with(|| "f64".to_string());
+                if ok_entry == "f64" && err_entry != "f64" {
+                    *ok_entry = err_entry.clone();
+                }
+                if err_entry == "f64" && ok_entry != "f64" {
+                    *err_entry = ok_entry.clone();
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(tys)
+}
+
+/// Index of `op` inside `program.ops` (pointer identity; `op` is always
+/// borrowed from that slice during rendering).
+fn op_self_index(program: &EmirProgram, op: &EmirOp) -> Option<u32> {
+    program
+        .ops
+        .iter()
+        .position(|(produced, _)| std::ptr::eq(produced, op))
+        .map(|i| i as u32)
+}
+
+/// Static carrier-shape check (interp TypeConfusion parity): a carrier
+/// operand must be produced by a carrier op of the matching family,
+/// otherwise the strict backend refuses typed — a `BackendError`, never
+/// a Rust panic, never a silent scalar shadow.
+fn expect_carrier(
+    program: &EmirProgram,
+    value: EmirValue,
+    is_result: bool,
+    consumer: &str,
+) -> Result<(), BackendError> {
+    let Some(producer) = program.ops.get(value.0 as usize).map(|(op, _)| op) else {
+        return Err(BackendError::Lowering(format!(
+            "op `{consumer}` carrier operand register {} out of range",
+            value.0
+        )));
+    };
+    let family_ok = match is_result {
+        false => matches!(
+            producer,
+            EmirOp::OptionSome(_) | EmirOp::OptionNone | EmirOp::ResultErrorOf(_)
+        ),
+        true => matches!(producer, EmirOp::ResultOk(_) | EmirOp::ResultErr(_)),
+    };
+    if family_ok {
+        Ok(())
+    } else {
+        Err(BackendError::Lowering(format!(
+            "op `{consumer}` requires a {} carrier, got register {} produced by `{}` (interp TypeConfusion parity)",
+            if is_result { "Result" } else { "Option" },
+            value.0,
+            producer.name()
+        )))
+    }
+}
+
 pub(crate) fn op_expr(
     op: &EmirOp,
     program: &EmirProgram,
@@ -787,6 +1257,157 @@ pub(crate) fn op_expr(
     match op {
         EmirOp::ConstF64(bits) => Ok(Expr::F64(*bits)),
         EmirOp::ConstI64(value) => Ok(Expr::Int(*value)),
+        EmirOp::ConstText(value) => Ok(Expr::Str(value.clone())),
+        EmirOp::FormatText {
+            template,
+            arguments,
+        } => {
+            let mut args = Vec::with_capacity(arguments.len() + 1);
+            args.push(Expr::Str(rust_format_template(template)));
+            args.extend(arguments.iter().map(|argument| operand(program, *argument)));
+            Ok(Expr::Macro {
+                name: "format".to_string(),
+                args,
+            })
+        }
+        EmirOp::TextLength(text) => Ok(Expr::Raw(format!(
+            "{}.chars().count() as i64",
+            render_expr(&operand_ref(program, *text))
+        ))),
+        EmirOp::TextNfc(text) => Ok(Expr::Raw(format!(
+            "{}.clone()",
+            render_expr(&operand_ref(program, *text))
+        ))),
+        EmirOp::SpecialFunction {
+            function,
+            arguments,
+            error_bound,
+        } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| render_expr(&operand_ref(program, *argument)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let field = if *error_bound { "error_bound" } else { "value" };
+            Ok(Expr::Raw(format!(
+                "emath_rt::special::evaluate_strict(emath_rt::special::SpecialFn::{function:?}, &[{arguments}]).expect(\"special-function domain checked by emath\").{field}"
+            )))
+        }
+        EmirOp::ReportSection { heading, body } => Ok(Expr::Raw(format!(
+            "({}, {})",
+            render_expr(&operand_ref(program, *heading)),
+            render_expr(&operand_ref(program, *body))
+        ))),
+        EmirOp::ReportDocument { title, section } => Ok(Expr::Raw(format!(
+            "({}, {})",
+            render_expr(&operand_ref(program, *title)),
+            render_expr(&operand_ref(program, *section))
+        ))),
+        EmirOp::ReportMarkdown(document) => {
+            let document = render_expr(&operand_ref(program, *document));
+            Ok(Expr::Raw(format!(
+                "format!(\"# {{}}\\n\\n## {{}}\\n\\n{{}}\\n\", ({document}).0, (({document}).1).0, (({document}).1).1)"
+            )))
+        }
+        EmirOp::ReportLatex(document) => {
+            let document = render_expr(&operand_ref(program, *document));
+            Ok(Expr::Raw(format!(
+                "format!(\"\\\\section{{{{{{}}}}}}\\n\\\\subsection{{{{{{}}}}}}\\n{{}}\\n\", ({document}).0, (({document}).1).0, (({document}).1).1)"
+            )))
+        }
+        EmirOp::SeriesCreate { points, .. } => Ok(Expr::Raw(format!(
+            "vec![{}]",
+            points
+                .iter()
+                .map(|(time, value)| format!("({time:?}f64, {value:?}f64)"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+        EmirOp::SeriesSample { series, time } => {
+            let source = program
+                .ops
+                .get(series.0 as usize)
+                .map(|(op, _)| op)
+                .ok_or_else(|| BackendError::Lowering("series register out of range".into()))?;
+            let EmirOp::SeriesCreate {
+                interpolation,
+                extrapolation,
+                ..
+            } = source
+            else {
+                return Err(BackendError::Lowering(
+                    "generated Rust currently samples literal series only".into(),
+                ));
+            };
+            let outside = match extrapolation.as_str() {
+                "refuse" => {
+                    "assert!(__t >= __series[0].0 && __t <= __series[__series.len()-1].0, \"series sample outside support\");"
+                }
+                "clamp" => "let __t = __t.max(__series[0].0).min(__series[__series.len()-1].0);",
+                "extend" => "",
+                _ => {
+                    return Err(BackendError::Lowering(
+                        "unknown series extrapolation policy".into(),
+                    ));
+                }
+            };
+            let value = match interpolation.as_str() {
+                "previous" | "pwc" => "__left.1",
+                "nearest" => "if __alpha < 0.5 { __left.1 } else { __right.1 }",
+                "linear" => "__left.1 + __alpha * (__right.1 - __left.1)",
+                "monotone_cubic" => {
+                    "{ let __secant = (__right.1-__left.1)/(__right.0-__left.0); let __left_slope = if __index == 0 { __secant } else { let __prior = (__left.1-__series[__index-1].1)/(__left.0-__series[__index-1].0); if __prior.signum() == __secant.signum() { 0.5*(__prior+__secant) } else { 0.0 } }; let __right_slope = if __index+2 == __series.len() { __secant } else { let __next = (__series[__index+2].1-__right.1)/(__series[__index+2].0-__right.0); if __next.signum() == __secant.signum() { 0.5*(__secant+__next) } else { 0.0 } }; let __h=__right.0-__left.0; let __a2=__alpha*__alpha; let __a3=__a2*__alpha; (2.0*__a3-3.0*__a2+1.0)*__left.1 + (__a3-2.0*__a2+__alpha)*__h*__left_slope + (-2.0*__a3+3.0*__a2)*__right.1 + (__a3-__a2)*__h*__right_slope }"
+                }
+                _ => {
+                    return Err(BackendError::Lowering(
+                        "unknown series interpolation policy".into(),
+                    ));
+                }
+            };
+            Ok(Expr::Raw(format!(
+                "{{ let __series = &{}; let __t = {}; {} if __t == __series[__series.len()-1].0 {{ __series[__series.len()-1].1 }} else {{ let __index = __series.windows(2).position(|w| __t >= w[0].0 && __t < w[1].0).unwrap_or(if __t < __series[0].0 {{ 0 }} else {{ __series.len()-2 }}); let __left = __series[__index]; let __right = __series[__index+1]; let __alpha = (__t-__left.0)/(__right.0-__left.0); {} }} }}",
+                render_expr(&operand_ref(program, *series)),
+                render_expr(&operand_ref(program, *time)),
+                outside,
+                value
+            )))
+        }
+        EmirOp::SetCreate { elements, guards } => {
+            let mut source = String::from("{ let mut __set = Vec::new(); ");
+            for (element, guard) in elements.iter().zip(guards) {
+                let value = render_expr(&operand_ref(program, *element));
+                if let Some(guard) = guard {
+                    source.push_str(&format!(
+                        "if {} {{ let __value = {}; if !__set.contains(&__value) {{ __set.push(__value); }} }} ",
+                        render_expr(&operand_ref(program, *guard)),
+                        value
+                    ));
+                } else {
+                    source.push_str(&format!(
+                        "let __value = {value}; if !__set.contains(&__value) {{ __set.push(__value); }} "
+                    ));
+                }
+            }
+            source.push_str("__set }");
+            Ok(Expr::Raw(source))
+        }
+        EmirOp::SetContains { element, set } => Ok(Expr::Raw(format!(
+            "{}.contains(&{})",
+            render_expr(&operand_ref(program, *set)),
+            render_expr(&operand_ref(program, *element))
+        ))),
+        EmirOp::RecordCreate { fields, .. } => {
+            let fields = fields
+                .iter()
+                .map(|(name, value)| {
+                    format!("({name:?}, {})", render_expr(&operand_ref(program, *value)))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(Expr::Raw(format!(
+                "std::collections::BTreeMap::from([{fields}])"
+            )))
+        }
         EmirOp::ConstComplex(re, im) => Ok(Expr::Raw(format!(
             "num_complex::Complex::new({re:?}, {im:?})"
         ))),
@@ -1081,6 +1702,291 @@ pub(crate) fn op_expr(
             vec![operand_ref(program, *l), operand_ref(program, *r)],
         )),
         EmirOp::MatrixTranspose(m) => Ok(rt_call("mat_transpose", vec![operand_ref(program, *m)])),
+        // xx0x.2 richer linear algebra + r2-graphs-masa graph kernels:
+        // the embedded emath_rt kernel set carries NESTED-carrier
+        // adapters (generated matrices are `Vec<Vec<f64>>`, dims carried
+        // by the structure), so the generated crate calls the same
+        // algorithmic core as the interpreter through the same rt facade.
+        EmirOp::EigenSymmetric(m) => Ok(rt_call("eig_values", vec![operand_ref(program, *m)])),
+        EmirOp::EigenVectorsSymmetric(m) => {
+            Ok(rt_call("eig_vectors", vec![operand_ref(program, *m)]))
+        }
+        EmirOp::SvdSingularValues(m) => Ok(rt_call("svd_values", vec![operand_ref(program, *m)])),
+        EmirOp::SvdFactors(m) => Ok(rt_call("svd_factors", vec![operand_ref(program, *m)])),
+        EmirOp::CgSolve(a, b) => Ok(rt_call(
+            "cg_solve",
+            vec![operand_ref(program, *a), operand_ref(program, *b)],
+        )),
+        EmirOp::LinearSolve(a, b) => Ok(rt_call(
+            "linear_solve",
+            vec![operand_ref(program, *a), operand_ref(program, *b)],
+        )),
+        EmirOp::LuFactors(matrix) => Ok(rt_call("lu_factors", vec![operand_ref(program, *matrix)])),
+        EmirOp::QrFactors(matrix) => Ok(rt_call("qr_factors", vec![operand_ref(program, *matrix)])),
+        EmirOp::OuterProduct(left, right) => Ok(rt_call(
+            "outer_product",
+            vec![operand_ref(program, *left), operand_ref(program, *right)],
+        )),
+        EmirOp::IntNullspace(matrix) => {
+            // Exact integer null vector (generic primitive parity with the
+            // interp arm): lowers through the same exact-integer kernel as
+            // the reference VM (`emath_rt::primitive_int_nullvector`, no
+            // domain naming). A statically non-matrix operand is a typed
+            // refusal (interp TypeConfusion parity) rather than a
+            // fabricated vector.
+            let source = program
+                .ops
+                .get(matrix.0 as usize)
+                .map(|(producer, _)| producer);
+            let matrix_carrier = matches!(
+                source,
+                Some(
+                    EmirOp::LoadInput(_)
+                        | EmirOp::LoadState(_)
+                        | EmirOp::MatrixCreate { .. }
+                        | EmirOp::MatrixAdd(..)
+                        | EmirOp::MatrixSub(..)
+                        | EmirOp::MatrixScale(..)
+                        | EmirOp::MatrixMulMatrix(..)
+                        | EmirOp::MatrixTranspose(_)
+                        | EmirOp::EigenVectorsSymmetric(_)
+                        | EmirOp::SvdFactors(_)
+                        | EmirOp::LuFactors(_)
+                        | EmirOp::QrFactors(_)
+                        | EmirOp::OuterProduct(..)
+                        | EmirOp::GraphLaplacian(_)
+                        | EmirOp::GraphSymmetrize(_)
+                )
+            );
+            if !matrix_carrier {
+                return Err(BackendError::Lowering(format!(
+                    "int-nullspace op `{}` requires a matrix operand (E-NULLSPACE-001: non-matrix operand refused; interp TypeConfusion parity)",
+                    op.name()
+                )));
+            }
+            Ok(int_nullspace_result(int_nullspace_call(program, *matrix)))
+        }
+        EmirOp::ExactProductDelta(p_value, q_value) => {
+            // Exact integer product difference (generic exact-rational
+            // equality primitive, no domain naming). Operands are
+            // vectors by construction (shape-checked at term compile);
+            // the runtime block refuses typed on non-integral/out-of-
+            // range entries (E-EXACT-001), length mismatch (E-EXACT-001),
+            // and u128 product overflow (E-EXACT-002) — never a
+            // fabricated scalar.
+            Ok(exact_product_delta_result(exact_product_delta_call(
+                program, *p_value, *q_value,
+            )))
+        }
+        // Graph kernels (masa slice 1): invalid input yields the empty
+        // result in generated code (the reference interpreter surfaces
+        // the typed E-GRAPH codes); kernels never panic. The source
+        // vertex passes by value (an f64 register; the kernel validates
+        // wholeness and range).
+        EmirOp::GraphReachable(adj, source) => Ok(rt_call(
+            "graph_reachable",
+            vec![
+                operand_ref(program, *adj),
+                Expr::Raw(render_expr(&operand(program, *source))),
+            ],
+        )),
+        EmirOp::GraphBfsOrder(adj, source) => Ok(rt_call(
+            "graph_bfs_order",
+            vec![
+                operand_ref(program, *adj),
+                Expr::Raw(render_expr(&operand(program, *source))),
+            ],
+        )),
+        EmirOp::GraphDijkstra(adj, source) => Ok(rt_call(
+            "graph_dijkstra",
+            vec![
+                operand_ref(program, *adj),
+                Expr::Raw(render_expr(&operand(program, *source))),
+            ],
+        )),
+        EmirOp::GraphDegreeOut(adj) => Ok(rt_call(
+            "graph_degree_out",
+            vec![operand_ref(program, *adj)],
+        )),
+        EmirOp::GraphLaplacian(adj) => {
+            Ok(rt_call("graph_laplacian", vec![operand_ref(program, *adj)]))
+        }
+        EmirOp::GraphSymmetrize(adj) => Ok(rt_call(
+            "graph::symmetrize",
+            vec![operand_ref(program, *adj)],
+        )),
+        EmirOp::GraphBellmanFord(adj, source) => Ok(rt_call(
+            "graph::bellman_ford",
+            vec![operand_ref(program, *adj), operand_ref(program, *source)],
+        )),
+        EmirOp::GraphSparseTriplets(adj) => Ok(rt_call(
+            "graph::sparse_triplets",
+            vec![operand_ref(program, *adj)],
+        )),
+        EmirOp::GraphSparseFromTriplets(n, triplets) => Ok(rt_call(
+            "graph::sparse_from_triplets",
+            vec![operand_ref(program, *n), operand_ref(program, *triplets)],
+        )),
+        // Optimization kernels (r3-lp-milp-wlif slice 1): invalid input
+        // yields the empty result in generated code (the reference
+        // interpreter surfaces the typed E-LP/E-PARETO codes).
+        EmirOp::LpMinimize(a, b, c) => Ok(rt_call(
+            "lp_minimize",
+            vec![
+                operand_ref(program, *a),
+                operand_ref(program, *b),
+                operand_ref(program, *c),
+            ],
+        )),
+        EmirOp::ParetoFront(points) => {
+            Ok(rt_call("pareto_front", vec![operand_ref(program, *points)]))
+        }
+        // Polynomial kernels (r3-funcspaces-poly-hjor slice 1).
+        EmirOp::PolyMul(a, b) => Ok(rt_call(
+            "poly_mul",
+            vec![operand_ref(program, *a), operand_ref(program, *b)],
+        )),
+        EmirOp::PolyEval(p, x) => Ok(rt_call(
+            "poly_eval",
+            vec![operand_ref(program, *p), operand_ref(program, *x)],
+        )),
+        EmirOp::SequenceGenerate {
+            initial,
+            recurrence,
+            budget,
+        } => Ok(rt_call(
+            "sequence_generate",
+            vec![
+                operand_ref(program, *initial),
+                operand_ref(program, *recurrence),
+                operand_ref(program, *budget),
+            ],
+        )),
+        EmirOp::SequenceConvolve { left, right, count } => Ok(rt_call(
+            "sequence_convolve",
+            vec![
+                operand_ref(program, *left),
+                operand_ref(program, *right),
+                operand_ref(program, *count),
+            ],
+        )),
+        // ODE stepping kernels (xx0x.3 thin nucleus): typed wrappers
+        // in `emath_rt::dynamics` (Newton backward Euler, velocity
+        // Verlet), same refusal surface as the LP/Pareto renders.
+        EmirOp::OdeBackwardEuler(rate, y0, h) => Ok(rt_call(
+            "dynamics::ode_backward_euler",
+            vec![
+                operand_ref(program, *rate),
+                operand_ref(program, *y0),
+                operand_ref(program, *h),
+            ],
+        )),
+        EmirOp::OdeVelocityVerlet(a, q, v, h) => Ok(rt_call(
+            "dynamics::ode_velocity_verlet",
+            vec![
+                operand_ref(program, *a),
+                operand_ref(program, *q),
+                operand_ref(program, *v),
+                operand_ref(program, *h),
+            ],
+        )),
+        // Spectral Poisson (xx0x.4 thin nucleus): typed wrapper in
+        // `emath_rt::pde` (Dirichlet sine diagonalization).
+        EmirOp::PoissonDirichletSine(load) => Ok(rt_call(
+            "pde::poisson_dirichlet_sine",
+            vec![operand_ref(program, *load)],
+        )),
+        // Control surface (zxkl thin B43): raw kernels in `emath_rt`
+        // (Routh–Hurwitz stability, Faddeev–LeVerrier characteristic
+        // polynomial, pivoted solve); refusals surface through the
+        // reference interpreter's typed E-CONTROL codes.
+        EmirOp::ControlTransferEval(num, den, x) => Ok(rt_call(
+            "control_transfer_eval",
+            vec![
+                operand_ref(program, *num),
+                operand_ref(program, *den),
+                operand_ref(program, *x),
+            ],
+        )),
+        EmirOp::ControlDcGain(a, b, c) => Ok(rt_call(
+            "control_state_space_dc_gain",
+            vec![
+                operand_ref(program, *a),
+                operand_ref(program, *b),
+                operand_ref(program, *c),
+            ],
+        )),
+        EmirOp::ControlPolesStable(den) => Ok(rt_call(
+            "control_poles_stable",
+            vec![operand_ref(program, *den)],
+        )),
+        // Finite-category kernels (88wo thin B39): raw kernels in
+        // `emath_rt` (law gate over the dense composition table, face
+        // path-pair commutativity); refusals surface through the
+        // reference interpreter's typed E-CAT codes.
+        EmirOp::CategoryCheck(dom, cod, comp) => Ok(rt_call(
+            "category_check",
+            vec![
+                operand_ref(program, *dom),
+                operand_ref(program, *cod),
+                operand_ref(program, *comp),
+            ],
+        )),
+        EmirOp::CategoryDiagramCommutative(dom, cod, comp, faces) => Ok(rt_call(
+            "category_diagram_commutative",
+            vec![
+                operand_ref(program, *dom),
+                operand_ref(program, *cod),
+                operand_ref(program, *comp),
+                operand_ref(program, *faces),
+            ],
+        )),
+        // Probability nucleus (xx0x.5 thin slice): typed wrappers in
+        // `emath_rt::probability` (SplitMix64 stream + exact
+        // densities); the family code is the stable kernel encoding.
+        EmirOp::ProbSample {
+            kind,
+            params,
+            seed,
+            draws,
+            stream,
+        } => Ok(Expr::Call {
+            path: vec![
+                "emath_rt".to_string(),
+                "probability".to_string(),
+                "prob_sample_in_stream".to_string(),
+            ],
+            args: vec![
+                Expr::Raw(format!(
+                    "emath_rt::probability::Family::{}",
+                    match kind {
+                        ProbKind::Normal => "Normal",
+                        ProbKind::Uniform => "Uniform",
+                        ProbKind::Bernoulli => "Bernoulli",
+                    }
+                )),
+                operand_ref(program, *params),
+                operand_ref(program, *seed),
+                operand_ref(program, *draws),
+                stream
+                    .map(|value| {
+                        Expr::Raw(format!("&{}", render_expr(&operand_ref(program, value))))
+                    })
+                    .unwrap_or_else(|| Expr::Str(String::new())),
+            ],
+        }),
+        EmirOp::ProbDensity { kind, params, x } => Ok(Expr::Call {
+            path: vec![
+                "emath_rt".to_string(),
+                "probability".to_string(),
+                "prob_density".to_string(),
+            ],
+            args: vec![
+                Expr::Raw(format!("{} /* {} */", kind.code(), kind.name())),
+                operand_ref(program, *params),
+                operand_ref(program, *x),
+            ],
+        }),
         EmirOp::TensorCreate { shape, elements } => {
             let shape_lits = shape
                 .iter()
@@ -1157,6 +2063,15 @@ pub(crate) fn op_expr(
                 typed_operand(program, *m, ScalarKind::I64, &kinds),
             ],
         )),
+        // Universal exact-Euclidean remainder (aj8d pass 6). Mirrors
+        // ModInv's parity posture: the interpreter enforces the positive
+        // modulus as a typed EvalFault; the generated Rust emits exact
+        // rem_euclid on admitted (positive-modulus) programs. rem_euclid
+        // is total for a positive i64 modulus — no panic path, exact i64.
+        EmirOp::IntRem(a, m) => Ok(Expr::Raw(format!(
+            "((__e{} as i64).rem_euclid(__e{} as i64))",
+            a.0, m.0
+        ))),
         EmirOp::Congruence(a, b, m) => Ok(Expr::Raw(format!(
             "(((__e{} as i64) - (__e{} as i64)).rem_euclid(__e{} as i64) == 0)",
             a.0, b.0, m.0
@@ -1514,7 +2429,155 @@ pub(crate) fn op_expr(
                 grads.join(", "),
             )))
         }
+        // Capability application is data dispatched from the capability
+        // layer (fjxh.6 contract): the Rust backend does not inline cell
+        // bodies; the interp world evaluates them. Refuse typed rather
+        // than emit a silent identity.
+        op @ EmirOp::ApplyCapability { .. } => Err(BackendError::Lowering(format!(
+            "capability application `{}` is not lowered by the strict Rust backend; run in the interp world",
+            op.name()
+        ))),
+        // Generic reference-term bytecode (fjxh.5): compiled cells run in
+        // the interp world; the strict backend refuses typed rather than
+        // emit a silent identity (same contract as ApplyCapability).
+        op @ (EmirOp::VectorMap { .. }
+        | EmirOp::VectorMapScalar { .. }
+        | EmirOp::VectorReduce { .. }
+        | EmirOp::VectorAllFinite(_)) => Err(BackendError::Lowering(format!(
+            "reference-term bytecode op `{}` is not lowered by the strict Rust backend; run in the interp world",
+            op.name()
+        ))),
+        // Certified-interval ops (8pjn) run in the interp world; the
+        // strict backend refuses typed rather than emit a silent identity.
+        op @ (EmirOp::IntervalCreate(..) | EmirOp::IntervalIntersect(..)) => {
+            Err(BackendError::Lowering(format!(
+                "interval op `{}` is not lowered by the strict Rust backend; run in the interp world",
+                op.name()
+            )))
+        }
+        // Option/Result value semantics (aj8d): the nine carrier ops lower
+        // to native Rust `Option<T>` / `Result<T, E>` with payload slots
+        // typed by dataflow (f64/i64/Vec<f64> per ScalarKind). `unwrap_or`
+        // is the honesty gate — an eager by-value default, never a
+        // panicking unwrap. A wrong carrier shape is a typed lowering
+        // refusal (interp TypeConfusion parity), surfaced as
+        // `BackendError`, never a Rust panic and never a silent scalar
+        // shadow.
+        EmirOp::OptionSome(payload) => {
+            let tys = carrier_payload_types(program, names, states, i64_names)?;
+            let idx = op_self_index(program, op).unwrap_or(u32::MAX);
+            Ok(Expr::Raw(format!(
+                "Option::<{}>::Some({})",
+                tys.option(idx),
+                render_expr(&operand(program, *payload))
+            )))
+        }
+        EmirOp::OptionNone => {
+            let tys = carrier_payload_types(program, names, states, i64_names)?;
+            let idx = op_self_index(program, op).unwrap_or(u32::MAX);
+            Ok(Expr::Raw(format!("Option::<{}>::None", tys.option(idx))))
+        }
+        EmirOp::OptionIsSome(carrier) => {
+            expect_carrier(program, *carrier, false, op.name())?;
+            Ok(Expr::Raw(format!(
+                "{}.is_some()",
+                render_expr(&operand(program, *carrier))
+            )))
+        }
+        EmirOp::OptionUnwrapOr(carrier, default) => {
+            expect_carrier(program, *carrier, false, op.name())?;
+            // `.unwrap_or(default)` takes the default by value: eager and
+            // unconditional, exactly the interp honesty-gate ordering.
+            Ok(Expr::Raw(format!(
+                "{}.unwrap_or({})",
+                render_expr(&operand(program, *carrier)),
+                render_expr(&operand(program, *default))
+            )))
+        }
+        EmirOp::ResultOk(payload) => {
+            let tys = carrier_payload_types(program, names, states, i64_names)?;
+            let idx = op_self_index(program, op).unwrap_or(u32::MAX);
+            Ok(Expr::Raw(format!(
+                "Result::<{}, {}>::Ok({})",
+                tys.result_ok(idx),
+                tys.result_err(idx),
+                render_expr(&operand(program, *payload))
+            )))
+        }
+        EmirOp::ResultErr(payload) => {
+            let tys = carrier_payload_types(program, names, states, i64_names)?;
+            let idx = op_self_index(program, op).unwrap_or(u32::MAX);
+            Ok(Expr::Raw(format!(
+                "Result::<{}, {}>::Err({})",
+                tys.result_ok(idx),
+                tys.result_err(idx),
+                render_expr(&operand(program, *payload))
+            )))
+        }
+        EmirOp::ResultIsOk(carrier) => {
+            expect_carrier(program, *carrier, true, op.name())?;
+            Ok(Expr::Raw(format!(
+                "{}.is_ok()",
+                render_expr(&operand(program, *carrier))
+            )))
+        }
+        EmirOp::ResultUnwrapOr(carrier, default) => {
+            expect_carrier(program, *carrier, true, op.name())?;
+            Ok(Expr::Raw(format!(
+                "{}.unwrap_or({})",
+                render_expr(&operand(program, *carrier)),
+                render_expr(&operand(program, *default))
+            )))
+        }
+        EmirOp::ResultErrorOf(carrier) => {
+            expect_carrier(program, *carrier, true, op.name())?;
+            let tys = carrier_payload_types(program, names, states, i64_names)?;
+            let err_ty = tys.result_err(carrier.0);
+            Ok(Expr::Raw(format!(
+                "match {} {{ Ok(_) => Option::<{err_ty}>::None, Err(__opt_err) => Option::<{err_ty}>::Some(__opt_err) }}",
+                render_expr(&operand(program, *carrier))
+            )))
+        }
     }
+}
+
+fn rust_format_template(template: &str) -> String {
+    let mut output = String::with_capacity(template.len());
+    let mut chars = template.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' if chars.peek() == Some(&'{') => {
+                chars.next();
+                output.push_str("{{");
+            }
+            '}' if chars.peek() == Some(&'}') => {
+                chars.next();
+                output.push_str("}}");
+            }
+            '{' => {
+                let mut field = String::new();
+                for next in chars.by_ref() {
+                    if next == '}' {
+                        break;
+                    }
+                    field.push(next);
+                }
+                output.push('{');
+                if let Some((_, spec)) = field.split_once(':') {
+                    if let Some(precision) = spec
+                        .strip_prefix('.')
+                        .and_then(|value| value.strip_suffix('f'))
+                    {
+                        output.push_str(":.");
+                        output.push_str(precision);
+                    }
+                }
+                output.push('}');
+            }
+            _ => output.push(ch),
+        }
+    }
+    output
 }
 
 /// Forward-mode tangent source for an EMIR op; `__e{N}`/`__d{N}` naming.
@@ -1692,3 +2755,4 @@ pub(crate) fn reverse_adjoint_str(op: &EmirOp, idx: usize) -> String {
         format!("if {adj} != 0.0 {{\n{updates}}}\n")
     }
 }
+

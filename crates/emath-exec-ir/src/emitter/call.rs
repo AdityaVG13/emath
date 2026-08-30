@@ -1,9 +1,9 @@
 //! Built-in function dispatch: lowers `emit_call` built-in calls to EMIR ops.
 
-use emath_core::Span;
+use emath_core::{Span, special::SpecialFn};
 use emath_ir::{ExprNode, Literal, SemanticPackage};
 
-use crate::{BuiltinId, DomainObligation, EdgePolicy, EmirExprRef, EmirOp, EmirValue};
+use crate::{BuiltinId, DomainObligation, EdgePolicy, EmirExprRef, EmirOp, EmirValue, ProbKind};
 
 fn positive_literal(
     package: &SemanticPackage,
@@ -84,15 +84,99 @@ impl super::Emitter {
         } else {
             function
         };
+        if function == "series_at" {
+            if args.len() != 2 {
+                return Err(format!(
+                    "`series_at` expects 2 arguments, found {}",
+                    args.len()
+                ));
+            }
+            let series = self.emit(package, args[0])?;
+            let time = self.emit(package, args[1])?;
+            return self.push(EmirOp::SeriesSample { series, time }, span);
+        }
+        if matches!(
+            function,
+            "normal_sample" | "uniform_sample" | "bernoulli_sample"
+        ) {
+            if !matches!(args.len(), 3 | 4) {
+                return Err(format!(
+                    "`{function}` expects (params, seed, draws[, stream]), found {} arguments",
+                    args.len()
+                ));
+            }
+            let kind = match function {
+                "normal_sample" => ProbKind::Normal,
+                "uniform_sample" => ProbKind::Uniform,
+                _ => ProbKind::Bernoulli,
+            };
+            let params = self.emit(package, args[0])?;
+            let seed = self.emit(package, args[1])?;
+            let draws = self.emit(package, args[2])?;
+            let stream = args
+                .get(3)
+                .map(|argument| self.emit(package, *argument))
+                .transpose()?;
+            return self.push(
+                EmirOp::ProbSample {
+                    kind,
+                    params,
+                    seed,
+                    draws,
+                    stream,
+                },
+                span,
+            );
+        }
         // Arity is enforced in every build, debug or release (bug-hunt
         // residual: debug_assert let empty/1-arg unary calls through to an
         // indexing panic and silently dropped extras in release).
         let builtin_id = BuiltinId::from_name(function);
         let unary = builtin_id.is_some_and(|id| id.arity() == 1)
-            || matches!(function, "is_finite" | "norm" | "transpose" | "length");
-        let binary =
-            builtin_id.is_some_and(|id| id.arity() == 2) || matches!(function, "pow" | "dot");
-        let ternary = matches!(function, "lerp" | "clamp");
+            || matches!(
+                function,
+                "is_finite"
+                    | "norm"
+                    | "transpose"
+                    | "length"
+                    | "poisson_sine"
+                    | "eigvals"
+                    | "eigvecs"
+                    | "singular_values"
+                    | "svd_factors"
+                    | "sparse_triplets"
+                    | "poles_stable"
+                    | "out_degrees"
+                    | "graph_laplacian"
+                    | "graph_symmetrize"
+                    | "pareto_front"
+                    | "lu"
+                    | "qr"
+            );
+        let binary = builtin_id.is_some_and(|id| id.arity() == 2)
+            || matches!(
+                function,
+                "pow"
+                    | "dot"
+                    | "normal_density"
+                    | "uniform_density"
+                    | "bernoulli_pmf"
+                    | "solve_iterative"
+                    | "bellman_ford"
+                    | "sparse_from_triplets"
+                    | "poly_add"
+                    | "poly_mul"
+                    | "poly_eval"
+                    | "reachability"
+                    | "bfs_order"
+                    | "shortest_distances"
+                    | "solve_linear"
+                    | "outer_product"
+            );
+        let ternary = matches!(
+            function,
+            "lerp" | "clamp" | "transfer_eval" | "dc_gain" | "lp_minimize"
+        );
         let expected = match (unary, binary, ternary) {
             (true, false, false) => Some(1),
             (false, true, false) => Some(2),
@@ -108,6 +192,94 @@ impl super::Emitter {
             }
         }
         match function {
+            "gamma"
+            | "gamma_error_bound"
+            | "beta"
+            | "beta_error_bound"
+            | "erf"
+            | "erf_error_bound"
+            | "zeta"
+            | "zeta_error_bound"
+            | "lambert_w0"
+            | "lambert_w0_error_bound"
+            | "elliptic_k"
+            | "elliptic_k_error_bound"
+            | "elliptic_e"
+            | "elliptic_e_error_bound"
+            | "elliptic_pi"
+            | "elliptic_pi_error_bound" => {
+                let error_bound = function.ends_with("_error_bound");
+                let base = function.strip_suffix("_error_bound").unwrap_or(function);
+                let special = match base {
+                    "gamma" => SpecialFn::Gamma,
+                    "beta" => SpecialFn::Beta,
+                    "erf" => SpecialFn::Erf,
+                    "zeta" => SpecialFn::Zeta,
+                    "lambert_w0" => SpecialFn::LambertW0,
+                    "elliptic_k" => SpecialFn::EllipticK,
+                    "elliptic_e" => SpecialFn::EllipticE,
+                    "elliptic_pi" => SpecialFn::EllipticPi,
+                    _ => unreachable!(),
+                };
+                let arguments = args
+                    .iter()
+                    .map(|argument| self.emit(package, *argument))
+                    .collect::<Result<Vec<_>, _>>()?;
+                self.push(
+                    EmirOp::SpecialFunction {
+                        function: special,
+                        arguments,
+                        error_bound,
+                    },
+                    span,
+                )
+            }
+            "__format_text" => {
+                let Some(template_id) = args.first() else {
+                    return Err("`__format_text` requires a template".to_string());
+                };
+                let template = match package.expr(*template_id) {
+                    Some(ExprNode::Literal(Literal::Text(template))) => template.clone(),
+                    _ => return Err("`__format_text` template must be a text literal".to_string()),
+                };
+                let arguments = args[1..]
+                    .iter()
+                    .map(|argument| self.emit(package, *argument))
+                    .collect::<Result<Vec<_>, _>>()?;
+                self.push(
+                    EmirOp::FormatText {
+                        template,
+                        arguments,
+                    },
+                    span,
+                )
+            }
+            "text_length" => {
+                let text = self.emit(package, args[0])?;
+                self.push(EmirOp::TextLength(text), span)
+            }
+            "nfc" => {
+                let text = self.emit(package, args[0])?;
+                self.push(EmirOp::TextNfc(text), span)
+            }
+            "section" => {
+                let heading = self.emit(package, args[0])?;
+                let body = self.emit(package, args[1])?;
+                self.push(EmirOp::ReportSection { heading, body }, span)
+            }
+            "document" => {
+                let title = self.emit(package, args[0])?;
+                let section = self.emit(package, args[1])?;
+                self.push(EmirOp::ReportDocument { title, section }, span)
+            }
+            "render_markdown" => {
+                let document = self.emit(package, args[0])?;
+                self.push(EmirOp::ReportMarkdown(document), span)
+            }
+            "render_latex" => {
+                let document = self.emit(package, args[0])?;
+                self.push(EmirOp::ReportLatex(document), span)
+            }
             f if BuiltinId::from_name(f).is_some() => {
                 let id = BuiltinId::from_name(f).unwrap();
                 match id.arity() {
@@ -132,6 +304,155 @@ impl super::Emitter {
             "norm" => {
                 let v = self.emit(package, args[0])?;
                 self.push(EmirOp::VectorNorm(v), span)
+            }
+            "poisson_sine" => {
+                let load = self.emit(package, args[0])?;
+                self.push(EmirOp::PoissonDirichletSine(load), span)
+            }
+            "eigvals" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::EigenSymmetric(matrix), span)
+            }
+            "eigvecs" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::EigenVectorsSymmetric(matrix), span)
+            }
+            "singular_values" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::SvdSingularValues(matrix), span)
+            }
+            "svd_factors" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::SvdFactors(matrix), span)
+            }
+            "solve_iterative" => {
+                let matrix = self.emit(package, args[0])?;
+                let rhs = self.emit(package, args[1])?;
+                self.push(EmirOp::CgSolve(matrix, rhs), span)
+            }
+            "bellman_ford" => {
+                let matrix = self.emit(package, args[0])?;
+                let source = self.emit(package, args[1])?;
+                self.push(EmirOp::GraphBellmanFord(matrix, source), span)
+            }
+            "sparse_triplets" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::GraphSparseTriplets(matrix), span)
+            }
+            "sparse_from_triplets" => {
+                let n = self.emit(package, args[0])?;
+                let triplets = self.emit(package, args[1])?;
+                self.push(EmirOp::GraphSparseFromTriplets(n, triplets), span)
+            }
+            "reachability" | "bfs_order" | "shortest_distances" => {
+                let matrix = self.emit(package, args[0])?;
+                let source = self.emit(package, args[1])?;
+                let op = match function {
+                    "reachability" => EmirOp::GraphReachable(matrix, source),
+                    "bfs_order" => EmirOp::GraphBfsOrder(matrix, source),
+                    _ => EmirOp::GraphDijkstra(matrix, source),
+                };
+                self.push(op, span)
+            }
+            "out_degrees" | "graph_laplacian" | "graph_symmetrize" => {
+                let matrix = self.emit(package, args[0])?;
+                let op = match function {
+                    "out_degrees" => EmirOp::GraphDegreeOut(matrix),
+                    "graph_laplacian" => EmirOp::GraphLaplacian(matrix),
+                    _ => EmirOp::GraphSymmetrize(matrix),
+                };
+                self.push(op, span)
+            }
+            "lp_minimize" => {
+                let constraints = self.emit(package, args[0])?;
+                let bounds = self.emit(package, args[1])?;
+                let objective = self.emit(package, args[2])?;
+                self.push(EmirOp::LpMinimize(constraints, bounds, objective), span)
+            }
+            "pareto_front" => {
+                let points = self.emit(package, args[0])?;
+                self.push(EmirOp::ParetoFront(points), span)
+            }
+            "solve_linear" => {
+                let matrix = self.emit(package, args[0])?;
+                let rhs = self.emit(package, args[1])?;
+                self.push(EmirOp::LinearSolve(matrix, rhs), span)
+            }
+            "lu" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::LuFactors(matrix), span)
+            }
+            "qr" => {
+                let matrix = self.emit(package, args[0])?;
+                self.push(EmirOp::QrFactors(matrix), span)
+            }
+            "outer_product" => {
+                let left = self.emit(package, args[0])?;
+                let right = self.emit(package, args[1])?;
+                self.push(EmirOp::OuterProduct(left, right), span)
+            }
+            "transfer_eval" => {
+                let numerator = self.emit(package, args[0])?;
+                let denominator = self.emit(package, args[1])?;
+                let point = self.emit(package, args[2])?;
+                self.push(
+                    EmirOp::ControlTransferEval(numerator, denominator, point),
+                    span,
+                )
+            }
+            "dc_gain" => {
+                let matrix = self.emit(package, args[0])?;
+                let input = self.emit(package, args[1])?;
+                let output = self.emit(package, args[2])?;
+                self.push(EmirOp::ControlDcGain(matrix, input, output), span)
+            }
+            "poles_stable" => {
+                let denominator = self.emit(package, args[0])?;
+                self.push(EmirOp::ControlPolesStable(denominator), span)
+            }
+            "poly_add" => {
+                let left = self.emit(package, args[0])?;
+                let right = self.emit(package, args[1])?;
+                self.push(EmirOp::VectorAdd(left, right), span)
+            }
+            "poly_mul" => {
+                let left = self.emit(package, args[0])?;
+                let right = self.emit(package, args[1])?;
+                self.push(EmirOp::PolyMul(left, right), span)
+            }
+            "poly_eval" => {
+                let coefficients = self.emit(package, args[0])?;
+                let point = self.emit(package, args[1])?;
+                self.push(EmirOp::PolyEval(coefficients, point), span)
+            }
+            "generating_function" => {
+                let initial = self.emit(package, args[0])?;
+                let recurrence = self.emit(package, args[1])?;
+                let budget = self.emit(package, args[2])?;
+                self.push(
+                    EmirOp::SequenceGenerate {
+                        initial,
+                        recurrence,
+                        budget,
+                    },
+                    span,
+                )
+            }
+            "convolution" => {
+                let left = self.emit(package, args[0])?;
+                let right = self.emit(package, args[1])?;
+                let count = self.emit(package, args[2])?;
+                self.push(EmirOp::SequenceConvolve { left, right, count }, span)
+            }
+            "normal_density" | "uniform_density" | "bernoulli_pmf" => {
+                let kind = match function {
+                    "normal_density" => ProbKind::Normal,
+                    "uniform_density" => ProbKind::Uniform,
+                    _ => ProbKind::Bernoulli,
+                };
+                let params = self.emit(package, args[0])?;
+                let x = self.emit(package, args[1])?;
+                self.push(EmirOp::ProbDensity { kind, params, x }, span)
             }
             "not" | "core::logic::not" => {
                 // Boolean complement, callable so `notation` targets like
@@ -536,6 +857,31 @@ impl super::Emitter {
                 let m = self.emit(package, args[1])?;
                 self.push(EmirOp::ModInv(a, m), span)
             }
+            "field_inv" | "core::math::field_inv" => {
+                // Prime-field inverse (aj8d pass 7): field_inv(a, p) is
+                // the exact modular inverse over the prime field. Arity
+                // is refused TYPED (never a panic on a short arg list).
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`field_inv` expects 2 arguments (a, p), got {}",
+                        args.len()
+                    ));
+                }
+                let a = self.emit(package, args[0])?;
+                let p = self.emit(package, args[1])?;
+                self.push(EmirOp::ModInv(a, p), span)
+            }
+            "int_rem" | "core::math::int_rem" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`int_rem` expects 2 arguments (a, m), got {}",
+                        args.len()
+                    ));
+                }
+                let a = self.emit(package, args[0])?;
+                let m = self.emit(package, args[1])?;
+                self.push(EmirOp::IntRem(a, m), span)
+            }
             "congruence" => {
                 let a = self.emit(package, args[0])?;
                 let b = self.emit(package, args[1])?;
@@ -558,6 +904,133 @@ impl super::Emitter {
                 let a = self.emit(package, args[0])?;
                 let b = self.emit(package, args[1])?;
                 self.push(EmirOp::HammingDistance(a, b), span)
+            }
+            "interval" => {
+                // Certified interval constructor `interval(lo, hi)` (8pjn).
+                // Ill-formed bounds fault at run (IntervalCreate), never
+                // silently swap or clamp.
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`interval` expects 2 operands (lo, hi), got {}",
+                        args.len()
+                    ));
+                }
+                let lo = self.emit(package, args[0])?;
+                let hi = self.emit(package, args[1])?;
+                self.push(EmirOp::IntervalCreate(lo, hi), span)
+            }
+            "intersect" => {
+                // Interval intersection; an empty result is a typed
+                // run refusal (IntervalIntersect).
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`intersect` expects 2 operands, got {}",
+                        args.len()
+                    ));
+                }
+                let a = self.emit(package, args[0])?;
+                let b = self.emit(package, args[1])?;
+                self.push(EmirOp::IntervalIntersect(a, b), span)
+            }
+            // Option/Result call surface (aj8d): the nine names lower to
+            // the SAME total value-semantics ops the term-compiler binds
+            // and the reference VM executes (OptionSome/OptionNone/
+            // OptionIsSome/OptionUnwrapOr, ResultOk/ResultErr/
+            // ResultIsOk/ResultUnwrapOr/ResultErrorOf). There is NO
+            // panicking unwrap: unwrap_or is the honesty gate and its
+            // default evaluates eagerly. Arity is enforced HERE (the
+            // strict-f64 gate lets no malformed call through); backend
+            // codegen owns the typed carrier refusal (pass-5 lane).
+            "option_some" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`option_some` expects 1 payload operand, got {}",
+                        args.len()
+                    ));
+                }
+                let payload = self.emit(package, args[0])?;
+                self.push(EmirOp::OptionSome(payload), span)
+            }
+            "option_none" => {
+                if !args.is_empty() {
+                    return Err(format!(
+                        "`option_none` expects 0 operands, got {}",
+                        args.len()
+                    ));
+                }
+                self.push(EmirOp::OptionNone, span)
+            }
+            "option_is_some" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`option_is_some` expects 1 operand, got {}",
+                        args.len()
+                    ));
+                }
+                let carrier = self.emit(package, args[0])?;
+                self.push(EmirOp::OptionIsSome(carrier), span)
+            }
+            "option_unwrap_or" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`option_unwrap_or` expects (carrier, default), got {}",
+                        args.len()
+                    ));
+                }
+                let carrier = self.emit(package, args[0])?;
+                let default = self.emit(package, args[1])?;
+                self.push(EmirOp::OptionUnwrapOr(carrier, default), span)
+            }
+            "result_ok" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`result_ok` expects 1 payload operand, got {}",
+                        args.len()
+                    ));
+                }
+                let payload = self.emit(package, args[0])?;
+                self.push(EmirOp::ResultOk(payload), span)
+            }
+            "result_err" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`result_err` expects 1 payload operand, got {}",
+                        args.len()
+                    ));
+                }
+                let payload = self.emit(package, args[0])?;
+                self.push(EmirOp::ResultErr(payload), span)
+            }
+            "result_is_ok" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`result_is_ok` expects 1 operand, got {}",
+                        args.len()
+                    ));
+                }
+                let carrier = self.emit(package, args[0])?;
+                self.push(EmirOp::ResultIsOk(carrier), span)
+            }
+            "result_unwrap_or" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "`result_unwrap_or` expects (carrier, default), got {}",
+                        args.len()
+                    ));
+                }
+                let carrier = self.emit(package, args[0])?;
+                let default = self.emit(package, args[1])?;
+                self.push(EmirOp::ResultUnwrapOr(carrier, default), span)
+            }
+            "result_error_of" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "`result_error_of` expects 1 operand, got {}",
+                        args.len()
+                    ));
+                }
+                let carrier = self.emit(package, args[0])?;
+                self.push(EmirOp::ResultErrorOf(carrier), span)
             }
             other => Err(format!("unknown function `{other}` in strict-f64 subset")),
         }
