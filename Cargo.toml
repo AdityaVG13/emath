@@ -50,6 +50,7 @@ members = [
   "tests/emath-agent-protocol",
   "tests/emath-artifact",
   "tests/emath-build",
+  "tests/emath-core",
   "tests/emath-builder",
   "tests/emath-checker",
   "tests/emath-cli",

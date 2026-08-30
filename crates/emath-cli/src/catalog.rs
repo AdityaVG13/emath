@@ -28,6 +28,7 @@ pub const COMMANDS: &[&str] = &[
     "import",
     "artifact",
     "architecture",
+    "coverage",
     "web",
     "serve",
     "new",
@@ -79,10 +80,11 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "import" => "import modelica <file.mo> [--json]",
         "artifact" => "artifact check|battery <dir>",
         "architecture" => "architecture [--json]",
+        "coverage" => "coverage [--emit json] [--check <ledger-file>]",
         "web" => "web [--port N] [--no-open] [--dist PATH]",
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>]",
-        "fmt" => "fmt <file.emath>",
+        "fmt" => "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]",
         "explain" => "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
         "run" => "run <file.emath> [--out <dir>]",
         "test" => "test <file.emath> [--out <dir>]",
@@ -144,10 +146,11 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "import" => "retain a Modelica subset as foreign-model declarations",
         "artifact" => "independent checker (`check`) or seeded negative-control battery",
         "architecture" => "provider-neutral pipeline map",
+        "coverage" => "language completeness coverage ledger: generated missing-math numbers with artifact-evidenced levels",
         "web" => "localhost web playground on 127.0.0.1; Ctrl-C to stop",
         "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011)",
-        "fmt" => "canonical-form check (full rewrite is Phase 4)",
+        "fmt" => "canonical-form check (full rewrite is Phase 4); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)",
         "explain" => {
             "plan/provider explanation, binding provenance DAG, or `E-LAW-001` checker witness"
         }
@@ -291,6 +294,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" | "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities"
         | "import" | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
+        "coverage" => &["--emit", "--check", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
@@ -319,6 +323,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "fork" => &["--dry-run", "--json", "--help", "-h"],
         "robot-docs" => &["--guide", "--help", "-h"],
         "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
+        "fmt" => &["--value", "--sf", "--from", "--format", "--help", "-h"],
         _ => &["--help", "-h"],
     }
 }

@@ -8,6 +8,8 @@
 
 mod agent_cmd;
 pub mod catalog;
+mod coverage_cmd;
+mod coverage_seed;
 mod eval_cmd;
 pub mod genesis_cmd;
 mod meaning_cmd;
@@ -1713,7 +1715,13 @@ enum Command {
     Web(serve_cmd::ServeArgs),
     Serve(serve_cmd::ServeArgs),
     New { name: String, out: PathBuf },
-    Fmt { path: PathBuf },
+    Fmt {
+        path: Option<PathBuf>,
+        value: Option<String>,
+        sf: Option<u32>,
+        from: Option<String>,
+        format: Option<String>,
+    },
     Explain(ExplainRequest),
     Run { path: PathBuf, out: PathBuf },
     Test { path: PathBuf, out: PathBuf },
@@ -1724,6 +1732,7 @@ enum Command {
     Doctor { json: bool },
     Vendor { out: PathBuf },
     Agent(AgentRequest),
+    Coverage(Vec<String>),
 }
 
 pub(crate) enum ExplainRequest {
@@ -1921,6 +1930,7 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
                 Err(ParseKnownError::Usage("capabilities [--json]"))
             }
         }
+        "coverage" => Ok(Command::Coverage(rest.to_vec())),
         "robot-docs" => match rest {
             [] => Ok(Command::RobotDocs),
             [guide] if guide == "guide" || guide == "--guide" => Ok(Command::RobotDocs),
@@ -1929,9 +1939,7 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
         "new" => parse_new_request(rest)
             .map(|(name, out)| Command::New { name, out })
             .ok_or(ParseKnownError::Usage("new <name> [--out <dir>]")),
-        "fmt" => parse_required_path(rest)
-            .map(|path| Command::Fmt { path })
-            .ok_or(ParseKnownError::Usage("fmt <file.emath>")),
+        "fmt" => parse_fmt_request(rest),
         "explain" => {
             parse_explain_request(rest)
                 .map(Command::Explain)
@@ -1990,6 +1998,68 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
     }
 }
 
+/// `fmt [<file.emath>]` or value mode:
+/// `fmt --value <literal> [--sf N] [--from UNIT] [--format "0.1 %"|preferred_unit UNIT]`
+fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownError> {
+    const USAGE: &str = "fmt [<file.emath>] | fmt --value <literal> \
+                         [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]";
+    let mut path: Option<PathBuf> = None;
+    let mut value: Option<String> = None;
+    let mut sf: Option<u32> = None;
+    let mut from: Option<String> = None;
+    let mut format: Option<String> = None;
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--value" => {
+                i += 1;
+                value = rest.get(i).map(|s| s.to_string());
+                if value.is_none() {
+                    return Err(ParseKnownError::Usage(USAGE));
+                }
+            }
+            "--sf" => {
+                i += 1;
+                match rest.get(i).and_then(|s| s.parse::<u32>().ok()) {
+                    Some(n) => sf = Some(n),
+                    None => return Err(ParseKnownError::Usage(USAGE)),
+                }
+            }
+            "--from" => {
+                i += 1;
+                from = rest.get(i).map(|s| s.to_string());
+                if from.is_none() {
+                    return Err(ParseKnownError::Usage(USAGE));
+                }
+            }
+            "--format" => {
+                i += 1;
+                if rest.get(i).is_none() {
+                    return Err(ParseKnownError::Usage(USAGE));
+                }
+                format = Some(rest[i..].join(" "));
+                break;
+            }
+            other if !other.starts_with('-') && path.is_none() && value.is_none() => {
+                path = Some(PathBuf::from(other));
+            }
+            _ => return Err(ParseKnownError::Usage(USAGE)),
+        }
+        i += 1;
+    }
+    // Exactly one of file mode or value mode.
+    if value.is_some() == path.is_some() {
+        return Err(ParseKnownError::Usage(USAGE));
+    }
+    Ok(Command::Fmt {
+        path,
+        value,
+        sf,
+        from,
+        format,
+    })
+}
+
 fn run_command(command: Command) -> CliExit {
     match command {
         Command::Check(FileJsonRequest::Ready { path, json }) => check(&path, json),
@@ -2040,7 +2110,16 @@ fn run_command(command: Command) -> CliExit {
             EXIT_OK
         }
         Command::New { name, out } => tooling_cmd::new_cmd(&name, &out),
-        Command::Fmt { path } => tooling_cmd::fmt_cmd(&path),
+        Command::Fmt {
+            path,
+            value,
+            sf,
+            from,
+            format,
+        } => match value {
+            Some(raw) => tooling_cmd::fmt_value_cmd(&raw, sf, from.as_deref(), format.as_deref()),
+            None => tooling_cmd::fmt_cmd(path.as_deref().expect("path or --value at parse")),
+        },
         Command::Explain(request) => tooling_cmd::explain_cmd(request),
         Command::Run { path, out } => tooling_cmd::run_cmd(&path, &out),
         Command::Test { path, out } => tooling_cmd::test_cmd(&path, &out),
@@ -2051,6 +2130,7 @@ fn run_command(command: Command) -> CliExit {
         Command::Doctor { json } => tooling_cmd::doctor_cmd(json),
         Command::Vendor { out } => tooling_cmd::vendor_cmd(&out),
         Command::Agent(request) => agent_cmd::agent_cmd(request),
+        Command::Coverage(rest) => coverage_cmd::coverage_cmd(&rest),
     }
 }
 
