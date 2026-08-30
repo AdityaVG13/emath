@@ -435,6 +435,21 @@ pub(super) fn map_type(
                 })
             }
         }
+        // Total refusal matrix (pass 5, emath-rat-real-types-p5cj): bare
+        // `Real` at a type site is NEVER silently mapped to `f64`. The one
+        // deterministic E-NUM-004 names the three sanctioned spellings, so
+        // bare input, generic arguments, and Vector/Matrix element positions
+        // all refuse identically (no shape-dependent behavior).
+        "Real" => {
+            diagnostics.error(
+                "E-NUM-004",
+                "bare `Real` at a type site requires profile evidence; write \
+                 `Float64` (strict-f64), `Interval<Float64>` (certified interval), \
+                 or a `representation Real => Float64` directive",
+                ty.source,
+            );
+            None
+        }
         // Pass 2 (emath-rat-real-types-p5cj): `Rat`/`Rational` map onto the
         // existing `TypeNode::Rational` (exact i128 num/den) instead of the
         // Phase 1 refusal.
