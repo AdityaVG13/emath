@@ -29,5 +29,5 @@ pub use fallback::{FallbackGraph, FallbackNode};
 pub use identity::{PlanCache, ProviderFingerprint, plan_identity, provider_set_fingerprint};
 pub use inspect::PlanInspection;
 pub use lifting::{LiftedMethod, ProviderTraitSpec, emit_provider_trait, lift_missing};
-pub use planner::{PlannerConfig, PlanningOutcome, TieBreak, plan};
+pub use planner::{PlannerConfig, PlanningOutcome, TieBreak, combination_name, plan};
 pub use representations::{Conversion, ConversionNode, RepresentationError, find_conversion_path};

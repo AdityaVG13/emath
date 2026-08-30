@@ -224,3 +224,102 @@ fn capability_matrix_admits_supported_and_refuses_unsupported() {
         other => panic!("unsupported-only registry must fall back, got {other:?}"),
     }
 }
+
+#[test]
+fn selected_plan_names_goal_solver_provider_combination_deterministically() {
+    let goal = goal_with_produce("target");
+    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+    registry
+        .register(
+            "p1",
+            ProviderIsolation::Static,
+            provider_table("evaluate.target"),
+        )
+        .expect("sample registration must succeed");
+    let config = PlannerConfig::default();
+    let outcome = plan(&goal, &registry, &config);
+    let inspection = match &outcome {
+        PlanningOutcome::Selected { inspection, .. } => inspection,
+        other => panic!("goal must select a plan, got {other:?}"),
+    };
+    assert_eq!(
+        inspection.combination.as_deref(),
+        Some("evaluate:interpreter:p1"),
+        "selected plans must name the deterministic goal:solver:provider combination"
+    );
+    // Determinism: the same goal + registry + config name the same
+    // combination on a second run.
+    let second = plan(&goal, &registry, &config);
+    assert_eq!(
+        second.inspection().combination,
+        inspection.combination,
+        "the combination name must be deterministic across runs"
+    );
+    // The name must be part of the plan output: explain() and JSON.
+    assert!(
+        inspection.explain().contains("combination: evaluate:interpreter:p1"),
+        "explain() must render the combination"
+    );
+    assert!(
+        inspection.to_json().contains("evaluate:interpreter:p1"),
+        "to_json() must carry the combination"
+    );
+}
+
+#[test]
+fn combination_name_maps_goal_kinds_to_deterministic_solvers() {
+    use emath_ir::GoalPayload;
+    let mut base = goal_with_produce("target");
+    base.kind = GoalKind::Solve;
+    assert_eq!(
+        emath_plan::combination_name(&base, "p1"),
+        "solve:newton-bracket:p1"
+    );
+    base.kind = GoalKind::Differentiate;
+    assert_eq!(
+        emath_plan::combination_name(&base, "p1"),
+        "differentiate:dual-forward:p1"
+    );
+    base.kind = GoalKind::Optimize;
+    assert_eq!(
+        emath_plan::combination_name(&base, "p1"),
+        "optimize:newton-hessian:p1"
+    );
+    base.kind = GoalKind::Integrate;
+    assert_eq!(
+        emath_plan::combination_name(&base, "p1"),
+        "integrate:quadrature:p1"
+    );
+    base.kind = GoalKind::Evaluate;
+    assert_eq!(
+        emath_plan::combination_name(&base, "p1"),
+        "evaluate:interpreter:p1"
+    );
+    // A fit goal (custom kind with an optimizer method) names its
+    // declared solver.
+    base.kind = GoalKind::Custom(emath_core::SchemaId("fit".into()));
+    base.payload = GoalPayload {
+        method: "levenberg-marquardt".to_string(),
+        ..GoalPayload::default()
+    };
+    assert_eq!(
+        emath_plan::combination_name(&base, "p1"),
+        "custom:levenberg-marquardt:p1"
+    );
+}
+
+#[test]
+fn unselected_outcomes_carry_no_combination() {
+    let goal = goal_with_produce("target");
+    let registry = ProviderRegistry::new(RegistryConfig::static_only());
+    let outcome = plan(&goal, &registry, &PlannerConfig::default());
+    assert!(
+        matches!(outcome, PlanningOutcome::NoEligible { .. }),
+        "an empty registry must refuse planning"
+    );
+    assert_eq!(
+        outcome.inspection().combination,
+        None,
+        "no plan selected: no goal:solver:provider combination"
+    );
+}

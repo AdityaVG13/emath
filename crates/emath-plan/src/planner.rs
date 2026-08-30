@@ -13,8 +13,8 @@ use crate::identity::plan_identity;
 use crate::inspect::PlanInspection;
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{
-    EvidenceClaimId, ExcludedCandidate, Goal, GoalId, PlanNodeDef, PlanNodeId, PlanOperation,
-    ProviderRef, ResolutionPlan,
+    EvidenceClaimId, ExcludedCandidate, Goal, GoalId, GoalKind, PlanNodeDef, PlanNodeId,
+    PlanOperation, ProviderRef, ResolutionPlan,
 };
 use emath_provider_api::{Compatibility, ProviderRegistry, filter_goal};
 use std::collections::BTreeMap;
@@ -165,6 +165,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
                 candidates: vec![],
                 exclusions: exclusions.clone(),
                 selected_plan_id: None,
+            combination: None,
                 checks: vec![],
                 budget: None,
                 artifact_class: disposition_without_plan(&goal.requirements.fallback)
@@ -198,6 +199,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
             candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
             exclusions,
             selected_plan_id: None,
+            combination: None,
             checks: vec![],
             budget: Some(format!("{}candidates", verdicts.len())),
             artifact_class: disposition_exhausted(&goal.requirements.fallback)
@@ -218,6 +220,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
             candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
             exclusions,
             selected_plan_id: None,
+            combination: None,
             checks: vec![],
             budget: None,
             artifact_class: disposition_without_plan(&goal.requirements.fallback)
@@ -248,6 +251,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
             candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
             exclusions,
             selected_plan_id: None,
+            combination: None,
             checks,
             budget: Some(format!(
                 "E-RES-100: {} plan nodes exceed the {} node budget",
@@ -276,6 +280,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
         candidates: candidates.iter().map(|(_, id)| id.clone()).collect(),
         exclusions,
         selected_plan_id: Some(plan.plan_id.0.clone()),
+        combination: Some(combination_name(goal, &provider_id)),
         checks,
         budget: None,
         artifact_class: plan.artifact_class.clone(),
@@ -288,6 +293,30 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
         },
         plan,
     }
+}
+
+/// Deterministic `goal:solver:provider` combination name for plan
+/// output (emath-9bj1, Track A3 pass 7). The goal part is the kind's
+/// stable spelling; the solver part names the deterministic
+/// resolution method the goal binds: the solve goal's
+/// Newton-with-deterministic-bracket-fallback solver, dual forward
+/// mode for derivatives, Newton-on-∇f for optimize, quadrature for
+/// integrate, the fit goal's declared optimizer method when the goal
+/// is a fit payload (custom kind), and the interpreter otherwise;
+/// the provider part is the retained candidate provider id. The
+/// fixed field order makes the name a deterministic function of
+/// (goal, provider).
+#[must_use]
+pub fn combination_name(goal: &Goal, provider_id: &str) -> String {
+    let solver = match &goal.kind {
+        GoalKind::Solve => "newton-bracket",
+        GoalKind::Differentiate => "dual-forward",
+        GoalKind::Optimize => "newton-hessian",
+        GoalKind::Integrate => "quadrature",
+        GoalKind::Custom(_) if !goal.payload.method.is_empty() => goal.payload.method.as_str(),
+        _ => "interpreter",
+    };
+    format!("{}:{solver}:{provider_id}", goal.kind.as_str())
 }
 
 /// Builds the single-provider plan DAG deterministically.
