@@ -511,12 +511,18 @@ pub fn apply_solve_candidate(source: &str, world: SolveWorld) -> Result<(String,
     let pin = world.pin_phrase();
     let mut found = false;
     let mut out = String::new();
-    if world == SolveWorld::Modular
+    let required_parameter = match world {
+        SolveWorld::Modular => Some("modulus"),
+        SolveWorld::Numeric => Some("tolerance"),
+        SolveWorld::RealPm | SolveWorld::Complex | SolveWorld::Symbolic => None,
+    };
+    if let Some(parameter) = required_parameter
         && !source
             .lines()
-            .any(|line| line.trim().starts_with("modulus"))
+            .any(|line| line.trim().starts_with(parameter))
     {
-        out.push_str("modulus = ?\n");
+        out.push_str(parameter);
+        out.push_str(" = ?\n");
     }
     for line in source.lines() {
         if !found {
@@ -2047,6 +2053,29 @@ fn render_from_header(
             out.push_str("        ");
             out.push_str(name);
             out.push('\n');
+        }
+        out.push('\n');
+    }
+    // Every defined name that is not an input is an output of the
+    // component: the L3 contract makes the produced surface explicit
+    // instead of leaning on the evaluate-everything default. Outputs
+    // must be typed (`name: Type`), so the untyped default mirrors the
+    // inputs rule (Float64, N-TYPE-001) in the emitted text itself.
+    let mut outputs: Vec<&str> = Vec::new();
+    for (name, _) in defs {
+        if inputs.iter().any(|input| input == name) {
+            continue;
+        }
+        if !outputs.contains(&name.as_str()) {
+            outputs.push(name.as_str());
+        }
+    }
+    if !outputs.is_empty() {
+        out.push_str("    outputs:\n");
+        for name in &outputs {
+            out.push_str("        ");
+            out.push_str(name);
+            out.push_str(": Float64\n");
         }
         out.push('\n');
     }
