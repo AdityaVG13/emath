@@ -13,7 +13,7 @@ use crate::identity::plan_identity;
 use crate::inspect::PlanInspection;
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{
-    EvidenceClaimId, ExcludedCandidate, Goal, GoalId, GoalKind, PlanNodeDef, PlanNodeId,
+    EvidenceClaimId, ExcludedCandidate, Goal, GoalKind, PlanNodeDef, PlanNodeId,
     PlanOperation, ProviderRef, ResolutionPlan,
 };
 use emath_provider_api::{Compatibility, ProviderRegistry, filter_goal};
@@ -241,7 +241,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
                 .any(|rep| rep.encode_cost > 0)
         })
     });
-    let (mut plan, checks) = build_plan(goal.id, &provider_id, config);
+    let (mut plan, checks) = build_plan(goal, &provider_id, config);
     // Node budget: a plan DAG larger than `max_nodes` is a typed refusal
     // (E-RES-100), never a silently oversized artifact.
     if plan.nodes.len() > config.max_nodes {
@@ -321,7 +321,7 @@ pub fn combination_name(goal: &Goal, provider_id: &str) -> String {
 
 /// Builds the single-provider plan DAG deterministically.
 fn build_plan(
-    goal: GoalId,
+    goal: &Goal,
     provider_id: &str,
     config: &PlannerConfig,
 ) -> (ResolutionPlan, Vec<String>) {
@@ -413,7 +413,7 @@ fn build_plan(
     let plan = ResolutionPlan {
         schema: SchemaId("emath.resolution-plan".into()),
         plan_id: identity,
-        goal,
+        goal: goal.id,
         policy: config.policy.clone(),
         artifact_class: String::new(),
         nodes,
@@ -427,15 +427,113 @@ fn build_plan(
 fn plan_identity_here(
     config: &PlannerConfig,
     provider_id: &str,
-    goal: GoalId,
+    goal: &Goal,
     node_count: &str,
 ) -> ContentId {
     plan_identity(
-        &goal.0.to_string(),
+        &goal_semantic_canonical(goal),
         &config.policy,
         &[provider_id.to_string()],
         &format!("nodes-{node_count}"),
     )
+}
+
+/// Canonical semantic content of a goal for plan identity: kind, target
+/// and the structured payload. Deliberately excludes the positional
+/// `GoalId` (it shifts when unrelated goals are added to the package)
+/// and the source span (it shifts under reformatting), so the plan id
+/// changes exactly when the requested computation changes. Field order
+/// is fixed; the \x1f separator cannot appear in user identifiers
+/// (identifiers are alphanumeric/underscore), keeping the encoding
+/// injective for practical purposes.
+fn goal_semantic_canonical(goal: &Goal) -> String {
+    let payload = &goal.payload;
+    let mut canonical = String::new();
+    canonical.push_str(goal.kind.as_str());
+    // Target, then the name-list payload fields in a fixed order; each
+    // list is tagged so `wrt=[a,b]` can never collide with a different
+    // field assignment of the same names.
+    canonical.push('\u{1}');
+    canonical.push_str("target=");
+    canonical.push_str(&goal.target);
+    for (tag, names) in [
+        ("wrt", &payload.wrt),
+        ("measure", &payload.measure),
+        ("parameters", &payload.parameters),
+        ("model", &payload.model),
+    ] {
+        canonical.push('\u{1}');
+        canonical.push_str(tag);
+        canonical.push('=');
+        for name in names {
+            canonical.push_str(name);
+            canonical.push(',');
+        }
+    }
+    // Scalar payload fields in a fixed order.
+    for (tag, value) in [
+        (
+            "order",
+            payload.order.map(|order| order.to_string()),
+        ),
+        (
+            "against",
+            payload.against.clone(),
+        ),
+        (
+            "prediction",
+            Some(payload.prediction.clone()).filter(|p| !p.is_empty()),
+        ),
+        (
+            "residual",
+            Some(payload.residual.clone()).filter(|p| !p.is_empty()),
+        ),
+        (
+            "method",
+            Some(payload.method.clone()).filter(|p| !p.is_empty()),
+        ),
+        (
+            "require_identifiability",
+            Some(payload.require_identifiability.to_string())
+                .filter(|_| payload.require_identifiability),
+        ),
+    ] {
+        if let Some(value) = value {
+            canonical.push('\u{1}');
+            canonical.push_str(tag);
+            canonical.push('=');
+            canonical.push_str(&value);
+        }
+    }
+    // Pair-valued fit fields, order-preserving (order is semantic).
+    for (tag, pairs) in [
+        ("initial", &payload.initial),
+        ("weights", &payload.weights),
+    ] {
+        if !pairs.is_empty() {
+            canonical.push('\u{1}');
+            canonical.push_str(tag);
+            canonical.push('=');
+            for (name, literal) in pairs {
+                canonical.push_str(name);
+                canonical.push('=');
+                canonical.push_str(literal);
+                canonical.push(',');
+            }
+        }
+    }
+    if !payload.data.is_empty() {
+        canonical.push_str("\u{1}data=");
+        for (name, values) in &payload.data {
+            canonical.push_str(name);
+            canonical.push('=');
+            for value in values {
+                canonical.push_str(value);
+                canonical.push(',');
+            }
+        }
+    }
+    canonical
 }
 
 /// Conversion cost estimate from the capability table (0 when unknown).

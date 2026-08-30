@@ -308,6 +308,65 @@ fn combination_name_maps_goal_kinds_to_deterministic_solvers() {
     );
 }
 
+/// Plan identity must bind goal SEMANTICS (kind, target, payload), not
+/// just the positional goal id: two semantically different goals that
+/// occupy the same package slot in two different compilations must not
+/// collide on `plan_id`, because downstream caches (PlanCache, build
+/// manifests) key plans by that ContentId. And the same goal planned
+/// twice in-process must yield the identical id (determinism).
+#[test]
+fn plan_identity_binds_goal_semantics_and_is_deterministic() {
+    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+    let mut multi = provider_table("evaluate.target");
+    multi.capabilities.push({
+        let mut spec = multi.capabilities[0].clone();
+        spec.name = "differentiate.target".into();
+        spec
+    });
+    multi.capabilities.push({
+        let mut spec = multi.capabilities[0].clone();
+        spec.name = "solve.target".into();
+        spec
+    });
+    registry
+        .register("p1", ProviderIsolation::Static, multi)
+        .expect("sample registration must succeed");
+    let config = PlannerConfig::default();
+
+    let mut differentiate = goal_with_produce("target");
+    differentiate.kind = GoalKind::Differentiate;
+    differentiate.payload.wrt = vec!["x".into()];
+    let mut solve = goal_with_produce("target");
+    solve.kind = GoalKind::Solve;
+
+    let plan_id = |goal: &Goal| match plan(goal, &registry, &config) {
+        PlanningOutcome::Selected { plan, .. } => plan.plan_id.0,
+        other => panic!("goal must select a plan, got {other:?}"),
+    };
+
+    // Same semantics, planned twice in-process: identical id.
+    let first = plan_id(&differentiate);
+    let again = plan_id(&differentiate);
+    assert_eq!(first, again, "plan id must be stable across compilations");
+
+    // Different semantics, same positional slot: different ids.
+    let other = plan_id(&solve);
+    assert_ne!(
+        first, other,
+        "two different goals in the same package slot must not collide on plan_id"
+    );
+
+    // A different wrt set is a semantic change: different id.
+    let mut different_wrt = goal_with_produce("target");
+    different_wrt.kind = GoalKind::Differentiate;
+    different_wrt.payload.wrt = vec!["x".into(), "y".into()];
+    assert_ne!(
+        first,
+        plan_id(&different_wrt),
+        "changing the wrt set must change the plan id"
+    );
+}
+
 #[test]
 fn unselected_outcomes_carry_no_combination() {
     let goal = goal_with_produce("target");
