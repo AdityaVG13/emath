@@ -299,7 +299,6 @@ fn apply_capability_cell(
                 });
             }
             let values: Vec<Value> = args.iter().map(|(_, value)| value.clone()).collect();
-            let values: Vec<Value> = args.iter().map(|(_, value)| value.clone()).collect();
             let value =
                 (kernel.handler)(&values).map_err(|code| EvalFault::CapabilityRefused {
                     capability: capability.to_string(),
