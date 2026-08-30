@@ -1,15 +1,31 @@
-# Chapter 4: Declarations, Sections and Attributes
+# Declarations, Sections, and Attributes
 
-## Declaration head
+A named declaration starts with `emath <kind> <Name>:` and an indented body.
 
 ```emath
-emath policy AdaptivePolicy<T, N>:
-    ...
+emath function Square:
+    inputs:
+        x: Float64
+    definitions:
+        y = x * x
 ```
 
-The head contains attributes, declaration form, qualified name/generics and kind, named directly as `emath <kind> <Name<Parameters>>:`. Attribute lines precede the `emath` keyword (`{ attribute }` in the grammar).
+The built-in declaration kinds are:
 
-L2 named shorthand is the same head without required L3 sections:
+| Kind | Use it for |
+|---|---|
+| `function` | Stateless formulas |
+| `model` | State, derivatives, algebraic unknowns, and events |
+| `policy` | Stateful values with constructors |
+| `law` | A function with explicit assumptions, provenance, and evidence |
+| `kind` | A user-defined declaration schema |
+| `reaction_network` | Species, reactions, rates, and stoichiometry |
+
+Additional kinds such as `capability`, `family`, `theory`, `morphism`, `method`, `experiment`, `migration`, and `field_pack` require their matching `use std.kinds.*` import. An unmounted kind is refused, never guessed.
+
+## Named shorthand
+
+A small function may place definitions and examples directly in its body:
 
 ```emath
 emath function Square:
@@ -17,91 +33,61 @@ emath function Square:
     example x = 3
 ```
 
-That desugars to inferred `inputs:` / `definitions:` / `tests:` on the same declaration IR. A name with no body is `E-SYN-143`, not L0 scratch. An explicit head-arg list whose names do not cover the body's free names is `E-SYN-149` (typed refusal, not a guessed coercion). An unknown callee such as `mystery(x)` with no `mystery = ?` hole is `E-SYN-150`. L0 files omit the `emath` header entirely (`2+2`). `emath expand` prints the contracted form.
+This expands to ordinary `inputs:`, `definitions:`, and `tests:` sections. Use `emath expand` to inspect the expanded form. A header without a body is `E-SYN-143`. L0 scratch files omit the header entirely.
 
-## Section model
+## Sections
 
-A section is a named structured payload. Declare only what you need:
-`outputs:`, `goals:`, `exports:`, and `compile:` are optional. Definitions
-are the surface - an omitted `outputs:` section exposes every definition -
-and an omitted `goals:` section evaluates every definition (see spec 08):
+Sections are optional unless the declaration kind says otherwise. Order does not change meaning.
 
-```emath
-inputs:
-    x: Real
+| Section | Payload | Meaning |
+|---|---|---|
+| `inputs:` | typed fields | Input parameters |
+| `outputs:` | typed fields | Public result names; defaults to definitions |
+| `state:` | typed fields | Model state |
+| `algebraic:` | typed fields | Implicit unknowns solved with model state |
+| `definitions:` | `name = expression` rows | Computed values |
+| `equations:` | derivative, equality, or residual rows | Model equations |
+| `constructors:` | constructor declarations | Valid policy state creation |
+| `observations:` | `obs name[: type] = data` | Read-only measured data |
+| `constraints:` | Boolean expressions | Solver constraints |
+| `invariant:` | claims | Stated model invariants |
+| `tests:` | `given` and `expect` cases | Worked examples |
+| `goals:` | commands | Evaluation, solving, simulation, or generation requests |
+| `exports:` | commands | Public declaration surface |
+| `compile:` | commands | Target and numeric profile |
+| `assumptions:` | law metadata | Named and executable preconditions |
+| `domain:` | law metadata | Mathematical domain |
+| `provenance:` | source records | Origin of a law or binding |
+| `citations:` | citation rows | References for a law |
+| `evidence:` | claims | Evidence level, checker, and requirements |
+| `about:` | metadata | Human description |
+| `host:` | mappings | Host-language bindings |
 
-goals:
-    evaluate <score>:
-        produce rust.library
-```
+A section not allowed by its kind is `E-KIND-010` or `E-SYN-101`. A stateless `model` may admit with `N-KIND-001`, suggesting `function`.
 
-Schemas specify payload grammar, multiplicity, ordering semantics, defaults and lowering.
+### Contract mode
 
-### Imported declaration kinds
+A declaration carrying `outputs:`, `definitions:`, or `goals:` is in
+**contract mode**, and three rules keep the contract honest:
 
-`use std.kinds.capability` mounts the standard capability schema. A following
-`emath capability Name:` declaration uses ordinary function-shaped
-`inputs:`, exactly one `outputs:`, and `definitions:` sections. The name
-`capability` is not a lexer keyword and does not add a stable-IR operation
-variant. Missing the import is `E-KIND-001`; sections outside the mounted
-schema are `E-SYN-101`.
+- `outputs:` or `goals:` without `inputs:` (and without a `Hole`
+  placeholder) is refused with `E-SEC-130`: outputs with no declared
+  input have no source.
+- A `definitions:` name that shadows an `inputs:` name is refused with
+  `E-NAME-020`: a definition may not overwrite a declared input. A name
+  in both `inputs:` and `outputs:` is rejected by the same
+  duplicate-field rule.
+- Omitting `goals:` is allowed but warns with `E-SEC-133`: every
+  definition defaults to `evaluate`, and the default must be visible.
 
-```emath
-use std.kinds.capability
+`evidence:` is demanded only when a goal asserts truth without
+computing it (`E-EV-140`). Phase 1 goal verbs (`evaluate`,
+`differentiate`, `benchmark`, `fit`, `simulate`) are operational —
+they compute, they do not claim — so they never require evidence.
 
-emath capability Softmax:
-    inputs:
-        x: Float64
-    outputs:
-        probability: Float64
-    definitions:
-        probability = x
-```
+## Laws
 
-`use std.kinds.family` mounts the family generator schema. The implemented
-`ElementwiseUnary<Op>` family takes an `instances:` list of at least three
-string operation names and expands them into ordinary function-shaped
-`capability` declarations:
-
-```emath
-use std.kinds.family
-
-emath family ElementwiseUnary<Op>:
-    inputs:
-        x: Float64
-    outputs:
-        value: Float64
-    definitions:
-        value = x
-    instances:
-        "sin"
-        "exp"
-        "sqrt"
-```
-
-Each generated cell has its own declaration ID, `Float64 -> Float64`
-contract, ordinary call expression, and therefore the same evaluator and
-Rust projection path as a handwritten cell. Supported instance names are
-`abs`, `cos`, `exp`, `ln`, `log10`, `log2`, `recip`, `sin`, `sqrt`, and
-`tan`. An unknown family, parameter, member, duplicate, or a list shorter
-than the pattern-of-three gate is `E-KIND-026`. Without the schema import,
-`emath family` remains an unknown custom kind and refuses.
-
-`std.kinds.theory`, `std.kinds.model`, and `std.kinds.morphism` mount the
-finite categorical-algebra schemas. A `theory` declares binary structure and
-named laws. A finite `model` supplies a modulus, identity, and the two
-coefficients of `a * b = left*a + right*b (mod modulus)`; the compiler checks
-every law tuple before admitting it. A `morphism` supplies a scale map and is
-admitted only after exhaustive operation-preservation checking. Theory claims
-remain `not-run`/E1; successful model and morphism checks produce E2 claims.
-The bounded implementation requires `1 <= modulus <= 256`. Schema or reference
-errors are `E-KIND-027`; a concrete counterexample is `E-LAW-003`.
-
-### Executable laws
-
-`emath law` is function-shaped sugar for named mathematics. It uses the
-ordinary typed definition and execution path, while retaining the assumptions,
-domain, provenance, citations, and evidence that bound the claim:
+A law uses the normal function execution path but requires its mathematical context:
 
 ```emath
 emath law NewtonSecond:
@@ -117,8 +103,6 @@ emath law NewtonSecond:
     inputs:
         mass: Float64 in kg
         acceleration: Float64 in m/s^2
-    outputs:
-        force: Float64 in kg*m/s^2
     definitions:
         force = mass * acceleration
     evidence:
@@ -128,47 +112,21 @@ emath law NewtonSecond:
             level E2
 ```
 
-Implemented today: a law admits and runs through the same unit, shape,
-definition, goal, example, interpreter, and Rust generation machinery as a
-stateless function. `assumptions:`, `domain:`, `provenance:`, `citations:`,
-and at least one `evidence:` claim are mandatory. Missing metadata is
-`E-LAW-002`; an evidence level outside `E0` through `E5` is `E-EVID-115`.
-Assumptions are copied onto each evidence claim, and all law metadata remains
-attached to the declaration during evaluation. See
-[`newton-second.emath`](../examples/physics/newton-second.emath).
+`assumptions:`, `domain:`, `provenance:`, `citations:`, and at least one evidence claim are required. A false executable `require` refuses evaluation. Evidence levels are `E0` through `E5`.
 
-`assumptions:` may additionally contain `require <Bool expression>` over law
-inputs. The runner checks these requirements before evaluating definitions; a
-false requirement produces a typed refused verdict, so partial formulas such as
-a Bayes ratio do not silently evaluate at an invalid denominator.
+## Observations and provenance
 
-### Available sections (function)
+Observations are read-only:
 
-| Section | Payload | Required | Purpose |
-|---------|---------|----------|---------|
-| `inputs:` | Fields | Optional | Input parameters with types |
-| `outputs:` | Fields | Optional (defaults to definitions) | Named output fields with types |
-| `state:` | Fields | Optional | State variables for models |
-| `algebraic:` | Fields | Optional | Implicit algebraic unknowns for `emath model` (Newton-solved at each step) |
-| `definitions:` | Suite | Yes (or `equations:`) | Named expressions: `name = expr` |
-| `equations:` | Suite | Yes (or `definitions:`) | Model equations: `der(state) = rhs`, `name = expr` algebraic definitions, or `lhs == rhs` / bare residual constraints |
-| `constructors:` | Suite | Optional | Constructor functions for state |
-| `constraints:` | Suite | Optional | Bool expressions fed to optimizer as soft quadratic penalties |
-| `invariant:` | Suite | Optional | Claim expressions (limits, series, asymptotic equivalence) admitted as stated truths |
-| `tests:` | Suite | Optional | Example cases with `given`/`expect` |
-| `goals:` | Commands | Optional | Compilation and provider goals |
-| `exports:` | Commands | Optional | What to export from this declaration |
-| `compile:` | Commands | Optional (default: rust/library/strict-f64) | Compile target and profile |
-| `about:` | Commands | Optional | Prose metadata |
-| `evidence:` | Suite | Optional | Evidence claims |
-| `provenance:` | Binding sections | Optional | Identity-bearing scientific source for named bindings |
-| `host:` | Suite | Optional | Host-language bindings |
+```emath
+observations:
+    obs plasma_conc: Float64 = 2.4
+    obs time_points = [0.5, 1.0, 2.0, 4.0]
+```
 
-`assumptions:`, `domain:`, and `citations:` are law-only.
-For a law, `provenance:` remains the required list of `source: "..."`
-entries described above. For an ordinary function, policy, or model,
-`provenance:` instead attaches a closed provenance value to a declared
-input, output, state, algebraic variable, or definition:
+A definition cannot reuse an observation name (`E-OBS-WRITE`). Duplicate names are `E-NAME-022`; type mismatches are `E-TYPE-012`.
+
+Binding provenance uses one of six closed kinds: `Exact`, `Citation`, `InstrumentRun`, `Fitted`, `Assumed`, or `Unstated`.
 
 ```emath
 provenance:
@@ -176,89 +134,132 @@ provenance:
         kind: "Citation"
         reference: "doi:10.1234/example"
         adjustment: "temperature corrected"
-    correction:
-        kind: "Assumed"
-        reason: "small calibration offset"
 ```
 
-The six kinds are `Exact` (`source`), `Citation` (`reference`, optional
-`adjustment`), `InstrumentRun` (`file`, `processing`), `Fitted` (`fit_id`),
-`Assumed` (optional `reason`), and `Unstated` (no extra keys). Unknown keys
-or malformed payloads are `E-SYN-152`; an unknown binding is `E-NAME-028`.
-Nothing is silently retained as untyped prose.
+`emath check --verify-data` verifies an `InstrumentRun` SHA-256 against its source file. Drift or unreadable data is `E-OBS-HASH`.
+
+## Time series
+
+```emath
+definitions:
+    wind = [(0.0 s, 0.0 [unit m/s]), (0.1 s, 1.0 [unit m/s])] with interpolation: linear, extrapolation: refuse
+    at_midpoint = series_at(wind, 0.05 s)
+```
+
+Times must be strictly increasing. Interpolation is `previous`, `linear`, `nearest`, `pwc`, or `monotone_cubic`. Extrapolation is `refuse`, `clamp`, or `extend`; the default is `refuse`. The policy is part of semantic identity.
+
+### Interpolation semantics
+
+Let the support be the strictly increasing sample pairs `(t0, v0), ..., (tn, vn)` in SI units. `series_at(series, t)` evaluates the declared policy. At every support point every mode evaluates to that point's sample.
+
+- `previous` and `pwc`: the left-continuous step. For `ti <= t < ti+1` the value is `vi`; on the last support point the value is `vn` (the endpoint is always evaluated, never the step below it). `pwc` is the canonical alias of `previous` — they agree at every time.
+- `linear`: the time-proportional blend `vi + alpha * (vi+1 - vi)` with `alpha = (t - ti) / (ti+1 - ti)` on the bracketing interval.
+- `nearest`: the closer sample; on an exact midpoint (`alpha == 0.5`) the tie resolves to the later sample (round-half-up). The choice is deterministic.
+- `monotone_cubic`: the Fritsch–Carlson monotone cubic. Per-interval slopes are the sign-matched average of the adjacent secants (zero where adjacent secants disagree in sign), the outer slopes are the outer secant, and the segment is the cubic Hermite basis over that slope data. The interpolant is shape-preserving: it never overshoots the bracketing samples. With exactly two points (or equal adjacent secants) it reduces to the straight line.
+
+### Extrapolation semantics
+
+Outside `[t0, tn]` the declared policy decides:
+
+- `refuse` (default): a typed out-of-support fault, never a value. The fault names the requested time and the support bounds (`SeriesOutOfSupport` at execution).
+- `clamp`: the nearest endpoint value (`v0` before `t0`, `vn` after `tn`), for every interpolation mode.
+- `extend`: continue the OUTER interval's interpolation. `linear` and `monotone_cubic` extend their outer segment/slope; `nearest`, `previous`, and `pwc` hold the last sample on that side (`v0` before `t0`, `vn` after `tn`).
+
+### Series refusals
+
+- a non-increasing or equal time axis refuses — every mode orders the support by time (`E-SYN-101`);
+- an empty series and non-`(time, value)` rows refuse (`E-SYN-101`);
+- missing `with interpolation:` refuses — the mode changes every downstream number and is never guessed (`E-SYN-101`);
+- duplicate or unknown policy keys refuse (`E-SYN-103`, `E-SYN-101`);
+- CSV projection failures (missing/duplicated selected column, ragged row, non-finite cell, non-increasing selected time) refuse with `E-SERIES-CSV`.
+
+Pure CSV text can be mapped into a series by header name:
+
+```emath
+wind = series_from_csv(csv_text, "time", "wind", "linear", "refuse")
+```
+
+Headers may carry units as `time (s)`. Unmapped columns are ignored by the series projection. A missing or duplicated selected column, ragged row, non-finite selected cell, or non-increasing selected time column refuses with `E-SERIES-CSV`. This operation consumes text already present in the program; it performs no filesystem or network I/O.
+
+## Reaction networks
+
+```emath
+emath reaction_network HydrogenCombustion:
+    species:
+        H2
+        O2
+        H2O
+    reactions:
+        combustion: 2H2 + O2 -> 2H2O
+    stoichiometry:
+        nu = stoich(reactions)
+```
+
+Species must be declared before use (`E-CHEM-SPECIES`). Reaction arrows are `->`, `<->`, and `<=>`. Element imbalance is `E-CHEM-BALANCE`.
+
+`stoichiometry:` accepts the derived form `stoich(reactions)`. `extents:` declares typed extents. `ice_table <reaction>:` contains `initial:`, `change:`, and optionally `equilibrium = initial + xi * change`. Re-entered or inconsistent coefficients are `E-CHEM-STOICH`.
+
+## Imported declaration kinds
+
+Imported kinds use the same declaration and section machinery. They do not add lexer keywords.
+
+```emath
+use std.kinds.capability
+
+emath capability Softmax:
+    inputs:
+        x: Float64
+    outputs:
+        probability: Float64
+    definitions:
+        probability = x
+```
+
+- `capability` declares a schema-validated capability cell.
+
+  A capability may use the biform surface (bead `emath-biform-cells-jswu6`): `class: biform` plus `version: "…"` and `migration:` rows, and `spec:` / `algorithm:` side sections each binding an independent quoted `evidence: "…"` with an optional `authority: authored | verified | provider` row (defaults: spec `authored`, algorithm `verified`). The sides reach the capability layer's closure planner at admission: a missing side refuses `E-CELL-009`, an authority that cannot attest a side refuses `E-CELL-010`, and one evidence object claimed for both sides refuses `E-CELL-011` (a green algorithm test never stamps the spec proved). The cell name is namespaced by the declared `package <path>`; a package-less biform declaration refuses `E-CELL-005`. Legacy capability declarations without a `class:` row keep the generic shape above.
+
+- `family` expands a bounded list of instances into ordinary capabilities.
+- `theory`, finite `model`, and `morphism` declarations are exhaustively checked on bounded carriers.
+- `method` records one `algorithm:` and one `falsifier:`. It is proposal-only and cannot grant itself authority.
+- `experiment` references problems, methods, providers, protection rules, and keep policy.
+- `migration` classifies changes as `presentation`, `meaning`, `evidence`, or `provider`; a meaning change requires evidence.
+- `field_pack` exports existing cells and metadata for installation.
+
+Unknown sections, unsupported members, invalid authority claims, and unclassified migration changes refuse with typed diagnostics.
+
+## Constructor defaults
+
+Defaults are admitted in constructor parameter lists:
+
+```emath
+constructors:
+    public fn new(scale: Float64 = 1.0) -> Self:
+        Self:
+            scale = scale
+```
+
+A default cannot read state. Defaults in declaration-head arguments are not admitted.
 
 ## Attributes
 
-Attributes are scoped metadata with versioned semantics. The surface
-grammar is fixed — `attribute = "@" , path , [ "(" , [ argument_list ] , ")" ] , newline`
-— and arguments are identifiers, string literals, or bracket lists.
-
-### Implemented today
-
-The front-end admits exactly two item attributes end to end (parse,
-format, type-check):
-
-- `@capabilities(experimental-syntax)` — declares the experimental lane
-  capability for the file. The capability is **file-scoped**: declaring
-  it on any item admits `@experimental` items anywhere in the same
-  source file. Unknown capability keys are refused with `E-PKG-065`.
-- `@experimental` — marks an item as experimental syntax. It takes no
-  arguments (`E-SYN-117`); without the declared `experimental-syntax`
-  capability the item is refused with `E-PKG-064`, so experimental
-  syntax never compiles silently in a stable package (see
-  `elps/README.md`, experimental lane).
-
-Every other attribute is refused with `E-SYN-118` — nothing is silently
-dropped. The design vocabulary below (`@deterministic`, `@deprecated`,
-`@repr`, `@evidence`, named arguments like `since = "0.3"`) is normative
-surface that the front-end does not admit yet; each will land through an
-ELP with its own semantics and admission path.
-
-### Design vocabulary (not yet admitted)
+Two item attributes are admitted:
 
 ```emath
-@deterministic
-@deprecated(since = "0.3", use = NewPolicy)
-@repr(rust = "transparent")
-@evidence(min = E3)
+@capabilities(experimental-syntax)
+@experimental
+emath function Candidate:
+    y = 1
 ```
 
-Unknown attributes are rejected unless admitted through a package namespace or explicitly retained as opaque metadata by the kind schema.
+`@capabilities(experimental-syntax)` enables the file-scoped experimental lane. `@experimental` takes no arguments and requires that capability. Unknown attributes are `E-SYN-118`; unknown capability keys are `E-PKG-065`.
 
-## Generics
+## Generics and extensions
 
-Generic parameters may range over types, dimensions, shapes, units, domains, constants, providers and capabilities:
+Generic parameters may range over types, dimensions, shapes, units, constants, providers, and capabilities:
 
 ```emath
 emath function Kernel<T: Real, N: Nat, U: Unit>:
 ```
 
-Generic constraints enter SIR and generated Rust bounds or runtime checks according to what can be expressed statically.
-
-## Capabilities
-
-Capabilities describe semantic/effect properties, not unverified marketing:
-
-```text
-Pure
-Deterministic
-Differentiable(order = 2)
-Stateful
-MayAllocate
-RequiresNetwork
-Certified(kind = interval)
-```
-
-A claimed capability may require evidence before publication or provider selection.
-
-## Extension section
-
-Namespaced extensions preserve data not understood by the core:
-
-```emath
-extensions:
-    my_org::hardware:
-        preferred_device: "gpu"
-```
-
-An extension declares whether it affects semantic identity, planning only, presentation or evidence.
+Namespaced extension data belongs under `extensions:` and must declare whether it affects semantic identity, planning, presentation, or evidence.
