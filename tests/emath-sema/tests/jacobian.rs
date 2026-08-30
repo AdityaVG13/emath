@@ -333,3 +333,48 @@ fn mr_jacobian_matches_per_cell_recomposition_through_intermediate_definitions()
         test.verdict
     );
 }
+
+const JACOBIAN_EXACT_RULES: &str = "\
+emath function JacobianExactRules:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[3, 1]
+
+    definitions:
+        q = x / (x + 3.0)
+        s = sqrt(x) * x
+        l = ln(sqrt(x))
+        J = jacobian([q, s, l]) wrt x
+
+    tests:
+        example <eval>:
+            given x = 1
+            expect J == [[0.1875], [1.5], [0.5]]
+";
+
+#[test]
+fn jacobian_cells_match_hand_derived_exact_rules() {
+    // At x = 1: q' = 3/(1+3)^2 = 3/16 = 0.1875 (quotient rule),
+    // s' = (sqrt(x) * x)' = 1/(2*sqrt(1)) + sqrt(1) = 1.5 (product rule),
+    // l' = d/dx ln(sqrt(x)) = 1/(2*x) = 0.5 (chain rule). Every expected
+    // cell is an exactly representable dyadic rational, so equality is exact.
+    let result = check_source("jac-exact-rules", JACOBIAN_EXACT_RULES);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    assert!(
+        test.verdict.expect_passed(),
+        "jacobian cells must equal the hand-derived [3/16, 3/2, 1/2] row: {}",
+        test.verdict
+    );
+}
