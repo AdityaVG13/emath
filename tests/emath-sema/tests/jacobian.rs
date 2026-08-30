@@ -354,6 +354,215 @@ emath function JacobianExactRules:
             expect J == [[0.1875], [1.5], [0.5]]
 ";
 
+// --- Pass 3: shape determinism. Orientation, row/column ordering,
+// typed refusals for non-scalar components, and cross-run stability.
+
+const JACOBIAN_WRT_ORDER_SWAPPED: &str = "\
+emath function JacobianWrtOrderSwapped:
+    inputs:
+        x: Float64
+        y: Float64
+
+    outputs:
+        J: Matrix[2, 2]
+
+    definitions:
+        f1 = x * y
+        f2 = x + y
+        J = jacobian([f1, f2]) wrt y, x
+
+    tests:
+        example <eval>:
+            given x = 3
+            given y = 2
+            expect J == [[3.0, 2.0], [1.0, 1.0]]
+";
+
+const JACOBIAN_ROW_ORDER_SWAPPED: &str = "\
+emath function JacobianRowOrderSwapped:
+    inputs:
+        x: Float64
+        y: Float64
+
+    outputs:
+        J: Matrix[2, 2]
+
+    definitions:
+        f1 = x * y
+        f2 = x + y
+        J = jacobian([f2, f1]) wrt x, y
+
+    tests:
+        example <eval>:
+            given x = 3
+            given y = 2
+            expect J == [[1.0, 1.0], [2.0, 3.0]]
+";
+
+const JACOBIAN_VECTOR_COMPONENT: &str = "\
+emath function JacobianVectorComponent:
+    inputs:
+        x: Float64
+        y: Float64
+
+    outputs:
+        J: Matrix[1, 2]
+
+    definitions:
+        v = [x, y]
+        J = jacobian([v]) wrt x, y
+";
+
+const JACOBIAN_MATRIX_COMPONENT: &str = "\
+emath function JacobianMatrixComponent:
+    inputs:
+        x: Float64
+        y: Float64
+
+    outputs:
+        J: Matrix[1, 2]
+
+    definitions:
+        M = [[x, y], [y, x]]
+        J = jacobian([M]) wrt x, y
+";
+
+const JACOBIAN_NESTED: &str = "\
+emath function JacobianNested:
+    inputs:
+        x: Float64
+        y: Float64
+
+    outputs:
+        J: Matrix[2, 2]
+
+    definitions:
+        f1 = x * y
+        f2 = x + y
+        J = jacobian(jacobian([f1, f2]) wrt x, y) wrt x, y
+";
+
+#[test]
+fn jacobian_wrt_order_swaps_columns_not_rows() {
+    // Column j = derivative wrt the j-th wrt variable in SOURCE order:
+    // wrt y, x must put df/dy in column 1 — no canonical reordering.
+    let result = check_source("jac-wrt-order", JACOBIAN_WRT_ORDER_SWAPPED);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "swapped-wrt fixture must admit: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    // f1 = xy: (df1/dy, df1/dx) = (x, y) = (3, 2); f2 = x+y: (1, 1).
+    let data = matrix_value(test.outputs.get("J").expect("J must be evaluated"), 2, 2);
+    assert_eq!(
+        data,
+        &[3.0, 2.0, 1.0, 1.0],
+        "wrt y, x must place df/dy before df/dx in each row"
+    );
+    assert!(test.verdict.expect_passed(), "in-language expect must pass");
+}
+
+#[test]
+fn jacobian_row_order_follows_list_source_order() {
+    // Row i = component i in LIST order: swapping the list elements
+    // must swap rows, never sort or deduplicate them.
+    let result = check_source("jac-row-order", JACOBIAN_ROW_ORDER_SWAPPED);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "swapped-list fixture must admit: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let data = matrix_value(test.outputs.get("J").expect("J must be evaluated"), 2, 2);
+    assert_eq!(
+        data,
+        &[1.0, 1.0, 2.0, 3.0],
+        "jacobian([f2, f1]) must stack f2's derivatives as row 1"
+    );
+    assert!(test.verdict.expect_passed(), "in-language expect must pass");
+}
+
+#[test]
+fn jacobian_of_a_vector_valued_component_refuses_with_typed_error() {
+    // A component that is itself a vector has no scalar partial
+    // derivative; the matrix cell would be a vector. Must refuse with
+    // the typed numeric-body code, never silently flatten or emit a
+    // wrong-shaped matrix.
+    let result = check_source("jac-vector-component", JACOBIAN_VECTOR_COMPONENT);
+    let errors: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        errors.iter().any(|e| e.starts_with("E-TYPE-012")),
+        "jacobian of a vector-valued component must refuse with E-TYPE-012; got: {errors:#?}"
+    );
+}
+
+#[test]
+fn jacobian_of_a_matrix_valued_component_refuses_with_typed_error() {
+    // A matrix-valued component is even further from a scalar partial;
+    // same typed refusal, never a tensor surprise.
+    let result = check_source("jac-matrix-component", JACOBIAN_MATRIX_COMPONENT);
+    let errors: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        errors.iter().any(|e| e.starts_with("E-TYPE-012")),
+        "jacobian of a matrix-valued component must refuse with E-TYPE-012; got: {errors:#?}"
+    );
+}
+
+#[test]
+fn nested_jacobian_refuses_with_typed_error() {
+    // A jacobian whose body is another jacobian is a matrix of
+    // matrices; second-order derivatives are a different (unshipped)
+    // capability. Must refuse with a typed error, never silently
+    // reinterpret the inner rows as components.
+    let result = check_source("jac-nested", JACOBIAN_NESTED);
+    let errors: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        !errors.is_empty(),
+        "nested jacobian must refuse with a typed error, not admit"
+    );
+    assert!(
+        errors.iter().any(|e| e.starts_with("E-TYPE-")),
+        "nested jacobian refusal must be a typed E-TYPE-* diagnostic; got: {errors:#?}"
+    );
+}
+
+#[test]
+fn jacobian_evaluation_is_deterministic_across_runs() {
+    // Same source text, two independent compile+run passes, must
+    // produce byte-identical matrix cells: no HashMap iteration, no
+    // parallel float reduction anywhere in the parse->eval path.
+    let first = check_source("jac-det-1", JACOBIAN_TWO_VAR);
+    let second = check_source("jac-det-2", JACOBIAN_TWO_VAR);
+    let report = run_package(&first.package);
+    let report2 = run_package(&second.package);
+    let a = report.declarations[0].tests[0].outputs.get("J");
+    let b = report2.declarations[0].tests[0].outputs.get("J");
+    assert_eq!(a, b, "two runs of the same source must agree exactly");
+}
+
 #[test]
 fn jacobian_cells_match_hand_derived_exact_rules() {
     // At x = 1: q' = 3/(1+3)^2 = 3/16 = 0.1875 (quotient rule),

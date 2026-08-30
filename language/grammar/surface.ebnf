@@ -249,7 +249,8 @@ binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , bi
 -- `holding` is part of the term's identity (hash-relevant).
 -- `partial` / `total` / `d` / `∂` are contextual keywords: only active
 -- when followed by `(` in expression position; otherwise regular identifiers.
-derivative_expr  = ( "derivative" | "jacobian" | "hessian" ) , postfix_expr , "wrt" , expression
+derivative_expr  = "derivative" , postfix_expr , "wrt" , expression
+                 | "jacobian" , postfix_expr , "wrt" , expression , { "," , expression }
                  | ( "partial" | "∂" | "total" | "d" ) , postfix_expr , "wrt" , expression , [ "holding" , expression , { "," , expression } ] ;
 binder_list      = pattern , "in" , expression , { "," , pattern , "in" , expression } ;
 
