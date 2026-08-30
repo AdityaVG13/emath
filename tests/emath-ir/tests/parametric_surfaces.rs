@@ -1,11 +1,20 @@
-//! Bead `emath-0e68` pass 2 — prove curve evaluation `r(t) -> Vector[3]`
-//! end to end from ordinary `.emath` source through the generic call
-//! machinery.
+//! Bead `emath-0e68` — prove curve evaluation `r(t) -> Vector[3]`,
+//! surface evaluation `r(u,v) -> Vector[3]`, and implicit-field
+//! evaluation `f(p) -> Float64` end to end from ordinary `.emath`
+//! source through the generic call machinery.
 //!
-//! Failure-first record (pre-fix): RED. Sema refuses the user-function
+//! Failure-first record (pre-fix): RED. Sema refused the user-function
 //! call `r(0.5)` with E-TYPE-003 "unknown function `r`" — sibling
-//! `emath function` names are not in the Phase 1 callable set (builtins
-//! only), so user-defined parameterized calls are the named gap.
+//! `emath function` names were not in the Phase 1 callable set (builtins
+//! only), so user-defined parameterized calls were the named gap. The
+//! fix lands sibling-function calls as pure-inline substitution at sema
+//! (`crates/emath-sema/src/admit/lowering/sibling_calls.rs`).
+//!
+//! The runnable example
+//! `language/examples/geometry/parametric-surfaces.emath` is the pinned
+//! artifact for the curve/surface/implicit tests; the remaining sources
+//! are negative (arity refusal) and metamorphic (reparameterization,
+//! determinism) cases that do not belong in a user-facing example.
 
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::Value;
@@ -14,27 +23,23 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
-/// r(t) = [t, t*t, 2t] declared as an ordinary user function, called at
-/// t = 0.5 and t = 2.0 from an acceptance function.
-const CURVE_SOURCE: &str = r#"
-emath function r:
-    inputs:
-        t: Float64
-    outputs:
-        point: Vector[Float64]
-    definitions:
-        point = [t, t * t, 2.0 * t]
-
-emath function ParametricCurveAcceptance:
-    definitions:
-        p_half = r(0.5)
-        p_two = r(2.0)
-"#;
+/// The runnable example IS the pinned artifact for the curve/surface/
+/// implicit tests (the `geometry3d.rs` pattern): the shipped
+/// `parametric-surfaces.emath` declares the curve `r(t)`, the
+/// paraboloid/sphere/torus surfaces, the implicit sphere field, and one
+/// acceptance function calling all of them; these tests evaluate that
+/// file end to end so the example cannot drift from the proof.
+const EXAMPLE_SOURCE: &str =
+    include_str!("../../../language/examples/geometry/parametric-surfaces.emath");
 
 /// Intended behavior: r(0.5) == [0.5, 0.25, 1.0], r(2.0) == [2.0, 4.0, 4.0].
 #[test]
 fn curve_point_evaluates_end_to_end() {
-    let values = eval_source(CURVE_SOURCE, "parametric-curve", "ParametricCurveAcceptance");
+    let values = eval_source(
+        EXAMPLE_SOURCE,
+        "parametric-surfaces",
+        "ParametricSurfacesAcceptance",
+    );
     assert_eq!(
         values.get("p_half"),
         Some(&Value::Vector(vec![0.5, 0.25, 1.0])),
@@ -46,55 +51,6 @@ fn curve_point_evaluates_end_to_end() {
         "r(2.0) == [2.0, 4.0, 4.0]"
     );
 }
-
-/// Pass 3 artifact — surface r(u,v) -> Vector[3]: elliptic paraboloid
-/// z = u² + v² as an ordinary two-parameter user function, plus the
-/// unit sphere from the bead's test plan at its exactly-representable
-/// point (u,v) = (0,0) -> (0,0,1).
-const SURFACE_SOURCE: &str = r#"
-emath function paraboloid:
-    inputs:
-        u: Float64
-        v: Float64
-    outputs:
-        point: Vector[Float64]
-    definitions:
-        point = [u, v, u * u + v * v]
-
-emath function sphere:
-    inputs:
-        u: Float64
-        v: Float64
-    outputs:
-        point: Vector[Float64]
-    definitions:
-        point = [sin(v) * cos(u), sin(v) * sin(u), cos(v)]
-
-emath function ParametricSurfaceAcceptance:
-    definitions:
-        s_a = paraboloid(0.5, 2.0)
-        s_b = paraboloid(1.0, -1.0)
-        s_north = sphere(0.0, 0.0)
-"#;
-
-/// Pass 5 artifact — implicit scalar field f(p) -> Float64 over
-/// Vector[3]: the sphere indicator x²+y²+z², evaluated at an exactly
-/// representable point and at the origin.
-const IMPLICIT_SOURCE: &str = r#"
-emath function sphere_field:
-    inputs:
-        p: Vector[Float64]
-    outputs:
-        value: Float64
-    definitions:
-        value = p[0] * p[0] + p[1] * p[1] + p[2] * p[2]
-
-emath function ImplicitAcceptance:
-    definitions:
-        q = [1.0, 2.0, 2.0]
-        f_q = sphere_field(q)
-        f_origin = sphere_field([0.0, 0.0, 0.0])
-"#;
 
 /// Pass 5 artifact — a call with the wrong argument count must be
 /// refused with a diagnostic that names the arity problem (not a generic
@@ -141,10 +97,15 @@ fn eval_source(source: &str, session_name: &str, entry: &str) -> BTreeMap<String
 
 /// Intended behavior (pass 3): paraboloid(0.5, 2.0) == [0.5, 2.0, 4.25],
 /// paraboloid(1.0, -1.0) == [1.0, -1.0, 2.0], sphere(0,0) == [0,0,1]
-/// exactly (sin(0)=0, cos(0)=1 are exact in f64).
+/// exactly (sin(0)=0, cos(0)=1 are exact in f64), and the torus outer
+/// equator torus(0,0) == [3,0,0] exactly ((2+cos(0))·cos(0) = 3·1).
 #[test]
 fn surface_point_evaluates_end_to_end() {
-    let values = eval_source(SURFACE_SOURCE, "parametric-surface", "ParametricSurfaceAcceptance");
+    let values = eval_source(
+        EXAMPLE_SOURCE,
+        "parametric-surfaces",
+        "ParametricSurfacesAcceptance",
+    );
     assert_eq!(
         values.get("s_a"),
         Some(&Value::Vector(vec![0.5, 2.0, 4.25])),
@@ -160,13 +121,22 @@ fn surface_point_evaluates_end_to_end() {
         Some(&Value::Vector(vec![0.0, 0.0, 1.0])),
         "sphere north pole r(0,0) = (0,0,1)"
     );
+    assert_eq!(
+        values.get("t_ring"),
+        Some(&Value::Vector(vec![3.0, 0.0, 0.0])),
+        "torus outer equator (0,0) = (3,0,0)"
+    );
 }
 
 /// Intended behavior (pass 5): the implicit sphere field evaluates
 /// exactly at representable points: f([1,2,2]) = 9, f([0,0,0]) = 0.
 #[test]
 fn implicit_field_evaluates_end_to_end() {
-    let values = eval_source(IMPLICIT_SOURCE, "implicit-field", "ImplicitAcceptance");
+    let values = eval_source(
+        EXAMPLE_SOURCE,
+        "parametric-surfaces",
+        "ParametricSurfacesAcceptance",
+    );
     assert_eq!(values.get("f_q"), Some(&Value::F64(9.0)), "f([1,2,2]) = 9");
     assert_eq!(
         values.get("f_origin"),

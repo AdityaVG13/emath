@@ -1,0 +1,95 @@
+# Parametric curves and surfaces (bead emath-0e68) — runnable proof that
+# ordinary user-defined `emath function` declarations are CALLABLE from
+# other functions through the generic declared-call seam: a call to a
+# sibling function lowers by pure-inline substitution at sema (parameters
+# bind as renamed definitions over the caller-side argument subtrees; the
+# callee's `definitions:` body folds in through the existing inliner — no
+# new IR node, no registry entry, no runtime callee frame).  See
+# language/reference/geometry-and-topology.md §4 and
+# tests/emath-ir/tests/parametric_surfaces.rs (this file is that suite's
+# pinned artifact).
+#
+# Surfaces pinned at exactly-representable points (sin(0)=0, cos(0)=1,
+# cos(pi)=-1 are exact in f64):
+#   curve   r(t)       = [t, t^2, 2t]                      (space curve)
+#   surface paraboloid = [u, v, u^2 + v^2]                 (elliptic paraboloid)
+#   surface sphere     = [sin(v)cos(u), sin(v)sin(u), cos(v)]  (unit sphere, v=polar)
+#   surface torus      = [(2+cos(v))cos(u), (2+cos(v))sin(u), sin(v)]  (R=2, r=1)
+#   implicit f(p)      = x^2 + y^2 + z^2                   (sphere indicator field)
+
+emath function r:
+    inputs:
+        t: Float64
+    outputs:
+        point: Vector[Float64]
+    definitions:
+        point = [t, t * t, 2.0 * t]
+
+emath function paraboloid:
+    inputs:
+        u: Float64
+        v: Float64
+    outputs:
+        point: Vector[Float64]
+    definitions:
+        point = [u, v, u * u + v * v]
+
+emath function sphere:
+    inputs:
+        u: Float64
+        v: Float64
+    outputs:
+        point: Vector[Float64]
+    definitions:
+        point = [sin(v) * cos(u), sin(v) * sin(u), cos(v)]
+
+emath function torus:
+    inputs:
+        u: Float64
+        v: Float64
+    outputs:
+        point: Vector[Float64]
+    definitions:
+        point = [(2.0 + cos(v)) * cos(u), (2.0 + cos(v)) * sin(u), sin(v)]
+
+emath function sphere_field:
+    inputs:
+        p: Vector[Float64]
+    outputs:
+        value: Float64
+    definitions:
+        value = p[0] * p[0] + p[1] * p[1] + p[2] * p[2]
+
+emath function ParametricSurfacesAcceptance:
+    definitions:
+        # Curve evaluation at exactly-representable parameters.
+        p_half = r(0.5)
+        p_two = r(2.0)
+
+        # Surface evaluation: paraboloid at generic points, sphere at the
+        # north pole (u,v) = (0,0), torus at the outer equator (0,0).
+        s_a = paraboloid(0.5, 2.0)
+        s_b = paraboloid(1.0, -1.0)
+        s_north = sphere(0.0, 0.0)
+        t_ring = torus(0.0, 0.0)
+
+        # Implicit field over Vector[3]: a vector-valued argument may be a
+        # named definition or an inline literal; both bind the same way.
+        q = [1.0, 2.0, 2.0]
+        f_q = sphere_field(q)
+        f_origin = sphere_field([0.0, 0.0, 0.0])
+
+    tests:
+        example <curve>:
+            expect p_half == [0.5, 0.25, 1.0]
+            expect p_two == [2.0, 4.0, 4.0]
+
+        example <surfaces>:
+            expect s_a == [0.5, 2.0, 4.25]
+            expect s_b == [1.0, -1.0, 2.0]
+            expect s_north == [0.0, 0.0, 1.0]
+            expect t_ring == [3.0, 0.0, 0.0]
+
+        example <implicit_field>:
+            expect f_q == 9.0
+            expect f_origin == 0.0
