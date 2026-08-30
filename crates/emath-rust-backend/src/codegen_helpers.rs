@@ -133,6 +133,14 @@ pub(crate) fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut
                 collect_var_names(package, *element, out);
             }
         }
+        ExprNode::Set { elements, guards } => {
+            for element in elements {
+                collect_var_names(package, *element, out);
+            }
+            for guard in guards.iter().flatten() {
+                collect_var_names(package, *guard, out);
+            }
+        }
         ExprNode::Matrix(rows) => {
             for row in rows {
                 for element in row {
@@ -150,6 +158,14 @@ pub(crate) fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut
         | ExprNode::Solve { body, .. }
         | ExprNode::Optimize { body, .. }
         | ExprNode::SampleLimit { body, .. } => collect_var_names(package, *body, out),
+        ExprNode::Apply { arguments, .. } => {
+            for argument in arguments {
+                collect_var_names(package, *argument, out);
+            }
+        }
+        // A series data constant carries no free variables: the pairs
+        // are literals and the policy is declared (04 §5.4 slice 1).
+        ExprNode::Series { .. } => {}
     }
 }
 
@@ -304,7 +320,6 @@ pub(crate) fn rate_call(state_name: &str, input_args: &[Expr]) -> Expr {
 }
 
 pub(crate) fn rate_lets(
-    receiver: &str,
     prefix: &str,
     declaration: &emath_ir::Declaration,
     input_args: &[Expr],
@@ -314,8 +329,11 @@ pub(crate) fn rate_lets(
         .iter()
         .map(|field| Stmt::Let {
             pattern: format!("{prefix}_{}", field.name),
+            // `self` receiver must be Expr::SelfValue: Expr::Var("self")
+            // renders through escape_ident as `self_` (E0425 in generated
+            // model crates). Same contract as `rate_call` below.
             value: Box::new(Expr::MethodCall {
-                receiver: Box::new(Expr::Var(receiver.to_string())),
+                receiver: Box::new(Expr::SelfValue),
                 method: escape_ident(&format!("der_{}", field.name)),
                 args: input_args.to_vec(),
             }),

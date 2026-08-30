@@ -10,7 +10,7 @@ use crate::codegen_helpers::{
     add_obligations, add_scaled_expr, collect_var_names, expand_host_inputs, i64_field_names,
     rate_call, rate_lets,
 };
-use crate::codegen_render::value_expr;
+use crate::codegen_render::{value_expr, value_expr_rate};
 use crate::BackendError;
 
 /// Interpreter parity constants for generated causalized-Newton steps
@@ -75,7 +75,7 @@ impl super::BackendInput<'_> {
                 let program = lower_definition(package, *def_expr, &lowering_inputs, state_names)
                     .map_err(BackendError::Lowering)?;
                 add_obligations(&program, assumptions);
-                let value = value_expr(&program, &lowering_inputs, state_names, &i64_names)?;
+                let value = value_expr_rate(&program, &lowering_inputs, state_names, &i64_names)?;
                 if *def_name == &rate_name {
                     body_stmts.push(Stmt::Expr(value));
                 } else {
@@ -228,17 +228,17 @@ impl super::BackendInput<'_> {
             right: Box::new(Expr::F64(6.0_f64.to_bits())),
         };
         let mut statements = Vec::new();
-        statements.extend(rate_lets("self", "k1", declaration, input_args));
+        statements.extend(rate_lets("k1", declaration, input_args));
         statements.push(Stmt::Let {
             pattern: "s2".to_string(),
             value: Box::new(self.shifted_state(declaration, owner, "k1", &half)?),
         });
-        statements.extend(rate_lets("s2", "k2", declaration, input_args));
+        statements.extend(rate_lets("k2", declaration, input_args));
         statements.push(Stmt::Let {
             pattern: "s3".to_string(),
             value: Box::new(self.shifted_state(declaration, owner, "k2", &half)?),
         });
-        statements.extend(rate_lets("s3", "k3", declaration, input_args));
+        statements.extend(rate_lets("k3", declaration, input_args));
         statements.push(Stmt::Let {
             pattern: "s4".to_string(),
             value: Box::new(self.shifted_state(
@@ -248,7 +248,7 @@ impl super::BackendInput<'_> {
                 &Expr::Var("dt".to_string()),
             )?),
         });
-        statements.extend(rate_lets("s4", "k4", declaration, input_args));
+        statements.extend(rate_lets("k4", declaration, input_args));
         let mut fields = Vec::new();
         for field in &declaration.state {
             let node = self.package.ty(field.ty).ok_or_else(|| {
