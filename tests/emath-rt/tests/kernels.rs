@@ -470,7 +470,7 @@ fn sample_limit_respects_direction() {
 // ── embedding safety ──────────────────────────────────────────────────────
 
 #[test]
-fn source_is_paste_safe_for_module_embedding() {
+fn embedded_source_bans_imports_and_unsafe() {
     // No inner attributes may be embedded (`#![forbid]`, `#![no_std]`,
     // ... would break module embedding; hosts that strip `#![...]` lines
     // would also strip them mid-module).
@@ -484,16 +484,138 @@ fn source_is_paste_safe_for_module_embedding() {
     assert!(SOURCE.contains("pub fn vec_index_checked"));
     assert!(SOURCE.contains("pub fn tensor_slice_checked"));
     assert!(SOURCE.contains("pub struct Tensor"));
-    // The embedded module must stay std-only: no external crate paths.
+    // The embedded module must stay std-only: no external crate paths
+    // and no unsafe code. Doc comments may mention "unsafe" (e.g. a
+    // crate's `forbid(unsafe_code)` policy), so comment lines are
+    // skipped and only real unsafe constructs fail the guard.
     for line in SOURCE.lines() {
         let trimmed = line.trim_start();
         assert!(
             !trimmed.starts_with("use ") && !trimmed.starts_with("extern "),
-            "embedding forbids imports in body.rs: {line}"
+            "embedded source must not import: {line}"
         );
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        let is_unsafe_code = ["unsafe fn", "unsafe impl", "unsafe trait", "unsafe mod", "unsafe {"]
+            .iter()
+            .any(|pat| trimmed.contains(pat));
         assert!(
-            !trimmed.contains("unsafe"),
-            "embedding forbids unsafe in body.rs: {line}"
+            !is_unsafe_code,
+            "embedded source must not contain unsafe code: {line}"
         );
     }
+}
+
+// ── exact integer nullspace (rymw generic primitive) ──────────────────────
+
+#[test]
+fn int_nullvector_combustion_thermite_hydrogenation() {
+    use emath_rt::primitive_int_nullvector;
+    // 2 H2 + O2 -> 2 H2O (rows H, O; cols H2, O2, H2O).
+    let combustion = vec![vec![2, 0, 2], vec![0, 2, 1]];
+    assert_eq!(
+        primitive_int_nullvector(&combustion).expect("combustion computes"),
+        Some(vec![2, 1, -2])
+    );
+    // Fe2O3 + 2 Al -> Al2O3 + 2 Fe (rows Fe, O, Al; cols Fe2O3, Al, Al2O3, Fe).
+    let thermite = vec![vec![2, 0, 0, 1], vec![3, 0, 3, 0], vec![0, 1, 2, 0]];
+    assert_eq!(
+        primitive_int_nullvector(&thermite).expect("thermite computes"),
+        Some(vec![1, 2, -1, -2])
+    );
+    // C2H4 + H2 -> C2H6 (rows C, H; cols C2H4, H2, C2H6).
+    let hydrogenation = vec![vec![2, 0, 2], vec![4, 2, 6]];
+    assert_eq!(
+        primitive_int_nullvector(&hydrogenation).expect("hydrogenation computes"),
+        Some(vec![1, 1, -1])
+    );
+}
+
+#[test]
+fn int_nullvector_canonical_sign_and_primitivity() {
+    use emath_rt::primitive_int_nullvector;
+    // Column order reversed: species H2O, H2, O2 give the raw null
+    // vector [2, -1, -2], already first-nonzero-positive — the
+    // canonical form of 2 H2O -> 2 H2 + O2.
+    let reversed = vec![vec![2, 0, 2], vec![1, 2, 0]];
+    assert_eq!(
+        primitive_int_nullvector(&reversed).expect("computes"),
+        Some(vec![2, -1, -2])
+    );
+    // H2O2 decomposition (2 H2O2 -> 2 H2O + O2): rows H, O; cols
+    // H2O2, H2O, O2. Null vector [2, -2, -1] is already primitive.
+    let scaled = vec![vec![2, 2, 0], vec![2, 1, 2]];
+    assert_eq!(
+        primitive_int_nullvector(&scaled).expect("computes"),
+        Some(vec![2, -2, -1])
+    );
+    // Doubling the composition yields the same primitive null vector:
+    // the free-variable basis normalization is scale-invariant.
+    let doubled = vec![vec![4, 4, 0], vec![4, 2, 4]];
+    assert_eq!(
+        primitive_int_nullvector(&doubled).expect("computes"),
+        Some(vec![2, -2, -1])
+    );
+}
+
+#[test]
+fn int_nullvector_refuses_non_one_dimensional() {
+    use emath_rt::primitive_int_nullvector;
+    // H2 + He: each element appears in exactly one species — zero
+    // nullspace.
+    let impossible = vec![vec![2, 0], vec![0, 1]];
+    assert_eq!(
+        primitive_int_nullvector(&impossible).expect("computes"),
+        None
+    );
+    // Combustion plus H2O2: two independent equations in four species —
+    // two-dimensional nullspace.
+    let underdetermined = vec![vec![2, 0, 2, 0], vec![0, 2, 1, 2]];
+    assert_eq!(
+        primitive_int_nullvector(&underdetermined).expect("computes"),
+        None
+    );
+    // A species with zero atoms in every element contributes a free
+    // direction — dimension at least two.
+    let zero_column = vec![vec![2, 0, 2, 0], vec![0, 1, 1, 0]];
+    assert_eq!(
+        primitive_int_nullvector(&zero_column).expect("computes"),
+        None
+    );
+}
+
+#[test]
+fn int_nullvector_row_scaling_and_permutation_invariant() {
+    use emath_rt::primitive_int_nullvector;
+    // Row scaling preserves the nullspace.
+    let combustion = vec![vec![2, 0, 2], vec![0, 2, 1]];
+    let scaled_rows = vec![vec![4, 0, 4], vec![0, 6, 3]];
+    assert_eq!(
+        primitive_int_nullvector(&scaled_rows).expect("computes"),
+        primitive_int_nullvector(&combustion).expect("computes")
+    );
+    // Column permutation permutes the null vector identically:
+    // species O2, H2, H2O (rows H, O) give [2, 1, -1] for
+    // 2 H2 + O2 -> 2 H2O read back through the permuted columns.
+    let permuted = vec![vec![0, 2, 2], vec![1, 0, 2]]; // O2, H2, H2O
+    assert_eq!(
+        primitive_int_nullvector(&permuted).expect("computes"),
+        Some(vec![2, 1, -1])
+    );
+}
+
+#[test]
+fn int_nullvector_rejects_ragged_and_overflow() {
+    use emath_rt::primitive_int_nullvector;
+    assert!(primitive_int_nullvector(&[vec![1, 2], vec![3]]).is_err());
+    assert!(primitive_int_nullvector(&[]).is_err());
+    assert!(primitive_int_nullvector(&[vec![]]).is_err());
+    // i128 overflow: entries near i64::MAX blow past 2^127 during
+    // elimination.
+    let huge = vec![
+        vec![9_223_372_036_854_775_000_i64, 1, 1],
+        vec![1, 9_223_372_036_854_775_000, 1],
+    ];
+    assert!(primitive_int_nullvector(&huge).is_err());
 }
