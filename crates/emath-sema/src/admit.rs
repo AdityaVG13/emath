@@ -3,13 +3,19 @@
 
 use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, QualifiedName, Span};
-use emath_ir::{BinaryOp, ExprId, ExprNode, Literal, ModelResidual, TypeId, TypeNode};
+use emath_ir::{
+    BinaryOp, EventDecl, ExprId, ExprNode, Literal, ModelResidual, TransitionDecl, TypeId,
+    TypeNode,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod declaration;
 use declaration::admit_declaration;
 mod expr_helpers;
 use expr_helpers::*;
+/// Re-exported for the recognition seam (`admit_reaction_network`, ds6x):
+/// CODATA parenthesized-digit uncertainty → absolute spread.
+pub(crate) use expr_helpers::measured_digits_uncertainty;
 mod infer;
 use infer::*;
 mod equations;
@@ -45,9 +51,51 @@ const PHASE1_SECTIONS: &[&str] = &[
     "domain",
     "provenance",
     "citations",
+    // L3 optional worked-example section (bead
+    // emath-l3-contracted-component-ceus7): rows are data, never admission
+    // tickets.
+    "examples",
     "host",
     "constraints",
     "invariant",
+    // Migration cards (v9-06-2rdq.19): `from:` states what moved, `rules:`
+    // classifies each change. Admitted sections, not new keywords.
+    "from",
+    "rules",
+    // Hybrid events (r3-dynamical-03lh, ch7): `events:` declares the
+    // discrete event surface of a stateful declaration. Admitted
+    // section, not a new keyword; the `transitions:` rules and the
+    // event-triggering simulation are the named next slices (the
+    // `on <trigger>:` rule suite does not parse yet — parser lane).
+    "events",
+    // Hybrid transitions (r3-dynamical-03lh, ch7, transitions slice):
+    // `transitions:` maps a declared event to re-assignments of
+    // input/state slots. Admitted section, not a new keyword;
+    // `on <Event>:` rules are structurally validated here (pass 2) and
+    // wired into execution by the runner lane (pass 3).
+    "transitions",
+    // Measured evidence (04 §5.2, emath-r3-observations-9ffu):
+    // `observations:` rows are read-only instrument data (`obs <name>
+    // [: type] = <data>`), distinct from `definitions:`. Admitted
+    // section; the §5.3 observation-vs-prediction comparison and the
+    // Series<T in unit> value-generics are the named next slices.
+    "observations",
+    // Proof outlines (B13 + 05 §7.2, emath-r3-proofs-0qua):
+    // `proofs:` holds obligation outlines as DATA (assumption / lemma
+    // / check / qed steps; an outline ends with qed). Proofs are
+    // additive authority, never admission tickets; no ProofChecker
+    // runs in the thin slice (the checker contract is the named
+    // follow-up).
+    "proofs",
+    // Declarative figures (05 §7.4, emath-r3-figures-b1xn): the
+    // `figures:` section NAME + payload grammar slot is RESERVED so
+    // kind schemas can require/allow it. Data-only plot specs, no
+    // callbacks, no behavior — determinism is preserved by tying
+    // sampling to the budgets/continuation machinery from day one.
+    // The payload grammar is the named follow-up: rows inside refuse
+    // (declaration.rs) naming the design forks instead of the generic
+    // roster error.
+    "figures",
 ];
 
 /// Folds a declaration name for confusable-collision detection; names that
@@ -124,6 +172,10 @@ pub struct CheckResult {
     pub package: emath_ir::SemanticPackage,
     pub diagnostics: Diagnostics,
     pub trace: SemanticTrace,
+    /// Effective `@units_profile` table (declaration name → level), in
+    /// source order (04 §6.5 pack-table). Empty when no declaration
+    /// carries the attribute.
+    pub units_profiles: Vec<(String, String)>,
 }
 
 struct Admitter {
@@ -138,6 +190,15 @@ struct Admitter {
     /// Causalized implicit residuals admitted from `equations:` (unknowns
     /// solved by Newton at each time step; see `crate::ModelResidual`).
     residuals: Vec<ModelResidual>,
+    /// Hybrid event rules admitted from `events:` payload suites
+    /// (r3-dynamical-03lh ch7, event-execution slice). Bare event
+    /// declarations without a payload suite contribute nothing.
+    events: Vec<EventDecl>,
+    /// Transition rules admitted from `transitions:` `on <Event>:`
+    /// suites (r3-dynamical-03lh ch7, transitions slice). Each rule
+    /// attaches deterministic re-assignments to a declared event;
+    /// action values may reference the event's captured parameters.
+    transitions: Vec<TransitionDecl>,
     /// Synthetic inputs `__rate_<state>` that replace `der(state)` inside
     /// residual expressions; inferred like the state field they derive.
     rate_placeholders: BTreeMap<String, Infer>,
@@ -150,6 +211,13 @@ struct Admitter {
     /// as Bool(true) instead of erroring. Set during require/invariant
     /// lowering; false during definitions lowering.
     in_claim_context: bool,
+    /// Declared capability cells visible to this declaration: the
+    /// canonical/bare match keys, the cell's index in the package
+    /// capability arena, and its declared output type text. The GENERIC
+    /// declared-capability call data — a call resolving here lowers to
+    /// `ExprNode::Apply` (the emitter's ApplyCapability path), never a
+    /// new builtin name or domain keyword.
+    capability_cells: Vec<(String, u32, Option<String>)>,
 }
 
 impl Admitter {
@@ -163,12 +231,15 @@ impl Admitter {
             definitions: BTreeMap::new(),
             constraints: Vec::new(),
             residuals: Vec::new(),
+            events: Vec::new(),
+            transitions: Vec::new(),
             rate_placeholders: BTreeMap::new(),
             exprs: Vec::new(),
             types: Vec::new(),
             host_types: BTreeSet::new(),
             index_locals: BTreeMap::new(),
             in_claim_context: false,
+            capability_cells: Vec::new(),
         }
     }
 
@@ -214,6 +285,10 @@ impl Admitter {
 
     fn note(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
         self.diagnostics.note(code, message, span);
+    }
+
+    fn warning(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
+        self.diagnostics.warning(code, message, span);
     }
 
     fn lookup(&self, name: &str) -> Option<Infer> {
