@@ -143,3 +143,183 @@ emath function Square:
     assert_eq!(hand_defs, 1, "hand-written baseline: one definition");
     assert_eq!(hand_defs, exp_defs, "definition counts must match");
 }
+
+// --- Pass 5: L3 section-semantics rules (R5/R6/R4 + evidence) ---
+
+fn check_codes(source: &str) -> Vec<String> {
+    emath_syntax::install_source_parser();
+    let mut session = emath_sema::session::CompilerSession::new(emath_core::limits::Limits::default());
+    session
+        .check_owned("pass5", source)
+        .diagnostics
+        .items()
+        .iter()
+        .map(|d| format!("{} {}", d.code, d.message))
+        .collect()
+}
+
+#[test]
+fn l3_outputs_without_inputs_rejected() {
+    let source = "\
+emath function Area:
+    outputs:
+        area: Float64
+
+    goals:
+        evaluate <area>:
+            produce rust.library
+";
+    let codes = check_codes(source);
+    assert!(
+        codes.iter().any(|c| c.starts_with("E-SEC-130")),
+        "contract mode with outputs: but no inputs: must refuse E-SEC-130, got {codes:?}"
+    );
+}
+
+#[test]
+fn l3_outputs_without_inputs_with_hole_allowed() {
+    let source = "\
+emath function Area:
+    helper = ?
+
+    outputs:
+        area: Float64
+";
+    let codes = check_codes(source);
+    assert!(
+        !codes.iter().any(|c| c.starts_with("E-SEC-130")),
+        "a declared hole is the unknown; no E-SEC-130, got {codes:?}"
+    );
+}
+
+#[test]
+fn l3_input_output_name_clash_rejected() {
+    let source = "\
+emath function Area:
+    inputs:
+        side: Float64
+
+    outputs:
+        side: Float64
+";
+    let codes = check_codes(source);
+    assert!(
+        codes.iter().any(|c| c.starts_with("E-NAME-020")),
+        "same name in inputs: and outputs: must refuse E-NAME-020, got {codes:?}"
+    );
+}
+
+#[test]
+fn l3_missing_goals_warns() {
+    let source = "\
+emath function Area:
+    inputs:
+        side: Float64
+
+    outputs:
+        area: Float64
+";
+    let codes = check_codes(source);
+    assert!(
+        codes.iter().any(|c| c.starts_with("E-SEC-133")),
+        "contract mode without goals: must warn E-SEC-133, got {codes:?}"
+    );
+}
+
+/// Phase-1 goals grammar accepts only operational verbs (evaluate,
+/// differentiate, benchmark, fit, simplify) — none asserts truth, so none
+/// requires `evidence:`. Regression pin: operational goals must NOT trip
+/// E-EV-140. The rule activates only for assertion verbs (`prove`), which
+/// the goals grammar does not accept yet.
+#[test]
+fn l3_operational_goals_need_no_evidence() {
+    let source = "\
+emath function Area:
+    inputs:
+        side: Float64
+
+    outputs:
+        area: Float64
+
+    definitions:
+        area = side * side
+
+    goals:
+        differentiate <area>:
+            wrt [side]
+";
+    let codes = check_codes(source);
+    let problems: Vec<_> = codes
+        .iter()
+        .filter(|c| c.starts_with("E-GOAL") || c.starts_with("E-EV-140"))
+        .collect();
+    assert!(
+        problems.is_empty(),
+        "well-formed operational goal must not error and must not demand evidence, got {codes:?}"
+    );
+}
+
+#[test]
+fn l3_definition_shadowing_input_rejected() {
+    let source = "\
+emath function Area:
+    inputs:
+        side: Float64
+
+    definitions:
+        side = 3
+";
+    let codes = check_codes(source);
+    assert!(
+        codes.iter().any(|c| c.starts_with("E-NAME-020")),
+        "definitions: shadowing an inputs: name must refuse E-NAME-020, got {codes:?}"
+    );
+}
+
+#[test]
+fn l3_examples_section_passes_check() {
+    let source = "\
+emath function Area:
+    inputs:
+        side: Float64
+
+    outputs:
+        area: Float64
+
+    definitions:
+        area = side * side
+
+    examples:
+        area = 9.0
+";
+    let codes = check_codes(source);
+    assert!(
+        !codes.iter().any(|c| c.starts_with("E-SEC-101")),
+        "optional `examples:` section must pass the Phase 1 gate, got {codes:?}"
+    );
+}
+
+#[test]
+fn l3_full_contract_no_errors() {
+    let source = "\
+emath function Area:
+    inputs:
+        side: Float64
+
+    outputs:
+        area: Float64
+
+    definitions:
+        area = side * side
+
+    goals:
+        evaluate <area>:
+            produce rust.library
+";
+    let codes = check_codes(source);
+    assert!(
+        codes.is_empty(),
+        "happy-path L3 contract must admit cleanly, got {codes:?}"
+    );
+}
+

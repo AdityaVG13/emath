@@ -41,17 +41,53 @@ lane_begin() {
     LANE_START_SECONDS="$SECONDS"
 }
 
-# End a lane with a JSONL record. <status> is one of passed/failed/skipped.
+# End a lane with a JSONL record. <status> is one of
+# passed/failed/skipped/xfail (xfail = expected failure bound to a
+# known discrepancy). An optional 5th argument is the discrepancy id,
+# emitted as the `discrepancy_id` field so ail-style compliance
+# consumers can distinguish acknowledged divergences from skips.
 lane_done() {
-    local suite="$1" phase="$2" status="$3" detail="${4:-}"
+    local suite="$1" phase="$2" status="$3" detail="${4:-}" disc="${5:-}"
     local ms=$(( (SECONDS - LANE_START_SECONDS) * 1000 ))
     LANE_START_SECONDS="$SECONDS"
-    jsonl_write "suite" "$suite" "phase" "$phase" "status" "$status" "detail" "$detail" "duration_ms" "$ms"
+    if [ -n "$disc" ]; then
+        jsonl_write "suite" "$suite" "phase" "$phase" "status" "$status" \
+            "detail" "$detail" "discrepancy_id" "$disc" "duration_ms" "$ms"
+    else
+        jsonl_write "suite" "$suite" "phase" "$phase" "status" "$status" "detail" "$detail" "duration_ms" "$ms"
+    fi
+}
+
+# Durable lane-count summary (retained, minimal): one JSONL record with
+# pass/fail/skip/xfail counts for the whole run, also emitted on success
+# so compliance consumers keep a summary even though lane log lines are
+# removed with the workdir. Written next to the lane log.
+summary_done() {
+    local passed=0 failed=0 skipped=0 xfailed=0
+    while IFS= read -r rec; do
+        case "$rec" in
+            *'"status":"passed"'*) passed=$((passed + 1)) ;;
+            *'"status":"failed"'*) failed=$((failed + 1)) ;;
+            *'"status":"skipped"'*) skipped=$((skipped + 1)) ;;
+            *'"status":"xfail"'*) xfailed=$((xfailed + 1)) ;;
+        esac
+    done <"$JSONL"
+    printf '%s\n' "{\"summary\":\"validate.sh\",\"passed\":$passed,\"failed\":$failed,\"skipped\":$skipped,\"xfailed\":$xfailed}" >>"$TMP_DIR/summary.jsonl"
 }
 
 on_exit() {
     local code=$?
     if [ "$code" -eq 0 ]; then
+        # Success still surfaces the compliance summary: printed to
+        # stdout (ail-style printed-markdown variant) and, when
+        # EMATH_VALIDATE_RETAIN_SUMMARY names a path, copied there so a
+        # consumer keeps it even though lane log lines are cleaned up.
+        if [ -f "$TMP_DIR/summary.jsonl" ]; then
+            cat "$TMP_DIR/summary.jsonl"
+            if [ -n "${EMATH_VALIDATE_RETAIN_SUMMARY:-}" ]; then
+                cp "$TMP_DIR/summary.jsonl" "$EMATH_VALIDATE_RETAIN_SUMMARY"
+            fi
+        fi
         rm -rf "$TMP_DIR"
     else
         jsonl_write "suite" "validate" "phase" "gate" "status" "failed" "detail" "gate aborted" "duration_ms" "$(( (SECONDS - LANE_START_SECONDS) * 1000 ))"
@@ -112,6 +148,7 @@ if [ "${EMATH_VALIDATE_SELF_TEST:-}" = "2" ]; then
         exit 1
     fi
     lane_done "logger" "self-test" "passed" "forced mismatch: JSONL + unified diff + retained workdir"
+    summary_done
     echo "logger self-test: forced mismatch records JSONL, keeps the diff, retains the workdir"
     exit 0
 fi
@@ -122,16 +159,24 @@ when available or as narrow, labeled cargo checks; this gate proves only the
 artifact, negative-control, capstone, and doc lanes.)"
 
 echo "== fork-type identity gate (AGENTS.md rule 1) =="
+# The firewall forbids fork-NATIVE TYPES/symbols in Phase 1 crates — not
+# identity STRINGS. `crates/emath-provider-api/src/constellation.rs` is the
+# neutral provider census (the declared single registration point):
+# `upstream_id` there is the repository id in forks/UPSTREAM_LOCK.json, and
+# plans reference providers by id strings only (module doc). CONTRACT.md
+# prose describes the same census. Both are exempt as identity DATA; every
+# other line of every scanned crate still refuses fork identifiers.
 if grep -rniE '(^|[^a-z0-9_.-])(dew|rumoca|wrenfold|franken|modelica)([^a-z0-9_.-]|$)' \
     crates/emath-core crates/emath-ir crates/emath-goal crates/emath-plan \
     crates/emath-sema crates/emath-runtime crates/emath-provider-api \
     crates/emath-artifact examples/provider-skeleton/src/main.rs \
+    --exclude=constellation.rs --exclude=CONTRACT.md \
     >"$TMP_DIR/fork-grep.txt"; then
     echo "FAIL: upstream fork-type identifier leaked into a Phase 1 crate or schema:" >&2
     cat "$TMP_DIR/fork-grep.txt" >&2
     exit 1
 fi
-echo "no fork-type identifiers in Phase 1 crates or durable schemas"
+echo "no fork-type identifiers in Phase 1 crates or durable schemas (census identity strings exempt by design)"
 
 echo "== artifact determinism =="
 ARTIFACT_DIR="$TMP_DIR/artifacts"
@@ -209,16 +254,54 @@ assert_invalid tests/invalid/missing_state_assignment.emath "E-CTOR-030"
 assert_invalid tests/invalid/recursive_kind.emath "E-KIND-100"
 assert_invalid tests/invalid/unit_mismatch.emath "E-UNIT-101"
 assert_invalid tests/invalid/model_decl.emath "E-KIND-011"
+assert_invalid tests/invalid/lagrangian_action_fence.emath "E-SYN-101"
+# Declarative figures seed (05 §7.4, emath-r3-figures-b1xn): the section
+# name is RESERVED (out of the generic roster error) and every payload
+# row refuses naming the design forks (budgeted sampling, sampling
+# receipt, Renderer provider contract).
+assert_invalid tests/invalid/figures_payload_fence.emath "E-SYN-101"
 assert_invalid tests/invalid/unknown_section.emath "E-SEC-101"
+assert_invalid tests/invalid/l3_outputs_without_inputs.emath "E-SEC-130"
+assert_invalid tests/invalid/l3_definitions_shadow_input.emath "E-NAME-020"
 assert_invalid tests/invalid/exports_junk.emath "E-SYN-101"
 assert_invalid tests/invalid/compile_junk.emath "E-SYN-101"
 assert_invalid tests/invalid/function_type.emath "E-TYPE-110"
+# Observations (04 §5.2): a definitions binding of an observation name is
+# refused — read-only measured evidence is never written by the model.
+assert_invalid tests/invalid/observations_write.emath "E-OBS-WRITE"
 # Unicode honesty lane: a declaration spelled with a Cyrillic lookalike
 # of an already-seen Latin name is refused (E-NAME-024), and an
 # identifier built from a combining mark (non-NFC by construction) is
 # refused at the lexer (E-SYN-115).
 assert_invalid tests/invalid/confusable_decl.emath "E-NAME-024"
 assert_invalid tests/invalid/combining_mark.emath "E-SYN-115"
+# Bio dynamics thin slice (04 §4.4, emath-r3-bio-dynamics-ephb): propensity
+# transition rows refuse naming the field-pack follow-up (the events:/
+# on-trigger suite is the named next slice) — never the generic row error.
+assert_invalid tests/invalid/bio_propensity_field_pack.emath "E-SYN-101"
+# Sequences thin slice (B07+B33, emath-r3-sequences-recurrences-v4cp):
+# indexed definition rows (`fib[n] = ...`) refuse E-TYPE-010 naming the
+# recursion-policy design fork — recurrence evaluation is a design
+# follow-up, never a silent drop or a fake compute path.
+assert_invalid tests/invalid/sequence_recurrence_fence.emath "E-TYPE-010"
+# Proof outlines thin slice (B13 + 05 §7.2, emath-r3-proofs-0qua): an
+# outline without its concluding qed refuses — obligation kinds are
+# data (assumption/lemma/check/qed) and completeness is checked;
+# proofs remain additive authority, never admission tickets.
+assert_invalid tests/invalid/proof_outline_incomplete.emath "E-SYN-101"
+# Fit goal (04 §5.3, emath-r3-fit-goal-4xjh): the generic fit-goal
+# surface admits — `fit <params> to <observable>:` with model,
+# prediction, residual method, method, initial seeds, and explicit
+# weights as plain program data. The runnable fixture is
+# language/examples/science/pk-two-compartment-fit.emath (proven by
+# tests/emath-syntax/tests/fit_goal.rs); without a
+# structural-identifiability provider the goal resolves to an honest
+# typed unresolved disposition in every plan.
+# Compartments thin slice (04 §4.1, emath-r3-compartments-e5zq): a
+# reaction endpoint that is nothing must be the DECLARED sink `∅` — a
+# silently empty side refuses (E-SYN-156 at parse; E-BIO-SINK at
+# admission).
+assert_invalid tests/invalid/compartment_empty_side.emath "E-SYN-156"
 assert_invalid tests/invalid/named_call_arg.emath "E-SYN-121"
 assert_invalid tests/invalid/empty.emath "E-PKG-081"
 
@@ -356,6 +439,33 @@ fi
 printf '%s\n' "$PIN_OUT"
 lane_done "doc-pins" "contract-pins" "passed" "contract doc hashes match pins"
 echo "contract pins: hashed docs match the named-bump pins"
+
+echo "== conformance register (1iip) =="
+# Language spec pin: language/reference/** + language/grammar/** are
+# SHA-pinned under an edition id in implementation/SPEC_PIN.json; drift
+# without a named bump fails the gate (RULE 0.3: unpinned language
+# claims are bugs).
+lane_begin
+if ! SPEC_OUT="$("$PYTHON" scripts/check_spec_pin.py 2>&1)"; then
+    echo "FAIL: a language spec file drifted without a named edition bump" >&2
+    printf '%s\n' "$SPEC_OUT" >&2
+    lane_done "conformance-register" "spec-pin" "failed" "spec file drifted without a named bump"
+    exit 1
+fi
+printf '%s\n' "$SPEC_OUT"
+lane_done "conformance-register" "spec-pin" "passed" "language spec files match the pinned edition"
+# Upstream lock honesty: schema validation + adapter-seam commit binding
+# (dew seam.rs const, rumoca CONTRACT.md no-claim fence).
+lane_begin
+if ! LOCK_OUT="$("$PYTHON" scripts/check_upstream_lock.py 2>&1)"; then
+    echo "FAIL: upstream lock failed schema or seam-binding honesty" >&2
+    printf '%s\n' "$LOCK_OUT" >&2
+    lane_done "conformance-register" "upstream-lock" "failed" "lock schema or seam binding drifted"
+    exit 1
+fi
+printf '%s\n' "$LOCK_OUT"
+lane_done "conformance-register" "upstream-lock" "passed" "lock schema-valid; adapter seams bound to lock commits"
+echo "conformance register: spec pin + upstream lock green"
 
 echo "== ELP pipeline gates =="
 # ELP document-shape gate: every elps/ELP-NNNN-<slug>.md must carry the
@@ -657,6 +767,62 @@ for FIXTURE in language/examples/*/*.emath; do
 done
 lane_done "examples" "admit-or-refuse" "passed" "every example admits+builds or refuses with a code"
 echo "language examples: admitted or refused with documented codes"
+
+# emath-ail.1 corpus oracles: README "Runs" rows carry pinned execute
+# oracles (exact simulate last line / refusal exit), so numeric or
+# behavioral drift fails the gate instead of passing silently. The same
+# rows are pinned as exit-code oracles in
+# tests/emath-syntax/tests/official_examples_corpus.rs; this phase pins
+# the numeric text those in-process oracles cannot capture. Mapping
+# document: tests/language-gates/CORPUS_ORACLES.md.
+corpus_oracle() {
+    local name="$1" expected="$2"
+    shift 2
+    lane_begin
+    local actual
+    if ! actual="$(cargo run -q -p emath-cli -- "$@" 2>&1 | tail -1)"; then
+        echo "FAIL: corpus oracle command failed: $name" >&2
+        lane_done "examples" "corpus-oracles" "failed" "$name command failed"
+        exit 1
+    fi
+    if [ "$actual" != "$expected" ]; then
+        echo "FAIL: corpus oracle drifted: $name" >&2
+        echo "  expected: $expected" >&2
+        echo "  actual:   $actual" >&2
+        lane_done "examples" "corpus-oracles" "failed" "$name oracle drift"
+        exit 1
+    fi
+    lane_done "examples" "corpus-oracles" "passed" "$name pinned oracle holds"
+}
+
+corpus_oracle "spring-final-row" \
+    "t=3.141592653589793 s=[-0.9999999999978184, -0.0000000002616344400786959]" \
+    simulate language/examples/numerical/explicit-mass-spring.emath \
+    --set m=1 --set k=1 --set c=0 --set s='[1,0]' --dt 0.01 --t1 3.141592653589793
+
+corpus_oracle "heat-rod-final-row" \
+    "t=1.0 u=[0.5237781093210822, 0.3085124869062955, 0.12206440671862484, 0.035903549585294535, 0.009741447468702879]" \
+    simulate language/examples/numerical/heat-rod-sim.emath \
+    --set alpha=1.0 --set u='[1,0,0,0,0]' --dt 0.01 --t1 1.0
+
+corpus_oracle "heat-plate-final-row" \
+    "t=0.5 u=[[0.4539889545087621, 0.17448160354459882, 0.04531646555983695], [0.17448160354459882, 0.06705852893298493, 0.017416480034137708], [0.04531646555983695, 0.017416480034137708, 0.004523418281105944]]" \
+    simulate tests/fixtures/language/numerical/heat-plate-sim.emath \
+    --set alpha=1.0 --set u='[[1,0,0],[0,0,0],[0,0,0]]' --dt 0.01 --t1 0.5
+
+# Typed-hole discipline: scratch admits check (the hole is the example)
+# and run must refuse with the exact goal code, never a produced crate.
+lane_begin
+SCRATCH_OUT="$(cargo run -q -p emath-cli -- run language/examples/intro/scratch.emath --out "$TMP_DIR/scratch" 2>&1 || true)"
+if ! printf '%s\n' "$SCRATCH_OUT" | grep -q "E-GOAL-043"; then
+    echo "FAIL: scratch run must refuse with E-GOAL-043, got:" >&2
+    printf '%s\n' "$SCRATCH_OUT" >&2
+    lane_done "examples" "corpus-oracles" "failed" "scratch refusal not E-GOAL-043"
+    exit 1
+fi
+lane_done "examples" "corpus-oracles" "passed" "typed-hole run refuses E-GOAL-043"
+echo "corpus oracles: spring/heat-rod/heat-plate final rows + scratch E-GOAL-043 pinned"
+
 # Causalized residual models are now fully codegen-able: the example is
 # admitted by the loop above and builds a crate whose step_euler/step_rk4
 # embed the causalized Newton solve (parity with `emath simulate` is
@@ -1032,4 +1198,5 @@ fi
 echo "genesis honesty: no invented tested meaning, pareto honored, no hidden winner"
 
 lane_done "validate" "gate" "passed" "all lanes green"
+summary_done
 echo "validate.sh: ok"

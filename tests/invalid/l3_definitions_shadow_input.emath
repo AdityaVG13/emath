@@ -1,0 +1,11 @@
+# expect: E-NAME-020 definition shadows an `inputs:` name
+emath function Scale:
+    inputs:
+        factor: Float64
+
+    outputs:
+        scaled: Float64
+
+    definitions:
+        factor = 2.0
+        scaled = factor * 2.0
