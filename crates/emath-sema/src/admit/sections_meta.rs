@@ -11,8 +11,11 @@ use emath_ir::{ExprNode, LawMetadata, Provenance, SliceAxis};
 use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::types::type_display;
-use super::{Admitter, CheckResult, SemanticTrace, admit_declaration, confusable_fold};
+use super::types::{map_type, type_display};
+use super::{
+    Admitter, CheckResult, SemanticTrace, SiblingFunction, admit_declaration, confusable_fold,
+};
+use super::infer::infer_from_node;
 
 /// Offset all child ExprIds and TypeIds in one node from the admitter's
 /// local arena into the package's global index space.
@@ -936,6 +939,139 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     }
     let host_types = host_imported_types(&package.imports);
 
+    // Sibling `emath function` declarations callable from lowering time
+    // (emath-0e68): head-args or `inputs:`/`outputs:` section form. This
+    // is function DATA for the generic declared-call seam's inline path —
+    // no new AST node, no registry entry. A callee whose parameter types
+    // do not map is not registered; its own admission reports the error.
+    let mut sibling_functions: BTreeMap<String, SiblingFunction> = BTreeMap::new();
+    for item in &tree.items {
+        let emath_core::tree::Item::Declaration(decl) = item else {
+            continue;
+        };
+        if decl.as_kind != "function" {
+            continue;
+        }
+        let mut params: Vec<(String, super::infer::Infer)> = Vec::new();
+        let mut param_types_ok = true;
+        let mut collect_param = |ty: &emath_core::tree::TypeExpr, name: &str| {
+            match map_type(ty, &mut diagnostics, &host_types) {
+                Some(node) => params.push((name.to_string(), infer_from_node(&node))),
+                None => param_types_ok = false,
+            }
+        };
+        if let Some(signature) = &decl.signature {
+            for param in &signature.params {
+                collect_param(&param.ty, &param.name);
+            }
+        } else {
+            for section in decl.body.iter().filter_map(|stmt| match &stmt.kind {
+                emath_core::tree::StmtKind::Section(section) if section.name == "inputs" => {
+                    Some(section)
+                }
+                _ => None,
+            }) {
+                for stmt in &section.suite.statements {
+                    let emath_core::tree::StmtKind::FieldDecl { name, ty, .. } = &stmt.kind
+                    else {
+                        continue;
+                    };
+                    collect_param(ty, name);
+                }
+            }
+        }
+        if !param_types_ok {
+            continue;
+        }
+        let output_name = decl
+            .body
+            .iter()
+            .find_map(|stmt| match &stmt.kind {
+                emath_core::tree::StmtKind::Section(section) if section.name == "outputs" => {
+                    section.suite.statements.iter().find_map(|stmt| match &stmt.kind {
+                        emath_core::tree::StmtKind::FieldDecl { name, .. } => Some(name.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| decl.name.clone());
+        let definitions: Vec<emath_core::tree::Stmt> = if decl.signature.is_some() {
+            decl.body
+                .iter()
+                .filter(|stmt| {
+                    matches!(stmt.kind, emath_core::tree::StmtKind::Assign { .. })
+                })
+                .cloned()
+                .collect()
+        } else {
+            decl.body
+                .iter()
+                .filter_map(|stmt| match &stmt.kind {
+                    emath_core::tree::StmtKind::Section(section)
+                        if section.name == "definitions" =>
+                    {
+                        Some(section.suite.statements.clone())
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .collect()
+        };
+        // Alpha-rename the parameters inside the callee's own body to
+        // `param#owner` (emath-0e68): `#` is not a valid identifier
+        // character (lexer: alphanumeric, `_`, alphabetic, combining
+        // marks), so a renamed parameter can never collide with a caller
+        // variable and the inline substitution can never make a
+        // definition self-referential. One rename per function at
+        // collection time; call sites bind the renamed names.
+        let rename_map: BTreeMap<String, String> = params
+            .iter()
+            .map(|(name, _)| {
+                (
+                    name.clone(),
+                    super::lowering::sibling_calls::renamed_parameter(&decl.name, name),
+                )
+            })
+            .collect();
+        let definitions: Vec<emath_core::tree::Stmt> = definitions
+            .into_iter()
+            .map(|stmt| {
+                let emath_core::tree::StmtKind::Assign { target, value } = &stmt.kind else {
+                    return stmt;
+                };
+                emath_core::tree::Stmt {
+                    kind: emath_core::tree::StmtKind::Assign {
+                        target: target.clone(),
+                        value: super::lowering::sibling_calls::rename_parameter_uses(
+                            value,
+                            &rename_map,
+                            &mut Vec::new(),
+                        ),
+                    },
+                    source: stmt.source,
+                }
+            })
+            .collect();
+        let params = params
+            .into_iter()
+            .map(|(name, infer)| {
+                (
+                    super::lowering::sibling_calls::renamed_parameter(&decl.name, &name),
+                    infer,
+                )
+            })
+            .collect();
+        sibling_functions.insert(
+            decl.name.clone(),
+            SiblingFunction {
+                params,
+                output_name,
+                definitions,
+            },
+        );
+    }
+
     let mut declaration_id = 0_u32;
     let mut seen_declaration_names: BTreeSet<String> = BTreeSet::new();
     let mut seen_folded_declaration_names: BTreeMap<String, String> = BTreeMap::new();
@@ -1048,9 +1184,11 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             entries,
             admit_diagnostics,
             mut residuals,
+            mut events,
+            mut transitions,
             law_metadata,
             binding_provenance,
-        ) = admit_declaration(decl, &host_types);
+        ) = admit_declaration(decl, &host_types, &[], &sibling_functions);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
         let Some(mut declaration) = declaration else {

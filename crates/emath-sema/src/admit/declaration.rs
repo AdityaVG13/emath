@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::equations::{admit_equations, collect_node_names, residual_span};
 use super::infer::{Infer, infer_conforms, infer_from_node};
+use super::SiblingFunction;
 use super::sections::{admit_compile_spec, admit_constructor, admit_named_field};
 use super::sections_meta::{
     admit_about, admit_binding_provenance, admit_evidence, admit_host, admit_law_metadata,
@@ -684,10 +685,12 @@ pub(super) fn admit_declaration(
     decl: &emath_core::tree::Declaration,
     host_types: &BTreeSet<String>,
     capability_cells: &[(String, u32, Option<String>)],
+    sibling_functions: &BTreeMap<String, SiblingFunction>,
 ) -> AdmitResult {
     let mut admitter = Admitter::new();
     admitter.host_types = host_types.clone();
     admitter.capability_cells = capability_cells.to_vec();
+    admitter.sibling_functions = sibling_functions.clone();
     let kind_label = decl.as_kind.clone();
     let is_policy = kind_label == "policy";
     let is_model = kind_label == "model";

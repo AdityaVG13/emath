@@ -12,6 +12,7 @@ use emath_ir::{
 };
 
 mod helpers;
+pub(super) mod sibling_calls;
 
 use super::Admitter;
 use super::equations::*;
@@ -1392,6 +1393,14 @@ impl super::Admitter {
                         return self.lower_einsum(expr, &name, &args);
                     }
                     _ => {
+                        // Sibling `emath function` call (emath-0e68):
+                        // pure-inline substitution through the generic
+                        // declared-call seam before the builtin refusal.
+                        // A known sibling returns its own diagnostics on
+                        // failure — never the unknown-function fallback.
+                        if self.sibling_functions.contains_key(&name) {
+                            return self.lower_sibling_call(&name, args, expr.source);
+                        }
                         self.error(
                             E_UNKNOWN_FUNCTION,
                             format!(

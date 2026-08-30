@@ -1,7 +1,7 @@
 //! The Phase 1 admission pass: syntax → typed neutral SIR with stable
 //! diagnostics and a source-to-SIR trace.
 
-use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
+use emath_core::tree::{Expr, ExprKind, Stmt, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, QualifiedName, Span};
 use emath_ir::{
     BinaryOp, EventDecl, ExprId, ExprNode, Literal, ModelResidual, TransitionDecl, TypeId,
@@ -218,6 +218,23 @@ struct Admitter {
     /// `ExprNode::Apply` (the emitter's ApplyCapability path), never a
     /// new builtin name or domain keyword.
     capability_cells: Vec<(String, u32, Option<String>)>,
+    /// Sibling `emath function` declarations callable from lowering time
+    /// (emath-0e68): function DATA for the generic declared-call seam's
+    /// inline path — no new AST node, no registry entry.
+    sibling_functions: BTreeMap<String, SiblingFunction>,
+    /// Inline-substitution cycle guard: the stack of callee names
+    /// currently being inlined.
+    inline_stack: Vec<String>,
+}
+
+/// One sibling `emath function` callable from lowering time: parameter
+/// names with their inferred types, the output binding name, and the
+/// cloned `definitions:` statements.
+#[derive(Clone)]
+pub(super) struct SiblingFunction {
+    pub(super) params: Vec<(String, Infer)>,
+    pub(super) output_name: String,
+    pub(super) definitions: Vec<Stmt>,
 }
 
 impl Admitter {
@@ -240,6 +257,8 @@ impl Admitter {
             index_locals: BTreeMap::new(),
             in_claim_context: false,
             capability_cells: Vec::new(),
+            sibling_functions: BTreeMap::new(),
+            inline_stack: Vec::new(),
         }
     }
 
