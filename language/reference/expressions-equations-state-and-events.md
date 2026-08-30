@@ -1,606 +1,428 @@
-# Chapter 7: Expressions, Equations, State and Events
+# Expressions, Equations, State, and Events
 
-## Expressions
+## Binding and equality
 
-Expressions support literals, variables, calls, records, tuples, collections, conditionals, pattern matching, binders and scoped notation.
-
-Mathematical binders include:
-
-```emath
-sum i in 0..N: x[i]
-sum i in 0..N if i > 0: x[i]    # B02: filtered fold
-sum i in 0..N, j in 0..M: A[i,j] # multi-binder
-integral x in Ω: f(x)
-forall x in domain: property(x)
-exists witness in candidates: valid(witness)
-derivative f wrt x
-jacobian f wrt x
-hessian f wrt x
-partial(T) wrt x holding p
-total(t) wrt time
-```
-
-A binder produces semantic structure; it is not immediately expanded into loops.
-
-The optional `if <condition>` guard clause (B02) filters the fold: only
-iterations where the condition is true contribute. An always-false guard
-produces the identity element (0 for `sum`, 1 for `product`, `true` for
-`forall`, `false` for `exists`). Multi-binder guards cover all variables
-in the binder list: `sum i in 0..n, j in 0..m if i + j < k: f(i, j)`.
-
-An empty range is the same identity (`sum i in 0..0: f(i)` is 0,
-`product i in 0..0: f(i)` is 1, `forall` over empty is true, `exists`
-over empty is false) and does not evaluate the body. The bound name is
-visible only in the body and optional `if` guard: it shadows an outer
-input, definition, or binder of the same spelling, and it does not leak
-after the binder. `sum i in 0..n: sum i in 0..m: i` is `n` copies of
-the inner sum, not a replay of the outer index.
-
-## Logic connectives
-
-Boolean operators and logic connectives:
-
-```emath
-a and b       # conjunction
-a or b        # disjunction
-not a         # negation
-a ==> b       # implication (right-associative: a ==> (b ==> c))
-a <==> b      # biconditional
-```
-
-`==>` and `<==>` are B12 logic connectives. They use distinct tokens
-from `=>` (match/lambda/notation arrow) and `<=>` (chemistry equilibrium
-arrow) per C5. Precedence (lowest to highest): `<==>` < `==>` < `or` <
-`and` < comparisons < arithmetic. Both produce `Bool` results and
-require `Bool` operands.
-
-## Limits, series, and asymptotic equivalence
-
-### Limit as a claim (B04)
-
-`limit` is a contextual keyword that produces a **claim**, not a
-computation. It states that a function approaches a value as the
-variable tends to a target:
-
-```emath
-limit x -> 0: sin(x) / x          # two-sided limit
-limit x -> 0+: 1 / x              # one-sided from above
-limit x -> 0-: 1 / x              # one-sided from below
-limit n -> inf: (1 + 1/n) ^ n     # limit at infinity
-```
-
-The `+`/`-` suffix before `:` selects the direction. Without a suffix,
-the limit is two-sided. The target is parsed at multiplicative
-precedence, so complex targets need parentheses: `limit x -> (a + b): f(x)`.
-
-`limit` expressions are usable in `require`, `ensure`, and `invariant`
-sections. They are not computable - use `sample_limit` for numerical
-evaluation.
-
-### sample_limit as a computation (B04)
-
-`sample_limit` is a contextual keyword that produces a **computation**.
-It numerically approximates the limit by sampling the body at points
-approaching the target:
-
-```emath
-definitions:
-    l = sample_limit x -> 0: sin(x) / x    # returns ~1.0
-```
-
-`sample_limit` returns `Float64`. It is admitted in `definitions:` and
-`equations:` sections.
-
-### Series (B06)
-
-`series` is a contextual keyword that produces a **claim** about
-convergence. It follows the binder syntax:
-
-```emath
-series n in 0..inf: a[n]           # convergence claim
-series k in 0..10: 1 / (k + 1)     # finite series (admitted as binder)
-```
-
-`series` is not a computation. It is usable in `require` and
-`invariant` sections to state convergence properties.
-
-### Asymptotic equivalence (B18)
-
-`~~` is a binary operator for asymptotic equivalence. It states that
-two functions are asymptotically equal (their ratio tends to 1):
-
-```emath
-factorial(n) ~~ sqrt(2 * pi * n) * (n / e) ^ n    # Stirling's approximation
-f(n) ~~ g(n)                                       # general form
-```
-
-`~~` has the same precedence as comparison operators. It is a **claim**,
-not a computation - it lowers to a limit claim (`limit x -> inf: f(x)/g(x) == 1`).
-Per C7, `~` is reserved for the distribution tag; asymptotic equivalence
-uses `~~`.
-
-`limit`, `sample_limit`, and `series` are contextual keywords: they
-activate only in their syntactic positions (followed by an identifier
-and `->` for limits, or `in` for series). In all other positions they
-are regular user identifiers.
-
-## Definitions
-
-A definition is directed and names a value/function:
+`=` binds a name or derivative. `==` states an equation or comparison.
 
 ```emath
 definitions:
     energy = 0.5 * mass * velocity^2
-```
 
-Recursive definitions require explicit recursion/termination policy.
-
-## Equations and relations
-
-```emath
 equations:
-    derivative(position) == velocity
     mass * derivative(velocity) == force
 ```
 
-Equations retain equality/relational meaning. Solver planning may causalize or discretize them with a trace.
+The compiler never silently converts one meaning into the other.
 
-## Constraints and objectives
+## Expressions
 
-```emath
-constraints:
-    capacity <= limit
+The language admits numeric and Boolean literals, names, calls, tuples, vectors, matrices, tensors, sets, path-prefixed records, indexing, slicing, conditionals, and mathematical binders.
 
-objectives:
-    minimize cost
-    maximize quality
-```
-
-Multiple objectives declare lexicographic, weighted or Pareto semantics.
-
-## State
-
-State fields have ownership, initialization, mutability and clock semantics. State is not inferred merely because a Rust variable is mutable.
-
-## Transitions and events
-
-```emath
-transitions:
-    on observe(value):
-        state.count += 1
-
-events:
-    event ThresholdCrossed(value: Real)
-```
-
-Events define ordering, clock/domain and delivery policy. Continuous zero crossings and discrete events are distinct.
-
-## Effects
-
-Effects include state mutation, randomness, IO, provider call, allocation, network and nondeterministic scheduling. Pure expressions cannot invoke effects through hidden provider behavior.
-
-## Implemented today
-
-Expressions that run:
+Common operators and builtins include:
 
 ```text
-literals, names, + - * / ^, comparisons
-add sub mul div neg
-min max abs floor ceil round sign is_finite
-sqrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
-cbrt recip fract hypot mod lerp clamp pow
++ - * / ^
+== != < <= > >=
 and or not ==> <==>
-mean norm length dot transpose einsum
-laplacian laplacian_neumann laplacian_dirichlet laplacian_2d laplacian_2d_neumann
-laplacian_3d laplacian_3d_neumann
-gradient gradient_2d_x gradient_2d_y gradient_3d_x gradient_3d_y gradient_3d_z
-div_1d div_2d div div_3d
-if cond: a else: b
-vector / matrix / tensor literals
-index and slice  v[i]  m[i, j]  t[0, :, :]
-sum i in 1..6: i
+min max abs floor ceil round sign is_finite
+sqrt cbrt exp ln log2 log10 sin cos tan tanh sinh cosh atan atan2
+recip fract hypot mod lerp clamp pow
+sum product mean length norm dot transpose einsum
+gamma beta erf zeta lambert_w0 elliptic_k elliptic_e elliptic_pi
+```
+
+Special-function calls have matching `<name>_error_bound` accessors.
+Poles and exits from the declared real carrier are runtime refusals
+(`E-SPECIAL-POLE`, `E-SPECIAL-DOMAIN`); `elliptic_pi` currently refuses
+`E-SPECIAL-NOT-IMPLEMENTED`.
+
+Implication is right-associative. Precedence from low to high is `<==>`, `==>`, `or`, `and`, comparisons, then arithmetic.
+
+## Binders
+
+Every binder follows `keyword variable in domain: body`:
+
+```emath
+sum i in 0..n: values[i]
 product i in 1..=5: i
-sum i in 0..n: v[i]    (variable bound, runtime fold)
-forall i in 0..n: v[i] > 0
-exists i in 0..n: v[i] == 0
-integral x in a..b: x * x
-sum([1, 2, 3, 4, 5])
-product([[1, 2], [3, 4]])
-mean(v)          abs(v)
-derivative(x)    der(x)    derivative(x) wrt time
-derivative(y) wrt x    # forward-mode autodiff in definitions
-partial(y) wrt x holding p    # same autodiff; holding required
-x^2                  # integer exponents admitted as dimensionless numeric
-grad(f)                # reverse-mode AD: gradient w.r.t. all inputs
-cases x: | x > 0 => 1 | else => 0  # piecewise conditional
-solve(residual) wrt x    # Newton's method root-finding
-minimize(loss) wrt x     # Newton on ∇f = 0 (stationarity)
-minimize(loss) wrt x, y  # multi-variable Newton on ∇f = 0
-maximize(score) wrt x    # Newton on ∇f = 0; Hessian must be a max
-sample_limit x -> 0: sin(x) / x    # numerical limit approximation
+forall x in domain: valid(x)
+exists x in candidates: accepts(x)
+integral x in 0.0..1.0: x * x
 ```
 
-Expressions that parse but do not compute (claims - usable in
-`require`/`invariant`):
-```text
-limit x -> 0: f(x)          # B04: limit claim (two-sided)
-limit x -> 0+: f(x)         # B04: one-sided from above
-limit x -> 0-: f(x)         # B04: one-sided from below
-series n in 0..inf: a[n]    # B06: series convergence claim
-f(n) ~~ g(n)               # B18: asymptotic equivalence
-```
-
-`sum` / `product` run when the range is a known integer interval
-(`1..6` is 1+2+3+4+5; inclusive `1..=5` keeps the upper bound) or when
-the argument is a vector, matrix, or tensor with a known size. `mean(v)`
-is `sum(v) / length(v)`, and `abs(v)` maps elementwise over a known-size
-vector. A variable-bound range such as `0..n` lowers to a runtime fold
-(EMIR `Fold` op), so `sum i in 0..n: v[i]` computes when `n` is a
-runtime value like `length(v)`. `forall` and `exists` use the same
-`Fold` op with `And` / `Or` combine, producing a `Bool` result.
-`integral x in a..b: f(x)` lowers to a dedicated `Integral` op that
-evaluates the integrand at 1001 sample points using composite Simpson's
-rule (exact for polynomials of degree 3 or less).
-`derivative(expr) wrt var` in a definition computes the exact derivative
-of `expr` with respect to input variable `var` using dual-number
-forward-mode autodiff. The value expression is inlined (definition
-references resolved) and lowered to a nested EMIR sub-program; each EMIR
-op carries its own derivative rule, so the tangent propagates through
-the full computation chain.
-
-### Reverse-mode autodiff (gradient)
-
-`grad(expr)` computes the gradient of a scalar expression with respect
-to all declaration inputs in a single backward (adjoint) pass. It
-returns a `Vector[N]` where N is the number of inputs, containing
-`[df/dx1, df/dx2, ..., df/dxN]`.
+Multiple variables and a filter are allowed:
 
 ```emath
-emath function grad_example(x: Float64, y: Float64) -> Vector[2]:
-    definitions:
-        f = x * y + y * y
-        g = grad(f)    # [df/dx, df/dy] = [y, x + 2*y]
+sum i in 0..n, j in 0..m if i + j < k: matrix[i, j]
 ```
 
-Reverse-mode is efficient for scalar functions of many inputs: the cost
-is O(function_cost) regardless of input count, versus O(N * function_cost)
-for forward-mode (`derivative` with N separate passes). The interpreter
-uses a Wengert tape: a forward pass records all primal values, then a
-backward pass propagates adjoints from the output to all inputs in one
-traversal. Codegen emits inline Rust with the same primal/adjoint
-structure.
+Empty folds return their identities: `0` for sum, `1` for product, `true` for forall, and `false` for exists. Bound variables are lexically scoped and may shadow outer names.
 
-`grad` is admitted in `definitions:` and `equations:`. The expression
-argument must be scalar numeric; `grad` on a vector or non-numeric
-expression is refused with `E-TYPE-012`.
+Finite numeric integrals use composite Simpson quadrature. A declared measure is a separate world and is never inferred from this syntax.
 
-### cases expression (U1)
+## Sequences and generating functions
 
-`cases` is a piecewise conditional expression with mandatory `else`
-(totality enforced at parse time). It lowers to nested conditional
-expressions.
+Indexed rows define a memoized sequence when every self-reference strictly decreases the index:
 
 ```emath
-emath function signum(x: Float64) -> Float64:
-    definitions:
-        f = cases x:
-            | x > 0.0 => 1.0
-            | x < 0.0 => -1.0
-            | else => 0.0
+fib[0] = 0
+fib[1] = 1
+fib[n] = fib[n-1] + fib[n-2]
+value = fib[n]
 ```
 
-Syntax:
-- `cases [subject]:` introduces the expression. The subject is
-  optional (for readability; arm conditions are full expressions,
-  not pattern matches).
-- Arms are delimited by `|` and use `=>` as the arm arrow.
-- A mandatory `else` arm enforces totality. Missing `else` is a
-  parse error (`E-SYN-110`).
-- At least one condition arm is required before `else`.
+The admitted recurrence is a finite linear combination of earlier terms with contiguous base cases. A same-index or forward reference refuses `E-SEQ-TERMINATION`; malformed or missing base cases refuse `E-SEQ-RECURRENCE`.
 
-`cases` is a contextual keyword: it activates only when followed by
-`:` or by an identifier and then `:`. In all other positions it is a
-regular user identifier.
+`generating_function(initial, recurrence, budget)` constructs the same value explicitly. Recurrence coefficients are ordered by offset, so `[1, 1]` means `a[n] = a[n-1] + a[n-2]`. `coefficient(f, n)` (or `f[n]`) extracts a coefficient, and `convolution(f, g, count)` returns the first `count` coefficients of the Cauchy product. Budgets must be finite nonnegative integers no larger than one million (`E-SEQ-BUDGET`).
 
-Lowering: `cases x: | c1 => e1 | c2 => e2 | else => e3` lowers to
-`if c1: e1 else: if c2: e2 else: e3` (nested `ExprNode::If`). All arm
-values must have the same type (`E-TYPE-012` on mismatch). Arm
-conditions must be Boolean (`E-TYPE-012` on non-Boolean).
-
-### Partial and total derivatives (04 section 2.2)
-
-Three derivative operators are distinguished by kind:
-
-- `derivative(expr) wrt x` - unqualified derivative (existing, computes via autodiff).
-- `partial(expr) wrt x holding p` - partial derivative. The `holding`
-  set (variables held constant) is part of the term's identity:
-  `partial(H) wrt T holding p` and `partial(H) wrt T holding V` are
-  different terms.
-- `total(expr) wrt t` or `d(expr) wrt t` - total/material derivative
-  (distinct operator, distinct glyph).
-
-`partial` and `total` are contextual keywords: they activate only when
-followed by `(` in expression position. In all other positions they are
-regular identifiers, so `partial + 1` and `d = 5` still work.
-
-The Unicode partial derivative symbol `∂` (U+2202) is accepted as an
-alias for `partial`: `∂(T) wrt x holding p` is the same as
-`partial(T) wrt x holding p`.
-
-A partial derivative without an explicit `holding` set is a MeaningHole
-refusal - the compiler will not guess which variables are held fixed.
-This prevents the most error-prone notation in physics from being
-silently ambiguous.
-
-`solve(residual) wrt var` finds the value of input `var` that drives
-`residual` to zero, using Newton's method (`x -= f(x)/f'(x)`). Each
-step uses the same dual-number evaluation for both the residual value
-and its derivative. A vanished derivative or exhausting the iteration
-budget without `|f| < tolerance` is a typed refusal, not a silent
-non-root. `minimize(objective) wrt var` and `maximize(objective)
-wrt var` find a stationary point of `objective` (`∇f ≈ 0`) by Newton's
-method on the gradient (`x -= H^{-1} ∇f`), with `H` from a
-forward-difference of the dual-number gradient. The initial guess is
-the input value supplied at runtime. A vanished Hessian, a stationary
-point of the wrong curvature (a min when `maximize` was asked), or
-exhausting iterations without `|∇f| < tolerance` is a typed refusal.
-
-Definitions are directed: `name = expr`. Later definitions may use
-earlier ones, in source order.
-
-Model equations that run:
+## Conditional expressions
 
 ```emath
-der(x) = v
-der(v) = (-c * v - k * x) / m
-m * der(v) = -c * v - k * x    # only when m is a named scalar
-I = (V - q / C) / R            # algebraic definition (semi-explicit DAE)
-der(q) = I                      # rate referencing the algebraic variable
+value = if x > 0: x else: -x
 ```
 
-The third form is rewritten and recorded as `der(v) = rhs / m`. The
-fourth form is an algebraic definition: `name = expr` in `equations:`
-is evaluated at each time step in source order, so rate equations can
-reference it. This enables semi-explicit DAE models where algebraic
-variables are computed from state and inputs before the rates are
-evaluated.
-
-## Fully implicit DAEs: `algebraic:` unknowns and residuals
-
-For coupled systems that cannot be written as explicit rates or
-algebraic definitions, declare the implicit unknowns with an
-`algebraic:` section and write the balance laws as residuals:
+`cases` is a total piecewise expression:
 
 ```emath
-emath model CausalizedRC:
-    inputs:
-        V: Float64
-        R: Float64
-        C: Float64
-
-    algebraic:
-        I: Float64
-
-    state:
-        q: Float64
-
-    equations:
-        V - R * I - q / C == 0   # residual: implicit constraint on I
-        der(q) = I               # rate, solved together with the residual
+value = cases x:
+    | x > 0 => 1.0
+    | x < 0 => -1.0
+    | else => 0.0
 ```
 
-A residual is any `lhs == rhs` comparison or bare `expr` (meaning
-`expr == 0`) in `equations:`. `==` is always a residual - even a bare
-`a == 5` constrains `a` instead of defining it. Residuals are stored
-as implicit constraint records keyed by the model declaration.
-Automatic causalization rewrites `der(state)` inside a residual to a
-synthetic rate placeholder, so `M * der(v) == f` (non-scalar mass)
-solves for the rate `der(v)` together with the algebraic unknowns. At
-each time step the runner Newton-solves the coupled residual system
-with a finite-difference Jacobian and Gaussian elimination; definitions
-are re-evaluated with the solved algebraic values, and the solved rates
-feed the integrator. So a fully implicit DAE needs no manual `solve`
-op - see `language/examples/intro/causalized-rc.emath`.
+An `else` arm is required (`E-SYN-110`). Conditions must be Boolean and all result arms must have compatible types.
 
-**Capability status (Phase 1):** fully implicit DAEs run both ways. `emath
-simulate` solves the residual system with the runner's causalized Newton;
-`rust.library` codegen embeds the same Newton solve (forward-difference
-Jacobian, Gaussian elimination, 30 iterations, 1e-9 tolerance) into the
-generated `step_euler` / `step_rk4`, which return `Result<Self, String>`
-and refuse on non-convergence instead of inventing a value. Algebraic
-unknowns are part of the returned DAE state: after the differential
-update, both the interpreter and the generated steps re-solve them at
-the accepted point (index-1 projection) so the algebraic residual is ~0
-— a successful step does not leave `g(q_new, I_old) = O(dt)`. Parity
-between the generated steps and `emath simulate` is pinned by the
-examples lane (`language/examples/intro/causalized-rc.emath` builds a
-crate whose steps match the interpreter on the same inputs). Semi-explicit
-DAEs (algebraic definitions plus one rate in `equations:`) build fine
-without a Newton solve; see `language/examples/intro/algebraic-dae.emath`.
-`emath simulate <file> --set <guess>...` takes the `algebraic:` initial
-guesses alongside inputs and state.
-
-Conformance checks at admission time:
-
-- The residual system must be square: the number of residuals must
-  equal the number of declared algebraic unknowns plus the distinct
-  `der(state)` terms appearing in residuals (`E-TYPE-010` otherwise).
-- Every `algebraic:` unknown must appear in some residual (`E-TYPE-002`
-  otherwise); an `algebraic:` section with no residuals is `E-TYPE-010`.
-- `algebraic:` sections are `AtMostOne` in `emath model` declarations.
-
-Boundary of the admitted spelling: the `derivative(...)` keyword
-greedily consumes its argument, so a scalar implicit rate such as
-`0 = m * derivative(v) + v` parses as `m * derivative(v + v)` and is
-refused with guidance. The non-scalar mass form `M * der(v) == f` is
-the admitted spelling for implicit rates.
-
-`emath simulate` integrates those rates with Euler, classic 4-stage RK4,
-or Cash-Karp RK45. Default is fixed-step RK4 (not a predictor-corrector
-and not symplectic). `--atol` / `--rtol` turn on adaptive RK45.
-`--set name=value` binds inputs, algebraic guesses, and state: scalars,
-vectors (`--set s=[1,0]`), or matrices (`--set u=[[1,0],[0,1]]`).
-`--event name=value` stops at one scalar crossing. That is not a
-general event language.
-
-`constraints:` sections in function declarations feed into the
-optimization engine. Each constraint is a Bool expression (typically
-a comparison like `x + y >= 1`). When `minimize` or `maximize` is
-used in a definition, the compiler automatically adds penalty terms
-to the objective for each constraint. Inequality constraints (`>=`,
-`<=`) use `w * max(0, violation)^2` penalties; equality constraints
-(`==`) use `w * violation^2`. Weight is 1000. This is a soft exterior
-penalty: the returned point is stationary for the penalized objective,
-which sits slightly on the infeasible side of an inequality (for
-`min x^2+y^2` s.t. `x+y>=1`, `x+y ≈ 0.9995`). It is not a projection
-onto the feasible set.
-
-Not admitted yet: full jacobian and
-hessian, `transitions:` / `events:`, discrete hybrid models.
-
-`einsum("ik,kj->ij", A, B)` is admitted and evaluates: the subscript
-string defines the Einstein summation contraction (input indices,
-arrow, output indices). Identities the interpreter keeps:
-
-- `einsum("ik,kj->ij", A, B)` equals matrix product `A * B`.
-- `einsum("i,i->", u, v)` equals `dot(u, v)`.
-- Implicit mode (no `->`) emits the unique free indices in
-  alphabetical order: `einsum("ik,kj", A, B)` is `A * B`, and
-  `einsum("ji", A)` is `transpose(A)`.
-- Repeated output labels write the diagonal: `einsum("i->ii", v)` is
-  `diag(v)`, off-diagonal zeros.
-- Size-1 axes broadcast; genuine extent mismatches are a typed fault.
-- Spaces in the subscript string are ignored (`"i j -> j i"` transposes).
-
-The interp and rust.library share the `emath-rt` kernel: Vector, Matrix,
-and Tensor operands (generated Rust treats `Vec<f64>` as rank-1,
-`Vec<Vec<f64>>` as rank-2, and `emath_rt::Tensor { shape, data }` as
-rank-3+). Extent mismatches are a typed fault
-(`EvalFault` in interp, `EinsumError` from `einsum_checked`). Block
-matrices (`[A | b]`) are not yet admitted.
-
-Index and slice (`v[i]`, `m[i, j]`, `t[0, :, :]`) use the same checked
-kernels. `:` is a half-open range; point axes drop rank and range axes
-keep it, so `t[0, :, :]` is the first 2×2 face of a rank-3 tensor (a
-`Matrix`). Out-of-bounds, negative, and non-whole indices are a typed
-fault — interp `EvalFault::IndexOutOfBounds`, rust.library
-`Result<T, String>` — never panicking `[]`. A negative constant is
-refused at admission (`E-SHAPE-006`).
-
-### Unit and dimension queries (04 section 1.4)
-
-`unit of E` and `dimension of E` are compile-time query operators
-with precedence just above `==`. They are usable in `require`,
-`tests:`, and `expect`:
+`match` is expression sugar for literal dispatch:
 
 ```emath
-require dimension of thrust == Force
-expect unit of (m * c^2) == kg*m^2/s^2
+value = match x { 0.0 => 1.0, other => other * 2.0 }
 ```
 
-`unit` and `dimension` are contextual keywords: they activate only
-when followed by `of`. In all other positions they are regular
-identifiers. These queries parse today; compile-time evaluation
-requires a unit inference engine (not yet implemented in Phase 1).
+Patterns are literals, `_`, or a binding name. The final arm must be a catch-all. Formatting expands `match` to canonical `cases` form.
 
-Spatial operators (admitted in `definitions:` and `equations:`):
+## Claims and approximations
 
-1-D Laplacian - second derivative via the stencil `[1, -2, 1] / dx²`:
-- `laplacian(u, dx)` - clamped (face-insulated) edges. Conserves the
-  unweighted sum `Σ u_i` (finite-volume flux zero at the face).
-- `laplacian_neumann(u, dx)` - even reflection through the boundary
-  *cell* (`u[-1] = u[1]`). This is a second-order `du/dn = 0` at the
-  cell center. It conserves the trapezoidal inner product
-  `(u_0 + u_{n-1})/2 + Σ_{i=1}^{n-2} u_i`, not the unweighted sum, when
-  heat sits on the boundary.
-- `laplacian_dirichlet(u, dx, g_left, g_right)` - fixed boundary values.
+A limit or series is a claim, not a numeric computation:
 
-2-D Laplacian - 5-point stencil `[[0,1,0],[1,-4,1],[0,1,0]] / dx²` over a
-`Matrix`:
-- `laplacian_2d(u, dx)` - clamped edges.
-- `laplacian_2d_neumann(u, dx)` - mirror edges.
+```emath
+limit x -> 0: sin(x) / x
+limit x -> 0+: 1 / x
+series n in 0..inf: a[n]
+f(n) ~~ g(n)
+```
 
-1-D gradient - first derivative via central differences
-`[-1/(2dx), 0, +1/(2dx)]`:
-- `gradient(u, dx)` - one-sided edges (linear ghost; a slope-1 ramp is
-  1 at the boundary, not the clamp-central artifact 0.5); returns a `Vector`.
+Use `sample_limit` when a numerical approximation is intended:
 
-2-D gradient - first derivative along one axis (central differences):
-- `gradient_2d_x(u, dx)` - `du/dc` (along columns); returns a `Matrix`.
-- `gradient_2d_y(u, dx)` - `du/dr` (along rows); returns a `Matrix`.
+```emath
+estimate = sample_limit x -> 0: sin(x) / x
+```
 
-3-D operators over rank-3 `Tensor` values:
-- `laplacian_3d(u, spacing)` uses the 7-point stencil with equal spacing.
-- `laplacian_3d(u, dx, dy, dz)` uses independent axis coefficients
-  `1/dx²`, `1/dy²`, and `1/dz²`.
-- `laplacian_3d_neumann` accepts the same signatures with mirrored faces.
-- `gradient_3d_x/y/z(u, spacing)` returns the selected partial derivative.
+Approximate equality requires a tolerance:
 
-Divergence is available in each admitted spatial dimension:
-- `div_1d(vx, dx)`
-- `div_2d(vx, vy, spacing)` or `div_2d(vx, vy, dx, dy)`
-- `div(vx, vy, vz, spacing)` or `div(vx, vy, vz, dx, dy, dz)`;
-  `div_3d` is an explicit alias.
+```emath
+invariant:
+    measured ≈ predicted within rtol=1e-9, atol=0
+```
 
-Spatial spacing values must be positive literal constants. The 3-D forms
-support non-cubic physical grids through distinct `dx`, `dy`, and `dz`.
+ASCII `~=` is equivalent to `≈`. A missing tolerance is `E-APPROX-TOL`. At runtime the check is `abs(left-right) <= atol + rtol*abs(right)`; failure refuses the run.
 
-Heat equation as a continuous model: an `emath model` with a `Vector`
-(1-D), `Matrix` (2-D), or rank-3 `Tensor` state and
-`der(u) = alpha * laplacian[_2d|_3d](u, 1.0)` admits and integrates under
-`emath simulate` (RK4). Clamp edges conserve `sum(u)`. Mirror (Neumann)
-edges conserve trapezoidal heat, not always `sum(u)`. See
-`heat-rod.emath`, `heat-rod-sim.emath`, `heat-plate.emath`,
-`heat-plate-sim.emath`, `heat-volume-sim.emath`, and `gradient-field.emath`.
+## Automatic differentiation
 
-Not admitted yet: continuous `Field[R^d -> R]` types and Dirichlet
-boundaries for 2-D/3-D Laplacians. `heat-pde.emath` remains a target sketch
-for the full field-type design.
+```emath
+dx = derivative(expression) wrt x
+px = partial(expression) wrt x holding pressure
+dt = total(expression) wrt time
+g = grad(loss)
+```
 
-### Modular arithmetic and finite fields
+`derivative` and `partial` use forward-mode automatic differentiation. A partial derivative requires an explicit `holding` set. `grad` uses reverse mode and returns derivatives with respect to all declaration inputs.
 
-Modular arithmetic builtins operate on integer (i64) values and are
-admitted in `definitions:` and `equations:`:
+`jacobian(body) wrt v1, v2, ...` (Track A3, bead emath-9bj1) computes the Jacobian as a value: a list body `[f1, f2]` differentiates component-wise (one row per component, one column per `wrt` variable), a scalar body yields a single row (`Matrix[1, n]`). The form is parse-time sugar for a matrix literal of `derivative` cells, so it uses the same forward-mode engine as `derivative` — no second engine and no domain ops. Unsupported shapes and non-numeric (nondifferentiable) bodies are typed refusals (`E-TYPE-012`); a `wrt` name that is not an input refuses with the derivative form's input-scope code (`E-TYPE-010`). `hessian` is not admitted yet; it refuses as an unknown keyword.
 
-- `factorial(n)` - exact i64 factorial. `n` must be in [0, 20] (i64
-  overflow guard). Returns `Int`.
-- `mod_inv(a, m)` - modular inverse of `a` modulo `m` via extended GCD.
-  Errors at runtime if `gcd(a, m) != 1`. Returns `Int`.
-- `congruence(a, b, m)` - congruence test: `(a - b) mod m == 0`. Returns `Bool`.
-- `mod(a, m)` - floating-point remainder (already available as a general
-  builtin; works on `Int` values too via i64-to-f64 coercion).
-- `poly_eval_mod(coeffs, x, p)` - evaluates polynomial `c[0] + c[1]*x +
-  ... + c[k-1]*x^(k-1)` at `x` modulo `p` using Horner's method. `coeffs`
-  is a `Vector`, `x` and `p` are integers. Returns `Int`.
-- `rs_encode(coeffs, n, p)` - constructs a Reed-Solomon codeword by
-  evaluating the polynomial at points `0, 1, ..., n-1` over `GF(p)`.
-  Returns a `Vector` of `n` values.
+## Solving and optimization
 
-`GF<p>` and `GF<p>` are admitted as `Int` types - values are exact
-integers, and modular reduction is performed by the builtins, not the
-type system. This is sufficient for Reed–Solomon code construction
-over small prime fields (evaluating polynomials, checking distances,
-testing Wilson's theorem).
+```emath
+root = solve(residual) wrt x
+minimum = minimize(loss) wrt x, y
+maximum = maximize(score) wrt x
+```
+
+The supplied runtime values are initial guesses. Non-convergence, singular derivatives or Hessians, and wrong curvature are refusals, not fabricated answers. Optimization strategy names are explicit; methods never gain authority merely by being declared.
+
+`solve` runs Newton's method with a deterministic robustness fallback (Track A3, bead emath-9bj1): when the derivative vanishes or the residual/step becomes non-finite, the solver scans a fixed geometric grid (alternating ± steps around the seed, ×8 growth, 48 levels) for a sign-changing bracket and bisects it with a fixed 120-iteration budget. A root is reported only when `|residual| < tolerance`; no bracket — or a divergent bisection — is a typed refusal, never a hang and never an invented root. All scan constants are fixed, so the fallback is bit-deterministic across runs and seeds.
+
+## Arrays and spatial operators
+
+```emath
+x = vector[0]
+y = matrix[1, 2]
+plane = tensor[0, :, :]
+```
+
+Indexing drops selected axes; slicing with `:` keeps them. Spatial builtins include gradient, divergence, Laplacian, and boundary-specific variants for supported one-, two-, and three-dimensional carriers.
+
+Einstein summation is available through `einsum`. Bare indexing never silently becomes Einstein notation.
+
+## Notation packs
+
+Notation packs are opt-in imports. Their glyphs are not ambient.
+
+### Braket notation
+
+```emath
+use sci::physics::notation::braket(convention = physics)
+
+zero = |0⟩
+overlap = ⟨0|1⟩
+projector = |1⟩⟨1|
+```
+
+The admitted carrier is a real two-level system. Basis labels outside `0` and `1` refuse. Unmounted glyphs are `E-SYN-157`.
+
+### Nabla notation
+
+The nabla pack maps declared gradient, divergence, curl, and Laplacian glyphs to the corresponding spatial builtins. Dimensional mismatches, such as three-dimensional curl on a two-dimensional field, refuse.
+
+## Graph literals
+
+```emath
+net = graph { 1, 2, 3; 1 --> 2, 2 -[0.5]-> 3, 1 -[2.0]- 3 }
+```
+
+Edges are:
+
+| Syntax | Meaning |
+|---|---|
+| `a --> b` | directed, weight 1 |
+| `a -[w]-> b` | directed, weight `w` |
+| `a - b` | undirected, weight 1 |
+| `a -[w]- b` | undirected, weight `w` |
+
+Edge syntax is valid only inside a graph literal. Malformed or dangling edges refuse at parse time.
+
+## String interpolation
+
+```emath
+headline = "x = {x:.3f}, path = {model.coeff}, literal {{raw}}"
+```
+
+A hole may contain only a name or dotted path. Calls, indexing, and arbitrary expressions are refused. The fixed format suffix is `.Nf`; doubled braces escape literal braces. String templates evaluate to NFC-normalized `Text`. The intentionally small text surface is `nfc`, `text_length`, equality, report construction, and pure rendering; arbitrary text-processing operations remain refused.
+
+## Definitions and equations
+
+Definitions are directed and evaluated in source order:
 
 ```emath
 definitions:
-  p = 7
-  wilson = mod(factorial(p - 1), p)
-  expect wilson == p - 1  (* (p-1)! ≡ -1 (mod p) for prime p *)
+    current = (voltage - charge / capacitance) / resistance
 ```
 
-### Limits, series, and asymptotic equivalence (B04+B06+B18)
+Model equations may contain rates, algebraic definitions, or implicit residuals:
 
-- `limit x -> 0: f(x)` - limit as a **claim** (parses, does not compute).
-  One-sided: `0+` (from above), `0-` (from below). Usable in `require`/
-  `invariant`.
-- `sample_limit x -> 0: f(x)` - numerical limit approximation
-  (**computation**). Admitted in `definitions:`/`equations:`.
-- `series n in 0..inf: a[n]` - series convergence **claim** (parses,
-  does not compute). Contextual keyword.
-- `f(n) ~~ g(n)` - asymptotic equivalence (**claim**). Lowers to a
-  limit claim. Per C7, `~` is the distribution tag; `~~` is asymptotics.
+```emath
+equations:
+    der(position) = velocity
+    mass * der(velocity) == force
+    current = (voltage - charge / capacitance) / resistance
+    der(charge) = current
+```
 
-`limit`, `sample_limit`, and `series` are contextual keywords: they
-activate only in their syntactic positions and remain valid user
-identifiers elsewhere.
+A scalar equation containing `der(state)` may be causalized into an explicit rate. The transformation is recorded.
+
+## Implicit DAEs
+
+Declare coupled algebraic unknowns separately and write a square residual system:
+
+```emath
+emath model RC:
+    inputs:
+        voltage: Float64
+        resistance: Float64
+        capacitance: Float64
+    algebraic:
+        current: Float64
+    state:
+        charge: Float64
+    equations:
+        voltage - resistance * current - charge / capacitance == 0
+        der(charge) = current
+```
+
+At each step the runner solves the residuals with a finite-difference Jacobian and then advances the differential state. Generated Rust uses the same solve and returns `Result` on non-convergence. The number of residuals must match the algebraic unknowns plus implicit rate unknowns; unused algebraic values are refused.
+
+## Simulation
+
+`emath simulate` supports fixed-step Euler, RK4, adaptive RK45, implicit backward Euler, and symplectic velocity Verlet. `--model Name` selects a model when a file declares more than one. Inputs, state, and algebraic guesses are supplied with `--set name=value`. Adaptive stepping is enabled by explicit absolute and relative tolerances.
+
+Select the structural method with `--method backward-euler` or `--method velocity-verlet`. Velocity Verlet requires two scalar states satisfying `q' = v` and `v' = a(q)`; dissipative or velocity-dependent acceleration refuses `E-ODE-002`. Invalid time steps, non-finite coefficients, and nonlinear solve failure are typed refusals.
+
+## Events and transitions
+
+Two cooperating, generic surfaces (r3-dynamical-03lh ch7) let a
+continuous model switch deterministically at a detected crossing. An
+`events:` section declares named events that **detect** a rising
+condition; a `transitions:` section declares rules that **dispatch** the
+switch on an `on <Event>:` trigger, re-assigning declared `inputs:` /
+`state:` slots. Either mechanism can carry an action; the common split is
+"event declares the crossing, transition dispatches the action."
+
+### The `events:` section (admission grammar)
+
+`events:` declares named events — `event Name(field: Type)` or no-arg
+`event Name` — on `emath model` declarations. Admission validates the
+surface: duplicate names refuse `E-NAME-022`, anything that is not an
+event declaration refuses `E-SYN-101`.
+
+A declared event may carry a payload suite of exactly one deterministic
+arm: a Boolean condition and one assignment action on a declared
+`inputs:` or `state:` Float64 slot:
+
+```emath
+events:
+    event ThresholdCrossed(voltage: Float64):
+        if charge >= capacitance * threshold_voltage:
+            voltage = 0
+```
+
+Bare `event Name(field: Type)` declarations without a payload suite are
+admitted as declared surface and never scheduled on their own — they only
+become meaningful when a `transitions:` rule dispatches on a fired event,
+and the firing condition then comes from a payload-bearing event of the
+same name (an action-less suite is refused: the payload arm must contain
+exactly one assignment).
+
+### The `transitions:` section (grammar and actions)
+
+`transitions:` appears after `events:` (parser admits either order; the
+convention keeps `events:` first). Each rule is a trigger clause with one
+or more assignment actions:
+
+```emath
+transitions:
+    on ThresholdCrossed:
+        voltage = 0
+        state.counter = state.counter + 1
+```
+
+Every `on <Event>:` trigger must name an event declared in the same
+declaration's `events:` section (`E-TRANS-001`). Each action is an
+assignment whose target is a declared input or state slot — either a bare
+name (`voltage = 0`, re-assigning a declared input/state) or a dotted
+`state.<name>` form that unambiguously addresses a state slot. Actions
+against `algebraic:` unknowns are refused (`E-TRANS-005`): the Newton
+projection owns those. The action value may reference the fired event's
+captured parameters and any declared input/state. When an event fires,
+the runner applies the event's own payload action (if any) and then every
+matching `on <Event>:` rule in declaration order; each rule's actions run
+in rule order (for the same target, the last write wins).
+
+### Event-parameter capture semantics
+
+A declared parameter `f: T` on an event is a **runtime-capture slot**, not
+a definition input. When the event fires, each parameter binds the live
+value of the **same-named** model variable (a declared `inputs:`, `state:`,
+or `algebraic:` name) at the crossing — never a fixed argument. Parameters
+are in scope inside the event's payload and inside the matching
+`on <Event>:` rule's actions, so a transition can snapshot the crossing
+value into a slot:
+
+```emath
+events:
+    event Snap(charge: Float64):
+        if charge >= capacitance * threshold_voltage:
+            voltage = 0
+transitions:
+    on Snap:
+        state.captured_charge = charge
+```
+
+Here `charge` inside `on Snap:` is the value captured at the crossing.
+If an event parameter matches no declared input/state/algebraic variable,
+there is no capture source and admission refuses `E-TRANS-006` (naming the
+parameter and the event). At a firing whose capture is otherwise missing
+at runtime, the refusal is `E-TRANS-007`.
+
+### Scheduling
+
+- **Once per rising edge.** Conditions are evaluated once per accepted
+  step. An event fires exactly when its condition rises (false → true)
+  across a step; a condition that never rises never fires.
+- **t0-holds fire at t0.** A condition already true on the initial sample
+  fires at `t0`, before the first sample is pushed, so the first sample
+  already carries the switch.
+- **At most one event per accepted step**, the deterministic tie-break.
+  Ties across events break in declaration order.
+- **Crossing bisection ≤ 40 iterations** per firing — the same
+  `--event`-locator budget — snapping a sample on the threshold.
+- **Step budget 1_000_000** accepted steps per trajectory, unchanged.
+- Conditions and capture values bind inputs/state through the same
+  lowering path as definitions, so projected algebraic values participate
+  in the condition.
+
+### Determinism
+
+Same source + inputs + policy → an **identical firing log** (every fired
+event name and crossing time) and **identical transition application**.
+Conditions are evaluated only at accepted step boundaries; declaration
+order and the at-most-one-per-step rule remove run-to-run ambiguity; the
+firing log is part of the replayed `Trajectory` (replay-tested, including
+admission replay and refusal-text reproducibility). No RNG; the harness is
+deterministic-by-contract.
+
+### Typed refusals
+
+Admission (events payload): `E-EVENT-001` (not a single if/assign pair;
+indexed/dotted or unknown target; or an `algebraic:` unknown as target —
+the Newton projection owns those), `E-EVENT-002` (condition not Boolean),
+`E-EVENT-003` (`else` arms — the contract is one condition, one action),
+`E-EVENT-004` (action not numeric scalar), `E-EVENT-005` (target not a
+Float64 scalar slot). Runtime (events): `E-EVENT-006` (condition did not
+evaluate to `Bool` at the step), `E-EVENT-007` (action target not bound in
+the live inputs map / not a bound input or state at `t`, or an expression
+name is unbound — pass `--set name=...`), `E-EVENT-008` (event expression
+refused or faulted during evaluation), `E-EVENT-009` (event action value
+non-finite — NaN/±Inf never poisons a slot, the run refuses).
+
+Admission (transitions): `E-TRANS-001` (`on <Event>:` names an event not
+declared in `events:`, or there is no `events:` section), `E-TRANS-002`
+(action target is not a declared input/state slot: bare unknown name,
+dotted `state.<missing>`, deep path), `E-TRANS-003` (rule body is not an
+assignment or the action value is non-numeric), `E-TRANS-004` (empty
+`on <Event>:` body), `E-TRANS-005` (action targets an `algebraic:`
+unknown), `E-TRANS-006` (event parameter matches no declared variable, so
+no capture value exists). Runtime (transitions): `E-TRANS-007` (event
+parameter has no capture value at `t`; a transition targets a non-state;
+or the target is not bound in the live inputs map), `E-TRANS-008`
+(transition action value non-finite — never poison, the run refuses).
+
+All event/transition faults are typed refusals, never silent drops. In
+particular, a **mid-run singular switch** (for example a transition that
+rewrites `resistance = 0`, making the causalized residual independent of
+the algebraic unknown) refuses through the causalized-Newton projection
+with the raw `E-DAE-INIT` / `Regularize` typed refusal text — the run
+returns the refusal and **never a partial trajectory**.
+
+> No-claim: one RC fixture (`dae-rc-circuit.emath`) demonstrates this
+> generic mechanism; capture semantics do not prove general transition
+> systems (no general state-machine model is claimed).
+
+### The separate `--event` variable locator
+
+`--event name=value` is the independent variable-based tool: it roots on
+model variables (state, input, or algebraic unknown), detects the first
+zero crossing of `(variable − value)`, injects a sample there, and stops.
+Declared event names are not roots for `--event`; it shares the 40-iteration
+bisection budget but is otherwise unrelated to the scheduled event /
+transition mechanism above.
+
+## Polynomial, control, graph, and probability calls
+
+Domain capabilities use ordinary calls rather than new expression grammars. Examples include polynomial evaluation and multiplication, linear solves and decompositions, shortest paths and spectral graph operations, transfer-function evaluation, and seeded probability sampling. Their exact names, shapes, numeric policies, and refusal codes are documented in `standard-library-constitution.md` and `language/stdlib/cells/`.
+
+## Unit and dimension queries
+
+`unit of expression` and `dimension of expression` inspect admitted quantities. These queries return semantic metadata and do not reinterpret units as runtime numbers.
+
+## Unsupported forms
+
+The following remain explicit refusals: general recursive definitions without a termination policy, action-functional and variation syntax, arbitrary text-processing outside the declared `core::text` operations, and callbacks inside declarative figure specifications. Fit-goal syntax is implemented (04 §5.3); see [`goals-requests-strategies-and-resolution.md`](goals-requests-strategies-and-resolution.md) for the generic fit program surface and the honest unresolved disposition without a structural-identifiability provider.

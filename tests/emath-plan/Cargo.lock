@@ -13,6 +13,19 @@ dependencies = [
 [[package]]
 name = "emath-core"
 version = "0.1.0"
+dependencies = [
+ "unicode-normalization",
+]
+
+[[package]]
+name = "emath-exec-ir"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+ "emath-rt",
+ "emath-term",
+]
 
 [[package]]
 name = "emath-goal"
@@ -49,6 +62,8 @@ dependencies = [
  "emath-ir",
  "emath-plan",
  "emath-provider-api",
+ "emath-sema",
+ "emath-syntax",
 ]
 
 [[package]]
@@ -61,8 +76,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-rt"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+]
+
+[[package]]
 name = "emath-runtime"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+]
+
+[[package]]
+name = "emath-sema"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-exec-ir",
+ "emath-ir",
+]
+
+[[package]]
+name = "emath-source"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+]
+
+[[package]]
+name = "emath-syntax"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-source",
+]
+
+[[package]]
+name = "emath-term"
+version = "0.1.0"
+
+[[package]]
+name = "tinyvec"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
+dependencies = [
+ "tinyvec_macros",
+]
+
+[[package]]
+name = "tinyvec_macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+dependencies = [
+ "tinyvec",
 ]

@@ -208,6 +208,48 @@ pub enum StmtKind {
         left: Expr,
         right: Expr,
     },
+    /// One `reactions:` line (`r1: 2H2 + O2 -> 2H2O`, 04 section 3.1):
+    /// a labeled stoichiometric multiset transformation. Reaction lines
+    /// are T3 SECTION grammar — coefficients attach to species here even
+    /// though expression juxtaposition stays refused (C15).
+    Reaction {
+        name: String,
+        lhs: Vec<ReactionTerm>,
+        arrow: ReactionArrow,
+        rhs: Vec<ReactionTerm>,
+    },
+}
+
+/// One term of a [`StmtKind::Reaction`] line: (coefficient, species).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReactionTerm {
+    pub coefficient: u64,
+    pub species: String,
+}
+
+/// Arrow kinds of a `reactions:` line (04 section 3.1). `->` and `=>`
+/// share one lexer token, so both spellings denote the irreversible arrow;
+/// the lambda/notation reading of `=>` has no production inside a
+/// `reactions:` suite (no lambda position in the grammar).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReactionArrow {
+    /// `->` (or the token-equivalent `=>`): irreversible kinetic.
+    Irreversible,
+    /// `<->`: reversible pair, both rates required.
+    Reversible,
+    /// `<=>`: equilibrium, thermodynamic constraint.
+    Equilibrium,
+}
+
+impl ReactionArrow {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Irreversible => "->",
+            Self::Reversible => "<->",
+            Self::Equilibrium => "<=>",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,6 +347,15 @@ impl TypeProductOp {
 pub struct Expr {
     pub kind: ExprKind,
     pub source: Span,
+}
+
+/// Declared tolerance on an `≈` edge: `within rtol=…, atol=…`. Values are
+/// stored as expressions so the formatter round-trips byte-exactly;
+/// numeric admission of the tolerance values is lowering's job.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ApproxTolerance {
+    pub rtol: Option<Expr>,
+    pub atol: Option<Expr>,
 }
 
 /// Compound unit expression for bracket-notation units (F7/U4).
@@ -406,6 +457,62 @@ impl UnitExpr {
     }
 }
 
+/// `[(0.0 s, 0.0 V), ...] with interpolation: <mode>` (04 §5.4): how the
+/// series produces values between sample points. Declared, hashes into
+/// identity; there is no silent default spelling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeriesInterpolation {
+    /// Step function: value of the sample at or before the query time.
+    Previous,
+    /// Straight line between neighboring samples.
+    Linear,
+    /// Value of the nearest sample.
+    Nearest,
+    /// Piecewise-constant on `[t_i, t_{i+1})`.
+    Pwc,
+    /// Shape-preserving cubic (no overshoot on monotone data).
+    MonotoneCubic,
+}
+
+impl SeriesInterpolation {
+    /// Canonical spelling (04 §5.4).
+    #[must_use]
+    pub fn spelling(&self) -> &'static str {
+        match self {
+            Self::Previous => "previous",
+            Self::Linear => "linear",
+            Self::Nearest => "nearest",
+            Self::Pwc => "pwc",
+            Self::MonotoneCubic => "monotone_cubic",
+        }
+    }
+}
+
+/// `extrapolation: <mode>` (04 §5.4): what happens outside the sampled
+/// support. The default is `refuse` — silent extrapolation is a quiet
+/// killer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeriesExtrapolation {
+    /// Refuse evaluation outside support (the default).
+    Refuse,
+    /// Clamp to the nearest endpoint value.
+    Clamp,
+    /// Extend the first/last segment.
+    Extend,
+}
+
+impl SeriesExtrapolation {
+    /// Canonical spelling (04 §5.4).
+    #[must_use]
+    pub fn spelling(&self) -> &'static str {
+        match self {
+            Self::Refuse => "refuse",
+            Self::Clamp => "clamp",
+            Self::Extend => "extend",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
     Int(String),
@@ -422,6 +529,18 @@ pub enum ExprKind {
     Quantity {
         value: Box<Expr>,
         unit: UnitExpr,
+    },
+    /// Measurement literal (spec 04 section 1.5 / `emath-r3-uncertainty-literals-jzej`).
+    /// Two spellings: explicit `value ± uncertainty` (`uncertainty_digits`
+    /// empty) and attached CODATA parenthetical `value(digits)` (digits stay
+    /// raw; scaling `d × 10^(exp−frac)` is admission's job). The optional
+    /// distribution tag name (`~ normal | uniform | lognormal`) is recorded
+    /// raw; provenance defaults to Unstated and is recorded loudly.
+    Measured {
+        value: String,
+        uncertainty: String,
+        uncertainty_digits: String,
+        distribution: Option<String>,
     },
     Path {
         segments: Vec<String>,
@@ -449,13 +568,66 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    /// `a ≈ b` (ASCII `a ~= b`) — approximation labeling operator (04 §6.4,
+    /// bead emath-r3-approx-operator-depc). A first-class relation that
+    /// stamps authority: computing through an `≈` edge is
+    /// authority-degraded, never silently exact. The optional
+    /// `within rtol=…, atol=…` clause is the DECLARED tolerance; a bare
+    /// `≈` (no clause) refuses `E-APPROX-TOL` at admission rather than
+    /// masquerading as exactness.
+    Approx {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        tolerance: Option<Box<ApproxTolerance>>,
+    },
     If {
         condition: Box<Expr>,
         then_value: Box<Expr>,
         else_value: Box<Expr>,
     },
     List(Vec<Expr>),
+    /// `|x y| 1, 2 | 3, 4 |` — table literal (U9). Named columns plus
+    /// comma-separated rows; ≥2 headers keep the leading `|` unambiguous
+    /// with cases arms. Lowers through the Matrix element path (numeric
+    /// cells), with headers recorded only in the sema receipt.
+    Table {
+        headers: Vec<String>,
+        rows: Vec<Vec<Expr>>,
+    },
+    /// `{2, 3, 5}` — set literal (B01). Finite-set carrier; elements are
+    /// deduplicated and order-canonicalized at evaluation. Bare `{name:
+    /// value}` (record spelling without a path prefix) is ambiguous and
+    /// refuses `E-SYN-154` at parse time, never silently a one-element set.
+    Set(Vec<Expr>),
+    /// `{n in 0..100 if is_prime(n)}` — set comprehension (B01). Desugars
+    /// from brace position where the parsed element expression is a
+    /// top-level membership binary (`element in domain`) optionally
+    /// followed by an `if` guard; the membership reading inside braces is
+    /// the comprehension binding, never a Bool element test.
+    SetComprehension {
+        element: Box<Expr>,
+        var: String,
+        domain: Box<Expr>,
+        guard: Option<Box<Expr>>,
+    },
+    /// `Point:{x: 1.0, y: 2.0}` — inline record literal (U3). Path-prefixed
+    /// braces distinguish records from sets under one ELP ambiguity scan.
+    Record {
+        type_path: Vec<String>,
+        fields: Vec<(String, Expr)>,
+    },
     Tuple(Vec<Expr>),
+    /// `[(0.0 s, 0.0 V), ...] with interpolation: linear, extrapolation:
+    /// refuse` (04 §5.4, emath-r3-timeseries-1nsa): a time-series data
+    /// literal with its declared interpretation policy. The policy is
+    /// part of the value's identity — it changes every downstream
+    /// number. `None` means the language default (`refuse`), spelled in
+    /// admission. Evaluation semantics are the named next slice.
+    WithSeriesPolicy {
+        value: Box<Expr>,
+        interpolation: Option<SeriesInterpolation>,
+        extrapolation: Option<SeriesExtrapolation>,
+    },
     Range {
         start: Option<Box<Expr>>,
         end: Option<Box<Expr>>,
@@ -575,6 +747,11 @@ pub enum BinaryOp {
     Iff,
     /// `~~` — asymptotic equivalence (B18). Lowers to a limit claim.
     Asymp,
+    /// `v in s` — set membership (B01). ASCII for ∈. In expression
+    /// position this is the membership operator; in binder keyword
+    /// position (`sum n in 0..10`) `in` is consumed by the binder
+    /// parser, so the two uses are provably disjoint (X13 charter).
+    In,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

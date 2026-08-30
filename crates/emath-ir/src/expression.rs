@@ -2,7 +2,7 @@
 //! operations. Phase 1 lowers to strict Float64; the operation vocabulary is
 //! the canonical set for exact/wrapping/checked/fast semantics.
 
-use crate::ids::{ExprId, TypeId};
+use crate::ids::{CapabilityId, ExprId, TypeId};
 use emath_core::QualifiedName;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -60,6 +60,12 @@ pub enum ExprNode {
         variables: Vec<BinderVariable>,
         body: ExprId,
     },
+    /// Finite extensional set. A comprehension is expanded into guarded
+    /// elements; literal elements carry `None` guards.
+    Set {
+        elements: Vec<ExprId>,
+        guards: Vec<Option<ExprId>>,
+    },
     Vector(Vec<ExprId>),
     Matrix(Vec<Vec<ExprId>>),
     /// Rank-3+ tensor of Float64, stored in row-major nested order.
@@ -93,6 +99,25 @@ pub enum ExprNode {
         var: String,
         target: ExprId,
         direction: ExprId,
+    },
+    /// Capability-cell application: `capability` indexes the owning
+    /// package's `capabilities` arena. The payload is a stable id, so
+    /// adding a domain cell never adds an `ExprNode` variant (no
+    /// domain-named op enums in core IR).
+    Apply {
+        capability: CapabilityId,
+        arguments: Vec<ExprId>,
+    },
+    /// Time-series data constant (04 §5.4, emath-r3-timeseries-1nsa
+    /// slice 1): SI-scaled `(time, value)` pairs plus the DECLARED
+    /// interpretation policy. The policy is identity-bearing — it
+    /// changes every downstream number — so it encodes into meaning.
+    /// Evaluation (interpolation/extrapolation) is the named next slice;
+    /// admitting a series never claims it computes.
+    Series {
+        points: Vec<(f64, f64)>,
+        interpolation: String,
+        extrapolation: String,
     },
 }
 
@@ -163,6 +188,7 @@ pub enum BinaryOp {
     Imply,
     /// `<==>` — logical biconditional: `a == b` for Bool.
     Iff,
+    SetContains,
     Min,
     Max,
     Atan2,
@@ -202,6 +228,7 @@ impl BinaryOp {
             Self::Or => "bool-or",
             Self::Imply => "bool-imply",
             Self::Iff => "bool-iff",
+            Self::SetContains => "set-contains",
             Self::Min => "f64-min",
             Self::Max => "f64-max",
             Self::Atan2 => "f64-atan2",
@@ -230,6 +257,7 @@ impl BinaryOp {
                 | Self::LessEqual
                 | Self::Greater
                 | Self::GreaterEqual
+                | Self::SetContains
         )
     }
 
@@ -365,6 +393,14 @@ impl ExprNode {
                     exprs[element.index()].collect_free(exprs, seen, out);
                 }
             }
+            Self::Set { elements, guards } => {
+                for &element in elements {
+                    exprs[element.index()].collect_free(exprs, seen, out);
+                }
+                for &guard in guards.iter().flatten() {
+                    exprs[guard.index()].collect_free(exprs, seen, out);
+                }
+            }
             Self::Matrix(rows) => {
                 for row in rows {
                     for &element in row {
@@ -387,6 +423,14 @@ impl ExprNode {
                 exprs[target.index()].collect_free(exprs, seen, out);
                 exprs[body.index()].collect_free(exprs, seen, out);
             }
+            Self::Apply { arguments, .. } => {
+                for &argument in arguments {
+                    exprs[argument.index()].collect_free(exprs, seen, out);
+                }
+            }
+            // A series data constant carries no free variables: the
+            // pairs are literals and the policy is declared.
+            Self::Series { .. } => {}
         }
     }
 }

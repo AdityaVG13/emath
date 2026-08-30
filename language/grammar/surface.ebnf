@@ -70,6 +70,28 @@ notation_fixity  = "prefix" | "postfix" | "infixl" | "infixr" | "infix" ;
 --     never changes the semantic identity of a program.
 extern_decl      = "extern" , ( function_decl | type_decl | operator_decl ) ;
 
+-- 04 section 3.1 (emath-r3-reactions-section-92hq): reaction lines are T3
+-- SECTION grammar, not expression grammar — stoichiometric coefficients
+-- attach to species here while expression juxtaposition stays refused
+-- (C15). `species:` closes the world: every reaction-line species must be
+-- declared (E-CHEM-SPECIES). Element balance is checked statically at
+-- admission (E-CHEM-BALANCE). Arrows: `->` irreversible (the `=>` spelling
+-- shares the same lexer token and denotes the same arrow — no lambda
+-- position exists in this suite), `<->` reversible, `<=>` equilibrium;
+-- any other arrow spelling refuses E-SYN-156 (`<==>` is the logical Iff
+-- token, not a reaction arrow).
+reaction_network_decl = "emath" , "reaction_network" , declaration_head , ":" , suite ;
+-- 04 §3.2 (emath-r3-stoich-tables-pqs6): the network body also admits the
+-- §3.2 table sections — `stoichiometry:` (RHS exactly `stoich(reactions)`),
+-- `extents:` (typed extent rows), `ice_table <reaction>:` (two-word section
+-- head; initial/change rows + equilibrium identity), `constraints:`
+-- (forall-over-species claims). All are SEMA shapes over existing
+-- productions: no new grammar productions were added by pqs6.
+reaction_line     = identifier , ":" , reaction_side , reaction_arrow , reaction_side ;
+reaction_side     = reaction_term , { "+" , reaction_term } ;
+reaction_term     = [ natural ] , identifier ;    (* species; coefficient defaults to 1 *)
+reaction_arrow    = "->" | "<->" | "<=>" ;
+
 let_statement    = "let" , pattern , [ ":" , type_expr ] , "=" , expression ;
 assignment_statement = place_expr , assignment_op , expression ;
 assignment_op    = "=" | "+=" | "-=" | "*=" | "/=" ;
@@ -118,15 +140,106 @@ primary_expr     = literal
                  | path
                  | tuple_expr
                  | list_expr
+                 | set_expr
+                 | set_comprehension
                  | record_expr
                  | range_expr
                  | binder_expr
+                 | match_expression
                  | "(" , expression , ")" ;
 
 tuple_expr       = "(" , expression , "," , [ expression , { "," , expression } ] , ")" ;
 list_expr        = "[" , [ expression , { "," , expression } ] , "]"
                  | "[" , expression , "for" , pattern , "in" , expression , [ "if" , expression ] , "]" ;
-record_expr      = path , ":" , suite ;
+-- U9 (emath-r3-table-literals-f3z1): `;` separates rows inside a list
+-- literal; `[1, 2; 3, 4]` folds to the nested-list matrix shape. Row
+-- lengths must match (E-SYN-102). Comma-only lists never reparse.
+matrix_rows_expr = "[" , row_cells , { ";" , row_cells } , "]"
+                 , ? row lengths equal ? ;
+row_cells        = expression , { "," , expression } ;
+-- U9: table literal. >= 2 header idents keep the leading `|` unambiguous
+-- with cases arms and infix `or`; cells are comma-separated (no
+-- juxtaposition); every row closes with `|`.
+table_literal    = "|" , identifier , identifier , { identifier } , "|" ,
+                   table_row , { "|" , table_row } , "|" ;
+table_row        = [ expression , { "," , expression } ] ;
+-- Nabla pack (emath-r3-nabla-pack-o6jp): glyphs lex as single tokens and
+-- parse only when `use sci::physics::notation::nabla` is mounted; each
+-- form desugars to an existing core::pde builtin. Fields are Matrix
+-- values and spacing is ONE explicit cell-width argument (world data,
+-- never ambient).
+nabla_pack_mount = "use" , "sci::physics::notation::nabla" ;
+nabla_grad       = "∇"  , "(" , expression , "," , expression , ")" ;   (* core::pde::gradient(u, dx) *)
+nabla_lap        = "∇²" , "(" , expression , "," , expression , ")" ;   (* core::pde::laplacian_2d(u, dx) *)
+nabla_div        = "∇·" , "(" , expression , "," , expression , "," , expression , ")" ;  (* core::pde::div_2d(vx, vy, dx) *)
+nabla_curl_2d    = "∇×" , "(" , expression , "," , expression , "," , expression , ")" ;  (* gradient_2d_x(v,dx) - gradient_2d_y(u,dx) *)
+-- 04 §2.4 (emath-r3-braket-pack-fdby): braket pack on the REAL 2-level
+-- discrete carrier. Glyphs `⟨`/`⟩` lex as single tokens and parse only
+-- when `use sci::physics::notation::braket` is mounted (optionally with
+-- the declared convention parameter). `⟨i|j⟩` constant-folds to the
+-- Kronecker delta (orthonormality, machine-checked at parse); `⟨φ|ψ⟩`
+-- desugars to the admitted `dot` (sesquilinear conjugation is the
+-- identity on real entries); `|i⟩⟨j|` desugars to the constant
+-- projector matrix; `⟨φ|P|ψ⟩` desugars to the double sum. Labels
+-- outside {0, 1} refuse (E-SYN-157); the Complex carrier (conjugate on
+-- the bra) is the documented follow-up.
+braket_pack_mount = "use" , "sci::physics::notation::braket" ,
+                    [ "(" , "convention" , "=" , ( "physics" | "math" ) , ")" ] ;
+ket_literal      = "|" , carrier_label , "⟩" ;
+bra_form         = "⟨" , ( carrier_label | identifier ) , "|" ,
+                   [ ( carrier_label | identifier ) , "⟩" | sandwich_mid ] ;
+sandwich_mid     = ( carrier_label | identifier ) , "|" , ( carrier_label | identifier ) , "⟩" ;
+carrier_label    = "0" | "1" ;
+-- U8 (emath-r3-string-interp-og2e): interpolated string templates.
+-- A hole carries only a name or a dotted path (purity: no expressions,
+-- calls, or indexing — `{f(x)}` refuses at parse); the format spec is
+-- FIXED (`.` digits `f`); `{{`/`}}` escape literal braces; any other
+-- stray brace refuses (E-SYN-101). The template value stays raw in the
+-- string literal: runtime substitution awaits the string world, which
+-- is outside the Phase 1 subset (all string values refuse at
+-- admission) — parse and shape now, typed refusal at the missing
+-- carrier (sets-tub8 Phase B pattern).
+interpolated_string = '"' , { string_char | hole | "{{" | "}}" } , '"' ;
+hole             = "{" , dotted_name , [ ":" , "." , digits , "f" ] , "}" ;
+dotted_name      = identifier , { "." , identifier } ;
+-- U6 (emath-r3-match-expr-dnbd): `match` in expression position is
+-- surface sugar for `cases` (U1). Literal patterns (Int/Float/Str/Bool,
+-- optional leading `-`) become `subject == pattern` conditions; the
+-- mandatory FINAL catch-all (`_` or a binding name; a binding
+-- substitutes the subject for the name) becomes the else arm, so
+-- totality is a parse-time guarantee (E-SYN-110 when missing, E-SYN-101
+-- when not last). The subject is a postfix expression; compound
+-- subjects need parentheses. Statement-form `match_statement` above is
+-- aspirational grammar, not yet admitted by the parser.
+match_expression = "match" , postfix_expr , "{" , match_arm , { "," , match_arm } , [ "," ] , "}" ;
+match_arm        = ( numeric_literal | string | "true" | "false" | identifier ) , "=>" , expression ;
+numeric_literal  = [ "-" ] , ( integer | decimal ) ;
+-- B23 (emath-r3-graphs-ybob): `graph { <nodes> ; <edges> }` is a
+-- contextual literal. Edge spellings exist ONLY between the `;` and
+-- the closing brace; outside a graph literal `x--y` stays arithmetic
+-- (G4: no `--` token is glued, `-->` beats `->` in the lexer). The
+-- literal desugars at parse time to the tuple `( [ nodes… ] ,
+-- [ edges… ] )` — NOT a list, so lowering never matrix-interprets it —
+-- where each edge is the 4-tuple row `[ from , to , weight , directed
+-- ]` (weight 1.0 when unspecified; directed 1.0 for `-->`/`-[w]->`,
+-- 0.0 for `-`/`-[w]-`). Admission refuses the tuple carrier with
+-- E-TYPE-010 until a graph value carrier lands in emath-ir
+-- (sets-tub8 Phase B boundary pattern).
+graph_literal    = "graph" , "{" , [ expression , { "," , expression } ] ,
+                   [ ";" , [ graph_edge , { "," , graph_edge } ] ] , "}" ;
+graph_edge       = expression , edge_operator , expression ;
+edge_operator    = "-->" | "-[" , expression , "]->" | "-" | "-[" , expression , "]-" ;
+-- B01 (emath-r3-sets-tub8): `{2, 3, 5}` is a set literal; `{}` is the
+-- empty set. Inside braces a top-level `element in domain` binding is a
+-- set comprehension, optionally guarded; outside braces `in` is the
+-- membership operator (comparison precedence). One ELP ambiguity scan
+-- covers both `{}` forms (X12): bare `{name: value}` — record spelling
+-- without a path prefix — refuses E-SYN-154.
+set_expr         = "{" , [ expression , { "," , expression } ] , "}" ;
+set_comprehension = "{" , expression , "in" , expression , [ "if" , expression ] , "}" ;
+-- U3: inline record literal. The path prefix disambiguates from sets.
+record_expr      = path , ":" , "{" , [ field_binding , { "," , field_binding } ] , "}" ;
+field_binding    = identifier , ":" , expression ;
 range_expr       = [ expression ] , ( ".." | "..=" ) , [ expression ] ;
 
 binder_expr      = ( "sum" | "product" | "integral" | "forall" | "exists" ) , binder_list , [ "if" , expression ] , ":" , expression
@@ -164,11 +277,16 @@ pattern          = identifier
 place_expr       = path , { field_suffix | index_suffix } ;
 path             = identifier , { "::" , identifier } ;
 
-literal          = integer | decimal | float_literal | rational_literal | quantity_literal | string | character | boolean | complex_literal ;
+literal          = integer | decimal | float_literal | rational_literal | quantity_literal | measurement_literal | string | character | boolean | complex_literal ;
 boolean          = "true" | "false" ;
 
 inline_value     = expression | string ;
 operator_token   = punctuation_operator | custom_operator ;
+-- B01: `in` at comparison precedence outside braces = membership
+-- (`v in s`, ASCII ∈). Binder keyword position (`pattern , "in"`) and
+-- comprehension brace position are consumed before expression-level
+-- membership can fire (X13 usage charter: provably disjoint contexts).
+membership_operator = "in" ;
 prefix_operator  = "+" | "-" | "!" | custom_operator ;
 
 identifier       = unicode_identifier ;
@@ -177,6 +295,12 @@ decimal          = integer , "." , integer , [ exponent ] ;
 float_literal    = ( integer | decimal ) , ( "f16" | "bf16" | "f32" | "f64" | "f128" ) ;
 rational_literal = integer , "//" , integer ;
 quantity_literal = ( integer | decimal | rational_literal ) , whitespace , path ;
+-- Spec 04 section 1.5: measurement literals. Explicit form (X6: plus-minus
+-- in core IS the measurement literal) and the attached CODATA parenthetical
+-- (digits bind to the last mantissa digits; no space; digits only; float
+-- mantissa only, so f(2) stays a call). The optional distribution tag
+-- (~ normal | uniform | lognormal) rides the same literal.
+measurement_literal = ( decimal , "±" , decimal | decimal , "(" , digit , { digit } , ")" , [ exponent ] ) , [ "~" , identifier ] ;
 -- B14: Complex literals. `Ni` (e.g., 2i, 3.5i) is the pure imaginary
 -- form; `a +/- bi` is the sum form. `Ni` desugars to `N * i` (named
 -- constant). The lexer consumes `i` as part of the number token when
@@ -204,3 +328,23 @@ whitespace       = " " , { " " } ;
 (* Layout note: NEWLINE is suppressed inside (), [], and {}, and after an
    incomplete infix/prefix/assignment expression. This permits vertically
    formatted expressions such as `score =` followed by an indented expression. *)
+
+
+(* Model declarations (continuous dynamics, index-1 DAEs): the header is
+   the generic `emath_item` with `item_kind` = `model` and a plain
+   declaration head. These productions pin the model-facing section heads
+   and statement forms; admission restricts them to `emath model`
+   declarations (E-KIND-010 for `algebraic:` elsewhere, E-SYN-101 for
+   non-declaration rows). Verified parses:
+   language/examples/numerical/{dae-rc-circuit,solver-methods,
+   explicit-mass-spring}.emath. Normative text:
+   language/reference/expressions-equations-state-and-events.md. *)
+model_section        = model_field_section | model_stmt_section ;
+model_field_section  = ( "inputs" | "state" | "algebraic" ) , ":" , field_suite ;
+model_stmt_section   = ( "definitions" | "equations" | "events" | "observations" | "outputs" ) , ":" , suite ;
+field_suite          = newline , indent , { field_decl | newline } , dedent ;
+field_decl           = identifier , ":" , type_expr ;
+rate_statement       = "der" , "(" , identifier , ")" , "=" , expression ;  (* differential rate row in equations: *)
+residual_statement   = expression , "==" , expression ;                     (* implicit DAE row in equations: *)
+event_decl_statement = "event" , identifier , [ "(" , parameter_list_of_fields , ")" ] , newline ;  (* row in events: *)
+parameter_list_of_fields = identifier , ":" , type_expr , { "," , identifier , ":" , type_expr } ;

@@ -16,6 +16,9 @@ pub struct PlanInspection {
     pub exclusions: Vec<(String, String, String)>,
     /// Selected plan id (when a plan was selected).
     pub selected_plan_id: Option<String>,
+    /// Deterministic `goal:solver:provider` combination name (emath-9bj1,
+    /// Track A3): present exactly when a plan was selected.
+    pub combination: Option<String>,
     /// Planned evidence checks.
     pub checks: Vec<String>,
     /// Budget trace (when constrained).
@@ -42,6 +45,9 @@ impl PlanInspection {
         match &self.selected_plan_id {
             Some(id) => lines.push(format!("selected: {id}")),
             None => lines.push("selected: none".to_string()),
+        }
+        if let Some(combination) = &self.combination {
+            lines.push(format!("combination: {combination}"));
         }
         if self.candidates.is_empty() {
             lines.push("candidates: none".to_string());
@@ -96,6 +102,11 @@ impl PlanInspection {
             object.string("selected_plan", id);
         } else {
             object.string("selected_plan", "");
+        }
+        if let Some(combination) = &self.combination {
+            object.string("combination", combination);
+        } else {
+            object.string("combination", "");
         }
         object.strings("checks", &self.checks);
         if let Some(budget) = &self.budget {

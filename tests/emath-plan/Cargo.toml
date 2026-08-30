@@ -8,8 +8,27 @@ publish = false
 # `cargo test` works from this directory.
 [workspace]
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+too_many_lines = "allow"
+
 [dependencies]
 emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-plan = { path = "../../crates/emath-plan" }
 emath-provider-api = { path = "../../crates/emath-provider-api" }
+emath-sema = { path = "../../crates/emath-sema" }
+emath-syntax = { path = "../../crates/emath-syntax" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

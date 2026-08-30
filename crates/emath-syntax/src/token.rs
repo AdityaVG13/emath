@@ -32,6 +32,7 @@ pub enum Keyword {
     ForAll,
     Exists,
     Derivative,
+    Jacobian,
     Solve,
     Minimize,
     Maximize,
@@ -79,6 +80,7 @@ impl Keyword {
             Self::ForAll => "forall",
             Self::Exists => "exists",
             Self::Derivative => "derivative",
+            Self::Jacobian => "jacobian",
             Self::Solve => "solve",
             Self::Minimize => "minimize",
             Self::Maximize => "maximize",
@@ -127,6 +129,7 @@ impl Keyword {
             "forall" => Self::ForAll,
             "exists" => Self::Exists,
             "derivative" => Self::Derivative,
+            "jacobian" => Self::Jacobian,
             "solve" => Self::Solve,
             "minimize" => Self::Minimize,
             "maximize" => Self::Maximize,
@@ -143,6 +146,31 @@ impl Keyword {
             "Self" => Self::SelfKw,
             _ => return None,
         })
+    }
+}
+
+/// Which nabla-family glyph a [`TokenKind::Nabla`] carries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NablaForm {
+    /// `∇` — gradient.
+    Grad,
+    /// `∇·` — divergence.
+    Div,
+    /// `∇×` — curl (2D scalar desugar; 3D arity refuses typed).
+    Curl,
+    /// `∇²` — Laplacian (discrete 5-point stencil).
+    Lap,
+}
+
+impl NablaForm {
+    #[must_use]
+    pub const fn spelling(self) -> &'static str {
+        match self {
+            Self::Grad => "∇",
+            Self::Div => "∇·",
+            Self::Curl => "∇×",
+            Self::Lap => "∇²",
+        }
     }
 }
 
@@ -165,6 +193,25 @@ pub enum TokenKind {
     Iff,
     /// `~~` — asymptotic equivalence (B18).
     TildeTilde,
+    /// `~` — distribution tag prefix on measurement literals
+    /// (`~ normal`, `~ uniform`, `~ lognormal`; spec 04 section 1.5).
+    Tilde,
+    /// `±` — measurement-literal uncertainty separator (`1.50 ± 0.02`).
+    /// X6: in core this IS the measurement literal; algebraic plus-minus
+    /// lives only in the opt-in algebra pack.
+    PlusMinus,
+    /// `∅` — the declared sink (04 §4.1): a reaction endpoint that is
+    /// deliberately nothing (`Drug -> ∅`). Never a magic empty side:
+    /// a reaction endpoint with no terms and no `∅` refuses E-BIO-SINK.
+    EmptySet,
+    /// Attached parenthetical uncertainty (`0.5012(3)` = 0.5012 ± 0.0003):
+    /// `number` keeps the mantissa spelling (exponent and any suffix
+    /// included, parenthetical stripped); `digits` keeps the raw
+    /// uncertainty digits — decimal-place scaling is admission's job.
+    FloatUncertainty {
+        number: String,
+        digits: String,
+    },
     Le,
     Ge,
     Lt,
@@ -193,6 +240,29 @@ pub enum TokenKind {
     Question,
     Amp,
     Pipe,
+    /// `;` — row separator inside list literals (`[1, 2; 3, 4]`, U9).
+    /// Nowhere else in the surface: outside a list literal it refuses.
+    Semicolon,
+    /// Nabla-family glyphs (`∇`, `∇·`, `∇×`, `∇²`, nabla pack o6jp),
+    /// lexed as single tokens. Desugar targets are pack data: mounting
+    /// `use sci::physics::notation::nabla` maps the form to an existing
+    /// `core::pde` builtin; unmounted glyphs refuse at parse.
+    Nabla(NablaForm),
+    /// `≈` (U+2248) or ASCII `~=` — the approximation labeling operator
+    /// (04 §6.4, bead emath-r3-approx-operator-depc). One token either
+    /// spelling; `~=` must be claimed before the bare `~` distribution
+    /// tag, and `≈` before the non-ASCII ident path.
+    TildeEq,
+    /// `⟨` (U+27E8) — bra/open angle of the braket pack (fdby). Lexed
+    /// as a single token before the non-ASCII ident path; only the
+    /// mounted braket pack admits forms built from it.
+    LAngle,
+    /// `⟩` (U+27E9) — ket/close angle of the braket pack (fdby).
+    RAngle,
+    /// `-->` — directed graph edge arrow (B23, ybob). Glued from three
+    /// bytes so it beats `->` (Minus+Arrow today, a parse error in
+    /// this shape); `x--y` without the `>` stays two Minus tokens.
+    EdgeArrow,
     /// `@` — attribute prefix on `emath` items (`@capabilities(...)`).
     AtSign,
     Newline,
@@ -216,6 +286,17 @@ impl TokenKind {
             Self::Imply => "`==>`".to_string(),
             Self::Iff => "`<==>`".to_string(),
             Self::TildeTilde => "`~~`".to_string(),
+            Self::Tilde => "`~`".to_string(),
+            Self::TildeEq => "`≈`".to_string(),
+            Self::PlusMinus => "`±`".to_string(),
+            Self::EmptySet => "`∅`".to_string(),
+            Self::Nabla(form) => format!("`{}`", form.spelling()),
+            Self::LAngle => "`⟨`".to_string(),
+            Self::RAngle => "`⟩`".to_string(),
+            Self::EdgeArrow => "`-->`".to_string(),
+            Self::FloatUncertainty { number, digits } => {
+                format!("measurement literal `{number}({digits})`")
+            }
             Self::Le => "`<=`".to_string(),
             Self::Ge => "`>=`".to_string(),
             Self::Lt => "`<`".to_string(),
@@ -243,6 +324,7 @@ impl TokenKind {
             Self::Question => "`?`".to_string(),
             Self::Amp => "`&`".to_string(),
             Self::Pipe => "`|`".to_string(),
+            Self::Semicolon => "`;`".to_string(),
             Self::AtSign => "`@`".to_string(),
             Self::Newline => "end of line".to_string(),
             Self::Indent => "indent".to_string(),
