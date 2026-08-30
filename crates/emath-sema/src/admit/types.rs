@@ -8,6 +8,66 @@ use std::collections::BTreeSet;
 
 use super::E_UNSUPPORTED_TYPE;
 
+/// Largest admitted prime-field modulus: i32::MAX. Field values are exact
+/// i64 and the interpreter's modular kernels (extended gcd) run on i64;
+/// capping the TYPE-LEVEL prime at i32::MAX keeps the field in the exact
+/// i64 square (p² < 2^62) while staying representable in i32-lane kernels
+/// (emath-option-result-graph-field-aj8d).
+const FIELD_PRIME_MAX: i64 = i32::MAX as i64;
+
+/// Trial division: whether `p` is a prime (p ≥ 2). Within the admitted
+/// i32::MAX cap, `d * d` never overflows i64.
+fn is_prime(p: i64) -> bool {
+    if p < 2 {
+        return false;
+    }
+    if p % 2 == 0 {
+        return p == 2;
+    }
+    let mut d = 3i64;
+    while d * d <= p {
+        if p % d == 0 {
+            return false;
+        }
+        d += 2;
+    }
+    true
+}
+
+/// How a `Field<p>`/`GF<p>` generic argument reads, so the refusal names
+/// the exact constraint (emath-option-result-graph-field-aj8d pass 8):
+/// a plain integer literal carries a candidate modulus; an integral
+/// literal too large for i64 is refused for range (never mis-typed as
+/// "not a literal"); a type arg (`GF<Int>`) or a computed value arg
+/// (`GF<n>`, `GF<7 + 1>`) is refused for the type-level-literal rule.
+enum FieldModulusArg {
+    /// An integral literal that fits i64 and names a candidate modulus.
+    Literal(i64),
+    /// An integral literal too large to fit i64 — cannot satisfy the
+    /// `2 ≤ p ≤ i32::MAX` bound no matter its value.
+    LiteralOverflow,
+    /// A type argument or a non-integer value argument.
+    NotLiteral,
+}
+
+/// Read a `Field<p>` generic argument; never panics, always classifies.
+fn field_modulus_arg(arg: &GenericArg) -> FieldModulusArg {
+    let GenericArg::Value(expr) = arg else {
+        return FieldModulusArg::NotLiteral;
+    };
+    if let ExprKind::Int(text) = &expr.kind {
+        return parse_int_literal(text, false);
+    }
+    FieldModulusArg::NotLiteral
+}
+
+fn parse_int_literal(text: &str, _neg: bool) -> FieldModulusArg {
+    match text.parse::<i64>() {
+        Ok(value) => FieldModulusArg::Literal(value),
+        Err(_) => FieldModulusArg::LiteralOverflow,
+    }
+}
+
 /// Text of a numeric literal for a domain predicate string; falls back to
 /// `expr_text` for complex expressions.
 fn expr_literal_text(expr: &emath_core::tree::Expr) -> String {
@@ -130,10 +190,70 @@ pub(super) fn map_type(
         "Int" => Some(TypeNode::Int),
         "Complex" => Some(TypeNode::Complex(Box::new(TypeNode::Float64))),
         "Self" => Some(TypeNode::Other(QualifiedName("Self".into()))),
-        // GF<p> — integers modulo a prime. Values are exact i64
-        // integers; modular reduction is an operational concern in the builtins,
-        // not a type-system concern. B15/B29/B40.
-        "GF" => Some(TypeNode::Int),
+        // Field<p> / GF<p> — prime fields (emath-option-result-graph-field-aj8d).
+        // The PRIME is a TYPE-LEVEL constant: the declared modulus
+        // distinguishes the type (GF<7> ≠ Int ≠ GF<5>), fixing the
+        // earlier silent `"GF" => TypeNode::Int` collapse that dropped
+        // the prime (RED: aj8d_gf_prime_is_distinct_type). Values are
+        // exact i64; the type admits exactly ONE PRIME INTEGER LITERAL
+        // argument and refuses anything else with an E-TYPE-010 message
+        // naming the spelling and the constraint.
+        "Field" | "GF" => {
+            if generic_args.len() != 1 {
+                diagnostics.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`{leaf}<p>` requires exactly one prime integer type argument; got {}",
+                        generic_args.len()
+                    ),
+                    ty.source,
+                );
+                return None;
+            }
+            let modulus = match field_modulus_arg(&generic_args[0]) {
+                FieldModulusArg::Literal(modulus) => modulus,
+                FieldModulusArg::LiteralOverflow => {
+                    let spelling = match &generic_args[0] {
+                        GenericArg::Value(expr) => expr_literal_text(expr),
+                        _ => type_display(ty),
+                    };
+                    diagnostics.error(
+                        E_UNSUPPORTED_TYPE,
+                        format!(
+                            "`{leaf}<p>` prime integer LITERAL `{spelling}` exceeds the \
+                             maximum supported field modulus (i32::MAX = {FIELD_PRIME_MAX}); \
+                             the field prime is a type-level constant"
+                        ),
+                        ty.source,
+                    );
+                    return None;
+                }
+                FieldModulusArg::NotLiteral => {
+                    diagnostics.error(
+                        E_UNSUPPORTED_TYPE,
+                        format!(
+                            "`{leaf}<p>` requires a prime integer LITERAL modulus (the field \
+                             prime is a type-level constant); got `{}`",
+                            type_display(ty)
+                        ),
+                        ty.source,
+                    );
+                    return None;
+                }
+            };
+            if modulus < 2 || modulus > FIELD_PRIME_MAX || !is_prime(modulus) {
+                diagnostics.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`{leaf}<{modulus}>` requires a prime modulus 2 ≤ p ≤ {FIELD_PRIME_MAX}; \
+                         got {modulus}"
+                    ),
+                    ty.source,
+                );
+                return None;
+            }
+            Some(TypeNode::FieldPrime { modulus })
+        }
         "NonNegative" | "Positive" | "Probability" => {
             let inner = generic_args
                 .first()
@@ -186,15 +306,140 @@ pub(super) fn map_type(
                 .unwrap_or(TypeNode::Float64);
             Some(TypeNode::Interval(Box::new(inner)))
         }
+        "Set" => {
+            let inner = generic_args
+                .first()
+                .and_then(|arg| generic_arg_as_type(arg, diagnostics))
+                .and_then(|ty| map_type(ty, diagnostics, host_types))
+                .unwrap_or(TypeNode::Float64);
+            Some(TypeNode::Set(Box::new(inner)))
+        }
         "Vector" | "Matrix" | "Tensor" => {
             map_shape_type(leaf, generic_args, ty, diagnostics, host_types)
         }
-        "Option"
-        | "Result"
-        | "Graph"
-        | "Rat"
-        | "Sequence"
-        | "Set"
+        "Series" => {
+            // 04 §5.4 (emath-r3-timeseries-1nsa): `Series<T in tunit,
+            // U in vunit>` — exactly two unit-annotated numeric type
+            // arguments. The pair literal + declared policy is the
+            // VALUE (admitted in lowering); pure CSV-text projection
+            // and series evaluation use the same identity-bearing value.
+            if generic_args.len() != 2 {
+                diagnostics.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`Series<...>` requires exactly two type arguments (`Series<T in time_unit, U in value_unit>`); got {}",
+                        generic_args.len()
+                    ),
+                    ty.source,
+                );
+                return None;
+            }
+            let mut mapped: Option<(TypeNode, TypeNode)> =
+                Some((TypeNode::Float64, TypeNode::Float64));
+            for (label, index) in [("time", 0_usize), ("value", 1_usize)] {
+                let Some(arg_ty) = generic_arg_as_type(&generic_args[index], diagnostics) else {
+                    mapped = None;
+                    break;
+                };
+                let SynTypeKind::In { base, .. } = &arg_ty.kind else {
+                    diagnostics.error(
+                        E_UNSUPPORTED_TYPE,
+                        format!(
+                            "`Series<...>` {label} argument must carry a unit annotation (`Real in s`); a bare type names no measured dimension"
+                        ),
+                        arg_ty.source,
+                    );
+                    mapped = None;
+                    break;
+                };
+                let base_node = map_type(base, diagnostics, host_types);
+                match (base_node, mapped.as_mut()) {
+                    (Some(node), Some(slot)) => {
+                        if index == 0 {
+                            slot.0 = node;
+                        } else {
+                            slot.1 = node;
+                        }
+                    }
+                    _ => {
+                        mapped = None;
+                        break;
+                    }
+                }
+            }
+            mapped.map(|(time, value)| TypeNode::Series {
+                time: Box::new(time),
+                value: Box::new(value),
+            })
+        }
+        "Option" => {
+            if generic_args.len() != 1 {
+                diagnostics.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`Option<T>` requires exactly one type argument; got {}",
+                        generic_args.len()
+                    ),
+                    ty.source,
+                );
+                return None;
+            }
+            let inner = generic_arg_as_type(&generic_args[0], diagnostics)
+                .and_then(|arg| map_type(arg, diagnostics, host_types))?;
+            Some(TypeNode::OptionType(Box::new(inner)))
+        }
+        "Result" => {
+            if generic_args.len() != 2 {
+                diagnostics.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`Result<T, E>` requires exactly two type arguments; got {}",
+                        generic_args.len()
+                    ),
+                    ty.source,
+                );
+                return None;
+            }
+            let ok = generic_arg_as_type(&generic_args[0], diagnostics)
+                .and_then(|arg| map_type(arg, diagnostics, host_types))?;
+            let error = generic_arg_as_type(&generic_args[1], diagnostics)
+                .and_then(|arg| map_type(arg, diagnostics, host_types))?;
+            Some(TypeNode::Result {
+                ok: Box::new(ok),
+                error: Box::new(error),
+            })
+        }
+        "Graph" => {
+            // Graph is an ALIAS for the dense `Matrix<Float64>` adjacency
+            // carrier (emath-option-result-graph-field-aj8d, decision b).
+            // The graph ops check SHAPES (ParamShape::Matrix), not the
+            // TypeNode, so mapping the spelling onto the existing matrix
+            // surface makes graph-typed declarations compute with zero
+            // downstream changes. Bare `Graph` only; any generic count is
+            // a typed arity refusal (pass 8 contract).
+            if !generic_args.is_empty() {
+                diagnostics.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!(
+                        "`Graph` admits no type arguments (dense `Matrix<Float64>` adjacency carrier); got {}",
+                        generic_args.len()
+                    ),
+                    ty.source,
+                );
+                None
+            } else {
+                Some(TypeNode::Matrix {
+                    element: Box::new(TypeNode::Float64),
+                    rows: None,
+                    cols: None,
+                })
+            }
+        }
+        // Pass 2 (emath-rat-real-types-p5cj): `Rat`/`Rational` map onto the
+        // existing `TypeNode::Rational` (exact i128 num/den) instead of the
+        // Phase 1 refusal.
+        "Rat" | "Rational" => Some(TypeNode::Rational),
+        "Sequence"
         | "Array"
         | "Field"
         | "DirectedGraph"
@@ -205,8 +450,7 @@ pub(super) fn map_type(
         | "NodeId"
         | "CacheCandidate"
         | "Route"
-        | "Witness"
-        | "Rational" => {
+        | "Witness" => {
             diagnostics.error(
                 E_UNSUPPORTED_TYPE,
                 format!("type `{leaf}` is outside the Phase 1 subset"),
@@ -296,6 +540,7 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
             | "Probability"
             | "Per"
             | "Interval"
+            | "Set"
             | "Complex"
             | "Vector"
             | "Matrix"

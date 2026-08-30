@@ -119,6 +119,33 @@ Unit expressions are left-associative for `*` and `/`:
 This is the C2 trap: `m/s*s` and `m/s^2` have different dimensions.
 Use parentheses in denominators to avoid the trap: `m/(s*s)`.
 
+## Significant figures and unit-preserving formatting (04 §1.6+1.7)
+
+Sig-figs are a **display contract**, not uncertainty propagation; the two
+are different evidence kinds and are never merged.
+
+`emath fmt --value <literal>` rounds a value to its minimum input
+significant-figure count (or an explicit `--sf N`). Leading zeros are
+never significant; trailing zeros after a decimal point are; trailing
+zeros of an integer without a decimal point are not (`1230` → 3 sf,
+`1.230` → 4 sf, `0.0012` → 2 sf).
+
+Unit-preserving formatting changes presentation only — the value and the
+quantity's identity are untouched:
+
+```text
+emath fmt --value 90 --from s --format "preferred_unit min"   # 1.5 min
+emath fmt --value 12.34 --format "0.1 %"                      # 12.3 %
+```
+
+`preferred_unit <unit>` re-reports in the requested unit (dimension must
+match); a decimal pattern `0.<k>` fixes the displayed decimals and may
+carry a literal suffix. A format unit incompatible with the value's
+dimension is refused with `E-UNIT-FMT`. Format is excluded from identity
+hashes: the same value under two formats is the same quantity. Mixing
+`Measured` (uncertainty) values with bare sf-values in one context is a
+precision warning receipt, never a refusal.
+
 ## Shapes
 
 ```emath
