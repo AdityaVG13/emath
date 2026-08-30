@@ -587,3 +587,391 @@ fn jacobian_cells_match_hand_derived_exact_rules() {
         test.verdict
     );
 }
+
+// ── Pass 4 (emath-9bj1 cross-review): nondifferentiable refusals ─────
+
+const JACOBIAN_SINGULAR_LN: &str = "\
+emath function JacobianSingularLn:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[1, 1]
+        chk: Float64
+
+    definitions:
+        J = jacobian(ln(x)) wrt x
+        chk = derivative(x) wrt x
+
+    tests:
+        example <eval>:
+            given x = -1
+            expect chk == 1.0
+";
+
+const JACOBIAN_SINGULAR_SQRT: &str = "\
+emath function JacobianSingularSqrt:
+    inputs:
+        x: Float64
+
+    outputs:
+        Js: Matrix[1, 1]
+        chk: Float64
+
+    definitions:
+        Js = jacobian(sqrt(x)) wrt x
+        chk = derivative(x) wrt x
+
+    tests:
+        example <eval>:
+            given x = -1
+            expect chk == 1.0
+";
+
+const JACOBIAN_SINGULAR_DIV: &str = "\
+emath function JacobianSingularDiv:
+    inputs:
+        x: Float64
+
+    outputs:
+        Jd: Matrix[1, 1]
+        chk: Float64
+
+    definitions:
+        Jd = jacobian(1 / x) wrt x
+        chk = derivative(x) wrt x
+
+    tests:
+        example <eval>:
+            given x = 0
+            expect chk == 1.0
+";
+
+const JACOBIAN_NONDIFFERENTIABLE_POINTS: &str = "\
+emath function JacobianNondifferentiablePoints:
+    inputs:
+        x: Float64
+
+    outputs:
+        Ja: Matrix[1, 1]
+        Jf: Matrix[1, 1]
+        Jc: Matrix[1, 1]
+        chk: Float64
+
+    definitions:
+        Ja = jacobian(abs(x)) wrt x
+        Jf = jacobian(floor(x)) wrt x
+        Jc = jacobian(ceil(x)) wrt x
+        chk = derivative(x) wrt x
+
+    tests:
+        example <eval>:
+            given x = 0
+            expect chk == 1.0
+";
+
+const JACOBIAN_UNIT_CONSTANT: &str = "\
+emath function JacobianUnitConstant:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[1, 1]
+        chk: Float64
+
+    definitions:
+        J = jacobian(3 m) wrt x
+        chk = derivative(x) wrt x
+
+    tests:
+        example <eval>:
+            given x = 2
+            expect chk == 1.0
+";
+
+const JACOBIAN_UNIT_SCALED: &str = "\
+emath function JacobianUnitScaled:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[1, 1]
+        chk: Float64
+
+    definitions:
+        q = x * 1 km
+        J = jacobian(q) wrt x
+        chk = derivative(x) wrt x
+
+    tests:
+        example <eval>:
+            given x = 2
+            expect chk == 1.0
+";
+
+const JACOBIAN_STRING_BODY: &str = "\
+emath function JacobianStringBody:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[1, 1]
+
+    definitions:
+        J = jacobian(\"not a number\") wrt x
+
+    tests:
+        example <eval>:
+            given x = 2
+            expect J == [[0.0]]
+";
+
+const JACOBIAN_EMPTY_BODY: &str = "\
+emath function JacobianEmptyBody:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[0, 1]
+
+    definitions:
+        J = jacobian([]) wrt x
+
+    tests:
+        example <eval>:
+            given x = 2
+            expect chk == 1.0
+";
+
+const JACOBIAN_MATCHES_PLAIN_DERIVATIVE_SINGULAR: &str = "\
+emath function JacobianMatchesPlainDerivative:
+    inputs:
+        x: Float64
+
+    outputs:
+        J: Matrix[1, 1]
+        d: Matrix[1, 1]
+
+    definitions:
+        J = jacobian(ln(x)) wrt x
+        d = [[derivative(ln(x)) wrt x]]
+
+    tests:
+        example <eval>:
+            given x = -1
+            expect d == d
+";
+
+#[test]
+fn jacobian_ln_at_negative_input_is_a_nan_cell_never_a_finite_wrong_derivative() {
+    // House NaN policy (unguarded-scalar, term_compile.rs): a numeric
+    // domain error propagates IEEE NaN — it must never be silently
+    // replaced by a finite value. ln(x) at x = -1 has NO derivative;
+    // the cell must be NaN.
+    let result = check_source("jac-singular-ln", JACOBIAN_SINGULAR_LN);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit (domain errors are runtime, not static): {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let data = matrix_value(test.outputs.get("J").expect("J must be evaluated"), 1, 1);
+    assert!(
+        data[0].is_nan(),
+        "jacobian(ln(x)) at x=-1 must be a NaN cell, got {} (a finite value here is a silently WRONG derivative)",
+        data[0]
+    );
+}
+
+#[test]
+fn jacobian_sqrt_and_division_singularities_propagate_ieee_nan_inf() {
+    // sqrt(x) at x<0 and 1/x at x=0 follow the house unguarded-scalar
+    // policy: IEEE NaN/Inf in the cell, matching plain derivative,
+    // never a panic and never a silent finite stand-in.
+    let result = check_source("jac-singular-sqrt", JACOBIAN_SINGULAR_SQRT);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let s = matrix_value(test.outputs.get("Js").expect("Js"), 1, 1)[0];
+    assert!(s.is_nan(), "sqrt(x) at x=-1 must propagate NaN, got {s}");
+    let result = check_source("jac-singular-div", JACOBIAN_SINGULAR_DIV);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let d = matrix_value(test.outputs.get("Jd").expect("Jd"), 1, 1)[0];
+    assert!(d.is_infinite() && d < 0.0, "1/x at x=0 must propagate -Inf, got {d}");
+}
+
+#[test]
+fn jacobian_nondifferentiable_but_defined_points_use_the_house_subgradient() {
+    // House convention (builtin.rs eval_dual_unary): abs'(0) = sgn(0) = 0,
+    // floor/ceil have tangent 0 everywhere. The jacobian cells are the
+    // same dual nodes, so they must match — 0.0, never a panic.
+    let result = check_source("jac-nondiff-points", JACOBIAN_NONDIFFERENTIABLE_POINTS);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    for (name, key) in [("abs", "Ja"), ("floor", "Jf"), ("ceil", "Jc")] {
+        let data = matrix_value(test.outputs.get(key).unwrap_or_else(|| panic!("{key}")), 1, 1);
+        assert_eq!(data[0], 0.0, "{name} at the kink must give the house subgradient 0.0");
+    }
+}
+
+#[test]
+fn jacobian_of_a_unit_constant_admits_and_is_zero() {
+    // A quantity literal lowers to its SI-scaled scalar with unit dims
+    // carried in the type, and is_numeric_element accepts Unit — so a
+    // unit-bearing CONSTANT component admits and its derivative is 0
+    // in every unit (0 m/s == 0). Pin the house behavior: admitted,
+    // [[0.0]], never a refusal and never a panic.
+    let result = check_source("jac-unit-const", JACOBIAN_UNIT_CONSTANT);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "unit-constant jacobian must admit: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let data = matrix_value(test.outputs.get("J").expect("J"), 1, 1);
+    assert_eq!(data[0], 0.0, "d(3 meters)/dx must be 0");
+}
+
+#[test]
+fn jacobian_of_a_unit_scaled_variable_matches_plain_derivative_scaling() {
+    // q = x * 1 meter lowers to the SI-scaled scalar product; the
+    // runtime is unit-less f64 (house convention), so the cell is the
+    // bare SI scale factor. The jacobian must equal the plain
+    // derivative of the same expression — same gate, same cells.
+    let result = check_source("jac-unit-scaled", JACOBIAN_UNIT_SCALED);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "unit-scaled jacobian must admit: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let data = matrix_value(test.outputs.get("J").expect("J"), 1, 1);
+    assert_eq!(
+        data[0], 1000.0,
+        "d(x * 1 km)/dx must equal the plain derivative (SI-scaled 1000.0, unit-less at runtime)"
+    );
+}
+
+#[test]
+fn jacobian_of_a_string_valued_component_refuses_with_typed_error() {
+    // A string-valued component has no scalar partial; must refuse
+    // with the typed numeric-body code, never a silent zero cell.
+    let result = check_source("jac-string-body", JACOBIAN_STRING_BODY);
+    let errors: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        errors.iter().any(|e| e.starts_with("E-TYPE-012")),
+        "jacobian of a string-valued component must refuse with E-TYPE-012; got: {errors:#?}"
+    );
+}
+
+#[test]
+fn jacobian_of_an_empty_body_refuses_or_admits_typed_never_panics() {
+    // `jacobian([]) wrt x` has zero components: whatever the house
+    // outcome (typed refusal or an empty Matrix[0, 1]), it must be a
+    // defined outcome — never a panic and never a silent wrong shape.
+    let result = std::panic::catch_unwind(|| check_source("jac-empty-body", JACOBIAN_EMPTY_BODY));
+    let result = match result {
+        Ok(result) => result,
+        Err(_) => panic!("jacobian([]) wrt x must not panic during admission"),
+    };
+    let errors: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        errors.iter().any(|e| e.starts_with("E-")),
+        "empty-body jacobian must resolve to a typed outcome (refusal or typed admit); got: {errors:#?}"
+    );
+}
+
+#[test]
+fn jacobian_cells_equal_plain_derivative_cells_at_a_singular_point() {
+    // House-consistency: at a singular point the jacobian cell and the
+    // hand-written derivative cell go through the SAME dual evaluation,
+    // so they must be bit-identical — whatever the NaN policy produces.
+    let result = check_source("jac-matches-plain", JACOBIAN_MATCHES_PLAIN_DERIVATIVE_SINGULAR);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit: {:?}",
+        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    let j = matrix_value(test.outputs.get("J").expect("J"), 1, 1)[0];
+    let d = matrix_value(test.outputs.get("d").expect("d"), 1, 1)[0];
+    assert_eq!(
+        j.to_bits(),
+        d.to_bits(),
+        "jacobian cell must be bit-identical to the plain derivative cell at x=-1"
+    );
+}
+
+const GRAD_SINGULAR_LN: &str = "\
+emath function GradSingularLn:
+    inputs:
+        x: Float64
+
+    outputs:
+        g: Vector[1]
+        chk: Float64
+
+    definitions:
+        g = grad(ln(x))
+        chk = x
+
+    tests:
+        example <eval>:
+            given x = -1
+            expect chk == -1.0
+";
+
+#[test]
+fn grad_ln_at_negative_input_is_a_nan_gradient_never_a_finite_wrong_derivative() {
+    // Reverse mode must obey the same house NaN policy as the dual path:
+    // ln(x) at x = -1 has NO derivative, so the grad entry must be NaN —
+    // never the finite `adj / primal_in` value a naive backward pass
+    // produces when the forward primal was NaN but the division is not.
+    let result = check_source("grad-singular-ln", GRAD_SINGULAR_LN);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "fixture must admit (domain errors are runtime, not static): {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let report = run_package(&result.package);
+    let test = &report.declarations[0].tests[0];
+    match test.outputs.get("g").expect("g must be evaluated") {
+        Value::Vector(v) => assert!(
+            v[0].is_nan(),
+            "grad(ln(x)) at x=-1 must be NaN, got {} (a finite value here is a silently WRONG derivative)",
+            v[0]
+        ),
+        other => panic!("expected Vector[1], got {other:?}"),
+    }
+}

@@ -200,7 +200,17 @@ impl BuiltinId {
                 let p = primal.exp();
                 (p, p * tangent)
             }
-            Self::Ln => (primal.ln(), tangent / primal),
+            // Domain violation (primal < 0) makes the primal NaN; the
+            // tangent must be NaN too — the raw quotient (e.g. 1/(-1))
+            // would be a finite value silently masquerading as a
+            // derivative. ln(0) = -inf is not NaN, so the singularity at
+            // 0 keeps IEEE propagation (tangent +/-inf), matching the
+            // no-zeroed-singularities convention in this file.
+            Self::Ln => {
+                let p = primal.ln();
+                let t = tangent / primal;
+                (p, if p.is_nan() { f64::NAN } else { t })
+            }
             Self::Sqrt => {
                 let p = primal.sqrt();
                 (p, tangent / (2.0 * p))
@@ -221,8 +231,18 @@ impl BuiltinId {
             Self::Ceil => (primal.ceil(), 0.0),
             Self::Round => (primal.round(), 0.0),
             Self::Sign => (if primal == 0.0 { 0.0 } else { primal.signum() }, 0.0),
-            Self::Log2 => (primal.log2(), tangent / (primal * LN_2)),
-            Self::Log10 => (primal.log10(), tangent / (primal * LN_10)),
+            // Same NaN-primal guard as Ln: log2/log10 of a negative have
+            // no derivative; the tangent must never be a finite quotient.
+            Self::Log2 => {
+                let p = primal.log2();
+                let t = tangent / (primal * LN_2);
+                (p, if p.is_nan() { f64::NAN } else { t })
+            }
+            Self::Log10 => {
+                let p = primal.log10();
+                let t = tangent / (primal * LN_10);
+                (p, if p.is_nan() { f64::NAN } else { t })
+            }
             Self::Sinh => (primal.sinh(), primal.cosh() * tangent),
             Self::Cosh => (primal.cosh(), primal.sinh() * tangent),
             Self::Atan => {
@@ -300,7 +320,16 @@ impl BuiltinId {
         match self {
             Self::Exp => adj * primal_out, // d/dx exp(x) = exp(x)
             // IEEE like dual: do not zero singularities (ln/sqrt/recip at 0).
-            Self::Ln => adj / primal_in,
+            // A NaN primal_out means the forward value already violated the
+            // domain (e.g. ln of a negative): the adjoint must be NaN too,
+            // never the finite adj/primal_in quotient.
+            Self::Ln => {
+                if primal_out.is_nan() {
+                    f64::NAN
+                } else {
+                    adj / primal_in
+                }
+            }
             Self::Sqrt => adj / (2.0 * primal_out),
             Self::Sin => adj * primal_in.cos(),
             Self::Cos => -adj * primal_in.sin(),
@@ -311,8 +340,22 @@ impl BuiltinId {
             Self::Tanh => adj * (1.0 - primal_out * primal_out),
             Self::Abs => adj * Self::Sign.eval_unary(primal_in),
             Self::Floor | Self::Ceil | Self::Round | Self::Sign => 0.0,
-            Self::Log2 => adj / (primal_in * LN_2),
-            Self::Log10 => adj / (primal_in * LN_10),
+            // Same NaN-primal guard as Ln: log2/log10 of a negative have
+            // no gradient; the adjoint must never be a finite quotient.
+            Self::Log2 => {
+                if primal_out.is_nan() {
+                    f64::NAN
+                } else {
+                    adj / (primal_in * LN_2)
+                }
+            }
+            Self::Log10 => {
+                if primal_out.is_nan() {
+                    f64::NAN
+                } else {
+                    adj / (primal_in * LN_10)
+                }
+            }
             Self::Sinh => adj * primal_in.cosh(),
             Self::Cosh => adj * primal_in.sinh(),
             Self::Atan => adj / (1.0 + primal_in * primal_in),
