@@ -1598,3 +1598,54 @@ fn aj8d_int_rem_zero_modulus_faults_ir() {
         "int_rem(5, -3) must be a typed Arithmetic fault, got {neg:?}"
     );
 }
+
+// ── Pass 10: the three aj8d .emath examples are RUNNABLE from disk ──
+#[test]
+fn aj8d_language_examples_admit_and_evaluate_from_disk() {
+    use emath_sema::CompilerSession;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    emath_syntax::install_source_parser();
+
+    let intro = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../language/examples/intro");
+    for file in [
+        "option-result-ops.emath",
+        "option-result-graph-field.emath",
+        "field-mod-arithmetic.emath",
+    ] {
+        let source = std::fs::read_to_string(intro.join(file))
+            .unwrap_or_else(|e| panic!("{file} must exist on disk: {e}"));
+        let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+        let checked = session.check_owned(file, &source);
+        let errors: Vec<String> = checked
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect();
+        assert!(errors.is_empty(), "{file} must admit clean: {errors:#?}");
+        assert!(
+            !checked.package.declarations.is_empty(),
+            "{file} must declare at least one function"
+        );
+        for declaration in &checked.package.declarations {
+            if !declaration.inputs.is_empty() {
+                // Parameterized definitions need caller-supplied inputs;
+                // only the nullary entry points auto-run here.
+                continue;
+            }
+            let values = emath_exec_ir::runner::eval_definitions_values(
+                &checked.package,
+                declaration,
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+            )
+            .unwrap_or_else(|fault| panic!("{file} must evaluate: {fault}"));
+            assert!(
+                !values.is_empty(),
+                "{file}: {:?} must produce values",
+                declaration.name
+            );
+        }
+    }
+}
