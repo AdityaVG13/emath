@@ -65,6 +65,88 @@ fn graph_router_example_is_runnable() {
     vector_eq(values.get("o").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
 }
 
+/// Declare a graph from `.emath` text, then run adjacency + reachability
+/// end-to-end through EMIR: the graph literal lowers to the matrix
+/// substrate, `out_degrees`/`reachability` compute over it, and every
+/// answer is pinned exactly (no tautology).
+#[test]
+fn graph_declare_adjacency_reachability_end_to_end() {
+    install_source_parser();
+    const SOURCE: &str = r#"
+emath function GraphSurfaceFromText:
+    outputs:
+        g: Graph
+        mask: Vector<Float64>
+        degrees: Vector<Float64>
+
+    definitions:
+        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }
+        mask = reachability(g, 0)
+        degrees = out_degrees(g)
+"#;
+    let mut session = CompilerSession::new(Limits::default());
+    let checked = session.check_owned("graph-surface.emath", SOURCE);
+    let errors = checked
+        .diagnostics
+        .errors()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    assert!(errors.is_empty(), "graph surface must admit: {errors:#?}");
+
+    let values = eval_definitions_values(
+        &checked.package,
+        &checked.package.declarations[0],
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .unwrap_or_else(|fault| panic!("graph surface must evaluate: {fault}"));
+
+    // Reachability from node 0: every node is reachable (0->1, 0->2, 1->3).
+    vector_eq(values.get("mask").expect("reachability"), &[1.0, 1.0, 1.0, 1.0]);
+    // Out-degrees: node 0 has two outgoing edges, 1 and 2 one each, 3 none.
+    vector_eq(values.get("degrees").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
+}
+
+/// Typed runtime refusal: an out-of-range reachability source must fault
+/// with E-GRAPH-002 — never a panic and never a silently wrong answer.
+#[test]
+fn reachability_refuses_out_of_range_source() {
+    install_source_parser();
+    const SOURCE: &str = r#"
+emath function BadGraphSource:
+    outputs:
+        mask: Vector<Float64>
+
+    definitions:
+        g = graph { 0, 1; 0 --> 1 }
+        mask = reachability(g, 99)
+"#;
+    let mut session = CompilerSession::new(Limits::default());
+    let checked = session.check_owned("graph-bad-source.emath", SOURCE);
+    let errors = checked
+        .diagnostics
+        .errors()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    assert!(
+        errors.is_empty(),
+        "admission must accept a well-formed graph: {errors:#?}"
+    );
+
+    let fault = eval_definitions_values(
+        &checked.package,
+        &checked.package.declarations[0],
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .expect_err("out-of-range reachability source must fault at runtime");
+    let fault = fault.to_string();
+    assert!(
+        fault.contains("E-GRAPH-003") || fault.contains("E-GRAPH-002"),
+        "fault must name the graph source precondition: {fault}"
+    );
+}
+
 /// The planted gap (was RED): the reference chapter documents the
 /// graph carrier and the call surface.
 #[test]
