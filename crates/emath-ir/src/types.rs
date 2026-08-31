@@ -20,6 +20,7 @@ pub enum TypeNode {
     },
     Interval(Box<TypeNode>),
     Complex(Box<TypeNode>),
+    Set(Box<TypeNode>),
     Vector {
         element: Box<TypeNode>,
         extent: Option<Extent>,
@@ -40,6 +41,15 @@ pub enum TypeNode {
         error: Box<TypeNode>,
     },
     OptionType(Box<TypeNode>),
+    /// A prime field `Field<p>` / `GF<p>`: the integers modulo a fixed
+    /// prime `modulus` (emath-option-result-graph-field-aj8d). The prime
+    /// is a TYPE-LEVEL constant carried by the type — `GF<7>` is a
+    /// distinct node from plain `Int` and from `GF<5>` — so field-typed
+    /// declarations keep their modulus instead of collapsing to
+    /// `TypeNode::Int`. Values are exact i64 integers; modular reduction
+    /// and inversion remain operational concerns of the builtins
+    /// (`mod_inv`, `congruence`, `poly_eval_mod`).
+    FieldPrime { modulus: i64 },
     Opaque {
         name: QualifiedName,
         provider_contract: Option<emath_core::SchemaId>,
@@ -50,6 +60,15 @@ pub enum TypeNode {
         family: UnitFamily,
     },
     Other(QualifiedName),
+    /// Time-series value type (04 §5.4, emath-r3-timeseries-1nsa):
+    /// `Series<Real in s, Real in V>` — the sampled time axis and the
+    /// value axis, each carrying their declared unit dimensions. The
+    /// interpretation policy rides the VALUE (identity-bearing there),
+    /// not the type.
+    Series {
+        time: Box<TypeNode>,
+        value: Box<TypeNode>,
+    },
 }
 
 fn extent_label(extent: Option<&Extent>) -> String {
@@ -71,6 +90,7 @@ impl TypeNode {
             }
             Self::Interval(inner) => format!("Interval<{}>", inner.display_name()),
             Self::Complex(inner) => format!("Complex<{}>", inner.display_name()),
+            Self::Set(inner) => format!("Set<{}>", inner.display_name()),
             Self::Vector { element, extent } => {
                 format!(
                     "Vector<{}, {}>",
@@ -103,10 +123,18 @@ impl TypeNode {
             | Self::Variant(name)
             | Self::Opaque { name, .. }
             | Self::Other(name) => name.0.clone(),
+            Self::Series { time, value } => {
+                format!(
+                    "Series<{}, {}>",
+                    time.display_name(),
+                    value.display_name()
+                )
+            }
             Self::Result { ok, error } => {
                 format!("Result<{}, {}>", ok.display_name(), error.display_name())
             }
             Self::OptionType(inner) => format!("Option<{}>", inner.display_name()),
+            Self::FieldPrime { modulus } => format!("Field<{modulus}>"),
             Self::UnitRef { name, dims, .. } => {
                 if name.is_empty() {
                     dims.render()

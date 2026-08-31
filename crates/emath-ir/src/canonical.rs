@@ -95,6 +95,10 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
                     .join("x"),
             );
         }
+        TypeNode::Set(element) => {
+            out.push_str("set:");
+            encode_type(out, element);
+        }
         TypeNode::Record(name) => {
             out.push_str("record:");
             out.push_str(&name.0);
@@ -112,6 +116,10 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
         TypeNode::OptionType(inner) => {
             out.push_str("option:");
             encode_type(out, inner);
+        }
+        TypeNode::FieldPrime { modulus } => {
+            out.push_str("field:");
+            out.push_str(&modulus.to_string());
         }
         TypeNode::Opaque {
             name,
@@ -133,6 +141,12 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
         TypeNode::Other(name) => {
             out.push_str("other:");
             out.push_str(&name.0);
+        }
+        TypeNode::Series { time, value } => {
+            out.push_str("series:");
+            encode_type(out, time);
+            out.push(':');
+            encode_type(out, value);
         }
     }
 }
@@ -170,7 +184,8 @@ fn name(q: &QualifiedName) -> &str {
     &q.0
 }
 
-fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
+fn encode_expr(out: &mut String, package: &SemanticPackage, id: crate::ids::ExprId) {
+    let exprs = &package.exprs;
     let Some(expr) = exprs.get(id.index()) else {
         push_str(out, "<missing-expr>");
         return;
@@ -222,14 +237,14 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             out.push_str(name(function));
             out.push('\n');
             for &arg in arguments {
-                encode_expr(out, exprs, arg);
+                encode_expr(out, package, arg);
             }
         }
         ExprNode::Unary { operation, value } => {
             out.push_str("unary ");
             out.push_str(operation.name());
             out.push('\n');
-            encode_expr(out, exprs, *value);
+            encode_expr(out, package, *value);
         }
         ExprNode::Binary {
             operation,
@@ -239,8 +254,8 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             out.push_str("binary ");
             out.push_str(operation.name());
             out.push('\n');
-            encode_expr(out, exprs, *left);
-            encode_expr(out, exprs, *right);
+            encode_expr(out, package, *left);
+            encode_expr(out, package, *right);
         }
         ExprNode::If {
             condition,
@@ -248,9 +263,9 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             else_value,
         } => {
             push_str(out, "if");
-            encode_expr(out, exprs, *condition);
-            encode_expr(out, exprs, *then_value);
-            encode_expr(out, exprs, *else_value);
+            encode_expr(out, package, *condition);
+            encode_expr(out, package, *then_value);
+            encode_expr(out, package, *else_value);
         }
         ExprNode::Record { fields, ty } => {
             push_str(out, "record");
@@ -262,29 +277,29 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                 out.push_str("field ");
                 out.push_str(key);
                 out.push('\n');
-                encode_expr(out, exprs, value);
+                encode_expr(out, package, value);
             }
         }
         ExprNode::Index { value, indices } => {
             push_str(out, "index");
-            encode_expr(out, exprs, *value);
+            encode_expr(out, package, *value);
             for &index in indices {
-                encode_expr(out, exprs, index);
+                encode_expr(out, package, index);
             }
         }
         ExprNode::Slice { value, axes } => {
             push_str(out, "slice");
-            encode_expr(out, exprs, *value);
+            encode_expr(out, package, *value);
             for axis in axes {
                 match axis {
                     crate::expression::SliceAxis::Point(index) => {
                         push_str(out, "point");
-                        encode_expr(out, exprs, *index);
+                        encode_expr(out, package, *index);
                     }
                     crate::expression::SliceAxis::Range { start, end } => {
                         push_str(out, "range");
-                        encode_expr(out, exprs, *start);
-                        encode_expr(out, exprs, *end);
+                        encode_expr(out, package, *start);
+                        encode_expr(out, package, *end);
                     }
                 }
             }
@@ -308,14 +323,24 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
                 out.push_str("bound ");
                 out.push_str(&variable.name);
                 out.push('\n');
-                encode_expr(out, exprs, variable.domain);
+                encode_expr(out, package, variable.domain);
             }
-            encode_expr(out, exprs, *body);
+            encode_expr(out, package, *body);
         }
         ExprNode::Vector(elements) => {
             push_str(out, "vector");
             for &element in elements {
-                encode_expr(out, exprs, element);
+                encode_expr(out, package, element);
+            }
+        }
+        ExprNode::Set { elements, guards } => {
+            push_str(out, "set");
+            for (element, guard) in elements.iter().zip(guards) {
+                if let Some(guard) = guard {
+                    push_str(out, "guard");
+                    encode_expr(out, package, *guard);
+                }
+                encode_expr(out, package, *element);
             }
         }
         ExprNode::Matrix(rows) => {
@@ -323,7 +348,7 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             for row in rows {
                 push_str(out, "row");
                 for &element in row {
-                    encode_expr(out, exprs, element);
+                    encode_expr(out, package, element);
                 }
             }
         }
@@ -339,18 +364,18 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             );
             out.push('\n');
             for &element in elements {
-                encode_expr(out, exprs, element);
+                encode_expr(out, package, element);
             }
         }
         ExprNode::Differentiate { body, var } => {
             push_str(out, "differentiate");
             push_str(out, var);
-            encode_expr(out, exprs, *body);
+            encode_expr(out, package, *body);
         }
         ExprNode::Solve { body, var } => {
             push_str(out, "solve");
             push_str(out, var);
-            encode_expr(out, exprs, *body);
+            encode_expr(out, package, *body);
         }
         ExprNode::Optimize {
             body,
@@ -361,7 +386,7 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
             for v in vars {
                 push_str(out, v);
             }
-            encode_expr(out, exprs, *body);
+            encode_expr(out, package, *body);
         }
         ExprNode::SampleLimit {
             body,
@@ -371,9 +396,47 @@ fn encode_expr(out: &mut String, exprs: &[ExprNode], id: crate::ids::ExprId) {
         } => {
             push_str(out, "sample-limit");
             push_str(out, var);
-            encode_expr(out, exprs, *target);
-            encode_expr(out, exprs, *direction);
-            encode_expr(out, exprs, *body);
+            encode_expr(out, package, *target);
+            encode_expr(out, package, *direction);
+            encode_expr(out, package, *body);
+        }
+        ExprNode::Apply {
+            capability,
+            arguments,
+        } => {
+            // The capability name is the identity-bearing payload; a
+            // dangling id stays a deterministic marker (identity-stable
+            // refusal marker, mirroring `<missing-expr>`).
+            match package.capability(*capability) {
+                Some(cell) => {
+                    out.push_str("apply ");
+                    out.push_str(name(&cell.name));
+                    out.push('\n');
+                }
+                None => push_str(out, "apply <missing-capability>"),
+            }
+            for &arg in arguments {
+                encode_expr(out, package, arg);
+            }
+        }
+        ExprNode::Series {
+            points,
+            interpolation,
+            extrapolation,
+        } => {
+            // 04 §5.4 slice 1: pairs and the DECLARED policy are
+            // identity — length-framed floats (bit-exact) and the
+            // canonical mode spellings.
+            use std::fmt::Write;
+            push_str(out, "series ");
+            let _ = write!(out, "{}\n", points.len());
+            for (time, value) in points {
+                let _ = write!(out, "{} {}\n", time.to_bits(), value.to_bits());
+            }
+            out.push_str(interpolation);
+            out.push(' ');
+            out.push_str(extrapolation);
+            out.push('\n');
         }
     }
 }
@@ -401,6 +464,11 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
         out.push(':');
         out.push_str(&import.selection.canonical());
         out.push('\n');
+    }
+    // Admitted capability cells are admitted semantics: identity tracks
+    // them in admission order.
+    for cell in &package.capabilities {
+        push_framed(&mut out, "capability", &cell.name.0);
     }
     for declaration in &package.declarations {
         push_str(&mut out, "declaration");
@@ -469,7 +537,7 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
         }
         for invariant in &declaration.invariants {
             push_str(&mut out, "invariant");
-            encode_expr(&mut out, &package.exprs, *invariant);
+            encode_expr(&mut out, package, *invariant);
         }
         push_str(&mut out, "compile");
         out.push_str(&declaration.compile_spec.target);
@@ -489,14 +557,14 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
             out.push_str("definition ");
             out.push_str(definition.0);
             out.push('\n');
-            encode_expr(&mut out, &package.exprs, *definition.1);
+            encode_expr(&mut out, package, *definition.1);
         }
         if let Some(residuals) = package.residuals.get(&declaration.id) {
             for residual in residuals {
                 out.push_str("residual ");
                 out.push_str(&residual.components.to_string());
                 out.push('\n');
-                encode_expr(&mut out, &package.exprs, residual.expr);
+                encode_expr(&mut out, package, residual.expr);
                 for name in &residual.algebraic {
                     out.push_str("algebraic ");
                     out.push_str(name);
@@ -570,7 +638,7 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
                 out.push('\n');
                 if let Some(expression) = goal.expression {
                     push_str(&mut out, "goal-expression");
-                    encode_expr(&mut out, &package.exprs, expression);
+                    encode_expr(&mut out, package, expression);
                 }
             }
             for export in &declaration.exports {
@@ -588,23 +656,23 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
                     encode_field(&mut out, package, parameter, "param");
                 }
                 for precondition in &constructor.preconditions {
-                    encode_expr(&mut out, &package.exprs, *precondition);
+                    encode_expr(&mut out, package, *precondition);
                 }
                 for (field, &value) in &constructor.assignments {
                     out.push_str("assign ");
                     out.push_str(field);
                     out.push('\n');
-                    encode_expr(&mut out, &package.exprs, value);
+                    encode_expr(&mut out, package, value);
                 }
                 for postcondition in &constructor.postconditions {
                     push_str(&mut out, "postcondition");
-                    encode_expr(&mut out, &package.exprs, *postcondition);
+                    encode_expr(&mut out, package, *postcondition);
                 }
                 for (field, &value) in &constructor.defaults {
                     out.push_str("default ");
                     out.push_str(field);
                     out.push('\n');
-                    encode_expr(&mut out, &package.exprs, value);
+                    encode_expr(&mut out, package, value);
                 }
                 if let Some(error_ty) = constructor.error_type {
                     out.push_str("error-type ");
@@ -627,11 +695,11 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
                         out.push_str("given ");
                         out.push_str(input);
                         out.push('\n');
-                        encode_expr(&mut out, &package.exprs, value);
+                        encode_expr(&mut out, package, value);
                     }
                     if let Some(expect) = test.expect {
                         out.push_str("expect\n");
-                        encode_expr(&mut out, &package.exprs, expect);
+                        encode_expr(&mut out, package, expect);
                     }
                 }
             }
@@ -646,7 +714,7 @@ pub fn canonical_expr(package: &SemanticPackage, id: crate::ids::ExprId) -> Cont
     let mut out = String::new();
     push_str(&mut out, SCHEMA);
     out.push_str("expr\n");
-    encode_expr(&mut out, &package.exprs, id);
+    encode_expr(&mut out, package, id);
     emath_core::hash::bootstrap_content_id(out.as_bytes())
 }
 

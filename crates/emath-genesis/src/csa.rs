@@ -49,6 +49,10 @@ impl FirstOrderWorld for OnePointWorld {
     ) -> Result<Self::Value, Self::Error> {
         Ok(())
     }
+
+    fn evidence(&self) -> crate::WorldEvidence {
+        crate::WorldEvidence::seed("one-point", &[crate::csa::CSA_MEANING_CLAIM])
+    }
 }
 
 /// Seeded concrete algebra over `u64`: total, deterministic, seed-keyed.
@@ -97,5 +101,9 @@ impl FirstOrderWorld for SeededCsaWorld {
             state = fnv1a(state, &argument.to_be_bytes());
         }
         Ok(state)
+    }
+
+    fn evidence(&self) -> crate::WorldEvidence {
+        crate::WorldEvidence::seed("seeded-csa", &[crate::csa::CSA_MEANING_CLAIM])
     }
 }

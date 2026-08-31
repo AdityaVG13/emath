@@ -603,12 +603,15 @@ fn expression_kind(expression: &ExprNode) -> &'static str {
         ExprNode::Slice { .. } => "slice",
         ExprNode::Binder { .. } => "binder",
         ExprNode::Vector(_) => "vector",
+        ExprNode::Set { .. } => "set",
         ExprNode::Matrix(_) => "matrix",
         ExprNode::Tensor { .. } => "tensor",
+        ExprNode::Apply { .. } => "capability application",
         ExprNode::Differentiate { .. } => "differentiate",
         ExprNode::Solve { .. } => "solve",
         ExprNode::Optimize { .. } => "optimize",
         ExprNode::SampleLimit { .. } => "sample-limit",
+        ExprNode::Series { .. } => "series",
     }
 }
 

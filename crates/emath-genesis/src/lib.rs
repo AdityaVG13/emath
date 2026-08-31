@@ -5,6 +5,13 @@
 //! Hosts the G1 world-side stage: [`forest`] builds the bounded parse
 //! forest and infers world signatures; `emath-syntax` keeps the G0
 //! parser and re-exports this module at its root.
+//!
+//! Facade SPI note (rpme/C054): each family module carries its own
+//! `check_version` (analogue/binder/meaning_provider/morphism/synth/
+//! tuning) with its OWN error type — six deliberate homonyms, not an
+//! incomplete facade. A root export would either collide six times or
+//! need six aliases; the module path IS the family address. Documented
+//! intentional SPI, like `core::tree` (C051).
 
 pub mod analogue;
 pub mod binder;
@@ -16,6 +23,13 @@ pub mod meaning_provider;
 pub mod morphism;
 pub mod vm;
 pub mod tuning;
+pub mod world_decl;
+pub mod world_result;
+
+pub use world_result::{
+    Disposition, NakedResultRefusal, ResultBundle, WorldResult, WORLD_RESULT_SCHEMA,
+    WORLD_RESULT_VERSION, evaluate_labeled,
+};
 
 pub use analogue::{
     ANALOGUE_NO_CLAIM, ANALOGUE_SCHEMA, ANALOGUE_VERSION, AnalogueDomain, AnalogueError,
@@ -46,6 +60,11 @@ pub use morphism::{
 pub use vm::{
     VM_SCHEMA, VM_SCHEMA_VERSION, VmBudget, VmContinuation, VmOutcome, VmTrace, resume, run,
 };
+pub use world_decl::{
+    MAX_WORLD_SIZE, ModelClaim, OperationTable, SynthesisError, UserDefinedWorld, WorldDecl,
+    WorldDeclError, WorldLaw, WorldOrigin, WorldSourceClass, attach_world, synthesize_world,
+    user_defined_world,
+};
 pub use tuning::{
     candidate_id, classify, semantic_dna, tune, tuning_id, CandidateStatus, Disqualification,
     HostExample, ImplVariant, ProtectedObjective, TuningBudget, TuningError, TuningReceipt,
@@ -63,7 +82,11 @@ use emath_world_ir::{
 /// Environment for free variables.
 pub type Environment<V> = BTreeMap<VariableId, V>;
 
-/// Generic first-order world implementation.
+/// Generic first-order world implementation (the World ABI, fjxh.7):
+/// carrier ([`Self::Value`]), constants, variables (via
+/// [`Environment`] in [`evaluate`]), apply, effects, budgets
+/// ([`evaluate_bounded`]) and evidence. A NEW world implements this
+/// trait only — the evaluator gains no match arm for it.
 pub trait FirstOrderWorld {
     /// Runtime value.
     type Value: Clone;
@@ -79,6 +102,142 @@ pub trait FirstOrderWorld {
         operator: &SymbolId,
         arguments: Vec<Self::Value>,
     ) -> Result<Self::Value, Self::Error>;
+
+    /// Whether this world binds every symbol of `signature` with the
+    /// declared arity (portfolio applicability). Defaults to `false`:
+    /// a world claims a signature explicitly, never by omission.
+    fn admits(&self, signature: &Signature) -> bool {
+        let _ = signature;
+        false
+    }
+
+    /// Declared world effects. Seed worlds are pure: the default is the
+    /// empty list; an effectful world must name its effects here.
+    fn effects(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Stable evidence record for result bundles (fjxh.8: no naked
+    /// answers — every custom-world value names the world that produced
+    /// it).
+    fn evidence(&self) -> WorldEvidence;
+}
+
+/// Stable per-world evidence: identity, origin class, and claimed laws.
+/// OWNED: runtime-authored worlds (fjxh.13) cannot borrow `'static`
+/// names; static seed worlds keep their one-line shape through
+/// [`WorldEvidence::seed`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorldEvidence {
+    /// Stable world token (`free-symbolic`, `boolean-alien`, …).
+    pub world: String,
+    /// Origin class (`seed`, `user-defined`, `synthesized`).
+    pub origin: String,
+    /// Laws the world claims (checked by law-checking beads, not here).
+    pub laws: Vec<String>,
+}
+
+impl WorldEvidence {
+    /// One-line constructor for static seed worlds.
+    #[must_use]
+    pub fn seed(world: &'static str, laws: &'static [&'static str]) -> Self {
+        Self {
+            world: world.to_string(),
+            origin: "seed".to_string(),
+            laws: laws.iter().map(|law| (*law).to_string()).collect(),
+        }
+    }
+}
+
+/// World-evaluation budget (ABI budget seam): resource exhaustion is the
+/// typed [`EvalError::BudgetExhausted`] — never a partial value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorldBudget {
+    /// Maximum evaluation steps (node visits).
+    pub max_steps: u32,
+}
+
+/// Whether `signature` binds exactly the reference alien symbol set with
+/// matching arities (the concrete seed worlds' admitted signature).
+#[must_use]
+pub fn is_reference_alien_signature(signature: &Signature) -> bool {
+    let (reference, _) = reference_alien_term();
+    reference.iter().eq(signature.iter())
+}
+
+/// Portfolio identity of the default custom worlds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WorldName {
+    /// Free symbolic: values remain terms; always applicable.
+    FreeSymbolic,
+    /// Boolean interpretation of the reference alien signature.
+    BooleanAlien,
+    /// Modular-17 interpretation of the reference alien signature.
+    ModularAlien,
+}
+
+impl WorldName {
+    /// Stable token.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FreeSymbolic => "free-symbolic",
+            Self::BooleanAlien => "boolean-alien",
+            Self::ModularAlien => "modular-17",
+        }
+    }
+}
+
+/// Default custom portfolio order (bead doctrine): free symbolic, then
+/// the canonical-finite concrete worlds — Boolean when applicable,
+/// modular when applicable. A typed disposition replaces a silent
+/// fallthrough when nothing applicable remains.
+#[must_use]
+pub fn default_portfolio_order() -> &'static [WorldName] {
+    &[WorldName::FreeSymbolic, WorldName::BooleanAlien, WorldName::ModularAlien]
+}
+
+/// Typed portfolio disposition: the selected world (if any) plus the
+/// per-candidate verdict trail (`applicable` / `not applicable` /
+/// `excluded`). `selected == None` is a typed refusal, never an
+/// invented world.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorldDisposition {
+    /// The world selected from the order, if one applies.
+    pub selected: Option<WorldName>,
+    /// Per-candidate verdicts in portfolio order.
+    pub trail: Vec<String>,
+}
+
+/// Select a world for `signature` from the default portfolio, skipping
+/// every name in `exclude` (the caller's demand for a different carrier).
+/// Doctrine order is followed; EVERY candidate's verdict is recorded in
+/// the trail (evidence, never swallowed) and the first applicable world
+/// in order is selected.
+#[must_use]
+pub fn select_world(signature: &Signature, exclude: &[WorldName]) -> WorldDisposition {
+    let mut trail = Vec::new();
+    let mut selected = None;
+    for name in default_portfolio_order() {
+        if exclude.contains(name) {
+            trail.push(format!("{}: excluded", name.as_str()));
+            continue;
+        }
+        let applicable = match name {
+            WorldName::FreeSymbolic => FreeTermWorld.admits(signature),
+            WorldName::BooleanAlien => BooleanAlienWorld.admits(signature),
+            WorldName::ModularAlien => ModularAlienWorld.admits(signature),
+        };
+        trail.push(format!(
+            "{}: {}",
+            name.as_str(),
+            if applicable { "applicable" } else { "not applicable" }
+        ));
+        if applicable && selected.is_none() {
+            selected = Some(*name);
+        }
+    }
+    WorldDisposition { selected, trail }
 }
 
 /// Evaluation error shared by the seed worlds.
@@ -96,6 +255,12 @@ pub enum EvalError {
         expected: usize,
         /// Actual arity.
         actual: usize,
+    },
+    /// World-evaluation budget exhausted before completion; no partial
+    /// value escapes (World ABI budget seam, fjxh.7).
+    BudgetExhausted {
+        /// Steps successfully executed before the refusal.
+        steps: u32,
     },
 }
 
@@ -116,6 +281,57 @@ pub fn evaluate<W: FirstOrderWorld>(
 where
     W::Error: From<EvalError>,
 {
+    evaluate_bounded(term, world, environment, WorldBudget { max_steps: u32::MAX })
+}
+
+/// [`evaluate`] under an explicit [`WorldBudget`] (ABI budget seam):
+/// node-visits are metered and exhaustion is the typed
+/// [`EvalError::BudgetExhausted`] — never a partial value.
+pub fn evaluate_bounded<W: FirstOrderWorld>(
+    term: &Term,
+    world: &W,
+    environment: &Environment<W::Value>,
+    budget: WorldBudget,
+) -> Result<W::Value, W::Error>
+where
+    W::Error: From<EvalError>,
+{
+    evaluate_counted(term, world, environment, budget).map(|(value, _)| value)
+}
+
+/// [`evaluate_bounded`] with the step count: the producer seam for the
+/// world-result envelope's `cost_steps` label (fjxh.8).
+pub fn evaluate_counted<W: FirstOrderWorld>(
+    term: &Term,
+    world: &W,
+    environment: &Environment<W::Value>,
+    budget: WorldBudget,
+) -> Result<(W::Value, u32), W::Error>
+where
+    W::Error: From<EvalError>,
+{
+    let mut steps = 0_u32;
+    let result = evaluate_metered(term, world, environment, budget, &mut steps)?;
+    Ok((result, steps))
+}
+
+fn evaluate_metered<W: FirstOrderWorld>(
+    term: &Term,
+    world: &W,
+    environment: &Environment<W::Value>,
+    budget: WorldBudget,
+    steps: &mut u32,
+) -> Result<W::Value, W::Error>
+where
+    W::Error: From<EvalError>,
+{
+    let visited = steps.checked_add(1).ok_or(EvalError::BudgetExhausted {
+        steps: *steps,
+    })?;
+    if visited > budget.max_steps {
+        return Err(EvalError::BudgetExhausted { steps: *steps }.into());
+    }
+    *steps = visited;
     match term {
         Term::Variable(variable) => environment
             .get(variable)
@@ -128,7 +344,7 @@ where
         } => {
             let values = arguments
                 .iter()
-                .map(|argument| evaluate(argument, world, environment))
+                .map(|argument| evaluate_metered(argument, world, environment, budget, steps))
                 .collect::<Result<Vec<_>, _>>()?;
             world.apply(operator, values)
         }
@@ -200,6 +416,15 @@ impl FirstOrderWorld for FreeTermWorld {
             arguments,
         })
     }
+
+    fn admits(&self, _signature: &Signature) -> bool {
+        // The free symbolic world binds any signature structurally.
+        true
+    }
+
+    fn evidence(&self) -> WorldEvidence {
+        WorldEvidence::seed("free-symbolic", &["structural-totality"])
+    }
 }
 
 /// Boolean interpretation for the reference alien signature.
@@ -238,6 +463,14 @@ impl FirstOrderWorld for BooleanAlienWorld {
             }),
             _ => Err(EvalError::UnknownSymbol(operator.clone())),
         }
+    }
+
+    fn admits(&self, signature: &Signature) -> bool {
+        is_reference_alien_signature(signature)
+    }
+
+    fn evidence(&self) -> WorldEvidence {
+        WorldEvidence::seed("boolean-alien", &["xor-not-and-table"])
     }
 }
 
@@ -278,6 +511,14 @@ impl FirstOrderWorld for ModularAlienWorld {
             }),
             _ => Err(EvalError::UnknownSymbol(operator.clone())),
         }
+    }
+
+    fn admits(&self, signature: &Signature) -> bool {
+        is_reference_alien_signature(signature)
+    }
+
+    fn evidence(&self) -> WorldEvidence {
+        WorldEvidence::seed("modular-17", &["ring-mod-17-table"])
     }
 }
 

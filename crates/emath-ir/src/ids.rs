@@ -22,3 +22,8 @@ id_type!(GoalId);
 id_type!(TestId);
 id_type!(PlanNodeId);
 id_type!(EvidenceClaimId);
+// Stable identity of one admitted capability cell. Cells are arena data on
+// `SemanticPackage`; adding a cell never adds an `ExprNode` variant. IDs
+// index the `capabilities` arena and, like every id here, are meaningful
+// only with the owning package.
+id_type!(CapabilityId);
