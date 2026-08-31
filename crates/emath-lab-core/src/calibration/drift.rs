@@ -5,8 +5,8 @@
 use emath_term::SymbolId;
 use emath_world_ir::{WorldId, fnv1a64};
 
-use crate::fitting::FittedTable;
-use crate::versioning::WorldVersion;
+use crate::calibration::fitting::FittedTable;
+use crate::calibration::versioning::WorldVersion;
 
 /// A meaning change discovered from new examples.
 #[derive(Debug, Clone, PartialEq, Eq)]

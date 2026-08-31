@@ -841,15 +841,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-calibration"
-version = "0.1.0"
-dependencies = [
- "emath-ir",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-checker-tests"
 version = "0.1.0"
 dependencies = [
@@ -864,13 +855,13 @@ dependencies = [
  "emath-agent-protocol",
  "emath-artifact",
  "emath-build",
- "emath-calibration",
  "emath-core",
  "emath-evidence",
  "emath-exec-ir",
  "emath-genesis",
  "emath-goal",
  "emath-ir",
+ "emath-lab-core",
  "emath-law-check",
  "emath-plan",
  "emath-portfolio",
@@ -1008,8 +999,8 @@ dependencies = [
 name = "emath-holes-tests"
 version = "0.1.0"
 dependencies = [
- "emath-calibration",
  "emath-holes",
+ "emath-lab-core",
  "emath-syntax",
  "emath-term",
  "emath-wasm",
@@ -1045,6 +1036,9 @@ name = "emath-lab-core"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-ir",
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]
@@ -1068,7 +1062,7 @@ dependencies = [
 name = "emath-law-check-tests"
 version = "0.1.0"
 dependencies = [
- "emath-calibration",
+ "emath-lab-core",
  "emath-law-check",
  "emath-term",
  "emath-world-ir",

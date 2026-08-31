@@ -4,7 +4,7 @@
 use emath_term::SymbolId;
 use emath_world_ir::fnv1a64;
 
-use crate::example_id;
+use crate::calibration::example_id;
 
 /// One behavioral example, e.g. `⧖(1 ⋈ 2) ⊛ ζ => 9`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

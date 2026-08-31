@@ -2,7 +2,7 @@
 //! emath-mct-type-magnets-fnv-fitted-o7a6): the shared leaf type lives
 //! beside the WorldIr vocabulary so `emath-holes`, `emath-law-check`,
 //! and `emath-diagnostics` take ONE Tier-adjacent edge instead of the
-//! whole `emath-calibration` crate for a single symbol. `emath-calibration`
+//! whole calibration machinery for a single symbol. `emath-lab-core`'s
 //! re-exports it for stable paths; the fitting procedures stay there.
 
 use std::collections::BTreeMap;

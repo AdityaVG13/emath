@@ -10,7 +10,7 @@ path = "intent_completion_solve_unit.rs"
 
 [dependencies]
 emath-holes = { path = "../../crates/emath-holes" }
-emath-calibration = { path = "../../crates/emath-calibration" }
+emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-term = { path = "../../crates/emath-term" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }
 emath-syntax = { path = "../../crates/emath-syntax" }

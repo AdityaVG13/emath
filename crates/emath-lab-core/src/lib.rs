@@ -223,3 +223,5 @@ impl Sampler {
 
 /// Name → identity index for experiment bookkeeping.
 pub type ExperimentIndex = BTreeMap<String, ContentId>;
+
+pub mod calibration;

@@ -574,7 +574,7 @@ pub fn elaborate_requests(
             // method, optimizer method, initial seeds, explicit weights,
             // identifiability gate) — nothing domain-specific is bound
             // here; execution goes through the generic fit-goal runtime
-            // seams (crates/emath-calibration), and without a
+            // seams (crates/emath-lab-core calibration module), and without a
             // structural-identifiability provider the goal resolves to
             // an honest typed unresolved disposition in every plan.
             "fit" => {

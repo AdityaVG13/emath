@@ -9,7 +9,7 @@ use emath_term::SymbolId;
 // stable paths.
 pub use emath_world_ir::FittedTable;
 
-use crate::partition::{CalibrationExample, ExampleKind};
+use crate::calibration::partition::{CalibrationExample, ExampleKind};
 
 /// Why a table fit failed.
 #[derive(Debug, Clone, PartialEq, Eq)]

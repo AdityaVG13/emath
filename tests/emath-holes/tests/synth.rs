@@ -1,6 +1,6 @@
 //! Finite synthesis tests (origin `crates/emath-holes/src/synth.rs`).
 
-use emath_calibration::FittedTable;
+use emath_lab_core::calibration::FittedTable;
 use emath_holes::{
     HoleGraph, SynthesisLaw, check_laws, impossible_identity_laws, solve_op_hole,
     synthesize_tables,

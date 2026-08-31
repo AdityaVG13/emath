@@ -6,7 +6,7 @@
 //! and the identifiability honesty gate — is plain `.emath` data
 //! carried by the elaborated goal payload. This command parses, admits,
 //! plans, traces the payload into the generic runtime goal
-//! (`emath_calibration::FitGoal::from_payload`), evaluates the declared
+//! (`emath_lab_core::calibration::FitGoal::from_payload`), evaluates the declared
 //! `emath model` through the interpreter (the model math stays in
 //! `.emath`; no domain math exists in Rust), runs the generic
 //! Levenberg-Marquardt fit with the executable numeric rank oracle, and
@@ -17,7 +17,7 @@ use super::{
     split_error_code, CliExit, EXIT_OK, EXIT_REFUSED,
 };
 use emath_artifact::JsonWriter;
-use emath_calibration::{
+use emath_lab_core::calibration::{
     FitGoal, FitModel, FitOutcome, NumericRankOracle, ProvenanceHash, materialize_measured,
 };
 use emath_core::limits::Limits;
@@ -183,7 +183,7 @@ fn fit_cmd(args: &FitArgs) -> CliExit {
         }
     };
     let oracle = NumericRankOracle::default();
-    let outcome = emath_calibration::fit(&goal, &model, &goal.data, Some(&oracle));
+    let outcome = emath_lab_core::calibration::fit(&goal, &model, &goal.data, Some(&oracle));
     match outcome {
         FitOutcome::Fitted {
             parameters,
@@ -306,7 +306,7 @@ fn emit_fitted(
     goal: &FitGoal,
     parameters: &BTreeMap<SymbolId, f64>,
     hash: ProvenanceHash,
-    confidence: Option<&emath_calibration::Identifiability>,
+    confidence: Option<&emath_lab_core::calibration::Identifiability>,
 ) {
     let hash_hex = format!("{:016x}", hash.0);
     let measured = materialize_measured(goal, parameters, hash, confidence);
