@@ -308,6 +308,24 @@ pub(super) fn parse_quantity_magnitude(value: &Expr) -> Option<f64> {
     }
 }
 
+/// Scale attached parenthetical uncertainty digits (spec 04 section 1.5):
+/// digits `d` of a literal whose mantissa has `frac` fractional digits and
+/// exponent `exp` carry uncertainty `d × 10^(exp − frac)`.
+/// `6.67430(15)e-11` → 15 × 10^(−11 − 5) = 1.5e-15; `0.5012(3)` → 3e-4.
+pub(crate) fn measured_digits_uncertainty(value: &str, digits: &str) -> Option<f64> {
+    let body = value.trim().trim_start_matches(['+', '-']);
+    let mut parts = body.splitn(2, ['e', 'E']);
+    let mantissa = parts.next()?;
+    let exponent = parts
+        .next()
+        .and_then(|text| text.parse::<i32>().ok())
+        .unwrap_or(0);
+    let frac = mantissa.split_once('.').map_or(0_usize, |(_, f)| f.len());
+    let digits_value: f64 = digits.parse().ok()?;
+    let scaled = digits_value * 10_f64.powi(exponent - frac as i32);
+    scaled.is_finite().then_some(scaled)
+}
+
 pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
     match kind {
         ExprKind::Int(_) => "integer",
@@ -316,14 +334,20 @@ pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
         ExprKind::Str(_) => "string",
         ExprKind::Bool(_) => "bool",
         ExprKind::Quantity { .. } => "quantity",
+        ExprKind::Measured { .. } => "measurement literal",
         ExprKind::Path { .. } => "path",
         ExprKind::Call { .. } => "call",
         ExprKind::Index { .. } => "index",
         ExprKind::Slice { .. } => "slice",
         ExprKind::Unary { .. } => "unary",
         ExprKind::Binary { .. } => "binary",
+        ExprKind::Approx { .. } => "approximation claim",
         ExprKind::If { .. } => "if",
         ExprKind::List(_) => "list",
+        ExprKind::Table { .. } => "table",
+        ExprKind::Set(_) => "set",
+        ExprKind::SetComprehension { .. } => "set comprehension",
+        ExprKind::Record { .. } => "record",
         ExprKind::Tuple(_) => "tuple",
         ExprKind::Range { .. } => "range",
         ExprKind::Binder { .. } => "binder",
@@ -337,5 +361,6 @@ pub(super) fn expr_form_name(kind: &ExprKind) -> &'static str {
         ExprKind::Limit { .. } => "limit",
         ExprKind::SampleLimit { .. } => "sample-limit",
         ExprKind::Cases { .. } => "cases",
+        ExprKind::WithSeriesPolicy { .. } => "series literal",
     }
 }

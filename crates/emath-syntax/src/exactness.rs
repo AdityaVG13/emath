@@ -3,7 +3,7 @@
 //! Built from inspectable desugar notes. Open holes stay open; freeze and
 //! `--raise` must not silently claim exactness.
 
-use crate::scratch::{expand_scratch, ScratchExpansion, ScratchNote};
+use crate::scratch::{ScratchExpansion, ScratchNote, expand_scratch};
 
 /// One exactness dimension the ledger tracks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

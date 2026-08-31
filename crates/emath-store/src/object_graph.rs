@@ -20,7 +20,7 @@ pub enum ObjectKind {
 }
 
 impl ObjectKind {
-    fn canonical_name(&self) -> String {
+    pub(crate) fn canonical_name(&self) -> String {
         match self {
             Self::Cell => "cell".to_string(),
             Self::Theory => "theory".to_string(),

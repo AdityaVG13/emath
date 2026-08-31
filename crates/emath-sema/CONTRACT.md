@@ -22,6 +22,8 @@
 
 - Goals attach to declarations by construction (the ids built for that declaration), never by span geometry.
 - Missing or unloaded source is a typed refusal (`E-PKG-080`), never an empty-source plan that passes silently.
+- Multi-file packages: `CompilerSession::check_package` resolves in-package module imports — `use <package>.<module>` where the path prefix matches the file's own `package` line — against the session's loaded `<module>.emath` sources and merges the siblings' declarations/notations under the main file's identity before the normal admission lane runs. Cross-file duplicate names refuse `E-NAME-022`; an unresolved in-package module import refuses `E-PKG-050` (never a silent inert entry). The plain single-file `check` is unchanged (file imports are inert entries there); sibling `package`/`use` lines are not re-admitted (transitive file imports are future work).
+- `emath field_pack` (v9-06-2rdq.16) is admitted as exported artifact data: the closed section table (`exports:` command lines `cell|theory|method|world <name>`, `metadata:` `description` lines) records a `FieldPackEntry` on the package; unknown sections refuse `E-SYN-101` (no parser-keyword injection), and a pack never enters `package.declarations` (no custom→strict fallthrough, no runnable lowering). Packs compile to the semantic image via field-pack tooling, not admission.
 - Empty, comment-only, whitespace-only, and package-only files refuse with `E-PKG-081` (`source has no declarations`). A vacuous `check` pass is not admission.
 - Declarations distinguishable only by lookalike glyphs are refused (`E-NAME-024`); duplicate names (`E-NAME-022`) and `_` names (`E-NAME-023`) are refused.
 - Session limits reach the lexer through the installed parser backend (`E-SYN-108`).
@@ -91,7 +93,7 @@
 
 ## Error model
 
-- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-080`, `E-PKG-081`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004/005/006`, `E-DOM-002`.
+- Emits stable `E-*` diagnostics through `emath_core::Diagnostics`: `E-PKG-050`, `E-PKG-080`, `E-PKG-081`, `E-SYN-101`, `E-SYN-108`, `E-SYN-120`, `E-SYN-122`, `E-SYN-123`, `E-GOAL-041/042/043`, `E-NAME-022/023/024`, `E-KIND-011`, `E-SEC-101`, `E-NUM-001/002/003/004`, `E-UNIT-101/104/105`, `E-SHAPE-004/005/006`, `E-DOM-002`.
 - `E-SYN-120` is a typed refusal when the parser backend is not installed; hosts call `emath_syntax::install_source_parser` once per process.
 
 ## Determinism class

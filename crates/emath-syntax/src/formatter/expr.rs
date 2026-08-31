@@ -18,6 +18,7 @@ pub fn binary_prec(op: BinaryOp) -> Prec {
             Prec::Comparison
         }
         BinaryOp::Asymp => Prec::Comparison,
+        BinaryOp::In => Prec::Comparison,
         BinaryOp::Add | BinaryOp::Sub => Prec::Additive,
         BinaryOp::Mul | BinaryOp::Div => Prec::Multiplicative,
         BinaryOp::Pow => Prec::Power,
@@ -50,11 +51,13 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         // Colon-greedy forms (`sum i in S: body`, `if c: a else: b`,
         // `limit x -> 0: body`, `cases ...`). Without parens the body
         // swallows a following operator: `(sum i in S: i) * x` must not
-        // print as `sum i in S: i * x`.
+        // print as `sum i in S: i * x`. `≈` carries the trailing
+        // `within rtol/atol` clause, which has the same swallowing shape.
         ExprKind::Binder { .. }
         | ExprKind::Limit { .. }
         | ExprKind::SampleLimit { .. }
         | ExprKind::Cases { .. }
+        | ExprKind::Approx { .. }
         | ExprKind::If { .. } => parent > Prec::Root,
         _ => false,
     };
@@ -89,6 +92,73 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 out.push_str(" [unit ");
                 out.push_str(&unit.canonical_form());
                 out.push(']');
+            }
+        }
+        ExprKind::Measured {
+            value,
+            uncertainty,
+            uncertainty_digits,
+            distribution,
+        } => {
+            // SURF-0013 byte-exact rendering: the explicit ± form renders
+            // `value ± uncertainty`; the attached parenthetical form renders
+            // `value(digits)`; the optional distribution tag renders back as
+            // `~ name`.
+            out.push_str(value);
+            if uncertainty_digits.is_empty() {
+                out.push_str(" ± ");
+                out.push_str(uncertainty);
+            } else {
+                out.push('(');
+                out.push_str(uncertainty_digits);
+                out.push(')');
+            }
+            if let Some(name) = distribution {
+                out.push_str(" ~ ");
+                out.push_str(name);
+            }
+        }
+        ExprKind::WithSeriesPolicy {
+            value,
+            interpolation,
+            extrapolation,
+        } => {
+            // 04 §5.4 (emath-r3-timeseries-1nsa): byte-exact rendering of
+            // the declared policy suffix; an absent part renders nothing
+            // (the language default is not spelled).
+            format_expr(out, value, Prec::Root);
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(mode) = interpolation {
+                parts.push(format!("interpolation: {}", mode.spelling()));
+            }
+            if let Some(mode) = extrapolation {
+                parts.push(format!("extrapolation: {}", mode.spelling()));
+            }
+            if !parts.is_empty() {
+                out.push_str(" with ");
+                out.push_str(&parts.join(", "));
+            }
+        }
+        ExprKind::Approx {
+            left,
+            right,
+            tolerance,
+        } => {
+            // Byte-exact `≈` (ASCII `~=`) rendering: `left ≈ right` plus
+            // the declared `within rtol=…, atol=…` clause when present.
+            format_expr(out, left, Prec::Comparison);
+            out.push_str(" ≈ ");
+            format_expr(out, right, Prec::Comparison);
+            if let Some(tolerance) = tolerance {
+                out.push_str(" within ");
+                let mut parts: Vec<String> = Vec::new();
+                if let Some(rtol) = &tolerance.rtol {
+                    parts.push(format!("rtol={}", format_expr_to_string(rtol)));
+                }
+                if let Some(atol) = &tolerance.atol {
+                    parts.push(format!("atol={}", format_expr_to_string(atol)));
+                }
+                out.push_str(&parts.join(", "));
             }
         }
         ExprKind::Path { segments, generics } => {
@@ -138,6 +208,45 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 format_expr(out, end, Prec::Root);
             }
         }
+        ExprKind::Set(items) => {
+            out.push('{');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                format_expr(out, item, Prec::Root);
+            }
+            out.push('}');
+        }
+        ExprKind::SetComprehension {
+            element,
+            var,
+            domain,
+            guard,
+        } => {
+            out.push('{');
+            format_expr(out, element, Prec::Root);
+            out.push_str(" in ");
+            format_expr(out, domain, Prec::Root);
+            if let Some(guard) = guard {
+                out.push_str(" if ");
+                format_expr(out, guard, Prec::Root);
+            }
+            out.push('}');
+        }
+        ExprKind::Record { type_path, fields } => {
+            out.push_str(&type_path.join("::"));
+            out.push_str(":{");
+            for (i, (field, value)) in fields.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(field);
+                out.push_str(": ");
+                format_expr(out, value, Prec::Root);
+            }
+            out.push('}');
+        }
         ExprKind::Unary { op, value } => {
             match op {
                 UnaryOp::Neg => out.push('-'),
@@ -185,6 +294,25 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 format_expr(out, item, Prec::Root);
             }
             out.push(']');
+        }
+        ExprKind::Table { headers, rows } => {
+            // Round-trip spelling: `|x y| 1, 2 | 3, 4 |` (U9).
+            out.push('|');
+            for header in headers {
+                out.push(' ');
+                out.push_str(header);
+            }
+            out.push_str(" |");
+            for row in rows {
+                out.push(' ');
+                for (i, cell) in row.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    format_expr(out, cell, Prec::Root);
+                }
+                out.push_str(" |");
+            }
         }
         ExprKind::Tuple(items) => {
             out.push('(');
@@ -398,5 +526,6 @@ pub fn binary_spelling(op: BinaryOp) -> &'static str {
         BinaryOp::Imply => "==>",
         BinaryOp::Iff => "<==>",
         BinaryOp::Asymp => "~~",
+        BinaryOp::In => "in",
     }
 }

@@ -8,6 +8,8 @@
 #![forbid(unsafe_code)]
 
 pub mod admit;
+pub mod migrate;
+pub mod proofs;
 pub mod recognition;
 pub mod session;
 

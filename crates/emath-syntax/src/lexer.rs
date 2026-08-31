@@ -5,7 +5,7 @@
 //! Comments: `#` (ordinary) and `///` (documentation) to end of line.
 //! `//` is the exact-rational separator (`3//7`), not a comment.
 
-use crate::token::{Comment, Keyword, Token, TokenKind};
+use crate::token::{Comment, Keyword, NablaForm, Token, TokenKind};
 use emath_core::{Diagnostics, FileId, Span, limits::Limits};
 
 /// Lex the whole source into layout-aware tokens (comments skipped).
@@ -329,7 +329,82 @@ impl Lexer<'_> {
                 self.push(TokenKind::SlashSlash, start);
             }
             _ if byte.is_ascii_alphabetic() || byte == b'_' || byte >= 0x80 => {
-                self.lex_ident(start);
+                // `±` (U+00B1, UTF-8 C2 B1) is the measurement-literal
+                // separator (spec 04 section 1.5 / X6), not an identifier
+                // glyph — it must be claimed before the non-ASCII ident
+                // path sees it.
+                if byte == 0xc2 && self.peek2() == Some(0xb1) {
+                    self.pos += 2;
+                    self.push(TokenKind::PlusMinus, start);
+                } else if byte == 0xE2
+                    && self.bytes.get(self.pos + 1) == Some(&0x89)
+                    && self.bytes.get(self.pos + 2) == Some(&0x88)
+                {
+                    // `≈` (U+2248, UTF-8 E2 89 88) — approximation
+                    // labeling operator (04 §6.4, bead
+                    // emath-r3-approx-operator-depc). Claimed before the
+                    // non-ASCII ident path so the glyph never glues into
+                    // one unknown name.
+                    self.pos += 3;
+                    self.push(TokenKind::TildeEq, start);
+                } else if byte == 0xE2
+                    && self.bytes.get(self.pos + 1) == Some(&0x88)
+                    && self.bytes.get(self.pos + 2) == Some(&0x87)
+                {
+                    // `∇` (U+2207, UTF-8 E2 88 87) — nabla family (pack
+                    // o6jp). The follower byte decides the form: `·`
+                    // (C2 B7) is divergence, `×` (C3 97) is curl, `²`
+                    // (C2 B2) is the stencil Laplacian; a bare ∇ is the
+                    // gradient glyph. Claimed before the non-ASCII ident
+                    // path so the glyph never glues into one unknown name.
+                    self.pos += 3;
+                    let form = match (self.bytes.get(self.pos), self.bytes.get(self.pos + 1)) {
+                        (Some(&0xC2), Some(&0xB7)) => {
+                            self.pos += 2;
+                            NablaForm::Div
+                        }
+                        (Some(&0xC3), Some(&0x97)) => {
+                            self.pos += 2;
+                            NablaForm::Curl
+                        }
+                        (Some(&0xC2), Some(&0xB2)) => {
+                            self.pos += 2;
+                            NablaForm::Lap
+                        }
+                        _ => NablaForm::Grad,
+                    };
+                    self.push(TokenKind::Nabla(form), start);
+                } else if byte == 0xE2
+                    && self.bytes.get(self.pos + 1) == Some(&0x9F)
+                    && matches!(self.bytes.get(self.pos + 2), Some(&0xA8) | Some(&0xA9))
+                {
+                    // `⟨` (U+27E8, E2 9F A8) / `⟩` (U+27E9, E2 9F A9) —
+                    // braket pack angles (fdby). Claimed before the
+                    // non-ASCII ident path so the glyphs never glue into
+                    // one unknown name; only the mounted braket pack
+                    // admits forms built from them.
+                    self.pos += 3;
+                    let kind = if self.bytes.get(self.pos - 1) == Some(&0xA8) {
+                        TokenKind::LAngle
+                    } else {
+                        TokenKind::RAngle
+                    };
+                    self.push(kind, start);
+                } else if byte == 0xE2
+                    && self.bytes.get(self.pos + 1) == Some(&0x88)
+                    && self.bytes.get(self.pos + 2) == Some(&0x85)
+                {
+                    // `∅` (U+2205, UTF-8 E2 88 85) — the declared sink
+                    // (04 §4.1, bead emath-r3-compartments-e5zq): a
+                    // reaction endpoint that is deliberately nothing
+                    // (degradation/elimination), never a magic empty
+                    // side. Claimed before the non-ASCII ident path so
+                    // the glyph never glues into one unknown name.
+                    self.pos += 3;
+                    self.push(TokenKind::EmptySet, start);
+                } else {
+                    self.lex_ident(start);
+                }
             }
             b'=' => {
                 self.pos += 1;
@@ -391,6 +466,13 @@ impl Lexer<'_> {
                 if self.peek() == Some(b'>') {
                     self.pos += 1;
                     self.push(TokenKind::Arrow, start);
+                } else if self.peek() == Some(b'-') && self.peek2() == Some(b'>') {
+                    // `-->` — directed graph edge arrow (B23, ybob).
+                    // Glued so it beats `->`; `x--y` (no `>`) stays two
+                    // Minus tokens, so outside-graph arithmetic is
+                    // untouched (G4).
+                    self.pos += 2;
+                    self.push(TokenKind::EdgeArrow, start);
                 } else {
                     self.push(TokenKind::Minus, start);
                 }
@@ -412,12 +494,16 @@ impl Lexer<'_> {
                 if self.peek() == Some(b'~') {
                     self.pos += 1;
                     self.push(TokenKind::TildeTilde, start);
+                } else if self.peek() == Some(b'=') {
+                    // `~=` — ASCII spelling of the approximation
+                    // labeling operator (04 §6.4); one token, same as `≈`.
+                    self.pos += 1;
+                    self.push(TokenKind::TildeEq, start);
                 } else {
-                    self.error(
-                        "E-SYN-101",
-                        "unexpected `~`; use `~~` for asymptotic equivalence",
-                        start,
-                    );
+                    // `~ name` distribution tag on measurement literals
+                    // (spec 04 section 1.5); the parser refuses a bare
+                    // `~` where no tag can appear.
+                    self.push(TokenKind::Tilde, start);
                 }
             }
             b'(' => {
@@ -507,6 +593,12 @@ impl Lexer<'_> {
             b'|' => {
                 self.pos += 1;
                 self.push(TokenKind::Pipe, start);
+            }
+            b';' => {
+                // U9: row separator inside list literals only; the parser
+                // refuses it anywhere else, so lexing stays additive.
+                self.pos += 1;
+                self.push(TokenKind::Semicolon, start);
             }
             b' ' => {
                 self.pos += 1;
@@ -633,6 +725,57 @@ impl Lexer<'_> {
             is_float = true; // complex literals use the Float channel
         }
         let text = &self.source[start..self.pos];
+        // Attached parenthetical uncertainty (spec 04 section 1.5 /
+        // CODATA): `0.5012(3)` = 0.5012 ± 0.0003. Attachment is lexical:
+        // immediately after the number (no space), digits only. A space
+        // before `(` or a non-digit inside leaves ordinary tokenization —
+        // `f(2)` is a call (leading token is an Ident, never scanned
+        // here), and `1.50 (2)` lexes as Float + group, which the parser
+        // refuses where an uncertainty cannot appear.
+        if is_float
+            && self.peek() == Some(b'(')
+            && self
+                .peek_char_at(self.pos + 1)
+                .is_some_and(|b| b.is_ascii_digit())
+        {
+            let scan = self.pos + 1;
+            let mut cursor = scan;
+            while self
+                .peek_char_at(cursor)
+                .is_some_and(|b| b.is_ascii_digit())
+            {
+                cursor += 1;
+            }
+            if self.peek_char_at(cursor) == Some(')') {
+                let digits = self.source[scan..cursor].to_string();
+                // CODATA: the exponent may follow the uncertainty
+                // parenthetical (`6.67430(15)e-11`); it stays part of the
+                // number spelling so admission scales ±digits by 10^exp.
+                let mut end = cursor + 1;
+                if matches!(self.bytes.get(end), Some(b'e' | b'E')) {
+                    let mut look = end + 1;
+                    if matches!(self.bytes.get(look), Some(b'+' | b'-')) {
+                        look += 1;
+                    }
+                    if self.bytes.get(look).is_some_and(u8::is_ascii_digit) {
+                        end = look;
+                        while self.bytes.get(end).is_some_and(|b| b.is_ascii_digit()) {
+                            end += 1;
+                        }
+                    }
+                }
+                // Build owned spellings first: `text`/`digits` borrow
+                // `self.source`, and the cursor advance mutates `self`.
+                let number = if end > cursor + 1 {
+                    format!("{text}{}", &self.source[cursor + 1..end])
+                } else {
+                    text.to_string()
+                };
+                self.pos = end;
+                self.push(TokenKind::FloatUncertainty { number, digits }, start);
+                return;
+            }
+        }
         if is_float {
             self.push(TokenKind::Float(text.to_string()), start);
         } else {

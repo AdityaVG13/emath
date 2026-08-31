@@ -73,14 +73,42 @@ impl super::Parser {
                     },
                 ))
             }
+            TokenKind::Keyword(Keyword::On) => {
+                // `on <Name>:` is a two-word section head — transition
+                // rules (r3-dynamical-03lh ch7, transitions slice): the
+                // section carries the trigger event as its generic and an
+                // assignment suite as the rule body. Only when the token
+                // after the name is `:`; any other `on` statement keeps
+                // the command path below.
+                self.advance(); // on
+                if let TokenKind::Ident(trigger) = self.peek().clone()
+                    && matches!(self.peek_at(1), TokenKind::Colon)
+                {
+                    self.advance(); // trigger name
+                    self.eat(&TokenKind::Colon);
+                    let suite = self.parse_section_suite("on")?;
+                    return Some(self.stmt(
+                        start,
+                        StmtKind::Section(Section {
+                            name: "on".to_string(),
+                            generic: Some(trigger),
+                            args: None,
+                            suite,
+                            source: start.cover(self.last_span()),
+                            head_source: start.cover(self.last_span()),
+                        }),
+                    ));
+                }
+                let (head, argument) = self.parse_command_tail(vec!["on".to_string()])?;
+                Some(self.stmt(start, StmtKind::Command { head, argument }))
+            }
             TokenKind::Keyword(
                 Keyword::Where
                 | Keyword::Wrt
                 | Keyword::Over
                 | Keyword::Against
                 | Keyword::With
-                | Keyword::At
-                | Keyword::On,
+                | Keyword::At,
             ) => {
                 let head_word = match self.peek() {
                     TokenKind::Keyword(k) => k.spelling().to_string(),
@@ -168,6 +196,22 @@ impl super::Parser {
                         self.parse_command_tail(vec![visibility_name(visibility).to_string()])?;
                     Some(self.stmt(start, StmtKind::Command { head, argument }))
                 }
+            }
+            // Operator-map entry (`emath world`, wave 14): `"glyph" => target`
+            // in an `operators:` section. `=>` lexes as Arrow; a string
+            // literal followed by it is unambiguously a map entry, never a
+            // bare string-expression statement.
+            TokenKind::Str(glyph) if matches!(self.peek_at(1), TokenKind::Arrow) => {
+                self.advance();
+                self.advance(); // `=>`
+                let target = self.parse_loose_expr()?;
+                Some(self.stmt(
+                    start,
+                    StmtKind::Command {
+                        head: vec!["operator".to_string(), glyph],
+                        argument: Some(CommandArgument::Expr(target)),
+                    },
+                ))
             }
             TokenKind::Ident(name) => self.parse_ident_statement(start, name),
             TokenKind::Int(_)

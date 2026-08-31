@@ -137,6 +137,22 @@ impl super::Parser {
                 TokenKind::PathSep | TokenKind::Dot => {
                     self.advance();
                 }
+                // fdby: notation-pack mount parameter, `use
+                // sci::physics::notation::braket(convention = physics)`.
+                // The pre-scan validates the parameter vocabulary; this
+                // arm only consumes the group so the use item parses.
+                TokenKind::LParen if !segments.is_empty() => {
+                    self.advance();
+                    let mut depth = 1_i32;
+                    while depth > 0 && !matches!(self.peek(), TokenKind::Eof) {
+                        match self.peek() {
+                            TokenKind::LParen => depth += 1,
+                            TokenKind::RParen => depth -= 1,
+                            _ => {}
+                        }
+                        self.advance();
+                    }
+                }
                 TokenKind::LBrace => {
                     self.advance();
                     let mut names = Vec::new();
@@ -302,6 +318,13 @@ impl super::Parser {
                     self.advance();
                 }
                 args.push(joined);
+                true
+            }
+            TokenKind::Int(value) => {
+                // Numeric attribute arguments (`@significant_figures(enforce
+                // 3)`) are stored verbatim so the formatter round-trips.
+                args.push(value.clone());
+                self.advance();
                 true
             }
             TokenKind::Str(value) => {
