@@ -16,7 +16,7 @@ workspace = true
 [dependencies]
 emath-core = { path = "../crates/emath-core" }
 emath-genesis.workspace = true
-emath-holes.workspace = true
+emath-lab-core.workspace = true
 emath-layout.workspace = true
 emath-portfolio.workspace = true
 emath-sema = { path = "../crates/emath-sema" }

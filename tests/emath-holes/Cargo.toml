@@ -9,7 +9,6 @@ name = "intent_completion_solve_unit"
 path = "intent_completion_solve_unit.rs"
 
 [dependencies]
-emath-holes = { path = "../../crates/emath-holes" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-term = { path = "../../crates/emath-term" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }

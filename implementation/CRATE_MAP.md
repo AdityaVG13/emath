@@ -80,7 +80,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-agent-protocol` | `crates/emath-agent-protocol` | agent-native meaning proposals (admission envelope) | provider-api |
-| `emath-holes` | `crates/emath-holes` | meaning holes and finite synthesis | world-ir |
 
 ### Tier 8 — infrastructure adapters (feature-gated)
 
