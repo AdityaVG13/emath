@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod meaning_provider;
 pub mod plugin_sdk;
 pub mod runtime;
 pub mod adapter;
