@@ -127,11 +127,17 @@ call_suffix      = "(" , [ argument_list ] , ")" ;
    path primary. The first argument is a string literal (subscripts);
    remaining arguments are tensor operands. Recognized as a builtin by
    sema and lowered to EmirOp::Einsum. *)
-(* Modular arithmetic builtins: `factorial(n)` → i64, `mod_inv(a, m)` → i64,
-   `congruence(a, b, m)` → Bool. `GF<p>` is admitted as Int type.
-   `poly_eval_mod(coeffs, x, p)` → i64 (Horner over GF(p)),
-   `rs_encode(coeffs, n, p)` → Vector (RS codeword).
-   These parse as regular call_suffix on path primaries, recognized by sema. *)
+(* Modular/field arithmetic builtins (aj8d): `int_rem(a, m)` → i64
+   (exact Euclidean remainder, typed fault when m ≤ 0),
+   `mod_inv(a, m)` / `field_inv(a, p)` → i64 (exact modular inverse over
+   a prime), `congruence(a, b, m)` → Bool, `poly_eval_mod(coeffs, x, p)`
+   → i64 (Horner over GF(p)), `rs_encode(coeffs, n, p)` → Vector (RS
+   codeword). Option/Result carriers: `option_some(v)`, `option_none()`,
+   `option_is_some(o)`, `option_unwrap_or(o, default)`, `result_ok(v)`,
+   `result_err(v)`, `result_is_ok(r)`, `result_unwrap_or(r, default)`,
+   `result_error_of(r)`. Composite types `Option<T>` / `Result<T,E>` /
+   `Graph` / `Field<p>` / `GF<p>` parse via `type_primary path [generic_args]`.
+   All parse as regular `call_suffix` on path primaries, recognized by sema. *)
 index_suffix     = "[" , [ expression , { "," , expression } ] , "]" ;
 field_suffix     = "." , identifier ;
 generic_suffix   = "::<" , type_expr , { "," , type_expr } , ">" ;
@@ -214,7 +220,7 @@ dotted_name      = identifier , { "." , identifier } ;
 match_expression = "match" , postfix_expr , "{" , match_arm , { "," , match_arm } , [ "," ] , "}" ;
 match_arm        = ( numeric_literal | string | "true" | "false" | identifier ) , "=>" , expression ;
 numeric_literal  = [ "-" ] , ( integer | decimal ) ;
--- B23 (emath-r3-graphs-ybob): `graph { <nodes> ; <edges> }` is a
+-- B23 (emath-r3-graphs-ybob + aj8d): `graph { <nodes> ; <edges> }` is a
 -- contextual literal. Edge spellings exist ONLY between the `;` and
 -- the closing brace; outside a graph literal `x--y` stays arithmetic
 -- (G4: no `--` token is glued, `-->` beats `->` in the lexer). The
@@ -222,9 +228,10 @@ numeric_literal  = [ "-" ] , ( integer | decimal ) ;
 -- [ edges… ] )` — NOT a list, so lowering never matrix-interprets it —
 -- where each edge is the 4-tuple row `[ from , to , weight , directed
 -- ]` (weight 1.0 when unspecified; directed 1.0 for `-->`/`-[w]->`,
--- 0.0 for `-`/`-[w]-`). Admission refuses the tuple carrier with
--- E-TYPE-010 until a graph value carrier lands in emath-ir
--- (sets-tub8 Phase B boundary pattern).
+-- 0.0 for `-`/`-[w]-`). `.emath` admission lowers this to the dense
+-- `Matrix<Float64>` adjacency carrier and the graph computes (aj8d).
+-- See the option/result/graph/field builtins note below for the carrier
+-- call surface.
 graph_literal    = "graph" , "{" , [ expression , { "," , expression } ] ,
                    [ ";" , [ graph_edge , { "," , graph_edge } ] ] , "}" ;
 graph_edge       = expression , edge_operator , expression ;

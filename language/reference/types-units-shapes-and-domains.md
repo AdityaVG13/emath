@@ -1,326 +1,341 @@
-# Chapter 5: Types, Units, Shapes and Domains
+# Types, Units, Shapes, and Domains
 
-## Type families
+## Compute types
 
-```text
-Bool, Nat, Int, Rat, Real
-Float16, BFloat16, Float32, Float64
-Fixed, Decimal, Interval, Affine, Dual, Complex
-Option, Result, Sequence, Stream, Map, Set
-Vector, Matrix, Tensor, SparseMatrix
-Graph, Field, Distribution, StateMachine
-record, variant, trait, opaque/external
-```
-
-`Real` is the mathematical concept of real numbers. As a compute type,
-use `Float64` - `Real` is no longer an admitted type alias.
-
-### Measured values and closed provenance
-
-The `core::measure` stdlib schema defines:
+The admitted compute types are:
 
 ```text
-Measured<T> {
-  value: T,
-  std_uncertainty: T,
-  distribution: DistributionKind,
-  provenance: Provenance,
-  timestamp: Option<Timestamp>,
-  instrument: Option<InstrumentRef>
-}
-
-Provenance =
-  Exact | Citation | InstrumentRun | Fitted | Assumed | Unstated
+Bool  Nat  Int  Float64  Complex
+Interval<Float64>  Mod<p>  GF<p>
+Vector<T, [n]>  Matrix<T, [r, c]>  Tensor<T, [...]>
+quantities written as T in unit
 ```
 
-`Provenance` is closed at six variants. It is mandatory on `Measured<T>`;
-`Assumed` and `Unstated` remain visible rather than pretending authority.
-The neutral stdlib API exposes these as `core_measure_schemes()` and the
-value type `Measured<T>`. `Measured::unstated(value, uncertainty)` is the
-default constructor reserved for the uncertainty-literal lowering.
+`Real` names the mathematical concept and is not a compute alias. Use `Float64`, or select a declared numeric profile.
 
-Implemented today in `.emath`: structured provenance can be attached to
-ordinary declaration bindings and inspected with `emath explain
-<file> --provenance`. Direct `Measured<T>` record literals and `±` /
-parenthetical uncertainty syntax belong to the uncertainty-literal and
-record-value lowering slices; the compiler does not claim that syntax yet.
-See [`measured-provenance.emath`](../examples/science/measured-provenance.emath).
+Not admitted as general compute values: `Rat`, bare `Real`, records, arbitrary refinement predicates, and continuous measure values. Some standard-library Rust APIs expose additional carriers without adding a `.emath` surface. `Option`, `Result`, `Graph`, and `Field<p>`/`GF<p>` are admitted composite *declaration* types (see "Composite types").
 
-## Refinement types
+## Scalars and integers
+
+`Nat` and `Int` use exact `i64` arithmetic for addition, subtraction, multiplication, and negation. Overflow is a runtime refusal, never wrapping. Mixed integer and `Float64` arithmetic widens to `Float64`; mixed comparisons preserve the exact integer value.
+
+A constant negative index is `E-SHAPE-006`. A runtime negative, fractional, or out-of-range index is an evaluation fault, not a panic.
+
+`Float64` follows IEEE-754 binary64. For example, `sqrt(-1)` is NaN and `log(0)` is negative infinity. Domain restrictions must be written as assumptions or checked constraints.
+
+## Measurement literals
+
+Measurements have a central value, standard uncertainty, distribution tag, and provenance.
 
 ```emath
-type Probability = Float64 where 0 <= self and self <= 1
-type Positive<T> = T where self > 0
+m = 1.50 ± 0.02
+G = 6.67430(15)e-11
+u = 10.0 ± 0.5 ~ uniform
 ```
 
-Refinements may be established statically, by constructor checks, by provider certificates or remain caller obligations.
+Parenthetical digits attach immediately and scale with the final mantissa digits. `f(2)` remains a call and `1.50 (2)` is not a measurement literal. Distribution tags are `normal`, `uniform`, and `lognormal`; the default is `normal`.
 
-## Domain annotations (U5)
+Unstated provenance remains visible. Structured binding provenance uses `Exact`, `Citation`, `InstrumentRun`, `Fitted`, `Assumed`, or `Unstated`.
 
-A domain annotation constrains a numeric input to a bounded interval:
+## Units profiles
+
+`@units_profile(level)` declares quantity strictness for one declaration.
+
+| Level | Bare quantity | Provenance |
+|---|---|---|
+| `permissive` | admitted | optional |
+| `lab` | admitted | optional |
+| `engineering` | refused (`E-UNIT-106`) | optional |
+| `publication` | refused (`E-UNIT-106`) | required (`E-UNIT-107`) |
+
+A profile may strengthen checks but cannot weaken dimensional admission. Unknown or duplicate profile declarations are refused.
+
+## Domain annotations
+
+A bounded scalar domain is written after the type:
 
 ```emath
-emath function clamp01(x: Float64 in [0.0, 1.0]) -> Float64:
+emath function Windowed:
+    inputs:
+        x: Float64 in [0.0, 1.0]
     definitions:
-        f = x * (1.0 - x)
+        y = x * (1.0 - x)
 ```
 
-Syntax: `Type in [lo, hi]` where `lo` and `hi` are numeric expressions
-(typically literals). The `in` keyword is disambiguated by the following
-token: `in [` is a domain annotation, `in <identifier>` is a unit
-annotation, `in <range>` in binder position is a binder variable.
+The spelling is `Type in [lo, hi]`. Bounds participate in type and semantic identity. The base must be a scalar numeric type; `Bool in [0, 1]` is `E-TYPE-001`.
 
-Domain annotations map to `TypeNode::Refinement` with a predicate
-encoding the bounds (`domain[lo,hi]`). They participate in type
-identity: two declarations that differ only in domain bounds are
-distinct declarations.
+General `Type where predicate` refinements are not admitted.
 
-Domain annotations require a scalar numeric base type (`Float64`,
-`Nat`, `Int`, or an existing refinement). A domain annotation on a
-non-numeric type (e.g., `Bool`) is refused with `E-TYPE-001`.
+## Units and quantities
 
-## Units and dimensions
+A simple unit follows the literal. A compound unit uses a bracketed unit expression:
 
 ```emath
-unit Token = base "token"
-unit TokenRate = Token / s
-unit DollarPerMillionToken = USD / (1_000_000 Token)
+length = 2.0 m
+acceleration = 9.81 [unit m/s^2]
+energy = 100.0 [unit kg*m^2/s^2]
 ```
 
-A quantity has dimension, scale, offset rules and representation. Affine units such as absolute temperature cannot be treated as ordinary multiplicative units.
+Unit expressions support `*`, `/`, `^`, and parentheses. Multiplication and division associate left, so `m/s*s` is length, not acceleration. Write `m/(s*s)` or `m/s^2` when that is the intended dimension.
 
-### Compound-unit bracket syntax (F7/U4)
+The core table includes SI units and prefixes, time and information units, common astronomical and geodetic lengths, angle units, `L`/`liter`/`litre`, and temperature units `K`, `degC`, `degF`, and `degR`.
 
-A simple unit attaches directly to a numeric literal:
+Currencies and time zones are socially versioned and refuse in core (`E-UNIT-CURRENCY-1`). Unknown units are `E-UNIT-104`; incompatible dimensions are `E-UNIT-101`.
 
-```emath
-9.81 m          # simple unit (meters)
-1.0 s           # simple unit (seconds)
-```
+### Affine units
 
-A compound unit uses bracket notation with the `unit` contextual keyword:
-
-```emath
-9.81 [unit m/s^2]       # acceleration (m s^-2)
-100.0 [unit kg*m^2/s^2] # energy (joules)
-1.0 [unit m/(s*s)]      # acceleration, parenthesized denominator
-```
-
-The `unit` keyword inside brackets disambiguates from indexing.
-Without it, `[m]` after a numeric literal is not a unit bracket (C3 fix).
-
-Unit expressions are left-associative for `*` and `/`:
-
-```emath
-1.0 [unit m/s*s]        # left-assoc: ((m/s)*s) = dimension length, NOT acceleration
-1.0 [unit m/s^2]        # acceleration: m^1 * s^-2
-```
-
-This is the C2 trap: `m/s*s` and `m/s^2` have different dimensions.
-Use parentheses in denominators to avoid the trap: `m/(s*s)`.
-
-## Significant figures and unit-preserving formatting (04 §1.6+1.7)
-
-Sig-figs are a **display contract**, not uncertainty propagation; the two
-are different evidence kinds and are never merged.
-
-`emath fmt --value <literal>` rounds a value to its minimum input
-significant-figure count (or an explicit `--sf N`). Leading zeros are
-never significant; trailing zeros after a decimal point are; trailing
-zeros of an integer without a decimal point are not (`1230` → 3 sf,
-`1.230` → 4 sf, `0.0012` → 2 sf).
-
-Unit-preserving formatting changes presentation only — the value and the
-quantity's identity are untouched:
+Absolute temperatures are affine points:
 
 ```text
-emath fmt --value 90 --from s --format "preferred_unit min"   # 1.5 min
-emath fmt --value 12.34 --format "0.1 %"                      # 12.3 %
+0 degC      = 273.15 K
+32 degF     = 273.15 K
+22 degC - 10 degC = 12 K
+0 degC + 1 K      = 1 degC
 ```
 
-`preferred_unit <unit>` re-reports in the requested unit (dimension must
-match); a decimal pattern `0.<k>` fixes the displayed decimals and may
-carry a literal suffix. A format unit incompatible with the value's
-dimension is refused with `E-UNIT-FMT`. Format is excluded from identity
-hashes: the same value under two formats is the same quantity. Mixing
-`Measured` (uncertainty) values with bare sf-values in one context is a
-precision warning receipt, never a refusal.
+Two affine points cannot be added, and an affine point cannot be multiplied. Those operations are `E-UNIT-102`.
 
-## Shapes
+### Formatting and significant figures
+
+Significant figures are presentation metadata, not uncertainty propagation.
 
 ```emath
-shape Hidden = [Batch, Sequence, Width]
-input: Tensor<Float32, Hidden>
+@significant_figures(display)
+emath function Report:
+    definitions:
+        result = 1.230
 ```
 
-Shape constraints include equality, broadcasting, rank, extent arithmetic and layout. Unknown extents remain symbolic when supported.
+`@significant_figures(enforce, 3)` records under-reporting as a warning receipt. `emath fmt --value` can round to a declared count or report in a compatible preferred unit. Formatting does not change semantic identity.
 
-## Generic arguments at use sites (C10)
+## Shapes and literals
 
-Generic arguments instantiate a parameterized type at a use site. The
-grammar admits three kinds of argument:
-
-- **Type argument** - a type expression: `Vector<Float64>`, `NonNegative<Real>`
-- **Value argument** - a literal or expression: `Mod<7>`, `Tensor<Float64, [N, N]>`
-- **Named argument** - `name = expression`: `GF<2, 3, modulus = x + 1>`
+Nested list literals determine rank:
 
 ```emath
-inputs:
-    v: Vector<Float64>            # type-only (unchanged)
-    m: Mod<7>                     # integer literal value arg
-    grid: Tensor<Float64, [N, N]> # type arg + bracket-list extent
-    field: GF<2, 3, modulus = x + 1>  # value args + named arg
+v = [1, 2, 3]
+m = [[1, 2], [3, 4]]
+t = [[[1], [2]], [[3], [4]]]
 ```
 
-The first argument to `Vector` / `Matrix` / `Tensor`, if it is a
-recognized element type (`Float64`, `Real`, …), is the element type;
-remaining arguments are extents. If the first argument is not an
-element type, all arguments are extents and the element defaults to
-`Float64`.
-
-Value-level and named generic arguments **parse** today. Semantic
-admission of non-type arguments (modular arithmetic, finite fields,
-function spaces) will arrive with the domain-specific features that
-use them.
-
-## Domains
+Semicolon rows are equivalent matrix syntax:
 
 ```emath
-domain Time = Interval(0 s, 10 s)
-domain Ω = Box([0 m, 1 m], [0 m, 1 m])
-domain Nodes = vertices(graph)
+m = [1, 2; 3, 4]
+column = [1; 2; 3]
 ```
 
-Domains define admissible values, integration measures, boundaries, branch conventions and topology as applicable.
+Rows must have equal length. Indexing drops rank; `:` keeps the selected axis:
 
-## Conversions
+```emath
+x = v[0]
+y = m[0, 1]
+plane = t[0, :, :]
+```
 
-Conversions are classified:
+Tensor addition and subtraction require matching extents or an extent of `1` on the broadcast side.
 
-- exact representation-preserving;
-- exact value with representation change;
-- checked narrowing;
-- wrapping/saturating;
-- rounded with declared policy;
-- approximate with error;
-- unit scale/offset;
-- shape/layout transformation.
+A numeric table has named columns and closed rows:
 
-Implicit conversions are deliberately limited and source-mapped.
+```emath
+data = |x y| 1, 2 | 3, 4 |
+```
+
+At least two headers are required. Ragged or non-numeric rows are refused.
+
+## Sets and records
+
+Finite set values, comprehensions, membership, and path-prefixed records are admitted:
+
+```emath
+small = {1, 2, 3}
+even = {x for x in small if mod(x, 2) == 0}
+has_two = 2 in small
+point = Point { x: 1.0, y: 2.0 }
+```
+
+A bare `{name: value}` is ambiguous and refuses with `E-SYN-154`; record literals require their type path.
+
+## Complex values
+
+Complex literals use the `Ni` suffix:
+
+```emath
+z = 2.0 + 3.0i
+```
+
+The identifier `i` is the imaginary unit unless shadowed. Complex addition, subtraction, multiplication, division, equality, principal roots, logarithms, exponentials, reciprocals, and modulus are supported.
+
+## Certified intervals
+
+```emath
+bounds = interval(1.0, 2.0)
+overlap = intersect(bounds, interval(1.5, 3.0))
+```
+
+Bounds must be finite and ordered. Arithmetic encloses the corresponding range. Division by an interval containing zero refuses. Intervals do not silently widen from or to scalars. Interval operations execute in the interpreter; the strict Rust backend refuses them.
+
+## Modular arithmetic
+
+`Mod<p>` and `GF<p>` values use exact integers. Reduction is performed by explicit builtins:
+
+| Builtin | Meaning |
+|---|---|
+| `factorial(n)` | Exact `n!` for `0 <= n <= 20` |
+| `mod(a, m)` | Floating-point remainder |
+| `mod_inv(a, m)` | Exact modular inverse; refuses when no inverse exists |
+| `field_inv(a, p)` | `a^-1 mod p` over prime `p` — same exact kernel as `mod_inv` |
+| `int_rem(a, m)` | Exact Euclidean i64 remainder `a.rem_euclid(m)`; typed fault when `m ≤ 0` or `a` is not a whole integer |
+| `congruence(a, b, m)` | Congruence predicate |
+
+## Composite types
+
+`Option`, `Result`, `Graph`, and `Field`/`GF` are executable declaration
+types (emath-option-result-graph-field-aj8d). Recognition is recursive:
+each generic argument is itself mapped, so nested spellings admit
+(`Option<Result<Int, Bool>>`), and semantically distinct spellings map to
+distinct type nodes (`Option<Float64> ≠ Option<Int> ≠ Result<Int, Bool>`).
+At the term/VM layer these are value-carrying (the interpreter holds
+`Option`/`Result` values and the prime-field node carries its modulus).
+Conformance counts (emath-option-result-graph-field-aj8d): emath-sema-tests
+`option_result_graph_field` = 51, emath-ir-tests `option_result_values` = 36,
+emath-rust-backend-tests `lib` = 41.
+
+- **`Option<T>`** — admits with **exactly one** type argument (`E-TYPE-010`
+  arity refusal otherwise), lowering to an `OptionType<T>` node; nesting
+  descends (`Option<Option<Int>>`). The EXPRESSION surface **computes from
+  `.emath` text**: `option_some(v)`, `option_none()`, `option_is_some(o)`,
+  `option_unwrap_or(o, default)` (pinned by the `aj8d_text_*` sema tests).
+  A payload is a concrete scalar or a nested Option/Result carrier; others
+  refuse `E-TYPE-012`. `unwrap_or` is total (value or the injected default
+  — no panicking unwrap). A same-kind carrier default (e.g. `option_none`)
+  survives for nested extraction; a MISMATCHED carrier kind in the default
+  slot refuses typed `E-TYPE-012` (kind-matched).
+- **`Result<T, E>`** — admits with **exactly two** type arguments, lowering
+  to a `Result { ok, error }` node. Expression surface computes from text:
+  `result_ok(v)`, `result_err(v)`, `result_is_ok(r)`, `result_unwrap_or(r,
+  default)`, `result_error_of(r)` (Err → `Option::Some(err)`, Ok → none).
+  `.emath` `map`: compose the builtins with `if … : … else : …` over the
+  declared-carrier predicates (no function-valued args). Kind-mismatches
+  and foreign-carrier defaults refuse `E-TYPE-012`.
+- **`Graph`** — an **alias** for the dense `Matrix<Float64>` adjacency
+  carrier (decision b). The graph ops check shapes, not the type node, so
+  a `Graph`-typed field feeds the closed compute surface unchanged:
+  `reachability`, `bfs_order`, `shortest_distances`, `out_degrees`,
+  `graph_laplacian`, `graph_symmetrize`, `bellman_ford`, `sparse_triplets`,
+  `sparse_from_triplets`. Bare `Graph` only; `Graph<T>` is a typed arity
+  refusal (`E-TYPE-010`). The alias is **bidirectional**: `Graph` and
+  `Matrix<Float64>` are the same carrier node, so a graph value admits into
+  a `Matrix<Float64>`-typed field and a `Graph`-typed field feeds any
+  matrix-consuming graph op — the two spellings interchange freely.
+  `graph { <nodes> ; <edges> }` computes the dense adjacency and the
+  reachability/degree/distance kernels run from text (pinned by the
+  `aj8d_graph_field_*` and `aj8d_meta_graph_relabel_*` tests).
+- **`Field<p>` / `GF<p>`** — one prime-field spelling (GF canonical;
+  `Field` the declared alias). The prime is a **type-level constant**: the
+  argument must be a single **prime integer literal** `2 ≤ p ≤ i32::MAX`,
+  else `E-TYPE-010`. `Field<7>` and `GF<7>` are the same distinct
+  `FieldPrime { modulus: 7 }` type (never the silent `Int` collapse; a
+  non-prime, non-literal, or overdarge modulus is a typed refusal naming
+  the constraint). Values are **exact i64**. Field arithmetic **computes
+  from `.emath` text as capability-cell data over the universal `int_rem`,
+  the exact-Euclidean i64 remainder `a.rem_euclid(m)`**: e.g. `field7_add`
+  `int_rem(a + b, 7)`, `field7_mul` `int_rem(a * b, 7)`, `field7_inv`
+  `field_inv(a, 7)` (pinned by the `aj8d_field*` and
+  `aj8d_meta_field7_distribution_law` tests). `field_inv`/`mod_inv` and
+  `int_rem` are Phase-1 surface builtins; there is **no field-named EmirOp
+  or parser branch** — the function NAMES are user data over the generic
+  primitive. **Exactness conformance**: a `Field<p>` OUTPUT refuses a float
+  definition (`E-TYPE-012` — F64 does not numerically widen into an exact
+  integer field type; plain `Int` keeps the legacy F64→Int widening); an
+  integer literal or an `int_rem`/`field_inv` result admits (valid exact
+  elements).
+
+The refusal family is summarized by **`E-TYPE-010`**: wrong arity (extra
+or missing type arguments), non-prime modulus, non-literal modulus
+(including `GF<n>` and computed `GF<7+1>`), and modulus outside
+`[2, i32::MAX]` all refuse with a message naming the spelling and the exact
+constraint — never a silent collapse, never `TypeNode::Int`. Carrier/field
+misuse refuses `E-TYPE-012`. `int_rem` with a non-positive modulus (or a
+non-whole `Float64` operand) is a **typed runtime fault, never a panic**:
+m ≤ 0 → `modulus must be positive`; a fractional operand → `type confusion`
+(`i64_of`/`finite_whole_i64`, interpreter layer).
+
+## Generic arguments
+
+Generic arguments may be types, values, shapes, or named values:
+
+```emath
+v: Vector<Float64, [3]>
+m: Mod<7>
+grid: Tensor<Float64, [N, N]>
+field: GF<2, 3, modulus = x + 1>
+```
+
+Value and named arguments parse generally. Their semantic admission depends on the declaration kind or standard-library schema that consumes them.
 
 ## Numeric profiles
 
-A compile profile selects representations and math behavior:
+A package may declare `strict-f64`, `interval-f64`, or another supported profile. The profile enters artifact identity. Omitted `numeric:` means `strict-f64`. `interval-f64` is accepted as a profile label; ordinary scalar computation still uses `Float64` unless interval values are constructed explicitly.
 
-```text
-exact
-strict-f64
-fast-f64
-interval-f64
-fixed-point
-provider-selected under constraints
-```
+## Stochastic values
 
-The chosen profile enters artifact identity and evidence.
+Randomness is explicit and replayable:
 
-## Implemented today
+- the seed is supplied by the run or campaign;
+- the generator identity is recorded;
+- an optional named stream path defines deterministic splits;
+- call order does not determine the stream.
 
-Admitted compute types:
+Normal, uniform, and Bernoulli sampling use `(parameters, seed, draws[, "stream.path"])`. Omitting the path selects the root stream. Undeclared entropy access and unknown generator algorithms refuse.
 
-```text
-Float64  Bool  Nat  Int  Complex  GF<p>  GF<p>
-Vector[n]  Matrix[r, c]  Tensor[…]
-quantity / `T in unit` annotations
-```
+## Library-only carriers
 
-`Nat` and `Int` are indexes and small integer values. Integer add, sub,
-mul, and negate that stay in `i64` are exact; overflow is a named
-runtime fault, not wrap or a rounded float. Mixed `Int`/`Float64`
-arithmetic still widens to `Float64`. Mixed `Int`/`Float64` comparisons
-(`==` `!=` `<` `<=` `>` `>=`) are exact: `(2^53+1) == 2^53.0` is false
-because the integer is not that float. Same-kind `Float64` comparison
-stays IEEE-754, so `-0.0 == 0.0`. When an output is declared `Int`,
-a whole finite `Float64` result is converted to exact `i64`. This makes
-`product i in 1..=20: i` with `Int` output give the exact factorial, not
-a float approximation. A negative constant index is `E-SHAPE-006`.
-Runtime negative, fractional, or out-of-range indices are a named fault
-(`EvalFault::IndexOutOfBounds` in interp; `Result<_, String>` from
-`rust.library`), never wrap, saturate, or panicking `[]`.
+The Rust standard-library layer also defines measured datasets, descriptive statistics, discrete signals with declared sampling, and explicit discrete or Lebesgue measures. These do not imply corresponding `.emath` syntax. Consult the contracts under `language/stdlib/cells/` for APIs and refusal codes.
 
-Shapes:
+## Graphs and adjacency
 
-- rank-1 / rank-2 literals stay `Vector` / `Matrix`
-- rank-3+ literals become `Tensor`
-- `v[i]`, `m[i, j]`, `t[i, j, k]` drop rank
-- `t[0, :, :]` and other `:` axes keep rank
-- tensor add/sub only when extents match, or one side is `1`
+A graph is a dense weighted adjacency carrier: `graph { <nodes> ; <edges> }`
+desugars to a tuple that evaluates to a square `Float64` matrix (row-major),
+one row and column per vertex in declaration order. Nodes are vertex
+labels (used in declaration order, so `0..n-1` labels are conventional).
+Edges admit the spellings `u --> v` (unweighted, weight 1), `u -[w]-> v`
+(`u` to `v` with weight `w`), `u - v` and `u -[w]- v` (bidirectional as two
+directed edges). A missing node list, a dangling edge, or a malformed
+weight bracket is a parse error — never a graph with fewer vertices.
+Weight and endpoint spellings must be finite literal token sequences,
+with an optional unary sign: `1`, `-1.0`, and `+2.0` (and nested sign
+chains) admit, so `u -[-1.0]-> v` is a negative edge with weight −1.0.
+Any non-literal form — a named weight (`-[w]->`), an arithmetic
+computed weight (`-[1 + 2]->`), or a signed non-finite literal — is
+refused `E-TYPE-012` at admission. Negative weights are first-class in
+the kernels and compose through either carrier spelling: the signed
+graph literal above, or `sparse_from_triplets` (triplet weights may be
+negative; `E-GRAPH-004` refuses non-finite weights). The closed calls
+consume both carriers identically.
 
-Units that the compiler knows (`Duration`, `MiB`, `1 s`, `ms`, `m`,
-`km`, `m/s`, `degC`, …) admit. A quantity literal is converted to SI by scale
-(and offset, for affine units): `1 km + 1 m` is `1001` metres, `1 s +
-1 ms` is `1.001` seconds, `1 MiB / 1 B` is `1048576`, `0 degC` is
-`273.15 K`. `1 m * 1 m` is area (`m^2`); `1 m / 1 m` is dimensionless.
-Affine points cannot be added to each other or multiplied
-(`1 degC + 1 degC` and `(1 degC) * 2` are `E-UNIT-102`); adding a
-linear interval is a shift (`0 degC + 1 K` is `1 degC`). A quantity
-state in a model must have a matching state/time rate. Unknown units
-and unit clashes are named refusals (`E-UNIT-104`, `E-UNIT-105`,
-`E-UNIT-101`). Information units never mix with dimensionless SI
-(`1 + 1 MiB` is `E-UNIT-101`). `T in unit` annotations are dimension
-tags: assigning a duration to a length is `E-TYPE-012` and names
-those dimensions (`duration` vs `length`), not an internal dump.
-`Float64 in m*m` and `Float64 in m^2` are area; `Float64 in m/s*s` is
-length (C2 trap), not acceleration.
+The call surface (closed set) computes on adjacency carriers:
 
-Compound-unit bracket syntax (`9.81 [unit m/s^2]`) parses and lowers
-to combined dimensions. Unit expressions support `*`, `/`, `^`, and
-parenthesized groups. Left-associativity means `m/s*s` has dimension
-length, not acceleration (C2 trap).
+| Call | Returns | Refusals |
+|---|---|---|
+| `reachability(g, s)` | `1.0/0.0` mask of vertices reached from `s` (`s` reaches itself) | `E-GRAPH-001` non-square, `E-GRAPH-003` source, `E-GRAPH-004` non-finite |
+| `bfs_order(g, s)` | visit order from `s`, breadth-first, neighbors in ascending index (never depth-first); unreachable vertices absent | same |
+| `shortest_distances(g, s)` | Dijkstra distances (`+Inf` unreachable); deterministic ties to the lowest index | plus `E-GRAPH-002` negative edge weight (Dijkstra's precondition) |
+| `out_degrees(g)` | count of nonzero entries per row (a self-loop counts; `0.0` is no edge) | `E-GRAPH-001`, `E-GRAPH-004` |
+| `graph_laplacian(g)` | `L = D − A`, `D` the out-degree diagonal | plus `E-GRAPH-002` negative entry |
+| `graph_symmetrize(g)` | `S = (A + Aᵀ)/2`, the weight-preserving convention (not max, not boolean-or); a user choice, never applied silently | plus `E-GRAPH-002` |
+| `bellman_ford(g, s)` | shortest distances with negative edge weights admitted; unreachable `+Inf` | plus `E-GRAPH-005` reachable negative cycle (no answer exists) |
+| `sparse_triplets(g)` | COO stream `[u, v, w, ...]` ascending `(u, v)`; explicit `0.0` entries are not edges and are skipped | `E-GRAPH-001`, `E-GRAPH-004` |
+| `sparse_from_triplets(n, t)` | dense carrier rebuilt from a triplet stream; duplicate `(u, v)` entries sum (parallel edges add) | `E-GRAPH-003` index, `E-GRAPH-004` non-finite, `E-GRAPH-006` stream length not a multiple of three |
 
-Finite categorical algebra is available through imported declaration kinds,
-not built-in type keywords. `std.kinds.theory` declares finite binary laws,
-`std.kinds.model` exhaustively checks a coefficient-defined modular operation,
-and `std.kinds.morphism` exhaustively checks a scale map. This is a bounded
-decision procedure over at most 256 elements, not a proof about arbitrary or
-infinite carriers. See `examples/intro/v9_06_2rdq_11.emath`.
-
-Numeric models:
-
-- omitted `numeric:` means `strict-f64`
-- `numeric interval-f64` is accepted as a label
-- the machine still computes in `Float64`
-- writing `Real` without a model is `E-NUM-004`
-- `strict-f64` libm builtins are IEEE-754 binary64, not a real-number
-  domain check: `sqrt(-1)` and `ln(-1)` are NaN, `log(0)` is `-Inf`,
-  `pow(0, 0)` / `0^0` are `1`, `atan2(0, 0)` is `+0`. Those domain
-  obligations are recorded as assumptions. `mod_inv` is exact i64 and
-  named-refuses when `gcd(a, m) != 1` or `m` is not positive. Generated
-  Rust uses `f64::from_bits` for folded NaN/Inf so the crate compiles.
-
-Not admitted as compute types yet: `Rat`, bare `Real`,
-`Option`, `Result`, `Graph`, `Field`, records as values, refinement
-predicates such as `NonNegative<Float64>`.
-
-`Complex` is admitted as a type (e.g., `Complex`, `Vector<Complex, [2]>`).
-Complex literals use the `Ni` suffix (e.g., `2i`, `3.5i`) which desugars
-to `N * i` where `i` is the imaginary unit. The identifier `i` is a
-named constant (not a reserved keyword) - it is recognized only when not
-shadowed by an input or definition. Complex arithmetic (add, sub, mul,
-div, neg, eq, ne) is fully supported in the interpreter via a native
-`Complex { re, im }` value type. Principal `sqrt`, `ln`/`log`, `exp`,
-`log2`, `log10`, `recip`, and `abs` (modulus) are admitted on Complex:
-`sqrt(-1 + 0i) = i`, `ln(-1 + 0i) = iπ`. Float64 `sqrt(-1)` remains IEEE
-NaN.
-
-`GF<p>` and `GF<p>` are admitted as `Int` types (e.g., `Mod<7>`, `GF<2>`).
-Values are exact i64 integers; modular reduction is an operational concern
-handled by the builtins (`mod`, `mod_inv`, `congruence`), not by the type system.
-
-### Modular arithmetic builtins
-
-| Builtin | Arity | Returns | Description |
-|---------|-------|---------|-------------|
-| `mod(a, m)` | 2 | Float64 | `a % m` (floating-point remainder) |
-| `factorial(n)` | 1 | Int | `n!` as exact i64 (n must be in [0, 20]) |
-| `mod_inv(a, m)` | 2 | Int | Modular inverse of `a` mod `m` via extended GCD; errors if `gcd(a, m) != 1` |
-| `congruence(a, b, m)` | 3 | Bool | Congruence check: `(a - b) mod m == 0` |
+The spectrum composes through the existing symmetric machinery:
+`eigvals(graph_laplacian(g))` computes the Laplacian spectrum of an
+undirected (or explicitly symmetrized) carrier; a directed carrier
+refuses the symmetric gate (`E-LINALG-002`) — never a silent
+diagonalization. Determinism class: vertices are indices, neighbor scans
+ascend, Dijkstra ties break to the lowest index; identical inputs are
+bit-identical. Vertex relabeling is a metamorphic symmetry: reachability
+masks, distances, and degrees permute with the relabel, and Laplacian
+spectra are invariant. See
+`language/examples/numerical/graph-router.emath` for a runnable
+router.

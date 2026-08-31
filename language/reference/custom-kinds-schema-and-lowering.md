@@ -61,6 +61,23 @@ Complex semantics may use a sandboxed plugin under the versioned plugin interfac
 
 Kind version is part of declaration semantic identity. A lowering change that alters meaning requires a version bump and migration. Cosmetic diagnostics/formatting may remain compatible.
 
+## Execution story (today)
+
+What a custom kind can do today, exactly:
+
+- **Definitions register.** A valid `emath kind Name:` (schema +
+  `lower:` body) checks clean: the body is validated against the
+  closed section table (`schema:` requires/allows, `lower:` bounded
+  equations) and the kind is REGISTERED — a later application gets an
+  honest story, not a typo error.
+- **Function-shaped applications execute.** After the registered schema
+  validates an application such as `emath Gauge HalfGauge:`, its ordinary
+  inputs, outputs, definitions, tests, and compile contract lower through the
+  same typed function path used by built-in functions. The custom kind label
+  remains attached to the declaration.
+- **Undefined kinds still refuse.** A name with no validated definition is
+  `E-KIND-100`; execution never guesses a base kind.
+
 ## Custom notation
 
 Notation is scoped to imports and maps to existing operators/functions. It cannot change precedence globally without explicit namespace activation. Canonical rendering may use fully qualified core forms.

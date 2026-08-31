@@ -1,0 +1,13 @@
+# Sets, set comprehensions, and inline records (emath-r3-sets-tub8, B01+U3).
+# The `{}` surface executes set literals, comprehensions with a guard,
+# and path-prefixed record literals; `v in s` is the comparison-tier
+# membership operator (ASCII for ∈), disjoint from the binder `in` (X13
+# charter, language/reference/lexical-layout-and-source.md).
+# Bare `{x: 1}` (record spelling without a path prefix) is ambiguous and is
+# refused at parse time with E-SYN-154 (tests/invalid/r3_sets_tub8_ambiguous.emath).
+emath function SetsAndRecords:
+    definitions:
+        pair = {2, 3, 5}
+        tens = {n in 0..100 if n >= 90}
+        two_in_tens = 2 in tens
+        origin = Point:{x: 0.0, y: 0.0}

@@ -34,9 +34,10 @@
 | Kind | Parses | Admits | Runs |
 |------|--------|--------|------|
 | `emath function` | yes | yes | yes (definitions evaluate) |
+| `emath capability` (cell) | yes | yes (schema `emath.capability-cell.v1`: closed 10-class taxonomy, required version + migration policy, bounded arity 64; unknown class `E-CELL-001`, missing version `E-CELL-002`, policy-refused mutation `E-CELL-003`, arity `E-CELL-004`, bare-leaf name `E-CELL-005`, pure cell without explicit numeric policy / non-finite logit `E-CELL-006`) | the std cell REGISTRY computes via cell reference semantics in the reference VM — cohort: `std.tensor.softmax` (stable-max, strict-f64; shift invariance, nonnegativity, normalization) + `std.math.{add,mul,sin,exp,sqrt,lt}` (scalar; unguarded-scalar policy: NaN propagates) + `std.tensor.sum` (vector reduction; finite policy: non-finite element refuses `E-CELL-006`, never a silent NaN sum) — every cell a quoted `emath-term` compiled to generic VM bytecode (`vector-map` / `vector-map-scalar` / `vector-reduce` / generic comparison ops over the closed builtin registry — no per-op VM function; malformed/out-of-vocabulary reference terms refuse typed at compile time; matmul/RK4 diagnose the missing nucleus typed), and each compiled cell matches its handwritten reference bit-for-bit (dual-path differential, seeded-mutant caught); identity frozen: an identity-affecting numeric-policy mutation refuses `E-CELL-003`; never core IR enum variants |
 | `emath policy` | yes | yes | yes (stateful objects) |
 | `emath model` | yes | yes | yes (`emath simulate` integrates ODEs) |
-| `emath kind` | yes | partial (schema validation) | no |
+| `emath kind` | yes | yes (definition: schema validation + registered marker) | yes for function-shaped custom kinds: applications lower through ordinary typed definitions and execute in the reference VM/backend; undefined kinds refuse `E-KIND-100` |
 | imported `theory` / `model` / `morphism` kinds | yes | yes (finite carriers, exhaustive laws and preservation) | compile-time decision procedure |
 | `emath family` with `use std.kinds.family` | yes | yes (`ElementwiseUnary<Op>`) | expands to ordinary capability cells |
 | `emath custom` | yes | treats as function or refuses | no |
@@ -56,7 +57,8 @@
 | `exports` `tests` `compile` | admitted |
 | `about` `evidence` `host` | admitted |
 | `provenance` | admitted (closed binding provenance on ordinary declarations; source list on laws) |
-| `transitions` `events` | parses, not admitted |
+| `events` | admitted: event-triggered scheduled firing executes in `emath simulate` (payload condition + action, rising-edge / t0-hold, 40-iteration bisection; r3-dynamical-03lh ch7) |
+| `transitions` | admitted: event-triggered transition dispatch executes in `emath simulate` (`on <Event>:` rules re-assign declared input/state slots on firing; r3-dynamical-03lh ch7) |
 | other | `E-SEC-101` |
 
 ## Types
@@ -67,14 +69,16 @@
 | `Bool` | yes | yes | yes |
 | `Nat` `Int` | yes | yes | yes (Int → exact i64 output) |
 | `Complex` | yes | yes | yes (Complex value type, `i` constant, arithmetic, principal `sqrt`/`ln`/`exp`) |
-| `GF<p>` `GF<p>` | yes | yes (as Int) | yes (via builtins) |
+| `GF<p>` `Field<p>` | yes | yes (exactly one prime-integer-LITERAL modulus `2 ≤ p ≤ i32::MAX`; distinct `FieldPrime{p}`, never silent `Int`; `E-TYPE-010` otherwise) | yes — exact i64; arithmetic is capability-cell data over the universal `int_rem` (`a.rem_euclid(m)`) + `field_inv(a,p)` surface builtins (`field7_add`/`field7_mul`/`field7_inv`); float def in a `Field` output refuses `E-TYPE-012` (exactness conformance); m≤0/fractional `int_rem` = typed runtime fault, never a panic (aj8d) |
+| `Option<T>` | yes | yes (exactly one arg; recursive; `OptionType<T>`) | yes — `option_some`/`option_none`/`option_is_some`/`option_unwrap_or` from text; total unwrap, nesting, kind-matched carrier defaults (`E-TYPE-012` misuse) (aj8d) |
+| `Result<T, E>` | yes | yes (exactly two args; recursive; `Result{ok,error}` node) | yes — `result_ok`/`result_err`/`result_is_ok`/`result_unwrap_or`/`result_error_of` from text; `map` via `if … : … else : …` composition (aj8d) |
+| `Graph` | yes | yes (alias for dense `Matrix<Float64>` adjacency; bare only, `Graph<T>` `E-TYPE-010`) | yes — feeds closed compute surface: `reachability`, `bfs_order`, `shortest_distances`, `out_degrees`, `graph_laplacian`, `graph_symmetrize`, `bellman_ford`, `sparse_triplets`, `sparse_from_triplets` (aj8d) |
 | `Vector[n]` `Matrix[r,c]` `Tensor[...]` | yes | yes | yes |
 | `NonNegative<R>` `Positive<R>` `Probability<R>` | yes | yes | yes |
 | `Interval<F>` | yes | yes | yes |
 | `Measured<T>` | yes | no (neutral `core::measure` schema/API exists; record-value lowering is separate) | - |
 | `T in unit` | yes | yes | yes |
 | `Rat` bare `Real` | yes | no | - |
-| `Option` `Result` `Graph` `Field` | yes | no | - |
 
 ## Generic arguments at use sites
 
@@ -103,7 +107,11 @@
 | einsum | `einsum("ik,kj->ij", A, B)` | yes | yes |
 | Complex literal | `2i`, `3.5i`, `1 + 2i` | yes | yes (Complex arithmetic) |
 | Quantity literal | `1 s`, `1 ms`, `1 km`, `3//2 s`, `0 degC` | yes | yes (SI scale; affine `degC` uses offset, cannot add two points) |
-| Unit query | `unit of E` / `dimension of E` | yes | parse only (named refuse if used as a value) |
+| Unit query | `unit of E` / `dimension of E` | yes | yes (compile-time unit comparison: `unit of x == m`, query-to-query, `!=`; derives E's unit through arithmetic; bare `unit of E` as a value stays a named refuse) |
+| Extended unit table (core::units_ext) | `AU` `pc` `ly` `nmi` `mi` `ft`, angle units `rad` `deg` `arcmin` `arcsec` `grad` `turn` (dimensionless by declaration), `degR`, `A` `mol` `C` `V` `J` `Pa` `bar` `eV` `min` `g`, systematic SI prefixes (`nm`, `kPa`, `MJ`, `mK`, …) | yes | yes (exact-by-definition scales; prefix strips resolve the base recursively; `mUSD` keeps the currency refusal) |
+| Currency/time zone in core | `USD` `EUR` `UTC` … (and behind prefixes) | no (`E-UNIT-CURRENCY-1`) | no (versioned packages, never the nucleus; distinct from the generic `E-UNIT-104` miss) |
+| Physics law contracts (core::physics) | `emath law` with quantity-typed fields, undirected relation via `require` + residual | yes | yes (relation machine-checked through quantity types; seeded wrong-output refuses `E-UNIT-101` at admission; direction assigned only by a goal) |
+| Certified intervals | `interval(lo, hi)`, `intersect(a, b)`, `Interval<Float64>`, interval `+ - * /` | yes | yes (certified bound propagation in the interp world; ill-formed bounds and zero-containing divisors are typed run refusals; scalar/interval mix refuses as type confusion) |
 | Notation declarations | `notation infixl 40 "⊕" => core::math::pow` | yes | yes (glyphs and aliases desugar to calls of the canonical target; non-letter glyphs do not glue to adjacent identifiers (`x⊕y`, `√a`); custom operators bind above the core ladder at precedence ≥ 11) |
 
 ## Builtins

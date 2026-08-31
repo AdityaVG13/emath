@@ -1,0 +1,132 @@
+# 3D geometry primitives (bead emath-talo) — runnable cross-section of
+# `std.geometry.cartesian3` over the generic Vector[3] surface.  The
+# named primitives `cross`/`normalize`/`distance` are DECLARED PURE
+# CAPABILITY CELLS called through the generic declared-capability call
+# seam (ExprNode::Apply → ApplyCapability; the cells execute as
+# compiled reference data over the closed vector vocabulary — no
+# geometry kernel, no new IR op; see
+# language/reference/geometry-and-topology.md §4).  Laws pinned:
+# right-hand axes, anti-symmetry, scale homogeneity, sphere
+# containment, per-axis box test, flat-soup zero signed volume.
+package std.geometry
+use std.kinds.capability
+
+emath capability cross:
+    class: pure
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        u: Vector[Float64]
+        v: Vector[Float64]
+    outputs:
+        w: Vector[Float64]
+
+emath capability normalize:
+    class: pure
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        v: Vector[Float64]
+    outputs:
+        unit: Vector[Float64]
+
+emath capability distance:
+    class: pure
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+    outputs:
+        d: Float64
+
+emath function Cartesian3DAcceptance:
+    definitions:
+        u = [1.0, 2.0, 3.0]
+        v = [4.0, 5.0, 6.0]
+        cross_uv = cross(u, v)
+        cross_vu = cross(v, u)
+        i_cross_j = cross([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+        length_u = norm(u)
+        len_2 = length_u * length_u
+        unit_u = normalize(u)
+        unit_34 = normalize([3.0, 4.0, 0.0])
+        distance_uv = distance(u, v)
+
+        center = [0.0, 0.0, 0.0]
+        radius = 2.0
+        p_on_sphere = [1.0, 1.0, 1.4142135623730951]
+        r2 = radius * radius
+        inside = (p_on_sphere[0] - center[0]) * (p_on_sphere[0] - center[0]) + (p_on_sphere[1] - center[1]) * (p_on_sphere[1] - center[1]) + (p_on_sphere[2] - center[2]) * (p_on_sphere[2] - center[2])
+        sphere_volume = 4.0 * 3.141592653589793 * radius * radius * radius / 3.0
+        sphere_surface = 4.0 * 3.141592653589793 * radius * radius
+
+        normal = [0.0, 0.0, 1.0]
+        plane_point = [0.0, 0.0, 5.0]
+        p1 = [1.0, 1.0, 5.0]
+        p2 = [2.0, 3.0, 1.0]
+        d1 = (p1[0] - plane_point[0]) * normal[0] + (p1[1] - plane_point[1]) * normal[1] + (p1[2] - plane_point[2]) * normal[2]
+        d2 = (p2[0] - plane_point[0]) * normal[0] + (p2[1] - plane_point[1]) * normal[1] + (p2[2] - plane_point[2]) * normal[2]
+
+        bmin = [0.0, 0.0, 0.0]
+        bmax = [2.0, 2.0, 2.0]
+        q = [1.0, 2.0, 1.5]
+        # Per-axis containment booleans (Phase 1 admits one comparison
+        # per binding; the conjunction is the per-axis list, pinned by
+        # the metamorphic suite in tests/emath-sema/tests/geometry3d.rs).
+        qx_lo = q[0] >= bmin[0]
+        qy_lo = q[1] >= bmin[1]
+        qz_lo = q[2] >= bmin[2]
+        qx_hi = q[0] <= bmax[0]
+        qy_hi = q[1] <= bmax[1]
+        qz_hi = q[2] <= bmax[2]
+
+        # Flat 2x2 square soup in z=0: area 2, signed volume exactly 0.
+        t0 = [0.0, 0.0, 0.0]
+        t1 = [1.0, 0.0, 0.0]
+        t2 = [0.0, 1.0, 0.0]
+        e1 = [t1[0] - t0[0], t1[1] - t0[1], t1[2] - t0[2]]
+        e2 = [t2[0] - t0[0], t2[1] - t0[1], t2[2] - t0[2]]
+        n = cross(e1, e2)
+        mesh_area = 0.5 * norm(n)
+        mesh_volume = (n[0] * (t0[0] - 0.0) + n[1] * (t0[1] - 0.0) + n[2] * (t0[2] - 0.0)) / 6.0
+
+    tests:
+        example <axes_and_laws>:
+            expect i_cross_j[0] == 0.0
+            expect i_cross_j[1] == 0.0
+            expect i_cross_j[2] == 1.0
+            expect cross_uv[0] == -3.0
+            expect cross_uv[1] == 6.0
+            expect cross_uv[2] == -3.0
+            expect cross_vu[0] == 3.0
+            expect cross_vu[1] == -6.0
+            expect cross_vu[2] == 3.0
+
+        example <measures>:
+            expect length_u == 3.7416573867739413
+            expect len_2 == 14.0
+            expect unit_34 == [0.6, 0.8, 0.0]
+            expect distance_uv == 5.196152422706632
+
+        example <sphere>:
+            expect inside == 4.0
+            expect sphere_volume == 33.510321638291124
+            expect sphere_surface == 50.26548245743669
+
+        example <plane>:
+            expect d1 == 0.0
+            expect d2 == -4.0
+
+        example <box>:
+            expect qx_lo == true
+            expect qy_lo == true
+            expect qz_lo == true
+            expect qx_hi == true
+            expect qy_hi == true
+            expect qz_hi == true
+
+        example <mesh>:
+            expect mesh_area == 0.5
+            expect mesh_volume == 0.0

@@ -1,0 +1,65 @@
+# Probability: seeded sampling + exact densities (xx0x.5 thin nucleus).
+#
+# ONE generator story: the explicit seed and declared dot-separated split
+# path enter the counter-based stream contract. Same seed + same path is
+# bit-identical; a different path is a different stream independent of call order.
+#
+# Admitted families: Normal (Box–Muller), Uniform, Bernoulli.
+# Invalid parameters refuse E-PROB-001 (sigma <= 0, a > b, p outside
+# [0,1]); non-finite refuse E-PROB-002; wrong arity refuses E-PROB-003.
+# MCMC/Bayesian/UQ are named deferrals, not claims.
+#
+emath function seeded_normal_draws:
+    inputs:
+        seed: Float64
+        draws: Float64
+    outputs:
+        stream: Vector<Float64>
+        chain: Vector<Float64>
+        replay: Vector<Float64>
+        replayed: Bool
+        split: Bool
+    definitions:
+        # Normal(0, 1): the same seed reproduces this exact stream
+        # bit-for-bit on every run.
+        stream = normal_sample([0.0, 1.0], seed, draws)
+        chain = normal_sample([0.0, 1.0], seed, draws, "campaign.chain-a")
+        replay = normal_sample([0.0, 1.0], seed, draws, "campaign.chain-a")
+        replayed = (chain == replay)
+        split = (stream != chain)
+
+    goals:
+        evaluate <chain>:
+            produce rust.library
+
+    tests:
+        example <declared_stream>:
+            given seed = 42.0
+            given draws = 8.0
+            expect replayed == true
+            expect split == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function seeded_bernoulli_draws:
+    inputs:
+        seed: Float64
+        draws: Float64
+    outputs:
+        samples: Vector<Float64>
+    definitions:
+        # Bernoulli(0.3): draws are exactly 0.0 or 1.0; the fixed seed
+        # makes the empirical fraction deterministic.
+        samples = bernoulli_sample([0.3], seed, draws)
+
+    goals:
+        evaluate <samples>:
+            produce rust.library
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

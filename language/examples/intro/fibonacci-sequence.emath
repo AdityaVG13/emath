@@ -1,0 +1,24 @@
+# Structurally decreasing recurrences are memoized sequence values.
+emath function Fibonacci:
+    inputs:
+        n: Float64
+
+    outputs:
+        value: Float64
+        square_coefficient: Float64
+
+    definitions:
+        fib[0] = 0
+        fib[1] = 1
+        fib[n] = fib[n-1] + fib[n-2]
+        value = fib[n]
+
+        generating = generating_function([0, 1], [1, 1], 64)
+        square = convolution(generating, generating, 16)
+        square_coefficient = square[n]
+
+    tests:
+        example <fifth>:
+            given n = 5
+            expect value == 5
+            expect square_coefficient == 10

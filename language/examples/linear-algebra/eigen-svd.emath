@@ -1,0 +1,17 @@
+# emath-xx0x.2 example: eigenvalues, singular values, iterative solves.
+
+# The richer linear-algebra surface computes on admitted matrices:
+# eigvals/eigvecs run cyclic Jacobi on real SYMMETRIC square matrices
+# (eigenvalues ascending, columns aligned); svd returns the singular
+# values DESCENDING (factors via SvdFactors satisfy A = U S Vt); and
+# solve_iterative runs conjugate gradient on the matrix's dense storage
+# (SPD-convergence-checked: a non-converging system refuses typed).
+# Non-square or materially non-symmetric spectral input refuses typed.
+
+emath function spectrum:
+    inputs:
+        a: Matrix<Float64>
+    outputs:
+        smallest: Float64
+    definitions:
+        smallest = eigvals(a)[0]

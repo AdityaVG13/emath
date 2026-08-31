@@ -1,0 +1,37 @@
+# Bead `emath-biform-cells-jswu6` — positive language example: a biform
+# capability cell with independent spec and algorithm evidence.
+#
+# One cell, two authorities: the `spec:` side carries laws, types, and
+# units (what the cell claims); the `algorithm:` side carries reference
+# semantics / bytecode (how the claim is computed). Their evidence
+# objects are independent — satisfying tests of the algorithm do not
+# prove the spec, and a spec proof does not certify a particular
+# backend. Softmax here is fixture data: a cell name and evidence
+# tokens, never a domain-named Rust branch.
+#
+# Surface status: admission of the sections below is decided by the
+# capability layer's closure planner (crates/emath-ir/src/capability.rs)
+# reached from the declaration lane (crates/emath-sema/src/recognition.rs)
+# with typed dispositions (provided / refused / not-applicable;
+# E-CELL-009 missing side, E-CELL-010 authority escalation, E-CELL-011
+# side-evidence collision). The evidence objects are quoted string
+# tokens; the class/version/migration rows are the bounded descriptor.
+# Exercised by `tests/emath-ir/tests/biform_cells_unit.rs` (as data) and
+# `tests/emath-sema/tests/biform_cells.rs` (admission).
+package std.math
+use std.kinds.capability
+
+emath capability Softmax:
+    class: biform
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        x: Vector[Float64]
+    outputs:
+        probability: Vector[Float64]
+    spec:
+        # stable-max law: probability = exp(x - max(x)) / sum(exp(x - max(x)))
+        evidence: "evidence:std.math.softmax:spec:v1"
+    algorithm:
+        # reference evaluation under the strict-f64 numeric policy
+        evidence: "evidence:std.math.softmax:algorithm:v2"

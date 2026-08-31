@@ -1,0 +1,37 @@
+# Time-series data literals (04 §5.4, slice 1): measured series are
+# declared data — the pair list plus the interpolation/extrapolation
+# policy is the value, and the policy hashes into identity. `series_at`
+# evaluates that declared policy; the default `extrapolation: refuse`
+# produces a typed fault outside the support interval.
+emath function WindTunnel:
+    inputs:
+        t: Float64 in s
+
+    outputs:
+        v: Float64
+
+    definitions:
+        wind_data = [(0.0 s, 0.0 [unit m/s]), (0.1 s, 1.0 [unit m/s]), (0.2 s, 1.8 [unit m/s])] with interpolation: linear, extrapolation: refuse
+        v = series_at(wind_data, t)
+        csv_data = series_from_csv("sample,time (s),wind (m/s)\nA,0.0,0.0\nB,0.1,1.0\nC,0.2,1.8", "time", "wind", "linear", "refuse")
+        csv_midpoint = series_at(csv_data, 0.05)
+
+        gust_data = [(0.0 s, 0.0 [unit m/s]), (0.5 s, 1.2 [unit m/s]), (1.0 s, 0.8 [unit m/s])] with interpolation: nearest, extrapolation: clamp
+        gust_at_tie = series_at(gust_data, 0.25 s)
+        gust_after_end = series_at(gust_data, 2.0 s)
+
+        profile_data = [(0.0 s, 0.0 [unit m/s]), (0.5 s, 1.5 [unit m/s]), (1.0 s, 0.0 [unit m/s])] with interpolation: monotone_cubic, extrapolation: refuse
+        profile_peak = series_at(profile_data, 0.5 s)
+
+    tests:
+        example <interior>:
+            given t = 0.05
+            expect v == 0.5
+            expect csv_midpoint == 0.5
+
+        example <nearest_and_clamp>:
+            expect gust_at_tie == 1.2
+            expect gust_after_end == 0.8
+
+        example <monotone_cubic>:
+            expect profile_peak == 1.5

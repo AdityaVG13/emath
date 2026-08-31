@@ -1,0 +1,7 @@
+# Intent completion keeps mathematically distinct solution worlds labeled.
+# Inspect the menu:
+#   emath solve --check language/examples/intro/solve_x2_eq_2.emath
+# Pin one meaning deterministically:
+#   emath solve --apply real-pm language/examples/intro/solve_x2_eq_2.emath
+
+solve x^2 = 2

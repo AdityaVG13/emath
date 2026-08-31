@@ -1,0 +1,59 @@
+# Control surface — transfer functions, DC gain, stability
+# (emath-r3-sde-control-zxkl, thin B43; registry cells std.control.*,
+# stacked on B28 polynomials + B34 linear solves + B14 complex).
+#
+# THE worked fixture: H(s) = (s + 6)/(s² + 3s + 2) = (s + 6)/((s + 1)(s + 2))
+# — poles at −1 and −2, H(0) = 6/2 = 3, H(−3) = 3/2. Coefficient vectors
+# are ASCENDING (the B28 representation).
+#
+# LAWS (each discriminating):
+# - transfer_eval(num, den, x) = num(x)/den(x); a denominator that is 0
+#   at the point (a POLE HIT, or the zero polynomial) refuses
+#   E-CONTROL-002 — the value does not exist, never Inf-by-convention;
+# - poles_stable(den) is the Routh–Hurwitz first-column sign test —
+#   pure polynomial arithmetic, NO root-finding, no claimed eigenvalues.
+#   Strictly stable → true, provably unstable → false; a DEGENERATE
+#   table (zero first-column entry: marginal/ε-ambiguous) refuses
+#   E-CONTROL-005; the identically-zero polynomial refuses E-CONTROL-002;
+# - dc_gain(A, b, c) = c·(−A)⁻¹·b with implicit D = 0 (feedthrough is
+#   the named deferral); the characteristic polynomial comes from the
+#   Faddeev–LeVerrier recursion and stability is the SAME Routh–Hurwitz
+#   predicate — an UNSTABLE carrier refuses E-CONTROL-003 (the DC gain
+#   does not exist), not a garbage number. Cross-representation parity:
+#   H(0) and dc_gain agree BIT-FOR-BIT on the same system;
+# - shapes refuse at COMPILE (scalar-where-vector etc.); non-square A or
+#   b/c length ≠ n refuses E-CONTROL-004 at the kernel; non-finite
+#   coefficients/entries/points refuse E-CONTROL-001 (E-CELL-006 at the
+#   seam one layer earlier).
+#
+# transfer_eval, dc_gain, and poles_stable execute from strict `.emath`
+# source through the std.control kernels. Named deferrals:
+# B37 SDE (world-dependent — needs the seed/stream coordination),
+# controller design (pole placement, LQR), auxiliary-polynomial
+# refinement of degenerate Routh tables, full feedthrough D.
+
+emath function transfer_response:
+    inputs:
+        s: Float64
+    outputs:
+        h: Float64
+    definitions:
+        # num = s + 6; den = s² + 3s + 2 — ascending coefficients.
+        h = transfer_eval([6, 1], [2, 3, 1], s)
+
+emath function state_space_dc_gain:
+    inputs: []
+    outputs:
+        dc: Float64
+    definitions:
+        # Companion-like carrier of 1/(s² + 3s + 2) with D = 0:
+        # dc = c·(−A)⁻¹·b = 0.5 = H(0), bit-exact.
+        dc = dc_gain([[0, 1], [-2, -3]], [0, 1], [1, 0])
+
+emath function open_loop_stability:
+    inputs: []
+    outputs:
+        stable: Bool
+    definitions:
+        # (s + 1)(s + 2) = s² + 3s + 2: all real parts < 0 → true.
+        stable = poles_stable([2, 3, 1])

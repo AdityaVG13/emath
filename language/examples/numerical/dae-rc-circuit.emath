@@ -1,0 +1,64 @@
+# A runnable implicit DAE example with a GENERIC event-triggered switch.
+#
+# The RC circuit is the index-1 DAE core: one differential state
+# (charge), one algebraic unknown (current), one square residual
+# (2 equations for 1 rate + 1 algebraic). The hybrid element is the
+# declared event + the declared transition (r3-dynamical-03lh ch7,
+# transitions slice): the event DETECTS the crossing on a rising edge of
+# its condition, and the transition rule DISPATCHES the switch. The
+# event's payload carries the condition and a self-assignment action
+# (`voltage = voltage` — the payload contract is exactly one action, so
+# an event that only names a crossing carries an identity write); the
+# behavioral write lives in the transition `on ThresholdCrossed:`
+# which re-assigns the declared input slot `voltage`. While the
+# capacitor charges the source stays connected; at the moment `charge`
+# reaches `capacitance * threshold_voltage` the firing transition sets
+# `voltage = 0` and the circuit discharges through the resistor — the
+# trajectory's behavior switches at the threshold.
+#
+# Determinism: one event fires per accepted step, ties break in
+# declaration order, the crossing is bisected within the identical
+# 40-iteration budget as the dedicated `--event` locator, and identical
+# source + inputs + policy replay an identical firing log and
+# transition application.
+#
+# Checks and runs as:
+#
+#   emath check language/examples/numerical/dae-rc-circuit.emath
+#   emath simulate language/examples/numerical/dae-rc-circuit.emath \
+#     --model RCCircuit \
+#     --set voltage=10 --set resistance=1 --set capacitance=1 \
+#     --set threshold_voltage=5 --set charge=0 --set current=10 \
+#     --method backward-euler --dt 0.1 --t1 1.0
+
+emath model RCCircuit:
+    inputs:
+        voltage: Float64
+        resistance: Float64
+        capacitance: Float64
+        threshold_voltage: Float64
+    algebraic:
+        current: Float64
+    state:
+        charge: Float64
+    events:
+        # The event detects the crossing. `voltage` is a runtime-capture
+        # slot: on firing it binds the live value of the same-named model
+        # variable (the input `voltage`) at the crossing. The payload
+        # condition is the trigger; the self-assignment action satisfies
+        # the one-action payload contract without changing behavior — the
+        # switch itself is the transition rule below.
+        event ThresholdCrossed(voltage: Float64):
+            if charge >= capacitance * threshold_voltage:
+                voltage = voltage
+    transitions:
+        # The switch: when `ThresholdCrossed` fires on a rising edge, the
+        # rule re-assigns the declared input slot `voltage`, persisting
+        # into all later steps.
+        on ThresholdCrossed:
+            voltage = 0
+    equations:
+        # Algebraic residual: KVL around the loop.
+        voltage - resistance * current - charge / capacitance == 0
+        # Differential rate: the causalized current.
+        der(charge) = current

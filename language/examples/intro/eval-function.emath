@@ -1,0 +1,50 @@
+# emath eval over an ordinary function spec.
+#
+# This is a standard trained-function file (sema-admitted, not genesis
+# format). `emath eval` executes it through the generic EMIR +
+# reference-VM stack:
+#
+#   emath eval language/examples/intro/eval-function.emath --set a=2 --set b=3 --json
+#
+# Receipt (schema emath.eval-function v1) with meaning_id provenance:
+#
+#   {
+#     "schema": "emath.eval-function",
+#     "function": "WeightedSum",
+#     "entrypoint": "sole",
+#     "inputs_from": "set",
+#     "meaning_id": "emath:meaning:v1:...",
+#     "inputs": { "a": "2.0", "b": "3.0" },
+#     "outputs": { "total": "7.0", "scaled": "2.8" }
+#   }
+#
+# Plain `emath eval` with no --set runs the spec's own single worked
+# example as the input oracle (given a=2, b=3 -> total=7, scaled=2.8).
+# Multiple functions in one file select via `--function NAME`; a missing
+# input, an unknown name, an ambiguous file, or a non-function
+# entrypoint refuse with typed E-EVAL-* codes.
+
+emath function WeightedSum:
+    inputs:
+        a: Float64
+        b: Float64
+
+    outputs:
+        total: Float64
+        scaled: Float64
+
+    definitions:
+        total = a + b
+        scaled = 0.4 * total
+
+    tests:
+        example <sum_2_3>:
+            given a = 2
+            given b = 3
+            expect total == 5
+            expect scaled == 2.0
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

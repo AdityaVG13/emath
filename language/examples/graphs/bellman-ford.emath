@@ -1,0 +1,37 @@
+# Bellman-Ford and sparse storage — negative-edge shortest paths
+# (emath-r2-graphs-masa slices 5+6; registry cells std.graph.*).
+#
+# THE classic negative-edge discriminator: 0→1 (4), 0→2 (1), 2→1 (−2),
+# 1→3 (1), 2→3 (5). Dijkstra REFUSES this carrier (negative weight,
+# E-GRAPH-002 — its greedy invariant fails); bellman_ford computes the
+# correct distances [0, −1, 1, 2] (0→2→1 beats the direct 0→1 edge).
+#
+# `bellman_ford`, `sparse_triplets`, and `sparse_from_triplets`
+# execute from strict `.emath` source through the same std.graph
+# kernels used by capability cells.
+#
+# Laws: unreachable vertices stay +Inf; a reachable NEGATIVE cycle
+# refuses E-GRAPH-005 (no distances fabricated); a zero-total cycle
+# terminates; sparse round trip is exact (a sparse-built Dijkstra
+# answers identically); duplicate (u,v) entries SUM (parallel edges).
+
+emath function negative_edge_shortest_paths:
+    inputs:
+        source: Float64
+    outputs:
+        distances: Vector<Float64>
+    definitions:
+        # Dense 4-vertex adjacency (0 = no edge); negative weights
+        # admitted — Dijkstra would refuse this carrier.
+        distances = bellman_ford([[0, 4, 1, 0], [0, 0, 0, 1],
+                                  [0, -2, 0, 5], [0, 0, 0, 0]], source)
+
+emath function storage_round_trip:
+    inputs:
+        adj: Matrix<Float64>
+    outputs:
+        rebuilt: Matrix<Float64>
+    definitions:
+        # COO extraction → build; the built carrier feeds every
+        # existing graph op unchanged.
+        rebuilt = sparse_from_triplets(4, sparse_triplets(adj))

@@ -53,3 +53,79 @@ State transitions must preserve declared invariants or return a structured refus
 ## Error model
 
 Errors are typed variants with stable semantic reasons, not only strings. Generated Rust may add diagnostic context while retaining machine-readable variants.
+
+## Constructor levels
+
+Three constructor levels are distinguished:
+
+### Value constructors
+
+The `constructors:` section shown above: validates, builds, and emits an admitted
+instance inside a declaration (`emath policy`, `emath function`). Deterministic:
+the same source produces the same meaning identity.
+
+### World constructors
+
+`emath custom Name:` with a `world constructor <name>:` body declares a named
+constructor of a *world*: bounded expansion strategies, protection guarantees,
+and one labeled portfolio output.
+
+```emath
+emath custom AlienWorld:
+    world constructor invent:
+        strategies:
+            free_symbolic
+            finite_table
+        protect:
+            total
+            deterministic
+        output: "InterpretationPortfolio"
+```
+
+Rules:
+
+- body clauses are exactly `strategies:`, `protect:`, `output:` (others refuse
+  with `E-KIND-027`);
+- the declaration is evidence-neutral: it carries one E1/not-run claim with no
+  checker and can never mint evidence authority by declaration alone
+  (`authority:` body sections refuse with `E-KIND-027`);
+- expansion must be deterministic; a falsifier pins "expansion is
+  non-deterministic or mints evidence".
+
+### Artifact constructors
+
+`artifact constructor <name>:` is not admitted and refuses with
+`E-KIND-001`.
+
+## Declarative world interpretations
+
+`emath world Name:` (with `use std.kinds.world`) declares a named world that
+interprets custom/open terms through operator maps:
+
+```emath
+use std.kinds.world
+
+emath world Mod17:
+    operators:
+        "⊕" => core::math::add
+        "⊗" => core::math::mul
+    interpretations:
+        total
+        deterministic
+    output: "Mod17Interpretation"
+```
+
+Rules:
+
+- `operators:` entries are exactly `"glyph" => target` (parsed as
+  `operator <glyph>` commands with a path target); anything else refuses
+  `E-KIND-027`;
+- `interpretations:` are untyped guarantee fields (`total`, `deterministic`);
+  `protect:` is optional;
+- exactly one `output: "Portfolio"` names the interpretation portfolio
+  (missing or duplicated refuses `E-KIND-003`);
+- the world is evidence-neutral: one E1/not-run claim with no checker. A
+  world never mints evidence authority by declaration alone;
+- the interpretation is world-local: strict source never inherits it. A
+  strict use of a world-mapped glyph refuses `E-TYPE-003` (unknown name) —
+  the strict/genesis firewall of the custom lane holds.

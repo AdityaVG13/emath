@@ -1,0 +1,20 @@
+#  Match expressions (U6, emath-r3-match-expr-dnbd): `match` in
+#  expression position. It is surface sugar for `cases` (U1): literal
+#  patterns become `subject == pattern` conditions and the mandatory
+#  final catch-all (`_`, or a binding name whose arm value has the
+#  subject substituted for it) becomes the else arm. Totality is a
+#  parse-time guarantee: a match without a catch-all refuses (negative:
+#  tests/invalid/r3_match_missing_catchall.emath).
+emath function match_expr_demo:
+    inputs:
+        t: Float64
+
+    definitions:
+        gate = match t { 0.0 => 0.0, _ => 1.0 }
+        scaled = match t { 0.0 => 0.0, other => other * 2.0 }
+
+    tests:
+        example <nonzero>:
+            given t = 3.0
+            expect gate == 1.0
+            expect scaled == 6.0

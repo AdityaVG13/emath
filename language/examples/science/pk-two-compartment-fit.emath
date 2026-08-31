@@ -1,0 +1,47 @@
+# Generic fit goal (04 §5.3, emath-r3-fit-goal-4xjh). The PK
+# one-compartment disposition, the residual method, the optimizer
+# method, and the fit program are DECLARED SURFACE, not Rust: the fit
+# grammar is generic (`fit <params> to <observable>:`); execution goes
+# through generic capability/method/provider seams, and without a
+# structural-identifiability provider the goal resolves to an honest
+# typed unresolved disposition in every plan.
+# Run: emath fit language/examples/science/pk-two-compartment-fit.emath
+emath model PkTwoCompartment:
+    inputs:
+        t: Float64
+        k_el: Float64
+        V_central: Float64
+
+    outputs:
+        central: Float64
+
+    definitions:
+        dose = 100.0
+        central = dose / V_central * exp(-k_el * t)
+
+
+emath function PkTwoCompartmentFit:
+    inputs:
+        t: Float64
+
+    outputs:
+        c: Float64
+        conc_time: Float64
+
+    definitions:
+        c = 2.0
+        conc_time = 0.0
+
+    goals:
+        fit k_el, V_central to conc_time:
+            model PkTwoCompartment
+            prediction central
+            residual: weighted_least_squares
+            weights: k_el = 1.0
+            weights: V_central = 1.0
+            method levenberg_marquardt
+            initial: k_el = 0.2
+            initial: V_central = 1.0
+            data: t = [0.5, 1.0, 2.0, 4.0]
+            data: conc_time = [3.12, 2.43, 1.47, 0.54]
+            require identifiability.structural

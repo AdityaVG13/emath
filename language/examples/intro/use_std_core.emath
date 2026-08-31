@@ -1,0 +1,14 @@
+# Bead `emath-stdlib-object-packs-hpzgf` — live example: std.core is a
+# mounted executable object pack, not copied source.
+#
+# Run `emath library mount std` first: it mounts the std.core census —
+# one theory object, one cell object, one independent evidence receipt —
+# as `.emlib` pack entries, each carrying its own MeaningID. The names
+# below are ordinary admitted surface; the pack is how std.core is
+# stored and shared between projects (mount the same pack in any second
+# workspace: same object identities, zero source duplication).
+emath function use_std_core:
+    inputs:
+        x: Float64
+    definitions:
+        y = x * x

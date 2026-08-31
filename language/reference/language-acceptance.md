@@ -6,7 +6,7 @@ that we are there. Today the working subset is: parse and admit
 simulate explicit ODEs, and generate Rust for `evaluate` goals. Most
 official examples still illustrate later chapters.
 
-The language phase is accepted only when:
+The language is accepted only when:
 
 1. grammar and parser handle every official example and invalid fixture deterministically;
 2. formatter is idempotent and parse-preserving;

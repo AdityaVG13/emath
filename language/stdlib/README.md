@@ -2,6 +2,19 @@
 
 The standard library is split into semantic contract packages and implementation/provider packages. See `language/reference/standard-library-constitution.md`.
 
+## Executable object packs
+
+Since Wave 13 (`emath-stdlib-object-packs-hpzgf`) the stdlib is stored as
+executable object packs, not catalog markdown: the `std.core` census —
+theory, cells, and evidence receipts — is exported as an `.emlib` pack
+where every object carries its own admitted MeaningID and canonical
+semantic payload. `emath library mount std` composes and mounts the
+census through the store's typed mount (every object id and evidence
+hash re-verified; forgery refuses `E-EVID-503` / `E-STD-002`), and any
+second workspace mounts the same pack with zero source duplication.
+The markdown cells below remain the human contracts; object packs are
+the executable truth.
+
 ## Phase 1 core (implemented as compiler builtins)
 
 These names compute today. They live in the compiler builtin table
@@ -61,3 +74,20 @@ embedded symbols, for example:
 ```emath
 use physics::classical::{NewtonSecond, Hooke}
 ```
+
+## Capability cell contracts
+
+Capability cells (schema `emath.capability-cell.v1`) are stdlib surface
+data, not parser keywords or core IR variants. First authoring contract:
+[`cells/std-tensor-softmax.md`](cells/std-tensor-softmax.md) —
+`std.tensor.softmax` pure cell (stable-max strict-f64, laws, provider
+seam, zero-core-delta rules). World-class contract:
+[`cells/std-finite-sets.md`](cells/std-finite-sets.md) — `std.finite.sets`
+finite-subset carrier (set literal, comprehension, membership `v in s`;
+laws extensionality, comprehension membership, finite enumeration;
+evaluation refused `E-TYPE-113` until emath-ir Phase B).
+Contract slice:
+[`cells/std-text-report.md`](cells/std-text-report.md) — `std.text.report`
+`core::text`/`core::report` Phase-B contracts (U8 interpolation purity
+fences landed; string VALUES refuse `E_UNSUPPORTED_TYPE` until the
+Phase-B carrier; deterministic evidence-grade emitters specified).

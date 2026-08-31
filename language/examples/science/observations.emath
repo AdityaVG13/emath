@@ -1,0 +1,32 @@
+# Observations are read-only measured evidence — the model/observation
+# line (04 §5.2). A definition says what the world is; an observation
+# says what an instrument reported. Writing to an observation is refused
+# (E-OBS-WRITE), and `--verify-data` re-hashes the declared sha256 and
+# refuses drift (E-OBS-HASH).
+# Run: emath check language/examples/science/observations.emath --verify-data
+emath function PkSingleDose:
+    inputs:
+        dose: Float64
+
+    observations:
+        obs plasma_conc: Float64 = 2.4
+        obs time_points = [0.5, 1.0, 2.0, 4.0]
+
+    definitions:
+        conc = dose * 2
+        summary = section("Concentration", "predicted = {conc:.2f}")
+        report = document("PK single dose", summary)
+        markdown = render_markdown(report)
+        latex = render_latex(report)
+
+    provenance:
+        plasma_conc:
+            kind "InstrumentRun"
+            file "pk_run_041.csv"
+            processing "LC-MS/MS, area ratio"
+            sha256 "e706a0172e0ef6f8b748eca6a55763eced959b6eb055b442b30d3c1e313acb2f"
+
+    tests:
+        example <scaled>:
+            given dose = 1.2
+            expect conc == 2.4

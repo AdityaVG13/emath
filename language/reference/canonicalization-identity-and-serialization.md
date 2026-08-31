@@ -20,7 +20,7 @@ definitions/equations/state
 goals/evidence/compile policy where identity-relevant
 ```
 
-Implemented today: admitted packages expose a `MeaningID` with wire form
+Admitted packages expose a `MeaningID` with wire form
 `emath:meaning:v1:<sha256>`. The preimage starts with
 `emath.meaning.canonical.v1` and uses length-framed canonical SIR.
 

@@ -1,0 +1,26 @@
+# Hydrogen combustion: derive the balanced equation and certify it,
+# exported as std.chem.balance + std.chem.mass_balance cells through
+# the std::chemistry field pack (science lane rymw).
+#
+# balance(S): S is the SIGN-BLIND species composition matrix (rows =
+# elements H, O; cols = species H2, O2, H2O; entry = atoms of the
+# element in the species). The cell returns the canonical primitive
+# coefficient vector [2, 1, -2] for 2 H2 + O2 -> 2 H2O (reactants
+# positive, products negative).
+#
+# mass_balance(S, s): certifies a signed coefficient vector — the
+# per-element residual S·s is EXACTLY zero for a balanced equation;
+# otherwise it refuses typed MassImbalance(element i, residual r).
+#
+# The cell chain balance(S) then mass_balance(S, balance(S)) is the
+# mass-conservation certificate. Both cells are registry DATA over
+# generic nucleus ops (matvec, int_nullspace); no per-reaction code.
+# Run: emath check language/examples/chemistry/combustion-mass-balance.emath
+package std
+
+emath field_pack chemistry:
+    exports:
+        cell balance
+        cell mass_balance
+    metadata:
+        description hydrogen combustion balancing plus mass balance certificate

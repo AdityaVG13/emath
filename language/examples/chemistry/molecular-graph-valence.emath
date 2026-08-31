@@ -1,0 +1,29 @@
+# Reaction-mechanism rewrite as (L, K, R) graph data: valence
+# preservation across the allyl shift C1=C2-C3 -> C1-C2=C3 (an H
+# transfers from C3 to C1), checked by the std.chem package's
+# graph_rewrite_preserve cell (science lane rymw, molecular-graph
+# slice).
+#
+# Representation (all generic carriers, no per-reaction code):
+# - matrix rows = CONTEXT atoms (the three carbons);
+# - matrix columns = the union of atoms in L and R (the carbons plus
+#   five hydrogens H1a H1b H3a H3b H3c);
+# - entry = bond order (1 single, 2 double; 0 = no bond);
+# - L, K, R are the rule triple; K is the context (here identical to L
+#   because no atom is deleted);
+# - valence of a row = its bond-order sum, the generic matvec(A, 1s);
+# - the cell's certificate is
+#   sum(abs(matvec(L,u)-matvec(K,u))) + sum(abs(matvec(K,u)-matvec(R,u)))
+#   and must be EXACTLY zero: L and R give [4, 3, 4] per carbon, so the
+#   allyl shift is valence-conserving. A rule that drops a double bond
+#   without compensation refuses typed ValenceImbalance(residual r).
+# Run: emath check language/examples/chemistry/molecular-graph-valence.emath
+package std
+
+emath field_pack chemistry:
+    exports:
+        cell balance
+        cell mass_balance
+        cell graph_rewrite_preserve
+    metadata:
+        description allyl shift valence preservation via generic rewrite checker

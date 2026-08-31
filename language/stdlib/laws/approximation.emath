@@ -1,0 +1,116 @@
+package approximation.laws
+
+emath law TaylorQuadraticRegime:
+    about:
+        summary: "A second-order Taylor expansion evaluates with a DECLARED convergence regime."
+    assumptions:
+        assume: "The function has the supplied local derivative data near the expansion point."
+        require abs(delta) < convergence_radius
+    domain:
+        name: "approximation theory"
+    provenance:
+        source: "Brook Taylor, Methodus Incrementorum (1715); regime declared, not implied"
+    citations:
+        cite: "f(x+h) ≈ f(x)+f'(x)h+f''(x)h^2/2 within a declared radius"
+    inputs:
+        value: Float64
+        first_derivative: Float64
+        second_derivative: Float64
+        delta: Float64
+        convergence_radius: Float64
+    outputs:
+        approximation: Float64
+    definitions:
+        approximation = value + first_derivative * delta + second_derivative * delta * delta / 2
+    goals:
+        evaluate <approximation>:
+            produce rust.library
+    evidence:
+        claim <second_order_regime>:
+            statement: "The polynomial is computed; the regime (radius) is DECLARED, the remainder is not fabricated. Honest label: approximation."
+            require local_derivative_data
+            level E1
+    tests:
+        example <canonical>:
+            given value = 1
+            given first_derivative = 2
+            given second_derivative = 2
+            given delta = 0.5
+            given convergence_radius = 1
+            expect approximation == 2.25
+
+emath law ChebyshevThreeTerm:
+    about:
+        summary: "A three-term Chebyshev expansion evaluates on its declared equioscillation regime."
+    assumptions:
+        assume: "The approximation targets a function on [-1, 1] with the supplied coefficients."
+        require abs(x) <= 1
+    domain:
+        name: "approximation theory"
+    provenance:
+        source: "Pafnuty Chebyshev, equioscillation theory (1854); minimax property"
+    citations:
+        cite: "p(x) = c0 + c1*T1(x) + c2*T2(x), T0=1, T1=x, T2=2x^2-1"
+    inputs:
+        c0: Float64
+        c1: Float64
+        c2: Float64
+        x: Float64
+    outputs:
+        approximation: Float64
+    definitions:
+        approximation = c0 + c1 * x + c2 * (2 * x * x - 1)
+    goals:
+        evaluate <approximation>:
+            produce rust.library
+    evidence:
+        claim <chebyshev_basis>:
+            statement: "Three-term Chebyshev basis evaluation on the declared domain; the equioscillation property is the regime, not a fabricated bound."
+            require interval_domain
+            level E1
+    tests:
+        example <basis_recursion>:
+            given c0 = 0
+            given c1 = 0
+            given c2 = 1
+            given x = 0.5
+            expect approximation == -0.5
+
+emath law PadeTwoOne:
+    about:
+        summary: "A (2,1) Padé approximant evaluates as a rational function."
+    assumptions:
+        assume: "Denominator stays nonzero on the declared evaluation domain."
+        require b1 * x != -1
+    domain:
+        name: "approximation theory"
+    provenance:
+        source: "Henri Padé, sur la représentation approchée des fonctions (1892)"
+    citations:
+        cite: "p(x) = (a0 + a1*x + a2*x^2) / (1 + b1*x)"
+    inputs:
+        a0: Float64
+        a1: Float64
+        a2: Float64
+        b1: Float64
+        x: Float64
+    outputs:
+        approximation: Float64
+    definitions:
+        approximation = (a0 + a1 * x + a2 * x * x) / (1 + b1 * x)
+    goals:
+        evaluate <approximation>:
+            produce rust.library
+    evidence:
+        claim <rational_form>:
+            statement: "Rational approximant computed directly; pole avoidance is declared by the assumption, never silently assumed."
+            require nonzero_denominator
+            level E1
+    tests:
+        example <canonical>:
+            given a0 = 1
+            given a1 = 1
+            given a2 = 0.5
+            given b1 = -0.5
+            given x = 0.5
+            expect approximation == 2.1666666666666665

@@ -1,0 +1,13 @@
+# Guided L1: a named relationship with `example` bindings. This is the
+# first-ten-minutes shape (emath-v9-06-2rdq.18): emath expands it, prints
+# what it inferred, and never picks a hidden default.
+#
+#   emath expand    language/examples/intro/l1_guided.emath   -> the desugared function
+#   emath exactness language/examples/intro/l1_guided.emath   -> what emath inferred
+#
+# A dimension raise on the printed budget is propose-only: the file on
+# disk is never rewritten. After `emath freeze --out <frozen>` the same
+# raise refuses E-SYN-155 — frozen sources do not raise.
+slope = 2 * x + b
+example x = 3
+example b = 1

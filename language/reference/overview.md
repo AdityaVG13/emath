@@ -1,5 +1,14 @@
 # Chapter 1: emath Language Overview
 
+## 0. Reading order: Real first
+
+A new user meets `Real` — the mathematical concept of a real number —
+before any machine type. `Real` is the type named in worked examples and
+pedagogical diagnostics; `Float64` (and `Int`, `Nat`, …) are compute
+representations a user moves to deliberately. As a compute type, a `Real`
+binding maps to `Float64` under the declared numeric profile; it is never
+silently reinterpreted (see chapter 5's numeric-profile rules).
+
 ## 1. Design center
 
 The language is designed around a readable declaration envelope:
@@ -12,9 +21,8 @@ emath Kind Name<GenericParameters>:
 
 The declaration head names the kind directly (`emath policy AffineScorer:`,
 `emath function Square<T: Real>:`, `emath kind ScoringPolicyKind:`, or a
-user kind). `emath custom Name:` declares a custom or not-yet-classified
-kind (for example a genesis world). Every spelling lowers to the same
-kind-schema-validated declaration model.
+user kind). `emath custom Name:` is the labeled genesis-world lane; strict
+custom kinds use a registered `emath kind` schema.
 
 ## 2. Language layers
 
@@ -88,7 +96,22 @@ Extensibility is layered:
 
 Every admitted request yields a typed artifact disposition. Unsupported execution does not erase the admitted semantic declaration; it can produce a parametric, continuation, exploration or diagnostic artifact according to policy.
 
-## Implemented today
+## 8. Package editions and replay
+
+`edition = "2026"` in the nearest package `emath.toml` selects the parser
+epoch for every file in that package. `2030` is also shipped. A compiler
+session opened on a package reads this field before parsing; unknown
+values refuse `E-PKG-EDITION-UNKNOWN` rather than selecting a default.
+
+Historical grammar is retained. Thus a 2026 package using a deprecated
+form still parses and lowers reproducibly under a newer toolchain, while
+the same source under edition 2030 receives the edition-specific hidden
+form diagnostic. Edition is provenance, not a semantic meaning parameter.
+The first laddered form is the L1 top-level `example x = 3` shorthand:
+2026 emits `W-EDITION-DEPRECATED` and migration moves it into a named
+`tests:` example; 2030 hides the shorthand with `E-EDITION-HIDDEN`.
+
+## Core language forms
 
 Progressive exactness is one language. L0 scratch (`2+2`, `plot`/`solve`/
 `convert`), L1 relationships (`y = x^2 + 4` plus `example x = 3`), L2
@@ -97,10 +120,13 @@ goal-first verbs (`plot`, `solve`, `simulate`, `compile`, `differentiate`,
 `integrate`) all desugar to the same contracted declaration IR. Inspect
 the rewrite with `emath expand`. `solve` without a domain emits a labeled
 candidate menu (`emath solve --check`); it does not print a naked numeric
-root. Hidden desugaring is `E-SYN-144`.
+root. The WASM `solve_candidates` operation returns the same menu as an
+`emath.world-result` bundle. Applying a candidate rewrites the selected
+domain into source and returns a meaning delta; modular and numeric
+candidates retain `modulus` and `tolerance` holes until the author supplies
+them. Hidden desugaring is `E-SYN-144`.
 
-This chapter is the design of the whole language. The compiler currently
-admits three declaration kinds:
+The admitted declaration kinds are:
 
 ```text
 emath function   stateless formulas
@@ -112,7 +138,7 @@ Other kind spellings still parse. Admission then treats them as a
 function or refuses their sections. That is a named refusal, not a
 silent guess.
 
-Working sections:
+Sections:
 
 ```text
 inputs outputs state definitions equations equation algebraic
@@ -122,20 +148,30 @@ constructors constraints invariant goals exports tests compile about evidence pr
 Anything else is `E-SEC-101`. `request:` / `requests:` were renamed to
 `goals:`.
 
-Admitted types:
+Types:
 
 ```text
-Float64  Bool  Nat  Int  Complex  GF<p>  GF<p>
+Float64  Bool  Nat  Int  Complex  GF<p>
 Vector[n]  Matrix[r, c]  Tensor[…]
 quantity / `T in unit` annotations
 NonNegative<Float64> / Positive<Float64> / Probability<Float64>
 Interval<Float64>
 ```
 
+Option and Result operations compute in the interpreter over explicit
+carriers (`some(x)` / `none`, where none carries
+nothing, never a hidden zero) with TOTAL unwraps (`option-unwrap-or` /
+`result-unwrap-or`; no panicking unwrap exists), polarity reads
+(`option-is-some` / `result-is-ok`), and `result-error-of` yielding
+the error as an option (errors compose with the Option ops; Err
+payloads are preserved, never swallowed). `Option` and `Result` are not
+admitted as general declaration types. Graph algorithms use
+`Matrix<Float64>` adjacency carriers; finite fields use exact integers.
+
 Value-level generic arguments at use sites: `Mod<7>`,
 `Tensor<Float64, [N, N]>`, `GF<2, 3, modulus = x + 1>`.
 
-Admitted expressions that compute:
+Computing expressions:
 
 ```text
 arithmetic  comparison  logic (and or not ==> <==>)
@@ -154,16 +190,24 @@ poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's metho
 rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p))
 hamming_distance(a, b)         (count positions where two vectors differ)
 1 + 2i / 2i / 3.5i             (complex literals, Ni suffix - computes via Complex arithmetic)
-unit of E / dimension of E     (compile-time queries, parse only)
+unit of E / dimension of E     (compile-time unit comparisons — computes; bare query as a value is a named refuse)
 ```
 
-What you can do with an admitted file:
+Commands:
 
-- `emath check` - does this file make sense in the working subset?
+- `emath check` - check syntax and semantics
 - `emath run` / `emath test` - evaluate definitions and examples
 - `emath build` - generate a Rust crate when there is an `evaluate` goal
 - `emath simulate` - integrate an admitted `emath model`
 
-The compiler will give you a number, a trajectory, generated Rust, or a
-named refusal. It will not tell you that the math is true. That is later
-evidence work, not the language.
+Simulating a model with `algebraic:` unknowns (an index-1 DAE) carries a
+disposition record beside the trajectory — structural index, the
+differential/constraint partition, and the consistent-initialization
+verdict. When initialization cannot be honored the run refuses
+`E-DAE-INIT` with a continuation note (supply the missing algebraic
+guess, or regularize); the constraint is never silently dropped and a
+partial result is never presented as the DAE solution.
+
+The compiler returns a number, trajectory, generated Rust, or named refusal.
+It does not claim that the submitted mathematics is true; truth claims require
+declared evidence.

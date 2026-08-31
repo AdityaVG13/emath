@@ -5,12 +5,20 @@ emath function Units:
         area: Float64
         cancelled: Float64
         celsius: Bool
+        fahrenheit: Bool
+        shifted: Bool
+        delta: Float64
+        litre_alias: Float64
 
     definitions:
         rescale = (1 km + 1 m) / 1 m
         area = (1 m * 1 m) / (1 [unit m^2])
         cancelled = (1 m) / (1 m)
         celsius = (0 degC == 273.15 K)
+        fahrenheit = (32 degF == 273.15 K)
+        shifted = (22 degC + 10 K == 32 degC)
+        delta = (22 degC - 10 degC) / 1 K
+        litre_alias = (1 liter) / (1 L)
 
     tests:
         example <si>:
@@ -18,6 +26,10 @@ emath function Units:
             expect area == 1
             expect cancelled == 1
             expect celsius == true
+            expect fahrenheit == true
+            expect shifted == true
+            expect delta == 12
+            expect litre_alias == 1
 
     compile:
         target rust

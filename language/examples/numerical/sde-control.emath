@@ -1,0 +1,70 @@
+# Bead `emath-r3-sde-control-zxkl` — runnable stochastic dynamics +
+# control example: Itô vs Stratonovich as capability cells under a
+# fixed seed, and the control cells reused unchanged.
+#
+# Deterministic stochastic world: dX = μ(X) dt + σ(X) dW, scalar,
+# ascending polynomial carriers. The seed is REQUIRED (a run without
+# one refuses); same seed ⟹ bit-identical trajectory. Two rules, two
+# cells (no `sde` keyword, no mode switch — the rules are cell data):
+#   - Itô (Euler–Maruyama):      X' = X + μ(X)·h + σ(X)·√h·Z
+#   - Stratonovich (Euler–Heun): X' = X + μ(X)·h + σ(X)·√h·Z
+#                                  + ½·σ(X)·σ'(X)·h·Z²
+# For additive noise (σ' = 0) they agree; for state-dependent noise
+# they differ — the language executes BOTH, never one silently.
+#
+# The cells are declared with the standard capability surface and
+# called by name; the call resolves through the generic
+# declared-capability path (ApplyCapability; kernel-backed cells
+# execute via the native-kernel registry). The final `spread` is
+# strictly positive here: the Stratonovich correction is real.
+#
+# The control cells (transfer_eval / Routh stability) are the existing
+# control surface, reused unchanged.
+
+package std.stochastic
+use std.kinds.capability
+
+emath capability euler_maruyama:
+    class: pure
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        drift: Vector[Float64]
+        diffusion: Vector[Float64]
+        x0: Float64
+        h: Float64
+        steps: Float64
+        seed: Float64
+        stream: Vector[Float64]
+    outputs:
+        trajectory: Vector[Float64]
+
+emath capability stratonovich:
+    class: pure
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        drift: Vector[Float64]
+        diffusion: Vector[Float64]
+        x0: Float64
+        h: Float64
+        steps: Float64
+        seed: Float64
+        stream: Vector[Float64]
+    outputs:
+        trajectory: Vector[Float64]
+
+emath function sde_paths:
+    definitions:
+        drift = [0.0, 0.25]     # μ(x) = 0.25·x
+        sigma = [0.0, 0.35]     # σ(x) = 0.35·x (state-dependent)
+        ito = euler_maruyama(drift, sigma, 1.0, 0.01, 64, 7.0, [0.0])
+        corrected = stratonovich(drift, sigma, 1.0, 0.01, 64, 7.0, [0.0])
+        spread = ito[64] - corrected[64]
+
+emath function control_paths:
+    definitions:
+        num = [2.0, 1.0]      # s + 2
+        den = [2.0, 3.0, 1.0] # s² + 3s + 2
+        dc = transfer_eval(num, den, 0.0)   # 1.0
+        stable = poles_stable(den)          # true

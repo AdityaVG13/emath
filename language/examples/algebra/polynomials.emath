@@ -1,0 +1,22 @@
+# Polynomials as values (compute layer) — runnable example
+# B28 compute layer: dense ASCENDING coefficient vectors; the empty
+# vector is the zero polynomial. Formal-vs-evaluated type split is a
+# named design deferral (rides C10).
+
+emath function poly_demo:
+    inputs:
+        p: Vector<Float64>
+        q: Vector<Float64>
+    outputs:
+        at_zero: Float64
+        at_one: Float64
+        at_two: Float64
+    definitions:
+        at_zero = poly_eval(poly_add(p, q), 0)
+        at_one = poly_eval(poly_mul(p, q), 1)
+        at_two = poly_eval(poly_mul(p, q), 2)
+
+# p = [2, 3, 4] means 2 + 3x + 4x^2; q = [1, -1] means 1 - x.
+#   at_zero = p(0) + q(0) = 2 + 1 = 3
+#   at_one  = p(1) * q(1) = 9 * 0 = 0
+#   at_two  = p(2) * q(2) = 24 * (-1) = -24

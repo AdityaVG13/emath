@@ -1,0 +1,29 @@
+# Stiff and symplectic integration use different mathematical structure.
+#
+# Backward Euler remains stable for StiffDecay at dt = 0.1, where forward
+# Euler leaves the positive decay envelope:
+#
+#   emath simulate language/examples/numerical/solver-methods.emath \
+#     --model StiffDecay --set y=1 \
+#     --method backward-euler --dt 0.1 --t1 0.3
+#
+# Velocity Verlet preserves the separable Hamiltonian structure q' = v,
+# v' = a(q). A dissipative or non-separable model is refused:
+#
+#   emath simulate language/examples/numerical/solver-methods.emath \
+#     --model HarmonicOscillator --set q=1 --set v=0 \
+#     --method velocity-verlet --dt 0.01 --t1 6.283185307179586
+
+emath model StiffDecay:
+    state:
+        y: Float64
+    equations:
+        der(y) = -50 * y
+
+emath model HarmonicOscillator:
+    state:
+        q: Float64
+        v: Float64
+    equations:
+        der(q) = v
+        der(v) = -q

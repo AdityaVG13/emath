@@ -58,6 +58,60 @@ host:
 
 Host mappings declare conversions, ownership, errors and fallback.
 
+## Proof outlines
+
+Proofs are obligations as DATA, admitted as a `proofs:` section inside
+existing kinds (expansiveness via sections, not new kinds — ch. 8
+compass rule). They are additive authority, never admission tickets: an
+unproved declaration compiles to its full artifact, and outline claims
+are never lowered as definitions or constraints — justification stays
+structurally separate from meaning (`evidence:` carries what was
+observed, `proofs:` carries what must be discharged).
+
+```emath
+emath function bounded:
+    inputs:
+        a: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = a * a
+
+    proofs:
+        outline NonNegativity:
+            assumption finite_a: is_finite(a)
+            lemma square_nonneg: y >= 0.0
+            check square_nonneg
+            qed square_nonneg
+```
+
+Obligation kinds are data, exactly four: `assumption <name>: <claim>`
+(context taken on faith, recorded), `lemma <name>: <claim>` (an
+obligation to discharge), `check <name>` (assert a previously declared
+obligation holds under the outline's assumptions), `qed <name>`
+(the concluding obligation). Completeness is checked: an outline must
+contain at least one step and end with its `qed`, `check`/`qed` must
+name obligations declared earlier in the same outline, and an unknown
+kind refuses (`E-SYN-101` naming the four). A complete outline admits
+as data; an incomplete outline refuses.
+
+Each outline lowers to `emath.proof-obligation v1` records — the
+stable machine target providers code against:
+
+```json
+{"schema": "emath.proof-obligation v1",
+ "outline": "NonNegativity",
+ "kind": "lemma", "name": "square_nonneg",
+ "claim": "y >= 0.0", "hypotheses": ["finite_a"], "target": null}
+```
+
+Proof outlines lower to data with completeness checks and trace records.
+`check` steps do not run a prover. Case splitting, per-step evidence
+levels, and proof-provider adapters are unsupported; ordinary
+computation never depends on an unavailable prover.
+
 ## Tests and benchmarks
 
 Tests are executable specifications. Benchmarks define comparison methodology and never substitute for semantic evidence.

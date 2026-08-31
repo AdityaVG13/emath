@@ -1,0 +1,46 @@
+# CSV import into an executable time series (bead emath-xondg): the
+# FIRST-CLASS subject here is `series_from_csv`, the pure-text bridge from
+# a CSV block to a `Series` you can sample with `series_at`. Import is
+# PURE TEXT: it reads the CSV string literal only — no filesystem, no
+# network, no CSV crate. Columns map by NAME; physical column order is
+# irrelevant, and unrequested columns are ignored (projected away).
+#
+# CSV grammar (closed): BOM and CRLF tolerated, blank lines skipped,
+# RFC-minimal quoting with `""` escaping an embedded quote; a newline
+# inside a quoted field is NOT supported. A malformed quote, ragged row,
+# nonfinite selected cell, or non-increasing time axis is a typed refusal
+# E-CSV-001..009. Wrong call shape or an unknown policy name is
+# E-SERIES-CSV.
+#
+# Determinism: identical CSV text + identical args lower to bit-identical
+# points, and the declared (interpolation, extrapolation) policy hashes
+# into the series identity — policy is part of the value, not a hint.
+emath function WindCSVImport:
+    definitions:
+        # Header `wind (m/s),time (s)` deliberately NOT in time,value
+        # order; `station` and `label` are unrequested columns (ignored).
+        # The `label` cells carry a quoted comma (`"NW, gusty"`) and an
+        # escaped quote (`"a""b"`) to prove quoting/escapes in a story.
+        wind_data = series_from_csv("wind (m/s),time (s),station,label\n0.0,0.0,KSEA,\"NW, gusty\"\n1.0,0.1,KSEA,\"a\"\"b\"\n1.8,0.2,KSEA,x", "time (s)", "wind", "linear", "refuse")
+
+        # `time (s)` by its FULL header name (unit suffix preserved), and
+        # `wind` by its BARE name (`wind (m/s)` matches after the unit
+        # suffix is stripped) — one call, both mapping conventions.
+        wind_midpoint = series_at(wind_data, 0.05)
+        wind_at_knot = series_at(wind_data, 0.1)
+
+        # The default `extrapolation: refuse` stays the quiet-killer
+        # policy, so the runnable example samples INSIDE the support. A
+        # second CSV series imported with `clamp` is sampled beyond the
+        # end, where the value pins to the endpoint (finite, documented).
+        clamped_data = series_from_csv("time,wind\n0.0,0.0\n0.1,1.0\n0.2,1.8", "time", "wind", "linear", "clamp")
+
+        wind_after_end = series_at(clamped_data, 2.0)
+
+    tests:
+        example <linear_midpoint>:
+            expect wind_midpoint == 0.5
+            expect wind_at_knot == 1.0
+
+        example <clamp_beyond_end>:
+            expect wind_after_end == 1.8

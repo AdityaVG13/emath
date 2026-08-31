@@ -52,7 +52,7 @@ regeneration of the committed generated crate).
 | Declaration | `emath <kind> <Name<Params>>:` | `emath policy AffineScorer:` |
 | Package identity | first declaration's leaf name (set by `seal`) | `AffineScorer` |
 | Generated crate | identity sanitized for Cargo: ASCII alphanumerics, `-`, `_`, lowercased | `affinescorer` |
-| Module | Phase 1 emits the single declaration at the crate root; module boundaries arrive with the package/module loader | crate root |
+| Module | A single declaration emits at the crate root | crate root |
 | Rust type | declaration name, verbatim | `pub struct AffineScorer` |
 | Error type | fixed name | `ConfigError` |
 | Constructor | `public fn new(...)` becomes an associated fn returning `Result<Self, ConfigError>` with every `require` checked | `pub fn new(scale: f64, bias: f64) -> Result<Self, ConfigError>` |

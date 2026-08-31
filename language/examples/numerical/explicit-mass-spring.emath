@@ -1,9 +1,7 @@
 # explicit-mass-spring: coupled mass-spring as a single vector-state ODE.
 #
-# The Phase 1 backend admits exactly one evaluate goal per declaration, so
-# the coupled pair `dx/dt = v, dv/dt = (-c v - k x)/m` is written as ONE
-# vector rate equation over the state s = [x, v]: no second `der()` line,
-# same physics.
+# The coupled pair `dx/dt = v, dv/dt = (-c v - k x)/m` is written as one
+# vector rate equation over the state s = [x, v].
 #
 # `c` is viscous damping. Energy ½ m v² + ½ k x² is conserved only at c = 0;
 # c > 0 dissipates. The undamped unit oscillator (m = 1, k = 1, c = 0,
@@ -26,3 +24,4 @@ emath model MassSpring:
         s: Vector[2]
     equations:
         der(s) = [s[1], ((-k / m) * s[0] - (c / m) * s[1])]
+

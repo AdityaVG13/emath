@@ -36,9 +36,9 @@ same `emath function`; `emath expand` shows the rewrite.
 ## 2. Run it (10 seconds)
 
 ```bash
-emath check examples/intro/hello-square.emath    # does it make sense?
-emath test examples/intro/hello-square.emath      # run the tests
-emath run examples/intro/hello-square.emath       # evaluate definitions
+emath check language/examples/intro/hello-square.emath
+emath test language/examples/intro/hello-square.emath
+emath run language/examples/intro/hello-square.emath
 ```
 
 `check` validates types and shapes. `test` runs examples. `run`
@@ -107,7 +107,7 @@ Save as `my_first.emath`, run `emath test my_first.emath`.
 | Learn all the names and namespaces | [NAMING.md](NAMING.md) |
 | Read complete examples | [examples/intro/](examples/intro/) |
 | Understand the full language | [reference/overview.md](reference/overview.md) |
-| Simulate ODEs/DAEs | [examples/intro/algebraic-dae.emath](examples/intro/algebraic-dae.emath) |
-| Do linear algebra | [examples/intro/tensor-face.emath](examples/intro/tensor-face.emath) |
-| Work with finite fields | [examples/intro/modular-arithmetic.emath](examples/intro/modular-arithmetic.emath) |
+| Simulate a state model | [examples/numerical/explicit-mass-spring.emath](examples/numerical/explicit-mass-spring.emath) |
+| Do linear algebra | [examples/linear-algebra/eigen-svd.emath](examples/linear-algebra/eigen-svd.emath) |
+| Work with finite fields | [reference/types-units-shapes-and-domains.md](reference/types-units-shapes-and-domains.md) |
 | Add a new language feature | [MAINTAINING.md](MAINTAINING.md) |

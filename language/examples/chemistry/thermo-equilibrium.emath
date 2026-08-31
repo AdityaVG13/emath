@@ -1,0 +1,26 @@
+# Wegscheider cycle consistency and ideal-mixture Gibbs equilibrium
+# (science lane rymw, thermo-equilibrium slice).
+#
+# Cycle consistency: a closed three-step cycle with equilibrium
+# constants K = [2, 1/2, 1] has product of numerators 2 and product of
+# denominators 2 — the cycle is thermodynamically consistent, and the
+# std.chemistry pack's cycle_consistent cell admits with the exact
+# zero delta. An inconsistent cycle (e.g. K = [2, 1, 3]) refuses typed
+# CycleInconsistency(residual d) with the exact witness difference.
+#
+# Gibbs: the ideal-mixture free energy along the extent xi of
+# 2 H2 + O2 -> 2 H2O is minimized through the existing goal path
+# (minimize wrt xi); the stoichiometry vector nu = [2, 1, -2] is
+# certified by the existing mass_balance cell, so conservation is
+# automatic along xi.
+# Run: emath check language/examples/chemistry/thermo-equilibrium.emath
+package std
+
+emath field_pack chemistry:
+    exports:
+        cell balance
+        cell mass_balance
+        cell graph_rewrite_preserve
+        cell cycle_consistent
+    metadata:
+        description Wegscheider cycle consistency plus Gibbs equilibrium via generic goal path

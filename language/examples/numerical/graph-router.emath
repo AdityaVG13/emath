@@ -1,0 +1,26 @@
+# Bead `emath-r2-graphs-masa` — runnable example: graph/network routing.
+#
+# A tiny network router: the dense adjacency carrier is a graph literal
+# (nodes list; edges as `u --> v` unweighted or `u -[w]-> v` weighted),
+# and the closed graph call names compute reachability, breadth-first
+# visit order, shortest distances (Dijkstra), and out-degrees.
+#
+# Topology (reference carrier): 0 -> 1, 0 -> 2, 1 -> 3, 2 -> 3.
+#   - `reachability(g, 0)`   -> [1, 1, 1, 1]  (every vertex is reached)
+#   - `bfs_order(g, 0)`      -> [0, 1, 2, 3]  (breadth-first, ascending
+#     index — a DFS would visit 3 before 2)
+#   - `shortest_distances(g, 0)` -> [0, 1, 1, 2]
+#   - `out_degrees(g)`       -> [2, 1, 1, 0]
+#
+# Deterministic: vertices are indices, neighbor scans ascend, Dijkstra
+# ties break to the lowest index; identical inputs are bit-identical.
+# Typed refusals: non-square carrier E-GRAPH-001, Dijkstra on negative
+# weights E-GRAPH-002, out-of-range source E-GRAPH-003, non-finite
+# weight E-GRAPH-004, reachable negative cycle (Bellman-Ford) E-GRAPH-005.
+emath function router:
+    definitions:
+        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }
+        r = reachability(g, 0)
+        b = bfs_order(g, 0)
+        d = shortest_distances(g, 0)
+        o = out_degrees(g)
