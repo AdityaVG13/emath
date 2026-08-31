@@ -26,6 +26,14 @@ pub enum MeaningError {
     MissingType(TypeId),
     CyclicExpr(ExprId),
     CyclicDefinition(String),
+    /// RECONSTRUCTED (CalmPine, 2026-08-29): variant restored with the
+    /// Apply encoding arm after an accidental working-tree revert;
+    /// diff-reviewed 2026-08-29 (VioletGorge, incident 42809): arm
+    /// CONFIRMED (tag 17 unique, name-based encoding matches the
+    /// fjxh.1 slot-stability differential) and the missing package
+    /// integrity gate RESTORED in `canonical_meaning_bytes` — the
+    /// fjxh.2 dangling-cell pin now holds.
+    MissingCapability(crate::CapabilityId),
 }
 
 impl fmt::Display for MeaningError {
@@ -38,6 +46,11 @@ impl fmt::Display for MeaningError {
             Self::CyclicDefinition(name) => {
                 write!(formatter, "cyclic admitted definition `{name}`")
             }
+            Self::MissingCapability(id) => write!(
+                formatter,
+                "capability cell id {} is not interned in the package",
+                id.index()
+            ),
         }
     }
 }
@@ -64,6 +77,11 @@ impl Encoder {
 
     fn usize(&mut self, value: usize) {
         self.u64(u64::try_from(value).unwrap_or(u64::MAX));
+    }
+
+    /// IEEE-754 bit patterns: exact, deterministic, NaN-signature stable.
+    fn f64(&mut self, value: f64) {
+        self.u64(value.to_bits());
     }
 
     fn text(&mut self, value: &str) {
@@ -270,6 +288,17 @@ impl MeaningContext<'_> {
                     self.encode_expr(out, *element)?;
                 }
             }
+            ExprNode::Set { elements, guards } => {
+                out.tag(19);
+                out.usize(elements.len());
+                for (element, guard) in elements.iter().zip(guards) {
+                    out.bool(guard.is_some());
+                    if let Some(guard) = guard {
+                        self.encode_expr(out, *guard)?;
+                    }
+                    self.encode_expr(out, *element)?;
+                }
+            }
             ExprNode::Matrix(rows) => {
                 out.tag(11);
                 out.usize(rows.len());
@@ -326,6 +355,49 @@ impl MeaningContext<'_> {
                 self.encode_expr(out, *direction)?;
                 self.encode_expr(out, *body)?;
             }
+            ExprNode::Apply {
+                capability,
+                arguments,
+            } => {
+                // Capability applications encode the admitted cell name:
+                // the cell is meaning, the arena slot is not.
+                // RECONSTRUCTED 2026-08-29 (CalmPine): rebuilt after an
+                // accidental `git checkout --` reverted an uncommitted
+                // foreign change. Diff-reviewed 2026-08-29 (VioletGorge,
+                // incident 42809): CONFIRMED against the fjxh.1
+                // slot-stability differential (same cell name → same
+                // meaning across different arena slots; renamed cell →
+                // different meaning) and the fjxh.2 dangling-cell pin
+                // (enforced by the integrity gate in
+                // `canonical_meaning_bytes`).
+                let cell = self
+                    .package
+                    .capability(*capability)
+                    .ok_or(MeaningError::MissingCapability(*capability))?;
+                out.tag(17);
+                out.text(&cell.name.0);
+                out.usize(arguments.len());
+                for argument in arguments {
+                    self.encode_expr(out, *argument)?;
+                }
+            }
+            ExprNode::Series {
+                points,
+                interpolation,
+                extrapolation,
+            } => {
+                // 04 §5.4 slice 1: the pairs and the DECLARED policy are
+                // identity — two series differing only in interpolation
+                // mode are different artifacts.
+                out.tag(18);
+                out.usize(points.len());
+                for (time, value) in points {
+                    out.f64(*time);
+                    out.f64(*value);
+                }
+                out.text(interpolation);
+                out.text(extrapolation);
+            }
         }
         self.active_exprs.remove(&id);
         Ok(())
@@ -363,6 +435,10 @@ fn encode_type(out: &mut Encoder, ty: &TypeNode) {
         }
         TypeNode::Complex(inner) => {
             out.tag(7);
+            encode_type(out, inner);
+        }
+        TypeNode::Set(inner) => {
+            out.tag(19);
             encode_type(out, inner);
         }
         TypeNode::Vector { element, extent } => {
@@ -414,6 +490,10 @@ fn encode_type(out: &mut Encoder, ty: &TypeNode) {
             out.tag(14);
             encode_type(out, inner);
         }
+        TypeNode::FieldPrime { modulus } => {
+            out.tag(20);
+            out.text(&modulus.to_string());
+        }
         TypeNode::Opaque {
             name,
             provider_contract,
@@ -433,6 +513,11 @@ fn encode_type(out: &mut Encoder, ty: &TypeNode) {
         TypeNode::Other(name) => {
             out.tag(17);
             out.text(&name.0);
+        }
+        TypeNode::Series { time, value } => {
+            out.tag(18);
+            encode_type(out, time);
+            encode_type(out, value);
         }
     }
 }
@@ -691,6 +776,20 @@ pub fn canonical_meaning_bytes(
     package: &SemanticPackage,
     dependencies: &[MeaningId],
 ) -> Result<Vec<u8>, MeaningError> {
+    // Package integrity, fail-closed (fjxh.2's typed seam; reviewed
+    // 2026-08-29 per the CalmPine reconstruction incident): every
+    // interned capability application must reference an interned cell.
+    // Admission never produces a dangling reference, so a package that
+    // carries one is malformed and cannot be assigned a MeaningID —
+    // the orphan exprs are not walked by the declaration encoder, so
+    // the validation is explicit here rather than emergent.
+    for expr in &package.exprs {
+        if let ExprNode::Apply { capability, .. } = expr {
+            if package.capability(*capability).is_none() {
+                return Err(MeaningError::MissingCapability(*capability));
+            }
+        }
+    }
     let aliases = alias_map(package);
     let mut declarations = package
         .declarations

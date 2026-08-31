@@ -14,6 +14,9 @@ pub enum DistributionKind {
     Normal,
     /// Uniform distribution.
     Uniform,
+    /// Log-normal distribution (`~ lognormal` measurement tag, spec 04
+    /// section 1.5; positivity-constrained quantities).
+    Lognormal,
     /// Empirical distribution represented by external observations.
     Empirical,
 }
@@ -40,7 +43,15 @@ pub enum Provenance {
         adjustment: Option<String>,
     },
     /// Instrument output plus the processing description applied to it.
-    InstrumentRun { file: String, processing: String },
+    /// `sha256` is the declared digest of the raw data file (04 §5.2,
+    /// emath-r3-observations-9ffu): `emath check --verify-data` re-hashes
+    /// the file and refuses drift as `E-OBS-HASH` — changed data under an
+    /// unchanged model is a different artifact identity.
+    InstrumentRun {
+        file: String,
+        processing: String,
+        sha256: Option<String>,
+    },
     /// Output of a content-addressed fit.
     Fitted { fit_id: String },
     /// Deliberately assumed by the author.
@@ -98,9 +109,21 @@ impl Provenance {
                     field(&mut out, "adjustment", adjustment);
                 }
             }
-            Self::InstrumentRun { file, processing } => {
+            Self::InstrumentRun {
+                file,
+                processing,
+                sha256,
+            } => {
                 field(&mut out, "file", file);
                 field(&mut out, "processing", processing);
+                field(
+                    &mut out,
+                    "sha256-present",
+                    if sha256.is_some() { "true" } else { "false" },
+                );
+                if let Some(sha256) = sha256 {
+                    field(&mut out, "sha256", sha256);
+                }
             }
             Self::Fitted { fit_id } => field(&mut out, "fit_id", fit_id),
             Self::Assumed { reason } => {
@@ -130,9 +153,16 @@ impl Provenance {
                 || format!("Citation(reference={reference})"),
                 |adjustment| format!("Citation(reference={reference}, adjustment={adjustment})"),
             ),
-            Self::InstrumentRun { file, processing } => {
-                format!("InstrumentRun(file={file}, processing={processing})")
-            }
+            Self::InstrumentRun {
+                file,
+                processing,
+                sha256,
+            } => sha256.as_ref().map_or_else(
+                || format!("InstrumentRun(file={file}, processing={processing})"),
+                |sha256| {
+                    format!("InstrumentRun(file={file}, processing={processing}, sha256={sha256})")
+                },
+            ),
             Self::Fitted { fit_id } => format!("Fitted(fit_id={fit_id})"),
             Self::Assumed { reason } => reason.as_ref().map_or_else(
                 || "Assumed".to_string(),

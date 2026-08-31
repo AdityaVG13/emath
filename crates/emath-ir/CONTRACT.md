@@ -11,8 +11,30 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
 - `ObligationClass` (static/runtime/solver/certificate/deferred), `ObligationKind` (precondition/postcondition), `ConstructionObligation`, `ConstructionReceipt`: the constructor obligation taxonomy. `Constructor::obligation_matrix` classifies every textual `require`/`ensure`/`invariant` (all `Runtime` in Phase 1); `Constructor::receipt` produces the receipt; `ConstructionReceipt::compose` merges delegate obligations first and never drops one; only `Deferred` obligations remain open after construction; `ConstructionReceipt::identity` is a deterministic content id.
 - `mig`: `Mig` / `MigNode` / `MigEdge` / `MigNodeKind` / `MigEdgeKind` — the mathematical intent graph (schema `emath.mig.v1`), derived deterministically from a `SemanticPackage`. Every semantic plane is represented by node kinds (definition, construction, goal, evidence, execution, evolution); every non-declaration node is owned by a declaration node (spine property). `Mig::identity` excludes presentation-only changes by construction (no spans enter the derivation; expression content enters via span-free `canonical_expr`).
 - `layers`: `IrLayer` — the ten-layer IR stack registry (syntax, HIR, MIG, SIR, GIR, resolution, EIR, evidence, Rust IR, artifact) with durable schema base ids (matching strings already written into artifacts), explicit schema versions, `versioned_schema()` ids and owning crates.
-- `ExprNode`, `Literal`, `BinaryOp`, `UnaryOp`, `BinderKind`,
+- `ExprNode`, `Literal`, `BinaryOp`, `UnaryOp`,
+  `BinderKind`,
   `BinderVariable`: neutral expression trees.
+  `ExprNode::Apply { capability, arguments }` is the capability-cell
+  application term: the payload is a stable `CapabilityId` into the owning
+  package's `capabilities` arena, so adding a domain cell appends data and
+  never adds a core enum variant. A dangling capability id refuses with
+  `MeaningError::MissingCapability` at the `meaning_id` seam (canonical
+  bytes stay deterministic with a `<missing-capability>` marker); the
+  native symbolic fragment refuses capability applications with `E-SYM-003`.
+- `Capability`, `CellSchema`, `CellClass`, `MigrationPolicy`,
+  `canonical_capability`, `canonical_cell`, `cell_id`, `admit_cell`,
+  `admit_cell_mutation`, `AdmissionRefusal`: the capability-cell layer
+  (schema `emath.capability-cell.v1`). Ten closed classes (`pure` …
+  `artifact`); every descriptor carries a required schema version and an
+  explicit migration policy. Identity (`cell_id`, FNV-1a64 over the
+  length-framed canonical preimage) covers exactly the identity-affecting
+  fields (name, class, version, migration policy token, arity); `about` is
+  presentation-only. Bounded admission refuses unknown class (`E-CELL-001`),
+  missing version (`E-CELL-002`), policy-refused identity mutation
+  (`E-CELL-003`), arity over `MAX_CELL_ARITY` (`E-CELL-004`), and
+  namespace-less names (`E-CELL-005`). Interned cells enter the MeaningID
+  preimage by name, and every `ExprNode::Apply` must reference an interned
+  cell or `meaning_id` refuses with `MeaningError::MissingCapability`.
 - `SymbolicExpr`, `RewritePattern`, `RewriteRule`, `SymbolicOracleContract`:
   provider-neutral symbolic contracts. Native v1 structurally simplifies
   exact integer scalar expressions and exactly decides bounded univariate
@@ -51,9 +73,10 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   tests, evidence attachments, prose, spans, and host bindings are excluded.
 - `MeaningError`: malformed SIR refusal for missing/cyclic expression/type
   references; malformed graphs never receive a MeaningID.
-- Modules: `canonical`, `constructor`, `contracts`, `domains`, `evidence`,
-  `expression`, `goal`, `ids`, `kind_schema`, `numeric`, `operator`, `package`,
-  `provenance`, `shapes`, `symbolic`, `type_system`, `types`, `units`.
+- Modules: `canonical`, `capability`, `constructor`, `contracts`, `domains`,
+  `evidence`, `expression`, `goal`, `ids`, `kind_schema`, `numeric`,
+  `operator`, `package`, `provenance`, `shapes`, `symbolic`, `type_system`,
+  `types`, `units`.
 
 ## Invariants
 
@@ -99,7 +122,9 @@ No `tests/` directory in this crate and no `#[cfg(test)]` module in `src/`.
 Coverage lives in workspace test members `tests/emath-ir` (canonical,
 goal, layers, numeric_models, symbolic, constructor, mig, domain_logic, containment
 — including `interval_containment_holds_on_seeded_grid` for
-`Interval`/`Domain` membership) and `tests/emath-store` (MeaningID
+`Interval`/`Domain` membership — and `capability_id_terms.rs` for
+CapabilityId terms, name-based cell identity, legacy sin/exp compat, and the
+dangling-capability typed refusal) and `tests/emath-store` (MeaningID
 presentation/alpha/alias stability plus semantic-policy/dependency changes).
 
 ## No-claim boundaries

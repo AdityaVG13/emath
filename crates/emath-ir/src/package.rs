@@ -5,7 +5,7 @@ use crate::constructor::{Constructor, TestCase};
 use crate::evidence::EvidenceClaim;
 use crate::expression::ExprNode;
 use crate::goal::{CompileSpec, Export, Goal, ResolutionPlan};
-use crate::ids::{DeclarationId, ExprId, GoalId, TestId, TypeId};
+use crate::ids::{CapabilityId, DeclarationId, ExprId, GoalId, TestId, TypeId};
 use crate::provenance::{BindingSite, Provenance};
 use crate::types::TypeNode;
 use emath_core::{ContentId, QualifiedName, Span};
@@ -71,6 +71,75 @@ pub struct ModelResidual {
     /// State rate unknowns `der(x)` referenced by this residual with no
     /// explicit rate equation for `x`.
     pub rates: Vec<String>,
+}
+
+/// One hybrid event rule (r3-dynamical-03lh ch7, event-execution slice):
+/// a declared event with a `.emath` Boolean condition over the model's
+/// inputs, state, and algebraic unknowns (definitions inlined at
+/// admission) plus exactly one deterministic action. The runner fires
+/// the event once per rising edge of the condition and persists the
+/// action into the live input/state map for all later steps.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EventDecl {
+    /// Event name from the `events:` section (`event Name(field: Type)`).
+    pub name: String,
+    /// Parameter names from the `event Name(field: Type)` head, in
+    /// declaration order. These are RUNTIME-CAPTURED payloads: when the
+    /// event fires, the runner binds each parameter to the live value of
+    /// the SAME-NAMED input/state/algebraic variable at the crossing
+    /// sample. Admission requires every parameter name to match a
+    /// declared model variable (else E-TRANS-006) so binding is always
+    /// defined: a parameter is a named capture of that variable.
+    pub params: Vec<String>,
+    /// Boolean condition expression; definitions inlined at admission.
+    pub condition: ExprId,
+    /// The single deterministic action applied exactly once at the
+    /// crossing sample.
+    pub action: EventAction,
+}
+
+/// One event action: an assignment to a declared `inputs:` or `state:`
+/// slot. Algebraic unknowns are refused as targets at admission — the
+/// Newton projection owns them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EventAction {
+    /// Declared `inputs:` or `state:` field name the action writes.
+    pub target: String,
+    /// Right-hand side expression; definitions inlined at admission and
+    /// slot-typed against the target's declared type.
+    pub expr: ExprId,
+}
+
+/// One transition rule (r3-dynamical-03lh ch7, transitions slice): an
+/// `on <Event>:` rule attaches deterministic re-assignments to a
+/// DECLARED event by name. The runner applies the actions when the
+/// named event fires; the action values may reference the event's
+/// runtime-captured parameters (bound from same-named model variables
+/// at the firing sample).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TransitionDecl {
+    /// Declared event name the rule triggers on (from `events:`).
+    pub trigger: String,
+    /// Deterministic re-assignments applied at firing, in source order.
+    /// Each action's `expr` may reference the trigger's captured event
+    /// parameters; definitions are inlined at admission.
+    pub actions: Vec<TransitionAction>,
+}
+
+/// One transition action: a re-assignment of a declared `inputs:` or
+/// `state:` slot. `is_state` distinguishes a `state.<name>` target from
+/// a bare declared input/state name.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TransitionAction {
+    /// Declared `inputs:` / `state:` field name the action writes.
+    pub target: String,
+    /// `true` when the action wrote `state.<target>`; `false` for a bare
+    /// declared input/state name.
+    pub is_state: bool,
+    /// Right-hand side expression; definitions inlined at admission.
+    /// A referenced event parameter remains a plain `Variable` node whose
+    /// name is a runtime capture bound by the runner.
+    pub expr: ExprId,
 }
 
 /// One `host:` language binding (`rust:` / `implement Trait for Type:`).
@@ -154,6 +223,21 @@ pub struct LawMetadata {
     pub citations: Vec<String>,
 }
 
+/// One admitted `emath field_pack` declaration (v9-06-2rdq.16): the
+/// pack's exports as artifact data. Packs compile to a semantic image /
+/// `.emlib` consumed by layout/install tooling — admission never lowers
+/// a pack into runnable meaning, and the exports carry no parser
+/// surface (the section table is closed at admission).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldPackEntry {
+    /// Pack declaration name; public identity is package path + name.
+    pub name: String,
+    /// Exported items in source order: `(export kind, name)` where the
+    /// kind is one of the closed export vocabulary (`cell`, `theory`,
+    /// `method`, `world`).
+    pub exports: Vec<(String, String)>,
+}
+
 /// The neutral semantic package. IDs index the sibling arenas.
 #[derive(Clone, Debug, Default)]
 pub struct SemanticPackage {
@@ -163,6 +247,12 @@ pub struct SemanticPackage {
     /// Admitted imports (front-end).
     pub imports: Vec<ImportEntry>,
     pub declarations: Vec<Declaration>,
+    /// Admitted capability cells. Domain operations are arena data: adding
+    /// a cell appends here and never adds an `ExprNode` variant.
+    pub capabilities: Vec<crate::capability::Capability>,
+    /// Admitted `emath field_pack` declarations (v9-06-2rdq.16). Pack
+    /// data appends here; adding a pack never adds a core variant.
+    pub field_packs: Vec<FieldPackEntry>,
     /// Law-only metadata keyed by declaration id. Keeping this package-side
     /// leaves ordinary function/model declarations unchanged.
     pub law_metadata: BTreeMap<DeclarationId, LawMetadata>,
@@ -172,6 +262,20 @@ pub struct SemanticPackage {
     /// Causalized implicit residuals per model declaration; package-side
     /// so adding a section does not churn every `Declaration` literal.
     pub residuals: std::collections::BTreeMap<DeclarationId, Vec<ModelResidual>>,
+    /// Hybrid event rules per model declaration (r3-dynamical-03lh ch7,
+    /// event-execution slice): each declared event carries a `.emath`
+    /// Boolean condition and one deterministic action. The runner fires
+    /// an event at most once per rising edge of its condition; bare
+    /// `event Name` / `event Name(f: T)` declarations (no payload
+    /// suite) are surface-only and never scheduled. Package-side so
+    /// adding the section does not churn every `Declaration` literal.
+    pub events: std::collections::BTreeMap<DeclarationId, Vec<EventDecl>>,
+    /// Transition rules per model declaration (r3-dynamical-03lh ch7,
+    /// transitions slice): each `on <Event>:` rule attaches deterministic
+    /// re-assignments to a declared event by name. The runner applies
+    /// them when the event fires. Package-side so adding the section does
+    /// not churn every `Declaration` literal.
+    pub transitions: std::collections::BTreeMap<DeclarationId, Vec<TransitionDecl>>,
     pub types: Vec<TypeNode>,
     pub exprs: Vec<ExprNode>,
     pub expr_spans: Vec<Span>,
@@ -188,9 +292,13 @@ impl SemanticPackage {
             package_path: None,
             imports: Vec::new(),
             declarations: Vec::new(),
+            capabilities: Vec::new(),
+            field_packs: Vec::new(),
             law_metadata: BTreeMap::new(),
             binding_provenance: BTreeMap::new(),
             residuals: std::collections::BTreeMap::new(),
+            events: std::collections::BTreeMap::new(),
+            transitions: std::collections::BTreeMap::new(),
             types: Vec::new(),
             exprs: Vec::new(),
             expr_spans: Vec::new(),
@@ -221,6 +329,13 @@ impl SemanticPackage {
         TestId(u32::try_from(self.tests.len() - 1).unwrap_or(u32::MAX))
     }
 
+    /// Intern one capability cell. Adding a cell is arena growth: core IR
+    /// enums stay fixed.
+    pub fn push_capability(&mut self, capability: crate::capability::Capability) -> CapabilityId {
+        self.capabilities.push(capability);
+        CapabilityId(u32::try_from(self.capabilities.len() - 1).unwrap_or(u32::MAX))
+    }
+
     #[must_use]
     pub fn declaration(&self, id: DeclarationId) -> Option<&Declaration> {
         self.declarations.get(id.index())
@@ -239,6 +354,11 @@ impl SemanticPackage {
     #[must_use]
     pub fn ty(&self, id: TypeId) -> Option<&TypeNode> {
         self.types.get(id.index())
+    }
+
+    #[must_use]
+    pub fn capability(&self, id: CapabilityId) -> Option<&crate::capability::Capability> {
+        self.capabilities.get(id.index())
     }
 
     #[must_use]

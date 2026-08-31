@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 pub mod canonical;
+pub mod capability;
 pub mod constructor;
 pub mod contracts;
 pub mod domains;
@@ -25,6 +26,13 @@ pub mod type_system;
 pub mod types;
 pub mod units;
 
+pub use capability::{
+    AdmissionRefusal, CAPABILITY_CELL_SCHEMA_V1, CellClass, CellSchema, Capability,
+    ClosureRefusal, MAX_CELL_ARITY, MigrationPolicy, ProjectionKind, ProjectionStatus,
+    SuppliedProjection, admit_cell, admit_cell_mutation, canonical_capability, canonical_cell,
+    cell_id, missing_required, plan_cell_closure, required_projections, softmax_axis_well_formed,
+    softmax_reference_strict_f64,
+};
 pub use constructor::{
     ConstructionObligation, ConstructionReceipt, Constructor, Field, ObligationClass,
     ObligationKind, TestCase, Visibility,
@@ -39,7 +47,7 @@ pub use goal::{
     ProviderRef, RequestSpec, ResolutionPlan, SafetyProfile, TargetProfile, build_goal,
     native_plan, plan_identity,
 };
-pub use ids::{DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
+pub use ids::{CapabilityId, DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
 pub use kind_schema::{
     CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
     core_model_schema, core_policy_schema,
@@ -54,8 +62,9 @@ pub use numeric::{
 };
 pub use operator::{DeclaredOperator, Fixity, canonical_operator};
 pub use package::{
-    Declaration, HostBinding, HostMethod, ImportEntry, ImportSelection, LawMetadata, ModelResidual,
-    PackageIdentity, SemanticPackage,
+    Declaration, EventAction, EventDecl, FieldPackEntry, HostBinding, HostMethod, ImportEntry,
+    ImportSelection, LawMetadata, ModelResidual, PackageIdentity, SemanticPackage,
+    TransitionAction, TransitionDecl,
 };
 pub use provenance::{
     BindingSite, DistributionKind, InstrumentRef, Measured, PROVENANCE_SCHEMA_V1, Provenance,
@@ -74,4 +83,4 @@ pub use type_system::{
     TypeScheme, TypeVar, canonical_of, render, unify,
 };
 pub use types::TypeNode;
-pub use units::{Unit, UnitDim, UnitError, UnitFamily, check_compatible, lookup_unit, per_unit};
+pub use units::{Unit, UnitDim, UnitError, UnitFamily, check_compatible, lookup_unit, per_unit, E_UNIT_CURRENCY_CORE};
