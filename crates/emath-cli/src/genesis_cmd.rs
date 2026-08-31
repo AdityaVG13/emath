@@ -718,7 +718,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> CliExit {
             .map(|label| (*label).to_string())
             .collect::<Vec<_>>();
         let specs = codegen_specs(&worlds, &labels);
-        emath_world_codegen_rust::generate(&analysis.term, &analysis.inference.signature, &specs)
+        emath_world_ir::world_codegen_rust::generate(&analysis.term, &analysis.inference.signature, &specs)
             .map_or(0, |generated| {
                 let rows = generated
                     .files
@@ -950,7 +950,7 @@ fn path_to_string(path: &Path) -> String {
 fn codegen_specs(
     worlds: &[WorldIr],
     labels: &[String],
-) -> Vec<emath_world_codegen_rust::WorldSpec> {
+) -> Vec<emath_world_ir::world_codegen_rust::WorldSpec> {
     labels
         .iter()
         .map(|label| {
@@ -970,7 +970,7 @@ fn codegen_specs(
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            emath_world_codegen_rust::WorldSpec {
+            emath_world_ir::world_codegen_rust::WorldSpec {
                 label: label.to_ascii_lowercase(),
                 operators,
             }
@@ -1041,7 +1041,7 @@ pub fn compile_cmd(request: CompileRequest) -> CliExit {
         .collect::<Vec<_>>();
     let worlds = builtin_worlds(&analysis.inference.signature);
     let specs = codegen_specs(&worlds, &world_labels);
-    let generated = match emath_world_codegen_rust::generate(
+    let generated = match emath_world_ir::world_codegen_rust::generate(
         &analysis.term,
         &analysis.inference.signature,
         &specs,
@@ -1062,7 +1062,7 @@ pub fn compile_cmd(request: CompileRequest) -> CliExit {
         object.int("schema_version", 1);
         object.int(
             "world_abi_version",
-            u64::from(emath_world_codegen_rust::WORLD_ABI_VERSION),
+            u64::from(emath_world_ir::world_codegen_rust::WORLD_ABI_VERSION),
         );
         object.string("crate_name", &generated.crate_name);
         object.string("source", &path_to_string(&path));

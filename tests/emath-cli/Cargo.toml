@@ -14,7 +14,6 @@ emath-syntax = { path = "../../crates/emath-syntax" }
 emath-plan = { path = "../../crates/emath-plan" }
 emath-artifact = { path = "../../crates/emath-artifact" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }
-emath-world-codegen-rust = { path = "../../crates/emath-world-codegen-rust" }
 
 [[bench]]
 name = "comprehensive_bench"

@@ -54,7 +54,7 @@ mod contract_tests {
 
 mod unused_worldir_tests {
     use emath_term::{Signature, SymbolId, Term};
-    use emath_world_codegen_rust::{WorldSpec, generate};
+    use emath_world_ir::world_codegen_rust::{WorldSpec, generate};
 
     fn reference_signature() -> Signature {
         let mut signature = Signature::default();
