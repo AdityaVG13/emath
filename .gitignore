@@ -127,3 +127,7 @@ beads_compliance_audit/
 /.rch/
 /outputs/
 /tmp/
+
+# Local archive dumps — never track these
+archived_mailbox_states/
+*.zip
