@@ -758,7 +758,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-runtime",
+ "emath-provider-api",
 ]
 
 [[package]]
@@ -768,7 +768,7 @@ dependencies = [
  "emath-adapter-dew-tests",
  "emath-adapter-rumoca",
  "emath-ir",
- "emath-runtime",
+ "emath-provider-api",
 ]
 
 [[package]]
@@ -1159,7 +1159,6 @@ dependencies = [
  "emath-goal",
  "emath-ir",
  "emath-provider-api",
- "emath-runtime",
 ]
 
 [[package]]
@@ -1192,7 +1191,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-runtime",
 ]
 
 [[package]]
@@ -1238,13 +1236,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-rt",
-]
-
-[[package]]
-name = "emath-runtime"
-version = "0.1.0"
-dependencies = [
- "emath-core",
 ]
 
 [[package]]
@@ -1397,7 +1388,6 @@ dependencies = [
  "emath-ir",
  "emath-plugin-sdk",
  "emath-provider-api",
- "emath-runtime",
 ]
 
 [[package]]
@@ -2549,7 +2539,6 @@ dependencies = [
  "emath-core",
  "emath-ir",
  "emath-provider-api",
- "emath-runtime",
 ]
 
 [[package]]

@@ -12,7 +12,6 @@ emath-core = { workspace = true }
 emath-goal = { workspace = true }
 emath-ir = { workspace = true }
 emath-provider-api = { workspace = true }
-emath-runtime = { workspace = true }
 
 [lints]
 workspace = true

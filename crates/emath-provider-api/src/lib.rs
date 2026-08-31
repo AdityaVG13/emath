@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod runtime;
 pub mod adapter;
 pub mod constellation;
 pub mod descriptor;
@@ -15,7 +16,7 @@ pub mod registry;
 
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{EvidenceLevel, Goal, ResolutionPlan};
-use emath_runtime::{Budget, Cancellation, Outcome};
+use crate::runtime::{Budget, Cancellation, Outcome};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProviderDescriptor {

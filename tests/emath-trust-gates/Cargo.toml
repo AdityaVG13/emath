@@ -12,7 +12,6 @@ emath-evidence = { path = "../../crates/emath-evidence" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-plugin-sdk = { path = "../../crates/emath-plugin-sdk" }
 emath-provider-api = { path = "../../crates/emath-provider-api" }
-emath-runtime = { path = "../../crates/emath-runtime" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

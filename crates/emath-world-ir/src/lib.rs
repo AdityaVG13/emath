@@ -10,7 +10,7 @@ pub use fitting::FittedTable;
 // Facade fence (rpme/C052): the morphism/preservation vocabulary callers
 // consume deep (`translation::{...}`) is root-exported; the module path
 // stays public for the rest of the translation surface. Homonym watch
-// (C057): `emath_runtime::EvidenceHandle` is a DIFFERENT type — no
+// (C057): `emath_provider_api::runtime::EvidenceHandle` is a DIFFERENT type — no
 // collision, different crates and paths.
 pub use translation::{EvidenceHandle, PreservationRelation, WorldMorphism};
 

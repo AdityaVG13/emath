@@ -14,7 +14,6 @@ members = [
   "crates/emath-rust-backend",
   "crates/emath-rt",
   "crates/emath-artifact",
-  "crates/emath-runtime",
   "crates/emath-provider-api",
   "crates/emath-build",
   "crates/emath-builder",
@@ -108,7 +107,6 @@ emath-rust-ir = { path = "crates/emath-rust-ir" }
 emath-rust-backend = { path = "crates/emath-rust-backend" }
 emath-rt = { path = "crates/emath-rt" }
 emath-artifact = { path = "crates/emath-artifact" }
-emath-runtime = { path = "crates/emath-runtime" }
 emath-provider-api = { path = "crates/emath-provider-api" }
 emath-build = { path = "crates/emath-build" }
 emath-builder = { path = "crates/emath-builder" }
