@@ -1,5 +1,6 @@
 [package]
 name = "emath-world-ir"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +11,4 @@ workspace = true
 
 [dependencies]
 emath-term = { path = "../emath-term" }
+emath-core = { path = "../emath-core" }

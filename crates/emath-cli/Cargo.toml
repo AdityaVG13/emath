@@ -1,5 +1,6 @@
 [package]
 name = "emath-cli"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,12 +15,19 @@ emath-adapter-rumoca = { workspace = true }
 emath-agent-protocol = { workspace = true }
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
+emath-calibration = { workspace = true }
 emath-checker = { workspace = true }
 emath-core = { workspace = true }
 emath-diagnostics = { workspace = true }
 emath-exec-ir = { workspace = true }
 emath-genesis = { workspace = true }
 emath-goal = { workspace = true }
+# KEEP (rpme/C016/C060/C080, ledger card in bead close): this edge carries
+# REAL domain data, not thin type imports — emath_ir::Goal (6 sites: plan/
+# agent json rendering), Provenance, FallbackPolicy, EvidenceLevel. The
+# stale census premise (2 thin types) no longer holds; aliasing Goal onto
+# another crate would relocate ownership, not remove the need. emath-ir is
+# the true owner.
 emath-ir = { workspace = true }
 emath-plan = { workspace = true }
 emath-portfolio = { workspace = true }
@@ -30,6 +38,7 @@ emath-source = { workspace = true }
 emath-syntax = { workspace = true }
 emath-term = { workspace = true }
 emath-tuning = { workspace = true }
+emath-store = { path = "../emath-store" }
 emath-world-codegen-rust = { workspace = true }
 emath-world-ir = { workspace = true }
 

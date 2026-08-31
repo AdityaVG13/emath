@@ -5,6 +5,12 @@ edition = "2024"
 publish = false
 
 [dependencies]
+emath-adapter-dew-tests = { path = "../emath-adapter-dew" }
 emath-adapter-rumoca = { path = "../../crates/emath-adapter-rumoca" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-runtime = { path = "../../crates/emath-runtime" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

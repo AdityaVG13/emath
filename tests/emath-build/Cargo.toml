@@ -6,3 +6,9 @@ publish = false
 
 [dependencies]
 emath-build = { path = "../../crates/emath-build" }
+emath-core = { path = "../../crates/emath-core" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

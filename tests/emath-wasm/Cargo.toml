@@ -13,5 +13,8 @@ emath-exec-ir = { workspace = true }
 emath-artifact = { workspace = true }
 emath-test-harness = { workspace = true }
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -9,3 +9,8 @@ emath-agent-protocol = { path = "../../crates/emath-agent-protocol" }
 emath-portfolio = { path = "../../crates/emath-portfolio" }
 emath-tuning = { path = "../../crates/emath-tuning" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

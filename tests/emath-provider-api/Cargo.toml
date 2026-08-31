@@ -12,3 +12,8 @@ emath-hir = { path = "../../crates/emath-hir" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-registry = { path = "../../crates/emath-registry" }
 emath-schema = { path = "../../crates/emath-schema" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

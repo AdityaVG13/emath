@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 emath-cli = { path = "../../crates/emath-cli" }
+emath-portfolio = { path = "../../crates/emath-portfolio" }
 emath-core = { path = "../../crates/emath-core" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-sema = { path = "../../crates/emath-sema" }
@@ -19,3 +20,8 @@ emath-world-codegen-rust = { path = "../../crates/emath-world-codegen-rust" }
 name = "comprehensive_bench"
 harness = false
 path = "benches/keep_gate.rs"
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

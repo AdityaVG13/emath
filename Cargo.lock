@@ -831,6 +831,7 @@ name = "emath-build-tests"
 version = "0.1.0"
 dependencies = [
  "emath-build",
+ "emath-core",
 ]
 
 [[package]]
@@ -915,6 +916,7 @@ dependencies = [
  "emath-core",
  "emath-lab-core",
  "emath-plan",
+ "emath-portfolio",
  "emath-sema",
  "emath-syntax",
  "emath-world-codegen-rust",

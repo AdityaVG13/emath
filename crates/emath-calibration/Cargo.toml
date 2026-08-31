@@ -1,5 +1,6 @@
 [package]
 name = "emath-calibration"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +10,7 @@ description = "Semantic calibration: example partitions, fitting, held-out chall
 [dependencies]
 emath-term = { path = "../emath-term" }
 emath-world-ir = { path = "../emath-world-ir" }
+emath-ir = { path = "../emath-ir" }
 
 [lints]
 workspace = true

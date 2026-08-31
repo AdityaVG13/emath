@@ -1,5 +1,6 @@
 [package]
 name = "emath-diagnostics"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +9,6 @@ description = "Pedagogic explanations and rendered witnesses for law/world refus
 
 [dependencies]
 emath-artifact = { workspace = true }
-emath-calibration = { workspace = true }
 emath-core = { workspace = true }
 emath-law-check = { workspace = true }
 emath-term = { workspace = true }

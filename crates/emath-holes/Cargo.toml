@@ -1,5 +1,6 @@
 [package]
 name = "emath-holes"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +10,6 @@ description = "Meaning holes and finite synthesis: hole graph, table synthesis, 
 [dependencies]
 emath-term = { path = "../emath-term" }
 emath-world-ir = { path = "../emath-world-ir" }
-emath-calibration = { path = "../emath-calibration" }
 emath-law-check = { path = "../emath-law-check" }
 
 [lints]

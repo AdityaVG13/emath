@@ -14,9 +14,13 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+emath-core = { path = "../crates/emath-core" }
 emath-genesis.workspace = true
 emath-holes.workspace = true
 emath-layout.workspace = true
 emath-portfolio.workspace = true
+emath-sema = { path = "../crates/emath-sema" }
+emath-store = { path = "../crates/emath-store" }
+emath-syntax = { path = "../crates/emath-syntax" }
 emath-term.workspace = true
 emath-world-ir.workspace = true
