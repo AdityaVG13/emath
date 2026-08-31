@@ -8,7 +8,7 @@
 
 use emath_core::fnv1a64_bytes;
 
-use crate::{CheckerError, identity_of};
+use crate::checker::{CheckerError, identity_of};
 
 /// One row of the source (EMIR) relation: `inputs -> outputs`.
 #[derive(Clone, Debug, PartialEq)]

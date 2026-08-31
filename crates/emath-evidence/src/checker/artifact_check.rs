@@ -16,7 +16,7 @@ use emath_core::ContentId;
 use emath_ir::{ClaimVerdict, EvidenceLevel};
 use std::path::Path;
 
-use crate::{CheckerError, identity_of};
+use crate::checker::{CheckerError, identity_of};
 
 /// Frozen provider lock as recorded by the build environment.
 #[derive(Clone, Debug, PartialEq, Eq)]

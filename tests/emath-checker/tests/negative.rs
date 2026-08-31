@@ -1,6 +1,6 @@
 //! Seeded negative controls for the independent evidence pipeline.
 
-use emath_checker::{TranslationRelation, seed_wrong_derivative, validate_translation};
+use emath_evidence::checker::{TranslationRelation, seed_wrong_derivative, validate_translation};
 
 #[test]
 fn seeded_wrong_derivative_is_refused_with_e_evid_301() {

@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 emath-artifact = { path = "../../crates/emath-artifact" }
-emath-checker = { path = "../../crates/emath-checker" }
+emath-evidence = { path = "../../crates/emath-evidence" }
 emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }
 

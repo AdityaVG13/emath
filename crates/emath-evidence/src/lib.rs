@@ -6,9 +6,9 @@
 //!
 //! Stable codes (`E-EVID-*`):
 //! Stable codes (`E-EVID-*`, evidence/checker area):
-//! - `E-EVID-101`..`E-EVID-111` independent artifact checker (emath-checker);
-//! - `E-EVID-201` claim-language lint (emath-checker);
-//! - `E-EVID-301`/`E-EVID-302` translation validation (emath-checker);
+//! - `E-EVID-101`..`E-EVID-111` independent artifact checker (`checker` module);
+//! - `E-EVID-201` claim-language lint (`checker` module);
+//! - `E-EVID-301`/`E-EVID-302` translation validation (`checker` module);
 //! - `E-EVID-401` unknown certificate kind;
 //! - `E-EVID-402` duplicate versioned checker contract;
 //! - `E-EVID-403` checker contract does not admit the claim class;
@@ -78,3 +78,5 @@ impl std::fmt::Display for EvidenceError {
 }
 
 impl std::error::Error for EvidenceError {}
+
+pub mod checker;

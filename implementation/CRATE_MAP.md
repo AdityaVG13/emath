@@ -52,7 +52,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-evidence` | `crates/emath-evidence` | claims, assumptions, bundles, freshness | ir |
-| `emath-checker` | `crates/emath-checker` | artifact/result/certificate checking | evidence/artifact |
 | `emath-rust-backend` | `crates/emath-rust-backend` | EMIR to Rust IR and rendering | rust-ir |
 | `emath-artifact` | `crates/emath-artifact` | Cargo package, manifests, source maps, SBOM | core/schema |
 | `emath-rt` | `crates/emath-rt` | pre-compiled math kernels, embedded verbatim into generated crates and used by the interpreter | std only |

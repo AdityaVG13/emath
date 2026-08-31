@@ -6,7 +6,7 @@
 
 mod common;
 
-use emath_checker::{
+use emath_evidence::checker::{
     ArtifactCheckConfig, artifact_input_from_dir, check_artifact, run_standard_battery,
 };
 

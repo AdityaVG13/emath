@@ -1625,7 +1625,7 @@ fn list_published_artifact_ids(dir: &Path) -> Result<Vec<String>, CliExit> {
 }
 
 /// `artifact check <dir>`: independent verification of every published
-/// artifact under `<dir>/emath/<artifact-id>` via `emath-checker`
+/// artifact under `<dir>/emath/<artifact-id>` via `emath-evidence`'s `checker` module
 /// (one identity, one checker; empty state dirs are refused).
 pub fn artifact_check(dir: &Path) -> CliExit {
     let artifact_ids = match list_published_artifact_ids(dir) {
@@ -1636,7 +1636,7 @@ pub fn artifact_check(dir: &Path) -> CliExit {
     let mut ok = true;
     for id in artifact_ids {
         let root = artifact_root.join(&id);
-        match emath_checker::check_artifact_dir(&root) {
+        match emath_evidence::checker::check_artifact_dir(&root) {
             Ok(report) if report.valid() => {
                 println!("artifact {id}: verified ({} files)", report.files_verified);
             }
@@ -1672,9 +1672,9 @@ pub fn artifact_battery(dir: &Path) -> CliExit {
     let mut ok = true;
     for id in artifact_ids {
         let root = artifact_root.join(&id);
-        match emath_checker::artifact_input_from_dir(&root) {
+        match emath_evidence::checker::artifact_input_from_dir(&root) {
             Ok(input) => {
-                let run = emath_checker::run_standard_battery(&input);
+                let run = emath_evidence::checker::run_standard_battery(&input);
                 for control in &run.refused {
                     println!("artifact {id}: control refused ({control})");
                 }

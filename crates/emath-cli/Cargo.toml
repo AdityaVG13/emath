@@ -16,7 +16,7 @@ emath-agent-protocol = { workspace = true }
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-calibration = { workspace = true }
-emath-checker = { workspace = true }
+emath-evidence = { workspace = true }
 emath-core = { workspace = true }
 emath-law-check = { workspace = true }
 emath-exec-ir = { workspace = true }
