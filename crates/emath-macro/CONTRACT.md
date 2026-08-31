@@ -2,8 +2,8 @@
 
 ## Purpose and layer
 - Procedural macro convenience crate (CRATE_MAP non-exhaustive layer marker; corrected name, formerly `emath-macros`).
-- `emath! { "... .emath source ..." }` lowers an inline source literal to the same compiler path as `.emath` text. The macro parses its input as tokens (never concatenates strings), validates it is a single string literal and valid source, and expands to `::emath_builder::MacroExpansion::from_literals(source, identity)`, which hosts pass to `emath_builder::build_from_source`.
-- Thin shim: parsing/lowering logic lives in `emath-builder` (a normal crate) so it is unit-testable; this crate is proc-macro only.
+- `emath! { "... .emath source ..." }` lowers an inline source literal to the same compiler path as `.emath` text. The macro parses its input as tokens (never concatenates strings), validates it is a single string literal and valid source, and expands to `::emath_build::builder::MacroExpansion::from_literals(source, identity)`, which hosts pass to `emath_build::builder::build_from_source`.
+- Thin shim: parsing/lowering logic lives in `emath-build`'s `builder` module (a normal crate) so it is unit-testable; this crate is proc-macro only.
 
 ## Public types and semantics
 - Single proc-macro entry: `#[proc_macro] pub fn emath(input: TokenStream) -> TokenStream`.
@@ -30,8 +30,8 @@
 - None: no `[features]` in Cargo.toml (crate is `proc-macro = true`).
 
 ## Conformance tests
-- None: no `tests/` directory and no `#[cfg(test)]` module on disk; correctness is exercised through downstream compile-time use via `emath-namespace` (naming contract) and `emath-builder`'s parsing tests.
+- None: no `tests/` directory and no `#[cfg(test)]` module on disk; correctness is exercised through downstream compile-time use via `emath-namespace` (naming contract) and `emath-build`'s `builder` parsing tests.
 
 ## No-claim boundaries
-- This crate only expands; it does not parse, admit, or build. Those responsibilities live entirely in `emath-builder` (parse) and `emath-build` (build), whose contracts govern them.
+- This crate only expands; it does not parse, admit, or build. Those responsibilities live entirely in `emath-build` (`builder` module: parse; build), whose contracts govern them.
 - The expansion's naming follows the language-spec naming contract enforced upstream; this crate adds no naming machinery of its own.

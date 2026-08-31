@@ -10,7 +10,7 @@ rust-version.workspace = true
 proc-macro = true
 
 [dependencies]
-emath-builder = { workspace = true }
+emath-build = { workspace = true }
 emath-syntax = { workspace = true }
 
 [lints]

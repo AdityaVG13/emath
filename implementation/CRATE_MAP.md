@@ -61,7 +61,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-build` | `crates/emath-build` | build-step backend and artifact emission (`GeneratedCrate` host) | sema/artifact |
-| `emath-builder` | `crates/emath-builder` | programmatic Rust builder API (laboratory surface) | build |
 | `emath-macro` | `crates/emath-macro` | procedural macro convenience (corrected name; formerly `emath-macros`) | — |
 | `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity (corrected name; formerly `emath-lab`) | core |
 | `emath-registry` | `crates/emath-registry` | package/provider registry slice | provider-api |

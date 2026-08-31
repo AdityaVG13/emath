@@ -1,1 +1,1 @@
-//! Integration test crate for emath-builder.
+//! Integration test crate for emath-build's `builder` module.

@@ -176,7 +176,7 @@ fn ekind010_is_single_predicate() {
         "crates/emath-sema/src/admit/declaration.rs".to_string(),
         "crates/emath-sema/src/admit/equations.rs".to_string(),
         "crates/emath-sema/src/admit.rs".to_string(),
-        "crates/emath-builder/src/lib.rs".to_string(),
+        "crates/emath-build/src/builder.rs".to_string(),
         "crates/emath-hir/src/open.rs".to_string(),
         "crates/emath-hir/tests/registry_complete.rs".to_string(),
     ]);

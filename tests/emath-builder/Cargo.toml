@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-emath-builder = { path = "../../crates/emath-builder" }
+emath-build = { path = "../../crates/emath-build" }
 emath-ir = { path = "../../crates/emath-ir" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including

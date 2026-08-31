@@ -1,5 +1,5 @@
 mod builder {
-    use emath_builder::{BuilderModel, Expression, GoalModel, ModelBuilder, TestModel, TypeKind};
+    use emath_build::builder::{BuilderModel, Expression, GoalModel, ModelBuilder, TestModel, TypeKind};
 
     #[test]
     fn builder_model_tests_surface_on_declaration_tests() {

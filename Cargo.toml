@@ -15,7 +15,6 @@ members = [
   "crates/emath-artifact",
   "crates/emath-provider-api",
   "crates/emath-build",
-  "crates/emath-builder",
   "crates/emath-macro",
   "crates/emath-lab-core",
   "crates/emath-evidence",
@@ -103,7 +102,6 @@ emath-rt = { path = "crates/emath-rt" }
 emath-artifact = { path = "crates/emath-artifact" }
 emath-provider-api = { path = "crates/emath-provider-api" }
 emath-build = { path = "crates/emath-build" }
-emath-builder = { path = "crates/emath-builder" }
 emath-macro = { path = "crates/emath-macro" }
 emath-lab-core = { path = "crates/emath-lab-core" }
 emath-evidence = { path = "crates/emath-evidence" }
