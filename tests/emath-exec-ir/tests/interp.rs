@@ -677,6 +677,120 @@ fn matrix_ops_refuse_shape_mismatch() {
     );
 }
 
+/// Build a `Solve` wrapper program over a one-input residual body with
+/// the given seed and Newton budget (emath-9bj1 fallback tests).
+fn solve_program(body: EmirProgram, seed: f64, max_iter: u32) -> EmirProgram {
+    EmirProgram {
+        ops: vec![(
+            EmirOp::Solve {
+                body,
+                var_index: 0,
+                tolerance: 1e-12,
+                max_iter,
+            },
+            Span::default(),
+        )],
+        result: EmirValue(0),
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+/// Wrap flat ops as a one-input residual program.
+fn residual_program(ops: Vec<EmirOp>, result: EmirValue) -> EmirProgram {
+    EmirProgram {
+        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
+        result,
+        input_count: 1,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+#[test]
+fn solve_falls_back_to_bisection_when_derivative_vanishes() {
+    // f(x) = x*x - 2 with seed 0: Newton's derivative vanishes at the
+    // seed (df = 2x = 0), so the deterministic bracket scan must find
+    // sqrt(2) via bisection — and the run must be deterministic
+    // (two evaluations, identical bits).
+    let body = residual_program(
+        vec![
+            EmirOp::LoadInput(0),
+            EmirOp::LoadInput(0),
+            EmirOp::F64Mul(EmirValue(0), EmirValue(1)),
+            const_bits(2.0),
+            EmirOp::F64Sub(EmirValue(2), EmirValue(3)),
+        ],
+        EmirValue(4),
+    );
+    let prog = solve_program(body, 0.0, 8);
+    let first = evaluate(&prog, &[Value::F64(0.0)], &[]).expect("bracketed fallback root");
+    let second = evaluate(&prog, &[Value::F64(0.0)], &[]).expect("deterministic rerun");
+    assert_eq!(first, second, "the fallback must be deterministic");
+    let Value::F64(root) = first else {
+        panic!("root must be scalar, got {first:?}");
+    };
+    assert!(
+        root > 0.5 && (root * root - 2.0).abs() < 1e-6,
+        "fallback must find sqrt(2) ~= 1.414, got {root}"
+    );
+}
+
+#[test]
+fn solve_falls_back_on_a_cubic_flat_at_the_seed() {
+    // f(x) = x^3 - 8 with seed 0: df = 3x^2 vanishes at the seed; the
+    // fallback must find the single real root x = 2.
+    let body = residual_program(
+        vec![
+            EmirOp::LoadInput(0),
+            EmirOp::LoadInput(0),
+            EmirOp::F64Mul(EmirValue(0), EmirValue(1)),
+            EmirOp::LoadInput(0),
+            EmirOp::F64Mul(EmirValue(2), EmirValue(3)),
+            const_bits(8.0),
+            EmirOp::F64Sub(EmirValue(4), EmirValue(5)),
+        ],
+        EmirValue(6),
+    );
+    let prog = solve_program(body, 0.0, 8);
+    let Value::F64(root) = evaluate(&prog, &[Value::F64(0.0)], &[])
+        .expect("flat-seed cubic must fall back to the bracketed root")
+    else {
+        panic!("root must be scalar");
+    };
+    assert!(
+        (root - 2.0).abs() < 1e-6,
+        "fallback must find 2^(1/3) root x = 2, got {root}"
+    );
+}
+
+#[test]
+fn solve_without_a_real_root_still_refuses_after_the_fallback() {
+    // f(x) = x*x + 1: Newton's derivative vanishes at the seed 0 AND
+    // the deterministic scan finds no sign change (f > 0 everywhere).
+    // The fallback must refuse with the pre-existing typed fault —
+    // never a hang, never an invented root.
+    let body = residual_program(
+        vec![
+            EmirOp::LoadInput(0),
+            EmirOp::LoadInput(0),
+            EmirOp::F64Mul(EmirValue(0), EmirValue(1)),
+            const_bits(1.0),
+            EmirOp::F64Add(EmirValue(2), EmirValue(3)),
+        ],
+        EmirValue(4),
+    );
+    let prog = solve_program(body, 0.0, 8);
+    assert_eq!(
+        evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap_err(),
+        EvalFault::Arithmetic {
+            op: "solve",
+            detail: "solve derivative vanished before convergence",
+        }
+    );
+}
+
 #[test]
 fn solve_refuses_vanished_derivative() {
     // f(x) = 1 (constant); Newton has df=0 while |f| is not small.
@@ -1467,7 +1581,7 @@ fn stencil3d_refuses_non_tensor_input() {
 // ---- B12: logic connectives evaluation ----------------------------------
 
 #[test]
-fn b12_imply_truth_table() {
+fn imply_truth_table() {
     // Imply: !a || b
     let cases = [
         (false, false, true),
@@ -1498,7 +1612,7 @@ fn b12_imply_truth_table() {
 }
 
 #[test]
-fn b12_iff_truth_table() {
+fn iff_truth_table() {
     // Iff: a == b for Bool
     let cases = [
         (false, false, true),
