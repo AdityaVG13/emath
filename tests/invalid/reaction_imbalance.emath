@@ -1,0 +1,10 @@
+# expect: E-CHEM-BALANCE — element balance is checked statically at
+# admission: this line consumes 4 H and 2 O but produces 2 H and 1 O
+# (emath-r3-reactions-section-92hq).
+emath reaction_network Imbalanced:
+    species:
+        H2
+        O2
+        H2O
+    reactions:
+        r1: 2H2 + O2 -> H2O

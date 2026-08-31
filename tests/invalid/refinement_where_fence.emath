@@ -1,0 +1,7 @@
+# expect: E-SYN-101 where-refinement seed fence
+emath function RefProbe:
+    inputs:
+        p: Float64 where 0 <= self and self <= 1
+
+    definitions:
+        f = p * 2

@@ -1,0 +1,28 @@
+# emath-epic-machine-fjxh.9 negative seed.
+#
+# Scenario: a compiled semantic image whose partition payload is CORRUPTED
+# (a flipped byte in the bytecode section, or a content id that no longer
+# matches its partition) loads SILENTLY and executes wrong bytecode: a
+# plausible distribution indistinguishable from the true cell formula.
+# The image loader refuses typed instead: every partition carries a
+# content id, the loader validates each partition independently, and a
+# mismatch is a typed refusal — never a partial image, never a silent
+# load.
+#
+# expect: E-IMAGE-001 - the loader refuses the corrupt partition with a
+# typed refusal naming the partition; the image id never matches a
+# corrupt build and partitions stay independently loadable.
+use std.kinds.capability
+
+emath capability Softmax:
+    class: pure
+    version: 1.0.0
+    migration: frozen
+    inputs:
+        x: Vector[Float64]
+    outputs:
+        probability: Vector[Float64]
+    image:
+        # seeded corruption: bytecode page flipped after stamping
+        partition: bytecode
+        content_id: fnv1a64:0000000000000000

@@ -1,0 +1,14 @@
+# emath-r2-graphs-masa slice 2 negative seed (call surface)
+# The seed's silent-success shape: a VECTOR-shaped value in the
+# adjacency slot must refuse at COMPILE (the closed vocabulary's shape
+# law) — never a silent mis-lowering of a vector into the graph carrier
+# slot.
+# expect: E-TYPE-012
+
+emath function hops:
+    inputs:
+        links: Vector<Float64>
+    outputs:
+        reached: Float64
+    definitions:
+        reached = reachability(links, 0)

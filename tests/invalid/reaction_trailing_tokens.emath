@@ -1,0 +1,12 @@
+# expect: E-SYN-156 — a `reactions:` line is `name: terms <arrow> terms`
+# and the line must END after the products (emath-r3-reactions-section-92hq).
+# A token after the RHS terms that is not a `+`-joined term refuses —
+# no silent truncation. (`+ heat` would parse as an undeclared species
+# term and refuse E-CHEM-SPECIES at admission instead.)
+emath reaction_network Trailing:
+    species:
+        H2
+        O2
+        H2O
+    reactions:
+        r1: 2H2 + O2 -> 2H2O heat

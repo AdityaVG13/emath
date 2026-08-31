@@ -1,0 +1,27 @@
+# emath-epic-machine-fjxh.7 negative seed.
+#
+# Scenario: a custom term is silently interpreted by an INVENTED world —
+# a portfolio that fabricates a world (or silently falls through from a
+# refused concrete world into an arbitrary one, or from the custom lane
+# into the strict evaluator) produces a plausible value with no evidence
+# of which world produced it: silent success. The World ABI refuses this:
+# the default portfolio disposes typed with a per-candidate trail when
+# nothing applicable remains, worlds are passed explicitly to the
+# evaluator (the strict lane never selects an invented world), and every
+# world carries stable evidence for the result bundle.
+#
+# expect: E-WORLD-001 / E-VM-APPLY-SHAPE - the portfolio's typed
+# disposition names every candidate verdict (applicable / not applicable
+# / excluded) and selects nothing silently; budget exhaustion under the
+# ABI is a typed BudgetExhausted refusal, never a partial value.
+use std.kinds.capability
+
+emath custom AlienWorld:
+    world constructor invent:
+        # seeded wrong portfolio: no world admits this signature, but the
+        # invented world silently fabricates a value anyway
+        symbols:
+            q: 1
+        carrier: Integer
+    strategies:
+        select: invented-without-admission

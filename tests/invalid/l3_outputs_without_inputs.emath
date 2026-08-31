@@ -1,0 +1,4 @@
+# expect: E-SEC-130 contract mode with `outputs:` but no `inputs:` section
+emath function Area:
+    outputs:
+        area: Float64

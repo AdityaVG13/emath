@@ -1,0 +1,13 @@
+# Expansion safety: a custom world constructor cannot mint evidence
+# authority by declaration alone. `authority: certified` is a typed
+# refusal (E-KIND-027); the claim stays E1/not-run or the declaration is
+# refused.
+emath custom AlienWorld:
+    world constructor invent:
+        strategies:
+            free_symbolic
+        protect:
+            total
+        output: "InterpretationPortfolio"
+    authority:
+        claims: "certified"

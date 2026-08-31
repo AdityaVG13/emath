@@ -1,0 +1,12 @@
+# expect: E-CHEM-SPECIES — a `species:` entry must be a bare name, one
+# per line (emath-r3-reactions-section-92hq): the world is closed, and a
+# two-names-on-one-line spelling is not a species declaration. A valid
+# bare entry (`C`) plus a reaction over only `C` keep the world
+# non-empty, so the refusal comes from the ENTRY arm itself — closure
+# refuses the spelling, it never guesses.
+emath reaction_network TwoNamesOneLine:
+    species:
+        A B
+        C
+    reactions:
+        r1: C -> C

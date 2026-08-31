@@ -1,0 +1,15 @@
+// emath-epic-machine-fjxh.17 negative seed: generated provider adapter
+// contracts and conformance fixtures.
+//
+// Seeded silent-success: a provider-native type (torch/jax) declared in
+// the public IR-facing adapter signature must FAIL the gate. A mutant
+// that silently passes provider-native types through would cross the
+// Neutral IR Constitution boundary (provider types leak into IR) while
+// looking like a successful adapter generation.
+# expect: refuse E-PROVIDER-001 (provider-native type in public IR)
+
+package epic_machine_fjxh_17_invalid {
+  cell std.tensor.softmax {
+    provider_adapter signature: [torch::Tensor];
+  }
+}

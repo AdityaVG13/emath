@@ -1,0 +1,15 @@
+# emath-r2-graphs-masa negative seed (Bellman-Ford slice)
+# The seed's silent-success shape: a negative cycle REACHABLE from the
+# source means NO shortest-path answer exists — the op must refuse
+# typed E-GRAPH-005, never fabricate distances from a diverging
+# relaxation.
+# expect: E-GRAPH-005
+
+emath function negative_cycle_distances:
+    inputs:
+        adj: Matrix<Float64>
+        source: Float64
+    outputs:
+        distances: Vector<Float64>
+    definitions:
+        distances = bellman_ford(adj, source)

@@ -1,0 +1,13 @@
+# emath-r2-graphs-masa negative seed (slice 1)
+# The seed's silent-success shape: a NON-SQUARE adjacency carrier must
+# refuse typed at evaluation — E-GRAPH-001 — never a silently truncated
+# traversal over garbage shape.
+# expect: E-GRAPH-001
+
+emath function hops:
+    inputs:
+        links: Matrix<Float64>
+    outputs:
+        reached: Float64
+    definitions:
+        reached = reachability(links, 0)[3]

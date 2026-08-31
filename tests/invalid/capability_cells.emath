@@ -1,0 +1,21 @@
+# emath-epic-machine-fjxh.2 negative seed.
+#
+# Scenario: a capability cell `Softmax` is declared with a `class:` whose
+# token is outside the closed taxonomy. A compiler that silently admits it
+# would mint a CellId over an unbounded class and later branch on an
+# invented name.
+#
+# expect: E-CELL-001 - typed refusal at the emath-ir admission seam
+# (emath_ir::admit_cell), never silent identity over an unknown class.
+use std.kinds.capability
+
+emath capability Softmax:
+    class: transcendental-quick
+    version: 1.0.0
+    migration: bump-and-note "initial"
+    inputs:
+        x: Float64
+    outputs:
+        value: Float64
+    definitions:
+        value = exp(x) / sum i in 0..3: exp(x)

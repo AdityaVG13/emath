@@ -1,0 +1,21 @@
+// emath-r3-linear-solves-4wj0 negative seed: solve_linear outside the
+// closed reference vocabulary.
+//
+// Seeded silent-success: a cell calls `solve_linear(A, b)`. A mutant
+// that silently ALIASES solve_linear to the nonlinear root-finding
+// `solve` (type confusion), or admits it as a no-op that returns a
+// zero vector, would look like a successful linear solve while
+// computing nothing. The law: matrix-carrier operations refuse TYPED
+// at compile, naming the operator (the missing-nucleus diagnosis).
+# expect: refuse unknown operator `solve_linear` (typed, never aliased to solve)
+
+package r3_linear_solves_4wj0_invalid
+
+emath function linear_solve_attempt:
+    inputs:
+        a: Vector<Float64>
+        b: Vector<Float64>
+    outputs:
+        x: Vector<Float64>
+    definitions:
+        x = solve_linear(a, b)

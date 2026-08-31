@@ -1,0 +1,20 @@
+// emath-r3-imports-utzd negative seed: unresolved in-package module import.
+//
+// Seeded silent-success: `use <package>.<module>` names an in-package
+// sibling whose source is NOT loaded in the session. A mutant that
+// treats unresolved module imports as inert admitted entries (or that
+// silently falls back to eager filesystem loading) would look like a
+// successful multi-file package while the import resolved to nothing.
+# expect: refuse E-PKG-050 (in-package module not loaded in this session)
+
+package r3_imports_utzd_invalid
+
+use r3_imports_utzd_invalid.missing
+
+emath function P:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = x

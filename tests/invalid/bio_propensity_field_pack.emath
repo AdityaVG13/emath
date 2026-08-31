@@ -1,0 +1,10 @@
+emath function bio_propensity_fence:
+    inputs:
+        alpha: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        propensity Birth: alpha * 1.0
+        y = alpha

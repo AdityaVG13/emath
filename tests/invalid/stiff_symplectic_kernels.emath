@@ -1,0 +1,14 @@
+# emath-xx0x.3 negative seed (thin nucleus slice)
+# The seed's silent-success shape: a NON-POSITIVE step size must refuse
+# typed at evaluation — E-ODE-003 — never a silently "integrated" value
+# that is just the input state.
+# expect: E-ODE-003
+
+emath function stiff_decay:
+    inputs:
+        y0: Float64
+        dt: Float64
+    outputs:
+        y1: Float64
+    definitions:
+        y1 = backward_euler_step([-50.0], y0, dt)

@@ -1,0 +1,10 @@
+#  Negative control (U6, emath-r3-match-expr-dnbd): a match expression
+#  with no catch-all arm. Totality is mandatory — the final `_` or
+#  binding arm may not be omitted, so an uncovered subject value is a
+#  parse-time refusal, never a silent fallthrough.
+emath function f:
+    inputs:
+        x: Float64
+
+    definitions:
+        y = match x { 0.0 => 1.0 }

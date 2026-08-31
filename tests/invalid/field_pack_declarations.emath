@@ -1,0 +1,17 @@
+// emath-v9-06-2rdq.16 negative seed: pack source injecting parser keywords.
+//
+// Seeded silent-success: a field_pack body claims a `keywords:` section
+// — a lexer/keyword injection. The section table for `field_pack` is
+// closed (exports/metadata only); a mutant that silently ignores the
+// unknown section (or desugars the pack into a custom declaration that
+// then falls through to strict lowering) would look like a successful
+// pack admission while the pack smuggled parser surface in.
+# expect: refuse E-SYN-101 (section `keywords` is not admitted for kind `field_pack`)
+
+package community
+
+emath field_pack injector:
+    exports:
+        cell softmax
+    keywords:
+        add match

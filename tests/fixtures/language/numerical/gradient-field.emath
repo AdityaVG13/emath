@@ -1,0 +1,43 @@
+# gradient-field: first-derivative spatial operators.
+#
+# `gradient(u, dx)` is the 1-D central-difference first derivative
+# (du/dx) with one-sided edges (linear ghost: a slope-1 ramp is 1
+# everywhere, including the boundary). `gradient_2d_x` and
+# `gradient_2d_y` are the 2-D central-difference first derivatives
+# along columns (du/dc) and rows (du/dr) respectively. All reuse the
+# stencil machinery with weights [-1/(2dx), 0, +1/(2dx)]; dx = 1.0
+# is a literal constant in Phase 1.
+
+emath function GradientField:
+    inputs:
+        u: Vector[5]
+        m: Matrix[3, 3]
+
+    outputs:
+        du: Vector[5]
+        gx: Matrix[3, 3]
+        gy: Matrix[3, 3]
+
+    definitions:
+        du = gradient(u, 1.0)
+        gx = gradient_2d_x(m, 1.0)
+        gy = gradient_2d_y(m, 1.0)
+
+    goals:
+        evaluate <du>:
+            produce rust.library
+
+    tests:
+        example <linear_vector_has_constant_gradient>:
+            given u = [0.0, 1.0, 2.0, 3.0, 4.0]
+            given m = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+            expect du == [1.0, 1.0, 1.0, 1.0, 1.0]
+            expect gx == [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+            expect gy == [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+
+        example <ramp_matrix_has_axis_gradients>:
+            given u = [0.0, 0.0, 0.0, 0.0, 0.0]
+            given m = [[0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [0.0, 1.0, 2.0]]
+            expect du == [0.0, 0.0, 0.0, 0.0, 0.0]
+            expect gx == [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]
+            expect gy == [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]

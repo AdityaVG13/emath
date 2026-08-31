@@ -1,0 +1,12 @@
+emath function seq_recurrence_fence:
+    inputs:
+        n: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        fib[0] = 0
+        fib[1] = 1
+        fib[n] = fib[n-1] + fib[n-2]
+        y = fib[n]

@@ -1,0 +1,10 @@
+#  emath-r3-table-literals-f3z1 (U9) positive fixture: `;` rows and a
+#  table literal admit as rank-2 values.
+emath function table_matrix_fixture:
+    definitions:
+        m = [1, 2; 3, 4]
+        t = |x y| 1, 2 | 3, 4 |
+        r = m[1, 0] + t[0, 1]
+
+    outputs:
+        r: Float64

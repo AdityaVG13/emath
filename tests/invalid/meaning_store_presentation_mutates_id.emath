@@ -1,0 +1,20 @@
+# emath-epic-emlib-nz1n.11 CAPSTONE negative fixture.
+# invariant: whitespace/comment edits preserve MeaningID (nz1n.2 + nz1n.8
+# + nz1n.11). This file IS a presentation edit of the capstone base
+# source (emath function square: y = x * x) — comments and blank lines
+# only, no semantic token changed. The meaning-store identity gate
+# (tests/emath-store/tests/meaning_store_unit.rs) asserts this fixture's
+# MeaningID EQUALS the base source's MeaningID; if any admission path
+# ever retcons presentation into meaning, that gate FAILS — a
+# presentation change that mutates MeaningID must never pass.
+# Presentation-only diffs classify as `presentation` and cut off the
+# semantic rebuild with a receipt naming the stable meaning.
+
+# A comment line before the declaration.
+emath function square:
+    inputs:
+        x: Float64
+
+    # A comment inside the body, and an extra blank line above.
+    definitions:
+        y = x * x

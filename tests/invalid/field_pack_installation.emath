@@ -1,0 +1,19 @@
+// emath-epic-machine-fjxh.15 negative seed: pack source injecting parser
+// keywords.
+//
+// Seeded silent-success: a field_pack body claims a `keywords:` section
+// (lexer/keyword injection) and exports a cell. A mutant whose install
+// tooling consumed the unadmitted pack source anyway (or that silently
+// ignored the injection section) would look like a successful
+// install-without-rebuild while the pack smuggled parser surface in.
+// The law: injection refuses at ADMISSION (closed section table) and
+// install only consumes admitted pack data.
+# expect: refuse E-SYN-101 (section `keywords` is not admitted for kind `field_pack`)
+
+package community
+
+emath field_pack injector:
+    exports:
+        cell softmax
+    keywords:
+        add match

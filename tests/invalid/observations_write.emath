@@ -1,0 +1,16 @@
+# Negative control (04 §5.2, emath-r3-observations-9ffu): a definition
+# binding an observation name is refused — observations are read-only
+# measured evidence, never written by the model (E-OBS-WRITE).
+emath function Tamper:
+    inputs:
+        x: Float64
+
+    observations:
+        obs baseline: Float64 = 2.5
+
+    definitions:
+        baseline = x * 2
+
+    goals:
+        evaluate <baseline>:
+            produce rust.library

@@ -1,0 +1,15 @@
+emath function proof_outline_incomplete:
+    inputs:
+        a: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = a * a
+
+    proofs:
+        outline NonNegativity:
+            assumption finite_a: is_finite(a)
+            lemma square_nonneg: y >= 0.0
+            check square_nonneg

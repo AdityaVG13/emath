@@ -1,0 +1,23 @@
+# emath-epic-machine-fjxh.16 negative seed.
+#
+# Scenario: the capstone contract violated — a custom-file result is
+# presented with STRICT provenance (or a strict file's result is claimed
+# by an invented world, or a bundle entry loses its world label and
+# becomes a naked scalar). Any of these silently crosses the
+# strict vs Genesis/custom firewall and makes a value's origin
+# unaccountable: silent success.
+#
+# expect: E-WORLD-001 / E-VM-APPLY-SHAPE - the envelope refuses the
+# mislabeled/naked entry typed; the strict lane never selects an invented
+# world, the custom lane never claims strict provenance, and every
+# bundleable execution carries its world label.
+use std.kinds.capability
+
+emath custom ProvenanceSwap:
+    world constructor relabel:
+        # seeded swap: a custom-world answer stamped as strict-VM output
+        symbols:
+            q: 1
+        carrier: Integer
+    strategies:
+        select: strict-label-on-custom-result

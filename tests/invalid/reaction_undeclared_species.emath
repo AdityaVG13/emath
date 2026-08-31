@@ -1,0 +1,10 @@
+# expect: E-CHEM-SPECIES — `species:` closes the world: every species named
+# in a reaction line must be declared, and `N2` is not (undeclared species
+# = typed refusal, never an implicit species — emath-r3-reactions-section-92hq).
+emath reaction_network Undeclared:
+    species:
+        H2
+        O2
+        H2O
+    reactions:
+        r1: 2H2 + N2 -> 2H2O

@@ -1,0 +1,15 @@
+# expect: E-CHEM-THERMO — the missing-constant arm of the honesty triangle
+# (emath-r3-equilibrium-ds6x): a network declaring BOTH a reversible
+# kinetic pair (`<->`) AND an equilibrium (`<=>`) must declare the
+# equilibrium constant. Here no constant line exists at all — admission
+# refuses instead of leaving the consistency claim unstated.
+emath reaction_network MissingConstant:
+    species:
+        A
+        B
+    rate:
+        kf = 2.0
+        kr = 0.5
+    reactions:
+        kinetic: A <-> B
+        equil: A <=> B

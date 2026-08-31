@@ -1,0 +1,12 @@
+#  Negative control (v9-06-2rdq.19): a migration card that declares a
+#  semantic change but never classifies it. Hidden desugars and silent
+#  custom->strict fallthroughs refuse; omission is not a classification.
+use std.kinds.migration
+
+emath migration silent_policy_change:
+    from:
+        kind: "std.tensor.softmax"
+        to: "std.tensor.softmax/v2"
+        changes: "numeric_policy"
+    rules:
+        classify layout = presentation

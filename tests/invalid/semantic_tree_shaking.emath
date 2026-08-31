@@ -1,0 +1,14 @@
+// emath-epic-machine-fjxh.11 negative seed: reachable-closure + tree shaking.
+//
+// Seeded silent-success: a REQUIRED dependency (a cell whose bytecode the
+// artifact's entry actually calls) must NOT be shakeable — a mutant that
+// shakes required dependencies would produce a smaller-but-broken
+// artifact while looking like a successful tree-shake.
+# expect: refuse E-SHAKE-002 (required dependency shaken)
+
+package epic_machine_fjxh_11_invalid {
+  image artifact {
+    entry: std.tensor.softmax;   // requires its bytecode
+    shaken: [std.tensor.softmax]; // seeded: shake a required cell
+  }
+}

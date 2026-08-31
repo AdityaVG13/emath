@@ -1,0 +1,26 @@
+# emath-epic-machine-fjxh.4 negative seed.
+#
+# Scenario: a pure capability cell is declared "done" — it compiles, its
+# descriptor admits — but its docs document a stale cell identity (they
+# were written for an older schema) and no reference projection was ever
+# generated. A planner that silently marks this cell stable would ship a
+# closure with a hole: docs that describe a cell that no longer exists,
+# and no reference semantics to evaluate.
+#
+# expect: E-CELL-007 / E-CELL-008 - the projection planner refuses: missing
+# required projection (E-CELL-007) and docs drifted from the cell identity
+# (E-CELL-008). Missing required projections block stable; nothing is
+# silently marked done because it compiles.
+use std.kinds.capability
+
+emath capability Softmax:
+    class: pure
+    version: 1.0.0
+    migration: frozen
+    docs: cell-id = fnv1a64:0000000000000000
+    inputs:
+        x: Float64
+    outputs:
+        probability: Float64
+    definitions:
+        probability = softmax(x)

@@ -1,0 +1,18 @@
+# Bead `emath-stdlib-object-packs-hpzgf` — negative seed: stdlib names
+# as nucleus operation enums fail the core-growth gate.
+#
+# Scenario: a compiler back end grows a per-op dispatch arm naming a
+# stdlib capability as a nucleus operation enum. The gate scans this
+# file as a seeded backend source and refuses the mutation typed
+# (`E-GROWTH-001`): stable cells enter as DATA (std.core object packs
+# with MeaningIDs), never as core/domain enum branches.
+#
+# expect: E-GROWTH-001 — `stdlib_object_packs_unit:
+# stdlib_as_core_enum_negative` runs the growth gate over this file and
+# reports the operation-name branch (file, line, token).
+fn lower_apply(op: &str, args: &[Value]) -> Result<Expr, Error> {
+    match op {
+        "std.tensor.softmax" => Ok(Expr::Call("softmax_kernel", args)),
+        _ => Err(Error::Unsupported),
+    }
+}

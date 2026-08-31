@@ -1,4 +1,11 @@
-# expect: E-KIND-100 kind declaration outside the Phase 1 subset
-emath kind Recursive:
-    lower:
-        declaration = Recursive
+# expect: E-KIND-100 declaration kind outside the Phase 1 subset
+# History: this control previously spelled `emath kind Recursive:` with a
+# self-referential `lower:` rule. Since emath-r3 "admit laws provenance and
+# extensible kinds" (d2662b0), `emath kind Name:` is an ADMITTED
+# capability-lane form (partial schema validation, never lowered to
+# runnable meaning), so that spelling no longer refuses. The control now
+# pins the still-true boundary: a declaration kind outside the admitted
+# subset refuses typed instead of a silent fallthrough.
+emath widget Recursive:
+    inputs:
+        x: Float64

@@ -1,0 +1,21 @@
+# emath-v9-06-2rdq.15 negative control: the world maps "⊕" to
+# core::math::add, but the interpretation never silently applies to strict
+# source. The strict function below calls the glyph; the strict lane must
+# refuse it as an unknown name (E-TYPE-003), not inherit the world's
+# operator map.
+
+use std.kinds.world
+
+emath world Mod17:
+    operators:
+        "⊕" => core::math::add
+    output: "Mod17Interpretation"
+
+emath function strict_add:
+    inputs:
+        a: Float64
+        b: Float64
+    outputs:
+        r: Float64
+    definitions:
+        r = ⊕(a, b)

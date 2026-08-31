@@ -1,0 +1,30 @@
+# emath-epic-machine-fjxh.5 negative seed.
+#
+# Scenario: a pure capability cell's reference semantics are seeded as a
+# silently-wrong formula (softmax without the stable-max shift, or a
+# formula that returns a fixed identity vector). A compiler that lowered
+# it without signature validation, shape checking, or a closed vocabulary
+# would execute the wrong math on the VM and produce a plausible-looking
+# distribution indistinguishable from the correct one: silent success.
+#
+# expect: E-CELL-006 / E-VM-APPLY-SHAPE - the term compiler refuses
+# malformed or out-of-vocabulary reference terms (UnknownOperator /
+# ArityMismatch / UnknownVariable / ShapeMismatch) and the VM seam
+# refuses contract violations (empty/non-finite under strict-f64 as
+# E-CELL-006, wrong shape as TypeConfusion); compiled bytecode carries
+# only generic vector-map / vector-reduce vocabulary, never a per-cell
+# op, and differential fixtures pin bit-exact agreement with the
+# capability layer's reference oracle.
+use std.kinds.capability
+
+emath capability Softmax:
+    class: pure
+    version: 1.0.0
+    migration: frozen
+    inputs:
+        x: Vector[Float64]
+    outputs:
+        probability: Vector[Float64]
+    reference:
+        # seeded wrong formula: missing stable-max shift (naive exp overflows)
+        probability = exp(x) / sum(exp(x))

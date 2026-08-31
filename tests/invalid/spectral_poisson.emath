@@ -1,0 +1,13 @@
+# emath-xx0x.4 negative seed (thin nucleus slice)
+# The seed's silent-success shape: a spectral Poisson solve over an
+# EMPTY interior must refuse typed at evaluation — E-PDE-001 (no
+# interior nodes, no solve) — never a silently "solved" empty field.
+# expect: E-PDE-001
+
+emath function poisson_empty_interior:
+    inputs:
+        load: Vector<Float64>
+    outputs:
+        field: Vector<Float64>
+    definitions:
+        field = poisson_sine(load)

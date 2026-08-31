@@ -1,0 +1,23 @@
+# emath-epic-machine-fjxh.3 negative seed.
+#
+# Scenario: a `Softmax` capability cell claims `class: pure` but its
+# definitions reference a provider with the wrong axis shape (`axis` on a
+# scalar cell that declared arity 1) and no numeric policy. A compiler that
+# silently admits would mint a CellId for an ill-formed pure cell and later
+# branch on an invented provider axis.
+#
+# expect: E-CELL-003 / E-CELL-004 - typed refusal at the emath-ir admission
+# seam (identity mutation or arity bound), never silent admission of a
+# wrong-axis provider under a pure class.
+use std.kinds.capability
+
+emath capability Softmax:
+    class: pure
+    version: 1.0.0
+    migration: bump-and-note "axis smuggle attempt"
+    inputs:
+        x: Float64
+    outputs:
+        probability: Float64
+    definitions:
+        probability = softmax(x, axis = 2)

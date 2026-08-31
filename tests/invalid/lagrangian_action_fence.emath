@@ -1,0 +1,19 @@
+# expect: E-SYN-101 action/variation design fence
+emath model ActionProbe:
+    inputs:
+        m: Float64 = 1.0
+
+    state:
+        q: Float64
+        v: Float64
+
+    equations:
+        der(q) = v
+        der(v) = -2.0 * q / m
+
+    definitions:
+        S = action integral t in 0..1: 0.5 * m * v * v - 2.0 * q * q / 2
+
+    goals:
+        variation S wrt q:
+            yield euler_lagrange

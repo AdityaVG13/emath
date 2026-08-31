@@ -1,0 +1,15 @@
+# emath-xx0x.5 negative seed (thin nucleus slice)
+# The seed's silent-success shape: an INVALID distribution parameter
+# must refuse typed at evaluation — E-PROB-001 (σ ≤ 0 has no normal
+# density; sampling it would fabricate a distribution) — never a
+# silently "sampled" stream.
+# expect: E-PROB-001
+
+emath function normal_bad_sigma:
+    inputs:
+        seed: Float64
+        draws: Float64
+    outputs:
+        sample: Vector<Float64>
+    definitions:
+        sample = normal_sample([0.0, 0.0], seed, draws)

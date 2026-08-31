@@ -1,0 +1,6 @@
+emath function text_report_probe:
+    inputs:
+        x: Float64
+
+    definitions:
+        headline = "x = {x:.3f}"

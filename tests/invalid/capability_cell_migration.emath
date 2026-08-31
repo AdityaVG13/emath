@@ -1,0 +1,12 @@
+// emath-epic-machine-fjxh.14 negative seed: ten-operation anti-LOC cohort.
+//
+// Seeded wrong-output / silent-success: an identity-affecting mutation of
+// a frozen cell's numeric policy (version bump without an admitted
+// migration policy) must refuse typed — never silently re-specialize or
+// re-bind providers against a changed cell while the registry still
+// serves the old compiled program.
+# expect: refuse E-CELL-003 (silent numeric policy change)
+
+package epic_machine_fjxh_14_invalid {
+  cell std.tensor.softmax version 1.0.0 -> 2.0.0 (frozen);
+}

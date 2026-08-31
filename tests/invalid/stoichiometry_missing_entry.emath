@@ -1,0 +1,15 @@
+# expect: E-CHEM-STOICH — an ICE table must cover the reaction's full
+# carrier: `B` participates in `r1: A -> B` but has no initial/change
+# entry, so the table is incomplete
+# (emath-r3-stoich-tables-pqs6).
+emath reaction_network Incomplete:
+    species:
+        A
+        B
+    reactions:
+        r1: A -> B
+    ice_table r1:
+        initial:
+            A = 1.0
+        change:
+            A = -1
