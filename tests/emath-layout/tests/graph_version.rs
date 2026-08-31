@@ -1,7 +1,7 @@
 //! Tests for graph.rs, migrated out of production code.
 //! All items under test are public crate surface.
 
-use emath_layout::{LayoutError, LAYOUT_VERSION, check_version, parse_latex};
+use emath_cli::layout::{LayoutError, LAYOUT_VERSION, check_version, parse_latex};
 
     #[test]
     fn graph_unknown_version_refused() {

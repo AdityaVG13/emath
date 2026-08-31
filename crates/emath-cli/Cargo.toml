@@ -17,6 +17,9 @@ path = "src/main.rs"
 async-runtime = ["dep:asupersync"]
 
 [dependencies]
+emath-term.workspace = true
+emath-genesis.workspace = true
+emath-core.workspace = true
 asupersync = { workspace = true, optional = true, features = ["test-internals"] }
 emath-adapter-rumoca = { workspace = true }
 emath-agent-protocol = { workspace = true }
@@ -24,9 +27,7 @@ emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-lab-core = { workspace = true }
 emath-evidence = { workspace = true }
-emath-core = { workspace = true }
 emath-exec-ir = { workspace = true }
-emath-genesis = { workspace = true }
 emath-goal = { workspace = true }
 # KEEP (rpme/C016/C060/C080, ledger card in bead close): this edge carries
 # REAL domain data, not thin type imports — emath_ir::Goal (6 sites: plan/
@@ -41,7 +42,6 @@ emath-provider-api = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-sema = { workspace = true }
 emath-syntax = { workspace = true }
-emath-term = { workspace = true }
 emath-store = { path = "../emath-store" }
 emath-world-ir = { workspace = true }
 

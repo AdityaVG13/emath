@@ -2,10 +2,10 @@
 
 use std::fmt::Write as _;
 
-use crate::graph::{
+use crate::layout::graph::{
     GraphBuilder, LayoutContent, LayoutError, MathLayoutGraph, NodeId, SpatialRelation,
 };
-use crate::latex::to_binder_term;
+use crate::layout::latex::to_binder_term;
 
 /// One positioned glyph in milli-units (integers, so Eq/Hash stay exact).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

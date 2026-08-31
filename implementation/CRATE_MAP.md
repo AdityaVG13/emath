@@ -93,7 +93,6 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/core |
 | `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
 
 
