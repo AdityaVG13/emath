@@ -23,7 +23,14 @@ fn empty_unary_call_is_err_not_panic() {
         },
         OWNER,
     );
-    assert!(lower_definition(&package, bad, &[], &[]).is_err());
+    // e3wv (F042): pin the TYPED text, not just is_err — the sibling
+    // (tests/emath-exec-ir/tests/lib.rs) pins `expects`; this file adds
+    // the function name and the arity numbers for local clarity.
+    let error = lower_definition(&package, bad, &[], &[]).unwrap_err();
+    assert!(
+        error.contains("`exp` expects 1 operand(s), got 0"),
+        "empty unary call must name the function and both arities, got: {error}"
+    );
 }
 
 #[test]
@@ -42,7 +49,11 @@ fn oversize_binary_call_is_err_not_panic() {
         },
         OWNER,
     );
-    assert!(lower_definition(&package, bad, &[], &[]).is_err());
+    let error = lower_definition(&package, bad, &[], &[]).unwrap_err();
+    assert!(
+        error.contains("`pow` expects 2 operand(s), got 3"),
+        "oversized binary call must name the function and both arities, got: {error}"
+    );
 }
 
 #[test]

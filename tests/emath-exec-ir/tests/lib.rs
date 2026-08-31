@@ -154,3 +154,9 @@ mod exec_ir {
         assert_eq!(evaluate(&program, &[], &[]).unwrap(), Value::Bool(true));
     }
 }
+
+// e3wv (F042): the empty/oversized arity negatives live in
+// `arity_negative.rs` (same crate, shared target via this module
+// include — the standalone file had no `[[test]]` entry and never
+// compiled).
+mod arity_negative;
