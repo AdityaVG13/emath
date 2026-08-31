@@ -19,7 +19,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-core` | `crates/emath-core` | IDs, spans, diagnostics, canonical primitives, source store, limits | std only |
-| `emath-source` | `crates/emath-source` | source files, line maps, human-readable diagnostic rendering | core |
 
 ### Tier 1 — language
 
@@ -111,6 +110,8 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/core |
 | `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
 
+| `emath-source` | `crates/emath-source` | source files, line maps, human-readable diagnostic rendering | core |
+
 ## Non-crate workspace members
 
 | Member | Path | Responsibility |
@@ -131,8 +132,10 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-ir` | `tests/emath-ir` | IR canonicalization test suite |
 | `tests/emath-lab-core` | `tests/emath-lab-core` | laboratory public-API test suite |
 | `tests/emath-law-check` | `tests/emath-law-check` | law-check public-API test suite |
+| `tests/emath-layout` | `tests/emath-layout` | layout public-API test suite |
 | `tests/emath-lsp` | `tests/emath-lsp` | language-server public-API test suite |
 | `tests/emath-portfolio` | `tests/emath-portfolio` | portfolio public-API test suite |
+| `tests/emath-registry` | `tests/emath-registry` | registry public-API test suite |
 | `tests/emath-provider-api` | `tests/emath-provider-api` | provider-API public-API test suite |
 | `tests/emath-rust-backend` | `tests/emath-rust-backend` | Rust backend public-API test suite |
 | `tests/emath-rt` | `tests/emath-rt` | runtime-kernel public-API test suite |
@@ -144,6 +147,8 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-term` | `tests/emath-term` | term-parse back test suite |
 | `tests/emath-trust-gates` | `tests/emath-trust-gates` | trust gate test suite |
 | `tests/emath-tuning` | `tests/emath-tuning` | tuning public-API test suite |
+| `tests/emath-wasm` | `tests/emath-wasm` | wasm public-API test suite |
+| `tests/harness` | `tests/harness` | shared test harness library |
 | `tests/emath-world-codegen-rust` | `tests/emath-world-codegen-rust` | parametric codegen public-API test suite |
 | `tests/emath-world-ir` | `tests/emath-world-ir` | World IR public-API test suite |
 | `examples/demo-host` | `examples/demo-host` | build-time pipeline host + promotion + negative control |

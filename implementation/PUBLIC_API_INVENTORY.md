@@ -25,6 +25,8 @@ impl CompilerSession {
     pub fn check_owned(&mut self, name: &str, text: &str) -> CheckResult;
     pub fn check_package(&mut self, main: FileId) -> CheckResult;
     pub fn plan(&mut self, file: FileId) -> PlanResult;
+    pub fn with_edition(limits: Limits, edition: emath_core::Edition) -> Self;
+    pub fn edition(&self) -> emath_core::Edition;
 }
 ```
 
