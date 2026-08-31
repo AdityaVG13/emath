@@ -72,7 +72,7 @@ fn goal_first_example_file_parses() {
 
 #[test]
 fn hidden_solve_default_is_e_syn_146() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_3.emath");
+    let source = include_str!("../../../tests/invalid/goal_first_authoring.emath");
     assert!(
         has_error(source, "E-SYN-146"),
         "hiding solve candidates must refuse with E-SYN-146"

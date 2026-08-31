@@ -12,8 +12,8 @@ fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
 }
 
 #[test]
-fn v9_06_2rdq_12_elementwise_family_generates_capability_cells() {
-    let source = include_str!("../../../language/examples/intro/v9_06_2rdq_12.emath");
+fn elementwise_family_generates_capability_cells() {
+    let source = include_str!("../../../tests/fixtures/language/intro/capability-families.emath");
     let (_, parse_diagnostics) = parse_str(source);
     assert!(!parse_diagnostics.has_errors());
 
@@ -63,10 +63,10 @@ fn v9_06_2rdq_12_elementwise_family_generates_capability_cells() {
 }
 
 #[test]
-fn v9_06_2rdq_12_unknown_parameters_and_missing_kind_refuse() {
+fn unknown_parameters_and_missing_kind_refuse() {
     let invalid = check(
         "invalid-family",
-        include_str!("../../../tests/invalid/v9_06_2rdq_12.emath"),
+        include_str!("../../../tests/invalid/capability_families.emath"),
     );
     assert!(
         invalid

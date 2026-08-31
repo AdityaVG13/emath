@@ -12,8 +12,8 @@ fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
 }
 
 #[test]
-fn v9_06_2rdq_11_checks_finite_model_and_power_morphism() {
-    let source = include_str!("../../../language/examples/intro/v9_06_2rdq_11.emath");
+fn checks_finite_model_and_power_morphism() {
+    let source = include_str!("../../../tests/fixtures/language/intro/imported-theories.emath");
     let (_, parse_diagnostics) = parse_str(source);
     assert!(!parse_diagnostics.has_errors());
 
@@ -56,10 +56,10 @@ fn v9_06_2rdq_11_checks_finite_model_and_power_morphism() {
 }
 
 #[test]
-fn v9_06_2rdq_11_refuses_false_laws_and_unimported_kinds() {
+fn refuses_false_laws_and_unimported_kinds() {
     let invalid = check(
         "false-associativity",
-        include_str!("../../../tests/invalid/v9_06_2rdq_11.emath"),
+        include_str!("../../../tests/invalid/imported_theories.emath"),
     );
     assert!(
         invalid
@@ -91,7 +91,7 @@ emath theory Monoid:
 }
 
 #[test]
-fn v9_06_2rdq_11_refuses_non_preserving_morphism() {
+fn refuses_non_preserving_morphism() {
     let source = "\
 use std.kinds.theory
 use std.kinds.model

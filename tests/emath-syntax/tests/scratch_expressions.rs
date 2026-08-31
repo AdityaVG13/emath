@@ -1,7 +1,11 @@
 //! L0 scratch grammar: expressions, plot, solve, convert without declarations.
 
 use emath_core::tree::{Item, StmtKind};
+use emath_core::limits::Limits;
+use emath_exec_ir::interp::Value;
+use emath_sema::CompilerSession;
 use emath_syntax::{expand_scratch, parse_str};
+use std::collections::BTreeMap;
 
 fn has_error(text: &str, code: &str) -> bool {
     let (_, diagnostics) = parse_str(text);
@@ -39,6 +43,20 @@ fn two_plus_two_parses_as_implicit_function() {
         ),
         "L0 must lower to definitions, got {:?}",
         decl.body
+    );
+
+    emath_syntax::install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let checked = session.check_owned("l0-two-plus-two", "2+2\n");
+    assert!(
+        !checked.diagnostics.has_errors(),
+        "{:?}",
+        checked.diagnostics.errors().collect::<Vec<_>>()
+    );
+    let report = emath_exec_ir::runner::run_package(&checked.package);
+    assert_eq!(
+        report.declarations[0].tests[0].definitions.get("result"),
+        Some(&Value::F64(4.0))
     );
 }
 
@@ -82,11 +100,58 @@ fn plot_solve_convert_expand() {
         "{}",
         convert.expanded
     );
+
+    emath_syntax::install_source_parser();
+    for (name, source, given, expected, tolerance) in [
+        (
+            "plot",
+            "plot sin(x) on -3.14..3.14\n",
+            BTreeMap::from([("x".to_string(), Value::F64(0.0))]),
+            0.0,
+            0.0,
+        ),
+        (
+            "solve",
+            "solve x^2 = 2 over Real\n",
+            BTreeMap::from([("x".to_string(), Value::F64(1.0))]),
+            2.0_f64.sqrt(),
+            1e-10,
+        ),
+        (
+            "convert",
+            "convert 1 km to m\n",
+            BTreeMap::new(),
+            1000.0,
+            0.0,
+        ),
+    ] {
+        let mut session = CompilerSession::new(Limits::default());
+        let checked = session.check_owned(name, source);
+        assert!(
+            !checked.diagnostics.has_errors(),
+            "{name}: {:?}",
+            checked.diagnostics.errors().collect::<Vec<_>>()
+        );
+        let report =
+            emath_exec_ir::runner::run_package_with_given(&checked.package, Some(&given));
+        let value = report.declarations[0].tests[0]
+            .definitions
+            .values()
+            .last()
+            .expect("intent computes a result");
+        let Value::F64(actual) = value else {
+            panic!("{name} must compute a scalar, got {value:?}");
+        };
+        assert!(
+            (actual - expected).abs() <= tolerance,
+            "{name}: expected {expected}, got {actual}"
+        );
+    }
 }
 
 #[test]
 fn mix_scratch_and_declaration_is_e_syn_141() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_1.emath");
+    let source = include_str!("../../../tests/invalid/scratch_expressions.emath");
     assert!(
         has_error(source, "E-SYN-141"),
         "mixed scratch + declaration must refuse with E-SYN-141"

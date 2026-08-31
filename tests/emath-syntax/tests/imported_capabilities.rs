@@ -5,8 +5,8 @@ use emath_sema::CompilerSession;
 use emath_syntax::{install_source_parser, parse_str};
 
 #[test]
-fn v9_06_2rdq_10_imported_capability_schema_admits() {
-    let source = include_str!("../../../language/examples/intro/v9_06_2rdq_10.emath");
+fn imported_capability_schema_admits() {
+    let source = include_str!("../../../tests/fixtures/language/intro/imported-capabilities.emath");
     let (tree, parse_diagnostics) = parse_str(source);
     assert!(!parse_diagnostics.has_errors());
     let declaration = tree
@@ -44,8 +44,8 @@ fn v9_06_2rdq_10_imported_capability_schema_admits() {
 }
 
 #[test]
-fn v9_06_2rdq_10_unknown_capability_section_refuses() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_10.emath");
+fn unknown_capability_section_refuses() {
+    let source = include_str!("../../../tests/invalid/imported_capabilities.emath");
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("capability-invalid", source);

@@ -61,6 +61,6 @@ fn raise_units_declares_without_rewriting_other_rows() {
 
 #[test]
 fn claiming_exactness_with_open_hole_is_e_syn_147() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_5.emath");
+    let source = include_str!("../../../tests/invalid/exactness_ledger.emath");
     assert!(has_error(source, "E-SYN-147"));
 }
