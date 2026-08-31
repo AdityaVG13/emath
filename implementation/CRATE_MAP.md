@@ -77,7 +77,7 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-genesis` | `crates/emath-genesis` | minimal Semantic Genesis evaluator and built-in example worlds | term/world-ir |
-| `emath-world-ir` | `crates/emath-world-ir` | provider-neutral World IR and meaning-hole structures | ir |
+| `emath-world-ir` | `crates/emath-world-ir` | provider-neutral World IR and meaning-hole structures; owns FittedTable and re-exports core's fnv1a64 (o7a6) | ir/core |
 | `emath-world-codegen-rust` | `crates/emath-world-codegen-rust` | deterministic parametric Rust world artifact generation (Genesis G3) | world-ir/lab-core |
 | `emath-meaning-provider-api` | `crates/emath-meaning-provider-api` | stable contracts for meaning proposal and world checking | provider-api |
 | `emath-portfolio` | `crates/emath-portfolio` | deterministic interpretation portfolios | meaning-provider-api |
@@ -87,8 +87,9 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-agent-protocol` | `crates/emath-agent-protocol` | agent-native meaning proposals (admission envelope) | provider-api |
-| `emath-calibration` | `crates/emath-calibration` | semantic calibration | portfolio |
+| `emath-calibration` | `crates/emath-calibration` | semantic calibration (fitting procedures; FittedTable re-exported from world-ir, o7a6) | portfolio |
 | `emath-law-check` | `crates/emath-law-check` | independent world checking (`WorldChecker`): law admission | meaning-provider-api |
+| `emath-diagnostics` | `crates/emath-diagnostics` | pedagogic explanations backed by checker witnesses | law-check/core |
 | `emath-holes` | `crates/emath-holes` | meaning holes and finite synthesis | world-ir |
 | `emath-tuning` | `crates/emath-tuning` | semantic and joint tuning | portfolio |
 | `emath-plugin-sdk` | `crates/emath-plugin-sdk` | plugin SDK slice: descriptors, sandbox policy decisions | provider-api |
@@ -107,7 +108,7 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/world-ir |
+| `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/core |
 | `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
 
 ## Non-crate workspace members
@@ -137,6 +138,7 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-rt` | `tests/emath-rt` | runtime-kernel public-API test suite |
 | `tests/emath-search` | `tests/emath-search` | search public-API test suite |
 | `tests/emath-sema` | `tests/emath-sema` | session/admission public-API test suite |
+| `tests/emath-core` | `tests/emath-core` | core std-layer test suite (units, measure, statistics, geometry, signal, integral, stochastic, linprog, numtheory) |
 | `tests/emath-store` | `tests/emath-store` | store public-API test suite |
 | `tests/emath-syntax` | `tests/emath-syntax` | syntax public-API test suite |
 | `tests/emath-term` | `tests/emath-term` | term-parse back test suite |

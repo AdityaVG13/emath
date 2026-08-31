@@ -23,6 +23,7 @@ impl CompilerSession {
     pub fn parse_text(&self, text: &str) -> (emath_core::tree::SyntaxTree, Diagnostics);
     pub fn check(&mut self, file: FileId) -> CheckResult;
     pub fn check_owned(&mut self, name: &str, text: &str) -> CheckResult;
+    pub fn check_package(&mut self, main: FileId) -> CheckResult;
     pub fn plan(&mut self, file: FileId) -> PlanResult;
 }
 ```
