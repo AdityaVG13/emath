@@ -1,0 +1,16 @@
+[package]
+name = "emath-layout-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+emath-layout = { workspace = true }
+emath-genesis = { workspace = true }
+emath-term = { workspace = true }
+emath-test-harness = { workspace = true }
+
+[lints]
+workspace = true

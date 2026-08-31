@@ -2061,13 +2061,19 @@ fn render_from_header(
     // instead of leaning on the evaluate-everything default. Outputs
     // must be typed (`name: Type`), so the untyped default mirrors the
     // inputs rule (Float64, N-TYPE-001) in the emitted text itself.
+    // E-SEC-130 (R6): a contract with `outputs:` but no `inputs:` is
+    // refused, so the synthesized `outputs:` section is emitted only
+    // when the pane actually declared inputs. A bare pane computation
+    // has no I/O surface to name; it stays a plain definitions block.
     let mut outputs: Vec<&str> = Vec::new();
-    for (name, _) in defs {
-        if inputs.iter().any(|input| input == name) {
-            continue;
-        }
-        if !outputs.contains(&name.as_str()) {
-            outputs.push(name.as_str());
+    if !inputs.is_empty() {
+        for (name, _) in defs {
+            if inputs.iter().any(|input| input == name) {
+                continue;
+            }
+            if !outputs.contains(&name.as_str()) {
+                outputs.push(name.as_str());
+            }
         }
     }
     if !outputs.is_empty() {

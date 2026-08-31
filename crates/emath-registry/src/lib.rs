@@ -5,6 +5,24 @@
 //! Deterministic index/lock core: [`IndexSnapshot`] holds package records,
 //! [`RegistryLock`] pins reproducible snapshots, refusals are typed
 //! (`E-REG-0xx`). Registry services are not implemented.
+//!
+//! Also hosts the Standard Symbol Catalog ([`symbol_catalog`]): the registry
+//! artifact governing glyphs, fixity, precedence, world bindings, aliases,
+//! confusable classes, and lifecycle.
+
+pub mod notation_packs;
+pub mod symbol_catalog;
+
+pub use notation_packs::{
+    algebra_pack, all_packs, calculus_pack, catalog_from_packs, logic_pack, sets_pack,
+    CORE_NOTATION_PREFIX,
+};
+pub use notation_packs::NotationPack;
+pub use symbol_catalog::{
+    AuthorityRing, SymbolCatalog, SymbolEntry, SymbolStatus, E_SYMBOL_ALIAS_FORBIDDEN,
+    E_SYMBOL_AMBIGUOUS, E_SYMBOL_CONFLUSABLE, E_SYMBOL_MALFORMED, E_SYMBOL_SELF_CERTIFIED,
+    SYMBOL_CATALOG_SCHEMA, SYMBOL_CATALOG_VERSION,
+};
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

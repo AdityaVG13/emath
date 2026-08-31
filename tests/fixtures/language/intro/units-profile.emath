@@ -1,0 +1,29 @@
+# Honesty declaration: the header declares its uncertainty discipline.
+# @units_profile(publication) requires a provenance: section and refuses
+# bare numeric quantities (E-UNIT-106/107); see reference ch. 5
+# "Strictness profiles". Plain Float64 math over exact-by-construction
+# values stays publishable when its inputs carry provenance.
+@units_profile(publication)
+emath function Calibrated:
+    inputs:
+        raw: Float64
+
+    outputs:
+        adjusted: Float64
+
+    definitions:
+        adjusted = raw * 1.0001
+
+    provenance:
+        raw:
+            kind "Citation"
+            reference "doi:10.1234/example.calibration-standard"
+
+    goals:
+        evaluate <adjusted>:
+            produce rust.library
+
+    tests:
+        example <unit_scaling>:
+            given raw = 100.0
+            expect adjusted == 100.01

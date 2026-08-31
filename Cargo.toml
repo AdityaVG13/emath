@@ -45,6 +45,7 @@ members = [
   "crates/emath-plugin-sdk",
   "crates/emath-search",
   "crates/emath-wasm",
+  "tests/harness",
   "tests/emath-adapter-dew",
   "tests/emath-adapter-rumoca",
   "tests/emath-agent-protocol",
@@ -76,6 +77,9 @@ members = [
   "tests/emath-tuning",
   "tests/emath-world-codegen-rust",
   "tests/emath-world-ir",
+  "tests/emath-wasm",
+  "tests/emath-registry",
+  "tests/emath-layout",
   "examples/demo-host",
   "examples/demo-host-independent",
   "examples/provider-skeleton",
@@ -89,8 +93,12 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.85"
+repository = "https://github.com/AdityaVG13/emath"
+publish = false
 
 [workspace.dependencies]
+unicode-normalization = "0.1.25"
+emath-test-harness = { path = "tests/harness" }
 emath-core = { path = "crates/emath-core" }
 emath-source = { path = "crates/emath-source" }
 emath-syntax = { path = "crates/emath-syntax" }
@@ -130,6 +138,7 @@ emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
 emath-wasm = { path = "crates/emath-wasm" }
+emath-registry = { path = "crates/emath-registry" }
 # FrankenStack base infrastructure (CUTOVER_PLAN.md §1/§9): asupersync
 # replaces tokio. Optional + feature-gated: Phase 1 ships std-only with zero
 # mandatory third-party deps. Exact-commit pin mirrors UPSTREAM_LOCK.json

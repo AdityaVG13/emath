@@ -1,0 +1,13 @@
+# Finite sum. `1..6` is half-open, so this is 1+2+3+4+5.
+# `sum([1, 2, 3, 4, 5])` is the same fold over a known vector.
+#
+# Constant computation: no free variables, so no `inputs:`/`outputs:`
+# contract (E-SEC-130 refuses outputs without a declared input source).
+emath function SumOneToFive:
+    definitions:
+        total = sum i in 1..6: i
+        folded = sum([1, 2, 3, 4, 5])
+
+    tests:
+        example <fifteen>:
+            expect total == 15 and folded == 15

@@ -11,12 +11,15 @@ use emath_syntax::expand_scratch;
 /// Source after official scratch expansion, plus the visible desugared text
 /// when wrapping happened.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PreparedSource<'a> {
+pub struct PreparedSource<'a> {
+    /// Source text after scratch-expansion, ready for the parser.
     pub source: Cow<'a, str>,
+    /// True when bare pane text was wrapped in a scratch declaration.
     pub is_wrapped: bool,
 }
 
 impl<'a> PreparedSource<'a> {
+    /// Borrow the prepared text as a `&str` slice when no wrapping occurred.
     #[inline]
     #[must_use]
     pub fn desugared(&self) -> Option<&str> {
@@ -29,8 +32,11 @@ impl<'a> PreparedSource<'a> {
 }
 
 /// Wrap bare pane text when the first content line is not a declaration header.
+///
+/// Public pipeline seam: embedders and tests compile the same prepared source
+/// the op layer sees, so diagnostics refer to identical text.
 #[must_use]
-pub(crate) fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
+pub fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
     let expansion = expand_scratch(raw);
     let parsed = expansion.parse_source(raw);
     if std::ptr::eq(parsed, raw) {

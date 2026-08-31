@@ -1,0 +1,19 @@
+# A research programme references methods and providers by name.
+# `experiment` here is an imported kind (`use std.kinds.experiment`), not
+# the built-in benchmark-experiment spelling. Protect constraints are
+# evidence policy; keep-gates record promotion policy, never promote.
+use std.kinds.experiment
+
+emath experiment RootMethodPortfolio:
+    problems:
+        "closed-form integrator selection is unstudied for stiff systems"
+        open scaling of adaptive step bounds to very large meshes
+    methods:
+        "RungeKutta4"
+    providers:
+        "rust.library"
+    protect:
+        candidate_error <= baseline_error * 1.5
+    keep:
+        policy: "shadow until falsifier passes"
+        gate: "promotion requires an E2 checked run"

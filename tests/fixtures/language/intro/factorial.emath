@@ -1,0 +1,13 @@
+# Inclusive range 1..=n keeps the upper bound. product i in 1..=5: i
+# folds 1*2*3*4*5 = 120. The fold over Int elements uses exact i64
+# arithmetic - no floating-point rounding.
+#
+# Constant computation: no free variables, so no `inputs:`/`outputs:`
+# contract (E-SEC-130 refuses outputs without a declared input source).
+emath function Factorial:
+    definitions:
+        fac = product i in 1..=5: i
+
+    tests:
+        example <five>:
+            expect fac == 120

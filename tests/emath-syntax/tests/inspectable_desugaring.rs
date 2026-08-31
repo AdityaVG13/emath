@@ -42,7 +42,10 @@ fn l0_expansion_is_visible_and_round_trips() {
 #[test]
 fn l0_and_l3_share_declaration_center() {
     let l0 = parse_str("2+2\n").0;
-    let l3 = parse_str("emath function Scratch:\n    outputs:\n        result: Float64\n\n    definitions:\n        result = 2+2\n").0;
+    // Canonical no-input wrapped form: E-SEC-130 refuses a synthesized
+    // `outputs:` without a declared I/O surface, so the L0 wrap (and this
+    // literal) carry `definitions:` only.
+    let l3 = parse_str("emath function Scratch:\n    definitions:\n        result = 2+2\n").0;
     let Item::Declaration(a) = &l0.items[0] else {
         panic!("l0");
     };
