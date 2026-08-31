@@ -5,7 +5,12 @@ edition = "2024"
 publish = false
 
 [dependencies]
-emath-cli = { path = "../../crates/emath-cli" }
+# The lsp tests exercise the async runtime, so the feature is enabled for the
+# whole test package (features are additive; nothing here depends on it being off).
+emath-cli = { path = "../../crates/emath-cli", features = ["async-runtime"] }
+asupersync = { workspace = true }
+emath-genesis = { workspace = true }
+emath-term = { workspace = true }
 emath-core = { path = "../../crates/emath-core" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-sema = { path = "../../crates/emath-sema" }

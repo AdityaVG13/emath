@@ -703,15 +703,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-agent-protocol-tests"
-version = "0.1.0"
-dependencies = [
- "emath-cli",
- "emath-genesis",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-artifact"
 version = "0.1.0"
 dependencies = [
@@ -753,21 +744,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-builder-tests"
-version = "0.1.0"
-dependencies = [
- "emath-build",
- "emath-ir",
-]
-
-[[package]]
-name = "emath-checker-tests"
-version = "0.1.0"
-dependencies = [
- "emath-evidence",
-]
-
-[[package]]
 name = "emath-cli"
 version = "0.1.0"
 dependencies = [
@@ -796,13 +772,16 @@ dependencies = [
 name = "emath-cli-tests"
 version = "0.1.0"
 dependencies = [
+ "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
  "emath-artifact",
  "emath-cli",
  "emath-core",
+ "emath-genesis",
  "emath-lab-core",
  "emath-plan",
  "emath-sema",
  "emath-syntax",
+ "emath-term",
  "emath-world-ir",
 ]
 
@@ -904,17 +883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-holes-tests"
-version = "0.1.0"
-dependencies = [
- "emath-lab-core",
- "emath-syntax",
- "emath-term",
- "emath-wasm",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-ir"
 version = "0.1.0"
 dependencies = [
@@ -953,34 +921,12 @@ name = "emath-lab-core-tests"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-ir",
  "emath-lab-core",
-]
-
-[[package]]
-name = "emath-law-check-tests"
-version = "0.1.0"
-dependencies = [
- "emath-lab-core",
+ "emath-syntax",
  "emath-term",
+ "emath-wasm",
  "emath-world-ir",
-]
-
-[[package]]
-name = "emath-layout-tests"
-version = "0.1.0"
-dependencies = [
- "emath-cli",
- "emath-genesis",
- "emath-term",
- "emath-test-harness",
-]
-
-[[package]]
-name = "emath-lsp-tests"
-version = "0.1.0"
-dependencies = [
- "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
- "emath-cli",
 ]
 
 [[package]]
@@ -1000,15 +946,6 @@ dependencies = [
  "emath-goal",
  "emath-ir",
  "emath-provider-api",
-]
-
-[[package]]
-name = "emath-portfolio-tests"
-version = "0.1.0"
-dependencies = [
- "emath-cli",
- "emath-term",
- "emath-world-ir",
 ]
 
 [[package]]
@@ -1089,25 +1026,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-rust-ir-tests"
-version = "0.1.0"
-dependencies = [
- "emath-rust-backend",
-]
-
-[[package]]
 name = "emath-schema"
 version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
-]
-
-[[package]]
-name = "emath-search-tests"
-version = "0.1.0"
-dependencies = [
- "emath-lab-core",
 ]
 
 [[package]]
@@ -1208,15 +1131,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-tuning-tests"
-version = "0.1.0"
-dependencies = [
- "emath-genesis",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-wasm"
 version = "0.1.0"
 dependencies = [
@@ -1242,15 +1156,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-world-codegen-rust-tests"
-version = "0.1.0"
-dependencies = [
- "emath-term",
- "emath-world-ir",
- "semantic-genesis-worlds",
-]
-
-[[package]]
 name = "emath-world-ir"
 version = "0.1.0"
 dependencies = [
@@ -1265,6 +1170,7 @@ dependencies = [
  "emath-core",
  "emath-term",
  "emath-world-ir",
+ "semantic-genesis-worlds",
 ]
 
 [[package]]

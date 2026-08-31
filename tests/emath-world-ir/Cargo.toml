@@ -8,6 +8,8 @@ publish = false
 emath-world-ir = { path = "../../crates/emath-world-ir" }
 emath-term = { path = "../../crates/emath-term" }
 emath-core = { path = "../../crates/emath-core" }
+# World-codegen contract tests run against the generated demo worlds:
+semantic-genesis-worlds = { path = "../../examples/generated/semantic-genesis-worlds" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

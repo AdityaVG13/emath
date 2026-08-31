@@ -164,9 +164,9 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- No `crates/emath-tuning/tests/` directory and no inline `#[cfg(test)]` modules in `src/`. Conformance lives in the standalone `tests/emath-tuning` package:
+- No `crates/`-side tests for the tuning surface. The former `tests/emath-tuning` package's suites live in `tests/emath-genesis/tests/`:
   - `tests/campaign.rs`: `admits_fails_closed_on_missing_cost_or_latency`, `admits_at_the_bounds_with_all_three_measured`.
-  - `tests/lib.rs`: receipt identity determinism and sensitivity, locality of a change set, `SemanticVariableKind` canonical-name round-trip, `memorizing_candidate_fails_held_out_challenge`, `general_candidate_survives_and_oversize_table_is_penalized`, `apply_then_revert_restores_canonical_form_and_identity`, `apply_changes_world_identity`, `apply_refuses_missing_target`.
+  - `tests/tuning_unit.rs`: identity determinism and sensitivity, locality of a change set, `SemanticVariableKind` canonical-name round-trip, `memorizing_candidate_fails_held_out_challenge`, `general_candidate_survives_and_oversize_table_is_penalized`, `apply_then_revert_restores_canonical_form_and_identity`, `apply_changes_world_identity`, `apply_refuses_missing_target`.
   - `tests/frontier.rs`: `generation_is_deterministic_deduplicated_and_budget_capped`, `seeded_campaign_promotes_equivalent_and_rejects_wrong_before_benchmark` (seeded cache-policy campaign: equivalent faster policy promoted with a stable receipt; wrong policy refused at semantic admission with no benchmark row; host-worse policy refused by the envelope), `promotion_requires_a_baseline_fallback`.
 
 ## No-claim boundaries
