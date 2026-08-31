@@ -27,7 +27,7 @@ fn check(source: &str) -> Vec<(String, String)> {
 
 fn function_source(prefix: &str, definitions: &str) -> String {
     format!(
-        "{prefix}emath function P:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n{definitions}"
+        "{prefix}emath function P:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n{definitions}    goals:\n        evaluate <y>\n"
     )
 }
 

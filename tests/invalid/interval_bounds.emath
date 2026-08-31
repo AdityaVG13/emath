@@ -1,23 +1,29 @@
 package r3_intervals_8pjn_invalid
 
 emath function SeededZeroContainingDivisor:
+    inputs:
+        lo: Float64
     outputs:
         q: Interval<Float64>
         probe: Float64
     definitions:
-        q = interval(6.0, 8.0) / interval(-1.0, 1.0)
+        q = interval(6.0, 8.0) / interval(lo, 1.0)
         probe = 1.0
     tests:
         example <canonical>:
+            given lo = -1.0
             expect probe == 1
 
 emath function SeededIllFormedInterval:
+    inputs:
+        hi: Float64
     outputs:
         x: Interval<Float64>
         probe: Float64
     definitions:
-        x = interval(2.0, 1.0)
+        x = interval(2.0, hi)
         probe = 1.0
     tests:
         example <canonical>:
+            given hi = 1.0
             expect probe == 1

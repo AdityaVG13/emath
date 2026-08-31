@@ -2,6 +2,8 @@
 # implicit `"ik,kj"` is the same (alphabetical free indices); `"i,i->"`
 # is `dot`.
 emath function EinsumIds:
+    inputs:
+        n: Float64
     outputs:
         ab: Matrix[2, 2]
         ein: Matrix[2, 2]
@@ -16,7 +18,7 @@ emath function EinsumIds:
         implicit = einsum("ik,kj", a, b)
         u = [1.0, 2.0, 3.0]
         v = [4.0, 5.0, 6.0]
-        ddot = dot(u, v)
+        ddot = dot(u, v) * n
         ein_dot = einsum("i,i->", u, v)
 
     goals:
@@ -25,6 +27,7 @@ emath function EinsumIds:
 
     tests:
         example <ids>:
+            given n = 1.0
             expect ab == [[19.0, 22.0], [43.0, 50.0]]
             expect ein == ab
             expect implicit == ab

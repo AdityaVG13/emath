@@ -205,6 +205,8 @@ emath function BadIndex:
 fn rank3_tensor_literal_and_slice_admit() {
     let source = "\
 emath function TensorSlice:
+    inputs:
+        n: Float64
     outputs:
         t: Tensor[2, 2, 2]
         face: Matrix[2, 2]
@@ -325,6 +327,8 @@ fn einsum_example_evaluates() {
 fn einsum_contraction_identities_evaluate() {
     let source = "\
 emath function EinsumIds:
+    inputs:
+        n: Float64
     outputs:
         ab: Matrix[2, 2]
         ein: Matrix[2, 2]
@@ -339,7 +343,7 @@ emath function EinsumIds:
         ab = a * b
         ein = einsum(\"ik,kj->ij\", a, b)
         implicit = einsum(\"ik,kj\", a, b)
-        u = [1.0, 2.0, 3.0]
+        u = [n, 2.0, 3.0]
         v = [4.0, 5.0, 6.0]
         ddot = dot(u, v)
         ein_dot = einsum(\"i,i->\", u, v)
@@ -347,6 +351,7 @@ emath function EinsumIds:
         tt = transpose(transpose(m))
     tests:
         example <ids>:
+            given n = 1.0
             expect ab == ein and ein == implicit and ddot == ein_dot and tt == m
 ";
     let result = check_source("einsum-ids", source);
@@ -450,16 +455,19 @@ fn finite_sum_one_to_five_admits() {
 fn vector_sum_and_matrix_expect_compute() {
     let source = "\
 emath function Fold:
+    inputs:
+        n: Float64
     outputs:
         s: Float64
         p: Float64
         face: Matrix[2, 2]
     definitions:
         s = sum([1, 2, 3, 4, 5])
-        p = product([[1, 2], [3, 4]])
+        p = product([[1, 2], [3, 4]]) * n
         face = [[1.0, 2.0], [3.0, 4.0]]
     tests:
         example <known>:
+            given n = 1.0
             expect s == 15 and p == 24 and face == [[1.0, 2.0], [3.0, 4.0]]
 ";
     let result = check_source("fold", source);
@@ -763,12 +771,15 @@ emath function IntegrateX:
 fn integral_of_x_squared_computes() {
     let source = "
 emath function IntegrateXSquared:
+    inputs:
+        n: Float64
     outputs:
         area: Float64
     definitions:
-        area = integral x in 0..3: x * x
+        area = integral x in 0..3: x * x * n
     tests:
         example <quadratic>:
+            given n = 1.0
 ";
     let result = check_source("integral-xsquared", source);
     assert!(
@@ -1057,12 +1068,15 @@ fn exact_integer_product_fold() {
     // through Float64 and convert back.
     let source = "\
 emath function ExactFactorial:
+    inputs:
+        n: Int
     outputs:
         fac: Int
     definitions:
-        fac = product i in 1..=20: i
+        fac = product i in 1..=n: i
     tests:
         example <twenty>:
+            given n = 20
             expect fac == 2432902008176640000
 ";
     let result = check_source("exact_factorial", source);
@@ -1670,16 +1684,19 @@ emath function PartialHeld:
 fn factorial_domain_computes_and_refuses() {
     let source = "\
 emath function Fac:
+    inputs:
+        n: Int
     outputs:
         z: Int
         f5: Int
         f20: Int
     definitions:
         z = factorial(0)
-        f5 = factorial(5)
+        f5 = factorial(n)
         f20 = factorial(20)
     tests:
         example <ok>:
+            given n = 5
             expect z == 1
             expect f5 == 120
             expect f20 == 2432902008176640000
@@ -1708,12 +1725,15 @@ emath function Fac:
 
     let overflow = "\
 emath function Fac21:
+    inputs:
+        n: Int
     outputs:
         f: Int
     definitions:
-        f = factorial(21)
+        f = factorial(n)
     tests:
         example <overflow>:
+            given n = 21
             expect f == 0
 ";
     let fac21 = check_source("fac-21", overflow);
@@ -1737,12 +1757,15 @@ emath function Fac21:
     // 0/0 is IEEE NaN; `as i64` would map that to 0 and return 0! = 1.
     let nan = "\
 emath function FacNan:
+    inputs:
+        n: Int
     outputs:
         f: Int
     definitions:
-        f = factorial(0 / 0)
+        f = factorial(n / 0)
     tests:
         example <nan>:
+            given n = 0
             expect f == 1
 ";
     let fac_nan = check_source("fac-nan", nan);
@@ -1826,6 +1849,8 @@ fn modular_and_coding_builtins_compute() {
 fn remaining_scalar_builtins_closed_form() {
     let source = "\
 emath function Scalars:
+    inputs:
+        n: Float64
     outputs:
         h: Float64
         l: Float64
@@ -1836,7 +1861,7 @@ emath function Scalars:
         sneg: Float64
         spos: Float64
     definitions:
-        h = hypot(3, 4)
+        h = hypot(n, 4)
         l = lerp(0, 10, 0.5)
         c = clamp(12, 0, 10)
         r = recip(4)
@@ -1846,6 +1871,7 @@ emath function Scalars:
         spos = sign(3)
     tests:
         example <closed>:
+            given n = 3.0
             expect h == 5
             expect l == 5
             expect c == 10
@@ -1929,6 +1955,8 @@ fn arithmetic_function_duals_match_operators() {
         "arith-duals",
         "\
 emath function Duals:
+    inputs:
+        base: Float64
     outputs:
         a: Float64
         s: Float64
@@ -1939,7 +1967,7 @@ emath function Duals:
         via_caret: Float64
         via_pow: Float64
     definitions:
-        a = core::math::add(2, 3)
+        a = core::math::add(base, 3)
         s = sub(10, 4)
         m = math::mul(3, 5)
         d = div(9, 3)
@@ -1949,6 +1977,7 @@ emath function Duals:
         via_pow = core::math::pow(2, 3)
     tests:
         example <duals>:
+            given base = 2.0
             expect a == 5
             expect s == 6
             expect m == 15
@@ -2103,6 +2132,8 @@ fn closed_form_builtin_numeric_honesty() {
         "cf-happy",
         "\
 emath function Closed:
+    inputs:
+        n: Float64
     outputs:
         s0: Float64
         e0: Float64
@@ -2119,7 +2150,7 @@ emath function Closed:
         a10: Float64
         cbneg: Float64
     definitions:
-        s0 = sin(0)
+        s0 = sin(n)
         e0 = exp(0)
         c0 = cos(0)
         sq4 = sqrt(4)
@@ -2135,6 +2166,7 @@ emath function Closed:
         cbneg = cbrt(-8)
     tests:
         example <closed>:
+            given n = 0.0
             expect s0 == 0
             expect e0 == 1
             expect c0 == 1
@@ -2217,14 +2249,17 @@ emath function Closed:
         "cf-sqrt-neg",
         "\
 emath function SqrtNeg:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
         finite: Bool
     definitions:
-        y = sqrt(-1)
+        y = sqrt(-1 * n)
         finite = is_finite(y)
     tests:
         example <nan>:
+            given n = 1.0
             expect finite == false
 ",
     );
@@ -2247,14 +2282,17 @@ emath function SqrtNeg:
         "cf-ln-neg",
         "\
 emath function LnNeg:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
         finite: Bool
     definitions:
-        y = ln(-1)
+        y = ln(-1 * n)
         finite = is_finite(y)
     tests:
         example <nan>:
+            given n = 1.0
             expect finite == false
 ",
     );
@@ -2275,14 +2313,17 @@ emath function LnNeg:
         "cf-log0",
         "\
 emath function Log0:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
         finite: Bool
     definitions:
-        y = log(0)
+        y = log(n)
         finite = is_finite(y)
     tests:
         example <ninf>:
+            given n = 0.0
             expect finite == false
 ",
     );
@@ -2303,12 +2344,15 @@ emath function Log0:
         "cf-modinv0",
         "\
 emath function Inv0:
+    inputs:
+        n: Int
     outputs:
         y: Int
     definitions:
-        y = mod_inv(0, 7)
+        y = mod_inv(n, 7)
     tests:
         example <noinv>:
+            given n = 0
             expect y == 0
 ",
     );
@@ -2323,12 +2367,15 @@ emath function Inv0:
         "cf-modinv-m0",
         "\
 emath function InvM0:
+    inputs:
+        m: Int
     outputs:
         y: Int
     definitions:
-        y = mod_inv(3, 0)
+        y = mod_inv(3, m)
     tests:
         example <badm>:
+            given m = 0
             expect y == 0
 ",
     );
@@ -2343,14 +2390,17 @@ emath function InvM0:
         "cf-mod0",
         "\
 emath function Mod0:
+    inputs:
+        d: Float64
     outputs:
         y: Float64
         finite: Bool
     definitions:
-        y = mod(1, 0)
+        y = mod(1, d)
         finite = is_finite(y)
     tests:
         example <nan>:
+            given d = 0.0
             expect finite == false
 ",
     );
@@ -2366,14 +2416,17 @@ emath function Mod0:
         "cf-tan-half-pi",
         "\
 emath function TanHalfPi:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
         finite: Bool
     definitions:
-        y = tan(1.5707963267948966)
+        y = tan(n)
         finite = is_finite(y)
     tests:
         example <ieee>:
+            given n = 1.5707963267948966
             expect finite == true
 ",
     );
@@ -2394,12 +2447,15 @@ emath function TanHalfPi:
         "cf-gf0",
         "\
 emath function Gf0:
+    inputs:
+        p: Int
     outputs:
         y: Int
     definitions:
-        y = poly_eval_mod([1, 2], 3, 0)
+        y = poly_eval_mod([1, 2], 3, p)
     tests:
         example <badp>:
+            given p = 0
             expect y == 0
 ",
     );
@@ -2414,14 +2470,17 @@ emath function Gf0:
         "cf-gf1",
         "\
 emath function Gf1:
+    inputs:
+        p: Int
     outputs:
         y: Int
         inv: Int
     definitions:
-        y = poly_eval_mod([5], 3, 1)
-        inv = mod_inv(1, 1)
+        y = poly_eval_mod([5], 3, p)
+        inv = mod_inv(1, p)
     tests:
         example <zeroring>:
+            given p = 1
             expect y == 0
             expect inv == 0
 ",
@@ -2480,6 +2539,8 @@ fn invertible_ops_surface_involutions() {
         "inv-round",
         "\
 emath function InvRound:
+    inputs:
+        k: Int
     outputs:
         n: Int
         r: Float64
@@ -2487,13 +2548,14 @@ emath function InvRound:
         m: Matrix[2, 3]
         a: Int
     definitions:
-        n = -(-42)
+        n = -(-k)
         r = recip(recip(8))
         m = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
         tt = transpose(transpose(m))
         a = mod_inv(mod_inv(3, 7), 7)
     tests:
         example <round>:
+            given k = 42
             expect n == 42
             expect r == 8
             expect tt == m
@@ -2515,13 +2577,16 @@ emath function InvRound:
         "inv-imin",
         "\
 emath function NegI64Min:
+    inputs:
+        k: Int
     outputs:
         y: Int
     definitions:
-        x = -9223372036854775807 - 1
+        x = -k - 1
         y = -x
     tests:
         example <overflow>:
+            given k = 9223372036854775807
             expect y == 0
 ",
     );
@@ -2543,6 +2608,8 @@ fn binder_scope_empty_shadow_guard() {
         "binder-empty-const",
         "\
 emath function EmptyConst:
+    inputs:
+        n: Float64
     outputs:
         s: Float64
         p: Float64
@@ -2550,13 +2617,14 @@ emath function EmptyConst:
         e: Bool
         vacuous: Bool
     definitions:
-        s = sum i in 0..0: i
+        s = sum i in 0..0: i * n
         p = product i in 0..0: i
         a = forall i in 0..0: false
         e = exists i in 0..0: true
         vacuous = forall i in 0..0: 1 / i == 0
     tests:
         example <empty>:
+            given n = 1.0
             expect s == 0
             expect p == 1
             expect a == true
@@ -2639,14 +2707,17 @@ emath function EmptyN:
         "binder-empty-product-guard",
         "\
 emath function EmptyProductGuard:
+    inputs:
+        n: Float64
     outputs:
         p: Float64
         s: Float64
     definitions:
         p = product i in 1..5 if i > 10: i
-        s = sum i in 1..5 if i > 10: i
+        s = sum i in 1..5 if i > 10: i * n
     tests:
         example <id>:
+            given n = 1.0
             expect p == 1
             expect s == 0
 ",
@@ -2695,12 +2766,15 @@ emath function Capture:
         "binder-const-shadow",
         "\
 emath function ConstShadow:
+    inputs:
+        n: Float64
     outputs:
         t: Float64
     definitions:
-        t = sum i in 1..4: sum i in 10..12: i
+        t = sum i in 1..4: sum i in 10..12: i * n
     tests:
         example <cs>:
+            given n = 1.0
             expect t == 63
 ",
     );
@@ -2886,6 +2960,8 @@ fn complex_sqrt_ln_compute() {
         "cplx-elem",
         "\
 emath function CplxElem:
+    inputs:
+        n: Float64
     outputs:
         s: Complex
         l: Complex
@@ -2893,9 +2969,10 @@ emath function CplxElem:
     definitions:
         s = sqrt(-1 + 0i)
         l = ln(-1 + 0i)
-        mag = abs(i)
+        mag = abs(i) * n
     tests:
         example <principal>:
+            given n = 1.0
             expect abs(s - i) < 1e-12
             expect abs(l - 3.141592653589793i) < 1e-12
             expect mag == 1

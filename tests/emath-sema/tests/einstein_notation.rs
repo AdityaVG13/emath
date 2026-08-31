@@ -11,9 +11,10 @@
 //! - A free/unknown index name on a rank-1 vector refuses `E-TYPE-002`
 //!   (unknown variable) — never a silent single-index reinterpretation.
 //! - Index-notation assignment `C[i, j] = A[i, k] * B[k, j]` refuses
-//!   `E-TYPE-010` (indexed/nested definitions outside the Phase 1 subset);
-//!   pack-gated contraction semantics land with the einstein pack, whose
-//!   `use` resolution is the emath-r3-imports-utzd lane.
+//!   `E-SEQ-RECURRENCE` (a definition target carries at most one index —
+//!   the sequence/recurrence law owns indexed definitions); pack-gated
+//!   contraction semantics land with the einstein pack, whose `use`
+//!   resolution is the emath-r3-imports-utzd lane.
 //! - Concrete integer indexing `S[1, 2]` on a Matrix admits.
 
 use emath_core::limits::Limits;
@@ -89,7 +90,8 @@ fn unknown_index_name_on_rank1_refuses() {
 }
 
 /// Index-notation assignment (`C_idx[i, j] = A[i, k] * B[k, j]`) is
-/// Phase-1-fenced with E-TYPE-010; pack-gated contraction lands later.
+/// fenced by the sequence law: a definition target carries at most one
+/// index (E-SEQ-RECURRENCE); pack-gated contraction lands later.
 #[test]
 fn index_notation_assignment_is_phase1_fenced() {
     let out = check(
@@ -97,8 +99,8 @@ fn index_notation_assignment_is_phase1_fenced() {
     );
     let errs = errors(&out);
     assert!(
-        errs.iter().any(|(_, code)| code == "E-TYPE-010"),
-        "index-notation assignment must refuse E-TYPE-010 in Phase 1, got {errs:?}"
+        errs.iter().any(|(_, code)| code == "E-SEQ-RECURRENCE"),
+        "multi-index definition target must refuse E-SEQ-RECURRENCE, got {errs:?}"
     );
 }
 

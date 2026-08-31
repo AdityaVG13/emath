@@ -189,13 +189,24 @@ emath function Hybrid:
         "transitions/events must parse, got {:?}",
         result.messages
     );
+    // `events:`/`transitions:` are admitted Phase 1 sections (hybrid
+    // events bead, r3-dynamical-03lh); malformed CONTENT is the refusal:
+    // `dummy = 1` is not an `event Name(field: Type)` declaration
+    // (E-SYN-101) and not an `on <Event>:` rule (E-TRANS-003).
     assert!(
         result
             .messages
             .iter()
-            .any(|message| message.contains("E-SEC-101")
-                && (message.contains("transitions") || message.contains("events"))),
-        "transitions/events must not be admitted, got {:?}",
+            .any(|message| message.contains("E-SYN-101")),
+        "malformed `events:` content must refuse with E-SYN-101, got {:?}",
+        result.messages
+    );
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("E-TRANS-003")),
+        "malformed `transitions:` content must refuse with E-TRANS-003, got {:?}",
         result.messages
     );
 }
