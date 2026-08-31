@@ -42,18 +42,22 @@ emath function transfer_response:
         h = transfer_eval([6, 1], [2, 3, 1], s)
 
 emath function state_space_dc_gain:
-    inputs: []
+    inputs:
+        a0: Float64
     outputs:
         dc: Float64
     definitions:
-        # Companion-like carrier of 1/(s² + 3s + 2) with D = 0:
+        # Constant term a0 parameterizes 1/(s^2 + 3s + a0); with a0 = 2 the
+        # Companion-like carrier of 1/(s² + 3s + 2) with D = 0 gives
         # dc = c·(−A)⁻¹·b = 0.5 = H(0), bit-exact.
-        dc = dc_gain([[0, 1], [-2, -3]], [0, 1], [1, 0])
+        dc = dc_gain([[0, 1], [-a0, -3]], [0, 1], [1, 0])
 
 emath function open_loop_stability:
-    inputs: []
+    inputs:
+        a0: Float64
     outputs:
         stable: Bool
     definitions:
         # (s + 1)(s + 2) = s² + 3s + 2: all real parts < 0 → true.
-        stable = poles_stable([2, 3, 1])
+        # a0 = 2 is the demo system; stability of s² + 3s + a0 needs a0 < 9.
+        stable = poles_stable([a0, 3, 1])

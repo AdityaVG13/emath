@@ -10,10 +10,10 @@
 # there is no panicking unwrap). The aliasing `Option<Option<T>>` keeps a
 # nested Some(None) distinct from a flattened none.
 #
-# `carrier_ops` is NULLARY, so `emath eval` runs it without bindings:
+# `carrier_ops` takes the demo values as inputs, so `emath eval` binds them:
 #   emath check language/examples/intro/option-result-ops.emath
 #   emath eval  language/examples/intro/option-result-ops.emath \
-#       --function carrier_ops
+#       --function carrier_ops --set v=1.0 --set err=7.0 --set dflt=9.0
 # Every row is pinned by an `aj8d_text_*` sema test.
 #
 # REFUSED (typed): a scalar where a carrier is required, `result_error_of`
@@ -21,6 +21,10 @@
 # refuse `E-TYPE-012`.
 
 emath function carrier_ops:
+    inputs:
+        v: Float64
+        err: Float64
+        dflt: Float64
     outputs:
         os: Bool
         ou: Float64
@@ -30,15 +34,16 @@ emath function carrier_ops:
         outer: Bool
 
     definitions:
-        # os = Some(1) is_some → true
-        os = option_is_some(option_some(1.0))
-        # ou = None.unwrap_or(9) → 9 (total; no panic)
-        ou = option_unwrap_or(option_none(), 9.0)
-        # ro = Ok(3.5) is_ok → true
-        ro = result_is_ok(result_ok(3.5))
-        # ru = Err(7).unwrap_or(9) → 9 (default on the Err side)
-        ru = result_unwrap_or(result_err(7.0), 9.0)
-        # proj = error_of(Err(7)) → Some(7), unwrap_or → 7
-        proj = option_unwrap_or(result_error_of(result_err(7.0)), -1.0)
+        # With v=1.0, err=7.0, dflt=9.0 (the demo values from the header):
+        # os = Some(v) is_some → true
+        os = option_is_some(option_some(v))
+        # ou = None.unwrap_or(dflt) → dflt (total; no panic)
+        ou = option_unwrap_or(option_none(), dflt)
+        # ro = Ok(v) is_ok → true
+        ro = result_is_ok(result_ok(v))
+        # ru = Err(err).unwrap_or(dflt) → dflt (default on the Err side)
+        ru = result_unwrap_or(result_err(err), dflt)
+        # proj = error_of(Err(err)) → Some(err), unwrap_or(-1 sentinel) → err
+        proj = option_unwrap_or(result_error_of(result_err(err)), -1.0)
         # outer = Some(None) is_some → true (tag survives nesting)
         outer = option_is_some(option_some(option_none()))

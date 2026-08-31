@@ -10,16 +10,19 @@
 # branch or EmirOp in the compiler — the `field7_add` / `field7_mul` /
 # `field7_inv` names below are user declarations composing generic ops.
 #
-# `field7_ops` is NULLARY, so `emath eval` runs it without bindings:
+# `field7_ops` composes the four component functions on a sample pair:
 #   emath check language/examples/intro/field-mod-arithmetic.emath
 #   emath eval  language/examples/intro/field-mod-arithmetic.emath \
-#       --function field7_ops
+#       --function field7_ops --set a=3 --set b=4
 # Each `outputs:` value is a `Field<7>` element (exact, in 0..=6). The
 # `field7_add` / `field7_mul` / `field7_inv`/`field7_rem` declarations take
 # `Int` inputs and are the same capability-data forms proven by the
 # `aj8d_field7_*` and `aj8d_meta_field7_distribution_law` tests.
 
 emath function field7_ops:
+    inputs:
+        a: Int
+        b: Int
     outputs:
         add: Field<7>
         mul: Field<7>
@@ -27,11 +30,14 @@ emath function field7_ops:
         rem: Field<7>
 
     definitions:
-        # 3 + 4 = 7 ≡ 0 (mod 7); 3 * 4 = 12 ≡ 5; 3^-1 ≡ 5; -1 rem 7 = 6.
-        add = int_rem(3 + 4, 7)
-        mul = int_rem(3 * 4, 7)
-        inv = field_inv(3, 7)
-        rem = int_rem(-1, 7)
+        # With a=3, b=4: 3 + 4 = 7 ≡ 0 (mod 7); 3 * 4 = 12 ≡ 5;
+        # 3^-1 ≡ 5; -1 mod 7 = 6. The definitions compose the four
+        # component functions declared below, so the showcase runs
+        # user-declared capability data end to end.
+        add = field7_add(a, b)
+        mul = field7_mul(a, b)
+        inv = field7_inv(a)
+        rem = field7_rem(-1, 7)
 
 # Capability data: field7_add(a, b) = (a + b) mod 7.
 emath function field7_add:

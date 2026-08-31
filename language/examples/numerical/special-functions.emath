@@ -1,15 +1,17 @@
 # Certified strict-f64 special functions expose both the central value
 # and the implementation's declared error bound.
 emath function SpecialFunctionValues:
+    inputs:
+        n: Float64
     outputs:
         gamma_five: Float64
         beta_two_three: Float64
         gamma_bound: Float64
 
     definitions:
-        gamma_five = gamma(5)
+        gamma_five = gamma(n)
         beta_two_three = beta(2, 3)
-        gamma_bound = gamma_error_bound(5)
+        gamma_bound = gamma_error_bound(n)
 
     tests:
         example <known_values>:
