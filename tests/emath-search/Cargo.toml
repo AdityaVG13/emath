@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-emath-search = { path = "../../crates/emath-search" }
+emath-lab-core = { path = "../../crates/emath-lab-core" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

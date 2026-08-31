@@ -229,3 +229,5 @@ pub mod calibration;
 pub mod law_check;
 
 pub mod holes;
+
+pub mod search;

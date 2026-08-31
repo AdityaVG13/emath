@@ -1,7 +1,7 @@
 //! Artifact corpus model and the composite document-id encoding (one
 //! `to_fs_doc_id` / `from_fs_doc_id` pair, unit-separator composite keys).
 
-use crate::error::SearchError;
+use crate::search::error::SearchError;
 
 /// Unit separator for composite frankensearch document ids (`kind \x1f id`);
 /// both parts must be non-empty and free of the separator.

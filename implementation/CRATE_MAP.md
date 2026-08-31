@@ -86,7 +86,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-store` | `crates/emath-store` | evidence/artifact state store (frankensqlite, `sqlite-store` feature) | core/ir |
-| `emath-search` | `crates/emath-search` | artifact corpus hybrid search (frankensearch, `search` feature) | ir |
 
 Feature-gated: each crate's default build is std-only; the upstream engine
 (Dicklesworthstone franken*) arrives only behind the named feature.

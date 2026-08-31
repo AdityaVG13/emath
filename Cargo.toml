@@ -30,7 +30,6 @@ members = [
   "crates/emath-adapter-rumoca",
   "crates/emath-lsp",
   "crates/emath-registry",
-  "crates/emath-search",
   "crates/emath-wasm",
   "tests/harness",
   "tests/emath-adapter-dew",

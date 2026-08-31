@@ -1,7 +1,7 @@
-//! `emath-search` artifact-corpus tests (migrated from
-//! `crates/emath-search/src/corpus.rs`).
+//! `emath-lab-core` `search` artifact-corpus tests (migrated from
+//! `crates/emath-lab-core/src/search/corpus.rs`).
 
-use emath_search::{ArtifactDoc, DOC_ID_SEPARATOR, SearchError, from_fs_doc_id, to_fs_doc_id};
+use emath_lab_core::search::{ArtifactDoc, DOC_ID_SEPARATOR, SearchError, from_fs_doc_id, to_fs_doc_id};
 
 #[test]
 fn round_trip_composite_id() {
