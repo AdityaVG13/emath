@@ -156,7 +156,12 @@ fn eval(
     match expr {
         DewExpr::Float64Bits(bits) => Some(EvalValue::F64(f64::from_bits(*bits))),
         DewExpr::Bool(value) => Some(EvalValue::Bool(*value)),
-        DewExpr::Int(text) => text.parse::<f64>().ok().map(EvalValue::F64),
+        // Admitted integers are exact-finite-f64 (mapping gate); digit
+        // separators parse like the exec-ir emitter.
+        DewExpr::Int(text) => {
+            let digits: String = text.chars().filter(|c| *c != '_').collect();
+            digits.parse::<f64>().ok().map(EvalValue::F64)
+        }
         DewExpr::Var(name) => env.get(name).copied().map(EvalValue::F64),
         DewExpr::Add(left, right) => two(left, right, env, drift, |l, r| {
             if drift == Some(MutantDrift::AddAsSub) {

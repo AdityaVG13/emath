@@ -8,10 +8,9 @@
 //! claimed obligations against it; the first violation over the sorted
 //! carrier is the lexicographically smallest counterexample.
 
-use emath_calibration::FittedTable;
 use emath_portfolio::Authority;
 use emath_term::SymbolId;
-use emath_world_ir::{WorldId, fnv1a64};
+use emath_world_ir::{FittedTable, WorldId, fnv1a64};
 
 /// A law obligation an agent/provider world claims to satisfy.
 #[derive(Debug, Clone, PartialEq, Eq)]

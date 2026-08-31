@@ -7,13 +7,12 @@
 use std::collections::BTreeMap;
 
 use emath_artifact::JsonWriter;
-use emath_calibration::FittedTable;
 use emath_law_check::{
     CheckerError, CheckerReceipt, FiniteLawChecker, LawVerdict, MinimizedCounterexample,
     WorldCheckReport, WorldObligation,
 };
 use emath_term::SymbolId;
-use emath_world_ir::WorldId;
+use emath_world_ir::{FittedTable, WorldId};
 
 /// Stable code for a finite-checker commutative-law refutation.
 pub const E_LAW_001: &str = "E-LAW-001";

@@ -9,6 +9,14 @@ emath-to-DAE lowering, DAE-plan and simulation providers, semantic mapping
 table, subset import, MSL conformance ladder, versioned provider seam, and
 diagnostic mapping. No upstream Rumoca engine is consumed in Phase 1.
 
+No-claim fence (DISC-004, `tests/conformance/DISCREPANCIES.md`): the
+stand-in's intended upstream revision is the locked row
+`forks/UPSTREAM_LOCK.json` → `id: "rumoca"` → commit
+`5bafcd90f3410654f258fded7783ca493c3f4a77` (recorded here because the
+Phase-1 `ProviderVersion` carries only adapter semver, no upstream
+string). Conformance claims against that revision are future work;
+`scripts/check_upstream_lock.py` pins this binding textually.
+
 ## Public types and semantics
 
 - `StructuralModel`, `Component`, `ComponentKind`, `VariableDecl`,

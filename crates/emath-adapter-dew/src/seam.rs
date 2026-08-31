@@ -56,13 +56,20 @@ pub struct AdapterSeam {
 }
 
 impl AdapterSeam {
+    /// The locked upstream commit for `dew` (the `repositories[].commit`
+    /// row in `forks/UPSTREAM_LOCK.json`). The seam binds to the locked
+    /// revision, never a floating version string (conformance pin
+    /// register, `emath-conform-pin-register-1iip`).
+    pub const LOCKED_UPSTREAM_COMMIT: &'static str =
+        "0dd40dd1c374cb05d26e0d5c2b0746a217bf93ab";
+
     /// The seam for the current fork state: upstream locked version,
     /// adapter-only API, zero fork patches.
     #[must_use]
     pub fn current() -> Self {
         Self {
             version: ProviderVersion {
-                upstream: "dew-0.1.0".into(),
+                upstream: format!("dew-0.1.0+{}", Self::LOCKED_UPSTREAM_COMMIT),
                 adapter_protocol: "dew-adapter-1".into(),
             },
             patches: Vec::new(),

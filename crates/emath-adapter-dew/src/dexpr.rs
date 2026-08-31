@@ -148,7 +148,18 @@ pub fn map_expression(package: &SemanticPackage, id: ExprId) -> Result<DewExpr, 
     })?;
     match node {
         ExprNode::Literal(Literal::FloatBits(bits)) => Ok(DewExpr::Float64Bits(*bits)),
-        ExprNode::Literal(Literal::Integer(text)) => Ok(DewExpr::Int(text.clone())),
+        ExprNode::Literal(Literal::Integer(text)) => {
+            if !exact_finite_f64_int(text) {
+                return Err(MappingIssue {
+                    code: "E-PROV-030",
+                    node: id,
+                    detail: format!(
+                        "integer literal `{text}` is not exactly representable as a finite f64"
+                    ),
+                });
+            }
+            Ok(DewExpr::Int(text.clone()))
+        }
         ExprNode::Literal(Literal::Bool(value)) => Ok(DewExpr::Bool(*value)),
         ExprNode::Literal(Literal::Rational(_) | Literal::Text(_)) => Err(MappingIssue {
             code: "E-PROV-030",
@@ -219,7 +230,8 @@ pub fn map_expression(package: &SemanticPackage, id: ExprId) -> Result<DewExpr, 
                 | BinaryOp::MatrixMulMatrix
                 | BinaryOp::TensorAdd
                 | BinaryOp::TensorSub
-                | BinaryOp::TensorScale => {
+                | BinaryOp::TensorScale
+                | BinaryOp::SetContains => {
                     return Err(MappingIssue {
                         code: "E-PROV-030",
                         node: id,
@@ -246,6 +258,22 @@ pub fn map_expression(package: &SemanticPackage, id: ExprId) -> Result<DewExpr, 
             node: id,
             detail: format!("node form `{other:?}` is outside the Dew scalar subset"),
         }),
+    }
+}
+
+/// Whether an integer literal is exactly representable as a finite
+/// `f64`, matching the native exactness boundary (digit separators
+/// ignored, as in the exec-ir emitter). Values outside `i128` range
+/// cannot be proven exact without big-integer arithmetic, so they are
+/// refused: never a silent lossy parse.
+fn exact_finite_f64_int(text: &str) -> bool {
+    let digits: String = text.chars().filter(|c| *c != '_').collect();
+    match digits.parse::<i128>() {
+        Ok(value) => {
+            let as_f64 = value as f64;
+            as_f64.is_finite() && as_f64 as i128 == value
+        }
+        Err(_) => false,
     }
 }
 

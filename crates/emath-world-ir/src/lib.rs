@@ -3,7 +3,16 @@
 //! Provider-neutral World IR and meaning-hole structures.
 
 pub mod builtin;
+pub mod fitting;
 pub mod translation;
+
+pub use fitting::FittedTable;
+// Facade fence (rpme/C052): the morphism/preservation vocabulary callers
+// consume deep (`translation::{...}`) is root-exported; the module path
+// stays public for the rest of the translation surface. Homonym watch
+// (C057): `emath_runtime::EvidenceHandle` is a DIFFERENT type — no
+// collision, different crates and paths.
+pub use translation::{EvidenceHandle, PreservationRelation, WorldMorphism};
 
 use emath_term::{Signature, SymbolId};
 
@@ -301,11 +310,9 @@ fn hole_state_name(state: MeaningHoleState) -> &'static str {
     }
 }
 
-pub fn fnv1a64(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
+/// FNV-1a 64-bit over raw bytes. SINGLE OWNER (magnet consolidation,
+/// o7a6): the primitive lives in Tier-0 `emath-core`
+/// (`fnv1a64_bytes`); this is a thin re-export so existing
+/// `emath_world_ir::fnv1a64` call sites keep one canonical implementation
+/// instead of a duplicated one.
+pub use emath_core::fnv1a64_bytes as fnv1a64;

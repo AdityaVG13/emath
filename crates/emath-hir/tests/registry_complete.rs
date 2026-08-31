@@ -141,7 +141,12 @@ fn every_emitted_code_is_documented() {
 }
 
 /// One code, one predicate: `E-KIND-010` is the sema
-/// function-constructors refusal and nothing else.
+/// section×declaration-kind conformance refusal (state/constructors/
+/// equations/algebraic only on the kinds that carry them) and nothing
+/// else. The emission lives in the admit submodules since the
+/// `admit.rs` restructuring (bead emath-ekind010-single-predicate-lw9o
+/// fixed this gate to follow the move; `implementation/ERROR_CODES.md`
+/// already lists the submodule files).
 #[test]
 fn ekind010_is_single_predicate() {
     let root = repo_root();
@@ -162,10 +167,14 @@ fn ekind010_is_single_predicate() {
             }
         }
     }
-    // Files that may mention the literal. Emissions (code fields) exist
-    // only in admit.rs; builder embeds the same predicate in a message;
-    // the remaining two files are this gate and the open.rs test module.
+    // Files that may mention the literal. Emissions (code fields) live
+    // in the admit submodules (declaration.rs, equations.rs — the same
+    // kind×section admission predicate, not a repurposing); builder
+    // embeds the predicate in a message; the remaining two files are
+    // this gate and the (historical) open.rs test module.
     let allowed = BTreeSet::from([
+        "crates/emath-sema/src/admit/declaration.rs".to_string(),
+        "crates/emath-sema/src/admit/equations.rs".to_string(),
         "crates/emath-sema/src/admit.rs".to_string(),
         "crates/emath-builder/src/lib.rs".to_string(),
         "crates/emath-hir/src/open.rs".to_string(),
@@ -182,8 +191,10 @@ fn ekind010_is_single_predicate() {
             .join(", ")
     );
     assert!(
-        emitting.contains("crates/emath-sema/src/admit.rs"),
-        "E-KIND-010 must still be emitted by sema admission"
+        emitting.contains("crates/emath-sema/src/admit/declaration.rs")
+            && emitting.contains("crates/emath-sema/src/admit/equations.rs"),
+        "E-KIND-010 must still be emitted by sema admission (the admit \
+         submodule predicate sites)"
     );
 }
 

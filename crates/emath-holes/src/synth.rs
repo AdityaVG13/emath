@@ -6,10 +6,9 @@
 //! satisfying all declared laws are synthesized. An exhaustive search
 //! that finds no table rejects the law set (seeded impossible set).
 
-use emath_calibration::FittedTable;
 use emath_law_check::{CheckerError, Law, WorldCheckReport, WorldObligation, check_world};
 use emath_term::SymbolId;
-use emath_world_ir::{WorldId, fnv1a64};
+use emath_world_ir::{FittedTable, WorldId, fnv1a64};
 
 use crate::graph::{HoleGraph, HoleState};
 

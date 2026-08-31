@@ -8,12 +8,16 @@
 #![forbid(unsafe_code)]
 
 pub mod deps;
+pub mod edition;
 pub mod metrics;
 pub mod script;
 
 pub use deps::{
     check_declared, plan_dependencies, requests_for, CargoDependency, DepError, DepPlan, DepPolicy,
     DepRequest, DepSource, RuntimeKind, TargetKind,
+};
+pub use edition::{
+    manifest_edition, parse_edition_field, ManifestEditionError,
 };
 pub use metrics::{MetricsCollector, BENCHMARK_RECEIPT_SCHEMA, BENCHMARK_RECEIPT_VERSION};
 pub use script::{locked_build_script, ScriptError, ScriptLock, ScriptReport};

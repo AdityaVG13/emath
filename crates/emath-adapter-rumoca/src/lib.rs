@@ -20,7 +20,7 @@ pub mod subset;
 pub use census::{PhaseKind, PhaseRecord, Stability};
 pub use conformance::{ConformanceReport, FeatureResult, FeatureStatus, Tier};
 pub use diagnostics::{MappedDiagnostic, ProviderDiagnostic};
-pub use import::{ForeignModelDeclaration, ImportError};
+pub use import::{ForeignModelDeclaration, ImportError, import_modelica};
 pub use lower::{DaePlan, DerivativeDef, EqProvenance, LowerError};
 pub use map::{ConstructMapping, MappingClass};
 pub use provider::{
