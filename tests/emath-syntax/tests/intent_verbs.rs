@@ -47,6 +47,6 @@ fn extra_intent_verbs_expand() {
 
 #[test]
 fn unknown_verb_is_e_syn_148() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_8.emath");
+    let source = include_str!("../../../tests/invalid/intent_verbs.emath");
     assert!(has_error(source, "E-SYN-148"));
 }

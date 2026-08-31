@@ -86,6 +86,6 @@ fn unconstrained_hole_records_rejection_not_invention() {
 
 #[test]
 fn unconstrained_hole_claimed_exact_is_refused() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_7.emath");
+    let source = include_str!("../../../tests/invalid/typed_holes.emath");
     assert!(has_error(source, "E-SYN-147"));
 }

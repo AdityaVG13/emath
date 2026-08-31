@@ -817,7 +817,7 @@ notation infixr 50 \"Y\" => core::math::mul
 // ---- B12: logic connectives ==> and <==> --------------------------------
 
 #[test]
-fn b12_imply_parses() {
+fn imply_parses() {
     // `==>` is logical implication, right-associative, lower than `or`.
     let source = "\
 emath function test() -> Bool:
@@ -845,7 +845,7 @@ emath function test() -> Bool:
 }
 
 #[test]
-fn b12_iff_parses() {
+fn iff_parses() {
     // `<==>` is logical biconditional, lower than `==>`.
     let source = "\
 emath function test() -> Bool:
@@ -873,7 +873,7 @@ emath function test() -> Bool:
 }
 
 #[test]
-fn b12_imply_right_associative() {
+fn imply_is_right_associative() {
     // `A ==> B ==> C` should parse as `A ==> (B ==> C)`.
     let source = "\
 emath function test() -> Bool:
@@ -912,7 +912,7 @@ emath function test() -> Bool:
 }
 
 #[test]
-fn b12_arrow_not_imply() {
+fn arrow_is_not_implication() {
     // `=>` must still parse as the match/lambda/notation arrow, not as `==>`.
     // `true => false` is not valid expression syntax (=> is not a binary op).
     let source = "\
@@ -936,7 +936,7 @@ emath function test() -> Bool:
 }
 
 #[test]
-fn b02_binder_guard_parses() {
+fn binder_guard_parses() {
     // `sum i in 0..n if i > 2: i` should parse as a Binder with a guard.
     let source = "\
 emath function test(n: Float64) -> Float64:
@@ -2070,4 +2070,83 @@ notation infixl 40 \"if\" => core::math::pow
         codes.contains(&"E-NOTATION-GLYPH"),
         "keyword glyph must refuse with E-NOTATION-GLYPH, got {codes:?}"
     );
+}
+
+// ---- Anti-proposals negative controls (emath-r3-anti-proposals-1n6i) --------
+// Failure-first: this test is authored against the intended behavior and
+// must FAIL before the juxtaposition suggestion exists (A-bonus, C15).
+#[test]
+fn juxtaposition_2x_is_refused_with_2_times_x_suggestion() {
+    // `2x` is not `2 * x` (anti-proposal bonus). The parser must refuse
+    // with a suggestion naming the admitted spelling.
+    let source = "\
+emath function f() -> Float64:
+    definitions:
+        r = 2x
+";
+    let (_tree, diags) = parse_str(source);
+    let rendered: Vec<String> = diags
+        .errors()
+        .map(|e| format!("{} {}", e.code, e.message))
+        .collect();
+    assert!(
+        rendered
+            .iter()
+            .any(|m| m.contains("juxtapos") && m.contains("2 * x")),
+        "`2x` must refuse with a juxtaposition + `2 * x` suggestion, got {rendered:?}"
+    );
+}
+
+#[test]
+fn explicit_2_times_x_still_admits() {
+    // The admitted spelling must remain untouched — the juxtaposition
+    // refusal cannot fire on operator-separated operands.
+    let source = "\
+emath function f() -> Float64:
+    definitions:
+        r = 2 * x
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "2 * x must admit, got {:?}",
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "r").expect("expected `r` binding");
+    let ExprKind::Binary { op, .. } = &expr.kind else {
+        panic!("expected Binary, got {:?}", expr.kind);
+    };
+    assert_eq!(*op, BinaryOp::Mul);
+}
+
+#[test]
+fn notation_glyph_after_int_is_not_juxtaposition() {
+    // `2 ⊕ x` with a registered glyph must parse through the notation
+    // infix layer; the adjacency check must exclude registered operators.
+    let source = "\
+emath function f() -> Float64:
+    definitions:
+        r = 2 ⊕ x
+notation infixl 40 \"⊕\" => core::math::add
+";
+    let (tree, diags) = parse_str(source);
+    assert!(
+        !diags.has_errors(),
+        "Int + notation glyph must parse as notation infix, got {:?}",
+        diags
+            .errors()
+            .map(|e| (e.code, e.message.clone()))
+            .collect::<Vec<_>>()
+    );
+    let expr = def_expr(&tree, "r").expect("expected `r` binding");
+    // The declared target IS the canonical desugar: every registered glyph
+    // lowers to `Call(<declared target>, args)` — the same contract the
+    // sibling tests pin (`notation_glyph_use_desugars_to_canonical_call`,
+    // `notation_alias_spelling_desugars_to_same_target`). The point of this
+    // test is the int-adjacent position: `2 ⊕ x` must reach the notation
+    // layer instead of folding `⊕` into a quantity unit.
+    assert_notation_call(expr, &["core", "math", "add"], 2);
 }

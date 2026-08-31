@@ -25,7 +25,7 @@ fn example_file_parses() {
 
 #[test]
 fn hidden_desugar_still_refused() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_9.emath");
+    let source = include_str!("../../../tests/invalid/diagnostic_guidance.emath");
     let (_, diagnostics) = parse_str(source);
     assert!(diagnostics.errors().any(|error| error.code == "E-SYN-144"));
 }

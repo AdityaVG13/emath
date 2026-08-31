@@ -1,6 +1,9 @@
 //! L1 guided relationships and examples (`y = x^2 + 4`, `example x = 3`).
 
 use emath_core::tree::{Item, StmtKind};
+use emath_core::limits::Limits;
+use emath_exec_ir::interp::Value;
+use emath_sema::CompilerSession;
 use emath_syntax::{expand_scratch, parse_str};
 
 fn has_error(text: &str, code: &str) -> bool {
@@ -48,6 +51,20 @@ fn relationship_plus_example_infers_input_and_tests() {
         "L1 example must lower to tests:, got {:?}",
         decl.body
     );
+
+    emath_syntax::install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let checked = session.check_owned("l1-relationship", source);
+    assert!(
+        !checked.diagnostics.has_errors(),
+        "{:?}",
+        checked.diagnostics.errors().collect::<Vec<_>>()
+    );
+    let report = emath_exec_ir::runner::run_package(&checked.package);
+    assert_eq!(
+        report.declarations[0].tests[0].outputs.get("y"),
+        Some(&Value::F64(13.0))
+    );
 }
 
 #[test]
@@ -58,7 +75,7 @@ fn l1_example_file_parses() {
 
 #[test]
 fn conflicting_example_types_are_e_syn_142() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_2.emath");
+    let source = include_str!("../../../tests/invalid/guided_relationships.emath");
     assert!(
         has_error(source, "E-SYN-142"),
         "conflicting example types must refuse with E-SYN-142"

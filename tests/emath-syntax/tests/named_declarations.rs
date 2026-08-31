@@ -1,6 +1,9 @@
 //! L2 named-declaration shorthand (`emath function Name:`).
 
 use emath_core::tree::{Item, StmtKind};
+use emath_core::limits::Limits;
+use emath_exec_ir::interp::Value;
+use emath_sema::CompilerSession;
 use emath_syntax::{expand_scratch, parse_str};
 
 fn has_error(text: &str, code: &str) -> bool {
@@ -75,6 +78,20 @@ fn l2_example_file_parses() {
         panic!("expected a declaration");
     };
     assert_eq!(decl.name, "Square");
+
+    emath_syntax::install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let checked = session.check_owned("l2-square", source);
+    assert!(
+        !checked.diagnostics.has_errors(),
+        "{:?}",
+        checked.diagnostics.errors().collect::<Vec<_>>()
+    );
+    let report = emath_exec_ir::runner::run_package(&checked.package);
+    assert_eq!(
+        report.declarations[0].tests[0].outputs.get("y"),
+        Some(&Value::F64(9.0))
+    );
 }
 
 #[test]

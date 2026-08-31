@@ -28,6 +28,6 @@ fn freeze_keeps_open_holes_visible() {
 
 #[test]
 fn freeze_must_not_claim_open_holes() {
-    let source = include_str!("../../../tests/invalid/v9_06_2rdq_6.emath");
+    let source = include_str!("../../../tests/invalid/exactness_introspection.emath");
     assert!(has_error(source, "E-SYN-147"));
 }
