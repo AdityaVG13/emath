@@ -22,7 +22,7 @@ pub mod synth;
 pub mod meaning_provider;
 pub mod morphism;
 pub mod vm;
-pub mod tuning;
+pub mod joint_tuning;
 pub mod world_decl;
 pub mod world_result;
 
@@ -65,7 +65,7 @@ pub use world_decl::{
     WorldDeclError, WorldLaw, WorldOrigin, WorldSourceClass, attach_world, synthesize_world,
     user_defined_world,
 };
-pub use tuning::{
+pub use joint_tuning::{
     candidate_id, classify, semantic_dna, tune, tuning_id, CandidateStatus, Disqualification,
     HostExample, ImplVariant, ProtectedObjective, TuningBudget, TuningError, TuningReceipt,
     TuningRequest, IMPL_VARIANT_COUNT, TUNING_SCHEMA, TUNING_VERSION,
@@ -549,3 +549,5 @@ pub fn reference_alien_term() -> (Signature, Term) {
     };
     (signature, term)
 }
+
+pub mod tuning;

@@ -775,9 +775,9 @@ dependencies = [
 name = "emath-agent-protocol"
 version = "0.1.0"
 dependencies = [
+ "emath-genesis",
  "emath-portfolio",
  "emath-term",
- "emath-tuning",
  "emath-world-ir",
 ]
 
@@ -786,8 +786,8 @@ name = "emath-agent-protocol-tests"
 version = "0.1.0"
 dependencies = [
  "emath-agent-protocol",
+ "emath-genesis",
  "emath-portfolio",
- "emath-tuning",
  "emath-world-ir",
 ]
 
@@ -890,7 +890,6 @@ dependencies = [
  "emath-store",
  "emath-syntax",
  "emath-term",
- "emath-tuning",
  "emath-world-codegen-rust",
  "emath-world-ir",
 ]
@@ -1365,19 +1364,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-tuning"
-version = "0.1.0"
-dependencies = [
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-tuning-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-genesis",
  "emath-term",
- "emath-tuning",
  "emath-world-ir",
 ]
 

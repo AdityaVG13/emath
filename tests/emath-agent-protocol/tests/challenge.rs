@@ -5,10 +5,10 @@
 use emath_agent_protocol::proposal::{AgentProposal, ProposalKind};
 use emath_agent_protocol::{ChallengeLoop, ChallengeOutcome, CheckerSuite};
 use emath_portfolio::{Authority, InterpretationPortfolio};
-use emath_tuning::campaign::{
+use emath_genesis::tuning::campaign::{
     CandidateMeasurement, HostCampaign, HostMetric, HostObjectives, ResourceEnvelope,
 };
-use emath_tuning::{SemanticChange, SemanticVariableKind, WorldDelta};
+use emath_genesis::tuning::{SemanticChange, SemanticVariableKind, WorldDelta};
 use emath_world_ir::translation::EvidenceHandle;
 use emath_world_ir::WorldId;
 

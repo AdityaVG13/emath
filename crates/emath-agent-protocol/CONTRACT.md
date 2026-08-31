@@ -4,7 +4,7 @@
 - Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
 - Agent-native meaning proposals: submission envelope, admission, challenge loop, feedback, capability gates.
 - A proposal traverses: schema admission, capability admission, deterministic checker suite, counterexample generation, evidence and cost gates, portfolio ranking, then revision request or world candidate.
-- Depends on: emath-term, emath-world-ir, emath-tuning, emath-portfolio.
+- Depends on: emath-term, emath-world-ir, emath-genesis, emath-portfolio.
 
 ## Public types and semantics
 - `AgentProposal` - one proposal envelope (problem id, base world or hole ids, changes, claimed obligations, derivation, required providers, estimated cost, requested authority).

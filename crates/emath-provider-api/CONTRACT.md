@@ -251,7 +251,7 @@ holds the resources it declares.
 Tier 6 (semantic genesis substrate) stable contracts for meaning proposal
 and world checking. Depends on `emath-term` and `emath-world-ir`. No crate in
 the current workspace depends on this seam (the CRATE_MAP-intended
-dependents — `emath-portfolio`, `emath-law-check`, `emath-tuning`,
+dependents — `emath-portfolio`, `emath-law-check`, `emath-genesis`,
 `emath-agent-protocol` — consume their own crates today); it is kept as the
 frozen provider/checker contract surface for the Genesis pipeline.
 

@@ -24,7 +24,6 @@ members = [
   "crates/emath-cli",
   "crates/emath-term",
   "crates/emath-world-ir",
-  "crates/emath-tuning",
   "crates/emath-agent-protocol",
   "crates/emath-calibration",
   "crates/emath-law-check",
@@ -115,12 +114,11 @@ emath-adapter-dew = { path = "crates/emath-adapter-dew" }
 emath-cli = { path = "crates/emath-cli" }
 emath-term = { path = "crates/emath-term" }
 emath-world-ir = { path = "crates/emath-world-ir" }
-emath-tuning = { path = "crates/emath-tuning" }
+emath-genesis = { path = "crates/emath-genesis" }
 emath-agent-protocol = { path = "crates/emath-agent-protocol" }
 emath-calibration = { path = "crates/emath-calibration" }
 emath-law-check = { path = "crates/emath-law-check" }
 emath-holes = { path = "crates/emath-holes" }
-emath-genesis = { path = "crates/emath-genesis" }
 emath-layout = { path = "crates/emath-layout" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
@@ -168,11 +166,7 @@ strip = true
 # force-frame-pointers=yes"` so profilers get real stacks.
 [profile.release-perf]
 inherits = "release"
-opt-level = 3
-lto = "thin"
-codegen-units = 1
 debug = "line-tables-only"
-strip = false
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

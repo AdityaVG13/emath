@@ -10,7 +10,7 @@ description = "Agent-native meaning proposals: submission schema, challenge loop
 [dependencies]
 emath-term = { path = "../emath-term" }
 emath-world-ir = { path = "../emath-world-ir" }
-emath-tuning = { path = "../emath-tuning" }
+emath-genesis = { path = "../../crates/emath-genesis" }
 emath-portfolio = { path = "../emath-portfolio" }
 
 [lints]

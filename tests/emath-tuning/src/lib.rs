@@ -1,1 +1,1 @@
-//! Behavioral integration tests for `emath-tuning` (public API only).
+//! Behavioral integration tests for `emath-genesis::tuning` (public API only).

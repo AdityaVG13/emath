@@ -1,7 +1,7 @@
 //! tuning tests migrated from the in-crate `#[cfg(test)]`
 //! module: every symbol they exercise is public crate surface.
 
-use emath_genesis::tuning::{
+use emath_genesis::joint_tuning::{
     candidate_id, check_version, classify, semantic_dna, tune, tuning_id, CandidateStatus,
     HostExample, ImplVariant, ProtectedObjective, TuningBudget, TuningError,
     TuningRequest, TUNING_VERSION,
