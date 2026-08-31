@@ -1143,14 +1143,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-meaning-provider-api"
-version = "0.1.0"
-dependencies = [
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-plan"
 version = "0.1.0"
 dependencies = [
@@ -1184,6 +1176,8 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]

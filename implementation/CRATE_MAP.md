@@ -77,7 +77,6 @@ intent, not an implemented surface.
 | `emath-genesis` | `crates/emath-genesis` | minimal Semantic Genesis evaluator and built-in example worlds | term/world-ir |
 | `emath-world-ir` | `crates/emath-world-ir` | provider-neutral World IR and meaning-hole structures; owns FittedTable and re-exports core's fnv1a64 (o7a6) | ir/core |
 | `emath-world-codegen-rust` | `crates/emath-world-codegen-rust` | deterministic parametric Rust world artifact generation (Genesis G3) | world-ir/lab-core |
-| `emath-meaning-provider-api` | `crates/emath-meaning-provider-api` | stable contracts for meaning proposal and world checking | provider-api |
 | `emath-portfolio` | `crates/emath-portfolio` | deterministic interpretation portfolios | meaning-provider-api |
 
 ### Tier 7 — governance and operations

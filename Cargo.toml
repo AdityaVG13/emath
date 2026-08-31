@@ -33,7 +33,6 @@ members = [
   "crates/emath-holes",
   "crates/emath-genesis",
   "crates/emath-layout",
-  "crates/emath-meaning-provider-api",
   "crates/emath-portfolio",
   "crates/emath-world-codegen-rust",
   "crates/emath-adapter-rumoca",
@@ -126,7 +125,6 @@ emath-law-check = { path = "crates/emath-law-check" }
 emath-holes = { path = "crates/emath-holes" }
 emath-genesis = { path = "crates/emath-genesis" }
 emath-layout = { path = "crates/emath-layout" }
-emath-meaning-provider-api = { path = "crates/emath-meaning-provider-api" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-world-codegen-rust = { path = "crates/emath-world-codegen-rust" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
