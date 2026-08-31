@@ -101,6 +101,174 @@ pub fn mat_mul_vec(m: &[Vec<f64>], v: &[f64]) -> Vec<f64> {
         .collect()
 }
 
+/// Primitive INTEGER null vector of an integer matrix, `Ok(None)` when
+/// the nullspace is not exactly one-dimensional. Exact rational
+/// Gauss-Jordan elimination with i128 intermediates and gcd-reduced
+/// fractions (no floating point anywhere); the returned vector is
+/// primitive (entries coprime, first nonzero entry positive). This is
+/// the generic exact-integer primitive the balancing cell composes;
+/// it contains no domain logic. Ragged rows and i128 overflow are
+/// caller-visible errors, never silent truncation.
+pub fn primitive_int_nullvector(rows: &[Vec<i64>]) -> Result<Option<Vec<i64>>, String> {
+    if rows.is_empty() {
+        return Err("empty matrix has no nullspace".to_string());
+    }
+    let n = rows[0].len();
+    if n == 0 {
+        return Err("zero-column matrix has no nullspace".to_string());
+    }
+    for row in rows {
+        if row.len() != n {
+            return Err("ragged rows have no common width".to_string());
+        }
+    }
+    // Rational matrix (num, den) with den > 0, gcd-reduced at each step.
+    let mut a: Vec<Vec<(i128, i128)>> = rows
+        .iter()
+        .map(|row| row.iter().map(|&x| (i128::from(x), 1)).collect())
+        .collect();
+    let m = a.len();
+    let mut pivot_cols: Vec<usize> = Vec::new();
+    let mut cur = 0usize;
+    for col in 0..n {
+        let Some(pivot) = (cur..m).find(|&r| a[r][col].0 != 0) else {
+            continue;
+        };
+        a.swap(cur, pivot);
+        // Normalize the pivot row so the pivot entry is (1, 1).
+        let (pnum, pden) = a[cur][col];
+        for entry in &mut a[cur] {
+            let (num, den) = *entry;
+            let num = num.checked_mul(pden).ok_or_else(overflow)?;
+            let den = den.checked_mul(pnum).ok_or_else(overflow)?;
+            *entry = reduce(num, den)?;
+        }
+        // Eliminate the pivot column in every OTHER row.
+        for r in 0..m {
+            if r == cur {
+                continue;
+            }
+            let (fnum, fden) = a[r][col];
+            if fnum == 0 {
+                continue;
+            }
+            for c in 0..n {
+                let (pnum, pden) = a[cur][c];
+                let (rnum, rden) = a[r][c];
+                // r[c] - (fnum/fden) * pivot[c]:
+                //   (rnum/rden) - (fnum*fden_inv)*(pnum/pden)
+                let left_num = rnum.checked_mul(fden).ok_or_else(overflow)?;
+                let left_den = rden.checked_mul(fden).ok_or_else(overflow)?;
+                let right_num = fnum
+                    .checked_mul(pnum)
+                    .ok_or_else(overflow)?
+                    .checked_mul(rden)
+                    .ok_or_else(overflow)?;
+                let right_den = fden
+                    .checked_mul(pden)
+                    .ok_or_else(overflow)?
+                    .checked_mul(rden)
+                    .ok_or_else(overflow)?;
+                let left = (left_num, left_den);
+                let right = (right_num, right_den);
+                let num = left
+                    .0
+                    .checked_mul(right.1)
+                    .ok_or_else(overflow)?
+                    .checked_sub(right.0.checked_mul(left.1).ok_or_else(overflow)?)
+                    .ok_or_else(overflow)?;
+                let den = left.1.checked_mul(right.1).ok_or_else(overflow)?;
+                a[r][c] = reduce(num, den)?;
+            }
+        }
+        pivot_cols.push(col);
+        cur += 1;
+    }
+    let dim = n - pivot_cols.len();
+    if dim != 1 {
+        return Ok(None);
+    }
+    // The single free column.
+    let free = (0..n)
+        .find(|c| !pivot_cols.contains(c))
+        .expect("dimension 1 has one free column");
+    // Back-substitute with x[free] = 1.
+    let mut x: Vec<(i128, i128)> = vec![(0, 1); n];
+    x[free] = (1, 1);
+    for (i, &pc) in pivot_cols.iter().enumerate() {
+        // Pivot row is normalized: x[pc] + row[free] * x[free] = 0.
+        let (fnum, fden) = a[i][free];
+        x[pc] = reduce(fnum.checked_neg().ok_or_else(overflow)?, fden)?;
+    }
+    // Scale by the LCM of positive denominators -> integer vector.
+    let mut scale = 1i128;
+    for (num, den) in &x {
+        if *num != 0 {
+            scale = lcm_128(scale, *den)?;
+        }
+    }
+    let mut out: Vec<i64> = Vec::with_capacity(n);
+    let mut g = 0i128;
+    for (num, den) in x {
+        let int = num.checked_mul(scale).ok_or_else(overflow)? / den;
+        if int != 0 {
+            g = gcd_128(g, int.abs());
+        }
+        out.push(i64::try_from(int).map_err(|_| overflow())?);
+    }
+    if g > 1 {
+        let g = i64::try_from(g).map_err(|_| overflow())?;
+        for v in &mut out {
+            *v /= g;
+        }
+    }
+    // Canonical sign: first nonzero entry positive.
+    if out.iter().find(|&&v| v != 0).is_some_and(|&v| v < 0) {
+        for v in &mut out {
+            *v = v.checked_neg().ok_or_else(overflow)?;
+        }
+    }
+    Ok(Some(out))
+}
+
+/// gcd-reduced rational; denominator forced positive.
+fn reduce(num: i128, den: i128) -> Result<(i128, i128), String> {
+    if den == 0 {
+        return Err("zero denominator".to_string());
+    }
+    let (num, den) = if den < 0 { (-num, -den) } else { (num, den) };
+    let mut g = gcd_128(num.abs(), den);
+    if g == 0 {
+        g = 1;
+    }
+    let num = num.checked_div(g).ok_or_else(overflow)?;
+    let den = den.checked_div(g).ok_or_else(overflow)?;
+    Ok((num, den))
+}
+
+/// Absolute-value gcd over i128.
+fn gcd_128(mut a: i128, mut b: i128) -> i128 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a.abs()
+}
+
+/// Least common multiple over i128 (0 when either side is 0).
+fn lcm_128(a: i128, b: i128) -> Result<i128, String> {
+    if a == 0 || b == 0 {
+        return Ok(0);
+    }
+    let g = gcd_128(a, b);
+    a.checked_mul(b / g).ok_or_else(overflow)
+}
+
+/// Shared overflow message for the exact-integer path.
+fn overflow() -> String {
+    "exact-integer overflow in nullspace elimination".to_string()
+}
 /// Matrix product. Mirrors the historical inline semantics exactly:
 /// dimensions are read from the operands (empty first dimension treated
 /// as 0), and inner-dimension indexing is direct (ragged operands panic,
@@ -1352,5 +1520,1910 @@ fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
     } else {
         let (g, x, y) = extended_gcd(b, a.rem_euclid(b));
         (g, y, x - (a / b) * y)
+    }
+}
+
+// ── Richer linear algebra (xx0x.2) ────────────────────────────────────────
+//
+// Deterministic strict-f64 kernels over flat row-major storage: cyclic
+// Jacobi eigen (real symmetric, ascending values, aligned unit columns),
+// thin SVD via the symmetric AᵀA eigenproblem (descending singular
+// values; reconstruction A = U·diag(s)·Vᵀ), and conjugate gradient
+// (SPD-convergence-checked). Empty output = typed refusal upstream (the
+// interpreter path surfaces E-LINALG-001..003); these kernels never
+// return NaN spectra.
+
+/// Jacobi eigenvalue decomposition of a real symmetric `rows×rows`
+/// matrix (flat row-major). Returns `(values ascending, vectors
+/// columns-aligned)`; empty values on non-square/non-symmetric input
+/// or a convergence stall.
+pub fn eig_symmetric(flat: &[f64], rows: usize, cols: usize) -> (Vec<f64>, Vec<Vec<f64>>) {
+    if rows != cols || rows == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let n = rows;
+    let mut work: Vec<Vec<f64>> = (0..n)
+        .map(|r| flat[r * cols..r * cols + cols].to_vec())
+        .collect();
+    // Symmetry gate (relative tolerance; rounding noise admits).
+    let magnitude: f64 = work
+        .iter()
+        .flat_map(|row| row.iter())
+        .map(|x| x.abs())
+        .sum();
+    let tolerance = 1e-9 * magnitude.max(1.0);
+    for i in 0..n {
+        for j in 0..n {
+            if (work[i][j] - work[j][i]).abs()
+                > tolerance * (work[i][j].abs() + work[j][i].abs() + 1.0)
+            {
+                return (Vec::new(), Vec::new());
+            }
+        }
+    }
+    let mut vectors = vec![vec![0.0; n]; n];
+    for (i, row) in vectors.iter_mut().enumerate() {
+        row[i] = 1.0;
+    }
+    let scale: f64 = work.iter().flat_map(|row| row.iter()).map(|x| x * x).sum();
+    let threshold = 1e-24 * scale.max(1.0);
+    for _sweep in 0..100 {
+        let off: f64 = (0..n)
+            .flat_map(|p| (0..n).map(move |q| (p, q)))
+            .filter(|(p, q)| p != q)
+            .map(|(p, q)| work[p][q] * work[p][q])
+            .sum();
+        if off <= threshold {
+            break;
+        }
+        for p in 0..n {
+            for q in (p + 1)..n {
+                let apq = work[p][q];
+                if apq.abs() <= 1e-300 {
+                    continue;
+                }
+                let theta = (work[q][q] - work[p][p]) / (2.0 * apq);
+                let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
+                let c = 1.0 / (t * t + 1.0).sqrt();
+                let s = c * t;
+                for k in 0..n {
+                    let akp = work[k][p];
+                    let akq = work[k][q];
+                    work[k][p] = c * akp - s * akq;
+                    work[k][q] = s * akp + c * akq;
+                }
+                for k in 0..n {
+                    let apk = work[p][k];
+                    let aqk = work[q][k];
+                    work[p][k] = c * apk - s * aqk;
+                    work[q][k] = s * apk + c * aqk;
+                }
+                for k in 0..n {
+                    let vkp = vectors[k][p];
+                    let vkq = vectors[k][q];
+                    vectors[k][p] = c * vkp - s * vkq;
+                    vectors[k][q] = s * vkp + c * vkq;
+                }
+            }
+        }
+    }
+    let off: f64 = (0..n)
+        .flat_map(|p| (0..n).map(move |q| (p, q)))
+        .filter(|(p, q)| p != q)
+        .map(|(p, q)| work[p][q] * work[p][q])
+        .sum();
+    if off > threshold {
+        return (Vec::new(), Vec::new());
+    }
+    // Canonical signs: the largest-|.| component of each column is +.
+    for j in 0..n {
+        let argmax = (0..n)
+            .fold((0usize, 0.0f64), |best, i| {
+                let magnitude = vectors[i][j].abs();
+                if magnitude > best.1 {
+                    (i, magnitude)
+                } else {
+                    best
+                }
+            })
+            .0;
+        if vectors[argmax][j] < 0.0 {
+            for i in 0..n {
+                vectors[i][j] = -vectors[i][j];
+            }
+        }
+    }
+    let mut order: Vec<usize> = (0..n).collect();
+    let mut values: Vec<f64> = (0..n).map(|i| work[i][i]).collect();
+    order.sort_by(|x, y| values[*x].total_cmp(&values[*y]));
+    let sorted_values = order.iter().map(|i| values[*i]).collect::<Vec<_>>();
+    let sorted_vectors = order
+        .iter()
+        .map(|i| (0..n).map(|r| vectors[r][*i]).collect::<Vec<_>>())
+        .collect();
+    values = sorted_values;
+    (values, sorted_vectors)
+}
+
+/// Eigenvalues only (ascending); empty on refusal.
+pub fn eig_values_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
+    eig_symmetric(flat, rows, cols).0
+}
+
+/// Eigenvector matrix (flat row-major, column j for eigenvalue j);
+/// empty on refusal.
+pub fn eig_vectors_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
+    let (values, vectors) = eig_symmetric(flat, rows, cols);
+    if values.is_empty() {
+        return Vec::new();
+    }
+    let n = rows;
+    let mut out = vec![0.0; n * n];
+    for (j, column) in vectors.iter().enumerate() {
+        for (i, entry) in column.iter().enumerate() {
+            out[i * n + j] = *entry;
+        }
+    }
+    out
+}
+
+/// Singular values of a rectangular matrix, DESCENDING (thin rank via
+/// the symmetric AᵀA eigenproblem); empty on refusal.
+pub fn svd_values_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
+    let (singular, _) = svd_thin_flat(flat, rows, cols);
+    singular
+}
+
+/// Packed `[U; s; Vᵀ]` thin-SVD factors (width max(cols, rank), zero
+/// padding; see the EMIR op docs); empty on refusal.
+pub fn svd_factors_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
+    let (singular, factors) = svd_thin_flat(flat, rows, cols);
+    if singular.is_empty() {
+        return Vec::new();
+    }
+    factors
+}
+
+/// Thin SVD core: returns `(s descending, packed [U; s; Vᵀ])`.
+fn svd_thin_flat(flat: &[f64], rows: usize, cols: usize) -> (Vec<f64>, Vec<f64>) {
+    if rows == 0 || cols == 0 || flat.len() != rows * cols {
+        return (Vec::new(), Vec::new());
+    }
+    if flat.iter().any(|x| !x.is_finite()) {
+        return (Vec::new(), Vec::new());
+    }
+    // AᵀA (cols×cols, symmetric PSD).
+    let mut ata = vec![vec![0.0; cols]; cols];
+    for i in 0..cols {
+        for j in 0..cols {
+            ata[i][j] = (0..rows)
+                .map(|k| flat[k * cols + i] * flat[k * cols + j])
+                .sum();
+        }
+    }
+    let (eigenvalues, vectors) = eig_symmetric(
+        &ata.iter().flatten().copied().collect::<Vec<f64>>(),
+        cols,
+        cols,
+    );
+    if eigenvalues.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let rank = rows.min(cols);
+    // Descending order; keep the thin rank.
+    let mut order: Vec<usize> = (0..cols).collect();
+    order.sort_by(|x, y| eigenvalues[*y].total_cmp(&eigenvalues[*x]));
+    order.truncate(rank);
+    let singular: Vec<f64> = order
+        .iter()
+        .map(|i| eigenvalues[*i].max(0.0).sqrt())
+        .collect();
+    // V rows (columns of V, i.e. rows of Vᵀ) in descending order.
+    let v_rows: Vec<Vec<f64>> = order
+        .iter()
+        .map(|source| (0..cols).map(|row| vectors[row][*source]).collect())
+        .collect();
+    // U columns: u_k = A·v_k / σ_k (zero column for σ ≈ 0).
+    let width = cols.max(rank);
+    let out_rows = rows + 1 + rank;
+    let mut packed = vec![0.0; out_rows * width];
+    for (k, sigma) in singular.iter().enumerate() {
+        if *sigma <= 1e-12 {
+            continue; // rank-deficient direction: zero column (documented)
+        }
+        for row in 0..rows {
+            let dot: f64 = (0..cols).map(|i| flat[row * cols + i] * v_rows[k][i]).sum();
+            packed[row * width + k] = dot / sigma;
+        }
+        // Vᵀ row k.
+        let base = (rows + 1 + k) * width;
+        packed[base..base + cols].copy_from_slice(&v_rows[k]);
+    }
+    // s row.
+    packed[rows * width..rows * width + rank].copy_from_slice(&singular);
+    (singular, packed)
+}
+
+/// Conjugate gradient over flat row-major dense storage: solves
+/// `A x = b` for SPD `A` (200 iterations, 1e-10 relative tolerance).
+/// Empty result = non-convergence (typed upstream, never a wrong x).
+pub fn cg_solve_flat(a_flat: &[f64], rows: usize, cols: usize, b: &[f64]) -> Vec<f64> {
+    if rows != cols || rows == 0 || b.len() != rows || a_flat.len() != rows * cols {
+        return Vec::new();
+    }
+    let n = rows;
+    let mat_vec = |x: &[f64]| -> Vec<f64> {
+        (0..n)
+            .map(|i| (0..n).map(|j| a_flat[i * n + j] * x[j]).sum())
+            .collect()
+    };
+    let b_norm: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-300);
+    let mut x = vec![0.0; n];
+    let mut residual = b.to_vec();
+    let mut direction = residual.clone();
+    let mut residual_norm_sq: f64 = residual.iter().map(|x| x * x).sum();
+    for _iteration in 0..200 {
+        if residual_norm_sq.sqrt() <= 1e-10 * b_norm {
+            return x;
+        }
+        let adirection = mat_vec(&direction);
+        let denominator: f64 = direction
+            .iter()
+            .zip(adirection.iter())
+            .map(|(d, ad)| d * ad)
+            .sum();
+        if denominator <= 0.0 || !denominator.is_finite() {
+            return Vec::new(); // non-SPD step: typed refusal upstream
+        }
+        let step = residual_norm_sq / denominator;
+        for (x_i, d_i) in x.iter_mut().zip(direction.iter()) {
+            *x_i += step * d_i;
+        }
+        for (r_i, ad_i) in residual.iter_mut().zip(adirection.iter()) {
+            *r_i -= step * ad_i;
+        }
+        let new_norm_sq: f64 = residual.iter().map(|x| x * x).sum();
+        let beta = new_norm_sq / residual_norm_sq;
+        for (d_i, r_i) in direction.iter_mut().zip(residual.iter()) {
+            *d_i = *r_i + beta * *d_i;
+        }
+        residual_norm_sq = new_norm_sq;
+    }
+    if residual_norm_sq.sqrt() <= 1e-10 * b_norm {
+        return x;
+    }
+    Vec::new()
+}
+
+/// Dense partial-pivot solve of `A x = b`; empty on a singular,
+/// non-finite, or shape-invalid system.
+pub fn linear_solve_flat(a_flat: &[f64], rows: usize, cols: usize, b: &[f64]) -> Vec<f64> {
+    if rows == 0
+        || rows != cols
+        || a_flat.len() != rows * cols
+        || b.len() != rows
+        || a_flat.iter().chain(b).any(|value| !value.is_finite())
+    {
+        return Vec::new();
+    }
+    let n = rows;
+    let mut a = a_flat.to_vec();
+    let mut rhs = b.to_vec();
+    for column in 0..n {
+        let pivot = (column..n)
+            .max_by(|left, right| {
+                a[*left * n + column]
+                    .abs()
+                    .total_cmp(&a[*right * n + column].abs())
+            })
+            .unwrap_or(column);
+        if a[pivot * n + column].abs() <= 1e-14 {
+            return Vec::new();
+        }
+        if pivot != column {
+            for j in 0..n {
+                a.swap(column * n + j, pivot * n + j);
+            }
+            rhs.swap(column, pivot);
+        }
+        for row in (column + 1)..n {
+            let factor = a[row * n + column] / a[column * n + column];
+            a[row * n + column] = 0.0;
+            for j in (column + 1)..n {
+                a[row * n + j] -= factor * a[column * n + j];
+            }
+            rhs[row] -= factor * rhs[column];
+        }
+    }
+    let mut solution = vec![0.0; n];
+    for row in (0..n).rev() {
+        let residual = rhs[row]
+            - ((row + 1)..n)
+                .map(|column| a[row * n + column] * solution[column])
+                .sum::<f64>();
+        solution[row] = residual / a[row * n + row];
+    }
+    solution
+}
+
+/// Packed partial-pivot LU factorization `[p; L; U]`, with permutation
+/// row `p` followed by `n` rows of `L` and `n` rows of `U`.
+pub fn lu_factors_flat(a_flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
+    if rows == 0
+        || rows != cols
+        || a_flat.len() != rows * cols
+        || a_flat.iter().any(|value| !value.is_finite())
+    {
+        return Vec::new();
+    }
+    let n = rows;
+    let mut lu = a_flat.to_vec();
+    let mut permutation: Vec<usize> = (0..n).collect();
+    for column in 0..n {
+        let pivot = (column..n)
+            .max_by(|left, right| {
+                lu[*left * n + column]
+                    .abs()
+                    .total_cmp(&lu[*right * n + column].abs())
+            })
+            .unwrap_or(column);
+        if lu[pivot * n + column].abs() <= 1e-14 {
+            return Vec::new();
+        }
+        if pivot != column {
+            for j in 0..n {
+                lu.swap(column * n + j, pivot * n + j);
+            }
+            permutation.swap(column, pivot);
+        }
+        for row in (column + 1)..n {
+            lu[row * n + column] /= lu[column * n + column];
+            for j in (column + 1)..n {
+                lu[row * n + j] -= lu[row * n + column] * lu[column * n + j];
+            }
+        }
+    }
+    let mut packed = vec![0.0; (2 * n + 1) * n];
+    for (column, source) in permutation.into_iter().enumerate() {
+        packed[column] = source as f64;
+    }
+    for row in 0..n {
+        for column in 0..n {
+            packed[(row + 1) * n + column] = if row == column {
+                1.0
+            } else if row > column {
+                lu[row * n + column]
+            } else {
+                0.0
+            };
+            packed[(n + 1 + row) * n + column] = if row <= column {
+                lu[row * n + column]
+            } else {
+                0.0
+            };
+        }
+    }
+    packed
+}
+
+/// Packed thin QR factorization `[Q; R]` for `m >= n`, with `m` rows
+/// of `Q` followed by `n` rows of `R`; empty for rank deficiency.
+pub fn qr_factors_flat(a_flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
+    if rows == 0
+        || cols == 0
+        || rows < cols
+        || a_flat.len() != rows * cols
+        || a_flat.iter().any(|value| !value.is_finite())
+    {
+        return Vec::new();
+    }
+    let mut q = vec![0.0; rows * cols];
+    let mut r = vec![0.0; cols * cols];
+    for column in 0..cols {
+        let mut vector = (0..rows)
+            .map(|row| a_flat[row * cols + column])
+            .collect::<Vec<_>>();
+        for previous in 0..column {
+            let projection = (0..rows)
+                .map(|row| q[row * cols + previous] * vector[row])
+                .sum::<f64>();
+            r[previous * cols + column] = projection;
+            for row in 0..rows {
+                vector[row] -= projection * q[row * cols + previous];
+            }
+        }
+        let norm = vector.iter().map(|value| value * value).sum::<f64>().sqrt();
+        if norm <= 1e-14 {
+            return Vec::new();
+        }
+        r[column * cols + column] = norm;
+        for row in 0..rows {
+            q[row * cols + column] = vector[row] / norm;
+        }
+    }
+    q.extend(r);
+    q
+}
+
+// ── Graph traversal (r2-graphs-masa slice 1) ──────────────────────────────
+//
+// Deterministic graph algorithms over a DENSE adjacency carrier: nested
+// row-major `adj[i][j]` = edge `i → j` (0.0 = no edge; nonzero = edge
+// whose value is the weight — the generated-crate matrix
+// representation, dims carried by the structure). Vertices are indices
+// and every neighbor scan is ascending-index: no hash-order
+// nondeterminism anywhere. INVALID input (non-square carrier, empty
+// traversal carrier, non-whole or out-of-range source, negative weight
+// under Dijkstra's precondition) yields an EMPTY result — the typed
+// refusal surface of the reference interpreter maps these to
+// E-GRAPH-001..003; the generated code observes the same refusals as
+// deterministic empty outputs. Kernels never panic.
+
+/// Square dimensions of a uniform nested carrier (None when ragged or
+/// empty).
+fn graph_dims(adj: &[Vec<f64>]) -> Option<(usize, usize)> {
+    let rows = adj.len();
+    if rows == 0 {
+        return None;
+    }
+    let cols = adj[0].len();
+    if cols != rows || adj.iter().any(|row| row.len() != cols) {
+        return None;
+    }
+    Some((rows, cols))
+}
+
+/// Whole vertex index in `0..n` from an f64 source (None otherwise).
+fn graph_source_index(source: f64, n: usize) -> Option<usize> {
+    if !source.is_finite() || source.fract() != 0.0 || source < 0.0 {
+        return None;
+    }
+    let index = source as usize;
+    if index >= n {
+        return None;
+    }
+    Some(index)
+}
+
+/// BFS reachability mask from `source`: element `v` is 1.0 when `v` is
+/// reachable from `source` (the source reaches itself), else 0.0.
+/// Empty on invalid carrier/source.
+pub fn graph_reachable(adj: &[Vec<f64>], source: f64) -> Vec<f64> {
+    let Some((n, _)) = graph_dims(adj) else {
+        return Vec::new();
+    };
+    let Some(source) = graph_source_index(source, n) else {
+        return Vec::new();
+    };
+    let mut mask = vec![0.0; n];
+    mask[source] = 1.0;
+    let mut queue = vec![source];
+    let mut head = 0usize;
+    while head < queue.len() {
+        let u = queue[head];
+        head += 1;
+        for v in 0..n {
+            if adj[u][v] != 0.0 && mask[v] == 0.0 {
+                mask[v] = 1.0;
+                queue.push(v);
+            }
+        }
+    }
+    mask
+}
+
+/// BFS visit order from `source` (source first, neighbors discovered in
+/// ascending index — breadth-first, never depth-first, never
+/// insertion-order). Empty on invalid carrier/source.
+pub fn graph_bfs_order(adj: &[Vec<f64>], source: f64) -> Vec<f64> {
+    let Some((n, _)) = graph_dims(adj) else {
+        return Vec::new();
+    };
+    let Some(source) = graph_source_index(source, n) else {
+        return Vec::new();
+    };
+    let mut visited = vec![false; n];
+    visited[source] = true;
+    let mut order = vec![source as f64];
+    let mut queue = vec![source];
+    let mut head = 0usize;
+    while head < queue.len() {
+        let u = queue[head];
+        head += 1;
+        for v in 0..n {
+            if adj[u][v] != 0.0 && !visited[v] {
+                visited[v] = true;
+                order.push(v as f64);
+                queue.push(v);
+            }
+        }
+    }
+    order
+}
+
+/// O(n²) selection Dijkstra: shortest distances from `source` over the
+/// nonnegative weights of the carrier (0.0 = no edge). Unreachable
+/// vertices are +Inf — honest numeric, never a wrong finite distance.
+/// Empty on invalid carrier/source or a NEGATIVE weight (Dijkstra's
+/// precondition; negative edges are a named deferral, not a silent
+/// wrong answer).
+pub fn graph_dijkstra(adj: &[Vec<f64>], source: f64) -> Vec<f64> {
+    let Some((n, _)) = graph_dims(adj) else {
+        return Vec::new();
+    };
+    let Some(source) = graph_source_index(source, n) else {
+        return Vec::new();
+    };
+    if adj.iter().any(|row| row.iter().any(|w| *w < 0.0)) {
+        return Vec::new();
+    }
+    let infinity = f64::INFINITY;
+    let mut distances = vec![infinity; n];
+    distances[source] = 0.0;
+    let mut settled = vec![false; n];
+    for _ in 0..n {
+        // Deterministic tie-break: the LOWEST-index unsettled vertex
+        // with the minimum distance.
+        let Some(u) = (0..n)
+            .filter(|v| !settled[*v])
+            .min_by(|x, y| distances[*x].total_cmp(&distances[*y]).then(x.cmp(y)))
+        else {
+            break;
+        };
+        if distances[u].is_infinite() {
+            break; // remaining vertices are unreachable
+        }
+        settled[u] = true;
+        for v in 0..n {
+            let weight = adj[u][v];
+            if weight != 0.0 {
+                let candidate = distances[u] + weight;
+                if candidate < distances[v] {
+                    distances[v] = candidate;
+                }
+            }
+        }
+    }
+    distances
+}
+
+/// Out-degree per vertex: count of NONZERO entries in the row (0.0 is
+/// no edge even in a weighted carrier; a self-loop counts). In-degree
+/// is this op over the transposed carrier. Empty on a ragged carrier;
+/// an empty carrier has no degrees (empty result).
+pub fn graph_degree_out(adj: &[Vec<f64>]) -> Vec<f64> {
+    match graph_dims(adj) {
+        Some((_n, cols)) => adj
+            .iter()
+            .map(|row| row[..cols].iter().filter(|w| **w != 0.0).count() as f64)
+            .collect(),
+        None if adj.is_empty() => Vec::new(),
+        None => Vec::new(),
+    }
+}
+
+// ── Nested-carrier adapters (xx0x.2 spectral/iterative kernels) ───────────
+//
+// The generated crate carries matrices as nested `Vec<Vec<f64>>` (see
+// `mat_transpose`); these adapters flatten into the flat kernels above
+// so backend emission can call the same algorithmic core. Empty
+// carrier → empty result (the kernels' typed-refusal surface).
+
+fn flatten_square_or_none(m: &[Vec<f64>]) -> Option<(Vec<f64>, usize, usize)> {
+    let rows = m.len();
+    if rows == 0 {
+        return None;
+    }
+    let cols = m[0].len();
+    if m.iter().any(|row| row.len() != cols) {
+        return None;
+    }
+    let flat: Vec<f64> = m.iter().flatten().copied().collect();
+    Some((flat, rows, cols))
+}
+
+/// Eigenvalues (ascending) of a real symmetric square nested matrix;
+/// empty on refusal.
+pub fn eig_values(m: &[Vec<f64>]) -> Vec<f64> {
+    match flatten_square_or_none(m) {
+        Some((flat, rows, cols)) => eig_values_flat(&flat, rows, cols),
+        None => Vec::new(),
+    }
+}
+
+/// Eigenvector matrix (flat row-major, column j for eigenvalue j);
+/// empty on refusal.
+pub fn eig_vectors(m: &[Vec<f64>]) -> Vec<f64> {
+    match flatten_square_or_none(m) {
+        Some((flat, rows, cols)) => eig_vectors_flat(&flat, rows, cols),
+        None => Vec::new(),
+    }
+}
+
+/// Singular values (descending) of a rectangular nested matrix; empty
+/// on refusal.
+pub fn svd_values(m: &[Vec<f64>]) -> Vec<f64> {
+    let rows = m.len();
+    if rows == 0 {
+        return Vec::new();
+    }
+    let cols = m[0].len();
+    if m.iter().any(|row| row.len() != cols) {
+        return Vec::new();
+    }
+    let flat: Vec<f64> = m.iter().flatten().copied().collect();
+    svd_values_flat(&flat, rows, cols)
+}
+
+/// Packed `[U; s; Vᵀ]` thin-SVD factors of a nested matrix; empty on
+/// refusal.
+pub fn svd_factors(m: &[Vec<f64>]) -> Vec<f64> {
+    let rows = m.len();
+    if rows == 0 {
+        return Vec::new();
+    }
+    let cols = m[0].len();
+    if m.iter().any(|row| row.len() != cols) {
+        return Vec::new();
+    }
+    let flat: Vec<f64> = m.iter().flatten().copied().collect();
+    svd_factors_flat(&flat, rows, cols)
+}
+
+/// Conjugate gradient over a nested SPD matrix: solves `A x = b`;
+/// empty on refusal (non-convergence or shape mismatch).
+pub fn cg_solve(a: &[Vec<f64>], b: &[f64]) -> Vec<f64> {
+    let rows = a.len();
+    if rows == 0 {
+        return Vec::new();
+    }
+    let cols = a[0].len();
+    if a.iter().any(|row| row.len() != cols) || b.len() != rows {
+        return Vec::new();
+    }
+    let flat: Vec<f64> = a.iter().flatten().copied().collect();
+    cg_solve_flat(&flat, rows, cols, b)
+}
+
+/// Dense partial-pivot solve over a nested square matrix.
+pub fn linear_solve(a: &[Vec<f64>], b: &[f64]) -> Vec<f64> {
+    match flatten_square_or_none(a) {
+        Some((flat, rows, cols)) => linear_solve_flat(&flat, rows, cols, b),
+        None => Vec::new(),
+    }
+}
+
+/// Packed `[p; L; U]` partial-pivot LU factors.
+pub fn lu_factors(a: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let Some((flat, rows, cols)) = flatten_square_or_none(a) else {
+        return Vec::new();
+    };
+    let packed = lu_factors_flat(&flat, rows, cols);
+    packed.chunks(cols).map(<[f64]>::to_vec).collect()
+}
+
+/// Packed `[Q; R]` thin QR factors.
+pub fn qr_factors(a: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let rows = a.len();
+    let Some(cols) = a.first().map(Vec::len) else {
+        return Vec::new();
+    };
+    if a.iter().any(|row| row.len() != cols) {
+        return Vec::new();
+    }
+    let flat = a.iter().flatten().copied().collect::<Vec<_>>();
+    let packed = qr_factors_flat(&flat, rows, cols);
+    packed.chunks(cols).map(<[f64]>::to_vec).collect()
+}
+
+/// Outer product `a bᵀ`.
+pub fn outer_product(a: &[f64], b: &[f64]) -> Vec<Vec<f64>> {
+    if a.is_empty() || b.is_empty() || a.iter().chain(b).any(|value| !value.is_finite()) {
+        return Vec::new();
+    }
+    a.iter()
+        .map(|left| b.iter().map(|right| left * right).collect())
+        .collect()
+}
+
+/// Unnormalized graph Laplacian over a DENSE adjacency carrier:
+/// `L = D − A` where `D` is the out-degree diagonal (nonzero-entry
+/// counts, slice 1's degree law) and `A` is the carrier. The Laplacian
+/// of an UNDIRECTED graph (symmetric adjacency) is symmetric, so its
+/// spectrum composes through the symmetric eigen kernel; a directed
+/// carrier's Laplacian is not symmetric and the eigen gate refuses it
+/// upstream (the documented class fence, never a silent symmetrization).
+/// Empty on an invalid carrier (the typed-refusal surface upstream).
+pub fn graph_laplacian(adj: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let Some((n, cols)) = graph_dims(adj) else {
+        return Vec::new();
+    };
+    let mut laplacian = vec![vec![0.0; cols]; n];
+    for (row_index, row) in adj.iter().enumerate() {
+        let degree: f64 = row[..cols].iter().filter(|w| **w != 0.0).count() as f64;
+        for (col_index, weight) in row[..cols].iter().enumerate() {
+            laplacian[row_index][col_index] =
+                if row_index == col_index { degree } else { 0.0 } - weight;
+        }
+    }
+    laplacian
+}
+
+// ── Linear programming + multi-objective (r3-lp-milp-wlif slice 1) ────────
+//
+// Deterministic optimization kernels over dense carriers. The LP is the
+// STANDARD-FORM class: minimize cᵀx s.t. A x ≤ b, x ≥ 0, b ≥ 0 — the
+// origin slack basis is feasible, so infeasibility cannot arise here
+// (negative right-side normalization is a named deferral). Pivoting is
+// Bland's rule (smallest-index entering column, smallest-index basis
+// tie-break in the ratio test): provably terminating, no cycling, no
+// hash-order anything. Empty output = typed refusal upstream; kernels
+// never panic and never return a wrong "optimum".
+
+/// Simplex pivot tolerance.
+const LP_PIVOT_TOLERANCE: f64 = 1e-12;
+/// Bland's rule terminates; this cap is a bug guard, never a policy.
+const LP_ITERATION_CAP: usize = 100_000;
+
+/// Bland's-rule simplex for the standard-form class above. Returns the
+/// optimal x (length n), or EMPTY on invalid dimensions, non-finite
+/// entries, b < 0 (non-standard form), or an unbounded objective.
+pub fn lp_minimize(a: &[Vec<f64>], b: &[f64], c: &[f64]) -> Vec<f64> {
+    let m = a.len();
+    if m == 0 || b.len() != m {
+        return Vec::new();
+    }
+    let n = c.len();
+    if n == 0 || a.iter().any(|row| row.len() != n) {
+        return Vec::new();
+    }
+    if a.iter().any(|row| row.iter().any(|v| !v.is_finite()))
+        || b.iter().any(|v| !v.is_finite())
+        || c.iter().any(|v| !v.is_finite())
+    {
+        return Vec::new();
+    }
+    if b.iter().any(|v| *v < 0.0) {
+        return Vec::new();
+    }
+    // Tableau: [A | I | b] with the slack basis; column `width` is the
+    // right-hand side.
+    let width = n + m;
+    let mut tableau = vec![vec![0.0; width + 1]; m];
+    for (i, row) in a.iter().enumerate() {
+        tableau[i][..n].copy_from_slice(row);
+        tableau[i][n + i] = 1.0;
+        tableau[i][width] = b[i];
+    }
+    // Extended cost: c on the structural variables, 0 on the slacks.
+    let mut cost = vec![0.0; width];
+    cost[..n].copy_from_slice(c);
+    let mut basis: Vec<usize> = (n..n + m).collect();
+    for _ in 0..LP_ITERATION_CAP {
+        // Reduced costs from scratch (deterministic, basis-explicit):
+        // r_j = c_j − Σ_i cost[basis[i]] · T[i][j].
+        let mut reduced = vec![0.0; width];
+        for j in 0..width {
+            let mut acc = cost[j];
+            for i in 0..m {
+                acc -= cost[basis[i]] * tableau[i][j];
+            }
+            reduced[j] = acc;
+        }
+        // Bland's entering rule: the SMALLEST index with a negative
+        // reduced cost.
+        let Some(enter) = (0..width).find(|j| reduced[*j] < -LP_PIVOT_TOLERANCE) else {
+            // Optimal: extract x from the basis.
+            let mut x = vec![0.0; n];
+            for (i, variable) in basis.iter().enumerate() {
+                if *variable < n {
+                    x[*variable] = tableau[i][width];
+                }
+            }
+            return x;
+        };
+        // Ratio test: minimum increase; Bland's tie-break is the
+        // smallest basis-variable index among the tied rows.
+        let mut leaving: Option<usize> = None;
+        let mut best_ratio = f64::INFINITY;
+        for i in 0..m {
+            let pivot = tableau[i][enter];
+            if pivot > LP_PIVOT_TOLERANCE {
+                let ratio = tableau[i][width] / pivot;
+                if ratio < best_ratio - LP_PIVOT_TOLERANCE
+                    || ((ratio - best_ratio).abs() <= LP_PIVOT_TOLERANCE
+                        && matches!(leaving, Some(current) if basis[i] < basis[current]))
+                {
+                    best_ratio = ratio;
+                    leaving = Some(i);
+                }
+            }
+        }
+        let Some(row) = leaving else {
+            return Vec::new(); // unbounded: typed upstream
+        };
+        // Pivot on (row, enter).
+        let pivot = tableau[row][enter];
+        for entry in tableau[row].iter_mut() {
+            *entry /= pivot;
+        }
+        for i in 0..m {
+            if i != row {
+                let factor = tableau[i][enter];
+                if factor != 0.0 {
+                    for j in 0..=width {
+                        tableau[i][j] -= factor * tableau[row][j];
+                    }
+                }
+            }
+        }
+        basis[row] = enter;
+    }
+    Vec::new() // unreachable under Bland's rule; bug guard
+}
+
+/// Non-dominated mask over a finite carrier of objective vectors (all
+/// MINIMIZED; maximize by negating — the documented convention).
+/// STRICT Pareto: identical points do not dominate each other, so both
+/// stay on the front. Point order = mask order (the portfolio
+/// artifact's deterministic data). Empty on an empty/ragged carrier or
+/// a non-finite entry.
+pub fn pareto_front(points: &[Vec<f64>]) -> Vec<f64> {
+    let Some(k) = points.first().map(Vec::len) else {
+        return Vec::new();
+    };
+    if k == 0 || points.iter().any(|point| point.len() != k) {
+        return Vec::new();
+    }
+    if points.iter().any(|p| p.iter().any(|v| !v.is_finite())) {
+        return Vec::new();
+    }
+    let mut mask = vec![1.0; points.len()];
+    for (i, point) in points.iter().enumerate() {
+        for (j, other) in points.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            // `other` dominates `point`: componentwise ≤ AND strictly
+            // better somewhere.
+            let weakly = other.iter().zip(point.iter()).all(|(o, p)| o <= p);
+            let strictly = other.iter().zip(point.iter()).any(|(o, p)| o < p);
+            if weakly && strictly {
+                mask[i] = 0.0;
+                break;
+            }
+        }
+    }
+    mask
+}
+
+// ── Polynomials as values (r3-funcspaces-poly-hjor slice 1) ───────────────
+//
+// Dense coefficient vectors, ASCENDING order (index i = coefficient of
+// xⁱ). The EMPTY vector is the zero polynomial (additive identity) —
+// documented algebra, never a shape error. Deterministic strict-f64:
+// ascending-index convolution, one-pass Horner.
+
+/// Cauchy convolution of two coefficient vectors (ascending order):
+/// `c[i+j] += a[i]·b[j]`. An empty operand is the zero polynomial
+/// (empty product).
+pub fn poly_mul(a: &[f64], b: &[f64]) -> Vec<f64> {
+    if a.is_empty() || b.is_empty() {
+        return Vec::new();
+    }
+    let mut c = vec![0.0; a.len() + b.len() - 1];
+    for (i, ai) in a.iter().enumerate() {
+        for (j, bj) in b.iter().enumerate() {
+            c[i + j] += ai * bj;
+        }
+    }
+    c
+}
+
+/// Horner evaluation of a coefficient vector (ascending order) at
+/// `point`. Empty coefficients evaluate to 0.0 (the zero polynomial).
+pub fn poly_eval(coefficients: &[f64], point: f64) -> f64 {
+    let mut value = 0.0;
+    for coefficient in coefficients.iter().rev() {
+        value = value * point + coefficient;
+    }
+    value
+}
+
+/// Coefficients `0..=budget` of a homogeneous linear recurrence.
+pub fn sequence_generate(initial: &[f64], recurrence: &[f64], budget: f64) -> Vec<f64> {
+    if !budget.is_finite()
+        || budget < 0.0
+        || budget.fract() != 0.0
+        || budget > 1_000_000.0
+        || initial.is_empty()
+        || recurrence.is_empty()
+        || recurrence.len() > initial.len()
+        || budget as usize + 1 < initial.len()
+        || initial
+            .iter()
+            .chain(recurrence)
+            .any(|value| !value.is_finite())
+    {
+        return Vec::new();
+    }
+    let budget = budget as usize;
+    let mut values = initial.to_vec();
+    while values.len() <= budget {
+        let n = values.len();
+        let next = recurrence
+            .iter()
+            .enumerate()
+            .map(|(offset, coefficient)| coefficient * values[n - offset - 1])
+            .sum::<f64>();
+        if !next.is_finite() {
+            return Vec::new();
+        }
+        values.push(next);
+    }
+    values
+}
+
+/// First `count` coefficients of the Cauchy product of two finite series.
+pub fn sequence_convolve(left: &[f64], right: &[f64], count: f64) -> Vec<f64> {
+    if !count.is_finite()
+        || count < 0.0
+        || count.fract() != 0.0
+        || count > 1_000_000.0
+        || count as usize > left.len().saturating_add(right.len()).saturating_sub(1)
+        || left.iter().chain(right).any(|value| !value.is_finite())
+    {
+        return Vec::new();
+    }
+    let mut result = vec![0.0; count as usize];
+    for (index, output) in result.iter_mut().enumerate() {
+        let first = index.saturating_sub(right.len().saturating_sub(1));
+        let last = index.min(left.len().saturating_sub(1));
+        for left_index in first..=last {
+            *output += left[left_index] * right[index - left_index];
+        }
+        if !output.is_finite() {
+            return Vec::new();
+        }
+    }
+    result
+}
+
+// ── Stiff + symplectic ODE nucleus (xx0x.3 thin slice) ────────────────────
+//
+// Scalar-ODE carriers with ASCENDING polynomial rate laws
+// (`rate(y) = Σ c[i]·yⁱ`): deterministic strict-f64 kernels. Backward
+// Euler solves the implicit equation with damped Newton (closed
+// iteration budget, machine-tolerance residual); velocity Verlet is
+// the kick-drift-kick for separable Hamiltonian form (one force
+// evaluation per step, time-reversible). Empty output = typed refusal
+// upstream; kernels never panic and never return a wrong trajectory
+// point.
+
+/// Evaluate an ascending polynomial rate law at `y` (Horner).
+fn poly_rate(coefficients: &[f64], y: f64) -> f64 {
+    let mut value = 0.0;
+    for coefficient in coefficients.iter().rev() {
+        value = value * y + coefficient;
+    }
+    value
+}
+
+/// One backward-Euler step for a scalar ODE `y' = rate(y)`:
+/// solve `y1 = y0 + h·rate(y1)` with Newton (analytic derivative of
+/// the polynomial rate; forward-difference fallback is unnecessary —
+/// the derivative is exact). Returns EMPTY on non-finite input,
+/// non-positive `h`, or Newton non-convergence (typed upstream —
+/// never a silently wrong step).
+pub fn ode_backward_euler_step(rate_coefficients: &[f64], y0: f64, h: f64) -> Vec<f64> {
+    if rate_coefficients.is_empty()
+        || !rate_coefficients.iter().all(|c| c.is_finite())
+        || !y0.is_finite()
+        || !h.is_finite()
+        || h <= 0.0
+    {
+        return Vec::new();
+    }
+    let rate = |y: f64| poly_rate(rate_coefficients, y);
+    // dRate/dy (ascending polynomial derivative).
+    let derivative_coefficients: Vec<f64> = (1..rate_coefficients.len())
+        .map(|i| rate_coefficients[i] * i as f64)
+        .collect();
+    let derivative = |y: f64| {
+        if derivative_coefficients.is_empty() {
+            0.0
+        } else {
+            poly_rate(&derivative_coefficients, y)
+        }
+    };
+    // Initial guess: the explicit step (first order, converges for
+    // decaying modes; the Newton damping covers stiff transients).
+    let mut x = y0 + h * rate(y0);
+    for _ in 0..50 {
+        let residual = x - h * rate(x) - y0;
+        let slope = 1.0 - h * derivative(x);
+        if slope.abs() < 1e-300 {
+            return Vec::new();
+        }
+        let delta = residual / slope;
+        x -= delta;
+        if delta.abs() <= 1e-13 * (x.abs() + 1.0) {
+            // Converged: verify the residual at machine tolerance.
+            if (x - h * rate(x) - y0).abs() <= 1e-10 {
+                return vec![x];
+            }
+            return Vec::new();
+        }
+    }
+    Vec::new()
+}
+
+/// One velocity-Verlet step for the separable system `q' = v`,
+/// `v' = a(q)` (acceleration as an ascending polynomial of position):
+/// kick-drift-kick. `h` may be negative (time reversal — the
+/// symplectic law). Returns `[q1, v1]`, or EMPTY on non-finite input
+/// or non-finite `h`.
+pub fn ode_velocity_verlet_step(
+    acceleration_coefficients: &[f64],
+    q0: f64,
+    v0: f64,
+    h: f64,
+) -> Vec<f64> {
+    if acceleration_coefficients.is_empty()
+        || !acceleration_coefficients.iter().all(|c| c.is_finite())
+        || !q0.is_finite()
+        || !v0.is_finite()
+        || !h.is_finite()
+        || h == 0.0
+    {
+        return Vec::new();
+    }
+    let acceleration = |q: f64| poly_rate(acceleration_coefficients, q);
+    let a0 = acceleration(q0);
+    let q1 = q0 + v0 * h + 0.5 * a0 * h * h;
+    let a1 = acceleration(q1);
+    let v1 = v0 + 0.5 * (a0 + a1) * h;
+    vec![q1, v1]
+}
+
+// ── Spectral Poisson, 1D Dirichlet (xx0x.4 thin slice) ────────────────────
+//
+// The 3-point Laplacian on a uniform interior grid of [0,1] with
+// Dirichlet boundaries diagonalizes EXACTLY in the DST-I sine basis:
+// eigenvector v_k(j) = sin(πjk/(n+1)) carries the POSITIVE eigenvalue
+// λ_k = (4/h²)·sin²(kπ/(2(n+1))) of −Δ_h. The solve −Δ_h u = f is a
+// forward sine transform of the load, division by the λ_k, and the
+// inverse transform — deterministic O(n²) strict-f64, no iteration,
+// no new solver machinery. Empty or non-finite loads return EMPTY
+// (typed upstream; never a silently wrong field).
+
+pub fn poisson_dirichlet_sine(load: &[f64]) -> Vec<f64> {
+    let n = load.len();
+    if n == 0 || !load.iter().all(|value| value.is_finite()) {
+        return Vec::new();
+    }
+    let n_f = n as f64;
+    let h = 1.0 / (n_f + 1.0);
+    // Positive Dirichlet eigenvalues of −Δ_h, mode k = 1..=n.
+    let eigenvalues: Vec<f64> = (1..=n)
+        .map(|k| {
+            let theta = std::f64::consts::PI * k as f64 * h / 2.0;
+            let sine = theta.sin();
+            (4.0 / (h * h)) * sine * sine
+        })
+        .collect();
+    // Forward DST-I (unnormalized) of the interior load.
+    let coefficients: Vec<f64> = (1..=n)
+        .map(|k| {
+            load.iter()
+                .enumerate()
+                .map(|(j, f)| {
+                    f * (std::f64::consts::PI * (j as f64 + 1.0) * k as f64 / (n_f + 1.0)).sin()
+                })
+                .sum()
+        })
+        .collect();
+    // Diagonal division, then the inverse DST-I with the 2/(n+1) norm.
+    (1..=n)
+        .map(|j| {
+            coefficients
+                .iter()
+                .zip(eigenvalues.iter())
+                .enumerate()
+                .map(|(k, (f_k, lambda))| {
+                    f_k / lambda
+                        * (std::f64::consts::PI * j as f64 * (k as f64 + 1.0) / (n_f + 1.0)).sin()
+                })
+                .sum::<f64>()
+                * (2.0 / (n_f + 1.0))
+        })
+        .collect()
+}
+
+// ── Probability: seeded sampling + densities (xx0x.5 thin slice) ─────────
+//
+// ONE generator, one place: SplitMix64 (the compute-layer nucleus the
+// vnqo stream contract composes above — no second RNG namespace).
+// The seed is an f64 scalar whose to_bits() initializes the state
+// (PROVISIONAL mapping; re-mappable by the vnqo contract without
+// touching the generators). Uniform01 via the high 53 bits. Normal
+// via Box–Muller (one pair per draw, u1 remapped off zero).
+// Deterministic strict-f64 throughout: same seed ⟹ bit-identical
+// draws.
+
+/// One SplitMix64 step: stateful, deterministic, high-quality output
+/// for seeding and streams alike.
+pub fn splitmix64_next(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Uniform f64 in [0, 1) from one u64 (high 53 bits).
+fn prob_uniform01(state: &mut u64) -> f64 {
+    let bits = splitmix64_next(state) >> 11;
+    (bits as f64) * (1.0 / (1u64 << 53) as f64)
+}
+
+/// Sample `draws` values from the named distribution (ascending param
+/// carriers: Normal `[mu, sigma]`, Uniform `[a, b]`, Bernoulli `[p]`).
+/// Returns EMPTY on any invalid input (typed upstream — never a
+/// silently wrong stream).
+pub fn prob_sample(kind: u8, params: &[f64], seed: f64, draws: usize) -> Vec<f64> {
+    let arity_ok = match kind {
+        0 | 1 => params.len() == 2,
+        2 => params.len() == 1,
+        _ => false,
+    };
+    let finite = params.iter().all(|p| p.is_finite()) && seed.is_finite();
+    let param_ok = match kind {
+        0 => params.get(1).is_some_and(|sigma| *sigma > 0.0),
+        1 => match (params.first(), params.get(1)) {
+            (Some(a), Some(b)) => a <= b,
+            _ => false,
+        },
+        2 => params.first().is_some_and(|p| (0.0..=1.0).contains(p)),
+        _ => false,
+    };
+    if !arity_ok || !finite || !param_ok || draws == 0 || draws > 1 << 20 {
+        return Vec::new();
+    }
+    let mut state = seed.to_bits();
+    match kind {
+        // Normal(μ, σ): Box–Muller, one (u1, u2) pair per draw.
+        0 => {
+            let (mu, sigma) = (params[0], params[1]);
+            (0..draws)
+                .map(|_| {
+                    let u1 = 1.0 - prob_uniform01(&mut state); // (0, 1]
+                    let u2 = prob_uniform01(&mut state);
+                    let magnitude = (-2.0 * u1.ln()).sqrt();
+                    mu + sigma * magnitude * (2.0 * std::f64::consts::PI * u2).cos()
+                })
+                .collect()
+        }
+        // Uniform(a, b): affine map of [0, 1).
+        1 => {
+            let (a, b) = (params[0], params[1]);
+            (0..draws)
+                .map(|_| a + prob_uniform01(&mut state) * (b - a))
+                .collect()
+        }
+        // Bernoulli(p): threshold one uniform; p ∈ {0, 1} exact.
+        2 => {
+            let p = params[0];
+            (0..draws)
+                .map(|_| {
+                    if prob_uniform01(&mut state) < p {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                })
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Density / PMF of the named distribution at `x` (ascending param
+/// carriers as in `prob_sample`). Returns EMPTY (as `Option::None`
+/// upstream) on invalid input; the density is exact, not estimated.
+pub fn prob_density(kind: u8, params: &[f64], x: f64) -> Option<f64> {
+    let arity_ok = match kind {
+        0 | 1 => params.len() == 2,
+        2 => params.len() == 1,
+        _ => false,
+    };
+    let finite = params.iter().all(|p| p.is_finite()) && x.is_finite();
+    let param_ok = match kind {
+        0 => params.get(1).is_some_and(|sigma| *sigma > 0.0),
+        1 => match (params.first(), params.get(1)) {
+            (Some(a), Some(b)) => a <= b,
+            _ => false,
+        },
+        2 => params.first().is_some_and(|p| (0.0..=1.0).contains(p)),
+        _ => false,
+    };
+    if !arity_ok || !finite || !param_ok {
+        return None;
+    }
+    match kind {
+        // Normal: (1 / (σ√(2π)))·exp(−(x−μ)²/(2σ²)).
+        0 => {
+            let (mu, sigma) = (params[0], params[1]);
+            let z = (x - mu) / sigma;
+            let exponent = -0.5 * z * z;
+            let normalization = 1.0 / (sigma * (2.0 * std::f64::consts::PI).sqrt());
+            // exp(−large) underflows to 0.0 — a true density value.
+            Some(normalization * exponent.exp())
+        }
+        // Uniform: 1/(b−a) on [a, b], 0 outside.
+        1 => {
+            let (a, b) = (params[0], params[1]);
+            if (a..=b).contains(&x) {
+                Some(1.0 / (b - a))
+            } else {
+                Some(0.0)
+            }
+        }
+        // Bernoulli PMF: p at 1, 1−p at 0, 0 elsewhere.
+        2 => {
+            let p = params[0];
+            if x == 1.0 {
+                Some(p)
+            } else if x == 0.0 {
+                Some(1.0 - p)
+            } else {
+                Some(0.0)
+            }
+        }
+        _ => None,
+    }
+}
+
+// ── Graph symmetrization (masa slice 4: directed → spectral path) ────────
+//
+// S = (A + Aᵀ)/2 — the weight-preserving symmetrization convention
+// (documented; NOT max, NOT boolean-or). The output is a symmetric
+// adjacency, so the existing laplacian + symmetric-eigen path applies;
+// symmetrization is a USER choice, never a silent one inside
+// laplacian/eigen. Empty on ragged/empty carriers or any non-finite
+// weight (typed upstream; never a silently wrong carrier).
+
+pub fn graph_symmetrize(adj: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    match graph_dims(adj) {
+        Some((n, cols)) if n == cols => {
+            if adj
+                .iter()
+                .any(|row| row.iter().any(|weight| !weight.is_finite()))
+            {
+                return Vec::new();
+            }
+            (0..n)
+                .map(|i| (0..n).map(|j| (adj[i][j] + adj[j][i]) / 2.0).collect())
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+// ── Bellman-Ford: negative-edge shortest paths (masa slice 5) ────────────
+//
+// Classic O(n·m) relaxation over the dense carrier: n−1 passes of
+// ascending-index edge relaxation, then a final detection pass. Negative
+// weights are ADMITTED (the point — Dijkstra's greedy invariant is what
+// fails here); a negative cycle REACHABLE from the source means no
+// shortest-path answer exists → EMPTY (typed E-GRAPH-005 upstream, never
+// fabricated distances). Unreachable vertices are +Inf (honest numeric).
+// Deterministic: relaxation order is fixed (source index ascending),
+// identical inputs bit-identical.
+
+pub fn graph_bellman_ford(adj: &[Vec<f64>], source: usize) -> Vec<f64> {
+    let Some((n, cols)) = graph_dims(adj) else {
+        return Vec::new();
+    };
+    if n != cols
+        || source >= n
+        || adj
+            .iter()
+            .any(|row| row.iter().any(|weight| !weight.is_finite()))
+    {
+        return Vec::new();
+    }
+    let mut distances = vec![f64::INFINITY; n];
+    distances[source] = 0.0;
+    for _ in 0..n.saturating_sub(1) {
+        let mut changed = false;
+        for u in 0..n {
+            if !distances[u].is_finite() {
+                continue;
+            }
+            for v in 0..n {
+                let weight = adj[u][v];
+                if weight == 0.0 {
+                    continue;
+                }
+                let candidate = distances[u] + weight;
+                if candidate < distances[v] {
+                    distances[v] = candidate;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    // Detection pass: any further improvement ⇒ a negative cycle
+    // reachable from the source.
+    for u in 0..n {
+        if !distances[u].is_finite() {
+            continue;
+        }
+        for v in 0..n {
+            let weight = adj[u][v];
+            if weight != 0.0 && distances[u] + weight < distances[v] {
+                return Vec::new();
+            }
+        }
+    }
+    distances
+}
+
+// ── Sparse storage: COO triplet carrier (masa slice 6) ───────────────────
+//
+// The thin storage nucleus over the dense graph path: extraction and
+// build, both deterministic. Explicit 0.0 entries are NOT edges (the
+// dense convention) and are skipped on extraction; DUPLICATE (u, v)
+// entries SUM on build (the COO law — parallel edges add weights).
+// Empty on ragged carriers / malformed streams / out-of-range indices
+// / non-finite weights (typed upstream; never a silently wrong
+// carrier).
+
+pub fn graph_sparse_triplets(adj: &[Vec<f64>]) -> Vec<f64> {
+    let Some((n, cols)) = graph_dims(adj) else {
+        return Vec::new();
+    };
+    if n != cols
+        || adj
+            .iter()
+            .any(|row| row.iter().any(|weight| !weight.is_finite()))
+    {
+        return Vec::new();
+    }
+    let mut triplets = Vec::new();
+    for (u, row) in adj.iter().enumerate() {
+        for (v, weight) in row[..cols].iter().enumerate() {
+            if *weight != 0.0 {
+                triplets.push(u as f64);
+                triplets.push(v as f64);
+                triplets.push(*weight);
+            }
+        }
+    }
+    triplets
+}
+
+pub fn graph_sparse_from_triplets(n: usize, triplets: &[f64]) -> Vec<Vec<f64>> {
+    if triplets.len() % 3 != 0 {
+        return Vec::new();
+    }
+    let mut adj = vec![vec![0.0; n]; n];
+    for fields in triplets.chunks_exact(3) {
+        let [u, v, weight] = fields else {
+            return Vec::new();
+        };
+        let (Some(u), Some(v)) = (graph_source_index(*u, n), graph_source_index(*v, n)) else {
+            return Vec::new();
+        };
+        if !weight.is_finite() {
+            return Vec::new();
+        }
+        adj[u][v] += weight;
+    }
+    adj
+}
+
+// ── Thin control surface (zxkl: transfer / state-space / stability) ──────
+//
+// ASCENDING polynomial carriers (the B28 representation law); the
+// state-space carrier is a square row-major A with implicit D = 0.
+// Raw kernels are TOTAL with documented degenerate returns (NaN for
+// scalar refusals; the typed refusals E-CONTROL-001..005 live in the
+// `control` wrapper module and the reference interpreter surfaces
+// them). Controller DESIGN (pole placement, LQR) and the Itô/
+// Stratonovich SDE surface (B37, world-dependent) are NOT claimed
+// here. Determinism class: fixed-order Horner, fixed-order
+// Faddeev–LeVerrier recurrence, partial-pivot Gauss elimination with
+// FIRST-INDEX tie-breaking; identical inputs are bit-identical.
+
+/// Routh–Hurwitz table status for a real polynomial (ASCENDING
+/// coefficients). `Stable` = every root strictly in the open left half
+/// plane; `Unstable` = at least one first-column sign change (a
+/// right-half-plane root exists); `Degenerate` = a zero first-column
+/// entry (marginal poles or the ε-ambiguous case — the
+/// auxiliary-polynomial refinement is a named deferral);
+/// `ZeroPolynomial` = no pole set; `NonFinite` = a non-finite
+/// coefficient.
+pub enum RouthStatus {
+    Stable,
+    Unstable,
+    Degenerate,
+    ZeroPolynomial,
+    NonFinite,
+}
+
+/// Routh–Hurwitz first-column sign test over an ASCENDING carrier.
+/// Leading-coefficient sign is normalized away (stability is invariant
+/// under an overall sign flip); a constant nonzero polynomial has an
+/// EMPTY pole set and is vacuously stable.
+pub fn control_routh_status(den: &[f64]) -> RouthStatus {
+    if den.iter().any(|c| !c.is_finite()) {
+        return RouthStatus::NonFinite;
+    }
+    // Descending order for the table; strip leading zeros (trailing
+    // zeros of the ASCENDING carrier) to find the true degree.
+    let mut desc: Vec<f64> = den.iter().rev().copied().collect();
+    while desc.last().is_some_and(|c| *c == 0.0) {
+        desc.pop();
+    }
+    if desc.is_empty() {
+        return RouthStatus::ZeroPolynomial;
+    }
+    if desc.len() == 1 {
+        return RouthStatus::Stable;
+    }
+    if desc[0] < 0.0 {
+        for c in desc.iter_mut() {
+            *c = -*c;
+        }
+    }
+    let mut row0: Vec<f64> = desc.iter().step_by(2).copied().collect();
+    let mut row1: Vec<f64> = desc.iter().skip(1).step_by(2).copied().collect();
+    let mut prev_positive = row0[0] > 0.0;
+    loop {
+        if row1.is_empty() {
+            return RouthStatus::Stable;
+        }
+        // A zero first-column entry is the degenerate (marginal or
+        // ε-ambiguous) case — refused typed upstream, never guessed.
+        if row1[0] == 0.0 {
+            return RouthStatus::Degenerate;
+        }
+        if (row1[0] > 0.0) != prev_positive {
+            return RouthStatus::Unstable;
+        }
+        prev_positive = row1[0] > 0.0;
+        // The new row has row0.len() - 1 entries; missing operands read
+        // as 0.0 (the classical padded-table convention).
+        let at = |row: &[f64], k: usize| if k < row.len() { row[k] } else { 0.0 };
+        let width = row0.len();
+        let mut next = Vec::with_capacity(width.saturating_sub(1));
+        for k in 0..width.saturating_sub(1) {
+            next.push((row1[0] * at(&row0, k + 1) - row0[0] * at(&row1, k + 1)) / row1[0]);
+        }
+        row0 = row1;
+        row1 = next;
+    }
+}
+
+/// Total bool view of the Routh status (generated-code convention:
+/// degenerate/zero/non-finite all read false; the typed wrapper
+/// refuses them upstream).
+pub fn control_poles_stable(den: &[f64]) -> bool {
+    matches!(control_routh_status(den), RouthStatus::Stable)
+}
+
+/// Characteristic polynomial of `A` (monic, ASCENDING coefficients)
+/// via the Faddeev–LeVerrier recurrence: `M₁ = I`,
+/// `a_{n−k} = −tr(A·M_k)/k`, `M_{k+1} = A·M_k + a_{n−k}·I`. Pure
+/// matrix arithmetic — no eigenvalue is claimed.
+pub fn control_char_poly(a: &[Vec<f64>]) -> Vec<f64> {
+    let n = a.len();
+    let mut m_prev = vec![0.0; n * n];
+    let mut descending: Vec<f64> = vec![1.0];
+    for k in 1..=n {
+        let previous = descending[descending.len() - 1];
+        let mut m_k = vec![0.0; n * n];
+        for r in 0..n {
+            for c in 0..n {
+                let mut acc = 0.0;
+                for j in 0..n {
+                    acc += a[r][j] * m_prev[j * n + c];
+                }
+                m_k[r * n + c] = acc + if r == c { previous } else { 0.0 };
+            }
+        }
+        let mut trace = 0.0;
+        for d in 0..n {
+            for j in 0..n {
+                trace += a[d][j] * m_k[j * n + d];
+            }
+        }
+        descending.push(-trace / k as f64);
+        m_prev = m_k;
+    }
+    descending.reverse();
+    descending
+}
+
+/// Transfer-function evaluation `num(x)/den(x)` over ASCENDING
+/// carriers (Horner both sides). NaN = refused (zero denominator,
+/// pole hit, or non-finite carrier) — the typed wrapper names it.
+pub fn control_transfer_eval(num: &[f64], den: &[f64], x: f64) -> f64 {
+    let denominator = poly_eval(den, x);
+    if !denominator.is_finite()
+        || denominator == 0.0
+        || !num
+            .iter()
+            .chain(den.iter())
+            .chain(std::iter::once(&x))
+            .all(|v| v.is_finite())
+    {
+        return f64::NAN;
+    }
+    poly_eval(num, x) / denominator
+}
+
+/// State-space DC gain `c·(−A)⁻¹·b` (implicit D = 0). Refuses (NaN)
+/// unless the Faddeev–LeVerrier characteristic polynomial is strictly
+/// stable (Routh–Hurwitz): a non-asymptotically-stable carrier has no
+/// DC gain. The solve is pivoted Gauss elimination with first-index
+/// tie-breaking.
+pub fn control_state_space_dc_gain(a: &[Vec<f64>], b: &[f64], c: &[f64]) -> f64 {
+    let n = a.len();
+    if n == 0
+        || a.iter().any(|row| row.len() != n)
+        || b.len() != n
+        || c.len() != n
+        || a.iter()
+            .flatten()
+            .chain(b.iter())
+            .chain(c.iter())
+            .any(|v| !v.is_finite())
+    {
+        return f64::NAN;
+    }
+    if !matches!(
+        control_routh_status(&control_char_poly(a)),
+        RouthStatus::Stable
+    ) {
+        return f64::NAN;
+    }
+    // Solve (−A)x = b by pivoted Gauss elimination (ties → first row:
+    // the strictly-greater comparison never swaps an equal pivot).
+    let mut aug: Vec<Vec<f64>> = (0..n)
+        .map(|r| {
+            let mut row: Vec<f64> = (0..n).map(|cc| -a[r][cc]).collect();
+            row.push(b[r]);
+            row
+        })
+        .collect();
+    for col in 0..n {
+        let mut pivot = col;
+        for r in col + 1..n {
+            if aug[r][col].abs() > aug[pivot][col].abs() {
+                pivot = r;
+            }
+        }
+        if aug[pivot][col] == 0.0 {
+            // Unreachable for a strictly stable carrier (det ≠ 0);
+            // refused rather than invented.
+            return f64::NAN;
+        }
+        aug.swap(col, pivot);
+        for r in col + 1..n {
+            let factor = aug[r][col] / aug[col][col];
+            if factor != 0.0 {
+                for cc in col..=n {
+                    aug[r][cc] -= factor * aug[col][cc];
+                }
+            }
+        }
+    }
+    let mut x = vec![0.0; n];
+    for r in (0..n).rev() {
+        let mut acc = aug[r][n];
+        for cc in r + 1..n {
+            acc -= aug[r][cc] * x[cc];
+        }
+        x[r] = acc / aug[r][r];
+    }
+    let mut gain = 0.0;
+    for (ci, xi) in c.iter().zip(x.iter()) {
+        gain += ci * xi;
+    }
+    gain
+}
+
+// ── Finite-category surface (88wo thin B39 slice) ─────────────────────────
+//
+// The orch-decided masa-style carrier: a finite category is
+// `(dom, cod, comp)` — per-morphism object indices plus a DENSE k×k
+// composition table. `comp[i][j] = m_i ∘ m_j` (j FIRST, then i) and is
+// defined exactly when `cod[j] == dom[i]`; `-1.0` marks undefined. The
+// composite's dom/cod are `dom[j]`/`cod[i]`. Objects are implicit
+// `0..n`, `n = max(dom ∪ cod) + 1`. Equal morphism INDEX means equal
+// morphism. Diagrams are face path-pairs: each face record is
+// `[start, end, len_l, len_r, left…, right…]` (both paths ≥ 1
+// morphism) and is commutative iff both path composites are the SAME
+// morphism index.
+//
+// Category laws (composition totality/alignment, identity existence,
+// associativity) are CERTIFIED by the gate before any commutativity
+// answer — never assumed. Raw kernels are TOTAL with documented
+// degenerate returns; the typed refusals E-CAT-001..007 live in the
+// `category` wrapper module. Determinism class: fixed-order law
+// passes, first-failure refusal, index-fold path evaluation;
+// identical inputs are bit-identical.
+
+/// Upper bound on morphisms for which associativity is certified by
+/// the exhaustive triple check (64³ table probes). Larger carriers
+/// refuse `E-CAT-007` — commutativity is never answered over an
+/// unverified table.
+pub const CATEGORY_ASSOCIATIVITY_BOUND: usize = 64;
+
+/// Category-law gate status for a dense composition-table carrier.
+/// `Valid` = the carrier is a category; the other variants name the
+/// FIRST violated law in the documented pass order.
+pub enum CategoryStatus {
+    Valid,
+    /// `E-CAT-001` — a non-finite entry anywhere in the carrier.
+    NonFinite,
+    /// `E-CAT-002` — shape: dimension mismatch, malformed face record,
+    /// or a path that does not run its face's declared start→end.
+    BadShape,
+    /// `E-CAT-003` — an out-of-range or non-integral index.
+    BadIndex,
+    /// `E-CAT-004` — composition law: an aligned pair without an
+    /// entry, a defined entry on a misaligned pair, or a dangling
+    /// path segment.
+    EntryLaw,
+    /// `E-CAT-005` — identity law: an appearing object with no
+    /// identity morphism.
+    IdentityLaw,
+    /// `E-CAT-006` — associativity law (or definedness disagreement).
+    AssociativityLaw,
+    /// `E-CAT-007` — more morphisms than the certifiable bound.
+    TooLarge,
+}
+
+/// Parse one f64 field as an index in `0..bound`. Call only AFTER the
+/// finiteness pass (NaN/non-finite refuse `E-CAT-001` before this).
+fn category_index(value: f64, bound: usize) -> Option<usize> {
+    if value < 0.0 || value.fract() != 0.0 {
+        return None;
+    }
+    let index = value as usize;
+    (index < bound).then_some(index)
+}
+
+/// The certified carrier: parsed object indices plus the composition
+/// table as `i64` (-1 = undefined).
+struct CertifiedCategory {
+    dom: Vec<usize>,
+    cod: Vec<usize>,
+    table: Vec<Vec<i64>>,
+    objects: usize,
+}
+
+/// The category-law gate (documented pass order: shape → finiteness →
+/// indices → size bound → composition law → identity law →
+/// associativity). Returns the parsed carrier on success.
+fn category_certify(
+    dom: &[f64],
+    cod: &[f64],
+    comp: &[Vec<f64>],
+) -> Result<CertifiedCategory, CategoryStatus> {
+    let k = dom.len();
+    if k != cod.len() || comp.len() != k || comp.iter().any(|row| row.len() != k) {
+        return Err(CategoryStatus::BadShape);
+    }
+    if dom
+        .iter()
+        .chain(cod.iter())
+        .chain(comp.iter().flatten())
+        .any(|value| !value.is_finite())
+    {
+        return Err(CategoryStatus::NonFinite);
+    }
+    let mut objects = 0usize;
+    for value in dom.iter().chain(cod.iter()) {
+        let index = category_index(*value, usize::MAX).ok_or(CategoryStatus::BadIndex)?;
+        objects = objects.max(index + 1);
+    }
+    let mut table = vec![vec![-1i64; k]; k];
+    for (i, row) in comp.iter().enumerate() {
+        for (j, value) in row.iter().enumerate() {
+            if *value == -1.0 {
+                continue;
+            }
+            let entry = category_index(*value, k).ok_or(CategoryStatus::BadIndex)?;
+            table[i][j] = entry as i64;
+        }
+    }
+    // Size gate before the quadratic/cubic law passes: a carrier too
+    // large to certify is refused outright, never half-checked.
+    if k > CATEGORY_ASSOCIATIVITY_BOUND {
+        return Err(CategoryStatus::TooLarge);
+    }
+    let dom_i: Vec<usize> = dom.iter().map(|v| *v as usize).collect();
+    let cod_i: Vec<usize> = cod.iter().map(|v| *v as usize).collect();
+    // Composition law: defined exactly on aligned pairs, and the
+    // composite carries the pair's dom/cod.
+    for i in 0..k {
+        for j in 0..k {
+            let aligned = cod_i[j] == dom_i[i];
+            let entry = table[i][j];
+            if aligned {
+                if entry < 0 {
+                    return Err(CategoryStatus::EntryLaw);
+                }
+                let composite = entry as usize;
+                if dom_i[composite] != dom_i[j] || cod_i[composite] != cod_i[i] {
+                    return Err(CategoryStatus::EntryLaw);
+                }
+            } else if entry >= 0 {
+                return Err(CategoryStatus::EntryLaw);
+            }
+        }
+    }
+    // Identity law: every APPEARING object has a morphism that acts as
+    // its identity on both sides.
+    let mut appears = vec![false; objects];
+    for object in dom_i.iter().chain(cod_i.iter()) {
+        appears[*object] = true;
+    }
+    for object in 0..objects {
+        if !appears[object] {
+            continue;
+        }
+        let mut found = false;
+        'candidate: for m in 0..k {
+            if dom_i[m] != object || cod_i[m] != object || table[m][m] != m as i64 {
+                continue;
+            }
+            for x in 0..k {
+                if cod_i[x] == object && table[m][x] != x as i64 {
+                    continue 'candidate;
+                }
+                if dom_i[x] == object && table[x][m] != x as i64 {
+                    continue 'candidate;
+                }
+            }
+            found = true;
+            break;
+        }
+        if !found {
+            return Err(CategoryStatus::IdentityLaw);
+        }
+    }
+    // Associativity: exhaustive triple check (definedness already
+    // agrees with alignment under the composition law, so a
+    // one-side-defined disagreement is also a violation).
+    for a in 0..k {
+        for b in 0..k {
+            for c in 0..k {
+                let ab = table[a][b];
+                let bc = table[b][c];
+                let left = if ab >= 0 { table[ab as usize][c] } else { -1 };
+                let right = if bc >= 0 { table[a][bc as usize] } else { -1 };
+                if left != right {
+                    return Err(CategoryStatus::AssociativityLaw);
+                }
+            }
+        }
+    }
+    Ok(CertifiedCategory {
+        dom: dom_i,
+        cod: cod_i,
+        table,
+        objects,
+    })
+}
+
+/// The law-gate status view (the wrapper's typed surface).
+pub fn category_check_status(dom: &[f64], cod: &[f64], comp: &[Vec<f64>]) -> CategoryStatus {
+    match category_certify(dom, cod, comp) {
+        Ok(_) => CategoryStatus::Valid,
+        Err(status) => status,
+    }
+}
+
+/// Total check view (generated-code convention): TRUE only when the
+/// carrier certifies; every law failure reads false (the reference
+/// interpreter surfaces the typed E-CAT codes).
+pub fn category_check(dom: &[f64], cod: &[f64], comp: &[Vec<f64>]) -> bool {
+    matches!(category_check_status(dom, cod, comp), CategoryStatus::Valid)
+}
+
+/// Diagram commutativity over face path-pairs (status view): the
+/// carrier must certify first, then each face's two paths fold through
+/// the table; a face is commutative iff both composites are the SAME
+/// morphism index.
+pub fn category_diagram_commutative_status(
+    dom: &[f64],
+    cod: &[f64],
+    comp: &[Vec<f64>],
+    faces: &[f64],
+) -> Result<Vec<bool>, CategoryStatus> {
+    let category = category_certify(dom, cod, comp)?;
+    let k = dom.len();
+    if faces.iter().any(|value| !value.is_finite()) {
+        return Err(CategoryStatus::NonFinite);
+    }
+    let mut mask = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < faces.len() {
+        if cursor + 4 > faces.len() {
+            return Err(CategoryStatus::BadShape);
+        }
+        let start =
+            category_index(faces[cursor], category.objects).ok_or(CategoryStatus::BadIndex)?;
+        let end =
+            category_index(faces[cursor + 1], category.objects).ok_or(CategoryStatus::BadIndex)?;
+        let len_l_raw = faces[cursor + 2];
+        let len_r_raw = faces[cursor + 3];
+        if len_l_raw.fract() != 0.0 || len_r_raw.fract() != 0.0 {
+            return Err(CategoryStatus::BadIndex);
+        }
+        // Both paths carry at least one morphism: identities are
+        // explicit carrier morphisms, never an implicit empty path.
+        if len_l_raw < 1.0 || len_r_raw < 1.0 {
+            return Err(CategoryStatus::BadShape);
+        }
+        let len_l = len_l_raw as usize;
+        let len_r = len_r_raw as usize;
+        if cursor + 4 + len_l + len_r > faces.len() {
+            return Err(CategoryStatus::BadShape);
+        }
+        let left = &faces[cursor + 4..cursor + 4 + len_l];
+        let right = &faces[cursor + 4 + len_l..cursor + 4 + len_l + len_r];
+        let composite = |path: &[f64]| -> Result<usize, CategoryStatus> {
+            let mut current = category_index(path[0], k).ok_or(CategoryStatus::BadIndex)?;
+            for value in &path[1..] {
+                let next = category_index(*value, k).ok_or(CategoryStatus::BadIndex)?;
+                let entry = category.table[current][next];
+                if entry < 0 {
+                    return Err(CategoryStatus::EntryLaw);
+                }
+                current = entry as usize;
+            }
+            Ok(current)
+        };
+        let left_composite = composite(left)?;
+        let right_composite = composite(right)?;
+        // Path geometry: both paths must run the face's start→end.
+        if category.dom[left_composite] != start
+            || category.cod[left_composite] != end
+            || category.dom[right_composite] != start
+            || category.cod[right_composite] != end
+        {
+            return Err(CategoryStatus::BadShape);
+        }
+        mask.push(left_composite == right_composite);
+        cursor += 4 + len_l + len_r;
+    }
+    Ok(mask)
+}
+
+/// Total commutativity view: the per-face mask (1.0/0.0 in face
+/// order), or EMPTY on any refusal (the lp/graph empty-vector
+/// convention; the reference interpreter surfaces the typed codes).
+pub fn category_diagram_commutative(
+    dom: &[f64],
+    cod: &[f64],
+    comp: &[Vec<f64>],
+    faces: &[f64],
+) -> Vec<f64> {
+    match category_diagram_commutative_status(dom, cod, comp, faces) {
+        Ok(mask) => mask
+            .iter()
+            .map(|face| if *face { 1.0 } else { 0.0 })
+            .collect(),
+        Err(_) => Vec::new(),
     }
 }
