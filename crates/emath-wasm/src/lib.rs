@@ -931,6 +931,14 @@ fn value_json(value: &Value) -> String {
             object.field("payload", &value_json(payload));
             object.finish().trim_end().to_string()
         }
+        Value::Rat { num, den } => {
+            // Exact rational: keep num/den intact in JSON (no float rounding),
+            // mirroring the `num/den` Display form used by the interpreter.
+            let mut object = JsonWriter::object();
+            object.field("num", &num.to_string());
+            object.field("den", &den.to_string());
+            object.finish().trim_end().to_string()
+        }
     }
 }
 
