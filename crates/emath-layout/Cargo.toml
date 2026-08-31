@@ -1,5 +1,6 @@
 [package]
 name = "emath-layout"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +11,6 @@ description = "Math layout graph with structured LaTeX and PDF-fixture frontends
 workspace = true
 
 [dependencies]
+emath-core.workspace = true
 emath-genesis.workspace = true
 emath-term.workspace = true
-emath-world-ir.workspace = true

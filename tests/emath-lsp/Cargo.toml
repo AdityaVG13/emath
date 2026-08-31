@@ -7,3 +7,8 @@ publish = false
 [dependencies]
 emath-lsp = { path = "../../crates/emath-lsp", features = ["async-runtime"] }
 asupersync = { workspace = true }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

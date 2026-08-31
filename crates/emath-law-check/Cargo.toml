@@ -1,5 +1,6 @@
 [package]
 name = "emath-law-check"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +10,6 @@ description = "Independent world checker: law obligations, minimized counterexam
 [dependencies]
 emath-term = { path = "../emath-term" }
 emath-world-ir = { path = "../emath-world-ir" }
-emath-calibration = { path = "../emath-calibration" }
 emath-portfolio = { path = "../emath-portfolio" }
 
 [lints]

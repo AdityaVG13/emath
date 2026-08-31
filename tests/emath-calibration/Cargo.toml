@@ -1,17 +1,8 @@
 [package]
-name = "emath-schema-tests"
+name = "emath-calibration-tests"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[dependencies]
-emath-ir = { path = "../../crates/emath-ir" }
-emath-schema = { path = "../../crates/emath-schema" }
-emath-sema = { path = "../../crates/emath-sema" }
-emath-core = { path = "../../crates/emath-core" }
-emath-syntax = { path = "../../crates/emath-syntax" }
-emath-exec-ir = { path = "../../crates/emath-exec-ir" }
-emath-term = { path = "../../crates/emath-term" }
 
 # Standalone package (own lockfile): opt out of the repository workspace so
 # `cargo test` works from this directory.
@@ -28,6 +19,11 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 too_many_lines = "allow"
+
+[dependencies]
+emath-term = { path = "../../crates/emath-term" }
+emath-ir = { path = "../../crates/emath-ir" }
+emath-calibration = { path = "../../crates/emath-calibration" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

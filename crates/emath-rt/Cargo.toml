@@ -1,5 +1,6 @@
 [package]
 name = "emath-rt"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,3 +8,4 @@ rust-version.workspace = true
 description = "Pre-compiled math kernels (vector/matrix/tensor/stencil/number theory/higher-order algorithms) shared by the emath interpreter and embedded into generated crates."
 
 [dependencies]
+emath-core.workspace = true

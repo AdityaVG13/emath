@@ -8,3 +8,8 @@ publish = false
 emath-term = { path = "../../crates/emath-term" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 semantic-genesis-worlds = { path = "../../examples/generated/semantic-genesis-worlds" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

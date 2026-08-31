@@ -6,3 +6,8 @@ publish = false
 
 [dependencies]
 emath-checker = { path = "../../crates/emath-checker" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true
