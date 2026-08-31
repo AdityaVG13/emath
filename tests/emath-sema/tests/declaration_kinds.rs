@@ -68,10 +68,15 @@ emath kind Scoring:
         "valid kind schema must admit with no errors, got {:?}",
         result.messages
     );
-    assert!(
-        result.admitted_names.is_empty(),
-        "kind must not lower to a runnable declaration, got {:?}",
-        result.admitted_names
+    assert_eq!(
+        result.admitted_names,
+        ["Scoring"],
+        "valid kind schemas register a marker for later application diagnostics"
+    );
+    assert_eq!(
+        result.admitted_labels,
+        ["kind"],
+        "the marker must remain distinguishable from a runnable function"
     );
 }
 

@@ -1136,3 +1136,56 @@ emath function Shift:
     let y = eval_output_bool("c-plus-k", source, "y");
     assert!(y, "0 degC + 1 K must equal 1 degC");
 }
+
+#[test]
+fn fahrenheit_uses_offset_before_scale() {
+    let source = "\
+emath function Fahrenheit:
+    outputs:
+        freezing: Bool
+        boiling: Bool
+    definitions:
+        freezing = (32 degF == 273.15 K)
+        boiling = (212 degF == 373.15 K)
+    tests:
+        example <c13>:
+            expect freezing == true
+            expect boiling == true
+";
+    assert!(eval_output_bool("fahrenheit-c13", source, "freezing"));
+    assert!(eval_output_bool("fahrenheit-c13", source, "boiling"));
+}
+
+#[test]
+fn affine_subtraction_is_a_linear_difference() {
+    let source = "\
+emath function TemperatureDifference:
+    outputs:
+        delta: Float64
+    definitions:
+        delta = (22 degC - 10 degC) / 1 K
+    tests:
+        example <difference>:
+            expect delta == 12
+";
+    assert_eq!(eval_output_f64("temperature-difference", source, "delta"), 12.0);
+}
+
+#[test]
+fn litre_spellings_are_identity_aliases() {
+    let source = "\
+emath function LitreAlias:
+    outputs:
+        american: Float64
+        british: Float64
+    definitions:
+        american = (1 liter) / (1 L)
+        british = (1 litre) / (1 L)
+    tests:
+        example <aliases>:
+            expect american == 1
+            expect british == 1
+";
+    assert_eq!(eval_output_f64("litre-alias", source, "american"), 1.0);
+    assert_eq!(eval_output_f64("litre-alias", source, "british"), 1.0);
+}

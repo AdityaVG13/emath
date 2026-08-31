@@ -56,6 +56,7 @@ fn measured_values_require_provenance_and_unstated_is_explicit() {
         Provenance::InstrumentRun {
             file: "sha256:abc".into(),
             processing: "baseline subtraction".into(),
+            sha256: None,
         },
         Some(Timestamp("2026-08-27T00:00:00Z".into())),
         Some(InstrumentRef("balance-7".into())),
