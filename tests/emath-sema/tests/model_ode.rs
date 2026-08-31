@@ -50,6 +50,163 @@ fn model_derivative_equation_admits_as_rate() {
     ));
 }
 
+// Coaching refusals (F4, emath-r3-kind-tree-gh5g): when the declared kind
+// mismatches the sections, the diagnostic names the kind that fits.
+#[test]
+fn state_on_function_coaches_model_or_policy() {
+    let result = check_source(
+        "fn-state",
+        "\
+emath function Bad:
+    state:
+        x: Float64
+    definitions:
+        y = x
+",
+    );
+    assert!(result.diagnostics.has_errors());
+    let messages: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("E-KIND-010") && m.contains("`emath model`") && m.contains("`emath policy`")),
+        "state on function must coach model/policy, got {messages:?}"
+    );
+}
+
+#[test]
+fn constructors_on_function_coaches_policy() {
+    let result = check_source(
+        "fn-ctor",
+        "\
+emath function Bad:
+    constructors:
+        public fn new() -> Self
+",
+    );
+    assert!(result.diagnostics.has_errors());
+    let messages: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("E-KIND-010") && m.contains("`emath policy`")),
+        "constructors on function must coach policy, got {messages:?}"
+    );
+}
+
+#[test]
+fn equations_on_function_coaches_model() {
+    let result = check_source(
+        "fn-eq-coach",
+        "\
+emath function Bad:
+    definitions:
+        y = 1
+    equations:
+        derivative(x) = 0
+",
+    );
+    assert!(result.diagnostics.has_errors());
+    let messages: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("E-KIND-010") && m.contains("`emath model`")),
+        "equations on function must coach model, got {messages:?}"
+    );
+}
+
+#[test]
+fn algebraic_on_function_coaches_model() {
+    let result = check_source(
+        "fn-algebraic",
+        "\
+emath function Bad:
+    inputs:
+        x: Float64
+    algebraic:
+        y: Float64
+    definitions:
+        y = x
+",
+    );
+    assert!(result.diagnostics.has_errors());
+    let messages: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("E-KIND-010") && m.contains("did you mean `emath model`?")),
+        "algebraic on function must coach model, got {messages:?}"
+    );
+}
+
+#[test]
+fn definitions_only_model_notes_function() {
+    // A `emath model` with only `definitions:` admits, but the kind
+    // coaching note suggests `emath function` (F4).
+    let result = check_source(
+        "model-defs-only",
+        "\
+emath model Stateless:
+    definitions:
+        y = 1
+",
+    );
+    assert!(
+        !result.diagnostics.has_errors(),
+        "definitions-only model admits, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let messages: Vec<String> = result
+        .diagnostics
+        .items()
+        .iter()
+        .map(|d| d.to_string())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("N-KIND-001") && m.contains("`emath function`")),
+        "definitions-only model must note function, got {messages:?}"
+    );
+}
+
+#[test]
+fn model_with_state_does_not_get_function_coaching() {
+    // A genuine model (state + equations) must not be nagged toward
+    // `emath function`; the E-KIND-011 coaching hint is conditional.
+    let result = check_source("model-real", decay_model());
+    assert!(
+        !result.diagnostics.has_errors(),
+        "real model must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn model_der_call_and_wrt_time_admit() {
     let source = "\
@@ -815,12 +972,12 @@ emath model Incomplete:
 }
 
 #[test]
-fn explicit_mass_spring_example_admits() {
+fn explicit_mass_spring_declares_vector_state_rate() {
     let source = include_str!("../../../language/examples/numerical/explicit-mass-spring.emath");
     let result = check_source("explicit-mass-spring", source);
     assert!(
         !result.diagnostics.has_errors(),
-        "A2 mass-spring example must admit, got: {:?}",
+        "mass-spring model must typecheck, got: {:?}",
         result
             .diagnostics
             .errors()
@@ -829,8 +986,7 @@ fn explicit_mass_spring_example_admits() {
     );
     let decl = &result.package.declarations[0];
     assert_eq!(decl.kind_label, "model");
-    // The example writes the coupled pair as ONE vector-state rate
-    // (`s = [x, v]`), the single-evaluate-goal Phase 1 shape.
+    // The coupled pair is one vector-state rate (`s = [x, v]`).
     assert!(decl.definitions.contains_key("der_s"));
 }
 
@@ -1105,7 +1261,7 @@ fn heat_plate_model_simulates_and_conserves_total_heat() {
     // the center diffuses to its four neighbors.
     let result = check_source(
         "heat-plate-sim",
-        include_str!("../../../language/examples/numerical/heat-plate-sim.emath"),
+        include_str!("../../../tests/fixtures/language/numerical/heat-plate-sim.emath"),
     );
     assert!(
         !result.diagnostics.has_errors(),
@@ -1166,7 +1322,7 @@ fn heat_plate_model_simulates_and_conserves_total_heat() {
 fn heat_volume_model_simulates_one_hundred_steps_and_conserves_heat() {
     let result = check_source(
         "heat-volume-sim",
-        include_str!("../../../language/examples/numerical/heat-volume-sim.emath"),
+        include_str!("../../../tests/fixtures/language/numerical/heat-volume-sim.emath"),
     );
     assert!(
         !result.diagnostics.has_errors(),
@@ -1209,4 +1365,48 @@ fn heat_volume_model_simulates_one_hundred_steps_and_conserves_heat() {
     for neighbor in [4, 10, 12, 14, 16, 22] {
         assert!(data[neighbor] > 0.0, "neighbor {neighbor} stayed cold");
     }
+}
+
+/// Non-finite guard: a step that produces NaN/±Inf must FAIL the run —
+/// the finite-state invariant — never return a trajectory of poisoned
+/// samples. Euler on `x' = x²` from x₀ = 2 overflows f64 at step 11
+/// (t = 5.5, dt = 0.5): the value jumps past 1e308 to infinity.
+#[test]
+fn diverging_euler_fails_with_non_finite_state() {
+    let source = "\
+emath model Blowup:
+    state:
+        x: Float64
+    equations:
+        derivative(x) = x * x
+";
+    let result = check_source("blowup", source);
+    assert!(
+        !result.diagnostics.has_errors(),
+        "blow-up model must admit, got: {:?}",
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+    );
+    let decl = &result.package.declarations[0];
+    let inputs = BTreeMap::new();
+    let mut state = BTreeMap::new();
+    state.insert("x".into(), Value::F64(2.0));
+    let err = simulate_continuous(
+        &result.package,
+        decl,
+        &inputs,
+        &state,
+        0.0,
+        6.0,
+        0.5,
+        StepMethod::Euler,
+    )
+    .expect_err("diverging Euler must error, not return inf/NaN samples");
+    assert!(
+        err.contains("non-finite"),
+        "error must name the non-finite state, got: {err}"
+    );
 }

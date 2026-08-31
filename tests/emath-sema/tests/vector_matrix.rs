@@ -226,7 +226,7 @@ emath function TensorSlice:
 
 #[test]
 fn rank3_spatial_operators_and_divergence_admit() {
-    let source = include_str!("../../../language/examples/numerical/spatial-3d.emath");
+    let source = include_str!("../../../tests/fixtures/language/numerical/spatial-3d.emath");
     let result = check_source("spatial-3d", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -258,7 +258,7 @@ emath function BadSpatial3d:
 
 #[test]
 fn tensor_face_example_evaluates() {
-    let source = include_str!("../../../language/examples/intro/tensor-face.emath");
+    let source = include_str!("../../../tests/fixtures/language/intro/tensor-face.emath");
     let result = check_source("tensor-face", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -288,7 +288,7 @@ fn tensor_face_example_evaluates() {
 
 #[test]
 fn einsum_example_evaluates() {
-    let source = include_str!("../../../language/examples/intro/einsum.emath");
+    let source = include_str!("../../../tests/fixtures/language/intro/einsum.emath");
     let result = check_source("einsum-example", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -428,7 +428,7 @@ emath function NatIndex:
 
 #[test]
 fn finite_sum_one_to_five_admits() {
-    let source = include_str!("../../../language/examples/intro/sum-one-to-five.emath");
+    let source = include_str!("../../../tests/fixtures/language/intro/sum-one-to-five.emath");
     let result = check_source("sum-one-to-five", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -1219,7 +1219,7 @@ fn intro_optimize_example_is_stationary() {
 
 #[test]
 fn intro_constrained_opt_example_nearly_enforces_constraint() {
-    let source = include_str!("../../../language/examples/intro/constrained-opt.emath");
+    let source = include_str!("../../../tests/fixtures/language/intro/constrained-optimization.emath");
     let result = check_source("constrained-opt-example", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -1402,7 +1402,7 @@ emath function HeatPlate:
 
 #[test]
 fn gradient_field_admits_and_inline_tests_pass() {
-    let source = include_str!("../../../language/examples/numerical/gradient-field.emath");
+    let source = include_str!("../../../tests/fixtures/language/numerical/gradient-field.emath");
     let result = check_source("gradient-field", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -1440,7 +1440,7 @@ fn gradient_field_admits_and_inline_tests_pass() {
 // ---- B02: filtered binder tests ---------------------------------------
 
 #[test]
-fn b02_filtered_sum_computes() {
+fn filtered_sum_computes() {
     // `sum i in 0..n if i > 2: i` — sums only elements > 2.
     // For n=5: 3 + 4 = 7
     let source = "\
@@ -1481,7 +1481,7 @@ emath function FilteredSum:
 }
 
 #[test]
-fn b02_always_false_filter_gives_identity() {
+fn always_false_filter_gives_identity() {
     // `sum i in 0..n if i < 0: i` — always-false filter = empty sum = 0
     let source = "\
 emath function EmptyFilteredSum:
@@ -1521,7 +1521,7 @@ emath function EmptyFilteredSum:
 }
 
 #[test]
-fn b02_filtered_forall_computes() {
+fn filtered_forall_computes() {
     // `forall i in 0..n if i < n: i >= 0` — all elements less than n
     // are non-negative. For n=5: all of 0,1,2,3,4 are >= 0 → true.
     let source = "\
@@ -1767,7 +1767,7 @@ emath function FacNan:
 /// CAPABILITY modular/coding builtins vs documented closed forms.
 #[test]
 fn modular_and_coding_builtins_compute() {
-    let source = include_str!("../../../language/examples/intro/modular-arithmetic.emath");
+    let source = include_str!("../../../tests/fixtures/language/intro/modular-arithmetic.emath");
     let result = check_source("modular-coding", source);
     assert!(
         !result.diagnostics.has_errors(),
@@ -2440,7 +2440,7 @@ emath function Gf1:
 /// (`tst.notation_ops`), not a hyphenated filename echo.
 #[test]
 fn notation_ops_intro_example_computes() {
-    let source = include_str!("../../../language/examples/intro/notation-ops.emath");
+    let source = include_str!("../../../tests/fixtures/language/intro/notation-ops.emath");
     let result = check_source("notation-ops", source);
     assert!(
         !result.diagnostics.has_errors(),
