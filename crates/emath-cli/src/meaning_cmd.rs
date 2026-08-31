@@ -176,7 +176,7 @@ pub(crate) fn parse_meaning_request(args: &[String]) -> Result<MeaningRequest, &
 }
 
 /// Dispatch `emath meaning …`.
-pub fn dispatch(request: MeaningRequest) -> CliExit {
+pub(crate) fn dispatch(request: MeaningRequest) -> CliExit {
     match request {
         MeaningRequest::List { dir, json } => list_cmd(dir, json),
         MeaningRequest::Set {
@@ -600,7 +600,7 @@ pub(crate) struct LockedWorlds {
 }
 
 #[derive(Clone)]
-pub(crate) struct ResolvedLock {
+pub struct ResolvedLock {
     pub lock_id: u64,
     pub origin_receipt_id: u64,
     pub fingerprint: u64,

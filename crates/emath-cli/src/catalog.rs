@@ -20,6 +20,7 @@ pub const COMMANDS: &[&str] = &[
     "genesis",
     "eval",
     "simulate",
+    "fit",
     "repl",
     "compile",
     "world",
@@ -33,6 +34,7 @@ pub const COMMANDS: &[&str] = &[
     "serve",
     "new",
     "fmt",
+    "migrate",
     "explain",
     "run",
     "test",
@@ -55,7 +57,7 @@ pub const COMMANDS: &[&str] = &[
 #[must_use]
 pub fn command_usage(command: &str) -> Option<&'static str> {
     Some(match command {
-        "check" => "check <file.emath> [--json]",
+        "check" => "check <file.emath> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
         "build" => "build <file.emath> [--out <dir>] [--verify] [--json]",
@@ -68,10 +70,13 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "assumptions" => "assumptions <file.emath> [--json]",
         "signature" => "signature <file.emath> [--out <dir>]",
         "genesis" => "genesis <file.emath> --out <dir>",
-        "eval" => "eval <file.emath> [--world <name>] [--json]",
-        "simulate" => {
-            "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"
+        "eval" => {
+            "eval <file.emath> [--world <name>] [--function NAME] [--set name=value] [--json]"
         }
+        "simulate" => {
+            "simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"
+        }
+        "fit" => "fit <file.emath> [--json]",
         "repl" => "repl <file.emath>",
         "compile" => "compile --parametric <file.emath> --out <dir> [--world LABEL]",
         "world" => "world show WORLD_ID --dir <dir>",
@@ -85,7 +90,9 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>]",
         "fmt" => "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]",
-        "explain" => "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
+        "migrate" => "migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate --list-rules",
+        "explain" => "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
+                      E-LAW-001 [--json]",
         "run" => "run <file.emath> [--out <dir>]",
         "test" => "test <file.emath> [--out <dir>]",
         "bench" => "bench <file.emath>",
@@ -109,7 +116,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
 #[must_use]
 pub fn command_summary(command: &str) -> Option<&'static str> {
     Some(match command {
-        "check" => "parse + admit, no codegen; `--json` emits codes and admission",
+        "check" => "parse + admit, no codegen; `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission",
         "plan" => "admit + goals + deterministic native resolution plan",
         "planner" => "provider-registry planning; `--parametric` lifts missing operators",
         "build" => "full pipeline to a published artifact (default out: target/emath)",
@@ -131,10 +138,13 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "signature" => "arity/fixity/type-variable signature inference",
         "genesis" => "world interpretation + portfolio + answer receipt",
         "eval" => {
-            "evaluate an admitted `emath custom` term on the semantic VM; `--json` emits the answer envelope and diagnostic codes on refusal"
+            "evaluate a genesis-format reference term on the semantic VM (`--world`), or execute an admitted standard `emath function` spec through the generic EMIR/reference-VM stack (`--set name=value` binds inputs, `--function NAME` selects among several; plain eval runs the spec's own worked example); `--json` emits the `emath.eval-function` receipt and typed E-EVAL-* diagnostic codes on refusal"
         }
         "simulate" => {
             "integrate an admitted `emath model` with explicit Euler/classic RK4/RK45; `--atol/--rtol` enable adaptive RK45; `--event` locates one zero crossing; `--set` binds inputs, algebraic guesses, and state (scalars, `[vector]`, or `[[matrix]]`)"
+        }
+        "fit" => {
+            "execute the declared fit goal to fitted values with linked Fitted provenance (model math stays in `.emath`); `--json` emits the deterministic envelope with parameters, confidence, and measured rows"
         }
         "repl" => "interactive eval session over the same admission and VM path",
         "compile" => {
@@ -151,6 +161,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011)",
         "fmt" => "canonical-form check (full rewrite is Phase 4); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)",
+        "migrate" => {
+            "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
+        }
         "explain" => {
             "plan/provider explanation, binding provenance DAG, or `E-LAW-001` checker witness"
         }
@@ -290,23 +303,25 @@ Rules
 
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     match command {
-        "explain" => &["--json", "--provenance", "--help", "-h"],
+        "explain" => &["--json", "--provenance", "--show-defaults", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
-        "check" | "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities"
+        "check" => &["--json", "--verify-data", "--help", "-h"],
+        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities"
         | "import" | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
         "coverage" => &["--emit", "--check", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
+        "fit" => &["--json", "--help", "-h"],
         "build" => &["--json", "--out", "-o", "--verify", "--help", "-h"],
         "run" | "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
             &["--out", "-o", "--help", "-h"]
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
-        "eval" => &["--world", "--json", "--help", "-h"],
+        "eval" => &["--world", "--function", "--set", "--json", "--help", "-h"],
         "simulate" => &[
-            "--dt", "--t0", "--t1", "--method", "--atol", "--rtol", "--dt-max", "--event", "--set",
-            "--json", "--help", "-h",
+            "--model", "--dt", "--t0", "--t1", "--method", "--atol", "--rtol", "--dt-max",
+            "--event", "--set", "--json", "--help", "-h",
         ],
         "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
         "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
@@ -324,6 +339,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "robot-docs" => &["--guide", "--help", "-h"],
         "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
         "fmt" => &["--value", "--sf", "--from", "--format", "--help", "-h"],
+        "migrate" => &["--fix", "--check", "--receipt", "--list-rules", "--help", "-h"],
         _ => &["--help", "-h"],
     }
 }
@@ -344,13 +360,16 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--t0"
             | "--t1"
             | "--method"
+            | "--model"
             | "--atol"
             | "--rtol"
             | "--dt-max"
             | "--event"
             | "--set"
+            | "--function"
             | "--raise"
             | "--apply"
+            | "--receipt"
     )
 }
 
