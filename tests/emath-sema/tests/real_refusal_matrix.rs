@@ -133,3 +133,177 @@ fn rat_spellings_still_admitted() {
         "Rat/Rational must remain admitted, got {messages:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Full-context matrix (bead closure): EVERY syntactic position where bare
+// `Real` can appear at a type site emits exactly the canonical E-NUM-004 —
+// same code, same message, no shape-dependent behavior, never silently f64.
+// ---------------------------------------------------------------------------
+
+/// The single canonical diagnostic, verbatim, for every context.
+const CANONICAL_E_NUM_004: &str = "E-NUM-004: bare `Real` at a type site \
+requires profile evidence; write `Float64` (strict-f64), \
+`Interval<Float64>` (certified interval), or a \
+`representation Real => Float64` directive";
+
+fn assert_exactly_one_canonical(context: &str, source: &str) {
+    let messages = diagnostics_of(source);
+    assert_eq!(
+        enum004_messages(&messages),
+        vec![CANONICAL_E_NUM_004.to_string()],
+        "{context}: bare `Real` must produce exactly the canonical E-NUM-004, got {messages:?}"
+    );
+}
+
+/// Output field position.
+#[test]
+fn real_output_field_is_refused() {
+    assert_exactly_one_canonical(
+        "output field",
+        "emath function F:\n    inputs:\n        x: Float64\n    outputs:\n        y: Real\n    definitions:\n        y = x\n",
+    );
+}
+
+/// State field position (stateful declaration).
+#[test]
+fn real_state_field_is_refused() {
+    assert_exactly_one_canonical(
+        "state field",
+        "emath model M:\n    inputs:\n        x: Float64\n    state:\n        s: Real\n    outputs:\n        y: Float64\n    definitions:\n        y = x\n",
+    );
+}
+
+/// Matrix element position.
+#[test]
+fn real_matrix_element_is_refused() {
+    assert_exactly_one_canonical(
+        "Matrix element",
+        "emath function F:\n    inputs:\n        m: Matrix[Real, 2, 2]\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Tensor element position.
+#[test]
+fn real_tensor_element_is_refused() {
+    assert_exactly_one_canonical(
+        "Tensor element",
+        "emath function F:\n    inputs:\n        t: Tensor[Real, 2, 2, 2]\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Nested shape element position (innermost Real, one diagnostic).
+#[test]
+fn real_nested_vector_element_is_refused() {
+    assert_exactly_one_canonical(
+        "nested Vector element",
+        "emath function F:\n    inputs:\n        v: Vector[Vector[Real, 2], 3]\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Option element position.
+#[test]
+fn real_option_element_is_refused() {
+    assert_exactly_one_canonical(
+        "Option element",
+        "emath function F:\n    inputs:\n        o: Option<Real>\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Result ok-arm position.
+#[test]
+fn real_result_ok_arm_is_refused() {
+    assert_exactly_one_canonical(
+        "Result ok-arm",
+        "emath function F:\n    inputs:\n        r: Result<Real, Float64>\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Result error-arm position.
+#[test]
+fn real_result_err_arm_is_refused() {
+    assert_exactly_one_canonical(
+        "Result err-arm",
+        "emath function F:\n    inputs:\n        r: Result<Float64, Real>\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Set element position.
+#[test]
+fn real_set_element_is_refused() {
+    assert_exactly_one_canonical(
+        "Set element",
+        "emath function F:\n    inputs:\n        s: Set<Real>\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Interval element position.
+#[test]
+fn real_interval_element_is_refused() {
+    assert_exactly_one_canonical(
+        "Interval element",
+        "emath function F:\n    inputs:\n        i: Interval<Real>\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Refinement (NonNegative) element position.
+#[test]
+fn real_refinement_element_is_refused() {
+    assert_exactly_one_canonical(
+        "refinement element",
+        "emath function F:\n    inputs:\n        q: NonNegative<Real>\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Domain-annotation base position.
+#[test]
+fn real_domain_base_is_refused() {
+    assert_exactly_one_canonical(
+        "domain base",
+        "emath function F:\n    inputs:\n        x: Real in [0, 1]\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Unit-annotation base position.
+#[test]
+fn real_unit_base_is_refused() {
+    assert_exactly_one_canonical(
+        "unit base",
+        "emath function F:\n    inputs:\n        x: Real in m\n    outputs:\n        y: Float64\n    definitions:\n        y = 1\n",
+    );
+}
+
+/// Event parameter position.
+#[test]
+fn real_event_parameter_is_refused() {
+    assert_exactly_one_canonical(
+        "event parameter",
+        "emath function F:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x\n    events:\n        event Tick(x: Real)\n",
+    );
+}
+
+/// Constructor parameter position.
+#[test]
+fn real_constructor_parameter_is_refused() {
+    assert_exactly_one_canonical(
+        "constructor parameter",
+        "emath policy P:\n    inputs:\n        x: Float64\n    state:\n        v: Float64\n    constructors:\n        public fn new(x: Real) -> Float64:\n            require x == x\n            Self:\n                v = x\n",
+    );
+}
+
+/// Constructor return position.
+#[test]
+fn real_constructor_return_is_refused() {
+    assert_exactly_one_canonical(
+        "constructor return",
+        "emath policy P:\n    inputs:\n        x: Float64\n    state:\n        v: Float64\n    constructors:\n        public fn new(x: Float64) -> Real:\n            require x == x\n            Self:\n                v = x\n",
+    );
+}
+
+/// Observations type-annotation position.
+#[test]
+fn real_observation_annotation_is_refused() {
+    assert_exactly_one_canonical(
+        "observation annotation",
+        "emath function F:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x\n    observations:\n        obs r: Real = 1.0\n",
+    );
+}
