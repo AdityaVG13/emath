@@ -8,7 +8,7 @@ emath/artifact-manifest.json file. Layer: storage adapter external to the
 protected set (CUTOVER_PLAN.md section 5.2 / section 9.10) — it may import
 frankensqlite; emath-core / emath-ir / emath-artifact stay Frank-free.
 
-The manifest JSON wire contract is untouched: emath-checker, ERROR_CODES.md
+The manifest JSON wire contract is untouched: emath-evidence, ERROR_CODES.md
 and emath-cli keep working as-is. This crate stores *state derived from* the
 manifest (artifact + evidence rows) and re-derives those rows from a manifest
 blob to prove store/manifest agreement. It never rewrites manifest files.

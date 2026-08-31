@@ -62,7 +62,7 @@
 - None: no `[features]` in the crate's Cargo.toml, which declares only `[[bin]] emath`. The `keep_gate` bench harness (`harness = false`) lives in the workspace test member at `tests/emath-cli/benches/keep_gate.rs`.
 
 ## Conformance tests
-- No `tests/` directory in the crate. Workspace suites in `tests/emath-cli` include `catalog.rs`, `intent_completion_solve.rs`, `exactness_introspection.rs`, `meaning_lock.rs`, and `lib.rs`; the keep-gate bench harness is `tests/emath-cli/benches/keep_gate.rs`. Library-unit coverage comes from `emath-sema`, `emath-build`, and `emath-checker`.
+- No `tests/` directory in the crate. Workspace suites in `tests/emath-cli` include `catalog.rs`, `intent_completion_solve.rs`, `exactness_introspection.rs`, `meaning_lock.rs`, and `lib.rs`; the keep-gate bench harness is `tests/emath-cli/benches/keep_gate.rs`. Library-unit coverage comes from `emath-sema`, `emath-build`, and `emath-evidence`.
 
 ## No-claim boundaries
 - `bench` remains a typed refusal (`E-TLT-004`) with no Performance category claim until the comparison ruleset lands; the full formatter (`fmt`) is Phase 4.

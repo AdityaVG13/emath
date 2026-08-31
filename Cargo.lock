@@ -804,8 +804,8 @@ name = "emath-artifact-tests"
 version = "0.1.0"
 dependencies = [
  "emath-artifact",
- "emath-checker",
  "emath-core",
+ "emath-evidence",
  "emath-ir",
 ]
 
@@ -860,19 +860,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-checker"
-version = "0.1.0"
-dependencies = [
- "emath-artifact",
- "emath-core",
- "emath-ir",
-]
-
-[[package]]
 name = "emath-checker-tests"
 version = "0.1.0"
 dependencies = [
- "emath-checker",
+ "emath-evidence",
 ]
 
 [[package]]
@@ -884,8 +875,8 @@ dependencies = [
  "emath-artifact",
  "emath-build",
  "emath-calibration",
- "emath-checker",
  "emath-core",
+ "emath-evidence",
  "emath-exec-ir",
  "emath-genesis",
  "emath-goal",
@@ -939,6 +930,7 @@ dependencies = [
 name = "emath-evidence"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-core",
  "emath-ir",
 ]

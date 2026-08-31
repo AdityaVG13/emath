@@ -4,9 +4,9 @@
 //! artifacts for every checker. A control that the checker admits is an
 //! escaped defect; the framework reports escapes without masking them.
 
-use crate::ArtifactCheckConfig;
-use crate::artifact_check::{ArtifactInput, check_artifact};
-use crate::translation::{TranslationRelation, TranslationSample};
+use crate::checker::ArtifactCheckConfig;
+use crate::checker::artifact_check::{ArtifactInput, check_artifact};
+use crate::checker::translation::{TranslationRelation, TranslationSample};
 
 /// Kind of seeded negative control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

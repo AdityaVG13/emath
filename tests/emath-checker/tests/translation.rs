@@ -1,5 +1,5 @@
 mod translation {
-    use emath_checker::{
+    use emath_evidence::checker::{
         TranslationRelation, TranslationSample, check_witness, validate_translation,
     };
 
