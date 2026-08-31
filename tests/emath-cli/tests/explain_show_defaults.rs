@@ -14,6 +14,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+mod common;
+
 fn repo_file(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -21,14 +23,13 @@ fn repo_file(rel: &str) -> PathBuf {
 }
 
 fn cli(args: &[&str]) -> (String, i32) {
-    // The `emath` binary is built through cargo so the test works from a
-    // cold target dir (same shape as validate.sh's `cargo run -q -p
-    // emath-cli` probes). Fixture paths are repo-root-relative.
-    let output = Command::new(env!("CARGO"))
-        .args(["run", "-q", "-p", "emath-cli", "--"])
+    // The binary is execed directly (resolved once per process, built on
+    // demand for a cold target dir); fixture paths are repo-root-relative.
+    // stdout only: the defaults table is a stdout contract.
+    let output = Command::new(common::emath_bin())
         .args(args)
         .output()
-        .expect("run emath via cargo");
+        .expect("run emath binary");
     (
         String::from_utf8_lossy(&output.stdout).to_string(),
         output.status.code().unwrap_or(-1),

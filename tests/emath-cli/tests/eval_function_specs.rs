@@ -19,7 +19,9 @@
 //! Failure-first: every test in this file was written BEFORE the eval
 //! function-spec path existed and ran red on the genesis-only refusal.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+mod common;
 use std::process::Command;
 
 use emath_cli::{run, CliExit, EXIT_OK, EXIT_REFUSED};
@@ -117,7 +119,7 @@ emath model Decay:
 /// parallel cargo invocations interleave build chatter with stdout and
 /// splice the receipt frames (observed in CI-style parallel runs).
 fn eval_json(args: &[&str]) -> (emath_artifact::JsonValue, CliExit, String) {
-    let output = Command::new(eval_binary())
+    let output = Command::new(common::emath_bin())
         .arg("eval")
         .args(args)
         .output()
@@ -133,31 +135,6 @@ fn eval_json(args: &[&str]) -> (emath_artifact::JsonValue, CliExit, String) {
         Err(error) => panic!("stdout must be valid JSON for eval {args:?}: {error}\n{stdout}"),
     };
     (parsed, code, stdout)
-}
-
-/// Path to the `emath` binary for this workspace, built once into the
-/// Cargo target dir: prefer the explicit `CARGO_TARGET_DIR` the test
-/// batch used, then the workspace default `target/debug`. Building here
-/// happens exactly once per test process via `cargo build -p emath-cli`.
-fn eval_binary() -> PathBuf {
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let candidate = |target: &Path| target.join("debug/emath");
-    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
-        let bin = candidate(Path::new(&dir));
-        if bin.is_file() {
-            return bin;
-        }
-    }
-    let default = candidate(&workspace.join("target"));
-    if !default.is_file() {
-        let status = Command::new(env!("CARGO"))
-            .args(["build", "-q", "-p", "emath-cli"])
-            .current_dir(&workspace)
-            .status()
-            .expect("build emath");
-        assert!(status.success(), "cargo build -p emath-cli must succeed");
-    }
-    default
 }
 
 fn error_codes(parsed: &emath_artifact::JsonValue) -> Vec<String> {

@@ -282,17 +282,18 @@ fn fit_plan_excludes_missing_identifiability_provider() {
 
 // ---- CLI end-to-end: `emath fit` parses, admits, plans, executes the
 // declared fit to fitted values, and links Fitted provenance. The model
-// math stays in the `.emath` fixture; the binary is spawned like
-// tests/emath-cli's `json_output` so the assertions cover what `run`
-// actually prints.
+// math stays in the `.emath` fixture; the built binary is execed
+// directly (see `common`) so the assertions cover what the CLI actually
+// prints.
+
+mod common;
 
 fn fit_json_output(args: &[&str]) -> (emath_artifact::JsonValue, emath_cli::CliExit) {
-    let output = std::process::Command::new(env!("CARGO"))
-        .args(["run", "-q", "-p", "emath-cli", "--", "fit"])
-        .arg("--json")
+    let output = std::process::Command::new(common::emath_bin())
+        .args(["fit", "--json"])
         .args(args)
         .output()
-        .expect("run emath fit via cargo");
+        .expect("run emath fit binary");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let exit = match output.status.code() {
         Some(0) => emath_cli::CliExit::Ok,
