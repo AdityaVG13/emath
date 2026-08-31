@@ -4,7 +4,7 @@
 //! == candidate, `005` gate failure, `006` insufficient evidence, `007`
 //! metric regression, `008` incomparable, `010` drift, `012` protocol,
 //! `013` canary routing, `014` drift band, `015` engine policy, `016`
-//! self-comparison refusal. `001`/`002` owned by `emath-rust-ir`.
+//! self-comparison refusal. `001`/`002` owned by `emath-rust-backend`.
 
 use std::fmt;
 

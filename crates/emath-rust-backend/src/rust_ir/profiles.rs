@@ -6,8 +6,8 @@
 //! unsafe code (`E-CODEGEN-002`); unknown profiles are typed refusals
 //! (`E-CODEGEN-003`).
 
-use crate::ast::{FnDef, Item, Module};
-use crate::render::coverage_gaps;
+use crate::rust_ir::ast::{FnDef, Item, Module};
+use crate::rust_ir::render::coverage_gaps;
 
 /// Generated crate profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

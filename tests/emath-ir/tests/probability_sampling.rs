@@ -151,7 +151,7 @@ fn public_stream_example_executes() {
     }
     .generate()
     .expect("stream-aware sampling generates Rust");
-    let rust = emath_rust_ir::render::render_module(&generated.module).code;
+    let rust = emath_rust_backend::rust_ir::render::render_module(&generated.module).code;
     assert!(rust.contains("prob_sample_in_stream"), "{rust}");
     assert!(rust.contains("Family::Normal"), "{rust}");
     assert!(rust.contains("campaign.chain-a"), "{rust}");

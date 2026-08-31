@@ -1,8 +1,8 @@
 //! Profile-validation witnesses: no_std refuses unsafe code
 //! exactly like every other profile (E-CODEGEN-002).
 
-use emath_rust_ir::ast::{Block, FnDef, Item, Module, Stmt, Ty, Visibility};
-use emath_rust_ir::{CrateProfile, ProfileProblem};
+use emath_rust_backend::rust_ir::ast::{Block, FnDef, Item, Module, Stmt, Ty, Visibility};
+use emath_rust_backend::rust_ir::{CrateProfile, ProfileProblem};
 
 fn unsafe_fn(name: &str) -> Item {
     Item::Fn(FnDef {

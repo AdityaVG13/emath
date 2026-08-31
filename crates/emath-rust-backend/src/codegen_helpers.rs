@@ -1,10 +1,10 @@
 use emath_exec_ir::{EmirProgram, EmirValue};
 use emath_ir::{ExprId, ExprNode, SemanticPackage, TypeNode};
-use emath_rust_ir::ast::{
+use crate::rust_ir::ast::{
     escape_ident, BinOp, Expr, FnDef, ImplDef, Item, Param, Stmt, StructDef, Ty, Visibility,
     RUST_KEYWORDS,
 };
-use emath_rust_ir::render::render_expr;
+use crate::rust_ir::render::render_expr;
 use std::collections::BTreeSet;
 
 use crate::codegen_render::operand;

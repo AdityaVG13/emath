@@ -32,7 +32,7 @@ use emath_artifact::{
 use emath_core::{content_id_of_str, Diagnostics, SchemaId};
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ResolutionPlan};
 use emath_rust_backend::{BackendInput, BackendOutput};
-use emath_rust_ir::profiles::CrateProfile;
+use emath_rust_backend::rust_ir::profiles::CrateProfile;
 use emath_sema::session::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;

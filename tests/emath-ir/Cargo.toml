@@ -15,7 +15,6 @@ emath-syntax = { path = "../../crates/emath-syntax" }
 emath-cli = { path = "../../crates/emath-cli" }
 emath-provider-api = { path = "../../crates/emath-provider-api" }
 emath-rust-backend = { path = "../../crates/emath-rust-backend" }
-emath-rust-ir = { path = "../../crates/emath-rust-ir" }
 emath-rt = { path = "../../crates/emath-rt" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including

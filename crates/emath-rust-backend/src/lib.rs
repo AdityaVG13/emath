@@ -11,11 +11,11 @@
 
 use emath_exec_ir::{definition_order, lower_definition, lower_requirement, EmirOp, EmirProgram};
 use emath_ir::{ConstructionReceipt, GoalKind, SemanticPackage, TypeId, TypeNode};
-use emath_rust_ir::ast::{
+use crate::rust_ir::ast::{
     escape_ident, snake_case, Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item, Module,
     Param, Stmt, StructDef, TestDef, Ty, UnOp, Visibility,
 };
-use emath_rust_ir::render::{render_module, render_ty};
+use crate::rust_ir::render::{render_module, render_ty};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod codegen_helpers;
@@ -23,6 +23,7 @@ use codegen_helpers::*;
 mod codegen_render;
 use codegen_render::*;
 mod codegen_steps;
+pub mod rust_ir;
 
 /// Test-only seam for the external integration target
 /// (`tests/emath-rust-backend/tests/lib.rs`): render one `EmirOp`

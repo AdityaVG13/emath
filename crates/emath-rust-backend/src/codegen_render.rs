@@ -4,8 +4,8 @@ use emath_exec_ir::optimize::{is_total, operand_registers};
 use emath_exec_ir::{
     EdgePolicy, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine, ProbKind,
 };
-use emath_rust_ir::ast::{BinOp, Block, Expr, Stmt, Ty, UnOp, escape_ident};
-use emath_rust_ir::render::render_expr;
+use crate::rust_ir::ast::{BinOp, Block, Expr, Stmt, Ty, UnOp, escape_ident};
+use crate::rust_ir::render::render_expr;
 
 use crate::BackendError;
 use crate::codegen_helpers::comparison;

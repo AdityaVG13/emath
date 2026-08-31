@@ -6,7 +6,7 @@
 //! (`&self`, no interior mutability), host trait versions are checked
 //! (`E-HOST-001`), and fallbacks are typed refusals, never silent stubs.
 
-use crate::ast::{Block, Expr, FnDef, ImplDef, Item, Module, Param, Stmt, Ty, Visibility};
+use crate::rust_ir::ast::{Block, Expr, FnDef, ImplDef, Item, Module, Param, Stmt, Ty, Visibility};
 
 /// A host trait method signature.
 #[derive(Clone, Debug, PartialEq)]
