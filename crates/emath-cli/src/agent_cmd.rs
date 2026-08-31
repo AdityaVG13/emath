@@ -10,7 +10,7 @@ use emath_build::{build_file, BuildOptions};
 use emath_portfolio::InterpretationPortfolio;
 use emath_sema::session::CompilerSession;
 use emath_tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
-use emath_world_ir::translation::EvidenceHandle;
+use emath_world_ir::{EvidenceHandle, WorldMorphism};
 use emath_world_ir::WorldId;
 
 use crate::tooling_cmd::{classify_build_error, doctor_probes};
@@ -51,7 +51,7 @@ fn agent_plan_envelope(
 
 fn emit_agent_build_error(path: &Path, error: &dyn std::fmt::Display) -> CliExit {
     eprintln!("error: {error}");
-    let (diagnostics, package_id) = run_check(path);
+    let (diagnostics, package_id, _) = run_check(path);
     let entries = if diagnostics.has_errors() {
         json_diagnostics_entries(&diagnostics)
     } else {
@@ -96,7 +96,7 @@ pub(crate) fn agent_cmd(request: AgentRequest) -> CliExit {
         AgentRequest::Propose { path } => agent_propose_cmd(&path),
         AgentRequest::Triage { path } => agent_triage_cmd(&path),
         AgentRequest::Check { path } => {
-            let (diagnostics, package_id) = run_check(&path);
+            let (diagnostics, package_id, _) = run_check(&path);
             let admitted = !diagnostics.has_errors();
             println!(
                 "{}",
@@ -112,7 +112,7 @@ pub(crate) fn agent_cmd(request: AgentRequest) -> CliExit {
             let mut session = CompilerSession::new(emath_core::limits::Limits::default());
             let Ok(package) = session.load_package(&path) else {
                 eprintln!("error: cannot read {}", path.display());
-                let (diagnostics, _) = run_check(&path);
+                let (diagnostics, _, _) = run_check(&path);
                 println!("{}", agent_plan_envelope(false, &[], 0, &diagnostics));
                 return EXIT_USAGE;
             };
@@ -401,7 +401,7 @@ fn agent_triage_cmd(file: &Path) -> CliExit {
         }
         doctor_rows.push(row.finish());
     }
-    let (diagnostics, package_id) = run_check(Path::new(file));
+    let (diagnostics, package_id, _) = run_check(Path::new(file));
     let admitted = !diagnostics.has_errors();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let (goals, plans, plan_ok, plan_error) = match session.load_package(file) {

@@ -1,6 +1,6 @@
-//! Tooling commands: `new`, `fmt`, `explain`, `run`, `test`, `bench`,
-//! `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`, `fork`,
-//! and the structured `agent` API envelope.
+//! Tooling commands: `new`, `fmt`, `migrate`, `explain`, `run`, `test`,
+//! `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`,
+//! `fork`, and the structured `agent` API envelope.
 //!
 //! Implemented commands exercise the real pipeline (check/plan/build,
 //! artifact verification). Capabilities outside the Phase 1 subset are
@@ -158,11 +158,14 @@ fn is_valid_name(name: &str) -> bool {
 /// `emath fmt --value <literal>`: sig-fig rounding + unit-preserving
 /// display (bead emath-r3-sigfigs-formatting-yf28, 04 §1.6+1.7).
 ///
-/// Deterministic; units resolve from the std seed table; default sf is the
-/// input literal's own significant-figure count ("rounds output to
-/// minimum input sf"). An explicit `--sf` overrides. Incompatible format
-/// unit is refused (`E-UNIT-FMT`); `--from` without `--format` is refused
-/// (`E-UNIT-104` path for unknown units).
+/// Deterministic; units resolve from the std seed table; bare value
+/// output rounds to the input literal's own significant-figure count
+/// ("rounds output to minimum input sf"). Unit-preserving display
+/// (§1.7) changes presentation only: the converted value is re-reported
+/// as-is (`90 s` → `1.5 min`), and sf rounding applies only with an
+/// explicit `--sf`. Incompatible format unit is refused (`E-UNIT-FMT`);
+/// `--from` without `--format` is refused (`E-UNIT-104` path for unknown
+/// units).
 pub(crate) fn fmt_value_cmd(
     value_raw: &str,
     sf: Option<u32>,
@@ -227,7 +230,7 @@ pub(crate) fn fmt_value_cmd(
                 quantity,
                 format: parsed,
             };
-            match formatted.display(&table, literal_sf) {
+            match formatted.display(&table, sf) {
                 Ok(text) => {
                     println!("{text}");
                     EXIT_OK
@@ -254,7 +257,7 @@ pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
     }
     let limits = emath_core::limits::Limits::default();
     let lossless = emath_syntax::parse_lossless(&package.text, package.file, &limits);
-    let canonical = emath_syntax::formatter::format(&lossless.tree, &lossless.comments);
+    let canonical = emath_syntax::format(&lossless.tree, &lossless.comments);
     if canonical == package.text {
         println!(
             "fmt: {}: canonical form (lossless round-trip)",
@@ -282,6 +285,120 @@ pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
     }
 }
 
+/// `migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate
+/// --list-rules` (05 §5, contract bead emath-r3-migrate-contract-b75y;
+/// CLI bead emath-7ijoe). Lossless rewrites only, receipt-driven.
+///
+/// The canonical-format rule (E-MIG-RULE-001) is the registered rule
+/// wired here: the lossless formatter rewrite, verified by re-lowering
+/// both sides via the migrate contract engine. The file is rewritten
+/// ONLY under `--fix` and only when identity verified; the receipt is
+/// written to `--receipt` (default: beside the source). `--check`
+/// never rewrites; exit 1 means a rule would fire (or the source
+/// refuses). Determinism: same input = byte-identical receipt.
+pub(crate) fn migrate_cmd(
+    file: &Path,
+    fix: bool,
+    check_only: bool,
+    receipt: Option<&Path>,
+    list_rules: bool,
+) -> CliExit {
+    if list_rules {
+        for rule in emath_sema::migrate::registered_rules() {
+            println!("{}\t{}\t{}", rule.id, rule.kind.as_str(), rule.description);
+        }
+        return EXIT_OK;
+    }
+    let Ok(source) = std::fs::read_to_string(file) else {
+        eprintln!("error: cannot read {}", file.display());
+        return EXIT_USAGE;
+    };
+    // The registered rewrite: canonical-format respell (lossless
+    // formatter). The verify engine owns admission + identity checking.
+    let limits = emath_core::limits::Limits::default();
+    let lossless = emath_syntax::parse_lossless(&source, emath_core::FileId(0), &limits);
+    let rewritten = emath_syntax::format_lossless(&lossless);
+    let outcome = emath_sema::migrate::migrate_verified_rewrite(
+        &file.display().to_string(),
+        &source,
+        &rewritten,
+        emath_sema::migrate::RULE_CANONICAL_FORMAT.id,
+    );
+    let receipt_path = receipt
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| file.with_extension("migrate.json"));
+    if std::fs::write(&receipt_path, outcome.receipt.to_canonical_json()).is_err() {
+        eprintln!("error: cannot write receipt {}", receipt_path.display());
+        return EXIT_USAGE;
+    }
+    if check_only {
+        // Never rewrites: report whether a rule would fire.
+        if outcome.receipt.refusals.is_empty() && outcome.receipt.rules_applied.is_empty() {
+            println!(
+                "migrate: {}: canonical (no rules to apply)",
+                file.display()
+            );
+            return EXIT_OK;
+        }
+        for refusal in &outcome.receipt.refusals {
+            eprintln!("migrate: {}: {} {}", file.display(), refusal.code, refusal.reason);
+        }
+        if !outcome.receipt.rules_applied.is_empty() {
+            for rule in &outcome.receipt.rules_applied {
+                eprintln!(
+                    "migrate: {}: {} ({}) would apply",
+                    file.display(),
+                    rule.rule,
+                    rule.kind.as_str()
+                );
+            }
+            return EXIT_REFUSED;
+        }
+        return EXIT_REFUSED;
+    }
+    for refusal in &outcome.receipt.refusals {
+        eprintln!(
+            "migrate: {}: {} {}",
+            file.display(),
+            refusal.code,
+            refusal.reason
+        );
+    }
+    match (fix, outcome.rewritten_source.as_deref()) {
+        (true, Some(rewritten)) => {
+            if std::fs::write(file, rewritten).is_err() {
+                eprintln!("error: cannot rewrite {}", file.display());
+                return EXIT_USAGE;
+            }
+            println!(
+                "migrate: {}: rewritten (receipt: {})",
+                file.display(),
+                receipt_path.display()
+            );
+            EXIT_OK
+        }
+        (true, None) => EXIT_REFUSED,
+        (false, Some(_)) => {
+            // No --fix: the rewrite is NOT emitted; report only.
+            eprintln!(
+                "migrate: {}: rule would fire (pass --fix to apply); receipt: {}",
+                file.display(),
+                receipt_path.display()
+            );
+            EXIT_REFUSED
+        }
+        (false, None) if outcome.receipt.refusals.is_empty() => {
+            println!(
+                "migrate: {}: canonical (no rules to apply); receipt: {}",
+                file.display(),
+                receipt_path.display()
+            );
+            EXIT_OK
+        }
+        (false, None) => EXIT_REFUSED,
+    }
+}
+
 /// `explain <file> [<symbol>]` or `explain E-LAW-001`: plan-level or checker witness.
 pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
     match request {
@@ -291,6 +408,7 @@ pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
             symbol,
             provenance,
             json,
+            show_defaults,
         } => {
             if provenance {
                 return match crate::provenance_explanation(&path, json) {
@@ -300,6 +418,9 @@ pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
                     }
                     Err(code) => code,
                 };
+            }
+            if show_defaults {
+                return show_defaults_cmd(&path, json);
             }
             let inspections = match crate::explain_inspections(&path) {
                 Ok(inspections) => inspections,
@@ -324,8 +445,131 @@ pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
     }
 }
 
-fn explain_law_cmd(json: bool) -> CliExit {
-    let (report, explanations) = emath_diagnostics::e_law_001_demo();
+/// F8 (`emath-r3-explain-defaults-yt97`): the effective-defaults table.
+/// Every implicit default the compiler applies, each labeled with its
+/// source (`language default` / `declaration attribute` / `planner
+/// default`) and, where one exists, the explicit override spelling.
+/// Deterministic: fixed row order, no map iteration.
+fn show_defaults_cmd(path: &Path, json: bool) -> CliExit {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let Ok(package) = session.load_package(path) else {
+        eprintln!("error: cannot read {}", path.display());
+        return EXIT_USAGE;
+    };
+    let result = session.check(package.file);
+    print_diagnostics(&result.diagnostics);
+    if result.diagnostics.has_errors() {
+        return EXIT_REFUSED;
+    }
+
+    // One row per declaration that OVERRIDES a default (a declared
+    // units profile), in source order. A file with no overrides has no
+    // override rows — the table never invents one.
+    let override_rows: Vec<(String, String)> = result.units_profiles;
+
+    if json {
+        let mut out = JsonWriter::object();
+        out.string("command", "explain-show-defaults");
+        let rows: Vec<String> = DEFAULTS_ROWS
+            .iter()
+            .map(|(default, value, source, r#override)| {
+                let mut row = JsonWriter::object();
+                row.string("default", default);
+                row.string("value", value);
+                row.string("source", source);
+                row.string("override", r#override);
+                row.finish().trim_end().to_string()
+            })
+            .collect();
+        out.objects("defaults", &rows);
+        let overrides: Vec<String> = override_rows
+            .iter()
+            .map(|(declaration, profile)| {
+                let mut row = JsonWriter::object();
+                row.string("default", "units-profile");
+                row.string("declaration", declaration);
+                row.string("value", profile);
+                row.string("source", "declaration attribute");
+                row.string("override", "@units_profile(<level>)");
+                row.finish().trim_end().to_string()
+            })
+            .collect();
+        out.objects("declaration_overrides", &overrides);
+        println!("{}", out.finish());
+        return EXIT_OK;
+    }
+
+    println!("emath explain --show-defaults: {} effective defaults", DEFAULTS_ROWS.len());
+    for (default, value, source, r#override) in DEFAULTS_ROWS {
+        if r#override.is_empty() {
+            println!("{default}: {value} (source: {source})");
+        } else {
+            println!("{default}: {value} (source: {source}; override: {override})");
+        }
+    }
+    for (declaration, profile) in &override_rows {
+        println!(
+            "units-profile: {declaration}={profile} (source: declaration attribute; override: \
+             @units_profile(<level>))"
+        );
+    }
+    EXIT_OK
+}
+
+/// `(default, value, source, override)` rows. `override` is empty when no
+/// explicit surface exists. Values must agree with the code that applies
+/// them: `NumericProfile::default_phase1` (strict-f64), the permissive
+/// units ladder floor (ch. 5), `Visibility::Public` admission default,
+/// outputs-default-to-definitions, the `compile:` defaults, the
+/// untyped-input `Float64` fallback (`N-TYPE-001`), and
+/// `PlannerConfig::default`.
+const DEFAULTS_ROWS: [(&str, &str, &str, &str); 7] = [
+    (
+        "numeric-profile",
+        "strict-f64",
+        "language default",
+        "compile: numeric <name> (E-NUM-001 on unknown)",
+    ),
+    (
+        "units-profile",
+        "permissive (no profile refusal floor)",
+        "language default",
+        "@units_profile(permissive|lab|engineering|publication)",
+    ),
+    (
+        "visibility",
+        "public",
+        "language default",
+        "spell `pub` on the item to make it explicit",
+    ),
+    (
+        "outputs",
+        "all definitions",
+        "language default (outputs: omitted)",
+        "outputs: section",
+    ),
+    (
+        "compile",
+        "target rust, profile library, numeric strict-f64",
+        "language default (compile: omitted)",
+        "compile: section",
+    ),
+    (
+        "untyped-inputs",
+        "Float64",
+        "language default (N-TYPE-001 notice at admission)",
+        "annotate the input with a type",
+    ),
+    (
+        "planner",
+        "policy deterministic-planner, max_candidates 8, max_nodes 16, tie-break \
+         cost-ascending-id",
+        "planner default",
+        "",
+    ),
+];
+
+fn explain_law_cmd(json: bool) -> CliExit {    let (report, explanations) = emath_diagnostics::e_law_001_demo();
     if report.passed {
         eprintln!("error: E-LAW-001 demo table unexpectedly held");
         return EXIT_REFUSED;
@@ -772,9 +1016,10 @@ fn parse_upstream_pins(text: &str) -> Result<Vec<emath_provider_api::UpstreamPin
 fn probe_program(command: &str) -> Option<String> {
     let mut parts = command.split_whitespace();
     let program = parts.next()?;
-    // ubs:ignore — executable/args are only the static doctor_probes() literals
-    // (`rustc --version`, `cargo --version`, `rustfmt --version`, `cargo clippy --version`)
-    let output = Command::new(program).args(parts).output().ok()?;
+    // The executable/args here are only the static doctor_probes() literals
+    // (`rustc --version`, `cargo --version`, `rustfmt --version`,
+    // `cargo clippy --version`) — no user data reaches Command::new.
+    let output = Command::new(program).args(parts).output().ok()?; // ubs:ignore static-literal probes
     if output.status.success() {
         let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Some(text.lines().next().unwrap_or(&text).to_string())

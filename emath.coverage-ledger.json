@@ -1,0 +1,695 @@
+{
+  "schema": "emath.coverage-ledger",
+  "schema_version": "v1",
+  "rating_vocabulary": "FULL->reference-impl, SYNTAX-ONLY->contract, MISSING->none, PARTIAL->per-facet split",
+  "support_levels": "none<planned<contract<reference-impl<provider-backed<certified",
+  "seed_provenance": "Phase 3a MSC matrix (02 B01-B46) rollup: 5 FULL, 16 PARTIAL, 14 SYNTAX-ONLY, 22 MISSING across 57 sub-areas; imported at super-domain granularity",
+  "domains": 12,
+  "facets_total": 72,
+  "facets_covered": 31,
+  "coverage_pct": 43,
+  "missing_math_pct": 57,
+  "missing_by_facet": [
+{
+  "msc": "00-05",
+  "facet": "types"
+},
+{
+  "msc": "00-05",
+  "facet": "operators"
+},
+{
+  "msc": "00-05",
+  "facet": "goals"
+},
+{
+  "msc": "00-05",
+  "facet": "notation"
+},
+{
+  "msc": "00-05",
+  "facet": "worlds"
+},
+{
+  "msc": "08-13",
+  "facet": "goals"
+},
+{
+  "msc": "08-13",
+  "facet": "notation"
+},
+{
+  "msc": "08-13",
+  "facet": "worlds"
+},
+{
+  "msc": "14-20",
+  "facet": "goals"
+},
+{
+  "msc": "14-20",
+  "facet": "notation"
+},
+{
+  "msc": "14-20",
+  "facet": "worlds"
+},
+{
+  "msc": "22-27",
+  "facet": "types"
+},
+{
+  "msc": "22-27",
+  "facet": "operators"
+},
+{
+  "msc": "22-27",
+  "facet": "goals"
+},
+{
+  "msc": "22-27",
+  "facet": "notation"
+},
+{
+  "msc": "22-27",
+  "facet": "worlds"
+},
+{
+  "msc": "22-27",
+  "facet": "evidence"
+},
+{
+  "msc": "28-31",
+  "facet": "types"
+},
+{
+  "msc": "28-31",
+  "facet": "operators"
+},
+{
+  "msc": "28-31",
+  "facet": "goals"
+},
+{
+  "msc": "28-31",
+  "facet": "notation"
+},
+{
+  "msc": "28-31",
+  "facet": "worlds"
+},
+{
+  "msc": "28-31",
+  "facet": "evidence"
+},
+{
+  "msc": "33-35",
+  "facet": "notation"
+},
+{
+  "msc": "33-35",
+  "facet": "worlds"
+},
+{
+  "msc": "35, 76-80",
+  "facet": "notation"
+},
+{
+  "msc": "35, 76-80",
+  "facet": "worlds"
+},
+{
+  "msc": "39-49",
+  "facet": "goals"
+},
+{
+  "msc": "39-49",
+  "facet": "notation"
+},
+{
+  "msc": "39-49",
+  "facet": "worlds"
+},
+{
+  "msc": "60-62",
+  "facet": "operators"
+},
+{
+  "msc": "60-62",
+  "facet": "goals"
+},
+{
+  "msc": "60-62",
+  "facet": "notation"
+},
+{
+  "msc": "60-62",
+  "facet": "worlds"
+},
+{
+  "msc": "65",
+  "facet": "notation"
+},
+{
+  "msc": "65",
+  "facet": "worlds"
+},
+{
+  "msc": "68, 97",
+  "facet": "goals"
+},
+{
+  "msc": "68, 97",
+  "facet": "notation"
+},
+{
+  "msc": "68, 97",
+  "facet": "worlds"
+},
+{
+  "msc": "70-86",
+  "facet": "notation"
+},
+{
+  "msc": "70-86",
+  "facet": "worlds"
+}
+  ],
+  "domains": [
+{
+  "msc": "00-05",
+  "super_domain": "Foundations, logic, and generalities",
+  "label": "general math, logic, set theory as claim substrate",
+  "coverage_pct": 16,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/types-units-shapes-and-domains.md"
+},
+{
+  "facet": "operators",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "goals",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/goals-requests-strategies-and-resolution.md"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/lexical-layout-and-source.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/science/observations.emath"
+}
+  ],
+  "packages": ["std.core", "core::prelude", "core::logic", "core::collections", "core::evidence", "core::units"]
+},
+{
+  "msc": "08-13",
+  "super_domain": "Number theory and arithmetic",
+  "label": "modular arithmetic, exact integers, conjecture no-claims",
+  "coverage_pct": 50,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/algebra-number-theory.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/algebra-number-theory.emath"
+},
+{
+  "facet": "goals",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/goals-requests-strategies-and-resolution.md"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/lexical-layout-and-source.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/algebra-number-theory.emath"
+}
+  ],
+  "packages": ["core::math", "core::numbers", "core::number_theory", "number_theory::laws"]
+},
+{
+  "msc": "14-20",
+  "super_domain": "Algebra and algebraic structures",
+  "label": "symbolic simplification, algebraic slices",
+  "coverage_pct": 50,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/algebra/symbolic-cas.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/algebra/symbolic-cas.emath"
+},
+{
+  "facet": "goals",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/expressions-equations-state-and-events.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/algebra-number-theory.emath"
+}
+  ],
+  "packages": ["core::algebra"]
+},
+{
+  "msc": "22-27",
+  "super_domain": "Group theory, topology, and geometry",
+  "label": "abstract structures, manifolds, fields/forms",
+  "coverage_pct": 0,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "operators",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "goals",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "notation",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "MISSING",
+  "level": "none"
+}
+  ],
+  "packages": []
+},
+{
+  "msc": "28-31",
+  "super_domain": "Measures, integration, and probability foundations",
+  "label": "measures, general integrals, measure-theoretic probability",
+  "coverage_pct": 0,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "operators",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "goals",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "notation",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "MISSING",
+  "level": "none"
+}
+  ],
+  "packages": ["core::domains"]
+},
+{
+  "msc": "33-35",
+  "super_domain": "Analysis, special functions, and ODEs",
+  "label": "endpoint/Taylor/contraction slices, forward AD, ODE solves",
+  "coverage_pct": 66,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/analysis.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/intro/autodiff.emath"
+},
+{
+  "facet": "goals",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/intro/autodiff.emath"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/expressions-equations-state-and-events.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/analysis.emath"
+}
+  ],
+  "packages": ["core::calculus", "core::state", "core::special_functions", "analysis::laws"]
+},
+{
+  "msc": "35, 76-80",
+  "super_domain": "Partial differential equations and continuum fields",
+  "label": "laplacian-based heat/gradient simulation, anisotropic tensors",
+  "coverage_pct": 66,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/heat-rod-sim.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/heat-rod-sim.emath"
+},
+{
+  "facet": "goals",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/heat-rod-sim.emath"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/expressions-equations-state-and-events.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/heat-rod-sim.emath"
+}
+  ],
+  "packages": []
+},
+{
+  "msc": "39-49",
+  "super_domain": "Finite mathematics, combinatorics, and optimization",
+  "label": "finite KKT, Bellman, Lyapunov slices; constraint goals",
+  "coverage_pct": 50,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/optimization-control.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/intro/optimize.emath"
+},
+{
+  "facet": "goals",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/examples/intro/optimize.emath"
+},
+{
+  "facet": "notation",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/optimization-control.emath"
+}
+  ],
+  "packages": ["core::optimization", "core::combinatorics", "core::game_theory", "core::lp_milp", "optimization::methods", "optimization_control::laws"]
+},
+{
+  "msc": "60-62",
+  "super_domain": "Probability and statistics",
+  "label": "finite Bayes, CLT scaling, information slices",
+  "coverage_pct": 33,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/probability-statistics.emath"
+},
+{
+  "facet": "operators",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/expressions-equations-state-and-events.md"
+},
+{
+  "facet": "goals",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/goals-requests-strategies-and-resolution.md"
+},
+{
+  "facet": "notation",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/probability-statistics.emath"
+}
+  ],
+  "packages": ["core::probability", "probability::information", "probability::laws"]
+},
+{
+  "msc": "65",
+  "super_domain": "Numerical analysis and computation",
+  "label": "RK4/RK45 integrators, solvers, determinism class",
+  "coverage_pct": 66,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/explicit-mass-spring.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/explicit-mass-spring.emath"
+},
+{
+  "facet": "goals",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/numerical/explicit-mass-spring.emath"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/diagnostics-and-tooling-contract.md"
+},
+{
+  "facet": "worlds",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/total-compilation-protocol.md"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/computer-science.emath"
+}
+  ],
+  "packages": ["core::shapes", "core::linear_algebra", "approximation::laws"]
+},
+{
+  "msc": "68, 97",
+  "super_domain": "Computer science and education-adjacent computation",
+  "label": "systems laws, open-problem deferrals, executable curricula",
+  "coverage_pct": 50,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/computer-science.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/computer-science.emath"
+},
+{
+  "facet": "goals",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/goals-requests-strategies-and-resolution.md"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/lexical-layout-and-source.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/computer-science.emath"
+}
+  ],
+  "packages": ["core::graphs", "core::artifact", "core::host", "cs::laws"]
+},
+{
+  "msc": "70-86",
+  "super_domain": "Physics and mechanics",
+  "label": "classical mechanics laws, special relativity slice",
+  "coverage_pct": 66,
+  "facets": [
+{
+  "facet": "types",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/physics-classical.emath"
+},
+{
+  "facet": "operators",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/physics/newton-second.emath"
+},
+{
+  "facet": "goals",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/examples/physics/newton-second.emath"
+},
+{
+  "facet": "notation",
+  "rating": "SYNTAX-ONLY",
+  "level": "contract",
+  "artifact": "language/reference/expressions-equations-state-and-events.md"
+},
+{
+  "facet": "worlds",
+  "rating": "MISSING",
+  "level": "none"
+},
+{
+  "facet": "evidence",
+  "rating": "FULL",
+  "level": "reference-impl",
+  "artifact": "language/stdlib/laws/physics-relativity.emath"
+}
+  ],
+  "packages": ["physics::classical", "physics::relativity"]
+}
+  ]
+}

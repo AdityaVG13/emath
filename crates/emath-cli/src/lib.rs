@@ -8,14 +8,16 @@
 
 mod agent_cmd;
 pub mod catalog;
-mod coverage_cmd;
-mod coverage_seed;
+pub mod coverage_cmd;
+pub mod coverage_seed;
 mod eval_cmd;
 pub mod genesis_cmd;
-mod meaning_cmd;
+pub mod meaning_cmd;
+mod library_cmd;
 mod provenance_cmd;
-mod serve_cmd;
-mod simulate_cmd;
+pub mod serve_cmd;
+pub mod simulate_cmd;
+mod fit_cmd;
 mod tooling_cmd;
 
 use emath_build::{build_file, BuildOptions};
@@ -170,6 +172,7 @@ pub fn check_json_document(
     package_id: &str,
     diagnostics: &Diagnostics,
     meaning_id: Option<&str>,
+    units_profiles: &[(String, String)],
 ) -> String {
     let mut out = emath_artifact::JsonWriter::object();
     out.string("command", "check");
@@ -177,6 +180,16 @@ pub fn check_json_document(
     out.objects("diagnostics", &json_diagnostics_entries(diagnostics));
     out.string("package", package_id);
     json_put_opt(&mut out, "meaning_id", meaning_id);
+    let rows: Vec<String> = units_profiles
+        .iter()
+        .map(|(declaration, profile)| {
+            let mut row = emath_artifact::JsonWriter::object();
+            row.string("declaration", declaration);
+            row.string("profile", profile);
+            row.finish().trim_end().to_string()
+        })
+        .collect();
+    out.objects("units_profiles", &rows);
     out.finish()
 }
 
@@ -192,13 +205,19 @@ fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
         .collect()
 }
 
-/// `check <file> [--json]`: parse + admit, no codegen.
-pub fn check(path: &Path, json: bool) -> CliExit {
+/// `check <file> [--verify-data] [--json]`: parse + admit, no codegen.
+/// `--verify-data` (04 §5.2, emath-r3-observations-9ffu) re-hashes every
+/// `sha256` declared in InstrumentRun provenance against the file on
+/// disk, relative to the source file; drift refuses `E-OBS-HASH`.
+pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
     if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
         return code;
     }
     let path = path.to_path_buf();
-    let (diagnostics, package_id) = run_check(&path);
+    let (mut diagnostics, package_id, units_profiles) = run_check(&path);
+    if verify_data && !diagnostics.has_errors() {
+        verify_declared_data(&path, &mut diagnostics);
+    }
     let meaning_id = if diagnostics.has_errors() {
         None
     } else {
@@ -207,6 +226,13 @@ pub fn check(path: &Path, json: bool) -> CliExit {
             .and_then(|source| admitted_meaning_id(&path, &source))
     };
     print_diagnostics(&diagnostics);
+    if !json && !units_profiles.is_empty() {
+        // §6.5 pack-table: the effective honesty declaration, printed
+        // deterministically in source order (admission order).
+        for (declaration, profile) in &units_profiles {
+            println!("honesty: units_profile {declaration}={profile}");
+        }
+    }
     if json {
         // The diagnostics array carries codes and messages, not counts:
         // a checker lane must be able to assert the exact E-* code the
@@ -218,10 +244,69 @@ pub fn check(path: &Path, json: bool) -> CliExit {
                 &package_id,
                 &diagnostics,
                 meaning_id.as_ref().map(|id| id.as_str()),
+                &units_profiles,
             )
         );
     }
     exit_from_diagnostics(diagnostics.has_errors())
+}
+
+/// Declared raw-data digests (04 §5.2): InstrumentRun provenance rows
+/// carrying a `sha256`, as (binding, file, declared digest).
+fn declared_data_digests(path: &Path) -> Vec<(String, String, String)> {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let Ok(package) = session.load_package(path) else {
+        return Vec::new();
+    };
+    let result = session.check(package.file);
+    result
+        .package
+        .binding_provenance
+        .iter()
+        .filter_map(|(site, provenance)| match provenance {
+            emath_ir::Provenance::InstrumentRun {
+                file,
+                sha256: Some(sha256),
+                ..
+            } => Some((site.binding.clone(), file.clone(), sha256.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Re-hash every declared data digest; append `E-OBS-HASH` on drift or
+/// unreadable data. Changed data under an unchanged model is a different
+/// artifact identity.
+fn verify_declared_data(path: &Path, diagnostics: &mut Diagnostics) {
+    let base = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    for (binding, file, declared) in declared_data_digests(path) {
+        let data_path = base.join(&file);
+        let Some(bytes) = std::fs::read(&data_path).ok() else {
+            diagnostics.error(
+                "E-OBS-HASH",
+                format!(
+                    "cannot read data file for observation `{binding}` ({})",
+                    data_path.display()
+                ),
+                emath_core::Span::default(),
+            );
+            continue;
+        };
+        let digest: String = emath_core::sha256_digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        if !declared.eq_ignore_ascii_case(&digest) {
+            diagnostics.error(
+                "E-OBS-HASH",
+                format!(
+                    "data drift for observation `{binding}`: declared sha256 {declared} but {} hashes to {digest} — changed data under an unchanged model is a different artifact identity",
+                    data_path.display()
+                ),
+                emath_core::Span::default(),
+            );
+        }
+    }
 }
 
 fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::MeaningId> {
@@ -548,6 +633,23 @@ fn exactness_cmd(request: ExactnessRequest) -> CliExit {
         Ok(source) => source,
         Err(code) => return code,
     };
+    // A freeze lock pins the meaning that was frozen; a raise would move a
+    // dimension of that frozen meaning after the fact (zql4b negative
+    // control). Propose-only display without `--raise` stays allowed: the
+    // budget itself is a view, not an authority change.
+    if let Some(dimension) = &raise {
+        let lock_path = sidecar_lock_path(&path);
+        if lock_path.is_file() {
+            eprintln!(
+                "E-SYN-155 raise refused: {} carries a freeze lock ({}); `{}` cannot raise a \
+                 frozen meaning — edit the source and refreeze instead",
+                path.display(),
+                lock_path.display(),
+                dimension.as_str(),
+            );
+            return EXIT_REFUSED;
+        }
+    }
     let raised = match &raise {
         Some(dimension) => std::slice::from_ref(dimension),
         None => &[],
@@ -1053,7 +1155,7 @@ fn assumptions_cmd(path: &Path, json: bool) -> CliExit {
     EXIT_OK
 }
 
-pub fn run_check(path: &Path) -> (Diagnostics, String) {
+pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         let mut diagnostics = Diagnostics::new();
@@ -1062,11 +1164,11 @@ pub fn run_check(path: &Path) -> (Diagnostics, String) {
             format!("cannot read source file ({})", path.display()),
             emath_core::Span::default(),
         );
-        return (diagnostics, String::new());
+        return (diagnostics, String::new(), Vec::new());
     };
     let result = session.check(package.file);
     let package_id = result.package.content_id().0;
-    (result.diagnostics, package_id)
+    (result.diagnostics, package_id, result.units_profiles)
 }
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.
@@ -1241,6 +1343,7 @@ fn inspections_from_plan_result(result: &emath_sema::session::PlanResult) -> Vec
             candidates: Vec::new(),
             exclusions: Vec::new(),
             selected_plan_id: None,
+            combination: None,
             checks: Vec::new(),
             budget: None,
             artifact_class: "none".into(),
@@ -1454,7 +1557,7 @@ pub fn import_modelica_cmd(path: &Path, json: bool) -> CliExit {
             return EXIT_USAGE;
         }
     };
-    match emath_adapter_rumoca::import::import_modelica(&source) {
+    match emath_adapter_rumoca::import_modelica(&source) {
         Ok(declarations) => {
             if json {
                 let mut object = emath_artifact::JsonWriter::object();
@@ -1704,10 +1807,12 @@ enum Command {
     Capabilities,
     Eval(eval_cmd::EvalArgs),
     Simulate(simulate_cmd::SimulateArgs),
+    Fit(fit_cmd::FitArgs),
     Repl { path: PathBuf },
     WorldShow { id: String, dir: PathBuf },
     PortfolioShow { id: String, dir: PathBuf },
     Meaning(meaning_cmd::MeaningRequest),
+    LibraryMount { name: String },
     ImportModelica { path: PathBuf, json: bool },
     ArtifactCheck(PathBuf),
     ArtifactBattery(PathBuf),
@@ -1721,6 +1826,13 @@ enum Command {
         sf: Option<u32>,
         from: Option<String>,
         format: Option<String>,
+    },
+    Migrate {
+        path: PathBuf,
+        fix: bool,
+        check_only: bool,
+        receipt: Option<PathBuf>,
+        list_rules: bool,
     },
     Explain(ExplainRequest),
     Run { path: PathBuf, out: PathBuf },
@@ -1741,6 +1853,7 @@ pub(crate) enum ExplainRequest {
         symbol: Option<String>,
         provenance: bool,
         json: bool,
+        show_defaults: bool,
     },
     Law {
         json: bool,
@@ -1796,9 +1909,11 @@ fn parse_cli(args: &[String]) -> ParsedCli<'_> {
 
 fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> {
     match name {
-        "check" => parse_file_json_request(rest)
+        "check" => parse_check_request(rest)
             .map(Command::Check)
-            .ok_or(ParseKnownError::Usage("check <file.emath> [--json]")),
+            .ok_or(ParseKnownError::Usage(
+                "check <file.emath> [--verify-data] [--json]",
+            )),
         "plan" => parse_file_json_request(rest)
             .map(Command::Plan)
             .ok_or(ParseKnownError::Usage("plan <file.emath> [--json]")),
@@ -1863,8 +1978,15 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
             Err(message) => {
                 eprintln!("error: {message}");
                 Err(ParseKnownError::Usage(
-                    "simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
+                    "simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
                 ))
+            }
+        },
+        "fit" => match fit_cmd::parse_fit_args(rest) {
+            Ok(parsed) => Ok(Command::Fit(parsed)),
+            Err(message) => {
+                eprintln!("error: {message}");
+                Err(ParseKnownError::Usage("fit <file.emath> [--json]"))
             }
         },
         "repl" => eval_cmd::parse_repl_path(rest)
@@ -1888,6 +2010,12 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
         "meaning" => meaning_cmd::parse_meaning_request(rest)
             .map(Command::Meaning)
             .map_err(ParseKnownError::Usage),
+        "library" => match rest {
+            [sub, name] if sub == "mount" => Ok(Command::LibraryMount {
+                name: name.clone(),
+            }),
+            _ => Err(ParseKnownError::Usage("library mount <name>")),
+        },
         "import" => parse_import_modelica(rest)
             .map(|(path, json)| Command::ImportModelica { path, json })
             .ok_or(ParseKnownError::Usage("import modelica <file.mo> [--json]")),
@@ -1940,11 +2068,13 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
             .map(|(name, out)| Command::New { name, out })
             .ok_or(ParseKnownError::Usage("new <name> [--out <dir>]")),
         "fmt" => parse_fmt_request(rest),
+        "migrate" => parse_migrate_request(rest),
         "explain" => {
             parse_explain_request(rest)
                 .map(Command::Explain)
                 .ok_or(ParseKnownError::Usage(
-                    "explain <file.emath> [<symbol>] [--provenance] | explain E-LAW-001 [--json]",
+                    "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
+                     E-LAW-001 [--json]",
                 ))
         }
         "run" => parse_path_out_request(rest)
@@ -2060,10 +2190,69 @@ fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownError> {
     })
 }
 
+/// `migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate --list-rules`
+/// (05 §5, emath-r3-migrate-contract-b75y / emath-7ijoe). Lossless
+/// rewrites only; the receipt is the canonical stable-JSON artifact.
+fn parse_migrate_request(rest: &[String]) -> Result<Command, ParseKnownError> {
+    const USAGE: &str = "migrate <file.emath> [--fix] [--check] [--receipt <path>] | \
+                         migrate --list-rules";
+    if matches!(rest, [flag] if flag == "--list-rules") {
+        return Ok(Command::Migrate {
+            path: PathBuf::new(),
+            fix: false,
+            check_only: false,
+            receipt: None,
+            list_rules: true,
+        });
+    }
+    let mut path: Option<PathBuf> = None;
+    let mut fix = false;
+    let mut check_only = false;
+    let mut receipt: Option<PathBuf> = None;
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--fix" => fix = true,
+            "--check" => check_only = true,
+            "--receipt" => {
+                i += 1;
+                receipt = rest.get(i).map(PathBuf::from);
+                if receipt.is_none() {
+                    return Err(ParseKnownError::Usage(USAGE));
+                }
+            }
+            other if !other.starts_with('-') && path.is_none() => {
+                path = Some(PathBuf::from(other));
+            }
+            _ => return Err(ParseKnownError::Usage(USAGE)),
+        }
+        i += 1;
+    }
+    let Some(path) = path else {
+        return Err(ParseKnownError::Usage(USAGE));
+    };
+    if check_only && fix {
+        return Err(ParseKnownError::Usage(
+            "migrate: --check and --fix are mutually exclusive",
+        ));
+    }
+    Ok(Command::Migrate {
+        path,
+        fix,
+        check_only,
+        receipt,
+        list_rules: false,
+    })
+}
+
 fn run_command(command: Command) -> CliExit {
     match command {
-        Command::Check(FileJsonRequest::Ready { path, json }) => check(&path, json),
-        Command::Plan(FileJsonRequest::Ready { path, json }) => plan(&path, json),
+        Command::Check(FileJsonRequest::Ready {
+            path,
+            json,
+            verify_data,
+        }) => check(&path, json, verify_data),
+        Command::Plan(FileJsonRequest::Ready { path, json, .. }) => plan(&path, json),
         Command::Planner(request) => planner_cmd(request),
         Command::Build(request) => build(request),
         Command::Parse(ParseRequest::Ready {
@@ -2071,7 +2260,7 @@ fn run_command(command: Command) -> CliExit {
             out,
             forest_only,
         }) => genesis_cmd::parse_cmd(&path, out.as_ref(), forest_only),
-        Command::Expand(FileJsonRequest::Ready { path, json }) => expand_cmd(&path, json),
+        Command::Expand(FileJsonRequest::Ready { path, json, .. }) => expand_cmd(&path, json),
         Command::Solve(ParsedSolve::Request(request)) => solve_check_cmd(request),
         Command::Solve(ParsedSolve::Usage) => {
             usage("solve --check <file.emath> [--json] [--apply <label>]")
@@ -2083,7 +2272,9 @@ fn run_command(command: Command) -> CliExit {
         Command::Exactness(request) => exactness_cmd(request),
         Command::Freeze(request) => freeze_cmd(request),
         Command::Why(request) => why_cmd(request),
-        Command::Assumptions(FileJsonRequest::Ready { path, json }) => assumptions_cmd(&path, json),
+        Command::Assumptions(FileJsonRequest::Ready { path, json, .. }) => {
+            assumptions_cmd(&path, json)
+        }
         Command::Signature(SignatureRequest::Ready { path, out }) => {
             genesis_cmd::signature_cmd(&path, out.as_ref())
         }
@@ -2092,11 +2283,13 @@ fn run_command(command: Command) -> CliExit {
         }
         Command::Eval(args) => eval_cmd::dispatch_eval(args),
         Command::Simulate(args) => simulate_cmd::dispatch_simulate(&args),
+        Command::Fit(args) => fit_cmd::dispatch_fit(&args),
         Command::Repl { path } => eval_cmd::dispatch_repl(&path),
         Command::Compile(request) => genesis_cmd::compile_cmd(request),
         Command::WorldShow { id, dir } => genesis_cmd::world_show_cmd(&id, &dir),
         Command::PortfolioShow { id, dir } => genesis_cmd::portfolio_show_cmd(&id, &dir),
         Command::Meaning(request) => meaning_cmd::dispatch(request),
+        Command::LibraryMount { name } => library_cmd::mount_cmd(&name),
         Command::ImportModelica { path, json } => import_modelica_cmd(&path, json),
         Command::ArtifactCheck(dir) => artifact_check(&dir),
         Command::ArtifactBattery(dir) => artifact_battery(&dir),
@@ -2120,6 +2313,13 @@ fn run_command(command: Command) -> CliExit {
             Some(raw) => tooling_cmd::fmt_value_cmd(&raw, sf, from.as_deref(), format.as_deref()),
             None => tooling_cmd::fmt_cmd(path.as_deref().expect("path or --value at parse")),
         },
+        Command::Migrate {
+            path,
+            fix,
+            check_only,
+            receipt,
+            list_rules,
+        } => tooling_cmd::migrate_cmd(&path, fix, check_only, receipt.as_deref(), list_rules),
         Command::Explain(request) => tooling_cmd::explain_cmd(request),
         Command::Run { path, out } => tooling_cmd::run_cmd(&path, &out),
         Command::Test { path, out } => tooling_cmd::test_cmd(&path, &out),
@@ -2296,10 +2496,12 @@ fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
     let mut symbol = None;
     let mut json = false;
     let mut provenance = false;
+    let mut show_defaults = false;
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
             "--provenance" => provenance = true,
+            "--show-defaults" => show_defaults = true,
             other if other.starts_with('-') && other != "-" => return None,
             other if path.is_none() => path = Some(other.to_string()),
             other if symbol.is_none() => symbol = Some(other.to_string()),
@@ -2315,6 +2517,7 @@ fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
             symbol,
             provenance,
             json,
+            show_defaults,
         })
     }
 }
@@ -2453,20 +2656,42 @@ fn parse_compile_request(args: &[String]) -> Option<CompileRequest> {
 }
 
 enum FileJsonRequest {
-    Ready { path: PathBuf, json: bool },
+    Ready {
+        path: PathBuf,
+        json: bool,
+        /// `check --verify-data` (04 §5.2): re-hash declared sha256
+        /// provenance files and refuse drift as `E-OBS-HASH`.
+        verify_data: bool,
+    },
 }
 
 fn parse_file_json_request(args: &[String]) -> Option<FileJsonRequest> {
+    parse_file_request_inner(args, false)
+}
+
+/// `check` additionally admits `--verify-data` (04 §5.2); plan/expand/
+/// assumptions reject it through the catalog flag whitelist.
+fn parse_check_request(args: &[String]) -> Option<FileJsonRequest> {
+    parse_file_request_inner(args, true)
+}
+
+fn parse_file_request_inner(args: &[String], wants_verify_data: bool) -> Option<FileJsonRequest> {
     let mut path = None;
     let mut json = false;
+    let mut verify_data = false;
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
+            "--verify-data" if wants_verify_data => verify_data = true,
             other if other.starts_with('-') && other != "-" => return None,
             other => assign_once(&mut path, PathBuf::from(other))?,
         }
     }
-    Some(FileJsonRequest::Ready { path: path?, json })
+    Some(FileJsonRequest::Ready {
+        path: path?,
+        json,
+        verify_data,
+    })
 }
 
 enum ParseRequest {

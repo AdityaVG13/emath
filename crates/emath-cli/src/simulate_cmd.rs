@@ -1,4 +1,4 @@
-//! `emath simulate`: explicit Euler / RK4 / RK45 on an admitted `emath model`.
+//! `emath simulate`: explicit, adaptive, implicit, and symplectic integration.
 
 use super::{
     json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
@@ -19,6 +19,7 @@ pub(crate) fn dispatch_simulate(args: &SimulateArgs) -> CliExit {
 
 pub(crate) struct SimulateArgs {
     path: PathBuf,
+    model: Option<String>,
     dt: f64,
     t0: f64,
     t1: f64,
@@ -42,6 +43,7 @@ fn assign_once<T>(slot: &mut Option<T>, value: T) -> Result<(), String> {
 
 pub(crate) fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
     let mut path = None;
+    let mut model = None;
     let mut dt = None;
     let mut t0 = None;
     let mut t1 = None;
@@ -83,6 +85,14 @@ pub(crate) fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, Strin
                     &mut method,
                     parse_method(args.get(index).ok_or("--method needs a name")?)?,
                 )?;
+            }
+            "--model" => {
+                index += 1;
+                let name = args.get(index).ok_or("--model needs a declaration name")?;
+                if name.is_empty() {
+                    return Err("--model name must be non-empty".to_string());
+                }
+                assign_once(&mut model, name.to_string())?;
             }
             "--atol" => {
                 index += 1;
@@ -138,6 +148,7 @@ pub(crate) fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, Strin
     }
     Ok(SimulateArgs {
         path: path.ok_or_else(|| "missing <file.emath>".to_string())?,
+        model,
         dt: dt.unwrap_or(0.1),
         t0: t0.unwrap_or(0.0),
         t1: t1.unwrap_or(1.0),
@@ -283,13 +294,15 @@ fn parse_method(name: &str) -> Result<StepMethod, String> {
         "euler" => Ok(StepMethod::Euler),
         "rk4" => Ok(StepMethod::Rk4),
         "rk45" => Ok(StepMethod::Rk45),
+        "backward-euler" => Ok(StepMethod::BackwardEuler),
+        "velocity-verlet" => Ok(StepMethod::VelocityVerlet),
         other => Err(format!(
-            "unknown method `{other}` (expected euler, rk4, or rk45)"
+            "unknown method `{other}` (expected euler, rk4, rk45, backward-euler, or velocity-verlet)"
         )),
     }
 }
 
-fn simulate_error_json(text: &str) -> String {
+pub fn simulate_error_json(text: &str) -> String {
     let (code, message) = split_error_code(text).unwrap_or(("error", text));
     let mut out = JsonWriter::object();
     out.string("command", "simulate");
@@ -332,16 +345,22 @@ fn simulate_cmd(args: &SimulateArgs) -> CliExit {
         }
         return EXIT_REFUSED;
     }
-    let Some(declaration) = result
-        .package
-        .declarations
-        .iter()
-        .find(|declaration| declaration.kind_label == "model")
+    let Some(declaration) = result.package.declarations.iter().find(|declaration| {
+        declaration.kind_label == "model"
+            && args
+                .model
+                .as_deref()
+                .is_none_or(|name| declaration.name.leaf() == name)
+    })
     else {
-        emit_simulate_error(
-            &format!("{} has no `emath model` declaration", args.path.display()),
-            args.json,
-        );
+        let message = match &args.model {
+            Some(name) => format!(
+                "E-MODEL-001: {} has no `emath model {name}` declaration",
+                args.path.display()
+            ),
+            None => format!("{} has no `emath model` declaration", args.path.display()),
+        };
+        emit_simulate_error(&message, args.json);
         return EXIT_REFUSED;
     };
     let mut inputs = BTreeMap::new();
@@ -440,9 +459,25 @@ fn emit_trajectory(
         out.field("dt", &format_f64(args.dt));
         out.field("t0", &format_f64(args.t0));
         out.field("t1", &format_f64(args.t1));
+        if !trajectory.events.is_empty() {
+            let fired = trajectory
+                .events
+                .iter()
+                .map(|event| format!("{}@{}", event.name, format_f64(event.t)))
+                .collect::<Vec<_>>()
+                .join(",");
+            out.string("events", &fired);
+        }
         out.objects("samples", &samples);
         print!("{}", out.finish());
         return;
+    }
+    for event in &trajectory.events {
+        println!(
+            "event {} fired at t={}",
+            event.name,
+            format_f64(event.t)
+        );
     }
     println!(
         "simulate {} model={} method={} dt={} t0={} t1={} samples={}",
@@ -468,6 +503,8 @@ fn method_name(method: StepMethod) -> &'static str {
         StepMethod::Euler => "euler",
         StepMethod::Rk4 => "rk4",
         StepMethod::Rk45 => "rk45",
+        StepMethod::BackwardEuler => "backward-euler",
+        StepMethod::VelocityVerlet => "velocity-verlet",
     }
 }
 
@@ -544,6 +581,34 @@ fn value_json(value: &Value) -> String {
         Value::F64(number) => format_f64(*number),
         Value::I64(number) => number.to_string(),
         Value::Bool(flag) => flag.to_string(),
+        Value::Text(text) => format!("{text:?}"),
+        Value::Series {
+            points,
+            interpolation,
+            extrapolation,
+        } => {
+            let points = points
+                .iter()
+                .map(|(time, value)| format!("[{}, {}]", format_f64(*time), format_f64(*value)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{{\"points\": [{points}], \"interpolation\": {interpolation:?}, \"extrapolation\": {extrapolation:?}}}"
+            )
+        }
+        Value::Set(items) => {
+            let body = items.iter().map(value_json).collect::<Vec<_>>().join(", ");
+            format!("[{body}]")
+        }
+        Value::Record { type_name, fields } => {
+            let mut entries = vec![format!("\"$type\": {type_name:?}")];
+            entries.extend(
+                fields
+                    .iter()
+                    .map(|(name, value)| format!("{name:?}: {}", value_json(value))),
+            );
+            format!("{{{}}}", entries.join(", "))
+        }
         Value::Vector(items) => {
             let body: Vec<String> = items.iter().copied().map(format_f64).collect();
             format!("[{}]", body.join(", "))
@@ -575,54 +640,19 @@ fn value_json(value: &Value) -> String {
                 )
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::simulate_error_json;
-
-    #[test]
-    fn simulate_error_json_has_code_severity_message() {
-        let body = simulate_error_json("hello-square.emath has no `emath model` declaration");
-        let parsed = emath_artifact::parse_json_document(&body).expect("json");
-        assert_eq!(parsed.string_field("command").expect("command"), "simulate");
-        match parsed.field("admitted").expect("admitted") {
-            emath_artifact::JsonValue::Bool(false) => {}
-            other => panic!("admitted must be false, got {other:?}"),
+        Value::Interval { lo, hi } => {
+            format!("[{}, {}]", format_f64(*lo), format_f64(*hi))
         }
-        let diags = match parsed.field("diagnostics").expect("diagnostics") {
-            emath_artifact::JsonValue::Arr(items) => items,
-            other => panic!("diagnostics must be array, got {other:?}"),
-        };
-        assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].string_field("code").expect("code"), "error");
-        assert_eq!(
-            diags[0].string_field("severity").expect("severity"),
-            "error"
-        );
-        assert!(diags[0]
-            .string_field("message")
-            .expect("message")
-            .contains("`emath model`"),);
-    }
-
-    #[test]
-    fn simulate_error_json_preserves_e_pkg_code() {
-        let body = simulate_error_json("E-PKG-080: cannot read source file (missing.emath)");
-        let parsed = emath_artifact::parse_json_document(&body).expect("json");
-        let diags = match parsed.field("diagnostics").expect("diagnostics") {
-            emath_artifact::JsonValue::Arr(items) => items,
-            other => panic!("diagnostics must be array, got {other:?}"),
-        };
-        assert_eq!(diags[0].string_field("code").expect("code"), "E-PKG-080");
-        assert_eq!(
-            diags[0].string_field("severity").expect("severity"),
-            "error"
-        );
-        assert!(diags[0]
-            .string_field("message")
-            .expect("message")
-            .contains("cannot read source file"));
+        // Option/Result carriers (aj8d): deterministic tagged JSON-ish
+        // shapes matching the interp Display convention.
+        Value::Option(Some(inner)) => format!("some({})", value_json(inner)),
+        Value::Option(None) => "none".to_string(),
+        Value::Result { ok, payload } => {
+            if *ok {
+                format!("ok({})", value_json(payload))
+            } else {
+                format!("err({})", value_json(payload))
+            }
+        }
     }
 }
