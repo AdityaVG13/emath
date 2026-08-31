@@ -986,19 +986,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-holes"
-version = "0.1.0"
-dependencies = [
- "emath-lab-core",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-holes-tests"
 version = "0.1.0"
 dependencies = [
- "emath-holes",
  "emath-lab-core",
  "emath-syntax",
  "emath-term",
@@ -3409,7 +3399,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-genesis",
- "emath-holes",
+ "emath-lab-core",
  "emath-layout",
  "emath-portfolio",
  "emath-sema",

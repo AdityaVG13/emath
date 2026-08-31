@@ -1,7 +1,7 @@
-//! Finite synthesis tests (origin `crates/emath-holes/src/synth.rs`).
+//! Finite synthesis tests (origin `crates/emath-lab-core/src/holes/synth.rs`).
 
 use emath_lab_core::calibration::FittedTable;
-use emath_holes::{
+use emath_lab_core::holes::{
     HoleGraph, SynthesisLaw, check_laws, impossible_identity_laws, solve_op_hole,
     synthesize_tables,
 };
@@ -65,7 +65,7 @@ fn empty_laws_are_refused_not_contradictory() {
     let carrier = vec!["a".to_string(), "b".to_string()];
     let error =
         synthesize_tables(&op, &carrier, &[], 100).expect_err("empty laws must be refused");
-    assert_eq!(error, emath_holes::SynthesisError::EmptyLaws);
+    assert_eq!(error, emath_lab_core::holes::SynthesisError::EmptyLaws);
     // And through the hole solver: the hole must report an error,
     // never HoleState::Contradictory.
     let graph = HoleGraph::new(Vec::new());

@@ -57,7 +57,7 @@ fn xor_request() -> TuningRequest {
 }
 
 fn run_demo() -> Result<(), String> {
-    emath_genesis::tuning::check_version(TUNING_VERSION)
+    emath_genesis::joint_tuning::check_version(TUNING_VERSION)
         .map_err(|error| format!("tuning version handshake refused: {error:?}"))?;
 
     let request = xor_request();

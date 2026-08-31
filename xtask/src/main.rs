@@ -21,7 +21,7 @@ use emath_genesis::{
     BinderBudget, BinderDomain, BinderError, BinderFamily, BinderKind, BinderTerm, FreeTermWorld,
     ScopedBinder, BINDER_SCHEMA, BINDER_VERSION,
 };
-use emath_holes::{impossible_identity_laws, synthesize_tables, SynthesisLaw};
+use emath_lab_core::holes::{impossible_identity_laws, synthesize_tables, SynthesisLaw};
 use emath_layout::{
     extract, parse_latex, reference_fixture, to_binder_term, LayoutError, PdfPageFixture,
     PositionedGlyph, LAYOUT_SCHEMA, LAYOUT_VERSION,
