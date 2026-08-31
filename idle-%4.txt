@@ -1,0 +1,55 @@
+pane=%4 lane=EXAMPLES+SURFACE agent=BronzeCoyote bead=emath-r3-sets-tub8 time=2026-08-29T03:52Z (WAVE END checkpoint)
+
+STATUS: emath-r3-sets-tub8 implementation COMPLETE on disk — ONE rch verify
+NOT YET RUN (orchestrator hold: behind %0 fjxh.6 verify series). Close NOT
+proposed yet — goes to WildSpring only after a green verify. Never
+force-closed.
+
+THE SINGLE VERIFY (next session runs exactly this, once, when %0 is done):
+  rch exec -- env CARGO_TARGET_DIR="${RCH_TARGET_BASE:-${TMPDIR:-/tmp}}/rch_target_emath_test" cargo test -p emath-syntax-tests --test r3_sets_tub8_unit --test official_examples_corpus
+
+Note: every rch attempt this wave (6x, 02:50-03:49Z) was refused at worker
+admission (active_project_exclusion=1, %0 sigfigs+fjxh verify series on
+spark-1672) — zero builds consumed, nothing burned. Lost one race by 5s at
+03:49Z. Handshake in place: SilentBear ack-required ask (msg 42716) to ping
+"clear" when the fjxh verify series ends.
+
+ON-DISK STATE (all written, none compiled remotely yet this wave):
+- tests/emath-syntax/tests/r3_sets_tub8_unit.rs — 7 tests: set literal,
+  comprehension+guard, inline record, membership operator, binder-in
+  disjointness, bare-brace E-SYN-154 refusal (fixture-pinned), NEW
+  elp_x12_both_brace_forms_share_one_profile (X12 one-ELP scan: parse →
+  format braces preserved → reparse → idempotent).
+- tests/invalid/r3_sets_tub8_ambiguous.emath — `# expect: E-SYN-154`.
+- X13 `in` charter: language/reference/lexical-layout-and-source.md
+  ("## `in` charter") + language/reference/types-units-shapes-and-domains.md
+  ("## Set and record values (B01+U3, Phase B boundary)") — complete.
+- language/stdlib/cells/std-finite-sets.md — `std.finite.sets` world cell
+  (carrier, laws, E-TYPE-113/E-SYN-154 refusals); indexed in
+  language/stdlib/README.md.
+- language/examples/intro/sets-records.emath — refuse-pinned example
+  (`-> E-TYPE-113`); auto-joins corpus gate; mapping row added to
+  tests/language-gates/CORPUS_ORACLES.md (plus back-filled 2rdq_17 pin).
+- internal/status/compliance/emath-r3-sets-tub8/{evidence.md,commands.log}
+  — RED evidence, E-SYN-154 mutation kill, pending-verify status, honest
+  "ELP scan mutation check still owed" caveat.
+
+NEXT SESSION (fresh reload):
+1. Re-register as BronzeCoyote (roster law), re-reserve the files above.
+2. Run THE SINGLE VERIFY exactly once. If green: append oracle line to
+   commands.log, propose close to WildSpring (never self-close), release
+   holds. If red: fix in one batch pass, re-verify once.
+3. Owed in a later verify window: ELP-scan mutation check (drop formatter
+   Set/Record arm → elp_x12 test must fail; restore → green).
+4. Pending on peers: README index row for sets-records.emath (SilentBear
+   holds language/examples/README.md); ch5/other doc files re-check holds
+   before any edit.
+5. Then next language bead file-disjoint from IR: emath-r3-graphs-ybob
+   unblocks when sets-tub8 closes. Phase B (Value::Set/TypeNode::Set
+   lowering) stays with %0's emath-ir lane.
+
+Reservations RELEASED at wave end (all 9): r3_sets test, invalid fixture,
+corpus test, compliance pack glob, std-finite-sets cell, stdlib README,
+ch2, sets-records example, ch5.
+
+Idle/checkpointed. Not starting new cargo/rch. Not claiming new beads.

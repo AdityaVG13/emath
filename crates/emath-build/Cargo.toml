@@ -16,7 +16,6 @@ emath-plan = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-rust-ir = { workspace = true }
 emath-sema = { workspace = true }
-emath-source = { workspace = true }
 emath-syntax = { workspace = true }
 
 [lints]
