@@ -1,0 +1,18 @@
+# emath-epic-machine-fjxh.1 negative seed.
+#
+# Scenario: a capability cell applies `Undeclared`, a capability that was
+# never admitted to the package capability arena. Silent success would be a
+# MeaningID hashed over a dangling capability reference.
+#
+# expect: MeaningError::MissingCapability - a typed refusal at the emath-ir
+# seam (SemanticPackage::meaning_id), never a silent identity over a
+# dangling capability application.
+use std.kinds.capability
+
+emath capability Softmax:
+    inputs:
+        x: Float64
+    outputs:
+        value: Float64
+    definitions:
+        value = Undeclared(x)

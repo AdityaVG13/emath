@@ -1,0 +1,11 @@
+// emath-epic-machine-fjxh.12 negative seed: static specializer with VM parity.
+//
+// Seeded silent-success: a specializer asked to bind a parameter that is
+// OUTSIDE the cell's declared contract must refuse typed, never silently
+// specialize past the contract (the residual would disagree with the VM
+// seam while looking like a successful specialization).
+# expect: refuse E-SPEC-001 (unknown specialization param)
+
+package epic_machine_fjxh_12_invalid {
+  cell std.tensor.softmax(x: vector) specialize y = 1.0;
+}

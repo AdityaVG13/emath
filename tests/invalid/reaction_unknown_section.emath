@@ -1,0 +1,13 @@
+# expect: E-KIND-027 — a `reaction_network` body is `species:`,
+# `reactions:`, `rate:`, `assumptions:`, or `conservation:` sections
+# (emath-r3-reactions-section-92hq + emath-r3-equilibrium-ds6x +
+# emath-r3-chem-surface-i6ri). An unknown section refuses — the closed
+# section table cannot be extended by spelling.
+emath reaction_network UnknownSection:
+    species:
+        A
+        B
+    vibes:
+        strong
+    reactions:
+        r1: A -> B

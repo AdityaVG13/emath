@@ -1,0 +1,16 @@
+// emath-epic-machine-fjxh.13 negative seed: user-defined and law-synthesized worlds.
+//
+// Seeded silent-success: attaching a custom world to a STRICT source
+// must refuse typed (the strict lane never runs custom-world semantics —
+// a strict Gaussian file does not run Mod17). A mutant that silently
+// attaches the world would look like a successful run while crossing
+// the strict vs Genesis/custom firewall.
+# expect: refuse E-WORLD-006 (world attached to a strict source)
+
+package epic_machine_fjxh_13_invalid {
+  source_class: strict;
+  world ModularFive {
+    domain: [0, 1, 2, 3, 4];
+    operator ⋈(2) = add-mod-5;
+  }
+}

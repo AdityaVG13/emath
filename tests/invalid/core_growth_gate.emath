@@ -1,0 +1,16 @@
+// emath-epic-machine-fjxh.18 negative seed: core-growth gate.
+//
+// Seeded silent-success: a contributor adds a stable pure cell and
+// wires it with an operation-name branch in a shared-nucleus file
+// (parser/sema/backend/kernel-dispatch). The gate must FAIL that seeded
+// PR — a rising handwritten-core-per-capability slope is a regression,
+// and the mutant that lets the branch through is the silent-success
+// this seed pins.
+# expect: refuse E-GROWTH-001 (operation-name branch in the core)
+
+package epic_machine_fjxh_18_invalid {
+  cell std.sim.magic {
+    // seeded violation: backend dispatches on the cell name
+    // match op { "std.sim.magic" => magic_kernel(args) }
+  }
+}

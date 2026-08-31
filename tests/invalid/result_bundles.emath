@@ -1,0 +1,25 @@
+# emath-epic-machine-fjxh.8 negative seed.
+#
+# Scenario: an execution path returns a BARE SCALAR with no world label —
+# a value that looks like an answer but hides which world produced it,
+# with no disposition, evidence, or cost. Any consumer (CLI, WASM, lab
+# lens) could mistake it for the intended meaning: silent success. The
+# WorldResultBundle envelope refuses this: a result without its world
+# label / method / disposition is a typed refusal (E-WORLD-001..003) and
+# never enters a bundle; dispositions (answer/open/refused/fault) are
+# first-class, and the bundle id replays deterministically.
+#
+# expect: E-WORLD-001 - the envelope refuses the naked result with a
+# typed refusal naming the missing label; every bundleable execution
+# carries world, method, inputs, assumptions, disposition, evidence, and
+# cost labels.
+use std.kinds.capability
+
+emath custom NakedResult:
+    world constructor unlabelled:
+        # seeded naked path: the value is returned without evidence
+        symbols:
+            q: 1
+        carrier: Integer
+    strategies:
+        select: bare-scalar-no-provenance

@@ -1,0 +1,6 @@
+emath reaction_network sink_fence:
+    species:
+        Drug
+
+    reactions:
+        elimination: Drug ->

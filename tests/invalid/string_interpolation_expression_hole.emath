@@ -1,0 +1,10 @@
+#  Negative control (U8, emath-r3-string-interp-og2e): an expression in
+#  an interpolation hole. Purity keeps interpolation evidence-grade —
+#  only names and dotted paths may appear in `{}`, so `{f(x)}` refuses
+#  at parse time instead of hiding a side effect in the report lane.
+emath function f:
+    inputs:
+        x: Float64
+
+    definitions:
+        report = "x = {f(x)}"

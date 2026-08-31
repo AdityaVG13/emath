@@ -1,0 +1,10 @@
+# Keep-gates record promotion policy; they cannot promote by declaration.
+# `allow: ...` grants an authority the experiment kind does not carry, so
+# the keep-gate is refused (E-KIND-027) and nothing is admitted.
+use std.kinds.experiment
+
+emath experiment SelfPromoting:
+    problems:
+        "an open problem"
+    keep:
+        allow: "certified"

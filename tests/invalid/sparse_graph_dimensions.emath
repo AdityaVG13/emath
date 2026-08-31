@@ -1,0 +1,15 @@
+# emath-r2-graphs-masa negative seed (sparse slice)
+# The seed's silent-success shape: a triplet stream whose length is
+# NOT a multiple of three is a malformed sparse carrier — the build
+# must refuse typed E-GRAPH-006, never silently drop the dangling
+# fields.
+# expect: E-GRAPH-006
+
+emath function sparse_build_ragged:
+    inputs:
+        n: Float64
+        triplets: Vector<Float64>
+    outputs:
+        adj: Matrix<Float64>
+    definitions:
+        adj = sparse_from_triplets(n, triplets)

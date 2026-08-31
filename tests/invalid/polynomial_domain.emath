@@ -1,0 +1,14 @@
+# emath-r3-funcspaces-poly-hjor negative seed (slice 1: B28 compute layer)
+# The seed's silent-success shape: a non-finite COEFFICIENT must refuse
+# typed at evaluation — E-POLY-001 — never a silently corrupted
+# convolution result.
+# expect: E-POLY-001
+
+emath function scale_poly:
+    inputs:
+        p: Vector<Float64>
+        q: Vector<Float64>
+    outputs:
+        s: Float64
+    definitions:
+        s = poly_eval(poly_mul(p, q), 2)

@@ -1,0 +1,13 @@
+# expect: E-SYN-101 figures payload design fence
+emath model FigPayloadProbe:
+    state:
+        q: Float64
+        v: Float64
+
+    equations:
+        der(q) = v
+        der(v) = -2.0 * q
+
+    figures:
+        phase_portrait:
+            series q over t in 0..10

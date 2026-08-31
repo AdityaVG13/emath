@@ -1,0 +1,27 @@
+# Negative control (04 §5.2, emath-r3-observations-9ffu): the declared
+# sha256 is a placeholder no on-disk file hashes to. Under
+# `emath check --verify-data` the digest is re-hashed against the data
+# file and the drift (or missing file) refuses with E-OBS-HASH — changed
+# data under an unchanged model is a different artifact identity. At
+# plain `emath check` this file admits: provenance is declared, not
+# verified, without the flag.
+emath function DriftedPk:
+    inputs:
+        dose: Float64
+
+    observations:
+        obs plasma_conc: Float64 = 2.4
+
+    definitions:
+        conc = dose * 2
+
+    provenance:
+        plasma_conc:
+            kind "InstrumentRun"
+            file "pk_run_041.csv"
+            processing "LC-MS/MS, area ratio"
+            sha256 "1111111111111111111111111111111111111111111111111111111111111111"
+
+    goals:
+        evaluate <conc>:
+            produce rust.library

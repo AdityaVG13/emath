@@ -1,0 +1,18 @@
+// emath-xx0x.2 negative seed: eigen on a non-square matrix.
+//
+// Seeded silent-success: `eigvals` is called on a 2x3 matrix. A mutant
+// that returns a truncated/garbage spectrum (or silently transposes/
+// pads the input to make it square) would look like a successful
+// eigenvalue computation while computing nothing meaningful. The law:
+// the spectral surface refuses TYPED, naming E-LINALG-001.
+# expect: refuse E-LINALG-001 (eigen requires a square matrix)
+
+package emath_xx0x_2_invalid
+
+emath function spectrum_attempt:
+    inputs:
+        a: Matrix<Float64>
+    outputs:
+        y: Float64
+    definitions:
+        y = eigvals(a)[0]

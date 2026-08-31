@@ -1,0 +1,12 @@
+# expect: E-CHEM-KA-EXACT — an equilibrium constant is a MEASURED value
+# (emath-r3-equilibrium-ds6x): the uncertainty form is the point. A bare
+# exact literal for Ka refuses — write `1.75(3)e-5` or `1.75 ± 0.03e-5`.
+emath reaction_network ExactKa:
+    species:
+        CH3COOH
+        H2O
+        CH3COO
+        H3O
+    Ka: Measured<Real> in M = 1.75e-5
+    reactions:
+        dissoc: CH3COOH + H2O <=> CH3COO + H3O

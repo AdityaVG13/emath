@@ -1,0 +1,26 @@
+# emath-epic-machine-fjxh.6 negative seed.
+#
+# Scenario: a capability cell application is lowered into the reference VM
+# with the wrong argument shape (a scalar where the cell contract declares
+# a rank-1 vector) and the VM silently coerces / evaluates a partial
+# result instead of refusing. A VM that silently succeeds here would ship
+# "partial authority": a value computed outside the cell's declared
+# contract, indistinguishable from a correct run.
+#
+# expect: E-VM-APPLY-SHAPE / E-CELL-006 - the reference VM refuses with a
+# typed fault (type confusion / capability-layer contract refusal) at the
+# apply seam; resource exhaustion and unsupported dispatch are also typed
+# refusals (BudgetExhausted / ProviderCallRequired), never partial
+# authority and never a silent identity.
+use std.kinds.capability
+
+emath capability Softmax:
+    class: pure
+    version: 1.0.0
+    migration: frozen
+    inputs:
+        x: Float64
+    outputs:
+        probability: Float64
+    definitions:
+        probability = softmax(x as Float64)

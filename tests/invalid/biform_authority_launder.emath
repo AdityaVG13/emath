@@ -1,0 +1,27 @@
+# Bead `emath-biform-cells-jswu6` — negative seed: authority laundering.
+#
+# Scenario: algorithm-only evidence claimed as spec proof — one evidence
+# object bound to BOTH sides («algorithm tests green => spec proved»).
+# A green algorithm test must never stamp the spec proved; a missing
+# spec is a typed missing-side refusal, never treated as proved.
+#
+# expect: E-CELL-011 (side-evidence collision) / E-CELL-009 (missing
+# side), refused by the biform closure planner reached from the
+# declaration lane; nothing silent.
+package std.math
+use std.kinds.capability
+
+emath capability Softmax:
+    class: biform
+    version: "1.0.0"
+    migration: frozen
+    inputs:
+        x: Vector[Float64]
+    outputs:
+        probability: Vector[Float64]
+    spec:
+        # WRONG: reuses the algorithm evidence object — the spec side
+        # must carry its own independent evidence
+        evidence: "evidence:std.math.softmax:algorithm:v2"
+    algorithm:
+        evidence: "evidence:std.math.softmax:algorithm:v2"

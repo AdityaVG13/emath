@@ -1,0 +1,13 @@
+# emath-r2-graphs-masa slice 3 negative seed (spectral basics)
+# The seed's silent-success shape: a NON-SQUARE adjacency carrier must
+# refuse typed at evaluation — E-GRAPH-001 — never a silently truncated
+# Laplacian over garbage shape.
+# expect: E-GRAPH-001
+
+emath function algebraic_connectivity:
+    inputs:
+        links: Matrix<Float64>
+    outputs:
+        lambda_2: Float64
+    definitions:
+        lambda_2 = eigvals(graph_laplacian(links))[1]

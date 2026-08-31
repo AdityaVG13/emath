@@ -1,0 +1,12 @@
+# expect: E-SYN-156 — `<==>` is the logical biconditional (Iff) token; it is
+# not an admitted reaction arrow. The admitted `reactions:` arrows are
+# `->` (irreversible), `<->` (reversible), `<=>` (equilibrium)
+# (emath-r3-reactions-section-92hq). Note `->` and `=>` share one lexer
+# token and both denote the irreversible arrow; the lambda/notation reading
+# of `=>` has no lambda position to desugar into in this T3 grammar.
+emath reaction_network WrongIff:
+    species:
+        A
+        B
+    reactions:
+        wrong: A <==> B

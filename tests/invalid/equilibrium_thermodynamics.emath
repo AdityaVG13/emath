@@ -1,0 +1,16 @@
+# expect: E-CHEM-THERMO — the honesty triangle (emath-r3-equilibrium-ds6x):
+# a network that declares BOTH a reversible kinetic pair (`<->` with
+# rate constants kf/kr) AND an equilibrium (`<=>` with a measured K) must
+# satisfy K == kf/kr within combined uncertainty. Here K says 1.0 but
+# kf/kr = 4.0 — the violation refuses.
+emath reaction_network InconsistentPair:
+    species:
+        A
+        B
+    K: Measured<Real> = 1.0(1)
+    rate:
+        kf = 2.0
+        kr = 0.5
+    reactions:
+        kinetic: A <-> B
+        equil: A <=> B

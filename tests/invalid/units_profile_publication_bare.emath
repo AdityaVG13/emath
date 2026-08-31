@@ -1,0 +1,13 @@
+# Negative control: a bare numeric quantity under the publication
+# profile is refused (E-UNIT-106); declare uncertainty or lower the
+# profile. Also missing the required provenance section (E-UNIT-107).
+@units_profile(publication)
+emath function Bare:
+    inputs:
+        t: Float64
+
+    outputs:
+        y: Float64 in m
+
+    definitions:
+        y = 5 m

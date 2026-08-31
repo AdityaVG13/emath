@@ -1,0 +1,18 @@
+// emath-r3-dynamical-03lh negative seed: transition wired to an
+// undeclared event.
+//
+// Seeded silent-success: a `transitions:` rule triggers `on GhostEvent`
+// but no such event is declared in the model's `events:` section. A
+// mutant that admits the dangling trigger (or silently drops the rule)
+// would look like a successful hybrid model while the reset could
+// never fire — the discrete half of the automaton silently missing.
+# expect: refuse E-EVENT-001 (transition trigger references an undeclared event)
+
+package r3_dynamical_03lh_invalid
+
+emath model thermostat:
+    state:
+        heat: Float64
+    transitions:
+        on GhostEvent(value):
+            heat = 0.0

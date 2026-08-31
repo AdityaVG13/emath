@@ -1,0 +1,10 @@
+# Firewall: a strict file must refuse unknown names with a typed error.
+# A guessed world or silent custom-lane fallthrough would admit this file;
+# the pin demands E-TYPE-003 instead.
+emath function Mystery:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = mystery_op(x)

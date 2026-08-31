@@ -1,0 +1,31 @@
+package r3_intervals_8pjn
+
+emath function IntervalConstruct:
+    outputs:
+        x: Interval<Float64>
+        probe: Float64
+    definitions:
+        x = interval(1.0, 2.0)
+        probe = 1.0
+    tests:
+        example <canonical>:
+            expect probe == 1
+
+emath function IntervalArithmetic:
+    outputs:
+        interval_sum: Interval<Float64>
+        interval_difference: Interval<Float64>
+        interval_product: Interval<Float64>
+        interval_quotient: Interval<Float64>
+        interval_overlap: Interval<Float64>
+        probe: Float64
+    definitions:
+        interval_sum = interval(1.0, 2.0) + interval(3.0, 4.0)
+        interval_difference = interval(1.0, 2.0) - interval(3.0, 4.0)
+        interval_product = interval(-2.0, 3.0) * interval(4.0, 5.0)
+        interval_quotient = interval(6.0, 8.0) / interval(2.0, 4.0)
+        interval_overlap = intersect(interval(1.0, 5.0), interval(4.0, 9.0))
+        probe = 1.0
+    tests:
+        example <canonical>:
+            expect probe == 1

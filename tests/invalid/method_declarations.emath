@@ -1,0 +1,11 @@
+# A method cannot raise its own evidence authority. `certified` is not a
+# value a method may claim: authority stays proposal-only (E1, not-run).
+use std.kinds.method
+
+emath method Overreach:
+    algorithm:
+        kind: "integrator"
+    falsifier:
+        condition: "step-doubling residual exceeds tolerance"
+    authority:
+        claims: "certified"

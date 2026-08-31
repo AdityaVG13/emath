@@ -1,0 +1,36 @@
+package r3_units_ext_physics_invalid
+
+emath law NewtonSeededWrongOutput:
+    about:
+        summary: "Seeded silent-success: velocity used where acceleration belongs."
+    assumptions:
+        assume: "Point mass in an inertial frame."
+        require F == m * a
+    domain:
+        name: "mechanics"
+    provenance:
+        source: "Newton, Philosophiae Naturalis Principia Mathematica (1687)"
+    citations:
+        cite: "F = m a"
+    inputs:
+        m: Float64 in kg
+        a: Float64 in m/s
+        F: Float64 in N
+    outputs:
+        residual: Float64 in N
+    definitions:
+        residual = F - m * a
+    goals:
+        evaluate <residual>:
+            produce rust.library
+    evidence:
+        claim <newton_second_relation>:
+            statement: "Second law relation."
+            require force_balance
+            level E1
+    tests:
+        example <balanced>:
+            given m = 2
+            given a = 3
+            given F = 6
+            expect residual == 0

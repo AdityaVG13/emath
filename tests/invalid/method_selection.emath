@@ -1,0 +1,11 @@
+# A method card cannot raise its own evidence authority: `certified`
+# self-grant is a typed refusal (E-KIND-027) and nothing is admitted.
+use std.kinds.method
+
+emath method AuthorityGrab:
+    algorithm:
+        kind: "scoring"
+    falsifier:
+        condition: "held-out accuracy drops below the declared floor"
+    authority:
+        claims: "certified"

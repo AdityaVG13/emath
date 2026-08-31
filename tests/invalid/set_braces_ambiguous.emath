@@ -1,0 +1,4 @@
+# expect: E-SYN-154 ambiguous brace: `{name: value}` without a path prefix is not an inline record; prefix it (`Point:{...}`) or write a set literal
+emath function AmbiguousBrace:
+    definitions:
+        r = {x: 1}

@@ -1,0 +1,17 @@
+# expect: E-CHEM-STOICH — an ICE table names its reaction (`ice_table rX:`);
+# `rX` is not a declared reaction line, so the table has nothing to be
+# checked against: out-of-range references are Err, never false
+# (emath-r3-stoich-tables-pqs6).
+emath reaction_network UnknownReaction:
+    species:
+        A
+        B
+    reactions:
+        r1: A -> B
+    ice_table rX:
+        initial:
+            A = 1.0
+            B = 0.0
+        change:
+            A = -1
+            B = 1

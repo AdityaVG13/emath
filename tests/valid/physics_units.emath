@@ -1,0 +1,126 @@
+package r3_units_ext_physics
+
+emath law NewtonSecondLaw:
+    about:
+        summary: "Second law as an undirected relation over mechanical quantities."
+    assumptions:
+        assume: "Point mass in an inertial frame; the relation binds force, mass, and acceleration."
+        require F == m * a
+    domain:
+        name: "mechanics"
+    provenance:
+        source: "Newton, Philosophiae Naturalis Principia Mathematica (1687)"
+    citations:
+        cite: "F = m a"
+    inputs:
+        m: Float64 in kg
+        a: Float64 in m/s^2
+        F: Float64 in N
+    outputs:
+        residual: Float64 in N
+    definitions:
+        residual = F - m * a
+    goals:
+        evaluate <residual>:
+            produce rust.library
+    evidence:
+        claim <newton_second_relation>:
+            statement: "The relation is machine-checked through the quantity types; direction is assigned only by the evaluate goal, the law itself is undirected."
+            require force_balance
+            level E1
+    tests:
+        example <balanced>:
+            given m = 2
+            given a = 3
+            given F = 6
+            expect residual == 0
+
+emath law CoulombInverseSquare:
+    about:
+        summary: "Electrostatic force as an inverse-square relation over charges."
+    assumptions:
+        assume: "Point charges in vacuum; the Coulomb constant carries the CODATA-pinned measured value as an input."
+        require F == ke * q1 * q2 / (r * r)
+    domain:
+        name: "electromagnetism"
+    provenance:
+        source: "Coulomb, premier mémoire sur l'électricité et le magnétisme (1785)"
+    citations:
+        cite: "F = ke q1 q2 / r^2, ke from core::codata (2018/2022 pinned)"
+    inputs:
+        q1: Float64 in C
+        q2: Float64 in C
+        r: Float64 in m
+        ke: Float64 in N*m^2/(C*C)
+        F: Float64 in N
+    outputs:
+        residual: Float64 in N
+    definitions:
+        residual = F - ke * q1 * q2 / (r * r)
+    goals:
+        evaluate <residual>:
+            produce rust.library
+    evidence:
+        claim <coulomb_relation>:
+            statement: "Inverse-square relation machine-checked over coulomb quantities; the constant is a measured input, never fabricated inside the law."
+            require charge_relation
+            level E1
+    tests:
+        example <balanced>:
+            given q1 = 1e-6
+            given q2 = 1e-6
+            given r = 1
+            given ke = 8.9875517923e9
+            given F = 0.008987551792299998
+            expect residual == 0
+
+emath law IdealGasRelation:
+    about:
+        summary: "Ideal gas law as an undirected relation over thermodynamic quantities."
+    assumptions:
+        assume: "Ideal gas regime; the molar gas constant carries the CODATA-pinned value as an input."
+        require P * V == n * R * T
+    domain:
+        name: "thermodynamics"
+    provenance:
+        source: "Clapeyron, mémoire sur la puissance motrice de la chaleur (1834)"
+    citations:
+        cite: "P V = n R T, R from core::codata (2018/2022 pinned)"
+    inputs:
+        P: Float64 in Pa
+        V: Float64 in m^3
+        n: Float64 in mol
+        R: Float64 in J/(mol*K)
+        T: Float64 in K
+    outputs:
+        residual: Float64 in J
+    definitions:
+        residual = P * V - n * R * T
+    goals:
+        evaluate <residual>:
+            produce rust.library
+    evidence:
+        claim <ideal_gas_relation>:
+            statement: "Pressure-volume product balances thermal energy as a quantity relation; the constant is a measured input, never fabricated inside the law."
+            require gas_relation
+            level E1
+    tests:
+        example <balanced>:
+            given P = 101325
+            given V = 1
+            given n = 1
+            given R = 8.31446261815324
+            given T = 12186.596374704217
+            expect residual == 0
+
+emath function AstroAndAngleQuantities:
+    inputs:
+        orbit_radius: Float64 in AU
+        inclination: Float64 in deg
+        phase: Float64 in rad
+    outputs:
+        perihelion_m: Float64 in m
+    definitions:
+        perihelion_m = 1.495978707e11 * orbit_radius
+    constraints:
+        dimension of inclination == dimension of phase
