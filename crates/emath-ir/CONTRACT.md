@@ -9,8 +9,8 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
 
 - `Constructor`, `Field`, `TestCase`, `Visibility`: constructor structure. `TestCase.expect` is `Option<ExprId>`: `Some` is an asserted example test; `None` is a worked example (given only).
 - `ObligationClass` (static/runtime/solver/certificate/deferred), `ObligationKind` (precondition/postcondition), `ConstructionObligation`, `ConstructionReceipt`: the constructor obligation taxonomy. `Constructor::obligation_matrix` classifies every textual `require`/`ensure`/`invariant` (all `Runtime` in Phase 1); `Constructor::receipt` produces the receipt; `ConstructionReceipt::compose` merges delegate obligations first and never drops one; only `Deferred` obligations remain open after construction; `ConstructionReceipt::identity` is a deterministic content id.
-- `mig`: `Mig` / `MigNode` / `MigEdge` / `MigNodeKind` / `MigEdgeKind` — the mathematical intent graph (schema `emath.mig.v1`), derived deterministically from a `SemanticPackage`. Every semantic plane is represented by node kinds (definition, construction, goal, evidence, execution, evolution); every non-declaration node is owned by a declaration node (spine property). `Mig::identity` excludes presentation-only changes by construction (no spans enter the derivation; expression content enters via span-free `canonical_expr`).
-- `layers`: `IrLayer` — the ten-layer IR stack registry (syntax, HIR, MIG, SIR, GIR, resolution, EIR, evidence, Rust IR, artifact) with durable schema base ids (matching strings already written into artifacts), explicit schema versions, `versioned_schema()` ids and owning crates.
+- `mig`: `Mig` / `MigNode` / `MigEdge` / `MigNodeKind` / `MigEdgeKind`; the mathematical intent graph (schema `emath.mig.v1`), derived deterministically from a `SemanticPackage`. Every semantic plane is represented by node kinds (definition, construction, goal, evidence, execution, evolution); every non-declaration node is owned by a declaration node (spine property). `Mig::identity` excludes presentation-only changes by construction (no spans enter the derivation; expression content enters via span-free `canonical_expr`).
+- `layers`: `IrLayer`; the ten-layer IR stack registry (syntax, HIR, MIG, SIR, GIR, resolution, EIR, evidence, Rust IR, artifact) with durable schema base ids (matching strings already written into artifacts), explicit schema versions, `versioned_schema()` ids and owning crates.
 - `ExprNode`, `Literal`, `BinaryOp`, `UnaryOp`,
   `BinderKind`,
   `BinderVariable`: neutral expression trees.
@@ -120,9 +120,9 @@ None.
 
 No `tests/` directory in this crate and no `#[cfg(test)]` module in `src/`.
 Coverage lives in workspace test members `tests/emath-ir` (canonical,
-goal, layers, numeric_models, symbolic, constructor, mig, domain_logic, containment
-— including `interval_containment_holds_on_seeded_grid` for
-`Interval`/`Domain` membership — and `capability_id_terms.rs` for
+goal, layers, numeric_models, symbolic, constructor, mig, domain_logic, containment,
+including `interval_containment_holds_on_seeded_grid` for
+`Interval`/`Domain` membership; and `capability_id_terms.rs` for
 CapabilityId terms, name-based cell identity, legacy sin/exp compat, and the
 dangling-capability typed refusal) and `tests/emath-store` (MeaningID
 presentation/alpha/alias stability plus semantic-policy/dependency changes).

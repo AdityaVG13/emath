@@ -2,7 +2,7 @@
 
 > Serial: 4 digits (`0001`, ...), one past the highest on `main`.
 > Slug: kebab-case, matches the filename.
-> Status: Draft — fill every section; `scripts/check_elp.py` refuses
+> Status: Draft; fill every section; `scripts/check_elp.py` refuses
 > placeholders (`TODO`, `TBD`, `...` alone in a section).
 
 ## 1. Motivation and coverage claim
@@ -32,7 +32,7 @@ not append-only.
 
 ## 5. Migration
 
-`none needed (pure addition)` — or the migrate rule set with golden
+`none needed (pure addition)`; or the migrate rule set with golden
 tests.
 
 ## 6. Four-artifact plan

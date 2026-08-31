@@ -38,7 +38,7 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 ### Honest boundaries
 
 - **Compiling is not proving.** The pipeline guarantees the artifact matches what you asked for, never that the idea is true. Lean / FrankenLean is planned as hired evidence, not authority.
-- Illustrative README sketches may parse and then return labeled partial results for unimplemented parts — a symbol, a bound, an open hole — with a route to what would compute them. That is expected.
+- Illustrative README sketches may parse and then return labeled partial results for unimplemented parts (a symbol, a bound, an open hole) with a route to what would compute them. That is expected.
 - There is no crates.io product claim yet. The workspace is the deliverable today.
 - Upstream engines are not absorbed into emath; adapters only, and not consumed yet in Phase 1.
 
@@ -260,7 +260,7 @@ Answers are labeled: a value, a bound, a symbol, or an open hole. Worlds stay as
 
 ### Refusal is better than a silent wrong answer
 
-Unsupported surface is named and routed — never silently guessed. Compiling is not proving. Partial sketches are welcome; incomplete capability is not disguised as success.
+Unsupported surface is named and routed, never silently guessed. Compiling is not proving. Partial sketches are welcome; incomplete capability is not disguised as success.
 
 ### `language/` is the source of truth
 

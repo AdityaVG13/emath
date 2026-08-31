@@ -128,11 +128,11 @@ beads_compliance_audit/
 /outputs/
 /tmp/
 
-# Local archive dumps — never track these
+# Local archive dumps: never track these
 archived_mailbox_states/
 *.zip
 
-# OS and agent-machine state — never publish
+# OS and agent-machine state: never publish
 .DS_Store
 .DS_Store?
 ._*

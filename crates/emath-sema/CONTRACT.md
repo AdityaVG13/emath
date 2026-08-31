@@ -10,19 +10,19 @@
 
 ## Public types and semantics
 
-- `CompilerSession` — the session facade: `new`, `load_package`, `load_text`, `parse_text`, `check`, `check_owned`, `plan`. Carries a `SourceStore` and `Limits`.
-- `SourcePackage` — a loaded source: file id, display name, text.
-- `CheckResult` — admitted `SemanticPackage` plus `Diagnostics` and a `SemanticTrace`.
-- `PlanResult` — admitted package, elaborated `RequestSpec`s, `ResolutionPlan`s, and `Diagnostics`.
-- `CompilerPolicy` — build policy knobs (e.g. `verify_generated_crate`).
-- `GeneratedCrate` — build-step result produced by `emath-build`: crate/package/version, file map, `EmittedAnchor` source-map anchors.
-- `EmittedAnchor`, `SemanticTrace`, `TraceEntry` — anchor and trace bookkeeping (not exhaustive).
+- `CompilerSession`; the session facade: `new`, `load_package`, `load_text`, `parse_text`, `check`, `check_owned`, `plan`. Carries a `SourceStore` and `Limits`.
+- `SourcePackage`; a loaded source: file id, display name, text.
+- `CheckResult`; admitted `SemanticPackage` plus `Diagnostics` and a `SemanticTrace`.
+- `PlanResult`; admitted package, elaborated `RequestSpec`s, `ResolutionPlan`s, and `Diagnostics`.
+- `CompilerPolicy`; build policy knobs (e.g. `verify_generated_crate`).
+- `GeneratedCrate`; build-step result produced by `emath-build`: crate/package/version, file map, `EmittedAnchor` source-map anchors.
+- `EmittedAnchor`, `SemanticTrace`, `TraceEntry`; anchor and trace bookkeeping (not exhaustive).
 
 ## Invariants
 
 - Goals attach to declarations by construction (the ids built for that declaration), never by span geometry.
 - Missing or unloaded source is a typed refusal (`E-PKG-080`), never an empty-source plan that passes silently.
-- Multi-file packages: `CompilerSession::check_package` resolves in-package module imports — `use <package>.<module>` where the path prefix matches the file's own `package` line — against the session's loaded `<module>.emath` sources and merges the siblings' declarations/notations under the main file's identity before the normal admission lane runs. Cross-file duplicate names refuse `E-NAME-022`; an unresolved in-package module import refuses `E-PKG-050` (never a silent inert entry). The plain single-file `check` is unchanged (file imports are inert entries there); sibling `package`/`use` lines are not re-admitted (transitive file imports are future work).
+- Multi-file packages: `CompilerSession::check_package` resolves in-package module imports; `use <package>.<module>` where the path prefix matches the file's own `package` line; against the session's loaded `<module>.emath` sources and merges the siblings' declarations/notations under the main file's identity before the normal admission lane runs. Cross-file duplicate names refuse `E-NAME-022`; an unresolved in-package module import refuses `E-PKG-050` (never a silent inert entry). The plain single-file `check` is unchanged (file imports are inert entries there); sibling `package`/`use` lines are not re-admitted (transitive file imports are future work).
 - `emath field_pack` (v9-06-2rdq.16) is admitted as exported artifact data: the closed section table (`exports:` command lines `cell|theory|method|world <name>`, `metadata:` `description` lines) records a `FieldPackEntry` on the package; unknown sections refuse `E-SYN-101` (no parser-keyword injection), and a pack never enters `package.declarations` (no custom→strict fallthrough, no runnable lowering). Packs compile to the semantic image via field-pack tooling, not admission.
 - Empty, comment-only, whitespace-only, and package-only files refuse with `E-PKG-081` (`source has no declarations`). A vacuous `check` pass is not admission.
 - Declarations distinguishable only by lookalike glyphs are refused (`E-NAME-024`); duplicate names (`E-NAME-022`) and `_` names (`E-NAME-023`) are refused.

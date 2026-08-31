@@ -5,7 +5,7 @@
 Evidence/artifact *state* store: per-artifact evidence rows backed by the
 frankensqlite engine (fsqlite crate) instead of the single hashed
 emath/artifact-manifest.json file. Layer: storage adapter external to the
-protected set (CUTOVER_PLAN.md section 5.2 / section 9.10) — it may import
+protected set (CUTOVER_PLAN.md section 5.2 / section 9.10); it may import
 frankensqlite; emath-core / emath-ir / emath-artifact stay Frank-free.
 
 The manifest JSON wire contract is untouched: emath-evidence, ERROR_CODES.md
@@ -17,33 +17,33 @@ blob to prove store/manifest agreement. It never rewrites manifest files.
 
 Always available (std-only, zero third-party deps):
 
-- schema::SCHEMA_SQL — deterministic DDL (artifacts + evidence tables).
-- schema::VALID_CLAIM_STATUSES — closed status set: ok / fail / pending.
-- schema::valid_claim_status(&str) -> bool — value-set membership check.
-- `ObjectGraph` — deterministic in-memory object/relation index.
-- `ObjectDraft` / `LibraryObject` — one envelope for cell, theory, proof,
+- schema::SCHEMA_SQL; deterministic DDL (artifacts + evidence tables).
+- schema::VALID_CLAIM_STATUSES; closed status set: ok / fail / pending.
+- schema::valid_claim_status(&str) -> bool; value-set membership check.
+- `ObjectGraph`; deterministic in-memory object/relation index.
+- `ObjectDraft` / `LibraryObject`; one envelope for cell, theory, proof,
   method, lesson, recipe, and validated custom kinds. ObjectID includes kind,
   MeaningID, and canonical semantic payload; presentation is excluded.
-- `RelationDraft` / `Relation` — immutable typed edges (`depends_on`, `proves`,
+- `RelationDraft` / `Relation`; immutable typed edges (`depends_on`, `proves`,
   `equivalent_to`, `refines`, `implements`, `uses`, custom) with global,
   namespace, or object scope plus assumptions, authority, and evidence.
-- `Space` — local named alias/policy/lock view over an `Arc<ObjectGraph>`.
+- `Space`; local named alias/policy/lock view over an `Arc<ObjectGraph>`.
   Branches clone only view metadata and share immutable objects.
-- `SpaceSnapshot` / `LibraryLock` — deterministic alias/policy snapshot and
+- `SpaceSnapshot` / `LibraryLock`; deterministic alias/policy snapshot and
   closed dependency set. Lock verification refuses missing or revoked objects.
-- `Space::semantic_merge` / `MergeReceipt` — additive, content-addressed merge
+- `Space::semantic_merge` / `MergeReceipt`; additive, content-addressed merge
   over a named common snapshot. Alias, evidence, and policy alternatives union;
   no side wins by recency.
-- `Reconciliation::{Choose,Rename,Morphism,ProveEquivalent}` — explicit merge
+- `Reconciliation::{Choose,Rename,Morphism,ProveEquivalent}`; explicit merge
   operations, each backed by a stored reconciliation object and recorded in the
   receipt identity.
-- `MaterializationRecipe` (nz1n.7) — the four materialization inputs
+- `MaterializationRecipe` (nz1n.7); the four materialization inputs
   (meaning + toolchain/provider + target + canonical spec); `identity()`
   derives the `RecipeId` over the framed inputs, so a provider/toolchain
-  mismatch changes the recipe identity. The recipe carries meaning — it
+  mismatch changes the recipe identity. The recipe carries meaning; it
   never mints a new one (specializer outputs are recipes, not new meaning;
   generated Cargo is not a source of truth).
-- `Materializer` / `MaterializeFault` — recipe → artifact bookkeeping.
+- `Materializer` / `MaterializeFault`; recipe → artifact bookkeeping.
   `materialize(recipe, generator)` binds the artifact address to the
   recipe identity AND the generated content: a deterministic generator
   rehydrates the same `ArtifactId` after delete + re-materialize
@@ -51,36 +51,36 @@ Always available (std-only, zero third-party deps):
   under a recorded recipe identity refuses `E-EVID-601`
   (`RehydrationMismatch`) and the recorded binding is never overwritten.
   `forget` is the GC delete of a rebuildable materialization.
-- `semantic_diff` (nz1n.8) — `SemanticSnapshot` (source + meaning +
+- `semantic_diff` (nz1n.8); `SemanticSnapshot` (source + meaning +
   toolchain + evidence set), `classify` into the CLOSED class set
   {Unchanged, Presentation, Meaning, Provider, Evidence}, and `decide`
   into `DiffOutcome::{Cutoff, Rebuild, ProviderInvalidation}`.
   Fail-safe precedence: a meaning change is classified MEANING even
   alongside a source change (an unclassified semantic change never
   silently cuts off); presentation-only (source changed, meaning
-  stable) is NEVER labeled semantic — its cutoff receipt names the
+  stable) is NEVER labeled semantic; its cutoff receipt names the
   stable meaning. A provider change invalidates exactly the recipes
   recorded under the OLD toolchain (others survive). Cutoff receipts
   are deterministic values explaining the skipped work. No math
   equivalence is ever guessed: MeaningID equality is the only semantic
   oracle consulted.
-- `pack` (nz1n.3 DRAFT) — `.emlib` portable-pack draft: magic
+- `pack` (nz1n.3 DRAFT); `.emlib` portable-pack draft: magic
   `EMATHLIB\0` + version byte + framed parent reference + length-framed
   entries (house `frame` convention). `PackWriter` budget-checks and
-  writes entries sorted by id (canonical export — insertion-order
+  writes entries sorted by id (canonical export; insertion-order
   independent, deterministic bytes; duplicates refuse `E-EVID-606`).
   `PackReader` refuses bad magic (`E-EVID-602`, whole-magic check),
   truncation (`E-EVID-603`), budget violations (`E-EVID-604`), and thin
-  packs without their parent closure (`E-EVID-605` — with the closure,
+  packs without their parent closure (`E-EVID-605`; with the closure,
   the merged view is parent entries overlaid by thin entries). Entry
-  ids round-trip VERBATIM — never re-derived from payload. DRAFT: no
+  ids round-trip VERBATIM; never re-derived from payload. DRAFT: no
   compression yet (decompression budget follow-up), invisible to
   `emath run` until share/mount, must not stabilize before capstones.
-- `discovery` (nz1n.10) — structural `emath find` over the object
+- `discovery` (nz1n.10); structural `emath find` over the object
   graph: `FindQuery` + conjunctive exact filters (`Kind`, `Relation`,
   `RelationTo(kind, target_meaning)`, `Authority`). **Rank cannot
   override compatibility**: the ranker is consulted only for objects
-  that already passed every exact filter — it orders and annotates
+  that already passed every exact filter; it orders and annotates
   (`DiscoveryHit.rank`, display metadata), never admits or excludes.
   No ranker ⇒ ascending id order; with a ranker ⇒ descending rank,
   ties by id. Search is not a second type checker: it queries
@@ -88,24 +88,24 @@ Always available (std-only, zero third-party deps):
 
 Feature sqlite-store only:
 
-- Store::open(path: &str) -> Result<Store, StoreError> — open or create a
+- Store::open(path: &str) -> Result<Store, StoreError>; open or create a
   store file (":memory:" works for in-memory stores); installs the schema
   idempotently and enables foreign keys.
-- Store::put_artifact(id, kind, path) — idempotent insert (INSERT OR IGNORE).
-- Store::add_evidence(artifact_id, claim, status, seq) — idempotent insert
+- Store::put_artifact(id, kind, path); idempotent insert (INSERT OR IGNORE).
+- Store::add_evidence(artifact_id, claim, status, seq); idempotent insert
   keyed on (artifact_id, claim, seq); status validated before SQL.
-- Store::evidence_for(artifact_id) -> Vec<EvidenceRow> — rows ordered by
+- Store::evidence_for(artifact_id) -> Vec<EvidenceRow>; rows ordered by
   (seq ASC, claim ASC); EvidenceRow { claim, status, seq }.
-- Store::verify_manifest(manifest_json) — parses an emath.artifact manifest
+- Store::verify_manifest(manifest_json); parses an emath.artifact manifest
   (emath_artifact::manifest_from_json) and checks that every declared file
   has artifact row (id == path, kind == "file") and exactly one evidence row
   "content-id=<fnv1a64:...>" with status ok and seq equal to the file index
   in deterministic (sorted) order.
 - StoreOp \u2014 data-driven operation enum { PutArtifact, AddEvidence } used by
   Store::transaction.
-- Store::transaction(&[StoreOp]) — BEGIN/COMMIT/ROLLBACK wrapper; any error (from an op or the engine) rolls back ALL
+- Store::transaction(&[StoreOp]); BEGIN/COMMIT/ROLLBACK wrapper; any error (from an op or the engine) rolls back ALL
   writes made inside the batch.
-- StoreError — local error enum { Open, Transaction, Query, Io } with
+- StoreError; local error enum { Open, Transaction, Query, Io } with
   actionable Display text. No E-* codes are introduced anywhere; the enum is
   internal to this crate (TransportError precedent in emath-lsp).
 
@@ -154,7 +154,7 @@ asupersync current-thread runtime is built on the worker at open; each call
 sends an op over a channel and blocks on the reply. fsqlite futures recurse
 deeply while polling, so engine execution always happens on the worker's
 large stack, never on the caller's thread (default 2 MiB would overflow). No
-cancellation surface is exposed; a hung engine future could block the caller — acceptable for the store lane. The async
+cancellation surface is exposed; a hung engine future could block the caller; acceptable for the store lane. The async
 transport lane (emath-lsp) is unaffected. Store is Send (only channels cross
 threads), but each file is single-writer by design.
 
@@ -171,7 +171,7 @@ Build-graph note: the lockfile carries two asupersync instances - git
 fsqlite's own manifest. They are separate compiled crates; the conformance
 suite validates driving fsqlite engine futures from the git-pinned runtime.
 
-- sqlite-store (default OFF) — pulls pinned fsqlite (frankensqlite facade,
+- sqlite-store (default OFF); pulls pinned fsqlite (frankensqlite facade,
   v0.3.11 at rev 8281cf285433b1746d9c29a598152e58cc205bd8) with default-features=false
   + native, plus the pinned asupersync runtime that drives it.
 - Default build (no features): std-only, first-party-only (emath-core /
@@ -238,13 +238,13 @@ suite validates driving fsqlite engine futures from the git-pinned runtime.
   completeness is the checker's contract (E-EVID-109, E-EVID-105).
 - Concurrent writers to one store file are not supported (single-writer
   design; the engine's strict multi-process mode is not configured).
-- The materialization layer CANNOT prove a generator deterministic — the
+- The materialization layer CANNOT prove a generator deterministic; the
   caller supplies the generator; `E-EVID-601` is the detection gate for
   nondeterminism/tamper at re-materialization time, not a determinism
   guarantee. Recipe provenance with an empty toolchain string is not yet
   refused (distinct identity, hardening follow-up); GC integration with
   the sqlite store rows is a declared follow-up.
-- The semantic diff classifies by IDENTITY equality only — it does not
+- The semantic diff classifies by IDENTITY equality only; it does not
   prove two meanings mathematically equivalent (never guesses), does not
   run generators, and does not itself delete or re-materialize anything:
   `ProviderInvalidation` names the recipes; acting on the list is the
@@ -255,9 +255,9 @@ suite validates driving fsqlite engine futures from the git-pinned runtime.
   follow-up). No compression/decompression exists yet, so the
   decompression and nesting budgets are unexercised (declared
   follow-ups); streaming reads and appendable snapshots are also
-  follow-ups — the current reader materializes entries in memory within
+  follow-ups; the current reader materializes entries in memory within
   the total-bytes budget.
-- The discovery layer provides NO text/embedding ranker itself — the
+- The discovery layer provides NO text/embedding ranker itself; the
   caller supplies it, and its scores are untrusted display metadata
   (NaN ranks collapse to id order). The `emath find` CLI surface and
   snapshot-rebuildable index persistence are declared follow-ups;

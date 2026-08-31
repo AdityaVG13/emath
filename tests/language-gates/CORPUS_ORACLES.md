@@ -1,4 +1,4 @@
-# Corpus Oracles — `language/examples` acceptance map (emath-ail.1)
+# Corpus Oracles; `language/examples` acceptance map (emath-ail.1)
 
 Every README example row, the acceptance command, the pinned oracle, and the
 current verdict. Pinned in code by
@@ -20,7 +20,7 @@ with no `E-*` diagnostics (re-scanned 2026-08-30 with the local binary).
 
 None currently: the corpus refresh (2026-08-30) removed the pinned-refusal
 fixtures (`intro/v9_06_2rdq_17.emath`, `intro/sets-records.emath`'s
-`E-TYPE-113` pin — sets-records now admits check with the `{}` surface
+`E-TYPE-113` pin; sets-records now admits check with the `{}` surface
 executing; its ambiguity row is covered by
 `tests/invalid/r3_sets_tub8_ambiguous.emath` E-SYN-154). Any new intentional
 refusal example re-enters through a `-> E-XXX-NNN` header, which the gate
@@ -39,16 +39,16 @@ honors.
 | numerical/solver-methods.emath | `emath simulate <f> --model StiffDecay --set y=1 --method backward-euler --dt 0.1 --t1 0.3` | exit 0; `y` 1→0.0046296296295476325 (= 1/6³, exact BE recursion) |
 | numerical/solver-methods.emath | `emath simulate <f> --model HarmonicOscillator --set q=1 --set v=0 --method velocity-verlet --dt 0.01 --t1 6.283185307179586` | exit 0; `q=0.999999999544588 v=-0.00002620375716343333` at t=2π |
 | science/observations.emath | `emath explain <f> --provenance` | exit 0; DAG edge `PkSingleDose.plasma_conc -> InstrumentRun(file=pk_run_041.csv, processing=LC-MS/MS, area ratio, sha256=e706a0172e0ef6f8b748eca6a55763eced959b6eb055b442b30d3c1e313acb2f)` |
-| intro/scratch.emath | `emath run <f>` | **Refused E-GOAL-043** — open hole never claims a produced crate |
+| intro/scratch.emath | `emath run <f>` | **Refused E-GOAL-043**; open hole never claims a produced crate |
 
 ## Event locator oracle (declared events vs model variables)
 
 | Command (dae-rc-circuit bindings as above) | Result |
 |---|---|
 | `--event current=5` | exit 0; crossing sample `t=0.7262836955484092 charge=5.000000000366084 current=5.000000000092301` |
-| `--event ThresholdCrossed=5` | exit 1: `error: event state `ThresholdCrossed` is missing` — locator keys on model variables, NOT declared event names |
+| `--event ThresholdCrossed=5` | exit 1: `error: event state `ThresholdCrossed` is missing`; locator keys on model variables, NOT declared event names |
 
-## Divergence ledger — README promises not yet true on HEAD
+## Divergence ledger; README promises not yet true on HEAD
 
 These rows pin CURRENT failure; a flip requires consciously re-pinning.
 

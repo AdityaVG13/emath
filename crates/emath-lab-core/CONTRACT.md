@@ -54,7 +54,7 @@
 
 ## Absorbed module: `calibration` (was `emath-calibration`)
 
-# CONTRACT — emath-calibration
+# CONTRACT; emath-calibration
 
 ## Purpose and layer
 - Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
@@ -70,7 +70,7 @@
 - `FitGoal` / `FitRow` / `ResidualWeights` - generic fit-goal data (04 §5.3): parameters, observable, model path, prediction label, residual method, optimizer method, initial seeds, weights, and declared data rows. `FitGoal::from_payload` traces an elaborated fit payload (`emath_ir::goal::GoalPayload`) into the runtime goal; malformed or unknown spellings are typed `FitPayloadError` refusals (never silent defaults). Data rows pair one coordinate row with the observable row (`data: t = [...], data: <observable> = [...]`); uniform row weight 1.0, per-parameter weighting via `weights`. No domain model is bound here; the PK model is a runnable `.emath` fixture (`language/examples/science/pk-two-compartment-fit.emath`).
 - `FitModel` / `IdentifiabilityProvider` - model and structural-identifiability provider seams; `fit` / `weighted_residuals` / `jacobian_residuals` execute them generically. The provider receives the model, data, and fitted parameters.
 - `NumericRankOracle` - honest executable structural-identifiability provider: local column rank of the residual Jacobian at the fitted point (Jacobi eigenvalues of `J^T J`, relative tolerance), covariance-based confidence intervals (normal-95 approximation), tight directions only when the interval does not straddle zero; rank deficiency and underdetermined data refuse authority.
-- `materialize_measured` / `FitMeasuredError` - materializes fitted values as `emath_ir::provenance::Measured<f64>` with linked `Provenance::Fitted { fit_id }` (16-hex content hash). With a verdict each declared direction must appear (typed refusal otherwise); std_uncertainty is `(hi - lo) / 3.92`. Without a verdict std_uncertainty is 0.0 as the explicit *unclaimed* marker — never a claim of zero error.
+- `materialize_measured` / `FitMeasuredError` - materializes fitted values as `emath_ir::provenance::Measured<f64>` with linked `Provenance::Fitted { fit_id }` (16-hex content hash). With a verdict each declared direction must appear (typed refusal otherwise); std_uncertainty is `(hi - lo) / 3.92`. Without a verdict std_uncertainty is 0.0 as the explicit *unclaimed* marker; never a claim of zero error.
 - `FitOutcome` / `AuthorityEscalation` / `UnresolvedReason` / `ProvenanceHash` - honest dispositions: fitted provenance (with the per-direction confidence verdict when granted), refusal naming an unidentifiable direction, or a typed unresolved disposition when no structural-identifiability provider exists (`SymbolicOracleUnavailable`). Fitting never silently claims authority. `FitOutcome::Fitted.confidence` is `None` when no identifiability was claimed.
 - `CalibrationRecord` - fitted table, held-out outcome, per-partition example records, deterministic version.
 - `HeldOutChallenge` / `HeldOutResult` - held-out challenge and its outcome.
@@ -112,7 +112,7 @@
 
 ## Absorbed module: `law_check` (was `emath-law-check`)
 
-# CONTRACT — emath-law-check
+# CONTRACT; emath-law-check
 
 ## Purpose and layer
 - Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
@@ -171,7 +171,7 @@
 
 ## Absorbed module: `holes` (was `emath-holes`)
 
-# CONTRACT — emath-holes
+# CONTRACT; emath-holes
 
 ## Purpose and layer
 - Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
@@ -225,14 +225,14 @@
 
 ## Absorbed module: `search` (was `emath-search`)
 
-# CONTRACT.md — emath-search
+# CONTRACT.md; emath-search
 
 ## Purpose and layer
 
 Artifact *corpus search* (id + kind + path + claim text) over the pinned
 frankensearch engine, spike pass 3 of the FrankenStack adoption
 (CUTOVER_PLAN.md §5.4 / §9.12). Layer: search adapter external to the
-protected set — it may import frankensearch; emath-core / emath-ir /
+protected set; it may import frankensearch; emath-core / emath-ir /
 emath-goal / emath-plan / emath-artifact / emath-evidence / emath-cli /
 emath-lsp / emath-store / emath-provenance stay Franken-free.
 
@@ -246,48 +246,48 @@ with zero third-party dependencies and no engine code compiled.
 
 Always available (std-only, zero third-party deps):
 
-- ArtifactDoc { id, kind, path: Option<String>, text } — one artifact metadata
+- ArtifactDoc { id, kind, path: Option<String>, text }; one artifact metadata
   record; validates at construction.
-- DOC_ID_SEPARATOR (`\x1f`) — unit separator of the single composite doc-id
+- DOC_ID_SEPARATOR (`\x1f`); unit separator of the single composite doc-id
   scheme.
-- to_fs_doc_id(kind, id) / from_fs_doc_id(id) — the ONE encoding pair;
+- to_fs_doc_id(kind, id) / from_fs_doc_id(id); the ONE encoding pair;
   `kind \x1f id`, both parts non-empty and separator-free (rejects otherwise).
-- SearchError { InvalidArgument, Open, Build, Query, NotReady, WorkerDown } —
+- SearchError { InvalidArgument, Open, Build, Query, NotReady, WorkerDown };
   typed, actionable Display, implements std::error::Error. No E-* codes;
   ERROR_CODES.md untouched.
 
 Feature `search` only (blocking facade, emath-store / emath-provenance
 worker-thread precedent):
 
-- CorpusSearch::create(path, docs) — build via the engine's IndexBuilder
+- CorpusSearch::create(path, docs); build via the engine's IndexBuilder
   in a sibling staging directory, then swap onto `path` and write
   `emath-search.index`. Empty corpus -> InvalidArgument (the engine
   refuses zero-document builds). A non-empty directory without the marker
   is InvalidArgument (never wiped).
-- CorpusSearch::open(path) — open an existing index; typed Open error when
+- CorpusSearch::open(path); open an existing index; typed Open error when
   none is present.
-- CorpusSearch::reindex(docs) — same as create: build aside, swap when the
+- CorpusSearch::reindex(docs); same as create: build aside, swap when the
   new tree is marked. A failed rebuild leaves the previous on-disk index
   and the live searcher unchanged. A leftover `.emath-search-backup` from
   a crashed swap is restored only when dest is missing or empty; an
   unmarked non-empty dest is never wiped.
-- CorpusSearch::remove_index() — delete index artifacts only when the
+- CorpusSearch::remove_index(); delete index artifacts only when the
   directory is empty or marked `emath-search.index` (the directory itself
   remains); search then returns NotReady until a create/reindex.
-- CorpusSearch::search(query, k) -> Vec<Hit> — blocking; trimmed query must
+- CorpusSearch::search(query, k) -> Vec<Hit>; blocking; trimmed query must
   be non-empty; k == 0 returns an empty vector without touching the engine.
-  Result order is the ENGINE's authoritative order — this crate never
+  Result order is the ENGINE's authoritative order; this crate never
   re-sorts frankensearch results.
-- Hit { doc_id, kind, id, score: f32, source } — engine score carried as the
+- Hit { doc_id, kind, id, score: f32, source }; engine score carried as the
   engine carries it (f32, never narrowed or re-derived).
 - IndexStats { source_count, doc_count, error_count, quality_indexed,
-  lexical: Option<LexicalArmStats> } — build receipts incl. the Quill arm.
+  lexical: Option<LexicalArmStats> }; build receipts incl. the Quill arm.
 
 ## Invariants
 
 - Determinism: identical corpus + identical query -> identical result
   sequence (doc ids AND bit-exact f32 scores), across two builds in different
-  directories and across close/reopen — tested. No wall clock in the crate's
+  directories and across close/reopen; tested. No wall clock in the crate's
   surface; id ordering is the caller's. The searcher disables the engine's
   adaptive NQC down-weight (stateful across queries) and never reads
   FRANKENSEARCH_* environment variables (no `with_env_overrides`), so the
@@ -317,7 +317,7 @@ by the no-claims below.
 Blocking facade over a dedicated engine worker thread (64 MiB stack) holding
 one asupersync current-thread runtime. Each call sends an op over an mpsc
 channel and blocks on the typed reply. No cancellation surface is exposed; a
-hung engine future can block the caller — acceptable for this spike lane.
+hung engine future can block the caller; acceptable for this spike lane.
 CorpusSearch is Send (only channels cross threads); Drop sends Close and joins
 the worker.
 
@@ -325,12 +325,12 @@ the worker.
 
 None. `#![forbid(unsafe_code)]` at the crate root; the workspace lint
 (workspace.lints.rust.unsafe_code = forbid) forbids it everywhere else.
-(Upstream frankensearch itself uses `deny`, not `forbid` — that is upstream,
+(Upstream frankensearch itself uses `deny`, not `forbid`; that is upstream,
 not this crate.)
 
 ## Feature flags
 
-- search (default OFF) — pulls pinned frankensearch (repository release
+- search (default OFF); pulls pinned frankensearch (repository release
   v1.7.0, facade `frankensearch` v0.3.2 at rev
   22859f74056c31fd3a713bacecd4a1f22f0cf82d) with features
   `hash` + `quill`, plus asupersync. Feature set deliberately differs from the
@@ -366,7 +366,7 @@ not this crate.)
 
 - SEMANTIC TIERS NOT WIRED: this pass drives the hash-control embedder stack
   (HashEmbedder::default_256). The engine warns that a non-semantic fast
-  embedder makes semantic retrieval unavailable — results are lexical-only
+  embedder makes semantic retrieval unavailable; results are lexical-only
   (Quill BM25) fused through the same TwoTierSearcher/RRF pipeline. No
   relevance or retrieval-quality claim of any kind. Unblock for semantic
   tiers: enable the `hybrid` facade feature + FRANKENSEARCH_MODEL_DIR models
@@ -385,7 +385,7 @@ not this crate.)
   inputs (tested), not what the tie-break rule is.
 - Upstream build hazard at this rev: frankensearch's workspace member
   `tools/optimize_params` declares `fastcma = { path = "../../../fast_cmaes" }`
-  — an escape-path absolute dependency that does not exist in a clean
+ ; an escape-path absolute dependency that does not exist in a clean
   checkout (verified: pristine clone fails with "failed to read
   /tmp/fast_cmaes/Cargo.toml"). Any workspace that consumes frankensearch as a
   git dep must provide a stub crate at that absolute path (a 3-file lib named

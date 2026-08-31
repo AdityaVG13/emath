@@ -8,7 +8,7 @@ the gate fail. This inventory is the reference for what is implemented
 in HEAD; planned surfaces are marked `[planned]` and are never
 presented as implemented.
 
-## Compiler session — implemented (`crates/emath-sema/src/session.rs`)
+## Compiler session: implemented (`crates/emath-sema/src/session.rs`)
 
 ```rust
 pub struct CompilerSession {
@@ -34,7 +34,7 @@ The session is `load → check → plan`; the build step (backend +
 artifact emission) lives in `emath-build`, which consumes `PlanResult`
 and produces `GeneratedCrate`.
 
-## Named types on the session path — implemented
+## Named types on the session path: implemented
 
 `SourcePackage`, `CompilerPolicy`, `PlanResult`, `GeneratedCrate`,
 `EmittedAnchor`, `CheckResult` (`crates/emath-sema/src/session.rs`,
@@ -42,7 +42,7 @@ and produces `GeneratedCrate`.
 `Span`, `SourceStore` (`crates/emath-core`), `SemanticPackage`,
 `RequestSpec`, `ResolutionPlan`, `GoalId` (`crates/emath-ir`).
 
-## Request-typed surface — Partial (not on the session)
+## Request-typed surface: Partial (not on the session)
 
 The promise-typed request surface is NOT on the session: the methods
 above take paths and `FileId`s, not request structs. Documenting a
@@ -57,30 +57,30 @@ pub struct GoalRequest;    // [planned] not on the session
 pub struct BuildRequest;   // [planned] not on the session
 ```
 
-## Provider API — crate exists, surface evolving (not gate-pinned)
+## Provider API: crate exists, surface evolving (not gate-pinned)
 
 `crates/emath-provider-api`: `ProviderDescriptor`, `CapabilityReport`,
 `Provider`, `Adapter<Source, Target>`, `ResultChecker`,
 `ProviderResult`, `ProviderError`.
 
-## Runtime — crate exists, surface evolving (not gate-pinned)
+## Runtime: crate exists, surface evolving (not gate-pinned)
 
 `crates/emath-runtime`: `Outcome<T, E>`, `Budget`, `Cancellation`,
 `ContinuationHandle`, `EvidenceHandle`, `UnresolvedReason`.
 
-## Artifacts — crate exists, surface evolving (not gate-pinned)
+## Artifacts: crate exists, surface evolving (not gate-pinned)
 
 `crates/emath-artifact`: `ArtifactManifest`, `ArtifactClass`,
 `SourceMapEntry`, `ArtifactChecker`, `ArtifactBuilder`,
 `GeneratedPackage`.
 
-## Laboratory — crate exists, surface evolving (not gate-pinned)
+## Laboratory: crate exists, surface evolving (not gate-pinned)
 
 `crates/emath-lab-core`: `ExperimentManifest`, `Observation`,
 `MetricDefinition`, `PromotionPolicy`, `PromotionDecision`,
 `PromotionReceipt`, `RuntimeSelector`, `DriftPolicy`.
 
-## Math layout — crate exists, surface evolving (not gate-pinned)
+## Math layout: crate exists, surface evolving (not gate-pinned)
 
 `crates/emath-layout`: `MathLayoutGraph`, `LayoutNode`, `LayoutEdge`,
 `LayoutContent`, `LayoutError`, `RetainedAmbiguity`, `UnloweredRegion`,
@@ -88,18 +88,18 @@ pub struct BuildRequest;   // [planned] not on the session
 `check_version`, `parse_latex`, `to_binder_term`, `PdfPageFixture`,
 `PositionedGlyph`, `extract`, `reference_fixture`.
 
-## Wasm playground engine — crate exists, surface evolving (not gate-pinned)
+## Wasm playground engine: crate exists, surface evolving (not gate-pinned)
 
 `crates/emath-wasm`: `ABI_VERSION`, `run_op` (`version`, `examples`,
 `check`, `plan`, `mig`, `generate`, `format`, `run`, `inputs`). C ABI
 in `ffi`: `em_alloc`, `em_free`, `em_run`.
 
-## Neutral semantics — planned surface (not gate-pinned)
+## Neutral semantics: planned surface (not gate-pinned)
 
 `PackageIdentity`, `DeclarationId`, `TypeId`, `ExprId`, `Declaration`,
 `Constructor`, `TypeNode`, `ExprNode`, `Goal`, `GoalRequirements`,
 `ResolutionPlan`, `PlanNode`, `EvidenceLevel`, `ExactnessPolicy`,
-`TargetProfile`, `FallbackPolicy` — names may evolve; responsibilities
+`TargetProfile`, `FallbackPolicy`: names may evolve; responsibilities
 may not disappear silently.
 
 ## Compatibility

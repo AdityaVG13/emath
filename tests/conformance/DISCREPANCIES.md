@@ -19,12 +19,12 @@ Protocol:
 
 ---
 
-## DISC-001 — Ch2 tabs: spec rejects tabs; lexer was said to skip them
+## DISC-001; Ch2 tabs: spec rejects tabs; lexer was said to skip them
 
 - **Reference vs our impl:** `language/reference/lexical-layout-and-source.md`
   says "Tabs are rejected in canonical source." The audit claimed the
   lexer silently skipped tabs. Current binary probe (2026-08-29): a file
-  indented with a tab is **not** silently accepted — the tab breaks
+  indented with a tab is **not** silently accepted; the tab breaks
   indentation semantics and the parser refuses with `E-SYN-112`
   (expected an indented block).
 - **Impact:** none; spec and implementation agree that a tab-indented
@@ -32,11 +32,11 @@ Protocol:
 - **Resolution:** ACCEPTED (premise stale). Spec wording stands: tabs are
   rejected via the layout grammar, not silently consumed.
 - **Tests affected:** probe-only evidence (`emath check` on a
-  tab-indented fixture); no dedicated repo fixture yet — the
+  tab-indented fixture); no dedicated repo fixture yet; the
   `assert_invalid` battery may add one.
 - **Review date:** 2026-08-29.
 
-## DISC-002 — Ch2 NFC: spec normalization vs refuse-not-normalize
+## DISC-002; Ch2 NFC: spec normalization vs refuse-not-normalize
 
 - **Reference vs our impl:** Ch2 says identifiers "are normalized to NFC
   for identity." The implementation never re-normalizes: a combining
@@ -53,7 +53,7 @@ Protocol:
   `tests/invalid/confusable_decl.emath` (`E-NAME-024`).
 - **Review date:** 2026-08-29.
 
-## DISC-003 — Ch11 length-framed/canonical binary: spec overclaim claim
+## DISC-003; Ch11 length-framed/canonical binary: spec overclaim claim
 
 - **Reference vs our impl:** The audit claimed Ch11 promised
   length-framed canonical binary without an implementation. The
@@ -62,12 +62,12 @@ Protocol:
   `push_framed` framing in `crates/emath-ir/src/canonical.rs`), and
   Ch11's "Implemented today" paragraph already fences exactly that.
 - **Impact:** none.
-- **Resolution:** CLOSED (premise stale — implemented).
+- **Resolution:** CLOSED (premise stale; implemented).
 - **Tests affected:** identity round-trip tests under
   `crates/emath-ir` (package identity lanes).
 - **Review date:** 2026-08-29.
 
-## DISC-004 — Rumoca Phase-1 native stand-in (no upstream engine)
+## DISC-004; Rumoca Phase-1 native stand-in (no upstream engine)
 
 - **Reference vs our impl:** `crates/emath-adapter-rumoca` consumes no
   upstream Rumoca engine; the Modelica subset scanner, causalizer, and
@@ -85,11 +85,11 @@ Protocol:
   unit tests; `scripts/check_upstream_lock.py` seam-binding lane.
 - **Review date:** 2026-08-29.
 
-## DISC-005 — MSL ladder role: no MSL corpus CI
+## DISC-005; MSL ladder role: no MSL corpus CI
 
 - **Reference vs our impl:** The lock previously labeled the
   Modelica Standard Library row `required: "conformance"` while nothing
-  consumes an MSL corpus in any gate — an implied conformance claim
+  consumes an MSL corpus in any gate; an implied conformance claim
   with no executable behind it.
 - **Impact:** misreadable as language conformance to MSL.
 - **Resolution:** ACCEPTED fence. The lock row is relabeled
@@ -97,6 +97,6 @@ Protocol:
   closed `emath-gauntlet-04-q22w` guidance: do not invent Rumoca MSL
   CI). `evaluate_msl` remains an adapter capability, not a gate.
 - **Tests affected:** `implementation/schemas/upstream-lock.schema.json`
-  enum (`core|optional|future` — `conformance` no longer valid);
+  enum (`core|optional|future`; `conformance` no longer valid);
   `scripts/check_upstream_lock.py`.
 - **Review date:** 2026-08-29.

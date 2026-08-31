@@ -1,27 +1,27 @@
-# ELP — emath Language Proposals
+# ELP; emath Language Proposals
 
 Every capability change to the emath language lands through an ELP. The
 pipeline makes the finish-line gates of
 [`language/reference/language-acceptance.md`](../language/reference/language-acceptance.md)
 (chapter 16) part of the proposal itself, so an accepted syntax change
-arrives already satisfying its slice of the twelve gates — never as a
+arrives already satisfying its slice of the twelve gates; never as a
 silent drift between grammar, reference, examples, and tests.
 
 ## Lifecycle
 
-1. **Draft** — write `elps/ELP-NNNN-<slug>.md` from the template
+1. **Draft**; write `elps/ELP-NNNN-<slug>.md` from the template
    (`ELP-TEMPLATE.md`); the next free serial is one past the highest
    `ELP-` prefix on `main`.
-2. **Gate** — `scripts/check_elp.py` validates the document shape; the
+2. **Gate**; `scripts/check_elp.py` validates the document shape; the
    G4 audit battery (`scripts/g4_ambiguity.py`, `scripts/g4_confusable.py`,
    `scripts/g4_precedence.py`) runs against the proposed grammar delta;
    the four-artifact rule (`scripts/check_four_artifact.py`) is enforced
    by CI on the commit.
-3. **Adopt** — accepted proposals land either as stable surface
+3. **Adopt**; accepted proposals land either as stable surface
    (append-only, meaning-preserving) or behind the experimental lane
    (below). The commit closes the ELP and updates
    `language/` per RULE 0.3 of AGENTS.md.
-4. **Retire** — experimental syntax that survives two release cycles
+4. **Retire**; experimental syntax that survives two release cycles
    without promotion is retired (the feature and its gate are removed).
 
 ## ELP document
@@ -29,20 +29,20 @@ silent drift between grammar, reference, examples, and tests.
 One file per proposal: `elps/ELP-NNNN-<slug>.md` with seven mandatory
 sections (validated by `scripts/check_elp.py`):
 
-1. **Motivation and coverage claim** — what math/science becomes
+1. **Motivation and coverage claim**; what math/science becomes
    expressible; which capability-matrix cells move.
-2. **Grammar delta** — unified diff against `language/grammar/*.ebnf`;
+2. **Grammar delta**; unified diff against `language/grammar/*.ebnf`;
    new tokens carry their Unicode confusable class.
-3. **Lowering and world interactions** — typed-IR node it lowers to,
+3. **Lowering and world interactions**; typed-IR node it lowers to,
    which `WorldIr` component it introduces, if any.
-4. **Meaning-preservation analysis** — proof sketch that no previously
+4. **Meaning-preservation analysis**; proof sketch that no previously
    valid program reparses (append-only argument), or the edition-gating
    declaration when the change is not append-only.
-5. **Migration** — `none needed (pure addition)` or the migrate rule set
+5. **Migration**; `none needed (pure addition)` or the migrate rule set
    with golden tests.
-6. **Four-artifact plan** — the exact files touching reference, EBNF,
+6. **Four-artifact plan**; the exact files touching reference, EBNF,
    examples/fixtures, and tests.
-7. **Refusals** — new typed diagnostics with stable codes and negative
+7. **Refusals**; new typed diagnostics with stable codes and negative
    controls.
 
 ## The G4 audit ("one glyph, many meanings")
@@ -55,12 +55,12 @@ proved by a negative-control lane in `scripts/validate.sh`):
 | Ambiguity scan | `g4_ambiguity.py` | duplicate production definitions and overlapping first-sets (an alternative that can start the same way as a sibling), including under a unified diff |
 | Confusable scan | `g4_confusable.py` | a new glyph whose NFC/confusable fold collides with an existing grammar glyph |
 | Precedence surprise | `g4_precedence.py` | operators without an explicit `notation_decl` precedence; regenerates the pinned boundary corpus |
-| Hidden interpretation | `g4_hidden_interpretation.py` | a glyph gaining a second role (production) — an unregistered "many meanings" form — or a registered glyph's role set drifting from its registry entry. Every multi-role glyph must declare how its meaning is pinned: `parser-context` (operator table / lexical position), `worlds-machinery` (routing through a notation pack, declared world, or portfolio artifact), or `typed-refusal` (a documented E-code) |
+| Hidden interpretation | `g4_hidden_interpretation.py` | a glyph gaining a second role (production); an unregistered "many meanings" form; or a registered glyph's role set drifting from its registry entry. Every multi-role glyph must declare how its meaning is pinned: `parser-context` (operator table / lexical position), `worlds-machinery` (routing through a notation pack, declared world, or portfolio artifact), or `typed-refusal` (a documented E-code) |
 
 The ambiguity, confusable, and hidden-interpretation scans are first-pass
 mechanical detectors of the C2–C15 class (redefinitions, lookalike
 glyphs, precedence surprises, silent meaning picks); they are not a
-proof of unambiguity — the boundary corpus plus human review of the
+proof of unambiguity; the boundary corpus plus human review of the
 meaning-preservation section covers the residual.
 
 ## Four-artifact rule (CI)
@@ -96,9 +96,9 @@ RULE 0.3: what computes, what is refused, what is still design):
 | --- | --- |
 | Capability declaration + file-scope gate | Implemented (`@capabilities(experimental-syntax)`, `admit_capability_gates`) |
 | Typed refusals for the capability matrix | Implemented (E-SYN-117/118, E-PKG-064/065) |
-| Nightly-vs-stable channel enforcement | Deferred — lands with the version-stack deck (`emath-r3-version-stack-9z1a`) |
-| `edition: experimental` provenance marking on artifacts | Deferred — lands with the version-stack deck |
-| SG-15-style structural quarantine of experimental artifacts | Not implemented — today the mechanism is the capability gate plus quarantine-by-review |
+| Nightly-vs-stable channel enforcement | Deferred; lands with the version-stack deck (`emath-r3-version-stack-9z1a`) |
+| `edition: experimental` provenance marking on artifacts | Deferred; lands with the version-stack deck |
+| SG-15-style structural quarantine of experimental artifacts | Not implemented; today the mechanism is the capability gate plus quarantine-by-review |
 | Two-release-cycle retirement without promotion | Procedure stated in Lifecycle step 4; not yet mechanically enforced (no clock/tracking) |
 
 The reference vocabulary for the deferred rows is normative in
@@ -117,14 +117,14 @@ compiles silently today.
 
 ## Scripts
 
-- `scripts/check_elp.py` — document-shape gate (seven sections, serial,
+- `scripts/check_elp.py`; document-shape gate (seven sections, serial,
   slug, four-artifact commitments).
-- `scripts/g4_ambiguity.py` — grammar/delta ambiguity scan.
-- `scripts/g4_confusable.py` — glyph confusability scan (NFC + fold).
-- `scripts/g4_hidden_interpretation.py` — multi-role glyph registry scan
+- `scripts/g4_ambiguity.py`; grammar/delta ambiguity scan.
+- `scripts/g4_confusable.py`; glyph confusability scan (NFC + fold).
+- `scripts/g4_hidden_interpretation.py`; multi-role glyph registry scan
   (the "one glyph, many meanings" gate, pinning each shared glyph's
   interpretation policy).
-- `scripts/g4_precedence.py` — precedence boundary corpus generator.
-- `scripts/check_four_artifact.py` — commit-range four-artifact gate.
-- `scripts/validate.sh` — `elp`, `g4-*`, and `four-artifact` lanes with
+- `scripts/g4_precedence.py`; precedence boundary corpus generator.
+- `scripts/check_four_artifact.py`; commit-range four-artifact gate.
+- `scripts/validate.sh`; `elp`, `g4-*`, and `four-artifact` lanes with
   negative controls.

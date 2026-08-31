@@ -9,10 +9,10 @@
 
 ## Public types and semantics
 
-- `GoalKindSpec` — goal kind incl. the `Custom { schema, fields }` envelope; stable `name()`.
-- `GoalSchema` — full schema: kind, inputs/outputs, accuracy, evidence, budget, target, determinism, fallback, produce; with `validate`, `canonical`, `determinism_token`, `identity`, `from_goal`.
-- `BudgetConstraint` — optional compile/runtime work limits plus a unit.
-- `GoalSchemaProblem` — schema validation problem with a stable code and message.
+- `GoalKindSpec`; goal kind incl. the `Custom { schema, fields }` envelope; stable `name()`.
+- `GoalSchema`; full schema: kind, inputs/outputs, accuracy, evidence, budget, target, determinism, fallback, produce; with `validate`, `canonical`, `determinism_token`, `identity`, `from_goal`.
+- `BudgetConstraint`; optional compile/runtime work limits plus a unit.
+- `GoalSchemaProblem`; schema validation problem with a stable code and message.
 - Token helpers: `exactness_token`, `budget_token`, `target_token`, `fallback_token`, `custom_token` (not exhaustive).
 
 ## Invariants
