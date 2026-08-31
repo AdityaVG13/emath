@@ -68,3 +68,16 @@
 - `bench` remains a typed refusal (`E-TLT-004`) with no Performance category claim until the comparison ruleset lands; the full formatter (`fmt`) is Phase 4.
 - No third-party dependency ship beyond the toolchain (`vendor` is a zero-third-party offline snapshot).
 - The keep-gate identity uses the SHA-256 primitive, not release crypto.
+## Absorbed module: `diagnostics` (was `emath-diagnostics`)
+- Pedagogic explanations and rendered witnesses for finite-checker
+  refusals (schema `emath.diagnostic.explanation v1`); `tutor-check/v1`
+  rejects synthesized narrative not backed by a checker receipt.
+- Public surface (module `diagnostics`): `Explanation`, `ExplainKind`,
+  `RenderedWitness`, `TableExcerpt`, `DocLink`, `RenderFormat`,
+  `tutor_check_v1`, `explain_law_report`, `check_and_explain`,
+  `every_failure_has_witness`, `e_law_001_demo`.
+- Invariants: a `LawFalsified` explanation without a `RenderedWitness`
+  and receipt id is rejected; witness cells come from the checker table,
+  never invented numbers; explaining a refusal raises no authority.
+- No-claim: explanations do not prove the law; they show the finite
+  counterexample the checker found.

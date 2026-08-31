@@ -1,6 +1,6 @@
 //! Pedagogic diagnostics with rendered witnesses.
 
-use emath_diagnostics::{
+use emath_cli::diagnostics::{
     E_LAW_001, EXPLANATION_SCHEMA, ExplainKind, TutorCheckError, check_and_explain, e_law_001_demo,
     e_law_001_demo_table, every_failure_has_witness, explanation_json, render_cayley_ascii,
     tutor_check_v1,
@@ -31,7 +31,7 @@ fn commutative_refutation_emits_cayley_witness() {
 fn tutor_check_rejects_claimed_green_without_witness() {
     let claimed =
         include_str!("../../../tests/invalid/pedagogic_diagnostics_false_green");
-    let explanation: emath_diagnostics::Explanation = claimed_green_from_fixture(claimed);
+    let explanation: emath_cli::diagnostics::Explanation = claimed_green_from_fixture(claimed);
     let error = tutor_check_v1(&explanation).expect_err("claimed green must fail");
     assert_eq!(error, TutorCheckError::ClaimedGreenWithoutWitness);
 }
@@ -64,11 +64,11 @@ fn every_finite_checker_refutation_emits_witness() {
     }
 }
 
-fn claimed_green_from_fixture(body: &str) -> emath_diagnostics::Explanation {
+fn claimed_green_from_fixture(body: &str) -> emath_cli::diagnostics::Explanation {
     assert!(body.contains("epic claimed green"));
-    emath_diagnostics::Explanation {
+    emath_cli::diagnostics::Explanation {
         code: "E-LAW-001".into(),
-        kind: emath_diagnostics::ExplainKind::LawFalsified,
+        kind: emath_cli::diagnostics::ExplainKind::LawFalsified,
         witness: None,
         structured_narrative: "epic claimed green without a checker receipt".into(),
         documentation_links: Vec::new(),

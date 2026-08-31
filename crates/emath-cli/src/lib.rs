@@ -10,6 +10,7 @@ mod agent_cmd;
 pub mod catalog;
 pub mod coverage_cmd;
 pub mod coverage_seed;
+pub mod diagnostics;
 mod eval_cmd;
 pub mod genesis_cmd;
 pub mod meaning_cmd;
@@ -2509,7 +2510,7 @@ fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
         }
     }
     let path = path?;
-    if path.starts_with("E-LAW-") || path == emath_diagnostics::E_LAW_001 {
+    if path.starts_with("E-LAW-") || path == crate::diagnostics::E_LAW_001 {
         Some(ExplainRequest::Law { json })
     } else {
         Some(ExplainRequest::File {
