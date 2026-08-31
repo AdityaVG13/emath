@@ -28,7 +28,7 @@ pub struct SourceMapEntry {
 pub fn build_source_map(package: &SemanticPackage, root: ExprId) -> Vec<SourceMapEntry> {
     let mut entries = Vec::new();
     walk(package, root, "root", "t0", &mut entries);
-    entries.sort_by_key(|entry| (entry.sir_node, entry.dew_path.clone()));
+    entries.sort_by_cached_key(|entry| (entry.sir_node, entry.dew_path.clone()));
     entries
 }
 
@@ -195,6 +195,7 @@ fn node_kind(node: Option<&ExprNode>) -> String {
         Some(ExprNode::Record { .. }) => "record".into(),
         Some(ExprNode::Index { .. }) => "index".into(),
         Some(ExprNode::Slice { .. }) => "slice".into(),
+        Some(ExprNode::Set { .. }) => "set".into(),
         Some(ExprNode::Binder { .. }) => "binder".into(),
         Some(ExprNode::Differentiate { .. }) => "differentiate".into(),
         Some(ExprNode::Solve { .. }) => "solve".into(),
@@ -203,6 +204,8 @@ fn node_kind(node: Option<&ExprNode>) -> String {
         Some(ExprNode::Vector(_)) => "vector".into(),
         Some(ExprNode::Matrix(_)) => "matrix".into(),
         Some(ExprNode::Tensor { .. }) => "tensor".into(),
+        Some(ExprNode::Apply { .. }) => "apply".into(),
+        Some(ExprNode::Series { .. }) => "series".into(),
         None => "missing".into(),
     }
 }

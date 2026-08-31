@@ -4,6 +4,10 @@
 use std::collections::BTreeMap;
 
 use emath_term::SymbolId;
+// The shared leaf type lives in world-ir (magnet relocation, o7a6);
+// this crate owns the FITTING procedures and re-exports the type for
+// stable paths.
+pub use emath_world_ir::FittedTable;
 
 use crate::partition::{CalibrationExample, ExampleKind};
 
@@ -31,62 +35,6 @@ pub enum FitFailure {
         /// Output that conflicted with it.
         conflicting_output: String,
     },
-}
-
-/// A fitted finite-carrier operator table.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FittedTable {
-    /// Operator the table defines.
-    pub operator: SymbolId,
-    /// Input arity.
-    pub arity: usize,
-    cells: BTreeMap<Vec<String>, String>,
-}
-
-impl FittedTable {
-    /// Builds a table from explicit cells; every row must match `arity`.
-    #[must_use]
-    pub fn from_cells(
-        operator: SymbolId,
-        arity: usize,
-        cells: BTreeMap<Vec<String>, String>,
-    ) -> Self {
-        assert!(
-            cells.keys().all(|inputs| inputs.len() == arity),
-            "all cells must match the declared arity"
-        );
-        Self {
-            operator,
-            arity,
-            cells,
-        }
-    }
-
-    /// Looks up an input row.
-    #[must_use]
-    pub fn get(&self, inputs: &[String]) -> Option<&str> {
-        if inputs.len() != self.arity {
-            return None;
-        }
-        self.cells.get(inputs).map(String::as_str)
-    }
-
-    /// Rows in deterministic (lexicographic) order.
-    pub fn cells(&self) -> impl Iterator<Item = (&Vec<String>, &String)> + '_ {
-        self.cells.iter()
-    }
-
-    /// Deterministic canonical form.
-    #[must_use]
-    pub fn canonical(&self) -> String {
-        let cells = self
-            .cells
-            .iter()
-            .map(|(inputs, output)| format!("{}=>{}", inputs.join(","), output))
-            .collect::<Vec<_>>()
-            .join(";");
-        format!("table:{}:arity={}:{}", self.operator.0, self.arity, cells)
-    }
 }
 
 /// Fits an arity-`arity` table for `operator` over construction examples.
@@ -129,11 +77,11 @@ pub fn fit_table(
     }
     match first_conflict {
         Some(failure) => Err(failure),
-        None => Ok(FittedTable {
-            operator: operator.clone(),
+        None => Ok(FittedTable::from_cells(
+            operator.clone(),
             arity,
             cells,
-        }),
+        )),
     }
 }
 

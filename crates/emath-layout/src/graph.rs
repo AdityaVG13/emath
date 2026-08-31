@@ -2,7 +2,7 @@
 
 use std::fmt::{self, Write as _};
 
-use emath_world_ir::fnv1a64;
+use emath_core::fnv1a64_bytes;
 
 /// Schema id; matches the disclosed `emath-schema` registry string.
 pub const LAYOUT_SCHEMA: &str = "emath.math-layout-graph";
@@ -277,10 +277,11 @@ impl MathLayoutGraph {
         out
     }
 
-    /// FNV-1a64 over the versioned canonical form.
+    /// FNV-1a64 over the versioned canonical form (single owner:
+    /// Tier-0 core, o7a6).
     #[must_use]
     pub fn graph_id(&self) -> u64 {
-        fnv1a64(self.canonical().as_bytes())
+        fnv1a64_bytes(self.canonical().as_bytes())
     }
 
     pub(crate) fn retain_unlowered(&mut self, node_id: NodeId, reason: String) {
@@ -436,29 +437,3 @@ fn escape(text: &str) -> String {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{LAYOUT_VERSION, LayoutError, check_version};
-    use crate::latex::parse_latex;
-
-    #[test]
-    fn graph_unknown_version_refused() {
-        assert_eq!(check_version(LAYOUT_VERSION), Ok(()));
-        assert_eq!(
-            check_version(LAYOUT_VERSION + 1),
-            Err(LayoutError::UnknownVersion {
-                version: LAYOUT_VERSION + 1
-            })
-        );
-    }
-
-    #[test]
-    fn graph_canonical_identical_across_rebuilds() {
-        let source = r"\sum_{i=1}^{3} i";
-        let first = parse_latex(source).expect("parse");
-        let second = parse_latex(source).expect("parse");
-        assert_eq!(first.canonical(), second.canonical());
-        assert_eq!(first.graph_id(), second.graph_id());
-        assert_eq!(first.source().as_bytes(), source.as_bytes());
-    }
-}

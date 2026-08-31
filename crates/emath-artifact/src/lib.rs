@@ -447,6 +447,9 @@ fn parse_json_string(bytes: &[u8], start: usize) -> Option<(String, usize)> {
                     b'r' => out.push('\r'),
                     b't' => out.push('\t'),
                     b'u' => {
+                        if bytes.len() < index + 6 {
+                            return None;
+                        }
                         let digits = &bytes[index + 2..index + 6];
                         if digits.len() < 4 {
                             return None;
