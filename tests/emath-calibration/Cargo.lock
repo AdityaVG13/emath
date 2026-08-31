@@ -3,20 +3,28 @@
 version = 4
 
 [[package]]
+name = "emath-calibration"
+version = "0.1.0"
+dependencies = [
+ "emath-ir",
+ "emath-term",
+ "emath-world-ir",
+]
+
+[[package]]
+name = "emath-calibration-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-calibration",
+ "emath-ir",
+ "emath-term",
+]
+
+[[package]]
 name = "emath-core"
 version = "0.1.0"
 dependencies = [
  "unicode-normalization",
-]
-
-[[package]]
-name = "emath-exec-ir"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-ir",
- "emath-rt",
- "emath-term",
 ]
 
 [[package]]
@@ -27,60 +35,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-rt"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
-name = "emath-schema"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-ir",
-]
-
-[[package]]
-name = "emath-schema-tests"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-exec-ir",
- "emath-ir",
- "emath-schema",
- "emath-sema",
- "emath-syntax",
- "emath-term",
-]
-
-[[package]]
-name = "emath-sema"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-exec-ir",
- "emath-ir",
-]
-
-[[package]]
-name = "emath-source"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
-name = "emath-syntax"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-source",
-]
-
-[[package]]
 name = "emath-term"
 version = "0.1.0"
+
+[[package]]
+name = "emath-world-ir"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-term",
+]
 
 [[package]]
 name = "tinyvec"

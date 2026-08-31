@@ -32,7 +32,7 @@ fn claim_status_validation_boundaries() {
 }
 
 #[test]
-fn epic_emlib_nz1n_1_identity_domains_are_versioned_and_separated() {
+fn identity_domains_are_versioned_and_separated() {
     let payload = b"same canonical payload";
     let source = SourceId::from_bytes(payload);
     let meaning = MeaningId::from_bytes(payload);
@@ -69,7 +69,7 @@ fn epic_emlib_nz1n_1_identity_domains_are_versioned_and_separated() {
 }
 
 #[test]
-fn epic_emlib_nz1n_1_source_mutation_and_wire_verification() {
+fn source_mutation_changes_identity_and_wire_verification() {
     assert_eq!(
         SourceId::from_bytes(b"").as_str(),
         "emath:source:v1:acd0aeb36f91ce4893b33dae198e072135f61d5dbcb5e88899dd01ffc1cb0716"
@@ -104,7 +104,7 @@ fn admit(source: &str) -> SemanticPackage {
 }
 
 #[test]
-fn epic_emlib_nz1n_2_presentation_and_alpha_renames_share_meaning() {
+fn presentation_and_alpha_renames_share_meaning() {
     let left = admit(
         "emath function f:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n",
     );
@@ -129,7 +129,7 @@ fn epic_emlib_nz1n_2_presentation_and_alpha_renames_share_meaning() {
 }
 
 #[test]
-fn epic_emlib_nz1n_2_notation_aliases_share_meaning() {
+fn notation_aliases_share_meaning() {
     let glyph = admit(
         r#"notation infixl 40 "⊕" => core::math::pow alias "pw"
 emath function Power:
@@ -157,7 +157,7 @@ emath function PowerAlias:
 }
 
 #[test]
-fn epic_emlib_nz1n_2_semantic_policy_and_dependencies_change_meaning() {
+fn semantic_policy_and_dependencies_change_meaning() {
     let base = admit(
         "emath function Square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n",
     );

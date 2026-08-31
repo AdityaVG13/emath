@@ -13,7 +13,7 @@ use emath_registry::{
 use emath_schema::{LowerOp, apply_lowering, parse_schema_language};
 
 #[test]
-fn h4pl_custom_kind_registry_and_migration_happy_path() {
+fn custom_kind_registry_and_migration_succeed() {
     let (schema, issues) = parse_schema_language(
         "kind observable\nsection observations at-most-one fields\npredicate observations != empty\n",
     );
@@ -77,7 +77,7 @@ fn h4pl_custom_kind_registry_and_migration_happy_path() {
 }
 
 #[test]
-fn h4pl_forbidden_lowering_is_refused() {
+fn forbidden_custom_kind_lowering_is_refused() {
     let error = apply_lowering(
         &KindSchema::core_function(),
         &[LowerOp::Rename {
