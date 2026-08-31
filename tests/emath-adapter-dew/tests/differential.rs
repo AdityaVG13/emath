@@ -11,12 +11,13 @@ use emath_core::{QualifiedName, Span};
 use emath_exec_ir::interp::{Value, evaluate};
 use emath_exec_ir::lower_definition;
 use emath_ir::{BinaryOp, ExprId, ExprNode, SemanticPackage};
+use emath_lab_core::{EngineIdentity, EngineRole};
 
 const SQUARE_SRC: &str = include_str!("../../valid/square.emath");
 const AFFINE_SRC: &str = include_str!("../../valid/affine_scorer.emath");
 
 struct CorpusCase {
-    name: &'static str,
+    name: String,
     package: SemanticPackage,
     expr: ExprId,
     inputs: Vec<String>,
@@ -49,7 +50,7 @@ fn binary(
 }
 
 /// `y = x * x` from `tests/valid/square.emath`.
-fn square_case(name: &'static str, x: f64) -> CorpusCase {
+fn square_case(name: String, x: f64) -> CorpusCase {
     let mut package = SemanticPackage::new();
     let x_var = var(&mut package, "x");
     let expr = binary(&mut package, BinaryOp::StrictFloatMul, x_var, x_var);
@@ -65,7 +66,7 @@ fn square_case(name: &'static str, x: f64) -> CorpusCase {
 }
 
 /// `score = state.scale * x + state.bias` from `tests/valid/affine_scorer.emath`.
-fn affine_case(name: &'static str, x: f64, scale: f64, bias: f64) -> CorpusCase {
+fn affine_case(name: String, x: f64, scale: f64, bias: f64) -> CorpusCase {
     let mut package = SemanticPackage::new();
     let x_var = var(&mut package, "x");
     let scale_var = var(&mut package, "state.scale");
@@ -84,7 +85,7 @@ fn affine_case(name: &'static str, x: f64, scale: f64, bias: f64) -> CorpusCase 
 }
 
 /// Adapter fixture `x + 1` (existing oracle `scalar_expr`).
-fn plus_one_case(name: &'static str, x: f64) -> CorpusCase {
+fn plus_one_case(name: String, x: f64) -> CorpusCase {
     let mut package = SemanticPackage::new();
     let x_var = var(&mut package, "x");
     let one = package.push_expr(
@@ -107,25 +108,30 @@ fn scalar_corpus() -> Vec<CorpusCase> {
     let mut cases = Vec::new();
 
     // Official `tests/valid/square.emath` example plus a seeded x-grid.
-    cases.push(square_case("square/three_squared", 3.0));
+    cases.push(square_case("square/three_squared".into(), 3.0));
     for x in [-2.0, -1.0, -0.0, 0.0, 0.5, 1.0, 1.5, 2.0, 4.0] {
-        cases.push(square_case("square/grid", x));
+        cases.push(square_case(format!("square/grid/x={x}"), x));
     }
 
     // Official `tests/valid/affine_scorer.emath` examples plus a seeded grid.
-    cases.push(affine_case("affine/score_is_seven", 3.0, 1.0, 4.0));
-    cases.push(affine_case("affine/fractional_score", 1.5, 2.0, 0.5));
+    cases.push(affine_case("affine/score_is_seven".into(), 3.0, 1.0, 4.0));
+    cases.push(affine_case("affine/fractional_score".into(), 1.5, 2.0, 0.5));
     for x in [0.0, 1.0, 2.0] {
         for scale in [0.5, 1.0, 2.0] {
             for bias in [0.0, -1.0] {
-                cases.push(affine_case("affine/grid", x, scale, bias));
+                cases.push(affine_case(
+                    format!("affine/grid/x={x}/scale={scale}/bias={bias}"),
+                    x,
+                    scale,
+                    bias,
+                ));
             }
         }
     }
 
     // Existing Dew oracle fixture `x + 1`.
     for x in [-2.0, -0.0, 0.0, 0.5, 1.0, 2.0] {
-        cases.push(plus_one_case("fixture/x+1", x));
+        cases.push(plus_one_case(format!("fixture/x+1/x={x}"), x));
     }
 
     cases
@@ -177,7 +183,29 @@ fn native_and_dew_agree_on_scalar_corpus() {
         "corpus must stay tied to tests/valid/affine_scorer.emath"
     );
 
+    let subject = EngineIdentity {
+        role: EngineRole::Subject,
+        label: "emath-exec-ir-native".into(),
+    };
+    let oracle = EngineIdentity {
+        role: EngineRole::Oracle,
+        label: "emath-adapter-dew".into(),
+    };
+    subject
+        .require_distinct(&oracle, "dew differential")
+        .expect("subject and oracle must be distinct engines");
+
     let cases = scalar_corpus();
+
+    let mut ids: std::collections::BTreeSet<&String> = std::collections::BTreeSet::new();
+    for case in &cases {
+        assert!(
+            ids.insert(&case.name),
+            "duplicate differential case id: {}",
+            case.name
+        );
+    }
+
     assert_eq!(
         cases.len(),
         36,

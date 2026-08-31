@@ -69,3 +69,8 @@ mod builder {
         assert_eq!(goal.kind.as_str(), "evaluate");
     }
 }
+
+// e3wv (F041): the malformed-given/expect negatives live in
+// `test_lower_negative.rs` (same crate, shared target via this module
+// include — a standalone file with no `[[test]]` entry never compiled).
+mod test_lower_negative;

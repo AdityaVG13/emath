@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::process::Command;
 
 use emath_core::{QualifiedName, Span};
+use emath_exec_ir::{EmirOp, EmirProgram, EmirValue};
 use emath_ir::{
     BinaryOp, BinderKind, BinderVariable, CompileSpec, Constructor, Declaration, DeclarationId,
     DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExprId, ExprNode, Extent, FallbackPolicy,
@@ -8,9 +10,9 @@ use emath_ir::{
     ObligationKind, SemanticPackage, SliceAxis, TargetProfile, TestCase, TypeId, TypeNode, UnaryOp,
     Visibility,
 };
-use emath_rust_backend::BackendInput;
+use emath_rust_backend::{BackendInput, render_op_expr_for_tests};
 use emath_rust_ir::ast::{Item, StructDef};
-use emath_rust_ir::render::render_module;
+use emath_rust_ir::render::{render_expr, render_module};
 
 /// A minimal package: one declaration `named` with an `x: Float64`
 /// input, nothing else. Enough to exercise struct emission, which is
@@ -857,6 +859,70 @@ fn extract_fn(src: &str, name: &str) -> String {
     }
 }
 
+#[test]
+fn sequence_recurrence_generates_shared_runtime_call() {
+    let mut package = SemanticPackage::new();
+    let zero = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(0.0_f64.to_bits())),
+        Span::default(),
+    );
+    let one = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(1.0_f64.to_bits())),
+        Span::default(),
+    );
+    let initial = package.push_expr(ExprNode::Vector(vec![zero, one]), Span::default());
+    let recurrence = package.push_expr(ExprNode::Vector(vec![one, one]), Span::default());
+    let budget = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(64.0_f64.to_bits())),
+        Span::default(),
+    );
+    let sequence = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("generating_function"),
+            arguments: vec![initial, recurrence, budget],
+        },
+        Span::default(),
+    );
+    let index = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(10.0_f64.to_bits())),
+        Span::default(),
+    );
+    let coefficient = package.push_expr(
+        ExprNode::Index {
+            value: sequence,
+            indices: vec![index],
+        },
+        Span::default(),
+    );
+    let source = generate_fn("sequence_coefficient", &[], coefficient, &mut package);
+    assert!(
+        source.contains("emath_rt::sequence_generate"),
+        "generated Rust must use the shared recurrence kernel:\n{source}"
+    );
+}
+
+#[test]
+fn special_function_generates_embedded_reference_evaluator() {
+    let mut package = SemanticPackage::new();
+    let five = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(5.0_f64.to_bits())),
+        Span::default(),
+    );
+    let gamma = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("gamma"),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let source = generate_fn("gamma_five", &[], gamma, &mut package);
+    assert!(
+        source.contains("emath_rt::special::SpecialFn::Gamma")
+            && source.contains("evaluate_strict"),
+        "generated Rust must embed and invoke the strict evaluator:\n{source}"
+    );
+}
+
 /// Single-use inlining must keep non-associative grouping: `a - (b - c)`
 /// is not `a - b - c`, and `(a + b) * c` is not `a + b * c`.
 #[test]
@@ -1660,4 +1726,1031 @@ fn sign_zero_uses_mathematical_sgn() {
         src.contains("== 0.0") && src.contains("signum"),
         "sign must use mathematical sgn (0 at 0), got:\n{src}"
     );
+}
+
+fn op_program(ops: Vec<(EmirOp, Span)>, result: EmirValue) -> EmirProgram {
+    EmirProgram {
+        ops,
+        result,
+        input_count: 0,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    }
+}
+
+/// `IntNullspace` lowers through the same exact-integer kernel as
+/// the interpreter, with both typed refusal paths and no domain
+/// naming.
+#[test]
+fn int_nullspace_lowers_to_exact_kernel() {
+    let span = Span::default();
+    let ops = vec![
+        (EmirOp::LoadInput(0), span),
+        (EmirOp::LoadInput(1), span),
+        (EmirOp::IntNullspace(EmirValue(1)), span),
+    ];
+    let program = op_program(ops, EmirValue(2));
+    let expr = render_op_expr_for_tests(
+        &EmirOp::IntNullspace(EmirValue(1)),
+        &program,
+        &[],
+        &[],
+        &BTreeSet::new(),
+    )
+    .expect("matrix-operand IntNullspace must lower");
+    let rendered = render_expr(&expr);
+    assert!(
+        rendered.contains("primitive_int_nullvector"),
+        "IntNullspace must call the exact-integer kernel, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("E-NULLSPACE-001") && rendered.contains("E-NULLSPACE-002"),
+        "IntNullspace must emit both typed refusals, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("as i64"),
+        "IntNullspace must widen exact integer entries, got:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("chem"),
+        "IntNullspace codegen must carry no domain naming, got:\n{rendered}"
+    );
+}
+
+/// `ExactProductDelta` compares the products in u128 before any f64
+/// cast, refuses typed on entry/length/overflow, and widens the
+/// exact magnitude with the sign of `p - q`.
+#[test]
+fn exact_product_delta_compares_u128_before_cast() {
+    let span = Span::default();
+    let ops = vec![
+        (EmirOp::LoadInput(0), span),
+        (EmirOp::LoadInput(1), span),
+        (EmirOp::LoadInput(2), span),
+        (EmirOp::ExactProductDelta(EmirValue(1), EmirValue(2)), span),
+    ];
+    let program = op_program(ops, EmirValue(3));
+    let expr = render_op_expr_for_tests(
+        &EmirOp::ExactProductDelta(EmirValue(1), EmirValue(2)),
+        &program,
+        &[],
+        &[],
+        &BTreeSet::new(),
+    )
+    .expect("vector-operand ExactProductDelta must lower");
+    let rendered = render_expr(&expr);
+    assert!(
+        rendered.contains("__pp == __qq"),
+        "ExactProductDelta must compare products in u128 before any cast, got:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("as f64 - __qq as f64") && !rendered.contains("__pp as f64"),
+        "ExactProductDelta must not compare via lossy f64 casts, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("checked_mul")
+            && rendered.contains("E-EXACT-001")
+            && rendered.contains("E-EXACT-002"),
+        "ExactProductDelta must carry exact u128 overflow and entry refusals, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("(__big - __small) as f64"),
+        "ExactProductDelta must widen the exact magnitude, got:\n{rendered}"
+    );
+}
+
+/// A statically non-matrix operand is a typed lowering refusal,
+/// never a fabricated vector (interp TypeConfusion parity).
+#[test]
+fn int_nullspace_non_matrix_operand_refuses_typed() {
+    let span = Span::default();
+    let ops = vec![
+        (EmirOp::ConstF64(1.0f64.to_bits()), span),
+        (EmirOp::IntNullspace(EmirValue(0)), span),
+    ];
+    let program = op_program(ops, EmirValue(1));
+    let err = render_op_expr_for_tests(
+        &EmirOp::IntNullspace(EmirValue(0)),
+        &program,
+        &[],
+        &[],
+        &BTreeSet::new(),
+    )
+    .expect_err("scalar-operand IntNullspace must refuse");
+    assert!(
+        err.to_string().contains("matrix operand"),
+        "refusal must name the shape rule, got: {err}"
+    );
+}
+
+// ── aj8d pass 5: strict Rust backend Option/Result parity ─────────────
+// The nine carrier ops must lower through the REAL generation path
+// (SemanticPackage → emitter → EmirProgram → BackendInput::generate →
+// rust-ir) into executable native Option<T>/Result<T, E> code with typed
+// shape errors. Behavior is proven by compiling the generated crate and
+// RUNNING it (rustc-direct, no new cargo crate; test-only infra).
+
+fn carrier_int(name: &str, y_expr: ExprId, package: &mut SemanticPackage) {
+    carrier_decl(name, TypeNode::Int, y_expr, package);
+}
+
+fn carrier_bool(name: &str, y_expr: ExprId, package: &mut SemanticPackage) {
+    carrier_decl(name, TypeNode::Bool, y_expr, package);
+}
+
+fn carrier_vec(name: &str, y_expr: ExprId, package: &mut SemanticPackage) {
+    carrier_decl(
+        name,
+        TypeNode::Vector {
+            element: Box::new(TypeNode::Float64),
+            extent: None,
+        },
+        y_expr,
+        package,
+    );
+}
+
+fn carrier_decl(name: &str, output_ty: TypeNode, y_expr: ExprId, package: &mut SemanticPackage) {
+    let ty = package.push_type(output_ty);
+    let goal_id = package.push_goal(Goal {
+        id: GoalId(0),
+        kind: GoalKind::Evaluate,
+        target: "y".to_string(),
+        expression: Some(y_expr),
+        requirements: eval_requirements(),
+        payload: GoalPayload::default(),
+        source: Span::default(),
+    });
+    let mut definitions = BTreeMap::new();
+    definitions.insert("y".to_string(), y_expr);
+    package.declarations.push(Declaration {
+        id: DeclarationId(package.declarations.len() as u32),
+        name: QualifiedName::single(name),
+        kind: QualifiedName::single("function"),
+        kind_label: "function".to_string(),
+        inputs: Vec::new(),
+        outputs: vec![Field {
+            name: "y".to_string(),
+            ty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        state: Vec::new(),
+        algebraic: Vec::new(),
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: vec![goal_id],
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+}
+
+/// Real-path generation of the test package → generated src/lib.rs.
+fn generate_carrier_lib(package: &SemanticPackage) -> String {
+    BackendInput {
+        package,
+        crate_name: "opt_result_carrier".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("option/result carrier package must generate")
+    .files
+    .get("src/lib.rs")
+    .expect("generated crate has src/lib.rs")
+    .clone()
+}
+
+/// Generated user code (everything before the embedded `emath_rt` module).
+fn user_section(lib: &str) -> &str {
+    lib.split("mod emath_rt").next().unwrap_or(lib)
+}
+
+/// Compile the generated crate and run `main_body` against it with
+/// rustc-direct (edition 2024, std-only generated crate; the embedded
+/// emath_rt kernel source is pure std). Behavior failures surface as
+/// non-zero exit (assert!) with the message in stderr.
+fn run_generated(lib: &str, main_body: &str) -> Result<(), String> {
+    let dir = std::env::temp_dir().join(format!(
+        "emath_opt_carrier_run_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdtemp: {e}"))?;
+    let result = run_generated_in(&dir, lib, main_body);
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn run_generated_in(dir: &std::path::Path, lib: &str, main_body: &str) -> Result<(), String> {
+    let lib_path = dir.join("generated.rs");
+    std::fs::write(&lib_path, lib).map_err(|e| format!("write lib: {e}"))?;
+    let driver = format!(
+        "#[path = \"{}\"]\nmod generated;\nfn main() {{\n{main_body}\n}}\n",
+        lib_path.display()
+    );
+    let main_path = dir.join("main.rs");
+    let bin_path = dir.join("run");
+    std::fs::write(&main_path, driver).map_err(|e| format!("write driver: {e}"))?;
+    let comp = Command::new("rustc")
+        .arg("--edition=2024")
+        .arg("--crate-name")
+        .arg("opt_carrier_run")
+        .current_dir(dir)
+        .arg(&main_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .output()
+        .map_err(|e| format!("rustc spawn failed (is rustc on PATH?): {e}"))?;
+    if !comp.status.success() {
+        return Err(format!(
+            "generated crate failed to compile:\n{}\n--- generated lib ---\n{lib}",
+            String::from_utf8_lossy(&comp.stderr)
+        ));
+    }
+    let run = Command::new(&bin_path)
+        .output()
+        .map_err(|e| format!("run generated binary: {e}"))?;
+    if !run.status.success() {
+        return Err(format!(
+            "generated behavior failed (exit {:?}):\n{}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stderr)
+        ));
+    }
+    Ok(())
+}
+
+/// some(some carrier) round trips its payload; none returns the eager
+/// default; is_some polarity holds — all in EXECUTED generated Rust.
+#[test]
+fn option_carrier_generated_behaviors() {
+    let mut package = SemanticPackage::new();
+    let five = package.push_expr(
+        ExprNode::Literal(Literal::Integer("5".to_string())),
+        Span::default(),
+    );
+    let seven = package.push_expr(
+        ExprNode::Literal(Literal::Integer("7".to_string())),
+        Span::default(),
+    );
+    let some = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_some"),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let roundtrip = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_unwrap_or"),
+            arguments: vec![some, seven],
+        },
+        Span::default(),
+    );
+    carrier_int("opt_roundtrip", roundtrip, &mut package);
+    let none = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_none"),
+            arguments: Vec::new(),
+        },
+        Span::default(),
+    );
+    let default = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_unwrap_or"),
+            arguments: vec![none, seven],
+        },
+        Span::default(),
+    );
+    carrier_int("opt_default", default, &mut package);
+    let some2 = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_some"),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let pol_some = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_is_some"),
+            arguments: vec![some2],
+        },
+        Span::default(),
+    );
+    carrier_bool("opt_polarity_some", pol_some, &mut package);
+    let none2 = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_none"),
+            arguments: Vec::new(),
+        },
+        Span::default(),
+    );
+    let pol_none = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_is_some"),
+            arguments: vec![none2],
+        },
+        Span::default(),
+    );
+    carrier_bool("opt_polarity_none", pol_none, &mut package);
+    let v1 = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(1.0_f64.to_bits())),
+        Span::default(),
+    );
+    let v2 = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(2.0_f64.to_bits())),
+        Span::default(),
+    );
+    let vec_payload = package.push_expr(ExprNode::Vector(vec![v1, v2]), Span::default());
+    let some_vec = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_some"),
+            arguments: vec![vec_payload],
+        },
+        Span::default(),
+    );
+    let v9 = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(9.0_f64.to_bits())),
+        Span::default(),
+    );
+    let v8 = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(8.0_f64.to_bits())),
+        Span::default(),
+    );
+    let vec_default = package.push_expr(ExprNode::Vector(vec![v9, v8]), Span::default());
+    let vec_pick = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_unwrap_or"),
+            arguments: vec![some_vec, vec_default],
+        },
+        Span::default(),
+    );
+    carrier_vec("vec_pick", vec_pick, &mut package);
+
+    let lib = generate_carrier_lib(&package);
+    let user = user_section(&lib);
+    assert!(
+        lib.contains("Option::<i64>::Some") && lib.contains("Option::<i64>::None"),
+        "generated carriers must be native Option<i64>, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("Option::<Vec<f64>>::Some") && lib.contains(".unwrap_or("),
+        "vector payload and eager unwrap_or gate must be emitted, got:\n{lib}"
+    );
+    assert!(
+        !user.contains(".unwrap()") && !user.contains("expect(") && !user.contains("panic!"),
+        "generated user code must contain no panicking unwrap / expect / panic, got:\n{user}"
+    );
+    run_generated(&lib, r#"
+        assert_eq!(generated::opt_roundtrip(), 5i64, "some carrier round trip");
+        assert_eq!(generated::opt_default(), 7i64, "none returns eager default");
+        assert_eq!(generated::opt_polarity_some(), true, "option_is_some(some) is true");
+        assert_eq!(generated::opt_polarity_none(), false, "option_is_some(none) is false");
+        assert_eq!(generated::vec_pick(), vec![1.0_f64, 2.0_f64], "vector payload round trip");
+    "#)
+    .expect("generated option carrier behavior must hold at runtime");
+}
+
+/// ok/err carry their payloads, is_ok polarity holds, unwrap_or's
+/// default is taken only on Err, and error_of composes the error as an
+/// Option (Ok → None, Err → Some(payload)) — in EXECUTED generated Rust.
+#[test]
+fn result_carrier_generated_behaviors() {
+    let mut package = SemanticPackage::new();
+    let five = package.push_expr(
+        ExprNode::Literal(Literal::Integer("5".to_string())),
+        Span::default(),
+    );
+    let six = package.push_expr(
+        ExprNode::Literal(Literal::Integer("6".to_string())),
+        Span::default(),
+    );
+    let seven = package.push_expr(
+        ExprNode::Literal(Literal::Integer("7".to_string())),
+        Span::default(),
+    );
+    let nine = package.push_expr(
+        ExprNode::Literal(Literal::Integer("9".to_string())),
+        Span::default(),
+    );
+    let ok = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_ok"),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let ok_carry = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_unwrap_or"),
+            arguments: vec![ok, seven],
+        },
+        Span::default(),
+    );
+    carrier_int("res_ok_carry", ok_carry, &mut package);
+    let err = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_err"),
+            arguments: vec![six],
+        },
+        Span::default(),
+    );
+    let err_default = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_unwrap_or"),
+            arguments: vec![err, seven],
+        },
+        Span::default(),
+    );
+    carrier_int("res_err_default", err_default, &mut package);
+    let ok2 = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_ok"),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let is_ok_true = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_is_ok"),
+            arguments: vec![ok2],
+        },
+        Span::default(),
+    );
+    carrier_bool("res_is_ok_true", is_ok_true, &mut package);
+    let err2 = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_err"),
+            arguments: vec![six],
+        },
+        Span::default(),
+    );
+    let is_ok_false = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_is_ok"),
+            arguments: vec![err2],
+        },
+        Span::default(),
+    );
+    carrier_bool("res_is_ok_false", is_ok_false, &mut package);
+    let ok3 = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_ok"),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let err_of_ok = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_error_of"),
+            arguments: vec![ok3],
+        },
+        Span::default(),
+    );
+    let err_of_ok_default = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_unwrap_or"),
+            arguments: vec![err_of_ok, nine],
+        },
+        Span::default(),
+    );
+    carrier_int("err_of_ok", err_of_ok_default, &mut package);
+    let err3 = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_err"),
+            arguments: vec![six],
+        },
+        Span::default(),
+    );
+    let err_of_err = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_error_of"),
+            arguments: vec![err3],
+        },
+        Span::default(),
+    );
+    let err_of_err_payload = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_unwrap_or"),
+            arguments: vec![err_of_err, nine],
+        },
+        Span::default(),
+    );
+    carrier_int("err_of_err", err_of_err_payload, &mut package);
+
+    let lib = generate_carrier_lib(&package);
+    let user = user_section(&lib);
+    assert!(
+        lib.contains("Result::<i64, i64>::Ok") && lib.contains("Result::<i64, i64>::Err"),
+        "generated carriers must be native Result<i64, i64>, got:\n{lib}"
+    );
+    assert!(
+        lib.contains("match ") && lib.contains("Option::<i64>::Some"),
+        "error_of must compose the error as an Option carrier, got:\n{lib}"
+    );
+    assert!(
+        !user.contains(".unwrap()") && !user.contains("expect(") && !user.contains("panic!"),
+        "generated user code must contain no panicking unwrap / expect / panic, got:\n{user}"
+    );
+    run_generated(&lib, r#"
+        assert_eq!(generated::res_ok_carry(), 5i64, "ok payload round trips");
+        assert_eq!(generated::res_err_default(), 7i64, "err payload is not the unwrap value; default is");
+        assert_eq!(generated::res_is_ok_true(), true, "result_is_ok(ok) is true");
+        assert_eq!(generated::res_is_ok_false(), false, "result_is_ok(err) is false");
+        assert_eq!(generated::err_of_ok(), 9i64, "error_of(ok) -> None -> default");
+        assert_eq!(generated::err_of_err(), 6i64, "error_of(err) -> Some(payload)");
+    "#)
+    .expect("generated result carrier behavior must hold at runtime");
+}
+
+/// Wrong-carrier use is a TYPED lowering refusal (interp TypeConfusion
+/// parity), surfaced as `BackendError::Lowering`, never a panic and
+/// never a silent scalar shadow.
+#[test]
+fn wrong_carrier_use_refuses_typed() {
+    // option_is_some over a scalar carrier slot.
+    let mut package = SemanticPackage::new();
+    let scalar = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(5.0_f64.to_bits())),
+        Span::default(),
+    );
+    let bogus = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_is_some"),
+            arguments: vec![scalar],
+        },
+        Span::default(),
+    );
+    carrier_bool("bogus_opt", bogus, &mut package);
+    let err = BackendInput {
+        package: &package,
+        crate_name: "bogus".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("option_is_some over a scalar must refuse typed");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Option carrier") && msg.contains("TypeConfusion"),
+        "refusal must name the carrier rule and mirror interp TypeConfusion, got: {msg}"
+    );
+
+    // result_error_of over a scalar carrier slot.
+    let mut package = SemanticPackage::new();
+    let scalar = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(5.0_f64.to_bits())),
+        Span::default(),
+    );
+    let bogus = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_error_of"),
+            arguments: vec![scalar],
+        },
+        Span::default(),
+    );
+    carrier_bool("bogus_res", bogus, &mut package);
+    let err = BackendInput {
+        package: &package,
+        crate_name: "bogus_res".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("result_error_of over a scalar must refuse typed");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Result carrier") && msg.contains("TypeConfusion"),
+        "refusal must name the carrier rule and mirror interp TypeConfusion, got: {msg}"
+    );
+}
+
+// ── aj8d pass 8: hardened backend typed refusals ────────────────────
+
+fn literal_int(p: &mut SemanticPackage, s: &str) -> ExprId {
+    p.push_expr(
+        ExprNode::Literal(Literal::Integer(s.to_string())),
+        Span::default(),
+    )
+}
+
+/// A carrier passed into the eager-default slot of an `unwrap_or` is a
+/// typed payload-kind conflict, never a silent scalar shadow of the
+/// default. (Backend `CarrierPayloadTypes` resolves i64 from the carrier
+/// producer vs f64 from the carrier default on the SAME register → REFUSE.)
+#[test]
+fn unwrap_or_carrier_default_refuses_payload_conflict() {
+    // Option: option_unwrap_or(option_some(5), option_some(7)) — the
+    // default slot is a genuine scalar, not a carrier.
+    let mut package = SemanticPackage::new();
+    let five = literal_int(&mut package, "5");
+    let seven = literal_int(&mut package, "7");
+    let c = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_some".to_string()),
+            arguments: vec![five],
+        },
+        Span::default(),
+    );
+    let def_car = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_some".to_string()),
+            arguments: vec![seven],
+        },
+        Span::default(),
+    );
+    let y = package.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("option_unwrap_or".to_string()),
+            arguments: vec![c, def_car],
+        },
+        Span::default(),
+    );
+    carrier_int("opt_carrier_default", y, &mut package);
+    let err = BackendInput {
+        package: &package,
+        crate_name: "opt_carrier_default".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("unwrap_or carrier default must refuse typed");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("payload kind conflict")
+            && msg.contains("i64")
+            && msg.contains("Option"),
+        "Option carrier-as-default must refuse via payload-kind conflict, got: {msg}"
+    );
+
+    // Result: result_unwrap_or(result_ok(5), result_ok(7)) — same rule.
+    let mut rpackage = SemanticPackage::new();
+    let rfive = literal_int(&mut rpackage, "5");
+    let rseven = literal_int(&mut rpackage, "7");
+    let rc = rpackage.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_ok".to_string()),
+            arguments: vec![rfive],
+        },
+        Span::default(),
+    );
+    let rdef_car = rpackage.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_ok".to_string()),
+            arguments: vec![rseven],
+        },
+        Span::default(),
+    );
+    let ry = rpackage.push_expr(
+        ExprNode::Call {
+            function: QualifiedName::single("result_unwrap_or".to_string()),
+            arguments: vec![rc, rdef_car],
+        },
+        Span::default(),
+    );
+    carrier_int("res_carrier_default", ry, &mut rpackage);
+    let rerr = BackendInput {
+        package: &rpackage,
+        crate_name: "res_carrier_default".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("result unwrap_or carrier default must refuse typed");
+    let rmsg = rerr.to_string();
+    assert!(
+        rmsg.contains("payload kind conflict")
+            && rmsg.contains("i64")
+            && rmsg.contains("Result"),
+        "Result carrier-as-default must refuse via payload-kind conflict, got: {rmsg}"
+    );
+}
+
+/// A `Field<7>` output field is not representable as a built-in Phase 1
+/// Rust type; rust.library refuses it typed (naming the prime-field
+/// spelling), never treating it as f64. (Sema ADMITS Field<7>; the
+/// backend is the enforcement boundary for field-FIELD types.)
+#[test]
+fn field_prime_output_decl_refuses_typed() {
+    let mut package = SemanticPackage::new();
+    let y = literal_int(&mut package, "7");
+    carrier_decl("field_out", TypeNode::FieldPrime { modulus: 7 }, y, &mut package);
+    let err = BackendInput {
+        package: &package,
+        crate_name: "field_out".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("Field<7> output field must refuse typed, not become f64");
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("field<7>") && msg.contains("unsupported type"),
+        "FieldPrime output must refuse naming Field<7> as an unsupported type, got: {err}"
+    );
+}
+
+/// A `Field<7>` input field refuses typed for the same reason a scalar
+/// Step is admitted — the field spelling is not a native Phase 1 scalar.
+#[test]
+fn field_prime_input_decl_refuses_typed() {
+    let mut package = SemanticPackage::new();
+    let ft = package.push_type(TypeNode::FieldPrime { modulus: 7 });
+    let fty = package.push_type(TypeNode::Float64);
+    let x = package.push_expr(
+        ExprNode::Variable(QualifiedName::single("x".to_string())),
+        Span::default(),
+    );
+    let goal_id = package.push_goal(Goal {
+        id: GoalId(0),
+        kind: GoalKind::Evaluate,
+        target: "x".to_string(),
+        expression: Some(x),
+        requirements: eval_requirements(),
+        payload: GoalPayload::default(),
+        source: Span::default(),
+    });
+    let mut definitions = BTreeMap::new();
+    definitions.insert("x".to_string(), x);
+    package.declarations.push(Declaration {
+        id: DeclarationId(0),
+        name: QualifiedName::single("field_in"),
+        kind: QualifiedName::single("function"),
+        kind_label: "function".to_string(),
+        inputs: vec![Field {
+            name: "x".to_string(),
+            ty: ft,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        outputs: vec![Field {
+            name: "x".to_string(),
+            ty: fty,
+            visibility: Visibility::Public,
+            source: Span::default(),
+        }],
+        state: Vec::new(),
+        algebraic: Vec::new(),
+        constructors: Vec::new(),
+        definitions,
+        invariants: Vec::new(),
+        goals: vec![goal_id],
+        tests: Vec::new(),
+        exports: Vec::new(),
+        compile_spec: CompileSpec::default(),
+        about: None,
+        evidence: Vec::new(),
+        host: Vec::new(),
+        source: Span::default(),
+    });
+    let err = BackendInput {
+        package: &package,
+        crate_name: "field_in".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect_err("Field<7> input field must refuse typed");
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("field<7>") && msg.contains("unsupported type"),
+        "FieldPrime input must refuse naming Field<7> as an unsupported type, got: {err}"
+    );
+}
+
+/// A `Option<Int>` / `Result<Int, Bool>` input FIELD also refuses typed
+/// at the backend (Phase 1 has no native carrier RUST type on decl
+/// fields; carrier VALUES only exist in expressions via the nine ops,
+/// confirmed in pass 5). This pins the boundary: no field of a carrier
+/// or field spelling can silently lower to f64.
+#[test]
+fn carrier_field_decl_refuses_typed() {
+    for (spelling, node) in [
+        (
+            "Option<Int>",
+            TypeNode::OptionType(Box::new(TypeNode::Int)),
+        ),
+        (
+            "Result<Int, Bool>",
+            TypeNode::Result {
+                ok: Box::new(TypeNode::Int),
+                error: Box::new(TypeNode::Bool),
+            },
+        ),
+    ] {
+        let mut package = SemanticPackage::new();
+        let ft = package.push_type(node);
+        let fty = package.push_type(TypeNode::Float64);
+        let x = package.push_expr(
+            ExprNode::Variable(QualifiedName::single("x".to_string())),
+            Span::default(),
+        );
+        let goal_id = package.push_goal(Goal {
+            id: GoalId(0),
+            kind: GoalKind::Evaluate,
+            target: "x".to_string(),
+            expression: Some(x),
+            requirements: eval_requirements(),
+            payload: GoalPayload::default(),
+            source: Span::default(),
+        });
+        let mut definitions = BTreeMap::new();
+        definitions.insert("x".to_string(), x);
+        package.declarations.push(Declaration {
+            id: DeclarationId(0),
+            name: QualifiedName::single("carrier_field"),
+            kind: QualifiedName::single("function"),
+            kind_label: "function".to_string(),
+            inputs: vec![Field {
+                name: "x".to_string(),
+                ty: ft,
+                visibility: Visibility::Public,
+                source: Span::default(),
+            }],
+            outputs: vec![Field {
+                name: "x".to_string(),
+                ty: fty,
+                visibility: Visibility::Public,
+                source: Span::default(),
+            }],
+            state: Vec::new(),
+            algebraic: Vec::new(),
+            constructors: Vec::new(),
+            definitions,
+            invariants: Vec::new(),
+            goals: vec![goal_id],
+            tests: Vec::new(),
+            exports: Vec::new(),
+            compile_spec: CompileSpec::default(),
+            about: None,
+            evidence: Vec::new(),
+            host: Vec::new(),
+            source: Span::default(),
+        });
+        let err = BackendInput {
+            package: &package,
+            crate_name: "carrier_field".to_string(),
+            version: "0.1.0".to_string(),
+        }
+        .generate()
+        .expect_err("carrier input field must refuse typed");
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains(&spelling.to_lowercase()) && msg.contains("unsupported type"),
+            "`{spelling}` input field must refuse naming its spelling, got: {err}"
+        );
+    }
+}
+
+// ── aj8d pass 4: TEXT-driven carrier parity + nested carrier parity ───
+// Build the SemanticPackage by parsing REAL .emath source (sema →
+// package), then generate + execute the native Option/Result Rust. These
+// close the loop the hand-built pass-5 tests start: the USER surface's
+// executable carriers carry through to generated native types, and
+// nested carriers now resolve to native nested types (Option<Option<T>>)
+// instead of collapsing the inner payload to f64.
+
+fn text_package(source: &str) -> SemanticPackage {
+    emath_syntax::install_source_parser();
+    let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+    let file = session.load_text("aj8d-backend-text.emath", source);
+    let planned = session.plan(file);
+    let errors: Vec<String> = planned
+        .diagnostics
+        .errors()
+        .map(ToString::to_string)
+        .collect();
+    assert!(errors.is_empty(), "text must admit: {errors:?}\n{source}");
+    planned.package
+}
+
+/// Generate src/lib.rs from real .emath text (sema → package → backend).
+fn text_lib(source: &str) -> String {
+    let package = text_package(source);
+    BackendInput {
+        package: &package,
+        crate_name: "opt_result_carrier".to_string(),
+        version: "0.1.0".to_string(),
+    }
+    .generate()
+    .expect("text package must generate")
+    .files
+    .get("src/lib.rs")
+    .expect("generated crate has src/lib.rs")
+    .clone()
+}
+
+/// A declared `Option<Int>` OUTPUT whose definition builds option_some(5):
+/// the generated free function carries the native Option<i64> OUT of the
+/// declaration, and the runtime value is Some(5).
+#[test]
+fn text_option_int_output_carrier_out() {
+    let lib = text_lib(
+        "emath function f:\n    outputs:\n        o: Option<Int>\n    definitions:\n        o = option_some(5)\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+    );
+    assert!(
+        lib.contains("Option::<i64>::Some"),
+        "generated code must carry Option<i64> natively, got:\n{lib}"
+    );
+    run_generated(&lib, "assert_eq!(generated::f(), Some(5i64));")
+        .expect("generated Option<Int> output must equal Some(5) at runtime");
+}
+
+/// NESTED carrier: option_some(option_some(5)) typed as
+/// Option<Option<Int>> emits the native nested type and round-trips to
+/// Some(Some(5)).
+#[test]
+fn text_nested_option_option_int() {
+    let lib = text_lib(
+        "emath function n:\n    outputs:\n        o: Option<Option<Int>>\n    definitions:\n        o = option_some(option_some(5))\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+    );
+    assert!(
+        lib.contains("Option::<Option<i64>>::Some"),
+        "nested carrier must emit Option<Option<i64>>, got:\n{lib}"
+    );
+    run_generated(&lib, "assert_eq!(generated::n(), Some(Some(5i64)));")
+        .expect("nested Option<Option<i64>> must equal Some(Some(5)) at runtime");
+}
+
+/// Nested Some(None): outer Some carries an inner None (the tag-vs-content
+/// distinction is preserved through the nested native type).
+#[test]
+fn text_nested_some_none() {
+    let lib = text_lib(
+        "emath function sc:\n    outputs:\n        o: Option<Option<Float64>>\n    definitions:\n        o = option_some(option_none())\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+    );
+    run_generated(&lib, "assert_eq!(generated::sc(), Some::<Option<f64>>(None));")
+        .expect("nested Some(None) must hold at runtime");
+}
+
+/// map-by-declared-composition over a scalar input: the generated Rust
+/// shows a native Option produced by the composed if/else (no carrier
+/// input field — inputs stay scalar, the carrier is the output).
+#[test]
+fn text_map_by_composition_emits_native_option() {
+    let lib = text_lib(
+        "emath function m:\n    inputs:\n        x: Float64\n    outputs:\n        o: Option<Float64>\n    definitions:\n        o = if x > 0.0 : option_some(2.0 * x) else : option_none()\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+    );
+    assert!(
+        lib.contains("Option::<f64>::Some") && lib.contains("None"),
+        "map-by-composition must emit native Option with a None arm, got:\n{lib}"
+    );
+    run_generated(
+        &lib,
+        "assert_eq!(generated::m(3.0), Some(6.0));\nassert_eq!(generated::m(-1.0), None);",
+    )
+    .expect("map-by-composition must yield Some(6) for positive, None for negative");
+}
+
+// ── aj8d pass 6: int_rem exact-Euclidean remainder; field ops as data ──
+// Field +/*/inverse are user capability-cell DATA over the universal
+// int_rem primitive. Generated Rust must emit exact `.rem_euclid(` and the
+// runtime values must match the interpreter (field7_add(3,4)=0,
+// field7_mul(3,4)=5, int_rem(-1,7)=6 — the negative case the truncated `%`
+// mutant must kill).
+
+/// field7_add: `c = int_rem(a + b, 7)` with an Int output and an evaluate
+/// goal — the generated free fn computes the exact Field<7> sum.
+#[test]
+fn text_int_rem_field_add_executes() {
+    let src = "emath function field7_add:\n    inputs:\n        a: Int\n        b: Int\n    outputs:\n        c: Int\n    definitions:\n        c = int_rem(a + b, 7)\n    goals:\n        evaluate <c>:\n            produce rust.library\n";
+    let lib = text_lib(src);
+    assert!(
+        lib.contains(".rem_euclid("),
+        "int_rem must emit exact Rust `.rem_euclid(`, got:\n{lib}"
+    );
+    run_generated(
+        &lib,
+        "assert_eq!(generated::field7_add(3, 4), 0);\nassert_eq!(generated::field7_add(6, 5), 4);",
+    )
+    .expect("generated field7_add must compute exact Field<7> sums");
+}
+
+/// field7_mul: `c = int_rem(a * b, 7)`. Generated Rust matches.
+#[test]
+fn text_int_rem_field_mul_executes() {
+    let src = "emath function field7_mul:\n    inputs:\n        a: Int\n        b: Int\n    outputs:\n        c: Int\n    definitions:\n        c = int_rem(a * b, 7)\n    goals:\n        evaluate <c>:\n            produce rust.library\n";
+    let lib = text_lib(src);
+    run_generated(
+        &lib,
+        "assert_eq!(generated::field7_mul(3, 4), 5);\nassert_eq!(generated::field7_mul(3, 5), 1);",
+    )
+    .expect("generated field7_mul must compute exact Field<7> products");
+}
+
+/// Euclid sign law in generated Rust: int_rem(-1, 7) == 6. This assertion
+/// FAILS under the truncated-`%` mutant (which yields -1), so it must be
+/// present BEFORE the remainder-sign mutation runs.
+#[test]
+fn text_int_rem_sign_law_generated() {
+    let src = "emath function irs:\n    inputs:\n        a: Int\n        m: Int\n    outputs:\n        c: Int\n    definitions:\n        c = int_rem(a, m)\n    goals:\n        evaluate <c>:\n            produce rust.library\n";
+    let lib = text_lib(src);
+    run_generated(
+        &lib,
+        "assert_eq!(generated::irs(-1, 7), 6);",
+    )
+    .expect("generated int_rem(-1, 7) must be the Euclidean 6 (not a truncated -1)");
 }
