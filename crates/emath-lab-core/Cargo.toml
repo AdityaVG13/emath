@@ -7,6 +7,9 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+emath-ir = { path = "../emath-ir" }
+emath-world-ir = { path = "../emath-world-ir" }
+emath-term = { path = "../emath-term" }
 emath-core = { workspace = true }
 
 [lints]

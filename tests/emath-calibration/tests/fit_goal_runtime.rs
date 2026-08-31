@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use emath_calibration::{
+use emath_lab_core::calibration::{
     AuthorityEscalation, ConfidenceInterval, FitGoal, FitModel, FitOutcome, FitPayloadError,
     FitRow, Identifiability, IdentifiabilityProvider, OptimizerMethod, ProvenanceHash,
     ResidualMethod, ResidualWeights, UnresolvedReason, escalate, fit, jacobian_residuals,
@@ -470,7 +470,7 @@ fn noisy_fixture_data() -> Vec<FitRow> {
 fn numeric_rank_oracle_serves_tight_full_rank_directions() {
     let goal = fixture_goal(true);
     let data = fixture_data();
-    let oracle = emath_calibration::NumericRankOracle::default();
+    let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &LinearModel, &data, Some(&oracle));
     let FitOutcome::Fitted {
         parameters,
@@ -503,7 +503,7 @@ fn numeric_rank_oracle_refuses_collinear_directions() {
         FitRow { t: 1.0, y: 3.1, weight: 1.0 },
         FitRow { t: 2.0, y: 2.9, weight: 1.0 },
     ];
-    let oracle = emath_calibration::NumericRankOracle::default();
+    let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &SumModel, &data, Some(&oracle));
     assert!(
         matches!(
@@ -522,7 +522,7 @@ fn numeric_rank_oracle_refuses_collinear_directions() {
 fn numeric_rank_oracle_cannot_certify_underdetermined_data() {
     let goal = fixture_goal(true);
     let data = vec![FitRow { t: 0.0, y: 1.0, weight: 1.0 }];
-    let oracle = emath_calibration::NumericRankOracle::default();
+    let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &LinearModel, &data, Some(&oracle));
     assert!(
         matches!(
@@ -554,7 +554,7 @@ fn materialize_measured_links_fitted_values_with_content_hash() {
         "a fit without an identifiability run certifies no verdict"
     );
     let fit_id = format!("{:016x}", hash.0);
-    let measured = emath_calibration::materialize_measured(&goal, &parameters, hash, confidence.as_ref())
+    let measured = emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, confidence.as_ref())
         .expect("materialization must succeed");
     assert_eq!(measured.len(), 2, "one measured value per declared parameter");
     for (symbol, value) in &measured {
@@ -580,7 +580,7 @@ fn materialize_measured_links_fitted_values_with_content_hash() {
 fn materialize_measured_uses_verdict_intervals() {
     let goal = fixture_goal(true);
     let data = noisy_fixture_data();
-    let oracle = emath_calibration::NumericRankOracle::default();
+    let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &LinearModel, &data, Some(&oracle));
     let FitOutcome::Fitted {
         parameters,
@@ -594,7 +594,7 @@ fn materialize_measured_uses_verdict_intervals() {
     };
     let verdict = confidence.as_ref().expect("granted fit carries its verdict");
     let fit_id = format!("{:016x}", hash.0);
-    let measured = emath_calibration::materialize_measured(&goal, &parameters, hash, Some(verdict))
+    let measured = emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, Some(verdict))
         .expect("materialization must succeed");
     for (symbol, value) in &measured {
         assert_eq!(
@@ -620,12 +620,12 @@ fn materialize_measured_uses_verdict_intervals() {
 fn materialize_measured_refuses_incomplete_verdict() {
     let goal = fixture_goal(false);
     let parameters = BTreeMap::from([(slope(), 2.0), (intercept(), 1.0)]);
-    let hash = emath_calibration::ProvenanceHash(0x1234);
+    let hash = emath_lab_core::calibration::ProvenanceHash(0x1234);
     // Verdict covering only one of the two declared parameters.
-    let verdict = emath_calibration::Identifiability {
+    let verdict = emath_lab_core::calibration::Identifiability {
         directions: vec![(
             slope(),
-            emath_calibration::ConfidenceInterval {
+            emath_lab_core::calibration::ConfidenceInterval {
                 lo: 1.9,
                 hi: 2.1,
                 tight: true,
@@ -633,8 +633,8 @@ fn materialize_measured_refuses_incomplete_verdict() {
         )],
     };
     assert_eq!(
-        emath_calibration::materialize_measured(&goal, &parameters, hash, Some(&verdict)),
-        Err(emath_calibration::FitMeasuredError::MissingDirection {
+        emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, Some(&verdict)),
+        Err(emath_lab_core::calibration::FitMeasuredError::MissingDirection {
             name: "intercept".into()
         }),
         "a verdict missing a declared direction must refuse by name"
@@ -644,7 +644,7 @@ fn materialize_measured_refuses_incomplete_verdict() {
 #[test]
 fn escalate_refuses_verdict_missing_a_declared_direction() {
     let goal = fixture_goal(true);
-    let verdict = emath_calibration::Identifiability {
+    let verdict = emath_lab_core::calibration::Identifiability {
         directions: vec![(
             slope(),
             ConfidenceInterval { lo: 1.9, hi: 2.1, tight: true },
@@ -739,7 +739,7 @@ fn single_parameter_fit_round_trips_with_oracle_grant() {
         FitRow { t: 2.0, y: 6.0, weight: 1.0 },
         FitRow { t: 4.0, y: 12.0, weight: 1.0 },
     ];
-    let oracle = emath_calibration::NumericRankOracle::default();
+    let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let FitOutcome::Fitted {
         parameters,
         confidence,
@@ -772,7 +772,7 @@ fn numeric_rank_oracle_refuses_zero_valued_direction() {
         FitRow { t: 2.0, y: 3.98, weight: 1.0 },
         FitRow { t: 3.0, y: 6.03, weight: 1.0 },
     ];
-    let oracle = emath_calibration::NumericRankOracle::default();
+    let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &LinearModel, &data, Some(&oracle));
     assert!(
         matches!(
@@ -902,7 +902,7 @@ fn fit_values_are_invariant_under_uniform_row_weight_scaling() {
 /// and misclassifies the rank, reporting every direction relaxed.
 #[test]
 fn rank_oracle_resolves_ill_conditioned_full_rank_design() {
-    use emath_calibration::NumericRankOracle;
+    use emath_lab_core::calibration::NumericRankOracle;
 
     // t = 1, 1+2e-4, 1+4e-4: columns [t, 1] are nearly collinear but
     // J^T J keeps full rank (det = 6*(2e-4)^2 = 2.4e-7).
@@ -948,7 +948,7 @@ fn rank_oracle_resolves_ill_conditioned_full_rank_design() {
 /// the singular-inverse `None` path.
 #[test]
 fn rank_oracle_reports_relaxed_directions_for_rank_deficient_design() {
-    use emath_calibration::NumericRankOracle;
+    use emath_lab_core::calibration::NumericRankOracle;
 
     // All `t` equal: the [t, 1] design columns are proportional, so
     // J^T J = [[12, 6], [6, 3]] has rank 1 and a zero eigenvalue.
@@ -1075,7 +1075,7 @@ fn duplicate_observable_data_row_refuses() {
 /// must not collide.
 #[test]
 fn provenance_hash_distinguishes_declared_weights() {
-    use emath_calibration::provenance;
+    use emath_lab_core::calibration::provenance;
 
     let plain = fixture_goal(false);
     let mut weighted = plain.clone();

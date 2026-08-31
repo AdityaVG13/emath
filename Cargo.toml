@@ -24,7 +24,6 @@ members = [
   "crates/emath-term",
   "crates/emath-world-ir",
   "crates/emath-agent-protocol",
-  "crates/emath-calibration",
   "crates/emath-law-check",
   "crates/emath-holes",
   "crates/emath-genesis",
@@ -113,7 +112,6 @@ emath-term = { path = "crates/emath-term" }
 emath-world-ir = { path = "crates/emath-world-ir" }
 emath-genesis = { path = "crates/emath-genesis" }
 emath-agent-protocol = { path = "crates/emath-agent-protocol" }
-emath-calibration = { path = "crates/emath-calibration" }
 emath-law-check = { path = "crates/emath-law-check" }
 emath-holes = { path = "crates/emath-holes" }
 emath-layout = { path = "crates/emath-layout" }

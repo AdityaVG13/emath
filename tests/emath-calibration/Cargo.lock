@@ -3,20 +3,11 @@
 version = 4
 
 [[package]]
-name = "emath-calibration"
-version = "0.1.0"
-dependencies = [
- "emath-ir",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-calibration-tests"
 version = "0.1.0"
 dependencies = [
- "emath-calibration",
  "emath-ir",
+ "emath-lab-core",
  "emath-term",
 ]
 
@@ -32,6 +23,16 @@ name = "emath-ir"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+]
+
+[[package]]
+name = "emath-lab-core"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]

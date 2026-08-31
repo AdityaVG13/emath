@@ -80,7 +80,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-agent-protocol` | `crates/emath-agent-protocol` | agent-native meaning proposals (admission envelope) | provider-api |
-| `emath-calibration` | `crates/emath-calibration` | semantic calibration (fitting procedures; FittedTable re-exported from world-ir, o7a6) | portfolio |
 | `emath-law-check` | `crates/emath-law-check` | independent world checking (`WorldChecker`): law admission | meaning-provider-api |
 | `emath-holes` | `crates/emath-holes` | meaning holes and finite synthesis | world-ir |
 
