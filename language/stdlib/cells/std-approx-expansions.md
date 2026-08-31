@@ -1,10 +1,10 @@
-# `std.approximation.laws` — stdlib slice contract
+# `std.approximation.laws`; stdlib slice contract
 
 Status: std-layer laws package (bead `emath-r3-approx-std-lib-lzu1`).
 The approximation machinery itself is language surface: the `≈`/`~=`
 operator, `within rtol/atol` tolerance clauses, and claim-context
 admission are compiler features (bead `emath-r3-approx-operator-depc`,
-CLOSED). This package is authored mathematics on top of that surface —
+CLOSED). This package is authored mathematics on top of that surface;
 no core IR enum variants, no parser keywords.
 
 ## Scope
@@ -12,7 +12,7 @@ no core IR enum variants, no parser keywords.
 Three executable approximation laws, each pairing a computable expansion
 with a DECLARED regime that the compiler enforces as admission-constraint
 IR (`require` lines in `assumptions:` lower via `lower_requirement` into
-`declaration.invariants` — the same seam as `invariant:`).
+`declaration.invariants`; the same seam as `invariant:`).
 
 | Law | Expansion | Declared regime (enforced) |
 |---|---|---|
@@ -35,7 +35,7 @@ without a declared regime is exactly the lie the surface forbids.
   one invariant per law (tested), and mutating the constraint (`<` →
   `<=`) changes the canonical package `ContentId` (identity law).
 - Regime VALUES in an example (`given convergence_radius = 1`) are
-  runtime demo data, not identity — the same law with a different demo
+  runtime demo data, not identity; the same law with a different demo
   input is the same admitted meaning.
 - Violations refuse at RUN with a typed refusal verdict (Chebyshev at
   `x = 2` refuses; the other two examples still pass), never silently
@@ -53,13 +53,13 @@ without a declared regime is exactly the lie the surface forbids.
 
 ## No-claim boundaries
 
-- No coefficient computation (fitting/interpolation) — the laws evaluate
+- No coefficient computation (fitting/interpolation); the laws evaluate
   SUPPLIED coefficients. Computing coefficients from data is a follow-up
   slice.
-- No world-parameterized coefficient types (units-carried expansions) —
+- No world-parameterized coefficient types (units-carried expansions);
   coefficients are plain `Float64`.
 - No remainder bounds, error estimators, or adaptive order selection.
-- No `≈`-operator integration inside the laws — the operator surface is
+- No `≈`-operator integration inside the laws; the operator surface is
   exercised by `depc` tests (`tests/emath-sema/tests/approx_operator.rs`);
   these laws use explicit formulas so the regime enforcement, not the
   tolerance machinery, is what the tests pin.

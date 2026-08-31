@@ -1,4 +1,4 @@
-# `std.measure` — data and measurement types (cell contract)
+# `std.measure`; data and measurement types (cell contract)
 
 Status: std-layer data package (bead `emath-r3-measure-data-3w1t`,
 Phase 12), implemented in `crates/emath-core/src/measure.rs`. Extends
@@ -8,7 +8,7 @@ not metadata, and participates in identity.
 ## The measurement triple
 
 `Measurement { value, std_uncertainty, distribution, unit, provenance,
-authority }` — the quantity + uncertainty + provenance triple. The
+authority }`; the quantity + uncertainty + provenance triple. The
 uncertainty is data: `add_independent` propagates it in quadrature,
 `weighted_mean` uses inverse-variance weights, and neither ever hides
 it in a bare float.
@@ -19,13 +19,13 @@ it in a bare float.
 processing}` / `Fitted{fit_id}` / `Assumed` / `Unstated`. The canonical
 encoding carries the discriminant and every field; dataset identity
 (FNV-1a64) hashes values as bit patterns PLUS provenance PLUS
-authority — the 21ul law that provenance keys participate in identity.
+authority; the 21ul law that provenance keys participate in identity.
 
 ## Authority lattice (observational honesty)
 
 `Unstated < Structural < Certified`:
 
-- **The CSV adapter ALWAYS imports at `Structural`** — observational
+- **The CSV adapter ALWAYS imports at `Structural`**; observational
   data is structural, whatever provenance the caller asserts (even an
   `Exact` argument stays structural on import). The adapter has no
   path to `Certified`.
@@ -49,12 +49,12 @@ Typed refusals, never silent repair:
 Affine units (degC, degF) refuse in arithmetic: affine points are not
 addable quantities.
 
-## `series_from_csv` — pure-text CSV time-series import (bead emath-xondg)
+## `series_from_csv`; pure-text CSV time-series import (bead emath-xondg)
 
 `series_from_csv(text, time_column, value_column, interpolation,
 extrapolation)` projects a CSV block into an executable `Series` (the
 same value type as a literal series; sample it with `series_at`). Every
-argument is a string literal; the import is **pure text** — it reads the
+argument is a string literal; the import is **pure text**; it reads the
 CSV string only, with **no filesystem, network, or CSV crate** I/O.
 
 Signature (all strings, the first is the CSV text):

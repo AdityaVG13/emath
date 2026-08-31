@@ -13,7 +13,7 @@ quantities written as T in unit
 
 `Real` names the mathematical concept and is not a compute alias. Bare `Real` is never silently
 `f64`: every type site rejects it with exactly one deterministic `E-NUM-004` naming the three
-sanctioned spellings — `Float64` (the strict-f64 profile), `Interval<Float64>` (the
+sanctioned spellings; `Float64` (the strict-f64 profile), `Interval<Float64>` (the
 certified-interval realization of a real), or a `representation Real => Float64` directive. The
 gate is total and shape-independent: input/output/state fields, `Vector`/`Matrix`/`Tensor`
 elements (nested shapes included), `Option` and both `Result` arms, `Set`/`Interval`/refinement
@@ -191,7 +191,7 @@ emath function probe:
 `rat_add(1/3, 1/6)` is the exact canonical `1/2`, never a rounded `f64`.
 A denominator that would lose precision as `Float64` (for example
 `rat(1, 1000000000000000007)`) stays exact. `rat(n, 0)` is refused with a
-typed diagnostic (`E-RAT-001`) — never a panic, never a silent zero.
+typed diagnostic (`E-RAT-001`); never a panic, never a silent zero.
 Overflow of the `i128` carrier is a runtime refusal, never a wrap. Rat
 values execute in the interpreter; the strict Rust backend refuses them
 rather than demote an exact value to `Float64`.
@@ -214,7 +214,7 @@ Bounds must be finite and ordered. Arithmetic encloses the corresponding range. 
 | `factorial(n)` | Exact `n!` for `0 <= n <= 20` |
 | `mod(a, m)` | Floating-point remainder |
 | `mod_inv(a, m)` | Exact modular inverse; refuses when no inverse exists |
-| `field_inv(a, p)` | `a^-1 mod p` over prime `p` — same exact kernel as `mod_inv` |
+| `field_inv(a, p)` | `a^-1 mod p` over prime `p`; same exact kernel as `mod_inv` |
 | `int_rem(a, m)` | Exact Euclidean i64 remainder `a.rem_euclid(m)`; typed fault when `m ≤ 0` or `a` is not a whole integer |
 | `congruence(a, b, m)` | Congruence predicate |
 
@@ -231,24 +231,24 @@ Conformance counts (emath-option-result-graph-field-aj8d): emath-sema-tests
 `option_result_graph_field` = 51, emath-ir-tests `option_result_values` = 36,
 emath-rust-backend-tests `lib` = 41.
 
-- **`Option<T>`** — admits with **exactly one** type argument (`E-TYPE-010`
+- **`Option<T>`**; admits with **exactly one** type argument (`E-TYPE-010`
   arity refusal otherwise), lowering to an `OptionType<T>` node; nesting
   descends (`Option<Option<Int>>`). The EXPRESSION surface **computes from
   `.emath` text**: `option_some(v)`, `option_none()`, `option_is_some(o)`,
   `option_unwrap_or(o, default)` (pinned by the `aj8d_text_*` sema tests).
   A payload is a concrete scalar or a nested Option/Result carrier; others
   refuse `E-TYPE-012`. `unwrap_or` is total (value or the injected default
-  — no panicking unwrap). A same-kind carrier default (e.g. `option_none`)
+ ; no panicking unwrap). A same-kind carrier default (e.g. `option_none`)
   survives for nested extraction; a MISMATCHED carrier kind in the default
   slot refuses typed `E-TYPE-012` (kind-matched).
-- **`Result<T, E>`** — admits with **exactly two** type arguments, lowering
+- **`Result<T, E>`**; admits with **exactly two** type arguments, lowering
   to a `Result { ok, error }` node. Expression surface computes from text:
   `result_ok(v)`, `result_err(v)`, `result_is_ok(r)`, `result_unwrap_or(r,
   default)`, `result_error_of(r)` (Err → `Option::Some(err)`, Ok → none).
   `.emath` `map`: compose the builtins with `if … : … else : …` over the
   declared-carrier predicates (no function-valued args). Kind-mismatches
   and foreign-carrier defaults refuse `E-TYPE-012`.
-- **`Graph`** — an **alias** for the dense `Matrix<Float64>` adjacency
+- **`Graph`**; an **alias** for the dense `Matrix<Float64>` adjacency
   carrier (decision b). The graph ops check shapes, not the type node, so
   a `Graph`-typed field feeds the closed compute surface unchanged:
   `reachability`, `bfs_order`, `shortest_distances`, `out_degrees`,
@@ -257,11 +257,11 @@ emath-rust-backend-tests `lib` = 41.
   refusal (`E-TYPE-010`). The alias is **bidirectional**: `Graph` and
   `Matrix<Float64>` are the same carrier node, so a graph value admits into
   a `Matrix<Float64>`-typed field and a `Graph`-typed field feeds any
-  matrix-consuming graph op — the two spellings interchange freely.
+  matrix-consuming graph op; the two spellings interchange freely.
   `graph { <nodes> ; <edges> }` computes the dense adjacency and the
   reachability/degree/distance kernels run from text (pinned by the
   `aj8d_graph_field_*` and `aj8d_meta_graph_relabel_*` tests).
-- **`Field<p>` / `GF<p>`** — one prime-field spelling (GF canonical;
+- **`Field<p>` / `GF<p>`**; one prime-field spelling (GF canonical;
   `Field` the declared alias). The prime is a **type-level constant**: the
   argument must be a single **prime integer literal** `2 ≤ p ≤ i32::MAX`,
   else `E-TYPE-010`. `Field<7>` and `GF<7>` are the same distinct
@@ -274,9 +274,9 @@ emath-rust-backend-tests `lib` = 41.
   `field_inv(a, 7)` (pinned by the `aj8d_field*` and
   `aj8d_meta_field7_distribution_law` tests). `field_inv`/`mod_inv` and
   `int_rem` are Phase-1 surface builtins; there is **no field-named EmirOp
-  or parser branch** — the function NAMES are user data over the generic
+  or parser branch**; the function NAMES are user data over the generic
   primitive. **Exactness conformance**: a `Field<p>` OUTPUT refuses a float
-  definition (`E-TYPE-012` — F64 does not numerically widen into an exact
+  definition (`E-TYPE-012`; F64 does not numerically widen into an exact
   integer field type; plain `Int` keeps the legacy F64→Int widening); an
   integer literal or an `int_rem`/`field_inv` result admits (valid exact
   elements).
@@ -285,7 +285,7 @@ The refusal family is summarized by **`E-TYPE-010`**: wrong arity (extra
 or missing type arguments), non-prime modulus, non-literal modulus
 (including `GF<n>` and computed `GF<7+1>`), and modulus outside
 `[2, i32::MAX]` all refuse with a message naming the spelling and the exact
-constraint — never a silent collapse, never `TypeNode::Int`. Carrier/field
+constraint; never a silent collapse, never `TypeNode::Int`. Carrier/field
 misuse refuses `E-TYPE-012`. `int_rem` with a non-positive modulus (or a
 non-whole `Float64` operand) is a **typed runtime fault, never a panic**:
 m ≤ 0 → `modulus must be positive`; a fractional operand → `type confusion`
@@ -332,12 +332,12 @@ labels (used in declaration order, so `0..n-1` labels are conventional).
 Edges admit the spellings `u --> v` (unweighted, weight 1), `u -[w]-> v`
 (`u` to `v` with weight `w`), `u - v` and `u -[w]- v` (bidirectional as two
 directed edges). A missing node list, a dangling edge, or a malformed
-weight bracket is a parse error — never a graph with fewer vertices.
+weight bracket is a parse error; never a graph with fewer vertices.
 Weight and endpoint spellings must be finite literal token sequences,
 with an optional unary sign: `1`, `-1.0`, and `+2.0` (and nested sign
 chains) admit, so `u -[-1.0]-> v` is a negative edge with weight −1.0.
-Any non-literal form — a named weight (`-[w]->`), an arithmetic
-computed weight (`-[1 + 2]->`), or a signed non-finite literal — is
+Any non-literal form; a named weight (`-[w]->`), an arithmetic
+computed weight (`-[1 + 2]->`), or a signed non-finite literal; is
 refused `E-TYPE-012` at admission. Negative weights are first-class in
 the kernels and compose through either carrier spelling: the signed
 graph literal above, or `sparse_from_triplets` (triplet weights may be
@@ -361,7 +361,7 @@ The call surface (closed set) computes on adjacency carriers:
 The spectrum composes through the existing symmetric machinery:
 `eigvals(graph_laplacian(g))` computes the Laplacian spectrum of an
 undirected (or explicitly symmetrized) carrier; a directed carrier
-refuses the symmetric gate (`E-LINALG-002`) — never a silent
+refuses the symmetric gate (`E-LINALG-002`); never a silent
 diagonalization. Determinism class: vertices are indices, neighbor scans
 ascend, Dijkstra ties break to the lowest index; identical inputs are
 bit-identical. Vertex relabeling is a metamorphic symmetry: reachability

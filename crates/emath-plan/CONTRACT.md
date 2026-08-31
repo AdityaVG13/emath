@@ -10,15 +10,15 @@
 
 ## Public types and semantics
 
-- `plan` / `PlannerConfig` / `PlanningOutcome` / `TieBreak` — the deterministic planner over a goal and provider registry, producing a total `PlanningOutcome`.
-- `PlanningOutcome` — `Selected { plan, inspection }`, `NoEligible { reasons, disposition, inspection }`, or `Exhausted { continuation, disposition, inspection }`.
-- `PlannerConfig` — bounded candidate retention (`max_candidates`), node budget (`max_nodes`), tie-break rule, and policy name that binds to plan identity.
-- `ArtifactDisposition` / `disposition_for_plan` / `disposition_without_plan` / `disposition_exhausted` — total disposition machinery.
-- `DecompositionRule` / `SubgoalDag` / `SubgoalNode` / `decompose` / `requirements_preserved` — decomposition and requirement preservation.
+- `plan` / `PlannerConfig` / `PlanningOutcome` / `TieBreak`; the deterministic planner over a goal and provider registry, producing a total `PlanningOutcome`.
+- `PlanningOutcome`; `Selected { plan, inspection }`, `NoEligible { reasons, disposition, inspection }`, or `Exhausted { continuation, disposition, inspection }`.
+- `PlannerConfig`; bounded candidate retention (`max_candidates`), node budget (`max_nodes`), tie-break rule, and policy name that binds to plan identity.
+- `ArtifactDisposition` / `disposition_for_plan` / `disposition_without_plan` / `disposition_exhausted`; total disposition machinery.
+- `DecompositionRule` / `SubgoalDag` / `SubgoalNode` / `decompose` / `requirements_preserved`; decomposition and requirement preservation.
 - `FallbackGraph` / `FallbackNode`, `Conversion` / `ConversionNode` / `RepresentationError` / `find_conversion_path`, `ProviderTraitSpec` / `LiftedMethod` / `emit_provider_trait` / `lift_missing`, `plan_identity` / `PlanCache` / `ProviderFingerprint` / `provider_set_fingerprint`, `PlanInspection` (not exhaustive).
 - `algebra`: `Facet` (five capability facets mirroring `E-PROV-512`..`E-PROV-516`), `QState` (residual resolution question over those facets), `Step` (capability as a partial transformation; `Id`, `Serial`, `Parallel`, `Alt`, `Fallback`, `Portfolio`), `Application`, `Lifted`, and the `serial`/`parallel`/`fallback` helpers. `Step::apply` is partial; `Step::apply_total` lifts to a total application whose failure is an explicit refusal with retained reasons. Candidate selection in `plan` is expressed through `Step::Alt` over capability steps.
-- `PlanInspection::explain` — deterministic human-readable plan explanation (selected candidate, tie-break order, every exclusion with stable code, checks, budget, disposition).
-- `PlanInspection::to_json` — schema `emath.plan-explanation v1` (CLI `emath explain --json` / `emath planner --json`).
+- `PlanInspection::explain`; deterministic human-readable plan explanation (selected candidate, tie-break order, every exclusion with stable code, checks, budget, disposition).
+- `PlanInspection::to_json`; schema `emath.plan-explanation v1` (CLI `emath explain --json` / `emath planner --json`).
 
 ## Invariants
 

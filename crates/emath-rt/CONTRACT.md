@@ -17,7 +17,7 @@ Layer: foundation (std-only, no other emath crates).
 
 ## Public types and semantics
 
-- `SOURCE: &'static str` — the embeddable kernel body; byte-stable per
+- `SOURCE: &'static str`; the embeddable kernel body; byte-stable per
   version.
 - All functions in `body.rs` are re-exported at the crate root: `vec_*`,
   `mat_*`, `tensor_*`, `stencil_1d`, `stencil_2d`, `factorial`,
@@ -66,7 +66,7 @@ Layer: foundation (std-only, no other emath crates).
 
 ## Error model
 
-- `stencil_2d` panics on `Dirichlet` (unreachable from generated code —
+- `stencil_2d` panics on `Dirichlet` (unreachable from generated code;
   the backend refuses 2D Dirichlet at codegen time; the interpreter
   pre-checks and returns a typed fault instead of calling).
 - `mod_inv` / `poly_eval_mod` / `rs_encode` / `hamming_distance` /

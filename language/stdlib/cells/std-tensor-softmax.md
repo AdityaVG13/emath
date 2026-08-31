@@ -1,8 +1,8 @@
-# `std.tensor.softmax` — capability cell contract (authoring draft)
+# `std.tensor.softmax`; capability cell contract (authoring draft)
 
 Status: cell machinery implemented in `crates/emath-ir/src/capability.rs`
 (bead `emath-epic-machine-fjxh.3`, CLOSED). This page is the stdlib-side
-contract for authors. It documents data, not a parser keyword — nothing
+contract for authors. It documents data, not a parser keyword; nothing
 here grows a core IR enum variant.
 
 ## Identity
@@ -27,7 +27,7 @@ The shift is the law applied: `softmax(x) == softmax(x + c)` componentwise,
 and it doubles as the overflow guard (exp(1000) would overflow f64 without
 it).
 
-Typed refusals — never silent:
+Typed refusals; never silent:
 
 - empty input (no numeric policy declared for the evaluation): `E-CELL-006`
 - non-finite logit under the strict-f64 finite policy (NAN/INF): `E-CELL-006`
@@ -36,17 +36,17 @@ Typed refusals — never silent:
 
 ## Laws (all tested, `softmax_capability_cell.rs`)
 
-1. **Shift invariance** — `softmax(x) == softmax(x + c)` componentwise.
-2. **Nonnegativity** — every component `>= 0`.
-3. **Normalization** — components sum to 1 within 1e-12; a single-element
+1. **Shift invariance**; `softmax(x) == softmax(x + c)` componentwise.
+2. **Nonnegativity**; every component `>= 0`.
+3. **Normalization**; components sum to 1 within 1e-12; a single-element
    input normalizes to exactly 1.
-4. **Overflow guard** — large finite logits (800, 799, 100) normalize with
+4. **Overflow guard**; large finite logits (800, 799, 100) normalize with
    ordering preserved.
 
 ## Provider seam
 
 The contract is one rank-1 vector evaluated whole. `softmax_axis_well_formed`
-refuses rank-2-style axis requests (rank != 1) at the provider seam — a
+refuses rank-2-style axis requests (rank != 1) at the provider seam; a
 wrong-axis failure is typed, never silently reinterpreted (negative seed
 `tests/invalid/softmax_capability_cell.emath` expects `E-CELL-003`/`E-CELL-004`
 at the admission seam).
@@ -75,7 +75,7 @@ the schema (`use std.kinds.capability`) requires `inputs:`, exactly one
 
 Adding a cell appends to `SemanticPackage::capabilities` and is referenced
 from `ExprNode::Apply` by `CapabilityId`. `ExprNode`, `UnaryOp`,
-`BinaryOp` do not grow — the diff gate plus the fjxh_1/fjxh_2 negative
+`BinaryOp` do not grow; the diff gate plus the fjxh_1/fjxh_2 negative
 guards hold this. Never add a `Softmax` variant to a core enum.
 
 ## No-claim boundaries

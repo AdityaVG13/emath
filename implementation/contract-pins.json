@@ -4,6 +4,10 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-08-31",
+      "note": "docs polish pass: em-dashes and en-dashes removed across the pinned contract docs and README set (punctuation-only changes, no semantic content); VISION.md rewritten (dates removed, router framing kept, structure tightened)"
+    },
+    {
       "date": "2026-08-29",
       "note": "emath-r3-observations-9ffu: ERROR_CODES gains E-OBS-WRITE + E-OBS-HASH stories and the annex re-splices to the current emitted set (353 emitted; emath-rt linalg E-LINALG-00x remain foreign-lane in-flight); CLI_REFERENCE check row documents --verify-data"
     },
@@ -125,9 +129,9 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "08002402c07bf7dfac7232c27e3b43de17ae75ec6fafb34f1bc42d08cf598fd6",
-    "implementation/CLI_REFERENCE.md": "6b0bedd9a630c51987ede1f67465057739bc92588c6fc510d7cffcb1be7a8686",
-    "implementation/CRATE_MAP.md": "c127e8e858afd2db2b5c55cd3618f7a8fe2e0e36a8f7a71e712273b1e83bf91b",
-    "implementation/PUBLIC_API_INVENTORY.md": "c73d6c04e7f77f73c48116623c9bdcfb8a09fe90a57c7db2602d88c18ecef806"
+    "implementation/ERROR_CODES.md": "993d675a1a3e7b21674f272d518ac8ebe413ca66f15431b774afc8f0476a344c",
+    "implementation/CLI_REFERENCE.md": "81c05db43fb3e439743ff542f606bbbab5cf79b00b42a8cbd84d1c743c1220e2",
+    "implementation/CRATE_MAP.md": "836e9bb7f20ed0d8b077288a578d0ad9e9a3b5989d10f9e688b7373491b87162",
+    "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
   }
 }

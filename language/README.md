@@ -23,7 +23,7 @@ reference for exact syntax, semantics, and diagnostics.
 Nothing you write is refused at the door: everything enters the
 language, and every answer comes back labeled with what it means
 (`exact`, `approximate(±bound)`, `symbolic-only`, `hole-open`, `fault`).
-Where a capability cannot compute something yet, the docs say so
-explicitly — the response is a routed diagnosis pointing at the world
+Where a capability cannot compute something yet, the docs say so explicitly:
+the response is a routed diagnosis pointing at the world
 that can, never a silent guess. The governing doctrine lives in
 [`../implementation/VISION.md`](../implementation/VISION.md).

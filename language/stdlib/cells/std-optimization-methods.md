@@ -1,4 +1,4 @@
-# `core::optimization` methods nucleus — continuous advanced methods (xx0x.6)
+# `core::optimization` methods nucleus; continuous advanced methods (xx0x.6)
 
 Status: **Newton + BFGS engines landed** (bead `emath-xx0x.6`, emath-core
 reference nucleus). The admitted `minimize`/`maximize` goal surface
@@ -10,11 +10,11 @@ follow-up (exec-ir foreign hold at landing time).
 
 | Engine | Inputs | Step | Convergence | Refusals |
 |---|---|---|---|---|
-| `newton` | f, ∇f, H (analytic or AD closures) | `H d = −∇f`, Armijo backtracking line search | `‖∇f‖_∞ ≤ tolerance` | `SingularHessian` (no pseudo-inverse), `BudgetExhausted{iterations, ‖∇f‖}` (achieved gradient travels with the refusal), `LineSearchStalled` (no Armijo decrease — e.g. an ascent direction on negative curvature) |
+| `newton` | f, ∇f, H (analytic or AD closures) | `H d = −∇f`, Armijo backtracking line search | `‖∇f‖_∞ ≤ tolerance` | `SingularHessian` (no pseudo-inverse), `BudgetExhausted{iterations, ‖∇f‖}` (achieved gradient travels with the refusal), `LineSearchStalled` (no Armijo decrease; e.g. an ascent direction on negative curvature) |
 | `bfgs` | f, ∇f only | `d = −H∇f` with the inverse-Hessian approximation (identity start), rank-2 update when `yᵀs > 1e-10` | same | same + the curvature-condition skip keeps H positive definite instead of corrupting it |
-| `kkt_residual` | ∇f, {∇cᵢ}, {λᵢ}, {cᵢ} | `‖(∇f + Σλᵢ∇cᵢ, c)‖_∞` | 0 only at a KKT point | — (certificate helper) |
-| `interior_point` | — | — | — | **refuses by name** (log-barrier carrier is the follow-up); a constrained problem never silently falls back to the unconstrained engine |
-| `sqp` | — | — | — | **refuses by name** (QP-subproblem carrier is the follow-up) |
+| `kkt_residual` | ∇f, {∇cᵢ}, {λᵢ}, {cᵢ} | `‖(∇f + Σλᵢ∇cᵢ, c)‖_∞` | 0 only at a KKT point |; (certificate helper) |
+| `interior_point` |; |; |; | **refuses by name** (log-barrier carrier is the follow-up); a constrained problem never silently falls back to the unconstrained engine |
+| `sqp` |; |; |; | **refuses by name** (QP-subproblem carrier is the follow-up) |
 
 `SolverOptions` declares the stationarity tolerance and the explicit
 iteration budget (no unbounded solve). `SolverOutcome` carries x, f(x),
@@ -31,7 +31,7 @@ the achieved `‖∇f‖_∞`, and the iterations spent.
 - The admitted goal surface today (`minimize`/`maximize … wrt`) is
   pure Newton + quadratic penalty (see `optimize.emath` /
   `constrained-opt.emath`): the inequality there is approached, not a
-  hard feasible projection — that honesty label carries over until the
+  hard feasible projection; that honesty label carries over until the
   constrained methods land.
 - Reverse-mode AD (xx0x.1 `grad()`, exec-ir lane) is the production
   gradient provider; the nucleus takes analytic or AD closures through
@@ -40,7 +40,7 @@ the achieved `‖∇f‖_∞`, and the iterations spent.
 
 ## Implementation
 
-`crates/emath-core/src/optimization.rs` — std-only. Dense solves by
+`crates/emath-core/src/optimization.rs`; std-only. Dense solves by
 Gaussian elimination with partial pivoting and a relative singularity
 threshold (`SingularHessian` below it). Armijo constants `c = 1e-4`,
 50 halvings. No allocation beyond the working vectors; deterministic;

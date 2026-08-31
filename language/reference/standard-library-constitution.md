@@ -133,9 +133,9 @@ balance(S)
 
 `std.chem.mass_balance` is the stoichiometric mass-balance certificate cell: the result is the per-element residual `S·s`, where `S` is the signed composition matrix (row per element, column per species, entry = atoms of the element in the species) and `s` is the signed coefficient vector (reactants positive, products negative). Balanced systems admit with an EXACT all-zero residual, which is the mass-balance evidence: small-integer stoichiometry is exact in the f64 carrier, so no tolerance is applied. A nonzero residual refuses typed `MassImbalance(element i, residual r)` naming the first violating element and its exact residual. Non-finite carriers refuse, and unbalanced forms never evaluate silently.
 
-`std.chem.balance` derives the balanced equation: given the SIGN-BLIND species composition matrix (nonnegative integer entries), it returns the canonical primitive integer coefficient vector through the generic exact-integer nullspace primitive. "Primitive" means the entries are coprime and the first nonzero entry is positive, so the same reaction always reports the same vector up to species-column permutation (which permutes the vector identically) and element-row permutation or integer row scaling (which leave it unchanged). Certified chemical equations are validated by chaining `mass_balance(S, balance(S))` — the certificate refuses any derivation defect.
+`std.chem.balance` derives the balanced equation: given the SIGN-BLIND species composition matrix (nonnegative integer entries), it returns the canonical primitive integer coefficient vector through the generic exact-integer nullspace primitive. "Primitive" means the entries are coprime and the first nonzero entry is positive, so the same reaction always reports the same vector up to species-column permutation (which permutes the vector identically) and element-row permutation or integer row scaling (which leave it unchanged). Certified chemical equations are validated by chaining `mass_balance(S, balance(S))`; the certificate refuses any derivation defect.
 
-`balance` refuses typed when the system is not a valid chemical reaction: a non-integer entry (`E-NULLSPACE-001`), no nontrivial balance exists because each element appears in a single species, or the equation is underdetermined — several independent conservation equations (for example a species with zero atoms, `E-NULLSPACE-002`). It never guesses a basis vector for a higher-dimensional nullspace.
+`balance` refuses typed when the system is not a valid chemical reaction: a non-integer entry (`E-NULLSPACE-001`), no nontrivial balance exists because each element appears in a single species, or the equation is underdetermined; several independent conservation equations (for example a species with zero atoms, `E-NULLSPACE-002`). It never guesses a basis vector for a higher-dimensional nullspace.
 
 The generic exact-integer nullspace primitive (`int_nullspace(A)`) is also available directly: exact rational Gauss-Jordan elimination over i128 intermediates, no floating point; one-dimensional nullspaces yield the canonical primitive generator, anything else refuses `E-NULLSPACE-001/002`.
 
@@ -145,7 +145,7 @@ The generic exact-integer nullspace primitive (`int_nullspace(A)`) is also avail
 graph_rewrite_preserve(L, K, R, u)
 ```
 
-A reaction mechanism step is modeled as a rewrite rule over graphs carried by the generic dense `Matrix` carrier: rows are the CONTEXT atoms (the rule's interface), columns are the union of atoms across the left and right graphs, and each entry is the bond order (1 single, 2 double, 3 triple; 0 = no bond). A rule is the triple `(L, K, R)` — left-hand graph, shared context, right-hand graph — all with identical context-row × union-column dimensions; `K` has zero columns beyond the context.
+A reaction mechanism step is modeled as a rewrite rule over graphs carried by the generic dense `Matrix` carrier: rows are the CONTEXT atoms (the rule's interface), columns are the union of atoms across the left and right graphs, and each entry is the bond order (1 single, 2 double, 3 triple; 0 = no bond). A rule is the triple `(L, K, R)`; left-hand graph, shared context, right-hand graph; all with identical context-row × union-column dimensions; `K` has zero columns beyond the context.
 
 `std.chem.graph_rewrite_preserve` checks the valence-conservation law across the rule span. The per-atom valence is the row's bond-order sum, computed by the generic `matvec(A, 1s)` op; the certificate is
 
@@ -153,7 +153,7 @@ A reaction mechanism step is modeled as a rewrite rule over graphs carried by th
 sum(abs(matvec(L,u) − matvec(K,u))) + sum(abs(matvec(K,u) − matvec(R,u)))
 ```
 
-with `u` the all-ones vector. A rule whose context atoms all keep their valence admits with the EXACT zero certificate (atom-permutation invariant, disjoint-rule-composition additive, bond-order-scaling invariant). Any nonzero certificate refuses typed `ValenceImbalance(residual r)` — a bond-order break is never silent, and cancellation between atoms (one gains what another loses) is still a violation because the law is per-atom absolute.
+with `u` the all-ones vector. A rule whose context atoms all keep their valence admits with the EXACT zero certificate (atom-permutation invariant, disjoint-rule-composition additive, bond-order-scaling invariant). Any nonzero certificate refuses typed `ValenceImbalance(residual r)`; a bond-order break is never silent, and cancellation between atoms (one gains what another loses) is still a violation because the law is per-atom absolute.
 
 Boundaries and no-claims: the carrier stores bond orders only. Element identities and formal charges live above this cell (property tables are later-slice work), so charge-only changes without a bond-order change are NOT detected by design; the typed negative here is the bond-order break that the carrier can express. `u` must be a finite vector whose length equals the column count.
 
@@ -220,9 +220,9 @@ emath capability Softmax:
 
 The `spec:` and `algorithm:` sides each bind an INDEPENDENT quoted evidence object, with an optional `authority: authored | verified | provider` row (defaults: spec `authored`, algorithm `verified`). The bounded descriptor rows `class:` / `version:` / `migration:` and the side evidence parse into the capability layer's schema, and the closure planner assesses the sides at admission:
 
-- a missing side refuses `E-CELL-009` — a missing spec is never "proved by the algorithm";
-- an authority that cannot attest a side refuses `E-CELL-010` — a provider receipt may attest the algorithm by delegation but can never raise spec authority;
-- one evidence object claimed for both sides refuses `E-CELL-011` — a green algorithm test never stamps the spec proved.
+- a missing side refuses `E-CELL-009`; a missing spec is never "proved by the algorithm";
+- an authority that cannot attest a side refuses `E-CELL-010`; a provider receipt may attest the algorithm by delegation but can never raise spec authority;
+- one evidence object claimed for both sides refuses `E-CELL-011`; a green algorithm test never stamps the spec proved.
 
 The cell name is namespaced by the declared `package <path>` (identity needs a stable namespace; a package-less biform declaration refuses `E-CELL-005`). Bounded admission reuses the capability layer's typed codes (`E-CELL-001` unknown class, `E-CELL-002` missing version, `E-CELL-004` arity bound). Legacy capability declarations without a `class:` row (inputs/outputs/definitions shape) keep the generic kind-application path unchanged.
 

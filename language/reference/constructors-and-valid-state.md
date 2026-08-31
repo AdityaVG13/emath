@@ -127,5 +127,5 @@ Rules:
 - the world is evidence-neutral: one E1/not-run claim with no checker. A
   world never mints evidence authority by declaration alone;
 - the interpretation is world-local: strict source never inherits it. A
-  strict use of a world-mapped glyph refuses `E-TYPE-003` (unknown name) —
+  strict use of a world-mapped glyph refuses `E-TYPE-003` (unknown name);
   the strict/genesis firewall of the custom lane holds.

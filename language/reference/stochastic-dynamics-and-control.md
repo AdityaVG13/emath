@@ -10,11 +10,11 @@ carrier is the zero polynomial (σ ≡ 0 ⟹ the ODE reduction).
 ### Rules
 
 The two rules are PURE capability cells declared with the standard
-capability surface and called by name — there is no `sde` keyword and
+capability surface and called by name; there is no `sde` keyword and
 no `ito`/`stratonovich` mode switch anywhere in the language: the
 rules are cell data, and the call resolves through the generic
 declared-capability call path (`ExprNode::Apply` → `ApplyCapability`;
-kernel-backed cells execute via the immutable native-kernel registry —
+kernel-backed cells execute via the immutable native-kernel registry;
 the shared builtin-miss seam other domains reuse).
 
 | Cell call | Rule | Step |
@@ -57,7 +57,7 @@ emath capability euler_maruyama:
   `trajectory[n]` is admitted).
 - A call to a name that is neither a builtin nor a declared capability
   cell refuses with the typed unknown-function diagnostic (`E-TYPE-003`)
-  — the capability path never silently admits unknown names. A wrong
+ ; the capability path never silently admits unknown names. A wrong
   argument count admits at the call site and refuses at evaluation with
   the cell contract's typed message (one arity discipline across the
   compiled-cell and native-kernel paths).
@@ -107,7 +107,7 @@ Only scalar SDEs with polynomial drift/diffusion. Multi-dimensional
 systems, general non-polynomial coefficients, adaptive stepping, and
 strong/weak error estimation are named deferrals. Kernel-backed cells
 are interpreted (local reference semantics); Rust-backend codegen for
-kernel-backed cells is an explicit refusal today — a documented
+kernel-backed cells is an explicit refusal today; a documented
 no-claim boundary, never a silent fallback.
 
 ## Example

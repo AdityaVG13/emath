@@ -74,7 +74,7 @@ Pinned by `implementation/SG00_STRICT_BASELINE.md`:
   `one_point` `909a6be3f247e488`, `csa_seeded` `98dc2aff1691f4d4`
 - CSA: seed `3836149761`, value `118f84421f20b522`, vm_steps `9`
 
-2026-08-18 `cargo xtask demo semantic-genesis`:
+Verified via `cargo xtask demo semantic-genesis`:
 
 ```
 semantic-genesis demo: ok

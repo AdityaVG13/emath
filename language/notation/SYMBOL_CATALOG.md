@@ -28,12 +28,12 @@ glyph (NFC codepoint sequence) | fixity | precedence | default world binding
 
 ## Lifecycle
 
-1. **Proposed** — quarantine; usable only via explicit
+1. **Proposed**; quarantine; usable only via explicit
    `use notation <pack>::<glyph>`; authority `none`.
-2. **Checked** — producer-distinct reviewer runs the G4 audit battery;
+2. **Checked**; producer-distinct reviewer runs the G4 audit battery;
    promotion caps at `structural-checked`.
-3. **Admitted** — full ELP; part of an edition's default notation set.
-4. **Frozen/retired** — hidden from new editions per the deprecation ladder
+3. **Admitted**; full ELP; part of an edition's default notation set.
+4. **Frozen/retired**; hidden from new editions per the deprecation ladder
    (`emath_core::DeprecationStage`); replayable forever.
 
 Self-certification (proposer reviewing their own promotion) is a typed
@@ -64,8 +64,8 @@ review policy.
 | glyph | fixity | prec | core path | aliases | pack | status |
 |---|---|---:|---|---|---|---|
 | ⊕ | infixl | 40 | `core::math::pow` | `pw` | tst.notation_ops | proposed |
-| √ | prefix | 80 | `core::math::sqrt` | — | tst.notation_ops | proposed |
-| inv | postfix | 90 | `core::math::recip` | — | tst.notation_ops | proposed |
+| √ | prefix | 80 | `core::math::sqrt` |; | tst.notation_ops | proposed |
+| inv | postfix | 90 | `core::math::recip` |; | tst.notation_ops | proposed |
 
 No-claim: full Unicode NFC verification is not implemented in std; glyphs
 are authored NFC and the loader checks structural well-formedness only. A

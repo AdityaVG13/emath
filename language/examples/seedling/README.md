@@ -1,11 +1,11 @@
-# Seedling — Tier-0 teaching profile
+# Seedling; Tier-0 teaching profile
 
 Seedling is the ten-construct teaching tier: an afternoon course that
 builds a working model by the end. It is **deletion-defined**: everything
 in Seedling is ordinary emath; the profile is defined by what it removes
 from full emath, never by new syntax. A Seedling file is a full-emath
 file, so `emath check` / `fmt` / `run` / `simulate` on a lesson are the
-conformance proof — one compiler, no divergent behavior to reconcile.
+conformance proof; one compiler, no divergent behavior to reconcile.
 
 ## The ten constructs
 
@@ -28,7 +28,7 @@ Everything not listed above: quantities and units, matrices/tensors,
 records and sets, custom kinds, notations, provenance/evidence,
 strategies, worlds, policies, autodiff/solve/minimize, exact rationals,
 complex numbers, pattern matching. A learner who needs more graduates to
-the full reference (ch. 1 onward) — no unlearning required, because
+the full reference (ch. 1 onward); no unlearning required, because
 nothing here is Seedling-specific syntax.
 
 ## Conformance
@@ -42,7 +42,7 @@ nothing here is Seedling-specific syntax.
 - **Negative control, honest fence:** refusing a non-Seedling construct
   *by profile* needs an enforcing checker (a Tier-0 admission mode), which
   does not exist yet. Until it lands, "Tier-0" is enforced by this
-  corpus staying inside the deletion set — not by the compiler. The
+  corpus staying inside the deletion set; not by the compiler. The
   checker is named future work; do not claim profile refusal today.
 - Lesson 6 uses the resolved C1 conditional spelling
   (`cases`/`else`, totality enforced at parse time; reference ch. 7),

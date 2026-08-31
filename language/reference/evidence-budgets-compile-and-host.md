@@ -61,10 +61,10 @@ Host mappings declare conversions, ownership, errors and fallback.
 ## Proof outlines
 
 Proofs are obligations as DATA, admitted as a `proofs:` section inside
-existing kinds (expansiveness via sections, not new kinds — ch. 8
+existing kinds (expansiveness via sections, not new kinds; ch. 8
 compass rule). They are additive authority, never admission tickets: an
 unproved declaration compiles to its full artifact, and outline claims
-are never lowered as definitions or constraints — justification stays
+are never lowered as definitions or constraints; justification stays
 structurally separate from meaning (`evidence:` carries what was
 observed, `proofs:` carries what must be discharged).
 
@@ -97,7 +97,7 @@ name obligations declared earlier in the same outline, and an unknown
 kind refuses (`E-SYN-101` naming the four). A complete outline admits
 as data; an incomplete outline refuses.
 
-Each outline lowers to `emath.proof-obligation v1` records — the
+Each outline lowers to `emath.proof-obligation v1` records; the
 stable machine target providers code against:
 
 ```json

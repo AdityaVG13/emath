@@ -1,10 +1,10 @@
-# `std.finite.sets` — finite-set world class (authoring draft)
+# `std.finite.sets`; finite-set world class (authoring draft)
 
 Status: parse vertical admitted by bead `emath-r3-sets-tub8`
 (`ExprKind::Set`, `SetComprehension`, `BinaryOp::In`). Evaluation is
 refused with `E-TYPE-113` until the emath-ir Phase B lane (fjxh) lands
 `TypeNode::Set` / `Value::Set` lowering. This page documents the world
-contract as stdlib surface data — nothing here grows a core IR enum
+contract as stdlib surface data; nothing here grows a core IR enum
 variant beyond the parse-tree nodes already admitted.
 
 ## Identity
@@ -25,20 +25,20 @@ this cell is a contract document, not yet a validated capability cell.
 
 Finite subsets of a declared universe `U`:
 
-- literal `{2, 3, 5}` — finite; order-irrelevant; duplicate elements
+- literal `{2, 3, 5}`; finite; order-irrelevant; duplicate elements
   collapse under extensionality;
-- comprehension `{n in 0..100 if is_prime(n)}` — the subset of the finite
+- comprehension `{n in 0..100 if is_prime(n)}`; the subset of the finite
   domain whose elements satisfy the guard;
-- membership `v in s` (ASCII for ∈) — total on declared carriers,
+- membership `v in s` (ASCII for ∈); total on declared carriers,
   result `Bool`.
 
 ## Laws (Phase B test targets)
 
-1. **Extensionality** — `s == t` iff `(v in s) == (v in t)` for every `v`
+1. **Extensionality**; `s == t` iff `(v in s) == (v in t)` for every `v`
    in `U`; literal order and duplicates never change the value.
-2. **Comprehension membership** — `v in {x in d if p(x)} == (v in d) &&
+2. **Comprehension membership**; `v in {x in d if p(x)} == (v in d) &&
    p(v)`; the guard is the only admission criterion.
-3. **Finite enumeration** — every admitted set has a finite canonical
+3. **Finite enumeration**; every admitted set has a finite canonical
    enumeration; the world refuses an infinite domain at the admission
    seam instead of diverging.
 

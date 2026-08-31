@@ -82,8 +82,8 @@ A declaration carrying `outputs:`, `definitions:`, or `goals:` is in
 
 `evidence:` is demanded only when a goal asserts truth without
 computing it (`E-EV-140`). Phase 1 goal verbs (`evaluate`,
-`differentiate`, `benchmark`, `fit`, `simulate`) are operational —
-they compute, they do not claim — so they never require evidence.
+`differentiate`, `benchmark`, `fit`, `simulate`) are operational;
+they compute, they do not claim; so they never require evidence.
 
 ## Laws
 
@@ -152,7 +152,7 @@ Times must be strictly increasing. Interpolation is `previous`, `linear`, `neare
 
 Let the support be the strictly increasing sample pairs `(t0, v0), ..., (tn, vn)` in SI units. `series_at(series, t)` evaluates the declared policy. At every support point every mode evaluates to that point's sample.
 
-- `previous` and `pwc`: the left-continuous step. For `ti <= t < ti+1` the value is `vi`; on the last support point the value is `vn` (the endpoint is always evaluated, never the step below it). `pwc` is the canonical alias of `previous` — they agree at every time.
+- `previous` and `pwc`: the left-continuous step. For `ti <= t < ti+1` the value is `vi`; on the last support point the value is `vn` (the endpoint is always evaluated, never the step below it). `pwc` is the canonical alias of `previous`; they agree at every time.
 - `linear`: the time-proportional blend `vi + alpha * (vi+1 - vi)` with `alpha = (t - ti) / (ti+1 - ti)` on the bracketing interval.
 - `nearest`: the closer sample; on an exact midpoint (`alpha == 0.5`) the tie resolves to the later sample (round-half-up). The choice is deterministic.
 - `monotone_cubic`: the Fritsch–Carlson monotone cubic. Per-interval slopes are the sign-matched average of the adjacent secants (zero where adjacent secants disagree in sign), the outer slopes are the outer secant, and the segment is the cubic Hermite basis over that slope data. The interpolant is shape-preserving: it never overshoots the bracketing samples. With exactly two points (or equal adjacent secants) it reduces to the straight line.
@@ -167,9 +167,9 @@ Outside `[t0, tn]` the declared policy decides:
 
 ### Series refusals
 
-- a non-increasing or equal time axis refuses — every mode orders the support by time (`E-SYN-101`);
+- a non-increasing or equal time axis refuses; every mode orders the support by time (`E-SYN-101`);
 - an empty series and non-`(time, value)` rows refuse (`E-SYN-101`);
-- missing `with interpolation:` refuses — the mode changes every downstream number and is never guessed (`E-SYN-101`);
+- missing `with interpolation:` refuses; the mode changes every downstream number and is never guessed (`E-SYN-101`);
 - duplicate or unknown policy keys refuse (`E-SYN-103`, `E-SYN-101`);
 - CSV projection failures (missing/duplicated selected column, ragged row, non-finite cell, non-increasing selected time) refuse with `E-SERIES-CSV`.
 

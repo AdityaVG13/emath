@@ -2,7 +2,7 @@
 
 ## 0. Reading order: Real first
 
-A new user meets `Real` — the mathematical concept of a real number —
+A new user meets `Real`; the mathematical concept of a real number;
 before any machine type. `Real` is the type named in worked examples and
 pedagogical diagnostics; `Float64` (and `Int`, `Nat`, …) are compute
 representations a user moves to deliberately. As a compute type, a `Real`
@@ -190,7 +190,7 @@ poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's metho
 rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p))
 hamming_distance(a, b)         (count positions where two vectors differ)
 1 + 2i / 2i / 3.5i             (complex literals, Ni suffix - computes via Complex arithmetic)
-unit of E / dimension of E     (compile-time unit comparisons — computes; bare query as a value is a named refuse)
+unit of E / dimension of E     (compile-time unit comparisons - computes; bare query as a value is a named refuse)
 ```
 
 Commands:
@@ -201,7 +201,7 @@ Commands:
 - `emath simulate` - integrate an admitted `emath model`
 
 Simulating a model with `algebraic:` unknowns (an index-1 DAE) carries a
-disposition record beside the trajectory — structural index, the
+disposition record beside the trajectory; structural index, the
 differential/constraint partition, and the consistent-initialization
 verdict. When initialization cannot be honored the run refuses
 `E-DAE-INIT` with a continuation note (supply the missing algebraic

@@ -1,4 +1,4 @@
-# dae-rc-circuit.emath — check record
+# dae-rc-circuit.emath; check record
 
 Bead: emath-eoi0.2 (window emath-dae-disposition-b9flv)
 Dispatch: emath:dae-example-expose:1:1, mail id 17 (ack_required)
@@ -18,7 +18,7 @@ surface fix below.
 
 - `events:` previously held two `when ... then:` blocks. The admitted
   grammar (r3-dynamical-03lh, `emath-sema/src/admit/declaration.rs`)
-  only admits `event <Name>(field: Type)` declarations — the blocks
+  only admits `event <Name>(field: Type)` declarations; the blocks
   refused with `E-SYN-101` ("only `event <Name>(field: Type)`
   declarations are allowed in `events:`"). Replaced with the named event
   surface:
@@ -30,7 +30,7 @@ surface fix below.
   event-driven simulation computes".
 - `threshold_voltage` remains declared as an input; the exact simulate
   command binds it, plus the algebraic guess for `current` (the generic
-  causalized path refuses a missing algebraic guess — pass `--set
+  causalized path refuses a missing algebraic guess; pass `--set
   current=...`).
 
 ## Execution evidence
@@ -55,7 +55,7 @@ t=0.9999999999999999 charge=6.144567105792007 current=3.8554328943890797
 ```
 
 Physics check: backward Euler on `q' = (V - q/RC)` with dt=0.1, 10 steps
-gives `q(1) = 10·(1 − 0.9¹⁰) = 6.144567105792...` — matches the printed
+gives `q(1) = 10·(1 − 0.9¹⁰) = 6.144567105792...`; matches the printed
 `charge` exactly; `current = (V − q/C)/R` matches at every sample. The
 index-1 projection is consistent throughout.
 
@@ -76,7 +76,7 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 Contract recording for this model (deterministic; identical inputs →
 identical fields):
 
-- `index: One` (1 `algebraic:` unknown — not a plain ODE);
+- `index: One` (1 `algebraic:` unknown; not a plain ODE);
 - `differential_states: [charge]`, `constraint_unknowns: [current]`;
 - `initialization: Consistent` (t0 projection converged, max
   |residual| ≤ 1e-6);
@@ -85,8 +85,8 @@ identical fields):
 Negative lanes from the same suite hold too: missing algebraic guess →
 `E-DAE-INIT` typed refusal with `SupplyInitialGuess` continuation (the
 runner-side consistent-initialization refusal; at the CLI surface a
-missing binding is an uncoded usage error — `error: missing algebraic
-guess `current` (pass --set current=...)`, exit 2 — the code appears
+missing binding is an uncoded usage error; `error: missing algebraic
+guess `current` (pass --set current=...)`, exit 2; the code appears
 only once the solve runs); singular residual (`R=0`) → `Regularize`
 refusal, never a trajectory.
 
@@ -95,7 +95,7 @@ refusal, never a trajectory.
 - `--event current=5` → exit 0, crossing sample injected at
   `t=0.7262836955484092 charge=5.000000000366084 current=5.000000000092301`.
 - `--event ThresholdCrossed=5` → exit 1: `error: event state
-  `ThresholdCrossed` is missing` — declared event names are not rootable;
+  `ThresholdCrossed` is missing`; declared event names are not rootable;
   the locator keys on model variables. Confirms surface-only status of
   the `events:` section.
 
@@ -114,7 +114,7 @@ refusal, never a trajectory.
 # Event-execution slice (follow-up: r3-dynamical-03lh ch7)
 
 The events section now carries a payload suite with a condition and an
-action, and the generic runner EXECUTES it — the example's behavior
+action, and the generic runner EXECUTES it; the example's behavior
 switches at the threshold instead of merely declaring a name.
 
 ## What changed
@@ -176,7 +176,7 @@ q(0.8)=5.3349, bisection lands ON the threshold (charge =
 5.0000000000045); after the action voltage=0, the discharge is exact
 q/1.1 per step (5/1.1 = 4.54545, /1.1 = 4.13223, then the partial
 step to t=1), and current = (V − q/C)/R stays consistent through the
-projection — including changing sign at the switch.
+projection; including changing sign at the switch.
 
 ## Failure-first / mutation evidence
 
@@ -187,7 +187,7 @@ projection — including changing sign at the switch.
   tests fail (malformed suites were silently admitted).
 - Mutation-red: with the runner's event slice disabled
   (`events: &[] = &[]`), `events_fire_and_switch` panics at
-  `dae_events.rs:123` ("event must fire once") — the test
+  `dae_events.rs:123` ("event must fire once"); the test
   discriminates.
 - Restored: green.
 
@@ -244,7 +244,7 @@ binds the live input value (`voltage = 10`), injected into the rule's
 scope. The transition re-assigns the declared input slot `voltage`,
 persisting into all later steps. A bare capture-only `event
 Name(field: T)` that never fires would make the transition dead
-surface — the payload condition is what the runner schedules.
+surface; the payload condition is what the runner schedules.
 
 ## Execution evidence (exact commands)
 
@@ -280,8 +280,8 @@ control (threshold 50) leaves the plain RC trajectory: `charge` ends ≈
 6.1446 at t=1.
 
 > Resolution (this pass): the shipped example uses the identity-latch
-> form above — payload condition + identity action + the transition
-> carry the behavioral write — so `check` admits, the runner fires the
+> form above; payload condition + identity action + the transition
+> carry the behavioral write; so `check` admits, the runner fires the
 > event, and the transition dispatches. Bare capture-only events are
 > documented in the reference as declarative surface that is never
 > scheduled on its own (`language/reference/expressions-equations-state-and-events.md`).
@@ -323,7 +323,7 @@ cargo test -q -p emath-sema-tests --test dae_disposition   # 5/5 pass
 > ```
 > cargo test -q -p emath-sema-tests --test dae_transitions --test dae_events --test dae_disposition
 > ```
-> → `dae_transitions` 27/27, `dae_events` 9/9, `dae_disposition` 5/5 — all three
+> → `dae_transitions` 27/27, `dae_events` 9/9, `dae_disposition` 5/5; all three
 > binaries green, 41 tests total.
 
 ## Determinism and budgets

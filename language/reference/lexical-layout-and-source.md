@@ -13,13 +13,13 @@
 No visually confusable glyphs in one namespace. The enforcement ladder:
 
 - a combining mark (U+0300–U+036F) in an identifier refuses with
-  `E-SYN-115` — such a spelling is canonically non-NFC by construction
+  `E-SYN-115`; such a spelling is canonically non-NFC by construction
   and cannot be re-normalized without a Unicode table;
 - any other non-ASCII identifier warns with `E-SYN-114` (confusable
   Unicode lookalikes are a quality hazard);
 - a declaration name that folds onto an already-seen lookalike
   (Latin `a` vs Cyrillic `а` vs Greek `α`, per the `confusable_fold`
-  seed map) refuses with `E-NAME-024` — the public API would present two
+  seed map) refuses with `E-NAME-024`; the public API would present two
   visually indistinguishable names.
 
 No profile or capability disables the ladder; a package may only narrow
@@ -38,26 +38,26 @@ Only line comments are admitted. Block comments are refused.
 
 `:` means exactly two things, nothing else:
 
-1. **Binder head separator** — after a bound name in a declaration head,
+1. **Binder head separator**; after a bound name in a declaration head,
    section field, or section-suite statement: `emath function f() -> Float64:`,
    `x: Float64`, `unit Token = base "token":`-style heads, constructor
    params, `given` names.
-2. **Section head separator** — between a section/command name and its
+2. **Section head separator**; between a section/command name and its
    indented payload: `definitions:`, `inputs:`, `goals:`, `compile:`.
 
 Record-literal fields use path-prefixed `{}` (U3), not `:`. Every other
 `:` use is outside the grammar; the parser refuses it with `E-SYN-111`
-(expected `:`) only where one of the two meanings was required — never by
+(expected `:`) only where one of the two meanings was required; never by
 inventing a third meaning.
 
 ## `in` charter
 
 `in` means exactly two things, nothing else:
 
-1. **Binder keyword** — after a bound name in a binder head, before the
+1. **Binder keyword**; after a bound name in a binder head, before the
    domain: `sum n in 0..10: n`, and inside set comprehensions,
    `{n in 0..100 if is_prime(n)}`.
-2. **Membership operator** — infix between two expressions: `v in s`
+2. **Membership operator**; infix between two expressions: `v in s`
    (ASCII for ∈). It is parsed by the comparison operator tier, never by
    the binder grammar.
 
@@ -101,7 +101,7 @@ Literal spelling, parsed exact value and target representation are distinct. A d
 
 Juxtaposition (A-bonus, normative): a unit identifier binds a numeric
 literal only across whitespace (`10 m`, `3//2 s`). `2x` is refused with a
-suggestion naming `2 * x` — never a silent product or a silent quantity
+suggestion naming `2 * x`; never a silent product or a silent quantity
 with unit `x` (chapter 12, anti-proposals; C15 pins reaction-line `2H2`
 to section grammar).
 
@@ -132,7 +132,7 @@ extraction rules NOW so no later syntax can collide with them.
 
 - **Cell fence (reserved).** A cell is a fenced code block whose info
   string is exactly `emath` (case-sensitive, no additional tokens).
-  The fence itself — the backtick delimiter and info string — lives
+  The fence itself; the backtick delimiter and info string; lives
   OUTSIDE the module text: the loader strips it before lexing. A
   backtick is not a `.emath` token and the info string is parsed by
   the loader, not the module lexer, so no `.emath` keyword, operator,
@@ -140,7 +140,7 @@ extraction rules NOW so no later syntax can collide with them.
   a cell changes: cell content is ordinary module text under all
   chapter-2 rules (encoding, layout, comments).
 - **Extraction order (reserved).** Cells are extracted in source
-  order — the order the fences appear in the document — and each
+  order; the order the fences appear in the document; and each
   cell's text is normalized to NFC before compilation, the same
   identity rule as any other source (Encoding, above). The extracted
   cells compile as ONE module; cell boundaries are not module
@@ -152,5 +152,5 @@ extraction rules NOW so no later syntax can collide with them.
   chapter 11): a hash that no longer matches the current build is
   flagged, never silently accepted.
 - **No claim today.** `emath check` reads `.emath` source only; no
-  loader extracts cells yet. This section reserves syntax and order —
+  loader extracts cells yet. This section reserves syntax and order;
   it admits nothing.

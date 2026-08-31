@@ -1,8 +1,8 @@
-# Research Theorems T1–T4
+# Research Theorems T1-T4
 
-Parked formal results, numbered T1–T4 (free-world existence, universal
+Parked formal results, numbered T1-T4 (free-world existence, universal
 evaluation, parametric compilation, constraint/resolution
-monotonicity). Overlap with a companion theorem set's T1–T9 is
+monotonicity). Overlap with a companion theorem set's T1-T9 is
 intentional and not flattened: that program uses a different numbering
 (its T2 is free-world existence; its T6 is constraint monotonicity).
 
@@ -34,7 +34,7 @@ World IR (`emath_world_ir::WorldIr`) is the provider-neutral record of a
 world: signature, carriers, symbols, operator meanings, constructors,
 laws, effects, holes, capabilities.
 
-## T1 — Free-world existence
+## T1: Free-world existence
 
 **Statement.** For every finite first-order signature Σ there exists a
 free Σ-world F_Σ whose carrier is TΣ(X) and whose interpretation of
@@ -75,7 +75,7 @@ rch exec -- env CARGO_NET_GIT_FETCH_WITH_CLI=true \
 or property test over arbitrary Σ. The World IR witness is a record, not
 a certified initial-algebra construction.
 
-## T2 — Universal evaluation
+## T2: Universal evaluation
 
 **Statement.** For every Σ-world W and every valuation ρ: X → |W|,
 there is at most one homomorphism ⟦−⟧_{W,ρ}: TΣ(X) → |W| extending ρ
@@ -107,8 +107,7 @@ rch exec -- env CARGO_NET_GIT_FETCH_WITH_CLI=true \
   cargo test -p emath-genesis --lib free_world_evaluation
 ```
 
-Evidence (2026-08-18): `test tests::free_world_evaluation_is_a_universal_round_trip ... ok` —
-`1 passed; 0 failed; 12 filtered out`.
+Evidence: `test tests::free_world_evaluation_is_a_universal_round_trip ... ok` (`1 passed; 0 failed; 12 filtered out`).
 
 **No-claim.** The test covers one admitted reference term (glyphs
 `⧖`, `⋈`, `⊛`, `ζ`) and the identity valuation. It does not quantify
@@ -117,7 +116,7 @@ function, not a uniqueness proof in a proof assistant. Totality holds
 only for terms whose symbols the world implements and whose free
 variables are in ρ; otherwise the result is a typed `EvalError`.
 
-## T3 — Parametric compilation
+## T3: Parametric compilation
 
 **Statement.** Given a term t ∈ TΣ(X), a signature Σ, and a finite
 list of world labels whose declared operator semantics match the
@@ -154,7 +153,7 @@ rch exec -- env CARGO_NET_GIT_FETCH_WITH_CLI=true \
   cargo xtask demo semantic-genesis
 ```
 
-Evidence (2026-08-18): `semantic-genesis demo: ok` with
+Evidence: `semantic-genesis demo: ok` with
 `free: apply(⊛,apply(⧖,apply(⋈,var(a),var(b))),const(ζ))`,
 `boolean: false`, `modular-17: 6`, `swapped-modular-17: 5`.
 
@@ -165,7 +164,7 @@ fixed (`semantic-genesis-worlds`). Byte-identity is against one
 committed golden and one reference source, not a proof that every
 future Σ compiles.
 
-## T4 — Constraint / resolution monotonicity
+## T4: Constraint / resolution monotonicity
 
 **Statement.** Resolution is monotone in provider set and planner
 budget with respect to artifact class. If `plan(G, R, C)` selects a
@@ -197,9 +196,9 @@ rch exec -- env CARGO_NET_GIT_FETCH_WITH_CLI=true \
   cargo test -p emath-plan --lib adding_providers
 ```
 
-Evidence (2026-08-18):
+Evidence:
 `test planner::tests::adding_providers_or_budget_preserves_the_artifact_class ... ok`
-— `1 passed; 0 failed; 7 filtered out`.
+(`1 passed; 0 failed; 7 filtered out`).
 
 **No-claim.** One goal, two static providers of the same capability,
 default vs 4× budgets. This is not a lattice-theoretic proof over
@@ -211,12 +210,12 @@ all pairs.
 
 ## No-claim boundary
 
-None of T1–T4 is a machine-checked theorem (no Lean, Coq, Isabelle,
+None of T1-T4 is a machine-checked theorem (no Lean, Coq, Isabelle,
 or in-tree kernel proof object). The witnesses are Rust constructors
 and `#[test]` functions on finite cases. Passing today means the named
-commands returned ok on this tree on 2026-08-18; it does not license
+commands returned ok on this tree; it does not license
 language such as "proved", "certified", or "for all signatures /
 worlds / planner states".
 
 The companion theorem set remains a separate formal program. Do not
-treat this file as a statement of T1–T9.
+treat this file as a statement of T1-T9.

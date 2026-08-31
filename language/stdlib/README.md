@@ -5,8 +5,8 @@ The standard library is split into semantic contract packages and implementation
 ## Executable object packs
 
 Since Wave 13 (`emath-stdlib-object-packs-hpzgf`) the stdlib is stored as
-executable object packs, not catalog markdown: the `std.core` census —
-theory, cells, and evidence receipts — is exported as an `.emlib` pack
+executable object packs, not catalog markdown: the `std.core` census;
+theory, cells, and evidence receipts; is exported as an `.emlib` pack
 where every object carries its own admitted MeaningID and canonical
 semantic payload. `emath library mount std` composes and mounts the
 census through the store's typed mount (every object id and evidence
@@ -30,7 +30,7 @@ package sources. Call them bare or with a namespace (`sin(x)`,
   `log2` `log10` `cbrt` `recip` `fract` `min` `max` `hypot` `mod`
   `is_finite` `lerp` `clamp`;
 - linear algebra: `dot` `norm` `transpose` `length` `mean` `einsum`;
-  `length` is the only size query — the `len` alias is removed;
+  `length` is the only size query; the `len` alias is removed;
 - integer kernels in `emath-rt`: `factorial` `mod_inv` `congruence`
   `poly_eval_mod` `rs_encode` `hamming_distance`.
 
@@ -79,15 +79,15 @@ use physics::classical::{NewtonSecond, Hooke}
 
 Capability cells (schema `emath.capability-cell.v1`) are stdlib surface
 data, not parser keywords or core IR variants. First authoring contract:
-[`cells/std-tensor-softmax.md`](cells/std-tensor-softmax.md) —
+[`cells/std-tensor-softmax.md`](cells/std-tensor-softmax.md);
 `std.tensor.softmax` pure cell (stable-max strict-f64, laws, provider
 seam, zero-core-delta rules). World-class contract:
-[`cells/std-finite-sets.md`](cells/std-finite-sets.md) — `std.finite.sets`
+[`cells/std-finite-sets.md`](cells/std-finite-sets.md); `std.finite.sets`
 finite-subset carrier (set literal, comprehension, membership `v in s`;
 laws extensionality, comprehension membership, finite enumeration;
 evaluation refused `E-TYPE-113` until emath-ir Phase B).
 Contract slice:
-[`cells/std-text-report.md`](cells/std-text-report.md) — `std.text.report`
+[`cells/std-text-report.md`](cells/std-text-report.md); `std.text.report`
 `core::text`/`core::report` Phase-B contracts (U8 interpolation purity
 fences landed; string VALUES refuse `E_UNSUPPORTED_TYPE` until the
 Phase-B carrier; deterministic evidence-grade emitters specified).

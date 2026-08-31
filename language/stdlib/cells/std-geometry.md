@@ -1,4 +1,4 @@
-# `std.geometry` — geometry types over declared fields (thin slice)
+# `std.geometry`; geometry types over declared fields (thin slice)
 
 Status: std-layer package (bead `emath-r3-geometry-36a9`, Phase 12),
 implemented in `crates/emath-core/src/geometry.rs`. HONEST THIN SLICE:
@@ -18,7 +18,7 @@ geometries. Nothing wraps, saturates, or fabricates.
 
 - `Point<F>` is coordinate-BOUND: transforms apply the full affine map.
 - `FreeVector<F>` is coordinate-FREE: transforms apply ONLY the linear
-  part — a pure translation moves points and never moves free vectors
+  part; a pure translation moves points and never moves free vectors
   (mutant-tested).
 - `dot`/`cross` exist only on free vectors. Point + point addition has
   NO impl anywhere: adding two points is a compile-time type error by
@@ -26,7 +26,7 @@ geometries. Nothing wraps, saturates, or fabricates.
   `a.displacement(&b)` yields the free vector, `p.translate(&v)` moves
   the point.
 - The compile-time guarantee is documented here rather than runtime-
-  tested — enforcing it at runtime would need a trybuild harness (a
+  tested; enforcing it at runtime would need a trybuild harness (a
   harness for a harness, declined).
 
 ## Exact-rational reference ops
@@ -36,7 +36,7 @@ then it refuses typed (`E-GEOMETRY-2`). Exactness witnesses pinned by
 tests: `1/3 + 1/6 = 1/2`, `1/3 × 3 = 1` exactly, quarter-turn rotation
 of `(1/2, 0)` lands on `(0, 1/2)` exactly, and the 3-4-5 triangle is
 an exact containment witness on the unit circle
-(`9/25 + 16/25 = 25/25 = 1`), with `(7/5, 4/5)` exactly off it — no
+(`9/25 + 16/25 = 25/25 = 1`), with `(7/5, 4/5)` exactly off it; no
 epsilon anywhere.
 
 ## Types
@@ -56,14 +56,14 @@ epsilon anywhere.
   The exact field lives inside the Rust std layer until a language
   decision lands (BLOCKED on that decision).
 - **G4 routing**: `×`/`·` overloads route through notation packs,
-  never parser defaults — the notation-pack integration is BLOCKED on
+  never parser defaults; the notation-pack integration is BLOCKED on
   the notation lanes' machinery; this slice exposes named methods
   only.
 - No computational-geometry algorithms (hulls, meshes), no CAD interop,
   no N-dimensional geometry, no normalization (needs sqrt), no conic
   classification beyond construction/evaluation.
 
-## 3D slice — `std.geometry.cartesian3`
+## 3D slice; `std.geometry.cartesian3`
 
 The 3D geometry pack (bead `emath-talo`) lives in
 `language/stdlib/cells/std-geometry-cartesian3.md` and is expressed as

@@ -88,7 +88,7 @@
 
 ## Purpose and layer
 
-- Tier: sema/cli (CRATE_MAP) — the language-server-protocol transport and
+- Tier: sema/cli (CRATE_MAP); the language-server-protocol transport and
   server skeleton for emath.
 - Minimal, std-only LSP server slice: base-protocol framing
   (`Content-Length` headers, JSON-RPC messages), `initialize` capabilities
@@ -115,9 +115,9 @@
   the async lane generic over `R: AsyncRead + Unpin`, `W: AsyncWrite +
   Unpin`. `serve(&Cx)` returns `Ok(0)` on `shutdown`-then-EOF / host
   `Control::Shutdown`, `Ok(1)` on abnormal exit, or `Err(TransportError)`.
-- `TransportError` — the async lane error surface: `Io(io::Error)`,
+- `TransportError`; the async lane error surface: `Io(io::Error)`,
   `Frame(String)`, `BodyTooLarge { length, max }`, `Cancelled`.
-- `Control::Shutdown` — host stop signal on an optional bounded mpsc.
+- `Control::Shutdown`; host stop signal on an optional bounded mpsc.
 - Modules: `json` (deterministic JSON), `protocol` (blocking framing),
   `server` (`ServerState`, diagnostics/publish dispatch), `lab` and
   `transport` (feature-gated).
@@ -125,7 +125,7 @@
 ## Invariants
 
 - **Framing parity:** the async lane is byte-for-byte identical to the
-  blocking `protocol.rs` — identical `Content-Length` headers and the same
+  blocking `protocol.rs`; identical `Content-Length` headers and the same
   exit-code contract, so the two lanes are indistinguishable on the wire
   (enforced by `async_written_frame_reads_back_through_blocking_protocol`).
 - **Exit-code contract:** `0` ⇔ `shutdown` preceded the terminal event
@@ -153,7 +153,7 @@
   Protocol parse-error responses are code `-32700` (id `null`), unknown-method
   refusals are `-32601`. Message text is deterministic. Both lanes emit the
   identical wire behavior. See `implementation/ERROR_CODES.md` (LSP entry);
-  this is the whole surface — no `E-LSP-*` family is defined or necessary.
+  this is the whole surface; no `E-LSP-*` family is defined or necessary.
 - **`TransportError` (async lane only, internal):** typed, not user-facing.
   `Io` carries the underlying async I/O error; `Frame` is a malformed-framing
   class that maps to the `-32700` response; `BodyTooLarge` is the 16 MiB cap
@@ -181,7 +181,7 @@
   close drains/loses the in-flight frame; host `Control::Shutdown` stops
   cleanly after flushing the in-flight frame with exit code `0`. EOF beats a
   queued control signal. `read_exact`/`write_all` retain their crate-documented
-  (non-drop-cancel-safe) semantics — a documented seam, not a guarantee.
+  (non-drop-cancel-safe) semantics; a documented seam, not a guarantee.
 
 ## Unsafe boundary
 
@@ -327,11 +327,11 @@ package's `tests/`: `tests/lab.rs`, `tests/server.rs`, `tests/transport.rs`. 26 
 - Not a general LaTeX engine: structured subset only (letters, digits, `+ - * / = ( )`, `^`/`_`, `\frac`, `\sqrt`, `\sum_{v=a}^{b}`, `\prod_{v=a}^{b}`, `\int_{a}^{b}`, `\lim_{v \to a}`, named Greek). Everything else is a typed refusal naming the token and byte offset; there is no recovery or guess.
 - Not a PDF binary parser: positioned-glyph fixtures only. No page stream, font program, or content-stream interpretation.
 - Ambiguities are retained, not resolved. The 20–45% font-size y-offset band emits both readings.
-- There is no persisted layout store. `LAYOUT_VERSION` consumers refuse unknown versions (`check_version`), so rollback/migration is refuse-and-rebuild — an old artifact citing a different version is rejected, never reinterpreted.
+- There is no persisted layout store. `LAYOUT_VERSION` consumers refuse unknown versions (`check_version`), so rollback/migration is refuse-and-rebuild; an old artifact citing a different version is rejected, never reinterpreted.
 
 ## Absorbed module: `agent_protocol` (was `emath-agent-protocol`)
 
-# CONTRACT — emath-agent-protocol
+# CONTRACT; emath-agent-protocol
 
 ## Purpose and layer
 - Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
@@ -438,7 +438,7 @@ Missing declared metrics disqualify as `failed-guard:missing-metric` and never e
 - Exit gate: `SingleBest { collapse: RequireUnique }` with more than one non-dominated world is `PortfolioError::AmbiguousSingleBest`. There is no hidden single-world selection.
 - Ledger completeness: for a successful receipt, `selected ∪ archived ∪ ledger` is a partition of the input fingerprints (`selected + archived + disqualified = input`).
 - Receipt replay: `replay(&receipt.input).encode()` equals `receipt.encode()` byte-for-byte.
-- Meaning lock: a matching lock commits to that world fingerprint before ranking; the run is single-world. Drifted, missing, or inadmissible locked worlds refuse (`E-LOCK-004`) with a hint to `emath meaning unset` — never a silent fallback to another world. Tampered `lock_id` refuses (`E-LOCK-003`). Malformed files refuse (`E-LOCK-001`); unknown `schema_version` refuses (`E-LOCK-002`). Locked receipts record provenance `user-locked` and copy the candidate's evidence authority; a lock never escalates authority. Locks are local-side (per-user, per-project) and are not baked into shared source; teams MAY commit `.emath/meaning.lock` to share one interpretation.
+- Meaning lock: a matching lock commits to that world fingerprint before ranking; the run is single-world. Drifted, missing, or inadmissible locked worlds refuse (`E-LOCK-004`) with a hint to `emath meaning unset`; never a silent fallback to another world. Tampered `lock_id` refuses (`E-LOCK-003`). Malformed files refuse (`E-LOCK-001`); unknown `schema_version` refuses (`E-LOCK-002`). Locked receipts record provenance `user-locked` and copy the candidate's evidence authority; a lock never escalates authority. Locks are local-side (per-user, per-project) and are not baked into shared source; teams MAY commit `.emath/meaning.lock` to share one interpretation.
 
 ## Error model
 

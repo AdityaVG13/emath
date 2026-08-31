@@ -12,7 +12,7 @@ the freeze verifier is `cargo xtask demo semantic-genesis`.
 
 ## Frozen evidence
 
-Captured 2026-08-18 against HEAD via the real CLI (`emath genesis`) and
+Captured against HEAD via the real CLI (`emath genesis`) and
 `cargo xtask demo semantic-genesis`.
 
 **Reference source:** `tests/valid/arbitrary-glyphs.emath`

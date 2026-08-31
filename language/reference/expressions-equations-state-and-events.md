@@ -137,7 +137,7 @@ g = grad(loss)
 
 `derivative` and `partial` use forward-mode automatic differentiation. A partial derivative requires an explicit `holding` set. `grad` uses reverse mode and returns derivatives with respect to all declaration inputs.
 
-`jacobian(body) wrt v1, v2, ...` (Track A3, bead emath-9bj1) computes the Jacobian as a value: a list body `[f1, f2]` differentiates component-wise (one row per component, one column per `wrt` variable), a scalar body yields a single row (`Matrix[1, n]`). Ordering is source order: row `i` is component `i` of the list in written order and column `j` is the `j`-th `wrt` variable in written order — no sorting, deduplication, or reordering ever applies. A component that is not a scalar number (vector, matrix, or a nested `jacobian`) refuses with `E-TYPE-012`; it is never silently flattened. The form is parse-time sugar for a matrix literal of `derivative` cells, so it uses the same forward-mode engine as `derivative` — no second engine and no domain ops. Unsupported shapes and non-numeric (nondifferentiable) bodies are typed refusals (`E-TYPE-012`); a `wrt` name that is not an input refuses with the derivative form's input-scope code (`E-TYPE-010`). `hessian` is not admitted yet; it refuses as an unknown keyword.
+`jacobian(body) wrt v1, v2, ...` (Track A3, bead emath-9bj1) computes the Jacobian as a value: a list body `[f1, f2]` differentiates component-wise (one row per component, one column per `wrt` variable), a scalar body yields a single row (`Matrix[1, n]`). Ordering is source order: row `i` is component `i` of the list in written order and column `j` is the `j`-th `wrt` variable in written order; no sorting, deduplication, or reordering ever applies. A component that is not a scalar number (vector, matrix, or a nested `jacobian`) refuses with `E-TYPE-012`; it is never silently flattened. The form is parse-time sugar for a matrix literal of `derivative` cells, so it uses the same forward-mode engine as `derivative`; no second engine and no domain ops. Unsupported shapes and non-numeric (nondifferentiable) bodies are typed refusals (`E-TYPE-012`); a `wrt` name that is not an input refuses with the derivative form's input-scope code (`E-TYPE-010`). `hessian` is not admitted yet; it refuses as an unknown keyword.
 
 ## Solving and optimization
 
@@ -149,7 +149,7 @@ maximum = maximize(score) wrt x
 
 The supplied runtime values are initial guesses. Non-convergence, singular derivatives or Hessians, and wrong curvature are refusals, not fabricated answers. Optimization strategy names are explicit; methods never gain authority merely by being declared.
 
-`solve` runs Newton's method with a deterministic robustness fallback (Track A3, bead emath-9bj1): when the derivative vanishes or the residual/step becomes non-finite, the solver scans a fixed geometric grid (alternating ± steps around the seed, ×8 growth, 48 levels) for a sign-changing bracket and bisects it with a fixed 120-iteration budget. A root is reported only when `|residual| < tolerance`; no bracket — or a divergent bisection — is a typed refusal, never a hang and never an invented root. All scan constants are fixed, so the fallback is bit-deterministic across runs and seeds.
+`solve` runs Newton's method with a deterministic robustness fallback (Track A3, bead emath-9bj1): when the derivative vanishes or the residual/step becomes non-finite, the solver scans a fixed geometric grid (alternating ± steps around the seed, ×8 growth, 48 levels) for a sign-changing bracket and bisects it with a fixed 120-iteration budget. A root is reported only when `|residual| < tolerance`; no bracket; or a divergent bisection; is a typed refusal, never a hang and never an invented root. All scan constants are fixed, so the fallback is bit-deterministic across runs and seeds.
 
 ## Arrays and spatial operators
 
@@ -268,8 +268,8 @@ switch on an `on <Event>:` trigger, re-assigning declared `inputs:` /
 
 ### The `events:` section (admission grammar)
 
-`events:` declares named events — `event Name(field: Type)` or no-arg
-`event Name` — on `emath model` declarations. Admission validates the
+`events:` declares named events; `event Name(field: Type)` or no-arg
+`event Name`; on `emath model` declarations. Admission validates the
 surface: duplicate names refuse `E-NAME-022`, anything that is not an
 event declaration refuses `E-SYN-101`.
 
@@ -285,7 +285,7 @@ events:
 ```
 
 Bare `event Name(field: Type)` declarations without a payload suite are
-admitted as declared surface and never scheduled on their own — they only
+admitted as declared surface and never scheduled on their own; they only
 become meaningful when a `transitions:` rule dispatches on a fired event,
 and the firing condition then comes from a payload-bearing event of the
 same name (an action-less suite is refused: the payload arm must contain
@@ -306,7 +306,7 @@ transitions:
 
 Every `on <Event>:` trigger must name an event declared in the same
 declaration's `events:` section (`E-TRANS-001`). Each action is an
-assignment whose target is a declared input or state slot — either a bare
+assignment whose target is a declared input or state slot; either a bare
 name (`voltage = 0`, re-assigning a declared input/state) or a dotted
 `state.<name>` form that unambiguously addresses a state slot. Actions
 against `algebraic:` unknowns are refused (`E-TRANS-005`): the Newton
@@ -321,7 +321,7 @@ in rule order (for the same target, the last write wins).
 A declared parameter `f: T` on an event is a **runtime-capture slot**, not
 a definition input. When the event fires, each parameter binds the live
 value of the **same-named** model variable (a declared `inputs:`, `state:`,
-or `algebraic:` name) at the crossing — never a fixed argument. Parameters
+or `algebraic:` name) at the crossing; never a fixed argument. Parameters
 are in scope inside the event's payload and inside the matching
 `on <Event>:` rule's actions, so a transition can snapshot the crossing
 value into a slot:
@@ -352,8 +352,8 @@ at runtime, the refusal is `E-TRANS-007`.
   already carries the switch.
 - **At most one event per accepted step**, the deterministic tie-break.
   Ties across events break in declaration order.
-- **Crossing bisection ≤ 40 iterations** per firing — the same
-  `--event`-locator budget — snapping a sample on the threshold.
+- **Crossing bisection ≤ 40 iterations** per firing; the same
+  `--event`-locator budget; snapping a sample on the threshold.
 - **Step budget 1_000_000** accepted steps per trajectory, unchanged.
 - Conditions and capture values bind inputs/state through the same
   lowering path as definitions, so projected algebraic values participate
@@ -372,16 +372,16 @@ deterministic-by-contract.
 ### Typed refusals
 
 Admission (events payload): `E-EVENT-001` (not a single if/assign pair;
-indexed/dotted or unknown target; or an `algebraic:` unknown as target —
+indexed/dotted or unknown target; or an `algebraic:` unknown as target;
 the Newton projection owns those), `E-EVENT-002` (condition not Boolean),
-`E-EVENT-003` (`else` arms — the contract is one condition, one action),
+`E-EVENT-003` (`else` arms; the contract is one condition, one action),
 `E-EVENT-004` (action not numeric scalar), `E-EVENT-005` (target not a
 Float64 scalar slot). Runtime (events): `E-EVENT-006` (condition did not
 evaluate to `Bool` at the step), `E-EVENT-007` (action target not bound in
 the live inputs map / not a bound input or state at `t`, or an expression
-name is unbound — pass `--set name=...`), `E-EVENT-008` (event expression
+name is unbound; pass `--set name=...`), `E-EVENT-008` (event expression
 refused or faulted during evaluation), `E-EVENT-009` (event action value
-non-finite — NaN/±Inf never poisons a slot, the run refuses).
+non-finite; NaN/±Inf never poisons a slot, the run refuses).
 
 Admission (transitions): `E-TRANS-001` (`on <Event>:` names an event not
 declared in `events:`, or there is no `events:` section), `E-TRANS-002`
@@ -393,13 +393,13 @@ unknown), `E-TRANS-006` (event parameter matches no declared variable, so
 no capture value exists). Runtime (transitions): `E-TRANS-007` (event
 parameter has no capture value at `t`; a transition targets a non-state;
 or the target is not bound in the live inputs map), `E-TRANS-008`
-(transition action value non-finite — never poison, the run refuses).
+(transition action value non-finite; never poison, the run refuses).
 
 All event/transition faults are typed refusals, never silent drops. In
 particular, a **mid-run singular switch** (for example a transition that
 rewrites `resistance = 0`, making the causalized residual independent of
 the algebraic unknown) refuses through the causalized-Newton projection
-with the raw `E-DAE-INIT` / `Regularize` typed refusal text — the run
+with the raw `E-DAE-INIT` / `Regularize` typed refusal text; the run
 returns the refusal and **never a partial trajectory**.
 
 > No-claim: one RC fixture (`dae-rc-circuit.emath`) demonstrates this

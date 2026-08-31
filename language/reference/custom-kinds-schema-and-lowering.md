@@ -68,7 +68,7 @@ What a custom kind can do today, exactly:
 - **Definitions register.** A valid `emath kind Name:` (schema +
   `lower:` body) checks clean: the body is validated against the
   closed section table (`schema:` requires/allows, `lower:` bounded
-  equations) and the kind is REGISTERED — a later application gets an
+  equations) and the kind is REGISTERED; a later application gets an
   honest story, not a typo error.
 - **Function-shaped applications execute.** After the registered schema
   validates an application such as `emath Gauge HalfGauge:`, its ordinary

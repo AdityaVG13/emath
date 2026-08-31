@@ -14,13 +14,13 @@ intent, not an implemented surface.
 
 ## Implemented workspace crates (`crates/`)
 
-### Tier 0 — identity, diagnostics, transport
+### Tier 0: identity, diagnostics, transport
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-core` | `crates/emath-core` | IDs, spans, diagnostics, canonical primitives, source store, limits | std only |
 
-### Tier 1 — language
+### Tier 1: language
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
@@ -29,7 +29,7 @@ intent, not an implemented surface.
 | `emath-hir` | `crates/emath-hir` | resolved declaration representation | core/ir |
 | `emath-term` | `crates/emath-term` | provider-neutral first-order term representation (canonical round-trip) | core |
 
-### Tier 2 — semantics
+### Tier 2: semantics
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
@@ -39,7 +39,7 @@ intent, not an implemented surface.
 | `emath-goal` | `crates/emath-goal` | request elaboration and goal schemas | ir |
 | `emath-plan` | `crates/emath-plan` | compatibility, decomposition, ranking, fallback | ir |
 
-### Tier 3 — goals and providers
+### Tier 3: goals and providers
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
@@ -47,7 +47,7 @@ intent, not an implemented surface.
 | `emath-adapter-dew` | `crates/emath-adapter-dew` | Dew scalar backends (std-only native lanes) | provider-api |
 | `emath-adapter-rumoca` | `crates/emath-adapter-rumoca` | Rumoca subset-import adapter | provider-api |
 
-### Tier 4 — evidence and artifacts
+### Tier 4: evidence and artifacts
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
@@ -56,29 +56,29 @@ intent, not an implemented surface.
 | `emath-artifact` | `crates/emath-artifact` | Cargo package, manifests, source maps, SBOM | core/schema |
 | `emath-rt` | `crates/emath-rt` | pre-compiled math kernels, embedded verbatim into generated crates and used by the interpreter | std only |
 
-### Tier 5 — integration
+### Tier 5: integration
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-build` | `crates/emath-build` | build-step backend and artifact emission (`GeneratedCrate` host) | sema/artifact |
-| `emath-macro` | `crates/emath-macro` | procedural macro convenience (corrected name; formerly `emath-macros`) | — |
+| `emath-macro` | `crates/emath-macro` | procedural macro convenience (corrected name; formerly `emath-macros`) |: |
 | `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity (corrected name; formerly `emath-lab`) | core |
 | `emath-registry` | `crates/emath-registry` | package/provider registry slice | provider-api |
 | `emath-cli` | `crates/emath-cli` | command-line application | sema/build/lab-core |
 
-### Tier 6 — semantic genesis substrate
+### Tier 6: semantic genesis substrate
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-genesis` | `crates/emath-genesis` | minimal Semantic Genesis evaluator and built-in example worlds | term/world-ir |
 | `emath-world-ir` | `crates/emath-world-ir` | provider-neutral World IR and meaning-hole structures; owns FittedTable and re-exports core's fnv1a64 (o7a6) | ir/core |
 
-### Tier 7 — governance and operations
+### Tier 7: governance and operations
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 
-### Tier 8 — infrastructure adapters (feature-gated)
+### Tier 8: infrastructure adapters (feature-gated)
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
@@ -87,7 +87,7 @@ intent, not an implemented surface.
 Feature-gated: each crate's default build is std-only; the upstream engine
 (Dicklesworthstone franken*) arrives only behind the named feature.
 
-### Tier 9 — layout and playground frontends
+### Tier 9: layout and playground frontends
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|

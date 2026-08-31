@@ -1,4 +1,4 @@
-# `std.integral` — declared measure worlds and explicit-measure integration
+# `std.integral`; declared measure worlds and explicit-measure integration
 
 Status: std-layer slice of `emath-r3-measures-transforms-r2mt`
 (B20 measure worlds + the B25 declared-kernel core), implemented in
@@ -9,7 +9,7 @@ only where declared.
 ## The measure is never ambient
 
 A measure exists only through its constructor, and every
-integrate/transform call takes it as an explicit argument — the std
+integrate/transform call takes it as an explicit argument; the std
 mirror of the language's `wrt mu` rule (and of the MeaningHole refusal
 for an ambient integral). Nothing infers, defaults, or remembers a
 measure between calls.
@@ -22,7 +22,7 @@ measure between calls.
 - `LebesgueOn`: length measure on a declared non-degenerate finite
   interval (`E-INTEGRAL-2` otherwise).
 - There is NO conversion impl between the two types: Lebesgue and
-  discrete are different worlds. Riemann is deliberately absent —
+  discrete are different worlds. Riemann is deliberately absent;
   finite Riemann sums belong to the numeric-solver lanes, not to the
   measure vocabulary.
 
@@ -39,17 +39,17 @@ measure between calls.
 ## Coverage is part of the world contract
 
 `StepFunction` cells must be finite, non-degenerate, and
-non-overlapping (an overlap makes "the value at x" ambiguous —
+non-overlapping (an overlap makes "the value at x" ambiguous;
 refusal at construction). Gaps are legal on the OBJECT (it may be a
 partial function) but `integrate_step` requires the cells to cover
 the declared domain exactly: first cell starts at `lo`, last ends at
 `hi`, no interior gaps. Short, gappy, or overhanging coverage refuses
-typed (`E-INTEGRAL-3`) — never a silent clip, never a silently-zero
+typed (`E-INTEGRAL-3`); never a silent clip, never a silently-zero
 gap.
 
 ## Declared kernels (B25 core, discrete world)
 
-- Fourier: `(Fμ)(t) = Σ m_j·e^{-i t x_j}` — exact atom sum. The kernel
+- Fourier: `(Fμ)(t) = Σ m_j·e^{-i t x_j}`; exact atom sum. The kernel
   SIGN is pinned by exact witnesses (mass at x=1, t=π/2 ⇒ exactly −i;
   symmetric pair at t=π ⇒ exactly −1). The Fourier kernel-sign mutant
   is killed by these witnesses.
@@ -58,13 +58,13 @@ gap.
   and the sign witness e^{-(1+iπ/2)} = −i·e^{-1}.
 - Finite-domain honesty: any kernel evaluation leaving the f64
   envelope refuses typed (`E-INTEGRAL-4`). Enforcement is single-point
-  at the sum level — the mutation check proved a kernel-level guard
+  at the sum level; the mutation check proved a kernel-level guard
   redundant (inf/NaN poison the total identically), so the dead guard
   was removed rather than kept as untestable defense.
 
 ## Named fences (follow-up slices, deliberately open)
 
-- **No `.emath` `wrt mu` surface and no transform binder kinds** —
+- **No `.emath` `wrt mu` surface and no transform binder kinds**;
   both are language design work (B25 NEEDS-DESIGN-WORK; binder kinds
   and kernel/domain world-carrying), gated on the notation-core lane
   (m5mt). This slice ships the substrate those binders will lower to.

@@ -1,4 +1,4 @@
-# std.stochastic — deterministic SDE execution cells
+# std.stochastic; deterministic SDE execution cells
 
 Capability cells (data, not core-kind growth): the kernels live in
 `emath-rt::stochastic`, exposed through the immutable native-kernel
@@ -10,7 +10,7 @@ backend domain switch). The full dispatch chain is generic end to end:
    and admitted into the package's capability arena.
 2. A call by name (bare, or qualified `std::stochastic::name`) lowers
    through the generic declared-capability call path to
-   `ExprNode::Apply` — the shared builtin-miss seam: builtins first,
+   `ExprNode::Apply`; the shared builtin-miss seam: builtins first,
    then declared/mounted capability cells, then the typed
    unknown-function refusal. Any domain (geometry today) reuses the
    same seam without a new keyword.

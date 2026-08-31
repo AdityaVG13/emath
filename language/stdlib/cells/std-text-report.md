@@ -1,4 +1,4 @@
-# `std.text.report` — text values and deterministic report emitters
+# `std.text.report`; text values and deterministic report emitters
 
 Status: IMPLEMENTED (bead `emath-r3-text-report-gk41`). The compiler,
 reference VM, generated Rust path, and WASM serializer carry text and
@@ -36,7 +36,7 @@ report values.
 - `section(heading, body)` and `document(title, section)` construct
   report values from admitted expressions. A
   report node binds names that already have provenance; it never
-  computes new numbers (that boundary keeps reports evidence-grade —
+  computes new numbers (that boundary keeps reports evidence-grade;
   same rule as observations).
 - `render_markdown` and `render_latex` are deterministic: same admitted model in,
   byte-identical artifact out; no timestamps, no locale, no map

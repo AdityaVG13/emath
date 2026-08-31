@@ -2,7 +2,7 @@
 
 ## 0. What house style is
 
-House style is what `emath fmt` accepts as canonical — nothing more
+House style is what `emath fmt` accepts as canonical; nothing more
 inventive. The formatter is the arbiter: a file either round-trips
 (`fmt` confirms `canonical form`) or is refused as `NOT canonical`
 (never silently rewritten). This chapter documents that canonical style
@@ -42,7 +42,7 @@ that orders sections differently still admits if its schema allows it.
 Chapter 1 §4 is normative: a `definitions:` entry states meaning; a
 `goals:` entry asks the compiler for work. House style adds one rule:
 never mix them. A section that both defines and requests is a style
-refusal waiting to happen — the payload-shape table (ch. 7, F3) already
+refusal waiting to happen; the payload-shape table (ch. 7, F3) already
 refuses any payload that does not match its family.
 
 ## 4. Decision table: `=`, `==`, and the goal verb
@@ -55,7 +55,7 @@ refuses any payload that does not match its family.
 | work the compiler should do | `verb <target>:` + commands | `goals:` |
 
 `==` never defines (ch. 7, F6); the diagnostic names both readings when
-the spellings are mixed. A goal verb is never a one-line heading — the
+the spellings are mixed. A goal verb is never a one-line heading; the
 flat-goal sugar is refused (`E-SYN-112`).
 
 ## 5. `///` scope
@@ -67,14 +67,14 @@ payload: they never carry semantics.
 
 ## 6. Vertical idioms
 
-- One binding per line — the `definitions:` payload shape is exactly
+- One binding per line; the `definitions:` payload shape is exactly
   `name = expr` per line (ch. 7, F3).
 - Single spaces around `=` and binary operators; the canonical style has
   no aligned-`=` column and the formatter neither produces nor requires
   alignment. (The earlier "align the equals signs" proposal is retired:
   it is not formatter-canonical.)
 - A long right-hand side may hang a trailing operator across the line
-  break — `NEWLINE` is suppressed after an incomplete assignment or
+  break; `NEWLINE` is suppressed after an incomplete assignment or
   infix operator (ch. 2 layout, C4). Bracketed continuation is equally
   canonical; pick one per file.
 - Indentation is the canonical four spaces; tabs are rejected (ch. 2).
@@ -90,5 +90,5 @@ canonicality *gate* pins named fixtures (`tests/valid/square.emath`,
 `tests/valid/affine_scorer.emath`, and each newly added example), so a
 drift there fails the build; the wider example corpus is being
 canonicalized incrementally and a non-canonical example there is
-recorded debt, not a green light — do not cite the corpus as
+recorded debt, not a green light; do not cite the corpus as
 formatter-canonical until the sweep closes.

@@ -37,20 +37,20 @@ compile, benchmark
 ## Optimization methods
 
 The admitted optimization surface today is `minimize(expr) wrt var` /
-`maximize(expr) wrt var` (one variable per goal — coordinate blocks):
+`maximize(expr) wrt var` (one variable per goal; coordinate blocks):
 pure Newton on `∇f = 0` with a dual-number gradient and a
 finite-difference Hessian, plus the quadratic exterior penalty for
 `constraints:` sections. A returned point is a STATIONARY point of the
 declared kind (a min claimed as a max refuses); exhausting iterations,
 a vanished Hessian, or the wrong curvature refuses rather than
 returning a non-optimum. The inequality in the penalty approach is
-approached, not a hard feasible-set projection — labeled in
+approached, not a hard feasible-set projection; labeled in
 `constrained-opt.emath`.
 
 The `core::optimization` methods library
 ([`std-optimization-methods`](../stdlib/cells/std-optimization-methods.md))
 provides Newton with Armijo backtracking line search,
-BFGS (quasi-Newton — no Hessian required), the `kkt_residual`
+BFGS (quasi-Newton; no Hessian required), the `kkt_residual`
 certificate helper, and typed refusals (`SingularHessian`,
 `BudgetExhausted` carrying the achieved `‖∇f‖`, `LineSearchStalled`).
 Interior-point and SQP refuse by name. Global, Bayesian, manifold,
@@ -74,7 +74,7 @@ quantified claims are unsupported without a compatible provider and checker.
 
 ## Fit goals (04 §5.3)
 
-`fit <params> to <observable>:` is a generic estimation goal — never
+`fit <params> to <observable>:` is a generic estimation goal; never
 bare optimization. The whole fit program is plain payload data, all of
 it declared in the goal suite:
 
@@ -94,32 +94,32 @@ goals:
         require identifiability.structural
 ```
 
-- `model <path>` — path to the model carrying the prediction;
-- `prediction <label>` — prediction target;
-- `residual: <method>` — explicit residual method
+- `model <path>`; path to the model carrying the prediction;
+- `prediction <label>`; prediction target;
+- `residual: <method>`; explicit residual method
   (`weighted_least_squares` today); weights are never silent;
-- `weights: <param> = <number>` — explicit per-parameter weights
+- `weights: <param> = <number>`; explicit per-parameter weights
   (strictly positive; unknown parameter names refuse);
-- `method <optimizer>` — `levenberg_marquardt` today;
-- `initial: <param> = <number>` — seed values; part of provenance
+- `method <optimizer>`; `levenberg_marquardt` today;
+- `initial: <param> = <number>`; seed values; part of provenance
   (model + data + seed + method);
-- `data: <entry> = [<number>, ...]` — observed data rows, exactly two:
+- `data: <entry> = [<number>, ...]`; observed data rows, exactly two:
   one names the observable (the `y` values), one names the model's
   independent coordinate (the `t` values). Literals stay lossless;
   arity mismatch, empty rows, and unparseable literals are typed
   refusals;
-- `require identifiability.structural` — the honesty gate: without it
+- `require identifiability.structural`; the honesty gate: without it
   the fit is numeric only and claims no authority.
 
 Execution is generic capability/method/provider plumbing
 (`crates/emath-calibration`): residuals through a residual-method +
 model seam (model faults refuse as `ModelError`, never NaN-poisoned
 optimization), optimization through an optimizer-method seam, and
-structural identifiability through a provider seam — the executable
+structural identifiability through a provider seam; the executable
 `NumericRankOracle` evaluates the residual Jacobian's local column rank
 at the fitted point and derives covariance-based confidence intervals
 (tight only when the data certifies the direction's sign). No domain
-model is compiled into the Rust nucleus — the PK one-compartment model
+model is compiled into the Rust nucleus; the PK one-compartment model
 is the runnable fixture `language/examples/science/
 pk-two-compartment-fit.emath`.
 
@@ -133,7 +133,7 @@ structural-identifiability provider exists, fit plans still exclude
 carries per-direction confidence intervals; a missing provider stays
 honestly unresolved; a relaxed or zero-straddling direction refuses
 AuthorityEscalation naming it (fitting is estimation with uncertainty,
-provenance, and identifiability — never a silent optimum).
+provenance, and identifiability; never a silent optimum).
 
 ## Goal contract
 

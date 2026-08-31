@@ -1,7 +1,7 @@
 # Chapter: Geometry and Topology (over the generic compute surface)
 
 Normative status of the geometry pack (bead `emath-talo`). Geometry is
-DATA over the existing generic Vector/Matrix/Tensor surface — the
+DATA over the existing generic Vector/Matrix/Tensor surface; the
 compiler core (parse, sema, EMIR, reference VM, emit) gains no
 geometry-named enums, variants, or branches. What computes below is
 pinned by executable tests in
@@ -10,7 +10,7 @@ pinned by executable tests in
 
 ## 1. Policy principle
 
-New mathematics enters as `.emath` capability cells / families —
+New mathematics enters as `.emath` capability cells / families;
 never as new domain-named core IR/op enum variants. The 3D geometry
 cell `std.geometry.cartesian3` (see
 `language/stdlib/cells/std-geometry-cartesian3.md`, and the 2D
@@ -69,7 +69,7 @@ admit, and execute `.emath` programs; no core branch implements them.
   generic `Option<T>` surface lands (SilverMaple lane). The
   discriminant math for ray–plane / ray–sphere is pinned by the
   formulas above.
-- Named builtins `cross`, `normalize`, `distance` do not exist —
+- Named builtins `cross`, `normalize`, `distance` do not exist;
   and still do not: the names are DECLARED PURE CAPABILITY CELLS
   (`std.geometry.cross` / `std.geometry.normalize` /
   `std.geometry.distance`) reached through the generic call seam
@@ -98,7 +98,7 @@ capability surface (`class: pure`, `inputs:`/`outputs:` typed
 spellings both resolve). A call lowers to `ExprNode::Apply` →
 `ApplyCapability`; the cells execute as compiled reference cell data
 over the closed vector vocabulary (`cross` composes bit-exact
-dot-with-basis component extraction — no index operator, no kernel,
+dot-with-basis component extraction; no index operator, no kernel,
 no new op; `normalize` is the generic vector-scalar divide;
 `distance` is `norm(a − b)`). Unknown names still refuse typed, and
 the strict Rust codegen backend does not lower capability
@@ -111,7 +111,7 @@ through the call path, mutation-killed).
 
 **User-defined functions are callable too (emath-0e68):** a call whose
 name matches a sibling `emath function` declaration in the same source
-resolves through the same seam by pure-inline substitution at sema —
+resolves through the same seam by pure-inline substitution at sema;
 the callee's parameters bind as `#`-suffixed renamed definitions over
 the caller-side argument subtrees, the callee's `definitions:` body
 lowers in a swapped environment, and the output binding folds in
@@ -123,7 +123,7 @@ separator is not a valid identifier character). This is the path the
 parametric surfaces travel: `r(t) -> Vector[3]`,
 `r(u,v) -> Vector[3]` (paraboloid, sphere, torus), and the implicit
 field `f(p) -> Float64` are ordinary user functions called from an
-acceptance function — see
+acceptance function; see
 `language/examples/geometry/parametric-surfaces.emath` (the runnable
 example) and `tests/emath-ir/tests/parametric_surfaces.rs` (exact
 values, arity refusal, reparameterization invariance, determinism,
