@@ -23,7 +23,6 @@ members = [
   "crates/emath-cli",
   "crates/emath-term",
   "crates/emath-world-ir",
-  "crates/emath-agent-protocol",
   "crates/emath-genesis",
   "crates/emath-portfolio",
   "crates/emath-adapter-rumoca",
@@ -106,7 +105,6 @@ emath-cli = { path = "crates/emath-cli" }
 emath-term = { path = "crates/emath-term" }
 emath-world-ir = { path = "crates/emath-world-ir" }
 emath-genesis = { path = "crates/emath-genesis" }
-emath-agent-protocol = { path = "crates/emath-agent-protocol" }
 emath-portfolio = { path = "crates/emath-portfolio" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
 emath-wasm = { path = "crates/emath-wasm" }

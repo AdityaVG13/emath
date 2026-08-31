@@ -1,9 +1,9 @@
 //! Challenge-loop admission and frontier-handoff tests.
 //!
-//! Moved from #[cfg(test)] in crates/emath-agent-protocol/src/challenge.rs.
+//! Moved from #[cfg(test)] in crates/emath-cli/src/agent_protocol/challenge.rs.
 
-use emath_agent_protocol::proposal::{AgentProposal, ProposalKind};
-use emath_agent_protocol::{ChallengeLoop, ChallengeOutcome, CheckerSuite};
+use emath_cli::agent_protocol::proposal::{AgentProposal, ProposalKind};
+use emath_cli::agent_protocol::{ChallengeLoop, ChallengeOutcome, CheckerSuite};
 use emath_portfolio::{Authority, InterpretationPortfolio};
 use emath_genesis::tuning::campaign::{
     CandidateMeasurement, HostCampaign, HostMetric, HostObjectives, ResourceEnvelope,
