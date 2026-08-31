@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
   "crates/emath-core",
-  "crates/emath-source",
   "crates/emath-syntax",
   "crates/emath-ir",
   "crates/emath-goal",

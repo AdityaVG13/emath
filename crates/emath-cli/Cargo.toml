@@ -34,7 +34,6 @@ emath-portfolio = { workspace = true }
 emath-provider-api = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-sema = { workspace = true }
-emath-source = { workspace = true }
 emath-syntax = { workspace = true }
 emath-term = { workspace = true }
 emath-tuning = { workspace = true }
