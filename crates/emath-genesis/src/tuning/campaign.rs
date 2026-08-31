@@ -5,7 +5,7 @@
 //! token cost / p95 latency minimize), fallback availability, and a
 //! deterministic receipt.
 
-use crate::JointCandidate;
+use crate::tuning::JointCandidate;
 use emath_term::SymbolId;
 use emath_world_ir::{WorldId, fnv1a64};
 

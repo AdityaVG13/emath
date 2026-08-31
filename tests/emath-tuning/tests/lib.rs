@@ -1,4 +1,4 @@
-use emath_tuning::{
+use emath_genesis::tuning::{
     calibrate_confidence, CoverageSample, DeltaError, DeltaReceipt, SemanticChange,
     SemanticVariableKind, WorldDelta,
 };

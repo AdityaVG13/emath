@@ -85,7 +85,6 @@ intent, not an implemented surface.
 | `emath-calibration` | `crates/emath-calibration` | semantic calibration (fitting procedures; FittedTable re-exported from world-ir, o7a6) | portfolio |
 | `emath-law-check` | `crates/emath-law-check` | independent world checking (`WorldChecker`): law admission | meaning-provider-api |
 | `emath-holes` | `crates/emath-holes` | meaning holes and finite synthesis | world-ir |
-| `emath-tuning` | `crates/emath-tuning` | semantic and joint tuning | portfolio |
 
 ### Tier 8 — infrastructure adapters (feature-gated)
 

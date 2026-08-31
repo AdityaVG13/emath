@@ -1,4 +1,4 @@
-use emath_tuning::campaign::{HostMetric, ResourceEnvelope};
+use emath_genesis::tuning::campaign::{HostMetric, ResourceEnvelope};
 
 fn envelope() -> ResourceEnvelope {
     ResourceEnvelope {
