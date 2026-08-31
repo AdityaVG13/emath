@@ -569,6 +569,8 @@ fn coerce_binding(name: &str, value: &Value, ty: Option<&TypeNode>) -> Result<Va
         _ => match value {
             Value::F64(number) => Ok(Value::F64(*number)),
             Value::I64(number) => Ok(Value::F64(*number as f64)),
+            // Exact rationals are not f64-settable: demoting would break
+            // exactness, so the typed refusal names the value.
             other => Err(format!(
                 "`{name}` is a scalar; pass --set {name}=<Float64>, got {other}"
             )),
@@ -628,6 +630,7 @@ fn value_json(value: &Value) -> String {
             let body: Vec<String> = data.iter().copied().map(format_f64).collect();
             format!("[{}]", body.join(", "))
         }
+        Value::Rat { num, den } => format!("{num}/{den}"),
         Value::Complex { re, im } => {
             if *im == 0.0 {
                 format_f64(*re)

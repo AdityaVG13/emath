@@ -26,6 +26,10 @@ pub enum Value {
     },
     /// Complex number (real + imaginary parts). B14.
     Complex { re: f64, im: f64 },
+    /// Exact rational `num/den` (emath-rat-real-types-p5cj). Canonical
+    /// form: gcd-reduced with `den > 0`, so equality is componentwise.
+    /// Built only from integer arithmetic — never from f64.
+    Rat { num: i128, den: i128 },
     /// Vector of Float64.
     Vector(Vec<f64>),
     /// Matrix of Float64 (row-major).
@@ -113,6 +117,10 @@ impl PartialEq for Value {
             (Self::I64(left), Self::Complex { re, im }) => {
                 *im == 0.0 && emath_rt::eq_i64_f64(*left, *re)
             }
+            (
+                Self::Rat { num: left_num, den: left_den },
+                Self::Rat { num: right_num, den: right_den },
+            ) => left_num == right_num && left_den == right_den,
             (Self::Vector(left), Self::Vector(right)) => {
                 left.len() == right.len()
                     && left
@@ -228,6 +236,7 @@ impl fmt::Display for Value {
                 }
                 f.write_str("}")
             }
+            Self::Rat { num, den } => write!(f, "{num}/{den}"),
             Self::Complex { re, im } => {
                 if *im == 0.0 {
                     f.write_str(&format_f64(*re))

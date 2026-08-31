@@ -1626,6 +1626,7 @@ pub(super) fn admit_declaration(
                     infer @ (Infer::F64
                     | Infer::Nat
                     | Infer::Int
+                    | Infer::Rat
                     | Infer::Complex
                     | Infer::Bool
                     | Infer::Text
@@ -2148,6 +2149,7 @@ pub(super) fn admit_declaration(
                                 Infer::F64
                                 | Infer::Nat
                                 | Infer::Int
+                                | Infer::Rat
                                 | Infer::Complex
                                 | Infer::Unit { .. }
                                 | Infer::HostDeferred
@@ -2207,6 +2209,7 @@ pub(super) fn admit_declaration(
                             Infer::F64
                             | Infer::Nat
                             | Infer::Int
+                            | Infer::Rat
                             | Infer::Complex
                             | Infer::Vector { .. }
                             | Infer::Matrix { .. }

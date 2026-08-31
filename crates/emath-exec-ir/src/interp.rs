@@ -658,6 +658,37 @@ pub(super) fn eval_op(
             })
         }
         EmirOp::ConstComplex(re, im) => Ok(Value::Complex { re, im }),
+        EmirOp::RatConstruct { num, den } => {
+            let num = i128_of(registers, num, name)?;
+            let den = i128_of(registers, den, name)?;
+            rat_canonicalize(num, den, name)
+        }
+        EmirOp::RatAdd(left, right) => {
+            let (left_num, left_den) = rat_parts(registers, left, name)?;
+            let (right_num, right_den) = rat_parts(registers, right, name)?;
+            // a/b + c/d = (a*d + c*b) / (b*d); every intermediate is
+            // checked — overflow is a typed refusal, never a silent wrap.
+            let num = left_num
+                .checked_mul(right_den)
+                .and_then(|left_term| {
+                    right_num
+                        .checked_mul(left_den)
+                        .and_then(|right_term| left_term.checked_add(right_term))
+                })
+                .ok_or(EvalFault::Arithmetic {
+                    op: name,
+                    detail: "rational addition overflow (i128)",
+                })?;
+            let den = left_den.checked_mul(right_den).ok_or(EvalFault::Arithmetic {
+                op: name,
+                detail: "rational addition overflow (i128)",
+            })?;
+            rat_canonicalize(num, den, name)
+        }
+        EmirOp::RatNorm(value) => {
+            let (num, den) = rat_parts(registers, value, name)?;
+            rat_canonicalize(num, den, name)
+        }
         EmirOp::ConstBool(value) => Ok(Value::Bool(value)),
         EmirOp::LoadInput(index) => inputs
             .get(usize::from(index))
@@ -766,6 +797,9 @@ pub(super) fn eval_op(
                     })
                 }
                 (Value::I64(a), Value::I64(b)) => i64_checked(*a, *b, name, i64::checked_add),
+                (Value::Rat { .. }, _) | (_, Value::Rat { .. }) => {
+                    rat_binary(registers, left, right, name, RatCombine::Add)
+                }
                 _ => Ok(Value::F64(
                     f64_of(registers, left, name)? + f64_of(registers, right, name)?,
                 )),
@@ -792,6 +826,9 @@ pub(super) fn eval_op(
                     })
                 }
                 (Value::I64(a), Value::I64(b)) => i64_checked(*a, *b, name, i64::checked_sub),
+                (Value::Rat { .. }, _) | (_, Value::Rat { .. }) => {
+                    rat_binary(registers, left, right, name, RatCombine::Sub)
+                }
                 _ => Ok(Value::F64(
                     f64_of(registers, left, name)? - f64_of(registers, right, name)?,
                 )),
@@ -822,6 +859,9 @@ pub(super) fn eval_op(
                     })
                 }
                 (Value::I64(a), Value::I64(b)) => i64_checked(*a, *b, name, i64::checked_mul),
+                (Value::Rat { .. }, _) | (_, Value::Rat { .. }) => {
+                    rat_binary(registers, left, right, name, RatCombine::Mul)
+                }
                 _ => Ok(Value::F64(
                     f64_of(registers, left, name)? * f64_of(registers, right, name)?,
                 )),
@@ -863,6 +903,9 @@ pub(super) fn eval_op(
                         re: (lr * rr + li * ri) / denom,
                         im: (li * rr - lr * ri) / denom,
                     })
+                }
+                (Value::Rat { .. }, _) | (_, Value::Rat { .. }) => {
+                    rat_binary(registers, left, right, name, RatCombine::Div)
                 }
                 _ => Ok(Value::F64(
                     f64_of(registers, left, name)? / f64_of(registers, right, name)?,
@@ -2616,6 +2659,126 @@ fn dense_solve(matrix: &[Vec<f64>], rhs: &[f64]) -> Result<Vec<f64>, ()> {
         x[row] = acc / a[row][row];
     }
     Ok(x)
+}
+
+/// Exact-integer operand extractor for the Rat cells: accepts the
+/// integer value kinds (I64; Nat is I64 too). Widens to i128 so
+/// products of two i64 denominators stay exact. Everything else is a
+/// typed type-confusion, never a silent numeric coercion.
+fn i128_of(
+    registers: &[Value],
+    value: EmirValue,
+    op: &'static str,
+) -> Result<i128, EvalFault> {
+    match register(registers, value)? {
+        Value::I64(value) => Ok(i128::from(*value)),
+        _ => Err(EvalFault::TypeConfusion {
+            register: value.0,
+            op,
+        }),
+    }
+}
+
+/// Decompose a register holding an exact rational into (num, den).
+fn rat_parts(
+    registers: &[Value],
+    value: EmirValue,
+    op: &'static str,
+) -> Result<(i128, i128), EvalFault> {
+    match register(registers, value)? {
+        Value::Rat { num, den } => Ok((*num, *den)),
+        _ => Err(EvalFault::TypeConfusion {
+            register: value.0,
+            op,
+        }),
+    }
+}
+
+/// Canonical form: gcd-reduced with a positive denominator. The zero
+/// denominator is a typed refusal here (eval-time backstop; the check
+/// pass refuses literal zero denominators earlier with E-RAT-001).
+fn rat_canonicalize(num: i128, den: i128, op: &'static str) -> Result<Value, EvalFault> {
+    if den == 0 {
+        return Err(EvalFault::Arithmetic {
+            op,
+            detail: "rat denominator must be nonzero",
+        });
+    }
+    let mut num = num;
+    let mut den = den;
+    if den < 0 {
+        num = -num;
+        den = -den;
+    }
+    let gcd = gcd_u128(num.unsigned_abs(), den.unsigned_abs());
+    Ok(Value::Rat {
+        num: num / gcd as i128,
+        den: den / gcd as i128,
+    })
+}
+
+/// Euclidean gcd on u128 (rem only — no overflow).
+fn gcd_u128(mut a: u128, mut b: u128) -> u128 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+/// The four rational combines for the generic arithmetic operators.
+enum RatCombine {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+/// Exact rational arithmetic for the generic `+`/`-`/`*`/`/` operators
+/// (emath-rat-real-types-p5cj): every intermediate is checked — overflow
+/// is a typed refusal, never a silent wrap; a zero divisor is a typed
+/// refusal, never an infinity. Results are gcd-canonical.
+fn rat_binary(
+    registers: &[Value],
+    left: EmirValue,
+    right: EmirValue,
+    op: &'static str,
+    combine: RatCombine,
+) -> Result<Value, EvalFault> {
+    let (ln, ld) = rat_parts(registers, left, op)?;
+    let (rn, rd) = rat_parts(registers, right, op)?;
+    let (numerator, denominator) = match combine {
+        RatCombine::Add => (
+            ln.checked_mul(rd).and_then(|left_term| {
+                rn.checked_mul(ld)
+                    .and_then(|right_term| left_term.checked_add(right_term))
+            }),
+            ld.checked_mul(rd),
+        ),
+        RatCombine::Sub => (
+            ln.checked_mul(rd).and_then(|left_term| {
+                rn.checked_mul(ld)
+                    .and_then(|right_term| left_term.checked_sub(right_term))
+            }),
+            ld.checked_mul(rd),
+        ),
+        RatCombine::Mul => (ln.checked_mul(rn), ld.checked_mul(rd)),
+        RatCombine::Div => {
+            if rn == 0 {
+                return Err(EvalFault::Arithmetic {
+                    op,
+                    detail: "rational division by zero",
+                });
+            }
+            (ln.checked_mul(rd), ld.checked_mul(rn))
+        }
+    };
+    match (numerator, denominator) {
+        (Some(num), Some(den)) => rat_canonicalize(num, den, op),
+        _ => Err(EvalFault::Arithmetic {
+            op,
+            detail: "rational arithmetic overflow (i128)",
+        }),
+    }
 }
 
 fn eval_complex_unary(

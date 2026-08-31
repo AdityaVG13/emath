@@ -635,6 +635,13 @@ spelling is retired and is not emitted.
 - `E-PROB-003` — the parameter vector has the wrong length for the
   family; refused.
 
+### Exact rationals (`crates/emath-sema`, `crates/emath-exec-ir`)
+
+- `E-RAT-001` — `rat(n, 0)` has no exact-rational value: a zero
+  denominator is refused with a typed diagnostic (check time for
+  literal denominators, `EvalFault::Arithmetic` at run otherwise) —
+  never a panic, never a silent zero.
+
 ### Evidence and artifacts (`crates/emath-checker`, `crates/emath-evidence`)
 
 - `E-EVID-104` — certificate for a claim is stale (fresh-until passed).
@@ -998,8 +1005,8 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **455 unique codes** from 319 rust files.
-Not yet documented at generation time: **62** (E-CAT-001, E-CAT-002, E-CAT-003, E-CAT-004, E-CAT-005, E-CAT-006, E-CAT-007, E-CELL-009, E-CELL-010, E-CELL-011, E-CONTROL-001, E-CONTROL-002, E-CONTROL-003, E-CONTROL-004, E-CONTROL-005, E-CSV-001, E-CSV-002, E-CSV-003, E-CSV-004, E-CSV-005, E-CSV-006, E-CSV-007, E-CSV-008, E-CSV-009, E-EVENT-001, E-EVENT-002, E-EVENT-003, E-EVENT-004, E-EVENT-005, E-EVENT-006, E-EVENT-007, E-EVENT-008, E-EVENT-009, E-EXACT-001, E-EXACT-002, E-FIT-000, E-FIT-002, E-FIT-003, E-FIT-004, E-FIT-005, E-FIT-006, E-FIT-010, E-FIT-011, E-FIT-012, E-MODEL-001, E-NULLSPACE-001, E-NULLSPACE-002, E-SIM-001, E-SIM-002, E-SIM-003, E-STD-001, E-STD-002, E-STD-003, E-TRANS-001, E-TRANS-002, E-TRANS-003, E-TRANS-004, E-TRANS-005, E-TRANS-006, E-TRANS-007, E-TRANS-008, E-TYPE-013).
+Emissions: **456 unique codes** from 319 rust files.
+Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
 |---|---|---|
@@ -1136,7 +1143,7 @@ Not yet documented at generation time: **62** (E-CAT-001, E-CAT-002, E-CAT-003, 
 | `E-GEN-090` | crates/emath-cli/src/genesis_cmd.rs | `E-GEN-090` |
 | `E-GEN-091` | crates/emath-cli/src/genesis_cmd.rs | `E-GEN-091` |
 | `E-GEN-092` | crates/emath-cli/src/eval_cmd.rs<br>crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-cli/src/meaning_cmd.rs | `error: E-GEN-092: unknown world `{name}``<br>`error: E-GEN-092: unknown world `{label}`` |
-| `E-GEN-093` | crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-portfolio/src/meaning_lock.rs | `error: E-GEN-093: `keep: pareto 0` keeps no candidates` |
+| `E-GEN-093` | crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock.rs | `error: E-GEN-093: `keep: pareto 0` keeps no candidates` |
 | `E-GEN-094` | crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-world-ir/src/world_codegen_rust.rs | `error: E-GEN-094: CSA baseline evaluation failed on a total world`<br>`E-GEN-094` |
 | `E-GEN-095` | crates/emath-cli/src/genesis_cmd.rs | `interpretation_portfolio`<br>`error: E-GEN-095: ambiguous portfolio: lock a world or request `answer: return interpretation_portfolio`` |
 | `E-GEN-096` | crates/emath-cli/src/genesis_cmd.rs | `{id}.json`<br>`error: E-GEN-096: portfolio id is not a single path component` |
@@ -1204,12 +1211,12 @@ Not yet documented at generation time: **62** (E-CAT-001, E-CAT-002, E-CAT-003, 
 | `E-LINALG-002` | crates/emath-rt/src/linalg.rs | `E-LINALG-002` |
 | `E-LINALG-003` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/lib.rs<br>crates/emath-rt/src/linalg.rs | `E-LINALG-003` |
 | `E-LINALG-004` | crates/emath-rt/src/linalg.rs | `E-LINALG-004` |
-| `E-LOCK-001` | crates/emath-cli/src/meaning_cmd.rs<br>crates/emath-portfolio/src/meaning_lock.rs | `error: E-LOCK-001: --cap must be an integer >= 1`<br>`error: E-LOCK-001: --declaration must be 16 hex digits` |
-| `E-LOCK-002` | crates/emath-portfolio/src/meaning_lock.rs | `.emath`<br>`E-LOCK-002` |
-| `E-LOCK-003` | crates/emath-portfolio/src/meaning_lock.rs | `E-LOCK-003` |
-| `E-LOCK-004` | crates/emath-cli/src/eval_cmd.rs<br>crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-portfolio/src/meaning_lock.rs | `E-LOCK-004: --world `{wanted}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `emath me`<br>`error: E-LOCK-004: :world `{label}` disagrees with locked `{locked_name}` ({:016x}); re-open the portfolio wit` |
-| `E-LOCK-005` | crates/emath-portfolio/src/meaning_lock.rs | `E-LOCK-005` |
-| `E-LOCK-006` | crates/emath-cli/src/meaning_cmd.rs<br>crates/emath-portfolio/src/meaning_lock.rs | `error: E-LOCK-006: no lock entry for {} {}`<br>`E-LOCK-006` |
+| `E-LOCK-001` | crates/emath-cli/src/meaning_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock.rs | `error: E-LOCK-001: --cap must be an integer >= 1`<br>`error: E-LOCK-001: --declaration must be 16 hex digits` |
+| `E-LOCK-002` | crates/emath-cli/src/portfolio/meaning_lock.rs | `.emath`<br>`E-LOCK-002` |
+| `E-LOCK-003` | crates/emath-cli/src/portfolio/meaning_lock.rs | `E-LOCK-003` |
+| `E-LOCK-004` | crates/emath-cli/src/eval_cmd.rs<br>crates/emath-cli/src/genesis_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock.rs | `E-LOCK-004: --world `{wanted}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `emath me`<br>`error: E-LOCK-004: :world `{label}` disagrees with locked `{locked_name}` ({:016x}); re-open the portfolio wit` |
+| `E-LOCK-005` | crates/emath-cli/src/portfolio/meaning_lock.rs | `E-LOCK-005` |
+| `E-LOCK-006` | crates/emath-cli/src/meaning_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock.rs | `error: E-LOCK-006: no lock entry for {} {}`<br>`E-LOCK-006` |
 | `E-LP-001` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/lib.rs<br>crates/emath-exec-ir/src/optimize.rs<br>crates/emath-rt/src/optimization.rs | `optimum`<br>`E-LP-001` |
 | `E-LP-002` | crates/emath-exec-ir/src/lib.rs<br>crates/emath-rt/src/optimization.rs | `E-LP-002` |
 | `E-LP-003` | crates/emath-exec-ir/src/lib.rs<br>crates/emath-rt/src/optimization.rs | `optimum`<br>`E-LP-003` |
@@ -1319,6 +1326,7 @@ Not yet documented at generation time: **62** (E-CAT-001, E-CAT-002, E-CAT-003, 
 | `E-PROVIDER-001` | crates/emath-provider-api/src/adapter.rs | `E-PROVIDER-001` |
 | `E-PROVIDER-002` | crates/emath-provider-api/src/adapter.rs | `E-PROVIDER-002` |
 | `E-PROVIDER-003` | crates/emath-provider-api/src/adapter.rs | `E-PROVIDER-003` |
+| `E-RAT-001` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/optimize.rs<br>crates/emath-sema/src/admit/lowering.rs | `E-RAT-001` |
 | `E-REG-020` | crates/emath-registry/src/lib.rs | `unknown package `{package}`` |
 | `E-REG-021` | crates/emath-registry/src/lib.rs | `E-REG-021`<br>`pin `{name}@{version}` does not resolve: {}` |
 | `E-REG-022` | crates/emath-registry/src/lib.rs | `E-REG-022` |
@@ -1327,8 +1335,8 @@ Not yet documented at generation time: **62** (E-CAT-001, E-CAT-002, E-CAT-003, 
 | `E-REG-030` | crates/emath-registry/src/lib.rs | `E-REG-030` |
 | `E-REG-031` | crates/emath-registry/src/lib.rs | `E-REG-031` |
 | `E-RES-100` | crates/emath-plan/src/planner.rs | `{}:resume:nodes>{}`<br>`E-RES-100: {} plan nodes exceed the {} node budget` |
-| `E-RES-110` | crates/emath-holes/src/synth.rs |  |
-| `E-RES-111` | crates/emath-holes/src/synth.rs | `satisfy` |
+| `E-RES-110` | crates/emath-lab-core/src/holes/synth.rs |  |
+| `E-RES-111` | crates/emath-lab-core/src/holes/synth.rs | `satisfy` |
 | `E-RES-120` | crates/emath-build/src/lib.rs | `E-RES-120: cargo exceeded the {timeout:?} wall-clock budget` |
 | `E-SCHEMA-001` | crates/emath-schema/src/registry.rs | `1.0.0`<br>`E-SCHEMA-001` |
 | `E-SEC-101` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration.rs | `inputs`<br>`E-SEC-101` |
@@ -1374,7 +1382,7 @@ Not yet documented at generation time: **62** (E-CAT-001, E-CAT-002, E-CAT-003, 
 | `E-SYN-116` | crates/emath-syntax/src/lexer.rs<br>crates/emath-syntax/src/lib.rs | `source is {} bytes; limit is {max} bytes` |
 | `E-SYN-117` | crates/emath-sema/src/recognition.rs<br>crates/emath-syntax/src/parser/decl.rs | `E-SYN-117` |
 | `E-SYN-118` | crates/emath-sema/src/recognition.rs | `E-SYN-118` |
-| `E-SYN-120` | crates/emath-core/src/parse.rs<br>crates/emath-lsp/src/server.rs<br>crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/session.rs | `E-SYN-120` |
+| `E-SYN-120` | crates/emath-cli/src/lsp/server.rs<br>crates/emath-core/src/parse.rs<br>crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/session.rs | `E-SYN-120` |
 | `E-SYN-121` | crates/emath-syntax/src/parser/expr.rs | `E-SYN-121` |
 | `E-SYN-122` | crates/emath-sema/src/admit/declaration.rs<br>crates/emath-syntax/src/parser/decl.rs | `E-SYN-122` |
 | `E-SYN-123` | crates/emath-sema/src/admit/declaration.rs<br>crates/emath-syntax/src/parser/decl.rs | `E-SYN-123` |

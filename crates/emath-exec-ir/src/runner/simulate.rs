@@ -1161,7 +1161,7 @@ fn values_finite(state: &BTreeMap<String, Value>) -> bool {
 fn value_is_finite(value: &Value) -> bool {
     match value {
         Value::F64(number) => number.is_finite(),
-        Value::I64(_) | Value::Bool(_) | Value::Text(_) => true,
+        Value::I64(_) | Value::Bool(_) | Value::Text(_) | Value::Rat { .. } => true,
         Value::Series { points, .. } => points
             .iter()
             .all(|(time, value)| time.is_finite() && value.is_finite()),
@@ -1221,6 +1221,11 @@ fn value_abs_max(value: &Value) -> f64 {
     match value {
         Value::F64(number) => number.abs(),
         Value::I64(number) => (*number as f64).abs(),
+        Value::Rat { num, den } => {
+            let num = num.unsigned_abs() as f64;
+            let den = den.unsigned_abs() as f64;
+            if den == 0.0 { f64::INFINITY } else { num / den }
+        }
         Value::Bool(_) | Value::Text(_) => 0.0,
         Value::Series { points, .. } => points.iter().fold(0.0_f64, |acc, (time, value)| {
             acc.max(time.abs()).max(value.abs())
@@ -1778,6 +1783,7 @@ fn eval_rates(
             }
             Value::I64(_)
             | Value::F64(_)
+            | Value::Rat { .. }
             | Value::Complex { .. }
             | Value::Vector(_)
             | Value::Matrix { .. }

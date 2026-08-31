@@ -1411,6 +1411,15 @@ pub(crate) fn op_expr(
         EmirOp::ConstComplex(re, im) => Ok(Expr::Raw(format!(
             "num_complex::Complex::new({re:?}, {im:?})"
         ))),
+        // Exact-rational cells (emath-rat-real-types-p5cj): the Rust
+        // backend has no exact-rational target type in this slice, so a
+        // program containing one refuses codegen with a typed error —
+        // never a silent f64 demotion of an exact value.
+        EmirOp::RatConstruct { .. } | EmirOp::RatAdd(..) | EmirOp::RatNorm(_) => {
+            Err(BackendError::Lowering(
+                "exact-rational cells (rat/rat_add/rat_norm) are interpreter-only in this slice: no exact-rational Rust target type exists yet, and demoting to f64 would silently break exactness".into(),
+            ))
+        }
         EmirOp::ConstBool(value) => Ok(Expr::Bool(*value)),
         EmirOp::LoadInput(index) => {
             let name = names

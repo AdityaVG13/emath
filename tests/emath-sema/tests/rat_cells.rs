@@ -14,9 +14,9 @@ use emath_sema::{CheckResult, CompilerSession};
 fn check(source: &str) -> CheckResult {
     emath_syntax::install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
-    session
-        .check_owned("rat-cells.emath", source)
-        .expect("source must parse and admit")
+    // `check_owned` returns the result directly; parse/lex failures land
+    // in `diagnostics` and surface where each test asserts on them.
+    session.check_owned("rat-cells.emath", source)
 }
 
 /// Evaluate the first declaration of an admitted package over no bindings.

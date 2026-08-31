@@ -84,6 +84,35 @@ impl super::Emitter {
         } else {
             function
         };
+        if function == "rat" {
+            if args.len() != 2 {
+                return Err(format!("`rat` expects 2 arguments, found {}", args.len()));
+            }
+            let num = self.emit(package, args[0])?;
+            let den = self.emit(package, args[1])?;
+            return self.push(EmirOp::RatConstruct { num, den }, span);
+        }
+        if function == "rat_add" {
+            if args.len() != 2 {
+                return Err(format!(
+                    "`rat_add` expects 2 arguments, found {}",
+                    args.len()
+                ));
+            }
+            let left = self.emit(package, args[0])?;
+            let right = self.emit(package, args[1])?;
+            return self.push(EmirOp::RatAdd(left, right), span);
+        }
+        if function == "rat_norm" {
+            if args.len() != 1 {
+                return Err(format!(
+                    "`rat_norm` expects 1 argument, found {}",
+                    args.len()
+                ));
+            }
+            let value = self.emit(package, args[0])?;
+            return self.push(EmirOp::RatNorm(value), span);
+        }
         if function == "series_at" {
             if args.len() != 2 {
                 return Err(format!(

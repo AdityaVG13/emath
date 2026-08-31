@@ -26,6 +26,32 @@ use crate::recognition::expr_text;
 /// declared tolerance is never admitted as if it were exact (04 §6.4).
 const E_APPROX_TOL: &str = "E-APPROX-TOL";
 
+/// Typed refusal: an exact rational with a zero denominator. `rat(n, 0)`
+/// is refused at check time when the denominator is a literal (never a
+/// panic, never a silent zero); the interpreter backstops non-literal
+/// zeros with the same refusal class.
+const E_RAT_DENOM: &str = "E-RAT-001";
+
+/// Read an integer literal (optionally negated) as i128: the literal
+/// check-time surface for `rat(n, d)` argument validation. Returns
+/// `None` for anything that is not a plain integer literal.
+fn integer_literal_i128(expr: &Expr) -> Option<i128> {
+    let magnitude = match &expr.kind {
+        ExprKind::Int(text) => text.replace('_', "").parse::<i128>().ok()?,
+        ExprKind::Unary {
+            op: SynUnOp::Neg,
+            value,
+        } => match &value.kind {
+            ExprKind::Int(text) => {
+                text.replace('_', "").parse::<i128>().ok()?.checked_neg()?
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(magnitude)
+}
+
 /// Strip namespace prefixes (`math::`, `linalg::`, `pde::`, `coding::`,
 /// legacy `core::math::`) from builtin function names to a bare form.
 fn normalize_builtin(name: &str) -> String {
@@ -56,6 +82,7 @@ fn capability_result_infer(output: Option<&str>) -> Infer {
         Some("Bool") => Infer::Bool,
         Some("Int") => Infer::Int,
         Some("Nat") => Infer::Nat,
+        Some("Rat") | Some("Rational") => Infer::Rat,
         Some(text) if text.starts_with("Vector") => Infer::Vector { extent: None },
         Some(text) if text.starts_with("Matrix") => Infer::Matrix {
             rows: None,
@@ -1392,6 +1419,9 @@ impl super::Admitter {
                         // Lower as Einsum op.
                         return self.lower_einsum(expr, &name, &args);
                     }
+                    "rat" => Some(2),
+                    "rat_add" => Some(2),
+                    "rat_norm" => Some(1),
                     _ => {
                         // Sibling `emath function` call (emath-0e68):
                         // pure-inline substitution through the generic
@@ -1423,6 +1453,76 @@ impl super::Admitter {
                     return None;
                 }
                 match name.as_str() {
+                    // Exact-rational cells (emath-rat-real-types-p5cj):
+                    // `rat` builds from integer arguments with a CHECK-time
+                    // zero-denominator refusal; `rat_add`/`rat_norm` operate
+                    // on Rat values only — never silently coerced to f64.
+                    "rat" | "rat_add" | "rat_norm" => {
+                        if name == "rat" {
+                            let (num_id, num_infer) = self.lower_expr(&args[0])?;
+                            let (den_id, den_infer) = self.lower_expr(&args[1])?;
+                            for (infer, source, role) in
+                                [(&num_infer, &args[0].source, "numerator"), (&den_infer, &args[1].source, "denominator")]
+                            {
+                                if !matches!(infer, Infer::Int | Infer::Nat) {
+                                    self.error(
+                                        "E-TYPE-012",
+                                        format!("`rat` expects an integer {role}, found {infer:?}"),
+                                        *source,
+                                    );
+                                    return None;
+                                }
+                            }
+                            if integer_literal_i128(&args[1]) == Some(0) {
+                                self.error(
+                                    E_RAT_DENOM,
+                                    "rat denominator must be nonzero: rat(n, 0) has no exact                                      rational value (typed refusal, never a panic or a silent zero)",
+                                    args[1].source,
+                                );
+                                return None;
+                            }
+                            let id = self.push_expr(
+                                ExprNode::Call {
+                                    function: QualifiedName(name.clone()),
+                                    arguments: vec![num_id, den_id],
+                                },
+                                expr.source,
+                            );
+                            return Some((id, Infer::Rat));
+                        }
+                        let (first_id, first_infer) = self.lower_expr(&args[0])?;
+                        if !matches!(first_infer, Infer::Rat) {
+                            self.error(
+                                "E-TYPE-012",
+                                format!("`{name}` expects Rat arguments, found {first_infer:?}"),
+                                args[0].source,
+                            );
+                            return None;
+                        }
+                        let mut arguments = vec![first_id];
+                        if name == "rat_add" {
+                            let (second_id, second_infer) = self.lower_expr(&args[1])?;
+                            if !matches!(second_infer, Infer::Rat) {
+                                self.error(
+                                    "E-TYPE-012",
+                                    format!(
+                                        "`rat_add` expects Rat arguments, found {second_infer:?}"
+                                    ),
+                                    args[1].source,
+                                );
+                                return None;
+                            }
+                            arguments.push(second_id);
+                        }
+                        let id = self.push_expr(
+                            ExprNode::Call {
+                                function: QualifiedName(name.clone()),
+                                arguments,
+                            },
+                            expr.source,
+                        );
+                        return Some((id, Infer::Rat));
+                    }
                     "series_at" => {
                         let (series_id, series_infer) = self.lower_expr(&args[0])?;
                         if !matches!(series_infer, Infer::Series | Infer::HostDeferred) {
