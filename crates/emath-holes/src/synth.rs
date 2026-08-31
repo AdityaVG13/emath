@@ -6,7 +6,7 @@
 //! satisfying all declared laws are synthesized. An exhaustive search
 //! that finds no table rejects the law set (seeded impossible set).
 
-use emath_law_check::{CheckerError, Law, WorldCheckReport, WorldObligation, check_world};
+use emath_lab_core::law_check::{CheckerError, Law, WorldCheckReport, WorldObligation, check_world};
 use emath_term::SymbolId;
 use emath_world_ir::{FittedTable, WorldId, fnv1a64};
 
@@ -150,7 +150,7 @@ pub const MAX_CARRIER_SIZE: usize = 8;
 
 /// Synthesize every finite table over `carrier` satisfying all declared
 /// laws, in deterministic mixed-radix enumeration order, each validated
-/// by `emath-law-check`. Exhaustive with no table → the law set is
+/// by `emath-lab-core`'s `law_check`. Exhaustive with no table → the law set is
 /// rejected (`exhaustive == true`, zero tables).
 pub fn synthesize_tables(
     operator: &SymbolId,

@@ -862,7 +862,6 @@ dependencies = [
  "emath-goal",
  "emath-ir",
  "emath-lab-core",
- "emath-law-check",
  "emath-plan",
  "emath-portfolio",
  "emath-provider-api",
@@ -990,7 +989,7 @@ dependencies = [
 name = "emath-holes"
 version = "0.1.0"
 dependencies = [
- "emath-law-check",
+ "emath-lab-core",
  "emath-term",
  "emath-world-ir",
 ]
@@ -1037,6 +1036,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-portfolio",
  "emath-term",
  "emath-world-ir",
 ]
@@ -1050,20 +1050,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-law-check"
-version = "0.1.0"
-dependencies = [
- "emath-portfolio",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-law-check-tests"
 version = "0.1.0"
 dependencies = [
  "emath-lab-core",
- "emath-law-check",
  "emath-term",
  "emath-world-ir",
 ]
@@ -1266,7 +1256,7 @@ dependencies = [
  "emath-core",
  "emath-exec-ir",
  "emath-ir",
- "emath-law-check",
+ "emath-lab-core",
  "emath-sema",
  "emath-syntax",
  "emath-term",

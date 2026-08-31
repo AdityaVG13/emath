@@ -5,7 +5,7 @@ use emath_cli::diagnostics::{
     e_law_001_demo_table, every_failure_has_witness, explanation_json, render_cayley_ascii,
     tutor_check_v1,
 };
-use emath_law_check::{Law, WorldObligation};
+use emath_lab_core::law_check::{Law, WorldObligation};
 use emath_term::SymbolId;
 use emath_world_ir::WorldId;
 

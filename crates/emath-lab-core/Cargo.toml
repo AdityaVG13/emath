@@ -7,6 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+emath-portfolio = { path = "../emath-portfolio" }
 emath-ir = { path = "../emath-ir" }
 emath-world-ir = { path = "../emath-world-ir" }
 emath-term = { path = "../emath-term" }

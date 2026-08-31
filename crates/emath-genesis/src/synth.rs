@@ -55,7 +55,7 @@ pub enum SynthError {
 }
 
 /// A declared law over the synthesized binary operation (vocabulary
-/// mirrors `emath-holes`/`emath-law-check`, plus left/right identity).
+/// mirrors `emath-holes`/`emath-lab-core`'s `law_check`, plus left/right identity).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SynthLaw {
     /// `op(x, y) == op(y, x)` for all pairs.

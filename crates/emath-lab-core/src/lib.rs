@@ -225,3 +225,5 @@ impl Sampler {
 pub type ExperimentIndex = BTreeMap<String, ContentId>;
 
 pub mod calibration;
+
+pub mod law_check;

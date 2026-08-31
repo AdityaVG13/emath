@@ -1,13 +1,13 @@
 //! Deterministic property grids for the finite-world algebraic laws.
 //!
-//! CONTRACT.md (emath-law-check): `Law::Commutative`, `Law::Associative`,
+//! CONTRACT.md (emath-lab-core `law_check` module): `Law::Commutative`, `Law::Associative`,
 //! and `Law::Identity` hold over a total candidate table on the sorted
 //! carrier, or the checker returns a minimized counterexample.
 
 use std::collections::BTreeMap;
 
 use emath_lab_core::calibration::FittedTable;
-use emath_law_check::{FiniteLawChecker, Law, WorldObligation};
+use emath_lab_core::law_check::{FiniteLawChecker, Law, WorldObligation};
 use emath_term::SymbolId;
 use emath_world_ir::{WorldId, fnv1a64};
 
@@ -43,7 +43,7 @@ fn left_proj(left: &str, _right: &str) -> String {
 
 #[test]
 fn finite_max_is_commutative_over_seeded_carrier() {
-    // CONTRACT.md (emath-law-check): Law::Commutative — op(x,y) == op(y,x)
+    // CONTRACT.md (emath-lab-core `law_check` module): Law::Commutative — op(x,y) == op(y,x)
     // for all carrier pairs.
     let table = total_table("max", max_cell);
     let report = FiniteLawChecker
@@ -82,7 +82,7 @@ fn finite_max_is_commutative_over_seeded_carrier() {
 
 #[test]
 fn finite_max_is_associative_over_seeded_carrier() {
-    // CONTRACT.md (emath-law-check): Law::Associative —
+    // CONTRACT.md (emath-lab-core `law_check` module): Law::Associative —
     // op(op(x,y),z) == op(x,op(y,z)) for all carrier triples.
     let table = total_table("max", max_cell);
     let report = FiniteLawChecker
@@ -100,7 +100,7 @@ fn finite_max_is_associative_over_seeded_carrier() {
 
 #[test]
 fn finite_max_has_bottom_identity_over_seeded_carrier() {
-    // CONTRACT.md (emath-law-check): Law::Identity — declared e satisfies
+    // CONTRACT.md (emath-lab-core `law_check` module): Law::Identity — declared e satisfies
     // op(x,e) == x and op(e,x) == x for every carrier element.
     let table = total_table("max", max_cell);
     let report = FiniteLawChecker
