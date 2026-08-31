@@ -21,7 +21,6 @@ members = [
   "crates/emath-macro",
   "crates/emath-lab-core",
   "crates/emath-checker",
-  "crates/emath-diagnostics",
   "crates/emath-evidence",
   "crates/emath-schema",
   "crates/emath-store",
@@ -116,7 +115,6 @@ emath-builder = { path = "crates/emath-builder" }
 emath-macro = { path = "crates/emath-macro" }
 emath-lab-core = { path = "crates/emath-lab-core" }
 emath-checker = { path = "crates/emath-checker" }
-emath-diagnostics = { path = "crates/emath-diagnostics" }
 emath-evidence = { path = "crates/emath-evidence" }
 emath-hir = { path = "crates/emath-hir" }
 emath-schema = { path = "crates/emath-schema" }

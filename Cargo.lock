@@ -822,7 +822,6 @@ dependencies = [
  "emath-rust-backend",
  "emath-rust-ir",
  "emath-sema",
- "emath-source",
  "emath-syntax",
 ]
 
@@ -888,17 +887,16 @@ dependencies = [
  "emath-calibration",
  "emath-checker",
  "emath-core",
- "emath-diagnostics",
  "emath-exec-ir",
  "emath-genesis",
  "emath-goal",
  "emath-ir",
+ "emath-law-check",
  "emath-plan",
  "emath-portfolio",
  "emath-provider-api",
  "emath-rust-backend",
  "emath-sema",
- "emath-source",
  "emath-store",
  "emath-syntax",
  "emath-term",
@@ -936,17 +934,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-syntax",
-]
-
-[[package]]
-name = "emath-diagnostics"
-version = "0.1.0"
-dependencies = [
- "emath-artifact",
- "emath-core",
- "emath-law-check",
- "emath-term",
- "emath-world-ir",
 ]
 
 [[package]]
@@ -1328,8 +1315,8 @@ dependencies = [
 name = "emath-sema-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-cli",
  "emath-core",
- "emath-diagnostics",
  "emath-exec-ir",
  "emath-ir",
  "emath-law-check",
@@ -1337,13 +1324,6 @@ dependencies = [
  "emath-syntax",
  "emath-term",
  "emath-world-ir",
-]
-
-[[package]]
-name = "emath-source"
-version = "0.1.0"
-dependencies = [
- "emath-core",
 ]
 
 [[package]]
@@ -1374,7 +1354,6 @@ name = "emath-syntax"
 version = "0.1.0"
 dependencies = [
  "emath-core",
- "emath-source",
 ]
 
 [[package]]

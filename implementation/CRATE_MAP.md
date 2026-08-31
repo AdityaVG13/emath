@@ -88,7 +88,6 @@ intent, not an implemented surface.
 | `emath-agent-protocol` | `crates/emath-agent-protocol` | agent-native meaning proposals (admission envelope) | provider-api |
 | `emath-calibration` | `crates/emath-calibration` | semantic calibration (fitting procedures; FittedTable re-exported from world-ir, o7a6) | portfolio |
 | `emath-law-check` | `crates/emath-law-check` | independent world checking (`WorldChecker`): law admission | meaning-provider-api |
-| `emath-diagnostics` | `crates/emath-diagnostics` | pedagogic explanations backed by checker witnesses | law-check/core |
 | `emath-holes` | `crates/emath-holes` | meaning holes and finite synthesis | world-ir |
 | `emath-tuning` | `crates/emath-tuning` | semantic and joint tuning | portfolio |
 | `emath-plugin-sdk` | `crates/emath-plugin-sdk` | plugin SDK slice: descriptors, sandbox policy decisions | provider-api |
@@ -110,7 +109,6 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/core |
 | `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
 
-| `emath-source` | `crates/emath-source` | source files, line maps, human-readable diagnostic rendering | core |
 
 ## Non-crate workspace members
 

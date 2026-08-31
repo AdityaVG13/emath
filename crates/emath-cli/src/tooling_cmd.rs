@@ -569,7 +569,7 @@ const DEFAULTS_ROWS: [(&str, &str, &str, &str); 7] = [
     ),
 ];
 
-fn explain_law_cmd(json: bool) -> CliExit {    let (report, explanations) = emath_diagnostics::e_law_001_demo();
+fn explain_law_cmd(json: bool) -> CliExit {    let (report, explanations) = crate::diagnostics::e_law_001_demo();
     if report.passed {
         eprintln!("error: E-LAW-001 demo table unexpectedly held");
         return EXIT_REFUSED;
@@ -578,18 +578,18 @@ fn explain_law_cmd(json: bool) -> CliExit {    let (report, explanations) = emat
         eprintln!("error: checker produced no witness");
         return EXIT_REFUSED;
     };
-    if let Err(error) = emath_diagnostics::tutor_check_v1(explanation) {
+    if let Err(error) = crate::diagnostics::tutor_check_v1(explanation) {
         eprintln!("error: tutor-check/v1 refused ({})", error.as_str());
         return EXIT_REFUSED;
     }
     if json {
-        print!("{}", emath_diagnostics::explanation_json(explanation));
+        print!("{}", crate::diagnostics::explanation_json(explanation));
         return EXIT_OK;
     }
     println!("{} {}", explanation.code, explanation.kind.as_str());
     println!("{}", explanation.structured_narrative);
     if let Some(witness) = &explanation.witness {
-        print!("{}", emath_diagnostics::render_cayley_ascii(witness));
+        print!("{}", crate::diagnostics::render_cayley_ascii(witness));
     }
     EXIT_OK
 }
