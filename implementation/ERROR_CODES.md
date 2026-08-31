@@ -621,6 +621,20 @@ spelling is retired and is not emitted.
 - `E-NUM-004` — `representation Real` without a named model. `Real` is
   not mapped to `f64` without profile evidence.
 
+### Runtime kernels (`crates/emath-rt`, surfaced through `crates/emath-exec-ir`)
+
+- `E-PDE-001` — Poisson/Dirichlet solve refuses an empty interior load
+  (the grid has no interior samples to solve on).
+- `E-PDE-002` — a non-finite load sample would silently corrupt the
+  field; refused.
+- `E-POLY-001` — a polynomial coefficient is non-finite; refused.
+- `E-POLY-002` — the evaluation point is non-finite; refused.
+- `E-PROB-001` — a distribution parameter is outside its domain
+  (e.g. p not in [0,1]) or the draw count is non-integer / over budget.
+- `E-PROB-002` — a non-finite parameter or evaluation point; refused.
+- `E-PROB-003` — the parameter vector has the wrong length for the
+  family; refused.
+
 ### Evidence and artifacts (`crates/emath-checker`, `crates/emath-evidence`)
 
 - `E-EVID-104` — certificate for a claim is stale (fresh-until passed).
