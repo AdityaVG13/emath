@@ -20,9 +20,9 @@ use frankensearch::{
     TwoTierSearcher,
 };
 
-use crate::corpus::from_fs_doc_id;
-use crate::error::SearchError;
-use crate::ArtifactDoc;
+use crate::search::corpus::from_fs_doc_id;
+use crate::search::error::SearchError;
+use crate::search::ArtifactDoc;
 
 /// Engine futures recurse deeply, so the worker thread gets a large stack.
 const WORKER_STACK_BYTES: usize = 64 * 1024 * 1024;
@@ -699,7 +699,7 @@ fn map_fs_error(error: FsError) -> SearchError {
 #[cfg(all(test, feature = "search"))]
 mod tests {
     use super::CorpusSearch;
-    use crate::{ArtifactDoc, Hit, SearchError};
+    use crate::search::{ArtifactDoc, Hit, SearchError};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 

@@ -1,4 +1,4 @@
-//! Typed error model for emath-search.
+//! Typed error model for emath-lab-core's `search` module.
 //!
 //! No E-* codes are introduced; engine failures map onto this enum.
 
