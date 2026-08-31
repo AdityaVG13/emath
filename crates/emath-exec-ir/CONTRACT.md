@@ -1,64 +1,69 @@
-# emath-exec-ir CONTRACT.md
+# emath-exec-ir Contract
 
-## Purpose and layer
+## Purpose
 
-- Tier 2 (semantics) per `implementation/CRATE_MAP.md`.
-- Executable Mathematics IR (EMIR): typed, target-independent operations.
-- Phase 1 lowers the strict-f64 subset to a linear op list per output definition.
-- Depends on `emath-core` (spans) and `emath-ir` (expr nodes, literals, operators, packages).
+`emath-exec-ir` is the executable semantic layer between admitted mathematical terms and interpreters or generated backends. It provides a small generic operation vocabulary, capability-cell application, optimization, execution, specialization, semantic images, and field-pack loading.
 
-## Public types and semantics
+## Public behavior
 
-- `EmirValue` — typed SSA value reference in the op list (wrapped `u32`).
-- `EmirOp` — one EMIR instruction (`ConstF64`/`ConstI64`/`ConstBool`, `LoadInput`, `LoadState`, arithmetic, elementary functions (exp, ln, log2, log10, sqrt, sin, cos, tan, tanh, sinh, cosh, abs, floor, ceil, sign, cbrt, recip, fract, atan), comparison ops, `Select`, `IsFinite`, boolean ops (`And`/`Or`/`Imply`/`Iff`/`Not`), `Fold` runtime fold, `Integral` numerical integration, `Differentiate` forward-mode autodiff with nested sub-program, `Solve` Newton's-method root-finding, `Optimize` multi-variable Newton-on-∇f stationarity, `Mod` remainder, `Hypot`, `Min`/`Max`, `Atan2`); exposes a stable `name()`.
-- `FoldCombine` — accumulation strategy for `Fold` (`Add` / `Mul` / `And` / `Or`).
-- `DomainObligation` — domain obligation recorded during lowering (`DivisionNonZero`, `SqrtNonNegative`, `LogPositive`, `PowFiniteResult`) with `as_str`.
-- `EmirProgram` — one lowered definition: linear op list, result value, input/state counts, obligations; `print` is a byte-deterministic SSA dump (op names, register operands, constant payloads including `ConstBool`, nested bodies, counts, obligations). Distinct operand order or constant values produce distinct dumps.
-- `EmirExprRef` — alias for `emath_ir::ExprId`.
-- Functions: `lower_requirement` (constructor precondition) and `lower_definition` (definition expression). Both run the lowered program through `optimize::optimize_program` (constant folding + dead-register elimination) before returning.
-- `optimize`: constant-folds provably-constant scalar chains (f64 arithmetic, unary/binary builtins, comparisons and boolean ops incl. `Select`/`IsFinite` over constant operands) bit-exactly against the interpreter's IEEE behavior, then eliminates dead registers, renumbering survivors. Nested sub-programs (fold bodies, integrands, solver bodies) are optimized recursively. Strict eager semantics are preserved: ops that can fault at runtime (number-theory ops, dynamic index ops, higher-order drivers, out-of-range loads) are never removed, so fault timing is unchanged.
-- `interp`: `Value` (`F64`/`I64`/`Bool`/`Complex`/`Vector`/`Matrix`/`Tensor`), `EvalFault` (including `IndexOutOfBounds`), `evaluate(program, inputs: &[Value], state: &[Value])`, and `evaluate_f64` for scalar slices. Single forward pass, typed registers, no panics. Out-of-range, negative, and non-whole index/slice use the `emath-rt` checked kernels and are a fault, not NaN or panicking `[]`. I64×I64 add/sub/mul/neg are exact (`i64 overflow` on wrap); mixed I64×F64 arithmetic widens; mixed I64×F64 comparisons are exact (not `n as f64`).
+- Programs contain typed registers, operations, nested bodies, and declared outputs.
+- Capability calls use `CapabilityId` data rather than domain-specific operation variants.
+- The interpreter and emitter preserve operation order and typed refusal behavior.
+- Optimization may fold or remove work only when observable values and faults are preserved.
+- Every execution is budgeted; exhaustion refuses without exposing a partial answer.
 
-- `runner`: `run_package` / `run_package_with_given` / `run_declaration` — constructor requires → Self state → definitions → example given/expect verdicts (`RunReport`). A declaration with no inputs evaluates definitions against an empty `given`. Definitions may reference earlier definition names in source order (let-binding semantics, recovered from expression spans; matches admission). Later definitions and `expect` expressions receive earlier values as-is (`Vector` / `Matrix` / `Tensor` are not flattened to `f64`). `TestVerdict::Computed` is a worked example (`expect` omitted): values are recorded, no pass/fail claim. A declaration with no tests still emits a synthetic `_pane` worked run when every input is bound; `run_package_with_given` adds that `_pane` entry (or a typed `missing input \`name\`` refusal) in addition to source examples. `RunSummary` counts `{tests, passed, failed, refused, computed}`.
-- Continuous models: `step_continuous` (scalar), `step_continuous_values` (scalar/vector/matrix/tensor state), `simulate_continuous` (fixed `dt`), `simulate_continuous_with` (`SimulateOptions` for `--atol/--rtol/--dt-max` and one scalar event), `StepMethod::{Euler, Rk4, Rk45}`. Default stays fixed-step. Adaptive RK45 compares Cash-Karp 4th vs 5th and is a typed refusal on non-positive tolerances or a collapsed dt. Causalized Newton (`causal_newton`) refuses missing declaration inputs (no silent `0.0`); only `__rate_*` unknowns start at zero. After each successful DAE step (and at the t0 sample) algebraic unknowns are re-solved at the accepted differential state and stored on the sample/return map so the algebraic residual is ~0; they are not integrated as extra rates. Interpreter `Solve` / `Optimize` refuse vanished derivatives/Hessians, wrong-curvature stationary points, and `max_iter` exhaustion (`EvalFault::Arithmetic`) rather than returning a non-root / non-stationary point.
+## Capability cells
 
-## Invariants
+A capability cell supplies identity, class, version, migration policy, arity, numeric policy, guards, reference semantics, and provider contract. Applying an unregistered cell or violating a guard is a typed refusal.
 
-- Lowering is linear and ordered; result is the final produced value.
-- Domain obligations are recorded explicitly and emitted as assumptions in Phase 1, never silently erased.
-- Strict-f64 policy refuses non-finite constants and literals outside the finite range.
-- Function-call arity is enforced in every build, debug or release.
-- Exact arithmetic (`ExactAdd`/`ExactSub`/`ExactMul`/`ExactDiv`) is outside the Phase 1 subset and refused.
-- Count indexes saturate to `u16::MAX`/`u32::MAX` on overflow instead of panicking.
+Pure cells execute through the reference VM. Provider cells produce an explicit outstanding provider request. The dispatcher is generic and must not grow branches keyed by individual capability names.
 
-## Error model
+## Semantic images
 
-- Lowering returns `Result<EmirProgram, String>` with plain string messages (unknown input/state, unknown function, non-finite constant, unsupported literal or expression form).
-- No stable error codes; no `emath_core::Diagnostics`.
+A semantic image contains deterministic partitions for cells, bytecode, evidence, locks, and metadata. Partition and image identities derive from canonical content. Corrupt or inconsistent pages refuse.
 
-## Determinism class
+Tree shaking computes the reachable bytecode closure from declared entries. Required dependencies survive; unknown entries and attempts to demote required dependencies refuse. Source cell records are never removed by bytecode shaking.
 
-- Lowering produces a deterministic linear op list for a given package and inputs; `EmirProgram::print` output is byte-deterministic and SSA-identity-preserving (operands and constant payloads included). Boolean literals lower to `ConstBool`, not `ConstF64`.
-- Interpretation is bit-exact IEEE-754 binary64 for F64 arithmetic/comparisons/`min`/`max`/`abs`/`floor`/`ceil`/`is_finite`/boolean ops, exact `i64` for I64×I64 add/sub/mul/neg/order, and exact mixed I64×F64 compare (`2^53+1 != 2^53.0`; `-0.0` equals integer `0`). Transcendentals follow platform libm (same class as generated Rust / Tier 1).
+## Specialization
 
-## Cancellation behavior
+Static specialization binds known inputs while preserving parity with the reference VM. Full binding may fold a program to constants. Unsupported bindings, guard failures, and seeded backend discrepancies are typed failures.
 
-- Not applicable; std-only synchronous crate, no cancellation surface.
+## Field packs and lazy loading
+
+Field packs export existing registry cells. Installation resolves each export, writes a deterministic image and lock, and refuses unknown exports.
+
+`LazySession::boot` loads the nucleus, image lock pages, and the packs selected by `Minimal`, `Standard`, or `Custom` profile. `load_for_compile` loads exactly the named reachable packs. Accessing an unloaded page is `E-LAZY-001`; an unknown pack is `E-LAZY-002`. Optional chunks are the sorted set of still-unloaded packs.
+
+## Optimization kernels
+
+`LpMinimize(A, b, c)` handles the standard-form class `Ax <= b`, `x >= 0`, `b >= 0` with deterministic Bland tie-breaking. `ParetoFront` returns a strict non-dominated mask. Invalid shape, non-finite values, and unbounded objectives refuse.
+
+The general-form simplex and MILP surface remain in `emath-core`; the embedded execution runtime cannot call that crate and therefore owns its small compatible kernel.
+
+## Determinism
+
+Identical program, inputs, numeric policy, capability registry, and budget produce bit-identical results or the same typed refusal. No operation may read ambient time, entropy, network, or mutable global state.
+
+## Cancellation
+
+Execution observes its explicit budget at operation and capability boundaries. Cancellation or exhaustion discards incomplete work.
 
 ## Unsafe boundary
 
-- None; workspace lint forbids `unsafe_code`.
-
-## Feature flags
-
-- None.
+None. The crate forbids unsafe code.
 
 ## Conformance tests
 
-- Integration tests in `tests/emath-exec-ir`: `call_with_wrong_arity_is_refused`, `oversized_integer_literal_is_refused`; optimizer conformance in `tests/optimize.rs` (constant collapse bit-exactness, IEEE edge folding, dead-register elimination + renumbering, unused-faulting-op preservation, nested-body optimization, adversarial-input equivalence).
-- Interpreter/runner unit tests in `src/runner.rs` (`mod tests`), covering interp op spot checks (add/pow/select/is_finite/div-by-zero/eq-NaN/type-confusion) and programmatic Square / constructor-refused / expect-less worked-example packages.
+- `tests/emath-exec-ir/tests/interp.rs` covers operation values and faults.
+- `tests/emath-exec-ir/tests/optimize.rs` covers value and fault preservation.
+- `tests/emath-ir/tests/capability_reference_vm.rs` covers capability execution and budget refusal.
+- `tests/emath-ir/tests/semantic_images.rs` covers deterministic images and corruption.
+- `tests/emath-ir/tests/static_specialization.rs` covers VM parity and mutation detection.
+- `tests/emath-ir/tests/capability_cell_migration.rs` covers generic registration and dual-path parity.
+- `tests/emath-ir/tests/semantic_tree_shaking.rs` covers reachability and dependency preservation.
+- `tests/emath-ir/tests/lazy_image_loading.rs` covers profile loading and optional chunks.
+- `tests/emath-ir/tests/linear_programming.rs` covers objectives, certificates, refusals, and Pareto behavior.
 
 ## No-claim boundaries
 
-- Admits only the strict-f64 subset (item kinds that lower to finite f64 ops); exact arithmetic and unlisted function names are refused.
-- Domain obligations are assumptions, not runtime checks. The interpreter does not compile or invoke cargo; it is not a substitute for the Tier-1 generated crate on transcendental bit-identity across libm implementations.
+Only the declared executable vocabulary and registered capability cells run. Exact arithmetic, undeclared providers, ambient effects, and unsupported carriers refuse rather than falling back.
