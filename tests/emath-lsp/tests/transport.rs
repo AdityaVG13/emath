@@ -1,14 +1,14 @@
-//! `emath-lsp` async stdio transport tests (migrated from
-//! `crates/emath-lsp/src/transport.rs`).
+//! `emath-cli` lsp async stdio transport tests (migrated from
+//! `crates/emath-cli/src/lsp/transport.rs`).
 //!
 //! The moved tests previously reached crate internals (`super::*`, the
 //! private `MAX_FRAME_BODY` const, and the private `Transport.writer`
 //! field). They now exercise only the public surface:
 //!
 //! - `read_frame` / `write_frame` / `Transport` / `Transport::with_control`
-//!   / `TransportError` / `Control` from `emath_lsp::transport`;
-//! - `run_with_cx` from `emath_lsp::lab`, `read_message` from
-//!   `emath_lsp::protocol`;
+//!   / `TransportError` / `Control` from `emath_cli::lsp::transport`;
+//! - `run_with_cx` from `emath_cli::lsp::lab`, `read_message` from
+//!   `emath_cli::lsp::protocol`;
 //! - a local `RecordingWriter` substitutes for the removed private
 //!   `writer` field; the frame-body cap is spelled out locally because
 //!   `MAX_FRAME_BODY` is a private const.
@@ -18,10 +18,10 @@ use asupersync::io::ReadBuf;
 use asupersync::io::{AsyncRead, AsyncWrite};
 use asupersync::runtime::JoinError;
 use asupersync::Cx;
-use emath_lsp::json::JsonValue;
-use emath_lsp::lab::run_with_cx;
-use emath_lsp::protocol::read_message;
-use emath_lsp::transport::{Control, Transport, TransportError, read_frame, write_frame};
+use emath_cli::lsp::json::JsonValue;
+use emath_cli::lsp::lab::run_with_cx;
+use emath_cli::lsp::protocol::read_message;
+use emath_cli::lsp::transport::{Control, Transport, TransportError, read_frame, write_frame};
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;

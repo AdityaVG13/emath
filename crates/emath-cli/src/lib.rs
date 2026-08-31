@@ -2777,3 +2777,5 @@ pub(crate) fn write_json(out: &mut impl Write, fields: &[(&str, String)]) -> std
     }
     write!(out, "{}", object.finish())
 }
+
+pub mod lsp;

@@ -1,6 +1,6 @@
 //! Async stdio JSON-RPC transport on the asupersync `Cx` (feature-gated).
 //!
-//! Mirrors the blocking `crate::protocol` framing byte-for-byte (same
+//! Mirrors the blocking `crate::lsp::protocol` framing byte-for-byte (same
 //! `Content-Length` headers and exit-code contract), so both lanes are
 //! wire-identical. Frame bodies are capped at [`MAX_FRAME_BODY`] (16 MiB)
 //! before any allocation; cancellation is acknowledged at message boundaries
@@ -9,9 +9,9 @@
 use std::fmt;
 use std::io;
 
-use crate::json::parse_request;
-use crate::protocol::{RpcMessage, write_error};
-use crate::server::ServerState;
+use crate::lsp::json::parse_request;
+use crate::lsp::protocol::{RpcMessage, write_error};
+use crate::lsp::server::ServerState;
 
 use asupersync::Cx;
 use asupersync::channel::mpsc::{self, RecvError};
@@ -69,7 +69,7 @@ impl std::error::Error for TransportError {
 
 /// Reads one `Content-Length` framed body; `Ok(None)` at clean EOF.
 ///
-/// Header rules mirror `crate::protocol::read_message`; a body over
+/// Header rules mirror `crate::lsp::protocol::read_message`; a body over
 /// [`MAX_FRAME_BODY`] is refused with [`TransportError::BodyTooLarge`].
 pub async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, TransportError>
 where
@@ -143,7 +143,7 @@ where
 
 /// Writes `body` as one `Content-Length` framed message, then flushes.
 ///
-/// Produces byte-identical output to the blocking `crate::protocol::write_frame`.
+/// Produces byte-identical output to the blocking `crate::lsp::protocol::write_frame`.
 pub async fn write_frame<W>(writer: &mut W, body: &[u8]) -> Result<(), TransportError>
 where
     W: AsyncWrite + Unpin,
@@ -208,7 +208,7 @@ where
     W: AsyncWrite + Unpin,
 {
     /// Runs the async message loop until EOF/`exit`/cancellation. Same
-    /// exit-code contract as `crate::run`; framing/parse errors write
+    /// exit-code contract as `crate::lsp::run`; framing/parse errors write
     /// `-32700` (id `null`) and return `1`.
     pub async fn serve(&mut self, cx: &Cx) -> Result<u8, TransportError> {
         let mut state = ServerState::new();

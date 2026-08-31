@@ -1,9 +1,9 @@
-//! `emath-lsp` server state-machine tests (migrated from
-//! `crates/emath-lsp/src/server.rs`).
+//! `emath-cli` lsp server state-machine tests (migrated from
+//! `crates/emath-cli/src/lsp/server.rs`).
 
-use emath_lsp::json::JsonValue;
-use emath_lsp::protocol::RpcMessage;
-use emath_lsp::server::ServerState;
+use emath_cli::lsp::json::JsonValue;
+use emath_cli::lsp::protocol::RpcMessage;
+use emath_cli::lsp::server::ServerState;
 use std::collections::BTreeMap;
 
 fn string_field(fields: BTreeMap<String, JsonValue>) -> JsonValue {
