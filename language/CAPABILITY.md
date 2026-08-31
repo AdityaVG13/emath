@@ -78,7 +78,8 @@
 | `Interval<F>` | yes | yes | yes |
 | `Measured<T>` | yes | no (neutral `core::measure` schema/API exists; record-value lowering is separate) | - |
 | `T in unit` | yes | yes | yes |
-| `Rat` bare `Real` | yes | no | - |
+| `Rat` `Rational` | yes | yes (exact rational: i128 num/den, gcd-reduced, `den > 0`; zero denominator refuses `E-RAT-001`) | yes — `rat`/`rat_add`/`rat_norm` cells; `+ - * /` over Rat stays exact (integer operands fold in); overflow and zero divisors are runtime faults, never panics; codegen refuses Rat with a typed error rather than demoting to f64 (p5cj) |
+| bare `Real` | yes | no — NEVER silently `f64`: every type site emits exactly one `E-NUM-004` naming the three sanctioned spellings (`Float64` under the strict-f64 profile, `Interval<Float64>`, or `representation Real => Float64`). The gate is total and shape-independent: fields, shape elements (nested included), `Option`/`Result` arms, `Set`/`Interval`/refinement elements, domain/unit bases, event parameters, constructor params/returns, `observations:` annotations | - |
 
 ## Generic arguments at use sites
 

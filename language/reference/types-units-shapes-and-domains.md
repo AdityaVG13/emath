@@ -11,7 +11,15 @@ Vector<T, [n]>  Matrix<T, [r, c]>  Tensor<T, [...]>
 quantities written as T in unit
 ```
 
-`Real` names the mathematical concept and is not a compute alias. Use `Float64`, or select a declared numeric profile.
+`Real` names the mathematical concept and is not a compute alias. Bare `Real` is never silently
+`f64`: every type site rejects it with exactly one deterministic `E-NUM-004` naming the three
+sanctioned spellings — `Float64` (the strict-f64 profile), `Interval<Float64>` (the
+certified-interval realization of a real), or a `representation Real => Float64` directive. The
+gate is total and shape-independent: input/output/state fields, `Vector`/`Matrix`/`Tensor`
+elements (nested shapes included), `Option` and both `Result` arms, `Set`/`Interval`/refinement
+elements, `in [lo, hi]` domain and `in unit` bases, event parameters, constructor parameters and
+returns, and `observations:` type annotations all refuse identically. Write the shape you mean:
+`Float64` for the machine float, `Interval<Float64>` for certified bounds on a real.
 
 Not admitted as general compute values: bare `Real`, records, arbitrary refinement predicates, and continuous measure values. Some standard-library Rust APIs expose additional carriers without adding a `.emath` surface. `Option`, `Result`, `Graph`, and `Field<p>`/`GF<p>` are admitted composite *declaration* types (see "Composite types").
 

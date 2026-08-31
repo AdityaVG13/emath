@@ -618,8 +618,15 @@ spelling is retired and is not emitted.
 - `E-NUM-003` — error-limit demand no selected model can honor (strict-f64
   cannot certify a bound tighter than machine epsilon; interval-f64
   cannot honor a zero/exact bound; non-finite limits refused).
-- `E-NUM-004` — `representation Real` without a named model. `Real` is
-  not mapped to `f64` without profile evidence.
+- `E-NUM-004` — `representation Real` without a named model, or bare
+  `Real` at any type site. `Real` is never mapped to `f64` without
+  profile evidence: every type position (input/output/state fields,
+  shape elements including nests, `Option`/`Result`/`Set`/`Interval`/
+  refinement elements, domain and unit bases, event parameters,
+  constructor parameters and returns, `observations:` annotations)
+  emits exactly one diagnostic naming the three sanctioned spellings
+  (`Float64` under `numeric strict-f64`, `Interval<Float64>`, or
+  `representation Real => Float64`).
 
 ### Runtime kernels (`crates/emath-rt`, surfaced through `crates/emath-exec-ir`)
 

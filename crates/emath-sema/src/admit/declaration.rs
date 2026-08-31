@@ -282,23 +282,20 @@ fn admit_event_payloads(
 ///   input/state/algebraic variable, so no payload value can be
 ///   captured at firing (binding is undefined). Names the param and the
 ///   event.
+///
+/// Events are declared and their parameters type-checked even when no
+/// `transitions:` rules exist (the events block runs before the gate).
 fn admit_transitions(
     admitter: &mut Admitter,
     by_name: &BTreeMap<&str, &Section>,
     algebraic_fields: &[Field],
 ) {
-    let Some(section) = by_name.get("transitions") else {
-        return;
-    };
-    let algebraic_names: Vec<String> = algebraic_fields
-        .iter()
-        .map(|field| field.name.clone())
-        .collect();
-
-    // Collect declared events plus the Float64-typed event parameters a
-    // transition action may reference. Both `event <Name>` FnDecl heads
-    // and no-arg `event <Name>` commands count; the events block already
-    // refuses duplicates (E-NAME-022).
+    // Events are Phase-1 sections in their own right: declare them (and
+    // type-check their parameters) whether or not `transitions:` rules
+    // exist — event parameter types pass the same gate as every other
+    // type site (bare `Real` refuses here too, never silently f64).
+    // Both `event <Name>` FnDecl heads and no-arg `event <Name>` commands
+    // count; the events block already refuses duplicates (E-NAME-022).
     let mut event_params: BTreeMap<String, Vec<(String, Infer)>> = BTreeMap::new();
     if let Some(events) = by_name.get("events") {
         for stmt in &events.suite.statements {
@@ -350,6 +347,14 @@ fn admit_transitions(
             }
         }
     }
+
+    let Some(section) = by_name.get("transitions") else {
+        return;
+    };
+    let algebraic_names: Vec<String> = algebraic_fields
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
 
     for rule_stmt in &section.suite.statements {
         let StmtKind::Section(rule) = &rule_stmt.kind else {
