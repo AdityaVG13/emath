@@ -93,6 +93,26 @@ pub(super) fn finite_whole_i64(
     Ok(raw as i64)
 }
 
+/// A graph traversal source operand: a whole vertex index in `0..n`.
+/// Non-whole values are type confusion; out-of-range values refuse
+/// typed `E-GRAPH-003` (the graph layer's stable code).
+pub(super) fn graph_source_index(
+    registers: &[Value],
+    value: EmirValue,
+    op: &'static str,
+    vertices: usize,
+) -> Result<usize, EvalFault> {
+    let raw = f64_of(registers, value, op)?;
+    let whole = finite_whole_i64(raw, value.0, op)?;
+    if whole < 0 || whole as usize >= vertices {
+        return Err(EvalFault::CapabilityRefused {
+            capability: op.to_string(),
+            code: "E-GRAPH-003".to_string(),
+        });
+    }
+    Ok(whole as usize)
+}
+
 pub(super) fn require_equal_len(
     left: usize,
     right: usize,

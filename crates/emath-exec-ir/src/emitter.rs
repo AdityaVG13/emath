@@ -132,6 +132,9 @@ impl Emitter {
                 self.push(EmirOp::ConstF64(parsed.to_bits()), span)
             }
             ExprNode::Literal(Literal::Bool(on)) => self.push(EmirOp::ConstBool(*on), span),
+            ExprNode::Literal(Literal::Text(text)) => {
+                self.push(EmirOp::ConstText(text.clone()), span)
+            }
             ExprNode::Literal(Literal::Complex { re_bits, im_bits }) => {
                 let re = f64::from_bits(*re_bits);
                 let im = f64::from_bits(*im_bits);
@@ -157,6 +160,46 @@ impl Emitter {
                 function,
                 arguments,
             } => self.emit_call(package, &function.0, arguments, span),
+            ExprNode::Apply {
+                capability,
+                arguments,
+            } => {
+                // Capability-cell application: the admitted record is
+                // package data (name + class). A dangling id refuses at
+                // the lowering seam instead of minting a silent identity.
+                let admitted = package.capability(*capability).ok_or_else(|| {
+                    format!(
+                        "capability cell id {} is not interned in the package",
+                        capability.index()
+                    )
+                })?;
+                let name = admitted.name.0.clone();
+                let class = admitted.class;
+                let mut args = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    args.push(self.emit(package, *argument)?);
+                }
+                self.push(
+                    EmirOp::ApplyCapability {
+                        capability: name,
+                        class,
+                        args,
+                    },
+                    span,
+                )
+            }
+            ExprNode::Series {
+                points,
+                interpolation,
+                extrapolation,
+            } => self.push(
+                EmirOp::SeriesCreate {
+                    points: points.clone(),
+                    interpolation: interpolation.clone(),
+                    extrapolation: extrapolation.clone(),
+                },
+                span,
+            ),
             ExprNode::Unary { operation, value } => {
                 let operand = self.emit(package, *value)?;
                 let op = match operation {
@@ -210,6 +253,7 @@ impl Emitter {
                     BinaryOp::Or => EmirOp::Or(l, r),
                     BinaryOp::Imply => EmirOp::Imply(l, r),
                     BinaryOp::Iff => EmirOp::Iff(l, r),
+                    BinaryOp::SetContains => EmirOp::SetContains { element: l, set: r },
                     BinaryOp::Min => EmirOp::BinaryBuiltin(BuiltinId::Min, l, r),
                     BinaryOp::Max => EmirOp::BinaryBuiltin(BuiltinId::Max, l, r),
                     BinaryOp::Atan2 => EmirOp::BinaryBuiltin(BuiltinId::Atan2, l, r),
@@ -259,6 +303,43 @@ impl Emitter {
                     emitted.push(self.emit(package, element)?);
                 }
                 self.push(EmirOp::VectorCreate(emitted), span)
+            }
+            ExprNode::Set { elements, guards } => {
+                let mut emitted_elements = Vec::with_capacity(elements.len());
+                for &element in elements {
+                    emitted_elements.push(self.emit(package, element)?);
+                }
+                let mut emitted_guards = Vec::with_capacity(guards.len());
+                for guard in guards {
+                    emitted_guards.push(match guard {
+                        Some(guard) => Some(self.emit(package, *guard)?),
+                        None => None,
+                    });
+                }
+                self.push(
+                    EmirOp::SetCreate {
+                        elements: emitted_elements,
+                        guards: emitted_guards,
+                    },
+                    span,
+                )
+            }
+            ExprNode::Record { ty, fields } => {
+                let type_name = match package.ty(*ty) {
+                    Some(emath_ir::TypeNode::Record(name)) => name.0.clone(),
+                    _ => return Err("record expression has no nominal record type".into()),
+                };
+                let mut emitted = Vec::with_capacity(fields.len());
+                for (name, value) in fields {
+                    emitted.push((name.clone(), self.emit(package, *value)?));
+                }
+                self.push(
+                    EmirOp::RecordCreate {
+                        type_name,
+                        fields: emitted,
+                    },
+                    span,
+                )
             }
             ExprNode::Matrix(rows) => {
                 let r = rows.len();

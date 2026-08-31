@@ -108,7 +108,14 @@ pub(super) fn check_obligation(
         | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
-        | Ok(Value::Tensor { .. }) => Err(TestVerdict::Fault {
+        | Ok(Value::Tensor { .. })
+        | Ok(Value::Interval { .. })
+        | Ok(Value::Text(_))
+        | Ok(Value::Series { .. })
+        | Ok(Value::Set(_))
+        | Ok(Value::Record { .. })
+        | Ok(Value::Option(_))
+        | Ok(Value::Result { .. }) => Err(TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: keyword,
@@ -323,7 +330,14 @@ pub(super) fn eval_expect(
         | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
         | Ok(Value::Matrix { .. })
-        | Ok(Value::Tensor { .. }) => TestVerdict::Fault {
+        | Ok(Value::Tensor { .. })
+        | Ok(Value::Interval { .. })
+        | Ok(Value::Text(_))
+        | Ok(Value::Series { .. })
+        | Ok(Value::Set(_))
+        | Ok(Value::Record { .. })
+        | Ok(Value::Option(_))
+        | Ok(Value::Result { .. }) => TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: "expect",
