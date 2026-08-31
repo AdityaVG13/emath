@@ -14,8 +14,16 @@ This directory is the user-facing source of truth for the language.
 | [`NAMING.md`](NAMING.md) | Naming and diagnostic conventions |
 
 When reference prose and grammar differ, the reference is normative.
-`CAPABILITY.md` states whether a documented form computes or is refused.
+`CAPABILITY.md` states what each documented form does today and which
+worlds can run it.
 
-Start with the quickstart, then the first four examples. Use the reference for exact syntax, semantics, and diagnostics.
+Start with the quickstart, then the first four examples. Use the
+reference for exact syntax, semantics, and diagnostics.
 
-A file may parse but still refuse semantic admission or execution. Such boundaries are documented explicitly; emath never substitutes an unintended interpretation.
+Nothing you write is refused at the door: everything enters the
+language, and every answer comes back labeled with what it means
+(`exact`, `approximate(±bound)`, `symbolic-only`, `hole-open`, `fault`).
+Where a capability cannot compute something yet, the docs say so
+explicitly — the response is a routed diagnosis pointing at the world
+that can, never a silent guess. The governing doctrine lives in
+[`../implementation/VISION.md`](../implementation/VISION.md).
