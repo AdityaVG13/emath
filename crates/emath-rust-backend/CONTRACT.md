@@ -121,9 +121,9 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-No `crates/emath-rust-ir/tests/` directory and no inline `#[cfg(test)]`
-module in `src/`. Conformance lives in the standalone `tests/emath-rust-ir`
-package: `tests/profile_validate.rs` exercises `CrateProfile::validate`
+No `crates/`-side tests for the profile surface. The former
+`tests/emath-rust-ir` package's suite lives in `tests/emath-rust-backend`:
+`tests/profile_validate.rs` exercises `CrateProfile::validate`
 (`E-CODEGEN-002`/`E-CODEGEN-003`/`E-CODEGEN-004`).
 
 ## No-claim boundaries

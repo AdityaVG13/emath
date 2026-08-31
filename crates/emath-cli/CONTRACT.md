@@ -197,9 +197,8 @@
 
 ## Conformance tests
 
-Workspace integration suite `tests/emath-lsp` (no `tests/` dir on disk in the
-crate and no `#[cfg(test)]` in `src/`). 26 tests, in `tests/server.rs`,
-`tests/transport.rs`, `tests/lab.rs`:
+Integration suite from the former `tests/emath-lsp` package, now in this
+package's `tests/`: `tests/lab.rs`, `tests/server.rs`, `tests/transport.rs`. 26 tests:
 
 `server.rs`:
 - `range_offsets_use_utf8_byte_characters_on_glyph_lines`
@@ -375,7 +374,7 @@ crate and no `#[cfg(test)]` in `src/`). 26 tests, in `tests/server.rs`,
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- Workspace integration suite `tests/emath-agent-protocol` (`tests/challenge.rs`):
+- Integration tests from the former `tests/emath-agent-protocol` package, now `tests/challenge.rs` here:
   - admission refuses an execution-authority claim with `capability:authority-not-admitted`
   - admission refuses an incomplete schema (missing base worlds) with `schema:incomplete`
   - a valid proposal runs to a `WorldCandidate` whose proposal identity and candidate identity are deterministic across two constructions of the same envelope
@@ -477,7 +476,7 @@ Missing declared metrics disqualify as `failed-guard:missing-metric` and never e
 
 ## Conformance tests
 
-- lib.rs / tests/emath-portfolio: stable-policy ordering (authority > utility > cost) and world-identity tie-breaking; exit-gate translation keeps both source and target worlds and deopts on a failed fast-path guard; approximation caps Tested to Structural while exact preserves it.
+- `tests/portfolio.rs` + `tests/portfolio_meaning_lock.rs` (from the former `tests/emath-portfolio` package): stable-policy ordering (authority > utility > cost) and world-identity tie-breaking; exit-gate translation keeps both source and target worlds and deopts on a failed fast-path guard; approximation caps Tested to Structural while exact preserves it.
 - `interpretation` unit tests: ranking determinism and fingerprint tie-break; hand-computed 3-candidate Pareto archive; single-best refusal gate; ledger completeness; receipt replay byte-identity; authority non-escalation plus seeded escalation refusal; explicit `RankKey` collapse.
 - `meaning_lock` unit tests: encode round-trip byte-determinism; timestamp excluded from `lock_id`; unknown version; malformed file; tampered fingerprint; fingerprint match vs source drift; `commit_locked_world` single-world user-locked receipt; disqualified `set`; drifted locked candidate.
 - Production path: `cargo xtask demo interpretation-portfolio`.

@@ -7,6 +7,12 @@ publish = false
 [dependencies]
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-core = { path = "../../crates/emath-core" }
+# Absorbed test suites (search/holes/law-check/calibration) exercise these:
+emath-term = { workspace = true }
+emath-world-ir = { workspace = true }
+emath-syntax = { workspace = true }
+emath-ir = { workspace = true }
+emath-wasm = { path = "../../crates/emath-wasm" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

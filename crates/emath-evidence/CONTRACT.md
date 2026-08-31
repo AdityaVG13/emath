@@ -114,7 +114,7 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-Integration coverage in `tests/emath-checker` (targets `emath-evidence::checker`): translation witness recheck,
+Integration coverage in `tests/emath-evidence` (`tests/negative.rs`, `tests/translation.rs`, from the former `tests/emath-checker` package): translation witness recheck,
 `E-EVID-301` / `E-EVID-302` refusals, and
 `seeded_wrong_derivative_is_refused_with_e_evid_301` (Phase 3 planted
 wrong derivative row via `seed_wrong_derivative`).

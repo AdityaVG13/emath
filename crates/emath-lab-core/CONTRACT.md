@@ -101,7 +101,7 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- `tests/emath-calibration/tests/fit_goal_runtime.rs` (standalone package built from `tests/emath-calibration`): payload tracing, executable-program fit, typed refusals, weighting, escalation, rank oracle, materialization, determinism.
+- `tests/fit_goal_runtime.rs` (from the former `tests/emath-calibration` package): payload tracing, executable-program fit, typed refusals, weighting, escalation, rank oracle, materialization, determinism.
 
 ## No-claim boundaries
 - A slice of the planned calibration surface, not the full calibration service.
@@ -155,7 +155,7 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- Workspace suites in `tests/emath-law-check`: `tests/lib.rs`
+- Suites from the former `tests/emath-law-check` package, now `tests/law_check.rs`
   (`empty_table_is_not_a_vacuous_pass`, `untotal_table_is_refused_not_passed`).
 - Integration property grids in `tests/laws.rs`:
   `finite_max_is_commutative_over_seeded_carrier`,
@@ -214,7 +214,7 @@
 - None: Cargo.toml has no `[features]`.
 
 ## Conformance tests
-- Workspace integration suite `tests/emath-holes` (`tests/synth.rs`): `n3_commutative_synthesis_is_exhaustive_over_the_full_table_space`, `budget_cut_reports_not_exhaustive`, `empty_laws_are_refused_not_contradictory`, `impossible_identity_laws_are_rejected_exhaustively` (seeded two-identity set, n=2, `tables.is_empty()` and `exhaustive == true`), `carrier8_table_space_is_honestly_not_exhaustive`, `noncommutative_table_is_rejected_with_minimized_counterexample`.
+- Integration tests from the former `tests/emath-holes` package (`tests/synth.rs`, plus `tests/intent_completion_solve_unit.rs` from its package root): `n3_commutative_synthesis_is_exhaustive_over_the_full_table_space`, `budget_cut_reports_not_exhaustive`, `empty_laws_are_refused_not_contradictory`, `impossible_identity_laws_are_rejected_exhaustively` (seeded two-identity set, n=2, `tables.is_empty()` and `exhaustive == true`), `carrier8_table_space_is_honestly_not_exhaustive`, `noncommutative_table_is_rejected_with_minimized_counterexample`.
 - Production path: `cargo xtask demo holes-synthesis` synthesizes commutative-monoid tables on a 2-element carrier and exhaustively rejects `impossible_identity_laws`.
 - No `tests/` directory on disk in the crate and no `#[cfg(test)]` module in `src/`.
 
@@ -349,7 +349,7 @@ not this crate.)
 
 ## Conformance tests
 
-- `tests/emath-search/tests/corpus.rs` (always): composite id round trip
+- `tests/corpus.rs` (from the former `tests/emath-search` package, always): composite id round trip
   (`round_trip_composite_id`); empty-part rejection; separator-inside-part
   rejection; malformed decode -> None; ArtifactDoc construction validation.
 - engine.rs (cfg(all(test, feature = "search"))): happy-path lexical hit with
