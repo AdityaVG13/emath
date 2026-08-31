@@ -1,5 +1,8 @@
 # Quantity literals: SI scale, area product, cancelled dims, affine Celsius.
 emath function Units:
+    inputs:
+        n: Float64
+
     outputs:
         rescale: Float64
         area: Float64
@@ -11,7 +14,7 @@ emath function Units:
         litre_alias: Float64
 
     definitions:
-        rescale = (1 km + 1 m) / 1 m
+        rescale = (1 km + n * 1 m) / 1 m
         area = (1 m * 1 m) / (1 [unit m^2])
         cancelled = (1 m) / (1 m)
         celsius = (0 degC == 273.15 K)
@@ -22,6 +25,7 @@ emath function Units:
 
     tests:
         example <si>:
+            given n = 1.0
             expect rescale == 1001
             expect area == 1
             expect cancelled == 1

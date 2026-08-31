@@ -2643,46 +2643,48 @@ fn text_lib(source: &str) -> String {
     .clone()
 }
 
-/// A declared `Option<Int>` OUTPUT whose definition builds option_some(5):
-/// the generated free function carries the native Option<i64> OUT of the
-/// declaration, and the runtime value is Some(5).
+/// A declared `Option<Int>` OUTPUT whose definition lifts its input into
+/// option_some: the generated free function carries the native Option<i64>
+/// OUT of the declaration, and the runtime value is Some(5).
 #[test]
 fn text_option_int_output_carrier_out() {
     let lib = text_lib(
-        "emath function f:\n    outputs:\n        o: Option<Int>\n    definitions:\n        o = option_some(5)\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+        "emath function f:\n    inputs:\n        k: Int\n    outputs:\n        o: Option<Int>\n    definitions:\n        o = option_some(k)\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
     );
     assert!(
         lib.contains("Option::<i64>::Some"),
         "generated code must carry Option<i64> natively, got:\n{lib}"
     );
-    run_generated(&lib, "assert_eq!(generated::f(), Some(5i64));")
+    run_generated(&lib, "assert_eq!(generated::f(5), Some(5i64));")
         .expect("generated Option<Int> output must equal Some(5) at runtime");
 }
 
-/// NESTED carrier: option_some(option_some(5)) typed as
+/// NESTED carrier: option_some(option_some(k)) typed as
 /// Option<Option<Int>> emits the native nested type and round-trips to
 /// Some(Some(5)).
 #[test]
 fn text_nested_option_option_int() {
     let lib = text_lib(
-        "emath function n:\n    outputs:\n        o: Option<Option<Int>>\n    definitions:\n        o = option_some(option_some(5))\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+        "emath function n:\n    inputs:\n        k: Int\n    outputs:\n        o: Option<Option<Int>>\n    definitions:\n        o = option_some(option_some(k))\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
     );
     assert!(
         lib.contains("Option::<Option<i64>>::Some"),
         "nested carrier must emit Option<Option<i64>>, got:\n{lib}"
     );
-    run_generated(&lib, "assert_eq!(generated::n(), Some(Some(5i64)));")
+    run_generated(&lib, "assert_eq!(generated::n(5), Some(Some(5i64)));")
         .expect("nested Option<Option<i64>> must equal Some(Some(5)) at runtime");
 }
 
 /// Nested Some(None): outer Some carries an inner None (the tag-vs-content
-/// distinction is preserved through the nested native type).
+/// distinction is preserved through the nested native type). The declared
+/// input names the I/O surface (L3 E-SEC-130) while the nested carrier
+/// stays constant.
 #[test]
 fn text_nested_some_none() {
     let lib = text_lib(
-        "emath function sc:\n    outputs:\n        o: Option<Option<Float64>>\n    definitions:\n        o = option_some(option_none())\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
+        "emath function sc:\n    inputs:\n        x: Float64\n    outputs:\n        o: Option<Option<Float64>>\n    definitions:\n        o = option_some(option_none())\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
     );
-    run_generated(&lib, "assert_eq!(generated::sc(), Some::<Option<f64>>(None));")
+    run_generated(&lib, "assert_eq!(generated::sc(0.0), Some::<Option<f64>>(None));")
         .expect("nested Some(None) must hold at runtime");
 }
 

@@ -912,6 +912,8 @@ fn empty_example_body_admits_as_worked_example() {
     let mut session = CompilerSession::new(Limits::default());
     let source = "\
 emath function TwentyOne:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
 

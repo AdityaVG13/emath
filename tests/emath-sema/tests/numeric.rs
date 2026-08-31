@@ -580,11 +580,11 @@ fn compound_unit_kg_m2_s2_admits() {
 }
 
 #[test]
-fn result_as_input_is_e_type_010() {
+fn result_input_type_is_admitted() {
     let source = "\
 emath function F:
     inputs:
-        x: Result<Float64, ConfigError>
+        x: Result<Float64, Float64>
     outputs:
         y: Float64
     definitions:
@@ -592,13 +592,13 @@ emath function F:
 ";
     let codes = errors_of("result-field", source);
     assert!(
-        codes.iter().any(|code| code == "E-TYPE-010"),
-        "Result as a compute type must be E-TYPE-010, got {codes:?}"
+        codes.is_empty(),
+        "Result is a real compute type; the type layer must admit it, got {codes:?}"
     );
 }
 
 #[test]
-fn graph_and_rat_as_inputs_are_e_type_010() {
+fn graph_and_rat_input_types_are_admitted() {
     let graph = "\
 emath function F:
     inputs:
@@ -620,12 +620,12 @@ emath function F:
     let graph_codes = errors_of("graph-field", graph);
     let rat_codes = errors_of("rat-field", rat);
     assert!(
-        graph_codes.iter().any(|code| code == "E-TYPE-010"),
-        "Graph must be E-TYPE-010, got {graph_codes:?}"
+        graph_codes.is_empty(),
+        "Graph is a real compute type; the type layer must admit it, got {graph_codes:?}"
     );
     assert!(
-        rat_codes.iter().any(|code| code == "E-TYPE-010"),
-        "Rat must be E-TYPE-010, got {rat_codes:?}"
+        rat_codes.is_empty(),
+        "Rat is a real compute type; the type layer must admit it, got {rat_codes:?}"
     );
 }
 
@@ -796,12 +796,15 @@ fn kilometre_plus_metre_rescales_to_si() {
     // Unit-rescaling invariance: `1 km + 1 m` is 1001 m, not 2.
     let source = "\
 emath function Rescale:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
     definitions:
-        y = (1 km + 1 m) / 1 m
+        y = (1 km + n * 1 m) / 1 m
     tests:
         example <si>:
+            given n = 1.0
             expect y == 1001
 ";
     let y = eval_output_f64("km-plus-m", source, "y");
@@ -812,12 +815,15 @@ emath function Rescale:
 fn millisecond_scale_is_applied() {
     let source = "\
 emath function Ms:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
     definitions:
-        y = (1 ms) / (1 s)
+        y = (n * 1 ms) / (1 s)
     tests:
         example <si>:
+            given n = 1.0
             expect y == 0.001
 ";
     let y = eval_output_f64("ms-over-s", source, "y");
@@ -828,12 +834,15 @@ emath function Ms:
 fn mib_over_byte_rescales() {
     let source = "\
 emath function Info:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
     definitions:
-        y = (1 MiB) / (1 B)
+        y = (n * 1 MiB) / (1 B)
     tests:
         example <si>:
+            given n = 1.0
             expect y == 1048576
 ";
     let y = eval_output_f64("mib-over-b", source, "y");
@@ -845,12 +854,15 @@ fn rational_quantity_evaluates_as_si() {
     // Pass 2 parse: `3//2 s` is a quantity. Under strict-f64 it is 1.5 s.
     let source = "\
 emath function RatQ:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
     definitions:
-        y = (3//2 s) / (1 s)
+        y = (n * (3//2 s)) / (1 s)
     tests:
         example <si>:
+            given n = 1.0
             expect y == 1.5
 ";
     let y = eval_output_f64("rational-s", source, "y");
@@ -975,12 +987,15 @@ fn eval_output_bool(name: &str, source: &str, output: &str) -> bool {
 fn metre_times_metre_is_area() {
     let source = "\
 emath function Area:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
     definitions:
-        y = (1 m * 1 m) / (1 [unit m^2])
+        y = (n * 1 m * 1 m) / (1 [unit m^2])
     tests:
         example <si>:
+            given n = 1.0
             expect y == 1
 ";
     let y = eval_output_f64("m-times-m", source, "y");
@@ -991,6 +1006,8 @@ emath function Area:
 fn metre_times_metre_admits_as_m_star_m() {
     let source = "\
 emath function Area:
+    inputs:
+        n: Float64
     outputs:
         y: Float64 in m*m
     definitions:
@@ -1007,6 +1024,8 @@ emath function Area:
 fn metre_times_metre_admits_as_m_squared() {
     let source = "\
 emath function Area:
+    inputs:
+        n: Float64
     outputs:
         y: Float64 in m^2
     definitions:
@@ -1036,12 +1055,15 @@ fn units_example_computes() {
 fn cancelled_length_is_dimensionless() {
     let source = "\
 emath function Cancel:
+    inputs:
+        n: Float64
     outputs:
         y: Float64
     definitions:
-        y = (1 m) / (1 m)
+        y = (n * 1 m) / (1 m)
     tests:
         example <si>:
+            given n = 1.0
             expect y == 1
 ";
     let y = eval_output_f64("m-over-m", source, "y");
@@ -1073,6 +1095,8 @@ emath function Bad:
 fn type_c2_trap_is_length_not_acceleration() {
     let source = "\
 emath function C2:
+    inputs:
+        n: Float64
     outputs:
         y: Float64 in m/s*s
     definitions:
@@ -1089,12 +1113,15 @@ emath function C2:
 fn zero_celsius_equals_kelvin_offset() {
     let source = "\
 emath function Temp:
+    inputs:
+        n: Float64
     outputs:
         y: Bool
     definitions:
-        y = (0 degC == 273.15 K)
+        y = (0 degC == n * 273.15 K)
     tests:
         example <si>:
+            given n = 1.0
             expect y == true
 ";
     let y = eval_output_bool("zero-c", source, "y");
@@ -1125,12 +1152,15 @@ fn celsius_times_scalar_is_e_unit_102() {
 fn celsius_plus_kelvin_interval_shifts_the_point() {
     let source = "\
 emath function Shift:
+    inputs:
+        n: Float64
     outputs:
         y: Bool
     definitions:
-        y = (0 degC + 1 K == 1 degC)
+        y = (0 degC + n * 1 K == 1 degC)
     tests:
         example <si>:
+            given n = 1.0
             expect y == true
 ";
     let y = eval_output_bool("c-plus-k", source, "y");
@@ -1141,14 +1171,17 @@ emath function Shift:
 fn fahrenheit_uses_offset_before_scale() {
     let source = "\
 emath function Fahrenheit:
+    inputs:
+        n: Float64
     outputs:
         freezing: Bool
         boiling: Bool
     definitions:
-        freezing = (32 degF == 273.15 K)
-        boiling = (212 degF == 373.15 K)
+        freezing = (32 degF == n * 273.15 K)
+        boiling = (212 degF == n * 373.15 K)
     tests:
         example <c13>:
+            given n = 1.0
             expect freezing == true
             expect boiling == true
 ";
@@ -1160,12 +1193,15 @@ emath function Fahrenheit:
 fn affine_subtraction_is_a_linear_difference() {
     let source = "\
 emath function TemperatureDifference:
+    inputs:
+        n: Float64
     outputs:
         delta: Float64
     definitions:
-        delta = (22 degC - 10 degC) / 1 K
+        delta = (22 degC - 10 degC) / (n * 1 K)
     tests:
         example <difference>:
+            given n = 1.0
             expect delta == 12
 ";
     assert_eq!(eval_output_f64("temperature-difference", source, "delta"), 12.0);
@@ -1175,14 +1211,17 @@ emath function TemperatureDifference:
 fn litre_spellings_are_identity_aliases() {
     let source = "\
 emath function LitreAlias:
+    inputs:
+        n: Float64
     outputs:
         american: Float64
         british: Float64
     definitions:
-        american = (1 liter) / (1 L)
+        american = (n * 1 liter) / (1 L)
         british = (1 litre) / (1 L)
     tests:
         example <aliases>:
+            given n = 1.0
             expect american == 1
             expect british == 1
 ";
