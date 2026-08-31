@@ -864,6 +864,7 @@ Capability cells (`crates/emath-ir/src/capability.rs`, schema
 - `E-TYPE-011` — non-finite constant refused under the strict-f64
   policy.
 - `E-TYPE-012` — argument arity/type mismatch for the named function.
+- `E-TYPE-013` — sibling-call inlining refused: an inline cycle or the inlining depth cap was hit (typed refusal, never unbounded expansion).
   Unit mismatches name the dimensions (`duration` vs `length`), never a
   Debug dump of `Infer::Unit`.
 - `E-TYPE-101` — derivative target is not a state variable.
@@ -970,7 +971,6 @@ Semantic admission (`crates/emath-sema/src/{admit/lowering,recognition}.rs`):
 - `E-MIGR-012` — a `meaning` classification without the required `evidence:` section, or a `raise` in the classification rules (authority never increases through the card alone).
 - `E-UNIT-106` — a bare numeric quantity under a profile that demands declared uncertainty (04 §6.1 honesty profiles).
 - `E-UNIT-107` — the publication profile requires the declaration's honesty header (provenance).
-- `E-TYPE-113` — membership (`in`) is not yet evaluable: the finite-set world is pending (typed, never a silent list reinterpretation).
 
 Scratch surface (`crates/emath-syntax/src/scratch.rs`, `crates/emath-cli/src/lib.rs`):
 
