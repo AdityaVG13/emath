@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-emath-rust-ir = { path = "../../crates/emath-rust-ir" }
+emath-rust-backend = { path = "../../crates/emath-rust-backend" }
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

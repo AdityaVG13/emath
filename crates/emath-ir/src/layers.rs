@@ -25,7 +25,7 @@ pub enum IrLayer {
     Eir,
     /// Evidence IR (`emath-evidence`).
     Evidence,
-    /// Structured Rust IR (`emath-rust-ir`).
+    /// Structured Rust IR (`emath-rust-backend::rust_ir`).
     RustIr,
     /// Artifact graph + identity (`emath-artifact`).
     Artifact,
@@ -105,7 +105,7 @@ impl IrLayer {
             Self::Mig | Self::Sir | Self::Gir | Self::Resolution => "emath-ir",
             Self::Eir => "emath-exec-ir",
             Self::Evidence => "emath-evidence",
-            Self::RustIr => "emath-rust-ir",
+            Self::RustIr => "emath-rust-backend",
             Self::Artifact => "emath-artifact",
         }
     }

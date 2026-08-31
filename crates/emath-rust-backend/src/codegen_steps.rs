@@ -1,9 +1,9 @@
 use emath_exec_ir::{definition_order, lower_definition};
 use emath_ir::{Extent, SemanticPackage, TypeNode};
-use emath_rust_ir::ast::{
+use crate::rust_ir::ast::{
     escape_ident, BinOp, Block, Expr, FnDef, Item, Param, Stmt, Ty, Visibility,
 };
-use emath_rust_ir::render::render_expr;
+use crate::rust_ir::render::render_expr;
 use std::collections::BTreeSet;
 
 use crate::codegen_helpers::{

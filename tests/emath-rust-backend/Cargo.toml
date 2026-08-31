@@ -6,7 +6,6 @@ publish = false
 
 [dependencies]
 emath-rust-backend = { path = "../../crates/emath-rust-backend" }
-emath-rust-ir = { path = "../../crates/emath-rust-ir" }
 emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-exec-ir = { path = "../../crates/emath-exec-ir" }

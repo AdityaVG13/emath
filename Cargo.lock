@@ -820,7 +820,6 @@ dependencies = [
  "emath-ir",
  "emath-plan",
  "emath-rust-backend",
- "emath-rust-ir",
  "emath-sema",
  "emath-syntax",
 ]
@@ -1057,7 +1056,6 @@ dependencies = [
  "emath-provider-api",
  "emath-rt",
  "emath-rust-backend",
- "emath-rust-ir",
  "emath-sema",
  "emath-syntax",
  "emath-term",
@@ -1233,7 +1231,6 @@ dependencies = [
  "emath-exec-ir",
  "emath-ir",
  "emath-rt",
- "emath-rust-ir",
 ]
 
 [[package]]
@@ -1244,16 +1241,15 @@ dependencies = [
  "emath-exec-ir",
  "emath-ir",
  "emath-rust-backend",
- "emath-rust-ir",
  "emath-sema",
  "emath-syntax",
 ]
 
 [[package]]
-name = "emath-rust-ir"
+name = "emath-rust-ir-tests"
 version = "0.1.0"
 dependencies = [
- "emath-core",
+ "emath-rust-backend",
 ]
 
 [[package]]

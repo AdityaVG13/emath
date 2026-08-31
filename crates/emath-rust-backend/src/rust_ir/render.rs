@@ -1,7 +1,7 @@
 //! Deterministic Rust renderer with byte-range anchors, deterministic file
 //! partitioning and content-based identity (independent of absolute paths).
 
-use crate::ast::{
+use crate::rust_ir::ast::{
     BinOp, Block, Expr, Item, Module, Param, Stmt, Ty, UnOp, Visibility, escape_ident,
 };
 use emath_core::{ContentId, fnv1a64_bytes};

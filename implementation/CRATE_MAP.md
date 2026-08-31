@@ -53,7 +53,6 @@ intent, not an implemented surface.
 |---|---|---|---|
 | `emath-evidence` | `crates/emath-evidence` | claims, assumptions, bundles, freshness | ir |
 | `emath-checker` | `crates/emath-checker` | artifact/result/certificate checking | evidence/artifact |
-| `emath-rust-ir` | `crates/emath-rust-ir` | structured Rust target AST | ir |
 | `emath-rust-backend` | `crates/emath-rust-backend` | EMIR to Rust IR and rendering | rust-ir |
 | `emath-artifact` | `crates/emath-artifact` | Cargo package, manifests, source maps, SBOM | core/schema |
 | `emath-rt` | `crates/emath-rt` | pre-compiled math kernels, embedded verbatim into generated crates and used by the interpreter | std only |
@@ -135,6 +134,7 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-registry` | `tests/emath-registry` | registry public-API test suite |
 | `tests/emath-provider-api` | `tests/emath-provider-api` | provider-API public-API test suite |
 | `tests/emath-rust-backend` | `tests/emath-rust-backend` | Rust backend public-API test suite |
+| `tests/emath-rust-ir` | `tests/emath-rust-ir` | Rust IR public-API test suite (targets `emath-rust-backend::rust_ir`) |
 | `tests/emath-rt` | `tests/emath-rt` | runtime-kernel public-API test suite |
 | `tests/emath-search` | `tests/emath-search` | search public-API test suite |
 | `tests/emath-sema` | `tests/emath-sema` | session/admission public-API test suite |

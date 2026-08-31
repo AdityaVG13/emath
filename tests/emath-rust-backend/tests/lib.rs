@@ -11,8 +11,8 @@ use emath_ir::{
     Visibility,
 };
 use emath_rust_backend::{BackendInput, render_op_expr_for_tests};
-use emath_rust_ir::ast::{Item, StructDef};
-use emath_rust_ir::render::{render_expr, render_module};
+use emath_rust_backend::rust_ir::ast::{Item, StructDef};
+use emath_rust_backend::rust_ir::render::{render_expr, render_module};
 
 /// A minimal package: one declaration `named` with an `x: Float64`
 /// input, nothing else. Enough to exercise struct emission, which is
