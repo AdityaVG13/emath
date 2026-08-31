@@ -34,6 +34,9 @@ mod demo_finite_analogues;
 mod demo_finite_worlds;
 mod demo_interpretation_portfolio;
 mod demo_joint_tuning;
+mod demo_meaning_store;
+mod demo_portable_emlib;
+mod demo_source_first_worlds;
 mod demo_world_morphisms;
 
 const REFERENCE_SOURCE: &str = "tests/valid/arbitrary-glyphs.emath";
@@ -54,6 +57,9 @@ fn main() {
             Some("agent-meaning") => demo_agent_meaning::demo(),
             Some("world-morphisms") => demo_world_morphisms::demo(),
             Some("joint-tuning") => demo_joint_tuning::demo(),
+            Some("source-first-worlds") => demo_source_first_worlds::demo(),
+            Some("meaning-store") => demo_meaning_store::demo(),
+            Some("portable-emlib") => demo_portable_emlib::demo(),
             Some("cache-policy") => demo_cache_policy(),
             Some("all") => {
                 let slice = demo_affine_scorer();
@@ -65,7 +71,7 @@ fn main() {
             }
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|cache-policy|all>"
+                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|cache-policy|all>"
                 );
                 2
             }
@@ -84,7 +90,7 @@ fn main() {
         serve_web(port)
     } else {
         eprintln!(
-            "usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|cache-policy|all>"
+            "usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|cache-policy|all>"
         );
         eprintln!("       cargo xtask build-web");
         eprintln!("       cargo xtask check-wasm");

@@ -1,5 +1,6 @@
 {
-  "schema": "emath.upstream-lock",
+  "schema": "emath.upstream-lock.v1",
+  "schema_version": 1,
   "generated_at": "2026-08-17",
   "policy": "Commits are immutable reproducibility inputs. Branches are metadata only. This file is the shipped upstream lock (the one tracked fork artifact); all other forks/ material is local-only.",
   "repositories": [
@@ -36,8 +37,8 @@
       "branch": "master",
       "commit": "b756f9deed7d7f348cc0bb702b4e5b8eb83affed",
       "license": "BSD-3-Clause",
-      "role": "Modelica compatibility and scientific corpus",
-      "required": "conformance"
+      "role": "Modelica compatibility and scientific corpus (no MSL corpus CI is wired; no-claim fence per closed emath-gauntlet-04-q22w)",
+      "required": "future"
     },
     {
       "id": "frankensim",

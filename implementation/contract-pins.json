@@ -4,6 +4,22 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-08-29",
+      "note": "emath-r3-observations-9ffu: ERROR_CODES gains E-OBS-WRITE + E-OBS-HASH stories and the annex re-splices to the current emitted set (353 emitted; emath-rt linalg E-LINALG-00x remain foreign-lane in-flight); CLI_REFERENCE check row documents --verify-data"
+    },
+    {
+      "date": "2026-08-29",
+      "note": "explain-defaults-yt97 window: ERROR_CODES annex re-spliced to current emitted set (cross-lane drift absorbed); CLI_REFERENCE explain row gains --show-defaults"
+    },
+    {
+      "date": "2026-08-29",
+      "note": "explain-defaults-yt97: CLI_REFERENCE explain row gains --show-defaults (effective-defaults table + declaration_overrides JSON) and the [<symbol>] form"
+    },
+    {
+      "date": "2026-08-29",
+      "note": "honesty-syntax-x83o: ERROR_CODES annex re-spliced to 336 emitted codes (added E-UNIT-106 bare-quantity-under-profile + E-UNIT-107 publication-requires-provenance rows; absorbed cross-lane emissions incl. E-WORLD-00x); CLI_REFERENCE check row documents the honesty table + units_profiles JSON field"
+    },
+    {
       "date": "2026-08-25",
       "note": "notation declarations execute (gap B): glyphs and aliases desugar to calls of the canonical target at parse time (N5), custom infix binds above the core 10-tier ladder at precedence >= 11 (E-NOTATION-PRECEDENCE floor), prefix/postfix glyphs bound at unary/postfix levels; qualified builtin calls spell with :: including core::logic::not (keyword path segments); ERROR_CODES E-NOTATION-GLYPH/AMBIG/RESERVED/PRECEDENCE stories; example notation-ops.emath admits and builds; CAPABILITY notation row flips to computes; reference N6 precedence scale"
     },
@@ -61,7 +77,7 @@
     },
     {
       "date": "2026-08-19",
-      "note": "ERROR_CODES annex re-spliced: catalog.rs CLI work added E-TLT-004/006 emission rows; new feature-gated infra crates (store/provenance/search) raise rust-file count (170→180); codes still 243, surface unchanged CRATE_MAP re-pinned (Tier 8 infra adapters: emath-store/provenance/search)"
+      "note": "ERROR_CODES annex re-spliced: catalog.rs CLI work added E-TLT-004/006 emission rows; new feature-gated infra crates (store/provenance/search) raise rust-file count (170\u2192180); codes still 243, surface unchanged CRATE_MAP re-pinned (Tier 8 infra adapters: emath-store/provenance/search)"
     },
     {
       "date": "2026-08-18",
@@ -109,8 +125,8 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "b05a0bf977933ab9c4c5f2374c39129a3f8ebb7cf6fbe0f043f78bc7143807b1",
-    "implementation/CLI_REFERENCE.md": "fafe5e487efba30d46f0ee0c1a672cfa9720acf873f91c00f3b3933cc7181bc9",
+    "implementation/ERROR_CODES.md": "08002402c07bf7dfac7232c27e3b43de17ae75ec6fafb34f1bc42d08cf598fd6",
+    "implementation/CLI_REFERENCE.md": "6b0bedd9a630c51987ede1f67465057739bc92588c6fc510d7cffcb1be7a8686",
     "implementation/CRATE_MAP.md": "c127e8e858afd2db2b5c55cd3618f7a8fe2e0e36a8f7a71e712273b1e83bf91b",
     "implementation/PUBLIC_API_INVENTORY.md": "c73d6c04e7f77f73c48116623c9bdcfb8a09fe90a57c7db2602d88c18ecef806"
   }
