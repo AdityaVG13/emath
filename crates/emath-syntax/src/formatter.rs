@@ -7,8 +7,8 @@
 use crate::token::Comment;
 use crate::tree::{
     Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration,
-    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, Section, Stmt, StmtKind, Suite,
-    SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
+    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, ReactionArrow, ReactionTerm,
+    Section, Stmt, StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
 };
 
 mod expr;
@@ -291,6 +291,28 @@ const BARE_GENERIC_SECTIONS: [&str; 7] = [
 ];
 
 fn format_section_head(out: &mut String, section: &Section) {
+    // 04 §5.3 (emath-r3-fit-goal-4xjh): the generic fit goal renders
+    // `fit <params> to <observable>:` — parameters in args (Expr path
+    // arguments), observable in the generic slot — never the
+    // angle-bracket generic spelling.
+    if section.name == "fit" {
+        out.push_str("fit");
+        if let Some(args) = &section.args {
+            out.push(' ');
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                format_argument(out, arg);
+            }
+        }
+        if let Some(generic) = &section.generic {
+            out.push_str(" to ");
+            out.push_str(generic);
+        }
+        out.push(':');
+        return;
+    }
     out.push_str(&section.name);
     if let Some(generic) = &section.generic {
         if BARE_GENERIC_SECTIONS.contains(&section.name.as_str()) {
@@ -332,6 +354,21 @@ fn format_suite(out: &mut String, suite: &Suite, level: usize) {
     }
 }
 
+/// `observations:` rows (04 §5.2, emath-r3-observations-9ffu): every row
+/// is an `obs`-prefixed `FieldDecl`; render the prefix and keep the
+/// statement body byte-identical to the plain field spelling.
+fn format_observations_suite(out: &mut String, suite: &Suite, level: usize) {
+    for stmt in &suite.statements {
+        indent(out, level);
+        if matches!(stmt.kind, StmtKind::FieldDecl { .. }) {
+            out.push_str("obs ");
+        }
+        if !format_stmt_kind(out, &stmt.kind, level) {
+            out.push('\n');
+        }
+    }
+}
+
 fn format_stmt(out: &mut String, stmt: &Stmt, level: usize) {
     indent(out, level);
     if format_stmt_kind(out, &stmt.kind, level) {
@@ -353,6 +390,20 @@ fn format_stmt_kind(out: &mut String, kind: &StmtKind, level: usize) -> bool {
 
 /// Whether a statement kind ends with its own newline (nested-suite
 /// kinds and `Self:` blocks render their terminator internally).
+/// One side of a reaction line: coefficient-prefixed species joined by
+/// `+`; the default coefficient 1 prints bare.
+fn format_reaction_side(out: &mut String, terms: &[ReactionTerm]) {
+    for (index, term) in terms.iter().enumerate() {
+        if index > 0 {
+            out.push_str(" + ");
+        }
+        if term.coefficient != 1 {
+            out.push_str(&term.coefficient.to_string());
+        }
+        out.push_str(&term.species);
+    }
+}
+
 fn stmt_kind_ends_with_newline(kind: &StmtKind) -> bool {
     matches!(
         kind,
@@ -369,7 +420,15 @@ fn format_stmt_kind_inner(out: &mut String, kind: &StmtKind, level: usize) {
         StmtKind::Section(section) => {
             format_section_head(out, section);
             out.push('\n');
-            format_suite(out, &section.suite, level + 1);
+            if section.name == "observations" {
+                // 04 §5.2 (emath-r3-observations-9ffu): rows are
+                // `obs <name>[: <type>] = <data>`; the tree stores them
+                // as `FieldDecl` and the `obs` prefix is section-implied,
+                // so it is restored here on output.
+                format_observations_suite(out, &section.suite, level + 1);
+            } else {
+                format_suite(out, &section.suite, level + 1);
+            }
         }
         StmtKind::FieldDecl {
             visibility,
@@ -527,6 +586,34 @@ fn format_stmt_kind_inner(out: &mut String, kind: &StmtKind, level: usize) {
             format_expr(out, left, Prec::Comparison);
             out.push_str(" = ");
             format_expr(out, right, Prec::Comparison);
+        }
+        StmtKind::Reaction {
+            name,
+            lhs,
+            arrow,
+            rhs,
+        } => {
+            out.push_str(name);
+            out.push_str(": ");
+            format_reaction_side(out, lhs);
+            out.push(' ');
+            out.push_str(arrow.as_str());
+            out.push(' ');
+            format_reaction_side(out, rhs);
+        }
+        StmtKind::Reaction {
+            name,
+            lhs,
+            arrow,
+            rhs,
+        } => {
+            out.push_str(name);
+            out.push_str(": ");
+            format_reaction_side(out, lhs);
+            out.push(' ');
+            out.push_str(arrow.as_str());
+            out.push(' ');
+            format_reaction_side(out, rhs);
         }
         StmtKind::Command { head, argument } => {
             out.push_str(&head.join(" "));

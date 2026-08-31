@@ -491,6 +491,34 @@ impl super::super::Admitter {
         ))
     }
 
+    /// Table literal (U9): headers live only in the receipt; cells lower
+    /// through the matrix element path (numeric gate, uniform extents).
+    pub(super) fn lower_table_literal(
+        &mut self,
+        expr: &Expr,
+        headers: &[String],
+        rows: &[Vec<Expr>],
+    ) -> Option<(ExprId, Infer)> {
+        let wrapped: Vec<Expr> = rows
+            .iter()
+            .map(|row| Expr {
+                kind: ExprKind::List(row.clone()),
+                source: expr.source,
+            })
+            .collect();
+        self.record(
+            "sema",
+            format!(
+                "table literal `{}` ({} columns x {} rows)",
+                headers.join(" "),
+                headers.len(),
+                rows.len()
+            ),
+            expr.source,
+        );
+        self.lower_matrix_literal(expr, &wrapped)
+    }
+
     pub(super) fn lower_matrix_literal(
         &mut self,
         expr: &Expr,
@@ -594,12 +622,13 @@ impl super::super::Admitter {
         let (target_id, target_infer) = self.lower_expr(value)?;
         let axes = match &target_infer {
             Infer::Vector { extent } => vec![extent.clone()],
+            Infer::Sequence => vec![None],
             Infer::Matrix { rows, cols } => vec![rows.clone(), cols.clone()],
             Infer::Tensor { shape } => shape.iter().cloned().map(Some).collect(),
             _ => {
                 self.error(
                     "E-TYPE-012",
-                    "indexing is only supported on Vector, Matrix, and Tensor values",
+                    "indexing is only supported on Sequence, Vector, Matrix, and Tensor values",
                     value.source,
                 );
                 return None;

@@ -64,13 +64,98 @@ pub fn expr_text(expr: &Expr) -> String {
         ExprKind::Quantity { value, unit } => {
             format!("{} {}", expr_text(value), unit.to_string())
         }
+        ExprKind::Measured {
+            value,
+            uncertainty,
+            uncertainty_digits,
+            distribution,
+        } => {
+            // Byte-exact spelling, matching the formatter: explicit ± form
+            // vs attached parenthetical, plus the optional `~ name` tag.
+            let mut out = value.clone();
+            if uncertainty_digits.is_empty() {
+                out.push_str(" ± ");
+                out.push_str(uncertainty);
+            } else {
+                out.push('(');
+                out.push_str(uncertainty_digits);
+                out.push(')');
+            }
+            if let Some(name) = distribution {
+                out.push_str(" ~ ");
+                out.push_str(name);
+            }
+            out
+        }
+        ExprKind::Approx {
+            left,
+            right,
+            tolerance,
+        } => {
+            let mut out = format!("{} ≈ {}", expr_text(left), expr_text(right));
+            if let Some(tolerance) = tolerance {
+                out.push_str(" within ");
+                let mut parts: Vec<String> = Vec::new();
+                if let Some(rtol) = &tolerance.rtol {
+                    parts.push(format!("rtol={}", expr_text(rtol)));
+                }
+                if let Some(atol) = &tolerance.atol {
+                    parts.push(format!("atol={}", expr_text(atol)));
+                }
+                out.push_str(&parts.join(", "));
+            }
+            out
+        }
         ExprKind::List(items) => format!(
             "[{}]",
             items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
         ),
+        // U9: same round-trip spelling the formatter prints.
+        ExprKind::Table { headers, rows } => {
+            let mut out = String::from("|");
+            for header in headers {
+                out.push(' ');
+                out.push_str(header);
+            }
+            out.push_str(" |");
+            for row in rows {
+                out.push(' ');
+                out.push_str(
+                    &row.iter().map(expr_text).collect::<Vec<_>>().join(", "),
+                );
+                out.push_str(" |");
+            }
+            out
+        }
         ExprKind::Tuple(items) => format!(
             "({})",
             items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+        ),
+        ExprKind::Set(items) => format!(
+            "{{{}}}",
+            items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+        ),
+        ExprKind::SetComprehension {
+            element,
+            domain,
+            guard,
+            ..
+        } => format!(
+            "{{{} in {}{}}}",
+            expr_text(element),
+            expr_text(domain),
+            guard
+                .as_ref()
+                .map_or_else(String::new, |guard| format!(" if {}", expr_text(guard)))
+        ),
+        ExprKind::Record { type_path, fields } => format!(
+            "{}:{{{}}}",
+            type_path.join("::"),
+            fields
+                .iter()
+                .map(|(field, value)| format!("{field}: {}", expr_text(value)))
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         ExprKind::Range {
             start,
@@ -213,6 +298,20 @@ pub fn expr_text(expr: &Expr) -> String {
                 .collect::<Vec<_>>()
                 .join(" ");
             format!("cases {subj}{arms_text} | else => {}", expr_text(else_arm))
+        }
+        ExprKind::WithSeriesPolicy {
+            value,
+            interpolation,
+            extrapolation,
+        } => {
+            let mut out = format!("series {}", expr_text(value));
+            if let Some(mode) = interpolation {
+                out.push_str(&format!(" with interpolation: {}", mode.spelling()));
+            }
+            if let Some(mode) = extrapolation {
+                out.push_str(&format!(", extrapolation: {}", mode.spelling()));
+            }
+            out
         }
     }
 }

@@ -208,7 +208,7 @@ pub(super) fn admit_equations(
         if !is_model {
             admitter.error(
                 "E-KIND-010",
-                "equations are only admitted on `emath model` declarations",
+                "`equations:` (with `derivative(state) = rhs` rows) describes continuous dynamics and is only admitted on `emath model` declarations; a stateless formula uses `definitions:` on `emath function`, a stateful object uses `emath policy`",
                 section.source,
             );
             continue;
@@ -448,7 +448,9 @@ pub(super) fn admit_equations(
                 | Infer::HostDeferred
                 | Infer::Vector { .. }
                 | Infer::Matrix { .. }
-                | Infer::Tensor { .. }) => {
+                | Infer::Tensor { .. }
+                | Infer::OptionCarrier
+                | Infer::ResultCarrier) => {
                     if let Some((code, message)) =
                         rate_unit_mismatch(admitter.states.get(&state_name), &infer)
                     {
@@ -458,7 +460,13 @@ pub(super) fn admit_equations(
                     definitions.insert(rate_name.clone(), id);
                     admitter.definitions.insert(rate_name, (id, infer));
                 }
-                Infer::Bool | Infer::Opaque => {
+                Infer::Bool
+                | Infer::Text
+                | Infer::Set(_)
+                | Infer::Record(_)
+                | Infer::Opaque
+                | Infer::Series
+                | Infer::Sequence => {
                     admitter.error(
                         "E-TYPE-012",
                         format!("rate `der_{state_name}` must be numeric or tensor"),

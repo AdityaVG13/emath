@@ -94,6 +94,13 @@ impl Admitter {
             .map(infer_from_node)
             .unwrap_or(Infer::F64)
     }
+
+    /// The declared semantic TypeNode for a type id (None when unmapped).
+    /// Re-checks exactness that `Infer` collapses (e.g. a FieldPrime
+    /// output must hold an exact integer, never a float).
+    pub(super) fn node_of(&self, id: TypeId) -> Option<&TypeNode> {
+        self.types.get(id.index())
+    }
 }
 
 pub(super) fn admit_constructor(
@@ -204,11 +211,16 @@ pub(super) fn admit_constructor(
                                 | Infer::HostDeferred
                                 | Infer::Vector { .. }
                                 | Infer::Matrix { .. }
-                                | Infer::Tensor { .. },
+                                | Infer::Tensor { .. }
+                                | Infer::OptionCarrier
+                                | Infer::ResultCarrier,
                             )) => {
                                 assignments.insert(name.clone(), id);
                             }
-                            Some((_, Infer::Bool)) => {
+                            Some((
+                                _,
+                                Infer::Bool | Infer::Text | Infer::Set(_) | Infer::Record(_),
+                            )) => {
                                 admitter.error(
                                     "E-TYPE-012",
                                     format!("state field `{name}` must be numeric or tensor"),
@@ -219,6 +231,13 @@ pub(super) fn admit_constructor(
                                 admitter.error(
                                     "E-TYPE-012",
                                     format!("state field `{name}` must be numeric; opaque host values are not scalars"),
+                                    value.source,
+                                );
+                            }
+                            Some((_, Infer::Series | Infer::Sequence)) => {
+                                admitter.error(
+                                    "E-TYPE-012",
+                                    format!("state field `{name}` must be numeric or tensor; a series is admitted data, not state"),
                                     value.source,
                                 );
                             }
@@ -257,6 +276,8 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
         ExprKind::Int(_)
         | ExprKind::Float(_)
         | ExprKind::Rational { .. }
+        | ExprKind::Measured { .. }
+        | ExprKind::WithSeriesPolicy { .. }
         | ExprKind::Bool(_)
         | ExprKind::Str(_) => false,
         ExprKind::Quantity { value, .. } | ExprKind::Unary { value, .. } => {
@@ -267,6 +288,24 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
         }
         ExprKind::Binary { left, right, .. } => {
             contains_state_reference(left) || contains_state_reference(right)
+        }
+        ExprKind::Approx {
+            left,
+            right,
+            tolerance,
+        } => {
+            contains_state_reference(left)
+                || contains_state_reference(right)
+                || tolerance.as_ref().is_some_and(|tolerance| {
+                    tolerance
+                        .rtol
+                        .as_ref()
+                        .is_some_and(contains_state_reference)
+                        || tolerance
+                            .atol
+                            .as_ref()
+                            .is_some_and(contains_state_reference)
+                })
         }
         ExprKind::If {
             condition,
@@ -280,6 +319,27 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
         ExprKind::List(items) | ExprKind::Tuple(items) => {
             items.iter().any(contains_state_reference)
         }
+        // U9: a state reference inside any table cell counts.
+        ExprKind::Table { rows, .. } => rows.iter().flatten().any(contains_state_reference),
+        // B01+U3: sets/comprehensions/records recurse into their element
+        // expressions; a state reference inside any element is a state
+        // reference in the containing expression.
+        ExprKind::Set(items) => items.iter().any(contains_state_reference),
+        ExprKind::SetComprehension {
+            element,
+            domain,
+            guard,
+            ..
+        } => {
+            contains_state_reference(element)
+                || contains_state_reference(domain)
+                || guard
+                    .as_ref()
+                    .is_some_and(|guard| contains_state_reference(guard))
+        }
+        ExprKind::Record { fields, .. } => fields
+            .iter()
+            .any(|(_, value)| contains_state_reference(value)),
         ExprKind::Index { value, indices } => {
             contains_state_reference(value) || indices.iter().any(contains_state_reference)
         }

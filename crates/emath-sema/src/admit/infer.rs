@@ -9,9 +9,12 @@ use emath_ir::{Extent, TypeNode, Unit, UnitDim, UnitFamily, check_compatible};
 pub(super) enum Infer {
     F64,
     Bool,
+    Text,
     Nat,
     Int,
     Complex,
+    Set(Box<Infer>),
+    Record(String),
     Vector {
         extent: Option<Extent>,
     },
@@ -33,6 +36,25 @@ pub(super) enum Infer {
     Opaque,
     /// Host-deferred field access; numeric use is admitted without fabricating a field type.
     HostDeferred,
+    /// Time-series data constant (04 §5.4, emath-r3-timeseries-1nsa):
+    /// `[(t, v), ...] with interpolation: ..., extrapolation: ...`.
+    /// A datum, not a scalar; arithmetic on it is not admitted in this
+    /// slice (evaluation is the named next one).
+    Series,
+    /// A memoized linear recurrence / formal power series. Coefficients
+    /// are obtained explicitly through indexing or `coefficient`.
+    Sequence,
+    /// An `Option<T>` carrier value (from an Option-typed declaration,
+    /// option_some, or option_none). Intentionally element-INSENSITIVE at
+    /// this inference layer: only the carrier shape is tracked, not the
+    /// payload type (emath-option-result-graph-field-aj8d). The concrete
+    /// payload type is enforced later by term_compile's Shape and the
+    /// declared output type.
+    OptionCarrier,
+    /// A `Result<T, E>` carrier value (result_ok / result_err). Like the
+    /// option carrier, element/error-INsensitive here; the payload and
+    /// error types are enforced downstream (emath-option-result-graph-field-aj8d).
+    ResultCarrier,
 }
 
 impl Infer {
@@ -80,9 +102,12 @@ impl Infer {
         match self {
             Self::F64 => "Float64".into(),
             Self::Bool => "Bool".into(),
+            Self::Text => "Text".into(),
             Self::Nat => "Nat".into(),
             Self::Int => "Int".into(),
             Self::Complex => "Complex".into(),
+            Self::Set(element) => format!("Set<{element}>"),
+            Self::Record(name) => name.clone(),
             Self::Vector { extent } => match extent {
                 Some(extent) => format!("Vector[{extent}]"),
                 None => "Vector".into(),
@@ -115,6 +140,10 @@ impl Infer {
             }
             Self::Opaque => "opaque host value".into(),
             Self::HostDeferred => "host-deferred field".into(),
+            Self::Series => "Series".into(),
+            Self::Sequence => "Sequence".into(),
+            Self::OptionCarrier => "Option".into(),
+            Self::ResultCarrier => "Result".into(),
         }
     }
 }
@@ -174,6 +203,8 @@ pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
         TypeNode::Nat => Infer::Nat,
         TypeNode::Int => Infer::Int,
         TypeNode::Complex(_) => Infer::Complex,
+        TypeNode::Set(element) => Infer::Set(Box::new(infer_from_node(element))),
+        TypeNode::Record(name) => Infer::Record(name.0.clone()),
         TypeNode::Vector { extent, .. } => Infer::Vector {
             extent: extent.clone(),
         },
@@ -187,6 +218,15 @@ pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
         TypeNode::UnitRef { dims, family, .. } => Infer::from_dims(*dims, *family),
         TypeNode::Refinement { base, .. } | TypeNode::Interval(base) => infer_from_node(base),
         TypeNode::Opaque { .. } => Infer::Opaque,
+        TypeNode::Series { .. } => Infer::Series,
+        // Composite carriers (emath-option-result-graph-field-aj8d):
+        // Option/Result map to their carrier Inference so constructors
+        // and predicates flow through the generic builtin-call path. The
+        // prime field is Int-backed (exact i64 modular arithmetic), never
+        // F64, per the bead.
+        TypeNode::OptionType(_) => Infer::OptionCarrier,
+        TypeNode::Result { .. } => Infer::ResultCarrier,
+        TypeNode::FieldPrime { .. } => Infer::Int,
         _ => Infer::F64,
     }
 }
@@ -232,11 +272,26 @@ pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
         ) => got == declared && got_family == declared_family,
         (Infer::F64, Infer::F64)
         | (Infer::Bool, Infer::Bool)
+        | (Infer::Text, Infer::Text)
         | (Infer::Nat, Infer::Nat)
         | (Infer::Int, Infer::Int)
         | (Infer::Complex, Infer::Complex)
-        | (Infer::Opaque, Infer::Opaque) => true,
+        | (Infer::Opaque, Infer::Opaque)
+        | (Infer::Series, Infer::Series)
+        | (Infer::Sequence, Infer::Sequence)
+        // Carriers conform carrier-to-carrier. Element-insensitive by
+        // design (see the enum docs): `Infer::OptionCarrier` conforms to
+        // any Option carrier regardless of payload type, matching the
+        // downstream term_compile Shape::OptionCarrier. A `Field<p>`
+        // type maps to `Infer::Int` (Int-backed), so the existing Int
+        // conformance arm already accepts a field/Int definition.
+        | (Infer::OptionCarrier, Infer::OptionCarrier)
+        | (Infer::ResultCarrier, Infer::ResultCarrier) => true,
         (Infer::Nat | Infer::Int, Infer::F64) | (Infer::F64, Infer::Nat | Infer::Int) => true,
+        // A natural number is an integer: Nat literal (e.g. the `7` in
+        // `f = 7` for a `Field<7>`/Int-typed output) conforms to an
+        // Int-typed slot. Int does NOT similarly widen to Nat.
+        (Infer::Nat, Infer::Int) => true,
         (Infer::F64 | Infer::Nat | Infer::Int, Infer::Complex) => true,
         _ => false,
     }

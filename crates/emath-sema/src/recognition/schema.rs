@@ -40,6 +40,14 @@ pub(super) fn imported_kind(path: &[String]) -> Option<KindDef> {
             SchemaRule::RequireExactlyOneSection("outputs".into()),
             SchemaRule::RequireSection("definitions".into()),
             SchemaRule::AllowSection("evidence".into()),
+            // Biform cells (bead `emath-biform-cells-jswu6`): the spec
+            // and algorithm sides carry independent evidence objects.
+            // Stampled here as allowed sections so a schema-routed
+            // capability sees the same section table as the bespoke
+            // `admit_capability` lane; the rigorous side/authority
+            // admission lives in that lane.
+            SchemaRule::AllowSection("spec".into()),
+            SchemaRule::AllowSection("algorithm".into()),
         ],
         "family" => vec![
             SchemaRule::RequireSection("inputs".into()),
@@ -47,12 +55,51 @@ pub(super) fn imported_kind(path: &[String]) -> Option<KindDef> {
             SchemaRule::RequireSection("definitions".into()),
             SchemaRule::RequireExactlyOneSection("instances".into()),
         ],
+        // Method cards carry an algorithm description and a standing
+        // falsifier. An `authority` section may only restate the
+        // proposal-only default; raising it is refused at admission.
+        "method" => vec![
+            SchemaRule::RequireExactlyOneSection("algorithm".into()),
+            SchemaRule::RequireExactlyOneSection("falsifier".into()),
+            SchemaRule::AllowSection("authority".into()),
+        ],
+        // Research-programme sections (Wave 9 L4). An experiment references
+        // methods and providers; protect constraints are evidence policy
+        // and keep-gates only record what may be promoted.
+        "experiment" => vec![
+            SchemaRule::RequireExactlyOneSection("problems".into()),
+            SchemaRule::AllowSection("methods".into()),
+            SchemaRule::AllowSection("providers".into()),
+            SchemaRule::AllowSection("protect".into()),
+            SchemaRule::AllowSection("keep".into()),
+        ],
+        // Declarative worlds (Wave 14): interpret custom/open terms through
+        // operator maps. The interpretation is world-local — strict source
+        // never inherits it. `output` is the `head: value` command form
+        // (`output: "Portfolio"`), counted at admission, not a section.
+        "world" => vec![
+            SchemaRule::RequireExactlyOneSection("operators".into()),
+            SchemaRule::AllowSection("interpretations".into()),
+            SchemaRule::AllowSection("protect".into()),
+            SchemaRule::AllowSection("output".into()),
+        ],
         "theory" => vec![
             SchemaRule::RequireExactlyOneSection("structure".into()),
             SchemaRule::RequireExactlyOneSection("laws".into()),
         ],
         "model" => vec![SchemaRule::RequireExactlyOneSection("finite".into())],
         "morphism" => vec![SchemaRule::RequireExactlyOneSection("mapping".into())],
+        // Wave 13/14 cell editions (v9-06-2rdq.19): a migration card states
+        // what moved and under which evidence. `from:` is exactly one
+        // (`kind:` + `to:`); `rules:` classifies each change as
+        // presentation | meaning | evidence | provider; an unclassified
+        // semantic change refuses at admission, and evidence authority
+        // never rises through the card alone.
+        "migration" => vec![
+            SchemaRule::RequireExactlyOneSection("from".into()),
+            SchemaRule::AllowSection("rules".into()),
+            SchemaRule::AllowSection("evidence".into()),
+        ],
         _ => return None,
     };
     Some(KindDef {
@@ -258,6 +305,26 @@ pub(super) fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
             sec("output", FIELD_STMTS),
             sec("constraint", CONSTRAINT_STMTS),
             cmd_sec("fallback", FALLBACK_FIRST_WORDS),
+            // Hybrid transitions (r3-dynamical-03lh ch7, transitions
+            // slice): `transitions:` holds `on <Event>:` rules whose
+            // bodies are assignment actions. Admission lives in the Phase
+            // 1 declaration pass (`admit_transitions`); this recognition
+            // rule is belt-and-suspenders so any schema-routed model sees
+            // the same nested-section/assign shapes. `StatementKind` has
+            // no `Sections` variant, so the enclosing section admits no
+            // bare statements and the nested `on` rule admits assigns.
+            SectionRule {
+                name: "transitions".to_string(),
+                generics: Some(&[]),
+                statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
+                command_first_words: &[],
+                fn_heads: &[],
+                nested: &[NestedRule {
+                    name: "on",
+                    statement_shapes: &[StmtShapeKind::Assigns],
+                    command_first_words: &[],
+                }],
+            },
         ],
         "search" => vec![
             sec("input", FIELD_STMTS),
@@ -301,6 +368,15 @@ pub(super) fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
             },
         ],
         "extern" => vec![cmd_sec("semantics", &["symmetric", "zero_on_identity"])],
+        // `emath field_pack` (v9-06-2rdq.16): a pack of exported
+        // cells/theories/methods/worlds — artifact data, never runnable
+        // meaning and never parser surface. The section table is CLOSED:
+        // an unknown section refuses (`E-SYN-101`), so pack source cannot
+        // inject lexer keywords through its body.
+        "field_pack" => vec![
+            cmd_sec("exports", &["cell", "theory", "method", "world"]),
+            cmd_sec("metadata", &["description"]),
+        ],
         // `type` declarations carry a body `representation <type>` command
         // and no sections.
         "type" => Vec::new(),
