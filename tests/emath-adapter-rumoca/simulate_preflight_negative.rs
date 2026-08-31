@@ -11,7 +11,7 @@ use emath_adapter_rumoca::structural::{
     EqExpr, Equation, StructuralModel, Unit, VariableDecl, VariableKind,
 };
 use emath_ir::TypeNode;
-use emath_runtime::{Budget, Outcome};
+use emath_provider_api::runtime::{Budget, Outcome};
 
 fn one_state_model() -> StructuralModel {
     StructuralModel {

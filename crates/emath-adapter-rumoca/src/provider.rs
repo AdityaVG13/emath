@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use emath_core::{ContentId, SchemaId, fnv1a64_bytes};
-use emath_runtime::{Budget, ContinuationHandle, EvidenceHandle, Outcome, UnresolvedReason};
+use emath_provider_api::runtime::{Budget, ContinuationHandle, EvidenceHandle, Outcome, UnresolvedReason};
 
 use crate::lower::{DaePlan, LowerError};
 use crate::structural::{EqExpr, StructuralModel};

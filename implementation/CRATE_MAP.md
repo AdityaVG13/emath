@@ -57,7 +57,6 @@ intent, not an implemented surface.
 | `emath-rust-backend` | `crates/emath-rust-backend` | EMIR to Rust IR and rendering | rust-ir |
 | `emath-artifact` | `crates/emath-artifact` | Cargo package, manifests, source maps, SBOM | core/schema |
 | `emath-rt` | `crates/emath-rt` | pre-compiled math kernels, embedded verbatim into generated crates and used by the interpreter | std only |
-| `emath-runtime` | `crates/emath-runtime` | Outcome, budgets, continuations, provider runtime | core |
 
 ### Tier 5 — integration
 

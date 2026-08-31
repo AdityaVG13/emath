@@ -24,7 +24,7 @@ use emath_provider_api::{
     CapabilitySpec, CapabilityTable, ConstellationProvider, MaturityLevel, ProviderIsolation,
     ProviderLock, ProviderRegistry, RegistryConfig, RepresentationSpec, default_constellation,
 };
-use emath_runtime::{Budget, Outcome};
+use emath_provider_api::runtime::{Budget, Outcome};
 
 fn state_var(name: &str) -> VariableDecl {
     VariableDecl {

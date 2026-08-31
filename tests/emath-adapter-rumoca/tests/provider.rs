@@ -10,7 +10,7 @@ use emath_adapter_rumoca::{
     StructuralModel, Unit, VariableDecl, VariableKind, build_simulation_artifact, simulate,
 };
 use emath_ir::TypeNode;
-use emath_runtime::{Budget, Outcome, UnresolvedReason};
+use emath_provider_api::runtime::{Budget, Outcome, UnresolvedReason};
 
 fn two_state_model() -> StructuralModel {
     StructuralModel {

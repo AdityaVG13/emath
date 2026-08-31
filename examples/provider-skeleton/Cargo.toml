@@ -10,7 +10,6 @@ publish = false
 emath-core = { workspace = true }
 emath-ir = { workspace = true }
 emath-provider-api = { workspace = true }
-emath-runtime = { workspace = true }
 
 [lints]
 workspace = true
