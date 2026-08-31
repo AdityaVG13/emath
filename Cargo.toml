@@ -99,7 +99,6 @@ publish = false
 unicode-normalization = "0.1.25"
 emath-test-harness = { path = "tests/harness" }
 emath-core = { path = "crates/emath-core" }
-emath-source = { path = "crates/emath-source" }
 emath-syntax = { path = "crates/emath-syntax" }
 emath-ir = { path = "crates/emath-ir" }
 emath-goal = { path = "crates/emath-goal" }
