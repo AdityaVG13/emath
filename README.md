@@ -21,13 +21,13 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 
 **The problem:** mathematical intent usually lives in one tool (a CAS, a notebook, a prover, a hand-written solver) while the runnable artifact lives in another. Units, shapes, evidence, and host integration fall through the cracks, and "it compiled" is treated as "it is true."
 
-**The solution:** emath is a single language surface for mathematics that computes. Declarations lower through a typed semantic IR, interchangeable providers, and hard verification gates into ordinary Rust crates. Interpretation is data (candidate *worlds*, kept as a portfolio), and refusals are named rather than silent.
+**The solution:** emath is a single language surface for mathematics that computes. Declarations lower through a typed semantic IR, world interpretations, and verification gates into artifacts you can inspect and run. Interpretation is data (candidate *worlds*, kept as a portfolio). Nothing is refused at the door: unsupported work comes back labeled, with a route to the world that can do it.
 
 ### What exists now
 
 | Area | Current implementation |
 |------|------------------------|
-| Language surface | `emath function`, `policy`, `model` (ODE simulate); vectors, matrices, rank-3 tensors; units; Nat/Int indexes; named refusals for unsupported surface |
+| Language surface | `emath function`, `policy`, `model` (ODE simulate); vectors, matrices, rank-3 tensors; units; Nat/Int indexes; routed diagnoses for unsupported surface |
 | Pipeline | Parse → admit → typed semantic IR → goals → exec IR → Rust codegen → Cargo publish under `target/emath` |
 | Gates | `emath check`, `emath build --verify`, `emath artifact check`; demos exit 0 with `ok` |
 | Capstone demos | `cargo xtask demo all` (affine-scorer + semantic-genesis) |
@@ -38,7 +38,7 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 ### Honest boundaries
 
 - **Compiling is not proving.** The pipeline guarantees the artifact matches what you asked for, never that the idea is true. Lean / FrankenLean is planned as hired evidence, not authority.
-- Illustrative README sketches may parse and then refuse unimplemented parts with a named error. That is expected.
+- Illustrative README sketches may parse and then return labeled partial results for unimplemented parts — a symbol, a bound, an open hole — with a route to what would compute them. That is expected.
 - There is no crates.io product claim yet. The workspace is the deliverable today.
 - Upstream engines are not absorbed into emath; adapters only, and not consumed yet in Phase 1.
 
@@ -55,7 +55,7 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 
 Any finite mathematical structure that is structurally well-formed admits: textbook math, a jumbled formula, an idea for a problem nobody has posed yet. The same glyphs can carry many legitimate meanings, so emath represents interpretation as data: candidate *worlds*, chosen deterministically and kept as a portfolio rather than collapsed into an unlabeled guess. The validation suite runs one spec through three worlds today: `free_symbolic → apply`, `Boolean_algebra → false`, `modular_numeric → 6`.
 
-You may not get the answer you wanted. You always get *an* answer, honestly labeled (a value, a canonical term, or a refusal with a name). That freedom serves three lanes:
+You may not get the answer you wanted. You always get *an* answer, honestly labeled (a value, a bound, a symbolic form, or an open hole with its constraints). Nothing is refused at the door; nothing crosses the exit unlabeled. That freedom serves three lanes:
 
 - **Production software.** A `.emath` goal becomes an ordinary, verified Cargo artifact your Rust code links against.
 - **Teaching and exploration.** Write a declaration, run it in the browser playground, change a value, watch the output move.
@@ -168,7 +168,7 @@ What actually runs today is smaller and more concrete than that sketch:
 - `emath model` ODEs you can `emath simulate` (`language/examples/numerical/explicit-mass-spring.emath`)
 - vectors, matrices, rank-3 tensors, slices, units, and Nat/Int indexes
 
-The rest of the sketch is the target language. The compiler will parse a lot of it and then refuse the parts it cannot run yet, with a named error. That is expected. Compiling is not proving.
+The rest of the sketch is the target language. The compiler parses all of it and returns the parts it cannot run yet as labeled symbols, bounds, or open holes, with a route to what would compute them. That is expected. Compiling is not proving.
 
 ## Core composition
 
@@ -256,11 +256,11 @@ Every stage of the pipeline is reproducible. Byte-comparable plans, gated builds
 
 ### Evidence travels with results
 
-Answers are labeled: a value, a canonical term, or a named refusal. Worlds stay as a portfolio. Nothing is trusted on assertion alone.
+Answers are labeled: a value, a bound, a symbol, or an open hole. Worlds stay as a portfolio. Nothing is trusted on assertion alone.
 
 ### Refusal is better than a silent wrong answer
 
-Unsupported surface is refused with a name. Compiling is not proving. Partial sketches are welcome; incomplete capability is not disguised as success.
+Unsupported surface is named and routed — never silently guessed. Compiling is not proving. Partial sketches are welcome; incomplete capability is not disguised as success.
 
 ### `language/` is the source of truth
 
