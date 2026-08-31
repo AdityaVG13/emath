@@ -85,8 +85,8 @@ fn capabilities_json_names_schema_and_exit_codes() {
         .iter()
         .map(|cmd| cmd.string_field("name").expect("command name"))
         .collect();
-    assert_eq!(COMMANDS.len(), 43, "{COMMANDS:?}");
-    assert_eq!(names.len(), 43, "{names:?}");
+    assert_eq!(COMMANDS.len(), 46, "{COMMANDS:?}");
+    assert_eq!(names.len(), 46, "{names:?}");
     assert_eq!(names.len(), COMMANDS.len(), "{names:?}");
     for must in ["check", "expand", "solve", "exactness", "freeze"] {
         assert!(

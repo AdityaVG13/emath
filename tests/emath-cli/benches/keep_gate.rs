@@ -351,11 +351,11 @@ fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
         "tests/valid/square.emath",
         "tests/valid/affine_scorer.emath",
         "language/examples/intro/hello-square.emath",
-        "language/examples/intro/stateful-affine-scorer.emath",
-        "language/examples/integration/parametric-unknown-operator.emath",
-        "language/examples/integration/cache-policy.emath",
-        "language/examples/numerical/tensor-program.emath",
-        "language/examples/numerical/graph-router.emath",
+        "language/examples/intro/scratch.emath",
+        "language/examples/intro/l1_guided.emath",
+        "language/examples/intro/units.emath",
+        "language/examples/intro/autodiff.emath",
+        "language/examples/intro/solve.emath",
     ];
     let cell = move || {
         let start = Instant::now();
