@@ -29,9 +29,9 @@ fn assert_solve_candidate_keys(cand: &emath_artifact::JsonValue) {
 #[test]
 fn solve_check_lists_labeled_candidates() {
     emath_syntax::install_source_parser();
-    let dir = std::env::temp_dir();
-    let path = dir.join("emath-solve-check-x2.emath");
-    std::fs::write(&path, "solve x^2 = 2\n").expect("write");
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("language/examples/intro/solve_x2_eq_2.emath");
     let expansion = expand_scratch("solve x^2 = 2\n");
     assert_eq!(expansion.solve.menu().len(), 5, "{:?}", expansion.solve);
     assert_eq!(expansion.solve.menu(), &emath_syntax::SolveWorld::ALL);
@@ -93,7 +93,6 @@ fn solve_check_lists_labeled_candidates() {
         ]),
         EXIT_OK
     );
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]

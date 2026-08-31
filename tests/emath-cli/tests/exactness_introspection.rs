@@ -401,7 +401,7 @@ fn agent_plan_json_goals_are_kind_as_str_objects() {
 #[test]
 fn freeze_refuses_claimed_exact_hole() {
     emath_syntax::install_source_parser();
-    let path = repo_file("tests/invalid/v9_06_2rdq_6.emath");
+    let path = repo_file("tests/invalid/exactness_introspection.emath");
     assert_eq!(run(&["freeze".into(), path]), EXIT_REFUSED);
 }
 
