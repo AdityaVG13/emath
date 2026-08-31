@@ -1,0 +1,14 @@
+# First ten minutes: the three beginner moves in one
+# file — plot, solve, evaluate. Each is admitted without hidden defaults:
+# the function call is spelled `sin(x)` (bare `sin` refuses, see
+# tests/invalid/first_ten_minutes.emath), the solve world is declared
+# (`over Real`) with the other candidates labeled by intent-completion, and
+# the example binding feeds evaluation without a silent input default.
+#
+#   emath check tests/fixtures/language/intro/first-ten-minutes.emath
+#   emath expand tests/fixtures/language/intro/first-ten-minutes.emath
+#   emath exactness tests/fixtures/language/intro/first-ten-minutes.emath
+plot sin(x)
+solve x^2 = 2 over Real
+y = x^2
+example x = 2

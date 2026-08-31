@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 emath-artifact = { workspace = true }
 emath-core = { workspace = true }
 emath-exec-ir = { workspace = true }
+emath-genesis = { workspace = true }
 emath-ir = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-sema = { workspace = true }

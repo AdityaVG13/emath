@@ -1,0 +1,15 @@
+[package]
+name = "emath-registry-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+emath-registry = { workspace = true }
+emath-artifact = { workspace = true }
+emath-test-harness = { workspace = true }
+
+[lints]
+workspace = true

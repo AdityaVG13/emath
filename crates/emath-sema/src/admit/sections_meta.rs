@@ -7,7 +7,7 @@ use emath_core::tree::{CommandArgument, Expr, ExprKind, Section, StmtKind, Synta
 use emath_ir::evidence::{ClaimVerdict, EvidenceClaim};
 use emath_ir::goal::EvidenceLevel;
 use emath_ir::ids::{ExprId, TypeId};
-use emath_ir::{ExprNode, LawMetadata, Provenance, SliceAxis};
+use emath_ir::{EventDecl, ExprNode, LawMetadata, Provenance, SliceAxis, TransitionDecl};
 use emath_ir::{HostBinding, HostMethod, ImportEntry, ImportSelection, ModelResidual};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -16,6 +16,7 @@ use super::{
     Admitter, CheckResult, SemanticTrace, SiblingFunction, admit_declaration, confusable_fold,
 };
 use super::infer::infer_from_node;
+use super::equations::is_infer_marker;
 
 /// Offset all child ExprIds and TypeIds in one node from the admitter's
 /// local arena into the package's global index space.
@@ -28,6 +29,9 @@ fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
     };
     match node {
         ExprNode::Literal(_) | ExprNode::Variable(_) => {}
+        // A series data constant carries no expr ids to remap (04 §5.4
+        // slice 1): the pairs are inline f64s and the policy is text.
+        ExprNode::Series { .. } => {}
         ExprNode::Call { arguments, .. } => {
             for id in arguments {
                 remap_e(id);
@@ -77,6 +81,14 @@ fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
                 remap_e(id);
             }
         }
+        ExprNode::Set { elements, guards } => {
+            for id in elements {
+                remap_e(id);
+            }
+            for id in guards.iter_mut().flatten() {
+                remap_e(id);
+            }
+        }
         ExprNode::Matrix(rows) => {
             for row in rows.iter_mut() {
                 for id in row.iter_mut() {
@@ -102,6 +114,11 @@ fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
             remap_e(direction);
             remap_e(body);
         }
+        ExprNode::Apply { arguments, .. } => {
+            for id in arguments {
+                remap_e(id);
+            }
+        }
     }
 }
 
@@ -111,6 +128,8 @@ fn remap_ids(
     declaration: &mut emath_ir::Declaration,
     tests: &mut [emath_ir::constructor::TestCase],
     residuals: &mut [ModelResidual],
+    events: &mut [EventDecl],
+    transitions: &mut [TransitionDecl],
     expr_offset: u32,
     type_offset: u32,
 ) {
@@ -170,6 +189,19 @@ fn remap_ids(
     // Model residuals
     for residual in residuals.iter_mut() {
         remap_expr(&mut residual.expr);
+    }
+    // Hybrid event rules (r3-dynamical-03lh ch7): condition and action
+    // expressions live in the same expression arena.
+    for event in events.iter_mut() {
+        remap_expr(&mut event.condition);
+        remap_expr(&mut event.action.expr);
+    }
+    // Hybrid transition rules (r3-dynamical-03lh ch7): each action's
+    // expression lives in the same expression arena.
+    for transition in transitions.iter_mut() {
+        for action in &mut transition.actions {
+            remap_expr(&mut action.expr);
+        }
     }
 }
 
@@ -509,6 +541,9 @@ pub(super) fn admit_binding_provenance(
                     | "processing"
                     | "fit_id"
                     | "reason"
+                    // 04 §5.2 (emath-r3-observations-9ffu): declared digest
+                    // of the raw data file; re-hashed by --verify-data.
+                    | "sha256"
             ) {
                 admitter.error(
                     "E-SYN-152",
@@ -583,8 +618,14 @@ pub(super) fn admit_binding_provenance(
                     binding,
                     binding_section.source,
                 ))
-                .map(|(file, processing)| Provenance::InstrumentRun { file, processing }),
-                &["kind", "file", "processing"],
+                .map(
+                    |(file, processing)| Provenance::InstrumentRun {
+                        file,
+                        processing,
+                        sha256: values.get("sha256").cloned(),
+                    },
+                ),
+                &["kind", "file", "processing", "sha256"],
             ),
             "fitted" => (
                 required_provenance_value(
@@ -816,6 +857,7 @@ fn resolve_embedded_law_import(
                 package,
                 diagnostics,
                 trace: SemanticTrace::default(),
+                units_profiles: Vec::new(),
             });
         }
         return None;
@@ -832,12 +874,14 @@ fn resolve_embedded_law_import(
             package: emath_ir::SemanticPackage::new(),
             diagnostics,
             trace: SemanticTrace::default(),
+            units_profiles: Vec::new(),
         });
     };
     let (tree, parse_diagnostics) = parser.parse(
         package_source,
         source.file,
         &emath_core::limits::Limits::default(),
+        emath_core::Edition::Ed2026,
     );
     let mut result = check_tree(&tree);
     result.diagnostics.extend_from(&parse_diagnostics);
@@ -903,6 +947,8 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     // `admit_front_end` (which runs only for package/use/notation
     // items) would silently skip ordinary files.
     crate::recognition::admit_capability_gates(tree, &mut diagnostics);
+    let units_profiles: Vec<(String, String)> =
+        crate::recognition::admit_units_profiles(tree, &mut diagnostics);
 
     let has_declaration = tree
         .items
@@ -913,7 +959,15 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     // imports remain a Phase 2 refusal (E-PKG-050).
     let has_recognition_items = tree.items.iter().any(|item| match item {
         emath_core::tree::Item::Package { .. } | emath_core::tree::Item::Use { .. } => true,
-        emath_core::tree::Item::Declaration(decl) => decl.item_kind != "custom",
+        emath_core::tree::Item::Declaration(decl) => {
+            decl.item_kind != "custom"
+                || decl.as_kind.is_empty()
+                || decl.as_kind == "reaction_network"
+                || decl
+                    .body
+                    .iter()
+                    .any(|stmt| matches!(&stmt.kind, emath_core::tree::StmtKind::Section(section) if section.name == "world" || section.name == "artifact"))
+        }
         emath_core::tree::Item::Notation(_) => true,
     });
     let recognition = if has_recognition_items {
@@ -935,6 +989,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             package,
             diagnostics,
             trace,
+            units_profiles,
         };
     }
     let host_types = host_imported_types(&package.imports);
@@ -955,6 +1010,15 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         let mut params: Vec<(String, super::infer::Infer)> = Vec::new();
         let mut param_types_ok = true;
         let mut collect_param = |ty: &emath_core::tree::TypeExpr, name: &str| {
+            // Untyped inputs are the Infer marker: admission defaults them
+            // to Float64 (N-TYPE-001) without an error, so the sibling
+            // signature must mirror that default instead of routing the
+            // marker into `map_type` (which would emit a spurious
+            // E-TYPE-001 "unknown type `Infer`" no other pass reports).
+            if is_infer_marker(ty) {
+                params.push((name.to_string(), super::infer::Infer::F64));
+                return;
+            }
             match map_type(ty, &mut diagnostics, &host_types) {
                 Some(node) => params.push((name.to_string(), infer_from_node(&node))),
                 None => param_types_ok = false,
@@ -1075,6 +1139,11 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut declaration_id = 0_u32;
     let mut seen_declaration_names: BTreeSet<String> = BTreeSet::new();
     let mut seen_folded_declaration_names: BTreeMap<String, String> = BTreeMap::new();
+    // Declared capability cells' output-type text, keyed by canonical
+    // cell name, captured when a cell admits cleanly. This is the
+    // cell's OWN contract data for the generic capability-call path —
+    // never a guessed type.
+    let mut capability_output_types: BTreeMap<String, Option<String>> = BTreeMap::new();
     for item in &tree.items {
         let emath_core::tree::Item::Declaration(decl) = item else {
             continue;
@@ -1083,6 +1152,32 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             let imported_custom_kind =
                 decl.item_kind == "custom" && kind_defs.contains_key(&decl.as_kind);
             if decl.item_kind != "custom" || imported_custom_kind {
+                // A capability cell's declared output type is call-site
+                // data: capture it when the cell admits cleanly (a
+                // malformed cell records nothing, mirroring the
+                // capability arena's fail-closed rule).
+                let cell_admission = (decl.as_kind == "capability").then(|| {
+                    let canonical = match &package.package_path {
+                        Some(path) if !path.is_empty() => {
+                            format!("{}.{}", path.join("."), decl.name)
+                        }
+                        _ => decl.name.clone(),
+                    };
+                    let output = decl.body.iter().find_map(|stmt| match &stmt.kind {
+                        emath_core::tree::StmtKind::Section(section)
+                            if section.name == "outputs" =>
+                        {
+                            section.suite.statements.iter().find_map(|stmt| match &stmt.kind {
+                                emath_core::tree::StmtKind::FieldDecl { ty, .. } => {
+                                    Some(crate::recognition::type_text(ty))
+                                }
+                                _ => None,
+                            })
+                        }
+                        _ => None,
+                    });
+                    (diagnostics.errors().count(), canonical, output)
+                });
                 crate::recognition::admit_declaration(
                     decl,
                     kind_defs,
@@ -1090,6 +1185,11 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
                     &mut diagnostics,
                     &mut trace,
                 );
+                if let Some((errors_before, canonical, output)) = cell_admission {
+                    if diagnostics.errors().count() == errors_before {
+                        capability_output_types.insert(canonical, output);
+                    }
+                }
                 continue;
             }
         }
@@ -1158,6 +1258,43 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
+        // Bare `emath custom Name:` with a `world constructor` body (spec
+        // 09 / `emath-nko`) routes through recognition: bounded strategies,
+        // protect, portfolio output; never lowered into strict meaning.
+        if decl.as_kind.is_empty() && decl.body.iter().any(|stmt| {
+            matches!(
+                &stmt.kind,
+                emath_core::tree::StmtKind::Section(section)
+                    if section.name == "world" || section.name == "artifact"
+            )
+        }) {
+            crate::recognition::admit_custom_world(
+                decl,
+                &mut package,
+                &mut diagnostics,
+                &mut trace,
+            );
+            continue;
+        }
+        // `emath reaction_network Name:` (04 section 3.1): species closure
+        // + static element balance, admitted at the recognition seam like
+        // `custom world`; never lowered into strict meaning.
+        if decl.as_kind == "reaction_network" {
+            crate::recognition::admit_reaction_network(decl, &mut diagnostics);
+            continue;
+        }
+        // `emath field_pack Name:` (v9-06-2rdq.16): pack exports are
+        // artifact data admitted at the recognition seam — never lowered
+        // into strict meaning, never a silent custom fallthrough.
+        if decl.as_kind == "field_pack" {
+            crate::recognition::admit_field_pack(
+                decl,
+                &mut package,
+                &mut diagnostics,
+                &mut trace,
+            );
+            continue;
+        }
         if !matches!(
             decl.as_kind.as_str(),
             "function" | "policy" | "model" | "law"
@@ -1167,15 +1304,73 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             } else {
                 decl.as_kind.as_str()
             };
-            diagnostics.error(
-                "E-KIND-100",
-                format!(
-                    "declaration type `{type_name}` is outside the Phase 1 subset (function, policy, model, law)"
-                ),
-                decl.head_source,
-            );
-            continue;
+            // 02yn (custom-kind execution story): a kind DEFINITION
+            // registered earlier in this source is a real kind; an
+            // APPLICATION of it gets an EXPLICIT refusal story naming
+            // the kind-execution follow-up — never a generic whitelist
+            // error that looks like a typo (the registry validated the
+            // definition; what is missing is the run path: kind-level
+            // goal semantics or codegen for custom kinds).
+            let kind_defined = decl
+                .as_kind
+                .is_empty()
+                .then_some(())
+                .is_none()
+                && package.declarations.iter().any(|existing| {
+                    existing.kind.0 == "kind" && existing.name.0 == decl.as_kind
+                });
+            if !kind_defined {
+                diagnostics.error(
+                    "E-KIND-100",
+                    format!(
+                        "declaration type `{type_name}` is outside the Phase 1 subset (function, policy, model, law)"
+                    ),
+                    decl.head_source,
+                );
+                continue;
+            }
         }
+        // The generic declared/mounted capability surface: every cell in
+        // the package's capability arena is callable by name — the
+        // canonical dotted form, plus the bare declaration name when it
+        // is unambiguous across cells. A call resolving here lowers to
+        // `ExprNode::Apply` (the emitter's ApplyCapability path); no
+        // builtin name is added and unknown names still refuse typed.
+        let mut bare_cell_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for capability in &package.capabilities {
+            let bare = capability
+                .name
+                .0
+                .rsplit('.')
+                .next()
+                .unwrap_or("")
+                .to_string();
+            *bare_cell_counts.entry(bare).or_insert(0) += 1;
+        }
+        let capability_cells: Vec<(String, u32, Option<String>)> = package
+            .capabilities
+            .iter()
+            .enumerate()
+            .flat_map(|(index, capability)| {
+                let index = u32::try_from(index).unwrap_or(u32::MAX);
+                let output = capability_output_types
+                    .get(&capability.name.0)
+                    .cloned()
+                    .flatten();
+                let bare = capability
+                    .name
+                    .0
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                let mut keys = vec![(capability.name.0.clone(), index, output.clone())];
+                if bare != capability.name.0 && bare_cell_counts.get(&bare).copied() == Some(1) {
+                    keys.push((bare, index, output));
+                }
+                keys
+            })
+            .collect();
         let (
             declaration,
             mut tests,
@@ -1188,7 +1383,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             mut transitions,
             law_metadata,
             binding_provenance,
-        ) = admit_declaration(decl, &host_types, &[], &sibling_functions);
+        ) = admit_declaration(decl, &host_types, &capability_cells, &sibling_functions);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
         let Some(mut declaration) = declaration else {
@@ -1210,11 +1405,19 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             &mut declaration,
             &mut tests,
             &mut residuals,
+            &mut events,
+            &mut transitions,
             expr_offset,
             type_offset,
         );
         if !residuals.is_empty() {
             package.residuals.insert(declaration.id, residuals);
+        }
+        if !events.is_empty() {
+            package.events.insert(declaration.id, events);
+        }
+        if !transitions.is_empty() {
+            package.transitions.insert(declaration.id, transitions);
         }
         if let Some(metadata) = law_metadata {
             package.law_metadata.insert(declaration.id, metadata);
@@ -1244,5 +1447,6 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         package,
         diagnostics,
         trace,
+        units_profiles,
     }
 }

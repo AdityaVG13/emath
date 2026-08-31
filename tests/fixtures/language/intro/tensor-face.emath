@@ -1,0 +1,12 @@
+# Rank-3 tensor and a slice. `t[0, :, :]` is the first 2×2 face.
+#
+# Constant computation: no free variables, so no `inputs:`/`outputs:`
+# contract (E-SEC-130 refuses outputs without a declared input source).
+emath function TensorFace:
+    definitions:
+        t = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
+        face = t[0, :, :]
+
+    tests:
+        example <first_face>:
+            expect face == [[1.0, 2.0], [3.0, 4.0]]

@@ -37,6 +37,23 @@ fn check(source: &str) -> CheckResult {
     session.check_owned("aj8d-surface.emath", source)
 }
 
+
+/// Input bindings for a probe declaration: every declared input binds to
+/// `Int 0`. E-SEC-130 requires a named I/O surface, and the evaluator
+/// requires a value for every declared input even when no definition
+/// reads it; the probe fixtures use unused `n: Int` inputs, so this is
+/// total for every probe in this file.
+fn probe_inputs(
+    package: &emath_ir::SemanticPackage,
+    declaration_index: usize,
+) -> BTreeMap<String, Value> {
+    package.declarations[declaration_index]
+        .inputs
+        .iter()
+        .map(|field| (field.name.clone(), Value::I64(0)))
+        .collect()
+}
+
 fn errors_of(result: &CheckResult) -> Vec<String> {
     result
         .diagnostics
@@ -141,7 +158,7 @@ fn aj8d_graph_declaration_admits() {
     // A conforming definition removes the unrelated mandatory-definitions
     // error (E-KIND-011) so the ONLY gate being tested is type admission.
     let result = check(
-        "emath function graph_probe:\n    outputs:\n        g: Graph\n    definitions:\n        g = graph { 0, 1; 0 --> 1 }\n",
+        "emath function graph_probe:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n    definitions:\n        g = graph { 0, 1; 0 --> 1 }\n",
     );
     let errors = errors_of(&result);
     assert!(
@@ -158,7 +175,7 @@ fn aj8d_field_declaration_admits() {
     // output needs a conforming definition (E-NAME-023), so the ONLY gate
     // under test is type admission.
     let result = check(
-        "emath function field_probe:\n    outputs:\n        f: Field<7>\n    definitions:\n        f = 7\n",
+        "emath function field_probe:\n    inputs:\n        n: Int\n\n    outputs:\n        f: Field<7>\n    definitions:\n        f = 7\n",
     );
     let errors = errors_of(&result);
     assert!(
@@ -382,7 +399,7 @@ fn aj8d_graph_maps_to_matrix_alias() {
 /// output field, and reachability evaluates through it.
 #[test]
 fn aj8d_graph_field_feeds_reachability_op() {
-    let source = "emath function gp:\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n";
+    let source = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n";
     let result = check(source);
     let errors = errors_of(&result);
     assert!(
@@ -392,7 +409,7 @@ fn aj8d_graph_field_feeds_reachability_op() {
     let values = eval_definitions_values(
         &result.package,
         &result.package.declarations[0],
-        &BTreeMap::new(),
+        &probe_inputs(&result.package, 0),
         &BTreeMap::new(),
     )
     .unwrap_or_else(|fault| panic!("Graph field must evaluate through reachability: {fault}"));
@@ -413,7 +430,7 @@ fn aj8d_graph_field_feeds_reachability_op() {
 /// missing/wrong out_degrees admission yields anything else.
 #[test]
 fn aj8d_graph_field_drives_out_degrees() {
-    let source = "emath function gp:\n    outputs:\n        g: Graph\n        d: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        d = out_degrees(g)\n";
+    let source = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        d: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        d = out_degrees(g)\n";
     let result = check(source);
     let errors = errors_of(&result);
     assert!(
@@ -423,7 +440,7 @@ fn aj8d_graph_field_drives_out_degrees() {
     let values = eval_definitions_values(
         &result.package,
         &result.package.declarations[0],
-        &BTreeMap::new(),
+        &probe_inputs(&result.package, 0),
         &BTreeMap::new(),
     )
     .unwrap_or_else(|fault| panic!("Graph field must evaluate out_degrees: {fault}"));
@@ -443,7 +460,7 @@ fn aj8d_graph_field_drives_out_degrees() {
 /// Graph are the same carrier node and interchange freely in both directions.
 #[test]
 fn aj8d_matrix_field_interchanges_with_graph_value() {
-    let source = "emath function mp:\n    outputs:\n        m: Matrix<Float64>\n        r: Vector<Float64>\n        d: Vector<Float64>\n    definitions:\n        m = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(m, 0)\n        d = out_degrees(m)\n";
+    let source = "emath function mp:\n    inputs:\n        n: Int\n\n    outputs:\n        m: Matrix<Float64>\n        r: Vector<Float64>\n        d: Vector<Float64>\n    definitions:\n        m = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(m, 0)\n        d = out_degrees(m)\n";
     let result = check(source);
     let errors = errors_of(&result);
     assert!(
@@ -463,7 +480,7 @@ fn aj8d_matrix_field_interchanges_with_graph_value() {
     let values = eval_definitions_values(
         &result.package,
         &result.package.declarations[0],
-        &BTreeMap::new(),
+        &probe_inputs(&result.package, 0),
         &BTreeMap::new(),
     )
     .unwrap_or_else(|fault| panic!("Matrix field must evaluate both graph ops: {fault}"));
@@ -801,7 +818,7 @@ fn reachability_mask(source: &str) -> Vec<f64> {
     let values = eval_definitions_values(
         &result.package,
         &result.package.declarations[0],
-        &BTreeMap::new(),
+        &probe_inputs(&result.package, 0),
         &BTreeMap::new(),
     )
     .unwrap_or_else(|fault| panic!("relabel probe must evaluate: {fault}"));
@@ -824,7 +841,7 @@ fn permute_mask(p: &[usize], mask: &[f64]) -> Vec<f64> {
 fn aj8d_meta_graph_relabel_reachability_equivariance() {
     // Original: edges 0->1, 1->3, 2->3. Vertex 2 is NOT reachable from 0,
     // so the mask is not all-ones and relabeling the endpoints changes it.
-    let original = "emath function gp:\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n";
+    let original = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n";
     let mask_orig = reachability_mask(original);
     assert_eq!(
         mask_orig,
@@ -835,7 +852,7 @@ fn aj8d_meta_graph_relabel_reachability_equivariance() {
     // Rotation P (old->new): 0->1, 1->2, 2->3, 3->0. Relabel the literal
     // (permute endpoints of each edge) and the source P(src)=P(0)=1.
     let p: &[usize] = &[1, 2, 3, 0];
-    let relabeled = "emath function gp:\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 1 --> 2, 2 --> 0, 3 --> 0 }\n        r = reachability(g, 1)\n";
+    let relabeled = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 1 --> 2, 2 --> 0, 3 --> 0 }\n        r = reachability(g, 1)\n";
     let mask_perm = reachability_mask(relabeled);
 
     // The metamorphic law: reachability(A', P(src)) == P ⊳ reachability(A, src).
@@ -873,7 +890,7 @@ fn text_values(source: &str) -> BTreeMap<String, Value> {
     eval_definitions_values(
         &result.package,
         &result.package.declarations[0],
-        &BTreeMap::new(),
+        &probe_inputs(&result.package, 0),
         &BTreeMap::new(),
     )
     .unwrap_or_else(|fault| panic!("text surface must evaluate: {fault}"))
@@ -944,7 +961,7 @@ fn aj8d_text_field_mod_inv() {
 #[test]
 fn aj8d_text_option_int_output_carrier() {
     let values = text_values(
-        "emath function oi:\n    outputs:\n        o: Option<Int>\n    definitions:\n        o = option_some(5)\n",
+        "emath function oi:\n    inputs:\n        n: Int\n\n    outputs:\n        o: Option<Int>\n    definitions:\n        o = option_some(5)\n",
     );
     // Payload may materialize as i64 or f64 depending on literal lowering;
     // the contract is that the Option carrier is present and holds 5.
@@ -1385,7 +1402,7 @@ fn aj8d_text_int_rem_misuse_refusals() {
 #[test]
 fn aj8d_text_field_prime_exactness_conformance() {
     // Row 1 — float definition into Field<7> output: typed refusal.
-    let src = "emath function f:\n    outputs:\n        c: Field<7>\n    definitions:\n        c = 1.5\n";
+    let src = "emath function f:\n    inputs:\n        n: Int\n\n    outputs:\n        c: Field<7>\n    definitions:\n        c = 1.5\n";
     let errs = errors_of(&check(src));
     assert!(
         errs.iter().any(|e| e.contains("E-TYPE-012") && e.contains("exact integer field element")),
@@ -1393,7 +1410,7 @@ fn aj8d_text_field_prime_exactness_conformance() {
     );
 
     // Row 2 — int_rem composition into Field<7> output: ADMITS, exact 0.
-    let src = "emath function f:\n    outputs:\n        c: Field<7>\n    definitions:\n        c = int_rem(3 + 4, 7)\n";
+    let src = "emath function f:\n    inputs:\n        n: Int\n\n    outputs:\n        c: Field<7>\n    definitions:\n        c = int_rem(3 + 4, 7)\n";
     let r = check(src);
     assert!(
         errors_of(&r).is_empty(),
@@ -1403,14 +1420,14 @@ fn aj8d_text_field_prime_exactness_conformance() {
     let values = eval_definitions_values(
         &r.package,
         &r.package.declarations[0],
-        &BTreeMap::new(),
+        &probe_inputs(&r.package, 0),
         &BTreeMap::new(),
     )
     .expect("Field<7> int_rem definition must evaluate");
     assert_eq!(values.get("c"), Some(&Value::I64(0)), "int_rem(3+4,7) = 0");
 
     // Row 3 — integer literal into Field<7> output: ADMITS (valid element).
-    let src = "emath function f:\n    outputs:\n        c: Field<7>\n    definitions:\n        c = 3\n";
+    let src = "emath function f:\n    inputs:\n        n: Int\n\n    outputs:\n        c: Field<7>\n    definitions:\n        c = 3\n";
     let r = check(src);
     assert!(
         errors_of(&r).is_empty(),

@@ -1,0 +1,12 @@
+# A method card: one algorithm proposal plus a standing falsifier.
+# `method` is an imported kind (`use std.kinds.method`), not a lexer
+# keyword. Methods are never required on ordinary files, and a card's
+# authority stays proposal-only (E1, not-run); it cannot self-grant
+# `certified`.
+use std.kinds.method
+
+emath method RungeKutta4:
+    algorithm:
+        kind: "integrator"
+    falsifier:
+        condition: "step-doubling residual exceeds the declared tolerance"

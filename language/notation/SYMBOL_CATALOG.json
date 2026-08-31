@@ -1,0 +1,40 @@
+{
+  "schema": "emath.symbol-catalog",
+  "schema_version": "v1",
+  "entries": 3,
+  "catalog": [
+{
+  "glyph": "⊕",
+  "fixity": "infixl",
+  "precedence": 40,
+  "core_path": "core::math::pow",
+  "aliases": ["pw"],
+  "pack": "tst.notation_ops",
+  "status": "proposed",
+  "authority": "local",
+  "proposed_by": "tests/fixtures/language/intro/notation-ops.emath"
+},
+{
+  "glyph": "√",
+  "fixity": "prefix",
+  "precedence": 80,
+  "core_path": "core::math::sqrt",
+  "aliases": [],
+  "pack": "tst.notation_ops",
+  "status": "proposed",
+  "authority": "local",
+  "proposed_by": "tests/fixtures/language/intro/notation-ops.emath"
+},
+{
+  "glyph": "inv",
+  "fixity": "postfix",
+  "precedence": 90,
+  "core_path": "core::math::recip",
+  "aliases": [],
+  "pack": "tst.notation_ops",
+  "status": "proposed",
+  "authority": "local",
+  "proposed_by": "tests/fixtures/language/intro/notation-ops.emath"
+}
+  ]
+}

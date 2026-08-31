@@ -1,0 +1,17 @@
+#  Graph literals (B23, emath-r3-graphs-ybob): `graph { <nodes> ; <edges> }`
+#  is a contextual literal that desugars at parse time to the tuple
+#  ([nodes…], [edges…]) — a tuple, not a list, so lowering never
+#  matrix-interprets it — with each edge the row [from, to, weight,
+#  directed]. Edge spellings between the `;` and the closing brace:
+#  `a --> b` (directed, weight 1.0), `a -[w]-> b` (weighted directed),
+#  `a - b` (undirected), `a -[w]- b` (weighted undirected). Outside a
+#  graph literal `x--y` is untouched arithmetic (G4). Graph values lower
+#  to weighted adjacency matrices, so existing graph kernels can consume
+#  them without a second carrier.
+emath function network:
+    definitions:
+        net = graph { 1, 2, 3; 1 --> 2, 2 -[0.5]-> 3, 1 -[2.0]- 3 }
+        nodes_only = graph { 7, 8 }
+        reachable = reachability(net, 0)
+        traversal = bfs_order(net, 0)
+        distances = shortest_distances(net, 0)

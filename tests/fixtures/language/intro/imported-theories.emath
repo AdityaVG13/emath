@@ -1,0 +1,28 @@
+# Imported categorical kinds with finite, exhaustively checked witnesses.
+use std.kinds.theory
+use std.kinds.model
+use std.kinds.morphism
+
+emath theory Monoid:
+    structure:
+        carrier: "finite"
+        operation: "binary"
+        identity: 0
+    laws:
+        "associative"
+        "identity"
+
+emath model Mod17:
+    finite:
+        theory: "Monoid"
+        modulus: 17
+        left_coefficient: 1
+        right_coefficient: 1
+        identity: 0
+
+# Scaling by two is repeated monoid composition, the finite power algorithm.
+emath morphism Power:
+    mapping:
+        source: "Mod17"
+        target: "Mod17"
+        scale: 2
