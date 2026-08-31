@@ -3,7 +3,7 @@
 use super::genesis_cmd::{self, Analysis};
 use super::{CliExit, EXIT_OK, EXIT_REFUSED};
 use emath_artifact::JsonWriter;
-use emath_portfolio::{
+use crate::portfolio::{
     evaluate, refuse_disqualified, Authority, InterpretationPolicy, LockEntry, LockError, LockKey,
     MeaningLock, MetricAxis, MetricPolarity, SelectionMethod, WorldCandidate,
     DEFAULT_PORTFOLIO_CAP, PROVENANCE_USER_LOCKED, WHOLE_TERM_HOLE,

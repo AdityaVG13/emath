@@ -708,7 +708,6 @@ version = "0.1.0"
 dependencies = [
  "emath-cli",
  "emath-genesis",
- "emath-portfolio",
  "emath-world-ir",
 ]
 
@@ -784,7 +783,6 @@ dependencies = [
  "emath-ir",
  "emath-lab-core",
  "emath-plan",
- "emath-portfolio",
  "emath-provider-api",
  "emath-rust-backend",
  "emath-sema",
@@ -803,7 +801,6 @@ dependencies = [
  "emath-core",
  "emath-lab-core",
  "emath-plan",
- "emath-portfolio",
  "emath-sema",
  "emath-syntax",
  "emath-world-ir",
@@ -947,7 +944,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-portfolio",
  "emath-term",
  "emath-world-ir",
 ]
@@ -1007,18 +1003,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-portfolio"
-version = "0.1.0"
-dependencies = [
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-portfolio-tests"
 version = "0.1.0"
 dependencies = [
- "emath-portfolio",
+ "emath-cli",
  "emath-term",
  "emath-world-ir",
 ]
@@ -3005,7 +2993,6 @@ dependencies = [
  "emath-core",
  "emath-genesis",
  "emath-lab-core",
- "emath-portfolio",
  "emath-sema",
  "emath-store",
  "emath-syntax",

@@ -1,7 +1,7 @@
 //! genesis_cmd tests migrated from the in-crate `#[cfg(test)]` module.
 
 use emath_cli::meaning_cmd::ResolvedLock;
-use emath_portfolio::{CollapsePolicy, InterpretationPolicy};
+use emath_cli::portfolio::{CollapsePolicy, InterpretationPolicy};
 use emath_cli::genesis_cmd::{answer_policy, confined_artifact_id};
 
 fn lock() -> ResolvedLock {

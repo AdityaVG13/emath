@@ -4,7 +4,7 @@
 
 use emath_cli::agent_protocol::proposal::{AgentProposal, ProposalKind};
 use emath_cli::agent_protocol::{ChallengeLoop, ChallengeOutcome, CheckerSuite};
-use emath_portfolio::{Authority, InterpretationPortfolio};
+use emath_cli::portfolio::{Authority, InterpretationPortfolio};
 use emath_genesis::tuning::campaign::{
     CandidateMeasurement, HostCampaign, HostMetric, HostObjectives, ResourceEnvelope,
 };

@@ -13,7 +13,7 @@ use emath_genesis::{
     ModularAlienWorld, OnePointWorld, SeededCsaWorld, VmBudget, VmOutcome, CSA_MEANING_CLAIM,
     CSA_SCHEMA, CSA_SCHEMA_VERSION, VM_SCHEMA, VM_SCHEMA_VERSION,
 };
-use emath_portfolio::{
+use crate::portfolio::{
     apply_portfolio_cap, evaluate, Authority, CollapsePolicy, InterpretationCandidate,
     InterpretationPolicy, InterpretationPortfolio, MetricAxis, MetricPolarity, PortfolioError,
     ScoreVector, PROVENANCE_USER_LOCKED,

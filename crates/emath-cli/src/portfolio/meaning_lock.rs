@@ -3,7 +3,7 @@
 //!
 //! Locks are local-side (per-user, per-project). They are not baked into
 //! shared source. The locked identity is the same world fingerprint used
-//! by G7 [`crate::WorldCandidate::world_fingerprint`] (`WorldIr::identity`).
+//! by G7 [`crate::portfolio::WorldCandidate::world_fingerprint`] (`WorldIr::identity`).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -14,10 +14,10 @@ use std::path::{Path, PathBuf};
 
 use emath_world_ir::fnv1a64;
 
-use crate::interpretation::{
+use crate::portfolio::interpretation::{
     evaluate, InterpretationPolicy, LedgerEntry, MetricAxis, PortfolioError, PortfolioReceipt,
 };
-use crate::record::WorldCandidate;
+use crate::portfolio::record::WorldCandidate;
 
 /// Durable schema id (registry name `emath.meaning-lock`).
 pub const LOCK_SCHEMA: &str = "emath.meaning-lock";
@@ -560,9 +560,9 @@ pub fn refuse_disqualified(fingerprint: u64, receipt: &PortfolioReceipt) -> Resu
         .find(|entry| entry.fingerprint == fingerprint)
     {
         match &entry.reason {
-            crate::DisqualificationReason::Dominated { .. } => {}
-            crate::DisqualificationReason::FailedGuard { .. }
-            | crate::DisqualificationReason::Refused { .. } => {
+            crate::portfolio::DisqualificationReason::Dominated { .. } => {}
+            crate::portfolio::DisqualificationReason::FailedGuard { .. }
+            | crate::portfolio::DisqualificationReason::Refused { .. } => {
                 return Err(LockError::Disqualified {
                     fingerprint,
                     ledger: entry.clone(),

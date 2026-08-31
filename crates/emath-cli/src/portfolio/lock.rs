@@ -3,7 +3,7 @@
 
 use emath_world_ir::fnv1a64;
 
-use crate::record::CandidateRecord;
+use crate::portfolio::record::CandidateRecord;
 
 /// Everything that pins a portfolio generation run.
 #[derive(Debug, Clone, PartialEq, Eq)]

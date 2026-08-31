@@ -18,7 +18,6 @@ emath-core = { path = "../crates/emath-core" }
 emath-genesis.workspace = true
 emath-lab-core.workspace = true
 emath-cli.workspace = true
-emath-portfolio.workspace = true
 emath-sema = { path = "../crates/emath-sema" }
 emath-store = { path = "../crates/emath-store" }
 emath-syntax = { path = "../crates/emath-syntax" }

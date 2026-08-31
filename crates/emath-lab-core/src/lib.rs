@@ -230,4 +230,43 @@ pub mod law_check;
 
 pub mod holes;
 
+/// Meaning authority for a candidate result.
+///
+/// Lattice (never escalate via ranking): Structural < Tested < Certified < Proved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Authority {
+    /// Structural preservation only.
+    Structural,
+    /// Checked against examples or properties.
+    Tested,
+    /// Bounded or certified by an admitted checker.
+    Certified,
+    /// Formally proved in a declared system.
+    Proved,
+}
+
+impl Authority {
+    /// Stable wire name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Structural => "structural",
+            Self::Tested => "tested",
+            Self::Certified => "certified",
+            Self::Proved => "proved",
+        }
+    }
+
+    /// Lattice rank: Structural = 0 … Proved = 3.
+    #[must_use]
+    pub const fn lattice_rank(self) -> u8 {
+        match self {
+            Self::Structural => 0,
+            Self::Tested => 1,
+            Self::Certified => 2,
+            Self::Proved => 3,
+        }
+    }
+}
+
 pub mod search;
