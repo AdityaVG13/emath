@@ -1,7 +1,7 @@
 //! Tests for pdf.rs, migrated out of production code.
 //! All items under test are public crate surface.
 
-use emath_layout::{PdfPageFixture, PositionedGlyph, extract, reference_fixture, SpatialRelation};
+use emath_cli::layout::{PdfPageFixture, PositionedGlyph, extract, reference_fixture, SpatialRelation};
 
     #[test]
     fn pdf_reference_fixture_graph_id_deterministic() {

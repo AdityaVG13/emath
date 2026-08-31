@@ -1,8 +1,8 @@
 //! Tests for latex.rs, migrated out of production code.
 //! All items under test are public crate surface.
 
-use emath_layout::{parse_latex, to_binder_term};
-use emath_layout::LayoutError;
+use emath_cli::layout::{parse_latex, to_binder_term};
+use emath_cli::layout::LayoutError;
 use emath_genesis::{BinderBudget, BinderDomain, BinderFamily, BinderKind, BinderTerm};
 use emath_term::SymbolId;
 

@@ -981,20 +981,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-layout"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-genesis",
- "emath-term",
-]
-
-[[package]]
 name = "emath-layout-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-cli",
  "emath-genesis",
- "emath-layout",
  "emath-term",
  "emath-test-harness",
 ]
@@ -3021,10 +3012,10 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "emath-cli",
  "emath-core",
  "emath-genesis",
  "emath-lab-core",
- "emath-layout",
  "emath-portfolio",
  "emath-sema",
  "emath-store",

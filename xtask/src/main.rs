@@ -22,7 +22,7 @@ use emath_genesis::{
     ScopedBinder, BINDER_SCHEMA, BINDER_VERSION,
 };
 use emath_lab_core::holes::{impossible_identity_laws, synthesize_tables, SynthesisLaw};
-use emath_layout::{
+use emath_cli::layout::{
     extract, parse_latex, reference_fixture, to_binder_term, LayoutError, PdfPageFixture,
     PositionedGlyph, LAYOUT_SCHEMA, LAYOUT_VERSION,
 };
@@ -810,7 +810,7 @@ fn demo_math_layout() -> u8 {
 /// deterministic machine-readable receipt with a seeded tamper control.
 fn run_demo_math_layout(work: &Path) -> Result<(), String> {
     std::fs::create_dir_all(work).map_err(|error| format!("create work dir: {error}"))?;
-    emath_layout::check_version(LAYOUT_VERSION)
+    emath_cli::layout::check_version(LAYOUT_VERSION)
         .map_err(|error| format!("layout version handshake refused: {error:?}"))?;
 
     let latex_source = r"Let $\sum_{i=1}^{3} i$ be finite.";
@@ -858,7 +858,7 @@ fn run_demo_math_layout(work: &Path) -> Result<(), String> {
     let supers = pdf_graph
         .edges()
         .iter()
-        .filter(|edge| matches!(edge.relation, emath_layout::SpatialRelation::SuperscriptOf))
+        .filter(|edge| matches!(edge.relation, emath_cli::layout::SpatialRelation::SuperscriptOf))
         .count();
     rows.push(format!(
         "pdf|reference|graph={:016x}|regions={}|supers={supers}",

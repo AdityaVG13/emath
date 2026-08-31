@@ -3,7 +3,7 @@
 use emath_genesis::{BinderDomain, BinderFamily, BinderKind, BinderTerm, ScopedBinder};
 use emath_term::{SymbolId, Term, VariableId};
 
-use crate::graph::{
+use crate::layout::graph::{
     GraphBuilder, LayoutContent, LayoutError, MathLayoutGraph, NodeId, SpatialRelation,
 };
 
