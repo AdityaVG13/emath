@@ -22,7 +22,6 @@ emath-genesis.workspace = true
 emath-core.workspace = true
 asupersync = { workspace = true, optional = true, features = ["test-internals"] }
 emath-adapter-rumoca = { workspace = true }
-emath-agent-protocol = { workspace = true }
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-lab-core = { workspace = true }

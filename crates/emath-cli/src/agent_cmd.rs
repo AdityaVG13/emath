@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use emath_agent_protocol::{
+use crate::agent_protocol::{
     AgentProposal, ChallengeLoop, ChallengeOutcome, CheckerSuite, ProposalKind,
 };
 use emath_artifact::JsonWriter;

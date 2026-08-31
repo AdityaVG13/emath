@@ -11,7 +11,7 @@
 use emath_portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
 use emath_world_ir::{WorldId, fnv1a64};
 
-use crate::proposal::AgentProposal;
+use crate::agent_protocol::proposal::AgentProposal;
 
 /// One deterministic check over a proposal.
 #[derive(Debug, Clone, Copy)]

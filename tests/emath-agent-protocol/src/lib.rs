@@ -1,1 +1,1 @@
-//! Integration test crate for emath-agent-protocol.
+//! Integration test crate for emath-cli's `agent_protocol` module.

@@ -703,20 +703,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-agent-protocol"
-version = "0.1.0"
-dependencies = [
- "emath-genesis",
- "emath-portfolio",
- "emath-term",
- "emath-world-ir",
-]
-
-[[package]]
 name = "emath-agent-protocol-tests"
 version = "0.1.0"
 dependencies = [
- "emath-agent-protocol",
+ "emath-cli",
  "emath-genesis",
  "emath-portfolio",
  "emath-world-ir",
@@ -784,7 +774,6 @@ version = "0.1.0"
 dependencies = [
  "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
  "emath-adapter-rumoca",
- "emath-agent-protocol",
  "emath-artifact",
  "emath-build",
  "emath-core",
