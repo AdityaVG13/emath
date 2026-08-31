@@ -19,7 +19,7 @@ use emath_evidence::{
 };
 use emath_ir::package::SemanticPackage;
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ExprNode, Literal, TypeNode};
-use emath_plugin_sdk::{PluginDescriptor, SandboxPolicy, Trust, admit, execute};
+use emath_provider_api::plugin_sdk::{PluginDescriptor, SandboxPolicy, Trust, admit, execute};
 use emath_provider_api::{
     CapabilitySpec, CapabilityTable, ConstellationProvider, MaturityLevel, ProviderIsolation,
     ProviderLock, ProviderRegistry, RegistryConfig, RepresentationSpec, default_constellation,

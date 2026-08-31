@@ -1162,13 +1162,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-plugin-sdk"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
 name = "emath-portfolio"
 version = "0.1.0"
 dependencies = [
@@ -1386,7 +1379,6 @@ dependencies = [
  "emath-core",
  "emath-evidence",
  "emath-ir",
- "emath-plugin-sdk",
  "emath-provider-api",
 ]
 
