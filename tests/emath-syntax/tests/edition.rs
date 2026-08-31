@@ -1,5 +1,6 @@
 //! edition tests migrated from the in-crate `#[cfg(test)]` module.
 
+use emath_core::{DeprecationStage, Edition};
 use emath_syntax::edition::*;
 
 #[test]
