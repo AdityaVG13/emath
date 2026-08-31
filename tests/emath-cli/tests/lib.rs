@@ -79,15 +79,16 @@ fn read_side_json_and_triage_help_exit_ok() {
 // were exit-code-only smoke; the tests below parse the real stdout and
 // pin the schema id + required keys + non-empty rows, so a run that
 // prints `{}` (or drops the schema id) with exit 0 FAILS here.
-// End-to-end: the binary is spawned like observations_verify does, so
-// the assertions cover what `run` actually prints.
+// End-to-end: the built binary is execed directly (see `common`), so
+// the assertions cover what the CLI actually prints.
+
+mod common;
 
 fn json_output(line: &str) -> (emath_artifact::JsonValue, CliExit, String) {
-    let output = Command::new(env!("CARGO"))
-        .args(["run", "-q", "-p", "emath-cli", "--"])
+    let output = Command::new(common::emath_bin())
         .args(line.split_whitespace().collect::<Vec<_>>())
         .output()
-        .expect("run emath via cargo");
+        .expect("run emath binary");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let code = match output.status.code() {
         Some(0) => EXIT_OK,

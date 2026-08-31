@@ -15,26 +15,14 @@
 //! - replay is byte-identical: same input = same receipt bytes.
 
 use std::path::PathBuf;
-use std::process::Command;
+
+mod common;
+use common::cli;
 
 fn repo_file(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(rel)
-}
-
-fn cli(args: &[&str]) -> (String, i32) {
-    let output = Command::new(env!("CARGO"))
-        .args(["run", "-q", "-p", "emath-cli", "--"])
-        .args(args)
-        .output()
-        .expect("run emath via cargo");
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
-    (text, output.status.code().unwrap_or(-1))
 }
 
 fn scratch_dir(name: &str) -> PathBuf {
