@@ -5,7 +5,6 @@ edition = "2024"
 publish = false
 
 [dependencies]
-emath-law-check = { path = "../../crates/emath-law-check" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-term = { path = "../../crates/emath-term" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }

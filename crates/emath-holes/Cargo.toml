@@ -10,7 +10,7 @@ description = "Meaning holes and finite synthesis: hole graph, table synthesis, 
 [dependencies]
 emath-term = { path = "../emath-term" }
 emath-world-ir = { path = "../emath-world-ir" }
-emath-law-check = { path = "../emath-law-check" }
+emath-lab-core = { path = "../../crates/emath-lab-core" }
 
 [lints]
 workspace = true

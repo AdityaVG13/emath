@@ -18,7 +18,6 @@ emath-build = { workspace = true }
 emath-lab-core = { workspace = true }
 emath-evidence = { workspace = true }
 emath-core = { workspace = true }
-emath-law-check = { workspace = true }
 emath-exec-ir = { workspace = true }
 emath-genesis = { workspace = true }
 emath-goal = { workspace = true }

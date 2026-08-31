@@ -1,6 +1,6 @@
 mod law_check {
     use emath_lab_core::calibration::FittedTable;
-    use emath_law_check::{CheckerError, FiniteLawChecker, Law, WorldObligation};
+    use emath_lab_core::law_check::{CheckerError, FiniteLawChecker, Law, WorldObligation};
     use emath_term::SymbolId;
     use emath_world_ir::{WorldId, fnv1a64};
 

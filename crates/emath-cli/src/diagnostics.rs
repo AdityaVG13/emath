@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use emath_artifact::JsonWriter;
-use emath_law_check::{
+use emath_lab_core::law_check::{
     CheckerError, CheckerReceipt, FiniteLawChecker, LawVerdict, MinimizedCounterexample,
     WorldCheckReport, WorldObligation,
 };
@@ -290,7 +290,7 @@ pub fn e_law_001_demo_table() -> FittedTable {
 /// Run the finite checker on the demo table and explain E-LAW-001.
 #[must_use]
 pub fn e_law_001_demo() -> (WorldCheckReport, Vec<Explanation>) {
-    use emath_law_check::Law;
+    use emath_lab_core::law_check::Law;
     let table = e_law_001_demo_table();
     let obligation = WorldObligation {
         id: 1,
