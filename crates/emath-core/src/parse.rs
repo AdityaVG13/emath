@@ -7,6 +7,7 @@
 //! Until a parser is installed, session parse operations return a typed
 //! refusal (E-SYN-120) instead of failing silently.
 
+use crate::Edition;
 use crate::diagnostic::Diagnostics;
 use crate::id::FileId;
 use crate::limits::Limits;
@@ -15,7 +16,13 @@ use crate::tree::SyntaxTree;
 /// Contract implemented by a source-language parser.
 pub trait SourceParser: Send + Sync {
     /// Parse in-memory `.emath` source into a syntax tree.
-    fn parse(&self, text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics);
+    fn parse(
+        &self,
+        text: &str,
+        file: FileId,
+        limits: &Limits,
+        edition: Edition,
+    ) -> (SyntaxTree, Diagnostics);
 }
 
 static DEFAULT_PARSER: std::sync::OnceLock<&'static dyn SourceParser> = std::sync::OnceLock::new();
