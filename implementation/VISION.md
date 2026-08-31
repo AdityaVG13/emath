@@ -184,12 +184,15 @@ receipts, rollback.
 
 ## Open questions
 
-1. **Growth mechanism (OPEN — under discussion 2026-08-31).** Frozen
-   core with all surface sugar as user-extensible syntax (macros and
-   `expand` as the backbone) vs. a growing surface over a stable core
-   vs. curated sugar packs (a stdlib of notations, still
-   user-overridable). Decision gates the next build phase: expansion
-   infrastructure vs parser features.
+1. **Growth mechanism — DECIDED 2026-08-31 (Option C).** The core stays
+   small and stable; the surface grows as data — **syntax packs**
+   (verbs, sections, notation) that expand to the core — and users and
+   agents can define their own packs. Governing rule: **semantics goes
+   in the compiler; spelling goes in sugar.** Pilot: migrate the intent
+   verbs to a verbs-pack once the pack mechanism exists (they are
+   already pure sugar over goals). Open sub-questions (packs as data
+   vs self-hosted `.emath` macros; expand-form-as-contract before the
+   LSP) live in the internal language-growth notes.
 2. **User-defined worlds.** When — not whether — users compose their own
    worlds from parameter packs. Until then the world set is curated and
    ship-owned.
