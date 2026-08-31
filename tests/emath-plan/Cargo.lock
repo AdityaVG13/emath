@@ -51,7 +51,6 @@ dependencies = [
  "emath-goal",
  "emath-ir",
  "emath-provider-api",
- "emath-runtime",
 ]
 
 [[package]]
@@ -72,18 +71,12 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
- "emath-runtime",
+ "emath-term",
+ "emath-world-ir",
 ]
 
 [[package]]
 name = "emath-rt"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
-name = "emath-runtime"
 version = "0.1.0"
 dependencies = [
  "emath-core",
@@ -99,23 +92,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-source"
-version = "0.1.0"
-dependencies = [
- "emath-core",
-]
-
-[[package]]
 name = "emath-syntax"
 version = "0.1.0"
 dependencies = [
  "emath-core",
- "emath-source",
 ]
 
 [[package]]
 name = "emath-term"
 version = "0.1.0"
+
+[[package]]
+name = "emath-world-ir"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-term",
+]
 
 [[package]]
 name = "tinyvec"
