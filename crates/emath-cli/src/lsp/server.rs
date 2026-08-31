@@ -8,8 +8,8 @@ use emath_core::Severity;
 use emath_sema::session::CompilerSession;
 use emath_syntax::install_source_parser;
 
-use crate::json::JsonValue;
-use crate::protocol::{RpcMessage, write_error, write_notification, write_response};
+use crate::lsp::json::JsonValue;
+use crate::lsp::protocol::{RpcMessage, write_error, write_notification, write_response};
 use std::io::Write;
 
 /// One document held by the server.

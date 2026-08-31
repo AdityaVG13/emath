@@ -10,7 +10,14 @@ rust-version.workspace = true
 name = "emath"
 path = "src/main.rs"
 
+[features]
+# Async-runtime lane for the tokio → asupersync cutover (pass 2), inherited
+# from the absorbed emath-lsp crate. Optional by design: the default build
+# stays std-only; this gate exposes the Cx/lab runtime entry (lsp::lab).
+async-runtime = ["dep:asupersync"]
+
 [dependencies]
+asupersync = { workspace = true, optional = true, features = ["test-internals"] }
 emath-adapter-rumoca = { workspace = true }
 emath-agent-protocol = { workspace = true }
 emath-artifact = { workspace = true }

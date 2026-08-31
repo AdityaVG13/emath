@@ -28,7 +28,6 @@ members = [
   "crates/emath-layout",
   "crates/emath-portfolio",
   "crates/emath-adapter-rumoca",
-  "crates/emath-lsp",
   "crates/emath-registry",
   "crates/emath-wasm",
   "tests/harness",
@@ -118,7 +117,7 @@ emath-registry = { path = "crates/emath-registry" }
 # replaces tokio. Optional + feature-gated: Phase 1 ships std-only with zero
 # mandatory third-party deps. Exact-commit pin mirrors UPSTREAM_LOCK.json
 # row 11; never move to a floating version.
-# Optionality is decided per consumer (emath-lsp gate: async-runtime feature),
+# Optionality is decided per consumer (emath-cli lsp gate: async-runtime feature),
 # so this entry must not be marked optional (Cargo rejects that at workspace
 # level).
 asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "9eb0600e6ef4d17633dff3dc43ad99c64e72adbe", default-features = false }

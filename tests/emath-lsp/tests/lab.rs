@@ -1,8 +1,8 @@
-//! `emath-lsp` lab-runtime tests (migrated from
-//! `crates/emath-lsp/src/lab.rs`).
+//! `emath-cli` lsp lab-runtime tests (migrated from
+//! `crates/emath-cli/src/lsp/lab.rs`).
 
 use asupersync::runtime::JoinError;
-use emath_lsp::lab::run_with_cx;
+use emath_cli::lsp::lab::run_with_cx;
 use std::cell::Cell;
 
 #[test]

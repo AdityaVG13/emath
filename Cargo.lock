@@ -782,6 +782,7 @@ dependencies = [
 name = "emath-cli"
 version = "0.1.0"
 dependencies = [
+ "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
  "emath-adapter-rumoca",
  "emath-agent-protocol",
  "emath-artifact",
@@ -999,21 +1000,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-lsp"
-version = "0.1.0"
-dependencies = [
- "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
- "emath-core",
- "emath-sema",
- "emath-syntax",
-]
-
-[[package]]
 name = "emath-lsp-tests"
 version = "0.1.0"
 dependencies = [
  "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
- "emath-lsp",
+ "emath-cli",
 ]
 
 [[package]]
