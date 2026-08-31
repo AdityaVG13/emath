@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-emath-world-codegen-rust = { path = "../../crates/emath-world-codegen-rust" }
+emath-world-ir = { path = "../../crates/emath-world-ir" }
 emath-term = { path = "../../crates/emath-term" }
 semantic-genesis-worlds = { path = "../../examples/generated/semantic-genesis-worlds" }
 

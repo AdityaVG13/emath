@@ -37,7 +37,6 @@ emath-sema = { workspace = true }
 emath-syntax = { workspace = true }
 emath-term = { workspace = true }
 emath-store = { path = "../emath-store" }
-emath-world-codegen-rust = { workspace = true }
 emath-world-ir = { workspace = true }
 
 [lints]

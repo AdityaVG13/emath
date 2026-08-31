@@ -890,7 +890,6 @@ dependencies = [
  "emath-store",
  "emath-syntax",
  "emath-term",
- "emath-world-codegen-rust",
  "emath-world-ir",
 ]
 
@@ -906,7 +905,6 @@ dependencies = [
  "emath-portfolio",
  "emath-sema",
  "emath-syntax",
- "emath-world-codegen-rust",
  "emath-world-ir",
 ]
 
@@ -1398,18 +1396,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-world-codegen-rust"
-version = "0.1.0"
-dependencies = [
- "emath-term",
-]
-
-[[package]]
 name = "emath-world-codegen-rust-tests"
 version = "0.1.0"
 dependencies = [
  "emath-term",
- "emath-world-codegen-rust",
+ "emath-world-ir",
  "semantic-genesis-worlds",
 ]
 

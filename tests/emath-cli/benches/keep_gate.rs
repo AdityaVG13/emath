@@ -232,7 +232,7 @@ fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sam
                         _ => None,
                     })
                     .collect::<Vec<_>>();
-                Some(emath_world_codegen_rust::WorldSpec { label, operators })
+                Some(emath_world_ir::world_codegen_rust::WorldSpec { label, operators })
             })
             .collect::<Vec<_>>();
         if specs.len() != 3 {
@@ -241,7 +241,7 @@ fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sam
                 specs.len()
             ));
         }
-        let generated = emath_world_codegen_rust::generate(
+        let generated = emath_world_ir::world_codegen_rust::generate(
             &analysis.term,
             &analysis.inference.signature,
             &specs,

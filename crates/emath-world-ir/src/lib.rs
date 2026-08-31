@@ -316,3 +316,5 @@ fn hole_state_name(state: MeaningHoleState) -> &'static str {
 /// `emath_world_ir::fnv1a64` call sites keep one canonical implementation
 /// instead of a duplicated one.
 pub use emath_core::fnv1a64_bytes as fnv1a64;
+
+pub mod world_codegen_rust;

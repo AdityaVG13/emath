@@ -1,1 +1,1 @@
-//! Behavioral integration tests for `emath-world-codegen-rust` (public API only).
+//! Behavioral integration tests for `emath-world-ir::world_codegen_rust` (public API only).
