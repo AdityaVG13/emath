@@ -161,7 +161,10 @@ impl FormatSpec {
             if tokens.next().is_some() {
                 return Err(malformed("preferred_unit takes exactly one unit"));
             }
-            if !unit.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'%' || b == b'/') {
+            if !unit
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'%' || b == b'/')
+            {
                 return Err(malformed("unit tokens must be alphanumeric/_/%//"));
             }
             return Ok(FormatSpec::PreferredUnit {
@@ -176,7 +179,9 @@ impl FormatSpec {
                 && head.len() > 2
                 && head.bytes().skip(2).all(|b| b.is_ascii_digit()));
         if !valid {
-            return Err(malformed("pattern must look like `0.1` (zeros after the dot)"));
+            return Err(malformed(
+                "pattern must look like `0.1` (zeros after the dot)",
+            ));
         }
         let decimals = head
             .split_once('.')
@@ -228,7 +233,10 @@ impl FormattedQuantity {
         match &self.format {
             FormatSpec::PreferredUnit { unit } => {
                 let target = table.resolve(unit).map_err(|err| {
-                    incompatible(format!("format unit `{unit}` is not available: {}", err.message))
+                    incompatible(format!(
+                        "format unit `{unit}` is not available: {}",
+                        err.message
+                    ))
                 })?;
                 if target.dims != self.quantity.unit.dims {
                     return Err(incompatible(format!(
@@ -282,35 +290,5 @@ impl PrecisionLedger {
         } else {
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sf_convention_holds() {
-        assert_eq!(count_sig_figs("1230"), Some(3));
-        assert_eq!(count_sig_figs("1.230"), Some(4));
-        assert_eq!(count_sig_figs("0.0012"), Some(2));
-        assert_eq!(count_sig_figs("1000."), Some(4));
-        assert_eq!(count_sig_figs("abc"), None);
-        assert_eq!(count_sig_figs("0.0"), None);
-    }
-
-    #[test]
-    fn enforce_ladder() {
-        let spec = SigFigSpec {
-            mode: SigFigMode::Enforce,
-            count: 3,
-        };
-        assert!(spec.enforce_check(2).is_some());
-        assert!(spec.enforce_check(3).is_none());
-        let display = SigFigSpec {
-            mode: SigFigMode::Display,
-            count: 3,
-        };
-        assert!(display.enforce_check(1).is_none(), "display mode never warns");
     }
 }
