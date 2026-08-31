@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod plugin_sdk;
 pub mod runtime;
 pub mod adapter;
 pub mod constellation;

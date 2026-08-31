@@ -89,7 +89,6 @@ intent, not an implemented surface.
 | `emath-law-check` | `crates/emath-law-check` | independent world checking (`WorldChecker`): law admission | meaning-provider-api |
 | `emath-holes` | `crates/emath-holes` | meaning holes and finite synthesis | world-ir |
 | `emath-tuning` | `crates/emath-tuning` | semantic and joint tuning | portfolio |
-| `emath-plugin-sdk` | `crates/emath-plugin-sdk` | plugin SDK slice: descriptors, sandbox policy decisions | provider-api |
 
 ### Tier 8 — infrastructure adapters (feature-gated)
 
@@ -108,6 +107,8 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `emath-layout` | `crates/emath-layout` | SG-11/12 math layout graph: structured LaTeX and PDF-fixture frontends | genesis/term/core |
 | `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
 
+
+## Absorbed in the 2026-08 consolidation
 
 ## Non-crate workspace members
 

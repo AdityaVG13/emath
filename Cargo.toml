@@ -39,7 +39,6 @@ members = [
   "crates/emath-adapter-rumoca",
   "crates/emath-lsp",
   "crates/emath-registry",
-  "crates/emath-plugin-sdk",
   "crates/emath-search",
   "crates/emath-wasm",
   "tests/harness",
