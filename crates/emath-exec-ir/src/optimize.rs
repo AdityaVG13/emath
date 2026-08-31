@@ -424,6 +424,10 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
         EmirOp::IntervalCreate(..)
         | EmirOp::IntervalIntersect(..)
         | EmirOp::SpecialFunction { .. } => false,
+        // Exact-rational cells (emath-rat-real-types-p5cj) fault
+        // dynamically: zero denominator (E-RAT-001 class) and i128
+        // overflow — never total, never folded here.
+        EmirOp::RatConstruct { .. } | EmirOp::RatAdd(..) | EmirOp::RatNorm(_) => false,
     }
 }
 
@@ -433,6 +437,15 @@ pub fn is_total(op: &EmirOp, program: &EmirProgram) -> bool {
 pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
     let mut push = |v: EmirValue| out.push(v);
     match *op {
+        EmirOp::RatConstruct { num, den } => {
+            push(num);
+            push(den);
+        }
+        EmirOp::RatAdd(a, b) => {
+            push(a);
+            push(b);
+        }
+        EmirOp::RatNorm(a) => push(a),
         EmirOp::F64Add(a, b)
         | EmirOp::F64Sub(a, b)
         | EmirOp::F64Mul(a, b)
@@ -770,6 +783,12 @@ fn remap_operands(op: &EmirOp, f: &mut impl FnMut(EmirValue) -> EmirValue) -> Em
             series: g(series),
             time: g(time),
         },
+        EmirOp::RatConstruct { num, den } => EmirOp::RatConstruct {
+            num: g(num),
+            den: g(den),
+        },
+        EmirOp::RatAdd(a, b) => EmirOp::RatAdd(g(a), g(b)),
+        EmirOp::RatNorm(a) => EmirOp::RatNorm(g(a)),
         EmirOp::TextLength(text) => EmirOp::TextLength(g(text)),
         EmirOp::TextNfc(text) => EmirOp::TextNfc(g(text)),
         EmirOp::ReportSection { heading, body } => EmirOp::ReportSection {

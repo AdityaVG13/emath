@@ -34,6 +34,7 @@ This directory is a small teaching set, not a feature inventory. Start with the 
 22. [`observations.emath`](science/observations.emath) - measured evidence, provenance, and pure deterministic reports.
 23. [`wind-series.emath`](science/wind-series.emath) - time-series interpolation and extrapolation policy.
 24. [`special-functions.emath`](numerical/special-functions.emath) - certified special-function values with declared error bounds.
+25. [`rational-cells.emath`](numerical/rational-cells.emath) - exact rational arithmetic (`Rat`): `rat`, `rat_add`, `rat_norm`; gcd-reduced, overflow- and zero-denominator-refusing.
 25. [`dae-rc-circuit.emath`](numerical/dae-rc-circuit.emath) - index-1 implicit DAE (RC circuit) with a GENERIC event-triggered switch through the `transitions:` channel: algebraic unknown (`current`), differential state (`charge`), square KVL residual; the declared event names the crossing (`charge` reaches `capacitance * threshold_voltage`) and the firing `on ThresholdCrossed:` rule dispatches the switch (`voltage = 0`), switching the trajectory from charging to discharging (r3-dynamical-03lh ch7, transitions slice). Check record: [`dae-rc-circuit-check.md`](numerical/dae-rc-circuit-check.md); execute oracle (identical flags in the file header and here):
 
 ```sh

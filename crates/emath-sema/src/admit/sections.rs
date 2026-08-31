@@ -219,7 +219,11 @@ pub(super) fn admit_constructor(
                             }
                             Some((
                                 _,
-                                Infer::Bool | Infer::Text | Infer::Set(_) | Infer::Record(_),
+                                Infer::Bool
+                                | Infer::Text
+                                | Infer::Rat
+                                | Infer::Set(_)
+                                | Infer::Record(_),
                             )) => {
                                 admitter.error(
                                     "E-TYPE-012",

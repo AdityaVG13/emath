@@ -5,7 +5,7 @@
 The admitted compute types are:
 
 ```text
-Bool  Nat  Int  Float64  Complex
+Bool  Nat  Int  Float64  Complex  Rat
 Interval<Float64>  Mod<p>  GF<p>
 Vector<T, [n]>  Matrix<T, [r, c]>  Tensor<T, [...]>
 quantities written as T in unit
@@ -13,7 +13,7 @@ quantities written as T in unit
 
 `Real` names the mathematical concept and is not a compute alias. Use `Float64`, or select a declared numeric profile.
 
-Not admitted as general compute values: `Rat`, bare `Real`, records, arbitrary refinement predicates, and continuous measure values. Some standard-library Rust APIs expose additional carriers without adding a `.emath` surface. `Option`, `Result`, `Graph`, and `Field<p>`/`GF<p>` are admitted composite *declaration* types (see "Composite types").
+Not admitted as general compute values: bare `Real`, records, arbitrary refinement predicates, and continuous measure values. Some standard-library Rust APIs expose additional carriers without adding a `.emath` surface. `Option`, `Result`, `Graph`, and `Field<p>`/`GF<p>` are admitted composite *declaration* types (see "Composite types").
 
 ## Scalars and integers
 
@@ -165,6 +165,28 @@ z = 2.0 + 3.0i
 ```
 
 The identifier `i` is the imaginary unit unless shadowed. Complex addition, subtraction, multiplication, division, equality, principal roots, logarithms, exponentials, reciprocals, and modulus are supported.
+
+## Exact rationals
+
+`Rat` is an exact rational: an `i128` numerator over a positive `i128`
+denominator, kept gcd-reduced at every step. Construct with `rat`, combine
+with `rat_add`, and canonicalize with `rat_norm`:
+
+```emath
+emath function probe:
+    outputs:
+        c: Rat
+    definitions:
+        c = rat_add(rat(1, 3), rat(1, 6))
+```
+
+`rat_add(1/3, 1/6)` is the exact canonical `1/2`, never a rounded `f64`.
+A denominator that would lose precision as `Float64` (for example
+`rat(1, 1000000000000000007)`) stays exact. `rat(n, 0)` is refused with a
+typed diagnostic (`E-RAT-001`) — never a panic, never a silent zero.
+Overflow of the `i128` carrier is a runtime refusal, never a wrap. Rat
+values execute in the interpreter; the strict Rust backend refuses them
+rather than demote an exact value to `Float64`.
 
 ## Certified intervals
 

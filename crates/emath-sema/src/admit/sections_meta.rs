@@ -1009,6 +1009,11 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         }
         let mut params: Vec<(String, super::infer::Infer)> = Vec::new();
         let mut param_types_ok = true;
+        // Metadata pass: type diagnostics were (or will be) reported by the
+        // declaration's own admission — route map_type diagnostics into a
+        // throwaway sink so a refused type site (bare `Real`, unknown name)
+        // is reported exactly once, by the pass that owns it.
+        let mut type_diagnostics = Diagnostics::new();
         let mut collect_param = |ty: &emath_core::tree::TypeExpr, name: &str| {
             // Untyped inputs are the Infer marker: admission defaults them
             // to Float64 (N-TYPE-001) without an error, so the sibling
@@ -1019,7 +1024,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
                 params.push((name.to_string(), super::infer::Infer::F64));
                 return;
             }
-            match map_type(ty, &mut diagnostics, &host_types) {
+            match map_type(ty, &mut type_diagnostics, &host_types) {
                 Some(node) => params.push((name.to_string(), infer_from_node(&node))),
                 None => param_types_ok = false,
             }

@@ -462,6 +462,7 @@ pub(super) fn admit_equations(
                 }
                 Infer::Bool
                 | Infer::Text
+                | Infer::Rat
                 | Infer::Set(_)
                 | Infer::Record(_)
                 | Infer::Opaque

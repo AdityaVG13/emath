@@ -13,6 +13,9 @@ pub(super) enum Infer {
     Nat,
     Int,
     Complex,
+    /// Exact rational (emath-rat-real-types-p5cj): i128 num/den, gcd
+    /// reduced, den > 0. Never coerced to Float64.
+    Rat,
     Set(Box<Infer>),
     Record(String),
     Vector {
@@ -106,6 +109,7 @@ impl Infer {
             Self::Nat => "Nat".into(),
             Self::Int => "Int".into(),
             Self::Complex => "Complex".into(),
+            Self::Rat => "Rat".into(),
             Self::Set(element) => format!("Set<{element}>"),
             Self::Record(name) => name.clone(),
             Self::Vector { extent } => match extent {
@@ -203,6 +207,7 @@ pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
         TypeNode::Nat => Infer::Nat,
         TypeNode::Int => Infer::Int,
         TypeNode::Complex(_) => Infer::Complex,
+        TypeNode::Rational => Infer::Rat,
         TypeNode::Set(element) => Infer::Set(Box::new(infer_from_node(element))),
         TypeNode::Record(name) => Infer::Record(name.0.clone()),
         TypeNode::Vector { extent, .. } => Infer::Vector {
@@ -276,6 +281,7 @@ pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
         | (Infer::Nat, Infer::Nat)
         | (Infer::Int, Infer::Int)
         | (Infer::Complex, Infer::Complex)
+        | (Infer::Rat, Infer::Rat)
         | (Infer::Opaque, Infer::Opaque)
         | (Infer::Series, Infer::Series)
         | (Infer::Sequence, Infer::Sequence)
@@ -520,6 +526,14 @@ pub(super) fn combine_numeric(
                 }
             }
         }
+        // Exact rationals (emath-rat-real-types-p5cj): Rat arithmetic
+        // stays exact — Rat op Rat is Rat for +, -, *, /. Integers
+        // embed exactly into rationals; mixing Rat with F64 stays
+        // refused (exact x approximate is type confusion, same doctrine
+        // as Interval x scalar).
+        (Infer::Rat, Infer::Rat, _) => Some(Infer::Rat),
+        (Infer::Rat, Infer::Nat | Infer::Int, _)
+        | (Infer::Nat | Infer::Int, Infer::Rat, _) => Some(Infer::Rat),
         _ => {
             admitter.error(
                 "E-TYPE-012",

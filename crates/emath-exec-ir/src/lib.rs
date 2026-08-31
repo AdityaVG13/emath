@@ -183,6 +183,18 @@ pub enum EmirOp {
     },
     /// Complex constant (real, imaginary). B14.
     ConstComplex(f64, f64),
+    /// Exact-rational construction (emath-rat-real-types-p5cj): build
+    /// `num/den` from two integer registers. Exact i128 math — gcd
+    /// reduced, denominator forced positive, never f64. A zero
+    /// denominator is a typed refusal (never a panic, never a silent
+    /// zero).
+    RatConstruct { num: EmirValue, den: EmirValue },
+    /// Exact rational addition: common denominator, then gcd-reduced.
+    /// Intermediate overflow is a typed refusal, never a silent wrap.
+    RatAdd(EmirValue, EmirValue),
+    /// Canonicalize an exact rational: gcd-reduce and force the
+    /// denominator positive.
+    RatNorm(EmirValue),
     /// Certified interval constructor `[lo, hi]` (8pjn). Faults at run
     /// when the bounds are non-finite or `lo > hi` — an ill-formed
     /// interval is a refusal, never a silently swapped pair.
@@ -717,6 +729,9 @@ impl EmirOp {
             Self::SetContains { .. } => "set-contains",
             Self::RecordCreate { .. } => "record-create",
             Self::ConstComplex(..) => "const-complex",
+            Self::RatConstruct { .. } => "rat-construct",
+            Self::RatAdd(..) => "rat-add",
+            Self::RatNorm(_) => "rat-norm",
             Self::IntervalCreate(..) => "interval-create",
             Self::IntervalIntersect(..) => "interval-intersect",
             Self::ConstBool(_) => "const-bool",
