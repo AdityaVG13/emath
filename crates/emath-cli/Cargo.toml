@@ -36,7 +36,6 @@ emath-goal = { workspace = true }
 # the true owner.
 emath-ir = { workspace = true }
 emath-plan = { workspace = true }
-emath-portfolio = { workspace = true }
 emath-provider-api = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-sema = { workspace = true }

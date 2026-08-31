@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use emath_world_ir::{fnv1a64, WorldId};
 
-use crate::{Authority, ScoreVector};
+use crate::portfolio::{Authority, ScoreVector};
 
 /// One behavioral-example evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,12 +273,12 @@ impl WorldCandidate {
 
     /// G7 view of a `keep: pareto N` bag member: uniform `cost=1` so
     /// domination cannot drop a kept world. Ranking of the genesis bag
-    /// stays on [`crate::InterpretationPortfolio::new`].
+    /// stays on [`crate::portfolio::InterpretationPortfolio::new`].
     #[must_use]
     pub fn bag_member(
         world_fingerprint: u64,
         provider_id: impl Into<String>,
-        evidence_authority: crate::Authority,
+        evidence_authority: crate::portfolio::Authority,
     ) -> Self {
         let mut metrics = BTreeMap::new();
         metrics.insert("cost".to_string(), 1);
@@ -295,9 +295,9 @@ impl WorldCandidate {
     ///
     /// Refuses when `claimed` is strictly above [`Self::evidence_authority`].
     /// Ranking and selection never call this to raise a label.
-    pub fn with_claimed_label(mut self, claimed: Authority) -> Result<Self, crate::PortfolioError> {
+    pub fn with_claimed_label(mut self, claimed: Authority) -> Result<Self, crate::portfolio::PortfolioError> {
         if claimed > self.evidence_authority {
-            return Err(crate::PortfolioError::AuthorityEscalation {
+            return Err(crate::portfolio::PortfolioError::AuthorityEscalation {
                 fingerprint: self.world_fingerprint,
                 evidence: self.evidence_authority,
                 claimed,

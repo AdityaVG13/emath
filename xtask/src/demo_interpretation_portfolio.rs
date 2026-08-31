@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use emath_portfolio::{
+use emath_cli::portfolio::{
     archive, evaluate, rank_candidates, replay, Authority, CollapsePolicy, InterpretationPolicy,
     MetricAxis, MetricPolarity, PortfolioError, WorldCandidate,
 };

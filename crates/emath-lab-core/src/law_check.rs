@@ -8,7 +8,7 @@
 //! claimed obligations against it; the first violation over the sorted
 //! carrier is the lexicographically smallest counterexample.
 
-use emath_portfolio::Authority;
+use crate::Authority;
 use emath_term::SymbolId;
 use emath_world_ir::{FittedTable, WorldId, fnv1a64};
 

@@ -1,7 +1,7 @@
 //! Deterministic interpretation portfolio tests, moved from
-//! `crates/emath-portfolio/src/lib.rs`.
+//! `crates/emath-cli/src/portfolio/mod.rs`.
 
-use emath_portfolio::{
+use emath_cli::portfolio::{
     Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector, translated_candidate,
 };
 use emath_term::{Signature, SymbolId};

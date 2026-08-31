@@ -2783,3 +2783,5 @@ pub mod lsp;
 pub mod layout;
 
 pub mod agent_protocol;
+
+pub mod portfolio;

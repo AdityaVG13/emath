@@ -7,7 +7,7 @@ use crate::agent_protocol::{
 };
 use emath_artifact::JsonWriter;
 use emath_build::{build_file, BuildOptions};
-use emath_portfolio::InterpretationPortfolio;
+use crate::portfolio::InterpretationPortfolio;
 use emath_sema::session::CompilerSession;
 use emath_genesis::tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
 use emath_world_ir::{EvidenceHandle, WorldMorphism};

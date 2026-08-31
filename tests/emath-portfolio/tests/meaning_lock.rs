@@ -1,11 +1,11 @@
 //! meaning_lock tests migrated from the in-crate `#[cfg(test)]` module.
 
-use emath_portfolio::meaning_lock::*;
-use emath_portfolio::interpretation::{
+use emath_cli::portfolio::meaning_lock::*;
+use emath_cli::portfolio::interpretation::{
     evaluate, DisqualificationReason, InterpretationPolicy, MetricAxis, MetricPolarity,
 };
-use emath_portfolio::record::GuardFailure;
-use emath_portfolio::{Authority, WorldCandidate};
+use emath_cli::portfolio::record::GuardFailure;
+use emath_cli::portfolio::{Authority, WorldCandidate};
 use std::collections::BTreeMap as Map;
 
 fn sample_entry() -> (LockKey, LockEntry) {

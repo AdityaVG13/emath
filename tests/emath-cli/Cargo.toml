@@ -6,7 +6,6 @@ publish = false
 
 [dependencies]
 emath-cli = { path = "../../crates/emath-cli" }
-emath-portfolio = { path = "../../crates/emath-portfolio" }
 emath-core = { path = "../../crates/emath-core" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-sema = { path = "../../crates/emath-sema" }

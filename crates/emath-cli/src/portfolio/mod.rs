@@ -27,49 +27,14 @@ pub use selection::{select, SelectionOutcome, SelectionPolicy, SelectionWeights}
 use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
 use emath_world_ir::WorldId;
 
+/// Meaning authority for a candidate result (defined in `emath-lab-core`,
+/// re-exported here as portfolio vocabulary).
+pub use emath_lab_core::Authority;
+
 /// Interpretation-portfolio schema version (durable id
 /// `emath.interpretation-portfolio` lives in the schema registry). Bump on
 /// any change to the portfolio document layout.
 pub const PORTFOLIO_SCHEMA_VERSION: u32 = 1;
-
-/// Meaning authority for a candidate result.
-///
-/// Lattice (never escalate via ranking): Structural < Tested < Certified < Proved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Authority {
-    /// Structural preservation only.
-    Structural,
-    /// Checked against examples or properties.
-    Tested,
-    /// Bounded or certified by an admitted checker.
-    Certified,
-    /// Formally proved in a declared system.
-    Proved,
-}
-
-impl Authority {
-    /// Stable wire name.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Structural => "structural",
-            Self::Tested => "tested",
-            Self::Certified => "certified",
-            Self::Proved => "proved",
-        }
-    }
-
-    /// Lattice rank: Structural = 0 … Proved = 3.
-    #[must_use]
-    pub const fn lattice_rank(self) -> u8 {
-        match self {
-            Self::Structural => 0,
-            Self::Tested => 1,
-            Self::Certified => 2,
-            Self::Proved => 3,
-        }
-    }
-}
 
 /// Multi-objective score. Lower cost/complexity and higher evidence/utility are preferred.
 #[derive(Debug, Clone, Copy, PartialEq)]

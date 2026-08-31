@@ -10,8 +10,8 @@ use std::fmt;
 
 use emath_world_ir::fnv1a64;
 
-use crate::record::WorldCandidate;
-use crate::Authority;
+use crate::portfolio::record::WorldCandidate;
+use crate::portfolio::Authority;
 
 /// Durable receipt schema id.
 pub const RECEIPT_SCHEMA: &str = "emath.interpretation-portfolio-receipt";
