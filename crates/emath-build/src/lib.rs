@@ -827,3 +827,5 @@ pub fn build_into_out_dir(
     println!("cargo:emath-artifact-id={}", report.artifact_id.0);
     Ok(report)
 }
+
+pub mod builder;

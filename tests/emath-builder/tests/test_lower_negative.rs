@@ -7,7 +7,7 @@
 //! just `is_err` — a wrong-payload error or an empty message must fail
 //! these tests.
 
-use emath_builder::{BuilderError, BuilderModel, Expression, ModelBuilder, TestModel};
+use emath_build::builder::{BuilderError, BuilderModel, Expression, ModelBuilder, TestModel};
 
 #[test]
 fn bad_test_given_returns_error_not_panic() {

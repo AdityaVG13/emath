@@ -1,7 +1,7 @@
 //! `emath!` procedural macro.
 //!
 //! Expands an inline `.emath` source literal (parsed as tokens, never
-//! concatenated) to `::emath_builder::MacroExpansion::from_literals`.
+//! concatenated) to `::emath_build::builder::MacroExpansion::from_literals`.
 //! Security: the literal is embedded in the host binary — never paste
 //! untrusted input; malformed input fails compilation with `E-CODEGEN-011`.
 //! The macro performs no I/O and touches no files.
@@ -11,11 +11,11 @@
 use proc_macro::TokenStream;
 
 /// Expands an inline `.emath` source literal into a
-/// `::emath_builder::MacroExpansion` value.
+/// `::emath_build::builder::MacroExpansion` value.
 #[proc_macro]
 pub fn emath(input: TokenStream) -> TokenStream {
     let text = input.to_string();
-    match emath_builder::macro_expand(&text) {
+    match emath_build::builder::macro_expand(&text) {
         Ok(expansion) => {
             // Compile-time honesty: the literal must be valid `.emath`
             // source, not just a quoted string (rustdoc: malformed input
@@ -30,7 +30,7 @@ pub fn emath(input: TokenStream) -> TokenStream {
             }
             let source = proc_macro::Literal::string(&expansion.source);
             let identity = proc_macro::Literal::string(&expansion.identity);
-            format!("::emath_builder::MacroExpansion::from_literals({source}, {identity})")
+            format!("::emath_build::builder::MacroExpansion::from_literals({source}, {identity})")
                 .parse()
                 .unwrap_or_else(|_| {
                     compile_error("E-CODEGEN-011: internal expansion parse failure")

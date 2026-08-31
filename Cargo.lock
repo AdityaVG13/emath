@@ -833,20 +833,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-builder"
-version = "0.1.0"
-dependencies = [
- "emath-build",
- "emath-core",
- "emath-ir",
- "emath-sema",
-]
-
-[[package]]
 name = "emath-builder-tests"
 version = "0.1.0"
 dependencies = [
- "emath-builder",
+ "emath-build",
  "emath-ir",
 ]
 
@@ -1125,7 +1115,7 @@ dependencies = [
 name = "emath-macro"
 version = "0.1.0"
 dependencies = [
- "emath-builder",
+ "emath-build",
  "emath-syntax",
 ]
 

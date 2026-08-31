@@ -58,17 +58,17 @@ pub fn build_from_model(
     model: BuilderModel,
     name: &str,
     target_dir: impl AsRef<std::path::Path>,
-) -> Result<emath_build::BuildReport, BuilderError> {
+) -> Result<crate::BuildReport, BuilderError> {
     let mut package = model.build()?;
     package.seal();
     let diagnostics = emath_core::Diagnostics::new();
-    emath_build::build_package(
+    crate::build_package(
         &package,
         name,
         &diagnostics,
         &[],
         target_dir.as_ref(),
-        emath_build::BuildOptions::default(),
+        crate::BuildOptions::default(),
     )
     .map_err(|error| BuilderError(error.to_string()))
 }
@@ -899,11 +899,11 @@ pub fn build_from_source(
     name: &str,
     source: &str,
     target_dir: impl AsRef<std::path::Path>,
-) -> Result<emath_build::BuildReport, emath_build::BuildError> {
-    emath_build::build_text(
+) -> Result<crate::BuildReport, crate::BuildError> {
+    crate::build_text(
         name,
         source,
         target_dir,
-        emath_build::BuildOptions::default(),
+        crate::BuildOptions::default(),
     )
 }
