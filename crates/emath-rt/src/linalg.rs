@@ -1,4 +1,4 @@
-//! Typed wrappers over the richer linear-algebra kernels (xx0x.2).
+//! Typed wrappers over the richer linear-algebra kernels.
 //!
 //! The single source of truth lives in [`crate::body`] (flat row-major,
 //! std-only, embedded verbatim into generated crates). This module adds

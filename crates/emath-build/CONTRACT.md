@@ -23,6 +23,10 @@
 - Generated module must be profile-safe (E-CODEGEN-002) and every public item source-anchored (E-CODEGEN-004) before staging.
 - Verification honesty (E-TLT-012 / E-TLT-013): `--verify` refuses a generated crate with no `#[test]` functions rather than reporting a vacuous pass; unverified steps are claimed `not-run`.
 - Records (admitted, generated-crate) are claims that state exactly what ran, with the checker used.
+- Language publication has cumulative `Framework`, `CandidateImage`, and
+  `StableLanguage` gates. Stable publication refuses incomplete projections,
+  missing live/independent evidence, split authority, blocking holes, invalid
+  migrations, stale views, and unauthorized semantic change.
 
 ## Error model
 - `BuildError`, a typed enum with Display text (codes embedded in messages for refusals).

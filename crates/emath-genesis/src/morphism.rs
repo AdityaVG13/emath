@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 
 use emath_world_ir::fnv1a64;
 
-use crate::synth::{check_table, OpTable, SynthLaw, MAX_CARRIER_SIZE};
+use crate::synth::{MAX_CARRIER_SIZE, OpTable, SynthLaw, check_table};
 
 /// World-morphism schema id for artifacts and receipts.
 pub const MORPHISM_SCHEMA: &str = "emath.world-morphism";
@@ -86,11 +86,7 @@ pub struct WorldMorphism {
 
 impl WorldMorphism {
     /// Construct a morphism after well-formedness checks.
-    pub fn new(
-        source_size: u8,
-        target_size: u8,
-        map: Vec<u8>,
-    ) -> Result<Self, MorphismError> {
+    pub fn new(source_size: u8, target_size: u8, map: Vec<u8>) -> Result<Self, MorphismError> {
         let morphism = Self {
             source_size,
             target_size,
@@ -139,7 +135,13 @@ impl WorldMorphism {
 /// execution parameters and are not part of the encoding.
 #[must_use]
 pub fn morphism_id(morphism: &WorldMorphism) -> u64 {
-    fnv1a64(format!("{MORPHISM_SCHEMA}.v{MORPHISM_VERSION}:{}", morphism.canonical()).as_bytes())
+    fnv1a64(
+        format!(
+            "{MORPHISM_SCHEMA}.v{MORPHISM_VERSION}:{}",
+            morphism.canonical()
+        )
+        .as_bytes(),
+    )
 }
 
 /// Observational quotient: classes ordered by least element, table over
@@ -169,7 +171,12 @@ impl QuotientReceipt {
                 self.classes
                     .iter()
                     .map(|class| {
-                        Json::Array(class.iter().map(|el| Json::Number(el.to_string())).collect())
+                        Json::Array(
+                            class
+                                .iter()
+                                .map(|el| Json::Number(el.to_string()))
+                                .collect(),
+                        )
                     })
                     .collect(),
             ),
@@ -243,11 +250,7 @@ impl InvariantReport {
                         object.insert(
                             "holds",
                             Json::Array(
-                                verdict
-                                    .holds
-                                    .iter()
-                                    .map(|hold| Json::Bool(*hold))
-                                    .collect(),
+                                verdict.holds.iter().map(|hold| Json::Bool(*hold)).collect(),
                             ),
                         );
                         object.insert("law", Json::Str(verdict.law.clone()));
@@ -260,7 +263,12 @@ impl InvariantReport {
         root.insert("schema", Json::Str(MORPHISM_SCHEMA.to_string()));
         root.insert(
             "shared",
-            Json::Array(self.shared.iter().map(|law| Json::Str(law.clone())).collect()),
+            Json::Array(
+                self.shared
+                    .iter()
+                    .map(|law| Json::Str(law.clone()))
+                    .collect(),
+            ),
         );
         root.insert("version", Json::Number(self.version.to_string()));
         root.insert("world_count", Json::Number(self.world_count.to_string()));

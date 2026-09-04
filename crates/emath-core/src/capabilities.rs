@@ -116,7 +116,7 @@ const WORLDS: &[WorldClassDescriptor] = &[WorldClassDescriptor {
 
 const DEFERRED: &[DeferredFeature] = &[DeferredFeature {
     name: "autodiff",
-    reason: "Track A3",
+    reason: "gradient evaluation is covered by the interpreter's `grad()` builtin",
 }];
 
 /// Current compiler capability snapshot.

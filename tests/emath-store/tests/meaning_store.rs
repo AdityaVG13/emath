@@ -1,8 +1,8 @@
-//! emath-epic-emlib-nz1n.11 — CAPSTONE: the executable identity gate.
+//! — CAPSTONE: the executable identity gate.
 //!
 //! Proves the meaning store distinguishes the four change classes end
-//! to end, through the landed layers (nz1n.2 MeaningID, nz1n.5 evidence
-//! plane, nz1n.8 semantic diff):
+//! to end, through the landed layers (MeaningID, evidence
+//! plane, semantic diff):
 //! - presentation edits (whitespace/comments) PRESERVE MeaningID and
 //!   cut off the rebuild with a receipt;
 //! - breaking changes MUTATE MeaningID and rebuild dependents — never a
@@ -15,10 +15,10 @@
 
 use emath_core::{MeaningId, SourceId};
 use emath_sema::CompilerSession;
+use emath_store::EvidencePlane;
 use emath_store::evidence_plane::EvidenceReceipt;
 use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
-use emath_store::semantic_diff::{classify, decide, ChangeClass, SemanticSnapshot};
-use emath_store::EvidencePlane;
+use emath_store::semantic_diff::{ChangeClass, SemanticSnapshot, classify, decide};
 use emath_syntax::install_source_parser;
 
 const BASE_SOURCE: &str = "emath function square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
@@ -124,7 +124,9 @@ fn evidence_attach_does_not_retcon_meaning() {
 
     let mut plane = EvidencePlane::default();
     let receipt = EvidenceReceipt::seal("capstone-receipt", b"unit gate run: ok");
-    let attached = plane.attach(&graph, &cell, receipt).expect("attach must work");
+    let attached = plane
+        .attach(&graph, &cell, receipt)
+        .expect("attach must work");
 
     let stored = graph.object(&cell).unwrap();
     assert_eq!(stored.meaning_id, meaning_before, "no meaning retcon");
@@ -142,7 +144,8 @@ fn evidence_attach_does_not_retcon_meaning() {
         meaning_of(BASE_SOURCE),
         "specializer-12",
         &[attached.as_str()],
-    );    assert_eq!(classify(&before, &after), ChangeClass::Evidence);
+    );
+    assert_eq!(classify(&before, &after), ChangeClass::Evidence);
     match decide(&before, &after, &[]) {
         emath_store::semantic_diff::DiffOutcome::Cutoff(receipt) => {
             assert_eq!(receipt.class, ChangeClass::Evidence);

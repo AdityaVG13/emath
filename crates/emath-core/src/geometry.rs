@@ -1,5 +1,4 @@
-//! core::geometry — geometry types over declared fields (Phase 12,
-//! bead 36a9) — honest thin slice.
+//! core::geometry — geometry types over declared fields (Phase 12) — honest thin slice.
 //!
 //! A geometry lives over a DECLARED scalar field ([`Field`]): the
 //! exact-rational field ([`Rational`]) or the float field (`f64`),

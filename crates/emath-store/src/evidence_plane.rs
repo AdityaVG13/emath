@@ -1,4 +1,4 @@
-//! The independent evidence plane (nz1n.5): proofs/tests attach to
+//! The independent evidence plane: proofs/tests attach to
 //! stored objects as content-addressed receipts WITHOUT touching the
 //! object graph — attaching evidence never changes ObjectID or
 //! MeaningID (evidence is not a second meaning identity; authority
@@ -85,9 +85,7 @@ impl std::fmt::Display for EvidencePlaneError {
                      recorded hash does not match the receipt content (forgery)"
                 )
             }
-            Self::EmptyKind => {
-                formatter.write_str("evidence receipt kind must not be empty")
-            }
+            Self::EmptyKind => formatter.write_str("evidence receipt kind must not be empty"),
         }
     }
 }

@@ -1,5 +1,5 @@
 //! core::coordinate — curvilinear coordinate maps over the declared
-//! field vocabulary (bead `emath-e3xu`).
+//! field vocabulary.
 //!
 //! Spherical and cylindrical frames as pure, typed conversions. Every
 //! function is a total map over admitted inputs; domain violations

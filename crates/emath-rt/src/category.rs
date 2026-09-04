@@ -1,8 +1,8 @@
-//! Typed finite-category wrappers (emath-r3-abstract-algebra-88wo
-//! thin B39 slice): the error model over the raw kernels in
+//! Typed finite-category wrappers:
+//! the error model over the raw kernels in
 //! [`crate::body`].
 //!
-//! Representation law (the orch-decided masa-style carrier): a finite
+//! Representation law: a finite
 //! category is a dense composition table with per-morphism dom/cod;
 //! diagrams are face path-pairs. Category laws (composition, identity,
 //! associativity) are CERTIFIED before any commutativity answer.

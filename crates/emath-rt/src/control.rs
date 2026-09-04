@@ -1,5 +1,5 @@
-//! Typed control-surface wrappers (emath-r3-sde-control-zxkl thin B43
-//! slice): the error model over the raw kernels in [`crate::body`].
+//! Typed control-surface wrappers:
+//! the error model over the raw kernels in [`crate::body`].
 //!
 //! Refusals are typed, never silent: a non-finite carrier
 //! (`E-CONTROL-001`), a zero denominator / no value
@@ -14,7 +14,7 @@
 //! polynomial arithmetic (no eigenvalues, no root-finding, no claimed
 //! pole locations); controller design (pole placement, LQR) is not
 //! implemented; the Itô/Stratonovich SDE surface (B37) is
-//! world-dependent and lives behind the vnqo seed/stream contract.
+//! world-dependent and lives behind the seed/stream contract.
 //! Determinism class: fixed-order recurrences, first-index pivot
 //! tie-breaking; identical inputs are bit-identical.
 

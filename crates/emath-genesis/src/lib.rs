@@ -6,7 +6,7 @@
 //! forest and infers world signatures; `emath-syntax` keeps the G0
 //! parser and re-exports this module at its root.
 //!
-//! Facade SPI note (rpme/C054): each family module carries its own
+//! Facade SPI note (C054): each family module carries its own
 //! `check_version` (analogue/binder/meaning_provider/morphism/synth/
 //! tuning) with its OWN error type — six deliberate homonyms, not an
 //! incomplete facade. A root export would either collide six times or
@@ -17,18 +17,18 @@ pub mod analogue;
 pub mod binder;
 pub mod csa;
 pub mod forest;
-pub mod specialization;
-pub mod synth;
+pub mod joint_tuning;
 pub mod meaning_provider;
 pub mod morphism;
+pub mod specialization;
+pub mod synth;
 pub mod vm;
-pub mod joint_tuning;
 pub mod world_decl;
 pub mod world_result;
 
 pub use world_result::{
-    Disposition, NakedResultRefusal, ResultBundle, WorldResult, WORLD_RESULT_SCHEMA,
-    WORLD_RESULT_VERSION, evaluate_labeled,
+    Disposition, NakedResultRefusal, ResultBundle, WORLD_RESULT_SCHEMA, WORLD_RESULT_VERSION,
+    WorldResult, evaluate_labeled,
 };
 
 pub use analogue::{
@@ -40,22 +40,27 @@ pub use binder::{
     BinderKind, BinderTerm, ScopedBinder, binder_id,
 };
 pub use csa::{CSA_MEANING_CLAIM, CSA_SCHEMA, CSA_SCHEMA_VERSION, OnePointWorld, SeededCsaWorld};
-pub use specialization::{SpecializationCache, SpecializationChallenge, SpecializationStats};
-pub use synth::{
-    MAX_CARRIER_SIZE, SYNTH_SCHEMA, SYNTH_VERSION, LawViolation, OpTable, SynthBudget, SynthError,
-    SynthExample, SynthLaw, SynthReceipt, SynthRequest, check_table, synth_id,
+pub use joint_tuning::{
+    CandidateStatus, Disqualification, HostExample, IMPL_VARIANT_COUNT, ImplVariant,
+    ProtectedObjective, TUNING_SCHEMA, TUNING_VERSION, TuningBudget, TuningError, TuningReceipt,
+    TuningRequest, candidate_id, classify, semantic_dna, tune, tuning_id,
 };
 pub use meaning_provider::{
-    admit, challenge, proposal_id, AdmissionStatus, AgentProposal, ChallengeRefusal,
-    ChallengeStatus, MeaningChecker, MeaningReceipt, MeaningVerdict, ProviderError,
-    QuarantinedCandidate, CheckedCandidate, AUTHORITY_NONE, AUTHORITY_STRUCTURAL_CHECKED,
-    PROVIDER_SCHEMA, PROVIDER_VERSION, REQUIRED_CAPABILITY,
+    AUTHORITY_NONE, AUTHORITY_STRUCTURAL_CHECKED, AdmissionStatus, AgentProposal, ChallengeRefusal,
+    ChallengeStatus, CheckedCandidate, MeaningChecker, MeaningReceipt, MeaningVerdict,
+    PROVIDER_SCHEMA, PROVIDER_VERSION, ProviderError, QuarantinedCandidate, REQUIRED_CAPABILITY,
+    admit, challenge, proposal_id,
 };
 pub use morphism::{
-    MAX_ISO_CANDIDATES, MAX_ISO_SEARCH_SIZE, MORPHISM_SCHEMA, MORPHISM_VERSION, DedupeGroup,
-    DedupeReceipt, DroppedDuplicate, InvariantReport, LawPortfolioVerdict, MorphismError,
+    DedupeGroup, DedupeReceipt, DroppedDuplicate, InvariantReport, LawPortfolioVerdict,
+    MAX_ISO_CANDIDATES, MAX_ISO_SEARCH_SIZE, MORPHISM_SCHEMA, MORPHISM_VERSION, MorphismError,
     MorphismViolation, QuotientReceipt, WorldMorphism, dedupe, find_isomorphism, mine_invariants,
     morphism_id, quotient, verify,
+};
+pub use specialization::{SpecializationCache, SpecializationChallenge, SpecializationStats};
+pub use synth::{
+    LawViolation, MAX_CARRIER_SIZE, OpTable, SYNTH_SCHEMA, SYNTH_VERSION, SynthBudget, SynthError,
+    SynthExample, SynthLaw, SynthReceipt, SynthRequest, check_table, synth_id,
 };
 pub use vm::{
     VM_SCHEMA, VM_SCHEMA_VERSION, VmBudget, VmContinuation, VmOutcome, VmTrace, resume, run,
@@ -64,11 +69,6 @@ pub use world_decl::{
     MAX_WORLD_SIZE, ModelClaim, OperationTable, SynthesisError, UserDefinedWorld, WorldDecl,
     WorldDeclError, WorldLaw, WorldOrigin, WorldSourceClass, attach_world, synthesize_world,
     user_defined_world,
-};
-pub use joint_tuning::{
-    candidate_id, classify, semantic_dna, tune, tuning_id, CandidateStatus, Disqualification,
-    HostExample, ImplVariant, ProtectedObjective, TuningBudget, TuningError, TuningReceipt,
-    TuningRequest, IMPL_VARIANT_COUNT, TUNING_SCHEMA, TUNING_VERSION,
 };
 
 use std::collections::BTreeMap;
@@ -82,7 +82,7 @@ use emath_world_ir::{
 /// Environment for free variables.
 pub type Environment<V> = BTreeMap<VariableId, V>;
 
-/// Generic first-order world implementation (the World ABI, fjxh.7):
+/// Generic first-order world implementation (the World ABI):
 /// carrier ([`Self::Value`]), constants, variables (via
 /// [`Environment`] in [`evaluate`]), apply, effects, budgets
 /// ([`evaluate_bounded`]) and evidence. A NEW world implements this
@@ -117,14 +117,14 @@ pub trait FirstOrderWorld {
         &[]
     }
 
-    /// Stable evidence record for result bundles (fjxh.8: no naked
+    /// Stable evidence record for result bundles (no naked
     /// answers — every custom-world value names the world that produced
     /// it).
     fn evidence(&self) -> WorldEvidence;
 }
 
 /// Stable per-world evidence: identity, origin class, and claimed laws.
-/// OWNED: runtime-authored worlds (fjxh.13) cannot borrow `'static`
+/// OWNED: runtime-authored worlds cannot borrow `'static`
 /// names; static seed worlds keep their one-line shape through
 /// [`WorldEvidence::seed`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -133,7 +133,7 @@ pub struct WorldEvidence {
     pub world: String,
     /// Origin class (`seed`, `user-defined`, `synthesized`).
     pub origin: String,
-    /// Laws the world claims (checked by law-checking beads, not here).
+    /// Laws the world claims (checked by law checks, not here).
     pub laws: Vec<String>,
 }
 
@@ -188,13 +188,17 @@ impl WorldName {
     }
 }
 
-/// Default custom portfolio order (bead doctrine): free symbolic, then
+/// Default custom portfolio order (doctrine): free symbolic, then
 /// the canonical-finite concrete worlds — Boolean when applicable,
 /// modular when applicable. A typed disposition replaces a silent
 /// fallthrough when nothing applicable remains.
 #[must_use]
 pub fn default_portfolio_order() -> &'static [WorldName] {
-    &[WorldName::FreeSymbolic, WorldName::BooleanAlien, WorldName::ModularAlien]
+    &[
+        WorldName::FreeSymbolic,
+        WorldName::BooleanAlien,
+        WorldName::ModularAlien,
+    ]
 }
 
 /// Typed portfolio disposition: the selected world (if any) plus the
@@ -231,7 +235,11 @@ pub fn select_world(signature: &Signature, exclude: &[WorldName]) -> WorldDispos
         trail.push(format!(
             "{}: {}",
             name.as_str(),
-            if applicable { "applicable" } else { "not applicable" }
+            if applicable {
+                "applicable"
+            } else {
+                "not applicable"
+            }
         ));
         if applicable && selected.is_none() {
             selected = Some(*name);
@@ -257,7 +265,7 @@ pub enum EvalError {
         actual: usize,
     },
     /// World-evaluation budget exhausted before completion; no partial
-    /// value escapes (World ABI budget seam, fjxh.7).
+    /// value escapes (World ABI budget seam).
     BudgetExhausted {
         /// Steps successfully executed before the refusal.
         steps: u32,
@@ -281,7 +289,14 @@ pub fn evaluate<W: FirstOrderWorld>(
 where
     W::Error: From<EvalError>,
 {
-    evaluate_bounded(term, world, environment, WorldBudget { max_steps: u32::MAX })
+    evaluate_bounded(
+        term,
+        world,
+        environment,
+        WorldBudget {
+            max_steps: u32::MAX,
+        },
+    )
 }
 
 /// [`evaluate`] under an explicit [`WorldBudget`] (ABI budget seam):
@@ -300,7 +315,7 @@ where
 }
 
 /// [`evaluate_bounded`] with the step count: the producer seam for the
-/// world-result envelope's `cost_steps` label (fjxh.8).
+/// world-result envelope's `cost_steps` label.
 pub fn evaluate_counted<W: FirstOrderWorld>(
     term: &Term,
     world: &W,
@@ -325,9 +340,9 @@ fn evaluate_metered<W: FirstOrderWorld>(
 where
     W::Error: From<EvalError>,
 {
-    let visited = steps.checked_add(1).ok_or(EvalError::BudgetExhausted {
-        steps: *steps,
-    })?;
+    let visited = steps
+        .checked_add(1)
+        .ok_or(EvalError::BudgetExhausted { steps: *steps })?;
     if visited > budget.max_steps {
         return Err(EvalError::BudgetExhausted { steps: *steps }.into());
     }

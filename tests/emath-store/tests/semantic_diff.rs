@@ -1,4 +1,4 @@
-//! emath-epic-emlib-nz1n.8 contracts: semantic diff and early cutoff.
+//! contracts: semantic diff and early cutoff.
 //!
 //! The diff classifies a change as presentation / meaning / evidence /
 //! provider and drives rebuilds:
@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 
 use emath_core::{MeaningId, SourceId};
 use emath_store::materialization::MaterializationRecipe;
-use emath_store::semantic_diff::{classify, decide, ChangeClass, SemanticSnapshot};
+use emath_store::semantic_diff::{ChangeClass, SemanticSnapshot, classify, decide};
 
 fn snapshot(seed: &[u8], toolchain: &str, evidence: &[&str]) -> SemanticSnapshot {
     SemanticSnapshot::new(
@@ -28,7 +28,7 @@ fn snapshot(seed: &[u8], toolchain: &str, evidence: &[&str]) -> SemanticSnapshot
 
 /// Presentation-only (source changed, meaning stable) is NOT semantic:
 /// the class is Presentation, the outcome is a cutoff, and the receipt
-/// names the stable meaning. The bead's negative control: presentation
+/// names the stable meaning. The negative control: presentation
 /// labeled semantic fails.
 #[test]
 fn presentation_only_is_not_labeled_semantic() {
@@ -112,25 +112,17 @@ fn provider_change_invalidates_only_dependent_recipes() {
     );
     assert_eq!(classify(&before, &after), ChangeClass::Provider);
 
-    let dependent = MaterializationRecipe::new(
-        MeaningId::from_bytes(b"meaning"),
-        "gen-a",
-        "host",
-        b"spec",
-    );
-    let independent = MaterializationRecipe::new(
-        MeaningId::from_bytes(b"meaning"),
-        "gen-c",
-        "host",
-        b"spec",
-    );
-    let re_pinned = MaterializationRecipe::new(
-        MeaningId::from_bytes(b"meaning"),
-        "gen-b",
-        "host",
-        b"spec",
-    );
-    match decide(&before, &after, &[dependent.clone(), independent.clone(), re_pinned.clone()]) {
+    let dependent =
+        MaterializationRecipe::new(MeaningId::from_bytes(b"meaning"), "gen-a", "host", b"spec");
+    let independent =
+        MaterializationRecipe::new(MeaningId::from_bytes(b"meaning"), "gen-c", "host", b"spec");
+    let re_pinned =
+        MaterializationRecipe::new(MeaningId::from_bytes(b"meaning"), "gen-b", "host", b"spec");
+    match decide(
+        &before,
+        &after,
+        &[dependent.clone(), independent.clone(), re_pinned.clone()],
+    ) {
         emath_store::semantic_diff::DiffOutcome::ProviderInvalidation {
             receipt,
             invalidated,

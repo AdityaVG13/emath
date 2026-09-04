@@ -1,6 +1,6 @@
-//! WorldResultBundle envelope (fjxh.8): every execution labels world,
+//! WorldResultBundle envelope: every execution labels world,
 //! method, inputs, assumptions, answer-or-disposition, evidence, and
-//! cost. The World ABI ([`crate::evaluate_bounded`], fjxh.7) is the
+//! cost. The World ABI ([`crate::evaluate_bounded`]) is the
 //! producer; this module is the envelope — a bare scalar never escapes a
 //! public path, dispositions are first-class, and the bundle id is a
 //! deterministic content id (replay from IDs reconstructs the labeled
@@ -101,7 +101,8 @@ impl WorldResult {
 
     fn canonical(&self) -> String {
         fn field(out: &mut String, name: &str, value: &str) {
-            let _ = std::fmt::Write::write_fmt(out, format_args!("{name}:{}:{value}\n", value.len()));
+            let _ =
+                std::fmt::Write::write_fmt(out, format_args!("{name}:{}:{value}\n", value.len()));
         }
         let mut out = String::new();
         field(&mut out, "schema", WORLD_RESULT_SCHEMA);
@@ -139,10 +140,7 @@ impl WorldResult {
     pub fn to_json(&self) -> String {
         let mut object = BTreeMap::new();
         object.insert("assumptions", json_array(&self.assumptions));
-        object.insert(
-            "cost_steps",
-            Json::Number(self.cost_steps.to_string()),
-        );
+        object.insert("cost_steps", Json::Number(self.cost_steps.to_string()));
         let mut disposition = BTreeMap::new();
         disposition.insert("kind", Json::Str(self.disposition.kind().to_string()));
         match &self.disposition {
@@ -307,8 +305,8 @@ where
             0,
         ),
         Err(EvalError::UnknownSymbol(symbol)) => (
-            Disposition::Refused {
-                reason: format!("unknown symbol `{}`", symbol.0),
+            Disposition::Open {
+                missing: vec![format!("symbol:{}", symbol.0)],
             },
             0,
         ),

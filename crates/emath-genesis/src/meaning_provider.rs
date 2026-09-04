@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 
 use emath_world_ir::fnv1a64;
 
-use crate::synth::{check_table, LawViolation, OpTable, SynthLaw, MAX_CARRIER_SIZE};
+use crate::synth::{LawViolation, MAX_CARRIER_SIZE, OpTable, SynthLaw, check_table};
 
 /// Agent-meaning schema id for artifacts and receipts.
 pub const PROVIDER_SCHEMA: &str = "emath.agent-meaning";

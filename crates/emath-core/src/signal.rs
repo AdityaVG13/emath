@@ -1,7 +1,7 @@
 //! Discrete signals over DECLARED sampling, convolution, the direct DFT
 //! reference, the `TransformBackend` provider contract, and windows.
 //!
-//! Honesty contract (bead emath-r3-signal-z2yt):
+//! Honesty contract:
 //! - Sampling semantics are DECLARED, never ambient: every signal carries
 //!   its `Sampling { rate, phase }`; there is no default, no inference, and
 //!   the constructor has no ambient form. Signals sampled at different

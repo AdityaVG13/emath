@@ -1,7 +1,7 @@
 //! Structural discovery (`emath find`, store tier) —
-//! emath-epic-emlib-nz1n.10.
+//!.
 //!
-//! Search by mathematics over the object graph (nz1n.4): exact filters
+//! Search by mathematics over the object graph: exact filters
 //! are STRUCTURAL — object kind, outgoing relation kind, relation
 //! toward a target meaning, relation authority. Text/embedding
 //! similarity may only RANK the compatible set: **rank cannot override
@@ -81,10 +81,15 @@ impl FindQuery {
         ranker: impl Fn(&crate::object_graph::LibraryObject) -> Option<f64>,
     ) -> Vec<DiscoveryHit> {
         // Index outgoing relations by source for O(1) filter checks.
-        let mut outgoing: std::collections::BTreeMap<ObjectId, Vec<&crate::object_graph::Relation>> =
-            std::collections::BTreeMap::new();
+        let mut outgoing: std::collections::BTreeMap<
+            ObjectId,
+            Vec<&crate::object_graph::Relation>,
+        > = std::collections::BTreeMap::new();
         for relation in graph.relations() {
-            outgoing.entry(relation.source.clone()).or_default().push(relation);
+            outgoing
+                .entry(relation.source.clone())
+                .or_default()
+                .push(relation);
         }
         let mut hits: Vec<DiscoveryHit> = graph
             .objects()
@@ -94,24 +99,24 @@ impl FindQuery {
                     FindFilter::Relation(kind) => outgoing
                         .get(&object.id)
                         .is_some_and(|edges| edges.iter().any(|edge| edge.kind == *kind)),
-                    FindFilter::RelationTo(kind, target_meaning) => outgoing
-                        .get(&object.id)
-                        .is_some_and(|edges| {
+                    FindFilter::RelationTo(kind, target_meaning) => {
+                        outgoing.get(&object.id).is_some_and(|edges| {
                             edges.iter().any(|edge| {
                                 edge.kind == *kind
                                     && graph
                                         .object(&edge.target)
                                         .is_some_and(|target| target.meaning_id == *target_meaning)
                             })
-                        }),
-                    FindFilter::Authority(authority) => outgoing
-                        .get(&object.id)
-                        .is_some_and(|edges| {
+                        })
+                    }
+                    FindFilter::Authority(authority) => {
+                        outgoing.get(&object.id).is_some_and(|edges| {
                             edges
                                 .iter()
                                 .any(|edge| edge.authority.as_deref() == Some(*authority))
                                 || edges.is_empty()
-                        }),
+                        })
+                    }
                 })
             })
             .map(|object| DiscoveryHit {
@@ -121,14 +126,12 @@ impl FindQuery {
             .collect();
         // No ranker ⇒ ascending id. Ranker ⇒ descending rank, ties by
         // id: deterministic either way.
-        hits.sort_by(|left, right| {
-            match (left.rank, right.rank) {
-                (Some(left_rank), Some(right_rank)) => right_rank
-                    .partial_cmp(&left_rank)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| left.id.cmp(&right.id)),
-                _ => left.id.cmp(&right.id),
-            }
+        hits.sort_by(|left, right| match (left.rank, right.rank) {
+            (Some(left_rank), Some(right_rank)) => right_rank
+                .partial_cmp(&left_rank)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| left.id.cmp(&right.id)),
+            _ => left.id.cmp(&right.id),
         });
         hits
     }

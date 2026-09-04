@@ -1,10 +1,14 @@
 # emath-core
 
 ## Purpose and layer
+Tier 0 identity, diagnostics and canonical structural primitives. Provider-free,
+std only. This crate does not decide which mathematical features exist, how they
+are labelled, or where they apply. Those decisions belong to authored language
+capsules and their generated images.
 
-Tier 0 identity, diagnostics and canonical primitives. Provider-free, std
-only. Defines content identity, file/spans, stable diagnostics, canonical ID
-and source types that all downstream crates consume.
+The obsolete static compiler-capability catalog is no longer linked or exported.
+`src/capabilities.rs` is retained unreferenced solely because file deletion was
+not authorized.
 
 ## Public types and semantics
 
@@ -16,6 +20,15 @@ and source types that all downstream crates consume.
 - `IdentityParseError`: malformed durable identity with expected prefix.
 - `FileId`, `QualifiedName`, `SchemaId`: ID and naming primitives for files,
   qualified names and schema identities.
+- `FeatureId`: durable, unversioned, opaque dotted identifier. Core validates
+  and stores its canonical spelling; it does not assign feature meaning. The
+  legacy `authority`, `class`, `path_segments`, and `require_class` accessors
+  remain temporarily public only for unmigrated external callers.
+- `SemanticHash`, `DistributionHash`, `OperationalHash`: canonical,
+  field-sorted SHA-256 envelopes with disjoint domain frames. Semantic envelopes
+  reject operational metadata; operational envelopes reject semantic metadata.
+- `LegacyIdMapping`: explicit tagged bridge from bootstrap/FNV identifiers to a
+  `FeatureId`; an untagged legacy value is never reinterpreted.
 - `Span`: source span for diagnostics and tree nodes.
 - `Diagnostic`, `Diagnostics`, `Severity`: stable diagnostic envelope with
   code, message, primary span, notes and help (not exhaustive, see modules).
@@ -23,12 +36,20 @@ and source types that all downstream crates consume.
 - `SourceFile`, `SourceStore`: source buffer and store types.
 - Re-exported helpers: `bootstrap_content_id`, `content_id_of_str`,
   `fnv1a64_bytes`, `register_source_parser`, `source_parser`.
-- `CompilerCapabilities` (`compiler_capabilities()`, schema
-  `emath.compiler-capabilities.v1`): self-describing capability report
-  (descriptors for sections, numeric models, goals, world classes and
-  deferred features).
-- Modules: `capabilities`, `diagnostic`, `hash`, `id`, `limits`, `parse`,
-  `source`, `span`, `tree`.
+- Generic boundary modules: `diagnostic`, `hash`, `id`, `limits`, `parse`,
+  `source`, `span`, `text`, and `tree`.
+- Obsolete domain implementations are no longer linked; their source files are
+  retained unreferenced because deletion was not authorized. The narrow root
+  kernel surface consists of `KernelSpecialFn`, `KernelDomainRefusal`,
+  `evaluate_special_kernel`, `kernel_mean`, `kernel_median`, `kernel_quantile`,
+  `kernel_variance`, and the generic deterministic seed values `Seed`,
+  `StreamPath`, and `local_stream_seed`.
+- `sigfigs`, `special`, and `units` remain available only as retained generic
+  presentation/representation plumbing re-exported at the crate root (for
+  example `count_sig_figs`, `PrecisionLedger`, `Quantity`, `UnitTable`,
+  `seed_table`). Their visibility is compatibility residue, not authority for
+  admission, labels, or applicability: admission and meaning must come from the
+  installed language image.
 
 ## Invariants
 
@@ -37,6 +58,11 @@ and source types that all downstream crates consume.
 - Content IDs are deterministic over bytes via the bootstrap hash.
 - Durable IDs hash `prefix || NUL || payload`, preventing equal payloads in
   different identity domains from sharing an identity.
+- Feature IDs are opaque canonical keys rather than semantic dispatch values.
+  Numeric suffixes and version/edition/semver fields are rejected; exact meaning
+  is supplied by authored capsule content and identified by `SemanticHash`.
+- Hash envelopes length-frame sorted field names and bytes. Equal payloads in
+  semantic, distribution, and operational domains produce different hashes.
 - Source types depend only on core identity/diagnostic types.
 
 ## Error model
@@ -64,12 +90,19 @@ None.
 
 ## Conformance tests
 
-`tests/emath-store/tests/lib.rs` covers every durable domain, one-byte source
-mutation, domain separation, and strict wire parsing.
+`tests/emath-core/tests/feature_identity.rs` covers FeatureID grammar and class
+matching, canonical vectors, semantic mutation, three-domain separation,
+metadata contamination refusal, and tagged legacy-mapping round trips. The
+remaining 21 host-authority test files (units, sigfigs, numtheory, geometry,
+statistics, stochastic, version, and kin) tested domain authority that is now
+capsule-mirrored or privatized; they no longer compiled against the contracted
+nucleus and were deleted with explicit user authorization on 2026-09-04.
 
 ## No-claim boundaries
 
 Content identity and FNV-1a hashing are content-addressing primitives, not a
 cryptographic or release identity. No authentication or integrity guarantee.
 Durable IDs provide cryptographic content identity, not signatures,
-authentication, semantic equivalence, or evidence authority.
+authentication, semantic equivalence, or evidence authority. Historical domain
+modules do not authorize a language feature merely because a Rust API exists;
+admission and meaning must come from the installed language image.

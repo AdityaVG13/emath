@@ -1,6 +1,6 @@
 //! Measures as DECLARED world data, integration with the measure as an
 //! EXPLICIT argument, and declared-kernel transforms over the discrete
-//! world (bead emath-r3-measures-transforms-r2mt, thin std-layer slice;
+//! world (thin std-layer slice;
 //! B20 measure worlds + the B25 kernel core).
 //!
 //! Honesty contract:

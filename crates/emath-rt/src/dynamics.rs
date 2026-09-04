@@ -1,15 +1,15 @@
-//! Typed ODE stepping (xx0x.3 thin nucleus slice): the error model and
+//! Typed ODE stepping: the error model and
 //! safe wrappers over the strict-f64 kernels in `crate::body`.
 //!
 //! Refusals are typed, never silent: a non-converged implicit solve
 //! (`E-ODE-001`), a non-advancing/non-finite step size (`E-ODE-003`),
 //! or non-finite carriers (`E-ODE-004`) each name their diagnostic.
-//! The runner/`StepMethod` surface stays BronzeCoyote's (b9flv); this
+//! The runner/`StepMethod` surface owns its `StepMethod` definitions; this
 //! module is the EMIR-op compute path only.
 
 use crate::body::{ode_backward_euler_step, ode_velocity_verlet_step};
 
-/// Typed refusal for the ODE stepping ops (xx0x.3).
+/// Typed refusal for the ODE stepping ops.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OdeError {
     /// Newton did not converge to machine tolerance: the implicit

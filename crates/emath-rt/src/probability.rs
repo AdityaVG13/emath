@@ -1,18 +1,18 @@
-//! Typed probability surface (xx0x.5 thin nucleus slice): the error
+//! Typed probability surface: the error
 //! model and safe wrappers over the strict-f64 kernels in
 //! `crate::body`.
 //!
 //! ONE generator story lives here: the explicit source seed enters the
-//! `emath-gap-stochastic-vnqo` counter-based root-stream contract, whose
+//! counter-based root-stream contract, whose
 //! counter-zero value deterministically seeds the local sampling kernel.
 //!
 //! Capability bounds, honestly named: three admitted families
 //! (Normal, Uniform, Bernoulli) with exact densities. MCMC/Bayesian
-//! posterior sampling, UQ, and random-matrix theory are the bead's
-//! named deferrals, not claims of this slice.
+//! posterior sampling, UQ, and random-matrix theory are the
+//! documented deferrals, not claims of this module.
 
 use crate::body::{prob_density as kernel_density, prob_sample as kernel_sample};
-use emath_core::stochastic::{Seed, StreamPath, local_stream_seed};
+use emath_core::{Seed, StreamPath, local_stream_seed};
 
 /// The admitted distribution families (the op payload encodes these
 /// as `u8`: 0 = Normal, 1 = Uniform, 2 = Bernoulli).
@@ -48,7 +48,7 @@ impl Family {
     }
 }
 
-/// Typed refusal for the probability ops (xx0x.5).
+/// Typed refusal for the probability ops.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProbError {
     /// A parameter outside the family's domain (σ ≤ 0, a > b,
@@ -94,7 +94,7 @@ fn validate(family: Family, params: &[f64]) -> Result<(), ProbError> {
 }
 
 /// Sample `draws` values from `family` with the given seed. Same seed
-/// ⟹ bit-identical draws (the bead's reproducibility law). Zero draws
+/// ⟹ bit-identical draws (the reproducibility law). Zero draws
 /// is the legal empty stream; a draw count that is not a non-negative
 /// integer or exceeds the compute budget refuses.
 pub fn prob_sample(

@@ -24,7 +24,7 @@ pub struct VmBudget {
 }
 
 impl VmBudget {
-        /// Genesis seed-lane default: generous for seed terms, a hard ceiling.
+    /// Genesis seed-lane default: generous for seed terms, a hard ceiling.
     #[must_use]
     pub const fn seed_default() -> Self {
         Self { max_steps: 4096 }

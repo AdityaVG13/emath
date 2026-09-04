@@ -42,7 +42,6 @@ fn missing_or_malformed_refused() {
 
 #[test]
 fn unreadable_manifest_reports_code() {
-    let error =
-        manifest_edition(Path::new("/nonexistent/emath.toml")).expect_err("missing file");
+    let error = manifest_edition(Path::new("/nonexistent/emath.toml")).expect_err("missing file");
     assert_eq!(error.code(), "E-PKG-MANIFEST-UNREADABLE");
 }

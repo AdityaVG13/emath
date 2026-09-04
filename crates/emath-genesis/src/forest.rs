@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use emath_term::{Signature, SymbolId, Term, VariableId};
-use emath_world_ir::{fnv1a64, Fixity};
+use emath_world_ir::{Fixity, fnv1a64};
 
 /// Budget for the bounded parse forest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

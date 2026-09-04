@@ -1,4 +1,4 @@
-//! Manifest-scoped editions (bead emath-r3-version-stack-9z1a, 05 section 1).
+//! Manifest-scoped editions (05 section 1).
 //!
 //! `emath.toml` carries one package-level `edition = "2026"` field. Editions
 //! are manifest-scoped, never per-file: a package cannot mix parse epochs

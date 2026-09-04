@@ -21,6 +21,9 @@ Frequently re-exported types (not exhaustive):
 ## Invariants
 
 - The four durable schemas are emitted by one deterministic std-only JSON writer (two-space indent, `BTreeMap` file order); serde is forbidden.
+- `AuthorityLock`, `AuthorityEntry`, `AuthorityReceipt`: deterministic,
+  feature-scoped authority and rollback records. Receipts retain old/new
+  semantic hashes, conformance, regenerated views, and rollback image.
 - `manifest_identity` is the single artifact identity: a deterministic hash of the manifest body excluding self-referential `artifact_id` and the manifest's own content-id entry.
 - Publish is atomic: verified pre- and post-write under a temporary sibling directory, renamed into place, never overwriting a verified existing artifact.
 - Symlinks, absolute staged paths and `..` traversal are refused; symlinks cannot smuggle files in or out.

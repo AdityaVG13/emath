@@ -7,7 +7,7 @@
 //! - canonical form: `den > 0`, `gcd(|num|, den) == 1`, zero is `0/1`;
 //! - every operation is checked; overflow and zero denominators are typed
 //!   errors, never silent wraps and never panics;
-//! - NO float conversion methods — the no-hidden-float bead law starts here.
+//! - NO float conversion methods — the no-hidden-float law starts here.
 
 /// An exact rational number with `i128` num/den, always canonical:
 /// `den > 0` and `gcd(|num|, den) == 1`.
@@ -33,10 +33,16 @@ impl std::fmt::Display for RatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RatError::ZeroDenominator => {
-                write!(f, "rational operation violated precondition: denominator must be nonzero")
+                write!(
+                    f,
+                    "rational operation violated precondition: denominator must be nonzero"
+                )
             }
             RatError::Overflow => {
-                write!(f, "rational operation violated precondition: intermediate value overflows i128")
+                write!(
+                    f,
+                    "rational operation violated precondition: intermediate value overflows i128"
+                )
             }
         }
     }

@@ -2,10 +2,11 @@
 
 ## Purpose and layer
 
-`emath-rt` is the pre-compiled math kernel library: vector/matrix/tensor
-arithmetic, stencil convolution, modular/finite-field arithmetic, and the
-higher-order drivers (fold, Simpson quadrature, numerical limits). It is
-shared two ways:
+`emath-rt` is a provider-free storage and numeric kernel implementation layer.
+It supplies deterministic functions selected by generic `KernelId` adapters; it
+does not decide feature identity, labels, admission, applicability, result
+authority, or exactness claims. Those decisions belong to authored capsules and
+the generated language image. The implementation is shared two ways:
 
 1. The interpreter (`emath-exec-ir`) calls these functions directly for
    op evaluation.
@@ -19,23 +20,24 @@ Layer: foundation (std-only, no other emath crates).
 
 - `SOURCE: &'static str`; the embeddable kernel body; byte-stable per
   version.
-- All functions in `body.rs` are re-exported at the crate root: `vec_*`,
-  `mat_*`, `tensor_*`, `stencil_1d`, `stencil_2d`, `factorial`,
-  `factorial_checked`, `mod_inv`, `mod_inv_checked`, `poly_eval_mod`,
-  `poly_eval_mod_checked`, `rs_encode`, `rs_encode_checked`,
-  `hamming_distance`, `hamming_distance_checked`, `cmp_i64_f64`,
-  `eq_i64_f64`, `fold_add`, `fold_mul`,
-  `fold_add_i64`, `fold_mul_i64`, `fold_all`, `fold_any`,
-  `fold_add_checked`, `fold_mul_checked`, `fold_all_checked`,
-  `fold_any_checked`, `simpson`,
-  `sample_limit`, `einsum_checked`, `einsum_as_scalar`, `einsum_as_vector`,
-  `einsum_as_matrix`, `einsum_as_tensor`, `EinsumError`, `EinsumIn`,
-  `EdgePolicy`, `Tensor`, `IndexError`, `SliceAxis`, `whole_index`,
-  `vec_index_checked`, `mat_index_checked`, `tensor_index_checked`,
-  `tensor_slice_checked`, `tensor_slice_as_scalar`,
-  `tensor_slice_as_vector`, `tensor_slice_as_matrix`,
-  `tensor_slice_as_tensor`, `complex_sqrt`, `complex_ln`, `complex_exp`,
-  `trapezoid_sum`.
+- `body.rs` kernels are re-exported at the crate root. The unavoidable generic
+  substrate comprises shape-preserving vector/matrix/tensor storage and
+  arithmetic, checked indexing/slicing/einsum, deterministic scalar and integer
+  arithmetic (including bounded big integers), folds, quadrature/limit drivers,
+  stencil application, and numeric decomposition/solve routines. These remain
+  public because interpreter adapters and generated Rust call them directly.
+- `rat.rs` and `stochastic.rs` are no longer linked: no production adapter uses
+  them. The source files remain present and unreferenced because deletion was not
+  authorized.
+- Native `KernelId` adapters call only neutral root names for dense carriers,
+  decompositions, checked polynomial/linear operations, optimization, sampling,
+  and densities. Root sampling takes an image-supplied numeric kernel code rather
+  than publishing a distribution-family enum.
+- `category`, `control`, `dynamics`, `graph`, `linalg`, `optimization`, `pde`,
+  `polynomial`, `probability`, and `sequence` remain public solely because
+  production interpreter/backend callers outside this task's edit scope still
+  use those paths. They are unavoidable public-module residue, not semantic
+  authority, and must become private when those callers use the root kernel ABI.
 - `stencil_1d` / `stencil_2d` take `EdgePolicy` **by value** (moved from a
   borrowed `&EdgePolicy`); `stencil_1d` honors Clamp / Neumann / OneSided
   / Dirichlet; `stencil_2d` refuses `Dirichlet`.
@@ -49,6 +51,9 @@ Layer: foundation (std-only, no other emath crates).
 ## Invariants
 
 - std-only and dependency-free; `#![forbid(unsafe_code)]`.
+- Kernels branch only on numeric/storage inputs and explicit algorithm
+  parameters. They do not inspect `FeatureId`, `KernelId`, capsule labels,
+  worlds, evidence, or result-authority metadata.
 - `body.rs` contains no crate-level attributes, no `crate::` paths, and no
   external imports, so the text can be pasted inside a `mod` block in any
   generated crate.
@@ -111,6 +116,10 @@ contains no crate-level attribute).
 
 ## No-claim boundaries
 
-- Not a general linear-algebra library: no solvers/eigen decompositions.
+- Kernel availability is not language admission, and a returned number carries
+  no independent claim of applicability, proof, evidence, or semantic identity.
+- This is not a general linear-algebra API even though bounded decomposition and
+  solve kernels exist for generic adapters.
 - `mat_mul_mat` is semantically naive O(n³) with direct indexing.
-- Complex arithmetic is not covered (handled in the interpreter).
+- Complex helpers provide numeric operations only; they do not choose a complex
+  world or authorize complex-valued language semantics.

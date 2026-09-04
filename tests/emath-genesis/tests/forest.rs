@@ -9,8 +9,7 @@ use emath_world_ir::Fixity;
 /// no complete parse at all, so no pinned artifact can change.
 #[test]
 fn trailing_operator_is_hypothesized_as_postfix() {
-    let inference =
-        infer_signature("a \u{22c8}", &ForestLimits::default()).expect("postfix parse");
+    let inference = infer_signature("a \u{22c8}", &ForestLimits::default()).expect("postfix parse");
     let symbol = SymbolId("\u{22c8}".to_string());
     assert_eq!(inference.signature.arity(&symbol), Some(1));
     assert_eq!(inference.fixities.get(&symbol), Some(&Fixity::Postfix));

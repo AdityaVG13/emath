@@ -2,11 +2,11 @@
 //! module: every symbol they exercise is public crate surface.
 
 use emath_genesis::meaning_provider::{
-    admit, challenge, check_version, proposal_id, AdmissionStatus, AgentProposal,
-    ChallengeRefusal, ChallengeStatus, MeaningChecker, ProviderError, AUTHORITY_NONE,
-    AUTHORITY_STRUCTURAL_CHECKED, PROVIDER_VERSION, REQUIRED_CAPABILITY,
+    AUTHORITY_NONE, AUTHORITY_STRUCTURAL_CHECKED, AdmissionStatus, AgentProposal, ChallengeRefusal,
+    ChallengeStatus, MeaningChecker, PROVIDER_VERSION, ProviderError, REQUIRED_CAPABILITY, admit,
+    challenge, check_version, proposal_id,
 };
-use emath_genesis::synth::{OpTable, SynthLaw, MAX_CARRIER_SIZE};
+use emath_genesis::synth::{MAX_CARRIER_SIZE, OpTable, SynthLaw};
 
 fn xor_table() -> OpTable {
     OpTable {
@@ -120,14 +120,19 @@ fn checker_without_required_capability_is_refused() {
 fn refused_receipts_record_why() {
     let candidate = admit(good_proposal("agent-0")).expect("admit");
     let self_cert = challenge(&candidate, &capable("agent-0")).expect_err("self-cert");
-    let receipt =
-        emath_genesis::meaning_provider::MeaningReceipt::refused(candidate.proposal_id, "agent-0", &self_cert);
+    let receipt = emath_genesis::meaning_provider::MeaningReceipt::refused(
+        candidate.proposal_id,
+        "agent-0",
+        &self_cert,
+    );
     assert_eq!(receipt.verdict.canonical(), "refused");
     assert_eq!(receipt.reason, Some("self-certification"));
     assert_eq!(receipt.authority, AUTHORITY_NONE);
-    assert!(receipt
-        .to_json()
-        .contains("\"reason\":\"self-certification\""));
+    assert!(
+        receipt
+            .to_json()
+            .contains("\"reason\":\"self-certification\"")
+    );
 
     let incapable = MeaningChecker {
         id: "checker-1".to_string(),

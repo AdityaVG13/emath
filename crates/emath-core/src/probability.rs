@@ -13,7 +13,7 @@
 //!   a FUNCTION distinction: the differential surface refuses by name
 //!   because a density integral is not a mass sum — the giry
 //!   probability world is the follow-up, and reusing the discrete sum
-//!   for densities would be exactly the silent inference this bead
+//!   for densities would be exactly the silent inference this module
 //!   forbids.
 //! - These are contract-first reference implementations: the sema call
 //!   table does not admit the names yet (special-functions seam

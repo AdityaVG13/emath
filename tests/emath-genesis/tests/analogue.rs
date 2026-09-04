@@ -2,8 +2,8 @@
 //! module: every symbol they exercise is public crate surface.
 
 use emath_genesis::analogue::{
-    analogue_id, check_version, AnalogueDomain, AnalogueError, AnalogueRequest,
-    AnalogueVerdict, ANALOGUE_NO_CLAIM, ANALOGUE_VERSION,
+    ANALOGUE_NO_CLAIM, ANALOGUE_VERSION, AnalogueDomain, AnalogueError, AnalogueRequest,
+    AnalogueVerdict, analogue_id, check_version,
 };
 use emath_genesis::binder::{BinderBudget, BinderKind, BinderTerm};
 use emath_term::{SymbolId, Term, VariableId};

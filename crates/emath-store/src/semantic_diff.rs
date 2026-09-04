@@ -1,4 +1,4 @@
-//! Semantic diff and early cutoff (emath-epic-emlib-nz1n.8).
+//! Semantic diff and early cutoff.
 //!
 //! The diff classifies a change between two [`SemanticSnapshot`]s as one
 //! of the closed classes — presentation / meaning / evidence / provider
@@ -167,8 +167,7 @@ pub fn decide(
     match classify(before, after) {
         ChangeClass::Meaning => DiffOutcome::Rebuild(CutoffReceipt {
             class: ChangeClass::Meaning,
-            reason: "meaning changed: dependents rebuild (never a silent cutoff)"
-                .to_string(),
+            reason: "meaning changed: dependents rebuild (never a silent cutoff)".to_string(),
         }),
         ChangeClass::Provider => {
             let invalidated = recipes

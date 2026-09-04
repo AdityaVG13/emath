@@ -1,5 +1,5 @@
 //! core::statistics — descriptive statistics and estimator contracts
-//! (Phase 11, bead tpve).
+//! (Phase 11).
 //!
 //! Honesty doctrine of this package:
 //!

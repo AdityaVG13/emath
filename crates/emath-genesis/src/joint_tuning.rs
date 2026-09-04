@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 
 use emath_world_ir::fnv1a64;
 
-use crate::synth::{OpTable, MAX_CARRIER_SIZE};
+use crate::synth::{MAX_CARRIER_SIZE, OpTable};
 
 /// Joint-tuning schema id for artifacts and receipts.
 pub const TUNING_SCHEMA: &str = "emath.joint-tuning";

@@ -1,27 +1,29 @@
-//! User-defined and law-synthesized worlds (fjxh.13).
+//! User-defined and law-synthesized worlds.
 //!
 //! Worlds authored at the language's world kinds enter the World ABI as
 //! DATA through this module: a [`WorldDecl`] (finite carrier, constants,
 //! total operation tables) is validated into a [`UserDefinedWorld`]
 //! (origin `user-defined`), or synthesized from a law over a toy-size
 //! carrier (origin `synthesized` — never claimed as Real meaning). Every
-//! world is labeled: the evidence record rides into every result bundle
-//! (fjxh.8). False model claims are checked against the world's own
+//! world is labeled: the evidence record rides into every result bundle.
+//! False model claims are checked against the world's own
 //! tables and rejected typed. The strict source lane refuses world
 //! attachments typed (E-WORLD-006): the strict vs Genesis/custom
 //! firewall holds — a strict Gaussian file never runs a Mod17 world.
 //!
 //! Zero core delta: a new world is data validated at this seam; the
-//! evaluator gains no match arm for it (fjxh.7 trait contract).
+//! evaluator gains no match arm for it (the trait contract).
 
 use std::collections::BTreeMap;
 use std::fmt;
 
 use emath_term::{Signature, SymbolId, Term};
 
-use crate::{Environment, EvalError, FirstOrderWorld, WorldBudget, WorldEvidence, evaluate_bounded};
+use crate::{
+    Environment, EvalError, FirstOrderWorld, WorldBudget, WorldEvidence, evaluate_bounded,
+};
 
-/// Toy-size bound for world carriers (bead: law-synthesis toy size ≤ 6;
+/// Toy-size bound for world carriers (law-synthesis toy size ≤ 6;
 /// declared worlds share the bound so table totality stays checkable).
 pub const MAX_WORLD_SIZE: usize = 6;
 
@@ -87,7 +89,7 @@ pub struct WorldDecl {
     pub name: String,
     /// Origin class (declared, re-validated by the constructor).
     pub origin: WorldOrigin,
-    /// Claimed laws (checked by law-checking beads, not here).
+    /// Claimed laws (checked by law checks, not here).
     pub laws: Vec<String>,
     /// Finite carrier, `1..=MAX_WORLD_SIZE` elements.
     pub domain: Vec<String>,
@@ -253,13 +255,12 @@ impl UserDefinedWorld {
                 })?
                 .clone()
         } else {
-            let table = self
-                .operations
-                .get(&claim.symbol)
-                .ok_or_else(|| WorldDeclError::UnknownElement {
+            let table = self.operations.get(&claim.symbol).ok_or_else(|| {
+                WorldDeclError::UnknownElement {
                     symbol: claim.symbol.clone(),
                     element: claim.expected.clone(),
-                })?;
+                }
+            })?;
             if table.arity != claim.arguments.len() {
                 return Err(WorldDeclError::UnknownElement {
                     symbol: claim.symbol.clone(),
@@ -401,14 +402,12 @@ fn validate_decl(decl: &WorldDecl, origin: WorldOrigin) -> Result<(), WorldDeclE
                 element: "nullary operation (declare constants, not arity-0 tables)".to_string(),
             });
         }
-        let expected = decl
-            .domain
-            .len()
-            .checked_pow(table.arity as u32)
-            .ok_or(WorldDeclError::SizeBoundExceeded {
+        let expected = decl.domain.len().checked_pow(table.arity as u32).ok_or(
+            WorldDeclError::SizeBoundExceeded {
                 size: decl.domain.len(),
                 max: MAX_WORLD_SIZE,
-            })?;
+            },
+        )?;
         if table.rows.len() != expected {
             return Err(WorldDeclError::IncompleteTable {
                 symbol: symbol.clone(),

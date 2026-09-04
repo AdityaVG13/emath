@@ -2,8 +2,8 @@
 //! module: every symbol they exercise is public crate surface.
 
 use emath_genesis::synth::{
-    check_table, check_version, synth_id, OpTable, SynthBudget, SynthError, SynthExample,
-    SynthLaw, SynthRequest, MAX_CARRIER_SIZE, SYNTH_VERSION,
+    MAX_CARRIER_SIZE, OpTable, SYNTH_VERSION, SynthBudget, SynthError, SynthExample, SynthLaw,
+    SynthRequest, check_table, check_version, synth_id,
 };
 
 fn request(n: u8, laws: Vec<SynthLaw>) -> SynthRequest {

@@ -1,8 +1,10 @@
+use emath_genesis::tuning::ExecutionDelta;
 use emath_genesis::tuning::campaign::{
     CandidateMeasurement, HostCampaign, HostMetric, HostObjectives, ResourceEnvelope,
 };
-use emath_genesis::tuning::frontier::{generate_algebraic_candidates, verify_held_out, RewriteRule};
-use emath_genesis::tuning::ExecutionDelta;
+use emath_genesis::tuning::frontier::{
+    RewriteRule, generate_algebraic_candidates, verify_held_out,
+};
 use emath_term::SymbolId;
 use emath_world_ir::WorldId;
 

@@ -1,4 +1,4 @@
-//! Bead `emath-stdlib-object-packs-hpzgf` — standard library as
+//! — standard library as
 //! executable object packs.
 //!
 //! `std.core` objects load as `.emlib` packs with MeaningIDs, not
@@ -20,9 +20,7 @@ use emath_store::evidence_plane::EvidenceReceipt;
 use emath_store::object_graph::{ObjectGraph, ObjectKind};
 use emath_store::pack::PackEntry;
 use emath_store::semantic_diff::{ChangeClass, SemanticSnapshot, classify};
-use emath_store::stdlib::{
-    StdMountError, StdObject, StdReceipt, export_std_pack, mount_stdlib,
-};
+use emath_store::stdlib::{StdMountError, StdObject, StdReceipt, export_std_pack, mount_stdlib};
 use emath_syntax::install_source_parser;
 use std::str::FromStr;
 
@@ -110,7 +108,12 @@ fn pack_bytes_with_physical_order(entries: &[PackEntry]) -> Vec<u8> {
     bytes.extend_from_slice(b"EMATHLIB\0");
     bytes.push(1);
     frame(&mut bytes, &[]);
-    frame(&mut bytes, &u64::try_from(entries.len()).unwrap_or(u64::MAX).to_be_bytes());
+    frame(
+        &mut bytes,
+        &u64::try_from(entries.len())
+            .unwrap_or(u64::MAX)
+            .to_be_bytes(),
+    );
     for entry in entries {
         frame(&mut bytes, entry.id.as_bytes());
         frame(&mut bytes, &entry.payload);
@@ -352,11 +355,9 @@ fn forged_evidence_and_forged_object_refuse() {
         semantic_payload: mutated_payload,
         presentation: None,
     };
-    let forged_object_pack = export_std_pack(&[PackEntry::new(
-        cell_id.as_str(),
-        &forged_object.encode(),
-    )])
-    .expect("forged object pack writes");
+    let forged_object_pack =
+        export_std_pack(&[PackEntry::new(cell_id.as_str(), &forged_object.encode())])
+            .expect("forged object pack writes");
     match mount_stdlib(&forged_object_pack) {
         Err(StdMountError::ForgedObject {
             code,
@@ -385,7 +386,10 @@ fn presentation_vs_law_meaning_id_laws() {
     let (base_meaning, _) = meaning_of(base);
     let (presentation_meaning, _) = meaning_of(&presentation);
     let (law_meaning, _) = meaning_of(law);
-    assert_eq!(base_meaning, presentation_meaning, "presentation keeps meaning");
+    assert_eq!(
+        base_meaning, presentation_meaning,
+        "presentation keeps meaning"
+    );
     assert_ne!(base_meaning, law_meaning, "law edit moves meaning");
 
     let before = SemanticSnapshot::new(
