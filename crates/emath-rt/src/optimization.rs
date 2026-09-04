@@ -1,5 +1,4 @@
-//! Typed wrappers over the optimization kernels (r3-lp-milp-wlif
-//! slice 1).
+//! Typed wrappers over the optimization kernels.
 //!
 //! The single source of truth lives in [`crate::body`] (deterministic,
 //! std-only, embedded verbatim into generated crates). This module adds

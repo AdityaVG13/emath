@@ -1,9 +1,11 @@
 mod builder {
-    use emath_build::builder::{BuilderModel, Expression, GoalModel, ModelBuilder, TestModel, TypeKind};
+    use emath_build::builder::{
+        BuilderModel, Expression, GoalModel, ModelBuilder, TestModel, TypeKind,
+    };
 
     #[test]
     fn builder_model_tests_surface_on_declaration_tests() {
-        // Attach-by-id repair (l2pb.4): a builder model's `tests:` must
+        // Attach-by-id repair: a builder model's `tests:` must
         // surface on `declaration.tests`, the same attachment the admit
         // lane uses, so identity and generated `#[test]` functions see
         // them. A span-based fallback would drop them (builder spans are
@@ -70,7 +72,7 @@ mod builder {
     }
 }
 
-// e3wv (F041): the malformed-given/expect negatives live in
+// F041: the malformed-given/expect negatives live in
 // `test_lower_negative.rs` (same crate, shared target via this module
 // include — a standalone file with no `[[test]]` entry never compiled).
 mod test_lower_negative;

@@ -1,5 +1,5 @@
 //! Materialization recipes and deterministic rehydration
-//! (emath-epic-emlib-nz1n.7).
+//!.
 //!
 //! Generated Rust/WASM/docs are caches unless published: a
 //! [`MaterializationRecipe`] binds the meaning it was specialized from,

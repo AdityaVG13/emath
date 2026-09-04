@@ -1,9 +1,9 @@
-//! xx0x.6 (Near-term #8) — continuous optimization nucleus. std-only.
+//! Optimizer nucleus. std-only.
 //!
 //! Engines: **Newton** (analytic Hessian + Armijo backtracking line
 //! search) and **BFGS** (quasi-Newton — objective + gradient only),
 //! plus the KKT residual helper for the constrained story. Interior-
-//! point and SQP refuse by name (phased landing: the constrained
+//! point and SQP refuse by name (the constrained
 //! methods arrive with the goal-surface constraints work, never as a
 //! silent fallback of the unconstrained engine).
 //!
@@ -17,11 +17,11 @@
 //! - A singular Hessian refuses BY NAME (no pseudo-inverse solve); an
 //!   exhausted budget refuses carrying the achieved `‖∇f‖_∞` — a
 //!   non-solution is never dressed as a result.
-//! - Reverse-mode AD (xx0x.1's `grad()` builtin, exec-ir lane) is the
+//! - Reverse-mode AD (the `grad()` builtin) is the
 //!   production gradient provider; this nucleus takes analytic or AD
 //!   closures through the same function-pointer seam, so the
-//!   goal-surface wiring (method selection per goal — the declared
-//!   follow-up, exec-ir foreign hold this tick) reuses these engines
+//!   goal-surface wiring (method selection per goal —
+//!   follow-up) reuses these engines
 //!   without re-deriving them.
 
 /// Declared solver configuration: stationarity tolerance and the
@@ -303,7 +303,7 @@ pub fn kkt_residual(
 pub fn interior_point() -> Result<SolverOutcome, String> {
     Err(
         "interior_point is not implemented: log-barrier constrained methods are the named \
-         follow-up (emath-xx0x.6 phased landing); a constrained problem must not silently \
+         follow-up; a constrained problem must not silently \
          fall back to the unconstrained engine"
             .into(),
     )
@@ -315,7 +315,7 @@ pub fn interior_point() -> Result<SolverOutcome, String> {
 pub fn sqp() -> Result<SolverOutcome, String> {
     Err(
         "SQP is not implemented: the QP-subproblem carrier (active-set/equality machinery) is \
-         the named follow-up (emath-xx0x.6 phased landing); a constrained problem must not \
+         the named follow-up; a constrained problem must not \
          silently fall back to the unconstrained engine"
             .into(),
     )

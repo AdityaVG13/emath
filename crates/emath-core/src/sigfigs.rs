@@ -1,5 +1,4 @@
-//! Significant figures and unit-preserving formatting (bead
-//! emath-r3-sigfigs-formatting-yf28, 04 sections 1.6 + 1.7).
+//! Significant figures and unit-preserving formatting (04 sections 1.6 + 1.7).
 //!
 //! §1.6 Sig-figs are a DISPLAY CONTRACT, not uncertainty propagation:
 //! `@significant_figures(display)` records the literal's sf count and
@@ -22,6 +21,17 @@
 //! `f64::round` step. No-claim boundary: std-side semantics layer;
 //! file-level SIR recording during parse lands with the syntax/sema
 //! integration slice.
+//!
+//! Capsule authority (emath-ehpal.12): the sig-fig count/round policy is
+//! bound capsule-actively as `std.capability.precision.sigfig-count` and
+//! `std.capability.precision.sigfig-round`
+//! (`language/spec/capabilities/domain-science.emath`); the native kernels
+//! `decimal-significance-count` / `decimal-significance-round` call
+//! `count_sig_figs` / `round_to_sig_figs` here, so this module is the
+//! hash-checked generic kernel body, not an independent authority.
+//! `FormatSpec`/`FormattedQuantity`/`PrecisionLedger` remain presentation
+//! plumbing: they carry no mathematical claim and are excluded from
+//! identity hashes by construction.
 
 #![forbid(unsafe_code)]
 

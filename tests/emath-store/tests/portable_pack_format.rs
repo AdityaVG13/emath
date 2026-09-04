@@ -1,4 +1,4 @@
-//! emath-epic-emlib-nz1n.3 contracts: draft .emlib reader/writer,
+//! contracts: draft .emlib reader/writer,
 //! corruption budgets, canonical export.
 //!
 //! The portable-pack draft: magic `EMATHLIB\0`, length-framed segments,
@@ -111,7 +111,10 @@ fn oversized_payload_refuses() {
         max_entries: 16,
         max_payload_bytes: 8,
     };
-    let oversized = vec![PackEntry::new("emath:meaning:v1:aaaa", b"way-too-long-payload")];
+    let oversized = vec![PackEntry::new(
+        "emath:meaning:v1:aaaa",
+        b"way-too-long-payload",
+    )];
     match PackWriter::new(tiny).write(&oversized, None) {
         Err(PackFault::Oversized { code }) => assert_eq!(code, "E-EVID-604"),
         other => panic!("oversized payload must refuse E-EVID-604, got {other:?}"),
@@ -138,7 +141,10 @@ fn entry_count_budget_refuses() {
 #[test]
 fn thin_pack_without_parent_closure_refuses() {
     let parent = PackWriter::new(budgets())
-        .write(&[PackEntry::new("emath:meaning:v1:base", b"base-payload")], None)
+        .write(
+            &[PackEntry::new("emath:meaning:v1:base", b"base-payload")],
+            None,
+        )
         .unwrap();
     let thin = PackWriter::new(budgets())
         .write(
@@ -172,7 +178,7 @@ fn pack_bytes_are_deterministic() {
 
 /// Entry ids are carried VERBATIM — the reader never re-derives an id
 /// from the payload (re-derivation mints a different identity; the
-/// nz1n.5 lesson).
+/// lesson).
 #[test]
 fn entry_ids_are_verbatim_not_rederived() {
     let id = "emath:meaning:v1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

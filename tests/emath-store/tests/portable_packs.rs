@@ -1,18 +1,18 @@
-//! emath-epic-emlib-nz1n.12 — CAPSTONE: portable `.emlib` envelopes.
+//! — CAPSTONE: portable `.emlib` envelopes.
 //!
 //! The share unit is the pack, not a git bundle of generated crates:
 //! create (canonical export), verify (corruption refuses by name),
 //! mount into a FRESH space (offline, no daemon), thin-pack against a
 //! parent, and reject truncated/mutated bytes. Built on the landed
-//! layers: nz1n.3 format, nz1n.6 spaces, nz1n.4 object graph.
+//! layers: format, spaces, object graph.
 //! Offline by construction: everything runs on in-memory structures.
 
 use std::sync::Arc;
 
 use emath_core::MeaningId;
+use emath_store::Space;
 use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
 use emath_store::pack::{PackBudgets, PackEntry, PackFault, PackReader, PackWriter};
-use emath_store::Space;
 
 fn object(meaning: &str, presentation: &str) -> ObjectDraft {
     ObjectDraft {
@@ -100,16 +100,21 @@ fn mount_into_fresh_space_and_verify() {
     assert_eq!(space.name(), "fresh-workbench");
     // The mount's dependency lock verifies against the fresh graph:
     // every mounted object present, nothing revoked.
-    let lock = emath_store::LibraryLock::from_snapshot(&space.snapshot().unwrap(), mounted_ids.clone());
-    lock.verify(&graph).expect("freshly mounted objects must verify");
+    let lock =
+        emath_store::LibraryLock::from_snapshot(&space.snapshot().unwrap(), mounted_ids.clone());
+    lock.verify(&graph)
+        .expect("freshly mounted objects must verify");
 }
 
 /// THIN-PACK: delta against a parent, refuses without closure, merges
-/// with it (nz1n.3 discipline reused as the share flow).
+/// with it (discipline reused as the share flow).
 #[test]
 fn thin_pack_share_flow() {
     let parent_bytes = PackWriter::new(budgets())
-        .write(&[PackEntry::new("emath:meaning:v1:cell-a", b"payload-a")], None)
+        .write(
+            &[PackEntry::new("emath:meaning:v1:cell-a", b"payload-a")],
+            None,
+        )
         .unwrap();
     let thin_bytes = PackWriter::new(budgets())
         .write(

@@ -1,5 +1,4 @@
-//! Stochastic semantics contract (thin slice, bead
-//! emath-gap-stochastic-vnqo): seed identity, named algorithm, stream
+//! Stochastic semantics contract: seed identity, named algorithm, stream
 //! splits, and receipt binding.
 //!
 //! Contract law:

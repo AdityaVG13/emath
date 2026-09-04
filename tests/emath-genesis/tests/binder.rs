@@ -2,8 +2,8 @@
 //! module: every symbol they exercise is public crate surface.
 
 use emath_genesis::binder::{
-    binder_id, check_version, BinderBudget, BinderDomain, BinderError, BinderFamily,
-    BinderKind, BinderTerm, ScopedBinder, BINDER_VERSION,
+    BINDER_VERSION, BinderBudget, BinderDomain, BinderError, BinderFamily, BinderKind, BinderTerm,
+    ScopedBinder, binder_id, check_version,
 };
 use emath_term::{SymbolId, Term, VariableId};
 
@@ -23,15 +23,13 @@ fn sum_over(bound: &str, lower: i64, upper: i64, body: BinderTerm) -> ScopedBind
 
 /// Naive (capture-unsafe) substitution used only as this module's
 /// negative reference: it descends under binders without renaming.
-fn naive_substitute(
-    term: &BinderTerm,
-    variable: &VariableId,
-    replacement: &Term,
-) -> BinderTerm {
+fn naive_substitute(term: &BinderTerm, variable: &VariableId, replacement: &Term) -> BinderTerm {
     match term {
-        BinderTerm::Leaf(leaf) => {
-            BinderTerm::Leaf(emath_genesis::binder::substitute_term(leaf, variable, replacement))
-        }
+        BinderTerm::Leaf(leaf) => BinderTerm::Leaf(emath_genesis::binder::substitute_term(
+            leaf,
+            variable,
+            replacement,
+        )),
         BinderTerm::Bind(binder) => BinderTerm::Bind(Box::new(ScopedBinder {
             kind: binder.kind.clone(),
             family: binder.family,

@@ -1,5 +1,4 @@
-//! Unit aliases and affine units (bead emath-r3-unit-aliases-affine-tao6,
-//! 04 section 1.2 + 1.3).
+//! Unit aliases and affine units (04 section 1.2 + 1.3):
 //!
 //! Kills the C/K bug class — the highest-frequency real-world unit error.
 //!
@@ -30,6 +29,20 @@
 //! No-claim boundary: this module is the semantics layer in std. Surface
 //! (`units:` section parsing and `emath check` admission) wires through
 //! sema + `emath_ir::lookup_unit` and lands with the IR integration slice.
+//!
+//! Capsule authority (emath-ehpal.12): the NAMED unit catalog is capsule
+//! data (`std.capability.units.catalog`,
+//! `language/spec/capabilities/units-catalog.emath`) parsed by
+//! `seed_table`. The dimensional-analysis group law (`dim_add`/`dim_neg`/
+//! `dim_pow`/`check_homogeneity`/`dim_rank`/`dimensionless_groups`) is
+//! generic Z^7 algebra whose language-surface authority lives in the
+//! `std.capability.units.dimension-*`, `std.capability.units.homogeneity-check`,
+//! and `std.capability.units.dimensionless-groups` capsules
+//! (`language/spec/capabilities/domain-science.emath`), bound to the
+//! domain-neutral native kernels in
+//! `emath-exec-ir/src/native_kernels/domain_science.rs`. What remains here
+//! is the generic registry mechanics (alias-as-identity, affine/difference
+//! typing) — data structure, not named-domain policy.
 
 #![forbid(unsafe_code)]
 
@@ -237,24 +250,55 @@ impl UnitTable {
     }
 }
 
-const M: Dims = [1, 0, 0, 0, 0, 0, 0];
-const S: Dims = [0, 0, 1, 0, 0, 0, 0];
-const KG: Dims = [0, 1, 0, 0, 0, 0, 0];
-const KELVIN: Dims = [0, 0, 0, 0, 1, 0, 0];
-const JOULE: Dims = [2, 1, -2, 0, 0, 0, 0];
+/// Capsule-authored unit catalog: `language/spec/capabilities/units-catalog.emath`,
+/// FeatureID `std.capability.units.catalog`. The seed table is capsule DATA
+/// parsed here; this module declares no named unit of its own, only the
+/// generic registry mechanics (`UnitTable`, alias-as-identity, affine
+/// typing) and the generic Z^7 dimension-group algebra.
+const UNIT_CATALOG_CAPSULE: &str =
+    include_str!("../../../language/spec/capabilities/units-catalog.emath");
 
-/// Seed table with the temperature family (C13 order) and SI bases.
+/// Seed table with every SI-family capsule catalog entry (temperature
+/// family with the C13 pre-scale offset order, SI bases, and the declared
+/// linear derived units). Information-family units seed too; the family
+/// boundary is enforced by `Quantity` typing, not by omission.
 #[must_use]
 pub fn seed_table() -> UnitTable {
     let mut table = UnitTable::new();
-    let _ = table.declare_unit(UnitSpec::new("K", KELVIN, 1.0, 0.0));
-    let _ = table.declare_unit(UnitSpec::new("degC", KELVIN, 1.0, 273.15));
-    let _ = table.declare_unit(UnitSpec::new("degF", KELVIN, 5.0 / 9.0, 459.67));
-    let _ = table.declare_unit(UnitSpec::new("m", M, 1.0, 0.0));
-    let _ = table.declare_unit(UnitSpec::new("kg", KG, 1.0, 0.0));
-    let _ = table.declare_unit(UnitSpec::new("s", S, 1.0, 0.0));
-    let _ = table.declare_unit(UnitSpec::new("min", S, 60.0, 0.0));
-    let _ = table.declare_unit(UnitSpec::new("J", JOULE, 1.0, 0.0));
+    let Some(block_start) = UNIT_CATALOG_CAPSULE.find("emath feature UnitCatalog:") else {
+        return table;
+    };
+    let block = &UNIT_CATALOG_CAPSULE[block_start..];
+    let block = block.split("\nemath feature ").next().unwrap_or(block);
+    let semantics = block.lines().find_map(|raw| {
+        let line = raw.trim();
+        let (key, value) = line.split_once(':')?;
+        (key.trim() == "semantics").then(|| value.trim().trim_matches('"'))
+    });
+    let catalog = semantics.and_then(|semantics| {
+        semantics
+            .split(';')
+            .find_map(|part| part.trim().strip_prefix("catalog="))
+    });
+    let Some(catalog) = catalog else {
+        return table;
+    };
+    for entry in catalog.split('|') {
+        let mut fields = entry.split('~');
+        let (Some(name), Some(dims), Some(scale), Some(offset)) = (
+            fields.next(),
+            fields.next(),
+            fields.next().and_then(|v| v.parse::<f64>().ok()),
+            fields.next().and_then(|v| v.parse::<f64>().ok()),
+        ) else {
+            continue;
+        };
+        let mut exponents = [0_i64; 7];
+        for (slot, exponent) in dims.split(',').enumerate().take(7) {
+            exponents[slot] = exponent.trim().parse().unwrap_or(0);
+        }
+        let _ = table.declare_unit(UnitSpec::new(name, exponents, scale, offset));
+    }
     table
 }
 
@@ -489,14 +533,14 @@ pub fn mul(left: &Quantity, right: &Quantity) -> Result<Quantity, UnitRuleError>
 }
 
 // ---------------------------------------------------------------------------
-// dim-group (bead emath-sci-physics-lane-3f7v, thin slice)
+// dim-group
 //
 // Dimensional analysis is a group, not an exponent bag: the carrier is the
 // free abelian group Z^7 over the SI base dimensions (L, M, T, I, Θ, N, J =
 // m, kg, s, A, K, mol, cd), with composition = multiplication of physical
 // quantities, inverse = reciprocal, identity = dimensionless. Ratio units
 // (scale-only) are closed under it; affine units are a torsor over the
-// group, never an element of it (pinned by the affine NC in the 3f7v suite).
+// group, never an element of it (pinned by the affine NC in the suite).
 //
 // Law-grade receipts: homogeneity is a receipt carrying the shared witness
 // dimension and its canonical notation, not a bare bool. Buckingham

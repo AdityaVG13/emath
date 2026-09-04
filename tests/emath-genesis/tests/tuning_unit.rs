@@ -1,11 +1,11 @@
 use emath_genesis::tuning::{
-    calibrate_confidence, CoverageSample, DeltaError, DeltaReceipt, SemanticChange,
-    SemanticVariableKind, WorldDelta,
+    CoverageSample, DeltaError, DeltaReceipt, SemanticChange, SemanticVariableKind, WorldDelta,
+    calibrate_confidence,
 };
 use emath_term::{Signature, SymbolId};
 use emath_world_ir::{
-    CarrierDef, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldId, WorldIr,
-    WORLD_IR_VERSION,
+    CarrierDef, Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WORLD_IR_VERSION,
+    WorldId, WorldIr,
 };
 
 const KINDS: [SemanticVariableKind; 8] = [

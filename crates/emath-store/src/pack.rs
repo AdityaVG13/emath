@@ -1,4 +1,4 @@
-//! Draft `.emlib` pack reader/writer (emath-epic-emlib-nz1n.3).
+//! Draft `.emlib` pack reader/writer.
 //!
 //! The portable-pack draft: magic `EMATHLIB\0`, length-framed segments
 //! (the house `object_graph::frame` convention), corruption budgets,
@@ -13,7 +13,7 @@
 //! `emath run` until share/mount, and the format must not stabilize
 //! before the capstones. Entry ids are carried VERBATIM — never
 //! re-derived from payload bytes (re-derivation would mint a different
-//! identity; the nz1n.5 lesson).
+//! identity; the lesson).
 //!
 //! Determinism class: pure sequence. No wall-clock, no randomness; the
 //! bytes are a pure function of (entries, parent reference, budgets).
@@ -108,11 +108,7 @@ impl std::fmt::Display for PackFault {
 impl std::error::Error for PackFault {}
 
 fn frame(bytes: &mut Vec<u8>, value: &[u8]) {
-    bytes.extend_from_slice(
-        &u64::try_from(value.len())
-            .unwrap_or(u64::MAX)
-            .to_be_bytes(),
-    );
+    bytes.extend_from_slice(&u64::try_from(value.len()).unwrap_or(u64::MAX).to_be_bytes());
     bytes.extend_from_slice(value);
 }
 
@@ -140,11 +136,7 @@ impl PackWriter {
     /// Write a pack: full (no parent reference) or thin (names the
     /// parent pack id it deltas against). Entries are sorted by id —
     /// canonical export — and duplicates refuse.
-    pub fn write(
-        &self,
-        entries: &[PackEntry],
-        parent: Option<&str>,
-    ) -> Result<Vec<u8>, PackFault> {
+    pub fn write(&self, entries: &[PackEntry], parent: Option<&str>) -> Result<Vec<u8>, PackFault> {
         if entries.len() > self.budgets.max_entries {
             return Err(PackFault::Oversized {
                 code: "E-EVID-604".to_string(),
@@ -203,11 +195,7 @@ impl PackReader {
     /// closure the read refuses (`E-EVID-605`), never a partial silent
     /// read. With the closure, the result is the merged view: parent
     /// entries overlaid by the thin entries (thin wins on equal ids).
-    pub fn read(
-        &self,
-        bytes: &[u8],
-        parent: Option<&[u8]>,
-    ) -> Result<Vec<PackEntry>, PackFault> {
+    pub fn read(&self, bytes: &[u8], parent: Option<&[u8]>) -> Result<Vec<PackEntry>, PackFault> {
         if bytes.len() > self.budgets.max_total_bytes {
             return Err(PackFault::Oversized {
                 code: "E-EVID-604".to_string(),
@@ -233,10 +221,9 @@ impl PackReader {
         let parent_ref = read_frame(bytes, &mut cursor).ok_or(PackFault::Truncated {
             code: "E-EVID-603".to_string(),
         })?;
-        let count_frame =
-            read_frame(bytes, &mut cursor).ok_or(PackFault::Truncated {
-                code: "E-EVID-603".to_string(),
-            })?;
+        let count_frame = read_frame(bytes, &mut cursor).ok_or(PackFault::Truncated {
+            code: "E-EVID-603".to_string(),
+        })?;
         let Ok(count) = <[u8; 8]>::try_from(count_frame).map(u64::from_be_bytes) else {
             return Err(PackFault::Truncated {
                 code: "E-EVID-603".to_string(),

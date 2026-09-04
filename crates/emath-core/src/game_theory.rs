@@ -1,7 +1,7 @@
-//! B41 (emath-r3-game-theory-t9m8) — finite-carrier game theory
+//! B41 — finite-carrier game theory
 //! nucleus. std-only.
 //!
-//! Honesty contract (per the bead and the lane's infinite-oracle
+//! Honesty contract (the infinite-oracle
 //! fence):
 //! - Nash equilibrium is a CHECKABLE CLAIM — an assertion about a
 //!   given profile — never a search promise. `is_nash_equilibrium`

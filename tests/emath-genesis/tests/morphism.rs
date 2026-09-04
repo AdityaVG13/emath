@@ -2,8 +2,8 @@
 //! module: every symbol they exercise is public crate surface.
 
 use emath_genesis::morphism::{
-    check_version, dedupe, find_isomorphism, mine_invariants, morphism_id, quotient, verify,
-    MorphismError, WorldMorphism, MAX_ISO_SEARCH_SIZE, MORPHISM_VERSION,
+    MAX_ISO_SEARCH_SIZE, MORPHISM_VERSION, MorphismError, WorldMorphism, check_version, dedupe,
+    find_isomorphism, mine_invariants, morphism_id, quotient, verify,
 };
 use emath_genesis::synth::OpTable;
 

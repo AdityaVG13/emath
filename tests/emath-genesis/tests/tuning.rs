@@ -2,9 +2,9 @@
 //! module: every symbol they exercise is public crate surface.
 
 use emath_genesis::joint_tuning::{
-    candidate_id, check_version, classify, semantic_dna, tune, tuning_id, CandidateStatus,
-    HostExample, ImplVariant, ProtectedObjective, TuningBudget, TuningError,
-    TuningRequest, TUNING_VERSION,
+    CandidateStatus, HostExample, ImplVariant, ProtectedObjective, TUNING_VERSION, TuningBudget,
+    TuningError, TuningRequest, candidate_id, check_version, classify, semantic_dna, tune,
+    tuning_id,
 };
 use emath_genesis::synth::OpTable;
 
@@ -57,7 +57,10 @@ fn happy_path_xor_fold_left_is_the_deterministic_winner() {
     assert_eq!(receipt.impl_token, "fold-left");
     assert_eq!(receipt.cost, 6);
     assert_eq!(receipt.version, TUNING_VERSION);
-    assert_eq!(receipt.winner_id, candidate_id(&xor_table(), ImplVariant::FoldLeft));
+    assert_eq!(
+        receipt.winner_id,
+        candidate_id(&xor_table(), ImplVariant::FoldLeft)
+    );
     assert!(receipt.qualified >= 1);
     assert!(receipt.examined >= 19);
 }
@@ -137,7 +140,10 @@ fn budget_then_resume_matches_unsplit_winner() {
         ..xor_request()
     };
     let incumbent = match tune(&first) {
-        Err(TuningError::BudgetExceeded { limit: 8, incumbent }) => incumbent,
+        Err(TuningError::BudgetExceeded {
+            limit: 8,
+            incumbent,
+        }) => incumbent,
         other => panic!("window of 8 must refuse with incumbent, got {other:?}"),
     };
     // No qualified candidate exists in the first 8 joint indices of
@@ -184,7 +190,10 @@ fn incumbent_preserves_a_cheap_winner_found_before_the_split() {
         ..request.clone()
     };
     let incumbent = match tune(&window) {
-        Err(TuningError::BudgetExceeded { limit: 3, incumbent }) => incumbent,
+        Err(TuningError::BudgetExceeded {
+            limit: 3,
+            incumbent,
+        }) => incumbent,
         other => panic!("window of 3 must refuse with incumbent, got {other:?}"),
     };
     assert_eq!(incumbent, Some(0), "constant-0 fold-left is the incumbent");

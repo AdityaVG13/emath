@@ -1,5 +1,4 @@
-//! Typed wrappers over the graph-traversal kernels (r2-graphs-masa
-//! slice 1 + the slice-2 finite-weight gate).
+//! Typed wrappers over the graph-traversal kernels.
 //!
 //! The single source of truth lives in [`crate::body`] (deterministic,
 //! std-only, embedded verbatim into generated crates). This module adds
@@ -347,4 +346,3 @@ pub fn sparse_from_triplets(n: f64, triplets: &[f64]) -> Result<Vec<f64>, GraphE
     let built = crate::body::graph_sparse_from_triplets(n, triplets);
     Ok(built.into_iter().flatten().collect())
 }
-

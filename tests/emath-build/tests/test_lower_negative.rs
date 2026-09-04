@@ -3,7 +3,7 @@
 //! malformed given/expect expressions instead of panicking on the public
 //! ModelBuilder::build path (bug-hunt residual).
 //!
-//! e3wv enrichment (F041): the negatives pin the TYPED error text, not
+//! F041: the negatives pin the TYPED error text, not
 //! just `is_err` — a wrong-payload error or an empty message must fail
 //! these tests.
 
@@ -55,7 +55,11 @@ fn well_formed_test_still_builds() {
         .declarations
         .first()
         .expect("builder lowers one declaration");
-    assert_eq!(declaration.tests.len(), 1, "the test case lowers into the package");
+    assert_eq!(
+        declaration.tests.len(),
+        1,
+        "the test case lowers into the package"
+    );
     let test = package
         .tests
         .get(declaration.tests[0].index())

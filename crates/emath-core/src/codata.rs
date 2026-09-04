@@ -1,5 +1,4 @@
-//! Versioned CODATA constants (bead emath-r3-codata-constants-04jc, 04
-//! section 2.6).
+//! Versioned CODATA constants (04 section 2.6).
 //!
 //! Every constant is a measured-or-exact quantity with provenance.
 //! Adjustments are versioned by year and NEVER unversioned: `codata2018`

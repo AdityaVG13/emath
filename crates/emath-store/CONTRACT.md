@@ -37,7 +37,7 @@ Always available (std-only, zero third-party deps):
 - `Reconciliation::{Choose,Rename,Morphism,ProveEquivalent}`; explicit merge
   operations, each backed by a stored reconciliation object and recorded in the
   receipt identity.
-- `MaterializationRecipe` (nz1n.7); the four materialization inputs
+- `MaterializationRecipe`; the four materialization inputs
   (meaning + toolchain/provider + target + canonical spec); `identity()`
   derives the `RecipeId` over the framed inputs, so a provider/toolchain
   mismatch changes the recipe identity. The recipe carries meaning; it
@@ -51,7 +51,7 @@ Always available (std-only, zero third-party deps):
   under a recorded recipe identity refuses `E-EVID-601`
   (`RehydrationMismatch`) and the recorded binding is never overwritten.
   `forget` is the GC delete of a rebuildable materialization.
-- `semantic_diff` (nz1n.8); `SemanticSnapshot` (source + meaning +
+- `semantic_diff`; `SemanticSnapshot` (source + meaning +
   toolchain + evidence set), `classify` into the CLOSED class set
   {Unchanged, Presentation, Meaning, Provider, Evidence}, and `decide`
   into `DiffOutcome::{Cutoff, Rebuild, ProviderInvalidation}`.
@@ -64,7 +64,7 @@ Always available (std-only, zero third-party deps):
   are deterministic values explaining the skipped work. No math
   equivalence is ever guessed: MeaningID equality is the only semantic
   oracle consulted.
-- `pack` (nz1n.3 DRAFT); `.emlib` portable-pack draft: magic
+- `pack` (DRAFT); `.emlib` portable-pack draft: magic
   `EMATHLIB\0` + version byte + framed parent reference + length-framed
   entries (house `frame` convention). `PackWriter` budget-checks and
   writes entries sorted by id (canonical export; insertion-order
@@ -76,7 +76,7 @@ Always available (std-only, zero third-party deps):
   ids round-trip VERBATIM; never re-derived from payload. DRAFT: no
   compression yet (decompression budget follow-up), invisible to
   `emath run` until share/mount, must not stabilize before capstones.
-- `discovery` (nz1n.10); structural `emath find` over the object
+- `discovery`; structural `emath find` over the object
   graph: `FindQuery` + conjunctive exact filters (`Kind`, `Relation`,
   `RelationTo(kind, target_meaning)`, `Authority`). **Rank cannot
   override compatibility**: the ranker is consulted only for objects
@@ -251,7 +251,7 @@ suite validates driving fsqlite engine futures from the git-pinned runtime.
   caller's (build lane's) move. The `emath diff --semantic` CLI surface
   is the declared follow-up that consumes this layer.
 - The pack layer is a DRAFT: the format must not stabilize before the
-  capstones (nz1n.11 `emath library verify` consumption is a declared
+  capstones (`emath library verify` consumption is a declared
   follow-up). No compression/decompression exists yet, so the
   decompression and nesting budgets are unexercised (declared
   follow-ups); streaming reads and appendable snapshots are also

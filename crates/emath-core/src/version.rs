@@ -1,4 +1,4 @@
-//! The emath version stack (bead emath-r3-version-stack-9z1a, 05 section 1).
+//! The emath version stack (05 section 1).
 //!
 //! Five version lines govern the language. Only edition and kind schema
 //! version enter semantic identity; grammar and encoding versions are replay

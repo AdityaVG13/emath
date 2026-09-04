@@ -12,7 +12,7 @@ pub enum Severity {
     Note,
 }
 
-/// Teacher layers on a diagnostic (Wave 9 LANGUAGE/04).
+/// Teacher layers on a diagnostic (LANGUAGE/04).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pedagogy {
     pub understood: String,

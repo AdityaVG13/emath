@@ -1,5 +1,4 @@
-//! B44 nucleus — quaternions on the f64 carrier (bead
-//! `emath-r3-quaternions-cgvg`).
+//! B44 nucleus — quaternions on the f64 carrier.
 //!
 //! C18 resolution: NO new literal suffix. The complex `Ni` production
 //! (B14) keeps `i`; quaternions spell through the constructor

@@ -5,7 +5,9 @@
 //! campaign checklist can promote them. Pipeline order is fixed:
 //! generate → verify → benchmark → campaign.
 
-use crate::tuning::{ExecutionDelta, JointCandidate, SemanticChange, SemanticVariableKind, WorldDelta};
+use crate::tuning::{
+    ExecutionDelta, JointCandidate, SemanticChange, SemanticVariableKind, WorldDelta,
+};
 use emath_term::SymbolId;
 use emath_world_ir::WorldId;
 

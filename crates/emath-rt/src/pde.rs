@@ -1,14 +1,14 @@
-//! Typed spectral-PDE solve (xx0x.4 thin nucleus slice): the error
+//! Typed spectral-PDE solve: the error
 //! model and safe wrapper over the strict-f64 kernel in `crate::body`.
 //!
 //! Capability bounds, honestly named: 1D, unit interval, uniform grid,
 //! Dirichlet class only (`u(0) = u(1) = 0`). Non-Dirichlet BC classes,
 //! FEM assembly, and multi-dimensional spectral solves are named
-//! deferrals of the bead, not claims of this slice.
+//! deferrals, not claims of this module.
 
 use crate::body::poisson_dirichlet_sine as kernel;
 
-/// Typed refusal for the spectral Poisson solve (xx0x.4).
+/// Typed refusal for the spectral Poisson solve.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PdeError {
     /// An empty interior has no nodes and no solve (E-PDE-001).

@@ -1,4 +1,4 @@
-//! `emath-epic-emlib-nz1n.5`: independent evidence plane — contract
+//!: independent evidence plane — contract
 //! tests.
 //!
 //! Proofs/tests attach to stored objects WITHOUT changing MeaningID
@@ -34,7 +34,10 @@ fn sealed_test_receipt(payload: &[u8]) -> EvidenceReceipt {
 fn attach_receipt_keeps_meaning_id_stable_and_view_updates() {
     let mut graph = ObjectGraph::default();
     let cell = graph
-        .put(definition("cell:quadratic-root", "Quadratic solver, formatted"))
+        .put(definition(
+            "cell:quadratic-root",
+            "Quadratic solver, formatted",
+        ))
         .unwrap();
     let meaning_before = graph.object(&cell).unwrap().meaning_id.clone();
 
@@ -128,7 +131,9 @@ fn same_address_different_content_refuses_even_when_hash_matches() {
     // catches the stale-seal case; this pin catches the
     // address-collision case reachable through the recorded-id path.)
     let mut graph = ObjectGraph::default();
-    let cell = graph.put(definition("cell:collide", "Collision probe")).unwrap();
+    let cell = graph
+        .put(definition("cell:collide", "Collision probe"))
+        .unwrap();
     let mut plane = EvidencePlane::default();
     let genuine = EvidenceReceipt::seal("audit-receipt", b"first audit");
     plane.attach(&graph, &cell, genuine).unwrap();

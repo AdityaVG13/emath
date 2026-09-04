@@ -1,5 +1,4 @@
-//! LP/MILP solver nucleus + Pareto front (B24 + B36, bead
-//! emath-r3-lp-milp-wlif) — the finite-carrier machinery the goal
+//! LP/MILP solver nucleus + Pareto front (B24 + B36) — the finite-carrier machinery the goal
 //! surface lowers into.
 //!
 //! Carrier and determinism contract:

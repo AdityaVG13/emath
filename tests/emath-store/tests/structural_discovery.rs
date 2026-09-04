@@ -1,7 +1,7 @@
-//! emath-epic-emlib-nz1n.10 contracts: structural discovery (`emath
+//! contracts: structural discovery (`emath
 //! find` store tier) with semantic filters.
 //!
-//! Search by mathematics over the object graph (nz1n.4): exact filters
+//! Search by mathematics over the object graph: exact filters
 //! are STRUCTURAL — object kind, outgoing relation kind, relation
 //! toward a target meaning, relation authority. Text/embedding
 //! similarity may only RANK the compatible set: **rank cannot override
@@ -48,13 +48,21 @@ fn relation(
 fn toy_graph() -> (ObjectGraph, Vec<emath_core::ObjectId>) {
     let mut graph = ObjectGraph::default();
     let metric_space = graph
-        .put(object("trait:MetricSpace", "trait MetricSpace", ObjectKind::Theory))
+        .put(object(
+            "trait:MetricSpace",
+            "trait MetricSpace",
+            ObjectKind::Theory,
+        ))
         .unwrap();
     let solver = graph
         .put(object("goal:solve.ode", "ode solver", ObjectKind::Cell))
         .unwrap();
     let theory = graph
-        .put(object("theory:euclid", "Euclidean plane", ObjectKind::Theory))
+        .put(object(
+            "theory:euclid",
+            "Euclidean plane",
+            ObjectKind::Theory,
+        ))
         .unwrap();
     let bare = graph
         .put(object("cell:bare", "no relations", ObjectKind::Cell))
@@ -106,7 +114,10 @@ fn authority_filter_matches_only_proved_authority() {
     let hits = FindQuery::new()
         .filter(FindFilter::Authority("structural-checked"))
         .run(&graph);
-    assert_eq!(hits.iter().map(|hit| hit.id.clone()).collect::<Vec<_>>(), vec![ids[2].clone()]);
+    assert_eq!(
+        hits.iter().map(|hit| hit.id.clone()).collect::<Vec<_>>(),
+        vec![ids[2].clone()]
+    );
     // No edge carries this authority: the result is empty. An
     // inverted/loose authority comparison would return the objects that
     // merely have edges (the theory via its authority-less proves edge,
@@ -133,7 +144,10 @@ fn relation_to_target_meaning_filter() {
     let hits = FindQuery::new()
         .filter(FindFilter::RelationTo(RelationKind::Proves, goal_meaning))
         .run(&graph);
-    assert_eq!(hits.iter().map(|hit| hit.id.clone()).collect::<Vec<_>>(), vec![ids[2].clone()]);
+    assert_eq!(
+        hits.iter().map(|hit| hit.id.clone()).collect::<Vec<_>>(),
+        vec![ids[2].clone()]
+    );
 
     // The wrong-meaning control: the theory's OUTGOING proves edge
     // points AT the goal; asking for a proves edge toward the METRIC
@@ -149,7 +163,7 @@ fn relation_to_target_meaning_filter() {
     );
 }
 
-/// NEGATIVE (the bead's pinned rule): an embedding-similar object that
+/// NEGATIVE (the pinned rule): an embedding-similar object that
 /// FAILS the exact filters is never admitted by rank — the ranker
 /// scores the bare cell highest and the result still excludes it. Rank
 /// orders the compatible set only.
@@ -223,15 +237,13 @@ fn empty_filter_set_returns_every_object() {
 #[test]
 fn ranker_alone_selects_nothing_out() {
     let (graph, _) = toy_graph();
-    let hits = FindQuery::new()
-        .run_ranked(&graph, |object| {
-            Some(if object.presentation.as_deref() == Some("no relations") {
-                0.99
-            } else {
-                0.01
-            })
+    let hits = FindQuery::new().run_ranked(&graph, |object| {
+        Some(if object.presentation.as_deref() == Some("no relations") {
+            0.99
+        } else {
+            0.01
         })
-        ;
+    });
     assert_eq!(hits.len(), 4, "a ranker is not a filter");
     assert_eq!(hits[0].rank, Some(0.99), "the top rank is display metadata");
 }

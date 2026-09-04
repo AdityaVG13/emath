@@ -1,4 +1,4 @@
-//! core::measure — data and measurement types (Phase 12, bead 3w1t).
+//! core::measure — data and measurement types (Phase 12).
 //!
 //! Observational data is honest data:
 //!

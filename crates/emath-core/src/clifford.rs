@@ -1,5 +1,4 @@
-//! B44 nucleus — Clifford algebras `Cl(p, q)` over f64 (bead
-//! `emath-r3-quaternions-cgvg`).
+//! B44 nucleus — Clifford algebras `Cl(p, q)` over f64.
 //!
 //! C10 (value generics) is CLOSED, but the admitted `.emath` generic
 //! surface is the follow-up; the nucleus exposes the algebra as a

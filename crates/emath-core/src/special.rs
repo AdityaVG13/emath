@@ -1,6 +1,5 @@
 //! `core::special_functions` (05 section 3.3 #1, Phase 11) — contracts
-//! and strict-f64 reference implementations (bead
-//! emath-r3-spec-funcs-s54f).
+//! and strict-f64 reference implementations.
 //!
 //! Every result carries an EXPLICIT numeric error bound; nothing here
 //! claims correctly-rounded output where that is not proven. Principal

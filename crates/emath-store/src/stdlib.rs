@@ -1,5 +1,4 @@
-//! Standard library as executable object packs (bead
-//! `emath-stdlib-object-packs-hpzgf`).
+//! Standard library as executable object packs.
 //!
 //! `std::{core, ...}` exports cells/theories/evidence as `.emlib` object
 //! packs: each element is an object with a MeaningID, canonical semantic
@@ -19,7 +18,7 @@
 //! means the same object set always yields the same bytes.
 
 use crate::evidence_plane::{EvidencePlane, EvidencePlaneError, EvidenceReceipt};
-use crate::object_graph::{frame, ObjectDraft, ObjectGraph, ObjectKind};
+use crate::object_graph::{ObjectDraft, ObjectGraph, ObjectKind, frame};
 use crate::pack::{PackBudgets, PackEntry, PackFault, PackReader, PackWriter};
 use emath_core::{ObjectId, PackId};
 use std::str::FromStr;
@@ -282,10 +281,9 @@ pub struct StdMount {
 /// Deterministic: the same bytes always yield the same graph, the same
 /// evidence ids, and the same [`PackId`].
 pub fn mount_stdlib(bytes: &[u8]) -> Result<StdMount, StdMountError> {
-    let entries =
-        PackReader::new(PackBudgets::draft())
-            .read(bytes, None)
-            .map_err(StdMountError::Pack)?;
+    let entries = PackReader::new(PackBudgets::draft())
+        .read(bytes, None)
+        .map_err(StdMountError::Pack)?;
     // Decode each entry payload exactly once, then run the two passes
     // over the DECODED entries — objects first, then receipts — so the
     // mount is order-independent without re-parsing every payload twice.
@@ -328,9 +326,9 @@ pub fn mount_stdlib(bytes: &[u8]) -> Result<StdMount, StdMountError> {
             evidence
                 .attach(&graph, &receipt.object_id, sealed)
                 .map_err(|error| match error {
-                    EvidencePlaneError::ForgedHash(code, _) => StdMountError::ForgedEvidence {
-                        code,
-                    },
+                    EvidencePlaneError::ForgedHash(code, _) => {
+                        StdMountError::ForgedEvidence { code }
+                    }
                     other => StdMountError::Malformed {
                         code: "E-STD-001".to_string(),
                         detail: other.to_string(),
@@ -352,10 +350,7 @@ pub fn export_std_pack(entries: &[PackEntry]) -> Result<Vec<u8>, PackFault> {
     PackWriter::new(PackBudgets::draft()).write(entries, None)
 }
 
-fn read_frame<'a>(
-    bytes: &'a [u8],
-    cursor: &mut usize,
-) -> Result<Option<&'a [u8]>, StdMountError> {
+fn read_frame<'a>(bytes: &'a [u8], cursor: &mut usize) -> Result<Option<&'a [u8]>, StdMountError> {
     let Some(end_len) = cursor.checked_add(8) else {
         return Ok(None);
     };

@@ -19,18 +19,20 @@ pub mod stdlib;
 pub use discovery::{DiscoveryHit, FindFilter, FindQuery};
 pub use evidence_plane::{AttachedReceipt, EvidencePlane, EvidencePlaneError, EvidenceReceipt};
 pub use materialization::{MaterializationRecipe, MaterializeFault, Materializer};
-pub use pack::{PackBudgets, PackEntry, PackFault, PackReader, PackWriter};
-pub use semantic_diff::{ChangeClass, CutoffReceipt, DiffOutcome, SemanticSnapshot, classify, decide};
-pub use stdlib::{
-    StdEntry, StdMount, StdMountError, StdObject, StdReceipt, export_std_pack, mount_stdlib,
-};
 pub use object_graph::{
     LibraryObject, ObjectDraft, ObjectGraph, ObjectKind, Relation, RelationDraft, RelationKind,
     RelationScope, StoreGraphError,
 };
+pub use pack::{PackBudgets, PackEntry, PackFault, PackReader, PackWriter};
+pub use semantic_diff::{
+    ChangeClass, CutoffReceipt, DiffOutcome, SemanticSnapshot, classify, decide,
+};
 pub use space::{
     LibraryLock, MergeAction, MergeReceipt, Reconciliation, Space, SpaceError, SpacePolicy,
     SpaceSnapshot,
+};
+pub use stdlib::{
+    StdEntry, StdMount, StdMountError, StdObject, StdReceipt, export_std_pack, mount_stdlib,
 };
 
 #[cfg(feature = "sqlite-store")]

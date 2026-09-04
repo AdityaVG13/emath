@@ -20,7 +20,7 @@ mod run_cargo_timed_tests {
     fn timeout_kills_grandchild_process_group() {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let pid_file = std::env::temp_dir().join(format!(
-            "emath-res120-pgid-{}-{}",
+            "emath-pgid-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));

@@ -1,11 +1,10 @@
-//! B44 nucleus — dual numbers over f64 (bead
-//! `emath-r3-quaternions-cgvg`).
+//! B44 nucleus — dual numbers over f64 .
 //!
 //! The carrier rule is ε² = 0 EXACTLY (truncated to first order by the
 //! algebra, not by a tolerance): arithmetic on `(value, epsilon)` pairs
 //! propagates exact first-order derivatives — no finite-difference
 //! error, no step-size choice. This is forward-mode AD's algebraic
-//! core in two floats; the production `grad()` builtin (xx0x.1, Wengert
+//! core in two floats; the production `grad()` builtin (Wengert
 //! tape) serves many-input losses, while `Dual` serves the
 //! one-input exact-tangent story and the ε²=0 teaching example.
 //!

@@ -1,5 +1,4 @@
-//! Typed wrappers over the polynomial kernels (r3-funcspaces-poly-hjor
-//! slice 1).
+//! Typed wrappers over the polynomial kernels.
 //!
 //! The single source of truth lives in [`crate::body`] (deterministic,
 //! std-only, embedded verbatim into generated crates). This module adds

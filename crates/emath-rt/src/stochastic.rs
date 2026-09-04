@@ -1,4 +1,4 @@
-//! Scalar SDE kernel (emath-r3-sde-control-zxkl): deterministic,
+//! Scalar SDE kernel: deterministic,
 //! generic, zero new randomness machinery.
 //!
 //! Contract (mirrors the ODE empty-law convention):
@@ -16,7 +16,7 @@
 //! - **Noise**: one standard Normal Z per step, drawn from the SAME
 //!   deterministic path the `ProbSample` Normal(0,1) cell uses: the
 //!   explicit seed word enters `local_stream_seed(Seed, root)` (the
-//!   vnqo counter-based Philox contract), that state drives the
+//! counter-based Philox contract), that state drives the
 //!   SplitMix64 stepper, and each Z is one Box–Muller pair of
 //!   uniforms. No ambient entropy; no hidden seed; same seed ⟹
 //!   bit-identical trajectory. The seed is a required parameter
@@ -177,15 +177,15 @@ pub fn sde_euler_maruyama(
         return Err(SdeError::Budget);
     }
     // The Z stream: the SAME deterministic Normal(0,1) draws the
-    // `ProbSample` cell yields for this seed (vnqo → local stream
+    // `ProbSample` cell yields for this seed (seed → local stream
     // seed → SplitMix64 → Box–Muller pair per step). Compose, never
     // re-implement: one seed ⟹ one stream, identical to the sampler.
     // Unreachable-by-construction fallback: the seed was validated
     // above (the sampler only rejects non-finite seeds) and
     // SDE_MAX_STEPS mirrors the sampler's MAX_DRAWS (1 << 20), so the
     // draw-count check also passed before this call.
-    let zs = prob_sample(Family::Normal, &[0.0, 1.0], seed, steps as f64)
-        .map_err(|_| SdeError::Seed)?;
+    let zs =
+        prob_sample(Family::Normal, &[0.0, 1.0], seed, steps as f64).map_err(|_| SdeError::Seed)?;
     let sqrt_h = h.sqrt();
     // The Stratonovich correction needs σ' once per run; Itô never
     // touches it (no unused allocation on the Itô hot path).

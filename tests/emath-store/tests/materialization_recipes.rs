@@ -1,4 +1,4 @@
-//! emath-epic-emlib-nz1n.7 contracts: materialization recipes and
+//! contracts: materialization recipes and
 //! deterministic rehydration.
 //!
 //! Generated Rust/WASM/docs are caches unless published. A recipe binds
@@ -14,29 +14,44 @@
 use emath_core::{ArtifactId, MeaningId, RecipeId};
 use emath_store::materialization::{MaterializationRecipe, MaterializeFault, Materializer};
 
-fn recipe(meaning_seed: &[u8], toolchain: &str, target: &str, spec: &[u8]) -> MaterializationRecipe {
-    MaterializationRecipe::new(
-        MeaningId::from_bytes(meaning_seed),
-        toolchain,
-        target,
-        spec,
-    )
+fn recipe(
+    meaning_seed: &[u8],
+    toolchain: &str,
+    target: &str,
+    spec: &[u8],
+) -> MaterializationRecipe {
+    MaterializationRecipe::new(MeaningId::from_bytes(meaning_seed), toolchain, target, spec)
 }
 
 /// The recipe identity binds ALL FOUR inputs: meaning, toolchain,
 /// target, spec. A provider/toolchain mismatch changes `RecipeId`
-/// (the bead's pinned criterion), as does any other input change.
+/// (the pinned criterion), as does any other input change.
 #[test]
 fn recipe_identity_binds_meaning_toolchain_target_spec() {
-    let base = recipe(b"meaning", "rustc-1.90", "wasm32-unknown-unknown", b"spec-v1");
-    let same = recipe(b"meaning", "rustc-1.90", "wasm32-unknown-unknown", b"spec-v1");
+    let base = recipe(
+        b"meaning",
+        "rustc-1.90",
+        "wasm32-unknown-unknown",
+        b"spec-v1",
+    );
+    let same = recipe(
+        b"meaning",
+        "rustc-1.90",
+        "wasm32-unknown-unknown",
+        b"spec-v1",
+    );
     assert_eq!(
         base.identity(),
         same.identity(),
         "identical recipe inputs must derive one RecipeId"
     );
 
-    let toolchain_drift = recipe(b"meaning", "rustc-1.91", "wasm32-unknown-unknown", b"spec-v1");
+    let toolchain_drift = recipe(
+        b"meaning",
+        "rustc-1.91",
+        "wasm32-unknown-unknown",
+        b"spec-v1",
+    );
     assert_ne!(
         base.identity(),
         toolchain_drift.identity(),
@@ -50,14 +65,24 @@ fn recipe_identity_binds_meaning_toolchain_target_spec() {
         "target mismatch must change RecipeId"
     );
 
-    let spec_drift = recipe(b"meaning", "rustc-1.90", "wasm32-unknown-unknown", b"spec-v2");
+    let spec_drift = recipe(
+        b"meaning",
+        "rustc-1.90",
+        "wasm32-unknown-unknown",
+        b"spec-v2",
+    );
     assert_ne!(
         base.identity(),
         spec_drift.identity(),
         "spec drift must change RecipeId"
     );
 
-    let meaning_drift = recipe(b"meaning2", "rustc-1.90", "wasm32-unknown-unknown", b"spec-v1");
+    let meaning_drift = recipe(
+        b"meaning2",
+        "rustc-1.90",
+        "wasm32-unknown-unknown",
+        b"spec-v1",
+    );
     assert_ne!(
         base.identity(),
         meaning_drift.identity(),
@@ -174,17 +199,13 @@ fn artifact_identity_binds_recipe_and_content() {
 fn materialization_never_mints_new_meaning() {
     let mut materializer = Materializer::default();
     let meaning = MeaningId::from_bytes(b"meaning");
-    let net = MaterializationRecipe::new(
-        meaning.clone(),
-        "specializer-12",
-        "host",
-        b"spec",
-    );
+    let net = MaterializationRecipe::new(meaning.clone(), "specializer-12", "host", b"spec");
     let (_, artifact_id, _) = materializer
         .materialize(&net, |_| b"generated".to_vec())
         .expect("materialize must succeed");
     assert_eq!(
-        net.meaning(), &meaning,
+        net.meaning(),
+        &meaning,
         "the recipe carries the meaning it was given"
     );
     assert!(
