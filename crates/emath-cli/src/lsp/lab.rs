@@ -1,14 +1,14 @@
-//! Lab-runtime entry proving the asupersync `Cx` lane (feature-gated).
+//! Lab-runtime entry proving the asupersync `Cx` runtime (feature-gated).
 //!
 //! Exists only behind the `async-runtime` feature; the blocking `run()` loop
-//! is untouched and the transport lane lands in pass 3.
+//! is untouched, and the transport layer is not implemented yet.
 
 use asupersync::Cx;
 
 /// Runs async code on a current-thread test runtime with the ambient `Cx`.
 ///
-/// Uses `Cx::current`, not `Cx::for_testing` — that handle has no spawn
-/// gateway at this rev (`Cx::spawn` returns `SpawnError::RuntimeUnavailable`).
+/// Uses `Cx::current`, not `Cx::for_testing`: that handle has no spawn
+/// gateway (`Cx::spawn` returns `SpawnError::RuntimeUnavailable`).
 pub fn run_with_cx<F, Fut>(f: F)
 where
     F: FnOnce(Cx) -> Fut,

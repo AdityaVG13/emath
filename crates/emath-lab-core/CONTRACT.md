@@ -59,7 +59,7 @@
 ## Purpose and layer
 - Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
 - Semantic calibration: behavioral examples constrain candidate worlds.
-- Also hosts the generic fit-goal runtime (04 §5.3, emath-r3-fit-goal-4xjh): parameters, observable, residual/optimizer methods, weights, data rows, provenance, and identifiability.
+- Also hosts the generic fit-goal runtime (04 §5.3): parameters, observable, residual/optimizer methods, weights, data rows, provenance, and identifiability.
 - Delivers deterministic example partitions, finite-carrier operator-table fitting, a held-out challenge, semantic drift, and forward-only world versioning.
 - Depends on: emath-term, emath-world-ir, emath-ir.
 
@@ -230,7 +230,7 @@
 ## Purpose and layer
 
 Artifact *corpus search* (id + kind + path + claim text) over the pinned
-frankensearch engine, spike pass 3 of the FrankenStack adoption
+frankensearch engine, spike of the FrankenStack adoption
 (CUTOVER_PLAN.md §5.4 / §9.12). Layer: search adapter external to the
 protected set; it may import frankensearch; emath-core / emath-ir /
 emath-goal / emath-plan / emath-artifact / emath-evidence / emath-cli /

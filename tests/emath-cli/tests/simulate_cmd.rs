@@ -21,10 +21,12 @@ fn simulate_error_json_has_code_severity_message() {
         diags[0].string_field("severity").expect("severity"),
         "error"
     );
-    assert!(diags[0]
-        .string_field("message")
-        .expect("message")
-        .contains("`emath model`"),);
+    assert!(
+        diags[0]
+            .string_field("message")
+            .expect("message")
+            .contains("`emath model`"),
+    );
 }
 
 #[test]
@@ -40,8 +42,10 @@ fn simulate_error_json_preserves_e_pkg_code() {
         diags[0].string_field("severity").expect("severity"),
         "error"
     );
-    assert!(diags[0]
-        .string_field("message")
-        .expect("message")
-        .contains("cannot read source file"));
+    assert!(
+        diags[0]
+            .string_field("message")
+            .expect("message")
+            .contains("cannot read source file")
+    );
 }

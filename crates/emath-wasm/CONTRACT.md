@@ -31,10 +31,11 @@
   to `{` and parses as JSON with a `source` key; otherwise the bytes are
   raw source. `given` is optional.
 - When `given` is present, every declaration gets a synthetic worked run
-  `{"name":"_pane","given":{…},"computed":true}` (or a typed refusal
-  naming a missing input) **in addition to** the source's own example
-  tests. A declaration with no tests and every input bound (zero inputs
-  = trivially bound) also emits `_pane` without an envelope.
+  `{"name":"_pane","given":{…},"computed":true}` (or, when an input
+  binding is missing, a labeled symbolic run) **in addition to** the
+  source's own example tests. A declaration with no tests and every
+  input bound (zero inputs = trivially bound) also emits `_pane` without
+  an envelope.
 - `inputs` returns `{ok, admitted, diagnostics, declarations:[{declaration, inputs:[{name, type, defaulted}]}]}`.
   `defaulted` is true when admission emitted `N-TYPE-001` for that name.
 
@@ -44,7 +45,7 @@
 - `check` / `plan` / `mig` / `generate` / `format` / `run` / `inputs` keep `ok:true` when the pipeline ran, even if the source has diagnostics.
 - Those ops also emit `admitted: true` iff diagnostics have no errors. `ok` is not admission; untrusted pane text is never implied admitted by `ok`.
 - `run` uses `check` then the Tier-0 EMIR interpreter (`emath-exec-ir`). Source errors return diagnostics only (no report). Successful admission returns `tier: interpreted-strict-f64` plus a `RunReport`. Vector / matrix / tensor values are serialized (tensors as `{shape, data}`), not dropped.
-- Per-test JSON: an asserted example emits `"expect_passed": true|false`. A worked example (`expect` omitted) or a synthetic `_pane` run emits `"computed": true` and omits `expect_passed`. Summary is `{tests, passed, failed, refused, computed}`. A missing envelope binding is `refusal: "lowering-refused"` with `reason` containing `missing input \`name\``.
+- Per-test JSON: an asserted example emits `"expect_passed": true|false`. A worked example (`expect` omitted) or a synthetic `_pane` run emits `"computed": true` and omits `expect_passed`. Summary is `{tests, passed, failed, refused, computed}`. A missing envelope binding is a labeled symbolic run (`TestVerdict::Symbolic`, label `symbolic-only`, or `hole-open` when no symbolic form exists; counted in the runner's `summary.symbolic`), not `lowering-refused` — `lowering-refused` survives only for genuinely impossible lowering. Note: the wasm JSON summary does not yet surface `summary.symbolic`.
 - All unsafe is confined to `ffi`. Each block documents its pointer/length pairing.
 - `em_alloc(len)` produces an exclusive region of `len` initialized bytes (`vec![0u8; len]`; capacity == len). `em_free(ptr, len)` must pair a live `ptr` exactly once; reconstruction uses the capacity stored at mint time, so a mismatched host `len` cannot induce allocator UB (still a contract violation to lie about `len`).
 - `em_run` reads `op` and `payload` as UTF-8 slices the caller owns, writes the JSON response through `em_alloc`, and returns that allocation. The JS caller copies, then `em_free`s. An oversized response (`len > u32::MAX`) or a failed response alloc returns the empty pack `0`.

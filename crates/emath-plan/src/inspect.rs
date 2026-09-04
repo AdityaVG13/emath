@@ -16,8 +16,8 @@ pub struct PlanInspection {
     pub exclusions: Vec<(String, String, String)>,
     /// Selected plan id (when a plan was selected).
     pub selected_plan_id: Option<String>,
-    /// Deterministic `goal:solver:provider` combination name (emath-9bj1,
-    /// Track A3): present exactly when a plan was selected.
+    /// Deterministic `goal:solver:provider` combination name:
+    /// present exactly when a plan was selected.
     pub combination: Option<String>,
     /// Planned evidence checks.
     pub checks: Vec<String>,

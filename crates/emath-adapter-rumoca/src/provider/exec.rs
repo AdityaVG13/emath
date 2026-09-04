@@ -1,0 +1,276 @@
+//! The `simulate` driver and RHS evaluation.
+
+use super::*;
+
+/// Runs a forward-Euler simulation of a causal DAE plan through the runtime
+/// Outcome contract. Parameters must be exact f64 values; the trace is
+/// deterministic, and the work respects `budget`.
+pub fn simulate(
+    model: &StructuralModel,
+    plan: &DaePlan,
+    parameters: &BTreeMap<String, f64>,
+    config: &SimulationConfig,
+    budget: &Budget,
+) -> Outcome<SimulationResult, SimError> {
+    let continuation = || ContinuationHandle {
+        schema: SchemaId("emath.simulation".into()),
+        identity: ContentId(DEFAULT_SEAL.into()),
+        provider_id: "emath-native-euler".into(),
+    };
+    let evidence = || EvidenceHandle {
+        schema: SchemaId("emath.simulation".into()),
+        identity: ContentId(DEFAULT_SEAL.into()),
+    };
+
+    let issues = model.validate();
+    if !issues.is_empty() {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-237",
+            message: format!(
+                "provider model refused by validation gate: {} issue(s); first: {}: {}",
+                issues.len(),
+                issues[0].code,
+                issues[0].message
+            ),
+        });
+    }
+    // Budget preflight: steps, evaluation count, memory footprint, output
+    // size and work units are all bounded; a hungry run is never started.
+    let point_bytes = u64::try_from(std::mem::size_of::<SimPoint>()).unwrap_or(64);
+    let per_step = u64::try_from(plan.equations.len().max(1)).unwrap_or(1);
+    if config.steps > budget.iterations
+        || config.steps.saturating_mul(per_step) > budget.evaluations
+        || config.steps.saturating_mul(point_bytes) > budget.memory_bytes
+        || config.steps.saturating_mul(point_bytes) > budget.output_bytes
+        || u128::from(config.steps).saturating_mul(u128::from(per_step)) > budget.work_units
+    {
+        return Outcome::Unresolved {
+            reason: UnresolvedReason::BudgetExhausted,
+            partial: None,
+            continuation: Some(continuation()),
+            evidence: evidence(),
+        };
+    }
+
+    // Plan shape preflight (bug-hunt residual): a simulation requires at
+    // least two states (position/velocity fixture), a derivative row for
+    // every state and a finite positive step. Malformed plans fail closed
+    // under `E-PROV-235` instead of indexing past the end of states.
+    if plan.states.len() < 2 {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-235",
+            message: format!(
+                "DaePlan has {} state(s); simulation requires at least two",
+                plan.states.len()
+            ),
+        });
+    }
+    // The fixture-time recorder represents at most two states; a larger
+    // plan is refused instead of silently dropping every extra state.
+    if plan.states.len() > 2 {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-238",
+            message: format!(
+                "DaePlan has {} states; the 2-state recorder cannot represent it",
+                plan.states.len()
+            ),
+        });
+    }
+    if !config.dt.is_finite() || config.dt <= 0.0 {
+        return Outcome::Failed(SimError {
+            code: "E-PROV-235",
+            message: format!("invalid time step `dt={}`", config.dt),
+        });
+    }
+    for state in &plan.states {
+        if !plan.derivatives.iter().any(|entry| entry.state == *state) {
+            return Outcome::Failed(SimError {
+                code: "E-PROV-235",
+                message: format!("missing derivative row for state `{state}`"),
+            });
+        }
+    }
+
+    // Parameter completeness is checked before any stepping.
+    for parameter in &plan.parameters {
+        if !parameters.contains_key(parameter) {
+            return Outcome::Failed(SimError {
+                code: "E-PROV-230",
+                message: format!("missing parameter value for `{parameter}`"),
+            });
+        }
+    }
+
+    let mut states: BTreeMap<String, f64> = BTreeMap::new();
+    for state in &plan.states {
+        states.insert(state.clone(), 0.0);
+    }
+    for initial in &plan.initial_conditions {
+        let (target, value) = initial.split_once('=').unwrap_or((initial.as_str(), ""));
+        let resolved = value.parse::<f64>().or_else(|_| {
+            parameters.get(value).copied().ok_or_else(|| SimError {
+                code: "E-PROV-234",
+                message: format!("unresolvable initial value `{value}` for `{target}`"),
+            })
+        });
+        let resolved = match resolved {
+            Ok(value) => value,
+            Err(error) => return Outcome::Failed(error),
+        };
+        if let Some(slot) = states.get_mut(target) {
+            *slot = resolved;
+        } else {
+            return Outcome::Failed(SimError {
+                code: "E-PROV-234",
+                message: format!("initial condition targets unknown state `{target}`"),
+            });
+        }
+    }
+
+    let mut derivatives: BTreeMap<String, f64> = BTreeMap::new();
+    for entry in &plan.derivatives {
+        derivatives.insert(entry.state.clone(), 0.0);
+    }
+
+    let mut points = Vec::with_capacity(usize::try_from(config.steps).unwrap_or(0) + 1);
+    points.push(SimPoint {
+        t: 0.0,
+        // Preflight guarantees at least two states, all present in states.
+        position: states[&plan.states[0].clone()],
+        velocity: states[&plan.states[1].clone()],
+    });
+    let mut t = 0.0;
+    let mut max_lte: f64 = 0.0;
+
+    for _ in 0..config.steps {
+        // Causal evaluation: derivatives and outputs in plan order.
+        for equation_index in &plan.order {
+            let equation = &model.equations[*equation_index];
+            let value = match eval(&equation.rhs, parameters, &states, &derivatives) {
+                Ok(value) if value.is_finite() => value,
+                Ok(_) => {
+                    return Outcome::Failed(SimError {
+                        code: "E-PROV-231",
+                        message: "non-finite value during evaluation".into(),
+                    });
+                }
+                Err(error) => return Outcome::Failed(error),
+            };
+            match &equation.lhs {
+                EqExpr::Der(state) => {
+                    if let Some(slot) = derivatives.get_mut(state) {
+                        *slot = value;
+                    } else {
+                        return Outcome::Failed(SimError {
+                            code: "E-PROV-232",
+                            message: format!("assignment to unknown derivative `der({state})`"),
+                        });
+                    }
+                }
+                EqExpr::Var(name) => {
+                    if let Some(slot) = states.get_mut(name) {
+                        *slot = value;
+                    } else {
+                        // Non-state variables (e.g. outputs) were silently
+                        // dropped before; refuse loudly (E-PROV-236).
+                        return Outcome::Failed(SimError {
+                            code: "E-PROV-236",
+                            message: format!(
+                                "assignment to non-state variable '{name}' is not supported"
+                            ),
+                        });
+                    }
+                }
+                _ => {
+                    return Outcome::Failed(SimError {
+                        code: "E-PROV-236",
+                        message: "equation LHS is not an assignable variable or der reference"
+                            .into(),
+                    });
+                }
+            }
+        }
+
+        // Euler integration of state derivatives.
+        let mut step_lte: f64 = 0.0;
+        for state in &plan.states {
+            let derivative = derivatives[state];
+            let next = states[state] + derivative * config.dt;
+            if config.error_estimate {
+                step_lte = step_lte.max(0.5 * config.dt * derivative.abs());
+            }
+            states.insert(state.clone(), next);
+        }
+        max_lte = max_lte.max(step_lte);
+        t += config.dt;
+        points.push(SimPoint {
+            t,
+            position: states[&plan.states[0].clone()],
+            velocity: states[&plan.states[1].clone()],
+        });
+    }
+
+    let result = SimulationResult {
+        points,
+        final_position: states[&plan.states[0].clone()],
+        final_velocity: states[&plan.states[1].clone()],
+        max_lte,
+        steps: config.steps,
+        termination: "completed",
+        identity: 0,
+    };
+    let mut sealed = result.clone();
+    sealed.identity = fnv1a64_bytes(result.canonical().as_bytes());
+    let identity = ContentId(format!("fnv1a64:{:016x}", sealed.content_identity()));
+    Outcome::Resolved {
+        value: sealed,
+        evidence: EvidenceHandle {
+            schema: SchemaId("emath.simulation".into()),
+            identity,
+        },
+    }
+}
+
+/// Evaluates an expression over parameter, state and derivative values.
+pub(super) fn eval(
+    expression: &EqExpr,
+    parameters: &BTreeMap<String, f64>,
+    states: &BTreeMap<String, f64>,
+    derivatives: &BTreeMap<String, f64>,
+) -> Result<f64, SimError> {
+    match expression {
+        EqExpr::Var(name) => parameters
+            .get(name)
+            .or_else(|| states.get(name))
+            .copied()
+            .ok_or_else(|| SimError {
+                code: "E-PROV-230",
+                message: format!("unknown variable `{name}` during evaluation"),
+            }),
+        EqExpr::Der(name) => derivatives.get(name).copied().ok_or_else(|| SimError {
+            code: "E-PROV-232",
+            message: format!("unknown derivative `der({name})` during evaluation"),
+        }),
+        EqExpr::ConstF64(bits) => Ok(f64::from_bits(*bits)),
+        EqExpr::Add(left, right) => Ok(eval(left, parameters, states, derivatives)?
+            + eval(right, parameters, states, derivatives)?),
+        EqExpr::Sub(left, right) => Ok(eval(left, parameters, states, derivatives)?
+            - eval(right, parameters, states, derivatives)?),
+        EqExpr::Mul(left, right) => Ok(eval(left, parameters, states, derivatives)?
+            * eval(right, parameters, states, derivatives)?),
+        EqExpr::Div(left, right) => {
+            let divisor = eval(right, parameters, states, derivatives)?;
+            if divisor == 0.0 {
+                return Err(SimError {
+                    code: "E-PROV-233",
+                    message: "division by zero during evaluation".into(),
+                });
+            }
+            Ok(eval(left, parameters, states, derivatives)? / divisor)
+        }
+        EqExpr::Pow(base, exponent) => {
+            Ok(eval(base, parameters, states, derivatives)?.powi(*exponent))
+        }
+        EqExpr::Neg(inner) => Ok(-eval(inner, parameters, states, derivatives)?),
+    }
+}

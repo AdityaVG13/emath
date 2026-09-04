@@ -13,8 +13,8 @@ use crate::identity::plan_identity;
 use crate::inspect::PlanInspection;
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{
-    EvidenceClaimId, ExcludedCandidate, Goal, GoalKind, PlanNodeDef, PlanNodeId,
-    PlanOperation, ProviderRef, ResolutionPlan,
+    EvidenceClaimId, ExcludedCandidate, Goal, GoalKind, PlanNodeDef, PlanNodeId, PlanOperation,
+    ProviderRef, ResolutionPlan,
 };
 use emath_provider_api::{Compatibility, ProviderRegistry, filter_goal};
 use std::collections::BTreeMap;
@@ -165,7 +165,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
                 candidates: vec![],
                 exclusions: exclusions.clone(),
                 selected_plan_id: None,
-            combination: None,
+                combination: None,
                 checks: vec![],
                 budget: None,
                 artifact_class: disposition_without_plan(&goal.requirements.fallback)
@@ -296,7 +296,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
 }
 
 /// Deterministic `goal:solver:provider` combination name for plan
-/// output (emath-9bj1, Track A3 pass 7). The goal part is the kind's
+/// output. The goal part is the kind's
 /// stable spelling; the solver part names the deterministic
 /// resolution method the goal binds: the solve goal's
 /// Newton-with-deterministic-bracket-fallback solver, dual forward
@@ -472,14 +472,8 @@ fn goal_semantic_canonical(goal: &Goal) -> String {
     }
     // Scalar payload fields in a fixed order.
     for (tag, value) in [
-        (
-            "order",
-            payload.order.map(|order| order.to_string()),
-        ),
-        (
-            "against",
-            payload.against.clone(),
-        ),
+        ("order", payload.order.map(|order| order.to_string())),
+        ("against", payload.against.clone()),
         (
             "prediction",
             Some(payload.prediction.clone()).filter(|p| !p.is_empty()),
@@ -506,10 +500,7 @@ fn goal_semantic_canonical(goal: &Goal) -> String {
         }
     }
     // Pair-valued fit fields, order-preserving (order is semantic).
-    for (tag, pairs) in [
-        ("initial", &payload.initial),
-        ("weights", &payload.weights),
-    ] {
+    for (tag, pairs) in [("initial", &payload.initial), ("weights", &payload.weights)] {
         if !pairs.is_empty() {
             canonical.push('\u{1}');
             canonical.push_str(tag);

@@ -1,6 +1,6 @@
-//! Generated provider adapter contracts and conformance fixtures (fjxh.17).
+//! Generated provider adapter contracts and conformance fixtures.
 //!
-//! A cell schema (fjxh.2, `emath.capability-cell.v1`) GENERATES the
+//! A cell schema (`emath.capability-cell.v1`) GENERATES the
 //! adapter contract a provider must satisfy: the capability key (derived
 //! from the cell's content identity), the IR-facing trait shape (as
 //! DATA — the Rust trait stays generic), deterministic conformance
@@ -9,8 +9,8 @@
 //! operation: the local oracle stays in `emath-ir`; the adapter carries
 //! only the comparison contract.
 //!
-//! IR purity gate (Neutral IR Constitution §7; same rule as
-//! emath-epic-fm-0c8f.12): the IR-facing signature is an ALLOWLIST of
+//! IR purity gate (Neutral IR Constitution §7): the IR-facing signature
+//! is an ALLOWLIST of
 //! IR-owned type tokens. Provider-native types (torch/jax/ndarray, …)
 //! refuse typed (`E-PROVIDER-001`) — they cannot leak into the public
 //! IR surface, and the gate is enforced at contract generation, not
@@ -254,10 +254,7 @@ fn local_oracle(cell: &str) -> Option<fn(&[f64]) -> Option<Vec<f64>>> {
             // The emath-ir oracle returns Result; the fixture contract
             // records `None` for refused inputs (non-finite/empty), so
             // the fixture pin is the oracle's admitted output.
-            Some(|logits: &[f64]| {
-                emath_ir::capability::softmax_reference_strict_f64(logits)
-                    .ok()
-            })
+            Some(|logits: &[f64]| emath_ir::capability::softmax_reference_strict_f64(logits).ok())
         }
         _ => None,
     }

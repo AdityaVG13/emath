@@ -1,9 +1,9 @@
 //! CLI: expand / exactness / freeze / why / assumptions.
 
 use emath_cli::{
-    agent_check_json_document, agent_plan_json_document, agent_triage_json_document,
-    exactness_json_document, expand_json_document, plan_json_document, run, EXIT_OK, EXIT_REFUSED,
-    EXIT_USAGE,
+    EXIT_OK, EXIT_REFUSED, EXIT_USAGE, agent_check_json_document, agent_plan_json_document,
+    agent_triage_json_document, exactness_json_document, expand_json_document, plan_json_document,
+    run,
 };
 use emath_syntax::{exactness_ledger, expand_scratch};
 
@@ -148,7 +148,7 @@ fn expand_and_exactness_and_assumptions_succeed() {
 fn freeze_emits_versioned_lock_without_raising_authority() {
     emath_syntax::install_source_parser();
     let path = repo_file("language/examples/intro/scratch.emath");
-    let tmp = std::env::temp_dir().join("emath-v9-06-2rdq-6-freeze.emath");
+    let tmp = std::env::temp_dir().join("emath-freeze-check.emath");
     assert_eq!(
         run(&[
             "freeze".into(),
@@ -197,10 +197,12 @@ fn freeze_emits_versioned_lock_without_raising_authority() {
     assert_eq!(source_id, emath_core::content_id_of_str(&original).0);
     assert_eq!(frozen_id, emath_core::content_id_of_str(&frozen).0);
     assert_ne!(source_id, frozen_id);
-    assert!(parsed
-        .string_field("meaning_id")
-        .expect("meaning_id")
-        .starts_with("emath:meaning:v1:"));
+    assert!(
+        parsed
+            .string_field("meaning_id")
+            .expect("meaning_id")
+            .starts_with("emath:meaning:v1:")
+    );
     assert_eq!(
         parsed.field("authority_raised").expect("authority_raised"),
         &emath_artifact::JsonValue::Bool(false)
@@ -409,7 +411,7 @@ fn freeze_refuses_claimed_exact_hole() {
 fn freeze_sidecar_lock_write_failure_removes_partial_source() {
     emath_syntax::install_source_parser();
     let path = repo_file("language/examples/intro/scratch.emath");
-    let dir = std::env::temp_dir().join("emath-v9-06-2rdq-6-partial-freeze");
+    let dir = std::env::temp_dir().join("emath-partial-freeze-check");
     let _ = std::fs::create_dir_all(&dir);
     let out = dir.join("frozen.emath");
     let lock_path = out.with_extension("freeze.lock.json");

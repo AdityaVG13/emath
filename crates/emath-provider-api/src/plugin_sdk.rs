@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Plugin SDK slice: descriptors, sandbox policy gates, and a deterministic
+//! Plugin SDK: descriptors, sandbox policy gates, and a deterministic
 //! test-harness contract.
 //!
 //! [`admit`] is the sandbox/fuel/permission gate with typed refusals
@@ -15,7 +15,7 @@ use emath_core::content_id_of_str;
 
 /// Descriptor document schema.
 pub const PLUGIN_SCHEMA: &str = "emath.plugin";
-/// The single interface core this SDK slice speaks.
+/// The single interface protocol this SDK speaks.
 pub const INTERFACE_CORE: &str = "emath.plugin.interface";
 
 /// Sandbox policy attached to a plugin descriptor.

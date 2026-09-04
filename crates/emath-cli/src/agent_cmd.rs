@@ -5,18 +5,18 @@ use std::path::Path;
 use crate::agent_protocol::{
     AgentProposal, ChallengeLoop, ChallengeOutcome, CheckerSuite, ProposalKind,
 };
-use emath_artifact::JsonWriter;
-use emath_build::{build_file, BuildOptions};
 use crate::portfolio::InterpretationPortfolio;
-use emath_sema::session::CompilerSession;
+use emath_artifact::JsonWriter;
+use emath_build::{BuildOptions, build_file};
 use emath_genesis::tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
-use emath_world_ir::{EvidenceHandle, WorldMorphism};
+use emath_sema::CompilerSession;
 use emath_world_ir::WorldId;
+use emath_world_ir::{EvidenceHandle, WorldMorphism};
 
 use crate::tooling_cmd::{classify_build_error, doctor_probes};
 use crate::{
-    json_diagnostic_entry, json_diagnostics_entries, run_check, split_error_code, AgentRequest,
-    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+    AgentRequest, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry,
+    json_diagnostics_entries, run_check, split_error_code,
 };
 
 fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
@@ -102,11 +102,7 @@ pub(crate) fn agent_cmd(request: AgentRequest) -> CliExit {
                 "{}",
                 crate::agent_check_json_document(admitted, &package_id, &diagnostics)
             );
-            if admitted {
-                EXIT_OK
-            } else {
-                EXIT_REFUSED
-            }
+            if admitted { EXIT_OK } else { EXIT_REFUSED }
         }
         AgentRequest::Plan { path } => {
             let mut session = CompilerSession::new(emath_core::limits::Limits::default());
@@ -127,11 +123,7 @@ pub(crate) fn agent_cmd(request: AgentRequest) -> CliExit {
                     &result.diagnostics,
                 )
             );
-            if admitted {
-                EXIT_OK
-            } else {
-                EXIT_REFUSED
-            }
+            if admitted { EXIT_OK } else { EXIT_REFUSED }
         }
         AgentRequest::Build { path, out } => {
             match build_file(
@@ -139,6 +131,7 @@ pub(crate) fn agent_cmd(request: AgentRequest) -> CliExit {
                 out,
                 BuildOptions {
                     verify_generated_crate: true,
+                    ..BuildOptions::default()
                 },
             ) {
                 Ok(report) => {

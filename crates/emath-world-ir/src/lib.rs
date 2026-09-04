@@ -7,7 +7,7 @@ pub mod fitting;
 pub mod translation;
 
 pub use fitting::FittedTable;
-// Facade fence (rpme/C052): the morphism/preservation vocabulary callers
+// Facade fence (C052): the morphism/preservation vocabulary callers
 // consume deep (`translation::{...}`) is root-exported; the module path
 // stays public for the rest of the translation surface. Homonym watch
 // (C057): `emath_provider_api::runtime::EvidenceHandle` is a DIFFERENT type — no
@@ -311,7 +311,7 @@ fn hole_state_name(state: MeaningHoleState) -> &'static str {
 }
 
 /// FNV-1a 64-bit over raw bytes. SINGLE OWNER (magnet consolidation,
-/// o7a6): the primitive lives in Tier-0 `emath-core`
+/// ): the primitive lives in Tier-0 `emath-core`
 /// (`fnv1a64_bytes`); this is a thin re-export so existing
 /// `emath_world_ir::fnv1a64` call sites keep one canonical implementation
 /// instead of a duplicated one.

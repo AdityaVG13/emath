@@ -1,4 +1,4 @@
-//! Bead `emath-cli-eval-function-specs-unuh` — conformance harness for
+//! — conformance harness for
 //! `emath eval` over ordinary admitted function specs.
 //!
 //! Contract under test: `emath eval` executes an admitted `emath
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 mod common;
 use std::process::Command;
 
-use emath_cli::{run, CliExit, EXIT_OK, EXIT_REFUSED};
+use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, run};
 
 fn fixture_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("emath-cli-eval-{name}-{}", std::process::id()));
@@ -164,7 +164,7 @@ fn obj_string(parsed: &emath_artifact::JsonValue, object_key: &str, entry: &str)
     }
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — plain `emath eval` (no `--set`) on a
+/// Plain `emath eval` (no `--set`) on a
 /// standard function spec runs the spec's own worked example as the
 /// input oracle: nothing is invented, so `hello-square`'s
 /// `example <three_squared>: given x = 3` binds `x=3` and the
@@ -193,7 +193,7 @@ fn eval_plain_single_example_uses_spec_oracle() {
     );
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — plain `emath eval` on a spec whose
+/// Plain `emath eval` on a spec whose
 /// single worked example FAILS its expect is a typed refusal
 /// (E-EVAL-007), never a silent numeric answer: the example is the
 /// oracle, and a failing oracle means the spec's own claim is false.
@@ -235,7 +235,10 @@ fn eval_receipt_deterministic_repeats() {
     // command line, never the receipt.
     let (parsed, code_3, stdout_3) = eval_json(&[&add, "--set", "b=3", "--set", "a=2", "--json"]);
     assert_eq!(code_3, EXIT_OK);
-    assert_eq!(stdout_3, stdout_1, "--set order must not change the receipt");
+    assert_eq!(
+        stdout_3, stdout_1,
+        "--set order must not change the receipt"
+    );
     assert_eq!(
         obj_string(&parsed, "outputs", "r").as_deref(),
         Some("5.0"),
@@ -275,7 +278,14 @@ fn eval_set_closure_refuses_typed() {
         "vector bound to a Float64 slot refuses E-EVAL-006, got {:?}",
         error_codes(&parsed)
     );
-    let (parsed, code, _) = eval_json(&[&hello_square(), "--world", "free_symbolic", "--set", "x=3", "--json"]);
+    let (parsed, code, _) = eval_json(&[
+        &hello_square(),
+        "--world",
+        "free_symbolic",
+        "--set",
+        "x=3",
+        "--json",
+    ]);
     assert_eq!(code, EXIT_REFUSED);
     assert!(
         error_codes(&parsed).iter().any(|code| code == "E-EVAL-008"),
@@ -285,7 +295,7 @@ fn eval_set_closure_refuses_typed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — the standard function spec evaluates
+/// The standard function spec evaluates
 /// with the ACTUAL numeric result of its body: `Square(3) == 9`.
 /// Before the path existed this file refused as genesis-only
 /// (`EXIT_REFUSED`, E-GEN-080), so this test ran red with the right
@@ -326,7 +336,7 @@ fn eval_standard_function_spec_returns_numeric_result() {
     );
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — binding only one of two inputs is a
+/// Binding only one of two inputs is a
 /// typed missing-input refusal (E-EVAL-004), never a partial eval.
 #[test]
 fn eval_missing_input_refuses_typed() {
@@ -344,7 +354,7 @@ fn eval_missing_input_refuses_typed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — two functions without `--function` is
+/// Two functions without `--function` is
 /// an ambiguous-entrypoint refusal (E-EVAL-003), never a silent pick.
 #[test]
 fn eval_ambiguous_entrypoint_refuses_typed() {
@@ -353,7 +363,10 @@ fn eval_ambiguous_entrypoint_refuses_typed() {
     let path = write_fixture(&dir, "two.emath", TWO_FUNCTION_SPEC);
     let path = path.to_string_lossy().into_owned();
     let (parsed, code, stdout) = eval_json(&[&path, "--set", "x=2", "--json"]);
-    assert_eq!(code, EXIT_REFUSED, "ambiguous entrypoint must refuse; {stdout}");
+    assert_eq!(
+        code, EXIT_REFUSED,
+        "ambiguous entrypoint must refuse; {stdout}"
+    );
     assert!(
         error_codes(&parsed).iter().any(|code| code == "E-EVAL-003"),
         "ambiguity refuses E-EVAL-003, got {:?}",
@@ -362,7 +375,71 @@ fn eval_ambiguous_entrypoint_refuses_typed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — `--function` naming nothing is a typed
+/// Function-file auto-detect (emath-tmd95): a multi-function file
+/// without `--function` emits ONE actionable line (count + names), not
+/// the E-GEN-080/E-SYN-20x cascade; a sole-function file with `--set`
+/// auto-selects; genesis-header files are untouched by the hint path.
+#[test]
+fn eval_function_file_hint_contract() {
+    emath_syntax::install_source_parser();
+    let dir = fixture_dir("function-hint");
+
+    // Multi-function file: the refusal names the count and the candidates.
+    let two = write_fixture(&dir, "two.emath", TWO_FUNCTION_SPEC);
+    let two = two.to_string_lossy().into_owned();
+    let (parsed, code, stdout) = eval_json(&[&two, "--set", "x=2", "--json"]);
+    assert_eq!(code, EXIT_REFUSED);
+    let message = match parsed.field("diagnostics") {
+        Ok(emath_artifact::JsonValue::Arr(items)) => items
+            .iter()
+            .filter_map(|item| match item {
+                emath_artifact::JsonValue::Obj(fields) => fields
+                    .iter()
+                    .find(|(key, _)| key == "message")
+                    .map(|(_, value)| match value {
+                        emath_artifact::JsonValue::Str(text) => text.clone(),
+                        other => panic!("message must be a string, got {other:?}"),
+                    }),
+                other => panic!("diagnostic must be an object, got {other:?}"),
+            })
+            .collect::<Vec<_>>(),
+        other => panic!("diagnostics must be an array, got {other:?}"),
+    };
+    let hint = message.join("\n");
+    assert!(
+        hint.contains("2 function declarations share this file"),
+        "hint must name the count; got: {hint}"
+    );
+    assert!(
+        hint.contains("--function") && hint.contains("A") && hint.contains("B"),
+        "hint must point at --function and name the candidates; got: {hint}"
+    );
+    assert!(
+        !stdout.contains("E-GEN-080") && !stdout.contains("E-SYN-2"),
+        "no genesis/parse cascade on the hint path; got: {stdout}"
+    );
+
+    // Sole-function file with --set: auto-selects, no --function needed.
+    let sole = write_fixture(&dir, "one.emath", SQUARE_SPEC);
+    let sole = sole.to_string_lossy().into_owned();
+    let (_, code, stdout) = eval_json(&[&sole, "--set", "x=3", "--json"]);
+    assert_eq!(
+        code, EXIT_OK,
+        "sole function auto-selects with --set; {stdout}"
+    );
+
+    // Genesis-header file: the hint path is dormant (plain probe evals).
+    let genesis = write_fixture(&dir, "gen.emath", "probe = 1 + 1\n");
+    let genesis = genesis.to_string_lossy().into_owned();
+    let (_, code, stdout) = eval_json(&[&genesis, "--json"]);
+    assert_eq!(
+        code, EXIT_OK,
+        "genesis-header file untouched by the hint; {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `--function` naming nothing is a typed
 /// refusal (E-EVAL-002), and naming the OTHER function selects it.
 #[test]
 fn eval_unknown_named_entrypoint_refuses_typed() {
@@ -370,16 +447,19 @@ fn eval_unknown_named_entrypoint_refuses_typed() {
     let dir = fixture_dir("unknown-fn");
     let path = write_fixture(&dir, "two.emath", TWO_FUNCTION_SPEC);
     let path = path.to_string_lossy().into_owned();
-    let (parsed, code, stdout) = eval_json(&[&path, "--function", "Nope", "--set", "x=2", "--json"]);
-    assert_eq!(code, EXIT_REFUSED, "unknown --function must refuse; {stdout}");
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "Nope", "--set", "x=2", "--json"]);
+    assert_eq!(
+        code, EXIT_REFUSED,
+        "unknown --function must refuse; {stdout}"
+    );
     assert!(
         error_codes(&parsed).iter().any(|code| code == "E-EVAL-002"),
         "unknown named entrypoint refuses E-EVAL-002, got {:?}",
         error_codes(&parsed)
     );
     // Selecting a real function by name is the disambiguation path.
-    let (parsed, code, stdout) =
-        eval_json(&[&path, "--function", "B", "--set", "x=2", "--json"]);
+    let (parsed, code, stdout) = eval_json(&[&path, "--function", "B", "--set", "x=2", "--json"]);
     assert_eq!(code, EXIT_OK, "named entrypoint evals; {stdout}");
     assert_eq!(
         obj_string(&parsed, "outputs", "r").as_deref(),
@@ -389,7 +469,7 @@ fn eval_unknown_named_entrypoint_refuses_typed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — a file whose declarations are not
+/// A file whose declarations are not
 /// function specs (model) refuses E-EVAL-001 (unsupported entrypoint).
 #[test]
 fn eval_unsupported_entrypoint_refuses_typed() {
@@ -407,7 +487,7 @@ fn eval_unsupported_entrypoint_refuses_typed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// PASS 1 RED / PASS 2+ GREEN — in-process exit-code contract through
+/// In-process exit-code contract through
 /// `run`: a function spec eval succeeds, and the typed refusals exit
 /// `EXIT_REFUSED`, never a silent zero.
 #[test]
@@ -427,7 +507,13 @@ fn eval_in_process_exit_codes() {
         "in-process eval of a function spec succeeds"
     );
     assert_eq!(
-        run(&["eval".into(), square.clone(), "--set".into(), "x=3".into(), "--json".into()]),
+        run(&[
+            "eval".into(),
+            square.clone(),
+            "--set".into(),
+            "x=3".into(),
+            "--json".into()
+        ]),
         EXIT_OK
     );
     assert_eq!(
@@ -441,9 +527,384 @@ fn eval_in_process_exit_codes() {
         "ambiguous entrypoint refuses"
     );
     assert_eq!(
-        run(&["eval".into(), two, "--function".into(), "Nope".into(), "--set".into(), "x=2".into()]),
+        run(&[
+            "eval".into(),
+            two,
+            "--function".into(),
+            "Nope".into(),
+            "--set".into(),
+            "x=2".into()
+        ]),
         EXIT_REFUSED,
         "unknown entrypoint refuses"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A sibling-function call whose callee body contains a binder that
+/// references a parameter must resolve that parameter through the
+/// caller-bound argument: the renamed parameter (`y#count_below`) is
+/// bound as a definition over the argument subtree, and the inlining
+/// pass must reach INTO binder bodies to substitute it. Regression
+/// for emath-87ls0: the renamed parameter survived inside the fold
+/// guard and the runner refused with E-EVAL-007 "unknown input
+/// `y#count_below`". The companion callee (parameter in the binder
+/// DOMAIN) already resolved and guards the domain path.
+const SIBLING_BINDER_SPEC: &str = "\
+emath function count_to:
+    inputs:
+        y: Int
+    outputs:
+        r: Nat
+    definitions:
+        r = sum j in 0..y: 1
+
+emath function count_below:
+    inputs:
+        y: Int
+    outputs:
+        r: Nat
+    definitions:
+        r = sum j in 0..6 if j < y: 1
+
+emath function caller:
+    inputs:
+        x: Int
+    outputs:
+        a: Int
+        b: Int
+    definitions:
+        a = count_to(x)
+        b = count_below(x)
+";
+
+#[test]
+fn eval_sibling_call_with_binder_body_resolves_arguments() {
+    emath_syntax::install_source_parser();
+    let dir = fixture_dir("sibling-binder-body");
+    let path = write_fixture(&dir, "caller_binder.emath", SIBLING_BINDER_SPEC);
+    let path = path.to_string_lossy().into_owned();
+    // count_to(4) = |{0,1,2,3}| = 4 (binder domain path);
+    // count_below(4) = |{0,1,2,3}| = 4 (binder body path, emath-87ls0).
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "caller", "--set", "x=4", "--json"]);
+    assert_eq!(code, EXIT_OK, "caller(4) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "a").as_deref(),
+        Some("4"),
+        "count_to(4) == 4 (binder domain path): {stdout}"
+    );
+    assert_eq!(
+        obj_string(&parsed, "outputs", "b").as_deref(),
+        Some("4"),
+        "count_below(4) == 4 (binder body path, emath-87ls0): {stdout}"
+    );
+    // MUTATION-KILL PAIR: a callee that ignores its argument (constant
+    // fold) must fail on a second, distinct input.
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "caller", "--set", "x=2", "--json"]);
+    assert_eq!(code, EXIT_OK, "caller(2) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "b").as_deref(),
+        Some("2"),
+        "count_below(2) == 2 (constant mutant must fail): {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ── Multi-binder folds (emath-6kk1b) ────────────────────────────────────
+//
+// `sum i in 0..n, j in 0..m: body` desugars to nested single-binder
+// folds, leftmost outermost / rightmost innermost; the guard binds to
+// the innermost binder. Failure-first: written before the desugar and
+// ran red on the E-TYPE-010 single-binder refusal.
+
+const MULTI_BINDER_SPEC: &str = "\
+emath function grid:
+    inputs:
+        n: Int
+        m: Int
+    outputs:
+        cells: Int
+    definitions:
+        cells = sum i in 0..n, j in 0..m: 1
+
+emath function weighted:
+    inputs:
+        n: Int
+    outputs:
+        s: Int
+    definitions:
+        s = sum i in 0..n, j in 0..n: i * j
+
+emath function filtered:
+    inputs:
+        n: Int
+    outputs:
+        evens: Int
+    definitions:
+        evens = sum i in 0..n, j in 0..n if int_rem(i + j, 2) == 0: 1
+
+emath function exists_pair:
+    inputs:
+        n: Int
+    outputs:
+        found: Bool
+    definitions:
+        found = exists i in 0..n, j in 0..n: i * j == 6
+
+emath function triangle:
+    inputs:
+        n: Int
+    outputs:
+        t: Int
+    definitions:
+        t = sum i in 0..n, j in 0..i: 1
+";
+
+#[test]
+fn eval_multi_binder_folds_desugar_to_nested() {
+    emath_syntax::install_source_parser();
+    let dir = fixture_dir("multi-binder");
+    let path = write_fixture(&dir, "multi_binder.emath", MULTI_BINDER_SPEC);
+    let path = path.to_string_lossy().into_owned();
+
+    // grid(3, 4) = 3·4 = 12: the product of extents, not 3 + 4.
+    let (parsed, code, stdout) = eval_json(&[
+        &path,
+        "--function",
+        "grid",
+        "--set",
+        "n=3",
+        "--set",
+        "m=4",
+        "--json",
+    ]);
+    assert_eq!(code, EXIT_OK, "grid(3,4) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "cells").as_deref(),
+        Some("12"),
+        "double sum of 1 over 3×4 == 12: {stdout}"
+    );
+
+    // weighted(4) = (Σi)(Σj) with i·j over the grid = 6·6 = 36; nesting
+    // ORDER is observable: swapping binders gives the same value for a
+    // symmetric body, so a second, asymmetric body pins the convention.
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "weighted", "--set", "n=4", "--json"]);
+    assert_eq!(code, EXIT_OK, "weighted(4) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "s").as_deref(),
+        Some("36"),
+        "sum i,j of i·j over 0..4 == 36: {stdout}"
+    );
+
+    // Guard binds to the INNERMOST binder: even-parity cells of a 3×3
+    // grid = 5 ((0,0),(0,2),(1,1),(2,0),(2,2)).
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "filtered", "--set", "n=3", "--json"]);
+    assert_eq!(code, EXIT_OK, "filtered(3) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "evens").as_deref(),
+        Some("5"),
+        "guarded double sum == 5 (guard on innermost j): {stdout}"
+    );
+
+    // exists composes associatively: 2·3 = 6 IS reachable in 0..4².
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "exists_pair", "--set", "n=4", "--json"]);
+    assert_eq!(code, EXIT_OK, "exists_pair(4) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "found").as_deref(),
+        Some("true"),
+        "exists i,j: i·j == 6 must be true for n=4: {stdout}"
+    );
+
+    // ORDER PIN (mutation kill): the inner domain references the outer
+    // binder. Rightmost-innermost gives the triangle sum Σ_{i<4} i = 6
+    // (0+1+2+3 over the half-open domains); a reversed desugar cannot
+    // lower this shape.
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "triangle", "--set", "n=4", "--json"]);
+    assert_eq!(code, EXIT_OK, "triangle(4) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "t").as_deref(),
+        Some("6"),
+        "triangle(4) == 6 pins rightmost-innermost nesting: {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Mutation kill for the desugar: if the synthesized nesting order were
+/// reversed (leftmost innermost), a domain whose INNER bound references
+/// the OUTER binder would still work, but a guard referencing the
+/// outermost binder would resolve to the wrong scope. `outer_ref` uses
+/// the outer binder inside the guard — legal under innermost-binding
+/// only when the outer variable is still in scope (it is; outer refs
+/// stay legal), and the count differs from an innermost-only reading.
+const OUTER_REF_SPEC: &str = "\
+emath function outer_ref:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        r = sum i in 0..n, j in 0..n if j == i: 1
+";
+
+#[test]
+fn eval_multi_binder_guard_outer_reference_scopes_correctly() {
+    emath_syntax::install_source_parser();
+    let dir = fixture_dir("multi-binder-outer-ref");
+    let path = write_fixture(&dir, "outer_ref.emath", OUTER_REF_SPEC);
+    let path = path.to_string_lossy().into_owned();
+    // sum over the diagonal: exactly n matches (j == i), so outer_ref(4) = 4.
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "outer_ref", "--set", "n=4", "--json"]);
+    assert_eq!(code, EXIT_OK, "outer_ref(4) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "r").as_deref(),
+        Some("4"),
+        "diagonal count outer_ref(4) == 4: {stdout}"
+    );
+    // Second distinct input kills constant mutants.
+    let (parsed, code, stdout) =
+        eval_json(&[&path, "--function", "outer_ref", "--set", "n=2", "--json"]);
+    assert_eq!(code, EXIT_OK, "outer_ref(2) must eval; stdout:\n{stdout}");
+    assert_eq!(
+        obj_string(&parsed, "outputs", "r").as_deref(),
+        Some("2"),
+        "diagonal count outer_ref(2) == 2 (constant mutant must fail): {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ── Vector[Int]/Vector[Nat] --set bindings (emath-5rmwr) ────────────────
+//
+// Integer-vector inputs are the natural shape for probe witnesses
+// (codewords, coefficient vectors, domain points). Failure-first:
+// written before the widened binding and ran red on E-EVAL-006.
+
+const INT_VECTOR_SPEC: &str = "\
+emath function witness_sum:
+    inputs:
+        v: Vector[Int]
+    outputs:
+        s: Int
+    definitions:
+        s = v[0] + v[1] + v[2]
+
+emath function nat_code:
+    inputs:
+        c: Vector[Nat]
+    outputs:
+        m: Int
+    definitions:
+        m = c[0] * 10 + c[1]
+";
+
+#[test]
+fn eval_set_binds_integer_vectors() {
+    emath_syntax::install_source_parser();
+    let dir = fixture_dir("int-vector-set");
+    let path = write_fixture(&dir, "int_vector.emath", INT_VECTOR_SPEC);
+    let path = path.to_string_lossy().into_owned();
+
+    // Vector[Int] binds and computes exactly.
+    let (parsed, code, stdout) = eval_json(&[
+        &path,
+        "--function",
+        "witness_sum",
+        "--set",
+        "v=[3, 4, 5]",
+        "--json",
+    ]);
+    assert_eq!(
+        code, EXIT_OK,
+        "witness_sum([3,4,5]) must eval; stdout:\n{stdout}"
+    );
+    assert_eq!(
+        obj_string(&parsed, "outputs", "s").as_deref(),
+        Some("12"),
+        "v[0]+v[1]+v[2] == 12: {stdout}"
+    );
+
+    // Vector[Nat] binds and computes exactly.
+    let (parsed, code, stdout) = eval_json(&[
+        &path,
+        "--function",
+        "nat_code",
+        "--set",
+        "c=[4, 2]",
+        "--json",
+    ]);
+    assert_eq!(
+        code, EXIT_OK,
+        "nat_code([4,2]) must eval; stdout:\n{stdout}"
+    );
+    assert_eq!(
+        obj_string(&parsed, "outputs", "m").as_deref(),
+        Some("42"),
+        "c[0]*10 + c[1] == 42: {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn eval_set_integer_vector_strictness() {
+    emath_syntax::install_source_parser();
+    let dir = fixture_dir("int-vector-strict");
+    let path = write_fixture(&dir, "int_vector_strict.emath", INT_VECTOR_SPEC);
+    let path = path.to_string_lossy().into_owned();
+
+    // Strict parsing: a fractional element refuses typed (E-EVAL-006
+    // shape mismatch — the value parses as a vector but not for THIS
+    // declared element type).
+    let (parsed, code, _) = eval_json(&[
+        &path,
+        "--function",
+        "witness_sum",
+        "--set",
+        "v=[1, 2.5, 3]",
+        "--json",
+    ]);
+    assert_eq!(code, EXIT_REFUSED);
+    assert!(
+        error_codes(&parsed).iter().any(|code| code == "E-EVAL-006"),
+        "fractional element in Vector[Int] refuses E-EVAL-006, got {:?}",
+        error_codes(&parsed)
+    );
+
+    // A negative element refuses for Vector[Nat].
+    let (parsed, code, _) = eval_json(&[
+        &path,
+        "--function",
+        "nat_code",
+        "--set",
+        "c=[-1, 2]",
+        "--json",
+    ]);
+    assert_eq!(code, EXIT_REFUSED);
+    assert!(
+        error_codes(&parsed).iter().any(|code| code == "E-EVAL-006"),
+        "negative element in Vector[Nat] refuses E-EVAL-006, got {:?}",
+        error_codes(&parsed)
+    );
+
+    // A Vector[Int] slot still refuses a Vector[Float64] payload (1.5).
+    let (parsed, code, _) = eval_json(&[
+        &path,
+        "--function",
+        "witness_sum",
+        "--set",
+        "v=[1.5, 2, 3]",
+        "--json",
+    ]);
+    assert_eq!(code, EXIT_REFUSED);
+    assert!(
+        error_codes(&parsed).iter().any(|code| code == "E-EVAL-006"),
+        "float vector in Vector[Int] slot refuses E-EVAL-006, got {:?}",
+        error_codes(&parsed)
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

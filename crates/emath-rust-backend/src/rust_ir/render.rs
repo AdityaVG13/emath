@@ -698,12 +698,18 @@ pub fn render_expr(expr: &Expr) -> String {
             args,
         } => {
             let args = args.iter().map(render_expr).collect::<Vec<_>>().join(", ");
-            format!("{}.{}({args})", render_expr(receiver), escape_ident(method))
+            format!(
+                "({}.{}({args}))",
+                render_expr(receiver),
+                escape_ident(method)
+            )
         }
         Expr::Bin { op, left, right } => {
             if *op == BinOp::Pow {
-                // lowered to a method call for strict powf semantics
-                return format!("{}.powf({})", render_expr(left), render_expr(right));
+                // Lowered to a method call for strict powf semantics. The
+                // receiver is parenthesized: a cast or compound operand
+                // (`x as f64.powf(y)`) is not valid Rust.
+                return format!("({}).powf({})", render_expr(left), render_expr(right));
             }
             format!(
                 "{} {} {}",
@@ -717,7 +723,7 @@ pub fn render_expr(expr: &Expr) -> String {
             match op {
                 UnOp::Neg => format!("-{text}"),
                 UnOp::Not => format!("!{text}"),
-                UnOp::Method(method) => format!("{text}.{}()", escape_ident(method)),
+                UnOp::Method(method) => format!("({text}).{}()", escape_ident(method)),
             }
         }
         Expr::Block(stmt) => {

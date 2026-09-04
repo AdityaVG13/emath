@@ -1,5 +1,4 @@
-//! Meaning-budget display and raise refusals (bead
-//! emath-meaning-budget-display-zql4b, 04 / V9-06.09).
+//! Meaning-budget display and raise refusals (04 / V9-06.09).
 //!
 //! Contracts:
 //! - `emath exactness <file>` prints declared/inferred/constructed/open
@@ -10,8 +9,10 @@
 //!   allowed — the budget is a view, not an authority change.
 
 use emath_artifact::JsonValue;
-use emath_cli::{exactness_json_document, run, EXIT_OK, EXIT_REFUSED};
-use emath_syntax::{exactness_ledger, exactness_ledger_raised, ExactnessDimension, ExactnessStatus};
+use emath_cli::{EXIT_OK, EXIT_REFUSED, exactness_json_document, run};
+use emath_syntax::{
+    ExactnessDimension, ExactnessStatus, exactness_ledger, exactness_ledger_raised,
+};
 
 fn repo_file(rel: &str) -> String {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -52,8 +53,10 @@ fn budget_prints_counts_for_l1_guided() {
         "every entry has exactly one status"
     );
     assert!(
-        ledger.entries.iter().any(|e| e.dimension.as_str() == "unit"
-            && e.status.as_str() == "open"),
+        ledger
+            .entries
+            .iter()
+            .any(|e| e.dimension.as_str() == "unit" && e.status.as_str() == "open"),
         "units stay open until declared or raised"
     );
     assert!(
@@ -86,8 +89,10 @@ fn raise_is_propose_only_and_source_stays_untouched() {
 
     let raised = exactness_ledger_raised(&before, &[ExactnessDimension::Unit]);
     assert!(
-        raised.entries.iter().any(|e| e.dimension.as_str() == "unit"
-            && e.status.as_str() == "declared"),
+        raised
+            .entries
+            .iter()
+            .any(|e| e.dimension.as_str() == "unit" && e.status.as_str() == "declared"),
         "raised budget must show units declared"
     );
     assert!(
@@ -110,7 +115,7 @@ fn raise_on_frozen_is_refused_but_display_is_allowed() {
         "fixture must pin E-SYN-155"
     );
     let tmp = std::env::temp_dir().join(format!(
-        "emath_zql4b_frozen_{}_raise_on_frozen",
+        "emath_frozen_fixture_{}_raise_on_frozen",
         std::process::id()
     ));
     std::fs::create_dir_all(&tmp).expect("tmp dir");
@@ -157,7 +162,10 @@ fn exactness_json_schema_is_stable() {
     let ledger = exactness_ledger(&source);
     let text = exactness_json_document(&ledger, Some("emath:meaning:v1:test"));
     let parsed = emath_artifact::parse_json_document(&text).expect("exactness --json");
-    assert_eq!(parsed.string_field("command").expect("command"), "exactness");
+    assert_eq!(
+        parsed.string_field("command").expect("command"),
+        "exactness"
+    );
     assert_eq!(
         parsed.int_field("declared").expect("declared") as usize,
         ledger.count(ExactnessStatus::Declared)

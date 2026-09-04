@@ -4,10 +4,10 @@
 //! `catalog::suggest_flag`, which the public API does not expose.
 
 use emath_cli::catalog::{
-    capabilities_json, command_help_text, command_summary, command_usage, flags_for,
-    reject_unknown_flags, robot_docs_guide, suggest_command, COMMANDS,
+    COMMANDS, capabilities_json, command_help_text, command_summary, command_usage, flags_for,
+    reject_unknown_flags, robot_docs_guide, suggest_command,
 };
-use emath_cli::{architecture_json, run, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, architecture_json, run};
 
 #[test]
 fn cli_exit_is_three_way() {
@@ -62,10 +62,12 @@ fn capabilities_json_names_schema_and_exit_codes() {
     );
     assert_eq!(parsed.string_field("tool").expect("tool"), "emath");
     assert!(!parsed.string_field("version").expect("version").is_empty());
-    assert!(!parsed
-        .string_field("contract")
-        .expect("contract")
-        .is_empty());
+    assert!(
+        !parsed
+            .string_field("contract")
+            .expect("contract")
+            .is_empty()
+    );
     let codes = parsed.field("exit_codes").expect("exit_codes");
     assert_eq!(codes.string_field("0").expect("0"), "ok");
     assert_eq!(
@@ -120,10 +122,12 @@ fn architecture_json_schema_and_required_paths_parse_back() {
         parsed.string_field("schema").expect("schema"),
         "emath.architecture"
     );
-    assert!(!parsed
-        .string_field("pipeline")
-        .expect("pipeline")
-        .is_empty());
+    assert!(
+        !parsed
+            .string_field("pipeline")
+            .expect("pipeline")
+            .is_empty()
+    );
     match parsed.field("required_paths").expect("required_paths") {
         emath_artifact::JsonValue::Arr(items) => {
             assert!(!items.is_empty(), "required_paths must not be empty");
@@ -659,11 +663,7 @@ fn leftover_parser_refuses_extra_positionals() {
         EXIT_OK
     );
     assert_eq!(
-        run(&[
-            "robot-docs".into(),
-            "guide".into(),
-            "extra".into(),
-        ]),
+        run(&["robot-docs".into(), "guide".into(), "extra".into(),]),
         EXIT_USAGE
     );
     assert_eq!(run(&["version".into(), "extra".into()]), EXIT_USAGE);

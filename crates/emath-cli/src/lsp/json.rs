@@ -251,8 +251,8 @@ impl Parser<'_> {
                     let Some(rest_bytes) = self.bytes.get(self.pos.saturating_sub(1)..) else {
                         return Err("unexpected end of string".into());
                     };
-                    let rest = std::str::from_utf8(rest_bytes)
-                        .map_err(|_| "invalid utf-8".to_string())?;
+                    let rest =
+                        std::str::from_utf8(rest_bytes).map_err(|_| "invalid utf-8".to_string())?;
                     let Some(ch) = rest.chars().next() else {
                         return Err("unexpected end of string".into());
                     };

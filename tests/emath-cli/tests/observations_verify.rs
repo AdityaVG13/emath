@@ -1,4 +1,4 @@
-//! `emath check --verify-data` (04 §5.2, bead emath-r3-observations-9ffu).
+//! `emath check --verify-data` (04 §5.2).
 //!
 //! Contracts:
 //! - a file whose InstrumentRun provenance declares a sha256 matching the
@@ -42,7 +42,10 @@ fn verify_data_refuses_digest_drift() {
     // evidence cannot be confirmed: E-OBS-HASH, exit 1.
     let path = repo_file("tests/invalid/observations_hash_drift.emath");
     let (stdout, code) = cli(&["check", "--verify-data", path.to_str().expect("utf8")]);
-    assert_eq!(code, 1, "unconfirmable evidence must refuse; got:\n{stdout}");
+    assert_eq!(
+        code, 1,
+        "unconfirmable evidence must refuse; got:\n{stdout}"
+    );
     assert!(
         stdout.contains("E-OBS-HASH"),
         "drift/missing data must refuse E-OBS-HASH; got:\n{stdout}"

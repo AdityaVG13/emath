@@ -1,6 +1,6 @@
 //! `emath solve --check` lists labeled completions, never a naked float.
 
-use emath_cli::{run, solve_check_json_document, EXIT_OK, EXIT_REFUSED};
+use emath_cli::{EXIT_OK, EXIT_REFUSED, run, solve_check_json_document};
 use emath_syntax::expand_scratch;
 
 fn assert_solve_candidate_keys(cand: &emath_artifact::JsonValue) {

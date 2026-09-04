@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use emath_core::Severity;
-use emath_sema::session::CompilerSession;
+use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 use crate::lsp::json::JsonValue;
@@ -378,18 +378,11 @@ fn range_offsets(range: &JsonValue, text: &str) -> Option<(usize, usize)> {
 ///
 /// `character` is a UTF-8 byte offset within the line (Phase 1); offsets past
 /// the line end or mid-codepoint are refused.
-fn line_character_offset(
-    position: &JsonValue,
-    text: &str,
-    line_starts: &[usize],
-) -> Option<usize> {
+fn line_character_offset(position: &JsonValue, text: &str, line_starts: &[usize]) -> Option<usize> {
     let line = usize::try_from(position.get_int("line")?).ok()?;
     let character = usize::try_from(position.get_int("character")?).ok()?;
     let base = *line_starts.get(line)?;
-    let line_end = line_starts
-        .get(line + 1)
-        .copied()
-        .unwrap_or(text.len());
+    let line_end = line_starts.get(line + 1).copied().unwrap_or(text.len());
     let offset = base.checked_add(character)?;
     if offset > line_end || offset > text.len() || !text.is_char_boundary(offset) {
         return None;

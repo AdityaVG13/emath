@@ -144,7 +144,7 @@ fn every_emitted_code_is_documented() {
 /// section×declaration-kind conformance refusal (state/constructors/
 /// equations/algebraic only on the kinds that carry them) and nothing
 /// else. The emission lives in the admit submodules since the
-/// `admit.rs` restructuring (bead emath-ekind010-single-predicate-lw9o
+/// `admit.rs` restructuring (
 /// fixed this gate to follow the move; `implementation/ERROR_CODES.md`
 /// already lists the submodule files).
 #[test]

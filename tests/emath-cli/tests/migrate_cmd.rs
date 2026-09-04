@@ -1,5 +1,5 @@
-//! `emath migrate` CLI (bead emath-7ijoe, contract bead
-//! emath-r3-migrate-contract-b75y, 05 §5).
+//! `emath migrate` CLI (contract
+//!, 05 §5).
 //!
 //! Contracts:
 //! - `emath migrate <file.emath> --check` prints the canonical-format

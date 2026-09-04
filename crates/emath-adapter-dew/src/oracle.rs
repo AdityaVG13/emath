@@ -206,21 +206,17 @@ fn eval(
         DewExpr::Max(left, right) => two(left, right, env, drift, f64::max),
         DewExpr::Atan2(left, right) => two(left, right, env, drift, f64::atan2),
         DewExpr::And(left, right) => match (eval(left, env, drift), eval(right, env, drift)) {
-            (Some(EvalValue::Bool(l)), Some(EvalValue::Bool(r))) => {
-                Some(EvalValue::Bool(l && r))
+            (Some(EvalValue::Bool(l)), Some(EvalValue::Bool(r))) => Some(EvalValue::Bool(l && r)),
+            (Some(EvalValue::F64(l)), Some(EvalValue::F64(r))) => {
+                Some(EvalValue::F64(if l != 0.0 && r != 0.0 { 1.0 } else { 0.0 }))
             }
-            (Some(EvalValue::F64(l)), Some(EvalValue::F64(r))) => Some(EvalValue::F64(
-                if l != 0.0 && r != 0.0 { 1.0 } else { 0.0 },
-            )),
             _ => None,
         },
         DewExpr::Or(left, right) => match (eval(left, env, drift), eval(right, env, drift)) {
-            (Some(EvalValue::Bool(l)), Some(EvalValue::Bool(r))) => {
-                Some(EvalValue::Bool(l || r))
+            (Some(EvalValue::Bool(l)), Some(EvalValue::Bool(r))) => Some(EvalValue::Bool(l || r)),
+            (Some(EvalValue::F64(l)), Some(EvalValue::F64(r))) => {
+                Some(EvalValue::F64(if l != 0.0 || r != 0.0 { 1.0 } else { 0.0 }))
             }
-            (Some(EvalValue::F64(l)), Some(EvalValue::F64(r))) => Some(EvalValue::F64(
-                if l != 0.0 || r != 0.0 { 1.0 } else { 0.0 },
-            )),
             _ => None,
         },
         DewExpr::Cmp(op, left, right) => two(left, right, env, drift, |l, r| {

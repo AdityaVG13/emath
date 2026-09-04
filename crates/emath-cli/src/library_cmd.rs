@@ -1,5 +1,4 @@
-//! `emath library mount` — mount a stdlib object pack (bead
-//! `emath-stdlib-object-packs-hpzgf`).
+//! `emath library mount` — mount a stdlib object pack.
 //!
 //! The standard library is executable object packs, not catalog
 //! markdown: `emath library mount std` composes the std.core census
@@ -12,9 +11,9 @@
 use crate::{CliExit, EXIT_OK, EXIT_REFUSED};
 use emath_core::MeaningId;
 use emath_sema::CompilerSession;
-use emath_store::evidence_plane::EvidenceReceipt;
-use emath_store::object_graph::ObjectGraph;
-use emath_store::pack::PackEntry;
+use emath_store::EvidenceReceipt;
+use emath_store::ObjectGraph;
+use emath_store::PackEntry;
 use emath_store::stdlib::{StdObject, StdReceipt, export_std_pack, mount_stdlib};
 use emath_syntax::install_source_parser;
 
@@ -107,8 +106,7 @@ fn mount_std() -> CliExit {
         payload: b"square(3) == 9".to_vec(),
         object_id: cell_id.clone(),
     };
-    let receipt_evidence =
-        EvidenceReceipt::seal("algorithm-test", b"square(3) == 9").evidence_id;
+    let receipt_evidence = EvidenceReceipt::seal("algorithm-test", b"square(3) == 9").evidence_id;
     let entries = vec![
         PackEntry::new(theory_id.as_str(), &theory.encode()),
         PackEntry::new(cell_id.as_str(), &cell.encode()),

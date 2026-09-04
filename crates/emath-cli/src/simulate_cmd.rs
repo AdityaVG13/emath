@@ -1,13 +1,13 @@
 //! `emath simulate`: explicit, adaptive, implicit, and symplectic integration.
 
 use super::{
-    json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
-    split_error_code, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
+    print_diagnostics, print_json_diagnostics, split_error_code,
 };
 use emath_artifact::JsonWriter;
 use emath_core::limits::Limits;
-use emath_exec_ir::interp::{format_f64, Value};
-use emath_exec_ir::{simulate_continuous_with, SimulateOptions, StepMethod};
+use emath_exec_ir::interp::{Value, format_f64};
+use emath_exec_ir::{SimulateOptions, StepMethod, simulate_continuous_with};
 use emath_ir::{Extent, Field, TypeNode};
 use emath_sema::CompilerSession;
 use std::collections::BTreeMap;
@@ -351,8 +351,7 @@ fn simulate_cmd(args: &SimulateArgs) -> CliExit {
                 .model
                 .as_deref()
                 .is_none_or(|name| declaration.name.leaf() == name)
-    })
-    else {
+    }) else {
         let message = match &args.model {
             Some(name) => format!(
                 "E-MODEL-001: {} has no `emath model {name}` declaration",
@@ -473,11 +472,7 @@ fn emit_trajectory(
         return;
     }
     for event in &trajectory.events {
-        println!(
-            "event {} fired at t={}",
-            event.name,
-            format_f64(event.t)
-        );
+        println!("event {} fired at t={}", event.name, format_f64(event.t));
     }
     println!(
         "simulate {} model={} method={} dt={} t0={} t1={} samples={}",
@@ -598,7 +593,7 @@ fn value_json(value: &Value) -> String {
                 "{{\"points\": [{points}], \"interpolation\": {interpolation:?}, \"extrapolation\": {extrapolation:?}}}"
             )
         }
-        Value::Set(items) => {
+        Value::Set(items) | Value::List(items) => {
             let body = items.iter().map(value_json).collect::<Vec<_>>().join(", ");
             format!("[{body}]")
         }
@@ -630,6 +625,13 @@ fn value_json(value: &Value) -> String {
             let body: Vec<String> = data.iter().copied().map(format_f64).collect();
             format!("[{}]", body.join(", "))
         }
+        // Stage-2 (emath-t63iz): exact big values render as canonical
+        // decimal digits (JSON-ish number shape, no f64 round trip).
+        Value::BigInt(value) => value.to_decimal(),
+        Value::BigVector(items) => {
+            let body: Vec<String> = items.iter().map(|v| v.to_decimal()).collect();
+            format!("[{}]", body.join(", "))
+        }
         Value::Rat { num, den } => format!("{num}/{den}"),
         Value::Complex { re, im } => {
             if *im == 0.0 {
@@ -646,7 +648,7 @@ fn value_json(value: &Value) -> String {
         Value::Interval { lo, hi } => {
             format!("[{}, {}]", format_f64(*lo), format_f64(*hi))
         }
-        // Option/Result carriers (aj8d): deterministic tagged JSON-ish
+        // Option/Result carriers: deterministic tagged JSON-ish
         // shapes matching the interp Display convention.
         Value::Option(Some(inner)) => format!("some({})", value_json(inner)),
         Value::Option(None) => "none".to_string(),
@@ -657,5 +659,6 @@ fn value_json(value: &Value) -> String {
                 format!("err({})", value_json(payload))
             }
         }
+        Value::Program(program) => format!("{:?}", format!("program({program:?})")),
     }
 }

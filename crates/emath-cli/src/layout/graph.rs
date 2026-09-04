@@ -278,7 +278,7 @@ impl MathLayoutGraph {
     }
 
     /// FNV-1a64 over the versioned canonical form (single owner:
-    /// Tier-0 core, o7a6).
+    /// Tier-0 core).
     #[must_use]
     pub fn graph_id(&self) -> u64 {
         fnv1a64_bytes(self.canonical().as_bytes())
@@ -290,7 +290,8 @@ impl MathLayoutGraph {
     }
 
     pub(crate) fn node(&self, id: NodeId) -> Option<&LayoutNode> {
-        self.nodes.binary_search_by_key(&id, |node| node.id)
+        self.nodes
+            .binary_search_by_key(&id, |node| node.id)
             .ok()
             .map(|index| &self.nodes[index])
     }
@@ -341,7 +342,11 @@ impl GraphBuilder {
         }
     }
 
-    pub(crate) fn add_node(&mut self, content: LayoutContent, source_span: (usize, usize)) -> NodeId {
+    pub(crate) fn add_node(
+        &mut self,
+        content: LayoutContent,
+        source_span: (usize, usize),
+    ) -> NodeId {
         let id = NodeId(self.next_id);
         self.next_id += 1;
         self.nodes.push(LayoutNode {
@@ -378,23 +383,23 @@ impl GraphBuilder {
     pub(crate) fn finish(mut self) -> MathLayoutGraph {
         self.nodes.sort_by_key(|node| node.id);
         self.edges.sort_by(|left, right| {
-            (
-                left.parent,
-                left.child,
-                left.relation.canonical(),
-            )
-                .cmp(&(
-                    right.parent,
-                    right.child,
-                    right.relation.canonical(),
-                ))
+            (left.parent, left.child, left.relation.canonical()).cmp(&(
+                right.parent,
+                right.child,
+                right.relation.canonical(),
+            ))
         });
         self.ambiguities.sort_by(|left, right| {
-            (left.node_id, left.reading_a.as_str(), left.reading_b.as_str()).cmp(&(
-                right.node_id,
-                right.reading_a.as_str(),
-                right.reading_b.as_str(),
-            ))
+            (
+                left.node_id,
+                left.reading_a.as_str(),
+                left.reading_b.as_str(),
+            )
+                .cmp(&(
+                    right.node_id,
+                    right.reading_a.as_str(),
+                    right.reading_b.as_str(),
+                ))
         });
         self.unlowered.sort_by_key(|region| region.node_id);
         MathLayoutGraph {
@@ -436,4 +441,3 @@ fn escape(text: &str) -> String {
     }
     out
 }
-

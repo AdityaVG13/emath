@@ -9,8 +9,8 @@ use emath_genesis::tuning::campaign::{
     CandidateMeasurement, HostCampaign, HostMetric, HostObjectives, ResourceEnvelope,
 };
 use emath_genesis::tuning::{SemanticChange, SemanticVariableKind, WorldDelta};
-use emath_world_ir::translation::EvidenceHandle;
 use emath_world_ir::WorldId;
+use emath_world_ir::translation::EvidenceHandle;
 
 fn change() -> SemanticChange {
     SemanticChange {

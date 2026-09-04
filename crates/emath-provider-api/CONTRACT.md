@@ -26,8 +26,8 @@ registry, filter, descriptor and constellation surfaces.
 - `fork_adapter_contracts` is the neutral Dew/Rumoca/Wrenfold census.
   `pinned_fork_adapters` validates that every contract has an immutable
   40-hex source commit and non-empty license in `forks/UPSTREAM_LOCK.json`.
-- `adapter` module (fjxh.17): GENERATED provider adapter contracts from
-  admitted cell schemas (fjxh.2). `adapter_contract(schema)` derives the
+- `adapter` module: GENERATED provider adapter contracts from
+  admitted cell schemas. `adapter_contract(schema)` derives the
   capability key `adapter:<cell>@<version>:<cell-id>` (identity from the
   cell's content id; identity-affecting schema mutation moves the key,
   `about` does not), the IR-facing `AdapterSpec` (arity, class, gated
@@ -42,7 +42,7 @@ registry, filter, descriptor and constellation surfaces.
   operation (the oracle stays in `emath-ir`). `ProviderBinding{capability,
   reduction_axis}` + `check_axis`: a wrong reduction axis FAILS typed
   (`E-PROVIDER-002`), never silently reinterpreted. IR purity gate
-  (Neutral IR Constitution §7, same rule as `emath-epic-fm-0c8f.12`):
+  (Neutral IR Constitution §7, same rule as ):
   `ir_type_gate`/`gate_signature` are an ALLOWLIST (`IR_OWNED_TYPES`:
   scalar/matrix/vector/tensor<f64>, bool); provider-native types
   (torch/jax/ndarray, …) in the public IR-facing signature refuse typed
@@ -168,7 +168,7 @@ the trait seam and must be established by the provider's `ResultChecker`.
 
 ## Purpose and layer
 
-Tier 7 (governance and operations) plugin SDK slice: descriptors, sandbox
+Tier 7 (governance and operations) plugin SDK: descriptors, sandbox
 policy decisions, and a deterministic test-harness contract. Std-only, no
 network, no component host. Depends on `emath-core` (FNV-1a64 content id).
 

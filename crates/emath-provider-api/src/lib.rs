@@ -7,18 +7,18 @@
 
 #![forbid(unsafe_code)]
 
-pub mod meaning_provider;
-pub mod plugin_sdk;
-pub mod runtime;
 pub mod adapter;
 pub mod constellation;
 pub mod descriptor;
 pub mod filter;
+pub mod meaning_provider;
+pub mod plugin_sdk;
 pub mod registry;
+pub mod runtime;
 
+use crate::runtime::{Budget, Cancellation, Outcome};
 use emath_core::{ContentId, SchemaId};
 use emath_ir::{EvidenceLevel, Goal, ResolutionPlan};
-use crate::runtime::{Budget, Cancellation, Outcome};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProviderDescriptor {
