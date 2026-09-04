@@ -7,8 +7,10 @@ are labelled, or where they apply. Those decisions belong to authored language
 capsules and their generated images.
 
 The obsolete static compiler-capability catalog is no longer linked or exported.
-`src/capabilities.rs` is retained unreferenced solely because file deletion was
-not authorized.
+`src/capabilities.rs` was deleted on 2026-09-04 with user authorization
+(user text: "yeah delete those", referring to the retained-unreferenced
+residue list); it was never module-declared and is recoverable from git
+history.
 
 ## Public types and semantics
 
@@ -38,8 +40,11 @@ not authorized.
   `fnv1a64_bytes`, `register_source_parser`, `source_parser`.
 - Generic boundary modules: `diagnostic`, `hash`, `id`, `limits`, `parse`,
   `source`, `span`, `text`, and `tree`.
-- Obsolete domain implementations are no longer linked; their source files are
-  retained unreferenced because deletion was not authorized. The narrow root
+- Obsolete domain implementations are no longer linked; their dead source
+  files (`geometry.rs`, `linprog.rs`, `measure.rs`, `optimization.rs`,
+  `signal.rs`, `codata.rs`, `game_theory.rs`) were deleted on 2026-09-04
+  with user authorization (never module-declared; recoverable from git
+  history). The narrow root
   kernel surface consists of `KernelSpecialFn`, `KernelDomainRefusal`,
   `evaluate_special_kernel`, `kernel_mean`, `kernel_median`, `kernel_quantile`,
   `kernel_variance`, and the generic deterministic seed values `Seed`,
