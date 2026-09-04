@@ -14,5 +14,9 @@ fn current_seam_embeds_locked_commit() {
             .all(|c| c.is_ascii_hexdigit())
     );
     let seam = AdapterSeam::current();
-    assert!(seam.version.upstream.contains(AdapterSeam::LOCKED_UPSTREAM_COMMIT));
+    assert!(
+        seam.version
+            .upstream
+            .contains(AdapterSeam::LOCKED_UPSTREAM_COMMIT)
+    );
 }

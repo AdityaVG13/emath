@@ -33,7 +33,11 @@ pub struct Case<I, O> {
 impl<I, O> Case<I, O> {
     /// Shorthand constructor keeping table literals readable.
     pub fn new(name: &'static str, input: I, expected: O) -> Self {
-        Self { name, input, expected }
+        Self {
+            name,
+            input,
+            expected,
+        }
     }
 }
 
@@ -223,7 +227,12 @@ mod tests {
 
     #[test]
     fn check_all_close_reports_gap_on_failure() {
-        let cases = [CloseCase { name: "x", input: 1, expected: 2.0, tol: 0.1 }];
+        let cases = [CloseCase {
+            name: "x",
+            input: 1,
+            expected: 2.0,
+            tol: 0.1,
+        }];
         let err = check_all_close(&cases, |v| *v as f64).unwrap_err();
         assert!(err.contains("gap"), "gap reported: {err}");
     }

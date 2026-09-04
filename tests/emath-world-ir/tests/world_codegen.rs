@@ -1,6 +1,6 @@
 mod contract_tests {
     use semantic_genesis_worlds::{
-        Term, evaluate, fixture_modular, ModularWorld, SwappedModularWorld,
+        ModularWorld, SwappedModularWorld, Term, evaluate, fixture_modular,
     };
 
     /// The swap transform is not a no-op mutation. The demo term
@@ -167,8 +167,8 @@ mod unused_worldir_tests {
 
 mod specialized_abi_tests {
     use semantic_genesis_worlds::{
-        evaluate, evaluate_specialized, fixture_modular, reference_term, EvalError, ModularWorld,
-        Term,
+        EvalError, ModularWorld, Term, evaluate, evaluate_specialized, fixture_modular,
+        reference_term,
     };
 
     /// Differential pin: the declaration-specific ABI must agree with the

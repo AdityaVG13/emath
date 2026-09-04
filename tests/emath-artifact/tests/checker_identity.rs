@@ -8,8 +8,8 @@
 mod common;
 
 use emath_artifact::{manifest_identity, write_artifact_manifest};
-use emath_evidence::checker::check_artifact_dir;
 use emath_core::{ContentId, content_id_of_str};
+use emath_evidence::checker::check_artifact_dir;
 
 use common::{cleanup, fresh_manifest, fresh_tree};
 

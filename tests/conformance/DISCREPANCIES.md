@@ -1,11 +1,10 @@
 # Conformance discrepancy ledger (DISC register)
 
-Seeded by `emath-conform-pin-register-1iip` (skill-loop audit
-`testing-conformance-harnesses`, 2026-08-23). This ledger records every
+This ledger records every
 intentional divergence between the normative language specification
 (`language/reference/**`, `language/grammar/**`) and the shipped
 implementation, so XFAIL wiring and later harness work
-(`emath-conform-harness-thin-lfpg`) attach to stable ids instead of
+attach to stable ids instead of
 prose.
 
 Protocol:
@@ -94,7 +93,7 @@ Protocol:
 - **Impact:** misreadable as language conformance to MSL.
 - **Resolution:** ACCEPTED fence. The lock row is relabeled
   `required: "future"` with an explicit no-MSL-CI note (respecting the
-  closed `emath-gauntlet-04-q22w` guidance: do not invent Rumoca MSL
+  guidance: do not invent Rumoca MSL
   CI). `evaluate_msl` remains an adapter capability, not a gate.
 - **Tests affected:** `implementation/schemas/upstream-lock.schema.json`
   enum (`core|optional|future`; `conformance` no longer valid);

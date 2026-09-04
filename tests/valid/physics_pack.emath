@@ -1,4 +1,4 @@
-# std::physics field pack (emath-r3-units-ext-physics-8u7h.1): composes the
+# std::physics field pack: composes the
 # EXISTING units/notation language packages — physics::classical laws,
 # sci::physics::notation::nabla, sci::physics::notation::einstein — into one
 # installable pack. Exports name existing registry cells (leaf spellings

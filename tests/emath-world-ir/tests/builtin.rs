@@ -1,4 +1,4 @@
-use emath_world_ir::builtin::{builtin_worlds, WorldClass};
+use emath_world_ir::builtin::{WorldClass, builtin_worlds};
 
 /// The exit-gate shape: at least five world classes, every identity
 /// deterministic (recomputation stable) and pairwise distinct.

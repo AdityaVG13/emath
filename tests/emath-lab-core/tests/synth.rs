@@ -2,8 +2,7 @@
 
 use emath_lab_core::calibration::FittedTable;
 use emath_lab_core::holes::{
-    HoleGraph, SynthesisLaw, check_laws, impossible_identity_laws, solve_op_hole,
-    synthesize_tables,
+    HoleGraph, SynthesisLaw, check_laws, impossible_identity_laws, solve_op_hole, synthesize_tables,
 };
 use emath_term::SymbolId;
 use emath_world_ir::WorldId;
@@ -63,8 +62,7 @@ fn empty_laws_are_refused_not_contradictory() {
     // outcome is a typed refusal, not an invented Contradictory.
     let op = SymbolId("op".to_string());
     let carrier = vec!["a".to_string(), "b".to_string()];
-    let error =
-        synthesize_tables(&op, &carrier, &[], 100).expect_err("empty laws must be refused");
+    let error = synthesize_tables(&op, &carrier, &[], 100).expect_err("empty laws must be refused");
     assert_eq!(error, emath_lab_core::holes::SynthesisError::EmptyLaws);
     // And through the hole solver: the hole must report an error,
     // never HoleState::Contradictory.

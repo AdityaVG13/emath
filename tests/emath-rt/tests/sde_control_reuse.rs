@@ -1,4 +1,4 @@
-//! Bead `emath-r3-sde-control-zxkl` — pass 7: the existing control
+//! — the existing control
 //! kernels execute from the SDE/control lane's own external target,
 //! proving the control surface (transfer functions, state-space DC
 //! gain, Routh–Hurwitz stability) is reuse-ready and remains green
@@ -10,9 +10,7 @@
 //! control language cells keep executing through existing control
 //! paths without any SDE-specific code.
 
-use emath_rt::control::{
-    ControlError, poles_stable, state_space_dc_gain, transfer_eval,
-};
+use emath_rt::control::{ControlError, poles_stable, state_space_dc_gain, transfer_eval};
 
 /// `H(s) = (s + 2) / (s² + 3s + 2)` — ASCENDING carriers:
 /// num [2, 1], den [2, 3, 1]. H(0) = 1, H(1) = 3/6 = 0.5.
@@ -42,7 +40,11 @@ fn dc_gain_matches_transfer_and_refuses_unstable() {
     // Unstable: A = [[1, 0], [0, 1]] (pole at +1).
     let unstable = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
     let err = state_space_dc_gain(&unstable, &[1.0, 0.0], &[1.0, 2.0]).unwrap_err();
-    assert_eq!(err.code(), "E-CONTROL-003", "unstable carrier refuses DC gain");
+    assert_eq!(
+        err.code(),
+        "E-CONTROL-003",
+        "unstable carrier refuses DC gain"
+    );
 }
 
 /// Routh–Hurwitz: `s² + 3s + 2` is stable; `s + 1` is stable; the
@@ -52,7 +54,11 @@ fn stability_predicate_executes() {
     assert_eq!(poles_stable(&[2.0, 3.0, 1.0]).unwrap(), true);
     assert_eq!(poles_stable(&[1.0, 1.0]).unwrap(), true);
     let err = poles_stable(&[0.0, 0.0]).unwrap_err();
-    assert_eq!(err.code(), "E-CONTROL-002", "zero polynomial has no pole set");
+    assert_eq!(
+        err.code(),
+        "E-CONTROL-002",
+        "zero polynomial has no pole set"
+    );
 }
 
 /// Shape mismatch refuses `E-CONTROL-004`.

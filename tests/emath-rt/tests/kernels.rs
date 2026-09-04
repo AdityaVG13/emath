@@ -497,9 +497,15 @@ fn embedded_source_bans_imports_and_unsafe() {
         if trimmed.starts_with("//") {
             continue;
         }
-        let is_unsafe_code = ["unsafe fn", "unsafe impl", "unsafe trait", "unsafe mod", "unsafe {"]
-            .iter()
-            .any(|pat| trimmed.contains(pat));
+        let is_unsafe_code = [
+            "unsafe fn",
+            "unsafe impl",
+            "unsafe trait",
+            "unsafe mod",
+            "unsafe {",
+        ]
+        .iter()
+        .any(|pat| trimmed.contains(pat));
         assert!(
             !is_unsafe_code,
             "embedded source must not contain unsafe code: {line}"
@@ -507,7 +513,7 @@ fn embedded_source_bans_imports_and_unsafe() {
     }
 }
 
-// ── exact integer nullspace (rymw generic primitive) ──────────────────────
+// ── exact integer nullspace ──────────────────────
 
 #[test]
 fn int_nullvector_combustion_thermite_hydrogenation() {

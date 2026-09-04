@@ -1,4 +1,4 @@
-#  Graph literals (B23, emath-r3-graphs-ybob): `graph { <nodes> ; <edges> }`
+# Graph literals (B23): `graph { <nodes>; <edges> }`
 #  is a contextual literal that desugars at parse time to the tuple
 #  ([nodes…], [edges…]) — a tuple, not a list, so lowering never
 #  matrix-interprets it — with each edge the row [from, to, weight,

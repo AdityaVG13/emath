@@ -1,4 +1,4 @@
-//! Failure-first generic fit-goal runtime tests (bead emath-r3-fit-goal-4xjh,
+//! Failure-first generic fit-goal runtime tests (
 //! 04 §5.3). The Rust side is GENERIC fit data/plumbing only: parameters,
 //! observable, residual method, optimizer method, weights, provenance —
 //! no PK math. The PK model is a runnable `.emath` fixture
@@ -9,13 +9,13 @@
 
 use std::collections::BTreeMap;
 
+use emath_ir::goal::GoalPayload;
 use emath_lab_core::calibration::{
     AuthorityEscalation, ConfidenceInterval, FitGoal, FitModel, FitOutcome, FitPayloadError,
     FitRow, Identifiability, IdentifiabilityProvider, OptimizerMethod, ProvenanceHash,
     ResidualMethod, ResidualWeights, UnresolvedReason, escalate, fit, jacobian_residuals,
     weighted_residuals,
 };
-use emath_ir::goal::GoalPayload;
 use emath_term::SymbolId;
 
 /// A generic two-parameter model for the seams (not the PK fixture —
@@ -50,10 +50,7 @@ fn fixture_goal(require_identifiability: bool) -> FitGoal {
     let mut goal = FitGoal::new(vec![slope(), intercept()], SymbolId("response".into()));
     goal.model = vec!["LinearModel".into()];
     goal.prediction = "value".into();
-    goal.weights = ResidualWeights(BTreeMap::from([
-        (slope(), 1.0),
-        (intercept(), 1.0),
-    ]));
+    goal.weights = ResidualWeights(BTreeMap::from([(slope(), 1.0), (intercept(), 1.0)]));
     goal.initial = BTreeMap::from([(slope(), 1.0), (intercept(), 0.0)]);
     goal.require_identifiability = require_identifiability;
     goal
@@ -62,10 +59,26 @@ fn fixture_goal(require_identifiability: bool) -> FitGoal {
 /// Exact data on `y = 2t + 1`.
 fn fixture_data() -> Vec<FitRow> {
     vec![
-        FitRow { t: 0.0, y: 1.0, weight: 1.0 },
-        FitRow { t: 1.0, y: 3.0, weight: 1.0 },
-        FitRow { t: 2.0, y: 5.0, weight: 1.0 },
-        FitRow { t: 3.0, y: 7.0, weight: 1.0 },
+        FitRow {
+            t: 0.0,
+            y: 1.0,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 1.0,
+            y: 3.0,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 2.0,
+            y: 5.0,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 3.0,
+            y: 7.0,
+            weight: 1.0,
+        },
     ]
 }
 
@@ -74,7 +87,10 @@ fn fit_executes_declared_program_generically_with_provenance() {
     let goal = fixture_goal(false);
     let data = fixture_data();
     let first = fit(&goal, &LinearModel, &data, None);
-    let FitOutcome::Fitted { parameters, hash, .. } = &first else {
+    let FitOutcome::Fitted {
+        parameters, hash, ..
+    } = &first
+    else {
         panic!("the generic LM fit must materialize Fitted with provenance; got: {first:?}");
     };
     assert_ne!(hash.0, 0, "provenance hash must be nonzero");
@@ -96,7 +112,10 @@ fn fit_executes_declared_program_generically_with_provenance() {
     );
     // Determinism: the same program + data + seed hashes identically.
     let second = fit(&goal, &LinearModel, &data, None);
-    let FitOutcome::Fitted { hash: second_hash, .. } = second else {
+    let FitOutcome::Fitted {
+        hash: second_hash, ..
+    } = second
+    else {
         panic!("second fit must also be Fitted");
     };
     assert_eq!(
@@ -141,11 +160,19 @@ fn identifiability_provider_seam_refuses_relaxed_direction() {
                 directions: vec![
                     (
                         goal.parameters[0].clone(),
-                        ConfidenceInterval { lo: -0.01, hi: 0.01, tight: true },
+                        ConfidenceInterval {
+                            lo: -0.01,
+                            hi: 0.01,
+                            tight: true,
+                        },
                     ),
                     (
                         goal.parameters[1].clone(),
-                        ConfidenceInterval { lo: -5.0, hi: 5.0, tight: false },
+                        ConfidenceInterval {
+                            lo: -5.0,
+                            hi: 5.0,
+                            tight: false,
+                        },
                     ),
                 ],
             })
@@ -185,7 +212,11 @@ fn identifiability_provider_seam_grants_when_all_directions_tight() {
                     .map(|symbol| {
                         (
                             symbol,
-                            ConfidenceInterval { lo: -0.01, hi: 0.01, tight: true },
+                            ConfidenceInterval {
+                                lo: -0.01,
+                                hi: 0.01,
+                                tight: true,
+                            },
                         )
                     })
                     .collect(),
@@ -227,10 +258,7 @@ fn residual_weights_are_explicit_and_scale_jacobian_columns() {
     // Per-parameter weights are explicit: doubling the slope weight
     // doubles its Jacobian column (data row 0, column 0).
     let mut weighted = goal.clone();
-    weighted.weights = ResidualWeights(BTreeMap::from([
-        (slope(), 2.0),
-        (intercept(), 1.0),
-    ]));
+    weighted.weights = ResidualWeights(BTreeMap::from([(slope(), 2.0), (intercept(), 1.0)]));
     let jacobian_plain =
         jacobian_residuals(&goal, &LinearModel, &data, &parameters).expect("linear model");
     let jacobian_weighted =
@@ -273,8 +301,14 @@ fn pk_fixture_payload() -> GoalPayload {
         ("V_central".into(), "1.0".into()),
     ];
     payload.data = vec![
-        ("t".into(), vec!["0.5".into(), "1.0".into(), "2.0".into(), "4.0".into()]),
-        ("conc_time".into(), vec!["2.41".into(), "1.93".into(), "1.24".into(), "0.64".into()]),
+        (
+            "t".into(),
+            vec!["0.5".into(), "1.0".into(), "2.0".into(), "4.0".into()],
+        ),
+        (
+            "conc_time".into(),
+            vec!["2.41".into(), "1.93".into(), "1.24".into(), "0.64".into()],
+        ),
     ];
     payload.require_identifiability = true;
     payload
@@ -296,19 +330,41 @@ fn fit_payload_traces_to_runtime_goal_losslessly() {
     assert_eq!(goal.method, OptimizerMethod::LevenbergMarquardt);
     assert_eq!(
         goal.initial,
-        BTreeMap::from([(SymbolId("k_el".into()), 0.2), (SymbolId("V_central".into()), 1.0)])
+        BTreeMap::from([
+            (SymbolId("k_el".into()), 0.2),
+            (SymbolId("V_central".into()), 1.0)
+        ])
     );
     assert_eq!(
         goal.weights.0,
-        BTreeMap::from([(SymbolId("k_el".into()), 1.0), (SymbolId("V_central".into()), 1.0)])
+        BTreeMap::from([
+            (SymbolId("k_el".into()), 1.0),
+            (SymbolId("V_central".into()), 1.0)
+        ])
     );
     assert_eq!(
         goal.data,
         vec![
-            FitRow { t: 0.5, y: 2.41, weight: 1.0 },
-            FitRow { t: 1.0, y: 1.93, weight: 1.0 },
-            FitRow { t: 2.0, y: 1.24, weight: 1.0 },
-            FitRow { t: 4.0, y: 0.64, weight: 1.0 },
+            FitRow {
+                t: 0.5,
+                y: 2.41,
+                weight: 1.0
+            },
+            FitRow {
+                t: 1.0,
+                y: 1.93,
+                weight: 1.0
+            },
+            FitRow {
+                t: 2.0,
+                y: 1.24,
+                weight: 1.0
+            },
+            FitRow {
+                t: 4.0,
+                y: 0.64,
+                weight: 1.0
+            },
         ],
         "declared data rows materialize with uniform row weight 1.0"
     );
@@ -329,10 +385,7 @@ fn payload_trace_is_the_executable_program() {
     let mut goal = FitGoal::from_payload(&payload, "conc_time").expect("payload must trace");
     goal.parameters = vec![slope(), intercept()];
     goal.initial = BTreeMap::from([(slope(), 1.0), (intercept(), 0.0)]);
-    goal.weights = ResidualWeights(BTreeMap::from([
-        (slope(), 1.0),
-        (intercept(), 1.0),
-    ]));
+    goal.weights = ResidualWeights(BTreeMap::from([(slope(), 1.0), (intercept(), 1.0)]));
     goal.data = fixture_data();
     goal.require_identifiability = false;
     let outcome = fit(&goal, &LinearModel, &goal.data, None);
@@ -459,10 +512,26 @@ impl FitModel for SumModel {
 /// approximation is meaningful).
 fn noisy_fixture_data() -> Vec<FitRow> {
     vec![
-        FitRow { t: 0.0, y: 1.01, weight: 1.0 },
-        FitRow { t: 1.0, y: 3.02, weight: 1.0 },
-        FitRow { t: 2.0, y: 4.99, weight: 1.0 },
-        FitRow { t: 3.0, y: 7.0, weight: 1.0 },
+        FitRow {
+            t: 0.0,
+            y: 1.01,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 1.0,
+            y: 3.02,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 2.0,
+            y: 4.99,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 3.0,
+            y: 7.0,
+            weight: 1.0,
+        },
     ]
 }
 
@@ -485,8 +554,14 @@ fn numeric_rank_oracle_serves_tight_full_rank_directions() {
             && (parameters.get(&intercept()).copied().unwrap_or(0.0) - 1.0).abs() < 1e-4,
         "the oracle must not disturb the fit"
     );
-    let verdict = confidence.as_ref().expect("granted fit carries its verdict");
-    assert_eq!(verdict.directions.len(), 2, "one interval per declared direction");
+    let verdict = confidence
+        .as_ref()
+        .expect("granted fit carries its verdict");
+    assert_eq!(
+        verdict.directions.len(),
+        2,
+        "one interval per declared direction"
+    );
     for (symbol, interval) in &verdict.directions {
         assert!(
             interval.tight && interval.lo.is_finite() && interval.hi.is_finite(),
@@ -499,9 +574,21 @@ fn numeric_rank_oracle_serves_tight_full_rank_directions() {
 fn numeric_rank_oracle_refuses_collinear_directions() {
     let goal = fixture_goal(true);
     let data = vec![
-        FitRow { t: 0.0, y: 3.0, weight: 1.0 },
-        FitRow { t: 1.0, y: 3.1, weight: 1.0 },
-        FitRow { t: 2.0, y: 2.9, weight: 1.0 },
+        FitRow {
+            t: 0.0,
+            y: 3.0,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 1.0,
+            y: 3.1,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 2.0,
+            y: 2.9,
+            weight: 1.0,
+        },
     ];
     let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &SumModel, &data, Some(&oracle));
@@ -521,7 +608,11 @@ fn numeric_rank_oracle_refuses_collinear_directions() {
 #[test]
 fn numeric_rank_oracle_cannot_certify_underdetermined_data() {
     let goal = fixture_goal(true);
-    let data = vec![FitRow { t: 0.0, y: 1.0, weight: 1.0 }];
+    let data = vec![FitRow {
+        t: 0.0,
+        y: 1.0,
+        weight: 1.0,
+    }];
     let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &LinearModel, &data, Some(&oracle));
     assert!(
@@ -554,9 +645,18 @@ fn materialize_measured_links_fitted_values_with_content_hash() {
         "a fit without an identifiability run certifies no verdict"
     );
     let fit_id = format!("{:016x}", hash.0);
-    let measured = emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, confidence.as_ref())
-        .expect("materialization must succeed");
-    assert_eq!(measured.len(), 2, "one measured value per declared parameter");
+    let measured = emath_lab_core::calibration::materialize_measured(
+        &goal,
+        &parameters,
+        hash,
+        confidence.as_ref(),
+    )
+    .expect("materialization must succeed");
+    assert_eq!(
+        measured.len(),
+        2,
+        "one measured value per declared parameter"
+    );
     for (symbol, value) in &measured {
         assert!(
             (value.value - parameters.get(symbol).copied().unwrap_or(0.0)).abs() < 1e-12,
@@ -588,14 +688,15 @@ fn materialize_measured_uses_verdict_intervals() {
         confidence,
     } = outcome
     else {
-        panic!(
-            "noisy well-determined data must grant; got the outcome above"
-        );
+        panic!("noisy well-determined data must grant; got the outcome above");
     };
-    let verdict = confidence.as_ref().expect("granted fit carries its verdict");
+    let verdict = confidence
+        .as_ref()
+        .expect("granted fit carries its verdict");
     let fit_id = format!("{:016x}", hash.0);
-    let measured = emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, Some(verdict))
-        .expect("materialization must succeed");
+    let measured =
+        emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, Some(verdict))
+            .expect("materialization must succeed");
     for (symbol, value) in &measured {
         assert_eq!(
             value.provenance,
@@ -634,9 +735,11 @@ fn materialize_measured_refuses_incomplete_verdict() {
     };
     assert_eq!(
         emath_lab_core::calibration::materialize_measured(&goal, &parameters, hash, Some(&verdict)),
-        Err(emath_lab_core::calibration::FitMeasuredError::MissingDirection {
-            name: "intercept".into()
-        }),
+        Err(
+            emath_lab_core::calibration::FitMeasuredError::MissingDirection {
+                name: "intercept".into()
+            }
+        ),
         "a verdict missing a declared direction must refuse by name"
     );
 }
@@ -647,7 +750,11 @@ fn escalate_refuses_verdict_missing_a_declared_direction() {
     let verdict = emath_lab_core::calibration::Identifiability {
         directions: vec![(
             slope(),
-            ConfidenceInterval { lo: 1.9, hi: 2.1, tight: true },
+            ConfidenceInterval {
+                lo: 1.9,
+                hi: 2.1,
+                tight: true,
+            },
         )],
     };
     assert_eq!(
@@ -664,7 +771,10 @@ fn escalate_refuses_verdict_missing_a_declared_direction() {
 #[test]
 fn fit_refuses_unknown_or_nonpositive_weighting_and_empty_data() {
     let mut payload = pk_fixture_payload();
-    payload.weights = vec![("k_el".into(), "1.0".into()), ("dose_rate".into(), "2.0".into())];
+    payload.weights = vec![
+        ("k_el".into(), "1.0".into()),
+        ("dose_rate".into(), "2.0".into()),
+    ];
     assert_eq!(
         FitGoal::from_payload(&payload, "conc_time"),
         Err(FitPayloadError::UnknownWeightParameter {
@@ -683,7 +793,10 @@ fn fit_refuses_unknown_or_nonpositive_weighting_and_empty_data() {
         "a non-positive weight must refuse — weighting is never silent"
     );
     let mut payload = pk_fixture_payload();
-    payload.initial = vec![("V_central".into(), "1.0".into()), ("dose_rate".into(), "2.0".into())];
+    payload.initial = vec![
+        ("V_central".into(), "1.0".into()),
+        ("dose_rate".into(), "2.0".into()),
+    ];
     assert_eq!(
         FitGoal::from_payload(&payload, "conc_time"),
         Err(FitPayloadError::UnknownInitialParameter {
@@ -735,9 +848,21 @@ fn single_parameter_fit_round_trips_with_oracle_grant() {
     goal.initial = BTreeMap::from([(SymbolId("rate".into()), 0.5)]);
     goal.require_identifiability = true;
     let data = vec![
-        FitRow { t: 1.0, y: 3.0, weight: 1.0 },
-        FitRow { t: 2.0, y: 6.0, weight: 1.0 },
-        FitRow { t: 4.0, y: 12.0, weight: 1.0 },
+        FitRow {
+            t: 1.0,
+            y: 3.0,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 2.0,
+            y: 6.0,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 4.0,
+            y: 12.0,
+            weight: 1.0,
+        },
     ];
     let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let FitOutcome::Fitted {
@@ -749,7 +874,13 @@ fn single_parameter_fit_round_trips_with_oracle_grant() {
         panic!("a single well-determined parameter must grant; got the outcome above");
     };
     assert!(
-        (parameters.get(&SymbolId("rate".into())).copied().unwrap_or(0.0) - 3.0).abs() < 1e-4,
+        (parameters
+            .get(&SymbolId("rate".into()))
+            .copied()
+            .unwrap_or(0.0)
+            - 3.0)
+            .abs()
+            < 1e-4,
         "rate must converge to 3.0"
     );
     let verdict = confidence.expect("granted fit carries its verdict");
@@ -767,10 +898,26 @@ fn numeric_rank_oracle_refuses_zero_valued_direction() {
     // the direction is not tight and escalation must refuse naming it.
     let goal = fixture_goal(true);
     let data = vec![
-        FitRow { t: 0.0, y: 0.02, weight: 1.0 },
-        FitRow { t: 1.0, y: 2.01, weight: 1.0 },
-        FitRow { t: 2.0, y: 3.98, weight: 1.0 },
-        FitRow { t: 3.0, y: 6.03, weight: 1.0 },
+        FitRow {
+            t: 0.0,
+            y: 0.02,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 1.0,
+            y: 2.01,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 2.0,
+            y: 3.98,
+            weight: 1.0,
+        },
+        FitRow {
+            t: 3.0,
+            y: 6.03,
+            weight: 1.0,
+        },
     ];
     let oracle = emath_lab_core::calibration::NumericRankOracle::default();
     let outcome = fit(&goal, &LinearModel, &data, Some(&oracle));
@@ -824,13 +971,11 @@ fn fit_values_are_invariant_under_row_permutation() {
     let FitOutcome::Fitted { parameters: a, .. } = fit(&goal, &LinearModel, &data, None) else {
         panic!("original data must fit");
     };
-    let FitOutcome::Fitted { parameters: b, .. } = fit(&goal, &LinearModel, &permuted, None)
-    else {
+    let FitOutcome::Fitted { parameters: b, .. } = fit(&goal, &LinearModel, &permuted, None) else {
         panic!("permuted data must fit");
     };
     assert!(
-        (a.get(&slope()).copied().unwrap_or(0.0) - b.get(&slope()).copied().unwrap_or(0.0))
-            .abs()
+        (a.get(&slope()).copied().unwrap_or(0.0) - b.get(&slope()).copied().unwrap_or(0.0)).abs()
             < 1e-9
             && (a.get(&intercept()).copied().unwrap_or(0.0)
                 - b.get(&intercept()).copied().unwrap_or(0.0))
@@ -846,13 +991,22 @@ fn fit_values_scale_with_uniform_data_rescaling() {
     let scale = 7.5;
     let scaled: Vec<FitRow> = fixture_data()
         .iter()
-        .map(|row| FitRow { t: row.t, y: row.y * scale, weight: row.weight })
+        .map(|row| FitRow {
+            t: row.t,
+            y: row.y * scale,
+            weight: row.weight,
+        })
         .collect();
-    let FitOutcome::Fitted { parameters: base, .. } = fit(&goal, &LinearModel, &fixture_data(), None)
+    let FitOutcome::Fitted {
+        parameters: base, ..
+    } = fit(&goal, &LinearModel, &fixture_data(), None)
     else {
         panic!("base data must fit");
     };
-    let FitOutcome::Fitted { parameters: rescaled, .. } = fit(&goal, &LinearModel, &scaled, None)
+    let FitOutcome::Fitted {
+        parameters: rescaled,
+        ..
+    } = fit(&goal, &LinearModel, &scaled, None)
     else {
         panic!("rescaled data must fit");
     };
@@ -871,13 +1025,22 @@ fn fit_values_are_invariant_under_uniform_row_weight_scaling() {
     let goal = fixture_goal(false);
     let scaled: Vec<FitRow> = fixture_data()
         .iter()
-        .map(|row| FitRow { t: row.t, y: row.y, weight: row.weight * 7.0 })
+        .map(|row| FitRow {
+            t: row.t,
+            y: row.y,
+            weight: row.weight * 7.0,
+        })
         .collect();
-    let FitOutcome::Fitted { parameters: base, .. } = fit(&goal, &LinearModel, &fixture_data(), None)
+    let FitOutcome::Fitted {
+        parameters: base, ..
+    } = fit(&goal, &LinearModel, &fixture_data(), None)
     else {
         panic!("base data must fit");
     };
-    let FitOutcome::Fitted { parameters: weighted, .. } = fit(&goal, &LinearModel, &scaled, None)
+    let FitOutcome::Fitted {
+        parameters: weighted,
+        ..
+    } = fit(&goal, &LinearModel, &scaled, None)
     else {
         panic!("weight-scaled data must fit");
     };
@@ -954,7 +1117,11 @@ fn rank_oracle_reports_relaxed_directions_for_rank_deficient_design() {
     // J^T J = [[12, 6], [6, 3]] has rank 1 and a zero eigenvalue.
     let data: Vec<FitRow> = [2.0_f64; 3]
         .iter()
-        .map(|t| FitRow { t: *t, y: 3.0, weight: 1.0 })
+        .map(|t| FitRow {
+            t: *t,
+            y: 3.0,
+            weight: 1.0,
+        })
         .collect();
     let fitted = BTreeMap::from([(slope(), 0.5), (intercept(), 2.0)]);
     let goal = FitGoal::new(vec![slope(), intercept()], SymbolId("response".into()));
@@ -988,11 +1155,7 @@ impl FitModel for NegativeDomainModel {
             .get(&SymbolId("a".into()))
             .copied()
             .unwrap_or(0.0);
-        if a < 0.0 {
-            Ok(f64::NAN)
-        } else {
-            Ok(a)
-        }
+        if a < 0.0 { Ok(f64::NAN) } else { Ok(a) }
     }
 }
 
@@ -1008,7 +1171,11 @@ fn fit_refuses_non_finite_model_output_instead_of_returning_nan() {
     goal.initial.iter().next();
     let mut goal = goal;
     goal.initial.insert(SymbolId("a".into()), -1.0);
-    let data = vec![FitRow { t: 0.0, y: 4.0, weight: 1.0 }];
+    let data = vec![FitRow {
+        t: 0.0,
+        y: 4.0,
+        weight: 1.0,
+    }];
     let outcome = fit(&goal, &NegativeDomainModel, &data, None);
     assert!(
         matches!(outcome, FitOutcome::ModelError { .. }),
@@ -1029,11 +1196,7 @@ impl FitModel for EdgeDomainModel {
             .get(&SymbolId("a".into()))
             .copied()
             .unwrap_or(0.0);
-        if a < 0.0 {
-            Ok(f64::NAN)
-        } else {
-            Ok(a.sqrt())
-        }
+        if a < 0.0 { Ok(f64::NAN) } else { Ok(a.sqrt()) }
     }
 }
 
@@ -1041,7 +1204,11 @@ impl FitModel for EdgeDomainModel {
 fn fit_refuses_non_finite_jacobian_entries() {
     let mut goal = FitGoal::new(vec![SymbolId("a".into())], SymbolId("y".into()));
     goal.initial.insert(SymbolId("a".into()), 0.0);
-    let data = vec![FitRow { t: 0.0, y: 1.0, weight: 1.0 }];
+    let data = vec![FitRow {
+        t: 0.0,
+        y: 1.0,
+        weight: 1.0,
+    }];
     let outcome = fit(&goal, &EdgeDomainModel, &data, None);
     assert!(
         matches!(outcome, FitOutcome::ModelError { .. }),

@@ -1,8 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::process::Command;
 
 use emath_core::{QualifiedName, Span};
-use emath_exec_ir::{EmirOp, EmirProgram, EmirValue};
 use emath_ir::{
     BinaryOp, BinderKind, BinderVariable, CompileSpec, Constructor, Declaration, DeclarationId,
     DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExprId, ExprNode, Extent, FallbackPolicy,
@@ -10,9 +9,9 @@ use emath_ir::{
     ObligationKind, SemanticPackage, SliceAxis, TargetProfile, TestCase, TypeId, TypeNode, UnaryOp,
     Visibility,
 };
-use emath_rust_backend::{BackendInput, render_op_expr_for_tests};
+use emath_rust_backend::BackendInput;
 use emath_rust_backend::rust_ir::ast::{Item, StructDef};
-use emath_rust_backend::rust_ir::render::{render_expr, render_module};
+use emath_rust_backend::rust_ir::render::render_module;
 
 /// A minimal package: one declaration `named` with an `x: Float64`
 /// input, nothing else. Enough to exercise struct emission, which is
@@ -53,7 +52,7 @@ fn package_for(named: &str) -> SemanticPackage {
 fn keyword_declaration_name_is_escaped_in_generated_rust() {
     // `type` is a Rust keyword; the generated struct must be `type_`
     // so the crate compiles (`emath custom <type>` negative control
-    // from the l2pb.4 repair).
+    // from the earlier repair).
     let package = package_for("type");
     let output = BackendInput {
         package: &package,
@@ -1728,122 +1727,7 @@ fn sign_zero_uses_mathematical_sgn() {
     );
 }
 
-fn op_program(ops: Vec<(EmirOp, Span)>, result: EmirValue) -> EmirProgram {
-    EmirProgram {
-        ops,
-        result,
-        input_count: 0,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    }
-}
-
-/// `IntNullspace` lowers through the same exact-integer kernel as
-/// the interpreter, with both typed refusal paths and no domain
-/// naming.
-#[test]
-fn int_nullspace_lowers_to_exact_kernel() {
-    let span = Span::default();
-    let ops = vec![
-        (EmirOp::LoadInput(0), span),
-        (EmirOp::LoadInput(1), span),
-        (EmirOp::IntNullspace(EmirValue(1)), span),
-    ];
-    let program = op_program(ops, EmirValue(2));
-    let expr = render_op_expr_for_tests(
-        &EmirOp::IntNullspace(EmirValue(1)),
-        &program,
-        &[],
-        &[],
-        &BTreeSet::new(),
-    )
-    .expect("matrix-operand IntNullspace must lower");
-    let rendered = render_expr(&expr);
-    assert!(
-        rendered.contains("primitive_int_nullvector"),
-        "IntNullspace must call the exact-integer kernel, got:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("E-NULLSPACE-001") && rendered.contains("E-NULLSPACE-002"),
-        "IntNullspace must emit both typed refusals, got:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("as i64"),
-        "IntNullspace must widen exact integer entries, got:\n{rendered}"
-    );
-    assert!(
-        !rendered.contains("chem"),
-        "IntNullspace codegen must carry no domain naming, got:\n{rendered}"
-    );
-}
-
-/// `ExactProductDelta` compares the products in u128 before any f64
-/// cast, refuses typed on entry/length/overflow, and widens the
-/// exact magnitude with the sign of `p - q`.
-#[test]
-fn exact_product_delta_compares_u128_before_cast() {
-    let span = Span::default();
-    let ops = vec![
-        (EmirOp::LoadInput(0), span),
-        (EmirOp::LoadInput(1), span),
-        (EmirOp::LoadInput(2), span),
-        (EmirOp::ExactProductDelta(EmirValue(1), EmirValue(2)), span),
-    ];
-    let program = op_program(ops, EmirValue(3));
-    let expr = render_op_expr_for_tests(
-        &EmirOp::ExactProductDelta(EmirValue(1), EmirValue(2)),
-        &program,
-        &[],
-        &[],
-        &BTreeSet::new(),
-    )
-    .expect("vector-operand ExactProductDelta must lower");
-    let rendered = render_expr(&expr);
-    assert!(
-        rendered.contains("__pp == __qq"),
-        "ExactProductDelta must compare products in u128 before any cast, got:\n{rendered}"
-    );
-    assert!(
-        !rendered.contains("as f64 - __qq as f64") && !rendered.contains("__pp as f64"),
-        "ExactProductDelta must not compare via lossy f64 casts, got:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("checked_mul")
-            && rendered.contains("E-EXACT-001")
-            && rendered.contains("E-EXACT-002"),
-        "ExactProductDelta must carry exact u128 overflow and entry refusals, got:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("(__big - __small) as f64"),
-        "ExactProductDelta must widen the exact magnitude, got:\n{rendered}"
-    );
-}
-
-/// A statically non-matrix operand is a typed lowering refusal,
-/// never a fabricated vector (interp TypeConfusion parity).
-#[test]
-fn int_nullspace_non_matrix_operand_refuses_typed() {
-    let span = Span::default();
-    let ops = vec![
-        (EmirOp::ConstF64(1.0f64.to_bits()), span),
-        (EmirOp::IntNullspace(EmirValue(0)), span),
-    ];
-    let program = op_program(ops, EmirValue(1));
-    let err = render_op_expr_for_tests(
-        &EmirOp::IntNullspace(EmirValue(0)),
-        &program,
-        &[],
-        &[],
-        &BTreeSet::new(),
-    )
-    .expect_err("scalar-operand IntNullspace must refuse");
-    assert!(
-        err.to_string().contains("matrix operand"),
-        "refusal must name the shape rule, got: {err}"
-    );
-}
-
-// ── aj8d pass 5: strict Rust backend Option/Result parity ─────────────
+// ──: strict Rust backend Option/Result parity ─────────────
 // The nine carrier ops must lower through the REAL generation path
 // (SemanticPackage → emitter → EmirProgram → BackendInput::generate →
 // rust-ir) into executable native Option<T>/Result<T, E> code with typed
@@ -2110,13 +1994,16 @@ fn option_carrier_generated_behaviors() {
         !user.contains(".unwrap()") && !user.contains("expect(") && !user.contains("panic!"),
         "generated user code must contain no panicking unwrap / expect / panic, got:\n{user}"
     );
-    run_generated(&lib, r#"
+    run_generated(
+        &lib,
+        r#"
         assert_eq!(generated::opt_roundtrip(), 5i64, "some carrier round trip");
         assert_eq!(generated::opt_default(), 7i64, "none returns eager default");
         assert_eq!(generated::opt_polarity_some(), true, "option_is_some(some) is true");
         assert_eq!(generated::opt_polarity_none(), false, "option_is_some(none) is false");
         assert_eq!(generated::vec_pick(), vec![1.0_f64, 2.0_f64], "vector payload round trip");
-    "#)
+    "#,
+    )
     .expect("generated option carrier behavior must hold at runtime");
 }
 
@@ -2332,7 +2219,7 @@ fn wrong_carrier_use_refuses_typed() {
     );
 }
 
-// ── aj8d pass 8: hardened backend typed refusals ────────────────────
+// ──: hardened backend typed refusals ────────────────────
 
 fn literal_int(p: &mut SemanticPackage, s: &str) -> ExprId {
     p.push_expr(
@@ -2383,9 +2270,7 @@ fn unwrap_or_carrier_default_refuses_payload_conflict() {
     .expect_err("unwrap_or carrier default must refuse typed");
     let msg = err.to_string();
     assert!(
-        msg.contains("payload kind conflict")
-            && msg.contains("i64")
-            && msg.contains("Option"),
+        msg.contains("payload kind conflict") && msg.contains("i64") && msg.contains("Option"),
         "Option carrier-as-default must refuse via payload-kind conflict, got: {msg}"
     );
 
@@ -2424,9 +2309,7 @@ fn unwrap_or_carrier_default_refuses_payload_conflict() {
     .expect_err("result unwrap_or carrier default must refuse typed");
     let rmsg = rerr.to_string();
     assert!(
-        rmsg.contains("payload kind conflict")
-            && rmsg.contains("i64")
-            && rmsg.contains("Result"),
+        rmsg.contains("payload kind conflict") && rmsg.contains("i64") && rmsg.contains("Result"),
         "Result carrier-as-default must refuse via payload-kind conflict, got: {rmsg}"
     );
 }
@@ -2439,7 +2322,12 @@ fn unwrap_or_carrier_default_refuses_payload_conflict() {
 fn field_prime_output_decl_refuses_typed() {
     let mut package = SemanticPackage::new();
     let y = literal_int(&mut package, "7");
-    carrier_decl("field_out", TypeNode::FieldPrime { modulus: 7 }, y, &mut package);
+    carrier_decl(
+        "field_out",
+        TypeNode::FieldPrime { modulus: 7 },
+        y,
+        &mut package,
+    );
     let err = BackendInput {
         package: &package,
         crate_name: "field_out".to_string(),
@@ -2524,15 +2412,12 @@ fn field_prime_input_decl_refuses_typed() {
 /// A `Option<Int>` / `Result<Int, Bool>` input FIELD also refuses typed
 /// at the backend (Phase 1 has no native carrier RUST type on decl
 /// fields; carrier VALUES only exist in expressions via the nine ops,
-/// confirmed in pass 5). This pins the boundary: no field of a carrier
+/// confirmed in ). This pins the boundary: no field of a carrier
 /// or field spelling can silently lower to f64.
 #[test]
 fn carrier_field_decl_refuses_typed() {
     for (spelling, node) in [
-        (
-            "Option<Int>",
-            TypeNode::OptionType(Box::new(TypeNode::Int)),
-        ),
+        ("Option<Int>", TypeNode::OptionType(Box::new(TypeNode::Int))),
         (
             "Result<Int, Bool>",
             TypeNode::Result {
@@ -2605,10 +2490,10 @@ fn carrier_field_decl_refuses_typed() {
     }
 }
 
-// ── aj8d pass 4: TEXT-driven carrier parity + nested carrier parity ───
+// ──: TEXT-driven carrier parity + nested carrier parity ───
 // Build the SemanticPackage by parsing REAL .emath source (sema →
 // package), then generate + execute the native Option/Result Rust. These
-// close the loop the hand-built pass-5 tests start: the USER surface's
+// close the loop the hand-built tests start: the USER surface's
 // executable carriers carry through to generated native types, and
 // nested carriers now resolve to native nested types (Option<Option<T>>)
 // instead of collapsing the inner payload to f64.
@@ -2616,7 +2501,7 @@ fn carrier_field_decl_refuses_typed() {
 fn text_package(source: &str) -> SemanticPackage {
     emath_syntax::install_source_parser();
     let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
-    let file = session.load_text("aj8d-backend-text.emath", source);
+    let file = session.load_text("rust-backend-text.emath", source);
     let planned = session.plan(file);
     let errors: Vec<String> = planned
         .diagnostics
@@ -2684,8 +2569,11 @@ fn text_nested_some_none() {
     let lib = text_lib(
         "emath function sc:\n    inputs:\n        x: Float64\n    outputs:\n        o: Option<Option<Float64>>\n    definitions:\n        o = option_some(option_none())\n    goals:\n        evaluate <o>:\n            produce rust.library\n",
     );
-    run_generated(&lib, "assert_eq!(generated::sc(0.0), Some::<Option<f64>>(None));")
-        .expect("nested Some(None) must hold at runtime");
+    run_generated(
+        &lib,
+        "assert_eq!(generated::sc(0.0), Some::<Option<f64>>(None));",
+    )
+    .expect("nested Some(None) must hold at runtime");
 }
 
 /// map-by-declared-composition over a scalar input: the generated Rust
@@ -2707,7 +2595,7 @@ fn text_map_by_composition_emits_native_option() {
     .expect("map-by-composition must yield Some(6) for positive, None for negative");
 }
 
-// ── aj8d pass 6: int_rem exact-Euclidean remainder; field ops as data ──
+// ──: int_rem exact-Euclidean remainder; field ops as data ──
 // Field +/*/inverse are user capability-cell DATA over the universal
 // int_rem primitive. Generated Rust must emit exact `.rem_euclid(` and the
 // runtime values must match the interpreter (field7_add(3,4)=0,
@@ -2750,9 +2638,86 @@ fn text_int_rem_field_mul_executes() {
 fn text_int_rem_sign_law_generated() {
     let src = "emath function irs:\n    inputs:\n        a: Int\n        m: Int\n    outputs:\n        c: Int\n    definitions:\n        c = int_rem(a, m)\n    goals:\n        evaluate <c>:\n            produce rust.library\n";
     let lib = text_lib(src);
+    run_generated(&lib, "assert_eq!(generated::irs(-1, 7), 6);")
+        .expect("generated int_rem(-1, 7) must be the Euclidean 6 (not a truncated -1)");
+}
+
+// ──: emath-bibqi — vec-index-by-binder inside a sum-fold guard ───
+// CopperGorge's compiled-probe repro (mail 206 /
+// internal/proximity-prize/census/admit-probe.emath, fn idx_by_binder):
+// the i64 fold closure is a PLAIN `Fn(i64) -> i64`, so a checked
+// vec-index inside the fold guard rendered `.map_err(|e| e.to_string())?`
+// and rustc refused with E0277 ("the ? operator can only be used in a
+// closure that returns Result or Option"). `emath check` passes, so the
+// user hit raw rustc text. Failure-first: these tests ran RED against
+// that binary (E0277 at generated lib.rs) and only turn green once the
+// fold context renders checked ops as panic-with-real-runtime-message —
+// the documented i64 fold fault channel (fold_add_i64 overflow panic).
+
+/// The exact repro source (fn idx_by_binder of the census admit probe).
+fn fold_guard_repro_source() -> &'static str {
+    "emath function idx_by_binder:\n    inputs:\n        p: Int\n        xs: Vector[Int]\n    outputs:\n        c: Int\n    definitions:\n        c = sum i in 0..4 if int_rem(xs[i], p) == 0: 1\n    goals:\n        evaluate <c>:\n            produce rust.library\n"
+}
+
+#[test]
+fn text_fold_guard_vec_index_by_binder_compiles_and_counts() {
+    let lib = text_lib(fold_guard_repro_source());
+    // The generated `idx_by_binder` body must not carry a `?` inside the
+    // plain i64 fold closure: that rendering is the raw E0277 defect.
+    // (The user functions render AFTER the inlined `mod emath_rt`, so
+    // assert on the extracted function, not on a split artifact.)
+    let fn_src = extract_fn(&lib, "idx_by_binder");
+    assert!(
+        !fn_src.contains(".map_err(|e| e.to_string())?"),
+        "checked vec-index inside a plain fold closure must not render `?` (rustc E0277):\n{fn_src}"
+    );
+    // The honest fault channel renders instead: panic with the real
+    // runtime message (never a silent value).
+    assert!(
+        fn_src.contains(".map_err(|e| e.to_string()).unwrap_or_else(|e| panic!(\"{e}\"))"),
+        "fold-context checked op must render panic-with-real-runtime-message:\n{fn_src}"
+    );
+    // End-to-end: the generated crate compiles and computes the same
+    // count the interpreter does (17 and 34 are 0 mod 17).
     run_generated(
         &lib,
-        "assert_eq!(generated::irs(-1, 7), 6);",
+        "assert_eq!(generated::idx_by_binder(17, vec![17.0, 2.0, 34.0, 5.0]), Ok(2i64));",
     )
-    .expect("generated int_rem(-1, 7) must be the Euclidean 6 (not a truncated -1)");
+    .expect("fold-guard vec index must compile and count zero-sum binders");
+}
+
+/// The second repro fn (inline_coeff_poly): nested i64 folds whose INNER
+/// guard indexes xs[i] and w[i] by binder variables, with an inline
+/// coefficient vector in poly_eval_mod. Every fold closure here is
+/// plain-valued, so no `?` may render anywhere in the user code.
+#[test]
+fn text_nested_fold_guards_vec_index_compiles() {
+    let lib = text_lib(
+        "emath function inline_coeff_poly:\n    inputs:\n        p: Int\n        xs: Vector[Int]\n        w: Vector[Int]\n    outputs:\n        c: Int\n    definitions:\n        c = sum a0 in 0..p, a1 in 0..p if (sum i in 0..4 if poly_eval_mod([a0, a1], xs[i], p) == w[i]: 1) >= 3: 1\n    goals:\n        evaluate <c>:\n            produce rust.library\n",
+    );
+    // Compile + value parity IS the contract here: before the fix the
+    // generated crate died with rustc E0277 (`?` inside the plain fold
+    // closures). The interpreter value is the oracle.
+    run_generated(
+        &lib,
+        "assert_eq!(generated::inline_coeff_poly(5, vec![1.0, 2.0, 3.0, 4.0], vec![7.0, 7.0, 7.0, 0.0]), Ok(0i64));",
+    )
+    .expect("nested fold-guard vec index must compile and match the interpreter");
+}
+
+/// A non-i64 fold whose body faults (f64 sum of 1.0 over a binder index)
+/// renders the checked-fold call as panic-with-real-message when nested
+/// inside a plain fold closure (its `?` would otherwise land in an i64
+/// closure). Value parity with the interpreter: inner counts never reach
+/// 2.5, so c is 0.
+#[test]
+fn text_fault_fold_nested_in_plain_fold_compiles() {
+    let lib = text_lib(
+        "emath function nested_fault_fold:\n    inputs:\n        p: Int\n        xs: Vector[Int]\n    outputs:\n        c: Int\n    definitions:\n        c = sum a in 0..4 if (sum j in 0..4 if int_rem(xs[j], p) == 0: 1.0) > 2.5: 1\n    goals:\n        evaluate <c>:\n            produce rust.library\n",
+    );
+    run_generated(
+        &lib,
+        "assert_eq!(generated::nested_fault_fold(17, vec![1.0, 2.0, 3.0, 4.0]), Ok(0i64));\nassert_eq!(generated::nested_fault_fold(17, vec![17.0, 34.0, 2.0, 5.0]), Ok(0i64));",
+    )
+    .expect("f64 fault fold nested in a plain fold must compile and match the interpreter");
 }

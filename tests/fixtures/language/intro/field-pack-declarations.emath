@@ -1,4 +1,4 @@
-# emath-v9-06-2rdq.16 example: a field pack is exported artifact data.
+# example: a field pack is exported artifact data.
 #
 # `emath field_pack` declares a pack of cells/theories/methods/worlds
 # that compiles to a semantic image (.emlib) consumed by pack tooling —

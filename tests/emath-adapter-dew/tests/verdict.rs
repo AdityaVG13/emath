@@ -1,6 +1,6 @@
 //! Shared verdict vocabulary + proven resolution of DISC-DEW-INT-EXACT.
 //!
-//! Thin slice of `emath-conform-harness-thin-lfpg`: the Dew adapter
+//! Thin slice: the Dew adapter
 //! reports conformance through `TestResult` (shared via the crate lib
 //! target). The integer-literal discrepancy is RESOLVED by a typed
 //! `E-PROV-030` refusal at the exact-finite-f64 boundary; these tests
@@ -22,7 +22,7 @@ use emath_ir::{ExprNode, Literal, SemanticPackage};
 /// non-finite digit strings evaluated to `inf` while the native
 /// emitter refuses). Kept here as provenance id only; any regression
 /// to silent rounding must be a hard Fail. Registrar:
-/// `emath-conform-pin-register-1iip`.
+///.
 const DISC_DEW_INT_EXACT: &str = "DISC-DEW-INT-EXACT";
 
 /// Verdict for one Dew integer literal.
@@ -99,10 +99,8 @@ fn non_finite_integer_refused_like_native() {
     assert_eq!(issue.code, "E-PROV-030");
 
     let mut native_package = SemanticPackage::new();
-    let native_expr = native_package.push_expr(
-        ExprNode::Literal(Literal::Integer(huge)),
-        Span::default(),
-    );
+    let native_expr =
+        native_package.push_expr(ExprNode::Literal(Literal::Integer(huge)), Span::default());
     assert!(
         lower_definition(&native_package, native_expr, &[], &[]).is_err(),
         "native emitter must refuse the same literal for the boundary to match"

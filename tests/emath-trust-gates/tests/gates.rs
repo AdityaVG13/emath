@@ -20,11 +20,11 @@ use emath_evidence::{
 use emath_ir::package::SemanticPackage;
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ExprNode, Literal, TypeNode};
 use emath_provider_api::plugin_sdk::{PluginDescriptor, SandboxPolicy, Trust, admit, execute};
+use emath_provider_api::runtime::{Budget, Outcome};
 use emath_provider_api::{
     CapabilitySpec, CapabilityTable, ConstellationProvider, MaturityLevel, ProviderIsolation,
     ProviderLock, ProviderRegistry, RegistryConfig, RepresentationSpec, default_constellation,
 };
-use emath_provider_api::runtime::{Budget, Outcome};
 
 fn state_var(name: &str) -> VariableDecl {
     VariableDecl {
