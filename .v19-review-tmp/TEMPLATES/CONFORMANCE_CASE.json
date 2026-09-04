@@ -1,0 +1,11 @@
+{
+  "schema": "emath.conformance-case.v1",
+  "id": "",
+  "features": [],
+  "positive_source": "source.emath",
+  "negative_source": "negative.emath",
+  "expected": "expected.json",
+  "expected_diagnostic": "",
+  "projections": [],
+  "golden_change_authority": "ELP + identity decision"
+}

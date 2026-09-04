@@ -1,0 +1,20 @@
+emath spec NewWorld:
+    identity: "org.example.world.new_world@1"
+    class: "world"
+    status: "proposed"
+    edition: 1
+    summary: "Explicit interpretation."
+    dependencies: ["std.kind.world@1","std.theory.world@1"]
+    surface: {"role":"world-name","spellings":["new_world"]}
+    canonical: {"lower_to":"WorldIr","identity_fields":["carrier","capabilities","strategy","evidence","effects"]}
+    semantics: {"carrier":"...","representations":[],"capabilities":[],"strategy":"...","evidence_ceiling":"structural"}
+    exactness: {"policy":"..."}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"defines a world"}
+    reference: {"mode":"world-evaluator|provider-only","target":"..."}
+    artifact: {"classes":["world-portfolio","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-WORLD-UNSUPPORTED"]
+    conformance: {"positive":[],"negative":[],"mutation":[]}
+    evolution: {"meaning_change":"new world major"}
+    agent: {"owner":"emath-world-ir","read":[],"edit":[],"hazards":["no hidden semantics","authority ceiling"]}

@@ -1,0 +1,5 @@
+use puzzles
+
+emath puzzle NoVariables:
+    goals:
+        solve grid

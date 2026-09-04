@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Feature Capsule",
+  "type": "object",
+  "required": [
+    "identity",
+    "class",
+    "status",
+    "edition",
+    "summary",
+    "dependencies",
+    "surface",
+    "canonical",
+    "semantics",
+    "exactness",
+    "effects",
+    "worlds",
+    "reference",
+    "artifact",
+    "projections",
+    "diagnostics",
+    "conformance",
+    "evolution",
+    "agent"
+  ]
+}

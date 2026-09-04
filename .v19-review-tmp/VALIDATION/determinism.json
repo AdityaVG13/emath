@@ -1,0 +1,8 @@
+{
+  "schema": "emath.v19.prototype-determinism.v1",
+  "first_sha256": "a76cf7ff4d8dd86cd7e93084ee6e0ec16d2454f3e3455a704ba737097d090682",
+  "second_sha256": "a76cf7ff4d8dd86cd7e93084ee6e0ec16d2454f3e3455a704ba737097d090682",
+  "byte_identical": true,
+  "language_image_id": "sha256:5d6bda518ade3aadf96c89735f9e7029dab2d91e2f86e649cd1e40f4d89bdb43",
+  "boundary": "Deterministic rebuild by the included prototype index compiler; not the future Stage1/Stage2 self-hosted emath proof."
+}

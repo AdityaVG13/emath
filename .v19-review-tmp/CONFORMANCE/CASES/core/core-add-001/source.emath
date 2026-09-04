@@ -1,0 +1,11 @@
+emath function AddOne:
+    inputs:
+        x: Int
+    outputs:
+        y: Int
+    definitions:
+        y = x + 1
+    tests:
+        example:
+            given x = 2
+            expect y == 3

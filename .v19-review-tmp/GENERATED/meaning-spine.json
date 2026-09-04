@@ -1,0 +1,1196 @@
+{
+  "nodes": [
+    "std.artifact.cargo@1",
+    "std.artifact.certificate@1",
+    "std.artifact.continuation@1",
+    "std.artifact.diagnostic@1",
+    "std.artifact.experiment@1",
+    "std.artifact.proof_obligation@1",
+    "std.artifact.research_state@1",
+    "std.artifact.source@1",
+    "std.artifact.symbolic@1",
+    "std.artifact.value@1",
+    "std.artifact.wasm@1",
+    "std.artifact.world_portfolio@1",
+    "std.binder.exists@1",
+    "std.binder.forall@1",
+    "std.binder.integral@1",
+    "std.binder.limit@1",
+    "std.binder.product@1",
+    "std.binder.series@1",
+    "std.binder.sum@1",
+    "std.capability.aggregate.product@1",
+    "std.capability.aggregate.sum@1",
+    "std.capability.analysis.integral@1",
+    "std.capability.analysis.limit@1",
+    "std.capability.analysis.series@1",
+    "std.capability.coding.rs_encode@1",
+    "std.capability.evidence.check@1",
+    "std.capability.field.mod_inverse@1",
+    "std.capability.field.mod_power@1",
+    "std.capability.goal.solve@1",
+    "std.capability.logic.exists@1",
+    "std.capability.logic.forall@1",
+    "std.capability.logic.implies@1",
+    "std.capability.math.add@1",
+    "std.capability.math.divide@1",
+    "std.capability.math.multiply@1",
+    "std.capability.math.power@1",
+    "std.capability.math.subtract@1",
+    "std.capability.tensor.softmax@1",
+    "std.diagnostic.artifact.overclaim@1",
+    "std.diagnostic.authority.dual@1",
+    "std.diagnostic.exactness.loss@1",
+    "std.diagnostic.projection.missing@1",
+    "std.diagnostic.section.invalid@1",
+    "std.diagnostic.spec_hole.blocking@1",
+    "std.diagnostic.symbol.unresolved@1",
+    "std.diagnostic.world.unsupported@1",
+    "std.family.constraint_puzzle@1",
+    "std.family.criterion_edge@1",
+    "std.family.elementwise_unary@1",
+    "std.family.execution_transform@1",
+    "std.family.finite_cipher@1",
+    "std.field_pack.conjecture_dynamics@1",
+    "std.field_pack.core@1",
+    "std.field_pack.cryptology@1",
+    "std.field_pack.exact_algebra@1",
+    "std.field_pack.execution_dynamics@1",
+    "std.instance.gf.field@1",
+    "std.instance.int.add_monoid@1",
+    "std.instance.int.ring@1",
+    "std.instance.matrix.mul_monoid@1",
+    "std.kind.capability@1",
+    "std.kind.cipher@1",
+    "std.kind.code@1",
+    "std.kind.criterion@1",
+    "std.kind.custom@1",
+    "std.kind.family@1",
+    "std.kind.field_pack@1",
+    "std.kind.frontier@1",
+    "std.kind.function@1",
+    "std.kind.instance@1",
+    "std.kind.kind@1",
+    "std.kind.method@1",
+    "std.kind.model@1",
+    "std.kind.performance_campaign@1",
+    "std.kind.policy@1",
+    "std.kind.protocol@1",
+    "std.kind.puzzle@1",
+    "std.kind.theory@1",
+    "std.kind.world@1",
+    "std.lens.agent@1",
+    "std.lens.formal@1",
+    "std.lens.user@1",
+    "std.method.measure.paired@1",
+    "std.method.proof.external@1",
+    "std.method.research.counterexample@1",
+    "std.method.search.exhaustive@1",
+    "std.method.solve.newton@1",
+    "std.method.world.portfolio@1",
+    "std.migration.capability_manual_to_generated@1",
+    "std.migration.cypher_to_cipher@1",
+    "std.migration.domain_grammar_to_pack@1",
+    "std.migration.reference_to_capsule@1",
+    "std.section.budget@1",
+    "std.section.compile@1",
+    "std.section.constraints@1",
+    "std.section.constructors@1",
+    "std.section.definitions@1",
+    "std.section.equations@1",
+    "std.section.evidence@1",
+    "std.section.goals@1",
+    "std.section.inputs@1",
+    "std.section.methods@1",
+    "std.section.outputs@1",
+    "std.section.provenance@1",
+    "std.section.state@1",
+    "std.section.tests@1",
+    "std.section.worlds@1",
+    "std.symbol.definition@1",
+    "std.symbol.equality.approx@1",
+    "std.symbol.equality.exact@1",
+    "std.symbol.logic.implies@1",
+    "std.symbol.math.add@1",
+    "std.symbol.math.divide@1",
+    "std.symbol.math.multiply@1",
+    "std.symbol.math.power@1",
+    "std.symbol.math.subtract@1",
+    "std.symbol.membership@1",
+    "std.syntax.binder.generic@1",
+    "std.syntax.declaration.generic@1",
+    "std.syntax.expression.core@1",
+    "std.syntax.glyph.unknown@1",
+    "std.syntax.let@1",
+    "std.syntax.section.generic@1",
+    "std.syntax.source@1",
+    "std.syntax.use@1",
+    "std.syntax_pack.scratch@1",
+    "std.theory.field@1",
+    "std.theory.magma@1",
+    "std.theory.monoid@1",
+    "std.theory.ring@1",
+    "std.theory.semiring@1",
+    "std.theory.world@1",
+    "std.type.bigint@1",
+    "std.type.bool@1",
+    "std.type.complex@1",
+    "std.type.float64@1",
+    "std.type.gf@1",
+    "std.type.int@1",
+    "std.type.interval@1",
+    "std.type.matrix@1",
+    "std.type.meaning_hole@1",
+    "std.type.nat@1",
+    "std.type.option@1",
+    "std.type.rational@1",
+    "std.type.result@1",
+    "std.type.tensor@1",
+    "std.type.vector@1",
+    "std.world.exact.int@1",
+    "std.world.exact.prime_field@1",
+    "std.world.exact.rational@1",
+    "std.world.finite.canonical@1",
+    "std.world.numeric.interval@1",
+    "std.world.numeric.strict_f64@1",
+    "std.world.performance.measured@1",
+    "std.world.research.criterion@1",
+    "std.world.symbolic.free@1"
+  ],
+  "edges": [
+    {
+      "source": "std.binder.exists@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.binder.forall@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.binder.integral@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.binder.limit@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.binder.product@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.binder.series@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.binder.sum@1",
+      "target": "std.syntax.binder.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.aggregate.product@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.aggregate.sum@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.analysis.integral@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.analysis.limit@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.analysis.series@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.coding.rs_encode@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.evidence.check@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.field.mod_inverse@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.field.mod_power@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.goal.solve@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.logic.exists@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.logic.forall@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.logic.implies@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.math.add@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.math.divide@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.math.multiply@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.math.power@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.math.subtract@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.capability.tensor.softmax@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.family.constraint_puzzle@1",
+      "target": "std.kind.family@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.family.criterion_edge@1",
+      "target": "std.kind.family@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.family.elementwise_unary@1",
+      "target": "std.kind.family@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.family.execution_transform@1",
+      "target": "std.kind.family@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.family.finite_cipher@1",
+      "target": "std.kind.family@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.conjecture_dynamics@1",
+      "target": "std.kind.frontier@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.conjecture_dynamics@1",
+      "target": "std.kind.criterion@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.conjecture_dynamics@1",
+      "target": "std.world.research.criterion@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.conjecture_dynamics@1",
+      "target": "std.artifact.research_state@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.core@1",
+      "target": "std.kind.field_pack@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.core@1",
+      "target": "std.type.int@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.core@1",
+      "target": "std.capability.math.add@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.cryptology@1",
+      "target": "std.kind.cipher@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.cryptology@1",
+      "target": "std.kind.puzzle@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.cryptology@1",
+      "target": "std.kind.protocol@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.cryptology@1",
+      "target": "std.kind.code@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.exact_algebra@1",
+      "target": "std.kind.field_pack@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.exact_algebra@1",
+      "target": "std.theory.field@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.exact_algebra@1",
+      "target": "std.type.gf@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.exact_algebra@1",
+      "target": "std.type.matrix@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.execution_dynamics@1",
+      "target": "std.kind.performance_campaign@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.field_pack.execution_dynamics@1",
+      "target": "std.world.performance.measured@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.instance.gf.field@1",
+      "target": "std.theory.field@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.instance.int.add_monoid@1",
+      "target": "std.theory.monoid@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.instance.int.ring@1",
+      "target": "std.theory.ring@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.instance.matrix.mul_monoid@1",
+      "target": "std.theory.monoid@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.capability@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.capability@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.cipher@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.cipher@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.code@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.code@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.criterion@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.criterion@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.custom@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.custom@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.family@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.family@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.field_pack@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.field_pack@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.frontier@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.frontier@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.function@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.function@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.instance@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.instance@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.kind@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.kind@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.method@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.method@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.model@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.model@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.performance_campaign@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.performance_campaign@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.policy@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.policy@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.protocol@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.protocol@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.puzzle@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.puzzle@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.theory@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.theory@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.world@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.kind.world@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.method.measure.paired@1",
+      "target": "std.kind.method@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.method.proof.external@1",
+      "target": "std.kind.method@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.method.research.counterexample@1",
+      "target": "std.kind.method@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.method.search.exhaustive@1",
+      "target": "std.kind.method@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.method.solve.newton@1",
+      "target": "std.kind.method@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.method.world.portfolio@1",
+      "target": "std.kind.method@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.budget@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.compile@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.constraints@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.constructors@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.definitions@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.equations@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.evidence@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.goals@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.inputs@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.methods@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.outputs@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.provenance@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.state@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.tests@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.section.worlds@1",
+      "target": "std.syntax.section.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.definition@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.equality.approx@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.equality.exact@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.logic.implies@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.math.add@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.math.divide@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.math.multiply@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.math.power@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.math.subtract@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.symbol.membership@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.binder.generic@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.declaration.generic@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.expression.core@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.glyph.unknown@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.let@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.section.generic@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax.use@1",
+      "target": "std.syntax.source@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax_pack.scratch@1",
+      "target": "std.syntax.declaration.generic@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.syntax_pack.scratch@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.bigint@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.bool@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.complex@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.float64@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.gf@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.int@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.interval@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.matrix@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.meaning_hole@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.nat@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.option@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.rational@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.result@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.tensor@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.type.vector@1",
+      "target": "std.syntax.expression.core@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.exact.int@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.exact.int@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.exact.prime_field@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.exact.prime_field@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.exact.rational@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.exact.rational@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.finite.canonical@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.finite.canonical@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.numeric.interval@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.numeric.interval@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.numeric.strict_f64@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.numeric.strict_f64@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.performance.measured@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.performance.measured@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.research.criterion@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.research.criterion@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.symbolic.free@1",
+      "target": "std.kind.world@1",
+      "kind": "requires"
+    },
+    {
+      "source": "std.world.symbolic.free@1",
+      "target": "std.theory.world@1",
+      "kind": "requires"
+    }
+  ],
+  "reverse_dependencies": {
+    "std.artifact.research_state@1": [
+      "std.field_pack.conjecture_dynamics@1"
+    ],
+    "std.capability.math.add@1": [
+      "std.field_pack.core@1"
+    ],
+    "std.kind.cipher@1": [
+      "std.field_pack.cryptology@1"
+    ],
+    "std.kind.code@1": [
+      "std.field_pack.cryptology@1"
+    ],
+    "std.kind.criterion@1": [
+      "std.field_pack.conjecture_dynamics@1"
+    ],
+    "std.kind.family@1": [
+      "std.family.constraint_puzzle@1",
+      "std.family.criterion_edge@1",
+      "std.family.elementwise_unary@1",
+      "std.family.execution_transform@1",
+      "std.family.finite_cipher@1"
+    ],
+    "std.kind.field_pack@1": [
+      "std.field_pack.core@1",
+      "std.field_pack.exact_algebra@1"
+    ],
+    "std.kind.frontier@1": [
+      "std.field_pack.conjecture_dynamics@1"
+    ],
+    "std.kind.method@1": [
+      "std.method.measure.paired@1",
+      "std.method.proof.external@1",
+      "std.method.research.counterexample@1",
+      "std.method.search.exhaustive@1",
+      "std.method.solve.newton@1",
+      "std.method.world.portfolio@1"
+    ],
+    "std.kind.performance_campaign@1": [
+      "std.field_pack.execution_dynamics@1"
+    ],
+    "std.kind.protocol@1": [
+      "std.field_pack.cryptology@1"
+    ],
+    "std.kind.puzzle@1": [
+      "std.field_pack.cryptology@1"
+    ],
+    "std.kind.world@1": [
+      "std.world.exact.int@1",
+      "std.world.exact.prime_field@1",
+      "std.world.exact.rational@1",
+      "std.world.finite.canonical@1",
+      "std.world.numeric.interval@1",
+      "std.world.numeric.strict_f64@1",
+      "std.world.performance.measured@1",
+      "std.world.research.criterion@1",
+      "std.world.symbolic.free@1"
+    ],
+    "std.syntax.binder.generic@1": [
+      "std.binder.exists@1",
+      "std.binder.forall@1",
+      "std.binder.integral@1",
+      "std.binder.limit@1",
+      "std.binder.product@1",
+      "std.binder.series@1",
+      "std.binder.sum@1"
+    ],
+    "std.syntax.declaration.generic@1": [
+      "std.kind.capability@1",
+      "std.kind.cipher@1",
+      "std.kind.code@1",
+      "std.kind.criterion@1",
+      "std.kind.custom@1",
+      "std.kind.family@1",
+      "std.kind.field_pack@1",
+      "std.kind.frontier@1",
+      "std.kind.function@1",
+      "std.kind.instance@1",
+      "std.kind.kind@1",
+      "std.kind.method@1",
+      "std.kind.model@1",
+      "std.kind.performance_campaign@1",
+      "std.kind.policy@1",
+      "std.kind.protocol@1",
+      "std.kind.puzzle@1",
+      "std.kind.theory@1",
+      "std.kind.world@1",
+      "std.syntax_pack.scratch@1"
+    ],
+    "std.syntax.expression.core@1": [
+      "std.capability.aggregate.product@1",
+      "std.capability.aggregate.sum@1",
+      "std.capability.analysis.integral@1",
+      "std.capability.analysis.limit@1",
+      "std.capability.analysis.series@1",
+      "std.capability.coding.rs_encode@1",
+      "std.capability.evidence.check@1",
+      "std.capability.field.mod_inverse@1",
+      "std.capability.field.mod_power@1",
+      "std.capability.goal.solve@1",
+      "std.capability.logic.exists@1",
+      "std.capability.logic.forall@1",
+      "std.capability.logic.implies@1",
+      "std.capability.math.add@1",
+      "std.capability.math.divide@1",
+      "std.capability.math.multiply@1",
+      "std.capability.math.power@1",
+      "std.capability.math.subtract@1",
+      "std.capability.tensor.softmax@1",
+      "std.symbol.definition@1",
+      "std.symbol.equality.approx@1",
+      "std.symbol.equality.exact@1",
+      "std.symbol.logic.implies@1",
+      "std.symbol.math.add@1",
+      "std.symbol.math.divide@1",
+      "std.symbol.math.multiply@1",
+      "std.symbol.math.power@1",
+      "std.symbol.math.subtract@1",
+      "std.symbol.membership@1",
+      "std.syntax_pack.scratch@1",
+      "std.type.bigint@1",
+      "std.type.bool@1",
+      "std.type.complex@1",
+      "std.type.float64@1",
+      "std.type.gf@1",
+      "std.type.int@1",
+      "std.type.interval@1",
+      "std.type.matrix@1",
+      "std.type.meaning_hole@1",
+      "std.type.nat@1",
+      "std.type.option@1",
+      "std.type.rational@1",
+      "std.type.result@1",
+      "std.type.tensor@1",
+      "std.type.vector@1"
+    ],
+    "std.syntax.section.generic@1": [
+      "std.kind.capability@1",
+      "std.kind.cipher@1",
+      "std.kind.code@1",
+      "std.kind.criterion@1",
+      "std.kind.custom@1",
+      "std.kind.family@1",
+      "std.kind.field_pack@1",
+      "std.kind.frontier@1",
+      "std.kind.function@1",
+      "std.kind.instance@1",
+      "std.kind.kind@1",
+      "std.kind.method@1",
+      "std.kind.model@1",
+      "std.kind.performance_campaign@1",
+      "std.kind.policy@1",
+      "std.kind.protocol@1",
+      "std.kind.puzzle@1",
+      "std.kind.theory@1",
+      "std.kind.world@1",
+      "std.section.budget@1",
+      "std.section.compile@1",
+      "std.section.constraints@1",
+      "std.section.constructors@1",
+      "std.section.definitions@1",
+      "std.section.equations@1",
+      "std.section.evidence@1",
+      "std.section.goals@1",
+      "std.section.inputs@1",
+      "std.section.methods@1",
+      "std.section.outputs@1",
+      "std.section.provenance@1",
+      "std.section.state@1",
+      "std.section.tests@1",
+      "std.section.worlds@1"
+    ],
+    "std.syntax.source@1": [
+      "std.syntax.binder.generic@1",
+      "std.syntax.declaration.generic@1",
+      "std.syntax.expression.core@1",
+      "std.syntax.glyph.unknown@1",
+      "std.syntax.let@1",
+      "std.syntax.section.generic@1",
+      "std.syntax.use@1"
+    ],
+    "std.theory.field@1": [
+      "std.field_pack.exact_algebra@1",
+      "std.instance.gf.field@1"
+    ],
+    "std.theory.monoid@1": [
+      "std.instance.int.add_monoid@1",
+      "std.instance.matrix.mul_monoid@1"
+    ],
+    "std.theory.ring@1": [
+      "std.instance.int.ring@1"
+    ],
+    "std.theory.world@1": [
+      "std.world.exact.int@1",
+      "std.world.exact.prime_field@1",
+      "std.world.exact.rational@1",
+      "std.world.finite.canonical@1",
+      "std.world.numeric.interval@1",
+      "std.world.numeric.strict_f64@1",
+      "std.world.performance.measured@1",
+      "std.world.research.criterion@1",
+      "std.world.symbolic.free@1"
+    ],
+    "std.type.gf@1": [
+      "std.field_pack.exact_algebra@1"
+    ],
+    "std.type.int@1": [
+      "std.field_pack.core@1"
+    ],
+    "std.type.matrix@1": [
+      "std.field_pack.exact_algebra@1"
+    ],
+    "std.world.performance.measured@1": [
+      "std.field_pack.execution_dynamics@1"
+    ],
+    "std.world.research.criterion@1": [
+      "std.field_pack.conjecture_dynamics@1"
+    ]
+  }
+}

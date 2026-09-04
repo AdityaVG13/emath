@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Change Contract",
+  "type": "object",
+  "required": [
+    "schema",
+    "contract_id",
+    "semantic_delta",
+    "features",
+    "identity_classification",
+    "unchanged_invariants",
+    "projections",
+    "validation",
+    "rollback"
+  ]
+}

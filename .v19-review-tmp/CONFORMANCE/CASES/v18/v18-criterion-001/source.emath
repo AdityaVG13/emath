@@ -1,0 +1,10 @@
+use conjecture_dynamics
+
+emath criterion FiniteShadow:
+    inputs:
+        finite_claim: Claim
+        universal_claim: Claim
+    definitions:
+        finite_claim ==> universal_claim
+    evidence:
+        candidate

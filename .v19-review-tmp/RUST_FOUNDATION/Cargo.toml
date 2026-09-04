@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/emath-language-model",
+  "crates/emath-agent-context",
+  "crates/emath-v19-demo",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

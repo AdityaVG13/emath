@@ -1,0 +1,22 @@
+{
+  "schema": "emath.conformance-case.v1",
+  "id": "v15-cipher-001",
+  "features": [
+    "std.kind.cipher@1",
+    "std.field_pack.cryptology@1"
+  ],
+  "positive_source": "source.emath",
+  "negative_source": "negative.emath",
+  "expected": "expected.json",
+  "expected_diagnostic": "E-SECTION-INVALID",
+  "projections": [
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "worlds",
+    "artifact",
+    "diagnostics"
+  ],
+  "golden_change_authority": "ELP + FeatureID decision"
+}

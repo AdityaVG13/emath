@@ -1,0 +1,10 @@
+use execution_dynamics
+
+emath campaign Faster:
+    definitions:
+        baseline = Reference
+        candidate = Optimized
+    goals:
+        compare latency
+    evidence:
+        paired_measurement

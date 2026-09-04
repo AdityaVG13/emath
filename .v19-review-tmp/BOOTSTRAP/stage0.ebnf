@@ -1,0 +1,23 @@
+source              = { newline | use_item | declaration } ;
+use_item            = "use" , path , [ "as" , identifier ] , newline ;
+declaration         = { attribute } , "emath" , identifier , identifier ,
+                      [ generic_arguments ] , ":" , suite ;
+attribute           = "@" , path , [ "(" , [ arguments ] , ")" ] , newline ;
+suite               = newline , indent , { section | statement | newline } , dedent
+                    | expression , newline ;
+section             = identifier , [ argument_tuple ] , ":" , suite ;
+statement           = let_statement | relation_statement | expression ;
+let_statement       = "let" , identifier , [ ":" , expression ] , "=" , expression ;
+relation_statement  = expression , registered_relation , expression ;
+expression          = registered_pratt_expression
+                    | binder_expression
+                    | hole
+                    | list
+                    | record ;
+binder_expression   = registered_binder , pattern , "in" , expression ,
+                      [ "if" , expression ] , ":" , expression ;
+hole                = "?" , [ identifier ] ;
+path                = identifier , { "::" , identifier } ;
+generic_arguments   = "<" , expression , { "," , expression } , ">" ;
+argument_tuple      = "(" , [ arguments ] , ")" ;
+arguments           = expression , { "," , expression } ;

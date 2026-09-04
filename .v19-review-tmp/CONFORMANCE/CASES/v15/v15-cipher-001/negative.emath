@@ -1,0 +1,5 @@
+use cryptology
+
+emath cypher Broken:
+    inputs:
+        key: Int

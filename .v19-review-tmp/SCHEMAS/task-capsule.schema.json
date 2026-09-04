@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task Capsule",
+  "type": "object",
+  "required": [
+    "schema",
+    "task_id",
+    "goal",
+    "features",
+    "baseline",
+    "allowed_files",
+    "required_projections",
+    "commands",
+    "acceptance",
+    "rollback"
+  ]
+}

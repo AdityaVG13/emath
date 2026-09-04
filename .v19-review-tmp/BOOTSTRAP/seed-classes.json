@@ -1,0 +1,55 @@
+{
+  "schema": "emath.stage0.seed-classes.v1",
+  "classes": [
+    {
+      "name": "spec",
+      "purpose": "Feature Capsule declaration"
+    },
+    {
+      "name": "kind",
+      "purpose": "top-level declaration schema"
+    },
+    {
+      "name": "section",
+      "purpose": "named payload within a kind"
+    },
+    {
+      "name": "symbol",
+      "purpose": "spelling/fixity/precedence to capability"
+    },
+    {
+      "name": "binder",
+      "purpose": "uniform binder expansion"
+    },
+    {
+      "name": "capability",
+      "purpose": "typed operation/relation/goal"
+    },
+    {
+      "name": "world",
+      "purpose": "interpretation and evidence policy"
+    },
+    {
+      "name": "diagnostic",
+      "purpose": "routed typed diagnosis"
+    },
+    {
+      "name": "migration",
+      "purpose": "explicit source/semantic evolution"
+    }
+  ],
+  "hardcoded_tokens": [
+    "emath",
+    "use",
+    ":",
+    "=",
+    "==",
+    "->",
+    "?"
+  ],
+  "limits": {
+    "max_indent": 128,
+    "max_nesting": 256,
+    "max_generated_nodes": 1000000
+  }
+}

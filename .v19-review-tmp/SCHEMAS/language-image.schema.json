@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Language Image",
+  "type": "object",
+  "required": [
+    "schema",
+    "image_id",
+    "feature_count",
+    "features",
+    "meaning_spine",
+    "partitions"
+  ]
+}

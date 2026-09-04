@@ -1,0 +1,7 @@
+emath function Triangle:
+    inputs:
+        n: Nat
+    outputs:
+        y: Int
+    definitions:
+        y = sum i in 0..n: i

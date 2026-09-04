@@ -1,0 +1,6543 @@
+{
+  "schema": "emath.agent-index.v1",
+  "image_id": "sha256:5d6bda518ade3aadf96c89735f9e7029dab2d91e2f86e649cd1e40f4d89bdb43",
+  "entry": "AGENT_START.json",
+  "features": {
+    "std.artifact.cargo@1": {
+      "summary": "Generated Rust/Cargo component and semantic manifest.",
+      "path": "SPEC/ARTIFACTS/CargoArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.certificate@1": {
+      "summary": "Witness plus bounded independent checker.",
+      "path": "SPEC/ARTIFACTS/CertificateArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.continuation@1": {
+      "summary": "Resumable bounded work.",
+      "path": "SPEC/ARTIFACTS/ContinuationArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.diagnostic@1": {
+      "summary": "Typed unresolved or fault result with routes.",
+      "path": "SPEC/ARTIFACTS/DiagnosticArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.experiment@1": {
+      "summary": "Frozen experiment, raw/derived evidence, and decision.",
+      "path": "SPEC/ARTIFACTS/ExperimentArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.proof_obligation@1": {
+      "summary": "Exact statement for a proof provider.",
+      "path": "SPEC/ARTIFACTS/ProofObligationArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.research_state@1": {
+      "summary": "V18 criterion/obstruction/candidate research state.",
+      "path": "SPEC/ARTIFACTS/ResearchStateArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.source@1": {
+      "summary": "Exact source bytes, glyphs, edition, and provenance.",
+      "path": "SPEC/ARTIFACTS/SourceArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.symbolic@1": {
+      "summary": "Canonical symbolic form.",
+      "path": "SPEC/ARTIFACTS/SymbolicArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.value@1": {
+      "summary": "Concrete or structured value with exactness label.",
+      "path": "SPEC/ARTIFACTS/ValueArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.wasm@1": {
+      "summary": "Generated WebAssembly component and semantic manifest.",
+      "path": "SPEC/ARTIFACTS/WasmArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.artifact.world_portfolio@1": {
+      "summary": "Several labeled world results without hidden collapse.",
+      "path": "SPEC/ARTIFACTS/WorldPortfolioArtifact.emath",
+      "class": "artifact",
+      "owner": "emath-artifact",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "determinism",
+        "authority",
+        "required paths",
+        "sensitive fields"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.exists@1": {
+      "summary": "Existential proposition or witness goal.",
+      "path": "SPEC/BINDERS/ExistsBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.forall@1": {
+      "summary": "Universal proposition over a declared domain.",
+      "path": "SPEC/BINDERS/ForallBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.integral@1": {
+      "summary": "Integral over a measure/domain with explicit method.",
+      "path": "SPEC/BINDERS/IntegralBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.limit@1": {
+      "summary": "Limit goal under a declared topology/direction.",
+      "path": "SPEC/BINDERS/LimitBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.product@1": {
+      "summary": "Multiplicative fold over a finite or method-supported domain.",
+      "path": "SPEC/BINDERS/ProductBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.series@1": {
+      "summary": "Finite or convergent series with explicit convergence semantics.",
+      "path": "SPEC/BINDERS/SeriesBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.binder.sum@1": {
+      "summary": "Additive fold over a finite or method-supported domain.",
+      "path": "SPEC/BINDERS/SumBinder.emath",
+      "class": "binder",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.binder.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "lexical scope",
+        "range endpoints",
+        "termination/convergence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.aggregate.product@1": {
+      "summary": "Multiplicative aggregation over a domain.",
+      "path": "SPEC/CAPABILITIES/ProductCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.aggregate.sum@1": {
+      "summary": "Additive aggregation over a domain.",
+      "path": "SPEC/CAPABILITIES/SumCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.analysis.integral@1": {
+      "summary": "Integral with explicit method/evidence.",
+      "path": "SPEC/CAPABILITIES/IntegralCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.analysis.limit@1": {
+      "summary": "Limit under declared topology and direction.",
+      "path": "SPEC/CAPABILITIES/LimitCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.analysis.series@1": {
+      "summary": "Series evaluation with convergence contract.",
+      "path": "SPEC/CAPABILITIES/SeriesCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.coding.rs_encode@1": {
+      "summary": "Exact polynomial evaluation codeword.",
+      "path": "SPEC/CAPABILITIES/RSEncodeCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.evidence.check@1": {
+      "summary": "Check evidence within its authority.",
+      "path": "SPEC/CAPABILITIES/EvidenceCheckCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.field.mod_inverse@1": {
+      "summary": "Exact modular inverse when gcd=1.",
+      "path": "SPEC/CAPABILITIES/ModInverseCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.field.mod_power@1": {
+      "summary": "Exact modular exponentiation.",
+      "path": "SPEC/CAPABILITIES/ModPowerCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.goal.solve@1": {
+      "summary": "Construct a typed solve goal without hidden method selection.",
+      "path": "SPEC/CAPABILITIES/SolveGoalCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.logic.exists@1": {
+      "summary": "Existential proposition or witness goal.",
+      "path": "SPEC/CAPABILITIES/ExistsCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.logic.forall@1": {
+      "summary": "Universal proposition/evaluation over supported domains.",
+      "path": "SPEC/CAPABILITIES/ForallCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.logic.implies@1": {
+      "summary": "Logical implication.",
+      "path": "SPEC/CAPABILITIES/ImpliesCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.math.add@1": {
+      "summary": "Typed addition selected by an instance.",
+      "path": "SPEC/CAPABILITIES/AddCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.math.divide@1": {
+      "summary": "Typed division with zero/noninvertible handling.",
+      "path": "SPEC/CAPABILITIES/DivideCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.math.multiply@1": {
+      "summary": "Typed multiplication.",
+      "path": "SPEC/CAPABILITIES/MultiplyCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.math.power@1": {
+      "summary": "Power under a resolved theory instance.",
+      "path": "SPEC/CAPABILITIES/PowerCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.math.subtract@1": {
+      "summary": "Typed subtraction.",
+      "path": "SPEC/CAPABILITIES/SubtractCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.capability.tensor.softmax@1": {
+      "summary": "Stable normalized exponential.",
+      "path": "SPEC/CAPABILITIES/SoftmaxCapability.emath",
+      "class": "capability",
+      "owner": "emath-term",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no stable op enum",
+        "arity/domain",
+        "numeric-policy identity"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.artifact.overclaim@1": {
+      "summary": "Artifact label exceeds evidence.",
+      "path": "SPEC/DIAGNOSTICS/ArtifactOverclaim.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.authority.dual@1": {
+      "summary": "Two sources claim authority for one FeatureID.",
+      "path": "SPEC/DIAGNOSTICS/DualAuthority.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.exactness.loss@1": {
+      "summary": "Exact request would silently round/demote.",
+      "path": "SPEC/DIAGNOSTICS/ExactnessLoss.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.projection.missing@1": {
+      "summary": "Required feature projection is absent/stale.",
+      "path": "SPEC/DIAGNOSTICS/MissingProjection.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.section.invalid@1": {
+      "summary": "Section violates owning kind schema.",
+      "path": "SPEC/DIAGNOSTICS/InvalidSection.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.spec_hole.blocking@1": {
+      "summary": "Stable generation crosses unresolved semantics.",
+      "path": "SPEC/DIAGNOSTICS/BlockingSpecHole.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.symbol.unresolved@1": {
+      "summary": "Strict symbol has no FeatureID.",
+      "path": "SPEC/DIAGNOSTICS/UnresolvedSymbol.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.diagnostic.world.unsupported@1": {
+      "summary": "World lacks required capability.",
+      "path": "SPEC/DIAGNOSTICS/WorldUnsupported.emath",
+      "class": "diagnostic",
+      "owner": "error registry",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "stable code",
+        "structured payload",
+        "route accuracy"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.family.constraint_puzzle@1": {
+      "summary": "Generates puzzle kinds from variables, domains, constraints, verifier, and solution policy.",
+      "path": "SPEC/FAMILIES/ConstraintPuzzleFamily.emath",
+      "class": "family",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.kind.family@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "bounded expansion",
+        "generated identity",
+        "third-repetition rule"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.family.criterion_edge@1": {
+      "summary": "Generates V18 criterion-edge features with direction and authority.",
+      "path": "SPEC/FAMILIES/CriterionEdgeFamily.emath",
+      "class": "family",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.kind.family@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "bounded expansion",
+        "generated identity",
+        "third-repetition rule"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.family.elementwise_unary@1": {
+      "summary": "Generates scalar/tensor unary capabilities from function, domain, and derivative metadata.",
+      "path": "SPEC/FAMILIES/ElementwiseUnaryFamily.emath",
+      "class": "family",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.kind.family@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "bounded expansion",
+        "generated identity",
+        "third-repetition rule"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.family.execution_transform@1": {
+      "summary": "Generates V17 schedule transformations with preconditions and evidence.",
+      "path": "SPEC/FAMILIES/ExecutionTransformFamily.emath",
+      "class": "family",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.kind.family@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "bounded expansion",
+        "generated identity",
+        "third-repetition rule"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.family.finite_cipher@1": {
+      "summary": "Generates finite-alphabet cipher capabilities, round-trip laws, and analysis fixtures.",
+      "path": "SPEC/FAMILIES/FiniteCipherFamily.emath",
+      "class": "family",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.kind.family@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "bounded expansion",
+        "generated identity",
+        "third-repetition rule"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.field_pack.conjecture_dynamics@1": {
+      "summary": "V18 frontiers, criteria, research worlds, and research-state artifacts.",
+      "path": "SPEC/FIELD_PACKS/ConjectureDynamicsPack.emath",
+      "class": "field-pack",
+      "owner": "emath-store",
+      "dependencies": [
+        "std.kind.frontier@1",
+        "std.kind.criterion@1",
+        "std.world.research.criterion@1",
+        "std.artifact.research_state@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "cycles",
+        "alias collision",
+        "stale image"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.field_pack.core@1": {
+      "summary": "Core syntax, types, capabilities, worlds, and artifacts.",
+      "path": "SPEC/FIELD_PACKS/CorePack.emath",
+      "class": "field-pack",
+      "owner": "emath-store",
+      "dependencies": [
+        "std.kind.field_pack@1",
+        "std.type.int@1",
+        "std.capability.math.add@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "cycles",
+        "alias collision",
+        "stale image"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.field_pack.cryptology@1": {
+      "summary": "V15 ciphers, puzzles, codes, protocols, worlds, methods, and evidence.",
+      "path": "SPEC/FIELD_PACKS/CryptologyPack.emath",
+      "class": "field-pack",
+      "owner": "emath-store",
+      "dependencies": [
+        "std.kind.cipher@1",
+        "std.kind.puzzle@1",
+        "std.kind.protocol@1",
+        "std.kind.code@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "cycles",
+        "alias collision",
+        "stale image"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.field_pack.exact_algebra@1": {
+      "summary": "Exact rings/fields, algebraic structures, vectors, matrices, and methods.",
+      "path": "SPEC/FIELD_PACKS/ExactAlgebraPack.emath",
+      "class": "field-pack",
+      "owner": "emath-store",
+      "dependencies": [
+        "std.kind.field_pack@1",
+        "std.theory.field@1",
+        "std.type.gf@1",
+        "std.type.matrix@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "cycles",
+        "alias collision",
+        "stale image"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.field_pack.execution_dynamics@1": {
+      "summary": "V17 workloads, schedules, metrics, campaigns, and measured worlds.",
+      "path": "SPEC/FIELD_PACKS/ExecutionDynamicsPack.emath",
+      "class": "field-pack",
+      "owner": "emath-store",
+      "dependencies": [
+        "std.kind.performance_campaign@1",
+        "std.world.performance.measured@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "cycles",
+        "alias collision",
+        "stale image"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.instance.gf.field@1": {
+      "summary": "Prime field for literal prime p.",
+      "path": "SPEC/INSTANCES/PrimeFieldInstance.emath",
+      "class": "instance",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.theory.field@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coherence",
+        "conditional laws",
+        "carrier exactness"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.instance.int.add_monoid@1": {
+      "summary": "Integer addition monoid.",
+      "path": "SPEC/INSTANCES/IntAddMonoid.emath",
+      "class": "instance",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.theory.monoid@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coherence",
+        "conditional laws",
+        "carrier exactness"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.instance.int.ring@1": {
+      "summary": "Exact integer ring.",
+      "path": "SPEC/INSTANCES/IntRing.emath",
+      "class": "instance",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.theory.ring@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coherence",
+        "conditional laws",
+        "carrier exactness"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.instance.matrix.mul_monoid@1": {
+      "summary": "Square-matrix multiplication when R is a semiring.",
+      "path": "SPEC/INSTANCES/MatrixMulMonoid.emath",
+      "class": "instance",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.theory.monoid@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coherence",
+        "conditional laws",
+        "carrier exactness"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.capability@1": {
+      "summary": "Defines a typed capability cell.",
+      "path": "SPEC/KINDS/CapabilityKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.cipher@1": {
+      "summary": "Defines message/key types, encrypt/decrypt, correctness, security, and providers.",
+      "path": "SPEC/KINDS/CipherKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.code@1": {
+      "summary": "Defines encoder, channel/noise, decoder, and recovery guarantees.",
+      "path": "SPEC/KINDS/CodeKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.criterion@1": {
+      "summary": "Defines a directional relation between statements with scoped evidence.",
+      "path": "SPEC/KINDS/CriterionKind.emath",
+      "class": "kind",
+      "owner": "emath-frontier",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.custom@1": {
+      "summary": "Open-semantics declaration preserving unknown symbols and world portfolios.",
+      "path": "SPEC/KINDS/CustomKind.emath",
+      "class": "kind",
+      "owner": "emath-genesis",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.family@1": {
+      "summary": "Generates regular feature capsules from a bounded template.",
+      "path": "SPEC/KINDS/FamilyKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.field_pack@1": {
+      "summary": "Defines an installable semantic feature bundle.",
+      "path": "SPEC/KINDS/FieldPackKind.emath",
+      "class": "kind",
+      "owner": "emath-store",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.frontier@1": {
+      "summary": "Defines an unresolved-problem research programme and research-state output.",
+      "path": "SPEC/KINDS/FrontierKind.emath",
+      "class": "kind",
+      "owner": "emath-frontier",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.function@1": {
+      "summary": "Typed mathematical mapping with definitions, goals, tests, and artifacts.",
+      "path": "SPEC/KINDS/FunctionKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.instance@1": {
+      "summary": "Implements a theory over a carrier.",
+      "path": "SPEC/KINDS/InstanceKind.emath",
+      "class": "kind",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.kind@1": {
+      "summary": "Defines a bounded schema-driven declaration kind.",
+      "path": "SPEC/KINDS/KindDefinition.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.method@1": {
+      "summary": "Defines a strategy for satisfying a typed goal.",
+      "path": "SPEC/KINDS/MethodKind.emath",
+      "class": "kind",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.model@1": {
+      "summary": "State, parameters, equations, transitions, events, and observations.",
+      "path": "SPEC/KINDS/ModelKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.performance_campaign@1": {
+      "summary": "Defines baseline, candidates, workloads, targets, gates, metrics, and promotion.",
+      "path": "SPEC/KINDS/PerformanceCampaignKind.emath",
+      "class": "kind",
+      "owner": "emath-lab-core",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.policy@1": {
+      "summary": "Decision/scoring component with state and protected behavior.",
+      "path": "SPEC/KINDS/PolicyKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.protocol@1": {
+      "summary": "Defines roles, messages, channels, knowledge, claims, and traces.",
+      "path": "SPEC/KINDS/ProtocolKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.puzzle@1": {
+      "summary": "Defines variables, clues, constraints, solution, verification, and generation.",
+      "path": "SPEC/KINDS/PuzzleKind.emath",
+      "class": "kind",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.theory@1": {
+      "summary": "Defines abstract operations and laws.",
+      "path": "SPEC/KINDS/TheoryKind.emath",
+      "class": "kind",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.kind.world@1": {
+      "summary": "Defines an explicit interpretation, capabilities, strategy, effects, and evidence.",
+      "path": "SPEC/KINDS/WorldKind.emath",
+      "class": "kind",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no parser branch",
+        "bounded lowering",
+        "canonical aliases"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.lens.agent@1": {
+      "summary": "Compact FeatureIDs, dependencies, gates, owners, and selective expansion.",
+      "path": "SPEC/LENSES/AgentLens.emath",
+      "class": "lens",
+      "owner": "emath-lsp",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "loss disclosure",
+        "round-trip",
+        "hidden semantics"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.lens.formal@1": {
+      "summary": "Explicit types, theories, assumptions, worlds, and obligations.",
+      "path": "SPEC/LENSES/FormalLens.emath",
+      "class": "lens",
+      "owner": "emath-lsp",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "loss disclosure",
+        "round-trip",
+        "hidden semantics"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.lens.user@1": {
+      "summary": "Readable canonical source and concise results.",
+      "path": "SPEC/LENSES/UserLens.emath",
+      "class": "lens",
+      "owner": "emath-lsp",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "loss disclosure",
+        "round-trip",
+        "hidden semantics"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.method.measure.paired@1": {
+      "summary": "Paired baseline/candidate measurement.",
+      "path": "SPEC/METHODS/PairedBenchmarkMethod.emath",
+      "class": "method",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.kind.method@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "preconditions",
+        "guarantee scope",
+        "fallback"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.method.proof.external@1": {
+      "summary": "Send exact obligations to a proof provider.",
+      "path": "SPEC/METHODS/ProofProviderMethod.emath",
+      "class": "method",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.kind.method@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "preconditions",
+        "guarantee scope",
+        "fallback"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.method.research.counterexample@1": {
+      "summary": "Find a counterexample within a scoped model/domain.",
+      "path": "SPEC/METHODS/CounterexampleSearchMethod.emath",
+      "class": "method",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.kind.method@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "preconditions",
+        "guarantee scope",
+        "fallback"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.method.search.exhaustive@1": {
+      "summary": "Exact witness or counterexample search on finite domains.",
+      "path": "SPEC/METHODS/ExhaustiveFiniteSearch.emath",
+      "class": "method",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.kind.method@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "preconditions",
+        "guarantee scope",
+        "fallback"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.method.solve.newton@1": {
+      "summary": "Root solving for differentiable scalar functions.",
+      "path": "SPEC/METHODS/NewtonMethod.emath",
+      "class": "method",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.kind.method@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "preconditions",
+        "guarantee scope",
+        "fallback"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.method.world.portfolio@1": {
+      "summary": "Evaluate one admitted term across several explicit worlds.",
+      "path": "SPEC/METHODS/WorldPortfolioMethod.emath",
+      "class": "method",
+      "owner": "emath-plan",
+      "dependencies": [
+        "std.kind.method@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "preconditions",
+        "guarantee scope",
+        "fallback"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.migration.capability_manual_to_generated@1": {
+      "summary": "Migrate manual CAPABILITY view to generated orthogonal view.",
+      "path": "SPEC/MIGRATIONS/CapabilityManualToGenerated.emath",
+      "class": "migration",
+      "owner": "emath-migrate",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "idempotence",
+        "source preservation",
+        "semantic diff"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.migration.cypher_to_cipher@1": {
+      "summary": "Migrate cypher spelling to cipher spelling.",
+      "path": "SPEC/MIGRATIONS/CypherToCipher.emath",
+      "class": "migration",
+      "owner": "emath-migrate",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "idempotence",
+        "source preservation",
+        "semantic diff"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.migration.domain_grammar_to_pack@1": {
+      "summary": "Migrate domain grammar production to syntax-pack expansion.",
+      "path": "SPEC/MIGRATIONS/DomainGrammarToPack.emath",
+      "class": "migration",
+      "owner": "emath-migrate",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "idempotence",
+        "source preservation",
+        "semantic diff"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.migration.reference_to_capsule@1": {
+      "summary": "Migrate legacy reference authority to Feature Capsule authority.",
+      "path": "SPEC/MIGRATIONS/LegacyReferenceToCapsule.emath",
+      "class": "migration",
+      "owner": "emath-migrate",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "idempotence",
+        "source preservation",
+        "semantic diff"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.budget@1": {
+      "summary": "Time, memory, search, precision, and provider budgets.",
+      "path": "SPEC/SECTIONS/BudgetSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.compile@1": {
+      "summary": "Artifact target, numeric representation, and host policy.",
+      "path": "SPEC/SECTIONS/CompileSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.constraints@1": {
+      "summary": "Mathematical constraints and validity predicates.",
+      "path": "SPEC/SECTIONS/ConstraintsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.constructors@1": {
+      "summary": "Valid-state constructors and obligations.",
+      "path": "SPEC/SECTIONS/ConstructorsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.definitions@1": {
+      "summary": "Definitions and equations stating mathematical meaning.",
+      "path": "SPEC/SECTIONS/DefinitionsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.equations@1": {
+      "summary": "Implicit equations and residual relations.",
+      "path": "SPEC/SECTIONS/EquationsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.evidence@1": {
+      "summary": "Evidence requirements, sources, and authority ceilings.",
+      "path": "SPEC/SECTIONS/EvidenceSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.goals@1": {
+      "summary": "Requested work, separate from definitions.",
+      "path": "SPEC/SECTIONS/GoalsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.inputs@1": {
+      "summary": "Typed inputs and parameters.",
+      "path": "SPEC/SECTIONS/InputsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.methods@1": {
+      "summary": "Permitted/preferred solution strategies.",
+      "path": "SPEC/SECTIONS/MethodsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.outputs@1": {
+      "summary": "Typed named outputs.",
+      "path": "SPEC/SECTIONS/OutputsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.provenance@1": {
+      "summary": "Source and derivation lineage.",
+      "path": "SPEC/SECTIONS/ProvenanceSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.state@1": {
+      "summary": "State variables and initial values.",
+      "path": "SPEC/SECTIONS/StateSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.tests@1": {
+      "summary": "Embedded examples and expectations.",
+      "path": "SPEC/SECTIONS/TestsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.section.worlds@1": {
+      "summary": "Explicit world selection or portfolio policy.",
+      "path": "SPEC/SECTIONS/WorldsSection.emath",
+      "class": "section",
+      "owner": "emath-schema",
+      "dependencies": [
+        "std.syntax.section.generic@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "payload schema",
+        "order/multiplicity",
+        "owner restrictions"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.definition@1": {
+      "summary": "Defines a binding in definition contexts; proposition equality is separate.",
+      "path": "SPEC/SYMBOLS/DefinitionSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.equality.approx@1": {
+      "summary": "Forms an explicitly bounded approximate relation.",
+      "path": "SPEC/SYMBOLS/ApproxEqualitySymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.equality.exact@1": {
+      "summary": "Forms an exact equality proposition.",
+      "path": "SPEC/SYMBOLS/ExactEqualitySymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.logic.implies@1": {
+      "summary": "Logical implication.",
+      "path": "SPEC/SYMBOLS/ImplicationSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.math.add@1": {
+      "summary": "Addition selected through type/theory resolution.",
+      "path": "SPEC/SYMBOLS/AdditionSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.math.divide@1": {
+      "summary": "Division selected through type/theory resolution.",
+      "path": "SPEC/SYMBOLS/DivisionSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.math.multiply@1": {
+      "summary": "Multiplication selected through type/theory resolution.",
+      "path": "SPEC/SYMBOLS/MultiplicationSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.math.power@1": {
+      "summary": "Power selected by base theory and exponent type.",
+      "path": "SPEC/SYMBOLS/PowerSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.math.subtract@1": {
+      "summary": "Subtraction or additive inverse selected through type/theory resolution.",
+      "path": "SPEC/SYMBOLS/SubtractionSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.symbol.membership@1": {
+      "summary": "Membership relation and binder-domain connective.",
+      "path": "SPEC/SYMBOLS/MembershipSymbol.emath",
+      "class": "symbol",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "Unicode confusables",
+        "precedence drift",
+        "multi-role glyph"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.binder.generic@1": {
+      "summary": "Provides the universal binder skeleton.",
+      "path": "SPEC/CORE/UniformBinder.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.declaration.generic@1": {
+      "summary": "Parses `emath <kind> Name: suite` without domain knowledge.",
+      "path": "SPEC/CORE/GenericDeclaration.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.expression.core@1": {
+      "summary": "Provides literals, paths, calls, collections, records, indexing, and registered operators.",
+      "path": "SPEC/CORE/ExpressionCore.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.glyph.unknown@1": {
+      "summary": "Preserves unregistered glyphs without inventing meaning.",
+      "path": "SPEC/CORE/UnknownGlyph.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.let@1": {
+      "summary": "Introduces a hygienic immutable local binding.",
+      "path": "SPEC/CORE/LocalLet.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.section.generic@1": {
+      "summary": "Parses a named section whose meaning is supplied by its kind schema.",
+      "path": "SPEC/CORE/GenericSection.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.source@1": {
+      "summary": "Losslessly preserves UTF-8 source and layout.",
+      "path": "SPEC/CORE/CoreSource.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax.use@1": {
+      "summary": "Imports names, packs, worlds, methods, and syntax under a lock.",
+      "path": "SPEC/CORE/UseImport.emath",
+      "class": "syntax",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.source@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "panic-free UTF-8",
+        "exact spans",
+        "no domain keyword"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.syntax_pack.scratch@1": {
+      "summary": "Expands zero-ceremony expressions and intent lines into visible canonical declarations.",
+      "path": "SPEC/CORE/ScratchSurface.emath",
+      "class": "syntax-pack",
+      "owner": "emath-syntax",
+      "dependencies": [
+        "std.syntax.declaration.generic@1",
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden interpretation",
+        "expansion preserves source map"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.theory.field@1": {
+      "summary": "Commutative field structure.",
+      "path": "SPEC/THEORIES/FieldTheory.emath",
+      "class": "theory",
+      "owner": "emath-world-ir",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "law scope",
+        "dependency cycles",
+        "instance coherence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.theory.magma@1": {
+      "summary": "A carrier with one binary operation.",
+      "path": "SPEC/THEORIES/MagmaTheory.emath",
+      "class": "theory",
+      "owner": "emath-world-ir",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "law scope",
+        "dependency cycles",
+        "instance coherence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.theory.monoid@1": {
+      "summary": "Associative operation with identity.",
+      "path": "SPEC/THEORIES/MonoidTheory.emath",
+      "class": "theory",
+      "owner": "emath-world-ir",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "law scope",
+        "dependency cycles",
+        "instance coherence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.theory.ring@1": {
+      "summary": "Ring structure.",
+      "path": "SPEC/THEORIES/RingTheory.emath",
+      "class": "theory",
+      "owner": "emath-world-ir",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "law scope",
+        "dependency cycles",
+        "instance coherence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.theory.semiring@1": {
+      "summary": "Additive and multiplicative structure for linear algebra.",
+      "path": "SPEC/THEORIES/SemiringTheory.emath",
+      "class": "theory",
+      "owner": "emath-world-ir",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "law scope",
+        "dependency cycles",
+        "instance coherence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.theory.world@1": {
+      "summary": "Contract shared by curated worlds.",
+      "path": "SPEC/THEORIES/WorldTheory.emath",
+      "class": "theory",
+      "owner": "emath-world-ir",
+      "dependencies": [],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "law scope",
+        "dependency cycles",
+        "instance coherence"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.bigint@1": {
+      "summary": "Arbitrary-precision signed integers.",
+      "path": "SPEC/TYPES/BigIntType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.bool@1": {
+      "summary": "Boolean truth values.",
+      "path": "SPEC/TYPES/BoolType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.complex@1": {
+      "summary": "Complex values over a declared component representation.",
+      "path": "SPEC/TYPES/ComplexType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.float64@1": {
+      "summary": "IEEE binary64 numeric representation.",
+      "path": "SPEC/TYPES/Float64Type.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.gf@1": {
+      "summary": "Prime finite field values for literal prime p.",
+      "path": "SPEC/TYPES/PrimeFieldType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.int@1": {
+      "summary": "Signed exact integers with explicit overflow lane.",
+      "path": "SPEC/TYPES/IntType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.interval@1": {
+      "summary": "Certified enclosure over an ordered representation.",
+      "path": "SPEC/TYPES/IntervalType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.matrix@1": {
+      "summary": "Fixed-shape matrix over an admitted coefficient type.",
+      "path": "SPEC/TYPES/MatrixType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.meaning_hole@1": {
+      "summary": "Unresolved meaning with constraints and state.",
+      "path": "SPEC/TYPES/MeaningHoleType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.nat@1": {
+      "summary": "Nonnegative exact integers.",
+      "path": "SPEC/TYPES/NatType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.option@1": {
+      "summary": "Explicit optional value.",
+      "path": "SPEC/TYPES/OptionType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.rational@1": {
+      "summary": "Canonical reduced rational values.",
+      "path": "SPEC/TYPES/RationalType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.result@1": {
+      "summary": "Explicit success/failure value.",
+      "path": "SPEC/TYPES/ResultType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.tensor@1": {
+      "summary": "Typed tensor with explicit shape/layout.",
+      "path": "SPEC/TYPES/TensorType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.type.vector@1": {
+      "summary": "Fixed-length vector over an admitted element type.",
+      "path": "SPEC/TYPES/VectorType.emath",
+      "class": "type",
+      "owner": "emath-core",
+      "dependencies": [
+        "std.syntax.expression.core@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "coercions",
+        "constructor validity",
+        "representation loss"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.exact.int@1": {
+      "summary": "Execute exact integer semantics with explicit overflow lane.",
+      "path": "SPEC/WORLDS/ExactIntegerWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.exact.prime_field@1": {
+      "summary": "Execute exact prime-field arithmetic.",
+      "path": "SPEC/WORLDS/PrimeFieldWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.exact.rational@1": {
+      "summary": "Execute exact reduced rational arithmetic.",
+      "path": "SPEC/WORLDS/ExactRationalWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.finite.canonical@1": {
+      "summary": "Assign deterministic total finite operations without intended-meaning claim.",
+      "path": "SPEC/WORLDS/CanonicalFiniteWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.numeric.interval@1": {
+      "summary": "Propagate certified enclosures.",
+      "path": "SPEC/WORLDS/IntervalWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.numeric.strict_f64@1": {
+      "summary": "Execute deterministic binary64 policy.",
+      "path": "SPEC/WORLDS/StrictFloatWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.performance.measured@1": {
+      "summary": "Inject trusted performance samples.",
+      "path": "SPEC/WORLDS/MeasuredPerformanceWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.research.criterion@1": {
+      "summary": "Produce criterion and proof-obligation artifacts.",
+      "path": "SPEC/WORLDS/CriterionResearchWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    },
+    "std.world.symbolic.free@1": {
+      "summary": "Construct operations structurally without intended meaning.",
+      "path": "SPEC/WORLDS/FreeSymbolicWorld.emath",
+      "class": "world",
+      "owner": "emath-world-ir",
+      "dependencies": [
+        "std.kind.world@1",
+        "std.theory.world@1"
+      ],
+      "required_projections": [
+        "identity",
+        "surface",
+        "parse",
+        "lowering",
+        "static-semantics",
+        "reference",
+        "worlds",
+        "execution",
+        "artifact",
+        "diagnostics",
+        "documentation",
+        "tooling",
+        "conformance",
+        "migration",
+        "agent-view"
+      ],
+      "hazards": [
+        "no hidden meaning",
+        "authority ceiling",
+        "total disposition"
+      ],
+      "read": [
+        "Feature Capsule",
+        "direct dependencies",
+        "conformance cases",
+        "current owner contract"
+      ],
+      "edit": [
+        "normative capsule",
+        "owner implementation",
+        "targeted tests"
+      ]
+    }
+  }
+}

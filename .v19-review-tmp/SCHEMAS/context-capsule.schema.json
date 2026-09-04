@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Context Capsule",
+  "type": "object",
+  "required": [
+    "schema",
+    "feature",
+    "baseline",
+    "authority",
+    "dependency_closure",
+    "read_order",
+    "owner",
+    "required_projections",
+    "gates",
+    "hazards"
+  ]
+}

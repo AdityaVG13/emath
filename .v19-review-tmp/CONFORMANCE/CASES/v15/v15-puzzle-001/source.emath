@@ -1,0 +1,10 @@
+use puzzles
+
+emath puzzle MiniLatin:
+    inputs:
+        grid: Matrix<Int,2,2>
+    constraints:
+        rows_all_different(grid)
+        columns_all_different(grid)
+    goals:
+        solve grid

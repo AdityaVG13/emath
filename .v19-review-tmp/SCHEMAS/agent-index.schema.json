@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent Index",
+  "type": "object",
+  "required": [
+    "schema",
+    "image_id",
+    "features"
+  ]
+}

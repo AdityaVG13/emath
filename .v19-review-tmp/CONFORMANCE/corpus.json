@@ -1,0 +1,76 @@
+{
+  "schema": "emath.conformance-corpus.v1",
+  "cases": [
+    {
+      "id": "core-add-001",
+      "path": "CONFORMANCE/CASES/core/core-add-001",
+      "features": [
+        "std.kind.function@1",
+        "std.symbol.math.add@1",
+        "std.capability.math.add@1",
+        "std.type.int@1"
+      ]
+    },
+    {
+      "id": "sum-binder-001",
+      "path": "CONFORMANCE/CASES/core/sum-binder-001",
+      "features": [
+        "std.binder.sum@1",
+        "std.capability.aggregate.sum@1",
+        "std.type.int@1"
+      ]
+    },
+    {
+      "id": "custom-symbolic-001",
+      "path": "CONFORMANCE/CASES/core/custom-symbolic-001",
+      "features": [
+        "std.kind.custom@1",
+        "std.world.symbolic.free@1",
+        "std.syntax.glyph.unknown@1"
+      ]
+    },
+    {
+      "id": "v15-cipher-001",
+      "path": "CONFORMANCE/CASES/v15/v15-cipher-001",
+      "features": [
+        "std.kind.cipher@1",
+        "std.field_pack.cryptology@1"
+      ]
+    },
+    {
+      "id": "v15-puzzle-001",
+      "path": "CONFORMANCE/CASES/v15/v15-puzzle-001",
+      "features": [
+        "std.kind.puzzle@1",
+        "std.field_pack.cryptology@1"
+      ]
+    },
+    {
+      "id": "v16-promotion-001",
+      "path": "CONFORMANCE/CASES/v16/v16-promotion-001",
+      "features": [
+        "std.type.gf@1",
+        "std.capability.field.mod_inverse@1",
+        "std.world.exact.prime_field@1"
+      ]
+    },
+    {
+      "id": "v17-campaign-001",
+      "path": "CONFORMANCE/CASES/v17/v17-campaign-001",
+      "features": [
+        "std.kind.performance_campaign@1",
+        "std.world.performance.measured@1",
+        "std.artifact.experiment@1"
+      ]
+    },
+    {
+      "id": "v18-criterion-001",
+      "path": "CONFORMANCE/CASES/v18/v18-criterion-001",
+      "features": [
+        "std.kind.criterion@1",
+        "std.field_pack.conjecture_dynamics@1",
+        "std.artifact.research_state@1"
+      ]
+    }
+  ]
+}

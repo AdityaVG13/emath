@@ -1,0 +1,23 @@
+{
+  "schema": "emath.conformance-case.v1",
+  "id": "custom-symbolic-001",
+  "features": [
+    "std.kind.custom@1",
+    "std.world.symbolic.free@1",
+    "std.syntax.glyph.unknown@1"
+  ],
+  "positive_source": "source.emath",
+  "negative_source": "negative.emath",
+  "expected": "expected.json",
+  "expected_diagnostic": "E-SYMBOL-UNRESOLVED",
+  "projections": [
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "worlds",
+    "artifact",
+    "diagnostics"
+  ],
+  "golden_change_authority": "ELP + FeatureID decision"
+}

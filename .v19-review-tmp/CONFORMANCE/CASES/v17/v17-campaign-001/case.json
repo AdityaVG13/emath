@@ -1,0 +1,23 @@
+{
+  "schema": "emath.conformance-case.v1",
+  "id": "v17-campaign-001",
+  "features": [
+    "std.kind.performance_campaign@1",
+    "std.world.performance.measured@1",
+    "std.artifact.experiment@1"
+  ],
+  "positive_source": "source.emath",
+  "negative_source": "negative.emath",
+  "expected": "expected.json",
+  "expected_diagnostic": "E-SECTION-INVALID",
+  "projections": [
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "worlds",
+    "artifact",
+    "diagnostics"
+  ],
+  "golden_change_authority": "ELP + FeatureID decision"
+}
