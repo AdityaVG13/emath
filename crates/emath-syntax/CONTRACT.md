@@ -74,6 +74,10 @@ package: `parser_refusals_negative.rs`, `unit_brackets.rs`, `genesis.rs`,
 ## No-claim boundaries
 
 Parser is a bootstrap implementation and is replaceable by the Phase 4
-lossless parser. The G1 world/forest stage (bounded parse forest plus
-signature inference) lives in `emath-genesis`; this crate carries no
-emath-genesis dependency and makes no claim on it.
+lossless parser. Surface recognition is a universal mechanism: a spelling,
+syntax node, parser branch, or successful parse grants no FeatureID authority
+and makes no mathematical, world, exactness, or evidence claim. Named meaning
+comes only from the authored capsule selected by the verified Language Image.
+The G1 world/forest stage (bounded parse forest plus signature inference) lives
+in `emath-genesis`; this crate carries no emath-genesis dependency and makes no
+claim on it.

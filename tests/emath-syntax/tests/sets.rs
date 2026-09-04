@@ -1,6 +1,6 @@
-//! emath-r3-sets-tub8 (B01+U3) failure-first parse tests.
+//! Set literals (B01+U3) failure-first parse tests.
 //!
-//! Contracts (each failed against the pre-bead parser, which refused every
+//! Contracts (each failed against the pre-parser, which refused every
 //! `{` in expression position with E-SYN-110):
 //! - `{2, 3, 5}` parses as a set literal (`ExprKind::Set`).
 //! - `{n in 0..100 if is_prime(n)}` parses as a set comprehension.
@@ -11,11 +11,11 @@
 //!   refuses with pinned code `E-SYN-154`, never silently a set.
 //!
 //! Phase B (eval: `Value::Set`, `TypeNode::Set`, comprehension lowering)
-//! lands after emath-ir fjxh.2; see internal/status/compliance/.
+//! lands after emath-ir; see internal/status/compliance/.
 
-use emath_core::limits::Limits;
-use emath_core::tree::{BinderKind, BinaryOp, ExprKind, Item, StmtKind};
 use emath_core::FileId;
+use emath_core::limits::Limits;
+use emath_core::tree::{BinaryOp, BinderKind, ExprKind, Item, StmtKind};
 use emath_exec_ir::interp::Value;
 use emath_sema::CompilerSession;
 use emath_syntax::formatter::format;
@@ -57,7 +57,9 @@ fn parse_definition(source: &str, name: &str) -> emath_core::tree::Expr {
             .map(|error| (error.code, error.message.clone()))
             .collect::<Vec<_>>()
     );
-    def_expr(&tree, name).cloned().unwrap_or_else(|| panic!("definition `{name}` not found"))
+    def_expr(&tree, name)
+        .cloned()
+        .unwrap_or_else(|| panic!("definition `{name}` not found"))
 }
 
 #[test]
@@ -67,7 +69,10 @@ fn set_literal_parses() {
         "s",
     );
     let ExprKind::Set(items) = &value.kind else {
-        panic!("`{{2, 3, 5}}` must parse as ExprKind::Set, got {:?}", value.kind);
+        panic!(
+            "`{{2, 3, 5}}` must parse as ExprKind::Set, got {:?}",
+            value.kind
+        );
     };
     assert_eq!(items.len(), 3, "set literal element count");
     assert!(matches!(items[0].kind, ExprKind::Int(_)));
@@ -79,15 +84,27 @@ fn set_comprehension_parses_with_guard() {
         "emath function Probe:\n    definitions:\n        s = {n in 0..100 if is_prime(n)}\n",
         "s",
     );
-    let ExprKind::SetComprehension { element, var, domain, guard } = &value.kind else {
+    let ExprKind::SetComprehension {
+        element,
+        var,
+        domain,
+        guard,
+    } = &value.kind
+    else {
         panic!(
             "`{{n in 0..100 if is_prime(n)}}` must parse as SetComprehension, got {:?}",
             value.kind
         );
     };
     assert_eq!(var, "n");
-    assert!(matches!(element.kind, ExprKind::Path { .. }), "element is the bound name");
-    assert!(matches!(&domain.kind, ExprKind::Range { .. }), "domain is the range");
+    assert!(
+        matches!(element.kind, ExprKind::Path { .. }),
+        "element is the bound name"
+    );
+    assert!(
+        matches!(&domain.kind, ExprKind::Range { .. }),
+        "domain is the range"
+    );
     assert!(guard.is_some(), "guard must be captured");
 }
 
@@ -116,7 +133,11 @@ fn membership_operator_parses_outside_binders() {
     let ExprKind::Binary { op, .. } = &value.kind else {
         panic!("`v in s` must parse as Binary, got {:?}", value.kind);
     };
-    assert_eq!(*op, BinaryOp::In, "`in` in expression position is membership");
+    assert_eq!(
+        *op,
+        BinaryOp::In,
+        "`in` in expression position is membership"
+    );
 }
 
 #[test]
@@ -136,17 +157,19 @@ fn binder_in_stays_binder_not_membership() {
 
 #[test]
 fn bare_record_brace_is_refused_with_pinned_code() {
-    // Negative control (bead test plan): `{x: 1}` in expression position
+    // Negative control: `{x: 1}` in expression position
     // with no path prefix is ambiguous between a one-field record and a
     // malformed set. Phase 1 refuses; the pinned code is E-SYN-154.
     let fixture = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/invalid/set_braces_ambiguous.emath"
     ));
-    assert!(fixture.contains("expect: E-SYN-154"), "fixture must pin E-SYN-154");
-    let (_tree, diagnostics) = parse_str(
-        "emath function Probe:\n    definitions:\n        r = {x: 1}\n",
+    assert!(
+        fixture.contains("expect: E-SYN-154"),
+        "fixture must pin E-SYN-154"
     );
+    let (_tree, diagnostics) =
+        parse_str("emath function Probe:\n    definitions:\n        r = {x: 1}\n");
     assert!(
         diagnostics.errors().any(|error| error.code == "E-SYN-154"),
         "bare record brace must refuse E-SYN-154, got {:?}",
@@ -189,7 +212,10 @@ fn elp_x12_both_brace_forms_share_one_profile() {
             "formatted form must reparse: {once}"
         );
         let twice = format(&reparsed.tree, &reparsed.comments);
-        assert_eq!(twice, once, "formatter must be idempotent for the `{{}}` brace form");
+        assert_eq!(
+            twice, once,
+            "formatter must be idempotent for the `{{}}` brace form"
+        );
     }
 }
 
@@ -217,9 +243,7 @@ fn sets_comprehensions_membership_and_records_execute() {
     assert_eq!(values.get("two_in_tens"), Some(&Value::Bool(false)));
     assert_eq!(
         values.get("tens"),
-        Some(&Value::Set(
-            (90..100).map(Value::I64).collect::<Vec<_>>()
-        ))
+        Some(&Value::Set((90..100).map(Value::I64).collect::<Vec<_>>()))
     );
     assert!(matches!(
         values.get("origin"),

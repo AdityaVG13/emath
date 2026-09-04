@@ -1,4 +1,4 @@
-//! emath-sci-chemistry-lane-rymw thermo-equilibrium slice: Wegscheider
+//! Thermo-equilibrium slice: Wegscheider
 //! cycle consistency and ideal-mixture Gibbs minimization, both in
 //! `.emath`-first form over generic nucleus seams — no chemistry Rust
 //! crate, no domain op enum, no parser branch.

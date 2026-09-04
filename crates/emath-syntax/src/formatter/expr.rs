@@ -123,7 +123,7 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             interpolation,
             extrapolation,
         } => {
-            // 04 §5.4 (emath-r3-timeseries-1nsa): byte-exact rendering of
+            // 04 §5.4: byte-exact rendering of
             // the declared policy suffix; an absent part renders nothing
             // (the language default is not spelled).
             format_expr(out, value, Prec::Root);

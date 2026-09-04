@@ -1,5 +1,5 @@
 //! `observations:` sections — read-only measured evidence
-//! (bead emath-r3-observations-9ffu, spec 04 §5.2).
+//! (spec 04 §5.2).
 //!
 //! Contracts:
 //! - an `observations:` section admits; each `obs` row is a measured

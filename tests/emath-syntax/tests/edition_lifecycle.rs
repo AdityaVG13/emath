@@ -49,7 +49,10 @@ fn deprecated_example_has_verified_migration_and_edition_is_not_meaning() {
         emath_sema::migrate::RULE_CANONICAL_FORMAT.id,
     );
     assert_eq!(migrated.receipt.verdict, "complete");
-    assert_eq!(migrated.rewritten_source.as_deref(), Some(rewritten.as_str()));
+    assert_eq!(
+        migrated.rewritten_source.as_deref(),
+        Some(rewritten.as_str())
+    );
 
     let modern = "emath function Square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
     let mut old = CompilerSession::with_edition(Limits::default(), Edition::Ed2026);

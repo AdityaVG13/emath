@@ -1,4 +1,4 @@
-//! `emath-r3-match-expr-dnbd`: U6 match expressions.
+//!: U6 match expressions.
 //!
 //! `match subject { pattern => value, ... }` is expression-position
 //! sugar for `cases` (U1): a literal pattern (Int/Float/Str/Bool, with
@@ -27,7 +27,7 @@ use emath_syntax::install_source_parser;
 fn check_source(source: &str) -> emath_sema::admit::CheckResult {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
-    session.check_owned("r3-match-expr", source)
+    session.check_owned("match-expressions", source)
 }
 
 /// Parse a one-definition function and return the definition's value
@@ -92,7 +92,7 @@ fn match_expression_parses_to_cases_desugar() {
     assert!(matches!(&value.kind, ExprKind::Float(text) if text == "1.0"));
     assert!(matches!(&else_arm.kind, ExprKind::Float(text) if text == "0.0"));
 
-    // String literal patterns are first-class (the bead's own example).
+    // String literal patterns are first-class (the own example).
     let expr = defn_expr(
         "emath function g:\n    inputs:\n        x: Float64\n\n    definitions:\n        g = match x { 0 => \"zero\", _ => \"nonzero\" }\n",
     );
@@ -151,8 +151,7 @@ fn missing_catch_all_refuses() {
     assert!(
         diags
             .errors()
-            .any(|error| error.code == "E-SYN-110"
-                && error.message.contains("catch-all")),
+            .any(|error| error.code == "E-SYN-110" && error.message.contains("catch-all")),
         "missing catch-all must refuse E-SYN-110 naming the catch-all, got {diags:?}"
     );
 }
@@ -166,8 +165,7 @@ fn empty_match_refuses() {
     assert!(
         diags
             .errors()
-            .any(|error| error.code == "E-SYN-110"
-                && error.message.contains("catch-all")),
+            .any(|error| error.code == "E-SYN-110" && error.message.contains("catch-all")),
         "empty match must refuse E-SYN-110, got {diags:?}"
     );
 }
@@ -181,10 +179,9 @@ fn catch_all_must_be_last() {
     );
     let _ = tree;
     assert!(
-        diags
-            .errors()
-            .any(|error| error.code == "E-SYN-101"
-                && error.message.contains("must be the last arm")),
+        diags.errors().any(
+            |error| error.code == "E-SYN-101" && error.message.contains("must be the last arm")
+        ),
         "mid-match catch-all must refuse E-SYN-101, got {diags:?}"
     );
 }

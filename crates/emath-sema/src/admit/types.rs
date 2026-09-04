@@ -8,11 +8,15 @@ use std::collections::BTreeSet;
 
 use super::E_UNSUPPORTED_TYPE;
 
+mod shape;
+
+pub(super) use shape::*;
+
 /// Largest admitted prime-field modulus: i32::MAX. Field values are exact
 /// i64 and the interpreter's modular kernels (extended gcd) run on i64;
 /// capping the TYPE-LEVEL prime at i32::MAX keeps the field in the exact
 /// i64 square (p² < 2^62) while staying representable in i32-lane kernels
-/// (emath-option-result-graph-field-aj8d).
+///.
 const FIELD_PRIME_MAX: i64 = i32::MAX as i64;
 
 /// Trial division: whether `p` is a prime (p ≥ 2). Within the admitted
@@ -35,7 +39,7 @@ fn is_prime(p: i64) -> bool {
 }
 
 /// How a `Field<p>`/`GF<p>` generic argument reads, so the refusal names
-/// the exact constraint (emath-option-result-graph-field-aj8d pass 8):
+/// the exact constraint:
 /// a plain integer literal carries a candidate modulus; an integral
 /// literal too large for i64 is refused for range (never mis-typed as
 /// "not a literal"); a type arg (`GF<Int>`) or a computed value arg
@@ -190,11 +194,11 @@ pub(super) fn map_type(
         "Int" => Some(TypeNode::Int),
         "Complex" => Some(TypeNode::Complex(Box::new(TypeNode::Float64))),
         "Self" => Some(TypeNode::Other(QualifiedName("Self".into()))),
-        // Field<p> / GF<p> — prime fields (emath-option-result-graph-field-aj8d).
+        // Field<p> / GF<p> — prime fields.
         // The PRIME is a TYPE-LEVEL constant: the declared modulus
         // distinguishes the type (GF<7> ≠ Int ≠ GF<5>), fixing the
         // earlier silent `"GF" => TypeNode::Int` collapse that dropped
-        // the prime (RED: aj8d_gf_prime_is_distinct_type). Values are
+        // the prime. Values are
         // exact i64; the type admits exactly ONE PRIME INTEGER LITERAL
         // argument and refuses anything else with an E-TYPE-010 message
         // naming the spelling and the constraint.
@@ -318,7 +322,7 @@ pub(super) fn map_type(
             map_shape_type(leaf, generic_args, ty, diagnostics, host_types)
         }
         "Series" => {
-            // 04 §5.4 (emath-r3-timeseries-1nsa): `Series<T in tunit,
+            // 04 §5.4: `Series<T in tunit,
             // U in vunit>` — exactly two unit-annotated numeric type
             // arguments. The pair literal + declared policy is the
             // VALUE (admitted in lowering); pure CSV-text projection
@@ -411,12 +415,12 @@ pub(super) fn map_type(
         }
         "Graph" => {
             // Graph is an ALIAS for the dense `Matrix<Float64>` adjacency
-            // carrier (emath-option-result-graph-field-aj8d, decision b).
+            // carrier (decision b).
             // The graph ops check SHAPES (ParamShape::Matrix), not the
             // TypeNode, so mapping the spelling onto the existing matrix
             // surface makes graph-typed declarations compute with zero
             // downstream changes. Bare `Graph` only; any generic count is
-            // a typed arity refusal (pass 8 contract).
+            // a typed arity refusal (contract).
             if !generic_args.is_empty() {
                 diagnostics.error(
                     E_UNSUPPORTED_TYPE,
@@ -435,7 +439,7 @@ pub(super) fn map_type(
                 })
             }
         }
-        // Total refusal matrix (pass 5, emath-rat-real-types-p5cj): bare
+        // Total refusal matrix: bare
         // `Real` at a type site is NEVER silently mapped to `f64`. The one
         // deterministic E-NUM-004 names the three sanctioned spellings, so
         // bare input, generic arguments, and Vector/Matrix element positions
@@ -450,10 +454,12 @@ pub(super) fn map_type(
             );
             None
         }
-        // Pass 2 (emath-rat-real-types-p5cj): `Rat`/`Rational` map onto the
+        // `Rat`/`Rational` map onto the
         // existing `TypeNode::Rational` (exact i128 num/den) instead of the
         // Phase 1 refusal.
         "Rat" | "Rational" => Some(TypeNode::Rational),
+        // Stage-2 (emath-t63iz): the big-integer field-element spelling.
+        "BigInt" => Some(TypeNode::BigInt),
         "Sequence"
         | "Array"
         | "Field"
@@ -566,6 +572,7 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
             | "Field"
             | "Rat"
             | "Rational"
+            | "BigInt"
     ) || lookup_unit(leaf).is_ok()
 }
 
@@ -590,245 +597,4 @@ pub(super) fn map_constructor_return(
         }
     }
     map_type(ty, diagnostics, host_types)
-}
-
-pub(super) fn map_shape_type(
-    leaf: &str,
-    generic_args: &[GenericArg],
-    ty: &TypeExpr,
-    diagnostics: &mut Diagnostics,
-    host_types: &BTreeSet<String>,
-) -> Option<TypeNode> {
-    // `Vector[3]` / `Matrix[2, 2]` treat all args as extents (element defaults
-    // to Float64). `Vector[Float64, 3]` / `Matrix[Real, m, n]` name the element
-    // first, then the extents.
-    //
-    // C10: Extents can arrive as either GenericArg::Type (old-style: integers
-    // and identifiers parsed as type paths) or GenericArg::Value (new-style:
-    // integer literals and expressions). Both are valid extents.
-    let (element, extent_args) = match generic_args.first() {
-        Some(GenericArg::Type(first)) if is_element_type_arg(first, host_types) => {
-            let element = map_type(first, diagnostics, host_types)?;
-            (element, generic_args.get(1..).unwrap_or(&[]))
-        }
-        _ => (TypeNode::Float64, generic_args),
-    };
-    let mut extents = Vec::new();
-    for arg in extent_args {
-        match arg {
-            GenericArg::Type(ty) => match &ty.kind {
-                SynTypeKind::List(items) if items.is_empty() => {
-                    diagnostics.error(
-                        "E-SHAPE-004",
-                        "declared tensor/vector shape must have rank >= 1",
-                        ty.source,
-                    );
-                    return None;
-                }
-                SynTypeKind::List(items) => {
-                    for item in items {
-                        extents.push(extent_from_type(item, diagnostics)?);
-                    }
-                }
-                SynTypeKind::Path { segments, .. } => {
-                    let name = segments.last().map_or("", String::as_str);
-                    extents.push(emath_ir::Extent::from_surface(name));
-                }
-                _ => {
-                    diagnostics.error(
-                        "E-SHAPE-004",
-                        format!("shape extent `{}` is not well-formed", type_display(ty)),
-                        ty.source,
-                    );
-                    return None;
-                }
-            },
-            GenericArg::Value(expr) => match &expr.kind {
-                ExprKind::Int(value) => {
-                    extents.push(emath_ir::Extent::from_surface(value));
-                }
-                ExprKind::Path { segments, .. } => {
-                    let name = segments.last().map_or("", String::as_str);
-                    extents.push(emath_ir::Extent::from_surface(name));
-                }
-                ExprKind::List(items) if items.is_empty() => {
-                    diagnostics.error(
-                        "E-SHAPE-004",
-                        "declared tensor/vector shape must have rank >= 1",
-                        expr.source,
-                    );
-                    return None;
-                }
-                ExprKind::List(items) => {
-                    for item in items {
-                        extents.push(extent_from_expr(item, diagnostics)?);
-                    }
-                }
-                _ => {
-                    diagnostics.error(
-                        "E-SHAPE-004",
-                        format!(
-                            "shape extent `{}` is not a literal or identifier",
-                            crate::recognition::expr_text(expr)
-                        ),
-                        expr.source,
-                    );
-                    return None;
-                }
-            },
-            GenericArg::Named { .. } => {
-                diagnostics.error(
-                    "E-SHAPE-004",
-                    "named generic arguments are not valid as shape extents",
-                    ty.source,
-                );
-                return None;
-            }
-        }
-    }
-    if leaf == "Tensor"
-        && extents.is_empty()
-        && extent_args.iter().any(
-            |arg| matches!(arg, GenericArg::Type(ty) if matches!(ty.kind, SynTypeKind::List(_))),
-        )
-    {
-        return None;
-    }
-    if !extents.is_empty() {
-        if let Err(error) = emath_ir::Shape::declare(extents.clone()) {
-            diagnostics.error(error.code, error.message, ty.source);
-            return None;
-        }
-    }
-    match leaf {
-        "Vector" if extents.len() > 1 => {
-            diagnostics.error(
-                "E-SHAPE-004",
-                format!("`Vector` takes at most one extent, found {}", extents.len()),
-                ty.source,
-            );
-            None
-        }
-        "Matrix" if !extents.is_empty() && extents.len() != 2 => {
-            diagnostics.error(
-                "E-SHAPE-004",
-                format!(
-                    "`Matrix` takes two extents (rows, cols), found {}",
-                    extents.len()
-                ),
-                ty.source,
-            );
-            None
-        }
-        "Vector" => Some(TypeNode::Vector {
-            element: Box::new(element),
-            extent: extents.first().cloned(),
-        }),
-        "Matrix" => Some(TypeNode::Matrix {
-            element: Box::new(element),
-            rows: extents.first().cloned(),
-            cols: extents.get(1).cloned(),
-        }),
-        _ => Some(TypeNode::Tensor {
-            element: Box::new(element),
-            shape: extents,
-        }),
-    }
-}
-
-pub(super) fn extent_from_type(
-    ty: &TypeExpr,
-    diagnostics: &mut Diagnostics,
-) -> Option<emath_ir::Extent> {
-    match &ty.kind {
-        SynTypeKind::Path { segments, .. } => {
-            let name = segments.last().map_or("", String::as_str);
-            Some(emath_ir::Extent::from_surface(name))
-        }
-        _ => {
-            diagnostics.error(
-                "E-SHAPE-004",
-                format!("shape extent `{}` is not well-formed", type_display(ty)),
-                ty.source,
-            );
-            None
-        }
-    }
-}
-
-fn extent_from_expr(
-    expr: &emath_core::tree::Expr,
-    diagnostics: &mut Diagnostics,
-) -> Option<emath_ir::Extent> {
-    match &expr.kind {
-        ExprKind::Int(value) => Some(emath_ir::Extent::from_surface(value)),
-        ExprKind::Path { segments, .. } => {
-            let name = segments.last().map_or("", String::as_str);
-            Some(emath_ir::Extent::from_surface(name))
-        }
-        _ => {
-            diagnostics.error(
-                "E-SHAPE-004",
-                format!(
-                    "shape extent `{}` is not a literal or identifier",
-                    crate::recognition::expr_text(expr)
-                ),
-                expr.source,
-            );
-            None
-        }
-    }
-}
-
-pub(super) fn type_display(expr: &TypeExpr) -> String {
-    match &expr.kind {
-        SynTypeKind::Path { segments, .. } => segments.join("::"),
-        SynTypeKind::List(items) => {
-            format!(
-                "[{}]",
-                items
-                    .iter()
-                    .map(type_display)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        }
-        SynTypeKind::Tuple(items) => {
-            format!(
-                "({})",
-                items
-                    .iter()
-                    .map(type_display)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        }
-        SynTypeKind::Ref(inner) => format!("&{}", type_display(inner)),
-        SynTypeKind::Product { left, op, right } => {
-            format!(
-                "{}{}{}",
-                type_display(left),
-                op.as_str(),
-                type_display(right)
-            )
-        }
-        SynTypeKind::Pow { base, exponent } => {
-            if matches!(base.kind, SynTypeKind::Product { .. }) {
-                format!("({})^{exponent}", type_display(base))
-            } else {
-                format!("{}^{exponent}", type_display(base))
-            }
-        }
-        SynTypeKind::In { base, unit } => {
-            format!("{} in {}", type_display(base), type_display(unit))
-        }
-        SynTypeKind::Domain { base, lo, hi } => {
-            format!(
-                "{} in [{}, {}]",
-                type_display(base),
-                super::super::recognition::expr_text(lo),
-                super::super::recognition::expr_text(hi)
-            )
-        }
-    }
 }

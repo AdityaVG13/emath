@@ -1,5 +1,5 @@
-//! `emath-v9-06-2rdq.19`: `emath migration` — typed cell/source migration
-//! cards for meaning-affecting changes (Wave 9 V9-13 + Wave 12 cell
+//!: `emath migration` — typed cell/source migration
+//! cards for meaning-affecting changes (V9-13 + cell
 //! editions; extend, not duplicate: the card is a data-driven
 //! `std.kinds.migration` application, never a parser keyword or a
 //! stable-IR branch).
@@ -81,7 +81,7 @@ fn rules_classify_line_carries_area_and_word() {
 fn check_source(source: &str) -> emath_sema::admit::CheckResult {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
-    session.check_owned("v9-06-2rdq-19", source)
+    session.check_owned("migration-cards", source)
 }
 
 fn card(rules: &str, evidence: &str) -> String {
@@ -131,8 +131,7 @@ fn migration_card_with_classified_meaning_and_evidence_admits() {
 fn migration_card_missing_from_section_refuses() {
     // Schema gate (E-KIND-003): exactly one `from:` section is required;
     // a head with no `from:` is not a migration card.
-    let source =
-        "use std.kinds.migration\n\nemath migration vague:\n    rules:\n        classify layout = presentation\n";
+    let source = "use std.kinds.migration\n\nemath migration vague:\n    rules:\n        classify layout = presentation\n";
     let checked = check_source(source);
     assert!(
         checked
@@ -140,13 +139,17 @@ fn migration_card_missing_from_section_refuses() {
             .errors()
             .any(|error| error.code == "E-KIND-003"),
         "missing `from:` must refuse E-KIND-003, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }
 
 #[test]
 fn silent_numeric_policy_change_refuses() {
-    // The bead's headline negative: a `changes:` area with no
+    // The headline negative: a `changes:` area with no
     // classification is refused — the change must be typed, never
     // silently admitted (E-MIGR-011).
     let checked = check_source(&card(
@@ -159,7 +162,11 @@ fn silent_numeric_policy_change_refuses() {
             .errors()
             .any(|error| error.code == "E-MIGR-011"),
         "unclassified numeric_policy change must refuse E-MIGR-011, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -177,7 +184,11 @@ fn unknown_classification_refuses() {
             .errors()
             .any(|error| error.code == "E-MIGR-011"),
         "unknown classification must refuse E-MIGR-011, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -195,7 +206,11 @@ fn meaning_change_without_new_evidence_refuses() {
             .errors()
             .any(|error| error.code == "E-MIGR-012"),
         "meaning change without evidence must refuse E-MIGR-012, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -203,8 +218,7 @@ fn meaning_change_without_new_evidence_refuses() {
 fn authority_raise_never_admits() {
     // `raise` in `rules:` is refused outright: the card classifies, it
     // does not self-grant (mirror of the method-card E-KIND-027 fence).
-    let source =
-        "use std.kinds.migration\n\nemath migration power_grab:\n    from:\n        kind: \"std.tensor.softmax\"\n        to: \"std.tensor.softmax/v2\"\n    rules:\n        raise authority = true\n";
+    let source = "use std.kinds.migration\n\nemath migration power_grab:\n    from:\n        kind: \"std.tensor.softmax\"\n        to: \"std.tensor.softmax/v2\"\n    rules:\n        raise authority = true\n";
     let checked = check_source(source);
     assert!(
         checked
@@ -212,7 +226,11 @@ fn authority_raise_never_admits() {
             .errors()
             .any(|error| error.code == "E-MIGR-012"),
         "`raise` must refuse E-MIGR-012, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }
 

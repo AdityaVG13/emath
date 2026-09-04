@@ -1,4 +1,4 @@
-//! `emath-r3-prob-info-2z5e` surface pins (criterion 2): the `~`
+//! Probability/information surface pins (criterion 2): the `~`
 //! glyph's three coexisting readings must not interfere — distribution
 //! tag on measurement literals (B10+04 §4.3, C7/X5), asymptotics
 //! (`~~`), and logic negation (`!`, which owns negation so `~` never
@@ -58,12 +58,14 @@ fn double_tilde_stays_asymptotics_not_tag() {
     // `a ~~ b` lexes as ONE TildeTilde token and parses to the Asymp
     // binary — never tag `~` + something (tag parse of the second
     // `~` is impossible by construction).
-    let values =
-        parse_defns("emath function f:\n    definitions:\n        r = a ~~ b\n").unwrap();
+    let values = parse_defns("emath function f:\n    definitions:\n        r = a ~~ b\n").unwrap();
     assert!(
         matches!(
             &values[0].kind,
-            ExprKind::Binary { op: emath_core::tree::BinaryOp::Asymp, .. }
+            ExprKind::Binary {
+                op: emath_core::tree::BinaryOp::Asymp,
+                ..
+            }
         ),
         "`~~` must parse as the asymptotic relation, got {:?}",
         values[0].kind
@@ -76,8 +78,8 @@ fn negation_is_bang_not_tilde() {
     // is not an admitted spelling and refuses by name — it is the
     // RESERVED symbolic-negation glyph, never a tilde reading), and
     // `~` is never a negation spelling, so the two can never collide.
-    let error = parse_defns("emath function f:\n    definitions:\n        n = !true\n")
-        .unwrap_err();
+    let error =
+        parse_defns("emath function f:\n    definitions:\n        n = !true\n").unwrap_err();
     assert!(
         error.contains("E-SYN"),
         "`!` prefix refuses by name (reserved glyph), got {error}"
@@ -98,7 +100,7 @@ fn tagged_measured_still_admits_with_typed_boundary() {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned(
-        "r3-prob-info-surface",
+        "prob-info-surface",
         "emath function f:\n    definitions:\n        k = 0.30 ± 0.12 ~ lognormal\n",
     );
     // The boundary code family is admission's; the pin is that parse

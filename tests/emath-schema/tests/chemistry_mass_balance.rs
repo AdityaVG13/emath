@@ -1,4 +1,4 @@
-//! emath-sci-chemistry-lane-rymw first concrete proof: chemistry as
+//! Chemistry expressed as
 //! `.emath` field-pack DATA over the existing generic nucleus — no Rust
 //! chemistry crate, no domain-named evaluator, no chemistry VM branch.
 //!
@@ -33,11 +33,11 @@ const MASS_BALANCE: &str = "std.chem.mass_balance";
 
 /// The capability path of the chemistry balancing cell (auto-derives
 /// primitive positive integer coefficients from the species composition
-/// matrix; second rymw milestone).
+/// matrix; second milestone).
 const BALANCE: &str = "std.chem.balance";
 
 // ===========================================================================
-// Metamorphic testing (testing-metamorphic skill, rymw 10-pass) — MR
+// Metamorphic testing — MR
 // strength matrix. The oracle: for an ARBITRARY composition matrix the
 // canonical balanced equation is not directly known (multiple null
 // vectors, sign conventions), so we verify RELATIONS instead. Every MR

@@ -1,7 +1,7 @@
 //! Exactness ledger: declared, inferred, constructed, open meaning.
 
 use emath_syntax::{
-    exactness_ledger, exactness_ledger_raised, parse_str, ExactnessDimension, ExactnessStatus,
+    ExactnessDimension, ExactnessStatus, exactness_ledger, exactness_ledger_raised, parse_str,
 };
 
 fn has_error(text: &str, code: &str) -> bool {
@@ -53,8 +53,14 @@ fn raise_units_declares_without_rewriting_other_rows() {
         .find(|entry| entry.dimension == ExactnessDimension::Evidence)
         .unwrap();
     assert_eq!(evidence_before.status, evidence_after.status);
-    assert_eq!(ExactnessDimension::from_raise_token("units"), Some(ExactnessDimension::Unit));
-    assert_eq!(ExactnessDimension::from_raise_token("unit"), Some(ExactnessDimension::Unit));
+    assert_eq!(
+        ExactnessDimension::from_raise_token("units"),
+        Some(ExactnessDimension::Unit)
+    );
+    assert_eq!(
+        ExactnessDimension::from_raise_token("unit"),
+        Some(ExactnessDimension::Unit)
+    );
     assert_eq!(ExactnessDimension::from_raise_token("evidence"), None);
     assert_eq!(ExactnessDimension::from_raise_token("numeric"), None);
 }

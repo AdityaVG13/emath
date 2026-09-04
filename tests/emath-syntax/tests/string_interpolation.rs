@@ -1,11 +1,11 @@
-//! `emath-r3-string-interp-og2e`: U8 string interpolation.
+//!: U8 string interpolation.
 //!
 //! Purity constraints keep interpolation evidence-grade: a hole may
 //! carry ONLY a name or a dotted path (never an expression), with an
 //! optional FIXED format spec (`{x:.3f}`; the spec grammar is
 //! `.` digits `f`, nothing else), and `{{`/`}}` are escapes for literal
 //! braces. An expression hole (`{f(x)}`) is a parse-time refusal, the
-//! bead's negative control.
+//! 's negative control.
 //!
 //! Failure-first: the refusal pins are RED until the validation lands
 //! (today any string content parses unchecked); the valid-form pins are
@@ -74,7 +74,7 @@ fn dotted_path_hole_admits() {
 
 #[test]
 fn expression_hole_refuses() {
-    // The bead's negative control: `{f(x)}` is an expression in the
+    // The negative control: `{f(x)}` is an expression in the
     // hole — purity refuses it at parse time.
     let error = parse_defn_string("r = {f(x)}").unwrap_err();
     assert!(
@@ -192,8 +192,7 @@ fn invalid_fixture_refuses_at_parse() {
     assert!(
         diags
             .errors()
-            .any(|error| error.code == "E-SYN-101"
-                && error.message.contains("names or paths")),
+            .any(|error| error.code == "E-SYN-101" && error.message.contains("names or paths")),
         "fixture must refuse the expression hole, got {diags:?}"
     );
 }

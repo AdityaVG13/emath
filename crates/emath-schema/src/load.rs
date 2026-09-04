@@ -54,7 +54,9 @@ fn major_of(version: &str) -> Option<u64> {
 /// One kind resolution refusal (stable codes).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResolveIssue {
-    UnknownKind { name: String },
+    UnknownKind {
+        name: String,
+    },
     ChecksumMismatch {
         name: String,
         found: String,
@@ -65,7 +67,9 @@ pub enum ResolveIssue {
         found: String,
         required: String,
     },
-    RecursiveExpansion { stack: Vec<String> },
+    RecursiveExpansion {
+        stack: Vec<String>,
+    },
 }
 
 impl ResolveIssue {

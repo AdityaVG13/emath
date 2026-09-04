@@ -1,4 +1,4 @@
-//! Migrate receipt contract core (bead emath-r3-migrate-contract-b75y,
+//! Migrate receipt contract core (
 //! 05 §5) — library thin slice. The `emath migrate` CLI subcommand is
 //! DEFERRED (the CLI dispatch files were under active foreign
 //! modification); the contract core is honest now:

@@ -1,4 +1,4 @@
-//! Jacobian evaluation (bead emath-9bj1, Track A3, pass 3). The
+//! Jacobian evaluation (Track A3). The
 //! jacobian surface is parse-time sugar for a matrix literal of
 //! existing dual-number forward-mode `derivative` cells, so its
 //! evaluation must equal hand-derived partials through the SAME
@@ -14,6 +14,15 @@ use emath_sema::admit::CheckResult;
 use emath_syntax::install_source_parser;
 
 fn check_source(name: &str, source: &str) -> CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
@@ -114,12 +123,12 @@ fn jacobian_two_var_evaluates_to_hand_derived_partials() {
     let test = &report.declarations[0].tests[0];
     // J = [[df1/dx, df1/dy], [df2/dx, df2/dy]] = [[y, x], [1, 1]]
     // at (x, y) = (3, 2): [[2, 3], [1, 1]] in row-major order.
-    let data = matrix_value(
-        test.outputs.get("J").expect("J must be evaluated"),
-        2,
-        2,
+    let data = matrix_value(test.outputs.get("J").expect("J must be evaluated"), 2, 2);
+    assert_eq!(
+        data,
+        &[2.0, 3.0, 1.0, 1.0],
+        "J must equal the hand-derived partials"
     );
-    assert_eq!(data, &[2.0, 3.0, 1.0, 1.0], "J must equal the hand-derived partials");
     // JVP check through the mat-vec path: J * [1, 2] = [2*1+3*2, 1*1+1*2].
     assert_eq!(
         test.outputs.get("jv"),
@@ -148,11 +157,7 @@ fn jacobian_scalar_body_is_a_one_row_matrix() {
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
     // f = x^2 + y: [df/dx, df/dy] = [2x, 1] at (3, 2) = [6, 1].
-    let data = matrix_value(
-        test.outputs.get("J").expect("J must be evaluated"),
-        1,
-        2,
-    );
+    let data = matrix_value(test.outputs.get("J").expect("J must be evaluated"), 1, 2);
     assert_eq!(data, &[6.0, 1.0], "row jacobian must equal [2x, 1]");
     assert!(test.verdict.expect_passed(), "in-language expect must pass");
 }
@@ -173,16 +178,12 @@ fn jacobian_cells_use_dual_rules_beyond_polynomials() {
     let test = &report.declarations[0].tests[0];
     // f1 = exp(x)*y: df1/dx = exp(x)*y = 2, df1/dy = exp(x) = 1 at (0, 2).
     // f2 = x*y:      df2/dx = y = 2,        df2/dy = x = 0.
-    let data = matrix_value(
-        test.outputs.get("J").expect("J must be evaluated"),
-        2,
-        2,
-    );
+    let data = matrix_value(test.outputs.get("J").expect("J must be evaluated"), 2, 2);
     assert_eq!(data, &[2.0, 1.0, 2.0, 0.0], "dual rules must hold for exp");
     assert!(test.verdict.expect_passed(), "in-language expect must pass");
 }
 
-// --- Metamorphic laws (pass 8): Jacobian linearity, scaling, and
+// --- Metamorphic laws: Jacobian linearity, scaling, and
 // composition consistency. The oracle problem (no closed-form general
 // Jacobian) is bypassed by relating Jacobians of transformed programs
 // to Jacobians of the originals through in-language matrix operators
@@ -354,7 +355,7 @@ emath function JacobianExactRules:
             expect J == [[0.1875], [1.5], [0.5]]
 ";
 
-// --- Pass 3: shape determinism. Orientation, row/column ordering,
+// --- shape determinism. Orientation, row/column ordering,
 // typed refusals for non-scalar components, and cross-run stability.
 
 const JACOBIAN_WRT_ORDER_SWAPPED: &str = "\
@@ -500,11 +501,7 @@ fn jacobian_of_a_vector_valued_component_refuses_with_typed_error() {
     // the typed numeric-body code, never silently flatten or emit a
     // wrong-shaped matrix.
     let result = check_source("jac-vector-component", JACOBIAN_VECTOR_COMPONENT);
-    let errors: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let errors: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         errors.iter().any(|e| e.starts_with("E-TYPE-012")),
         "jacobian of a vector-valued component must refuse with E-TYPE-012; got: {errors:#?}"
@@ -516,11 +513,7 @@ fn jacobian_of_a_matrix_valued_component_refuses_with_typed_error() {
     // A matrix-valued component is even further from a scalar partial;
     // same typed refusal, never a tensor surprise.
     let result = check_source("jac-matrix-component", JACOBIAN_MATRIX_COMPONENT);
-    let errors: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let errors: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         errors.iter().any(|e| e.starts_with("E-TYPE-012")),
         "jacobian of a matrix-valued component must refuse with E-TYPE-012; got: {errors:#?}"
@@ -534,11 +527,7 @@ fn nested_jacobian_refuses_with_typed_error() {
     // capability. Must refuse with a typed error, never silently
     // reinterpret the inner rows as components.
     let result = check_source("jac-nested", JACOBIAN_NESTED);
-    let errors: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let errors: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         !errors.is_empty(),
         "nested jacobian must refuse with a typed error, not admit"
@@ -588,7 +577,7 @@ fn jacobian_cells_match_hand_derived_exact_rules() {
     );
 }
 
-// ── Pass 4 (emath-9bj1 cross-review): nondifferentiable refusals ─────
+// ── (emath-9bj1 cross-review): nondifferentiable refusals ─────
 
 const JACOBIAN_SINGULAR_LN: &str = "\
 emath function JacobianSingularLn:
@@ -772,7 +761,11 @@ fn jacobian_ln_at_negative_input_is_a_nan_cell_never_a_finite_wrong_derivative()
     assert!(
         !result.diagnostics.has_errors(),
         "fixture must admit (domain errors are runtime, not static): {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
@@ -793,7 +786,11 @@ fn jacobian_sqrt_and_division_singularities_propagate_ieee_nan_inf() {
     assert!(
         !result.diagnostics.has_errors(),
         "fixture must admit: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
@@ -803,12 +800,19 @@ fn jacobian_sqrt_and_division_singularities_propagate_ieee_nan_inf() {
     assert!(
         !result.diagnostics.has_errors(),
         "fixture must admit: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
     let d = matrix_value(test.outputs.get("Jd").expect("Jd"), 1, 1)[0];
-    assert!(d.is_infinite() && d < 0.0, "1/x at x=0 must propagate -Inf, got {d}");
+    assert!(
+        d.is_infinite() && d < 0.0,
+        "1/x at x=0 must propagate -Inf, got {d}"
+    );
 }
 
 #[test]
@@ -820,13 +824,24 @@ fn jacobian_nondifferentiable_but_defined_points_use_the_house_subgradient() {
     assert!(
         !result.diagnostics.has_errors(),
         "fixture must admit: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
     for (name, key) in [("abs", "Ja"), ("floor", "Jf"), ("ceil", "Jc")] {
-        let data = matrix_value(test.outputs.get(key).unwrap_or_else(|| panic!("{key}")), 1, 1);
-        assert_eq!(data[0], 0.0, "{name} at the kink must give the house subgradient 0.0");
+        let data = matrix_value(
+            test.outputs.get(key).unwrap_or_else(|| panic!("{key}")),
+            1,
+            1,
+        );
+        assert_eq!(
+            data[0], 0.0,
+            "{name} at the kink must give the house subgradient 0.0"
+        );
     }
 }
 
@@ -841,7 +856,11 @@ fn jacobian_of_a_unit_constant_admits_and_is_zero() {
     assert!(
         !result.diagnostics.has_errors(),
         "unit-constant jacobian must admit: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
@@ -859,7 +878,11 @@ fn jacobian_of_a_unit_scaled_variable_matches_plain_derivative_scaling() {
     assert!(
         !result.diagnostics.has_errors(),
         "unit-scaled jacobian must admit: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];
@@ -875,11 +898,7 @@ fn jacobian_of_a_string_valued_component_refuses_with_typed_error() {
     // A string-valued component has no scalar partial; must refuse
     // with the typed numeric-body code, never a silent zero cell.
     let result = check_source("jac-string-body", JACOBIAN_STRING_BODY);
-    let errors: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let errors: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         errors.iter().any(|e| e.starts_with("E-TYPE-012")),
         "jacobian of a string-valued component must refuse with E-TYPE-012; got: {errors:#?}"
@@ -896,11 +915,7 @@ fn jacobian_of_an_empty_body_refuses_or_admits_typed_never_panics() {
         Ok(result) => result,
         Err(_) => panic!("jacobian([]) wrt x must not panic during admission"),
     };
-    let errors: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let errors: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         errors.iter().any(|e| e.starts_with("E-")),
         "empty-body jacobian must resolve to a typed outcome (refusal or typed admit); got: {errors:#?}"
@@ -912,11 +927,18 @@ fn jacobian_cells_equal_plain_derivative_cells_at_a_singular_point() {
     // House-consistency: at a singular point the jacobian cell and the
     // hand-written derivative cell go through the SAME dual evaluation,
     // so they must be bit-identical — whatever the NaN policy produces.
-    let result = check_source("jac-matches-plain", JACOBIAN_MATCHES_PLAIN_DERIVATIVE_SINGULAR);
+    let result = check_source(
+        "jac-matches-plain",
+        JACOBIAN_MATCHES_PLAIN_DERIVATIVE_SINGULAR,
+    );
     assert!(
         !result.diagnostics.has_errors(),
         "fixture must admit: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let report = run_package(&result.package);
     let test = &report.declarations[0].tests[0];

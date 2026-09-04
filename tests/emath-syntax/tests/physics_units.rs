@@ -1,4 +1,4 @@
-//! `emath-r3-units-ext-physics-8u7h`: core::units_ext and core::physics
+//! core::units_ext and core::physics
 //! (Phase 13-14).
 //!
 //! core::units_ext: SI prefixes work systematically over every known
@@ -115,7 +115,10 @@ mod r3_units_ext_physics {
         ] {
             let unit = lookup_unit(spelling).unwrap();
             let expected = lookup_unit(base).unwrap();
-            assert!((unit.scale - expected.scale * factor).abs() < expected.scale.abs() * 1e-9, "{spelling} scale");
+            assert!(
+                (unit.scale - expected.scale * factor).abs() < expected.scale.abs() * 1e-9,
+                "{spelling} scale"
+            );
             assert_eq!(unit.dimensions(), expected.dimensions(), "{spelling} dims");
         }
     }
@@ -150,29 +153,47 @@ mod r3_units_ext_physics {
 
     #[test]
     fn currency_in_core_is_a_distinct_typed_refusal() {
-        assert_eq!(errors_of(&fn_with_input("USD")), vec!["E-UNIT-CURRENCY-1".to_string()]);
-        assert_eq!(errors_of(&fn_with_input("EUR")), vec!["E-UNIT-CURRENCY-1".to_string()]);
-        assert_eq!(errors_of(&fn_with_input("UTC")), vec!["E-UNIT-CURRENCY-1".to_string()]);
+        assert_eq!(
+            errors_of(&fn_with_input("USD")),
+            vec!["E-UNIT-CURRENCY-1".to_string()]
+        );
+        assert_eq!(
+            errors_of(&fn_with_input("EUR")),
+            vec!["E-UNIT-CURRENCY-1".to_string()]
+        );
+        assert_eq!(
+            errors_of(&fn_with_input("UTC")),
+            vec!["E-UNIT-CURRENCY-1".to_string()]
+        );
     }
 
     #[test]
     fn currency_behind_a_prefix_keeps_the_policy_refusal() {
         // mUSD is still a currency: the policy refusal survives prefixing
         // instead of degrading to the generic unknown-unit miss.
-        assert_eq!(errors_of(&fn_with_input("mUSD")), vec!["E-UNIT-CURRENCY-1".to_string()]);
+        assert_eq!(
+            errors_of(&fn_with_input("mUSD")),
+            vec!["E-UNIT-CURRENCY-1".to_string()]
+        );
     }
 
     #[test]
     fn unknown_units_still_miss_generically() {
         // The gate must not swallow genuine unknowns.
-        assert_eq!(errors_of(&fn_with_input("Flurble")), vec!["E-UNIT-104".to_string()]);
+        assert_eq!(
+            errors_of(&fn_with_input("Flurble")),
+            vec!["E-UNIT-104".to_string()]
+        );
     }
 
     // --- Surface: extended spellings admit through the annotation layer ---
 
     #[test]
     fn extended_annotations_admit() {
-        for annotation in ["AU", "pc", "ly", "nmi", "mi", "ft", "rad", "deg", "arcsec", "nm", "kPa", "MJ", "degR", "C", "mol", "Pa"] {
+        for annotation in [
+            "AU", "pc", "ly", "nmi", "mi", "ft", "rad", "deg", "arcsec", "nm", "kPa", "MJ", "degR",
+            "C", "mol", "Pa",
+        ] {
             assert!(
                 errors_of(&fn_with_input(annotation)).is_empty(),
                 "`in {annotation}` must admit"

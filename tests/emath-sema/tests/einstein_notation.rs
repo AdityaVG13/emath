@@ -1,4 +1,4 @@
-//! emath-r3-einstein-notation-rmkx — C11/C10 Phase-1 fence pins + einsum
+//! Einstein notation — C11/C10 Phase-1 fence pins + einsum
 //! canonical surface.
 //!
 //! Probed state on HEAD (this file's contracts are regression pins; the
@@ -14,7 +14,7 @@
 //!   `E-SEQ-RECURRENCE` (a definition target carries at most one index —
 //!   the sequence/recurrence law owns indexed definitions); pack-gated
 //!   contraction semantics land with the einstein pack, whose `use`
-//!   resolution is the emath-r3-imports-utzd lane.
+//!   resolution is the imports lane.
 //! - Concrete integer indexing `S[1, 2]` on a Matrix admits.
 
 use emath_core::limits::Limits;
@@ -22,6 +22,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -29,12 +38,19 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
 fn errors(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter().filter(|(severity, _)| severity == "Error").collect()
+    out.iter()
+        .filter(|(severity, _)| severity == "Error")
+        .collect()
 }
 
 #[test]

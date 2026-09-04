@@ -1,4 +1,4 @@
-//! Fit goal surface (bead emath-r3-fit-goal-4xjh, 04 §5.3) — generic
+//! Fit goal surface (04 §5.3) — generic
 //! fit grammar / AST / admission / lowering. `fit <params> to
 //! <observable>:` admits as a goal whose suite carries plain program
 //! data: `model` path, `prediction` label, `residual:` method,
@@ -158,7 +158,8 @@ fn fit_request_carries_full_generic_program_payload() {
     );
     let payload = payload.expect("the fit request must carry its payload");
     assert_eq!(
-        payload.parameters, vec!["k_el", "V_central"],
+        payload.parameters,
+        vec!["k_el", "V_central"],
         "parameters must survive in declared order"
     );
     assert_eq!(payload.model, vec!["PkTwoCompartment"]);
@@ -167,7 +168,10 @@ fn fit_request_carries_full_generic_program_payload() {
     assert_eq!(payload.method, "levenberg_marquardt");
     assert_eq!(
         payload.initial,
-        vec![("k_el".to_string(), "0.2".to_string()), ("V_central".to_string(), "1.0".to_string())],
+        vec![
+            ("k_el".to_string(), "0.2".to_string()),
+            ("V_central".to_string(), "1.0".to_string())
+        ],
         "seed literals must survive losslessly"
     );
     assert_eq!(payload.weights.len(), 2, "explicit weights must survive");
@@ -176,11 +180,21 @@ fn fit_request_carries_full_generic_program_payload() {
         vec![
             (
                 "t".to_string(),
-                vec!["0.5".to_string(), "1.0".to_string(), "2.0".to_string(), "4.0".to_string()]
+                vec![
+                    "0.5".to_string(),
+                    "1.0".to_string(),
+                    "2.0".to_string(),
+                    "4.0".to_string()
+                ]
             ),
             (
                 "conc_time".to_string(),
-                vec!["3.12".to_string(), "2.43".to_string(), "1.47".to_string(), "0.54".to_string()]
+                vec![
+                    "3.12".to_string(),
+                    "2.43".to_string(),
+                    "1.47".to_string(),
+                    "0.54".to_string()
+                ]
             ),
         ],
         "declared data rows must survive losslessly, one naming the observable"
@@ -240,11 +254,8 @@ fn plain_functions_still_admit() {
 #[test]
 fn pk_fit_fixture_is_byte_canonical_under_the_formatter() {
     install_source_parser();
-    let parsed = emath_syntax::parse_lossless(
-        PK_FIT_FIXTURE,
-        emath_core::FileId(0),
-        &Limits::default(),
-    );
+    let parsed =
+        emath_syntax::parse_lossless(PK_FIT_FIXTURE, emath_core::FileId(0), &Limits::default());
     assert!(
         !parsed.diagnostics.has_errors(),
         "fixture must parse before formatting"
@@ -311,39 +322,45 @@ use emath_artifact::JsonValue;
 
 fn json_str<'a>(value: &'a JsonValue, name: &str) -> Option<&'a String> {
     match value {
-        JsonValue::Obj(entries) => entries
-            .iter()
-            .find(|(key, _)| key == name)
-            .and_then(|(_, value)| match value {
-                JsonValue::Str(text) => Some(text),
-                _ => None,
-            }),
+        JsonValue::Obj(entries) => {
+            entries
+                .iter()
+                .find(|(key, _)| key == name)
+                .and_then(|(_, value)| match value {
+                    JsonValue::Str(text) => Some(text),
+                    _ => None,
+                })
+        }
         _ => None,
     }
 }
 
 fn json_bool(value: &JsonValue, name: &str) -> Option<bool> {
     match value {
-        JsonValue::Obj(entries) => entries
-            .iter()
-            .find(|(key, _)| key == name)
-            .and_then(|(_, value)| match value {
-                JsonValue::Bool(flag) => Some(*flag),
-                _ => None,
-            }),
+        JsonValue::Obj(entries) => {
+            entries
+                .iter()
+                .find(|(key, _)| key == name)
+                .and_then(|(_, value)| match value {
+                    JsonValue::Bool(flag) => Some(*flag),
+                    _ => None,
+                })
+        }
         _ => None,
     }
 }
 
 fn json_array<'a>(value: &'a JsonValue, name: &str) -> Option<&'a Vec<JsonValue>> {
     match value {
-        JsonValue::Obj(entries) => entries
-            .iter()
-            .find(|(key, _)| key == name)
-            .and_then(|(_, value)| match value {
-                JsonValue::Arr(items) => Some(items),
-                _ => None,
-            }),
+        JsonValue::Obj(entries) => {
+            entries
+                .iter()
+                .find(|(key, _)| key == name)
+                .and_then(|(_, value)| match value {
+                    JsonValue::Arr(items) => Some(items),
+                    _ => None,
+                })
+        }
         _ => None,
     }
 }
@@ -363,7 +380,10 @@ fn cli_fit_executes_pk_fixture_to_fitted_values_with_linked_provenance() {
         json_str(&envelope, "model"),
         Some(&"PkTwoCompartment".to_string())
     );
-    assert_eq!(json_str(&envelope, "prediction"), Some(&"central".to_string()));
+    assert_eq!(
+        json_str(&envelope, "prediction"),
+        Some(&"central".to_string())
+    );
     assert_eq!(
         json_str(&envelope, "residual"),
         Some(&"weighted_least_squares".to_string())
@@ -382,11 +402,13 @@ fn cli_fit_executes_pk_fixture_to_fitted_values_with_linked_provenance() {
         "the fixture data lies on C(t) = 100/V * exp(-k t) with k=0.5, V=25; \
          got k_el={measured_k_el}, V_central={measured_v}"
     );
-    let confidence = json_array(&envelope, "confidence")
-        .expect("granted fit carries confidence rows");
+    let confidence =
+        json_array(&envelope, "confidence").expect("granted fit carries confidence rows");
     assert_eq!(confidence.len(), 2, "one interval per declared direction");
     assert!(
-        confidence.iter().all(|row| json_bool(row, "tight") == Some(true)),
+        confidence
+            .iter()
+            .all(|row| json_bool(row, "tight") == Some(true)),
         "full-rank fixture data must certify every direction tight"
     );
     let measured = json_array(&envelope, "measured")
@@ -396,7 +418,10 @@ fn cli_fit_executes_pk_fixture_to_fitted_values_with_linked_provenance() {
         let Some(fit_id) = provenance_fit_id(row) else {
             panic!("measured row must carry Fitted provenance with fit_id");
         };
-        assert_eq!(fit_id, hash, "the provenance fit_id must be the envelope hash");
+        assert_eq!(
+            fit_id, hash,
+            "the provenance fit_id must be the envelope hash"
+        );
     }
     // Determinism: the same program + data + seed + method hashes
     // identically across runs.
@@ -495,8 +520,8 @@ fn cli_fit_refuses_a_fit_without_a_model_declaration() {
         "a fit naming an undeclared model must refuse"
     );
     assert_eq!(json_bool(&envelope, "admitted"), Some(false));
-    let diagnostics = json_array(&envelope, "diagnostics")
-        .expect("refusal envelope carries diagnostics");
+    let diagnostics =
+        json_array(&envelope, "diagnostics").expect("refusal envelope carries diagnostics");
     assert!(
         diagnostics
             .iter()

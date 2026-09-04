@@ -1,4 +1,4 @@
-//! emath-dae-transitions-seq (r3-dynamical-03lh ch7, transitions slice):
+//! emath-dae-transitions-seq (ch7, transitions slice):
 //! failure-first evidence for the `transitions:` section admission.
 //!
 //! A transition rule declares how a declared event re-assigns state or
@@ -13,7 +13,7 @@
 //!
 //! Each rule must trigger a named event from the same declaration's
 //! `events:` section, and each action must target a declared input/state
-//! slot with a numeric value. Pass 3 SIR-lowers every action to a kept
+//! slot with a numeric value. SIR-lowers every action to a kept
 //! `TransitionDecl` (the runner owns execution). Refusals are typed:
 //!
 //! - `E-TRANS-001` — `on <Event>:` names an event not declared in
@@ -89,8 +89,14 @@ emath model TModel:
         "an undeclared event trigger must refuse at admission"
     );
     let text = error_text(&result);
-    assert!(text.contains("E-TRANS-001"), "must carry E-TRANS-001, got: {text}");
-    assert!(text.contains("Missing"), "must name the missing event, got: {text}");
+    assert!(
+        text.contains("E-TRANS-001"),
+        "must carry E-TRANS-001, got: {text}"
+    );
+    assert!(
+        text.contains("Missing"),
+        "must name the missing event, got: {text}"
+    );
 }
 
 /// Refusal: a bare target that is not a declared input or state refuses;
@@ -116,7 +122,10 @@ emath model TModel:
         "a bare unknown target must refuse at admission"
     );
     let text = error_text(&result);
-    assert!(text.contains("E-TRANS-002"), "must carry E-TRANS-002, got: {text}");
+    assert!(
+        text.contains("E-TRANS-002"),
+        "must carry E-TRANS-002, got: {text}"
+    );
 
     let source = "\
 emath model TModel:
@@ -169,7 +178,10 @@ emath model TModel:
         "a non-assignment rule body must refuse at admission"
     );
     let text = error_text(&result);
-    assert!(text.contains("E-TRANS-003"), "must carry E-TRANS-003, got: {text}");
+    assert!(
+        text.contains("E-TRANS-003"),
+        "must carry E-TRANS-003, got: {text}"
+    );
 
     let source = "\
 emath model TModel:
@@ -188,7 +200,10 @@ emath model TModel:
         "an empty `on <Event>:` rule must refuse at admission"
     );
     let text = error_text(&result);
-    assert!(text.contains("E-TRANS-004"), "must carry E-TRANS-004, got: {text}");
+    assert!(
+        text.contains("E-TRANS-004"),
+        "must carry E-TRANS-004, got: {text}"
+    );
 }
 
 /// Refusal: an action targeting an `algebraic:` unknown refuses — the
@@ -240,10 +255,13 @@ emath function F:
         "a function without declared events must refuse an `on` trigger"
     );
     let text = error_text(&result);
-    assert!(text.contains("E-TRANS-001"), "must carry E-TRANS-001, got: {text}");
+    assert!(
+        text.contains("E-TRANS-001"),
+        "must carry E-TRANS-001, got: {text}"
+    );
 }
 
-/// Pass 3 SIR lowering: an `on E:` rule with a `state.<name>` target and
+/// SIR lowering: an `on E:` rule with a `state.<name>` target and
 /// an action value referencing the event's captured parameter lowers to a
 /// `TransitionDecl` on the package. The kept action `expr` must index the
 /// package's expression arena.
@@ -283,7 +301,10 @@ emath model TModel:
     assert_eq!(rule.actions.len(), 1, "one action per rule expected");
     let action = &rule.actions[0];
     assert_eq!(action.target, "x");
-    assert!(action.is_state, "`state.x` target must lower with is_state=true");
+    assert!(
+        action.is_state,
+        "`state.x` target must lower with is_state=true"
+    );
     assert!(
         result.package.expr(action.expr).is_some(),
         "kept action expr must index the package expression arena"
@@ -351,13 +372,16 @@ emath model TModel:
         "a param with no capture source must refuse at admission"
     );
     let text = error_text(&result);
-    assert!(text.contains("E-TRANS-006"), "must carry E-TRANS-006, got: {text}");
+    assert!(
+        text.contains("E-TRANS-006"),
+        "must carry E-TRANS-006, got: {text}"
+    );
     assert!(text.contains("qq"), "must name the parameter, got: {text}");
     assert!(text.contains("E"), "must name the event, got: {text}");
 }
 
 // ---------------------------------------------------------------------------
-// Pass 7: negative-diagnostics sweep. Each row forces one refusal path and
+// Negative-diagnostics sweep. Each row forces one refusal path and
 // asserts the typed code AND every entity the diagnostic names appear in the
 // error text. One assert fails the test, naming the missing needle.
 // ---------------------------------------------------------------------------
@@ -508,14 +532,29 @@ emath model TModel:
         der(y) = 0
 ";
     let rows: Vec<(&str, &str, &str, &[&str])> = vec![
-        ("unknown_trigger", unknown_trigger, "E-TRANS-001", &["Missing"]),
+        (
+            "unknown_trigger",
+            unknown_trigger,
+            "E-TRANS-001",
+            &["Missing"],
+        ),
         ("bare_unknown", bare_unknown, "E-TRANS-002", &["zzz"]),
-        ("dotted_unknown", dotted_unknown, "E-TRANS-002", &["state.zzz"]),
+        (
+            "dotted_unknown",
+            dotted_unknown,
+            "E-TRANS-002",
+            &["state.zzz"],
+        ),
         ("non_assignment", non_assignment, "E-TRANS-003", &[]),
         ("non_numeric", non_numeric, "E-TRANS-003", &[]),
         ("empty_body", empty_body, "E-TRANS-004", &[]),
         ("algebraic", algebraic, "E-TRANS-005", &["a"]),
-        ("param_no_capture", param_no_capture, "E-TRANS-006", &["qq", "F"]),
+        (
+            "param_no_capture",
+            param_no_capture,
+            "E-TRANS-006",
+            &["qq", "F"],
+        ),
     ];
     let mut saw_errors = true;
     let mut failures: Vec<String> = Vec::new();
@@ -637,7 +676,7 @@ emath model TModel:
 }
 
 // ---------------------------------------------------------------------------
-// Pass 4: runner dispatch. When an admitted event fires (t0-hold or rising
+// Runner dispatch. When an admitted event fires (t0-hold or rising
 // edge), the runner applies the event's OWN action, then dispatches every
 // `on <Event>:` rule that triggers the fired event in declaration order.
 // These are integration runs through `simulate_continuous_dispositioned`.
@@ -741,7 +780,10 @@ emath model SwitchOnEvent:
         );
     }
     let final_y = scalar(&trajectory.samples.last().unwrap().state, "y");
-    assert!((final_y - 5.0).abs() < 1e-9, "final y must be 5, got {final_y}");
+    assert!(
+        (final_y - 5.0).abs() < 1e-9,
+        "final y must be 5, got {final_y}"
+    );
 }
 
 /// A transition action may target a state variable with its BARE name
@@ -783,7 +825,11 @@ emath model BareStateTarget:
     let fire_t = trajectory.events[0].t;
     // The firing sample and every later sample carry y == 5: the bare
     // `y = 5` transition landed in the state map and persists.
-    for sample in trajectory.samples.iter().filter(|sample| sample.t >= fire_t) {
+    for sample in trajectory
+        .samples
+        .iter()
+        .filter(|sample| sample.t >= fire_t)
+    {
         assert!(
             (scalar(&sample.state, "y") - 5.0).abs() < 1e-9,
             "bare `y = 5` transition must set state y to 5, got {} at t={}",
@@ -924,7 +970,11 @@ emath model CaptureParam:
     state.insert("x".into(), Value::F64(0.0));
     state.insert("y".into(), Value::F64(0.0));
     let (trajectory, _) = run_euler(&source, &inputs, &state, 1.0, 0.1);
-    assert_eq!(trajectory.events.len(), 1, "Snap fires once at the crossing");
+    assert_eq!(
+        trajectory.events.len(),
+        1,
+        "Snap fires once at the crossing"
+    );
     assert_eq!(trajectory.events[0].name, "Snap");
     let fire_t = trajectory.events[0].t;
     let firing = trajectory
@@ -1006,7 +1056,7 @@ emath model Oscillator:
 }
 
 // ---------------------------------------------------------------------------
-// Pass 5: action safety. A transition/event action that evaluates to a
+// Action safety. A transition/event action that evaluates to a
 // NON-FINITE value (NaN/±Inf) must refuse the run with a typed code
 // AFTER the event fired — never poison the trajectory. A switch that
 // makes the residual DAE singular must refuse through the Newton
@@ -1185,7 +1235,9 @@ fn switched_singular_system_refuses_typed() {
     match run_singular_switch() {
         Err(err) => {
             assert!(
-                err.contains("singular") || err.contains("E-DAE-INIT") || err.contains("regularize"),
+                err.contains("singular")
+                    || err.contains("E-DAE-INIT")
+                    || err.contains("regularize"),
                 "must be the typed DAE/Newton refusal (E-DAE-INIT / regularize / singular), got: {err}"
             );
         }
@@ -1212,7 +1264,7 @@ fn refusal_is_replay_deterministic_for_switched_singular() {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 6: metamorphic relations (oracle-free). A relation links two outputs
+// Metamorphic relations (oracle-free). A relation links two outputs
 // under an input transformation and needs NO golden truth. All tests sweep
 // small fixed value sets — no RNG (the harness is deterministic-by-contract).
 // The relations discriminate the hybrid dispatch: mutation validation (below
@@ -1475,7 +1527,10 @@ fn metamorphic_timestep_refinement_converges_firing_time() {
     };
     let thr = 5.0;
     for (dt, t) in [(0.2, t0), (0.1, t1), (0.05, t2), (0.025, t3)] {
-        assert!(t >= ln2 - 1e-9, "BE firing time must sit at/above ln2, got {t}");
+        assert!(
+            t >= ln2 - 1e-9,
+            "BE firing time must sit at/above ln2, got {t}"
+        );
         let charge = q_at(dt);
         let overshoot = charge - thr;
         assert!(
@@ -1496,8 +1551,14 @@ fn metamorphic_timestep_refinement_converges_firing_time() {
         d01 > d12 && d12 > d23,
         "firing-time diffs must decrease monotonically, got d01={d01} d12={d12} d23={d23}"
     );
-    assert!(d12 < d01 / 1.3, "d12={d12} must shrink d01={d01} by >1.3x (BE first-order halving)");
-    assert!(d23 < d12 / 1.3, "d23={d23} must shrink d12={d12} by >1.3x (BE first-order halving)");
+    assert!(
+        d12 < d01 / 1.3,
+        "d12={d12} must shrink d01={d01} by >1.3x (BE first-order halving)"
+    );
+    assert!(
+        d23 < d12 / 1.3,
+        "d23={d23} must shrink d12={d12} by >1.3x (BE first-order halving)"
+    );
 }
 
 /// MR-2: no-event identity (equivalence). A model whose event condition
@@ -1511,10 +1572,22 @@ fn metamorphic_timestep_refinement_converges_firing_time() {
 fn metamorphic_no_event_identity() {
     let state = mr_rc_state(0.0);
     let inputs = mr_rc_inputs(10.0, 50.0);
-    let (with_events, _) =
-        run_sim_params(MR_NEVER_RC, &inputs, &state, 1.0, 0.1, StepMethod::BackwardEuler);
-    let (plain, _) =
-        run_sim_params(MR_PLAIN_RC, &inputs, &state, 1.0, 0.1, StepMethod::BackwardEuler);
+    let (with_events, _) = run_sim_params(
+        MR_NEVER_RC,
+        &inputs,
+        &state,
+        1.0,
+        0.1,
+        StepMethod::BackwardEuler,
+    );
+    let (plain, _) = run_sim_params(
+        MR_PLAIN_RC,
+        &inputs,
+        &state,
+        1.0,
+        0.1,
+        StepMethod::BackwardEuler,
+    );
     assert!(
         with_events.events.is_empty(),
         "an unreachable threshold must never fire, got {:?}",
@@ -1543,8 +1616,15 @@ fn metamorphic_payload_vs_transition_equiv() {
     let a = run_sim_params(MR_PAYLOAD_A, &inputs, &state, 3.0, 0.1, StepMethod::Euler).0;
     let b = run_sim_params(MR_PAYLOAD_B, &inputs, &state, 3.0, 0.1, StepMethod::Euler).0;
     assert_eq!(a.events.len(), 1, "payload model must fire exactly once");
-    assert_eq!(a.events.len(), b.events.len(), "both channels fire the same event");
-    assert_eq!(a, b, "payload-write and transition-write trajectories must be identical");
+    assert_eq!(
+        a.events.len(),
+        b.events.len(),
+        "both channels fire the same event"
+    );
+    assert_eq!(
+        a, b,
+        "payload-write and transition-write trajectories must be identical"
+    );
     let y_final = scalar(&a.samples.last().unwrap().state, "y");
     assert!(
         (y_final - 4.0).abs() < 1e-9,
@@ -1584,14 +1664,28 @@ fn metamorphic_param_capture_vs_direct_state_read() {
 #[test]
 fn metamorphic_input_scaling_invariant_firing_time() {
     let state = mr_rc_state(0.0);
-    let base = run_sim_params(MR_RC, &mr_rc_inputs(10.0, 5.0), &state, 2.0, 0.1, StepMethod::BackwardEuler)
-        .0
-        .events[0]
+    let base = run_sim_params(
+        MR_RC,
+        &mr_rc_inputs(10.0, 5.0),
+        &state,
+        2.0,
+        0.1,
+        StepMethod::BackwardEuler,
+    )
+    .0
+    .events[0]
         .t;
     for k in [0.5, 2.0, 10.0] {
-        let scaled = run_sim_params(MR_RC, &mr_rc_inputs(10.0 * k, 5.0 * k), &state, 2.0, 0.1, StepMethod::BackwardEuler)
-            .0
-            .events[0]
+        let scaled = run_sim_params(
+            MR_RC,
+            &mr_rc_inputs(10.0 * k, 5.0 * k),
+            &state,
+            2.0,
+            0.1,
+            StepMethod::BackwardEuler,
+        )
+        .0
+        .events[0]
             .t;
         let delta = (scaled - base).abs();
         assert!(
@@ -1620,8 +1714,14 @@ fn metamorphic_rearmed_count_invariant_under_refinement() {
         counts.push(tr.events.len());
         y_end.push(scalar(&tr.samples.last().unwrap().state, "y"));
     }
-    assert_eq!(counts[0], counts[1], "firing count must not change as dt halves");
-    assert_eq!(counts[1], counts[2], "firing count must not change as dt halves");
+    assert_eq!(
+        counts[0], counts[1],
+        "firing count must not change as dt halves"
+    );
+    assert_eq!(
+        counts[1], counts[2],
+        "firing count must not change as dt halves"
+    );
     assert_eq!(y_end[0], y_end[1], "final y must not change as dt halves");
     assert_eq!(y_end[1], y_end[2], "final y must not change as dt halves");
     assert_eq!(
@@ -1636,4 +1736,3 @@ fn metamorphic_rearmed_count_invariant_under_refinement() {
         counts[0]
     );
 }
-

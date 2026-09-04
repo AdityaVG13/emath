@@ -1,8 +1,8 @@
-//! emath-dae-disposition-b9flv failure-first tests: the native-path DAE
-//! disposition record (bead's "disposition artifact, not a naked
+//! failure-first tests: the native-path DAE
+//! disposition record ('s "disposition artifact, not a naked
 //! trajectory" contract, on the existing causalized Newton slice).
 //!
-//! Contracts (each must FAIL against the pre-bead surface):
+//! Contracts (each must FAIL against the pre-surface):
 //! - `simulate_continuous_dispositioned` returns a
 //!   `DAEDisposition` beside the trajectory: an ODE-only model records
 //!   `index: Ode` (no algebraic unknowns), and a causalized
@@ -74,7 +74,11 @@ fn index1_dae_emits_disposition() {
     assert!(
         !result.diagnostics.has_errors(),
         "causalized DAE must admit, got: {:?}",
-        result.diagnostics.errors().map(|d| d.to_string()).collect::<Vec<_>>()
+        result
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
     );
     let decl = &result.package.declarations[0];
     let (traj, disposition) = simulate_continuous_dispositioned(

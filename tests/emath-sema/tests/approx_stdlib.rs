@@ -1,5 +1,5 @@
-//! Approximation and expansions stdlib (B31, bead
-//! emath-r3-approx-stdlib-lzu1): the `approximation.laws` package admits,
+//! Approximation and expansions stdlib (B31): the `approximation.laws`
+//! package admits,
 //! runs its examples, and carries the honesty label.
 //!
 //! Intent: Taylor/Chebyshev/Padé as stdlib content whose approximation
@@ -18,6 +18,15 @@ use emath_syntax::install_source_parser;
 const PACKAGE: &str = include_str!("../../../language/stdlib/laws/approximation.emath");
 
 fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
@@ -104,10 +113,7 @@ fn missing_declared_regime_loses_the_constraint() {
     // line removes the admission constraint (the declaration still
     // admits — prose assumptions remain — but the enforced regime is
     // gone). Identity still changes because constraints are IR.
-    let source = PACKAGE.replace(
-        "        require abs(delta) < convergence_radius\n",
-        "",
-    );
+    let source = PACKAGE.replace("        require abs(delta) < convergence_radius\n", "");
     assert_ne!(source, PACKAGE, "regime line must exist to be removed");
     let base = check("approximation-regime-base", PACKAGE);
     let stripped = check("approximation-no-regime", &source);
@@ -115,10 +121,26 @@ fn missing_declared_regime_loses_the_constraint() {
     assert!(!stripped.diagnostics.has_errors());
     // The base package carries the regime as an enforced invariant; the
     // stripped one must not.
-    let base_invariants: usize = base.package.declarations.iter().map(|d| d.invariants.len()).sum();
-    let stripped_invariants: usize = stripped.package.declarations.iter().map(|d| d.invariants.len()).sum();
-    assert_eq!(base_invariants, 3, "each law carries its regime as an enforced constraint");
-    assert_eq!(stripped_invariants, 2, "stripped regime must lose exactly one constraint");
+    let base_invariants: usize = base
+        .package
+        .declarations
+        .iter()
+        .map(|d| d.invariants.len())
+        .sum();
+    let stripped_invariants: usize = stripped
+        .package
+        .declarations
+        .iter()
+        .map(|d| d.invariants.len())
+        .sum();
+    assert_eq!(
+        base_invariants, 3,
+        "each law carries its regime as an enforced constraint"
+    );
+    assert_eq!(
+        stripped_invariants, 2,
+        "stripped regime must lose exactly one constraint"
+    );
 }
 
 /// Negative control: a Chebyshev evaluation outside the declared domain

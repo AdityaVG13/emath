@@ -1,4 +1,4 @@
-//! `@significant_figures` admission (bead emath-r3-sigfigs-formatting-yf28,
+//! `@significant_figures` admission (
 //! 04 §1.6): display/enforce modes, precision warning receipts, and the
 //! typed refusals for malformed specs.
 //!
@@ -14,6 +14,15 @@ use emath_syntax::install_source_parser;
 /// (severity, code) pairs so tests can assert warning receipts without
 /// confusing them with refusals.
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -21,7 +30,12 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
@@ -115,7 +129,7 @@ fn unknown_mode_refuses() {
 
 /// Negative control: mixing Measured (uncertainty) values with bare
 /// sf-values under one precision contract is a warning receipt, never a
-/// refusal and never silent (bead test plan).
+/// refusal and never silent.
 #[test]
 fn mixing_measured_with_bare_sf_warns() {
     let out = check(&function_source(

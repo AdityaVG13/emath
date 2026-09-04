@@ -1,4 +1,4 @@
-//! Sibling user-function call admission (emath-0e68): a call whose name
+//! Sibling user-function call admission: a call whose name
 //! matches a sibling `emath function` declaration lowers by pure-inline
 //! substitution — the callee's `definitions:` body is lowered into the
 //! caller's arena with the parameters bound as definitions over the
@@ -8,10 +8,10 @@
 //! Recursion (inline cycle) and arity mismatch refuse typed; the
 //! callee's own admission reports its internal errors.
 
-use super::super::infer::Infer;
 use super::super::Admitter;
-use emath_core::tree::{Expr, ExprKind};
+use super::super::infer::Infer;
 use emath_core::Span;
+use emath_core::tree::{Expr, ExprKind};
 use emath_ir::ExprId;
 use std::collections::BTreeMap;
 
@@ -208,9 +208,27 @@ pub(in crate::admit) fn rename_parameter_uses(
                 .map(|binder| binder.name.clone())
                 .collect::<Vec<_>>();
             shadowed.extend(pushed.iter().cloned());
+            // Binder DOMAINS are expressions in the callee's scope too
+            // (`product k in 1..=n`): they must be renamed like the body,
+            // or the domain keeps the raw parameter name, which cannot
+            // resolve inside the callee environment swap ("unknown
+            // variable") for every cross-function call whose callee uses
+            // a parameter in a binder range. Binder NAMES stay: they
+            // shadow parameters and are already pushed to `shadowed`.
+            let renamed_binders = binders
+                .iter()
+                .map(|binder| emath_core::tree::Binder {
+                    name: binder.name.clone(),
+                    domain: binder
+                        .domain
+                        .as_ref()
+                        .map(|domain| rename_parameter_uses(domain, map, shadowed)),
+                    source: binder.source,
+                })
+                .collect();
             let renamed = rebuild(ExprKind::Binder {
                 kind: *kind,
-                binders: binders.clone(),
+                binders: renamed_binders,
                 body: Box::new(rename_parameter_uses(body, map, shadowed)),
                 guard: guard
                     .as_ref()
@@ -399,9 +417,7 @@ impl Admitter {
         if self.inline_stack.len() >= INLINE_DEPTH_CAP {
             self.error(
                 "E-TYPE-013",
-                format!(
-                    "sibling-call inlining depth cap {INLINE_DEPTH_CAP} exceeded at `{name}`"
-                ),
+                format!("sibling-call inlining depth cap {INLINE_DEPTH_CAP} exceeded at `{name}`"),
                 call_span,
             );
             return None;

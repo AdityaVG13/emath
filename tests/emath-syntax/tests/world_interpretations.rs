@@ -1,5 +1,5 @@
-//! `emath-v9-06-2rdq.15`: `emath world` declarative interpretations for
-//! custom terms (Wave 14).
+//!: `emath world` declarative interpretations for
+//! custom terms.
 //!
 //! A world interprets custom/open terms through operator maps; it never
 //! silently applies to strict source. Admission is recognition-level
@@ -53,7 +53,11 @@ emath world Mod17:
         StmtKind::Section(section) if section.name == "operators" => Some(section),
         _ => None,
     });
-    let entries = operators.expect("operators section").suite.statements.clone();
+    let entries = operators
+        .expect("operators section")
+        .suite
+        .statements
+        .clone();
     assert_eq!(entries.len(), 2);
     assert!(
         matches!(
@@ -152,14 +156,18 @@ emath world Mod17:
             .errors()
             .any(|error| error.code == "E-KIND-027"),
         "bare word in operators must refuse E-KIND-027, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
     assert!(checked.package.declarations.is_empty());
 }
 
 #[test]
 fn world_never_applies_to_strict() {
-    // Firewall (bead negative control): a strict function in the same file
+    // Firewall: a strict function in the same file
     // using the world-mapped glyph must be refused by the strict lane —
     // the interpretation never silently applies to strict source.
     let invalid = check(
@@ -176,6 +184,10 @@ fn world_never_applies_to_strict() {
             .errors()
             .any(|error| error.code == "E-TYPE-003"),
         "expected the strict unknown-name refusal, got {:?}",
-        invalid.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        invalid
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }

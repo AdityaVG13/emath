@@ -222,6 +222,9 @@ pub(super) fn admit_constructor(
                                 Infer::Bool
                                 | Infer::Text
                                 | Infer::Rat
+                                // Stage-2 (emath-t63iz): state is f64-backed;
+                                // exact big field elements are not state.
+                                | Infer::BigInt
                                 | Infer::Set(_)
                                 | Infer::Record(_),
                             )) => {

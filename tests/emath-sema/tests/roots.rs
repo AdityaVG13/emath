@@ -1,4 +1,4 @@
-//! Root-solving robustness (bead emath-9bj1, Track A3, passes 5-6).
+//! Root-solving robustness (Track A3, passes 5-6).
 //! The `solve(f) wrt x` surface lowers to `EmirOp::Solve`: Newton with
 //! a deterministic bracket-discovery + bisection fallback whenever the
 //! gradient is unreliable (vanished derivative or non-finite value).
@@ -17,6 +17,15 @@ use emath_sema::admit::CheckResult;
 use emath_syntax::install_source_parser;
 
 fn check_source(name: &str, source: &str) -> CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
@@ -142,7 +151,10 @@ fn flat_seed_sqrt2_falls_back_to_bisection_deterministically() {
     let emath_exec_ir::interp::Value::F64(root) = r else {
         panic!("r must be a scalar");
     };
-    assert!(*root > 0.5 && (root * root - 2.0).abs() < 1e-6, "root ~= sqrt(2), got {root}");
+    assert!(
+        *root > 0.5 && (root * root - 2.0).abs() < 1e-6,
+        "root ~= sqrt(2), got {root}"
+    );
 }
 
 #[test]
@@ -156,7 +168,8 @@ fn flat_seed_cubic_falls_back_to_the_real_root() {
         "flat-seed cubic root must be found: {}",
         test.verdict
     );
-    let emath_exec_ir::interp::Value::F64(root) = test.outputs.get("r").expect("r evaluated") else {
+    let emath_exec_ir::interp::Value::F64(root) = test.outputs.get("r").expect("r evaluated")
+    else {
         panic!("r must be a scalar");
     };
     assert!((*root - 2.0).abs() < 1e-6, "root must be 2, got {root}");
@@ -195,7 +208,7 @@ fn pole_residual_refuses_with_the_nonfinite_fault() {
     );
 }
 
-// --- Metamorphic laws (pass 8): root-set invariance under
+// --- Metamorphic laws: root-set invariance under
 // transformations that preserve the zero set. The oracle problem
 // (unknown analytic root) is bypassed by relating roots of
 // transformed residuals to roots of the original through the
@@ -267,7 +280,8 @@ fn mr_residual_vanishes_at_the_solved_root() {
     // fixture asserts this in-language for the flat-seed sqrt2 case.
     let report = run_once(ROOT_SCALING_INVARIANCE, "root-scaling-invariance-residual");
     let test = &report.declarations[0].tests[0];
-    let emath_exec_ir::interp::Value::F64(r1) = test.outputs.get("r1").expect("r1 evaluated") else {
+    let emath_exec_ir::interp::Value::F64(r1) = test.outputs.get("r1").expect("r1 evaluated")
+    else {
         panic!("r1 must be a scalar");
     };
     assert!(

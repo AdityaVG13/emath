@@ -7,6 +7,15 @@ use emath_syntax::install_source_parser;
 
 #[test]
 fn simplify_goal_returns_native_symbolic_expression() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let source = include_str!("../../../language/examples/algebra/symbolic-cas.emath");
     let mut session = CompilerSession::new(Limits::default());
@@ -38,6 +47,15 @@ fn simplify_goal_returns_native_symbolic_expression() {
 
 #[test]
 fn simplify_goal_refuses_non_exact_domain() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let source = "\
 emath function GeneralRealClaim:
@@ -70,6 +88,15 @@ emath function GeneralRealClaim:
 
 #[test]
 fn simplify_goal_stays_attached_to_its_declaration() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let source = "\
 emath function First:

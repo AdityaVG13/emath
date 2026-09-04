@@ -1,4 +1,4 @@
-//! Pass 5 (emath-rat-real-types-p5cj): TOTAL refusal matrix for bare `Real`
+//!: TOTAL refusal matrix for bare `Real`
 //! at type sites. Every context where bare `Real` appears must produce ONE
 //! deterministic E-NUM-004 diagnostic naming the three sanctioned spellings:
 //! `Float64` (strict-f64 profile), `Interval<Float64>` (certified-interval
@@ -10,6 +10,15 @@ use emath_core::limits::Limits;
 use emath_sema::CompilerSession;
 
 fn diagnostics_of(source: &str) -> Vec<String> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("real-refusal", source);
@@ -124,7 +133,7 @@ fn float64_and_interval_spellings_still_admitted() {
     );
 }
 
-/// (d) pass 2 regression guard: Rat/Rational stay admitted.
+/// (d) regression guard: Rat/Rational stay admitted.
 #[test]
 fn rat_spellings_still_admitted() {
     let messages = diagnostics_of(RAT_CONTROL);
@@ -135,7 +144,7 @@ fn rat_spellings_still_admitted() {
 }
 
 // ---------------------------------------------------------------------------
-// Full-context matrix (bead closure): EVERY syntactic position where bare
+// Full-context matrix: EVERY syntactic position where bare
 // `Real` can appear at a type site emits exactly the canonical E-NUM-004 —
 // same code, same message, no shape-dependent behavior, never silently f64.
 // ---------------------------------------------------------------------------

@@ -243,23 +243,23 @@ pub enum TokenKind {
     /// `;` — row separator inside list literals (`[1, 2; 3, 4]`, U9).
     /// Nowhere else in the surface: outside a list literal it refuses.
     Semicolon,
-    /// Nabla-family glyphs (`∇`, `∇·`, `∇×`, `∇²`, nabla pack o6jp),
+    /// Nabla-family glyphs (`∇`, `∇·`, `∇×`, `∇²`, nabla pack),
     /// lexed as single tokens. Desugar targets are pack data: mounting
     /// `use sci::physics::notation::nabla` maps the form to an existing
     /// `core::pde` builtin; unmounted glyphs refuse at parse.
     Nabla(NablaForm),
     /// `≈` (U+2248) or ASCII `~=` — the approximation labeling operator
-    /// (04 §6.4, bead emath-r3-approx-operator-depc). One token either
+    /// (04 §6.4). One token either
     /// spelling; `~=` must be claimed before the bare `~` distribution
     /// tag, and `≈` before the non-ASCII ident path.
     TildeEq,
-    /// `⟨` (U+27E8) — bra/open angle of the braket pack (fdby). Lexed
+    /// `⟨` (U+27E8) — bra/open angle of the braket pack. Lexed
     /// as a single token before the non-ASCII ident path; only the
     /// mounted braket pack admits forms built from it.
     LAngle,
-    /// `⟩` (U+27E9) — ket/close angle of the braket pack (fdby).
+    /// `⟩` (U+27E9) — ket/close angle of the braket pack.
     RAngle,
-    /// `-->` — directed graph edge arrow (B23, ybob). Glued from three
+    /// `-->` — directed graph edge arrow (B23). Glued from three
     /// bytes so it beats `->` (Minus+Arrow today, a parse error in
     /// this shape); `x--y` without the `>` stays two Minus tokens.
     EdgeArrow,

@@ -1,7 +1,7 @@
 //! L2 named-declaration shorthand (`emath function Name:`).
 
-use emath_core::tree::{Item, StmtKind};
 use emath_core::limits::Limits;
+use emath_core::tree::{Item, StmtKind};
 use emath_exec_ir::interp::Value;
 use emath_sema::CompilerSession;
 use emath_syntax::{expand_scratch, parse_str};

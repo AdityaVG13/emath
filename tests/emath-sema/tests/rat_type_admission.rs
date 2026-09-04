@@ -1,4 +1,4 @@
-//! Pass 2 (emath-rat-real-types-p5cj): `Rat` / `Rational` at type sites must
+//!: `Rat` / `Rational` at type sites must
 //! be admitted as `TypeNode::Rational`, not refused as outside the Phase 1
 //! strict-f64 subset.
 
@@ -35,9 +35,8 @@ emath function F:
 ";
     let messages = diagnostics_of(source);
     assert!(
-        !messages
-            .iter()
-            .any(|message| message.contains("E-TYPE-001") || message.contains("outside the Phase 1 subset")),
+        !messages.iter().any(|message| message.contains("E-TYPE-001")
+            || message.contains("outside the Phase 1 subset")),
         "Rat/Rational type sites must not be refused, got {:?}",
         messages
     );

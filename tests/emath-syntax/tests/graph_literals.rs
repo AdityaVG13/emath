@@ -1,4 +1,4 @@
-//! `emath-r3-graphs-ybob`: executable graph literals (B23).
+//!: executable graph literals (B23).
 //!
 //! `graph { <nodes> ; <edges> }` is a parse-time desugar to a tuple
 //! shape lowered to a weighted adjacency matrix: `[nodes…, edges…]`,
@@ -53,7 +53,10 @@ fn is_float(expr: &Expr, text: &str) -> bool {
 fn directed_edge_desugars_with_default_weight() {
     let graph = parse_defn("graph { 1, 2; 1 --> 2 }").unwrap();
     let ExprKind::Tuple(top) = &graph.kind else {
-        panic!("graph literal desugars to (nodes, edges), got {:?}", graph.kind);
+        panic!(
+            "graph literal desugars to (nodes, edges), got {:?}",
+            graph.kind
+        );
     };
     assert_eq!(top.len(), 2);
     let ExprKind::List(nodes) = &top[0].kind else {
@@ -128,7 +131,7 @@ fn graph_literal_admits_end_to_end() {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned(
-        "r3-graph-literals",
+        "graph-literals",
         "emath function net:\n    definitions:\n        g = graph { 1, 2, 3; 1 --> 2, 2 -[0.5]-> 3, 1 -[2.0]- 3 }\n",
     );
     assert!(
@@ -196,15 +199,15 @@ fn double_minus_outside_braces_still_arithmetic() {
     // G4 regression guard: `x--y` OUTSIDE a graph literal is binary
     // minus + unary negation (no `--` token was glued).
     let graph = parse_defn("x--y").map(|_| ());
-    assert!(
-        graph.is_err() || true,
-        "shape check below"
-    );
+    assert!(graph.is_err() || true, "shape check below");
     install_source_parser();
     let (tree, diags) = emath_syntax::parse_str(
         "emath function f:\n    inputs:\n        x: Float64\n        y: Float64\n\n    definitions:\n        f = x--y\n",
     );
-    assert!(!diags.has_errors(), "`x--y` must stay arithmetic, got {diags:?}");
+    assert!(
+        !diags.has_errors(),
+        "`x--y` must stay arithmetic, got {diags:?}"
+    );
     let Some(emath_core::tree::Item::Declaration(decl)) = tree.items.last() else {
         panic!("decl");
     };
@@ -241,7 +244,10 @@ fn graph_literal_fixture_executes_graph_algorithms() {
         .errors()
         .map(|error| error.code)
         .collect();
-    assert!(codes.is_empty(), "graph fixture must typecheck, got {codes:?}");
+    assert!(
+        codes.is_empty(),
+        "graph fixture must typecheck, got {codes:?}"
+    );
     let values = emath_exec_ir::runner::eval_definitions_values(
         &checked.package,
         &checked.package.declarations[0],

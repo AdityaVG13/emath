@@ -1,5 +1,4 @@
-//! Biology dynamics thin slice (bead emath-r3-bio-dynamics-ephb, 04
-//! §4.3–4.5), orch-authorized WITHOUT waiting on the Measured-T epic.
+//! Biology dynamics thin slice (04 §4.3–4.5).
 //!
 //! Contracts:
 //! - §4.3 measured rate params admit through the EXISTING measurement
@@ -156,8 +155,9 @@ fn unit_carrying_definition_row_refuses_typed() {
     // for the refused name is expected: the row did not bind, so its
     // uses are legitimately unknown.
     assert!(
-        errors.iter().any(|e| e.contains("definition rows")
-            && e.contains("unit")),
+        errors
+            .iter()
+            .any(|e| e.contains("definition rows") && e.contains("unit")),
         "a `name in unit = value` definition row must refuse with a units \
          message at its own site (never a silent drop); got: {errors:#?}"
     );

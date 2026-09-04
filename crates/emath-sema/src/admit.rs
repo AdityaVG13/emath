@@ -4,18 +4,15 @@
 use emath_core::tree::{Expr, ExprKind, Stmt, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, QualifiedName, Span};
 use emath_ir::{
-    BinaryOp, EventDecl, ExprId, ExprNode, Literal, ModelResidual, TransitionDecl, TypeId,
-    TypeNode,
+    BinaryOp, EventDecl, ExprId, ExprNode, Literal, ModelResidual, TransitionDecl, TypeId, TypeNode,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 mod declaration;
 use declaration::admit_declaration;
+mod attributes;
 mod expr_helpers;
 use expr_helpers::*;
-/// Re-exported for the recognition seam (`admit_reaction_network`, ds6x):
-/// CODATA parenthesized-digit uncertainty → absolute spread.
-pub(crate) use expr_helpers::measured_digits_uncertainty;
 mod infer;
 use infer::*;
 mod equations;
@@ -51,43 +48,42 @@ const PHASE1_SECTIONS: &[&str] = &[
     "domain",
     "provenance",
     "citations",
-    // L3 optional worked-example section (bead
-    // emath-l3-contracted-component-ceus7): rows are data, never admission
+    // L3 optional worked-example section: rows are data, never admission
     // tickets.
     "examples",
     "host",
     "constraints",
     "invariant",
-    // Migration cards (v9-06-2rdq.19): `from:` states what moved, `rules:`
+    // Migration cards: `from:` states what moved, `rules:`
     // classifies each change. Admitted sections, not new keywords.
     "from",
     "rules",
-    // Hybrid events (r3-dynamical-03lh, ch7): `events:` declares the
+    // Hybrid events (ch7): `events:` declares the
     // discrete event surface of a stateful declaration. Admitted
     // section, not a new keyword; the `transitions:` rules and the
     // event-triggering simulation are the named next slices (the
     // `on <trigger>:` rule suite does not parse yet — parser lane).
     "events",
-    // Hybrid transitions (r3-dynamical-03lh, ch7, transitions slice):
+    // Hybrid transitions (ch7, transitions slice):
     // `transitions:` maps a declared event to re-assignments of
     // input/state slots. Admitted section, not a new keyword;
-    // `on <Event>:` rules are structurally validated here (pass 2) and
-    // wired into execution by the runner lane (pass 3).
+    // `on <Event>:` rules are structurally validated here and
+    // wired into execution by the runner lane.
     "transitions",
-    // Measured evidence (04 §5.2, emath-r3-observations-9ffu):
+    // Measured evidence (04 §5.2):
     // `observations:` rows are read-only instrument data (`obs <name>
     // [: type] = <data>`), distinct from `definitions:`. Admitted
     // section; the §5.3 observation-vs-prediction comparison and the
     // Series<T in unit> value-generics are the named next slices.
     "observations",
-    // Proof outlines (B13 + 05 §7.2, emath-r3-proofs-0qua):
+    // Proof outlines (B13 + 05 §7.2):
     // `proofs:` holds obligation outlines as DATA (assumption / lemma
     // / check / qed steps; an outline ends with qed). Proofs are
     // additive authority, never admission tickets; no ProofChecker
     // runs in the thin slice (the checker contract is the named
     // follow-up).
     "proofs",
-    // Declarative figures (05 §7.4, emath-r3-figures-b1xn): the
+    // Declarative figures (05 §7.4): the
     // `figures:` section NAME + payload grammar slot is RESERVED so
     // kind schemas can require/allow it. Data-only plot specs, no
     // callbacks, no behavior — determinism is preserved by tying
@@ -172,9 +168,8 @@ pub struct CheckResult {
     pub package: emath_ir::SemanticPackage,
     pub diagnostics: Diagnostics,
     pub trace: SemanticTrace,
-    /// Effective `@units_profile` table (declaration name → level), in
-    /// source order (04 §6.5 pack-table). Empty when no declaration
-    /// carries the attribute.
+    /// Effective per-declaration units-profile table (04 §6.1), in
+    /// source order; empty when no `@units_profile` attribute exists.
     pub units_profiles: Vec<(String, String)>,
 }
 
@@ -191,11 +186,11 @@ struct Admitter {
     /// solved by Newton at each time step; see `crate::ModelResidual`).
     residuals: Vec<ModelResidual>,
     /// Hybrid event rules admitted from `events:` payload suites
-    /// (r3-dynamical-03lh ch7, event-execution slice). Bare event
+    /// (ch7, event-execution slice). Bare event
     /// declarations without a payload suite contribute nothing.
     events: Vec<EventDecl>,
     /// Transition rules admitted from `transitions:` `on <Event>:`
-    /// suites (r3-dynamical-03lh ch7, transitions slice). Each rule
+    /// suites (ch7, transitions slice). Each rule
     /// attaches deterministic re-assignments to a declared event;
     /// action values may reference the event's captured parameters.
     transitions: Vec<TransitionDecl>,
@@ -217,14 +212,29 @@ struct Admitter {
     /// declared-capability call data — a call resolving here lowers to
     /// `ExprNode::Apply` (the emitter's ApplyCapability path), never a
     /// new builtin name or domain keyword.
-    capability_cells: Vec<(String, u32, Option<String>)>,
+    capability_cells: Vec<CapabilityCallBinding>,
     /// Sibling `emath function` declarations callable from lowering time
-    /// (emath-0e68): function DATA for the generic declared-call seam's
+    /// function DATA for the generic declared-call seam's
     /// inline path — no new AST node, no registry entry.
     sibling_functions: BTreeMap<String, SiblingFunction>,
     /// Inline-substitution cycle guard: the stack of callee names
     /// currently being inlined.
     inline_stack: Vec<String>,
+    /// Binder names shadowing same-named definitions during the
+    /// current `inline_defs` walk. A reference inside a binder body to
+    /// a name that a binder rebinds must stay a `Variable` (it reads
+    /// the binder local at runtime), never the shadowed definition.
+    inline_shadows: Vec<String>,
+}
+
+#[derive(Clone)]
+pub(super) struct CapabilityCallBinding {
+    pub(super) key: String,
+    pub(super) capability: u32,
+    pub(super) inputs: Vec<String>,
+    pub(super) output: Option<String>,
+    pub(super) arity: Option<usize>,
+    pub(super) diagnostic: Option<String>,
 }
 
 /// One sibling `emath function` callable from lowering time: parameter
@@ -259,6 +269,7 @@ impl Admitter {
             capability_cells: Vec::new(),
             sibling_functions: BTreeMap::new(),
             inline_stack: Vec::new(),
+            inline_shadows: Vec::new(),
         }
     }
 
@@ -340,11 +351,14 @@ impl Admitter {
         };
         match node {
             ExprNode::Variable(name) => {
-                if let Some((def_id, _)) = self.definitions.get(&name.0) {
-                    self.inline_defs(*def_id)
-                } else {
-                    expr_id
+                // A binder-local of the same name shadows the definition:
+                // the reference reads the binder local at runtime.
+                if !self.inline_shadows.iter().any(|shadow| shadow == &name.0) {
+                    if let Some((def_id, _)) = self.definitions.get(&name.0) {
+                        return self.inline_defs(*def_id);
+                    }
                 }
+                expr_id
             }
             ExprNode::Literal(_) => expr_id,
             ExprNode::Unary { operation, value } => {
@@ -422,7 +436,43 @@ impl Admitter {
                 let body = self.inline_defs(body);
                 self.push_expr(ExprNode::Differentiate { body, var }, span)
             }
-            // Slice, Record, Binder — keep as-is (rare in derivative bodies).
+            // Slice, Record — keep as-is (rare in derivative bodies).
+            // Binder DOMAINS must be inlined like any other expression:
+            // a variable-range binder in a callee body (`product k in
+            // 1..=n`) carries the renamed parameter (`n#f`) in its domain
+            // vector, and only this pass resolves it to the caller's
+            // argument. The BODY and its nested expressions are walked
+            // too (emath-87ls0): a sibling callee's renamed parameter
+            // (`y#f`) referenced inside a fold guard otherwise survives
+            // into the spliced tree and the runner refuses it as an
+            // unknown input. Binder names shadow same-named definitions
+            // for the body walk, so a binder variable is never captured
+            // by the substitution.
+            ExprNode::Binder {
+                kind,
+                mut variables,
+                body,
+            } => {
+                for variable in variables.iter_mut() {
+                    variable.domain = self.inline_defs(variable.domain);
+                }
+                let shadowed = variables
+                    .iter()
+                    .map(|variable| variable.name.clone())
+                    .collect::<Vec<_>>();
+                self.inline_shadows.extend(shadowed.iter().cloned());
+                let body = self.inline_defs(body);
+                self.inline_shadows
+                    .truncate(self.inline_shadows.len() - shadowed.len());
+                self.push_expr(
+                    ExprNode::Binder {
+                        kind,
+                        variables,
+                        body,
+                    },
+                    span,
+                )
+            }
             _ => expr_id,
         }
     }

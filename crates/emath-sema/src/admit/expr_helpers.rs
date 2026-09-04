@@ -16,56 +16,6 @@ pub(super) enum IndexAxis {
     },
 }
 
-pub(super) fn reduction_coords(infer: &Infer) -> Option<Vec<Vec<usize>>> {
-    match infer {
-        Infer::Vector {
-            extent: Some(Extent::Fixed(len)),
-        } => Some((0..*len).map(|index| vec![index]).collect()),
-        Infer::Matrix {
-            rows: Some(Extent::Fixed(rows)),
-            cols: Some(Extent::Fixed(cols)),
-        } => {
-            let mut coords = Vec::with_capacity(rows * cols);
-            for row in 0..*rows {
-                for col in 0..*cols {
-                    coords.push(vec![row, col]);
-                }
-            }
-            Some(coords)
-        }
-        Infer::Tensor { shape } => {
-            let mut dims = Vec::with_capacity(shape.len());
-            for extent in shape {
-                match extent {
-                    Extent::Fixed(len) => dims.push(*len),
-                    Extent::Symbolic(_) => return None,
-                }
-            }
-            Some(cartesian_coords(&dims))
-        }
-        _ => None,
-    }
-}
-
-pub(super) fn cartesian_coords(dims: &[usize]) -> Vec<Vec<usize>> {
-    if dims.is_empty() {
-        return vec![Vec::new()];
-    }
-    let mut coords = vec![Vec::new()];
-    for &dim in dims {
-        let mut next = Vec::with_capacity(coords.len() * dim);
-        for prefix in coords {
-            for index in 0..dim {
-                let mut coord = prefix.clone();
-                coord.push(index);
-                next.push(coord);
-            }
-        }
-        coords = next;
-    }
-    coords
-}
-
 pub(super) fn collect_tensor_literal(
     admitter: &mut Admitter,
     items: &[Expr],

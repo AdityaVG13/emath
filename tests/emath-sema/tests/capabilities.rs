@@ -39,7 +39,9 @@ fn experimental_without_capability_refuses() {
 /// Positive control: declaring `experimental-syntax` admits the item.
 #[test]
 fn experimental_with_capability_admits() {
-    let codes = check(&function_source("@capabilities(experimental-syntax)\n@experimental\n"));
+    let codes = check(&function_source(
+        "@capabilities(experimental-syntax)\n@experimental\n",
+    ));
     assert!(
         !codes.contains(&"E-PKG-064".to_string()),
         "capability declared, expected no E-PKG-064, got {codes:?}"
@@ -69,7 +71,9 @@ fn capability_is_file_scoped() {
 /// Quoted capability keys parse the same as bare identifiers.
 #[test]
 fn quoted_capability_key_is_accepted() {
-    let codes = check(&function_source("@capabilities(\"experimental-syntax\")\n@experimental\n"));
+    let codes = check(&function_source(
+        "@capabilities(\"experimental-syntax\")\n@experimental\n",
+    ));
     assert!(
         !codes.contains(&"E-PKG-064".to_string()),
         "quoted key must admit, got {codes:?}"

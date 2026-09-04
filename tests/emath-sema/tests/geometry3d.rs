@@ -1,6 +1,6 @@
-//! 3D geometry primitives (emath-talo, pass 1 failure-first).
+//! 3D geometry primitives (failure-first).
 //!
-//! Contracts (orchestrator-approved slice, emath-talo):
+//! Contracts:
 //! - geometry is EXPRESSED IN `.emath` over the existing generic
 //!   Vector/Matrix/Tensor surface: no geometry core enum, no crate,
 //!   no parser fork, no domain-named core variants;
@@ -8,8 +8,8 @@
 //!   layer's job (composable from existing VectorIndex/VectorCreate and
 //!   scalar ops), NOT new builtin arms — this test pins the SURFACE
 //!   contract and the current gap;
-//! - `Option[Point3D]` ray results reuse SilverMaple's real Option<T>
-//!   surface once their lane lands (E-TYPE-010 today);
+//! - `Option[Point3D]` ray results use the real Option<T>
+//!   surface once it lands (E-TYPE-010 today);
 //! - tests live under `tests/`, never under `crates/`.
 
 use emath_core::limits::Limits;
@@ -20,6 +20,15 @@ fn install_source_parser() {
 }
 
 fn check(text: &str, name: &str) -> Vec<String> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, text);
@@ -57,6 +66,15 @@ fn cross_normalize_distance_admit_via_declared_cells() {
 #[test]
 fn geometry_calls_lower_to_apply_targeting_declared_cells() {
     use emath_ir::ExprNode;
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-apply-probe", CROSS_PROBE);
@@ -108,6 +126,15 @@ fn geometry_calls_lower_to_apply_targeting_declared_cells() {
 // already executable: Vector[3] literal, indexing, dot, norm.
 #[test]
 fn generic_vector3_surface_executes_before_geometry_cells() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let source = "\
@@ -131,20 +158,29 @@ emath function VectorSurface:
     );
     let report = emath_exec_ir::runner::run_package(&checked.package);
     let values = &report.declarations[0].tests[0].definitions;
-    assert_eq!(values.get("x"), Some(&emath_exec_ir::interp::Value::F64(1.0)));
-    assert_eq!(values.get("d"), Some(&emath_exec_ir::interp::Value::F64(4.0)));
-    assert_eq!(values.get("n"), Some(&emath_exec_ir::interp::Value::F64(3.0)));
+    assert_eq!(
+        values.get("x"),
+        Some(&emath_exec_ir::interp::Value::F64(1.0))
+    );
+    assert_eq!(
+        values.get("d"),
+        Some(&emath_exec_ir::interp::Value::F64(4.0))
+    );
+    assert_eq!(
+        values.get("n"),
+        Some(&emath_exec_ir::interp::Value::F64(3.0))
+    );
 }
 
-// ---- Pass 2: Point3D/Vector3D — cross, length, normalize, distance -------
+// ---- Point3D/Vector3D — cross, length, normalize, distance -------
 // Expressed as INLINE formulas over the existing generic surface
-// (VectorCreate/VectorIndex/dot/norm) per emath-talo — named builtin
+// (VectorCreate/VectorIndex/dot/norm) per — named builtin
 // calls (cross/normalize/distance) are the handoff-gated surface; these
 // pins prove the SEMANTICS the named forms will bind.
 #[test]
 fn cross_axis_permutations_inline_semantics() {
     // Standard 3D cross product: (1,0,0)x(0,1,0)=(0,0,1) and the axiom
-    // permutations; anti-symmetry pinned at pass 8 as a law.
+    // permutations; anti-symmetry pinned at as a law.
     let source = "\
 emath function CrossAxes:
     definitions:
@@ -162,6 +198,15 @@ emath function CrossAxes:
             expect z_cross_x == [0.0, 1.0, 0.0]
             expect y_cross_x == [0.0, 0.0, -1.0]
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-cross-axes", source);
@@ -195,7 +240,7 @@ fn length_normalize_distance_inline_semantics() {
     // norm() = length; normalize = v / norm(v); distance = norm(a - b).
     // (3,4,0): length 5, normalized (0.6, 0.8, 0.0); distance between
     // (1,0,0) and (1,1,0) is norm((0,-1,0)) = 1. Zero-normal refusal is
-    // a typed negative at pass 9.
+    // a typed negative at.
     let source = "\
 emath function Vector3:
     definitions:
@@ -213,6 +258,15 @@ emath function Vector3:
             expect d == 1.0
             expect d2 == 3.0
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-vector3", source);
@@ -223,9 +277,18 @@ emath function Vector3:
     );
     let report = emath_exec_ir::runner::run_package(&checked.package);
     let values = &report.declarations[0].tests[0].definitions;
-    assert_eq!(values.get("v_len"), Some(&emath_exec_ir::interp::Value::F64(5.0)));
-    assert_eq!(values.get("d"), Some(&emath_exec_ir::interp::Value::F64(1.0)));
-    assert_eq!(values.get("d2"), Some(&emath_exec_ir::interp::Value::F64(3.0)));
+    assert_eq!(
+        values.get("v_len"),
+        Some(&emath_exec_ir::interp::Value::F64(5.0))
+    );
+    assert_eq!(
+        values.get("d"),
+        Some(&emath_exec_ir::interp::Value::F64(1.0))
+    );
+    assert_eq!(
+        values.get("d2"),
+        Some(&emath_exec_ir::interp::Value::F64(3.0))
+    );
 
     // Run under a second session for determinism (same result).
     let mut again = CompilerSession::new(Limits::default());
@@ -237,7 +300,7 @@ emath function Vector3:
     );
 }
 
-// ---- Pass 3: Sphere (center/radius, contains, volume, surface area) ------
+// ---- Sphere (center/radius, contains, volume, surface area) ------
 #[test]
 fn sphere_contains_volume_surface_inline() {
     // Unit sphere at origin: contains(p) = norm(p - center) <= radius;
@@ -260,6 +323,15 @@ emath function UnitSphere:
             expect volume == 4.1887902047863905
             expect surface == 12.566370614359172
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-sphere", source);
@@ -292,7 +364,7 @@ emath function UnitSphere:
 fn sphere_surface_parameterization_lies_on_sphere() {
     // surface_point(theta, phi) = center + r*(sin phi cos theta, sin phi
     // sin theta, cos phi); every sampled point satisfies
-    // norm(p - center) == r (metamorphic containment, pass 8).
+    // norm(p - center) == r (metamorphic containment).
     let source = "\
 emath function SphereParam:
     definitions:
@@ -307,6 +379,15 @@ emath function SphereParam:
             expect sp == [0.0, 0.0, 1.0]
             expect dist == 1.0
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-sphere-param", source);
@@ -327,7 +408,7 @@ emath function SphereParam:
     );
 }
 
-// ---- Pass 4: Plane (normal, point, signed distance, containment) ----------
+// ---- Plane (normal, point, signed distance, containment) ----------
 #[test]
 fn plane_signed_distance_and_containment_inline() {
     // Plane through (0,0,0) with normal (0,0,1): the xy-plane. Signed
@@ -354,6 +435,15 @@ emath function XYPlane:
             expect contains_above == false
             expect contains_on == true
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-plane", source);
@@ -364,9 +454,18 @@ emath function XYPlane:
     );
     let report = emath_exec_ir::runner::run_package(&checked.package);
     let values = &report.declarations[0].tests[0].definitions;
-    assert_eq!(values.get("d_above"), Some(&emath_exec_ir::interp::Value::F64(3.0)));
-    assert_eq!(values.get("d_below"), Some(&emath_exec_ir::interp::Value::F64(-3.0)));
-    assert_eq!(values.get("d_on"), Some(&emath_exec_ir::interp::Value::F64(0.0)));
+    assert_eq!(
+        values.get("d_above"),
+        Some(&emath_exec_ir::interp::Value::F64(3.0))
+    );
+    assert_eq!(
+        values.get("d_below"),
+        Some(&emath_exec_ir::interp::Value::F64(-3.0))
+    );
+    assert_eq!(
+        values.get("d_on"),
+        Some(&emath_exec_ir::interp::Value::F64(0.0))
+    );
     assert_eq!(
         values.get("contains_above"),
         Some(&emath_exec_ir::interp::Value::Bool(false))
@@ -377,14 +476,14 @@ emath function XYPlane:
     );
 }
 
-// ---- Pass 6: BoundingBox3D (min/max, contains, overlap) --------------------
+// ---- BoundingBox3D (min/max, contains, overlap) --------------------
 #[test]
 fn bounding_box_contains_and_overlap_inline() {
     // contains per axis: min <= p <= max. overlap per axis:
     // min_a <= max_b AND min_b <= max_a. The Phase 1 definitions
     // surface admits ONE comparison per binding, so the full 3-axis
     // conjunction is expressed as three per-axis booleans; the
-    // conjunction semantics is the metamorphic law at pass 8.
+    // conjunction semantics is the metamorphic law at.
     let source = "\
 emath function Boxes:
     definitions:
@@ -412,6 +511,15 @@ emath function Boxes:
             expect overlap_ab_y == true
             expect overlap_ab_z == true
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-boxes", source);
@@ -444,7 +552,7 @@ emath function Boxes:
     );
 }
 
-// ---- Pass 7: triangle-soup Mesh — area, signed volume, no-claim -----------
+// ---- triangle-soup Mesh — area, signed volume, no-claim -----------
 #[test]
 fn mesh_surface_area_and_signed_volume_inline() {
     // Triangle soup over a matrix carrier (per-triangle 3×3 rows).
@@ -455,7 +563,7 @@ fn mesh_surface_area_and_signed_volume_inline() {
     // 0 — the correct magnitude for a planar soup. A genuinely closed
     // 3D mesh's volume is NOT asserted here: triangle-soup topology
     // (closedness/consistency certificates) is the explicit no-claim
-    // boundary of this bead.
+    // boundary of this.
     let source = "\
 emath function TriangleSoup:
     definitions:
@@ -478,6 +586,15 @@ emath function TriangleSoup:
             expect soup_area == 1.0
             expect soup_volume == 0.0
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-soup", source);
@@ -498,7 +615,7 @@ emath function TriangleSoup:
     );
 }
 
-// ---- Pass 8: geometric metamorphic laws ------------------------------------
+// ---- geometric metamorphic laws ------------------------------------
 // Law 1 (axis permutation): permuting the coordinates of every operand
 // permutes the cross product the same way — cross(P(a), P(b)) == P(cross(a,b))
 // for the cyclic permutation (x,y,z) -> (y,z,x).
@@ -527,6 +644,15 @@ emath function CrossPermute:
         example <permute>:
             expect cross_pu_pv == sigma_cross
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-cross-permute", source);
@@ -564,6 +690,15 @@ emath function CrossLaws:
             expect cross_2u_v == twice_cross
             expect self_cross == [0.0, 0.0, 0.0]
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-cross-laws", source);
@@ -613,6 +748,15 @@ emath function SphereLaw:
             expect d12 == radius
             expect d22 == radius
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-sphere-law", source);
@@ -635,7 +779,7 @@ emath function SphereLaw:
     );
 }
 
-// ---- Pass 9: mutation kills + typed negatives -------------------------------
+// ---- mutation kills + typed negatives -------------------------------
 // Negative 1: cross on Vector[2] is a TYPE error (vector of length 2 is
 // not in the cross support). The inline cross expression indexes
 // components [0],[1],[2]; indexing a 2-vector out of bounds must refuse
@@ -649,6 +793,15 @@ emath function Cross2D:
         b = [3.0, 4.0]
         c = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-cross-2d", source);
@@ -661,7 +814,9 @@ emath function Cross2D:
         // Typed refusal at ADMISSION is the strong form: cross over a
         // Vector[2] indexes components [2] that cannot exist.
         assert!(
-            errors.iter().any(|code| code.starts_with("E-SHAPE") || code.starts_with("E-TYPE")),
+            errors
+                .iter()
+                .any(|code| code.starts_with("E-SHAPE") || code.starts_with("E-TYPE")),
             "admission refusal must be a shape/type code, got {errors:?}"
         );
         return;
@@ -708,6 +863,15 @@ emath function BadSphere:
         example <neg>:
             expect volume == -4.1887902047863905
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-neg-radius", source);
@@ -739,6 +903,15 @@ emath function ZeroNormalize:
         example <zero>:
             expect z_len == 0.0
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("talo-zero-normalize", source);

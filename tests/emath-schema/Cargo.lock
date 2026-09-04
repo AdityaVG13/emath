@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "emath-artifact"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+]
+
+[[package]]
 name = "emath-core"
 version = "0.1.0"
 dependencies = [
@@ -13,9 +21,11 @@ dependencies = [
 name = "emath-exec-ir"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-core",
  "emath-ir",
  "emath-rt",
+ "emath-schema",
  "emath-term",
 ]
 
@@ -39,6 +49,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-term",
 ]
 
 [[package]]
@@ -61,6 +72,7 @@ dependencies = [
  "emath-core",
  "emath-exec-ir",
  "emath-ir",
+ "emath-schema",
 ]
 
 [[package]]

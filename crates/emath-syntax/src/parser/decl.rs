@@ -137,7 +137,7 @@ impl super::Parser {
                 TokenKind::PathSep | TokenKind::Dot => {
                     self.advance();
                 }
-                // fdby: notation-pack mount parameter, `use
+                // notation-pack mount parameter, `use
                 // sci::physics::notation::braket(convention = physics)`.
                 // The pre-scan validates the parameter vocabulary; this
                 // arm only consumes the group so the use item parses.

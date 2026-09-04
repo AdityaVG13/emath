@@ -1,8 +1,8 @@
 //! Pure-text CSV import into executable `.emath` time series via the
-//! `series_from_csv` admission primitive (bead emath-xondg).
+//! `series_from_csv` admission primitive.
 //!
-//! This file grew across the 8-pass `testing-metamorphic` loop: the gaps
-//! its early sections pinned in the then-naive CSV parser (bare-`,`
+//! This file grew as the CSV parser matured: the gaps its early
+//! sections pinned in the then-naive parser (bare-`,`
 //! splitting, no quoting, no BOM handling) were implemented in
 //! `crates/emath-sema/src/admit/lowering.rs` — the parser now strips BOM,
 //! parses RFC-style quoted fields with `""` escapes, and reports the
@@ -23,12 +23,12 @@
 //! Option<&ExprNode>`. The lowered series is `ExprNode::Series { points,
 //! interpolation, extrapolation }`.
 
-use emath_core::limits::Limits;
 use emath_core::MeaningId;
+use emath_core::limits::Limits;
 use emath_exec_ir::interp::{EvalFault, Value};
 use emath_exec_ir::runner::{RunReport, TestVerdict, run_package};
-use emath_ir::meaning_id;
 use emath_ir::ExprNode;
+use emath_ir::meaning_id;
 use emath_sema::admit::CheckResult;
 use emath_sema::session::CompilerSession;
 
@@ -40,6 +40,15 @@ fn install_source_parser() {
 /// produced by `series_from_csv(...)`, returning the lowered `Series` node
 /// once it exists. Returns `None` if the parse refuses (no Series lowered).
 fn lowered_series(source: &str) -> Option<ExprNode> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result: CheckResult = session.check_owned("time_series_csv", source);
@@ -85,6 +94,15 @@ fn csv_source(csv: &str) -> String {
 
 /// Full check result for a source, for capturing refusal text.
 fn check_source(name: &str, source: &str) -> CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
@@ -132,14 +150,10 @@ fn assert_code(result: &CheckResult, code: &str) {
 #[test]
 fn bom_prefixed_header_admits() {
     let csv = "\u{FEFF}time,value\n0.0,1.0\n0.1,2.0";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 1.0), (0.1, 2.0)],
-        "bom-admits",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 1.0), (0.1, 2.0)], "bom-admits");
 }
 
-// ---- FAILURE-FIRST (PASS 3): BOM prefix AND CRLF compose --------------------
+// ---- FAILURE-FIRST: BOM prefix AND CRLF compose --------------------
 // Same CSV but with a leading `\u{FEFF}` AND Windows `\r\n` endings. The
 // BOM must not poison the header (RED today) and, once stripped, the CRLF
 // variant must lower bit-identically to the plain LF one. Cross product pins
@@ -149,15 +163,14 @@ fn bom_prefixed_crlf_admits_identically() {
     let lf = "time,value\n0.0,1.0\n0.1,2.0";
     let bom_crlf = "\u{FEFF}time,value\r\n0.0,1.0\r\n0.1,2.0";
     let lf_node = lowered_series(&csv_source(lf)).expect("LF must admit");
-    let bom_crlf_node =
-        lowered_series(&csv_source(bom_crlf)).expect("BOM+CRLF must admit");
+    let bom_crlf_node = lowered_series(&csv_source(bom_crlf)).expect("BOM+CRLF must admit");
     assert_eq!(
         bom_crlf_node, lf_node,
         "BOM+CRLF must lower bit-identically to plain LF"
     );
 }
 
-// ---- FAILURE-FIRST (PASS 3): BOM on its own line ----------------------------
+// ---- FAILURE-FIRST: BOM on its own line ----------------------------
 // Some exports emit `\u{FEFF}` on its own line before the header. A naive
 // line filter lets it survive (U+FEFF is not whitespace) and it becomes a
 // bogus one-cell header. It must normalize away and admission must yield the
@@ -165,11 +178,7 @@ fn bom_prefixed_crlf_admits_identically() {
 #[test]
 fn bom_on_own_line_then_header_admits() {
     let csv = "\u{FEFF}\ntime,value\n0.0,1.0\n0.1,2.0";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 1.0), (0.1, 2.0)],
-        "bom-own-line",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 1.0), (0.1, 2.0)], "bom-own-line");
 }
 
 // ---- PASS-3 pin: surrounding whitespace normalizes identically --------------
@@ -196,11 +205,7 @@ fn surrounding_whitespace_in_header_and_cells_admits_identically() {
 #[test]
 fn quoted_field_with_comma_does_not_shift_columns() {
     let csv = "time,label,value\n0.0,\"1,5\",2.0";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 2.0)],
-        "quoted-comma",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 2.0)], "quoted-comma");
 }
 
 // ---- RED gap 3: escape-sequence inside a quoted field ---------------------
@@ -213,11 +218,7 @@ fn quoted_field_with_comma_does_not_shift_columns() {
 #[test]
 fn escaped_quotes_inside_quoted_field_parse() {
     let csv = "time,note,value\n0.0,\"a,b\"\"c\",1.0";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 1.0)],
-        "escaped-quotes",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 1.0)], "escaped-quotes");
 }
 
 // ---- Determinism pin: CRLF vs LF line endings -----------------------------
@@ -239,15 +240,11 @@ fn crlf_line_endings_admit_identically() {
 #[test]
 fn plain_csv_admits_and_lowers() {
     let csv = "time,value\n0.0,1.0\n0.1,2.0";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 1.0), (0.1, 2.0)],
-        "plain-control",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 1.0), (0.1, 2.0)], "plain-control");
 }
 
 // ===========================================================================
-// PASS 2: header-name mapping incl. unit-suffixed headers and column reorder
+// Header-name mapping incl. unit-suffixed headers and column reorder
 // ===========================================================================
 
 // ---- Pin: unit-suffixed header maps by the bare name -----------------------------
@@ -316,10 +313,10 @@ fn unit_suffixed_duplicates_are_ambiguous() {
 }
 
 // ===========================================================================
-// PASS 4: quoted fields / escaped quotes
+// Quoted fields / escaped quotes
 // ===========================================================================
 
-// ---- FAILURE-FIRST (PASS 4): quoted header name maps -----------------------
+// ---- FAILURE-FIRST: quoted header name maps -----------------------
 // A header cell may itself be double-quoted: `"time",value`. Today the raw
 // header cell keeps its quotes (`"time"`), so neither the normalized name
 // nor the raw-cell form equals the bare request `"time"` and admission
@@ -328,28 +325,20 @@ fn unit_suffixed_duplicates_are_ambiguous() {
 #[test]
 fn quoted_header_name_maps() {
     let csv = "\"time\",value\n0.0,1.0\n0.1,2.0";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 1.0), (0.1, 2.0)],
-        "quoted-header",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 1.0), (0.1, 2.0)], "quoted-header");
 }
 
-// ---- FAILURE-FIRST (PASS 4): quoted numeric cell parses --------------------
+// ---- FAILURE-FIRST: quoted numeric cell parses --------------------
 // A numeric cell may be double-quoted: `0.0,"2.0"`. Today the value cell
 // keeps its quotes, `"2.0"` fails the `f64` parse, and admission refuses.
 // After unquoting it must lower to the same points as the unquoted `2.0`.
 #[test]
 fn quoted_numeric_cell_parses() {
     let csv = "time,value\n0.0,\"2.0\"";
-    assert_lowered(
-        &csv_source(csv),
-        &[(0.0, 2.0)],
-        "quoted-numeric",
-    );
+    assert_lowered(&csv_source(csv), &[(0.0, 2.0)], "quoted-numeric");
 }
 
-// ---- FAILURE-FIRST (PASS 4): quoted comma field in any column position -----
+// ---- FAILURE-FIRST: quoted comma field in any column position -----
 // A quoted comma field must not shift columns whether it sits in any position,
 // and rows may freely mix quoted and unquoted fields. Today row 1
 // `0.0,"a,b",1.0` splits into 4 cells and refuses as ragged. Expected
@@ -364,8 +353,8 @@ fn quoted_comma_field_in_middle_and_last_column() {
     );
 }
 
-// ---- FAILURE-FIRST (PASS 5): typed refusals for CSV data classes -----------
-// All DATA-class refusals today collapse to the flat `E-SERIES-CSV`. PASS 5
+// ---- FAILURE-FIRST: typed refusals for CSV data classes -----------
+// All DATA-class refusals today collapse to the flat `E-SERIES-CSV`.
 // splits them into the numbered family `E-CSV-001..009` (project convention
 // `E-<TOPIC>-<NUM>`, cf. E-EVENT-001 / E-TRANS-001). Each test below is RED
 // pre-change (it still receives `E-SERIES-CSV`) and GREEN after. A negative
@@ -374,31 +363,46 @@ fn quoted_comma_field_in_middle_and_last_column() {
 #[test]
 fn missing_time_column_refuses_ecsv001() {
     let csv = "tick,value\n0.0,1.0\n0.1,2.0";
-    assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-001");
+    assert_code(
+        &check_source("time_series_csv", &csv_source(csv)),
+        "E-CSV-001",
+    );
 }
 
 #[test]
 fn duplicate_time_column_refuses_ecsv002() {
     let csv = "time,time\n0.0,1.0\n0.1,2.0";
-    assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-002");
+    assert_code(
+        &check_source("time_series_csv", &csv_source(csv)),
+        "E-CSV-002",
+    );
 }
 
 #[test]
 fn missing_value_column_refuses_ecsv003() {
     let csv = "time,tick\n0.0,1.0\n0.1,2.0";
-    assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-003");
+    assert_code(
+        &check_source("time_series_csv", &csv_source(csv)),
+        "E-CSV-003",
+    );
 }
 
 #[test]
 fn duplicate_value_column_refuses_ecsv004() {
     let csv = "time,value,value\n0.0,1.0,2.0\n0.1,3.0,4.0";
-    assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-004");
+    assert_code(
+        &check_source("time_series_csv", &csv_source(csv)),
+        "E-CSV-004",
+    );
 }
 
 #[test]
 fn ragged_row_refuses_ecsv005() {
     let csv = "time,value\n0.0,1.0,2.0";
-    assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-005");
+    assert_code(
+        &check_source("time_series_csv", &csv_source(csv)),
+        "E-CSV-005",
+    );
 }
 
 #[test]
@@ -448,7 +452,10 @@ fn nonfinite_cells_refuse_ecsv008() {
 fn nonincreasing_time_refuses_ecsv009() {
     // Equal times: row 2 time is not strictly after row 1.
     let equal = "time,value\n0.0,1.0\n0.0,2.0";
-    assert_code(&check_source("time_series_csv", &csv_source(equal)), "E-CSV-009");
+    assert_code(
+        &check_source("time_series_csv", &csv_source(equal)),
+        "E-CSV-009",
+    );
     // Decreasing times: row 2 time is not after row 1.
     let decreasing = "time,value\n0.1,1.0\n0.0,2.0";
     assert_code(
@@ -465,19 +472,18 @@ fn nonincreasing_time_refuses_ecsv009() {
 }
 
 // ---- Negative control: arg-shape refusal stays on E-SERIES-CSV ------------
-// The compat pin (BronzeCoyote's `tests/emath-syntax/tests/time_series.rs`)
+// The compat pin (`tests/emath-syntax/tests/time_series.rs`)
 // requires ARG-SHAPE refusals to keep `E-SERIES-CSV`. A non-string-literal
 // first argument is an arg-shape defect, disjoint from the data-class family.
-// GREEN before and after PASS 5.
+// GREEN before and after.
 #[test]
 fn nonliteral_csv_argument_still_refuses_eseriescsv() {
-    let source =
-        "emath function CsvSeries:\n    definitions:\n        data = series_from_csv(3.14, \"time\", \"value\", \"linear\", \"refuse\")\n";
+    let source = "emath function CsvSeries:\n    definitions:\n        data = series_from_csv(3.14, \"time\", \"value\", \"linear\", \"refuse\")\n";
     assert_code(&check_source("time_series_csv", source), "E-SERIES-CSV");
 }
 
 // ===========================================================================
-// PASS 6: declared interpolation/extrapolation handoff + semantic identity
+// Declared interpolation/extrapolation handoff + semantic identity
 // ===========================================================================
 //
 // Metamorphic identity laws, oracle-free: we cannot hand-compute arbitrary
@@ -549,10 +555,10 @@ fn csv_textual_variants_are_meaning_identical() {
     let canonical = "time,value\n0.0,1.0\n0.1,2.0";
     let canonical_id = meaning_id_of(&csv_source(canonical));
     let variants = [
-        "time,value\r\n0.0,1.0\r\n0.1,2.0", // (b) CRLF
-        "\u{FEFF}time,value\n0.0,1.0\n0.1,2.0", // (c) BOM prefix
+        "time,value\r\n0.0,1.0\r\n0.1,2.0",           // (b) CRLF
+        "\u{FEFF}time,value\n0.0,1.0\n0.1,2.0",       // (c) BOM prefix
         "  time , value  \n 0.0 , 1.0 \n 0.1 , 2.0 ", // (d) surrounding whitespace
-        "time,value\n0.0,\"1.0\"\n0.1,\"2.0\"", // (e) quoted value cells
+        "time,value\n0.0,\"1.0\"\n0.1,\"2.0\"",       // (e) quoted value cells
         // (f) label column reordered + comma inside a quoted note cell.
         "value,note,time\n1.0,\"note,with comma\",0.0\n2.0,other,0.1",
     ];
@@ -568,7 +574,7 @@ fn csv_textual_variants_are_meaning_identical() {
 // ---- MR-ID-2: interpolation policy hashes in -------------------------------
 // Identical points, extrapolation fixed; each of the five interpolation
 // policies must yield a pairwise-distinct meaning. Policy is identity-bearing
-// for CSV-built series exactly as it is for the literal parent bead.
+// for CSV-built series exactly as it is for the literal parent.
 #[test]
 fn interpolation_policy_hash_distinctness() {
     let interps = ["previous", "linear", "nearest", "pwc", "monotone_cubic"];
@@ -583,8 +589,7 @@ fn interpolation_policy_hash_distinctness() {
                 assert_ne!(
                     left, right,
                     "interpolation `{}` and `{}` must hash to different meanings",
-                    interps[i],
-                    interps[j]
+                    interps[i], interps[j]
                 );
             }
         }
@@ -608,8 +613,7 @@ fn extrapolation_policy_hash_distinctness() {
                 assert_ne!(
                     left, right,
                     "extrapolation `{}` and `{}` must hash to different meanings",
-                    extras[i],
-                    extras[j]
+                    extras[i], extras[j]
                 );
             }
         }
@@ -625,18 +629,33 @@ fn extrapolation_policy_hash_distinctness() {
 fn data_hash_distinctness_and_row_order_refusal() {
     let base = "time,value\n0.0,1.0\n0.1,2.0\n0.2,3.0";
     let base_id = meaning_id_of(&policy_csv_source(base, "linear", "refuse"));
-    let extra_point =
-        meaning_id_of(&policy_csv_source("time,value\n0.0,1.0\n0.1,2.0\n0.2,3.0\n0.3,4.0", "linear", "refuse"));
-    let changed_value =
-        meaning_id_of(&policy_csv_source("time,value\n0.0,1.0\n0.1,2.0\n0.2,9.0", "linear", "refuse"));
-    let shifted_time =
-        meaning_id_of(&policy_csv_source("time,value\n0.0,1.0\n0.11,2.0\n0.2,3.0", "linear", "refuse"));
+    let extra_point = meaning_id_of(&policy_csv_source(
+        "time,value\n0.0,1.0\n0.1,2.0\n0.2,3.0\n0.3,4.0",
+        "linear",
+        "refuse",
+    ));
+    let changed_value = meaning_id_of(&policy_csv_source(
+        "time,value\n0.0,1.0\n0.1,2.0\n0.2,9.0",
+        "linear",
+        "refuse",
+    ));
+    let shifted_time = meaning_id_of(&policy_csv_source(
+        "time,value\n0.0,1.0\n0.11,2.0\n0.2,3.0",
+        "linear",
+        "refuse",
+    ));
     assert_ne!(base_id, extra_point, "adding a point must change meaning");
-    assert_ne!(base_id, changed_value, "changing a value must change meaning");
+    assert_ne!(
+        base_id, changed_value,
+        "changing a value must change meaning"
+    );
     assert_ne!(base_id, shifted_time, "shifting a time must change meaning");
     // Permuting row order → non-increasing time axis → refused E-CSV-009.
     let reordered = "time,value\n0.1,2.0\n0.0,1.0\n0.2,3.0";
-    let result = check_source("time_series_csv", &policy_csv_source(reordered, "linear", "refuse"));
+    let result = check_source(
+        "time_series_csv",
+        &policy_csv_source(reordered, "linear", "refuse"),
+    );
     assert_code(&result, "E-CSV-009");
 }
 
@@ -696,12 +715,11 @@ fn interp_world_honors_declared_interpolation() {
 // ---- MR-EVAL-2: extrapolation `refuse` is a typed fault --------------------
 // Sampling outside support with `refuse` yields the typed
 // `EvalFault::SeriesOutOfSupport`; `clamp` returns the endpoint value and
-// `extend` continues the outer interval (emath-uooxi behavior). All finite.
+// `extend` continues the outer interval. All finite.
 #[test]
 fn extrapolation_refuse_is_typed() {
     let csv = "time,value\n0.0,0.0\n1.0,2.0";
-    let refuse = &eval_report(csv, "linear", "refuse", 2.0).declarations[0]
-        .tests[0].verdict;
+    let refuse = &eval_report(csv, "linear", "refuse", 2.0).declarations[0].tests[0].verdict;
     assert!(
         matches!(
             refuse,
@@ -724,7 +742,7 @@ fn extrapolation_refuse_is_typed() {
 }
 
 // ===========================================================================
-// PASS 7: column-permutation / unused-column metamorphic laws
+// Column-permutation / unused-column metamorphic laws
 // ===========================================================================
 //
 // The CSV surface has two physical freedoms that must be semantic NO-OPs:
@@ -855,15 +873,27 @@ fn mr_permutation_preserves_refusals() {
         "value,time\n1.0,0.0,0.5",
     ];
     for csv in ragged {
-        assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-005");
+        assert_code(
+            &check_source("time_series_csv", &csv_source(csv)),
+            "E-CSV-005",
+        );
     }
-    let nonincreasing = ["time,value\n0.1,1.0\n0.0,2.0", "value,time\n1.0,0.1\n2.0,0.0"];
+    let nonincreasing = [
+        "time,value\n0.1,1.0\n0.0,2.0",
+        "value,time\n1.0,0.1\n2.0,0.0",
+    ];
     for csv in nonincreasing {
-        assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-009");
+        assert_code(
+            &check_source("time_series_csv", &csv_source(csv)),
+            "E-CSV-009",
+        );
     }
     let missing_value = ["time,tick\n0.0,1.0\n0.1,2.0", "tick,time\n1.0,0.0\n2.0,0.1"];
     for csv in missing_value {
-        assert_code(&check_source("time_series_csv", &csv_source(csv)), "E-CSV-003");
+        assert_code(
+            &check_source("time_series_csv", &csv_source(csv)),
+            "E-CSV-003",
+        );
     }
 }
 

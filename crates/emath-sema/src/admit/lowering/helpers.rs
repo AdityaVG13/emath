@@ -4,10 +4,10 @@
 use emath_core::tree::{BinderKind, Expr, ExprKind};
 use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
+use super::super::E_UNSUPPORTED_TYPE;
 use super::super::expr_helpers::*;
 use super::super::infer::*;
 use super::super::sections::*;
-use super::super::{E_UNKNOWN_FUNCTION, E_UNSUPPORTED_TYPE};
 
 impl super::super::Admitter {
     pub(super) fn lower_finite_binder(
@@ -18,13 +18,53 @@ impl super::super::Admitter {
         body: &Expr,
         guard: Option<&Expr>,
     ) -> Option<(ExprId, Infer)> {
-        if binders.len() != 1 {
+        if binders.is_empty() {
             self.error(
                 E_UNSUPPORTED_TYPE,
-                "only a single binder variable is computed today",
+                format!("`{kind:?}` needs at least one binder variable"),
                 expr.source,
             );
             return None;
+        }
+        if binders.len() > 1 {
+            // Multi-binder desugar (emath-6kk1b): leftmost binder =
+            // outermost, rightmost = innermost; the optional guard binds
+            // to the innermost binder. Each nesting level is the SAME
+            // kind (sum∘sum ≡ sum, product likewise, forall/exists
+            // compose associatively, integral nesting is the standard
+            // iterated-integral convention). The synthesized tree
+            // re-enters THIS path one binder at a time, so range checks,
+            // caps, guards, and inference rules apply per level with
+            // zero new lowering code.
+            let mut nested = Expr {
+                kind: ExprKind::Binder {
+                    kind,
+                    binders: vec![binders[binders.len() - 1].clone()],
+                    body: Box::new(body.clone()),
+                    guard: guard.map(|g| Box::new(g.clone())),
+                },
+                source: expr.source,
+            };
+            for binder in binders[..binders.len() - 1].iter().rev() {
+                nested = Expr {
+                    kind: ExprKind::Binder {
+                        kind,
+                        binders: vec![binder.clone()],
+                        body: Box::new(nested),
+                        guard: None,
+                    },
+                    source: expr.source,
+                };
+            }
+            self.record(
+                "sema",
+                format!(
+                    "multi-binder {kind:?} over {} variables → nested single-binder folds (rightmost innermost)",
+                    binders.len()
+                ),
+                expr.source,
+            );
+            return self.lower_expr(&nested);
         }
         let binder = &binders[0];
         let Some(domain) = binder.domain.as_ref() else {
@@ -55,140 +95,13 @@ impl super::super::Admitter {
             );
             return None;
         }
-        // For bool folds (forall/exists), use the runtime Fold op for
-        // correct bool handling in both interp and codegen.
-        if matches!(
-            kind,
-            BinderKind::ForAll | BinderKind::Exists | BinderKind::Integral | BinderKind::Series
-        ) {
-            return self.lower_variable_bound_binder(expr, kind, binder, domain, body, guard);
-        }
-        let (combine, identity) = match kind {
-            BinderKind::Sum => (
-                emath_ir::BinaryOp::StrictFloatAdd,
-                Literal::Integer("0".into()),
-            ),
-            BinderKind::Product => (
-                emath_ir::BinaryOp::StrictFloatMul,
-                Literal::Integer("1".into()),
-            ),
-            BinderKind::Integral | BinderKind::ForAll | BinderKind::Exists | BinderKind::Series => {
-                self.error(
-                    E_UNSUPPORTED_TYPE,
-                    format!("`{kind:?}` is not a finite arithmetic fold yet"),
-                    expr.source,
-                );
-                return None;
-            }
-        };
-        let previous = self.index_locals.insert(binder.name.clone(), start);
-        let mut acc_id = self.push_expr(ExprNode::Literal(identity.clone()), expr.source);
-        let mut acc_infer = Infer::F64;
-        for value in start..end {
-            self.index_locals.insert(binder.name.clone(), value);
-            let (term_id, term_infer) = if let Some(guard_expr) = guard {
-                // B02: filtered fold — if guard is true, use body; else identity.
-                let (guard_id, guard_infer) = match self.lower_expr(guard_expr) {
-                    Some(result) => result,
-                    None => {
-                        restore_index_local(&mut self.index_locals, &binder.name, previous);
-                        return None;
-                    }
-                };
-                if !matches!(guard_infer, Infer::Bool) {
-                    self.error(
-                        "E-TYPE-012",
-                        "binder guard (`if`) must be a Boolean expression",
-                        guard_expr.source,
-                    );
-                    restore_index_local(&mut self.index_locals, &binder.name, previous);
-                    return None;
-                }
-                let (body_id, body_infer) = match self.lower_expr(body) {
-                    Some(result) => result,
-                    None => {
-                        restore_index_local(&mut self.index_locals, &binder.name, previous);
-                        return None;
-                    }
-                };
-                let identity_id = self.push_expr(ExprNode::Literal(identity.clone()), expr.source);
-                let select_id = self.push_expr(
-                    ExprNode::If {
-                        condition: guard_id,
-                        then_value: body_id,
-                        else_value: identity_id,
-                    },
-                    expr.source,
-                );
-                (select_id, body_infer)
-            } else {
-                match self.lower_expr(body) {
-                    Some(term) => term,
-                    None => {
-                        restore_index_local(&mut self.index_locals, &binder.name, previous);
-                        return None;
-                    }
-                }
-            };
-            if !is_numeric_element(&term_infer) {
-                self.error(
-                    "E-TYPE-012",
-                    format!("`{kind:?}` body must be numeric"),
-                    body.source,
-                );
-                restore_index_local(&mut self.index_locals, &binder.name, previous);
-                return None;
-            }
-            acc_infer = match combine_numeric(
-                &acc_infer,
-                &term_infer,
-                match kind {
-                    BinderKind::Sum => NumericCombine::Add,
-                    BinderKind::Product => NumericCombine::Mul,
-                    BinderKind::Integral
-                    | BinderKind::ForAll
-                    | BinderKind::Exists
-                    | BinderKind::Series => {
-                        self.error(
-                            E_UNSUPPORTED_TYPE,
-                            format!("`{kind:?}` is not a finite arithmetic fold yet"),
-                            expr.source,
-                        );
-                        restore_index_local(&mut self.index_locals, &binder.name, previous);
-                        return None;
-                    }
-                },
-                expr,
-                self,
-            ) {
-                Some(infer) => infer,
-                None => {
-                    restore_index_local(&mut self.index_locals, &binder.name, previous);
-                    return None;
-                }
-            };
-            acc_id = self.push_expr(
-                ExprNode::Binary {
-                    operation: combine,
-                    left: acc_id,
-                    right: term_id,
-                },
-                expr.source,
-            );
-        }
-        restore_index_local(&mut self.index_locals, &binder.name, previous);
-        self.record(
-            "sema",
-            format!(
-                "{kind:?} `{name}` in {start}..{end} → {count} terms",
-                name = binder.name,
-                count = end - start
-            ),
-            expr.source,
-        );
-        Some((acc_id, acc_infer))
+        // Every fold lowers to the runtime Fold op, for every binder
+        // kind. Literal ranges previously unrolled here into per-term
+        // Add nodes, which overflowed the EMIR emitter's recursion at a
+        // few hundred terms; the runtime fold is flat, exact, and
+        // already cap-checked above.
+        self.lower_variable_bound_binder(expr, kind, binder, domain, body, guard)
     }
-
     pub(super) fn lower_variable_bound_binder(
         &mut self,
         expr: &Expr,
@@ -359,82 +272,6 @@ impl super::super::Admitter {
         Some((binder_id, return_infer))
     }
 
-    pub(super) fn lower_reduction(
-        &mut self,
-        expr: &Expr,
-        name: &str,
-        arg: &Expr,
-    ) -> Option<(ExprId, Infer)> {
-        let (arg_id, arg_infer) = self.lower_expr(arg)?;
-        let (combine, identity): (emath_ir::BinaryOp, f64) = match name {
-            "sum" => (emath_ir::BinaryOp::StrictFloatAdd, 0.0),
-            "product" => (emath_ir::BinaryOp::StrictFloatMul, 1.0),
-            _ => {
-                self.error(
-                    E_UNKNOWN_FUNCTION,
-                    format!("`{name}` is not a finite reduction"),
-                    expr.source,
-                );
-                return None;
-            }
-        };
-        let Some(coords) = reduction_coords(&arg_infer) else {
-            if is_numeric_element(&arg_infer) {
-                return Some((arg_id, Infer::F64));
-            }
-            self.error(
-                E_UNSUPPORTED_TYPE,
-                format!("`{name}` needs a vector, matrix, or tensor with a known size"),
-                arg.source,
-            );
-            return None;
-        };
-        if coords.len() > 10_000 {
-            self.error(
-                E_UNSUPPORTED_TYPE,
-                "finite reduction is capped at 10000 terms",
-                arg.source,
-            );
-            return None;
-        }
-        let mut acc_id = self.push_expr(
-            ExprNode::Literal(Literal::FloatBits(identity.to_bits())),
-            expr.source,
-        );
-        for coord in &coords {
-            let indices = coord
-                .iter()
-                .map(|axis| {
-                    self.push_expr(
-                        ExprNode::Literal(Literal::Integer(axis.to_string())),
-                        expr.source,
-                    )
-                })
-                .collect();
-            let term_id = self.push_expr(
-                ExprNode::Index {
-                    value: arg_id,
-                    indices,
-                },
-                expr.source,
-            );
-            acc_id = self.push_expr(
-                ExprNode::Binary {
-                    operation: combine,
-                    left: acc_id,
-                    right: term_id,
-                },
-                expr.source,
-            );
-        }
-        self.record(
-            "sema",
-            format!("`{name}` → {count} terms", count = coords.len()),
-            expr.source,
-        );
-        Some((acc_id, Infer::F64))
-    }
-
     pub(super) fn lower_list_literal(
         &mut self,
         expr: &Expr,
@@ -487,6 +324,7 @@ impl super::super::Admitter {
             id,
             Infer::Vector {
                 extent: Some(Extent::Fixed(count)),
+                element: None,
             },
         ))
     }
@@ -619,9 +457,58 @@ impl super::super::Admitter {
         value: &Expr,
         indices: &[Expr],
     ) -> Option<(ExprId, Infer)> {
+        // Chain flattening: `m[0][1]` parses as nested single-index
+        // expressions, but the runtime value model has no nested-vector
+        // value (Vector-of-Vector is row-major like Matrix), so the chain
+        // must reach the emitter as ONE multi-index node (2 indices ->
+        // MatrixIndex over the row-major store). Only all-point chains
+        // flatten; any range slice keeps the literal chain shape.
+        let (value, indices): (&Expr, Vec<Expr>) = {
+            let mut indices: Vec<Expr> = indices.to_vec();
+            let mut cursor: &Expr = value;
+            loop {
+                let next: Option<&Expr> = match &cursor.kind {
+                    ExprKind::Index {
+                        value: inner,
+                        indices: inner_indices,
+                    } => {
+                        if indices.len() >= 3 || inner_indices.len() != 1 {
+                            None
+                        } else {
+                            let index = &inner_indices[0];
+                            let index_is_range = matches!(&index.kind, ExprKind::Range { .. });
+                            if index_is_range {
+                                None
+                            } else {
+                                indices.insert(0, index.clone());
+                                Some(&**inner)
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                match next {
+                    Some(next_expr) => cursor = next_expr,
+                    None => break,
+                }
+            }
+            (cursor, indices)
+        };
         let (target_id, target_infer) = self.lower_expr(value)?;
         let axes = match &target_infer {
-            Infer::Vector { extent } => vec![extent.clone()],
+            Infer::Vector { extent, element } => match element.as_deref() {
+                // Vector-of-vectors indexes like a matrix: one index per
+                // nesting level (the runtime value is the row-major
+                // matrix store).
+                Some(inner @ Infer::Vector { .. }) => {
+                    let inner_extent = match inner {
+                        Infer::Vector { extent, .. } => extent.clone(),
+                        _ => None,
+                    };
+                    vec![extent.clone(), inner_extent]
+                }
+                _ => vec![extent.clone()],
+            },
             Infer::Sequence => vec![None],
             Infer::Matrix { rows, cols } => vec![rows.clone(), cols.clone()],
             Infer::Tensor { shape } => shape.iter().cloned().map(Some).collect(),
@@ -635,15 +522,54 @@ impl super::super::Admitter {
             }
         };
         if indices.len() != axes.len() {
-            self.error(
-                "E-SHAPE-006",
-                format!(
-                    "index requires {} subscript(s), found {}",
-                    axes.len(),
-                    indices.len()
-                ),
-                expr.source,
-            );
+            // A single index on a vector-of-vectors asks for the row as a
+            // VALUE; the Phase 1 runtime has no row value (rows exist only
+            // inside the matrix store), so require the full index chain.
+            // Depth of the Vector-element chain (2 = Vector<Vector<..>>).
+            let mut nest_depth = 0usize;
+            if let Infer::Vector {
+                element: Some(first),
+                ..
+            } = &target_infer
+            {
+                let mut cursor: &Infer = first;
+                loop {
+                    match cursor {
+                        Infer::Vector { element, .. } => {
+                            nest_depth += 1;
+                            match element {
+                                Some(next) => cursor = next,
+                                None => break,
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                nest_depth += 1;
+            }
+            if nest_depth >= 3 {
+                self.error(
+                    "E-TYPE-012",
+                    "nested vectors deeper than two levels have no Phase 1 runtime value; use Tensor<Float64> with one index per axis",
+                    expr.source,
+                );
+            } else if nest_depth == 2 {
+                self.error(
+                    "E-SHAPE-006",
+                    "indexing a nested vector needs every level at once (`m[i, j]`); row extraction is not a Phase 1 value",
+                    expr.source,
+                );
+            } else {
+                self.error(
+                    "E-SHAPE-006",
+                    format!(
+                        "index requires {} subscript(s), found {}",
+                        axes.len(),
+                        indices.len()
+                    ),
+                    expr.source,
+                );
+            }
             return None;
         }
         let mut out_shape = Vec::new();
@@ -664,6 +590,21 @@ impl super::super::Admitter {
             }
         }
         if !saw_slice {
+            // Element type of the result: walk the element chain once per
+            // point index (Vector<Vector<Float64>> indexed twice yields
+            // the Float64 element). Element-blind vectors keep the
+            // historical Float64 result.
+            let mut result = match &target_infer {
+                Infer::Vector { element, .. } => element.clone(),
+                _ => None,
+            };
+            for _ in 1..index_ids.len() {
+                result = match result.as_deref() {
+                    Some(Infer::Vector { element, .. }) => element.clone(),
+                    _ => None,
+                };
+            }
+            let result_infer = result.map_or(Infer::F64, |boxed| *boxed);
             self.record("sema", "scalar index", expr.source);
             let id = self.push_expr(
                 ExprNode::Index {
@@ -672,7 +613,7 @@ impl super::super::Admitter {
                 },
                 expr.source,
             );
-            return Some((id, Infer::F64));
+            return Some((id, result_infer));
         }
         self.record("sema", "slice index", expr.source);
         let id = self.push_expr(
