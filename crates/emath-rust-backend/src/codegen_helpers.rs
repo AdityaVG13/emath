@@ -1,14 +1,14 @@
-use emath_exec_ir::{EmirProgram, EmirValue};
-use emath_ir::{ExprId, ExprNode, SemanticPackage, TypeNode};
 use crate::rust_ir::ast::{
-    escape_ident, BinOp, Expr, FnDef, ImplDef, Item, Param, Stmt, StructDef, Ty, Visibility,
-    RUST_KEYWORDS,
+    BinOp, Expr, FnDef, ImplDef, Item, Param, RUST_KEYWORDS, Stmt, StructDef, Ty, Visibility,
+    escape_ident,
 };
 use crate::rust_ir::render::render_expr;
+use emath_exec_ir::{EmirProgram, EmirValue};
+use emath_ir::{ExprId, ExprNode, SemanticPackage, TypeNode};
 use std::collections::BTreeSet;
 
-use crate::codegen_render::operand;
 use crate::BackendError;
+use crate::codegen_render::operand;
 
 pub(crate) fn sanitize_crate_name(name: &str) -> String {
     let mut out: String = name
@@ -153,7 +153,17 @@ pub(crate) fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut
                 collect_var_names(package, *element, out);
             }
         }
-        ExprNode::Binder { body, .. } => collect_var_names(package, *body, out),
+        ExprNode::Binder {
+            variables, body, ..
+        } => {
+            // Names used only inside a binder domain (e.g. `n` in `2..n`)
+            // are live inputs of the emitted code; skipping them would let
+            // codegen drop the corresponding function input.
+            for variable in variables {
+                collect_var_names(package, variable.domain, out);
+            }
+            collect_var_names(package, *body, out);
+        }
         ExprNode::Differentiate { body, .. }
         | ExprNode::Solve { body, .. }
         | ExprNode::Optimize { body, .. }

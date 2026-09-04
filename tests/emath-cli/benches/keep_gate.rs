@@ -236,10 +236,7 @@ fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sam
             })
             .collect::<Vec<_>>();
         if specs.len() != 3 {
-            return Err(format!(
-                "expected 3 compiled worlds, got {}",
-                specs.len()
-            ));
+            return Err(format!("expected 3 compiled worlds, got {}", specs.len()));
         }
         let generated = emath_world_ir::world_codegen_rust::generate(
             &analysis.term,
@@ -464,8 +461,14 @@ fn machine_object() -> lab::json::JsonValue {
         .unwrap_or(0.0);
     JsonValue::Object(vec![
         ("os".into(), JsonValue::String(std::env::consts::OS.into())),
-        ("arch".into(), JsonValue::String(std::env::consts::ARCH.into())),
-        ("family".into(), JsonValue::String(std::env::consts::FAMILY.into())),
+        (
+            "arch".into(),
+            JsonValue::String(std::env::consts::ARCH.into()),
+        ),
+        (
+            "family".into(),
+            JsonValue::String(std::env::consts::FAMILY.into()),
+        ),
         ("cpu_count".into(), JsonValue::Number(cpu_count)),
         ("hostname".into(), JsonValue::String(hostname())),
     ])
@@ -475,16 +478,10 @@ fn machine_object() -> lab::json::JsonValue {
 fn volatile_field_names() -> lab::json::JsonValue {
     use lab::json::JsonValue;
     JsonValue::Array(
-        [
-            "git_sha",
-            "timestamp_unix",
-            "machine",
-            "samples",
-            "summary",
-        ]
-        .into_iter()
-        .map(|name| JsonValue::String(name.into()))
-        .collect(),
+        ["git_sha", "timestamp_unix", "machine", "samples", "summary"]
+            .into_iter()
+            .map(|name| JsonValue::String(name.into()))
+            .collect(),
     )
 }
 
@@ -509,9 +506,10 @@ fn compare_object() -> lab::json::JsonValue {
 
 /// Echo a written artifact so remote `rch exec` logs can reconstruct it locally.
 fn emit_written_file(path: &Path, rendered: &str) {
-    let name = path
-        .file_name()
-        .map_or_else(|| "unknown".into(), |name| name.to_string_lossy().into_owned());
+    let name = path.file_name().map_or_else(
+        || "unknown".into(),
+        |name| name.to_string_lossy().into_owned(),
+    );
     println!("keep-gate-file {name}");
     println!("{rendered}");
     println!("keep-gate-file-end");
@@ -625,14 +623,10 @@ fn write_guard(history_dir: &Path) -> Result<(), String> {
                 (
                     "gate".into(),
                     JsonValue::Array(
-                        [
-                            "schema",
-                            "deterministic_codegen",
-                            "phase1_std_only",
-                        ]
-                        .into_iter()
-                        .map(|name| JsonValue::String(name.into()))
-                        .collect(),
+                        ["schema", "deterministic_codegen", "phase1_std_only"]
+                            .into_iter()
+                            .map(|name| JsonValue::String(name.into()))
+                            .collect(),
                     ),
                 ),
                 (

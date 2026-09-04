@@ -1,5 +1,5 @@
 //! Fitted finite-carrier operator tables (magnet relocation,
-//! emath-mct-type-magnets-fnv-fitted-o7a6): the shared leaf type lives
+//! ): the shared leaf type lives
 //! beside the WorldIr vocabulary so `emath-lab-core`'s `holes` and `law_check`,
 //! and `emath-diagnostics` take ONE Tier-adjacent edge instead of the
 //! whole calibration machinery for a single symbol. `emath-lab-core`'s

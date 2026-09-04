@@ -1,5 +1,4 @@
-//! `emath coverage`: language completeness coverage ledger (bead
-//! emath-r3-coverage-ledger-3ism, 05 section 6).
+//! `emath coverage`: language completeness coverage ledger (05 section 6).
 //!
 //! The ledger answers "how much of math is missing?" as a generated number,
 //! never a guess. Axis 1 is MSC 2020 top-level domains grouped into
@@ -25,8 +24,8 @@
 
 #![forbid(unsafe_code)]
 
-use crate::coverage_seed::{self, DomainSeed};
 use crate::CliExit;
+use crate::coverage_seed::{self, DomainSeed};
 use std::path::Path;
 
 /// Ordered support levels. Index order is the partial order.
@@ -40,7 +39,14 @@ pub const SUPPORT_LEVELS: [&str; 6] = [
 ];
 
 /// The six facets asserted per domain.
-pub const FACETS: [&str; 6] = ["types", "operators", "goals", "notation", "worlds", "evidence"];
+pub const FACETS: [&str; 6] = [
+    "types",
+    "operators",
+    "goals",
+    "notation",
+    "worlds",
+    "evidence",
+];
 
 /// Minimum level (index) that counts toward coverage.
 pub const COVERAGE_THRESHOLD: usize = 3; // reference-impl
@@ -186,12 +192,13 @@ pub fn ledger_json() -> Result<String, String> {
         domain_obj.string("msc", seed.msc);
         domain_obj.string("super_domain", seed.super_domain);
         domain_obj.string("label", seed.label);
-        domain_obj.int(
-            "coverage_pct",
-            covered * 100 / FACETS.len() as u64,
-        );
+        domain_obj.int("coverage_pct", covered * 100 / FACETS.len() as u64);
         domain_obj.objects("facets", &facet_docs);
-        let packages: Vec<String> = seed.packages.iter().map(|package| package.to_string()).collect();
+        let packages: Vec<String> = seed
+            .packages
+            .iter()
+            .map(|package| package.to_string())
+            .collect();
         domain_obj.strings("packages", &packages);
         domain_docs.push(domain_obj.finish());
     }

@@ -1,8 +1,8 @@
 //! interpretation tests migrated from the in-crate `#[cfg(test)]` module.
 
 use emath_cli::portfolio::interpretation::*;
-use emath_cli::portfolio::{Authority, WorldCandidate};
 use emath_cli::portfolio::record::GuardFailure;
+use emath_cli::portfolio::{Authority, WorldCandidate};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn metrics(cost: i64, utility: i64) -> BTreeMap<String, i64> {

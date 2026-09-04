@@ -19,6 +19,7 @@ pub const COMMANDS: &[&str] = &[
     "signature",
     "genesis",
     "eval",
+    "sweep",
     "simulate",
     "fit",
     "repl",
@@ -60,7 +61,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "check" => "check <file.emath> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
-        "build" => "build <file.emath> [--out <dir>] [--verify] [--json]",
+        "build" => "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--json]",
         "parse" => "parse --forest <file.emath> [--out <dir>]",
         "expand" => "expand <file.emath> [--json]",
         "solve" => "solve --check <file.emath> [--json] [--apply <label>]",
@@ -72,6 +73,9 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "genesis" => "genesis <file.emath> --out <dir>",
         "eval" => {
             "eval <file.emath> [--world <name>] [--function NAME] [--set name=value] [--json]"
+        }
+        "sweep" => {
+            "sweep <file.emath> --function NAME --grid name=v1,v2,... [--expect name=value] [--out <file>] [--json]"
         }
         "simulate" => {
             "simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"
@@ -89,10 +93,16 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "web" => "web [--port N] [--no-open] [--dist PATH]",
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>]",
-        "fmt" => "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]",
-        "migrate" => "migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate --list-rules",
-        "explain" => "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
-                      E-LAW-001 [--json]",
+        "fmt" => {
+            "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]"
+        }
+        "migrate" => {
+            "migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate --list-rules"
+        }
+        "explain" => {
+            "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
+                      E-LAW-001 [--json]"
+        }
         "run" => "run <file.emath> [--out <dir>]",
         "test" => "test <file.emath> [--out <dir>]",
         "bench" => "bench <file.emath>",
@@ -116,7 +126,9 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
 #[must_use]
 pub fn command_summary(command: &str) -> Option<&'static str> {
     Some(match command {
-        "check" => "parse + admit, no codegen; `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission",
+        "check" => {
+            "parse + admit, no codegen; `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
+        }
         "plan" => "admit + goals + deterministic native resolution plan",
         "planner" => "provider-registry planning; `--parametric` lifts missing operators",
         "build" => "full pipeline to a published artifact (default out: target/emath)",
@@ -147,6 +159,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
             "execute the declared fit goal to fitted values with linked Fitted provenance (model math stays in `.emath`); `--json` emits the deterministic envelope with parameters, confidence, and measured rows"
         }
         "repl" => "interactive eval session over the same admission and VM path",
+        "sweep" => {
+            "run a cartesian parameter grid over one admitted `emath function` through the same EMIR/reference-VM path as eval; per-cell pass/fail against `--expect name=value`; deterministic `emath.sweep.v1` artifact (meaning_id + grid + per-cell results, no wall-clock) on stdout with `--json` or to a file with `--out`; exit 0 only when every cell passes"
+        }
         "compile" => {
             "parametric generated crate for an admitted world; `--world` selects one compiled world"
         }
@@ -156,11 +171,15 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "import" => "retain a Modelica subset as foreign-model declarations",
         "artifact" => "independent checker (`check`) or seeded negative-control battery",
         "architecture" => "provider-neutral pipeline map",
-        "coverage" => "language completeness coverage ledger: generated missing-math numbers with artifact-evidenced levels",
+        "coverage" => {
+            "language completeness coverage ledger: generated missing-math numbers with artifact-evidenced levels"
+        }
         "web" => "localhost web playground on 127.0.0.1; Ctrl-C to stop",
         "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011)",
-        "fmt" => "canonical-form check (full rewrite is Phase 4); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)",
+        "fmt" => {
+            "canonical-form check (full rewrite is Phase 4); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)"
+        }
         "migrate" => {
             "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
         }
@@ -306,19 +325,29 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "explain" => &["--json", "--provenance", "--show-defaults", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
-        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities"
-        | "import" | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
+        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "import"
+        | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
         "coverage" => &["--emit", "--check", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
         "fit" => &["--json", "--help", "-h"],
-        "build" => &["--json", "--out", "-o", "--verify", "--help", "-h"],
+        "build" => &["--json", "--out", "-o", "--verify", "--bin", "--help", "-h"],
         "run" | "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
             &["--out", "-o", "--help", "-h"]
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
         "eval" => &["--world", "--function", "--set", "--json", "--help", "-h"],
+        "sweep" => &[
+            "--function",
+            "--grid",
+            "--expect",
+            "--out",
+            "-o",
+            "--json",
+            "--help",
+            "-h",
+        ],
         "simulate" => &[
             "--model", "--dt", "--t0", "--t1", "--method", "--atol", "--rtol", "--dt-max",
             "--event", "--set", "--json", "--help", "-h",
@@ -339,7 +368,14 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "robot-docs" => &["--guide", "--help", "-h"],
         "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
         "fmt" => &["--value", "--sf", "--from", "--format", "--help", "-h"],
-        "migrate" => &["--fix", "--check", "--receipt", "--list-rules", "--help", "-h"],
+        "migrate" => &[
+            "--fix",
+            "--check",
+            "--receipt",
+            "--list-rules",
+            "--help",
+            "-h",
+        ],
         _ => &["--help", "-h"],
     }
 }
@@ -367,6 +403,8 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--event"
             | "--set"
             | "--function"
+            | "--grid"
+            | "--expect"
             | "--raise"
             | "--apply"
             | "--receipt"

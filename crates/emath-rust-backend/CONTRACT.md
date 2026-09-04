@@ -2,7 +2,7 @@
 
 ## Purpose and layer
 
-Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). Phase 1 generates one crate per admission: a struct plus constructor for stateful declarations, a free function (not a method on an empty struct) when there is no state and no constructors, an evaluation item per `evaluate <target>` goal, explicit step methods for `model` declarations, and `#[test]` functions for the `tests:` section. Every generated crate embeds the `emath-rt` kernel module verbatim (`mod emath_rt { ... }` from `emath_rt::SOURCE`); generated expressions call `emath_rt::<kernel>(...)`, so artifacts are self-contained with no external dependencies. Everything is std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
+Rust backend: universal EMIR and artifact contracts to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). The backend emits structural operations and universal control/data operations; mathematical meaning is not selected by feature names or domain-specific emitter branches. Semantic operations must arrive through `ApplyCapability` plus a materializable artifact contract. Phase 1 generates one crate per admission: a struct plus constructor for stateful declarations, a free function (not a method on an empty struct) when there is no state and no constructors, an evaluation item per `evaluate <target>` goal, explicit step methods for `model` declarations, and `#[test]` functions for the `tests:` section. Every generated crate embeds the `emath-rt` kernel module verbatim (`mod emath_rt { ... }` from `emath_rt::SOURCE`) and remains std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
 
 ## Public types and semantics
 
@@ -14,7 +14,10 @@ Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (
 ## Invariants
 
 - Generated crates are std-only, `#![forbid(unsafe_code)]`, `#![allow(dead_code)]`, and byte-deterministic.
-- Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (e.g. the demo-host `include!` driver) stay warning-free; math kernels live in exactly one place (`emath-rt`).
+- Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (e.g. the demo-host `include!` driver) stay warning-free.
+- The emitter is exhaustive over the contracted 57-variant universal `EmirOp`; active backend modules contain no removed domain-op references. Obsolete domain/dual helper files remain unreferenced only because deletion is forbidden.
+- The emitter never maps a mathematical feature name or legacy domain operation to a runtime function. A semantic operation without an `ApplyCapability` artifact contract fails as `MissingArtifactContract`.
+- `ApplyCapability` dispatches only on generic cell class. Unsupported provider and intrinsic/native bindings fail as `UnsupportedBinding`; other applications without an executable artifact body fail as `MissingArtifactContract`. Closed vector reference bytecode also refuses `MissingArtifactContract` until its upstream carrier contract is complete. No identity, interpreter fallback, or compatibility shim is emitted.
 - Generated manifest emits `edition = "2024"`, sanitized crate name/version; keywords and reserved identifiers are escaped (`type` to `type_`) and never emitted raw.
 - A declaration with no `state` and no constructors emits a free `fn` per evaluate target (no `self`, no unit struct). Worked-example tests call that function directly.
 - Constructors are controlled entry points: every `require` precondition and `ensure`/`invariant` postcondition is checked in generated code before a value escapes.
@@ -30,7 +33,7 @@ Rust backend: EMIR to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (
 
 ## Error model
 
-`BackendError` enum: `NoEvaluateGoal`, `UnknownTarget`, `MissingInput`, `MissingGiven`, `UnsupportedType`, `MultipleConstructors`, `Lowering`. All implement `Display`/`Error`. Profile validation surfaces E-CODEGEN-002/`E-CODEGEN-004` on the exact rendered module.
+`BackendError` enum: `NoEvaluateGoal`, `UnknownTarget`, `MissingInput`, `MissingGiven`, `UnsupportedType`, `MultipleConstructors`, `UnsupportedBinding`, `MissingArtifactContract`, `Lowering`. Provider/native absence and semantic operations that bypass the universal artifact seam are typed backend refusals. All variants implement `Display`/`Error`. Profile validation surfaces E-CODEGEN-002/`E-CODEGEN-004` on the exact rendered module.
 
 ## Determinism class
 
@@ -61,17 +64,17 @@ Integration tests in `tests/emath-rust-backend/tests/lib.rs`:
   `causalized_model_emits_newton_step_methods`,
   `model_emits_explicit_step_methods`,
   `const_i64_past_f64_mantissa_stays_i64`,
-  `factorial_twenty_calls_i64_kernel`,
-  `einsum_codegen_calls_rt_kernel_not_panic_stub`,
   `vector_index_codegen_uses_checked_helper_not_index`,
-  `tensor_face_slice_codegen_is_not_a_clone`,
   `integer_product_fold_uses_i64_kernel`,
   `sign_zero_uses_mathematical_sgn`,
   `folded_nonfinite_constants_emit_valid_rust`
 
+Legacy domain-render assertions are not part of this contract. They must be migrated outside this crate to construct `ApplyCapability` programs with executable artifact contracts.
+
 ## No-claim boundaries
 
 - Only the Phase 1 subset is generated: a declaration needs exactly one evaluate goal and supports one constructor. Admitted types: `Float64`, `Bool`, `Int`, `Nat`, vectors/matrices/tensors, host opaques. Other types yield `UnsupportedType`.
+- The current upstream `EmirProgram`/`ApplyCapability` payload carries capability identity, class, and arguments but no executable Rust artifact body or kernel ABI descriptor. Consequently this backend refuses all capability applications until that external contract reaches it; it does not recover legacy domain dispatch.
 - No certification power; generated crates carry invariants but the backend itself performs no evidence checks.
 
 ## Absorbed module: `rust_ir` (was `emath-rust-ir`)

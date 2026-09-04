@@ -1,9 +1,9 @@
 //! meaning_lock tests migrated from the in-crate `#[cfg(test)]` module.
 
-use emath_cli::portfolio::meaning_lock::*;
 use emath_cli::portfolio::interpretation::{
-    evaluate, DisqualificationReason, InterpretationPolicy, MetricAxis, MetricPolarity,
+    DisqualificationReason, InterpretationPolicy, MetricAxis, MetricPolarity, evaluate,
 };
+use emath_cli::portfolio::meaning_lock::*;
 use emath_cli::portfolio::record::GuardFailure;
 use emath_cli::portfolio::{Authority, WorldCandidate};
 use std::collections::BTreeMap as Map;
@@ -114,17 +114,18 @@ fn fingerprint_match_and_source_drift() {
         }
         other => panic!("expected Drifted, got {other:?}"),
     }
-    assert!(lock
-        .resolve(0x9999, WHOLE_TERM_HOLE, "other.emath")
-        .expect("other source is unlocked")
-        .is_none());
+    assert!(
+        lock.resolve(0x9999, WHOLE_TERM_HOLE, "other.emath")
+            .expect("other source is unlocked")
+            .is_none()
+    );
 }
 
 #[test]
 fn commit_locked_world_is_single_world_user_locked() {
     let locked = world(7, Authority::Structural);
-    let receipt = commit_locked_world(locked, axes(), 0x10, 0x20, &SelectionMethod::CliSet)
-        .expect("commit");
+    let receipt =
+        commit_locked_world(locked, axes(), 0x10, 0x20, &SelectionMethod::CliSet).expect("commit");
     assert_eq!(receipt.selected, vec![7]);
     assert!(receipt.archived.is_empty());
     match &receipt.input.policy {

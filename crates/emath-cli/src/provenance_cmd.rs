@@ -3,11 +3,11 @@
 use std::path::Path;
 
 use emath_artifact::JsonWriter;
-use emath_sema::session::CompilerSession;
+use emath_sema::CompilerSession;
 
 use crate::{
-    json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
-    CliExit, EXIT_REFUSED, EXIT_USAGE,
+    CliExit, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
+    print_diagnostics, print_json_diagnostics,
 };
 
 /// Render every admitted binding provenance edge in deterministic order.

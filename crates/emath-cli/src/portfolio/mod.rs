@@ -9,23 +9,23 @@ pub mod record;
 pub mod selection;
 
 pub use interpretation::{
-    archive, evaluate, rank_candidates, replay, CollapsePolicy, DisqualificationReason,
-    InterpretationPolicy, LedgerEntry, MetricAxis, MetricPolarity, ParetoArchive, PortfolioError,
-    PortfolioReceipt, ReceiptInput, RANKING_KEY_SPEC, RECEIPT_SCHEMA, RECEIPT_VERSION,
+    CollapsePolicy, DisqualificationReason, InterpretationPolicy, LedgerEntry, MetricAxis,
+    MetricPolarity, ParetoArchive, PortfolioError, PortfolioReceipt, RANKING_KEY_SPEC,
+    RECEIPT_SCHEMA, RECEIPT_VERSION, ReceiptInput, archive, evaluate, rank_candidates, replay,
 };
-pub use lock::{replay_identity, PortfolioLock};
+pub use lock::{PortfolioLock, replay_identity};
 pub use meaning_lock::{
-    apply_portfolio_cap, commit_locked_world, refuse_disqualified, LockEntry, LockError, LockKey,
-    MeaningLock, SelectionMethod, DEFAULT_PORTFOLIO_CAP, LOCK_DIR, LOCK_FILE_NAME, LOCK_SCHEMA,
-    LOCK_SCHEMA_VERSION, PROVENANCE_USER_LOCKED, WHOLE_TERM_HOLE,
+    DEFAULT_PORTFOLIO_CAP, LOCK_DIR, LOCK_FILE_NAME, LOCK_SCHEMA, LOCK_SCHEMA_VERSION, LockEntry,
+    LockError, LockKey, MeaningLock, PROVENANCE_USER_LOCKED, SelectionMethod, WHOLE_TERM_HOLE,
+    apply_portfolio_cap, commit_locked_world, refuse_disqualified,
 };
 pub use record::{
     CandidateRecord, Disqualification, ExampleEvaluation, GuardFailure, LawVerdict, WorldCandidate,
 };
-pub use selection::{select, SelectionOutcome, SelectionPolicy, SelectionWeights};
+pub use selection::{SelectionOutcome, SelectionPolicy, SelectionWeights, select};
 
-use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
 use emath_world_ir::WorldId;
+use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
 
 /// Meaning authority for a candidate result (defined in `emath-lab-core`,
 /// re-exported here as portfolio vocabulary).

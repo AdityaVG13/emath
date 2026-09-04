@@ -1,5 +1,4 @@
-//! N6: Standard notation library seeds (bead
-//! emath-r3-n6-notation-stdlib-n5hp, 04 N6 + review fixes C6/C7).
+//! N6: Standard notation library seeds (04 N6, review fixes C6/C7).
 //!
 //! The four `core::notation` packs formalized as catalog data: `logic`,
 //! `sets`, `calculus`, `algebra`. Every entry is a [`SymbolEntry`] at
@@ -18,7 +17,7 @@
 //!
 //! Precedence: pack numbers are seed proposals. Verification against the
 //! parser's actual tiers is a separate gate (parser precedence is
-//! tier-structured, not a numeric table), tracked on the notation-core bead.
+//! tier-structured, not a numeric table); that verification is future work in the notation-core area.
 //!
 //! Admission is validated through [`SymbolCatalog::validate`], so the same
 //! collision/confusable/alias gates apply to pack data as to hand-authored
@@ -90,8 +89,22 @@ pub fn sets_pack() -> NotationPack {
             seed_entry("∈", "infix", 70, "core::sets::contains", &["in"], path),
             seed_entry("∉", "infix", 70, "core::sets::not_contains", &[], path),
             seed_entry("∪", "infixl", 50, "core::sets::union", &["union"], path),
-            seed_entry("∩", "infixl", 65, "core::sets::intersection", &["inter"], path),
-            seed_entry("∖", "infixl", 65, "core::sets::difference", &["setdiff"], path),
+            seed_entry(
+                "∩",
+                "infixl",
+                65,
+                "core::sets::intersection",
+                &["inter"],
+                path,
+            ),
+            seed_entry(
+                "∖",
+                "infixl",
+                65,
+                "core::sets::difference",
+                &["setdiff"],
+                path,
+            ),
             seed_entry("⊆", "infix", 70, "core::sets::subset", &["subset"], path),
         ],
     }
@@ -105,10 +118,38 @@ pub fn calculus_pack() -> NotationPack {
     NotationPack {
         path,
         entries: vec![
-            seed_entry("∫", "prefix", 95, "core::calculus::integral", &["integral"], path),
-            seed_entry("∂", "prefix", 95, "core::calculus::partial", &["partial"], path),
-            seed_entry("d/dx", "prefix", 95, "core::calculus::derivative", &["ddx"], path),
-            seed_entry("lim", "prefix", 85, "core::calculus::limit", &["limit"], path),
+            seed_entry(
+                "∫",
+                "prefix",
+                95,
+                "core::calculus::integral",
+                &["integral"],
+                path,
+            ),
+            seed_entry(
+                "∂",
+                "prefix",
+                95,
+                "core::calculus::partial",
+                &["partial"],
+                path,
+            ),
+            seed_entry(
+                "d/dx",
+                "prefix",
+                95,
+                "core::calculus::derivative",
+                &["ddx"],
+                path,
+            ),
+            seed_entry(
+                "lim",
+                "prefix",
+                85,
+                "core::calculus::limit",
+                &["limit"],
+                path,
+            ),
         ],
     }
 }
@@ -121,9 +162,30 @@ pub fn algebra_pack() -> NotationPack {
     NotationPack {
         path,
         entries: vec![
-            seed_entry("∘", "infixr", 75, "core::algebra::compose", &["compose"], path),
-            seed_entry("⊗", "infixl", 65, "core::algebra::tensor", &["tensor"], path),
-            seed_entry("⊕", "infixl", 55, "core::algebra::direct_sum", &["direct_sum"], path),
+            seed_entry(
+                "∘",
+                "infixr",
+                75,
+                "core::algebra::compose",
+                &["compose"],
+                path,
+            ),
+            seed_entry(
+                "⊗",
+                "infixl",
+                65,
+                "core::algebra::tensor",
+                &["tensor"],
+                path,
+            ),
+            seed_entry(
+                "⊕",
+                "infixl",
+                55,
+                "core::algebra::direct_sum",
+                &["direct_sum"],
+                path,
+            ),
         ],
     }
 }
@@ -144,4 +206,3 @@ pub fn catalog_from_packs() -> SymbolCatalog {
     }
     SymbolCatalog { entries }
 }
-

@@ -42,7 +42,10 @@ fn range_offsets_use_utf8_byte_characters_on_glyph_lines() {
     let change_params = JsonValue::Object(BTreeMap::from([
         (
             "textDocument".into(),
-            JsonValue::Object(BTreeMap::from([("uri".into(), JsonValue::String(uri.into()))])),
+            JsonValue::Object(BTreeMap::from([(
+                "uri".into(),
+                JsonValue::String(uri.into()),
+            )])),
         ),
         (
             "contentChanges".into(),

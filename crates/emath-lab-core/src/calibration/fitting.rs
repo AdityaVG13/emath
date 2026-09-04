@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use emath_term::SymbolId;
-// The shared leaf type lives in world-ir (magnet relocation, o7a6);
+// The shared leaf type lives in world-ir (magnet relocation);
 // this crate owns the FITTING procedures and re-exports the type for
 // stable paths.
 pub use emath_world_ir::FittedTable;

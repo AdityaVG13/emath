@@ -7,8 +7,8 @@
 
 use emath_world_ir::WorldId;
 
-use crate::portfolio::record::CandidateRecord;
 use crate::portfolio::Authority;
+use crate::portfolio::record::CandidateRecord;
 
 /// Deterministic linear weights for policy-shaped selection.
 #[derive(Debug, Clone, Copy, PartialEq)]

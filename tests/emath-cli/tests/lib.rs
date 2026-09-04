@@ -3,8 +3,8 @@
 use std::process::Command;
 
 use emath_cli::{
-    check_json_document, diagnostics_json_document, json_diagnostic_entry, run, run_check, CliExit,
-    EXIT_OK, EXIT_REFUSED, EXIT_USAGE,
+    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, check_json_document, diagnostics_json_document,
+    json_diagnostic_entry, run, run_check,
 };
 
 fn diagnostic_codes(body: &str) -> Vec<String> {
@@ -75,7 +75,7 @@ fn read_side_json_and_triage_help_exit_ok() {
     assert_eq!(run(&args("agent triage --help")), EXIT_OK);
 }
 
-// F040 (emath-mock-stubtest-assertions-e3wv): the JSON commands above
+// F040: the JSON commands above
 // were exit-code-only smoke; the tests below parse the real stdout and
 // pin the schema id + required keys + non-empty rows, so a run that
 // prints `{}` (or drops the schema id) with exit 0 FAILS here.
@@ -97,9 +97,7 @@ fn json_output(line: &str) -> (emath_artifact::JsonValue, CliExit, String) {
     };
     let parsed = match emath_artifact::parse_json_document(&stdout) {
         Ok(parsed) => parsed,
-        Err(error) => panic!(
-            "stdout must be valid JSON for `{line}`: {error}\n{stdout}"
-        ),
+        Err(error) => panic!("stdout must be valid JSON for `{line}`: {error}\n{stdout}"),
     };
     (parsed, code, stdout)
 }
@@ -136,7 +134,9 @@ fn capabilities_json_pins_schema_and_command_rows() {
     for row in &commands {
         let _ = row.string_field("name").expect("command row has name");
         let _ = row.string_field("usage").expect("command row has usage");
-        let _ = row.string_field("summary").expect("command row has summary");
+        let _ = row
+            .string_field("summary")
+            .expect("command row has summary");
     }
     // The machine contract must cover the core verbs, not an empty list.
     let names: Vec<String> = commands
@@ -213,7 +213,9 @@ fn provider_list_json_pins_schema_and_nonempty_rows() {
         .collect();
     for p in &providers {
         let _ = p.string_field("id").expect("provider row has id");
-        let _ = p.string_field("capability").expect("provider row has capability");
+        let _ = p
+            .string_field("capability")
+            .expect("provider row has capability");
     }
     assert!(
         statuses.iter().any(|s| s == "implemented"),
@@ -297,7 +299,7 @@ emath model PlainRC:
 fn missing_file_is_epkg080_on_check_eval_compile_simulate() {
     emath_syntax::install_source_parser();
     let missing = std::env::temp_dir().join(format!(
-        "emath-cli-missing-pass28-{}.emath",
+        "emath-cli-missing-assert-{}.emath",
         std::process::id()
     ));
     let path = missing.to_string_lossy().into_owned();

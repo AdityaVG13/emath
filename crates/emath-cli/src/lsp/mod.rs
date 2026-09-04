@@ -2,7 +2,7 @@
 
 //! Minimal language-server-protocol skeleton for emath.
 //!
-//! Deterministic, std-only LSP slice: base framing, incremental text sync, and
+//! Deterministic, std-only LSP server: base framing, incremental text sync, and
 //! diagnostics via the real compiler session (`emath_sema::CompilerSession`).
 //! The optional `async-runtime` feature adds the `lab` entry and the async
 //! `transport` lane; the blocking run loop is untouched.

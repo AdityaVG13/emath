@@ -104,7 +104,10 @@ pub enum Ty {
     Bool,
     SelfType,
     Named(String),
-    Result { ok: Box<Ty>, error: Box<Ty> },
+    Result {
+        ok: Box<Ty>,
+        error: Box<Ty>,
+    },
     Ref(Box<Ty>),
     Unit,
 }

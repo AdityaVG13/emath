@@ -7,13 +7,19 @@ use std::path::Path;
 #[test]
 fn support_level_ordering_is_total() {
     for (index, level) in SUPPORT_LEVELS.iter().enumerate() {
-        assert_eq!(SUPPORT_LEVELS.iter().position(|name| name == level), Some(index));
+        assert_eq!(
+            SUPPORT_LEVELS.iter().position(|name| name == level),
+            Some(index)
+        );
     }
-    assert_eq!(SUPPORT_LEVELS.iter().position(|name| *name == "nonsense"), None);
+    assert_eq!(
+        SUPPORT_LEVELS.iter().position(|name| *name == "nonsense"),
+        None
+    );
 }
 
 #[test]
-fn rating_mapping_matches_bead_vocabulary() {
+fn rating_mapping_matches_documented_vocabulary() {
     assert_eq!(rating_to_level("FULL"), Some(3));
     assert_eq!(rating_to_level("SYNTAX-ONLY"), Some(2));
     assert_eq!(rating_to_level("MISSING"), Some(0));
@@ -94,8 +100,11 @@ fn unclaimed_package_is_refused() {
     let dir = std::env::temp_dir().join(format!("emath-cov-pkg-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let catalog = dir.join("PACKAGE_CATALOG.md");
-    std::fs::write(&catalog, format!("{real}| `core::nonexistent` | nothing | 1 |\n"))
-        .expect("write catalog");
+    std::fs::write(
+        &catalog,
+        format!("{real}| `core::nonexistent` | nothing | 1 |\n"),
+    )
+    .expect("write catalog");
     let error = verify_packages(&catalog).expect_err("unclaimed package");
     assert!(error.starts_with(E_PACKAGE_UNCLAIMED), "{error}");
     let _ = std::fs::remove_file(&catalog);

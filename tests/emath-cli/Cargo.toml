@@ -18,6 +18,8 @@ emath-syntax = { path = "../../crates/emath-syntax" }
 emath-plan = { path = "../../crates/emath-plan" }
 emath-artifact = { path = "../../crates/emath-artifact" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }
+emath-exec-ir = { path = "../../crates/emath-exec-ir" }
+emath-ir = { path = "../../crates/emath-ir" }
 
 [[bench]]
 name = "comprehensive_bench"

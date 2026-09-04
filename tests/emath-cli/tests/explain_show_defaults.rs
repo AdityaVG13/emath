@@ -1,4 +1,4 @@
-//! F8 `emath explain --show-defaults` (bead emath-r3-explain-defaults-yt97).
+//! F8 `emath explain --show-defaults`.
 //!
 //! Contracts:
 //! - the flag prints every effective default, each labeled with its
@@ -75,10 +75,16 @@ fn show_defaults_reports_declaration_overrides() {
 
 #[test]
 fn show_defaults_is_byte_identical_across_runs() {
-    let path = repo_file("tests/valid/square.emath").to_str().expect("utf8").to_string();
+    let path = repo_file("tests/valid/square.emath")
+        .to_str()
+        .expect("utf8")
+        .to_string();
     let (first, _) = cli(&["explain", "--show-defaults", &path]);
     let (second, _) = cli(&["explain", "--show-defaults", &path]);
-    assert_eq!(first, second, "same input must produce byte-identical output");
+    assert_eq!(
+        first, second,
+        "same input must produce byte-identical output"
+    );
 }
 
 #[test]

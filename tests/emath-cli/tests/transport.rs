@@ -13,11 +13,11 @@
 //!   `writer` field; the frame-body cap is spelled out locally because
 //!   `MAX_FRAME_BODY` is a private const.
 
+use asupersync::Cx;
 use asupersync::channel::mpsc;
 use asupersync::io::ReadBuf;
 use asupersync::io::{AsyncRead, AsyncWrite};
 use asupersync::runtime::JoinError;
-use asupersync::Cx;
 use emath_cli::lsp::json::JsonValue;
 use emath_cli::lsp::lab::run_with_cx;
 use emath_cli::lsp::protocol::read_message;
@@ -184,8 +184,8 @@ fn async_written_frame_reads_back_through_blocking_protocol() {
             .await
             .expect("async framing must succeed");
         let mut cursor = std::io::Cursor::new(&wire[..]);
-        let message = read_message(&mut cursor)
-            .expect("blocking reader must accept the async frame");
+        let message =
+            read_message(&mut cursor).expect("blocking reader must accept the async frame");
         let message = message.expect("one frame expected");
         assert_eq!(message.id, Some(1));
         assert_eq!(message.method, "initialize");

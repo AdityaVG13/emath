@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use emath_world_ir::{fnv1a64, WorldId};
+use emath_world_ir::{WorldId, fnv1a64};
 
 use crate::portfolio::{Authority, ScoreVector};
 
@@ -295,7 +295,10 @@ impl WorldCandidate {
     ///
     /// Refuses when `claimed` is strictly above [`Self::evidence_authority`].
     /// Ranking and selection never call this to raise a label.
-    pub fn with_claimed_label(mut self, claimed: Authority) -> Result<Self, crate::portfolio::PortfolioError> {
+    pub fn with_claimed_label(
+        mut self,
+        claimed: Authority,
+    ) -> Result<Self, crate::portfolio::PortfolioError> {
         if claimed > self.evidence_authority {
             return Err(crate::portfolio::PortfolioError::AuthorityEscalation {
                 fingerprint: self.world_fingerprint,

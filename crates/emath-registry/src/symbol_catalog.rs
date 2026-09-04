@@ -1,6 +1,6 @@
 //! Standard Symbol Catalog (SSC): the registry artifact governing which
 //! glyphs exist, what they map to, and how collisions are resolved
-//! (bead emath-r3-ssc-governance-kvuo, 05 section 4).
+//! (05 section 4).
 //!
 //! The same glyphs legitimately mean many things; worlds make interpretation
 //! data, chosen deterministically, never silently. The SSC records each
@@ -28,8 +28,8 @@
 //!
 //! No-claim boundary: full Unicode NFC verification is not implemented in
 //! std; glyphs are authored NFC and the loader checks structural well-formed
-//!ness only. A dedicated normalization gate lands with the notation-core
-//! governance bead.
+//!ness only. A dedicated normalization gate is future work in the
+//! notation-core governance area.
 
 #![forbid(unsafe_code)]
 
@@ -167,7 +167,7 @@ impl SymbolEntry {
                 return Err(format!(
                     "{E_SYMBOL_MALFORMED}: unknown fixity `{other}` for glyph `{}`",
                     self.glyph
-                ))
+                ));
             }
         }
         if self.core_path.is_empty() {
@@ -210,10 +210,11 @@ impl SymbolEntry {
                 ));
             }
             let identifier_ok = !alias.is_empty()
-                && alias.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
                 && alias
                     .chars()
-                    .all(|c| c.is_alphanumeric() || c == '_');
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+                && alias.chars().all(|c| c.is_alphanumeric() || c == '_');
             if !identifier_ok {
                 return Err(format!(
                     "{E_SYMBOL_ALIAS_FORBIDDEN}: alias `{alias}` for glyph {} is not a valid \
@@ -249,7 +250,7 @@ impl SymbolCatalog {
                         return Err(format!(
                             "{E_SYMBOL_SELF_CERTIFIED}: glyph {} promoted by `{}` without a producer-distinct reviewer",
                             entry.glyph, entry.proposed_by
-                        ))
+                        ));
                     }
                 }
             }
@@ -272,7 +273,8 @@ impl SymbolCatalog {
                 if class_conflict {
                     return Err(format!(
                         "{E_SYMBOL_CONFLUSABLE}: glyphs {} and {} share confusable class {:?} in pack {}",
-                        left.glyph, right.glyph,
+                        left.glyph,
+                        right.glyph,
                         left.confusable_class.as_deref().unwrap_or(""),
                         left.pack
                     ));
@@ -324,4 +326,3 @@ impl SymbolCatalog {
         root.finish()
     }
 }
-

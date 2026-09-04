@@ -1,5 +1,5 @@
 //! `emath fit`: execute a declared fit goal (04 §5.3,
-//! emath-r3-fit-goal-4xjh) to fitted values with linked provenance.
+//! ) to fitted values with linked provenance.
 //!
 //! The fit program — parameters, observable, model path, prediction
 //! label, residual method, optimizer method, seeds, weights, data rows,
@@ -13,19 +13,19 @@
 //! emits fitted values with linked `Fitted` provenance.
 
 use super::{
-    json_diagnostic_entry, json_diagnostics_entries, print_diagnostics, print_json_diagnostics,
-    split_error_code, CliExit, EXIT_OK, EXIT_REFUSED,
+    CliExit, EXIT_OK, EXIT_REFUSED, json_diagnostic_entry, json_diagnostics_entries,
+    print_diagnostics, print_json_diagnostics, split_error_code,
 };
 use emath_artifact::JsonWriter;
-use emath_lab_core::calibration::{
-    FitGoal, FitModel, FitOutcome, NumericRankOracle, ProvenanceHash, materialize_measured,
-};
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::{Value, evaluate, format_f64};
 use emath_exec_ir::{EmirProgram, definition_order, lower_definition};
 use emath_ir::provenance::Provenance;
 use emath_ir::{Declaration, SemanticPackage};
-use emath_sema::session::CompilerSession;
+use emath_lab_core::calibration::{
+    FitGoal, FitModel, FitOutcome, NumericRankOracle, ProvenanceHash, materialize_measured,
+};
+use emath_sema::CompilerSession;
 use emath_term::SymbolId;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -91,7 +91,11 @@ fn fit_cmd(args: &FitArgs) -> CliExit {
     if checked.diagnostics.has_errors() {
         print_diagnostics(&checked.diagnostics);
         if args.json {
-            print_json_diagnostics("fit", false, &json_diagnostics_entries(&checked.diagnostics));
+            print_json_diagnostics(
+                "fit",
+                false,
+                &json_diagnostics_entries(&checked.diagnostics),
+            );
         }
         return EXIT_REFUSED;
     }
@@ -99,7 +103,11 @@ fn fit_cmd(args: &FitArgs) -> CliExit {
     if planned.diagnostics.has_errors() {
         print_diagnostics(&planned.diagnostics);
         if args.json {
-            print_json_diagnostics("fit", false, &json_diagnostics_entries(&planned.diagnostics));
+            print_json_diagnostics(
+                "fit",
+                false,
+                &json_diagnostics_entries(&planned.diagnostics),
+            );
         }
         return EXIT_REFUSED;
     }
@@ -126,14 +134,9 @@ fn fit_cmd(args: &FitArgs) -> CliExit {
         }
     };
     let model_name = goal.model.last().cloned().unwrap_or_default();
-    let Some(declaration) = checked
-        .package
-        .declarations
-        .iter()
-        .find(|declaration| {
-            declaration.kind_label == "model" && declaration.name.leaf() == model_name
-        })
-    else {
+    let Some(declaration) = checked.package.declarations.iter().find(|declaration| {
+        declaration.kind_label == "model" && declaration.name.leaf() == model_name
+    }) else {
         return refuse_fit(
             &format!(
                 "E-FIT-004: fit names model `{}` but `{}` declares no `emath model {model_name}`",
@@ -200,12 +203,14 @@ fn fit_cmd(args: &FitArgs) -> CliExit {
             ),
             args.json,
         ),
-        FitOutcome::Unresolved { reason } => {
-            refuse_fit(&format!("E-FIT-011: fit unresolved ({reason:?})"), args.json)
-        }
-        FitOutcome::ModelError { detail } => {
-            refuse_fit(&format!("E-FIT-012: model evaluation failed: {detail}"), args.json)
-        }
+        FitOutcome::Unresolved { reason } => refuse_fit(
+            &format!("E-FIT-011: fit unresolved ({reason:?})"),
+            args.json,
+        ),
+        FitOutcome::ModelError { detail } => refuse_fit(
+            &format!("E-FIT-012: model evaluation failed: {detail}"),
+            args.json,
+        ),
     }
 }
 
@@ -248,9 +253,8 @@ impl PackageModel {
         let mut seen = input_names.clone();
         let mut programs = Vec::new();
         for (definition_name, expr) in definition_order(package, declaration) {
-            let program = lower_definition(package, expr, &seen, &[]).map_err(|detail| {
-                format!("lowering definition `{definition_name}`: {detail}")
-            })?;
+            let program = lower_definition(package, expr, &seen, &[])
+                .map_err(|detail| format!("lowering definition `{definition_name}`: {detail}"))?;
             seen.push(definition_name.clone());
             programs.push((definition_name.clone(), program));
         }
@@ -283,21 +287,20 @@ impl FitModel for PackageModel {
                 t
             } else {
                 let symbol = SymbolId(name.clone());
-                *parameters.get(&symbol).ok_or_else(|| {
-                    format!("model input `{}` is not bound by the fit", name)
-                })?
+                *parameters
+                    .get(&symbol)
+                    .ok_or_else(|| format!("model input `{}` is not bound by the fit", name))?
             };
             stack.push(Value::F64(value));
         }
         for (definition_name, program) in &self.programs {
-            let value = evaluate(program, &stack, &[]).map_err(|fault| {
-                format!("evaluating definition `{definition_name}`: {fault:?}")
-            })?;
+            let value = evaluate(program, &stack, &[])
+                .map_err(|fault| format!("evaluating definition `{definition_name}`: {fault:?}"))?;
             stack.push(value);
         }
-        stack[self.prediction_index].as_real_f64().ok_or_else(|| {
-            format!("prediction `{}` is not a Float64 value", self.prediction)
-        })
+        stack[self.prediction_index]
+            .as_real_f64()
+            .ok_or_else(|| format!("prediction `{}` is not a Float64 value", self.prediction))
     }
 }
 
@@ -391,10 +394,7 @@ fn emit_fitted(
         for (symbol, value) in measured {
             println!(
                 "measured {} = {} +/- {} (provenance Fitted[{}])",
-                symbol.0,
-                value.value,
-                value.std_uncertainty,
-                hash_hex
+                symbol.0, value.value, value.std_uncertainty, hash_hex
             );
         }
     }

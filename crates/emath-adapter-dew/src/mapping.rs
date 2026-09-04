@@ -137,7 +137,13 @@ fn walk(
             }
         }
         ExprNode::Index { value, indices } => {
-            walk(package, *value, &format!("{dew_path}.value"), symbol, entries);
+            walk(
+                package,
+                *value,
+                &format!("{dew_path}.value"),
+                symbol,
+                entries,
+            );
             for (index, &axis) in indices.iter().enumerate() {
                 walk(
                     package,
@@ -149,7 +155,13 @@ fn walk(
             }
         }
         ExprNode::Slice { value, axes } => {
-            walk(package, *value, &format!("{dew_path}.value"), symbol, entries);
+            walk(
+                package,
+                *value,
+                &format!("{dew_path}.value"),
+                symbol,
+                entries,
+            );
             for (index, axis) in axes.iter().enumerate() {
                 match axis {
                     emath_ir::SliceAxis::Point(point) => {

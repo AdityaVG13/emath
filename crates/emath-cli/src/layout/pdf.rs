@@ -67,12 +67,7 @@ pub fn extract(fixture: &PdfPageFixture) -> MathLayoutGraph {
     let node_ids: Vec<NodeId> = fixture
         .glyphs
         .iter()
-        .map(|item| {
-            builder.add_node(
-                glyph_content(&item.glyph),
-                (0, item.glyph.len()),
-            )
-        })
+        .map(|item| builder.add_node(glyph_content(&item.glyph), (0, item.glyph.len())))
         .collect();
 
     let max_font = fixture
@@ -107,13 +102,22 @@ pub fn extract(fixture: &PdfPageFixture) -> MathLayoutGraph {
         let child = &fixture.glyphs[index];
         let parent = &fixture.glyphs[base];
         let offset = i64_abs_diff(child.y, parent.y);
-        attachments[index] = classify_offset(offset, child.y, parent.y, parent.font_size, child.font_size);
+        attachments[index] =
+            classify_offset(offset, child.y, parent.y, parent.font_size, child.font_size);
         match attachments[index] {
             Attachment::Super => {
-                builder.add_edge(node_ids[base], node_ids[index], SpatialRelation::SuperscriptOf);
+                builder.add_edge(
+                    node_ids[base],
+                    node_ids[index],
+                    SpatialRelation::SuperscriptOf,
+                );
             }
             Attachment::Sub => {
-                builder.add_edge(node_ids[base], node_ids[index], SpatialRelation::SubscriptOf);
+                builder.add_edge(
+                    node_ids[base],
+                    node_ids[index],
+                    SpatialRelation::SubscriptOf,
+                );
             }
             Attachment::Ambiguous => {
                 builder.add_ambiguity(
@@ -182,7 +186,10 @@ pub fn extract(fixture: &PdfPageFixture) -> MathLayoutGraph {
                 .iter()
                 .copied()
                 .filter(|&index| {
-                    matches!(attachments[index], Attachment::Inline | Attachment::Ambiguous)
+                    matches!(
+                        attachments[index],
+                        Attachment::Inline | Attachment::Ambiguous
+                    )
                 })
                 .collect();
             if top.is_empty() {
@@ -257,9 +264,10 @@ fn is_math_seed(text: &str) -> bool {
 
 fn nearest_base(glyphs: &[PositionedGlyph], bases: &[usize], index: usize) -> Option<usize> {
     let x = glyphs[index].x;
-    bases.iter().copied().min_by_key(|base| {
-        (i64_abs_diff(glyphs[*base].x, x), glyphs[*base].x, *base)
-    })
+    bases
+        .iter()
+        .copied()
+        .min_by_key(|base| (i64_abs_diff(glyphs[*base].x, x), glyphs[*base].x, *base))
 }
 
 /// Absolute difference without wrapping on `i64::MIN`/`i64::MAX` pairs.
@@ -324,4 +332,3 @@ fn split_runs(fixture: &PdfPageFixture, line: &[usize], gap: i64) -> Vec<Vec<usi
     }
     runs
 }
-

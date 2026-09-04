@@ -11,9 +11,8 @@ name = "emath"
 path = "src/main.rs"
 
 [features]
-# Async-runtime lane for the tokio → asupersync cutover (pass 2), inherited
-# from the absorbed emath-lsp crate. Optional by design: the default build
-# stays std-only; this gate exposes the Cx/lab runtime entry (lsp::lab).
+# Gates the async runtime dependency. Optional by design: the default build
+# stays std-only; this feature exposes the lab runtime entry (lsp::lab).
 async-runtime = ["dep:asupersync"]
 
 [dependencies]
@@ -28,12 +27,11 @@ emath-lab-core = { workspace = true }
 emath-evidence = { workspace = true }
 emath-exec-ir = { workspace = true }
 emath-goal = { workspace = true }
-# KEEP (rpme/C016/C060/C080, ledger card in bead close): this edge carries
-# REAL domain data, not thin type imports — emath_ir::Goal (6 sites: plan/
-# agent json rendering), Provenance, FallbackPolicy, EvidenceLevel. The
-# stale census premise (2 thin types) no longer holds; aliasing Goal onto
-# another crate would relocate ownership, not remove the need. emath-ir is
-# the true owner.
+# This dependency is deliberate: it carries real domain data, not thin type
+# imports. It provides Goal (used in plan and agent JSON rendering),
+# Provenance, FallbackPolicy, and EvidenceLevel. Re-expressing Goal in
+# another crate would relocate ownership, not remove the need; emath-ir is
+# the owner of these types.
 emath-ir = { workspace = true }
 emath-plan = { workspace = true }
 emath-provider-api = { workspace = true }
