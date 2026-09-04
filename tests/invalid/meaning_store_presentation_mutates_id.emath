@@ -1,6 +1,6 @@
-# emath-epic-emlib-nz1n.11 CAPSTONE negative fixture.
-# invariant: whitespace/comment edits preserve MeaningID (nz1n.2 + nz1n.8
-# + nz1n.11). This file IS a presentation edit of the capstone base
+# CAPSTONE negative fixture.
+# invariant: whitespace/comment edits preserve MeaningID (+
+# + ). This file IS a presentation edit of the capstone base
 # source (emath function square: y = x * x) — comments and blank lines
 # only, no semantic token changed. The meaning-store identity gate
 # (tests/emath-store/tests/meaning_store_unit.rs) asserts this fixture's

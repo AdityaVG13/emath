@@ -1,4 +1,4 @@
-// emath-epic-machine-fjxh.11 negative seed: reachable-closure + tree shaking.
+// negative seed: reachable-closure + tree shaking.
 //
 // Seeded silent-success: a REQUIRED dependency (a cell whose bytecode the
 // artifact's entry actually calls) must NOT be shakeable — a mutant that

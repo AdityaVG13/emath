@@ -1,4 +1,4 @@
-#  Negative control (emath-r3-nabla-pack-o6jp): 3D-arity curl. The 3D
+#  Negative control: 3D-arity curl. The 3D
 #  curl OperatorDef is pending in the discrete stencil world; a 6-argument
 #  grad-curl-form refuses typed instead of computing a wrong-world value.
 use sci::physics::notation::nabla

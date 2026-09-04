@@ -1,0 +1,4 @@
+# E-PKG-082: sharing source without a freeze lock is refused.
+# A portable .emlib must contain the expanded source and its
+# emath.freeze.lock.v1 sidecar; raw scratch source alone has no pinned meaning.
+solve x^2 = 2 over Real

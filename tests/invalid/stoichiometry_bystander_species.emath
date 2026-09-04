@@ -1,7 +1,7 @@
 # expect: E-CHEM-STOICH — an ICE table change entry for a species the
 # reaction does not involve (`C` is not in `r1: A -> B`) is a
 # transcription error, never silently ignored
-# (emath-r3-stoich-tables-pqs6).
+#.
 emath reaction_network Bystander:
     species:
         A

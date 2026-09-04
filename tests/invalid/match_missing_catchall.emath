@@ -1,4 +1,4 @@
-#  Negative control (U6, emath-r3-match-expr-dnbd): a match expression
+# Negative control (U6): a match expression
 #  with no catch-all arm. Totality is mandatory — the final `_` or
 #  binding arm may not be omitted, so an uncovered subject value is a
 #  parse-time refusal, never a silent fallthrough.

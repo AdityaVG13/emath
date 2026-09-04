@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.3 negative seed.
+# negative seed.
 #
 # Scenario: a `Softmax` capability cell claims `class: pure` but its
 # definitions reference a provider with the wrong axis shape (`axis` on a

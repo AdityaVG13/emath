@@ -1,7 +1,7 @@
 # expect: E-CHEM-STOICH — ICE table change coefficients are DERIVED from
 # the reaction line (`r1: A -> B` gives nu(A) = -1); re-entering -2 is
-# the transcription error the bead exists to catch
-# (emath-r3-stoich-tables-pqs6).
+# the transcription error this file exists to catch
+#.
 emath reaction_network Mismatch:
     species:
         A

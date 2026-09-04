@@ -1,4 +1,4 @@
-// emath-xx0x.2 negative seed: eigen on a non-square matrix.
+// negative seed: eigen on a non-square matrix.
 //
 // Seeded silent-success: `eigvals` is called on a 2x3 matrix. A mutant
 // that returns a truncated/garbage spectrum (or silently transposes/

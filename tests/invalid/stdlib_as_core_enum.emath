@@ -1,4 +1,4 @@
-# Bead `emath-stdlib-object-packs-hpzgf` — negative seed: stdlib names
+# Negative seed: stdlib names
 # as nucleus operation enums fail the core-growth gate.
 #
 # Scenario: a compiler back end grows a per-op dispatch arm naming a

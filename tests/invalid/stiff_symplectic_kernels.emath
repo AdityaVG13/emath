@@ -1,4 +1,4 @@
-# emath-xx0x.3 negative seed (thin nucleus slice)
+# negative seed (thin slice)
 # The seed's silent-success shape: a NON-POSITIVE step size must refuse
 # typed at evaluation — E-ODE-003 — never a silently "integrated" value
 # that is just the input state.

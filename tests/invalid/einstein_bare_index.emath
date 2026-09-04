@@ -1,4 +1,4 @@
-# expect: E-SHAPE-006 — C11 (emath-r3-einstein-notation-rmkx): `S[ij]` on a
+# expect: E-SHAPE-006 — C11: `S[ij]` on a
 # rank-2 Matrix must never silently read as two indices (token surgery is
 # forbidden); the comma spelling `S[i, j]` is required. Phase 1 fences this
 # at the shape tier: one subscript on a rank-2 value refuses.

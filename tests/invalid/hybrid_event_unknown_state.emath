@@ -1,4 +1,4 @@
-// emath-r3-dynamical-03lh negative seed: transition wired to an
+// negative seed: transition wired to an
 // undeclared event.
 //
 // Seeded silent-success: a `transitions:` rule triggers `on GhostEvent`

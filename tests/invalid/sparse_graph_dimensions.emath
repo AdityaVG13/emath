@@ -1,4 +1,4 @@
-# emath-r2-graphs-masa negative seed (sparse slice)
+# negative seed (sparse slice)
 # The seed's silent-success shape: a triplet stream whose length is
 # NOT a multiple of three is a malformed sparse carrier — the build
 # must refuse typed E-GRAPH-006, never silently drop the dangling

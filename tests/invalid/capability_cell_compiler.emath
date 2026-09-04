@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.5 negative seed.
+# negative seed.
 #
 # Scenario: a pure capability cell's reference semantics are seeded as a
 # silently-wrong formula (softmax without the stable-max shift, or a

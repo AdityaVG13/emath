@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.9 negative seed.
+# negative seed.
 #
 # Scenario: a compiled semantic image whose partition payload is CORRUPTED
 # (a flipped byte in the bytecode section, or a content id that no longer

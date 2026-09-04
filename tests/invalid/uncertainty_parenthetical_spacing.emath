@@ -1,4 +1,4 @@
-# emath-r3-uncertainty-literals-jzej negative control: a space before the
+# negative control: a space before the
 # parenthetical breaks attachment. `1.50 (2)` is `1.50` followed by a grouped
 # `2` — never an uncertainty literal, never silently admitted as one.
 

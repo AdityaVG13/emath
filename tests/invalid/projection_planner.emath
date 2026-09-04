@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.4 negative seed.
+# negative seed.
 #
 # Scenario: a pure capability cell is declared "done" — it compiles, its
 # descriptor admits — but its docs document a stale cell identity (they

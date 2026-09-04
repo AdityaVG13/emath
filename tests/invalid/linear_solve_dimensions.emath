@@ -1,4 +1,4 @@
-// emath-r3-linear-solves-4wj0 negative seed: solve_linear outside the
+// negative seed: solve_linear outside the
 // closed reference vocabulary.
 //
 // Seeded silent-success: a cell calls `solve_linear(A, b)`. A mutant

@@ -1,4 +1,4 @@
-# expect: E-CHEM-THERMO — the honesty triangle (emath-r3-equilibrium-ds6x):
+# expect: E-CHEM-THERMO — the honesty triangle:
 # a network that declares BOTH a reversible kinetic pair (`<->` with
 # rate constants kf/kr) AND an equilibrium (`<=>` with a measured K) must
 # satisfy K == kf/kr within combined uncertainty. Here K says 1.0 but

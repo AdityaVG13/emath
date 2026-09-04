@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.2 negative seed.
+# negative seed.
 #
 # Scenario: a capability cell `Softmax` is declared with a `class:` whose
 # token is outside the closed taxonomy. A compiler that silently admits it

@@ -1,5 +1,5 @@
 # expect: E-NOTATION-AMBIG — §3.4 context-scoped brackets
-# (emath-r3-chem-surface-i6ri): inside a `rate:` entry, `[Q]` is the
+# Inside a `rate:` entry, `[Q]` is the
 # concentration-of-Q reading, but Q is not a declared species, so the
 # bracket has no resolvable reading and refuses instead of guessing.
 emath reaction_network AmbiguousBracket:

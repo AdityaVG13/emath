@@ -1,7 +1,7 @@
 # expect: E-KIND-027 — a `constraints:` entry must be a forall-over-species
 # concentration claim (`forall s in species: ...`); a bare expression is
 # outside the admitted shape and the closed section table cannot be
-# extended by spelling (emath-r3-stoich-tables-pqs6).
+# extended by spelling.
 emath reaction_network MalformedConstraint:
     species:
         A
