@@ -1,7 +1,7 @@
-//! emath-r3-equilibrium-ds6x failure-first tests (04 §3.3; builds on the
-//! CLOSED emath-r3-reactions-section-92hq grammar).
+//! Equilibrium systems failure-first tests (04 §3.3; builds on the
+//! CLOSED grammar).
 //!
-//! Contracts (each must FAIL against the pre-bead admission):
+//! Contracts (each must FAIL against the pre-admission):
 //! - an equilibrium constant line (`Ka: Measured<Real> in M = …`) is
 //!   admitted in a `reaction_network` body and carries its uncertainty;
 //!   a Ka without the uncertainty form refuses (E-CHEM-KA-EXACT) —
@@ -18,6 +18,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -25,12 +34,19 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
 fn errors(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter().filter(|(severity, _)| severity == "Error").collect()
+    out.iter()
+        .filter(|(severity, _)| severity == "Error")
+        .collect()
 }
 
 const ACETIC: &str = "\
@@ -45,7 +61,7 @@ emath reaction_network AceticDissociation:
         dissoc: CH3COOH + H2O <=> CH3COO + H3O
 ";
 
-/// The bead's flagship: acetic acid dissociation with a measured Ka
+/// The flagship: acetic acid dissociation with a measured Ka
 /// admits once the constant-line form exists.
 #[test]
 fn equilibrium_constant_line_admits() {

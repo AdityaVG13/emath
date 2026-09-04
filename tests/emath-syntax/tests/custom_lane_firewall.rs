@@ -1,4 +1,4 @@
-//! Custom-lane firewall (Wave 14 fixtures, constitutional pins).
+//! Custom-lane firewall (fixtures, constitutional pins).
 //!
 //! The custom lane must never silently fall through into strict meaning:
 //! alien glyphs stay a byte-exact body and worlds stay *labeled*
@@ -15,7 +15,7 @@ fn check_strict(name: &str, source: &str) -> emath_sema::admit::CheckResult {
     session.check_owned(name, source)
 }
 
-/// Wave 14 fixture 04: a custom file whose body uses glyphs no strict
+/// Fixture 04: a custom file whose body uses glyphs no strict
 /// builtin knows. The custom lane parses it byte-exactly.
 const ALIEN_BODY: &str = "\u{29d6}(\u{00e9} \u{22c8} e\u{0301}) \u{229b} \u{03b6}";
 
@@ -27,8 +27,11 @@ fn genesis_source(body: &str, answer: &str) -> String {
 fn custom_glyphs_stay_labeled_not_strict_meaning() {
     // The custom lane keeps alien glyphs byte-exact; it never invents a
     // Real-typed interpretation for them.
-    let file = parse_genesis(&genesis_source(ALIEN_BODY, "interpretation_portfolio"), &Limits::default())
-        .expect("custom lane admits the alien body");
+    let file = parse_genesis(
+        &genesis_source(ALIEN_BODY, "interpretation_portfolio"),
+        &Limits::default(),
+    )
+    .expect("custom lane admits the alien body");
     assert_eq!(file.body_text, ALIEN_BODY, "byte-exact body preservation");
     assert_eq!(file.world_name, "W");
 

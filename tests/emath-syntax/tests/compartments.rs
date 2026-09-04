@@ -1,5 +1,5 @@
-//! Compartments and populations thin slice (bead
-//! emath-r3-compartments-e5zq, 04 §4.1+§4.2).
+//! Compartments and populations thin slice (
+//!, 04 §4.1+§4.2).
 //!
 //! Contracts:
 //! - **Declared sink `∅`**: a reaction endpoint that is deliberately
@@ -120,8 +120,9 @@ fn sink_glyph_never_glues_into_identifier() {
 fn compartments_section_refuses_naming_design_fork() {
     let errors = check(COMPARTMENTS_SECTION, "compartments-fence");
     assert!(
-        errors.iter().any(|e| e.contains("compartments")
-            && (e.contains("C15") || e.contains("@"))),
+        errors
+            .iter()
+            .any(|e| e.contains("compartments") && (e.contains("C15") || e.contains("@"))),
         "`compartments:` must refuse naming the C15 `@` collision fork; \
          got: {errors:#?}"
     );
@@ -131,8 +132,9 @@ fn compartments_section_refuses_naming_design_fork() {
 fn populations_section_refuses_naming_world_fork() {
     let errors = check(POPULATIONS_SECTION, "populations-fence");
     assert!(
-        errors.iter().any(|e| e.contains("populations")
-            && e.contains("gillespie_exact")),
+        errors
+            .iter()
+            .any(|e| e.contains("populations") && e.contains("gillespie_exact")),
         "`populations:` must refuse naming the ODE-vs-SSA two-readings \
          design fork and the stochastic-world prerequisite; got: {errors:#?}"
     );

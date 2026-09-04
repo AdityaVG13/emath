@@ -1,5 +1,4 @@
-//! Grammar selection by manifest edition (bead emath-r3-version-stack-9z1a,
-//! 05 section 1).
+//! Grammar selection by manifest edition (05 section 1).
 //!
 //! The toolchain ships every historical edition's grammar, selected by the
 //! package manifest. Within an edition the grammar is append-only; forms are

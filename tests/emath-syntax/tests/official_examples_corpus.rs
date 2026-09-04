@@ -1,7 +1,7 @@
 //! Every public example must check, and representative run and simulation
 //! workflows must produce their declared outcomes.
 
-use emath_cli::{run, run_check, CliExit};
+use emath_cli::{CliExit, run, run_check};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -19,10 +19,7 @@ fn cli(command: &str, rest: &[&str]) -> Vec<String> {
 }
 
 fn out_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "emath-corpus-{}-{name}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("emath-corpus-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create corpus scratch dir");
     dir
@@ -146,11 +143,7 @@ fn pinned_code_in(line: &str) -> Option<String> {
         .chars()
         .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || *ch == '-')
         .collect();
-    if valid_code(&code) {
-        Some(code)
-    } else {
-        None
-    }
+    if valid_code(&code) { Some(code) } else { None }
 }
 
 /// E-XXX…-NNN shape check: `E-`, a family of >=3 uppercase letters (E-SYN,
@@ -167,8 +160,12 @@ fn valid_code(code: &str) -> bool {
     if family_dash + 4 != bytes.len() {
         return false;
     }
-    bytes[2..family_dash].iter().all(|byte| byte.is_ascii_uppercase())
-        && bytes[family_dash + 1..].iter().all(|byte| byte.is_ascii_digit())
+    bytes[2..family_dash]
+        .iter()
+        .all(|byte| byte.is_ascii_uppercase())
+        && bytes[family_dash + 1..]
+            .iter()
+            .all(|byte| byte.is_ascii_digit())
 }
 
 /// Representative native-backend oracles: build and execute the generated
@@ -207,20 +204,39 @@ fn corpus_simulate_rows_step_to_t1() {
         (
             "numerical/explicit-mass-spring.emath",
             vec![
-                "--set", "m=1", "--set", "k=1", "--set", "c=0", "--set", "s=[1,0]",
-                "--dt", "0.01", "--t1", "3.141592653589793",
+                "--set",
+                "m=1",
+                "--set",
+                "k=1",
+                "--set",
+                "c=0",
+                "--set",
+                "s=[1,0]",
+                "--dt",
+                "0.01",
+                "--t1",
+                "3.141592653589793",
             ],
         ),
         (
             "numerical/heat-rod-sim.emath",
             vec![
-                "--set", "alpha=1.0", "--set", "u=[1,0,0,0,0]",
-                "--dt", "0.01", "--t1", "1.0",
+                "--set",
+                "alpha=1.0",
+                "--set",
+                "u=[1,0,0,0,0]",
+                "--dt",
+                "0.01",
+                "--t1",
+                "1.0",
             ],
         ),
     ] {
         let source = example(relative);
-        let mut arguments = vec!["simulate".to_string(), source.to_string_lossy().into_owned()];
+        let mut arguments = vec![
+            "simulate".to_string(),
+            source.to_string_lossy().into_owned(),
+        ];
         arguments.extend(bindings.iter().map(|binding| binding.to_string()));
         assert_eq!(
             run(&arguments),
@@ -272,4 +288,3 @@ fn corpus_typed_hole_refuses_run_with_goal_code() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
-

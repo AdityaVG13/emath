@@ -1,4 +1,4 @@
-//! emath-r3-reactions-section-92hq admission-side contracts (sema tier).
+//! admission-side contracts (sema tier).
 //!
 //! Species closure and element balance are checked at admission, statically:
 //! - every species in a reaction line must be declared in `species:`
@@ -11,6 +11,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -18,7 +27,12 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
@@ -28,8 +42,10 @@ fn balanced_reaction_admits() {
     let out = check(
         "emath reaction_network HydrogenCombustion:\n    species:\n        H2\n        O2\n        H2O\n    reactions:\n        r1: 2H2 + O2 -> 2H2O\n",
     );
-    let errors: Vec<&(String, String)> =
-        out.iter().filter(|(severity, _)| severity == "Error").collect();
+    let errors: Vec<&(String, String)> = out
+        .iter()
+        .filter(|(severity, _)| severity == "Error")
+        .collect();
     assert!(
         errors.is_empty(),
         "balanced network must admit, got {errors:?}"

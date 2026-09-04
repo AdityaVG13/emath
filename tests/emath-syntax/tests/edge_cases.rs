@@ -2072,7 +2072,7 @@ notation infixl 40 \"if\" => core::math::pow
     );
 }
 
-// ---- Anti-proposals negative controls (emath-r3-anti-proposals-1n6i) --------
+// ---- Anti-proposals negative controls ---------------------------------------
 // Failure-first: this test is authored against the intended behavior and
 // must FAIL before the juxtaposition suggestion exists (A-bonus, C15).
 #[test]

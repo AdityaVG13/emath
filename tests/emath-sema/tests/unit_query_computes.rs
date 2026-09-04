@@ -1,4 +1,4 @@
-//! Unit queries compute (bead emath-unit-query-computes-8e8c, 04 §1.4):
+//! Unit queries compute:
 //! `unit of E` / `dimension of E` evaluate at admission as compile-time
 //! comparisons against unit spellings, with typed receipts and refusals.
 //!
@@ -15,6 +15,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -22,7 +31,12 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
@@ -139,7 +153,8 @@ fn bare_unit_of_as_value_stays_refused() {
 fn unknown_spelling_refuses() {
     let out = check(&fn_with_x("        unit of x == Flurble\n"));
     assert!(
-        out.iter().any(|(severity, code)| severity == "Error" && code == "E-UNIT-104"),
+        out.iter()
+            .any(|(severity, code)| severity == "Error" && code == "E-UNIT-104"),
         "unresolvable dimension/unit name must refuse E-UNIT-104, got {out:?}"
     );
 }
@@ -148,6 +163,15 @@ fn unknown_spelling_refuses() {
 /// a silent pass.
 #[test]
 fn unit_receipt_is_recorded() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("unit_query", &fn_with_x("        unit of x == m\n"));

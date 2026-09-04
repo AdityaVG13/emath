@@ -1,7 +1,7 @@
-//! emath-r3-imports-utzd: multi-file packages and imports — the `use`
+//! Packages and imports: the `use`
 //! section resolves names across files in a package.
 //!
-//! The bead's law: `use <package>.<module>` (the path prefix matching
+//! The law: `use <package>.<module>` (the path prefix matching
 //! the file's own `package` line) resolves the sibling file's
 //! declarations into the importing file's admission (package-level
 //! declaration merging), duplicate declaration names across files

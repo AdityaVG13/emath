@@ -120,9 +120,7 @@ pub fn expr_text(expr: &Expr) -> String {
             out.push_str(" |");
             for row in rows {
                 out.push(' ');
-                out.push_str(
-                    &row.iter().map(expr_text).collect::<Vec<_>>().join(", "),
-                );
+                out.push_str(&row.iter().map(expr_text).collect::<Vec<_>>().join(", "));
                 out.push_str(" |");
             }
             out

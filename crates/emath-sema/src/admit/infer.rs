@@ -13,13 +13,21 @@ pub(super) enum Infer {
     Nat,
     Int,
     Complex,
-    /// Exact rational (emath-rat-real-types-p5cj): i128 num/den, gcd
+    /// Exact rational: i128 num/den, gcd
     /// reduced, den > 0. Never coerced to Float64.
     Rat,
+    /// Stage-2 big integer (emath-t63iz): exact NON-NEGATIVE field
+    /// element, |F| < 2^256. Admitted only by the six modular
+    /// number-theory builtins; binary IEEE-style arithmetic refuses
+    /// (never coerced to Int/Float64).
+    BigInt,
     Set(Box<Infer>),
     Record(String),
     Vector {
         extent: Option<Extent>,
+        /// Element type when known (`Some` from declared types via
+        /// `infer_from_node`); `None` = element-blind (scalar Float64).
+        element: Option<Box<Infer>>,
     },
     Matrix {
         rows: Option<Extent>,
@@ -39,7 +47,7 @@ pub(super) enum Infer {
     Opaque,
     /// Host-deferred field access; numeric use is admitted without fabricating a field type.
     HostDeferred,
-    /// Time-series data constant (04 §5.4, emath-r3-timeseries-1nsa):
+    /// Time-series data constant (04 §5.4):
     /// `[(t, v), ...] with interpolation: ..., extrapolation: ...`.
     /// A datum, not a scalar; arithmetic on it is not admitted in this
     /// slice (evaluation is the named next one).
@@ -50,13 +58,13 @@ pub(super) enum Infer {
     /// An `Option<T>` carrier value (from an Option-typed declaration,
     /// option_some, or option_none). Intentionally element-INSENSITIVE at
     /// this inference layer: only the carrier shape is tracked, not the
-    /// payload type (emath-option-result-graph-field-aj8d). The concrete
+    /// payload type. The concrete
     /// payload type is enforced later by term_compile's Shape and the
     /// declared output type.
     OptionCarrier,
     /// A `Result<T, E>` carrier value (result_ok / result_err). Like the
     /// option carrier, element/error-INsensitive here; the payload and
-    /// error types are enforced downstream (emath-option-result-graph-field-aj8d).
+    /// error types are enforced downstream.
     ResultCarrier,
 }
 
@@ -110,9 +118,10 @@ impl Infer {
             Self::Int => "Int".into(),
             Self::Complex => "Complex".into(),
             Self::Rat => "Rat".into(),
+            Self::BigInt => "BigInt".into(),
             Self::Set(element) => format!("Set<{element}>"),
             Self::Record(name) => name.clone(),
-            Self::Vector { extent } => match extent {
+            Self::Vector { extent, .. } => match extent {
                 Some(extent) => format!("Vector[{extent}]"),
                 None => "Vector".into(),
             },
@@ -181,6 +190,7 @@ pub(super) fn infer_from_shape(shape: Vec<Extent>) -> Infer {
     match shape.len() {
         1 => Infer::Vector {
             extent: shape.into_iter().next(),
+            element: None,
         },
         2 => {
             let mut iter = shape.into_iter();
@@ -208,10 +218,12 @@ pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
         TypeNode::Int => Infer::Int,
         TypeNode::Complex(_) => Infer::Complex,
         TypeNode::Rational => Infer::Rat,
+        TypeNode::BigInt => Infer::BigInt,
         TypeNode::Set(element) => Infer::Set(Box::new(infer_from_node(element))),
         TypeNode::Record(name) => Infer::Record(name.0.clone()),
-        TypeNode::Vector { extent, .. } => Infer::Vector {
+        TypeNode::Vector { element, extent } => Infer::Vector {
             extent: extent.clone(),
+            element: Some(Box::new(infer_from_node(element))),
         },
         TypeNode::Matrix { rows, cols, .. } => Infer::Matrix {
             rows: rows.clone(),
@@ -224,11 +236,11 @@ pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
         TypeNode::Refinement { base, .. } | TypeNode::Interval(base) => infer_from_node(base),
         TypeNode::Opaque { .. } => Infer::Opaque,
         TypeNode::Series { .. } => Infer::Series,
-        // Composite carriers (emath-option-result-graph-field-aj8d):
+        // Composite carriers:
         // Option/Result map to their carrier Inference so constructors
         // and predicates flow through the generic builtin-call path. The
         // prime field is Int-backed (exact i64 modular arithmetic), never
-        // F64, per the bead.
+        // F64, per the spec.
         TypeNode::OptionType(_) => Infer::OptionCarrier,
         TypeNode::Result { .. } => Infer::ResultCarrier,
         TypeNode::FieldPrime { .. } => Infer::Int,
@@ -246,7 +258,7 @@ pub(super) fn extents_compatible(got: Option<&Extent>, declared: Option<&Extent>
 pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
     match (got, declared) {
         (Infer::HostDeferred, _) | (_, Infer::HostDeferred) => true,
-        (Infer::Vector { extent: got }, Infer::Vector { extent: declared }) => {
+        (Infer::Vector { extent: got, .. }, Infer::Vector { extent: declared, .. }) => {
             extents_compatible(got.as_ref(), declared.as_ref())
         }
         (
@@ -282,6 +294,7 @@ pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
         | (Infer::Int, Infer::Int)
         | (Infer::Complex, Infer::Complex)
         | (Infer::Rat, Infer::Rat)
+        | (Infer::BigInt, Infer::BigInt)
         | (Infer::Opaque, Infer::Opaque)
         | (Infer::Series, Infer::Series)
         | (Infer::Sequence, Infer::Sequence)
@@ -526,14 +539,15 @@ pub(super) fn combine_numeric(
                 }
             }
         }
-        // Exact rationals (emath-rat-real-types-p5cj): Rat arithmetic
+        // Exact rationals: Rat arithmetic
         // stays exact — Rat op Rat is Rat for +, -, *, /. Integers
         // embed exactly into rationals; mixing Rat with F64 stays
         // refused (exact x approximate is type confusion, same doctrine
         // as Interval x scalar).
         (Infer::Rat, Infer::Rat, _) => Some(Infer::Rat),
-        (Infer::Rat, Infer::Nat | Infer::Int, _)
-        | (Infer::Nat | Infer::Int, Infer::Rat, _) => Some(Infer::Rat),
+        (Infer::Rat, Infer::Nat | Infer::Int, _) | (Infer::Nat | Infer::Int, Infer::Rat, _) => {
+            Some(Infer::Rat)
+        }
         _ => {
             admitter.error(
                 "E-TYPE-012",

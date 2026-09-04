@@ -1,5 +1,4 @@
-//! Proof outlines as sections (bead emath-r3-proofs-0qua, B13 + 05
-//! §7.2) — THIN design+slice per orch ruling: obligation kinds as DATA
+//! Proof outlines as sections (B13 + 05 §7.2) — THIN design+slice: obligation kinds as DATA
 //! (assumption / lemma / check / qed), refuse incomplete outlines, NO
 //! full ELP series (no ProofChecker execution, no by_cases, no typed
 //! holes, no evidence levels — those are the named follow-ups).
@@ -141,9 +140,9 @@ fn complete_outline_admits_as_data() {
 fn incomplete_outline_refuses_naming_the_rule() {
     let errors = check(INCOMPLETE_OUTLINE, "proof-incomplete");
     assert!(
-        errors.iter().any(|e| e.starts_with("E-SYN-101")
-            && e.contains("incomplete")
-            && e.contains("qed")),
+        errors
+            .iter()
+            .any(|e| e.starts_with("E-SYN-101") && e.contains("incomplete") && e.contains("qed")),
         "an outline without a closing qed must refuse naming the \
          completeness rule; got: {errors:#?}"
     );
@@ -167,8 +166,9 @@ fn unknown_step_kind_refuses_naming_the_four() {
 fn dangling_qed_target_refuses() {
     let errors = check(DANGLING_QED, "proof-dangling-qed");
     assert!(
-        errors.iter().any(|e| e.starts_with("E-SYN-101")
-            && e.contains("never_declared")),
+        errors
+            .iter()
+            .any(|e| e.starts_with("E-SYN-101") && e.contains("never_declared")),
         "a qed naming an undeclared obligation must refuse; got: {errors:#?}"
     );
 }

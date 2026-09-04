@@ -1,4 +1,4 @@
-//! Refinement types seed (bead emath-r3-refinement-types-rrhd, 05 §7.1).
+//! Refinement types seed (05 §7.1).
 //!
 //! Contracts:
 //! - **Inline where-refinement rows refuse naming the seed design**:
@@ -77,8 +77,9 @@ emath function PlainRefProbe:
 fn inline_where_refinement_refuses_naming_seed() {
     let errors = check(WHERE_REFINEMENT_ROW, "where-fence");
     assert!(
-        errors.iter().any(|e| e.contains("where <predicate>")
-            && e.contains("decidable")),
+        errors
+            .iter()
+            .any(|e| e.contains("where <predicate>") && e.contains("decidable")),
         "the inline where-refinement row must refuse naming the \
          total/decidable fragment contract; got: {errors:#?}"
     );
@@ -88,7 +89,9 @@ fn inline_where_refinement_refuses_naming_seed() {
          downgrades to nothing); got: {errors:#?}"
     );
     assert!(
-        !errors.iter().any(|e| e.contains("only `name: Type` declarations")),
+        !errors
+            .iter()
+            .any(|e| e.contains("only `name: Type` declarations")),
         "the refinement row must never die with the generic row-shape \
          error; got: {errors:#?}"
     );

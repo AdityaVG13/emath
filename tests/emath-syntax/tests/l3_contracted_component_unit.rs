@@ -1,4 +1,4 @@
-//! L3 contracted-component surface (bead emath-l3-contracted-component-ceus7).
+//! L3 contracted-component surface.
 //!
 //! Failure-first pins for the canonical L3 declaration shape:
 //! `emath <kind> Name:` + inputs/outputs/definitions/goals section blocks,
@@ -45,13 +45,9 @@ emath function Area:
     assert_eq!(count_statements(source, "goals"), Some(1));
 }
 
-fn find_square(
-    tree: &emath_core::tree::SyntaxTree,
-) -> Option<&emath_core::tree::Declaration> {
+fn find_square(tree: &emath_core::tree::SyntaxTree) -> Option<&emath_core::tree::Declaration> {
     tree.items.iter().find_map(|item| match item {
-        Item::Declaration(declaration) if declaration.name == "Square" => {
-            Some(declaration)
-        }
+        Item::Declaration(declaration) if declaration.name == "Square" => Some(declaration),
         _ => None,
     })
 }
@@ -79,7 +75,7 @@ emath function Area:
     );
 }
 
-/// Pass 4: L2 named shorthand must expand into canonical L3 text — the
+/// L2 named shorthand must expand into canonical L3 text — the
 /// expanded source must parse, carry the canonical section set, and match
 /// a hand-written contracted component structurally (same sections, same
 /// definition names).
@@ -144,13 +140,14 @@ emath function Square:
     assert_eq!(hand_defs, exp_defs, "definition counts must match");
 }
 
-// --- Pass 5: L3 section-semantics rules (R5/R6/R4 + evidence) ---
+// --- L3 section-semantics rules (R5/R6/R4 + evidence) ---
 
 fn check_codes(source: &str) -> Vec<String> {
     emath_syntax::install_source_parser();
-    let mut session = emath_sema::session::CompilerSession::new(emath_core::limits::Limits::default());
+    let mut session =
+        emath_sema::session::CompilerSession::new(emath_core::limits::Limits::default());
     session
-        .check_owned("pass5", source)
+        .check_owned("component-unit", source)
         .diagnostics
         .items()
         .iter()
@@ -322,4 +319,3 @@ emath function Area:
         "happy-path L3 contract must admit cleanly, got {codes:?}"
     );
 }
-

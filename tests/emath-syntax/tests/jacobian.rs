@@ -1,4 +1,4 @@
-//! Jacobian-as-value surface (bead emath-9bj1, Track A3). The uniform
+//! Jacobian-as-value surface (Track A3). The uniform
 //! surface mirrors the shipped binder/expression forms:
 //! `jacobian(<expr>) wrt <var>, <var>, ...` — same postfix `wrt` list
 //! used by `minimize(objective) wrt x, y`. A scalar body yields a row
@@ -152,9 +152,7 @@ fn jacobian_wrt_unknown_variable_is_a_typed_refusal_not_a_generic_crash() {
     // jacobian shares it) — never a silent half-admit.
     let errors = check(JACOBIAN_UNKNOWN_WRT_VARIABLE, "jacobian-unknown-wrt");
     assert!(
-        errors
-            .iter()
-            .any(|error| error.starts_with("E-TYPE-010")),
+        errors.iter().any(|error| error.starts_with("E-TYPE-010")),
         "jacobian(f) wrt x, z with `z` undeclared must refuse with E-TYPE-010 (input-scope); got: {errors:#?}"
     );
 }

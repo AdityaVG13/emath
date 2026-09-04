@@ -1,4 +1,4 @@
-//! Bead `emath-r2-graphs-masa` — the executable .emath graph surface:
+//! — the executable .emath graph surface:
 //! dense carriers (graph literals), the closed graph call names
 //! (`reachability`, `bfs_order`, `shortest_distances`, `out_degrees`,
 //! `graph_laplacian`, `graph_symmetrize`, `bellman_ford`,
@@ -24,6 +24,15 @@ const ROUTER_SOURCE: &str = "emath function router:\n    definitions:\n        g
 
 /// Check a source and evaluate its definitions.
 fn eval(source: &str) -> BTreeMap<String, Value> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("graph-surface.emath", source);
@@ -47,6 +56,15 @@ fn eval(source: &str) -> BTreeMap<String, Value> {
 
 /// Evaluate a source that must REFUSE at eval, returning the fault text.
 fn eval_refusal(source: &str) -> String {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("graph-refusal.emath", source);
@@ -68,6 +86,15 @@ fn eval_refusal(source: &str) -> String {
 /// Check a source that must REFUSE at ADMISSION, returning the
 /// diagnostics for the caller to assert on.
 fn admit_refusal(source: &str) -> Vec<String> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("graph-admit-refusal.emath", source);
@@ -103,9 +130,14 @@ fn emath_dense_carrier_and_call_surface() {
         values.get("g").expect("graph literal"),
         4,
         4,
-        &[0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+        &[
+            0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+        ],
     );
-    vector_eq(values.get("r").expect("reachability"), &[1.0, 1.0, 1.0, 1.0]);
+    vector_eq(
+        values.get("r").expect("reachability"),
+        &[1.0, 1.0, 1.0, 1.0],
+    );
     vector_eq(values.get("b").expect("bfs order"), &[0.0, 1.0, 2.0, 3.0]);
     vector_eq(values.get("d").expect("distances"), &[0.0, 1.0, 1.0, 2.0]);
     vector_eq(values.get("o").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
@@ -179,7 +211,9 @@ fn emath_degree_laplacian_spectral_composition() {
         values.get("l").expect("laplacian"),
         4,
         4,
-        &[1.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 1.0],
+        &[
+            1.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 1.0,
+        ],
     );
     let Value::Vector(spectrum) = values.get("e").expect("spectrum") else {
         panic!("eigvals must return a vector");
@@ -253,14 +287,19 @@ fn emath_bellman_ford_negative_edges_and_cycle_refusal() {
     };
     assert_eq!(
         triplets,
-        &[0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 1.0].to_vec(),
+        &[
+            0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 1.0
+        ]
+        .to_vec(),
         "triplet stream is ascending (u, v), explicit zeros skipped"
     );
     matrix_eq(
         values.get("g2").expect("rebuilt"),
         4,
         4,
-        &[0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+        &[
+            0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+        ],
     );
 }
 

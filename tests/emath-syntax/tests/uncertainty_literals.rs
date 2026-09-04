@@ -1,4 +1,4 @@
-//! `emath-r3-uncertainty-literals-jzej`: measurement literal forms (spec 04
+//!: measurement literal forms (spec 04
 //! section 1.5).
 //!
 //! Two written forms get literal status:
@@ -14,8 +14,8 @@
 //! `DistributionKind`, and `Provenance::Unstated` are on HEAD; the literal
 //! lowers through the `core::measure::Measured` constructor path.
 
+use emath_core::FileId;
 use emath_core::limits::Limits;
-use emath_core::{FileId};
 use emath_syntax::lexer::lex;
 use emath_syntax::token::TokenKind;
 
@@ -122,7 +122,13 @@ fn space_before_parenthesis_never_attaches_uncertainty() {
     let kinds = tokens_of("1.50 (2)");
     assert!(matches!(
         kinds.as_slice(),
-        [TokenKind::Float(_), TokenKind::LParen, TokenKind::Int(_), TokenKind::RParen, TokenKind::Eof]
+        [
+            TokenKind::Float(_),
+            TokenKind::LParen,
+            TokenKind::Int(_),
+            TokenKind::RParen,
+            TokenKind::Eof
+        ]
     ));
 }
 
@@ -133,14 +139,25 @@ fn parenthetical_uncertainty_requires_digits_only() {
     let kinds = tokens_of("1.5(x)");
     assert!(matches!(
         kinds.as_slice(),
-        [TokenKind::Float(_), TokenKind::LParen, TokenKind::Ident(_), TokenKind::RParen, TokenKind::Eof]
+        [
+            TokenKind::Float(_),
+            TokenKind::LParen,
+            TokenKind::Ident(_),
+            TokenKind::RParen,
+            TokenKind::Eof
+        ]
     ));
     // Empty parenthetical `1.5()` is likewise not an uncertainty: zero
     // uncertainty digits carry no measurement content.
     let kinds = tokens_of("1.5()");
     assert!(matches!(
         kinds.as_slice(),
-        [TokenKind::Float(_), TokenKind::LParen, TokenKind::RParen, TokenKind::Eof]
+        [
+            TokenKind::Float(_),
+            TokenKind::LParen,
+            TokenKind::RParen,
+            TokenKind::Eof
+        ]
     ));
 }
 
@@ -155,9 +172,11 @@ fn def_expr_of(source: &str) -> ExprKind {
     let Some(emath_core::tree::Item::Declaration(decl)) = tree.items.first() else {
         panic!("declaration expected");
     };
-    let Some(stmt) = decl.body.iter().find(|stmt| {
-        matches!(&stmt.kind, StmtKind::Section(s) if s.name == "definitions")
-    }) else {
+    let Some(stmt) = decl
+        .body
+        .iter()
+        .find(|stmt| matches!(&stmt.kind, StmtKind::Section(s) if s.name == "definitions"))
+    else {
         panic!("definitions section expected");
     };
     let StmtKind::Section(definitions) = &stmt.kind else {
@@ -173,9 +192,7 @@ fn def_expr_of(source: &str) -> ExprKind {
 fn explicit_plus_minus_folds_to_measured_value() {
     // `1.50 ± 0.02` folds into one Measured literal carrying both spellings;
     // provenance is Unstated by default (admission prints it loudly).
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        m = 1.50 ± 0.02\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        m = 1.50 ± 0.02\n");
     assert!(
         matches!(
             &expr,
@@ -190,9 +207,7 @@ fn explicit_plus_minus_folds_to_measured_value() {
 fn parenthetical_uncertainty_preserves_raw_digits() {
     // `0.5012(3)`: value keeps the mantissa, digits stay raw — scaling to a
     // decimal uncertainty is admission's job (0.5012 ± 0.0003).
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        m = 0.5012(3)\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        m = 0.5012(3)\n");
     assert!(
         matches!(
             &expr,
@@ -207,9 +222,7 @@ fn parenthetical_uncertainty_preserves_raw_digits() {
 fn codata_uncertainty_folds_exponent_into_value() {
     // CODATA G: `6.67430(15)e-11` — exponent stays in the value spelling;
     // admission scales ±digits by 10^exp (±0.00015e-11 = 1.5e-15).
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        g = 6.67430(15)e-11\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        g = 6.67430(15)e-11\n");
     assert!(
         matches!(
             &expr,
@@ -223,9 +236,8 @@ fn codata_uncertainty_folds_exponent_into_value() {
 #[test]
 fn distribution_tag_folds() {
     // `0.62 ± 0.01 ~ lognormal`: the tag rides the same Measured literal.
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        m = 0.62 ± 0.01 ~ lognormal\n",
-    );
+    let expr =
+        def_expr_of("emath function f:\n    definitions:\n        m = 0.62 ± 0.01 ~ lognormal\n");
     assert!(
         matches!(
             &expr,
@@ -299,6 +311,10 @@ fn unknown_distribution_tag_refuses() {
             .errors()
             .any(|error| error.code == "E-MEAS-002"),
         "unknown distribution tag must refuse E-MEAS-002, got {:?}",
-        checked.diagnostics.errors().map(|e| e.code).collect::<Vec<_>>()
+        checked
+            .diagnostics
+            .errors()
+            .map(|e| e.code)
+            .collect::<Vec<_>>()
     );
 }

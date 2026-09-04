@@ -1,5 +1,5 @@
-//! `≈` approximation labeling operator (bead emath-r3-approx-operator-depc,
-//! 04 section 6.4): declared-tolerance admission, honest receipts, and the
+//! `≈` approximation labeling operator (04 section 6.4):
+//! declared-tolerance admission, honest receipts, and the
 //! typed refusal for tolerance-less approximations.
 //!
 //! Intent: approximation is the scientist's main verb and every language's
@@ -17,6 +17,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -24,7 +33,12 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
@@ -64,6 +78,15 @@ fn authority_source() -> String {
 /// naming the degraded authority.
 #[test]
 fn authority_degradation_receipt_is_recorded() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("approx", &authority_source());
@@ -123,6 +146,15 @@ fn approx_in_definitions_is_not_a_computation() {
 
 #[test]
 fn approximation_tolerance_is_machine_checked_at_run() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let source = "\
 emath function NearOne:
@@ -154,7 +186,10 @@ emath function NearOne:
         &[],
     )
     .expect("approximation claim lowers");
-    assert_eq!(evaluate(&program, &[Value::F64(1.2)], &[]), Ok(Value::Bool(false)));
+    assert_eq!(
+        evaluate(&program, &[Value::F64(1.2)], &[]),
+        Ok(Value::Bool(false))
+    );
 
     let inside = source.replace("1.2", "1.05");
     let mut session = CompilerSession::new(Limits::default());

@@ -8,12 +8,18 @@
 #![forbid(unsafe_code)]
 
 pub mod admit;
+pub mod language;
+pub mod live_adapter;
 pub mod migrate;
 pub mod proofs;
 pub mod recognition;
 pub mod session;
 
 pub use admit::{CheckResult, SemanticTrace, TraceEntry};
+pub use live_adapter::{
+    LIVE_ADAPTER_SCHEMA, LiveAdapterError, LiveConformanceRequest, LiveConformanceResponse,
+    StageStatus, inspect_live_source,
+};
 pub use session::{
     CompilerPolicy, CompilerSession, EmittedAnchor, GeneratedCrate, PlanResult, SourcePackage,
 };

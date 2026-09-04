@@ -8,6 +8,15 @@ use emath_sema::admit::CheckResult;
 use emath_syntax::install_source_parser;
 
 fn check_source(name: &str, source: &str) -> CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
@@ -1233,7 +1242,8 @@ fn intro_optimize_example_is_stationary() {
 
 #[test]
 fn intro_constrained_opt_example_nearly_enforces_constraint() {
-    let source = include_str!("../../../tests/fixtures/language/intro/constrained-optimization.emath");
+    let source =
+        include_str!("../../../tests/fixtures/language/intro/constrained-optimization.emath");
     let result = check_source("constrained-opt-example", source);
     assert!(
         !result.diagnostics.has_errors(),

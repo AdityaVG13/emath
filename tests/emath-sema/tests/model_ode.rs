@@ -10,6 +10,15 @@ use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
 fn check_source(name: &str, source: &str) -> CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
@@ -50,7 +59,7 @@ fn model_derivative_equation_admits_as_rate() {
     ));
 }
 
-// Coaching refusals (F4, emath-r3-kind-tree-gh5g): when the declared kind
+// Coaching refusals (F4): when the declared kind
 // mismatches the sections, the diagnostic names the kind that fits.
 #[test]
 fn state_on_function_coaches_model_or_policy() {
@@ -65,15 +74,11 @@ emath function Bad:
 ",
     );
     assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
-        messages
-            .iter()
-            .any(|m| m.contains("E-KIND-010") && m.contains("`emath model`") && m.contains("`emath policy`")),
+        messages.iter().any(|m| m.contains("E-KIND-010")
+            && m.contains("`emath model`")
+            && m.contains("`emath policy`")),
         "state on function must coach model/policy, got {messages:?}"
     );
 }
@@ -89,11 +94,7 @@ emath function Bad:
 ",
     );
     assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         messages
             .iter()
@@ -115,11 +116,7 @@ emath function Bad:
 ",
     );
     assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         messages
             .iter()
@@ -143,11 +140,7 @@ emath function Bad:
 ",
     );
     assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result
-        .diagnostics
-        .errors()
-        .map(|d| d.to_string())
-        .collect();
+    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
     assert!(
         messages
             .iter()

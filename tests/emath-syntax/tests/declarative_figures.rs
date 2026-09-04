@@ -1,4 +1,4 @@
-//! Declarative figures seed (bead emath-r3-figures-b1xn, 05 §7.4).
+//! Declarative figures seed (05 §7.4).
 //!
 //! Contracts:
 //! - **Section name + payload grammar slot RESERVED**: `figures:` is

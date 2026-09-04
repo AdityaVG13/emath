@@ -1,4 +1,4 @@
-//! emath-sci-chemistry-lane-rymw molecular-graph slice: reaction
+//! Molecular graph slice: reaction
 //! mechanism rewrites as (L, K, R) graph data over generic nucleus
 //! ops — no chemistry Rust crate, no domain op enum, no parser branch.
 //!

@@ -75,7 +75,7 @@ impl super::Parser {
             }
             TokenKind::Keyword(Keyword::On) => {
                 // `on <Name>:` is a two-word section head — transition
-                // rules (r3-dynamical-03lh ch7, transitions slice): the
+                // rules (ch7, transitions slice): the
                 // section carries the trigger event as its generic and an
                 // assignment suite as the rule body. Only when the token
                 // after the name is `:`; any other `on` statement keeps
@@ -197,7 +197,7 @@ impl super::Parser {
                     Some(self.stmt(start, StmtKind::Command { head, argument }))
                 }
             }
-            // Operator-map entry (`emath world`, wave 14): `"glyph" => target`
+            // Operator-map entry (`emath world`): `"glyph" => target`
             // in an `operators:` section. `=>` lexes as Arrow; a string
             // literal followed by it is unambiguously a map entry, never a
             // bare string-expression statement.

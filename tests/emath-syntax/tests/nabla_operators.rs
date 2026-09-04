@@ -1,4 +1,4 @@
-//! `emath-r3-nabla-pack-o6jp`: nabla operators pack with world-dependent
+//! Nabla operators pack with world-dependent
 //! meaning (spec 04 section 2.3) — parser pack-mount slice.
 //!
 //! `use sci::physics::notation::nabla` mounts the pack (opt-in only, X4:
@@ -36,9 +36,11 @@ fn def_expr_of(source: &str) -> ExprKind {
     let Some(emath_core::tree::Item::Declaration(decl)) = tree.items.last() else {
         panic!("declaration expected");
     };
-    let Some(stmt) = decl.body.iter().find(|stmt| {
-        matches!(&stmt.kind, StmtKind::Section(s) if s.name == "definitions")
-    }) else {
+    let Some(stmt) = decl
+        .body
+        .iter()
+        .find(|stmt| matches!(&stmt.kind, StmtKind::Section(s) if s.name == "definitions"))
+    else {
         panic!("definitions section expected");
     };
     let StmtKind::Section(definitions) = &stmt.kind else {
@@ -73,10 +75,8 @@ fn unmounted_nabla_glyph_refuses_naming_the_pack() {
         "emath function f:\n    inputs:\n        u: Float64\n        dx: Float64\n    definitions:\n        g = ∇(u, dx)\n",
     );
     assert!(
-        diags
-            .errors()
-            .any(|error| error.code == "E-SYN-101"
-                && error.message.contains("sci::physics::notation::nabla")),
+        diags.errors().any(|error| error.code == "E-SYN-101"
+            && error.message.contains("sci::physics::notation::nabla")),
         "unmounted ∇ must refuse E-SYN-101 naming the pack, got {:?}",
         diags.errors().map(|e| e.code.clone()).collect::<Vec<_>>()
     );
@@ -142,8 +142,7 @@ fn nabla_curl_3d_arity_refuses_typed() {
     assert!(
         diags
             .errors()
-            .any(|error| error.code == "E-SYN-101"
-                && error.message.contains("3D curl")),
+            .any(|error| error.code == "E-SYN-101" && error.message.contains("3D curl")),
         "3D-arity ∇× must refuse typed naming the pending OperatorDef, got {:?}",
         diags.errors().map(|e| e.code.clone()).collect::<Vec<_>>()
     );

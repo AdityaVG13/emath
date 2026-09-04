@@ -1,5 +1,4 @@
-//! Proof-obligation machine records + ProofChecker contract (bead
-//! emath-qbq5x, child of emath-r3-proofs-0qua; 05 §7.2).
+//! Proof-obligation machine records + ProofChecker contract (05 §7.2).
 //!
 //! Contracts:
 //! - a complete outline lowers to `emath.proof-obligation v1` records:
@@ -35,8 +34,11 @@ fn outline_lowers_to_schema_records() {
     assert!(assumption.hypotheses.is_empty());
     let lemma = &records[1];
     assert_eq!(lemma.kind, "lemma");
-    assert_eq!(lemma.hypotheses, vec!["finite_a".to_string()],
-        "the assumption accumulates as the lemma's hypothesis");
+    assert_eq!(
+        lemma.hypotheses,
+        vec!["finite_a".to_string()],
+        "the assumption accumulates as the lemma's hypothesis"
+    );
     assert_eq!(lemma.claim.as_deref(), Some("y >= 0.0"));
 }
 
@@ -48,7 +50,13 @@ fn record_json_is_canonical_v1() {
         json.starts_with("{\"schema\":\"emath.proof-obligation v1\""),
         "record leads with the versioned schema; got: {json}"
     );
-    for key in ["\"outline\":", "\"kind\":", "\"name\":", "\"claim\":", "\"hypotheses\":"] {
+    for key in [
+        "\"outline\":",
+        "\"kind\":",
+        "\"name\":",
+        "\"claim\":",
+        "\"hypotheses\":",
+    ] {
         assert!(json.contains(key), "record carries {key}; got: {json}");
     }
 }

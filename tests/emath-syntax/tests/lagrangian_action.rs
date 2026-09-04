@@ -1,5 +1,4 @@
-//! Lagrangian/action thin slice (bead emath-r3-lagrangian-action-nf7s,
-//! 04 section 2.5).
+//! Lagrangian/action thin slice (04 section 2.5).
 //!
 //! Contracts:
 //! - **Action-integral binder refuses naming the design of record**:
@@ -114,8 +113,9 @@ fn action_binder_refuses_naming_design() {
 fn variation_goal_refuses_naming_lowering() {
     let errors = check(VARIATION_GOAL, "variation-fence");
     assert!(
-        errors.iter().any(|e| e.contains("variation")
-            && e.contains("Euler-Lagrange")),
+        errors
+            .iter()
+            .any(|e| e.contains("variation") && e.contains("Euler-Lagrange")),
         "`variation <S> wrt q:` must refuse naming the core-goal \
          lowering; got: {errors:#?}"
     );
@@ -148,7 +148,9 @@ emath model IdentProbe:
         "ident-guard",
     );
     assert!(
-        errors.iter().all(|e| !e.contains("action/variation design")),
+        errors
+            .iter()
+            .all(|e| !e.contains("action/variation design")),
         "bare `action`/`variation` identifiers must not trip the design \
          fences; got: {errors:#?}"
     );

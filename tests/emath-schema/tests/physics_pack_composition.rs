@@ -85,7 +85,7 @@ mod physics_pack {
             .image
             .validate_partitions()
             .expect("the installed image is self-validating");
-        // THE BEAD: the lock lists the composed existing packages.
+        // The invariant: the lock lists the composed existing packages.
         let lock = installed.image.load("lock").expect("lock page");
         for composed in COMPOSED {
             assert!(

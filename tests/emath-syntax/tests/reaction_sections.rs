@@ -1,4 +1,4 @@
-//! emath-r3-reactions-section-92hq (04 section 3.1) failure-first tests.
+//! (04 section 3.1) failure-first tests.
 //!
 //! Reaction lines are T3 SECTION grammar, not expression grammar: `2H2 + O2
 //! -> 2H2O` must parse as a labeled stoichiometric multiset transformation
@@ -6,7 +6,7 @@
 //! inside `reactions:` (C15: juxtaposition refusal stands for expressions;
 //! the reaction line is its own grammar, so the two do not conflict).
 //!
-//! Contracts (each must FAIL against the pre-bead parser):
+//! Contracts (each must FAIL against the pre-parser):
 //! - `emath reaction_network Name:` parses as a declaration with
 //!   `species:` (world-closing) and `reactions:` sections.
 //! - `r1: 2H2 + O2 -> 2H2O` → name `r1`, coefficient 2 on `H2`, arrow
@@ -17,7 +17,7 @@
 //!   (E-SYN-156), never a silent lambda.
 //! - Admission-side contracts (species closure E-CHEM-SPECIES, element
 //!   balance E-CHEM-BALANCE) live in tests/emath-sema/tests/
-//!   r3_reactions_92hq_unit.rs.
+//! reaction_balance.rs.
 
 use emath_core::tree::{Item, ReactionArrow, ReactionTerm, StmtKind};
 use emath_syntax::parse_str;
@@ -36,7 +36,13 @@ fn declaration_body(source: &str) -> Vec<StmtKind> {
         panic!("expected a declaration item");
     };
     decl.sections()
-        .flat_map(|section| section.suite.statements.iter().map(|stmt| stmt.kind.clone()))
+        .flat_map(|section| {
+            section
+                .suite
+                .statements
+                .iter()
+                .map(|stmt| stmt.kind.clone())
+        })
         .collect()
 }
 
@@ -53,7 +59,9 @@ emath reaction_network HydrogenCombustion:
 ";
     let statements = declaration_body(source);
     assert!(
-        statements.iter().any(|kind| matches!(kind, StmtKind::Reaction { .. })),
+        statements
+            .iter()
+            .any(|kind| matches!(kind, StmtKind::Reaction { .. })),
         "a reaction line must parse as StmtKind::Reaction, got {statements:?}"
     );
 }
@@ -154,9 +162,7 @@ fn iff_arrow_is_refused_inside_reactions() {
     );
     let (_tree, diagnostics) = parse_str(fixture);
     assert!(
-        diagnostics
-            .errors()
-            .any(|error| error.code == "E-SYN-156"),
+        diagnostics.errors().any(|error| error.code == "E-SYN-156"),
         "`<==>` inside `reactions:` must refuse E-SYN-156, got {:?}",
         diagnostics
             .errors()
@@ -179,9 +185,7 @@ fn trailing_tokens_after_products_are_refused() {
     );
     let (_tree, diagnostics) = parse_str(fixture);
     assert!(
-        diagnostics
-            .errors()
-            .any(|error| error.code == "E-SYN-156"),
+        diagnostics.errors().any(|error| error.code == "E-SYN-156"),
         "trailing tokens after products must refuse E-SYN-156, got {:?}",
         diagnostics
             .errors()

@@ -1,9 +1,9 @@
-//! emath-v9-06-2rdq.16: `emath field_pack` / `genome` package
+//! `emath field_pack` / `genome` package
 //! declaration — syntax + admission.
 //!
-//! The bead's law: packs are how cells/theories/methods/worlds SHIP —
-//! one declaration kind whose exports are artifact data (the fjxh.9
-//! semantic image / `.emlib` and the fjxh.15 layout/install tooling
+//! The law: packs are how cells/theories/methods/worlds SHIP
+//! one declaration kind whose exports are artifact data (the
+//! semantic image / `.emlib` and the layout/install tooling
 //! consume them), never a compiler rebuild and never runnable meaning.
 //! Admission rules:
 //! - A pack exports DATA through a closed section table (`exports:`
@@ -66,15 +66,12 @@ fn pack_admits_and_lists_exports() {
 #[test]
 fn metadata_only_pack_admits() {
     // Boundary: a minimal pack that exports nothing but metadata admits
-    // (the bead forbids blocking on rich exports).
+    // (nothing blocks on rich exports).
     let source = "package community\n\nemath field_pack minimal:\n    metadata:\n        description exports nothing yet\n".to_string();
     let mut session = session();
     let result = session.check_owned("minimal-pack", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.is_empty(),
-        "metadata-only pack admits, got {codes:?}"
-    );
+    assert!(codes.is_empty(), "metadata-only pack admits, got {codes:?}");
     assert_eq!(result.package.field_packs.len(), 1);
     assert!(
         result.package.field_packs[0].exports.is_empty(),
@@ -96,7 +93,8 @@ fn pack_cannot_inject_parser_keywords() {
         codes.iter().any(|code| code == "E-SYN-101"),
         "a `keywords:` injection section must refuse, got {codes:?}"
     );
-    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/field_pack_declarations.emath");
+    const NEGATIVE_SEED: &str =
+        include_str!("../../../tests/invalid/field_pack_declarations.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))

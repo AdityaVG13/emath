@@ -1,4 +1,4 @@
-//! `emath-r3-table-literals-f3z1` (U9): semicolon rows and table literals.
+//! Table literals (U9): semicolon rows and table literals.
 //!
 //! Two additive spellings (A1: no juxtaposition — cells are comma-separated):
 //! - `[1, 2; 3, 4]` folds to the same nested-List shape admission already
@@ -19,9 +19,11 @@ fn def_expr_of(source: &str) -> ExprKind {
     let Some(emath_core::tree::Item::Declaration(decl)) = tree.items.first() else {
         panic!("declaration expected");
     };
-    let Some(stmt) = decl.body.iter().find(|stmt| {
-        matches!(&stmt.kind, StmtKind::Section(s) if s.name == "definitions")
-    }) else {
+    let Some(stmt) = decl
+        .body
+        .iter()
+        .find(|stmt| matches!(&stmt.kind, StmtKind::Section(s) if s.name == "definitions"))
+    else {
         panic!("definitions section expected");
     };
     let StmtKind::Section(definitions) = &stmt.kind else {
@@ -45,9 +47,7 @@ fn semicolon_rows_fold_to_matrix_lists() {
     // `[1, 2; 3, 4]` is one 2x2 literal: two rows, two cells each. The pin
     // dies while `;` is unlexed (E-SYN-101 unexpected character) or when a
     // mutant collapses rows into one flat list.
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        m = [1, 2; 3, 4]\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        m = [1, 2; 3, 4]\n");
     let ExprKind::List(rows) = &expr else {
         panic!("list expected, got {expr:?}")
     };
@@ -74,9 +74,7 @@ fn semicolon_rows_fold_to_matrix_lists() {
 fn single_cell_rows_stay_rank_two() {
     // `[1; 2; 3]` is a 3x1 matrix (three one-cell rows), never a flat
     // vector — the `;` is what makes it rank 2.
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        v = [1; 2; 3]\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        v = [1; 2; 3]\n");
     let ExprKind::List(rows) = &expr else {
         panic!("list expected, got {expr:?}")
     };
@@ -92,9 +90,7 @@ fn single_cell_rows_stay_rank_two() {
 #[test]
 fn flat_list_is_unchanged_by_semicolon_support() {
     // Regression: a comma-only list never gains a nesting level.
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        v = [1, 2, 3]\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        v = [1, 2, 3]\n");
     let ExprKind::List(items) = &expr else {
         panic!("list expected, got {expr:?}")
     };
@@ -111,13 +107,9 @@ fn flat_list_is_unchanged_by_semicolon_support() {
 fn ragged_semicolon_rows_refuse() {
     // `[1, 2, 3; 4]`: row lengths must match at parse time (E-SYN-102) —
     // ragged rows must not silently fold into a shape error downstream.
-    let (_, diags) = parse_str(
-        "emath function f:\n    definitions:\n        m = [1, 2, 3; 4]\n",
-    );
+    let (_, diags) = parse_str("emath function f:\n    definitions:\n        m = [1, 2, 3; 4]\n");
     assert!(
-        diags
-            .errors()
-            .any(|error| error.code == "E-SYN-102"),
+        diags.errors().any(|error| error.code == "E-SYN-102"),
         "ragged `;` rows must refuse E-SYN-102, got {:?}",
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
     );
@@ -127,9 +119,8 @@ fn ragged_semicolon_rows_refuse() {
 fn table_literal_folds_with_headers_and_rows() {
     // `|x y| 1, 2 | 3, 4 |` is one Table literal: named columns, cells
     // comma-separated (A1 — space-separated cells would be juxtaposition).
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, 4 |\n",
-    );
+    let expr =
+        def_expr_of("emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, 4 |\n");
     let ExprKind::Table { headers, rows } = &expr else {
         panic!("table expected, got {expr:?}")
     };
@@ -164,13 +155,14 @@ fn cases_pipe_still_parses_as_cases() {
 fn pipe_infix_or_is_unchanged() {
     // Disambiguation guard (HEAD-true): infix `|` as `or` between operands
     // is untouched by the table primary (tables only start at pipe position).
-    let expr = def_expr_of(
-        "emath function f:\n    definitions:\n        r = true | false\n",
-    );
+    let expr = def_expr_of("emath function f:\n    definitions:\n        r = true | false\n");
     assert!(
         matches!(
             &expr,
-            ExprKind::Binary { op: emath_core::tree::BinaryOp::Or, .. }
+            ExprKind::Binary {
+                op: emath_core::tree::BinaryOp::Or,
+                ..
+            }
         ),
         "infix `|` must stay or, got {expr:?}"
     );
@@ -181,9 +173,7 @@ fn single_column_pipe_is_not_a_table() {
     // Disambiguation negative: `|x| …` (one header before `|`) is not a
     // table — the ≥2-header rule is what keeps `|` unambiguous with
     // cases arms and infix `or`.
-    let (_, diags) = parse_str(
-        "emath function f:\n    definitions:\n        t = |x| 1 |\n",
-    );
+    let (_, diags) = parse_str("emath function f:\n    definitions:\n        t = |x| 1 |\n");
     assert!(
         diags.has_errors(),
         "single-column `|…|` must refuse, not fold to a table"
@@ -194,13 +184,10 @@ fn single_column_pipe_is_not_a_table() {
 fn table_ragged_rows_refuse() {
     // Negative: a row with fewer cells than headers refuses at parse time
     // (E-SYN-102), never folds into a ragged table for admission to trip on.
-    let (_, diags) = parse_str(
-        "emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3 |\n",
-    );
+    let (_, diags) =
+        parse_str("emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3 |\n");
     assert!(
-        diags
-            .errors()
-            .any(|error| error.code == "E-SYN-102"),
+        diags.errors().any(|error| error.code == "E-SYN-102"),
         "ragged table rows must refuse E-SYN-102, got {:?}",
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
     );
@@ -214,7 +201,7 @@ use emath_syntax::install_source_parser;
 fn check_source(source: &str) -> emath_sema::admit::CheckResult {
     install_source_parser();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    session.check_owned("r3-table-admission", source)
+    session.check_owned("table-literals", source)
 }
 
 #[test]
@@ -237,9 +224,9 @@ fn table_non_numeric_column_refuses() {
     // Column-type check: a bare identifier cell in a numeric table is a
     // typed refusal (E-TYPE-002 unknown variable — the matrix element
     // path's numeric gate), never a silent mixed-type table.
-    let checked = check_source(
-        "emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, zz |\n",
-    );    assert!(
+    let checked =
+        check_source("emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, zz |\n");
+    assert!(
         checked.diagnostics.has_errors(),
         "non-numeric table cell must refuse"
     );

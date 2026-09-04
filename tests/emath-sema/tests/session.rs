@@ -14,6 +14,15 @@ fn tiny_session_token_budget_refuses_parse() {
     // Session limits must reach the lexer through the parser backend:
     // a tiny token budget refuses a larger source (E-SYN-108) instead
     // of parsing with `Limits::default()`.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits {
         max_tokens: 8,
@@ -48,7 +57,7 @@ fn function_decl(name: &str, definitions: &[&str]) -> String {
     text
 }
 
-// ---- F3 flat-goal permanent refusal (emath-r3-docs-fixes-3wtm) --------------
+// ---- F3 flat-goal permanent refusal --------------
 // Failure-first: authored against the intended behavior; must FAIL while
 // the flat-goal sugar still silently passes admission.
 #[test]
@@ -61,6 +70,15 @@ fn flat_goal_heading_without_payload_is_permanently_refused() {
     // `E-GOAL-042` flat-goal guidance stays reachable for suites a
     // future parser admits. Either way the sugar never becomes a goal;
     // a mutant that silently admits it fails here.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
@@ -105,6 +123,15 @@ fn empty_definitions_refuses_once_and_preserves_independent_errors() {
     // site duplicates E-NAME-023 and must be suppressed. No E-SYN-101
     // argument-list junk and no repeated E-SYN-112 from the goals/tests/
     // compile sections that follow.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
@@ -161,6 +188,15 @@ fn empty_definitions_keeps_independent_later_section_error_visible() {
     // empty `definitions:` is an independent error — it must stay visible
     // (E-SEC-101 unknown section `goalz:`) instead of being swallowed by the
     // recovery. The root E-SYN-112 fires exactly once and E-NAME-023 stays.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
@@ -212,6 +248,15 @@ fn adjacent_empty_sections_each_refuse_once_no_cascade() {
     // sections must each produce exactly one root E-SYN-112 — two refusals
     // total, never a storm of E-SYN-101/E-SYN-112 -- and the E-NAME-023 for
     // the undefined output stays a single honest refusal.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
@@ -253,6 +298,15 @@ fn eq_in_definitions_binds_and_eqeq_constrains_diagnostic() {
     // F6: `=` binds, `==` constrains. A `==` statement in `definitions:`
     // is a comparison, not a definition; the diagnostic names both
     // readings. Positive control: the `=` spelling admits and computes.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
@@ -308,6 +362,15 @@ fn default_arguments_documented_spelling_admits_in_constructor() {
     // documented surface once defaults are honored (this test pins the
     // parse + admission surface; the default APPLICATION is pinned by the
     // runner suite).
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
@@ -338,6 +401,15 @@ fn duplicate_declaration_name_is_refused_with_e_name_022() {
     // Two declarations with the same name would collide in generated
     // Rust; the second is a typed refusal (E-NAME-022), never a
     // silent overwrite.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let mut text = function_decl("Left", &["y = x"]);
@@ -356,6 +428,15 @@ fn duplicate_declaration_name_is_refused_with_e_name_022() {
 fn underscore_declaration_name_is_refused_with_e_name_023() {
     // `_` cannot be escaped into a Rust type name; the declaration is
     // refused up front (E-NAME-023).
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("underscore", &function_decl("_", &["y = x"]));
@@ -375,6 +456,15 @@ fn confusable_lookalike_declaration_is_refused_with_e_name_024() {
     // E-NAME-024: the generated API would expose two visually
     // identical names. Order-independent: whichever spelling arrives
     // second collides with the first.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let mut latin_then_cyrillic = function_decl("magnitude", &["y = x"]);
@@ -405,6 +495,15 @@ fn names_that_are_not_lookalikes_are_not_refused() {
     // The confusable lint must not reject names that merely share a
     // prefix: `magnitude` and `magnitude2` fold apart and both admit,
     // with no E-NAME-024 (and no E-NAME-022) on either pass.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let mut text = function_decl("magnitude", &["y = x"]);
@@ -431,6 +530,15 @@ fn goals_attach_to_their_own_declaration_by_id_not_span() {
     // Here the first declaration owns three default goals and the
     // second owns one explicit goal; a span-based attach would pile
     // both declarations' goals onto whichever span covered them.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     // Definitions reference inputs only (chained definitions are
@@ -494,6 +602,15 @@ fn omitted_outputs_section_admits_and_evaluates() {
     // `confusable_lookalike_declaration_is_refused_with_e_name_024`);
     // the lifted refusal here is only the old definition-must-be-output
     // surface check.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "emath function Greeter:\n    inputs:\n        x: Float64\n    definitions:\n        y = x\n";
@@ -527,6 +644,15 @@ fn omitted_inputs_section_admits_constant_definitions() {
     // with only `definitions:` must admit and lift those definitions
     // onto the output surface. An undeclared name still refuses
     // (E-TYPE-002); omitting inputs must not swallow name errors.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "emath function TwentyOne:\n    definitions:\n        y = 3 * 7\n";
@@ -578,6 +704,15 @@ fn untyped_input_name_defaults_to_float64() {
     // Bare `inputs: x` defaults to Float64 and records that default as
     // note N-TYPE-001. An explicit `x: Float64` admits the same shape
     // without the note.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let bare =
@@ -648,6 +783,15 @@ fn head_args_square_admits_and_matches_inputs_form() {
     // Head-args are identity-equivalent to the same names in `inputs:`.
     // `-> Float64` declares an output named after the declaration, so
     // `square = x * x` binds that output (not a silent unused `-> T`).
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let head = "\
@@ -713,6 +857,15 @@ emath function square:
 
 #[test]
 fn untyped_head_args_default_to_float64() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(
@@ -741,6 +894,15 @@ fn untyped_head_args_default_to_float64() {
 
 #[test]
 fn head_args_mixed_with_inputs_refused() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(
@@ -810,6 +972,15 @@ fn one_source_package_parses_into_the_intent_graph_with_every_plane() {
     // plane: constructor + require obligation + Self assignment. Goal
     // plane: the evaluate goal. Evidence plane: the example test.
     // Execution plane: the compile spec. Evolution plane: the exports.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let file = session.load_text("six-planes", SIX_PLANE_SOURCE);
@@ -859,6 +1030,15 @@ fn one_source_package_parses_into_the_intent_graph_with_every_plane() {
 
 #[test]
 fn example_without_expect_is_stored_as_worked_example() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let source = "\
@@ -908,6 +1088,15 @@ emath function Square:
 
 #[test]
 fn empty_example_body_admits_as_worked_example() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let source = "\
@@ -939,6 +1128,15 @@ emath function TwentyOne:
 }
 
 fn assert_empty_source_refuses_epkg081(name: &str, source: &str) {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, source);
@@ -1006,6 +1204,15 @@ notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"
 
 #[test]
 fn notation_glyph_and_alias_uses_admit() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("notation-admit", &notation_function("r = x ⊕ y"));
@@ -1030,6 +1237,15 @@ fn qualified_builtin_calls_spell_with_path_separators() {
     // re-joined with `.` at lowering, producing `unknown function
     // core.math.pow` (E-TYPE-003). The qualified spelling must equal
     // the glyph desugar and admit through the normal builtin table.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(
@@ -1057,6 +1273,15 @@ emath function F:
 
 #[test]
 fn core_logic_not_admits_on_bool_and_refuses_on_non_bool() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let bool_source = "\
@@ -1100,6 +1325,15 @@ emath function N:
 
 #[test]
 fn reserved_notation_glyph_is_refused_through_the_session() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let source = "\
@@ -1120,7 +1354,7 @@ notation prefix 90 \"or\" => core::logic::not
     );
 }
 
-// ---- Honesty syntax: units profiles (emath-r3-honesty-syntax-x83o, 04 §6.1)
+// ---- Honesty syntax: units profiles (04 §6.1)
 // Failure-first: authored against the intended ladder; must FAIL while
 // `@units_profile` is still refused as an unknown attribute (E-SYN-118).
 const PROFILE_FIXTURE_BODY: &str = "\
@@ -1138,6 +1372,15 @@ fn units_profile_publication_refuses_bare_quantity() {
     // §6.1: under `publication`, a bare numeric quantity (no uncertainty
     // wrapper) is refused with E-UNIT-106; the profile is an honesty
     // declaration, not decoration.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = format!("@units_profile(publication)\n{PROFILE_FIXTURE_BODY}");
@@ -1159,6 +1402,15 @@ fn units_profile_publication_refuses_bare_quantity() {
 fn units_profile_publication_requires_provenance_section() {
     // §6.1: `publication` requires the declaration to carry a
     // `provenance:` section (the header is the honesty declaration).
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = format!("@units_profile(publication)\n{PROFILE_FIXTURE_BODY}");
@@ -1197,6 +1449,15 @@ fn units_profile_publication_requires_provenance_section() {
 fn units_profile_engineering_refuses_but_permissive_admits() {
     // §6.1 ladder: `engineering` refuses the bare quantity (E-UNIT-106);
     // `permissive` (and the default, no attribute) keep today's behavior.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let engineering = format!("@units_profile(engineering)\n{PROFILE_FIXTURE_BODY}");
@@ -1209,7 +1470,10 @@ fn units_profile_engineering_refuses_but_permissive_admits() {
         "engineering must refuse a bare quantity with E-UNIT-106"
     );
 
-    for (name, header) in [("profile-permissive", "@units_profile(permissive)\n"), ("profile-default", "")] {
+    for (name, header) in [
+        ("profile-permissive", "@units_profile(permissive)\n"),
+        ("profile-default", ""),
+    ] {
         let text = format!("{header}{PROFILE_FIXTURE_BODY}");
         let result = session.check_owned(name, &text);
         assert!(
@@ -1222,10 +1486,9 @@ fn units_profile_engineering_refuses_but_permissive_admits() {
                 .collect::<Vec<_>>()
         );
         assert!(
-            !result
-                .diagnostics
-                .errors()
-                .any(|diagnostic| diagnostic.code == "E-UNIT-106" || diagnostic.code == "E-UNIT-107"),
+            !result.diagnostics.errors().any(
+                |diagnostic| diagnostic.code == "E-UNIT-106" || diagnostic.code == "E-UNIT-107"
+            ),
             "{name} must not fire profile refusals"
         );
     }
@@ -1235,6 +1498,15 @@ fn units_profile_engineering_refuses_but_permissive_admits() {
 fn units_profile_malformed_and_duplicate_are_refused() {
     // §6.1: only the four levels exist; a second profile on the same
     // declaration is a conflict, never a silent overwrite.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let bad_level = format!("@units_profile(science)\n{PROFILE_FIXTURE_BODY}");
@@ -1251,9 +1523,7 @@ fn units_profile_malformed_and_duplicate_are_refused() {
         "unknown level must refuse E-SYN-117 naming units_profile, got {rendered:?}"
     );
 
-    let duplicate = format!(
-        "@units_profile(lab)\n@units_profile(lab)\n{PROFILE_FIXTURE_BODY}"
-    );
+    let duplicate = format!("@units_profile(lab)\n@units_profile(lab)\n{PROFILE_FIXTURE_BODY}");
     let result = session.check_owned("profile-duplicate", &duplicate);
     assert!(
         result
@@ -1274,6 +1544,15 @@ fn units_profile_table_is_reported_in_the_check_result() {
     // §6.5: the effective profile table must be observable on the check
     // result (the CLI prints it; the JSON envelope carries it). A file
     // without profiles reports none — the table never invents rows.
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = format!(

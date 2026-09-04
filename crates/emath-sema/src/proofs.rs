@@ -1,5 +1,4 @@
-//! Proof obligations as machine records (bead emath-qbq5x, child of
-//! emath-r3-proofs-0qua; 05 §7.2).
+//! Proof obligations as machine records (05 §7.2).
 //!
 //! Each verified-complete outline lowers to `emath.proof-obligation
 //! v1` records — the stable, provider-agnostic machine target. A

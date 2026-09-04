@@ -1,4 +1,4 @@
-//! emath-dae-events-seq (r3-dynamical-03lh ch7, event-execution slice):
+//! emath-dae-events-seq (ch7, event-execution slice):
 //! failure-first evidence for generic event-triggered execution of
 //! admitted `.emath` event payloads.
 //!
@@ -105,11 +105,8 @@ fn run_sim(
 /// discharging — the final charge sits BELOW the no-event control.
 #[test]
 fn events_fire_and_switch() {
-    let (trajectory, disposition) = run_sim(
-        SWITCH_RC,
-        &switch_inputs(5.0, 10.0),
-        &switch_state(0.0),
-    );
+    let (trajectory, disposition) =
+        run_sim(SWITCH_RC, &switch_inputs(5.0, 10.0), &switch_state(0.0));
     // Still an index-1 DAE with a consistent initialization.
     assert_eq!(disposition.index, emath_exec_ir::DAEIndex::One);
     assert_eq!(disposition.continuation, None);
@@ -147,10 +144,7 @@ fn events_fire_and_switch() {
         .collect();
     for pair in samples_after.windows(2) {
         let (a, b) = (pair[0], pair[1]);
-        let (qa, qb) = match (
-            a.state.get("charge"),
-            b.state.get("charge"),
-        ) {
+        let (qa, qb) = match (a.state.get("charge"), b.state.get("charge")) {
             (Some(Value::F64(x)), Some(Value::F64(y))) => (*x, *y),
             other => panic!("non-scalar charge in samples: {other:?}"),
         };
@@ -178,11 +172,7 @@ fn events_fire_and_switch() {
 /// the plain non-event run (firing log empty, unchanging physics).
 #[test]
 fn event_below_reachable_threshold_never_fires() {
-    let (trajectory, _) = run_sim(
-        SWITCH_RC,
-        &switch_inputs(20.0, 10.0),
-        &switch_state(0.0),
-    );
+    let (trajectory, _) = run_sim(SWITCH_RC, &switch_inputs(20.0, 10.0), &switch_state(0.0));
     assert!(
         trajectory.events.is_empty(),
         "an unreachable threshold must never fire"
@@ -202,12 +192,13 @@ fn event_below_reachable_threshold_never_fires() {
 /// INCLUDING the firing log (determinism class).
 #[test]
 fn event_firing_is_replay_deterministic() {
-    let run = || {
-        run_sim(SWITCH_RC, &switch_inputs(5.0, 10.0), &switch_state(0.0)).0
-    };
+    let run = || run_sim(SWITCH_RC, &switch_inputs(5.0, 10.0), &switch_state(0.0)).0;
     let a = run();
     let b = run();
-    assert_eq!(a, b, "same source + inputs + policy must replay the same firing log");
+    assert_eq!(
+        a, b,
+        "same source + inputs + policy must replay the same firing log"
+    );
 }
 
 /// Refusal: the action target must be a declared input or state slot.
@@ -225,7 +216,10 @@ fn event_unknown_action_target_refuses() {
         .map(|d| d.to_string())
         .collect::<Vec<_>>()
         .join(" | ");
-    assert!(text.contains("E-EVENT-001"), "must carry E-EVENT-001, got: {text}");
+    assert!(
+        text.contains("E-EVENT-001"),
+        "must carry E-EVENT-001, got: {text}"
+    );
 }
 
 /// Refusal: the condition must be Boolean.
@@ -246,7 +240,10 @@ fn event_non_boolean_condition_refuses() {
         .map(|d| d.to_string())
         .collect::<Vec<_>>()
         .join(" | ");
-    assert!(text.contains("E-EVENT-002"), "must carry E-EVENT-002, got: {text}");
+    assert!(
+        text.contains("E-EVENT-002"),
+        "must carry E-EVENT-002, got: {text}"
+    );
 }
 
 /// Refusal: a deterministic hybrid event has ONE arm — `else` refuses.
@@ -267,7 +264,10 @@ fn event_else_arm_refuses() {
         .map(|d| d.to_string())
         .collect::<Vec<_>>()
         .join(" | ");
-    assert!(text.contains("E-EVENT-003"), "must carry E-EVENT-003, got: {text}");
+    assert!(
+        text.contains("E-EVENT-003"),
+        "must carry E-EVENT-003, got: {text}"
+    );
 }
 
 /// Refusal: the action value must be a numeric scalar.
@@ -285,7 +285,10 @@ fn event_non_numeric_action_refuses() {
         .map(|d| d.to_string())
         .collect::<Vec<_>>()
         .join(" | ");
-    assert!(text.contains("E-EVENT-004"), "must carry E-EVENT-004, got: {text}");
+    assert!(
+        text.contains("E-EVENT-004"),
+        "must carry E-EVENT-004, got: {text}"
+    );
 }
 
 /// Parse → format → reparse identity. The lossless tree formatter round-trips
@@ -372,7 +375,10 @@ emath model IntSlot:
         .map(|d| d.to_string())
         .collect::<Vec<_>>()
         .join(" | ");
-    assert!(text.contains("E-EVENT-005"), "must carry E-EVENT-005, got: {text}");
+    assert!(
+        text.contains("E-EVENT-005"),
+        "must carry E-EVENT-005, got: {text}"
+    );
 }
 
 /// Re-arm/period check: the event fires AGAIN each time its condition

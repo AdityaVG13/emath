@@ -190,7 +190,7 @@ emath function Hybrid:
         result.messages
     );
     // `events:`/`transitions:` are admitted Phase 1 sections (hybrid
-    // events bead, r3-dynamical-03lh); malformed CONTENT is the refusal:
+    // events); malformed CONTENT is the refusal:
     // `dummy = 1` is not an `event Name(field: Type)` declaration
     // (E-SYN-101) and not an `on <Event>:` rule (E-TRANS-003).
     assert!(

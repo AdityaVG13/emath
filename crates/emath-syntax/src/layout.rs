@@ -1,4 +1,4 @@
-//! Layout diagnostics (bead emath-r3-layout-ynde, F2).
+//! Layout diagnostics.
 //!
 //! The layout rule (ch2): a NEWLINE token is emitted at a statement
 //! boundary, and suppressed inside `()`, `[]`, and `{}` so multi-line

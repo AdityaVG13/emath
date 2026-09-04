@@ -91,7 +91,7 @@ impl super::Parser {
         let lhs = self.parse_reaction_terms()?;
         let arrow = self.parse_reaction_arrow()?;
         let rhs = self.parse_reaction_terms()?;
-        // 04 §4.1 (emath-r3-compartments-e5zq): a side that is nothing
+        // 04 §4.1: a side that is nothing
         // must be DECLARED nothing — `∅` is the sink spelling. A
         // reaction endpoint that is empty without it is a silent
         // nothing and refuses at admission (E-BIO-SINK).

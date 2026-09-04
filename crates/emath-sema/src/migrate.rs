@@ -1,5 +1,4 @@
-//! Migrate receipt contract core (05 §5, bead
-//! `emath-r3-migrate-contract-b75y`).
+//! Migrate receipt contract core (05 §5).
 //!
 //! "Breaking change" in emath means precisely: a change under which a
 //! previously admitted artifact can no longer be produced, or

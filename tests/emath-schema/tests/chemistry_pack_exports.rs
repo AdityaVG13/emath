@@ -1,13 +1,13 @@
-//! `r3_chem_bio_stdlib_ec2r_1` — chemistry pack exports through the
-//! landed field-pack machine (fjxh.15).
+//! `chemistry_pack_exports` — chemistry pack exports through the
+//! landed field-pack machine.
 //!
-//! The bead's law: implement REAL chemistry exports (the Boltzmann
+//! The law: implement REAL chemistry exports (the Boltzmann
 //! softmax cell of record, `std.tensor.softmax`, repackaged as
 //! `std.chem.softmax`) through [`install_pack`] — no fabricated or
 //! empty exports (every export resolves against the std cell
 //! registry), and no domain parser/backend branch (the language layer
 //! is never touched: the pack is admitted as `FieldPackEntry` DATA and
-//! compiled by the fjxh.9 image builder).
+//! compiled by the image builder).
 
 use std::collections::HashMap;
 
@@ -62,7 +62,7 @@ fn softmax_reference_term() -> (Term, Signature) {
 }
 
 #[test]
-fn r3_chem_bio_stdlib_ec2r_1() {
+fn chemistry_pack_exports() {
     // Real chemistry export through the field-pack machine: the
     // std.softmax reference term, packaged as `std.chem.softmax` cell
     // data and installed against the EXISTING std cell registry. No

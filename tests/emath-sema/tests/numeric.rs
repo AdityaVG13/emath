@@ -8,6 +8,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn errors_of(name: &str, source: &str) -> Vec<String> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, source);
@@ -48,6 +57,15 @@ emath function Square:
     definitions:
         y = x * x
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("default-numeric", source);
@@ -70,6 +88,15 @@ fn explicit_interval_model_is_honored() {
         "",
         "y = t / 1 s",
     );
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("interval-model", &source);
@@ -222,6 +249,15 @@ emath function CacheLike:
         error-limit 1e-9
         representation Real => Interval
 ";
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("e2e-units", source);
@@ -320,6 +356,15 @@ emath policy AdaptiveCachePolicy:
                 method score(candidate: &CacheCandidate) -> f64:
                     evaluate score with candidate = candidate
 "#;
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("cache-policy", source);
@@ -763,6 +808,15 @@ emath policy Affine:
 }
 
 fn eval_output_f64(name: &str, source: &str, output: &str) -> f64 {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, source);
@@ -851,7 +905,7 @@ emath function Info:
 
 #[test]
 fn rational_quantity_evaluates_as_si() {
-    // Pass 2 parse: `3//2 s` is a quantity. Under strict-f64 it is 1.5 s.
+    // Parse: `3//2 s` is a quantity. Under strict-f64 it is 1.5 s.
     let source = "\
 emath function RatQ:
     inputs:
@@ -944,6 +998,15 @@ emath function Q:
 }
 
 fn error_messages(name: &str, source: &str) -> Vec<String> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, source);
@@ -955,6 +1018,15 @@ fn error_messages(name: &str, source: &str) -> Vec<String> {
 }
 
 fn eval_output_bool(name: &str, source: &str, output: &str) -> bool {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, source);
@@ -1204,7 +1276,10 @@ emath function TemperatureDifference:
             given n = 1.0
             expect delta == 12
 ";
-    assert_eq!(eval_output_f64("temperature-difference", source, "delta"), 12.0);
+    assert_eq!(
+        eval_output_f64("temperature-difference", source, "delta"),
+        12.0
+    );
 }
 
 #[test]

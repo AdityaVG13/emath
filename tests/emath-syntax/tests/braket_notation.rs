@@ -1,4 +1,4 @@
-//! `emath-r3-braket-pack-fdby`: braket notation pack (04 section 2.4).
+//! Braket notation pack (04 section 2.4).
 //!
 //! The pack mounts opt-in (`use sci::physics::notation::braket`,
 //! optionally `(convention = physics|math)`) and admits the braket
@@ -27,7 +27,7 @@ const MOUNT: &str = "use sci::physics::notation::braket\n\n";
 fn check_source(source: &str) -> emath_sema::admit::CheckResult {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
-    session.check_owned("r3-braket-pack", source)
+    session.check_owned("braket-notation", source)
 }
 
 fn defn_exprs(source: &str) -> Vec<Expr> {
@@ -60,9 +60,8 @@ fn is_float(expr: &Expr, text: &str) -> bool {
 fn unmounted_ket_refuses_naming_the_pack() {
     // Glyphs are opt-in: a ket without the mount refuses and names the
     // import (nabla precedent — never a silent identifier reading).
-    let (tree, diags) = emath_syntax::parse_str(
-        "emath function f:\n    definitions:\n        v = |0⟩\n",
-    );
+    let (tree, diags) =
+        emath_syntax::parse_str("emath function f:\n    definitions:\n        v = |0⟩\n");
     let _ = tree;
     assert!(
         diags.errors().any(|error| error.code == "E-SYN-101"
@@ -73,9 +72,8 @@ fn unmounted_ket_refuses_naming_the_pack() {
 
 #[test]
 fn unmounted_braket_form_refuses_naming_the_pack() {
-    let (tree, diags) = emath_syntax::parse_str(
-        "emath function f:\n    definitions:\n        ip = ⟨v|w⟩\n",
-    );
+    let (tree, diags) =
+        emath_syntax::parse_str("emath function f:\n    definitions:\n        ip = ⟨v|w⟩\n");
     let _ = tree;
     assert!(
         diags.errors().any(|error| error.code == "E-SYN-101"
@@ -93,12 +91,18 @@ fn mounted_ket_label_desugars_to_basis_vector() {
     ));
     assert_eq!(defs.len(), 2);
     let ExprKind::List(items) = &defs[0].kind else {
-        panic!("ket must desugar to a constant vector, got {:?}", defs[0].kind);
+        panic!(
+            "ket must desugar to a constant vector, got {:?}",
+            defs[0].kind
+        );
     };
     assert_eq!(items.len(), 2);
     assert!(is_float(&items[0], "1.0") && is_float(&items[1], "0.0"));
     let ExprKind::List(items) = &defs[1].kind else {
-        panic!("ket must desugar to a constant vector, got {:?}", defs[1].kind);
+        panic!(
+            "ket must desugar to a constant vector, got {:?}",
+            defs[1].kind
+        );
     };
     assert!(is_float(&items[0], "0.0") && is_float(&items[1], "1.0"));
 }
@@ -120,10 +124,14 @@ fn braket_inner_product_desugars_to_dot() {
         "function was {function:?}"
     );
     assert_eq!(args.len(), 2);
-    assert!(matches!(&args[0].kind, ExprKind::Path { segments, generics: None }
-        if segments == &vec!["v".to_string()]));
-    assert!(matches!(&args[1].kind, ExprKind::Path { segments, generics: None }
-        if segments == &vec!["w".to_string()]));
+    assert!(
+        matches!(&args[0].kind, ExprKind::Path { segments, generics: None }
+        if segments == &vec!["v".to_string()])
+    );
+    assert!(
+        matches!(&args[1].kind, ExprKind::Path { segments, generics: None }
+        if segments == &vec!["w".to_string()])
+    );
 }
 
 #[test]
@@ -139,9 +147,9 @@ fn label_braket_constant_folds_orthonormality() {
 
 #[test]
 fn superposition_admits() {
-    // `psi = (|0⟩ + |1⟩) * (1.0 / sqrt(2.0))` — the bead's normalized
+    // `psi = (|0⟩ + |1⟩) * (1.0 / sqrt(2.0))` — the normalized
     // superposition. Spelling correction (documented, not a weakening):
-    // the bead prose writes `/ sqrt(2.0)`, but (Vector, scalar)
+    // the prose writes `/ sqrt(2.0)`, but (Vector, scalar)
     // division is not an admitted operator yet (the Div arm is
     // numeric-pairs only, lowering.rs); the exact multiplicative
     // spelling via VectorScale is admitted today and mathematically
@@ -213,7 +221,10 @@ fn sandwich_desugars_to_double_sum() {
         guard,
     } = &defs[0].kind
     else {
-        panic!("sandwich must desugar to a sum binder, got {:?}", defs[0].kind);
+        panic!(
+            "sandwich must desugar to a sum binder, got {:?}",
+            defs[0].kind
+        );
     };
     assert!(matches!(kind, emath_core::tree::BinderKind::Sum));
     assert!(guard.is_none());
@@ -264,8 +275,9 @@ fn ket_label_outside_two_level_carrier_refuses() {
     ));
     let _ = tree;
     assert!(
-        diags.errors().any(|error| error.code == "E-SYN-101"
-            && error.message.contains("2-level")),
+        diags
+            .errors()
+            .any(|error| error.code == "E-SYN-101" && error.message.contains("2-level")),
         "label 2 must refuse naming the carrier, got {diags:?}"
     );
 }
@@ -288,8 +300,9 @@ fn convention_parameter_validates() {
     );
     let _ = tree;
     assert!(
-        diags.errors().any(|error| error.code == "E-SYN-101"
-            && error.message.contains("convention")),
+        diags
+            .errors()
+            .any(|error| error.code == "E-SYN-101" && error.message.contains("convention")),
         "unknown convention must refuse, got {diags:?}"
     );
 }

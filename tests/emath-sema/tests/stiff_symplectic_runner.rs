@@ -1,4 +1,4 @@
-//! emath-xx0x.3 runner slice (BronzeCoyote lane): wire the compute
+//! Runner slice: wire the compute
 //! layer's stiff/symplectic kernels into the simulate runner surface.
 //!
 //! Contracts (each must FAIL against the pre-slice runner):
@@ -28,6 +28,15 @@ use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
 fn check_source(name: &str, source: &str) -> emath_sema::admit::CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)

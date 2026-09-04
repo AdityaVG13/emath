@@ -29,8 +29,7 @@ fn commutative_refutation_emits_cayley_witness() {
 
 #[test]
 fn tutor_check_rejects_claimed_green_without_witness() {
-    let claimed =
-        include_str!("../../../tests/invalid/pedagogic_diagnostics_false_green");
+    let claimed = include_str!("../../../tests/invalid/pedagogic_diagnostics_false_green");
     let explanation: emath_cli::diagnostics::Explanation = claimed_green_from_fixture(claimed);
     let error = tutor_check_v1(&explanation).expect_err("claimed green must fail");
     assert_eq!(error, TutorCheckError::ClaimedGreenWithoutWitness);

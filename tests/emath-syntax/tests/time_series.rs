@@ -1,6 +1,6 @@
-//! Time-series literals, slice 1 (bead emath-r3-timeseries-1nsa, 04 §5.4).
+//! Time-series literals.
 //!
-//! Contracts (orch-approved literal-first slice):
+//! Contracts (literal-first phase):
 //! - `Series<T in tunit, U in vunit>` is an admitted TYPE; the literal
 //!   `[(<time quantity>, <value quantity>), ...]` is admitted DATA;
 //! - the policy suffix `with interpolation: <mode>[, extrapolation:
@@ -291,7 +291,7 @@ emath function CsvWind:
     );
 }
 
-// ---- Pass 2: previous / pwc (piecewise-constant) semantics (emath-uooxi) ---
+// ---- previous / pwc (piecewise-constant) semantics ---
 // `previous` is the left-continuous step interpolation: at time t the
 // value is the sample at the greatest support time <= t; on the last
 // support point the value is that point's sample (the endpoint is
@@ -383,7 +383,7 @@ emath function StepExtend:
     }
 }
 
-// ---- Pass 3: linear semantics (emath-uooxi) --------------------------------
+// ---- linear semantics --------------------------------
 // Linear interpolation pieces the support with straight segments:
 // between samples the value is the time-proportional blend of the two
 // bracketing samples; at every support point the value is that point's
@@ -431,7 +431,7 @@ emath function LinearWind:
     }
 }
 
-// ---- Pass 5: monotone-cubic semantics and shape refusals (emath-uooxi) -----
+// ---- monotone-cubic semantics and shape refusals -----
 // `monotone_cubic` is the Fritsch–Carlson monotone cubic: per-interval
 // slopes are the sign-matched average of adjacent secants (0 where
 // adjacent secants disagree), end slopes are the outer secant, and the
@@ -470,10 +470,7 @@ emath function CubicPeak:
     let values = &report.declarations[0].tests[0].definitions;
     assert_eq!(values.get("v_quarter"), Some(&Value::F64(0.296875)));
     assert_eq!(values.get("v_half"), Some(&Value::F64(0.625)));
-    assert_eq!(
-        values.get("v_three_quarters"),
-        Some(&Value::F64(0.890625))
-    );
+    assert_eq!(values.get("v_three_quarters"), Some(&Value::F64(0.890625)));
     assert_eq!(values.get("v_second_half"), Some(&Value::F64(0.625)));
 }
 
@@ -636,7 +633,7 @@ emath function NearestWind:
     }
 }
 
-// ---- Pass 6: extrapolation refuse/clamp/extend (emath-uooxi) ---------------
+// ---- extrapolation refuse/clamp/extend ---------------
 // `refuse` (the default) turns any sample outside the support into a
 // typed `SeriesOutOfSupport` fault naming time, start, and end. `clamp`
 // pins to the nearest endpoint value. `extend` continues the OUTER
@@ -748,16 +745,12 @@ emath function ExtendWind:
             expect past_end == {expected:.1}
 "
         );
-        let value = run_definitions_value(
-            &format!("extend-{mode}"),
-            &source,
-            "past_end",
-        );
+        let value = run_definitions_value(&format!("extend-{mode}"), &source, "past_end");
         assert_eq!(value, Value::F64(expected), "{mode}");
     }
 }
 
-// ---- Pass 7: semantic-identity / metamorphic laws (emath-uooxi) ------------
+// ---- semantic-identity / metamorphic laws ------------
 // Law 1 (interpolation): at every support point every interpolation
 // mode evaluates to that point's sample — linear, step, nearest, and
 // cubic Hermite all interpolate the data exactly at the knots.
@@ -784,9 +777,7 @@ emath function LawWind:
 ";
     for mode in ["previous", "linear", "nearest", "pwc", "monotone_cubic"] {
         for extrapolation in ["refuse", "clamp", "extend"] {
-            let source = base
-                .replace("XMODE", extrapolation)
-                .replace("MODE", mode);
+            let source = base.replace("XMODE", extrapolation).replace("MODE", mode);
             let mut session = CompilerSession::new(Limits::default());
             let checked = session.check_owned(&format!("law-{mode}-{extrapolation}"), &source);
             assert!(
@@ -815,7 +806,7 @@ emath function LawWind:
     }
 }
 
-// Deliberate mutation record (pass 7): `step_modes_with_extend_past_end_
+// Deliberate mutation record: `step_modes_with_extend_past_end_
 // return_last_sample` above is the failure-first driver — it FAILS against
 // the current `sample_series` (outer-interval index pins the second-to-last
 // bracket for `time >= end`, so step modes return the second-to-last

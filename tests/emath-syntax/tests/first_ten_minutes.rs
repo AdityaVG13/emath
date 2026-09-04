@@ -1,4 +1,4 @@
-//! First-ten-minutes corpus and beginner gate (bead emath-v9-06-2rdq.18).
+//! First-ten-minutes corpus and beginner gate.
 //!
 //! A new user must plot, solve, and evaluate without reading compiler
 //! architecture — and without the compiler picking a hidden default for
@@ -10,7 +10,7 @@
 //! - a form that would REQUIRE a hidden default (bare `plot sin over
 //!   0..6.28`: implicit function value + ambient range) is refused.
 
-use emath_cli::{run, run_check, CliExit};
+use emath_cli::{CliExit, run, run_check};
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::Value;
 use emath_sema::CompilerSession;

@@ -1,5 +1,5 @@
-//! Custom-kind execution story (bead emath-emath-kind-execution-02yn,
-//! CAPABILITY "emath kind | partial (schema validation) | no").
+//! Custom-kind execution story
+//! (CAPABILITY "emath kind | partial (schema validation) | no").
 //!
 //! Contracts:
 //! - **Kind definitions register**: `emath kind Gauge:` with a valid
@@ -25,6 +25,15 @@ fn install_source_parser() {
 }
 
 fn check(text: &str, name: &str) -> Vec<String> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned(name, text);
@@ -89,6 +98,15 @@ emath function PlainFn:
 
 #[test]
 fn defined_function_kind_application_executes() {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("kind-apply", KIND_DEFINED_AND_APPLIED);
@@ -113,8 +131,9 @@ fn defined_function_kind_application_executes() {
 fn undefined_application_keeps_generic_refusal() {
     let errors = check(KIND_UNDEFINED_APPLICATION, "kind-undefined");
     assert!(
-        errors.iter().any(|e| e.starts_with("E-KIND-100")
-            && e.contains("outside the Phase 1 subset")),
+        errors
+            .iter()
+            .any(|e| e.starts_with("E-KIND-100") && e.contains("outside the Phase 1 subset")),
         "an UNDEFINED application keeps the generic Phase-1-subset \
          refusal; got: {errors:#?}"
     );

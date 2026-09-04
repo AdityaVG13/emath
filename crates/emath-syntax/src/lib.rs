@@ -17,12 +17,13 @@ pub mod layout;
 pub mod lexer;
 pub mod parser;
 pub mod scratch;
+pub mod stage0;
 pub mod token;
 pub mod tree;
 
 pub use edition::{GrammarProfile, admitted_by_default, grammar_profile_for};
 pub use layout::{E_SYN_HANGING_INFIX, classify_line_break};
-// Facade fence (rpme/C053): the formatter entry point callers consume
+// Facade fence (C053): the formatter entry point callers consume
 // deep (`formatter::format`) is root-exported; the module stays public
 // for format_type and friends.
 pub use exactness::{
@@ -34,6 +35,9 @@ pub use scratch::{
     ExpansionOutcome, HoleCandidate, HoleContinuation, HoleKind, HoleRecord, HoleRejection,
     ScratchExpansion, ScratchLevel, ScratchNote, ScratchRewriteLevel, SolveIntent, SolveWorld,
     apply_solve_candidate, expand_scratch,
+};
+pub use stage0::{
+    EXCLUDED_DOMAIN_FORMS, PreservedGlyph, STAGE0_FORMS, forbidden_domain_matches, unknown_glyphs,
 };
 
 use emath_core::{Diagnostics, Edition, FileId, limits::Limits};
@@ -122,10 +126,7 @@ fn is_deprecated_example_assignment(line: &str) -> bool {
         return false;
     };
     let name = rest[..eq].trim_end();
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c == '_' || c.is_alphanumeric())
+    !name.is_empty() && name.chars().all(|c| c == '_' || c.is_alphanumeric())
 }
 
 /// The lossless parse result (/002): the tree plus every

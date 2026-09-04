@@ -1,7 +1,7 @@
 //! L0 scratch grammar: expressions, plot, solve, convert without declarations.
 
-use emath_core::tree::{Item, StmtKind};
 use emath_core::limits::Limits;
+use emath_core::tree::{Item, StmtKind};
 use emath_exec_ir::interp::Value;
 use emath_sema::CompilerSession;
 use emath_syntax::{expand_scratch, parse_str};
@@ -132,8 +132,7 @@ fn plot_solve_convert_expand() {
             "{name}: {:?}",
             checked.diagnostics.errors().collect::<Vec<_>>()
         );
-        let report =
-            emath_exec_ir::runner::run_package_with_given(&checked.package, Some(&given));
+        let report = emath_exec_ir::runner::run_package_with_given(&checked.package, Some(&given));
         let value = report.declarations[0].tests[0]
             .definitions
             .values()

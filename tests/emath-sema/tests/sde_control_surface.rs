@@ -1,4 +1,4 @@
-//! Bead `emath-r3-sde-control-zxkl` — the `.emath` SDE capability-cell
+//! — the `.emath` SDE capability-cell
 //! surface (sema tier).
 //!
 //! The surface is the GENERIC declared-capability call path: cells are
@@ -68,6 +68,15 @@ emath function sde_paths:
 
 /// (severity, code, message) diagnostics for one source.
 fn check(source: &str) -> Vec<(String, String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -101,6 +110,15 @@ fn error_codes(out: &[(String, String, String)]) -> Vec<String> {
 #[test]
 fn sde_capability_cells_admit_and_lower_to_apply() {
     let mut session = CompilerSession::new(Limits::default());
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let checked = session.check_owned("sde-surface.emath", CELLS_AND_CALLS);
     let codes: Vec<String> = checked
@@ -122,8 +140,14 @@ fn sde_capability_cells_admit_and_lower_to_apply() {
         .collect();
     let ito_index = names_index(&names, "std.stochastic.euler_maruyama");
     let strat_index = names_index(&names, "std.stochastic.stratonovich");
-    assert!(ito_index.is_some(), "euler_maruyama cell admitted: {names:?}");
-    assert!(strat_index.is_some(), "stratonovich cell admitted: {names:?}");
+    assert!(
+        ito_index.is_some(),
+        "euler_maruyama cell admitted: {names:?}"
+    );
+    assert!(
+        strat_index.is_some(),
+        "stratonovich cell admitted: {names:?}"
+    );
     // Both call sites are Apply nodes targeting the declared cells.
     let applies: Vec<usize> = checked
         .package
@@ -185,9 +209,7 @@ fn names_index(names: &[&str], needle: &str) -> Option<usize> {
 /// user-facing contract, so it is checked as-is, not paraphrased.
 #[test]
 fn shipped_example_admits() {
-    let source = include_str!(
-        "../../../language/examples/numerical/sde-control.emath"
-    );
+    let source = include_str!("../../../language/examples/numerical/sde-control.emath");
     let out = check(source);
     let codes = error_codes(&out);
     assert!(

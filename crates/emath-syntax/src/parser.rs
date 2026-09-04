@@ -72,12 +72,12 @@ struct Parser {
     /// expression parses (N1: scoped to the whole package/file).
     notations: BTreeMap<String, NotOp>,
     /// Notation packs mounted through `use sci::physics::notation::<pack>`
-    /// lines (nabla pack o6jp), collected by the same pre-scan. Pack
+    /// lines (nabla pack), collected by the same pre-scan. Pack
     /// glyphs desugar only when their pack is mounted — opt-in, never
     /// ambient.
     mounted_packs: BTreeSet<String>,
     /// Pack mount parameters (`use sci::physics::notation::braket(
-    /// convention = physics)`, fdby): pack leaf name → parameter value.
+    /// convention = physics)`): pack leaf name → parameter value.
     /// Validated at the mount scan; the vocabulary check is pack data.
     pack_parameters: BTreeMap<String, String>,
     /// B02: when true, suppresses the postfix `if` handler so that
@@ -161,12 +161,12 @@ impl Parser {
                     continue;
                 }
                 TokenKind::Keyword(Keyword::Use) if at_item_start && depth == 0 => {
-                    // Notation-pack mounts (o6jp): `use
+                    // Notation-pack mounts: `use
                     // sci::physics::notation::nabla` before any expression
                     // parses. Token-level peek keeps this out of the main
                     // use-parsing pass; only known pack roots register.
                     if let Some((pack, param)) = self.scan_pack_mount_at(i) {
-                        // Pack-parameter validation is pack data (fdby):
+                        // Pack-parameter validation is pack data:
                         // braket declares `convention` with the physics |
                         // math vocabulary; other packs take no parameters.
                         if let Some((name, value)) = &param {
@@ -203,7 +203,7 @@ impl Parser {
     /// Token-level scan for a notation-pack mount starting at a `use`
     /// token: `use sci::physics::notation::<pack>` (optionally with a
     /// trailing `::*`, and — for packs that declare one — a mount
-    /// parameter `(<name> = <value>)`, fdby). Returns the pack leaf name
+    /// parameter `(<name> = <value>)`). Returns the pack leaf name
     /// plus its optional parameter when the path names a known notation
     /// pack, else `None` (ordinary import, main pass owns it).
     /// Data-driven: adding a pack means adding its glyph mappings,
@@ -232,7 +232,7 @@ impl Parser {
             return None;
         }
         let pack = path[NOTATION_PACK_ROOT.len()].clone();
-        // Optional mount parameter: `( name = value )` (fdby). Malformed
+        // Optional mount parameter: `( name = value )`. Malformed
         // parameter shapes are left to the main use-parsing pass.
         let param = if matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::LParen)) {
             let TokenKind::Ident(name) = &self.tokens.get(i + 1)?.kind else {

@@ -1,4 +1,4 @@
-//! emath-option-result-graph-field-aj8d — Pass 1 (failure-first RED):
+//! — (failure-first RED):
 //! Option/Result/Graph/Field as EXECUTABLE .emath declaration types.
 //!
 //! The compute layer for Option/Result already landed (adjacent slice):
@@ -6,7 +6,7 @@
 //! with 9 total ops (option-some/none/is-some/unwrap-or,
 //! result-ok/err/is-ok/unwrap-or/error-of), proven GREEN in
 //! `tests/emath-ir/tests/option_result_values.rs`. Graph compute ops and
-//! the Int-backed GF<p> modular op family are complete (masa/rymw).
+//! the Int-backed GF<p> modular op family are complete.
 //!
 //! The GAP this pass pins: these are NOT yet executable declaration
 //! TYPES. `emath-sema/src/admit/types.rs` `map_type` explicitly REFUSES
@@ -32,11 +32,19 @@ use std::collections::BTreeMap;
 
 /// Admit one `.emath` source and return the full checked result.
 fn check(source: &str) -> CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     emath_syntax::install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
-    session.check_owned("aj8d-surface.emath", source)
+    session.check_owned("option-result-graph-field", source)
 }
-
 
 /// Input bindings for a probe declaration: every declared input binds to
 /// `Int 0`. E-SEC-130 requires a named I/O surface, and the evaluator
@@ -101,7 +109,7 @@ fn input_types(result: &CheckResult) -> Vec<emath_ir::TypeNode> {
 
 /// Build a minimal admitting `function` carrying the given `inputs:` field
 /// lines (each already indented 8 spaces) plus a stub `definitions:`
-/// section. Pass 1 sources put the type on an `outputs:` field, but an
+/// section. sources put the type on an `outputs:` field, but an
 /// output demands a conforming definition (E-NAME-023) and Phase 1 has no
 /// Option/Result VALUE syntax to write one — so this pass carries the type
 /// on an INPUT, which exercises the identical `map_type` admission path
@@ -109,16 +117,14 @@ fn input_types(result: &CheckResult) -> Vec<emath_ir::TypeNode> {
 /// `definitions:` satisfies `function`'s mandatory `definitions` section
 /// (E-KIND-011).
 fn fn_with_inputs(inputs: &str) -> String {
-    format!(
-        "emath function probe:\n    inputs:\n{inputs}\n    definitions:\n        t = 1.0\n"
-    )
+    format!("emath function probe:\n    inputs:\n{inputs}\n    definitions:\n        t = 1.0\n")
 }
 
 /// The PASSING contract these tests assert: the Option/Result spellings may
 /// not be refused. Currently each refuses, so every assert! here would fail
 /// on the unedited tree → RED.
 #[test]
-fn aj8d_float_option_declaration_admits() {
+fn float_option_declaration_admits() {
     let source = fn_with_inputs("        x: Option<Float64>\n");
     let result = check(&source);
     let errors = errors_of(&result);
@@ -127,14 +133,13 @@ fn aj8d_float_option_declaration_admits() {
         "an Option<Float64> declaration type must ADMIT; got: {errors:#?}"
     );
     assert_eq!(
-        first_input_type(&result)
-            .expect("Option<Float64> input must carry an admitted TypeNode"),
+        first_input_type(&result).expect("Option<Float64> input must carry an admitted TypeNode"),
         emath_ir::TypeNode::OptionType(Box::new(emath_ir::TypeNode::Float64))
     );
 }
 
 #[test]
-fn aj8d_result_declaration_admits() {
+fn result_declaration_admits() {
     let source = fn_with_inputs("        x: Result<Int, Bool>\n");
     let result = check(&source);
     let errors = errors_of(&result);
@@ -143,8 +148,7 @@ fn aj8d_result_declaration_admits() {
         "a Result<Int, Bool> declaration type must ADMIT; got: {errors:#?}"
     );
     assert_eq!(
-        first_input_type(&result)
-            .expect("Result<Int, Bool> input must carry an admitted TypeNode"),
+        first_input_type(&result).expect("Result<Int, Bool> input must carry an admitted TypeNode"),
         emath_ir::TypeNode::Result {
             ok: Box::new(emath_ir::TypeNode::Int),
             error: Box::new(emath_ir::TypeNode::Bool),
@@ -153,7 +157,7 @@ fn aj8d_result_declaration_admits() {
 }
 
 #[test]
-fn aj8d_graph_declaration_admits() {
+fn graph_declaration_admits() {
     // Graph compute ops exist; only the Graph TYPE spelling is missing.
     // A conforming definition removes the unrelated mandatory-definitions
     // error (E-KIND-011) so the ONLY gate being tested is type admission.
@@ -168,9 +172,9 @@ fn aj8d_graph_declaration_admits() {
 }
 
 #[test]
-fn aj8d_field_declaration_admits() {
+fn field_declaration_admits() {
     // Field and GF are one prime-field spelling (NAMING.md canonicalizes
-    // `GF<p>`; `Field` is the bead's declared alias). `Field<7>` must
+    // `GF<p>`; `Field` is the declared alias). `Field<7>` must
     // ADMIT as an executable declaration type carrying its modulus. The
     // output needs a conforming definition (E-NAME-023), so the ONLY gate
     // under test is type admission.
@@ -194,12 +198,12 @@ fn aj8d_field_declaration_admits() {
 /// Graph/Field). The contract: GF<p> is a DISTINCT executable field
 /// type carrying its modulus. Asserting the output's semantic TypeNode
 /// is NOT a plain Int is the RED that proves the silent collapse.
-/// (Pass 8: was `v = x + 0`; Int+Int widens to F64, which the new
+/// (was `v = x + 0`; Int+Int widens to F64, which the new
 /// FieldPrime-exactness rule now refuses as a float into an exact field
 /// type — the honest integer element form is `v = x`, which preserves the
 /// distinct-node intent.)
 #[test]
-fn aj8d_gf_prime_is_distinct_type() {
+fn gf_prime_is_distinct_type() {
     let result = check(
         "emath function gf_probe:\n    inputs:\n        x: Int\n    outputs:\n        v: GF<7>\n    definitions:\n        v = x\n",
     );
@@ -208,8 +212,7 @@ fn aj8d_gf_prime_is_distinct_type() {
         errors.is_empty(),
         "GF<7> must admit cleanly (no Phase-1 type refusal); got: {errors:#?}"
     );
-    let node = first_output_type(&result)
-        .expect("gf_probe must carry a declared output type");
+    let node = first_output_type(&result).expect("gf_probe must carry a declared output type");
     assert!(
         !matches!(node, emath_ir::TypeNode::Int),
         "GF<7> must be a DISTINCT prime-field type, not silently \
@@ -223,7 +226,7 @@ fn aj8d_gf_prime_is_distinct_type() {
 }
 
 #[test]
-fn aj8d_parser_accepts_type_spellings() {
+fn parser_accepts_type_spellings() {
     // Parse-level evidence: the SYNTAX layer already admits these type
     // spellings as generics. Refusal happens at SEMA (map_type), not in
     // the parser — this locates the gap precisely. This test documents
@@ -239,7 +242,7 @@ fn aj8d_parser_accepts_type_spellings() {
     );
 }
 
-// --- Pass 2: recursive admission + identity (emath-option-result-graph-field-aj8d) ---
+// --- recursive admission + identity ---
 //
 // map_type must admit Option/Result as executable declaration types with
 // EXACTLY one/two generic args, recursing into the argument types, yielding
@@ -248,7 +251,7 @@ fn aj8d_parser_accepts_type_spellings() {
 // (Option/Result refuse with E-TYPE-010).
 
 #[test]
-fn aj8d_recursive_option_result_admits() {
+fn recursive_option_result_admits() {
     // Three nested spellings must each admit cleanly (recursion descends).
     let sources = [
         fn_with_inputs("        x: Option<Option<Int>>\n"),
@@ -270,7 +273,7 @@ fn aj8d_recursive_option_result_admits() {
 }
 
 #[test]
-fn aj8d_nested_node_structure() {
+fn nested_node_structure() {
     // `Option<Option<Int>>` must lower to a two-level Option node, proving
     // recursion descends rather than collapsing to a single shell.
     let source = fn_with_inputs("        x: Option<Option<Int>>\n");
@@ -280,22 +283,19 @@ fn aj8d_nested_node_structure() {
         errors.is_empty(),
         "nested Option must ADMIT; got: {errors:#?}"
     );
-    let node = first_input_type(&result)
-        .expect("nested Option must carry an admitted TypeNode");
+    let node = first_input_type(&result).expect("nested Option must carry an admitted TypeNode");
     assert_eq!(
         node,
-        emath_ir::TypeNode::OptionType(Box::new(emath_ir::TypeNode::OptionType(
-            Box::new(emath_ir::TypeNode::Int)
-        )))
+        emath_ir::TypeNode::OptionType(Box::new(emath_ir::TypeNode::OptionType(Box::new(
+            emath_ir::TypeNode::Int
+        ))))
     );
 }
 
 #[test]
-fn aj8d_same_spelling_identical_node() {
+fn same_spelling_identical_node() {
     // Two inputs with the identical spelling must yield the identical node.
-    let source = fn_with_inputs(
-        "        x: Option<Float64>\n        y: Option<Float64>\n",
-    );
+    let source = fn_with_inputs("        x: Option<Float64>\n        y: Option<Float64>\n");
     let result = check(&source);
     assert!(
         errors_of(&result).is_empty(),
@@ -311,7 +311,7 @@ fn aj8d_same_spelling_identical_node() {
 }
 
 #[test]
-fn aj8d_distinct_spellings_distinct_node() {
+fn distinct_spellings_distinct_node() {
     // Different spellings must map to distinct nodes.
     let source = fn_with_inputs(
         "        a: Option<Float64>\n        b: Option<Int>\n        c: Result<Int, Bool>\n",
@@ -330,7 +330,7 @@ fn aj8d_distinct_spellings_distinct_node() {
 }
 
 #[test]
-fn aj8d_option_wrong_arity_refused() {
+fn option_wrong_arity_refused() {
     // Option admits EXACTLY one generic arg; two must refuse with the
     // E-TYPE-010 arity message naming the type.
     let source = fn_with_inputs("        x: Option<Int, Float64>\n");
@@ -344,7 +344,7 @@ fn aj8d_option_wrong_arity_refused() {
 }
 
 #[test]
-fn aj8d_result_wrong_arity_refused() {
+fn result_wrong_arity_refused() {
     // Result admits EXACTLY two generic args; 1 and 3 must refuse.
     for source in [
         fn_with_inputs("        x: Result<Int>\n"),
@@ -353,14 +353,15 @@ fn aj8d_result_wrong_arity_refused() {
         let result = check(&source);
         let errs = errors_of(&result);
         assert!(
-            errs.iter().any(|e| e.contains("E-TYPE-010")
-                && e.contains("requires exactly two type arguments")),
+            errs.iter()
+                .any(|e| e.contains("E-TYPE-010")
+                    && e.contains("requires exactly two type arguments")),
             "under/over-arg `Result` must refuse with an E-TYPE-010 arity message; got: {errs:#?} for `{source}`"
         );
     }
 }
 
-// --- Pass 6: Graph type admission (emath-option-result-graph-field-aj8d) ---
+// --- Graph type admission ---
 //
 // The graph COMPUTE surface is complete and closed (reachability,
 // bfs_order, shortest_distances, out_degrees, graph_laplacian,
@@ -375,7 +376,7 @@ fn aj8d_result_wrong_arity_refused() {
 /// The bare `Graph` spelling must admit as a declaration type, mapping to
 /// the dense `Matrix<Float64>` adjacency carrier.
 #[test]
-fn aj8d_graph_maps_to_matrix_alias() {
+fn graph_maps_to_matrix_alias() {
     let source = fn_with_inputs("        x: Graph\n");
     let result = check(&source);
     let errors = errors_of(&result);
@@ -398,7 +399,7 @@ fn aj8d_graph_maps_to_matrix_alias() {
 /// the declaration admits, the graph literal conforms to the `Graph`
 /// output field, and reachability evaluates through it.
 #[test]
-fn aj8d_graph_field_feeds_reachability_op() {
+fn graph_field_feeds_reachability_op() {
     let source = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n";
     let result = check(source);
     let errors = errors_of(&result);
@@ -423,13 +424,13 @@ fn aj8d_graph_field_feeds_reachability_op() {
     );
 }
 
-/// Pass 5: out_degrees drives through the SAME Graph-typed field (adjacency
+/// Out_degrees drives through the SAME Graph-typed field (adjacency
 /// degree), complementing reachability — one Graph declaration drives both
 /// adjacency-degree AND reachability. Exact values discriminate: the probe
 /// graph (0->1, 0->2, 1->3, 2->3) must yield out_degrees = [2,1,1,0]; a
 /// missing/wrong out_degrees admission yields anything else.
 #[test]
-fn aj8d_graph_field_drives_out_degrees() {
+fn graph_field_drives_out_degrees() {
     let source = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        d: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        d = out_degrees(g)\n";
     let result = check(source);
     let errors = errors_of(&result);
@@ -454,12 +455,12 @@ fn aj8d_graph_field_drives_out_degrees() {
     );
 }
 
-/// Pass 5: the alias is BIDIRECTIONAL. A graph value admitted into a
+/// The alias is BIDIRECTIONAL. A graph value admitted into a
 /// `Matrix<Float64>`-typed field (the adjacency spells into a Matrix position)
 /// must flow out of THAT field into a graph op unchanged — proving Matrix and
 /// Graph are the same carrier node and interchange freely in both directions.
 #[test]
-fn aj8d_matrix_field_interchanges_with_graph_value() {
+fn matrix_field_interchanges_with_graph_value() {
     let source = "emath function mp:\n    inputs:\n        n: Int\n\n    outputs:\n        m: Matrix<Float64>\n        r: Vector<Float64>\n        d: Vector<Float64>\n    definitions:\n        m = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(m, 0)\n        d = out_degrees(m)\n";
     let result = check(source);
     let errors = errors_of(&result);
@@ -501,7 +502,7 @@ fn aj8d_matrix_field_interchanges_with_graph_value() {
 /// `Graph<T>` (any generic count) is a typed arity refusal naming "Graph".
 /// The assertion depends on the NEW message so it cannot pass prepayment.
 #[test]
-fn aj8d_graph_generic_refused() {
+fn graph_generic_refused() {
     for source in [
         fn_with_inputs("        x: Graph<Int>\n"),
         fn_with_inputs("        x: Graph<Float64>\n"),
@@ -518,21 +519,21 @@ fn aj8d_graph_generic_refused() {
     }
 }
 
-// --- Pass 7: Field/GF<p> prime type (emath-option-result-graph-field-aj8d) ---
+// --- Field/GF<p> prime type ---
 //
-// The bead's prime-field contract: GF<7> is a DISTINCT prime-field type
-// (NOT the silent `TypeNode::Int` collapse flagged in Pass 1 — the prime
+// The prime-field contract: GF<7> is a DISTINCT prime-field type
+// (NOT the silent `TypeNode::Int` collapse flagged in — the prime
 // is dropped there), the prime is a TYPE-LEVEL constant, and the value
 // layer is exact i64 modular arithmetic (tests/emath-ir/tests/
 // option_result_values.rs). Sema admits `Field<p>` / `GF<p>` for exactly
 // ONE PRIME INTEGER LITERAL argument. Every refusal below is an
 // E-TYPE-010 message naming the spelling and the constraint, never a
-// panic. All are failure-first: before the Pass 7 `map_type` arm, every
+// panic. All are failure-first: before the `map_type` arm, every
 // wrong-prime spelling silently mapped to `TypeNode::Int` (or refused for
 // the bare `Field` name) and every assert here FAILED.
 
 #[test]
-fn aj8d_field_prime_non_prime_refused() {
+fn field_prime_non_prime_refused() {
     for source in [
         fn_with_inputs("        x: Field<8>\n"),
         fn_with_inputs("        x: GF<4>\n"),
@@ -549,7 +550,7 @@ fn aj8d_field_prime_non_prime_refused() {
 }
 
 #[test]
-fn aj8d_field_prime_literal_required() {
+fn field_prime_literal_required() {
     // The modulus must be an integer LITERAL — a fixed field is a
     // type-level constant, not a value-level expression or another type.
     for source in [
@@ -568,7 +569,7 @@ fn aj8d_field_prime_literal_required() {
 }
 
 #[test]
-fn aj8d_field_arity_refused() {
+fn field_arity_refused() {
     // Exactly ONE generic arg: bare `Field`, bare `GF`, and two args all
     // refuse with an E-TYPE-010 arity message containing "requires
     // exactly one".
@@ -589,13 +590,12 @@ fn aj8d_field_arity_refused() {
 }
 
 #[test]
-fn aj8d_field_prime_identity_distinct() {
+fn field_prime_identity_distinct() {
     // GF<7>, GF<5>, and Int are three DISTINCT types; the field prime is
     // type-level identity, so different primes never collapse and display
     // carries the modulus.
-    let source = fn_with_inputs(
-        "        a: GF<7>\n        b: GF<5>\n        c: Int\n        d: Field<7>\n",
-    );
+    let source =
+        fn_with_inputs("        a: GF<7>\n        b: GF<5>\n        c: Int\n        d: Field<7>\n");
     let result = check(&source);
     assert!(
         errors_of(&result).is_empty(),
@@ -615,12 +615,16 @@ fn aj8d_field_prime_identity_distinct() {
         "Field<7>",
         "display is sane for GF<7>"
     );
-    assert_eq!(nodes[1].display_name(), "Field<5>", "display carries the prime");
+    assert_eq!(
+        nodes[1].display_name(),
+        "Field<5>",
+        "display carries the prime"
+    );
     assert_ne!(nodes[2].display_name(), "Field<7>", "Int display stays Int");
 }
 
 #[test]
-fn aj8d_field_prime_boundary() {
+fn field_prime_boundary() {
     // p = 2 is the smallest prime and must admit; p < 2 and p above the
     // i32::MAX cap refuse.
     let result = check(&fn_with_inputs("        x: GF<2>\n"));
@@ -645,7 +649,7 @@ fn aj8d_field_prime_boundary() {
 }
 
 #[test]
-fn aj8d_field_prime_canonical_identity() {
+fn field_prime_canonical_identity() {
     // The canonical `field:<p>` encoding (canonical.rs, schema
     // `emath.sir`) keeps GF<7>, GF<5>, and Int as DISTINCT package
     // identities — the encode arm must not collapse primes.
@@ -660,10 +664,13 @@ fn aj8d_field_prime_canonical_identity() {
     let id5 = canonical_package(&five.package);
     let id_int = canonical_package(&int.package);
     assert_ne!(id7, id5, "GF<7> and GF<5> have distinct canonical identity");
-    assert_ne!(id7, id_int, "GF<7> and Int have distinct canonical identity");
+    assert_ne!(
+        id7, id_int,
+        "GF<7> and Int have distinct canonical identity"
+    );
 }
 
-// --- Pass 8: hardened typed refusals (emath-option-result-graph-field-aj8d) ---
+// --- hardened typed refusals ---
 //
 // Every malformed composite-type spelling must refuse with a TYPED
 // E-TYPE-010 message naming the spelling and the exact constraint —
@@ -676,16 +683,16 @@ fn aj8d_field_prime_canonical_identity() {
 /// (and a nested malformed inner generic). Each must refuse with the
 /// E-TYPE-010 arity/constraint code — no row may fall through silent.
 #[test]
-fn aj8d_refuse_mismatched_generics_matrix() {
+fn refuse_mismatched_generics_matrix() {
     let rows = [
-        "        x: Option<Int, Float64>\n",   // Option arity 2
-        "        x: Result<Int>\n",            // Result under-armed
+        "        x: Option<Int, Float64>\n",       // Option arity 2
+        "        x: Result<Int>\n",                // Result under-armed
         "        x: Result<Int, Bool, Float64>\n", // Result over-armed
         "        x: Option<Option<Int, Float64, Bool>>\n", // nested malformed inner Option
-        "        x: Graph<Int>\n",             // Graph takes no args
-        "        x: Field<7, 2>\n",            // Field arity 2
-        "        x: GF<>\n",                   // GF explicit-empty generic
-        "        x: GF<7, 2>\n",               // GF arity 2
+        "        x: Graph<Int>\n",                 // Graph takes no args
+        "        x: Field<7, 2>\n",                // Field arity 2
+        "        x: GF<>\n",                       // GF explicit-empty generic
+        "        x: GF<7, 2>\n",                   // GF arity 2
     ];
     for input in rows {
         let result = check(&fn_with_inputs(input));
@@ -705,8 +712,10 @@ fn aj8d_refuse_mismatched_generics_matrix() {
 /// the inner constraint named — the outer shell may not silently swallow
 /// it or fall back to a generic "unknown type".
 #[test]
-fn aj8d_nested_malformed_inner_generic_names_inner_constraint() {
-    let result = check(&fn_with_inputs("        x: Option<Option<Int, Float64, Bool>>\n"));
+fn nested_malformed_inner_generic_names_inner_constraint() {
+    let result = check(&fn_with_inputs(
+        "        x: Option<Option<Int, Float64, Bool>>\n",
+    ));
     let errs = errors_of(&result);
     assert!(
         errs.iter().any(|e| e.contains("E-TYPE-010")
@@ -720,7 +729,7 @@ fn aj8d_nested_malformed_inner_generic_names_inner_constraint() {
 /// integer literal — the field prime is a type-level constant, so these
 /// must refuse with the literal-requirement message, never silently.
 #[test]
-fn aj8d_nested_field_type_arg_refused_literal() {
+fn nested_field_type_arg_refused_literal() {
     for input in [
         "        x: GF<GF<7>>\n",
         "        x: GF<Option<Int>>\n",
@@ -729,7 +738,8 @@ fn aj8d_nested_field_type_arg_refused_literal() {
         let result = check(&fn_with_inputs(input));
         let errs = errors_of(&result);
         assert!(
-            errs.iter().any(|e| e.contains("E-TYPE-010") && e.contains("LITERAL")),
+            errs.iter()
+                .any(|e| e.contains("E-TYPE-010") && e.contains("LITERAL")),
             "nested type arg `{input}` must refuse with an E-TYPE-010 literal-requirement message; got: {errs:#?}"
         );
     }
@@ -740,17 +750,19 @@ fn aj8d_nested_field_type_arg_refused_literal() {
 /// through a lossy path. (RED against the pre-pass-8 wording, which said
 /// only "requires ... LITERAL".)
 #[test]
-fn aj8d_field_literal_overflow_refused_typed() {
+fn field_literal_overflow_refused_typed() {
     let result = check(&fn_with_inputs("        x: GF<99999999999999999999999>\n"));
     let errs = errors_of(&result);
     assert!(
-        errs.iter()
-            .any(|e| e.contains("E-TYPE-010") && e.contains("exceeds the maximum supported field modulus")),
+        errs.iter().any(|e| e.contains("E-TYPE-010")
+            && e.contains("exceeds the maximum supported field modulus")),
         "an overlarge prime literal must refuse with an E-TYPE-010 range message; got: {errs:#?}"
     );
     assert!(
-        !errs.iter().any(|e| e.contains("requires a prime integer LITERAL modulus")
-            && !e.contains("exceeds")),
+        !errs
+            .iter()
+            .any(|e| e.contains("requires a prime integer LITERAL modulus")
+                && !e.contains("exceeds")),
         "an overlarge literal is still a literal; the refusal must not mis-say it is not one; got: {errs:#?}"
     );
 }
@@ -761,7 +773,7 @@ fn aj8d_field_literal_overflow_refused_typed() {
 /// that flakes to a fake field. This pins that boundary (audit verdict: OK,
 /// refused at parse; not an E-TYPE-010 because the spelling never parses).
 #[test]
-fn aj8d_field_negative_modulus_refused() {
+fn field_negative_modulus_refused() {
     let result = check(&fn_with_inputs("        x: GF<-3>\n"));
     assert!(
         !errors_of(&result).is_empty(),
@@ -778,23 +790,27 @@ fn aj8d_field_negative_modulus_refused() {
 /// range refusal — `GF<>` (arity) vs `GF<2147483648>` (range) must not
 /// collide onto one imprecise message.
 #[test]
-fn aj8d_empty_generic_is_arity_not_range() {
+fn empty_generic_is_arity_not_range() {
     let empty = check(&fn_with_inputs("        x: GF<>\n"));
     let empty_errs = errors_of(&empty);
     assert!(
-        empty_errs.iter().any(|e| e.contains("E-TYPE-010") && e.contains("requires exactly one")),
+        empty_errs
+            .iter()
+            .any(|e| e.contains("E-TYPE-010") && e.contains("requires exactly one")),
         "`GF<>` is an arity refusal, got: {empty_errs:#?}"
     );
 
     let over = check(&fn_with_inputs("        x: GF<2147483648>\n"));
     let over_errs = errors_of(&over);
     assert!(
-        over_errs.iter().any(|e| e.contains("E-TYPE-010") && e.contains("requires a prime modulus 2 ≤ p")),
+        over_errs
+            .iter()
+            .any(|e| e.contains("E-TYPE-010") && e.contains("requires a prime modulus 2 ≤ p")),
         "`GF<2147483648>` is a range refusal, got: {over_errs:#?}"
     );
 }
 
-// --- Pass 9: metamorphic Graph relabel (emath-option-result-graph-field-aj8d) ---
+// --- metamorphic Graph relabel ---
 //
 // TEST-ONLY pass (no production edits). Graph IS the dense Matrix<Float64>
 // adjacency alias; RELABEL = permute rows AND cols of the adjacency and
@@ -838,7 +854,7 @@ fn permute_mask(p: &[usize], mask: &[f64]) -> Vec<f64> {
 }
 
 #[test]
-fn aj8d_meta_graph_relabel_reachability_equivariance() {
+fn meta_graph_relabel_reachability_equivariance() {
     // Original: edges 0->1, 1->3, 2->3. Vertex 2 is NOT reachable from 0,
     // so the mask is not all-ones and relabeling the endpoints changes it.
     let original = "emath function gp:\n    inputs:\n        n: Int\n\n    outputs:\n        g: Graph\n        r: Vector<Float64>\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n";
@@ -869,8 +885,8 @@ fn aj8d_meta_graph_relabel_reachability_equivariance() {
     );
 }
 
-// --- Pass 10: Option/Result/field builtins callable from .emath TEXT ---
-// (emath-option-result-graph-field-aj8d).
+// --- Option/Result/field builtins callable from .emath TEXT ---
+//.
 //
 // The interpreter + emitter + term_compile surfaces for these names are
 // proven in `tests/emath-ir/tests/option_result_values.rs` via the API
@@ -899,7 +915,7 @@ fn text_values(source: &str) -> BTreeMap<String, Value> {
 /// Option constructor, predicate, and unwrap-or from text: some/none
 /// discriminate and unwrap yields the injected default or payload.
 #[test]
-fn aj8d_text_option_predicates_and_unwrap() {
+fn text_option_predicates_and_unwrap() {
     let values = text_values(
         "emath function o:\n    definitions:\n        s = option_is_some(option_some(1.0))\n        n = option_is_some(option_none())\n        u1 = option_unwrap_or(option_none(), 9.0)\n        u2 = option_unwrap_or(option_some(2.0), 9.0)\n",
     );
@@ -912,7 +928,7 @@ fn aj8d_text_option_predicates_and_unwrap() {
 /// Result constructor and is-ok predicate from text: ok vs err
 /// discriminate, and unwrap_or injects the default on the Err side.
 #[test]
-fn aj8d_text_result_predicates_and_unwrap() {
+fn text_result_predicates_and_unwrap() {
     let values = text_values(
         "emath function r:\n    definitions:\n        ok = result_is_ok(result_ok(3.5))\n        bad = result_is_ok(result_err(7.0))\n        u = result_unwrap_or(result_err(7.0), 9.0)\n        w = result_unwrap_or(result_ok(2.0), 9.0)\n",
     );
@@ -926,7 +942,7 @@ fn aj8d_text_result_predicates_and_unwrap() {
 /// Ok projects to none. Unwrapping the projection recovers the value or
 /// falls back to the default.
 #[test]
-fn aj8d_text_error_of_projection() {
+fn text_error_of_projection() {
     let values = text_values(
         "emath function e:\n    definitions:\n        r = option_unwrap_or(result_error_of(result_err(7.0)), -1.0)\n        n = option_unwrap_or(result_error_of(result_ok(1.0)), -1.0)\n        tag = option_is_some(result_error_of(result_err(9.0)))\n",
     );
@@ -939,7 +955,7 @@ fn aj8d_text_error_of_projection() {
 /// field_inv(3, 7) == mod_inv(3, 7) == 5 (exact i64), proving the
 /// Int-backed prime-field surface.
 #[test]
-fn aj8d_text_field_mod_inv() {
+fn text_field_mod_inv() {
     let values = text_values(
         "emath function f:\n    definitions:\n        x = field_inv(3.0, 7.0)\n        y = mod_inv(3.0, 7.0)\n",
     );
@@ -959,7 +975,7 @@ fn aj8d_text_field_mod_inv() {
 /// proves the new carrier Inference conforms to a declared OptionType via
 /// the conforms arm — the carrier flows, payload included.
 #[test]
-fn aj8d_text_option_int_output_carrier() {
+fn text_option_int_output_carrier() {
     let values = text_values(
         "emath function oi:\n    inputs:\n        n: Int\n\n    outputs:\n        o: Option<Int>\n    definitions:\n        o = option_some(5)\n",
     );
@@ -976,9 +992,9 @@ fn aj8d_text_option_int_output_carrier() {
     );
 }
 
-// --- Pass 3: nested payloads + no hidden zero from .emath text ---
-// (emath-option-result-graph-field-aj8d). Nested construction now
-// COMPILES from text (pass 3 lifted carrier-in-payload at the term
+// --- nested payloads + no hidden zero from .emath text ---
+// . Nested construction now
+// COMPILES from text (lifted carrier-in-payload at the term
 // layer) and every unwrap below is total (unwrap_or — NO panicking
 // unwrap exists at this layer).
 
@@ -986,7 +1002,7 @@ fn aj8d_text_option_int_output_carrier() {
 /// outer unwrap_or picks the inner carrier (not a flattened none), and
 /// chained unwrap_or recovers the payload.
 #[test]
-fn aj8d_text_nested_option_some_some() {
+fn text_nested_option_some_some() {
     // outer = Some(Some(5)); outer.unwrap_or(option_none()) = Some(5);
     //   .unwrap_or(9) = 5. The nested carrier survives both unwraps.
     let values = text_values(
@@ -1000,7 +1016,7 @@ fn aj8d_text_nested_option_some_some() {
 /// flattened empty), and unwrap_or recovers a none whose unwrap_or hits
 /// the sentinel default.
 #[test]
-fn aj8d_text_nested_some_none() {
+fn text_nested_some_none() {
     let values = text_values(
         "emath function sn:\n    definitions:\n        outer_is_some = option_is_some(option_some(option_none()))\n        inner = option_unwrap_or(option_unwrap_or(option_some(option_none()), option_none()), 42.0)\n",
     );
@@ -1012,7 +1028,7 @@ fn aj8d_text_nested_some_none() {
 /// is_some(Some(0.0)) = true and unwrap_or picks 0.0, not the default.
 /// A hidden-zero bug (none repurposed as 0) returns the 9 default here.
 #[test]
-fn aj8d_text_no_hidden_zero() {
+fn text_no_hidden_zero() {
     let values = text_values(
         "emath function hz:\n    definitions:\n        s = option_is_some(option_some(0.0))\n        u = option_unwrap_or(option_some(0.0), 9.0)\n",
     );
@@ -1020,8 +1036,8 @@ fn aj8d_text_no_hidden_zero() {
     assert_eq!(values.get("u"), Some(&Value::F64(0.0)));
 }
 
-// --- Pass 3: map via declared-call composition (NO new EmirOp) ---
-// (emath-option-result-graph-field-aj8d). The user-mandated form:
+// --- map via declared-call composition (NO new EmirOp) ---
+// . The user-mandated form:
 // Option/Result `map` is expressed as a TEXT composition over the
 // declared builtins + a user helper function — `if cond : then else :
 // else` (EBNF surface.ebnf:111). No function-valued args; the helper
@@ -1031,7 +1047,11 @@ fn aj8d_text_no_hidden_zero() {
 /// Evaluate a declaration (by index) of an admitted package over a
 /// binding map — drives the map-by-composition consumer whose Option
 /// input the CLI eval lane cannot bind (Float64/Vector only).
-fn text_values_at(source: &str, index: usize, bindings: BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+fn text_values_at(
+    source: &str,
+    index: usize,
+    bindings: BTreeMap<String, Value>,
+) -> BTreeMap<String, Value> {
     let result = check(source);
     let errors = errors_of(&result);
     assert!(
@@ -1043,13 +1063,8 @@ fn text_values_at(source: &str, index: usize, bindings: BTreeMap<String, Value>)
         .declarations
         .get(index)
         .expect("declaration index in bounds");
-    eval_definitions_values(
-        &result.package,
-        declaration,
-        &bindings,
-        &BTreeMap::new(),
-    )
-    .unwrap_or_else(|fault| panic!("declaration {index} must evaluate: {fault}"))
+    eval_definitions_values(&result.package, declaration, &bindings, &BTreeMap::new())
+        .unwrap_or_else(|fault| panic!("declaration {index} must evaluate: {fault}"))
 }
 
 /// The map-by-declared-composition SOURCE: a pure capability cell
@@ -1077,7 +1092,7 @@ const MAP_COMPOSITION_SOURCE: &str = "emath function consumer:\n    inputs:\n   
 /// The consumer (declaration index 1) is evaluated over an Option payload
 /// the CLI bind cannot supply, so it is bound directly here.
 #[test]
-fn aj8d_map_option_by_declared_composition() {
+fn map_option_by_declared_composition() {
     let some_three = text_values_at(
         MAP_COMPOSITION_SOURCE,
         0,
@@ -1114,7 +1129,7 @@ fn aj8d_map_option_by_declared_composition() {
 const RESULT_MAP_SOURCE: &str = "emath function rconsumer:\n    inputs:\n        r: Result<Float64, Float64>\n    outputs:\n        mapped: Result<Float64, Float64>\n        projected: Option<Float64>\n    definitions:\n        mapped = if result_is_ok(r) : result_ok(2.0 * result_unwrap_or(r, 0.0)) else : r\n        projected = result_error_of(r)\n";
 
 #[test]
-fn aj8d_map_result_by_declared_composition() {
+fn map_result_by_declared_composition() {
     let ok_three = text_values_at(
         RESULT_MAP_SOURCE,
         0,
@@ -1168,7 +1183,7 @@ fn aj8d_map_result_by_declared_composition() {
     );
 }
 
-// --- Pass 6: field +/*/inverse as .emath DATA over int_rem (aj8d pass 6) ---
+// --- field +/*/inverse as .emath DATA over int_rem ---
 //
 // The user authorizes ONE universal primitive, `int_rem` = exact-Euclidean
 // `a.rem_euclid(m)` on i64. Field arithmetic is then expressed as
@@ -1181,7 +1196,7 @@ fn aj8d_map_result_by_declared_composition() {
 /// field7_add over the Field<7> prime: `c = int_rem(a + b, 7)`.
 /// (3,4)→0, (6,5)→4, (5,5)→3.
 #[test]
-fn aj8d_field7_addition_from_data() {
+fn field7_addition_from_data() {
     let src = "emath function field7_add:\n    inputs:\n        a: Int\n        b: Int\n    outputs:\n        c: Field<7>\n    definitions:\n        c = int_rem(a + b, 7)\n";
     for (a, b, want) in [(3i64, 4i64, 0), (6, 5, 4), (5, 5, 3)] {
         let v = text_values_at(
@@ -1200,7 +1215,7 @@ fn aj8d_field7_addition_from_data() {
 
 /// field7_mul: `c = int_rem(a * b, 7)`. (3,4)→5, (3,5)→1, (5,5)→4.
 #[test]
-fn aj8d_field7_multiplication_from_data() {
+fn field7_multiplication_from_data() {
     let src = "emath function field7_mul:\n    inputs:\n        a: Int\n        b: Int\n    outputs:\n        c: Field<7>\n    definitions:\n        c = int_rem(a * b, 7)\n";
     for (a, b, want) in [(3i64, 4i64, 5), (3, 5, 1), (5, 5, 4)] {
         let v = text_values_at(
@@ -1218,16 +1233,12 @@ fn aj8d_field7_multiplication_from_data() {
 }
 
 /// field7_inverse: `c = field_inv(a, 7)` (the already-callable modular
-/// inverse from pass 2, exact i64). 3→5, 5→3.
+/// inverse from, exact i64). 3→5, 5→3.
 #[test]
-fn aj8d_field7_inverse_from_data() {
+fn field7_inverse_from_data() {
     let src = "emath function field7_inv:\n    inputs:\n        a: Int\n    outputs:\n        c: Field<7>\n    definitions:\n        c = field_inv(a, 7)\n";
     for (a, want) in [(3i64, 5), (5, 3)] {
-        let v = text_values_at(
-            src,
-            0,
-            BTreeMap::from([("a".into(), Value::I64(a))]),
-        );
+        let v = text_values_at(src, 0, BTreeMap::from([("a".into(), Value::I64(a))]));
         assert_eq!(
             v.get("c"),
             Some(&Value::I64(want)),
@@ -1241,7 +1252,7 @@ fn aj8d_field7_inverse_from_data() {
 /// so int_rem(-1, 7) == 6 (not the -1 a truncated `%` would give). This is
 /// the test the backend remainder-sign mutation (truncated %) must kill.
 #[test]
-fn aj8d_int_rem_sign_law_from_text() {
+fn int_rem_sign_law_from_text() {
     let src = "emath function irs:\n    inputs:\n        a: Int\n        m: Int\n    outputs:\n        c: Int\n    definitions:\n        c = int_rem(a, m)\n";
     let v = text_values_at(
         src,
@@ -1259,12 +1270,15 @@ fn aj8d_int_rem_sign_law_from_text() {
 /// int_rem typed refusal: modulus `m <= 0` is a typed EvalFault, never a
 /// panic and never a silent result.
 #[test]
-fn aj8d_int_rem_zero_modulus_faults() {
+fn int_rem_zero_modulus_faults() {
     let r = check(
         "emath function iz:\n    inputs:\n        a: Int\n    outputs:\n        c: Int\n    definitions:\n        c = int_rem(a, 0)\n",
     );
     let e = errors_of(&r);
-    assert!(e.is_empty(), "int_rem with m=0 must ADMIT (fault at runtime); got: {e:?}");
+    assert!(
+        e.is_empty(),
+        "int_rem with m=0 must ADMIT (fault at runtime); got: {e:?}"
+    );
     let err = eval_definitions_values(
         &r.package,
         &r.package.declarations[0],
@@ -1278,7 +1292,7 @@ fn aj8d_int_rem_zero_modulus_faults() {
     );
 }
 
-// --- Pass 7: TEXT-path refusal wall (aj8d pass 7) ---
+// --- TEXT-path refusal wall ---
 // Every row is REAL .emath source through check()/eval — the path users
 // hit — asserting the TYPED diagnostic. Sema refusals assert E-TYPE-010/
 // E-TYPE-012; runtime faults assert the exact EvalFault string. Never
@@ -1286,13 +1300,33 @@ fn aj8d_int_rem_zero_modulus_faults() {
 
 /// Refuse wrong/literal/arity/overflow Field/GF primes from TEXT.
 #[test]
-fn aj8d_text_field_prime_refusals() {
+fn text_field_prime_refusals() {
     let rows: &[(&str, &str, &str)] = &[
-        ("emath function r:\n    inputs:\n        x: GF<8>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "prime"),
-        ("emath function r:\n    inputs:\n        x: Field<8>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "prime"),
-        ("emath function r:\n    inputs:\n        x: GF<Int>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "LITERAL"),
-        ("emath function r:\n    inputs:\n        x: GF<7, 2>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "exactly one"),
-        ("emath function r:\n    inputs:\n        x: Field<99999999999999999999>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "exceeds the maximum"),
+        (
+            "emath function r:\n    inputs:\n        x: GF<8>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "prime",
+        ),
+        (
+            "emath function r:\n    inputs:\n        x: Field<8>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "prime",
+        ),
+        (
+            "emath function r:\n    inputs:\n        x: GF<Int>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "LITERAL",
+        ),
+        (
+            "emath function r:\n    inputs:\n        x: GF<7, 2>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "exactly one",
+        ),
+        (
+            "emath function r:\n    inputs:\n        x: Field<99999999999999999999>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "exceeds the maximum",
+        ),
     ];
     for (src, code, frag) in rows {
         let errs = errors_of(&check(src));
@@ -1306,11 +1340,23 @@ fn aj8d_text_field_prime_refusals() {
 /// Refuse wrong-arity composite types from TEXT (Option over/+Operation,
 /// Result under-armed, Graph generic).
 #[test]
-fn aj8d_text_composite_arity_refusals() {
+fn text_composite_arity_refusals() {
     let rows: &[(&str, &str, &str)] = &[
-        ("emath function r:\n    inputs:\n        x: Option<Int, String>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "exactly one"),
-        ("emath function r:\n    inputs:\n        x: Result<Int>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "exactly two"),
-        ("emath function r:\n    inputs:\n        x: Graph<Int>\n    definitions:\n        t = 1.0\n", "E-TYPE-010", "admits no type arguments"),
+        (
+            "emath function r:\n    inputs:\n        x: Option<Int, String>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "exactly one",
+        ),
+        (
+            "emath function r:\n    inputs:\n        x: Result<Int>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "exactly two",
+        ),
+        (
+            "emath function r:\n    inputs:\n        x: Graph<Int>\n    definitions:\n        t = 1.0\n",
+            "E-TYPE-010",
+            "admits no type arguments",
+        ),
     ];
     for (src, code, frag) in rows {
         let errs = errors_of(&check(src));
@@ -1325,20 +1371,23 @@ fn aj8d_text_composite_arity_refusals() {
 /// F64 scalar, result_error_of on an Option carrier, and a mismatched
 /// carrier kind in an unwrap_or default slot.
 #[test]
-fn aj8d_text_carrier_misuse_refused() {
+fn text_carrier_misuse_refused() {
     // option_is_some(5.0): the argument is a Float64 scalar, not an
     // Option carrier → typed sema refusal.
     let src = "emath function c:\n    definitions:\n        s = option_is_some(5.0)\n";
     let errs = errors_of(&check(src));
     assert!(
-        errs.iter().any(|e| e.contains("E-TYPE-012") && e.contains("Option carrier")),
+        errs.iter()
+            .any(|e| e.contains("E-TYPE-012") && e.contains("Option carrier")),
         "option_is_some(5.0) must refuse at sema (E-TYPE-012), got: {errs:#?}"
     );
     // result_error_of applied to an Option carrier → typed sema refusal.
-    let src = "emath function c:\n    definitions:\n        e = result_error_of(option_some(1.0))\n";
+    let src =
+        "emath function c:\n    definitions:\n        e = result_error_of(option_some(1.0))\n";
     let errs = errors_of(&check(src));
     assert!(
-        errs.iter().any(|e| e.contains("E-TYPE-012") && e.contains("Result carrier")),
+        errs.iter()
+            .any(|e| e.contains("E-TYPE-012") && e.contains("Result carrier")),
         "result_error_of(option_some(..)) must refuse at sema, got: {errs:#?}"
     );
     // Mismatched carrier kinds in unwrap_or: an Option carrier used as
@@ -1346,7 +1395,8 @@ fn aj8d_text_carrier_misuse_refused() {
     let src = "emath function c:\n    definitions:\n        u = result_unwrap_or(result_ok(1.0), option_some(2.0))\n";
     let errs = errors_of(&check(src));
     assert!(
-        errs.iter().any(|e| e.contains("E-TYPE-012") && e.contains("kind-matched")),
+        errs.iter()
+            .any(|e| e.contains("E-TYPE-012") && e.contains("kind-matched")),
         "result_unwrap_or with an Option default must refuse (kind-matched), got: {errs:#?}"
     );
 }
@@ -1355,7 +1405,7 @@ fn aj8d_text_carrier_misuse_refused() {
 /// interp (finite_whole_i64 → TypeConfusion, never a panic); wrong arity
 /// refuses at sema.
 #[test]
-fn aj8d_text_int_rem_misuse_refusals() {
+fn text_int_rem_misuse_refusals() {
     // int_rem(5.5, 2): sema admits (both F64), the runtime i64_of refuses
     // the non-whole 5.5 as a typed TypeConfusion — never a silent 5 or a
     // panic.
@@ -1381,31 +1431,33 @@ fn aj8d_text_int_rem_misuse_refusals() {
     let src = "emath function c:\n    definitions:\n        o = int_rem(5)\n";
     let errs = errors_of(&check(src));
     assert!(
-        errs.iter().any(|e| e.contains("int_rem") && e.contains("argument")),
+        errs.iter()
+            .any(|e| e.contains("int_rem") && e.contains("argument")),
         "int_rem(5) must refuse as an arity error, got: {errs:#?}"
     );
 }
 
-// NOTE (aj8d pass 7): a `Field<7>` output fed a FLOAT definition (c = 1.5)
+// NOTE: a `Field<7>` output fed a FLOAT definition (c = 1.5)
 // currently ADMITS — F64 numerically widens to the Int that FieldPrime
 // infers as. Pinning a refusal here would require TypeNode access at the
 // output-conformance site (crates/emath-sema/src/admit/declaration.rs,
 // non-reserved this pass), so this is reported as a real gap, not tested
 // with a lying assertion.
 
-// --- Pass 8: FieldPrime float-exactness conformance (aj8d pass 8) ---
+// --- FieldPrime float-exactness conformance ---
 // declaration.rs now guards the FieldPrime output against a FLOAT
 // definition (F64 must not numerically widen into an exact integer field
 // type), while plain Int keeps the legacy F64→Int widening. Three
 // discriminating rows: FLOAT definition refuses; int_rem composition and
 // an integer literal both ADMIT (valid exact field elements).
 #[test]
-fn aj8d_text_field_prime_exactness_conformance() {
+fn text_field_prime_exactness_conformance() {
     // Row 1 — float definition into Field<7> output: typed refusal.
     let src = "emath function f:\n    inputs:\n        n: Int\n\n    outputs:\n        c: Field<7>\n    definitions:\n        c = 1.5\n";
     let errs = errors_of(&check(src));
     assert!(
-        errs.iter().any(|e| e.contains("E-TYPE-012") && e.contains("exact integer field element")),
+        errs.iter()
+            .any(|e| e.contains("E-TYPE-012") && e.contains("exact integer field element")),
         "a float definition in a Field<7> output must refuse (E-TYPE-012), got: {errs:#?}"
     );
 
@@ -1441,7 +1493,7 @@ fn aj8d_text_field_prime_exactness_conformance() {
 ///   (a+b)*c mod 7 == (a*c + b*c) mod 7
 /// driven through real .emath declarations and the reference VM.
 #[test]
-fn aj8d_meta_field7_distribution_law() {
+fn meta_field7_distribution_law() {
     let rows = [(3i64, 4, 5, 0i64), (1, 6, 2, 0), (5, 5, 3, 2)];
     for (a, b, c, want) in rows {
         let lhs = "emath function fa:\n    inputs:\n        a: Int\n        b: Int\n        c: Int\n    outputs:\n        l: Field<7>\n    definitions:\n        l = int_rem(int_rem(a + b, 7) * c, 7)\n";

@@ -1,8 +1,8 @@
-//! emath-r3-chem-surface-i6ri failure-first tests (04 §3.4 + §3.5; the
+//! Chemistry surface failure-first tests (04 §3.4 + §3.5; the
 //! §3.6 `record … where` surface needs a cross-lane Declaration change and
 //! is intentionally out of this test file).
 //!
-//! Contracts (each must FAIL against the pre-bead admission):
+//! Contracts (each must FAIL against the pre-admission):
 //! - §3.5: a named rate-law form (`v = michaelis_menten(Vmax, Km, [S])`)
 //!   is admitted in a `rate:` section. The form is non-mass-action, so
 //!   without a declared `assumptions:` section it carries a WARNING
@@ -20,6 +20,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -27,16 +36,25 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
 fn errors(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter().filter(|(severity, _)| severity == "Error").collect()
+    out.iter()
+        .filter(|(severity, _)| severity == "Error")
+        .collect()
 }
 
 fn warnings(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter().filter(|(severity, _)| severity == "Warning").collect()
+    out.iter()
+        .filter(|(severity, _)| severity == "Warning")
+        .collect()
 }
 
 const MM_PLAIN: &str = "\

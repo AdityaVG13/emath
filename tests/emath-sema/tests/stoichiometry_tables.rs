@@ -1,4 +1,4 @@
-//! emath-r3-stoich-tables-pqs6 admission-side contracts (sema tier).
+//! admission-side contracts (sema tier).
 //!
 //! The anti-transcription-error design: stoichiometric coefficients are
 //! DERIVED from the declared reaction lines, never re-entered freely.
@@ -18,6 +18,15 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -25,12 +34,19 @@ fn check(source: &str) -> Vec<(String, String)> {
         .diagnostics
         .items()
         .iter()
-        .map(|diagnostic| (format!("{:?}", diagnostic.severity), diagnostic.code.to_string()))
+        .map(|diagnostic| {
+            (
+                format!("{:?}", diagnostic.severity),
+                diagnostic.code.to_string(),
+            )
+        })
         .collect()
 }
 
 fn errors_of(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter().filter(|(severity, _)| severity == "Error").collect()
+    out.iter()
+        .filter(|(severity, _)| severity == "Error")
+        .collect()
 }
 
 const BASE: &str = "emath reaction_network ProbeNet:\n    species:\n        A\n        B\n    reactions:\n        r1: A -> B\n";
@@ -40,7 +56,9 @@ const BASE: &str = "emath reaction_network ProbeNet:\n    species:\n        A\n 
 /// never re-entered.
 #[test]
 fn stoich_matrix_derives_and_admits() {
-    let out = check(&format!("{BASE}    stoichiometry:\n        nu = stoich(reactions)\n"));
+    let out = check(&format!(
+        "{BASE}    stoichiometry:\n        nu = stoich(reactions)\n"
+    ));
     assert!(
         errors_of(&out).is_empty(),
         "derived stoichiometry must admit, got {out:?}"
@@ -82,7 +100,7 @@ fn ice_table_matching_change_row_admits() {
 
 /// Negative control: a re-entered change coefficient that disagrees with
 /// the reaction line refuses E-CHEM-STOICH (the transcription error the
-/// bead exists to catch).
+/// exists to catch).
 #[test]
 fn ice_table_change_mismatch_is_e_chem_stoich() {
     let fixture = include_str!(concat!(
@@ -241,7 +259,7 @@ fn constraints_malformed_is_e_kind_027() {
     );
 }
 
-/// The full bead-shaped model admits end-to-end: derived matrix, typed
+/// The full -shaped model admits end-to-end: derived matrix, typed
 /// extent, ICE table with identity row, concentration constraint.
 #[test]
 fn full_stoich_model_admits() {

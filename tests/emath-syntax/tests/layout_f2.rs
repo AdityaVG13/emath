@@ -1,4 +1,4 @@
-//! F2 layout diagnostics + bracket idiom (bead emath-r3-layout-ynde).
+//! F2 layout diagnostics + bracket idiom.
 //!
 //! The layout rule: NEWLINE fires at statement boundaries and is suppressed
 //! inside `()[]{}`. The bracket idiom continues an expression across lines.
@@ -6,7 +6,7 @@
 //! (E-SYN-153) that teaches the idiom. C4: the hanging-sum idiom after a
 //! binder `:` is NOT supported; rewrite with brackets.
 
-use emath_cli::{run_check, CliExit};
+use emath_cli::{CliExit, run_check};
 use std::path::{Path, PathBuf};
 
 fn install_parser() {
@@ -42,7 +42,10 @@ fn bracket_idiom_continues_expression_across_lines() {
     );
     let (diagnostics, _, _) = run_check(&path);
     assert!(
-        !diagnostics.items().iter().any(|item| item.severity == emath_core::Severity::Error),
+        !diagnostics
+            .items()
+            .iter()
+            .any(|item| item.severity == emath_core::Severity::Error),
         "bracket idiom must parse: {:?}",
         diagnostics.items()
     );
@@ -84,7 +87,10 @@ fn single_line_binders_still_work() {
     );
     let (diagnostics, _, _) = run_check(&path);
     assert!(
-        !diagnostics.items().iter().any(|item| item.severity == emath_core::Severity::Error),
+        !diagnostics
+            .items()
+            .iter()
+            .any(|item| item.severity == emath_core::Severity::Error),
         "single-line binder regression: {:?}",
         diagnostics.items()
     );
@@ -126,9 +132,6 @@ fn refusal_exit_is_refused_for_hanging_infix() {
 }
 
 fn run_check_public(path: &Path) -> CliExit {
-    let args = vec![
-        "check".to_string(),
-        path.display().to_string(),
-    ];
+    let args = vec!["check".to_string(), path.display().to_string()];
     emath_cli::run(&args)
 }

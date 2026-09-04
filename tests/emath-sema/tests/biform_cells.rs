@@ -1,4 +1,4 @@
-//! Bead `emath-biform-cells-jswu6` — admission-side contracts (sema
+//! — admission-side contracts (sema
 //! tier): real `.emath` capability declarations with `class: biform`
 //! reach the capability layer's closure authority
 //! (`crates/emath-ir/src/capability.rs`): one cell, two authorities.
@@ -35,6 +35,15 @@ const LAUNDER_FIXTURE: &str = include_str!(concat!(
 /// Run the front-end over a source and return the diagnostics as
 /// (severity, code, message).
 fn check(source: &str) -> Vec<(String, String, String)> {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session
@@ -66,10 +75,7 @@ fn error_codes(out: &[(String, String, String)]) -> Vec<String> {
 fn biform_softmax_example_admits() {
     let out = check(POSITIVE_FIXTURE);
     let codes = error_codes(&out);
-    assert!(
-        codes.is_empty(),
-        "example must admit; got {codes:?}"
-    );
+    assert!(codes.is_empty(), "example must admit; got {codes:?}");
 }
 
 /// Negative seed: the launder binds the SAME evidence object to the spec
@@ -233,6 +239,15 @@ emath capability Softmax:
 }
 
 fn checked(source: &str) -> emath_sema::CheckResult {
+    {
+        // Capsule admission resolves only through the installed language
+        // distribution; install per thread before any session (rat_cells pattern).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
+            .expect("load capsule distribution");
+        emath_sema::language::install_language_distribution(&distribution)
+            .expect("install capsule-active kernels");
+    }
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned("biform", source)
@@ -320,10 +335,7 @@ fn mr_evidence_rebinding_never_moves_meaning() {
 /// same meaning twice — admission is a pure function of the source.
 #[test]
 fn mr_biform_meaning_deterministic() {
-    assert_eq!(
-        meaning_id(POSITIVE_FIXTURE),
-        meaning_id(POSITIVE_FIXTURE)
-    );
+    assert_eq!(meaning_id(POSITIVE_FIXTURE), meaning_id(POSITIVE_FIXTURE));
 }
 
 /// MR non-escalation asymmetry (score 8): a provider receipt may attest

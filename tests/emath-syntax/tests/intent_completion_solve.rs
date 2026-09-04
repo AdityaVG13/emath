@@ -1,6 +1,6 @@
 //! Intent-completion: `solve x^2 = 2` is a labeled candidate set, not a naked float.
 
-use emath_syntax::{apply_solve_candidate, expand_scratch, parse_str, SolveIntent, SolveWorld};
+use emath_syntax::{SolveIntent, SolveWorld, apply_solve_candidate, expand_scratch, parse_str};
 
 fn has_error(text: &str, code: &str) -> bool {
     let (_, diagnostics) = parse_str(text);
@@ -53,9 +53,11 @@ fn over_real_selects_the_beginner_candidate() {
     let expansion = expand_scratch("solve x^2 = 2 over Real\n");
     assert_eq!(expansion.solve, SolveIntent::Over(SolveWorld::RealPm));
     assert_eq!(expansion.solve.menu().len(), 5);
-    assert!(SolveWorld::ALL
-        .iter()
-        .all(|w| expansion.solve.selected(*w) == (*w == SolveWorld::RealPm)));
+    assert!(
+        SolveWorld::ALL
+            .iter()
+            .all(|w| expansion.solve.selected(*w) == (*w == SolveWorld::RealPm))
+    );
     assert!(SolveWorld::RealPm.beginner_default());
 }
 
