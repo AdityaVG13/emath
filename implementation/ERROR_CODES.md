@@ -255,47 +255,47 @@ Syntax (`crates/emath-syntax/src/lexer.rs`, `crates/emath-syntax/src/parser.rs`)
 - `E-SYN-153`: hanging infix: a line ends with a binary operator, so the
   expression is incomplete, but NEWLINE fires outside brackets and the parse
   splits. The diagnostic teaches the bracket idiom: wrap the expression in
-  `()` (or `[]`) to continue it across lines (F2, emath-r3-layout-ynde).
+  `()` (or `[]`) to continue it across lines (F2).
 - `E-SYN-154`: ambiguous brace: `{name: value}` in expression position
-  without a path prefix (X12/`emath-r3-sets-tub8`). Inline records are
+  without a path prefix (X12). Inline records are
   path-prefixed (`Point:{x: 1.0}`); bare braces are set literals, so the
   record spelling without a path is refused instead of silently reading as
   a malformed one-element set.
 - `E-SYN-155`: `emath exactness --raise <dimension>` on a file that carries
-  a freeze lock (`<file>.freeze.lock.json`, zql4b). A frozen meaning does
+  a freeze lock (`<file>.freeze.lock.json`). A frozen meaning does
   not raise: edit the source and refreeze. Display without `--raise` stays
   allowed: the budget is a view, not an authority change.
-- `E-SYN-156`: a malformed `reactions:` line (emath-r3-reactions-section-92hq):
+- `E-SYN-156`: a malformed `reactions:` line:
   a line is `name: coefficient species (+ …) arrow (coefficient species …)`;
   admitted arrows are `->` (irreversible; the token-equivalent `=>` shares
   the lexer token and denotes the same arrow: no lambda position exists in
   this T3 grammar), `<->` (reversible), `<=>` (equilibrium). Unknown arrow
   spellings, trailing tokens, or non-(coefficient species) terms refuse.
-- `E-CHEM-SPECIES`: `species:` closes the world (emath-r3-reactions-section-92hq):
+- `E-CHEM-SPECIES`: `species:` closes the world:
   every species named in a reaction line must be declared; no implicit
   species, no guessed formula.
 - `E-CHEM-BALANCE`: element balance is checked statically at admission
-  (emath-r3-reactions-section-92hq): per-element atom counts must match
+  per-element atom counts must match
   across the arrow (`2H2 + O2 -> 2H2O` balances; `2H2 + O2 -> H2O` refuses).
   A species that is not an element formula (`A`, `B` in generic networks) is
   an abstract label: balance cannot be checked statically, so that reaction
-  is skipped rather than refused (emath-r3-equilibrium-ds6x).
+  is skipped rather than refused.
 - `E-CHEM-KA-EXACT`: an equilibrium constant is a MEASURED value
-  (emath-r3-equilibrium-ds6x): the uncertainty form is the point
+  the uncertainty form is the point
   (`1.75(3)e-5` or `1.75 ± 0.03e-5`). A bare exact literal for a constant
   in a `reaction_network` refuses: it is the dishonest spelling for a
   measured quantity.
-- `E-CHEM-THERMO`: the honesty triangle (emath-r3-equilibrium-ds6x): a
+- `E-CHEM-THERMO`: the honesty triangle: a
   network declaring BOTH a reversible kinetic pair (`<->` with `kf`/`kr`
   rate entries) AND an equilibrium (`<=>` with a measured constant) must
   satisfy K == kf/kr within combined uncertainty. Refuses when the
   constant is missing or numerically inconsistent with kf/kr.
-- `E-NOTATION-AMBIG`: §3.4 context-scoped brackets (emath-r3-chem-surface-i6ri):
+- `E-NOTATION-AMBIG`: §3.4 context-scoped brackets:
   inside a `rate:` entry, `[X]` reads as concentration-of-X only when X is
   a declared species; an undeclared bracket or a bare list literal in a
   rate-law argument has no resolvable reading and refuses instead of
   guessing. Outside rate contexts `[x]` keeps the list/index reading.
-- `W-CHEM-RATELAW`: warning receipt (emath-r3-chem-surface-i6ri): a named
+- `W-CHEM-RATELAW`: warning receipt: a named
   rate-law form (`michaelis_menten(Vmax, Km, [S])`) is non-mass-action;
   without a declared `assumptions:` section (e.g. `quasi_steady_state`)
   the approximation would be ambient, so admission warns. Declared
@@ -471,7 +471,11 @@ Names/constructors/units (`crates/emath-sema/src/admit.rs`):
   in contract mode.
 - `E-NAME-022`: duplicate declaration name in one admission: two
   declarations with the same name would collide in generated Rust, so the
-  second is refused instead of silently overwriting the first.
+  second is refused instead of silently overwriting the first. Also fires
+  for two `example <name>:` blocks in one function's `tests:` section
+  with the same resolved name (each becomes a generated test fn
+  `<function>_<name>`); the second block is refused at admission instead
+  of surfacing as a raw rustc E0428 inside `emath test`.
 - `E-NAME-023`: declaration named `_`: `_` cannot be escaped into a Rust
   type name, so the declaration is refused up front. Also reused for a
   declared output that has no definition.
@@ -1473,3 +1477,70 @@ Not yet documented at generation time: **0**.
 | `E-WORLD-006` | crates/emath-genesis/src/world_decl.rs | `E-WORLD-006` |
 | `E-WORLD-007` | crates/emath-genesis/src/world_decl.rs | `E-WORLD-007` |
 | `E-WORLD-008` | crates/emath-genesis/src/world_decl.rs | `E-WORLD-008` |
+
+## Compute-first doctrine inventory (emath-49o8)
+
+Doctrine (VISION.md law 2): errors mean the math cannot be calculated in
+the chosen world — never that the compiler has not grown a feature yet.
+Every user-facing `E-*` classifies as one of:
+
+**(a) World-level impossibility / underdetermined meaning** — genesis
+must still answer (the runner's labeled symbolic fallback). Families:
+`E-UNIT-*` (dimensional impossibility), `E-CTOR-*` (obligation refusal
+before partial evaluation), `E-RES-*` (budget/resources), `E-WORLD-*`
+(producer/world-label firewalls), `E-GRAPH-002`/`E-GRAPH-005` (carrier
+impossibility: negative-weight Dijkstra, negative cycles).
+
+**(b) Remaining feature gaps, each owned by an open bead** — the refusal
+names the fence, never a permanent dead end:
+
+| Remaining gap | Owner bead | Pinned fence |
+| --- | --- | --- |
+| Record member access (`p.x`) | `emath-r5-records-6hcu` | `E-TYPE-002` (record DATA admits) |
+| Custom declaration kinds | `emath-r6-kinds-45l8` | `E-KIND-100` (Phase 1 subset fence) |
+| PDE methods beyond Laplacians (FEM, spectral, method-of-lines) | `emath-xx0x.4` | per-method fence |
+
+Landed slices (must keep admitting; their dedicated beads are closed):
+signed graph literals and std.graph kernels (`emath-r2-graphs-masa`),
+multi-file packages and embedded imports (`emath-r3-imports-utzd`),
+spatial field builtins including Laplacian and boundary variants
+(`emath-r1-pde-jxzo`).
+
+Executable gate: `tests/emath-sema/tests/doctrine_probe.rs` fails if a
+shipped compute example starts refusing, a landed slice regresses to
+unimplemented, or a remaining-slice sketch loses its pinned code.
+
+## Compute-first doctrine inventory (emath-49o8)
+
+Doctrine (VISION.md): errors mean the math cannot be calculated in the
+chosen world — never that the compiler has not grown a feature yet. Every
+user-facing refusal classifies as exactly one of:
+
+**(a) World-level impossibility / underdetermined meaning** — the math
+cannot be calculated in the chosen world, and genesis/worlds still answer
+(the runner's labeled symbolic fallback, `symbolic-only` / `hole-open`).
+Standing families: `E-UNIT-*` (dimensional impossibility), `E-CTOR-*`
+(obligation refusal before partial evaluation), `E-RES-*` (budget), the
+world/evidence firewall (`E-WORLD-*`, `E-EVID-*`), and true domain
+refusals (`E-GRAPH-002` negative-weight Dijkstra, `E-GRAPH-005`
+negative cycle, `E-LP-001` unbounded objective).
+
+**(b) Remaining feature gaps, each owned by an open bead** — diagnostics
+point at the owning bead or the language/reference fence, never a
+permanent "feature missing" dead end:
+
+| Remaining gap | Owner bead (open) | Pinned fence |
+|---|---|---|
+| Record member access (`p.x`) | `emath-r5-records-6hcu` | `E-TYPE-002` (record DATA already admits) |
+| Custom declaration kinds | `emath-r6-kinds-45l8` | `E-KIND-100` (Phase 1 subset fence) |
+| PDE methods beyond Laplacians (FEM, spectral, method-of-lines) | `emath-xx0x.4` | per-method fence; no catch-all |
+
+Landed slices (their dedicated beads are CLOSED; these must keep
+admitting): signed graph literals and std.graph kernels
+(`emath-r2-graphs-masa`), multi-file packages and embedded imports
+(`emath-r3-imports-utzd`), spatial field builtins incl. Laplacian and
+boundary variants (`emath-r1-pde-jxzo`).
+
+Executable gate: `tests/emath-sema/tests/doctrine_probe.rs` fails if a
+shipped compute example starts refusing, a landed slice regresses to
+unimplemented, or a remaining-slice sketch loses its pinned code.

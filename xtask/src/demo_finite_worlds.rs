@@ -3,8 +3,8 @@
 //! plus resumed continuation, and detect a planted non-associative table.
 
 use emath_genesis::{
-    check_table, OpTable, SynthBudget, SynthError, SynthExample, SynthLaw, SynthRequest,
-    SYNTH_VERSION,
+    OpTable, SYNTH_VERSION, SynthBudget, SynthError, SynthExample, SynthLaw, SynthRequest,
+    check_table,
 };
 use emath_world_ir::fnv1a64;
 

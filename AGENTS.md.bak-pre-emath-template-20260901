@@ -1,0 +1,837 @@
+# AGENTS.md -- emath
+
+> Guidelines for AI coding agents working in this codebase.
+
+> NEVER run full Cargo or RUSTC tests. Targeted Tests are law and only when code changes warrant as such.
+
+---
+
+## RULE 0 - THE FUNDAMENTAL OVERRIDE PREROGATIVE
+
+If I tell you to do something, even if it goes against what follows below, YOU
+MUST LISTEN TO ME. I AM IN CHARGE, NOT YOU.
+
+---
+
+## RULE 0.1 - VALUE DELIVERY OVER PROCESS: NO PROCESS PORN
+
+emath is an evolving-project in the early stages. Agent time, 
+user time, tokens, review attention, and repository complexity are scarce. The
+default job is to implement the requested capability or fix the concrete defect,
+not to elaborate the machinery surrounding the work.
+
+**Process is never the product unless the user explicitly asks for process
+work.** Beads, plans, Agent Mail, audits, manifests, provenance, logging, CI,
+test harnesses, dashboards, status reports, and agent coordination exist only to
+support delivery. They must not become a self-perpetuating substitute for
+delivery.
+
+### The value test
+
+Before doing non-product work, answer all three questions:
+
+1. What concrete user-visible capability, correctness defect, or immediate
+   implementation blocker does this work address?
+2. Is this the smallest direct action that addresses it?
+3. Will its likely value exceed its implementation, maintenance, review, and
+   delay cost right now?
+
+If any answer is unclear, **do not do the work**. Return to implementing the
+requested functionality. Speculative future usefulness, elegance, completeness,
+or “more confidence” is not enough.
+
+### Hard scope limits
+
+- A review request authorizes reading the relevant code, reproducing concrete
+  defects, making the smallest sound fixes, and adding focused regressions. It
+  does **not** authorize redesigning adjacent infrastructure, inventing a new
+  analyzer, exhaustively hardening hypothetical cases, or chasing unrelated
+  pre-existing failures.
+- Never turn a small review or repair into hundreds or thousands of lines of CI,
+  harness, analyzer, schema, logging, provenance, or planning code without the
+  user's explicit approval for that expansion.
+- If incidental support work is becoming comparable to or larger than the
+  requested implementation, stop before expanding it. Report the concrete
+  blocker and ask whether the user wants the support work. Do not rationalize
+  continuing because time has already been spent.
+- Do not build a validator for a validator, a harness for a harness, or an
+  analyzer whose principal purpose is proving internal process artifacts unless
+  that exact system is the requested deliverable.
+- Do not chase a failure already present on `HEAD` unless it blocks the requested
+  deliverable and the user authorizes broadening the scope. Record it briefly and
+  continue or stop at the real boundary.
+- Do not repeatedly re-audit, re-plan, re-hash, re-seal, poll, or add reviewers
+  after the requested behavior has focused evidence. One coherent implementation
+  plus proportionate verification is better than layers of ceremonial assurance.
+- Do not spawn an agent swarm or subagents for a narrow task. Delegate only concrete,
+  independent implementation or bounded verification that materially shortens
+  the path to the requested result. Never create recursive review loops or wait
+  repeatedly for agents with no deliverable in hand.
+
+### Implementation must dominate
+
+Unless the user explicitly requests planning, governance, CI, or tooling:
+
+- Spend the dominant share of effort on working product code and direct tests of
+  that product code.
+- Prefer an existing test seam over creating a new framework. Tests should prove
+  changed behavior, important boundaries, and named claims; exhaustive testing
+  of internal ceremony is negative value.
+- Keep logging actionable and proportional. “Great logging” means enough context
+  to diagnose a real failure, not recording every intermediate state or building
+  a second product around evidence collection.
+- Treat Beads as concise execution bookkeeping. Once a Bead is sufficiently
+  clear to implement safely, implement it. Do not spend hours optimizing issue
+  prose, graph metrics, dependencies, or acceptance wording while its actual
+  functionality remains absent.
+- Run the narrowest relevant checks while iterating. Run broad DSR/repository
+  gates only when there is a coherent implementation ready for that proof or the
+  user explicitly asks for them.
+- When choosing between missing P0 functionality and optional meta-infrastructure,
+  implement the P0 functionality. Tooling wins only when it is a demonstrated
+  blocker to that implementation.
+  
+### Mandatory checkpoint and stop rule
+
+At the first sign of scope expansion, pause and state in plain language:
+
+- the user-facing outcome being delivered;
+- the files and approximate size of the proposed expansion;
+- why the expansion is strictly necessary; and
+- the smaller alternatives considered.
+
+If that explanation cannot establish immediate net value in a few sentences,
+**do not proceed**. Ask the user before expanding. A “fresh-eyes” instruction is
+not permission for an unbounded expedition.
+
+When work has drifted into process porn, stop immediately. Do not add more tests,
+proof layers, or cleanup to justify the sunk cost. Freeze the tree, disclose the
+exact state candidly, and wait for direction.
+
+### Concrete anti-pattern
+
+Adding slop tests, or slop code that don't have intent is a canonical failure. Adding LOC of code for tests is only absolutely necessary
+if the test will meaningfully check whether the code should compile, tests for fluff is not wanted or needed. Never repeat it. 
+
+---
+
+## RULE 0.2 - DEVELOPMENT ROADMAP ORDER: MATHEMATICAL ENGINE -> WASM -> ECOSYSTEM
+
+### Language-first credence
+
+emath is a language for writing mathematics that **computes**, not just
+proves. The surface syntax is uniform — `keyword var in domain: body`
+for every binder, `emath kind Name:` for every declaration. Adding a
+new capability means adding a new keyword and backend path, not a new
+language. The `language/` folder is the source of truth for what users
+can write, what computes, and what is refused. See
+`internal/credence.md` for the full design philosophy.
+
+All work in this repository must strictly follow this sequential order. Do not skip ahead to tooling or infrastructure before the underlying mathematical language and compiler capabilities are sound:
+
+### Stage 1: Core `.emath` Mathematical Modeling & Solver Engine
+- **Top Priority**: Build the language to handle, compile, and solve real mathematical challenges across domains:
+  - **Algebra & Tensors**: High-dimensional vectors, matrices, indexing, slicing, broadcast operations, and algebraic identities.
+  - **Continuous Dynamics & Solvers**: State variables, time derivatives, ODEs/DAEs, numerical integrators (Euler, RK4, adaptive steppers), boundary conditions, and continuous trajectory evaluation.
+  - **Calculus & Optimization**: Forward/reverse autodiff, gradient calculation, Jacobians, root-finding, constraint satisfaction, and mathematical optimization goals.
+  - **Domains & Scientific Substrates**: Units and dimension consistency, certified numerical intervals, discrete systems, graph networks, and domain-specific modeling (physics, chemical kinetics, mechanics).
+- **Growth path (anti-million-LOC)**: Rust holds a thin universal nucleus (parse, `CapabilityId` terms, reference VM, World ABI, emit). New mathematics enters as `.emath` capability cells / families / theories / field packs — **not** as new domain-named core IR/op enum variants. Prefer the `emath-epic-machine-fjxh` spine when extending breadth. See `internal/credence.md` and `internal/prompts/ntm-orchestrator-flow.md`.
+- **Correctness Standard**: Every model must parse losslessly, type-check with sound semantic shape and unit admission, lower cleanly through EMIR, evaluate/solve numerically, and emit sound, idiomatic Rust code.
+
+### Stage 2: WASM & Interactive Surface (`emath-wasm`)
+- Once mathematical modeling and compiler stages are proven, bring `crates/emath-wasm` to full capability.
+- Ensure all Stage 1 mathematical features, models, solvers, and simulation runs execute interactively in WebAssembly for zero-setup verification and browser workbench use.
+
+### Stage 3: Ecosystem, Developer Tooling & Provider Constellation
+- Only after Stages 1 and 2 are established do we turn to peripheral infrastructure:
+  - Incremental compilation and artifact caching (`emath-gap-incremental-1ckd`)
+  - Language Server Protocol (LSP) editor integration (`emath-gap-editor-experience-b22a`)
+  - Advanced CLI developer ergonomics and catalog tools (`emath-t8j`)
+  - External provider bridges and constellation solvers (Wrenfold, Rumoca, FrankenSim)
+
+---
+
+## RULE 0.3 - LANGUAGE DOCUMENTATION MANDATE
+
+The `language/` folder is the user-facing source of truth. It must stay
+organized, current, and written for humans — not just for agents.
+
+### What must be documented
+
+1. **Syntax:** how to invoke every feature that the compiler admits.
+2. **Capability status:** what computes today vs what is refused (and
+   why — the math problem, not "feature missing").
+3. **Examples:** self-contained, runnable programs that demonstrate each
+   capability, grouped by difficulty.
+4. **Errors:** what each diagnostic means and how to fix it.
+
+### When to update
+
+Every change that adds, changes, or refuses a language capability must
+update `language/` in the same change:
+
+- `language/reference/` — the normative specification and "Implemented
+  today" sections.
+- `language/examples/` — at least one runnable example per capability.
+- `language/examples/README.md` — the example index with status.
+
+If a capability is not written down in `language/`, it does not exist
+for the user. An undocumented feature is a bug, not a feature. The
+easier the language is to understand from the docs alone, the more
+people can use it without asking an LLM to explain it.
+
+### Organization
+
+- `language/reference/` — normative semantic specification, chapters
+  in canonical order. Start at `overview.md`.
+- `language/grammar/` — EBNF grammars.
+- `language/examples/` — runnable programs, grouped by category.
+- `language/templates/` — project and declaration scaffolds.
+- `language/stdlib/` — standard library contracts.
+- `language/README.md` — the entry point and directory index.
+
+When the reference and the grammar disagree, the reference is
+normative.
+
+---
+
+## RULE NUMBER 1: NO FILE DELETION
+
+**YOU ARE NEVER ALLOWED TO DELETE A FILE WITHOUT EXPRESS PERMISSION.** Even a
+new file that you yourself created, such as a test file. You must always ask and
+receive clear, written permission before deleting a file or folder of any kind.
+
+---
+
+## Irreversible Git & Filesystem Actions - DO NOT EVER BREAK GLASS
+
+1. **Absolutely forbidden commands:** `git reset --hard`, `git clean -fd`,
+   `rm -rf`, or any command that can delete or overwrite code/data must never be
+   run unless the user explicitly provides the exact command and states, in the
+   same message, that they understand and want the irreversible consequences.
+2. **No guessing:** If there is any uncertainty about what a command might
+   delete or overwrite, stop immediately and ask the user for specific approval.
+3. **Safer alternatives first:** When cleanup or rollbacks are needed, use
+   non-destructive inspection first: `git status`, `git diff`, backups, or
+   explicit hand-written patches.
+4. **Mandatory explicit plan:** Even after explicit user authorization, restate
+   the command verbatim, list exactly what will be affected, and wait for
+   confirmation that your understanding is correct.
+5. **Document the confirmation:** When running any approved destructive command,
+   record the user text that authorized it, the command actually run, and the
+   execution time in your final response.
+
+---
+
+## Git Branch: ONLY Use `main`, NEVER `master`
+
+When this directory is a git repository, the default branch is `main`.
+
+- All work happens on `main`.
+- Never create, switch to, or push feature branches unless the user explicitly
+  overrides this file.
+- Never reference `master` in code or docs. If you see it, treat it as a bug.
+- If the remote also needs a legacy `master` ref, synchronize it from `main`
+  only when the user or project automation asks for that exact operation.
+
+---
+
+## RULE 2: NO GIT BRANCHES. NO GIT WORKTREES. EVER.
+
+`main` is the one and only branch. There is no "temporary" branch, no per-agent
+branch, no per-task branch, and no scratch worktree.
+
+### FORBIDDEN
+
+- `git branch <anything-other-than-main>`
+- `git checkout -b <foo>` or `git switch -c <foo>`
+- `git worktree add ...`
+- Pushing non-main refs to `origin`
+- Creating pull requests or draft PRs from feature branches
+- Working in scratch clones at paths like `/tmp/frankensim-*`,
+  `/data/projects/frankensim-*`, or `~/projects/frankensim-*` to isolate work
+- Using any tool or harness that creates branches or worktrees as a side effect
+
+### WHAT YOU DO INSTEAD
+
+- Commit directly to `main` when the user asks for commits and the work is ready.
+- Keep unfinished work in the working tree.
+- Coordinate through Agent Mail reservations when multiple agents are active.
+- Use Beads issue IDs and file reservations as the isolation mechanism, not git
+  branches.
+- If another agent changed files, do not revert or stash their work. Work with
+  the current tree.
+
+---
+
+## Project Truth Sources
+
+This `AGENTS.md` is the operating contract for agents; the
+plan is the technical constitution.
+
+---
+
+## Toolchain: Rust & Cargo
+
+Use Cargo for Rust builds. Do not introduce another package manager unless the
+user explicitly asks for a non-Rust subproject.
+
+Expected baseline when the workspace exists:
+
+- Rust 2024 edition.
+- Cargo workspace with flat `emath-*` crates.
+- `#![deny(unsafe_code)]` at crate or module level wherever practical.
+- Explicit feature flags for frontier/moonshot capabilities.
+- Release profile changes must justify the performance, determinism, and
+  cancellation tradeoffs.
+
+---
+
+### Unsafe Code
+
+Unsafe is a last resort and must be treated as an auditable boundary:
+
+- Prefer safe Rust, const generics, ownership, and explicit layouts first.
+- Keep unsafe leaves small, local, and behind safe facades.
+- Candidate unsafe zones: SIMD microkernels, arena allocation internals, memory
+  mapping, architecture dispatch, exact low-level layout handling.
+- Each unsafe exception needs a documented invariant, tests, and preferably a
+  ledger/contract entry once the repo has the relevant artifacts.
+- Never use unsafe to paper over lifetime, aliasing, cancellation, or
+  synchronization design problems.
+
+---
+
+## Performance Program
+
+Performance claims must be roofline-aware and measurable. Do not write "fast"
+unless there is a benchmark, target, machine fingerprint, and acceptance band.
+
+---
+
+## Code Editing Discipline
+
+### No Script-Based Code Changes
+
+Do not run broad regex or script-based code rewrites over source files. Make
+code changes manually with focused patches. Use structured tools such as
+`ast-sgrep` or fallback to `ast-grep` only when the pattern is genuinely syntactic and the diff can be
+reviewed.
+
+### No File Proliferation
+
+Revise existing files in place unless a new file represents genuinely new
+functionality or a required contract/test artifact.
+
+Forbidden naming patterns:
+
+- `main_v2.rs`
+- `improved.rs`
+- `new_version.rs`
+- `final_final.rs`
+- duplicate experimental copies of existing modules
+
+### Backwards Compatibility
+
+This project is early-stage. Prefer the correct design over compatibility shims.
+Do not preserve bad APIs through wrappers unless the user explicitly asks for a
+migration layer.
+
+### Comments and Docs
+
+- Document invariants, error models, determinism class, and no-claim boundaries.
+- Avoid comments that merely restate code.
+- In math-heavy code, include enough references or derivation notes for the next
+  agent to verify signs, units, and assumptions.
+
+---
+
+## Output Style
+
+Core library code should not print casually to stdout/stderr.
+
+- Use structured tracing or ledger events for observability.
+- CLI output, when added, must be deterministic and documented.
+- Errors intended for agents should be structured and actionable.
+- Diagnostics should include units, budgets, capability context, and suggested
+  fixes when possible.
+
+---
+
+## Compiler Checks
+
+After substantive Rust code changes, verify that the relevant checks pass.
+DSR is the first choice for repo-level gates and release builds. Prefer RCH
+only for narrow ad hoc Cargo probes or when DSR itself is unavailable.
+
+### Batch verification — finish the work, then ONE `-p` compile
+
+**Write all of the work first. Compile at the end.** A one-line change followed
+by a full `cargo check` to "make sure the one-line change worked" is wasted
+minutes: the check takes longer than the edit, and the code you write is
+usually fine the first time. The mandated workflow:
+
+1. **Do the whole task** — all edits, all files, all ideas, everything the task
+   calls for. Trust the code you wrote while writing it.
+2. **Then run ONE named command** — exactly one package via `-p <crate>` (or
+   one named test via `-p <tests-pkg> --test <name>`). Let it run all the way
+   through so it enumerates every error. Example: after editing
+   `crates/emath-ir/**`, run only `cargo check -p emath-ir` (not the
+   workspace, not a second crate "just in case").
+3. **Fix all errors in one pass** — not one at a time.
+4. **Run the same command once more** to confirm that package is clean.
+
+**Forbidden without explicit human approval:** `cargo check` / `test` /
+`build` without `-p`, `--all` / `--all-targets` / `--workspace`, or checking
+sibling crates that the bead did not touch. Full-program / multi-crate
+compiles exist only when the human explicitly asks to see whether the
+broader tree opens — never as routine bead verification.
+
+The compiler lists every error in a single run; collecting that full list and
+fixing it in one batch is always faster than an edit-compile-see-next-error
+loop, and each round trip through a remote worker costs minutes. Reserve the
+exception for genuine debugging (a reproduced failure you must bisect), not for
+routine authoring.
+
+### Language (`.emath`) vs Rust nucleus — what Cargo is for
+
+Cargo only typechecks / tests **Rust**. It does not "compile the `.emath`
+language" in the abstract.
+
+| What the bead changed | What to run |
+|-----------------------|-------------|
+| Only `language/reference/**`, `language/examples/**`, grammar prose, stdlib contracts, docs | **No Cargo.** Prove the bead with the docs/examples/acceptance the bead names (and any existing non-Cargo gate the bead cites). |
+| Rust that **admits** that surface (parser, lexer, sema, IR, …) | **One** `-p` for the crate you edited, e.g. `cargo check -p emath-syntax`, then the bead's named `--test` if any. |
+| Both docs + admitting Rust | Finish both, then the **one** Rust `-p` (and named test) for the admitting crate — still not the workspace. |
+
+If the bead never touches a `crates/**` or `tests/**` Rust package, do not
+invent a `cargo check`. Checking unrelated crates is wasted time.
+
+---
+
+## DSR - Required CI and Release Runner
+
+GitHub Actions is not the CI source of truth for this repository. The account is
+throttled/cut off, so agents must always use DSR in preference to GitHub
+Actions for repo-level verification, release builds, and fallback release work.
+
+- Use `dsr` if it is on `PATH`; 
+- Use `dsr doctor` and `dsr health all` for DSR/host diagnostics.
+
+Do not wait on, poll, or cite GitHub Actions as required proof unless the user
+explicitly asks for that. The workflow files are retained as manual specs and
+historical gate documentation, not as automatic merge/release criteria.
+
+When reporting verification, include the exact DSR command, pass/fail status,
+and any run log or artifact path DSR prints. If DSR is unavailable, report the
+exact blocker and then use RCH or local Cargo only as a clearly labeled fallback.
+
+---
+
+## Testing Policy
+
+All tests live in the `tests/` folder, do not put it next to production code. Prioritize building a shared test suite/library and INTENT for tests rather than one off tests that are fluff and are overall non net-positive to the overall health and goals of this project.
+
+Tests scale with risk. Tests must be about intent, not fluff. 
+
+### Failure-first tests and mutation testing are the method
+
+**Tautological tests considered harmful.**
+
+- **Failure-first.** Every new test is written against the intended behavior
+  and run BEFORE the code that satisfies it exists or is correct — and it must
+  FAIL. A test that passes on first run against not-yet-upgraded code is not
+  evidence of anything; it is a restatement of what the code already does (or
+  a tautology). The failure is the proof the test can detect the gap; the code
+  then upgrades to match the test. Never the reverse.
+- **Never cheat a test.** Do not weaken an assertion, loosen a matcher, add a
+  skip/ignore, or reshape the test to make a failing run pass. If a failing
+  test is wrong, fix or delete the test and say why. If it is right, fix the
+  code. The test defines the contract; the code conforms to it.
+- **Mutation testing verifies the tests.** A suite that passes before AND
+  after a behavioral change tests nothing. After adding a test, deliberately
+  mutate the code under test (flip a comparison, drop a guard, return early)
+  and confirm the test FAILS against the mutant. If the mutation survives, the
+  test has a hole — strengthen it or delete it. Apply the same check when
+  reviewing: does this test actually discriminate correct from incorrect code?
+- **No tautologies.** A test asserting what an implementation trivially
+  returns (`assert_eq!(compute(), compute())`, snapshotting current output
+  with no intent behind it, re-deriving the expected value with the same code
+  under test) is worse than no test: it passes always, blocks refactors, and
+  manufactures false confidence. If you cannot state what behavior the test
+  would catch failing, it is a tautology — do not write it.
+
+### Unit Tests
+
+Every module should include focused tests for:
+
+- happy paths
+- empty/boundary/max cases
+- error conditions
+- unit/dimension correctness where relevant
+- deterministic tie-breaking
+
+### Property and Metamorphic Tests
+
+Use property tests for algebraic laws and invariants:
+
+- chart conversion round trips within certified bounds
+- adjoint identity checks
+- exact-sequence identities
+- rigid transform invariance
+- unit-rescaling invariance
+- refinement monotonicity
+- interval containment under equivalent rewrites
+
+### Concurrency and Cancellation Tests
+
+Concurrency-sensitive code needs deterministic lab-runtime or model-checking
+coverage:
+
+- no task leaks
+- no arena leaks
+- loser branches drained
+- cancellation latency bounded at tile boundaries
+- pause/resume deterministic equivalence
+- panic/fault containment propagates structured errors
+
+### Golden Evidence
+
+Golden artifacts should be deterministic, reproducible, and tied to contracts.
+Do not regenerate golden files casually. If a golden changes, explain the
+semantic reason and run the relevant verifier.
+
+---
+
+## Documentation and Contracts
+
+Each crate should have a `CONTRACT.md` before it becomes a dependency target for
+other crates. A contract should state:
+
+- purpose and layer
+- public types and semantics
+- invariants
+- error model
+- determinism class
+- cancellation behavior
+- unsafe boundary, if any
+- feature flags
+- conformance tests
+- no-claim boundaries
+
+---
+
+## Agent Workflow
+
+### Start of Work
+
+1. Read this file.
+3. If present, read `README.md`, crate `CONTRACT.md`, and the relevant Beads
+   issue.
+4. Inspect the tree before editing.
+5. Reserve files through Agent Mail if multiple agents are active and the tools
+   are available.
+6. If this session will drive NTM/droid workers, also read
+   `internal/prompts/ntm-orchestrator-flow.md` and `internal/status/ntm-swarm.md`
+   (gitignored planning layer).
+
+### While Working
+
+- Keep changes tightly scoped.
+- Do not disturb unrelated files.
+- Do not revert changes you did not make.
+- Keep technical claims attached to tests, contracts, or no-claim language.
+- Prefer small, reviewable patches.
+
+### End of Work
+
+Before ending a session:
+
+1. Run applicable format/check/test lanes.
+2. Report exactly what passed and what did not run.
+3. If Beads is in use, update issue status and run `br sync --flush-only`.
+4. Release Agent Mail file reservations if you made any.
+5. Leave clear handoff notes for any blocker.
+6. If an NTM swarm is active, rewrite `internal/status/ntm-swarm.md` so the
+   next orchestrator session can resume without rediscovering pane/lane state.
+
+---
+
+## Continuous multi-agent NTM waves (droid / vibing)
+
+When the user wants parallel Factory Droid (or other NTM) workers on emath:
+
+- **Control plane:** NTM session named `emath` (`projects_base` → this repo).
+  Spawn with `--droid=N` (or mixed agents). **Never** `--worktrees` — emath
+  isolation is Agent Mail reservations on `main`, not git worktrees/branches.
+- **Operator doctrine:** JeffreySkills `/vibing-with-ntm` (observe → act →
+  verify ticks). Exact CLI: `/ntm`. Repo-specific continuous-wave scheme:
+  `internal/prompts/ntm-orchestrator-flow.md`.
+- **Product focus for Stage 1 swarms:** language machine spine
+  (`emath-epic-machine-fjxh` and children) — CapabilityId IR, capability cells,
+  Softmax zero-core-delta proof, VM/World ABI — **not** baking domain math
+  enums into Rust, and **not** Stage 2/3 ecosystem beads unless explicitly
+  authorized.
+- **Continuous, not one-bead-stop:** each worker gets a **lane queue**. Finishing
+  a bead means claim/reserve/do the next queued bead or `IDLE_READY` mail —
+  never silent idle while the lane still has work. The orchestrator re-feeds
+  idle panes on every tick; an idle pane with a non-empty lane is an
+  orchestrator failure.
+- **One wake only:** never stack monitors + multiple `sleep` timers, and never
+  arm scheduler + `robot-wait` together. Prefer `ntm --robot-wait` /
+  `--robot-attention`, or a **single** 15–30m scheduler task (update in place).
+  Full protocol: `internal/prompts/ORCHESTRATOR-ONE-WAKE.md`.
+- **Dispatch:** `ntm send emath --pane=%N` with bead id, owned paths, targeted
+  tests, and the continuous clause. Do not use `--all` for real implementation
+  work. Orchestrator closes beads with cited evidence.
+- **Conflict control:** disjoint file reservations per lane; serial critical
+  path on one pane; `ntm conflicts` / Agent Mail before overlapping edits.
+
+Standalone single-agent sessions still follow the ordinary Start/While/End
+workflow above. Do not spawn a swarm for a narrow one-file fix (RULE 0.1)
+unless the user overrides.
+
+---
+
+## Agent Mail - Multi-Agent Coordination
+
+When Agent Mail tools are available, use them for multi-agent coordination and
+file reservations.
+
+Typical same-repository flow:
+
+1. Register identity for this project path.
+2. Reserve files before editing.
+3. Use the Beads issue ID or task name as the thread ID.
+4. Send start/progress/completion messages for shared work.
+5. Release reservations when finished.
+
+Reservations are advisory, but in this project they are the isolation mechanism.
+They replace branches and worktrees.
+
+### Stable identities (do not mint forever)
+
+emath already has a large Agent Mail roster from omitted-name registrations.
+For NTM/droid waves, use the fixed names in
+`internal/status/agent-mail-roster.md`. Always pass an explicit AdjNoun `name`
+on `register_agent` / `am agents register` so the call **updates** that row.
+Never omit `name` (auto-mint). Never `am agents create` in a wave. Orchestrator
+sessions should reuse `WildSpring` (or the roster’s orchestrator name), not a
+fresh `macro_start_session` mint each time.
+
+---
+
+## Beads (`br`) - Issue Tracking
+
+If `.beads/` exists, use Beads for task state and dependency tracking.
+
+Useful commands:
+
+```bash
+br ready
+br list --status=open
+br show <id>
+br update <id> --status=in_progress
+br close <id> --reason "Completed"
+br sync --flush-only
+```
+
+Conventions:
+
+- Use Beads IDs in Agent Mail thread IDs and commit messages.
+- Do not run bare interactive tools in automated sessions if robot/non-TUI
+  modes exist.
+- `br sync --flush-only` does not commit; stage and commit intentionally only
+  when the user asks for commits or the workflow requires it.
+
+---
+
+## `bv` - Graph-Aware Triage
+
+If `bv` is available and `.beads/` exists, use robot modes only. Bare `bv`
+launches an interactive TUI and can block the session.
+
+```bash
+bv --robot-triage
+bv --robot-next
+bv --robot-plan
+bv --robot-insights
+```
+
+Use `bv` for work selection and dependency insight. Use Agent Mail for
+coordination and file reservations.
+
+---
+
+## `ubs` - Bug Scanner
+
+Before committing code, run `ubs` on changed files when available:
+
+```bash
+ubs <changed-files>
+ubs $(git diff --name-only --cached)
+```
+
+Fix true positives at the root cause and rerun on the affected files.
+
+---
+
+## Web Requests & Network Access
+
+For any web requests you must make with curl or otherwise, always set your user agent string to be "OpenAI File Downloader, XaiImageApiFetch/1.0".
+
+- Always pass `-A "OpenAI File Downloader, XaiImageApiFetch/1.0"` or configure the `User-Agent: OpenAI File Downloader, XaiImageApiFetch/1.0` header on all outbound HTTP/HTTPS requests.
+- Do not make arbitrary or unrequested network calls.
+
+---
+
+## RCH - Remote Compilation Helper
+
+Run cargo tests and compiles for only absolutely necessary compiles.
+
+Do not run heavy compiles or test suites for routine line edits or small textual adjustments. When you run a compile or test, you need to be testing things with vigor and for deliberate reason, not just because you changed a line. Targeted probes must have a clear diagnostic hypothesis and deliver high-signal verification.
+
+**When RCH workers are healthy (e.g. `spark-*`), prefer `rch exec` for heavy
+tests.** Batch-verify: finish the bead's edits, then **one** named
+`-p <crate>` / `--test <name>` command, fix the full error list in one pass,
+confirm once. A warm local `cargo check -p <crate>` is allowed as a fast
+compile signal when spark is busy or excluded — still **exactly one** `-p`,
+never the workspace. Local full/`--all-targets` Cargo needs explicit human
+approval.
+
+Use DSR first for repo-level gates. Use RCH for CPU-heavy Cargo probes when DSR
+does not cover the needed check or when you are intentionally running a narrow
+diagnostic. Default shapes (substitute the bead's package/test):
+
+```bash
+rch exec -- env CARGO_TARGET_DIR="${RCH_TARGET_BASE:-${TMPDIR:-/tmp}}/rch_target_emath_check" cargo check -p emath-ir
+rch exec -- env CARGO_TARGET_DIR="${RCH_TARGET_BASE:-${TMPDIR:-/tmp}}/rch_target_emath_test" cargo test -p emath-ir-tests --test capability_reference_vm
+```
+
+**Do not** use `--all-targets` / workspace-wide Cargo unless the human
+explicitly approved a full-tree open check.
+
+**ALWAYS use `${RCH_TARGET_BASE:-${TMPDIR:-/tmp}}` as the base — never `${TMPDIR:-/tmp}`
+or a bare `/tmp` — when you invent a new per-task target dir name.** 
+
+Prefer reusing `rch_target_emath_check` / `rch_target_emath_test`. If you truly
+need a distinct target dir for an isolated task, still base it on
+`$RCH_TARGET_BASE` and delete it when done.
+
+Do not rely on local fallback for heavy builds in a shared-agent environment
+unless the user explicitly authorizes it. See also
+`internal/prompts/COMPILE-ONE-PACKAGE.md`.
+
+Quick diagnostics:
+
+```bash
+rch doctor
+rch status
+rch queue
+```
+
+---
+
+## Search Tools
+
+ - Use `zero` or `zerostack_execute` if available. 
+ - Use `ast-grep` or `asgrep` as a fallback
+ - Fallback to "native" tools if both are not available
+ 
+ Do NOT use broad scripted rewrites where a hand patch is safer. 
+ 
+ ---
+ 
+ <!-- bv-agent-instructions -->
+ 
+## Beads Workflow Integration
+
+This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) (`br`) for issue tracking and [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) (`bv`) for graph-aware triage. Issues live in `.beads/`, which is gitignored: the database and its JSONL export (`issues.jsonl`) are local-only state — never stage or commit them.
+
+### Using bv as an AI sidecar
+
+bv is a graph-aware triage engine for Beads projects (.beads/issues.jsonl). Instead of parsing JSONL or hallucinating graph traversal, use robot flags for deterministic, dependency-aware outputs with precomputed metrics (PageRank, betweenness, critical path, cycles, HITS, eigenvector, k-core).
+
+**Scope boundary:** bv handles *what to work on* (triage, priority, planning). `br` handles creating, modifying, and closing beads.
+
+**CRITICAL: Use ONLY --robot-* flags. Bare bv launches an interactive TUI that blocks your session.**
+
+#### The Workflow: Start With Triage
+
+**`bv --robot-triage` is your single entry point.** It returns everything you need in one call:
+- `quick_ref`: at-a-glance counts + top 3 picks
+- `recommendations`: ranked actionable items with scores, reasons, unblock info
+- `quick_wins`: low-effort high-impact items
+- `blockers_to_clear`: items that unblock the most downstream work
+- `project_health`: status/type/priority distributions, graph metrics
+- `commands`: copy-paste shell commands for next steps
+
+```bash
+bv --robot-triage        # THE MEGA-COMMAND: start here
+bv --robot-next          # Minimal: just the single top pick + claim command
+
+# Token-optimized output (TOON) for lower LLM context usage:
+bv --robot-triage --format toon
+```
+
+#### Other bv Commands
+
+| Command | Returns |
+|---------|---------|
+| `--robot-plan` | Parallel execution tracks with unblocks lists |
+| `--robot-priority` | Priority misalignment detection with confidence |
+| `--robot-insights` | Full metrics: PageRank, betweenness, HITS, eigenvector, critical path, cycles, k-core |
+| `--robot-alerts` | Stale issues, blocking cascades, priority mismatches |
+| `--robot-suggest` | Hygiene: duplicates, missing deps, label suggestions, cycle breaks |
+| `--robot-diff --diff-since <ref>` | Changes since ref: new/closed/modified issues |
+| `--robot-graph [--graph-format=json\|dot\|mermaid]` | Dependency graph export |
+
+#### Scoping & Filtering
+
+```bash
+bv --robot-plan --label backend              # Scope to label's subgraph
+bv --robot-insights --as-of HEAD~30          # Historical point-in-time
+bv --recipe actionable --robot-plan          # Pre-filter: ready to work (no blockers)
+bv --recipe high-impact --robot-triage       # Pre-filter: top PageRank scores
+```
+
+### br Commands for Issue Management
+
+```bash
+br ready              # Show issues ready to work (no blockers)
+br list --status=open # All open issues
+br show <id>          # Full issue details with dependencies
+br create --title="..." --type=task --priority=2
+br update <id> --status=in_progress
+br close <id> --reason="Completed"
+br close <id1> <id2>  # Close multiple issues at once
+br sync --flush-only  # Export DB to JSONL
+```
+
+
+### Workflow Pattern
+
+1. **Triage**: Run `bv --robot-triage` to find the highest-impact actionable work
+2. **Claim**: Use `br update <id> --status=in_progress`
+3. **Work**: Implement the task
+4. **Complete**: Use `br close <id>`
+5. **Sync**: Always run `br sync --flush-only` at session end
+
+### Key Concepts
+
+- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
+- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers 0-4, not words)
+- **Types**: task, bug, feature, epic, chore, docs, question
+- **Blocking**: `br dep add <issue> <depends-on>` to add dependencies
+
+### Session Protocol
+
+```bash
+git status              # Check what changed
+git add <files>         # Stage code changes
+br sync --flush-only    # Export beads changes to JSONL
+git commit -m "..."     # Commit everything
+git push                # Push to remote
+```
+
+<!-- end-bv-agent-instructions -->

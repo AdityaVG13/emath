@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upstream-lock honesty gate (emath-conform-pin-register-1iip).
+"""Upstream-lock honesty gate.
 
 Checks the shipped upstream lock and its adapter-seam bindings:
 

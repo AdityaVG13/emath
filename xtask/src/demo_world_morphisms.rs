@@ -3,8 +3,8 @@
 //! shared invariants across a three-world portfolio.
 
 use emath_genesis::{
-    dedupe, mine_invariants, morphism_id, quotient, verify, MorphismError, OpTable, WorldMorphism,
-    MORPHISM_VERSION,
+    MORPHISM_VERSION, MorphismError, OpTable, WorldMorphism, dedupe, mine_invariants, morphism_id,
+    quotient, verify,
 };
 use emath_world_ir::fnv1a64;
 
@@ -63,7 +63,7 @@ fn run_demo() -> Result<(), String> {
         other => {
             return Err(format!(
                 "seeded wrong map must fail at (0,0), got {other:?}"
-            ))
+            ));
         }
     }
 

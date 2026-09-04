@@ -1,4 +1,4 @@
-//! fjxh.16 capstone demo: `cargo xtask demo source-first-worlds`.
+//! Capstone demo: `cargo xtask demo source-first-worlds`.
 //!
 //! A STRICT file runs through the strict compiler lane (admission + run
 //! through the `emath` CLI; provenance = the reference VM, no invented
@@ -128,7 +128,9 @@ fn build_bundle(
     budget: WorldBudget,
 ) -> Result<ResultBundle, String> {
     Ok(ResultBundle::new(vec![
-        evaluate_labeled(term, &ModularAlienWorld, i64_environment, budget, |v| v.to_string()),
+        evaluate_labeled(term, &ModularAlienWorld, i64_environment, budget, |v| {
+            v.to_string()
+        }),
         evaluate_labeled(
             term,
             &BooleanAlienWorld,
@@ -136,7 +138,9 @@ fn build_bundle(
             budget,
             |v: &bool| v.to_string(),
         ),
-        evaluate_labeled(term, &ModularFiveWorld, i64_environment, budget, |v| v.to_string()),
+        evaluate_labeled(term, &ModularFiveWorld, i64_environment, budget, |v| {
+            v.to_string()
+        }),
     ])
     .map_err(|error| format!("labeled bundle refused: {error}"))?)
 }

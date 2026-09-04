@@ -255,7 +255,7 @@ assert_invalid tests/invalid/recursive_kind.emath "E-KIND-100"
 assert_invalid tests/invalid/unit_mismatch.emath "E-UNIT-101"
 assert_invalid tests/invalid/model_decl.emath "E-KIND-011"
 assert_invalid tests/invalid/lagrangian_action_fence.emath "E-SYN-101"
-# Declarative figures seed (05 §7.4, emath-r3-figures-b1xn): the section
+# Declarative figures seed (05 §7.4): the section
 # name is RESERVED (out of the generic roster error) and every payload
 # row refuses naming the design forks (budgeted sampling, sampling
 # receipt, Renderer provider contract).
@@ -275,21 +275,21 @@ assert_invalid tests/invalid/observations_write.emath "E-OBS-WRITE"
 # refused at the lexer (E-SYN-115).
 assert_invalid tests/invalid/confusable_decl.emath "E-NAME-024"
 assert_invalid tests/invalid/combining_mark.emath "E-SYN-115"
-# Bio dynamics thin slice (04 §4.4, emath-r3-bio-dynamics-ephb): propensity
+# Bio dynamics thin slice (04 §4.4): propensity
 # transition rows refuse naming the field-pack follow-up (the events:/
 # on-trigger suite is the named next slice) — never the generic row error.
 assert_invalid tests/invalid/bio_propensity_field_pack.emath "E-SYN-101"
-# Sequences thin slice (B07+B33, emath-r3-sequences-recurrences-v4cp):
+# Sequences thin slice (B07+B33):
 # indexed definition rows (`fib[n] = ...`) refuse E-TYPE-010 naming the
 # recursion-policy design fork — recurrence evaluation is a design
 # follow-up, never a silent drop or a fake compute path.
 assert_invalid tests/invalid/sequence_recurrence_fence.emath "E-TYPE-010"
-# Proof outlines thin slice (B13 + 05 §7.2, emath-r3-proofs-0qua): an
+# Proof outlines thin slice (B13 + 05 §7.2): an
 # outline without its concluding qed refuses — obligation kinds are
 # data (assumption/lemma/check/qed) and completeness is checked;
 # proofs remain additive authority, never admission tickets.
 assert_invalid tests/invalid/proof_outline_incomplete.emath "E-SYN-101"
-# Fit goal (04 §5.3, emath-r3-fit-goal-4xjh): the generic fit-goal
+# Fit goal (04 §5.3): the generic fit-goal
 # surface admits — `fit <params> to <observable>:` with model,
 # prediction, residual method, method, initial seeds, and explicit
 # weights as plain program data. The runnable fixture is
@@ -297,7 +297,7 @@ assert_invalid tests/invalid/proof_outline_incomplete.emath "E-SYN-101"
 # tests/emath-syntax/tests/fit_goal.rs); without a
 # structural-identifiability provider the goal resolves to an honest
 # typed unresolved disposition in every plan.
-# Compartments thin slice (04 §4.1, emath-r3-compartments-e5zq): a
+# Compartments thin slice (04 §4.1): a
 # reaction endpoint that is nothing must be the DECLARED sink `∅` — a
 # silently empty side refuses (E-SYN-156 at parse; E-BIO-SINK at
 # admission).
@@ -440,7 +440,7 @@ printf '%s\n' "$PIN_OUT"
 lane_done "doc-pins" "contract-pins" "passed" "contract doc hashes match pins"
 echo "contract pins: hashed docs match the named-bump pins"
 
-echo "== conformance register (1iip) =="
+echo "== conformance register =="
 # Language spec pin: language/reference/** + language/grammar/** are
 # SHA-pinned under an edition id in implementation/SPEC_PIN.json; drift
 # without a named bump fails the gate (RULE 0.3: unpinned language

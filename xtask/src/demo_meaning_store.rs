@@ -1,4 +1,4 @@
-//! emath-epic-emlib-nz1n.11 CAPSTONE: `cargo xtask demo meaning-store`.
+//! `cargo xtask demo meaning-store`.
 //!
 //! The executable identity gate (identity first, UX capstone later):
 //! three source versions of one function walk the meaning store's
@@ -14,17 +14,15 @@
 //! - the presentation diff's cutoff receipt is deterministic.
 //!
 //! No incremental-compilation completeness is claimed here: this is the
-//! identity classification gate over the landed nz1n.2/.5/.8 layers,
+//! identity classification gate over the landed layers,
 //! driven through the REAL admission pipeline (`CompilerSession`).
 
 use emath_core::{MeaningId, SourceId};
 use emath_sema::CompilerSession;
+use emath_store::EvidencePlane;
 use emath_store::evidence_plane::EvidenceReceipt;
 use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
-use emath_store::semantic_diff::{
-    classify, decide, ChangeClass, DiffOutcome, SemanticSnapshot,
-};
-use emath_store::EvidencePlane;
+use emath_store::semantic_diff::{ChangeClass, DiffOutcome, SemanticSnapshot, classify, decide};
 use emath_syntax::install_source_parser;
 
 const V1_BASE: &str = "emath function square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
@@ -49,7 +47,10 @@ fn meaning_of(source: &str) -> Result<MeaningId, String> {
         .map_err(|error| format!("meaning id refused: {error}"))
 }
 
-fn snapshot(source: &str, evidence: &[&str]) -> Result<emath_store::semantic_diff::SemanticSnapshot, String> {
+fn snapshot(
+    source: &str,
+    evidence: &[&str],
+) -> Result<emath_store::semantic_diff::SemanticSnapshot, String> {
     Ok(emath_store::semantic_diff::SemanticSnapshot::new(
         SourceId::from_bytes(source.as_bytes()),
         meaning_of(source)?,
@@ -82,15 +83,24 @@ fn run_demo() -> Result<(), String> {
     if meaning_v1 != meaning_v2 {
         return Err("GATE FAIL: a whitespace/comment edit mutated MeaningID".to_string());
     }
-    rows.push(format!("presentation|meaning-stable|{}", meaning_v1.as_str()));
-    println!("meaning-store|presentation|meaning-stable|{}", meaning_v1.as_str());
+    rows.push(format!(
+        "presentation|meaning-stable|{}",
+        meaning_v1.as_str()
+    ));
+    println!(
+        "meaning-store|presentation|meaning-stable|{}",
+        meaning_v1.as_str()
+    );
 
     // 2) Breaking changes it.
     if meaning_v1 == meaning_v3 {
         return Err("GATE FAIL: a semantics change kept MeaningID".to_string());
     }
     rows.push(format!("breaking|meaning-changed|{}", meaning_v3.as_str()));
-    println!("meaning-store|breaking|meaning-changed|{}", meaning_v3.as_str());
+    println!(
+        "meaning-store|breaking|meaning-changed|{}",
+        meaning_v3.as_str()
+    );
 
     // 3) Evidence independent: attach to a stored object, no retcon.
     let mut graph = ObjectGraph::default();
@@ -105,7 +115,11 @@ fn run_demo() -> Result<(), String> {
     let meaning_before = graph.object(&cell).unwrap().meaning_id.clone();
     let mut plane = EvidencePlane::default();
     let attached = plane
-        .attach(&graph, &cell, EvidenceReceipt::seal("capstone-receipt", b"demo evidence run"))
+        .attach(
+            &graph,
+            &cell,
+            EvidenceReceipt::seal("capstone-receipt", b"demo evidence run"),
+        )
         .map_err(|error| format!("evidence attach refused: {error:?}"))?;
     if graph.object(&cell).unwrap().meaning_id != meaning_before {
         return Err("GATE FAIL: an evidence attachment retconned MeaningID".to_string());

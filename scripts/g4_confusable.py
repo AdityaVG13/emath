@@ -13,7 +13,7 @@ and checks:
 - new glyphs (added by a unified diff) colliding with an existing
   grammar glyph's fold are fatal.
 
-The Standard Symbol Catalog (bead `emath-r3-ssc-governance-kvuo`) will
+The Standard Symbol Catalog will
 extend the fold table from there; this battery is the shipped grammar's
 first-pass mechanical check.
 

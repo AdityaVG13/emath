@@ -15,21 +15,21 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use emath_genesis::{
-    binder_id,
-    vm::{VmBudget, VmOutcome},
-    BinderBudget, BinderDomain, BinderError, BinderFamily, BinderKind, BinderTerm, FreeTermWorld,
-    ScopedBinder, BINDER_SCHEMA, BINDER_VERSION,
-};
-use emath_lab_core::holes::{impossible_identity_laws, synthesize_tables, SynthesisLaw};
 use emath_cli::layout::{
-    extract, parse_latex, reference_fixture, to_binder_term, LayoutError, PdfPageFixture,
-    PositionedGlyph, LAYOUT_SCHEMA, LAYOUT_VERSION,
+    LAYOUT_SCHEMA, LAYOUT_VERSION, LayoutError, PdfPageFixture, PositionedGlyph, extract,
+    parse_latex, reference_fixture, to_binder_term,
 };
+use emath_genesis::{
+    BINDER_SCHEMA, BINDER_VERSION, BinderBudget, BinderDomain, BinderError, BinderFamily,
+    BinderKind, BinderTerm, FreeTermWorld, ScopedBinder, binder_id,
+    vm::{VmBudget, VmOutcome},
+};
+use emath_lab_core::holes::{SynthesisLaw, impossible_identity_laws, synthesize_tables};
 use emath_term::{SymbolId, Term, VariableId};
 use emath_world_ir::fnv1a64;
 
 mod demo_agent_meaning;
+mod demo_easy_math;
 mod demo_finite_analogues;
 mod demo_finite_worlds;
 mod demo_interpretation_portfolio;
@@ -38,6 +38,7 @@ mod demo_meaning_store;
 mod demo_portable_emlib;
 mod demo_source_first_worlds;
 mod demo_world_morphisms;
+mod generate_language;
 
 const REFERENCE_SOURCE: &str = "tests/valid/arbitrary-glyphs.emath";
 const GENERATED_DIR: &str = "examples/generated/semantic-genesis-worlds";
@@ -59,6 +60,7 @@ fn main() {
             Some("joint-tuning") => demo_joint_tuning::demo(),
             Some("source-first-worlds") => demo_source_first_worlds::demo(),
             Some("meaning-store") => demo_meaning_store::demo(),
+            Some("easy-math") => demo_easy_math::demo(),
             Some("portable-emlib") => demo_portable_emlib::demo(),
             Some("cache-policy") => demo_cache_policy(),
             Some("all") => {
@@ -71,11 +73,13 @@ fn main() {
             }
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|cache-policy|all>"
+                    "unknown demo {other:?}; usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy|all>"
                 );
                 2
             }
         }
+    } else if args.first().map(String::as_str) == Some("generate-language") {
+        generate_language::run(args.get(1).map(String::as_str) == Some("--cargo-target"))
     } else if args.first().map(String::as_str) == Some("build-web") {
         build_web()
     } else if args.first().map(String::as_str) == Some("check-wasm") {
@@ -90,8 +94,9 @@ fn main() {
         serve_web(port)
     } else {
         eprintln!(
-            "usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|cache-policy|all>"
+            "usage: cargo xtask demo <affine-scorer|semantic-genesis|holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy|all>"
         );
+        eprintln!("       cargo xtask generate-language");
         eprintln!("       cargo xtask build-web");
         eprintln!("       cargo xtask check-wasm");
         eprintln!("       cargo xtask serve-web [port]");
@@ -697,7 +702,7 @@ fn run_demo_scoped_binders(work: &Path) -> Result<(), String> {
         other => {
             return Err(format!(
                 "conventional derivative must refuse, got {other:?}"
-            ))
+            ));
         }
     }
 
@@ -858,7 +863,12 @@ fn run_demo_math_layout(work: &Path) -> Result<(), String> {
     let supers = pdf_graph
         .edges()
         .iter()
-        .filter(|edge| matches!(edge.relation, emath_cli::layout::SpatialRelation::SuperscriptOf))
+        .filter(|edge| {
+            matches!(
+                edge.relation,
+                emath_cli::layout::SpatialRelation::SuperscriptOf
+            )
+        })
         .count();
     rows.push(format!(
         "pdf|reference|graph={:016x}|regions={}|supers={supers}",
@@ -1051,10 +1061,7 @@ fn build_web() -> u8 {
     for name in ["index.html", "app.js", "style.css"] {
         let src = PathBuf::from("web").join(name);
         if !src.is_file() {
-            eprintln!(
-                "build-web: note: {} not found; skipping",
-                src.display()
-            );
+            eprintln!("build-web: note: {} not found; skipping", src.display());
         }
     }
 
@@ -1193,7 +1200,10 @@ fn compute_gzip_size(path: &Path) -> Result<u64, String> {
         .output()
         .map_err(|error| format!("failed to spawn gzip: {error}"))?;
     if !output.status.success() {
-        return Err(format!("gzip failed with exit status {:?}", output.status.code()));
+        return Err(format!(
+            "gzip failed with exit status {:?}",
+            output.status.code()
+        ));
     }
     u64::try_from(output.stdout.len()).map_err(|_| "gzip output size exceeds u64".to_string())
 }
@@ -1375,7 +1385,7 @@ fn handle_http_connection(mut stream: std::net::TcpStream, dist_dir: &Path) -> s
                 b"Bad Request",
                 false,
                 None,
-            )
+            );
         }
     };
 
@@ -1391,7 +1401,7 @@ fn handle_http_connection(mut stream: std::net::TcpStream, dist_dir: &Path) -> s
                 b"Bad Request",
                 false,
                 None,
-            )
+            );
         }
     };
     let uri = match parts.next() {
@@ -1405,7 +1415,7 @@ fn handle_http_connection(mut stream: std::net::TcpStream, dist_dir: &Path) -> s
                 b"Bad Request",
                 false,
                 None,
-            )
+            );
         }
     };
 
@@ -1578,14 +1588,29 @@ mod tests {
 
     #[test]
     fn test_mime_for_path() {
-        assert_eq!(mime_for_path(Path::new("index.html")), "text/html; charset=utf-8");
-        assert_eq!(mime_for_path(Path::new("app.js")), "text/javascript; charset=utf-8");
-        assert_eq!(mime_for_path(Path::new("style.css")), "text/css; charset=utf-8");
+        assert_eq!(
+            mime_for_path(Path::new("index.html")),
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(
+            mime_for_path(Path::new("app.js")),
+            "text/javascript; charset=utf-8"
+        );
+        assert_eq!(
+            mime_for_path(Path::new("style.css")),
+            "text/css; charset=utf-8"
+        );
         assert_eq!(mime_for_path(Path::new("emath.wasm")), "application/wasm");
-        assert_eq!(mime_for_path(Path::new("data.json")), "application/json; charset=utf-8");
+        assert_eq!(
+            mime_for_path(Path::new("data.json")),
+            "application/json; charset=utf-8"
+        );
         assert_eq!(mime_for_path(Path::new("icon.png")), "image/png");
         assert_eq!(mime_for_path(Path::new("vector.svg")), "image/svg+xml");
-        assert_eq!(mime_for_path(Path::new("unknown.bin")), "application/octet-stream");
+        assert_eq!(
+            mime_for_path(Path::new("unknown.bin")),
+            "application/octet-stream"
+        );
     }
 
     #[test]

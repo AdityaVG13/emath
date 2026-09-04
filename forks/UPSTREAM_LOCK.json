@@ -37,7 +37,7 @@
       "branch": "master",
       "commit": "b756f9deed7d7f348cc0bb702b4e5b8eb83affed",
       "license": "BSD-3-Clause",
-      "role": "Modelica compatibility and scientific corpus (no MSL corpus CI is wired; no-claim fence per closed emath-gauntlet-04-q22w)",
+      "role": "Modelica compatibility and scientific corpus (no MSL corpus CI is wired; no-claim fence)",
       "required": "future"
     },
     {
