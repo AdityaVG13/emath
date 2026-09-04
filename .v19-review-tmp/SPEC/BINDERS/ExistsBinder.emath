@@ -1,0 +1,20 @@
+emath spec ExistsBinder:
+    identity: "std.binder.exists@1"
+    class: "binder"
+    status: "proposed"
+    edition: 1
+    summary: "Existential proposition or witness goal."
+    dependencies: ["std.syntax.binder.generic@1"]
+    surface: {"role":"binder","form":"exists x in domain if guard: body","spellings":["exists"],"scope":["guard","body"]}
+    canonical: {"lower_to":"std.capability.logic.exists@1","identity_fields":["binder","pattern","domain","guard","body"]}
+    semantics: {"contract":"Existential proposition or witness goal.","empty_domain":"theory-defined","termination":"domain/method-defined"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"reference-term","target":"std.capability.logic.exists@1"}
+    artifact: {"classes":["value","symbolic","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-BINDER-DOMAIN","E-BINDER-NONFINITE","E-BINDER-CONVERGENCE"]
+    conformance: {"positive":["std.binder.exists@1:positive"],"negative":["std.binder.exists@1:negative"],"mutation":["std.binder.exists@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["lexical scope","range endpoints","termination/convergence"]}

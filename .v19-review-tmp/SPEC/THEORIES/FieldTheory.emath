@@ -1,0 +1,20 @@
+emath spec FieldTheory:
+    identity: "std.theory.field@1"
+    class: "theory"
+    status: "proposed"
+    edition: 1
+    summary: "Commutative field structure."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"Theory","identity_fields":["parameters","operations","laws"]}
+    semantics: {"contract":"Commutative field structure.","operations":["add","multiply","negate","inverse","zero","one"],"laws":["commutative_ring","nonzero_inverse"]}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"law-schema","target":"std.theory.field@1"}
+    artifact: {"classes":["certificate","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-THEORY-LAW","E-THEORY-CYCLE"]
+    conformance: {"positive":["std.theory.field@1:positive"],"negative":["std.theory.field@1:negative"],"mutation":["std.theory.field@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-world-ir","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["law scope","dependency cycles","instance coherence"]}

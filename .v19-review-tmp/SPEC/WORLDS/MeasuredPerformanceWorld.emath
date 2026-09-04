@@ -1,0 +1,20 @@
+emath spec MeasuredPerformanceWorld:
+    identity: "std.world.performance.measured@1"
+    class: "world"
+    status: "proposed"
+    edition: 1
+    summary: "Inject trusted performance samples."
+    dependencies: ["std.kind.world@1","std.theory.world@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"WorldIr","identity_fields":["carrier","representations","capabilities","strategy","evidence","effects"]}
+    semantics: {"contract":"Inject trusted performance samples.","carrier":"MeasurementRecord","supports":"V17 campaigns"}
+    exactness: {"policy":"measured"}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"defines a world"}
+    reference: {"mode":"world-evaluator-or-provider","target":"std.world.performance.measured@1"}
+    artifact: {"classes":["value","symbolic","world-portfolio","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-WORLD-UNSUPPORTED","E-WORLD-MISSING-SEMANTICS","E-WORLD-EVIDENCE"]
+    conformance: {"positive":["std.world.performance.measured@1:supported"],"negative":["std.world.performance.measured@1:unsupported"],"mutation":["std.world.performance.measured@1:meaning-drift"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-world-ir","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["no hidden meaning","authority ceiling","total disposition"]}

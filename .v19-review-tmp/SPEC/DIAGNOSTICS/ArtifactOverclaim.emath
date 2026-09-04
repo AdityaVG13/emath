@@ -1,0 +1,20 @@
+emath spec ArtifactOverclaim:
+    identity: "std.diagnostic.artifact.overclaim@1"
+    class: "diagnostic"
+    status: "proposed"
+    edition: 1
+    summary: "Artifact label exceeds evidence."
+    dependencies: []
+    surface: {"role":"diagnostic","spellings":["E-ARTIFACT-OVERCLAIM"]}
+    canonical: {"lower_to":"DiagnosticRecord","identity_fields":["code","FeatureID","reason","route"]}
+    semantics: {"contract":"Artifact label exceeds evidence.","route":"lower label or attach checker"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"diagnostic-constructor","target":"E-ARTIFACT-OVERCLAIM"}
+    artifact: {"classes":["diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-ARTIFACT-OVERCLAIM"]
+    conformance: {"positive":["E-ARTIFACT-OVERCLAIM:emit"],"negative":["E-ARTIFACT-OVERCLAIM:not-overemit"],"mutation":["E-ARTIFACT-OVERCLAIM:route-drift"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"error registry","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["stable code","structured payload","route accuracy"]}

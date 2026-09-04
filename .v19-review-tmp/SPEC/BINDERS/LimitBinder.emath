@@ -1,0 +1,20 @@
+emath spec LimitBinder:
+    identity: "std.binder.limit@1"
+    class: "binder"
+    status: "proposed"
+    edition: 1
+    summary: "Limit goal under a declared topology/direction."
+    dependencies: ["std.syntax.binder.generic@1"]
+    surface: {"role":"binder","form":"limit x in domain if guard: body","spellings":["limit"],"scope":["guard","body"]}
+    canonical: {"lower_to":"std.capability.analysis.limit@1","identity_fields":["binder","pattern","domain","guard","body"]}
+    semantics: {"contract":"Limit goal under a declared topology/direction.","empty_domain":"theory-defined","termination":"domain/method-defined"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"reference-term","target":"std.capability.analysis.limit@1"}
+    artifact: {"classes":["value","symbolic","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-BINDER-DOMAIN","E-BINDER-NONFINITE","E-BINDER-CONVERGENCE"]
+    conformance: {"positive":["std.binder.limit@1:positive"],"negative":["std.binder.limit@1:negative"],"mutation":["std.binder.limit@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["lexical scope","range endpoints","termination/convergence"]}

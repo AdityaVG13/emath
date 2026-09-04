@@ -1,0 +1,33 @@
+{
+  "schema": "emath.agent-context-budgets.v1",
+  "levels": {
+    "L0": {
+      "tokens": 600,
+      "purpose": "baseline, task, invariants, next command"
+    },
+    "L1": {
+      "tokens": 2500,
+      "purpose": "leaf feature, dependencies, owner, gates, hazards"
+    },
+    "L2": {
+      "tokens": 8000,
+      "purpose": "contracts, goldens, diagnostics, migration"
+    },
+    "L3": {
+      "tokens": "as required",
+      "purpose": "implementation source slices"
+    },
+    "L4": {
+      "tokens": "exceptional",
+      "purpose": "history and rejected alternatives"
+    }
+  },
+  "measurement": [
+    "tokens_read",
+    "files_read",
+    "search_calls",
+    "test_calls",
+    "failed_edits",
+    "rework_cycles"
+  ]
+}

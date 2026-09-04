@@ -1,0 +1,20 @@
+emath spec ValueArtifact:
+    identity: "std.artifact.value@1"
+    class: "artifact"
+    status: "proposed"
+    edition: 1
+    summary: "Concrete or structured value with exactness label."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"ArtifactManifest","identity_fields":["class","semantic inputs","world/provider","target","files"]}
+    semantics: {"contract":"Concrete or structured value with exactness label.","labels":["exact","approximate","symbolic-only","hole-open","fault"]}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"artifact-schema","target":"std.artifact.value@1"}
+    artifact: {"classes":["std.artifact.value@1"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-ARTIFACT-INCOMPLETE","E-ARTIFACT-OVERCLAIM"]
+    conformance: {"positive":["std.artifact.value@1:positive"],"negative":["std.artifact.value@1:negative"],"mutation":["std.artifact.value@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-artifact","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["determinism","authority","required paths","sensitive fields"]}

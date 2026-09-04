@@ -1,0 +1,20 @@
+emath spec IntAddMonoid:
+    identity: "std.instance.int.add_monoid@1"
+    class: "instance"
+    status: "proposed"
+    edition: 1
+    summary: "Integer addition monoid."
+    dependencies: ["std.theory.monoid@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"TheoryModel","identity_fields":["theory","carrier","operation bindings"]}
+    semantics: {"contract":"Integer addition monoid.","implements":"std.theory.monoid@1","carrier":"Int"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"operation-bindings","target":"std.instance.int.add_monoid@1"}
+    artifact: {"classes":["certificate","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-INSTANCE-LAW","E-INSTANCE-COHERENCE"]
+    conformance: {"positive":["std.instance.int.add_monoid@1:positive"],"negative":["std.instance.int.add_monoid@1:negative"],"mutation":["std.instance.int.add_monoid@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-world-ir","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["coherence","conditional laws","carrier exactness"]}

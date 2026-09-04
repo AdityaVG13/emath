@@ -1,0 +1,20 @@
+emath spec MethodsSection:
+    identity: "std.section.methods@1"
+    class: "section"
+    status: "proposed"
+    edition: 1
+    summary: "Permitted/preferred solution strategies."
+    dependencies: ["std.syntax.section.generic@1"]
+    surface: {"role":"section-head","form":"methods: suite","spellings":["methods"]}
+    canonical: {"lower_to":"MethodRequest","identity_fields":["owning kind","payload","multiplicity"]}
+    semantics: {"contract":"Permitted/preferred solution strategies.","owner_policy":"kind-defined"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"MethodRequest"}
+    artifact: {"classes":["not-applicable"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SECTION-INVALID","E-SECTION-DUPLICATE"]
+    conformance: {"positive":["std.section.methods@1:positive"],"negative":["std.section.methods@1:negative"],"mutation":["std.section.methods@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-schema","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["payload schema","order/multiplicity","owner restrictions"]}

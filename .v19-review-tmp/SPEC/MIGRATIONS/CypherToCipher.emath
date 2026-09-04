@@ -1,0 +1,20 @@
+emath spec CypherToCipher:
+    identity: "std.migration.cypher_to_cipher@1"
+    class: "migration"
+    status: "proposed"
+    edition: 1
+    summary: "Migrate cypher spelling to cipher spelling."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"MigrationRule","identity_fields":["from","to","classification","edition"]}
+    semantics: {"contract":"explicit migration","from":"cypher spelling","to":"cipher spelling","classification":"presentation-only"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"migration-transform","target":"cipher spelling"}
+    artifact: {"classes":["migration-receipt","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-MIGRATION-AMBIGUOUS","E-MIGRATION-UNSUPPORTED"]
+    conformance: {"positive":["std.migration.cypher_to_cipher@1:positive"],"negative":["std.migration.cypher_to_cipher@1:negative"],"mutation":["std.migration.cypher_to_cipher@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-migrate","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["idempotence","source preservation","semantic diff"]}

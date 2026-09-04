@@ -1,0 +1,20 @@
+emath spec CapabilityManualToGenerated:
+    identity: "std.migration.capability_manual_to_generated@1"
+    class: "migration"
+    status: "proposed"
+    edition: 1
+    summary: "Migrate manual CAPABILITY view to generated orthogonal view."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"MigrationRule","identity_fields":["from","to","classification","edition"]}
+    semantics: {"contract":"explicit migration","from":"manual CAPABILITY view","to":"generated orthogonal view","classification":"documentation"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"migration-transform","target":"generated orthogonal view"}
+    artifact: {"classes":["migration-receipt","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-MIGRATION-AMBIGUOUS","E-MIGRATION-UNSUPPORTED"]
+    conformance: {"positive":["std.migration.capability_manual_to_generated@1:positive"],"negative":["std.migration.capability_manual_to_generated@1:negative"],"mutation":["std.migration.capability_manual_to_generated@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-migrate","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["idempotence","source preservation","semantic diff"]}

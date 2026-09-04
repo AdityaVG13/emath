@@ -1,0 +1,20 @@
+emath spec DualAuthority:
+    identity: "std.diagnostic.authority.dual@1"
+    class: "diagnostic"
+    status: "proposed"
+    edition: 1
+    summary: "Two sources claim authority for one FeatureID."
+    dependencies: []
+    surface: {"role":"diagnostic","spellings":["E-AUTHORITY-DUAL"]}
+    canonical: {"lower_to":"DiagnosticRecord","identity_fields":["code","FeatureID","reason","route"]}
+    semantics: {"contract":"Two sources claim authority for one FeatureID.","route":"resolve authority lock"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"diagnostic-constructor","target":"E-AUTHORITY-DUAL"}
+    artifact: {"classes":["diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-AUTHORITY-DUAL"]
+    conformance: {"positive":["E-AUTHORITY-DUAL:emit"],"negative":["E-AUTHORITY-DUAL:not-overemit"],"mutation":["E-AUTHORITY-DUAL:route-drift"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"error registry","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["stable code","structured payload","route accuracy"]}

@@ -1,0 +1,20 @@
+emath spec AgentLens:
+    identity: "std.lens.agent@1"
+    class: "lens"
+    status: "proposed"
+    edition: 1
+    summary: "Compact FeatureIDs, dependencies, gates, owners, and selective expansion."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"ViewProjection","identity_fields":["source MeaningID","lens FeatureID","version"]}
+    semantics: {"contract":"Compact FeatureIDs, dependencies, gates, owners, and selective expansion.","fidelity":"lossless metadata"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"projection","target":"std.lens.agent@1"}
+    artifact: {"classes":["view"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-LENS-LOSS","E-LENS-ROUNDTRIP"]
+    conformance: {"positive":["std.lens.agent@1:positive"],"negative":["std.lens.agent@1:negative"],"mutation":["std.lens.agent@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-lsp","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["loss disclosure","round-trip","hidden semantics"]}

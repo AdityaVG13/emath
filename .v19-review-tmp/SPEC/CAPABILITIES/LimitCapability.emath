@@ -1,0 +1,20 @@
+emath spec LimitCapability:
+    identity: "std.capability.analysis.limit@1"
+    class: "capability"
+    status: "proposed"
+    edition: 1
+    summary: "Limit under declared topology and direction."
+    dependencies: ["std.syntax.expression.core@1"]
+    surface: {"role":"call-or-operator","spellings":["limit"]}
+    canonical: {"lower_to":"CapabilityApplication","identity_fields":["CapabilityID","type arguments","operands","numeric policy"]}
+    semantics: {"contract":"Limit under declared topology and direction.","signature":"Function x Approach -> Exact/Bounded/Numeric","totality":"result or routed diagnosis"}
+    exactness: {"policy":"method-dependent","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"reference-term-or-provider","target":"std.capability.analysis.limit@1"}
+    artifact: {"classes":["value","symbolic","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-CAPABILITY-DOMAIN","E-CAPABILITY-UNSUPPORTED","E-EXACTNESS-LOSS"]
+    conformance: {"positive":["std.capability.analysis.limit@1:positive"],"negative":["std.capability.analysis.limit@1:negative"],"mutation":["std.capability.analysis.limit@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-term","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["no stable op enum","arity/domain","numeric-policy identity"]}

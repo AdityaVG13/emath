@@ -1,0 +1,20 @@
+emath spec LegacyReferenceToCapsule:
+    identity: "std.migration.reference_to_capsule@1"
+    class: "migration"
+    status: "proposed"
+    edition: 1
+    summary: "Migrate legacy reference authority to Feature Capsule authority."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"MigrationRule","identity_fields":["from","to","classification","edition"]}
+    semantics: {"contract":"explicit migration","from":"legacy reference authority","to":"Feature Capsule authority","classification":"feature-scoped"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"migration-transform","target":"Feature Capsule authority"}
+    artifact: {"classes":["migration-receipt","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-MIGRATION-AMBIGUOUS","E-MIGRATION-UNSUPPORTED"]
+    conformance: {"positive":["std.migration.reference_to_capsule@1:positive"],"negative":["std.migration.reference_to_capsule@1:negative"],"mutation":["std.migration.reference_to_capsule@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-migrate","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["idempotence","source preservation","semantic diff"]}

@@ -1,0 +1,34 @@
+{
+  "schema": "emath.change-receipt.v1",
+  "receipt_id": "RECEIPT-TEMPLATE",
+  "task_id": "",
+  "baseline": {
+    "repo_commit": "",
+    "language_image": "",
+    "authority_lock": ""
+  },
+  "final": {
+    "repo_commit": "",
+    "language_image": "",
+    "authority_lock": ""
+  },
+  "features": [],
+  "files": [],
+  "semantic_delta": "",
+  "identity_decisions": [],
+  "commands": [],
+  "gates": [],
+  "negative_controls": [],
+  "decisions": [],
+  "assumptions": [],
+  "new_holes": [],
+  "knowledge_accreted": [],
+  "resource_cost": {
+    "orientation_tokens": 0,
+    "source_tokens": 0,
+    "files_read": 0,
+    "tool_calls": 0,
+    "rework_cycles": 0
+  },
+  "rollback": ""
+}

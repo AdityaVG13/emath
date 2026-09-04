@@ -1,0 +1,20 @@
+emath spec UnresolvedSymbol:
+    identity: "std.diagnostic.symbol.unresolved@1"
+    class: "diagnostic"
+    status: "proposed"
+    edition: 1
+    summary: "Strict symbol has no FeatureID."
+    dependencies: []
+    surface: {"role":"diagnostic","spellings":["E-SYMBOL-UNRESOLVED"]}
+    canonical: {"lower_to":"DiagnosticRecord","identity_fields":["code","FeatureID","reason","route"]}
+    semantics: {"contract":"Strict symbol has no FeatureID.","route":"import, declare, or use custom"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"diagnostic-constructor","target":"E-SYMBOL-UNRESOLVED"}
+    artifact: {"classes":["diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SYMBOL-UNRESOLVED"]
+    conformance: {"positive":["E-SYMBOL-UNRESOLVED:emit"],"negative":["E-SYMBOL-UNRESOLVED:not-overemit"],"mutation":["E-SYMBOL-UNRESOLVED:route-drift"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"error registry","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["stable code","structured payload","route accuracy"]}

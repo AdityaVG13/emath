@@ -1,0 +1,20 @@
+emath spec IntervalType:
+    identity: "std.type.interval@1"
+    class: "type"
+    status: "proposed"
+    edition: 1
+    summary: "Certified enclosure over an ordered representation."
+    dependencies: ["std.syntax.expression.core@1"]
+    surface: {"role":"type-expression","form":"Interval<T>","spellings":["Interval"]}
+    canonical: {"lower_to":"IntervalValue","identity_fields":["type FeatureID","generic arguments","refinements"]}
+    semantics: {"contract":"Certified enclosure over an ordered representation.","constructors":"required"}
+    exactness: {"policy":"bounded","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"carrier","target":"IntervalValue"}
+    artifact: {"classes":["value","symbolic","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-TYPE-ARGUMENT","E-TYPE-CONSTRUCTOR","E-EXACTNESS-LOSS"]
+    conformance: {"positive":["std.type.interval@1:positive"],"negative":["std.type.interval@1:negative"],"mutation":["std.type.interval@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-core","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["coercions","constructor validity","representation loss"]}

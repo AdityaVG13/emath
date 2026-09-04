@@ -1,0 +1,20 @@
+emath spec ScratchSurface:
+    identity: "std.syntax_pack.scratch@1"
+    class: "syntax-pack"
+    status: "proposed"
+    edition: 1
+    summary: "Expands zero-ceremony expressions and intent lines into visible canonical declarations."
+    dependencies: ["std.syntax.declaration.generic@1","std.syntax.expression.core@1"]
+    surface: {"role":"syntax-pack","forms":["2+2","solve ...","plot ..."]}
+    canonical: {"lower_to":"ExpandedSource","identity_fields":["expanded semantic source","edition"]}
+    semantics: {"contract":"Sugar only; expansion is visible and freezeable."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"GenericDeclaration"}
+    artifact: {"classes":["source","value","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SCRATCH-AMBIGUOUS"]
+    conformance: {"positive":["std.syntax_pack.scratch@1:positive"],"negative":["std.syntax_pack.scratch@1:negative"],"mutation":["std.syntax_pack.scratch@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["no hidden interpretation","expansion preserves source map"]}
