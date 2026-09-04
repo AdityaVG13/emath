@@ -1,0 +1,148 @@
+package probability.markov.laws
+
+# Discrete-time Markov chains on finite state spaces: the one-step
+# distribution update and the two-state stationary distribution.
+# Deterministic exact arithmetic on dyadic test values; no sampling, no
+# simulation claim, and no convergence theorem is claimed by these laws.
+
+emath law MarkovChainStepDistribution:
+    about:
+        summary: "One step of a two-state chain maps the state distribution through the transition probabilities."
+    assumptions:
+        assume: "Row-stochastic two-state chain: from state 0 the chain moves to state 1 with probability a; from state 1 it moves to state 0 with probability b."
+        require a >= 0 and a <= 1
+        require b >= 0 and b <= 1
+        require p >= 0 and p <= 1
+    domain:
+        name: "finite Markov chains"
+    provenance:
+        source: "Classical discrete-time Markov chain theory (Markov, 1906)"
+    citations:
+        cite: "d'[1] = d[0]*(1-a) + d[1]*b"
+    inputs:
+        p: Float64
+        a: Float64
+        b: Float64
+    outputs:
+        next_p: Float64
+    definitions:
+        next_p = p * (1.0 - a) + (1.0 - p) * b
+    goals:
+        evaluate <next_p>:
+            produce rust.library
+    evidence:
+        claim <two_state_step_slice>:
+            statement: "Only the declared two-state row-stochastic step is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <canonical>:
+            given p = 1.0
+            given a = 0.25
+            given b = 0.5
+            expect next_p == 0.75
+
+emath law MarkovChainTwoStepDistribution:
+    about:
+        summary: "Two steps of a two-state chain compose the one-step map with itself."
+    assumptions:
+        assume: "Same row-stochastic two-state chain as MarkovChainStepDistribution, iterated twice."
+        require a >= 0 and a <= 1
+        require b >= 0 and b <= 1
+        require p >= 0 and p <= 1
+    domain:
+        name: "finite Markov chains"
+    provenance:
+        source: "Classical discrete-time Markov chain theory (Markov, 1906)"
+    citations:
+        cite: "d''[0] = d'[0]*(1-a) + d'[1]*b"
+    inputs:
+        p: Float64
+        a: Float64
+        b: Float64
+    outputs:
+        second_p: Float64
+    definitions:
+        first_p = p * (1.0 - a) + (1.0 - p) * b
+        second_p = first_p * (1.0 - a) + (1.0 - first_p) * b
+    goals:
+        evaluate <second_p>:
+            produce rust.library
+    evidence:
+        claim <two_state_iterated_slice>:
+            statement: "Only the declared two-step iteration of the two-state map is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <canonical>:
+            given p = 1.0
+            given a = 0.25
+            given b = 0.5
+            expect second_p == 0.6875
+
+emath law MarkovChainStationaryTwoState:
+    about:
+        summary: "The stationary distribution of a two-state chain is the off-diagonal column normalized by their sum."
+    assumptions:
+        assume: "Two-state chain with transition probabilities a (0 to 1) and b (1 to 0); at least one off-diagonal entry is positive."
+        require a >= 0 and a <= 1
+        require b >= 0 and b <= 1
+        require a + b > 0
+    domain:
+        name: "finite Markov chains"
+    provenance:
+        source: "Classical stationary distribution of a two-state chain"
+    citations:
+        cite: "pi = (b/(a+b), a/(a+b))"
+    inputs:
+        a: Float64
+        b: Float64
+    outputs:
+        stationary_p: Float64
+    definitions:
+        stationary_p = b / (a + b)
+    goals:
+        evaluate <stationary_p>:
+            produce rust.library
+    evidence:
+        claim <two_state_stationary_slice>:
+            statement: "Only the closed-form two-state stationary mass of state 0 is evaluated."
+            require positive_probability
+            level E2
+    tests:
+        example <dyadic>:
+            given a = 0.25
+            given b = 0.75
+            expect stationary_p == 0.75
+
+emath law MarkovChainStepVector:
+    about:
+        summary: "The one-step distribution update is the row-stochastic transition matrix applied to the distribution vector: d'[j] = sum_i d[i] * P[i][j]."
+    assumptions:
+        assume: "P is row-stochastic over the declared finite state space; d is a probability distribution over states."
+    domain:
+        name: "finite Markov chains"
+    provenance:
+        source: "Classical discrete-time Markov chain theory (Markov, 1906)"
+    citations:
+        cite: "d' = d P"
+    inputs:
+        d: Vector[2]
+        P: Matrix[2, 2]
+    outputs:
+        d_next: Vector[2]
+    definitions:
+        d_next = einsum("j,ji->i", d, P)
+    goals:
+        evaluate <d_next>:
+            produce rust.library
+    evidence:
+        claim <transition_contraction_slice>:
+            statement: "Only the declared finite-state transition contraction is evaluated; no mixing-time claim is made."
+            require stated_assumption
+            level E2
+    tests:
+        example <canonical>:
+            given d = [1.0, 0.0]
+            given P = [[0.75, 0.25], [0.5, 0.5]]
+            expect d_next == [0.75, 0.25]

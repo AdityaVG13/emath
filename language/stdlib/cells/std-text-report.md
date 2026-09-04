@@ -1,12 +1,12 @@
 # `std.text.report`; text values and deterministic report emitters
 
-Status: IMPLEMENTED (bead `emath-r3-text-report-gk41`). The compiler,
+Status: IMPLEMENTED . The compiler,
 reference VM, generated Rust path, and WASM serializer carry text and
 report values.
 
 ## What exists today (landed, honest)
 
-- **Interpolation grammar + purity fences** (`emath-r3-string-interp-og2e`):
+- **Interpolation grammar + purity fences**:
   a hole carries only a name or dotted path (`{x}`, `{model.coeff}`);
   expressions, calls, and indexing refuse at parse time (`E-SYN-101`,
   naming the purity rule). The format spec is fixed (`.Nf`, nothing

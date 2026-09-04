@@ -1,8 +1,8 @@
 # `std.finite.sets`; finite-set world class (authoring draft)
 
-Status: parse vertical admitted by bead `emath-r3-sets-tub8`
+Status: parse vertical admitted
 (`ExprKind::Set`, `SetComprehension`, `BinaryOp::In`). Evaluation is
-refused with `E-TYPE-113` until the emath-ir Phase B lane (fjxh) lands
+refused with `E-TYPE-113` until the emath-ir Phase B lane lands
 `TypeNode::Set` / `Value::Set` lowering. This page documents the world
 contract as stdlib surface data; nothing here grows a core IR enum
 variant beyond the parse-tree nodes already admitted.

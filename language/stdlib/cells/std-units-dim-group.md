@@ -1,8 +1,8 @@
 # std::units; dim-group (dimensional analysis as a group)
 
-Bead: `emath-sci-physics-lane-3f7v` (thin slice). Owner module:
-`crates/emath-core/src/units.rs` (extends the alias/affine contract from
-`emath-r3-unit-aliases-affine-tao6`).
+: (thin slice). Owner module:
+`crates/emath-core/src/units.rs` (extends the earlier
+alias/affine contract).
 
 ## What this adds
 
@@ -56,7 +56,7 @@ composition is meaningless). The difference unit `ΔdegC` IS multiplicative:
 `E-UNIT-DIM` (homogeneity violation), `E-UNIT-AFFINE-2` (affine
 multiplicative composition), `E-UNIT-104` (unknown unit; pre-existing).
 
-## Fences (later slices of 3f7v; not claimed here)
+## Fences (later slices of; not claimed here)
 
 - **tensor-geometry**: metric tensor, Christoffel symbols, Riemann/Ricci
   curvature, metric compatibility, Bianchi identities.
@@ -64,7 +64,7 @@ multiplicative composition), `E-UNIT-104` (unknown unit; pre-existing).
   certificates. No conservation claim is made by this slice.
 - **variational-action**: action functional, Euler-Lagrange operator, on-shell
   equality distinct from `==` (fenced with the
-  `emath-r3-lagrangian-action-nf7s` design follow-up).
+   design follow-up).
 - Surface admission (`units:` section through sema/IR) lands with the IR
   integration slice, per the tao6 no-claim boundary.
 

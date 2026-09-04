@@ -37,7 +37,7 @@ Arguments in order: `mu` (Vector), `sigma` (Vector), `x0` (scalar),
 ## Determinism contract
 
 One seed ⟹ one stream ⟹ bit-identical draws; the Z draws are the SAME
-Normal(0,1) draws the `std.prob` sampler yields (the vnqo counter-based
+Normal(0,1) draws the `std.prob` sampler yields (the counter-based
 stream → local seed → SplitMix64 → Box–Muller composition). No ambient
 entropy, no hidden seed; omission of a legal seed refuses
 `E-SIM-SEED`.

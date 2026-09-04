@@ -8,7 +8,7 @@ callable namespaces yet.
 
 | Package | Responsibility | First phase |
 |---|---|---:|
-| `std.core` (object pack) | executable standard-library pack: theory + cell + evidence objects with MeaningIDs, mounted by `emath library mount std` (`emath-stdlib-object-packs-hpzgf`) | 13 |
+| `std.core` (object pack) | executable standard-library pack: theory + cell + evidence objects with MeaningIDs, mounted by `emath library mount std` | 13 |
 | `core::math` | elementary arithmetic and libm builtins (implemented as compiler builtins, not a package source) | 1 |
 | [`core::special_functions`](cells/std-special-functions.md) | Γ, B, erf, ζ, W₀, K, E, Π contracts with named branches, certified strict-f64 reference impls, and the SpecialFunctionEvaluator provider seam (e2e admission follow-up) | 11 |
 | [`core::lp_milp`](cells/std-lp-milp.md) | deterministic LP simplex (Bland) + MILP branch-and-bound + Pareto-front nucleus; `.emath` goal surface (`objectives(pareto):`) lowers into this contract (admission follow-up) | 6/7 |
@@ -26,7 +26,7 @@ callable namespaces yet.
 | `core::linear_algebra` | vectors/matrices/operators | 5/7 |
 | `core::calculus` | derivative/integral goal contracts | 6 |
 | `core::optimization` | constraints/objectives/certificates | 6/7 |
-| [`optimization::methods`](cells/std-optimization-methods.md) | xx0x.6 continuous nucleus: Newton (Armijo line search) + BFGS engines, KKT residual helper, typed refusals (singular Hessian / budget with achieved gradient / stalled line search); interior-point + SQP refuse by name (phased landing); goal-surface method selection is the wiring follow-up | 6 |
+| [`optimization::methods`](cells/std-optimization-methods.md) | continuous nucleus: Newton (Armijo line search) + BFGS engines, KKT residual helper, typed refusals (singular Hessian / budget with achieved gradient / stalled line search); interior-point + SQP refuse by name (phased landing); goal-surface method selection is the wiring follow-up | 6 |
 | `core::graphs` | graph values and algorithms contracts | 5/7 |
 | `core::probability` | distributions/sampling/evidence | 7 |
 | [`probability::information`](cells/std-probability.md) | B22 slice: entropy/KL/mutual information over discrete carriers (bits, declared base variants, support-violation refusals); differential entropy refuses by name (measure-world contract); B10 random variables world-gated | 7 |

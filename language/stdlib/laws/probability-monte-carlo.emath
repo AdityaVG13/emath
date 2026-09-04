@@ -1,0 +1,69 @@
+package probability.montecarlo.laws
+
+# Monte Carlo estimation on a deterministic seeded stream: the mean and
+# second-moment estimators over a fixed sample vector. Every test value is
+# dyadic so the arithmetic is exact at the f64 carrier. No variance
+# theorem, confidence interval, or convergence rate is claimed here.
+
+emath law MonteCarloMeanEstimate:
+    about:
+        summary: "The Monte Carlo mean estimate of a function over a fixed sample set is the sample average."
+    assumptions:
+        assume: "f_values holds the function evaluated at every drawn sample; the draws are declared elsewhere by the stream contract."
+    domain:
+        name: "Monte Carlo estimation"
+    provenance:
+        source: "Classical Monte Carlo sample-mean estimator (Metropolis–Ulam tradition)"
+    citations:
+        cite: "E[f] ~= (1/n) sum_i f(x_i)"
+    inputs:
+        f_values: Vector[4]
+    outputs:
+        estimate: Float64
+    definitions:
+        estimate = mean(f_values)
+    goals:
+        evaluate <estimate>:
+            produce rust.library
+    evidence:
+        claim <sample_mean_slice>:
+            statement: "Only the sample mean over the declared finite vector is evaluated; no unbiasedness or CLT claim is attached."
+            require stated_assumption
+            level E2
+    tests:
+        example <dyadic>:
+            given f_values = [0.0, 0.25, 0.5, 0.75]
+            expect estimate == 0.375
+
+emath law MonteCarloSecondMoment:
+    about:
+        summary: "The Monte Carlo second-moment estimate is the average of the squared sample values."
+    assumptions:
+        assume: "x holds the drawn samples and n is the declared sample count matching the vector length."
+        require n > 0
+    domain:
+        name: "Monte Carlo estimation"
+    provenance:
+        source: "Classical Monte Carlo sample-mean estimator"
+    citations:
+        cite: "E[X^2] ~= (1/n) sum_i x_i^2"
+    inputs:
+        x: Vector[4]
+        n: Float64
+    outputs:
+        mean_square: Float64
+    definitions:
+        mean_square = einsum("i,i->", x, x) / n
+    goals:
+        evaluate <mean_square>:
+            produce rust.library
+    evidence:
+        claim <second_moment_slice>:
+            statement: "Only the squared-sample average over the declared finite vector is evaluated."
+            require positive_evidence
+            level E2
+    tests:
+        example <dyadic>:
+            given x = [0.5, 1.0, 1.5, 2.0]
+            given n = 4.0
+            expect mean_square == 1.875

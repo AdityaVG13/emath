@@ -1,7 +1,7 @@
-# `core::algebra`; quaternion, dual, Clifford nucleus (B44, xx0x.6-adjacent)
+# `core::algebra`; quaternion, dual, Clifford nucleus (B44, -adjacent)
 
-Status: **emath-core reference nucleus landed** (bead
-`emath-r3-quaternions-cgvg`). Contract-first: the sema admission table
+Status: **emath-core reference nucleus landed**. Contract-first: the
+sema admission table
 does not admit `quat`/`qi`/`qj`/`qk`/`Dual`/`Clifford` names yet, so
 `.emath` models calling them refuse with the standard
 unknown-function diagnostic until the admission-table follow-up (the
@@ -20,7 +20,7 @@ qi, qj, qk                - named basis constants (admission follow-up)
 
 `1 + 2i + 3j + 4k` therefore does NOT parse as a quaternion (or as a
 complex literal; `j`/`k` are not complex): the negative control is a
-PARSE-level refusal, exactly the collision-freedom the bead requires.
+PARSE-level refusal, exactly the collision-freedom the requires.
 
 ## Contract
 

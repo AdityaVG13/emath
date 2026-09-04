@@ -1,7 +1,7 @@
 # `std.tensor.softmax`; capability cell contract (authoring draft)
 
-Status: cell machinery implemented in `crates/emath-ir/src/capability.rs`
-(bead `emath-epic-machine-fjxh.3`, CLOSED). This page is the stdlib-side
+Status: cell machinery implemented in `crates/emath-ir/src/capability.rs`.
+This page is the stdlib-side
 contract for authors. It documents data, not a parser keyword; nothing
 here grows a core IR enum variant.
 
@@ -75,8 +75,8 @@ the schema (`use std.kinds.capability`) requires `inputs:`, exactly one
 
 Adding a cell appends to `SemanticPackage::capabilities` and is referenced
 from `ExprNode::Apply` by `CapabilityId`. `ExprNode`, `UnaryOp`,
-`BinaryOp` do not grow; the diff gate plus the fjxh_1/fjxh_2 negative
-guards hold this. Never add a `Softmax` variant to a core enum.
+`BinaryOp` do not grow; the diff gate plus the negative tests
+guard this. Never add a `Softmax` variant to a core enum.
 
 ## No-claim boundaries
 

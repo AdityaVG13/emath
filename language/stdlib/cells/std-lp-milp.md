@@ -1,6 +1,6 @@
 # `core::lp_milp`; solver nucleus contract (B24 + B36, Phase 6/7 surface)
 
-Status: **solver nucleus landed** (bead `emath-r3-lp-milp-wlif`): deterministic LP
+Status: **solver nucleus landed**: deterministic LP
 simplex, branch-and-bound MILP, and the Pareto-front helper in
 `crates/emath-core/src/linprog.rs`. The `.emath` goal surface (`objectives(pareto):`
 section heads, goal-kind admission, `solve_linear` vs root-`solve` distinction) is the

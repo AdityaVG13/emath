@@ -1,6 +1,6 @@
-# `core::optimization` methods nucleus; continuous advanced methods (xx0x.6)
+# `core::optimization` methods nucleus; continuous advanced methods
 
-Status: **Newton + BFGS engines landed** (bead `emath-xx0x.6`, emath-core
+Status: **Newton + BFGS engines landed** (emath-core
 reference nucleus). The admitted `minimize`/`maximize` goal surface
 (pure Newton + quadratic penalty, exec-ir lane) is unchanged; goal-
 surface METHOD SELECTION over this nucleus is the declared wiring
@@ -33,7 +33,7 @@ the achieved `‖∇f‖_∞`, and the iterations spent.
   `constrained-opt.emath`): the inequality there is approached, not a
   hard feasible projection; that honesty label carries over until the
   constrained methods land.
-- Reverse-mode AD (xx0x.1 `grad()`, exec-ir lane) is the production
+- Reverse-mode AD (`grad()`) is the production
   gradient provider; the nucleus takes analytic or AD closures through
   the same closure seam. Finite-difference Hessians (the exec-ir path)
   are labeled FD wherever used.
@@ -48,10 +48,10 @@ no randomness anywhere.
 
 ## No-claim boundaries
 
-- No SDP/SOCP claim (domain-phased, per the bead). No MPC (dynamics
+- No SDP/SOCP claim (domain-phased, per the ). No MPC (dynamics
   domain). No MILP here (B24's `core::lp_milp` owns discrete; the two
   cells cross-link instead of overlapping).
-- Certificates/duality depth belongs with the domain epic + LP bead:
+- Certificates/duality depth belongs with the domain epic + LP:
   `kkt_residual` is a residual, not a duality certificate.
 - Mutation-disclosed envelope note: for the PSD systems this nucleus
   reaches productively, partial pivoting is a standard-choice

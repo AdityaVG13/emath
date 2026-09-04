@@ -1,0 +1,106 @@
+package probability.bayes.laws
+
+# Discrete Bayesian inference on finite grids: the law of total
+# probability, the discrete posterior update, and the odds form. Every
+# test value is dyadic so the arithmetic is exact at the f64 carrier.
+# No prior-selection doctrine and no decision rule is claimed here.
+
+emath law LawOfTotalProbability:
+    about:
+        summary: "The evidence (total probability of the data) is the prior-weighted sum of the hypothesis likelihoods."
+    assumptions:
+        assume: "prior and likelihood describe the same finite hypothesis set and both masses total one."
+    domain:
+        name: "discrete Bayesian inference"
+    provenance:
+        source: "Classical law of total probability"
+    citations:
+        cite: "P(D) = sum_i P(H_i) P(D|H_i)"
+    inputs:
+        prior: Vector[2]
+        likelihood: Vector[2]
+    outputs:
+        evidence: Float64
+    definitions:
+        evidence = prior[0] * likelihood[0] + prior[1] * likelihood[1]
+    goals:
+        evaluate <evidence>:
+            produce rust.library
+    evidence:
+        claim <finite_total_probability_slice>:
+            statement: "Only the declared two-hypothesis total-probability sum is evaluated."
+            require positive_probability
+            level E2
+    tests:
+        example <dyadic>:
+            given prior = [0.5, 0.5]
+            given likelihood = [0.75, 0.25]
+            expect evidence == 0.5
+
+emath law DiscreteBayesPosterior:
+    about:
+        summary: "The discrete posterior is the prior-likelihood product renormalized by the evidence."
+    assumptions:
+        assume: "prior and likelihood describe the same finite hypothesis set; the evidence (total probability of the data) is positive."
+    domain:
+        name: "discrete Bayesian inference"
+    provenance:
+        source: "Thomas Bayes, posthumous essay (1763)"
+    citations:
+        cite: "P(H_i|D) = P(H_i) P(D|H_i) / P(D)"
+    inputs:
+        prior: Vector[2]
+        likelihood: Vector[2]
+    outputs:
+        evidence: Float64
+        posterior: Vector[2]
+    definitions:
+        evidence = prior[0] * likelihood[0] + prior[1] * likelihood[1]
+        posterior = [prior[0] * likelihood[0] / evidence, prior[1] * likelihood[1] / evidence]
+    goals:
+        evaluate <posterior>:
+            produce rust.library
+    evidence:
+        claim <discrete_posterior_slice>:
+            statement: "Only the declared two-hypothesis Bayes update is evaluated; the carrier is f64 with dyadic test values, not an exact rational measure."
+            require positive_evidence
+            level E2
+    tests:
+        example <dyadic>:
+            given prior = [0.5, 0.5]
+            given likelihood = [0.75, 0.25]
+            expect posterior == [0.75, 0.25]
+
+emath law BayesOddsUpdate:
+    about:
+        summary: "Posterior odds equal prior odds times the likelihood ratio (Bayes factor)."
+    assumptions:
+        assume: "All quantities are positive; the likelihood ratio compares the data under the two hypotheses."
+        require prior_odds > 0
+        require likelihood_ratio > 0
+    domain:
+        name: "discrete Bayesian inference"
+    provenance:
+        source: "Classical odds form of Bayes' theorem"
+    citations:
+        cite: "odds(H|D) = odds(H) * P(D|H_1)/P(D|H_2)"
+    inputs:
+        prior_odds: Float64
+        likelihood_ratio: Float64
+    outputs:
+        posterior_odds: Float64
+    definitions:
+        posterior_odds = prior_odds * likelihood_ratio
+    goals:
+        evaluate <posterior_odds>:
+            produce rust.library
+    evidence:
+        claim <odds_form_slice>:
+            statement: "Only the declared multiplicative odds update is evaluated."
+            require positive_evidence
+            level E2
+    tests:
+        example <canonical>:
+            given prior_odds = 1.0
+            given likelihood_ratio = 4.0
+            expect posterior_odds == 4.0

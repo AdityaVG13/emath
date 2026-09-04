@@ -1,6 +1,6 @@
 # `std.signal`; discrete signals over declared sampling
 
-Status: std-layer package (bead `emath-r3-signal-z2yt`, Phase 13),
+Status: std-layer package (Phase 13),
 implemented in `crates/emath-core/src/signal.rs`. The reference
 transform is the DIRECT O(n^2) DFT; FFT is a provider behind a
 contract, never core.
@@ -58,7 +58,7 @@ fence, not silently mixed in.
 
 - **No `.emath` surface**: a `signal` binder/declaration kind would
   extend the tree/binder surface; that design belongs to the
-  measures/transforms lane (bead r2mt, which also gates this bead's
+  measures/transforms work (which also gates this
   claim edge); BLOCKED there.
 - **No resampling operator** yet (rate-world conversion is refused,
   not performed).

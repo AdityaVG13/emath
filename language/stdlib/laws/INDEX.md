@@ -56,6 +56,12 @@ Source: [`probability-statistics.emath`](probability-statistics.emath)
 | Shannon coding theorems | `BinarySelfInformationContribution` | Computes one finite binary entropy term; no channel-capacity theorem claimed |
 | Law of large numbers |; | Deferred until independence and convergence evidence are executable |
 
+Additional wave-16 sources (capability-cell law packs):
+
+- [`probability-markov-chains.emath`](probability-markov-chains.emath) — `probability.markov.laws`: 4 laws.
+- [`probability-monte-carlo.emath`](probability-monte-carlo.emath) — `probability.montecarlo.laws`: 2 laws.
+- [`probability-bayes-grid.emath`](probability-bayes-grid.emath) — `probability.bayes.laws`: 3 laws.
+
 ## `analysis::laws`
 
 Source: [`analysis.emath`](analysis.emath)

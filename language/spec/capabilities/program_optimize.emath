@@ -1,0 +1,63 @@
+# Program-carrier optimization cutover. The two pure Value-ABI kernels
+# below carry the representable slice of the Optimize/SampleLimit laws
+# (Newton on ∇f = 0 with a finite-difference Hessian, and geometric-
+# approach limit sampling) over authored reference programs and an
+# explicit Float64 environment, replacing the retired domain-named
+# expression-form ops. Worldful goal plumbing stays the legacy authority
+# of the optimize goal form.
+#
+# NOTE (central normalization): the semantic_hash fields below are
+# authorized nonzero placeholders in the program-solve family idiom
+# (dispatch emath:prod0904:p3:program-optimize-limit:1); the central
+# normalization pass pins the real hashes and regenerates the language
+# image.
+
+emath feature ProgramScalarOptimize:
+    schema: "emath.feature-capsule"
+    feature_id: "std.capability.program.optimize"
+    semantic_hash: "sha256:c22007602ec30637a41a17c38bb065fb3ed845c4b9f875f3f2304e2f247bd0a5"
+    class: "capability"
+    maturity: "stable"
+    summary: "Newton stationary point of an authored Float64 program with typed curvature laws"
+    source: "language.reference.goals-requests-strategies-and-resolution"
+    surface: "program_optimize(program, environment, var_indices, maximize, learning_rate, tolerance, max_iter)"
+    semantics: "kernel=program-optimize;arity=7;inputs=Program,Vector<Float64>,Vector<Float64>,Bool,Float64,Float64,I64;output=Float64;diagnostic=E-TYPE-012"
+    exactness: "deterministic strict-f64 Newton on ∇f = 0: stationarity return, vanished-Hessian / wrong-curvature / empty-vars / budget refusals keep the eval_flow law detail strings verbatim; the kernel gradient is central finite differences (the dual gradient is unreachable at the kernel ABI), the Hessian stays the law's forward difference of the gradient"
+    effects: "pure"
+    worlds: "std.world.calculus"
+    providers: "n/a(local-reference | program optimize kernel)"
+    artifacts: "value,diagnostic"
+    reference: "authored"
+    conformance: "positive:stationarity-quadratic;negative:wrong-curvature,hessian-vanished,nonconvergence;mutation:tolerance-comparison"
+    migration: "legacy-active-dual-run -> capsule-active;authority-receipt:program-optimize-limit;rollback:scoped"
+    authority_target: "capsule-active"
+    presentation: "aliases=optimize_program"
+    agent: "owners=language/spec/capabilities/program_optimize.emath;hazards=stationarity-fabrication,curvature-sign,index-range,budget;checks=pending-verification-dispatch"
+    edge: "requires_world -> std.world.calculus"
+    projection: "semantics -> provided"
+    projection: "reference -> generated"
+
+emath feature ProgramSampledLimit:
+    schema: "emath.feature-capsule"
+    feature_id: "std.capability.program.sample-limit"
+    semantic_hash: "sha256:6651dc6b72e82f2905504bedb301ddfea9babf4dafa0756d60560bba2d5faa5f"
+    class: "capability"
+    maturity: "stable"
+    summary: "Geometric-approach numerical limit of an authored Float64 program"
+    source: "language.reference.goals-requests-strategies-and-resolution"
+    surface: "program_sample_limit(program, environment, var_index, target, direction)"
+    semantics: "kernel=program-sample-limit;arity=5;inputs=Program,Vector<Float64>,I64,Float64,Float64;output=Float64;diagnostic=E-TYPE-012"
+    exactness: "deterministic strict-f64 geometric schedule 1e-1..1e-12 with direction 0 two-sided / 1 above / -1 below; first 1%-convergent finite pair returns, else the last finite sample, else the typed no-finite-values refusal"
+    effects: "pure"
+    worlds: "std.world.calculus"
+    providers: "n/a(local-reference | program sample-limit kernel)"
+    artifacts: "value,diagnostic"
+    reference: "authored"
+    conformance: "positive:geometric-pair-convergence;negative:no-finite-values,nonnegative-index;mutation:convergence-epsilon"
+    migration: "legacy-active-dual-run -> capsule-active;authority-receipt:program-optimize-limit;rollback:scoped"
+    authority_target: "capsule-active"
+    presentation: "aliases=sample_limit"
+    agent: "owners=language/spec/capabilities/program_optimize.emath;hazards=sampling-schedule,index-range,nonfinite-samples;checks=pending-verification-dispatch"
+    edge: "requires_world -> std.world.calculus"
+    projection: "semantics -> provided"
+    projection: "reference -> generated"

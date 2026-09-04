@@ -1,6 +1,6 @@
 # `std.stochastic`; seed identity, named streams, replayable randomness
 
-Status: thin contract slice of `emath-gap-stochastic-vnqo`, implemented
+Status: thin contract slice of, implemented
 in `crates/emath-core/src/stochastic.rs`. This is the CONTRACT layer
 (what any stochastic construct must satisfy to be admissible); the
 distribution semantics (world meanings for `Normal(mu, sigma)` and
@@ -58,7 +58,7 @@ reproduce its run is not a receipt.
   and receives its seed, and the byte-identical e2e replay under two
   parallelism levels, land with the goal/simulate lanes.
 - **No cross-platform stream equality proof** (rides the
-  numeric-truth/platform-matrix beads); the u32 arithmetic here is
+  numeric-truth/platform-matrix ); the u32 arithmetic here is
   integer-exact, so the stream itself is platform-independent by
   construction.
 - **No `language/spec/` split-out yet**; the contract is documented
@@ -79,7 +79,7 @@ instead fails the bridge test.
 
 ## Consumers
 
-- `emath-xx0x.5` (probability nucleus) is the first distribution lane
+- (probability nucleus) is the first distribution lane
   built on this seam: Normal/Uniform/Bernoulli sampling derives its
   local generator seed from the declared counter-based stream, with
   bit-identical replay and path splitting; runnable example

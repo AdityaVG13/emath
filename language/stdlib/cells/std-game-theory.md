@@ -1,13 +1,13 @@
-# `core::game_theory`; finite-carrier game claims (B41, t9m8)
+# `core::game_theory`; finite-carrier game claims (B41)
 
-Status: **emath-core reference nucleus landed** (bead
-`emath-r3-game-theory-t9m8`). Contract-first: the sema admission table
+Status: **emath-core reference nucleus landed** (
+). Contract-first: the sema admission table
 does not admit game names yet (`BimatrixGame`, `nash`, …), so `.emath`
 models calling them refuse with the standard unknown-function
 diagnostic until the admission-table follow-up (special-functions seam
 pattern).
 
-## The design stance (per the bead)
+## The design stance (per the )
 
 **Nash equilibrium is a CHECKABLE CLAIM, not a computation.** The
 checker verifies a claimed profile; "is this profile an equilibrium?"
@@ -24,8 +24,8 @@ contract and a declared follow-up; conflating the two is how
   (row/column payoff matrices).
 - **C8** (`exists s2 in S`): the binder grammar already owns `in` for
   quantifier carriers (`exists i in 0..n`), so NO parser change was
-  needed; the bead's parser half is already satisfied by the
-  quantifier slice; this bead lands the game-theory CARRIER.
+  needed; the parser half is already satisfied by the
+  quantifier slice; this lands the game-theory CARRIER.
 
 ## Contract
 
@@ -49,7 +49,7 @@ contract and a declared follow-up; conflating the two is how
   Nash's theorem territory and a search computation; both refuse here
   by not existing).
 - Zero-sum minimax, subgame perfection, and mechanism design are
-  outside this bead's scope (P3 thin slice).
+  outside this scope (P3 thin slice).
 
 ## Implementation
 

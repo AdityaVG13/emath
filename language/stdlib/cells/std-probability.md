@@ -1,7 +1,7 @@
 # `core::probability`; information-theory slice (B22; B10 world-gated)
 
 Status: **information-theory contracts + reference implementations
-landed** (bead `emath-r3-prob-info-2z5e`). The names below are
+landed** . The names below are
 contract-first: the sema call table does not admit them yet, so
 `.emath` models calling them refuse with the standard unknown-function
 diagnostic until the admission-table follow-up (special-functions seam
@@ -29,7 +29,7 @@ is consulted anywhere in this cell.
 
 `x: Random<Real> ~ Normal(0, 1)` requires (a) a `Random<T>` type
 carrier and (b) the giry-probability world class
-(measure-theoretic probability); the bead's own WORLD-DEPENDENT flag.
+(measure-theoretic probability); the own WORLD-DEPENDENT flag.
 The `~` glyph ownership is already settled (C7/X5: `~` = distribution
 tag, `~~` = asymptotics, `not`/reserved `!` = negation) and is pinned
 by the surface tests. The random-variable input row needs a

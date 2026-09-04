@@ -1,7 +1,7 @@
 # `core::special_functions`; package contract (05 section 3.3 #1, Phase 11)
 
 Status: **contracts, strict-f64 reference implementations, and `.emath`
-reference-VM execution landed** (bead `emath-r3-spec-funcs-s54f`).
+reference-VM execution landed**.
 Each function has a `<name>_error_bound` companion. Generated
 `rust.library` artifacts embed the same strict-f64 evaluator and its
 declared bounds, so the reference VM and generated code share one

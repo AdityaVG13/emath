@@ -1,0 +1,106 @@
+package combinatorics.binomial.laws
+
+# Binomial coefficients as exact integer arithmetic: the factorial form,
+# Pascal's identity, and symmetry. The carrier is Int (exact i64 fold for
+# factorial); every test value is an exact integer, so all assertions are
+# exact. No asymptotic or analytic claim is attached.
+
+emath law BinomialFactorialForm:
+    about:
+        summary: "The binomial coefficient is the factorial form C(n,k) = n! / (k! (n-k)!)."
+    assumptions:
+        assume: "n and k are nonnegative integers with 0 <= k <= n small enough that n! fits the exact i64 fold (n <= 20)."
+    domain:
+        name: "enumerative combinatorics"
+    provenance:
+        source: "Classical binomial coefficient (factorial form)"
+    citations:
+        cite: "C(n,k) = n! / (k! (n-k)!)"
+    inputs:
+        n: Int
+        k: Int
+    outputs:
+        binomial: Int
+    definitions:
+        binomial = factorial(n) / (factorial(k) * factorial(n - k))
+    goals:
+        evaluate <binomial>:
+            produce rust.library
+    evidence:
+        claim <factorial_form_slice>:
+            statement: "Only the factorial-form binomial for small exact n is evaluated; no asymptotic or overflow claim beyond n <= 20."
+            require stated_assumption
+            level E2
+    tests:
+        example <row_five>:
+            given n = 5
+            given k = 2
+            expect binomial == 10
+
+emath law PascalIdentity:
+    about:
+        summary: "Pascal's identity: C(n,k) equals C(n-1,k-1) plus C(n-1,k)."
+    assumptions:
+        assume: "n >= 1 and 1 <= k <= n-1, both small enough for exact factorial arithmetic."
+    domain:
+        name: "enumerative combinatorics"
+    provenance:
+        source: "Blaise Pascal, Traite du triangle arithmetique (1665)"
+    citations:
+        cite: "C(n,k) = C(n-1,k-1) + C(n-1,k)"
+    inputs:
+        n: Int
+        k: Int
+    outputs:
+        pascal_check: Bool
+    definitions:
+        lhs = factorial(n) / (factorial(k) * factorial(n - k))
+        rhs = factorial(n - 1) / (factorial(k - 1) * factorial(n - k)) + factorial(n - 1) / (factorial(k) * factorial(n - 1 - k))
+        pascal_check = (lhs == rhs)
+    goals:
+        evaluate <pascal_check>:
+            produce rust.library
+    evidence:
+        claim <pascal_identity_slice>:
+            statement: "Only the declared Pascal recurrence equality is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <row_five>:
+            given n = 5
+            given k = 2
+            expect pascal_check == true
+
+emath law BinomialSymmetry:
+    about:
+        summary: "Binomial coefficients are symmetric: C(n,k) = C(n,n-k)."
+    assumptions:
+        assume: "n >= 0 and 0 <= k <= n, small enough for exact factorial arithmetic."
+    domain:
+        name: "enumerative combinatorics"
+    provenance:
+        source: "Classical binomial coefficient symmetry"
+    citations:
+        cite: "C(n,k) = C(n,n-k)"
+    inputs:
+        n: Int
+        k: Int
+    outputs:
+        symmetry_check: Bool
+    definitions:
+        lhs = factorial(n) / (factorial(k) * factorial(n - k))
+        rhs = factorial(n) / (factorial(n - k) * factorial(n - (n - k)))
+        symmetry_check = (lhs == rhs)
+    goals:
+        evaluate <symmetry_check>:
+            produce rust.library
+    evidence:
+        claim <symmetry_slice>:
+            statement: "Only the declared symmetry equality is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <row_five>:
+            given n = 5
+            given k = 2
+            expect symmetry_check == true

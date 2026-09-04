@@ -1,0 +1,115 @@
+package combinatorics.derangements.laws
+
+# Inclusion-exclusion censuses over finite sets: the three-set union
+# census and the derangement census in both its alternating
+# inclusion-exclusion form and its two-term recurrence form. Exact i64
+# integer arithmetic throughout; no asymptotic or rounding claim is
+# attached.
+
+emath law InclusionExclusionThreeSets:
+    about:
+        summary: "The union of three finite sets is the sum of the singletons minus the pairwise intersections plus the triple intersection."
+    assumptions:
+        assume: "The seven counts are the Venn-cell totals of the same three finite sets."
+    domain:
+        name: "inclusion-exclusion census"
+    provenance:
+        source: "Classical inclusion-exclusion principle (de Moivre, 1718 tradition)"
+    citations:
+        cite: "|A∪B∪C| = Σ|A_i| - Σ|A_i∩A_j| + |A∩B∩C|"
+    inputs:
+        single_a: Int
+        single_b: Int
+        single_c: Int
+        pair_ab: Int
+        pair_ac: Int
+        pair_bc: Int
+        triple: Int
+    outputs:
+        union_count: Int
+    definitions:
+        union_count = single_a + single_b + single_c - pair_ab - pair_ac - pair_bc + triple
+    goals:
+        evaluate <union_count>:
+            produce rust.library
+    evidence:
+        claim <three_set_census_slice>:
+            statement: "Only the declared three-set inclusion-exclusion census is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <census_counts>:
+            given single_a = 8
+            given single_b = 6
+            given single_c = 4
+            given pair_ab = 3
+            given pair_ac = 2
+            given pair_bc = 2
+            given triple = 1
+            expect union_count == 12
+
+emath law DerangementAlternatingCensus:
+    about:
+        summary: "The four-element derangement count is the alternating inclusion-exclusion sum 4! - 4!/1! + 4!/2! - 4!/3! + 4!/4! = 24 - 24 + 12 - 4 + 1 = 9."
+    assumptions:
+        assume: "Fixed four-element shape: the five terms are n!/k! for k = 0..4 with n = 4."
+        require n == 4
+    domain:
+        name: "inclusion-exclusion census"
+    provenance:
+        source: "Classical derangement enumeration (de Montmort, 1708); Pierre Remond de Montmort's problème des rencontres"
+    citations:
+        cite: "D_n = Σ_k (-1)^k C(n,k)(n-k)! = Σ_k (-1)^k n!/k!"
+    inputs:
+        n: Int
+    outputs:
+        d_n: Int
+    definitions:
+        d_n = factorial(n) - factorial(n) / factorial(1) + factorial(n) / factorial(2) - factorial(n) / factorial(3) + factorial(n) / factorial(4)
+    goals:
+        evaluate <d_n>:
+            produce rust.library
+    evidence:
+        claim <alternating_census_slice>:
+            statement: "Only the declared five-term alternating census at the fixed four-element shape is evaluated; no asymptotic or rounding claim is attached."
+            require stated_assumption
+            level E2
+    tests:
+        example <four_elements>:
+            given n = 4
+            expect d_n == 9
+
+emath law DerangementRecurrenceStep:
+    about:
+        summary: "The derangement recurrence D(m) = (m-1) times the sum of the two previous elements iterated from the fixed seed row produces the census sequence."
+    assumptions:
+        assume: "Seeds D_0 = 1 and D_1 = 0 with m >= 2; the iteration is unrolled to the fifth element."
+    domain:
+        name: "derangement census"
+    provenance:
+        source: "Classical derangement recurrence (de Montmort, 1708)"
+    citations:
+        cite: "D(m) = (m-1) times the sum of D(m-1) and D(m-2)"
+    inputs:
+        seed0: Int
+        seed1: Int
+    outputs:
+        d5: Int
+    definitions:
+        d2 = 1 * (seed1 + seed0)
+        d3 = 2 * (d2 + seed1)
+        d4 = 3 * (d3 + d2)
+        d5 = 4 * (d4 + d3)
+    goals:
+        evaluate <d5>:
+            produce rust.library
+    evidence:
+        claim <recurrence_slice>:
+            statement: "Only the declared recurrence iteration to the fifth element is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <fifth_element>:
+            given seed0 = 1
+            given seed1 = 0
+            expect d5 == 44

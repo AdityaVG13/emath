@@ -1,6 +1,6 @@
 # `std.geometry.cartesian3`; 3D geometry over the generic surface
 
-Status: language-layer package (bead `emath-talo`, slice 2 of the
+Status: language-layer package (slice 2 of the
 geometry pack). Geometry is EXPRESSED IN `.emath` over the existing
 generic Vector/Matrix/Tensor operations; zero geometry-specific core
 enums, crates, or parser branches. The named primitives `cross`,
@@ -49,7 +49,7 @@ pins; the named-call surface is pinned in
 - Plane: `signed_distance(p) = dot(p - point, normal)` (unit normal
   contract); `contains(p) = signed_distance == 0`.
 - Ray3D: `intersect_plane` / `intersect_sphere` return an Option; the
-  real `Option<T>` surface is SilverMaple's land; until then the
+  real `Option<T>` surface is future work; until then the
   discriminant/nearest-positive-root semantics are the pinned formulas
   with the `Option` no-claim (E-TYPE-010 today).
 - BoundingBox3D: `contains(p)` per axis `min <= p <= max`; `overlap`

@@ -1,10 +1,9 @@
 # `std.approximation.laws`; stdlib slice contract
 
-Status: std-layer laws package (bead `emath-r3-approx-std-lib-lzu1`).
+Status: std-layer laws package.
 The approximation machinery itself is language surface: the `≈`/`~=`
 operator, `within rtol/atol` tolerance clauses, and claim-context
-admission are compiler features (bead `emath-r3-approx-operator-depc`,
-CLOSED). This package is authored mathematics on top of that surface;
+admission are compiler features (shipped). This package is authored mathematics on top of that surface;
 no core IR enum variants, no parser keywords.
 
 ## Scope

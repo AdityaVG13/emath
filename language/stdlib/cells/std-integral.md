@@ -1,6 +1,6 @@
 # `std.integral`; declared measure worlds and explicit-measure integration
 
-Status: std-layer slice of `emath-r3-measures-transforms-r2mt`
+Status: std-layer slice of the measures-transforms work
 (B20 measure worlds + the B25 declared-kernel core), implemented in
 `crates/emath-core/src/integral.rs`. The measure is a WORLD PARAMETER,
 never ambient; Lebesgue and discrete are different worlds; exactness

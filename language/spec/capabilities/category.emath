@@ -1,0 +1,58 @@
+# Capsule authority for finite-category certification: carrier law
+# certification and diagram commutativity over the dense composition
+# table. Rust descriptors expose only carrier-level kernels; names,
+# contracts, certificates, diagnostics, and refusal fences are authored
+# here.
+#
+# NOTE (central normalization): the semantic_hash fields below are the
+# authorized all-zero placeholders (dispatch emath:prod0904:p3:category-kernels);
+# the central normalization pass pins the real hashes and regenerates the
+# language image.
+
+emath feature CategoryCheck:
+    schema: "emath.feature-capsule"
+    feature_id: "std.capability.category.check"
+    semantic_hash: "sha256:214024f9f18145852cca12af6f259980544ebc656ba8b12676d15c980785bbed"
+    class: "capability"
+    maturity: "stable"
+    summary: "Certify a finite category over the dense composition-table carrier"
+    source: "language.reference.standard-library-constitution"
+    surface: "category_check(dom, cod, comp)"
+    semantics: "kernel=finite-category-certification;arity=3;inputs=Vector<Float64>,Vector<Float64>,Matrix<Float64>;output=Bool;diagnostic=E-CAT"
+    exactness: "bit-identical law certification; every failure is a typed E-CAT-001..007 refusal, never a silent false"
+    effects: "pure"
+    worlds: "std.world.default.certified_numeric"
+    providers: "n/a(local-reference | generic category certification kernel)"
+    artifacts: "source,value,diagnostic,certification"
+    reference: "authored"
+    conformance: "positive:z3_certifies;negative:composition_identity_associativity_refusals;mutation:skipped-associativity"
+    migration: "legacy-active-dual-run -> capsule-active;authority-receipt:category;rollback:scoped"
+    authority_target: "capsule-active"
+    presentation: "aliases=category_check,std.category.check"
+    agent: "owners=language/spec/capabilities/category.emath;hazards=shape,finiteness,associativity-bound;checks=finite_categories"
+    edge: "requires_world -> std.world.default.certified_numeric"
+    projection: "semantics -> provided"
+
+emath feature CategoryDiagramCommutative:
+    schema: "emath.feature-capsule"
+    feature_id: "std.capability.category.commutative"
+    semantic_hash: "sha256:0d5867cdb7ae37a49fb73f64b60a3eede6a77e082a1cf2e0b61ba588de767653"
+    class: "capability"
+    maturity: "stable"
+    summary: "Per-face commutativity mask over certified face path-pairs"
+    source: "language.reference.standard-library-constitution"
+    surface: "diagram_commutative(dom, cod, comp, faces)"
+    semantics: "kernel=diagram-commutativity-mask;arity=4;inputs=Vector<Float64>,Vector<Float64>,Matrix<Float64>,Vector<Float64>;output=Vector<Float64>;diagnostic=E-CAT"
+    exactness: "bit-identical per-face mask in face order; the carrier certifies first, never commutes over an unverified table"
+    effects: "pure"
+    worlds: "std.world.default.certified_numeric"
+    providers: "n/a(local-reference | generic face path-pair kernel)"
+    artifacts: "source,value,diagnostic,commutativity-certificate"
+    reference: "authored"
+    conformance: "positive:z3_square_and_triangle_faces;negative:path_geometry_refusals;mutation:depth-first-paths"
+    migration: "legacy-active-dual-run -> capsule-active;authority-receipt:category;rollback:scoped"
+    authority_target: "capsule-active"
+    presentation: "aliases=diagram_commutative,std.category.commutative"
+    agent: "owners=language/spec/capabilities/category.emath;hazards=face-encoding,path-geometry;checks=finite_categories"
+    edge: "requires_world -> std.world.default.certified_numeric"
+    projection: "semantics -> provided"

@@ -1,7 +1,7 @@
 # `core::number_theory` + `core::combinatorics`; package contracts (05 section 3.3 #3 + #4)
 
 Status: **contracts + exact reference implementations landed**
-(bead `emath-r3-numtheory-comb-60ke`). `factorial` and `congruence`
+. `factorial` and `congruence`
 already admit end-to-end (sema call table → EMIR `Factorial` /
 `Congruence` ops); the remaining names below are contract-first;
 `.emath` models calling them refuse with the standard unknown-function
@@ -26,6 +26,24 @@ special-functions seam pattern).
 | `binomial(n, k)` | `u64 × u64 → i128` | multiplicative identity with symmetry reduction `k → min(k, n−k)`; stepwise division is exact at every index (no rounding ever). `k > n` is the empty choice `0`; a step past the carrier refuses (`C(200, 100)` does). |
 | `Permutation` | finite carrier of `0..n` | C10: the const-generic `Permutation<8>` is underivable; the constructor is the runtime value form `Permutation::new(n)`; the const-generic surface is deferred until value generics land. `from_order` validates the bijection (duplicates / out-of-range refuse); `apply(i)` is the source index feeding position `i`; `successor()` is the lexicographic continuation and returns `None` (never a wrap) at the last ordering. |
 | `enumerate_from(start, budget)` | budgeted walk | lexicographic enumeration starting AT `start`, up to `budget` items; the continuation is the next unvisited permutation or `None` at exhaustion. Batches partition the walk; resuming never repeats or skips. |
+
+## Hamming distance (capsule-active exact binding)
+
+`hamming_distance(left, right)` — `Vector × Vector → i64`. Counts the
+positions where the two vectors differ, comparing elements bit-exactly
+(f64 `to_bits`, so `-0.0` and `+0.0` differ). Equal lengths are
+required; unequal lengths refuse with the typed `unequal-length`
+diagnostic (kernel error `hamming_distance: vectors must have equal
+length`).
+
+Authoritative binding: capsule `std.capability.exact.hamming-distance`
+in `language/spec/capabilities/exact/number-theory.emath` is
+capsule-active and binds the domain-neutral `hamming-distance` native
+kernel (arity 2, `(Vector,Vector)->Int`). Execution runs through the
+`ApplyCapability` seam on the installed Language Distribution; the
+retired `EmirOp::HammingDistance` variant no longer exists. Conformance:
+`rs_code_pipeline_evaluates` (self-distance 0 and the Singleton bound)
+plus the signed-zero bit-exactness mutation probe.
 
 ## Provider seam
 

@@ -1,6 +1,6 @@
 # `std.geometry`; geometry types over declared fields (thin slice)
 
-Status: std-layer package (bead `emath-r3-geometry-36a9`, Phase 12),
+Status: std-layer package (Phase 12),
 implemented in `crates/emath-core/src/geometry.rs`. HONEST THIN SLICE:
 the type vocabulary and the exact-rational reference ops are landed;
 the language surface, notation routing, and algorithms are NAMED
@@ -65,7 +65,7 @@ epsilon anywhere.
 
 ## 3D slice; `std.geometry.cartesian3`
 
-The 3D geometry pack (bead `emath-talo`) lives in
+The 3D geometry pack lives in
 `language/stdlib/cells/std-geometry-cartesian3.md` and is expressed as
 inline `.emath` formulas over the generic Vector[3] surface (cross,
 length/normalize/distance, sphere, plane, bounding box, mesh area and

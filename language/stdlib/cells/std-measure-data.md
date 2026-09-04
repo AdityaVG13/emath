@@ -1,8 +1,8 @@
 # `std.measure`; data and measurement types (cell contract)
 
-Status: std-layer data package (bead `emath-r3-measure-data-3w1t`,
-Phase 12), implemented in `crates/emath-core/src/measure.rs`. Extends
-the Phase 2 `Measured<T>` family (bead 21ul): provenance is a FIELD,
+Status: std-layer data package (Phase 12), implemented in
+`crates/emath-core/src/measure.rs`. Extends
+the Phase 2 `Measured<T>` family: provenance is a FIELD,
 not metadata, and participates in identity.
 
 ## The measurement triple
@@ -49,7 +49,7 @@ Typed refusals, never silent repair:
 Affine units (degC, degF) refuse in arithmetic: affine points are not
 addable quantities.
 
-## `series_from_csv`; pure-text CSV time-series import (bead emath-xondg)
+## `series_from_csv`; pure-text CSV time-series import
 
 `series_from_csv(text, time_column, value_column, interpolation,
 extrapolation)` projects a CSV block into an executable `Series` (the
@@ -115,10 +115,10 @@ the `linear`/`refuse` and `clamp` policies.
 ## No-claim boundaries
 
 - NetCDF/HDF adapters and the installable package surface are follow-up
-  slices (this bead is the core data layer + CSV import).
+  slices (this is the core data layer + CSV import).
 - Distribution tags are recorded, not yet propagated (Normal/Uniform/
   Lognormal distinction is metadata on the triple).
 - `series_from_csv` is the pure-text bridge above; the parser/sema
-  `Measured` literal path (21ul/jzej) remains separate.
+  `Measured` literal path (21ul/) remains separate.
 - Correlated-uncertainty propagation (covariances) is out of scope;
   `add_independent` is exactly what its name says.

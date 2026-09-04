@@ -1,0 +1,38 @@
+# Named unit catalog authority. Unit NAMES, aliases, dimension signatures,
+# scale factors, affine offsets, and family membership live here as capsule
+# data. Rust retains only the generic dimensional-vector algebra and parses
+# this table; it declares no named unit of its own. Currencies and time
+# zones stay a typed refusal (E-UNIT-CURRENCY-1): socially versioned data
+# belongs to packages, never the nucleus.
+#
+# Encoding (inside `semantics`, `;`-free so the field grammar stays flat):
+#   catalog  = entries separated by `|`; entry = name~dims~scale~offset~family
+#              with dims a comma list in base order (m,kg,s,A,K,mol,cd);
+#              scale/offset are nearest-f64 decimal encodings, offset
+#              PRE-SCALE: SI = (value + offset) * scale.
+#   aliases  = `alias>canonical` pairs separated by `|` (identity aliases).
+#   refusals = `|`-separated spellings refused with E-UNIT-CURRENCY-1.
+
+emath feature UnitCatalog:
+    schema: "emath.feature-capsule"
+    feature_id: "std.capability.units.catalog"
+    semantic_hash: "sha256:b05937e1c125dd44505b5d5a40f7a883aad6202dbff47c851108be181abfc894"
+    class: "capability"
+    maturity: "stable"
+    summary: "The named unit catalog: names, dimension signatures, scales, affine offsets, families"
+    source: "language.reference.types.units"
+    surface: "unit literals and [unit ...] expressions"
+    semantics: "resolution=alias-chain-then-exact-then-si-prefix;offsets=pre-scale(SI=(value+offset)*scale);diagnostic=E-UNIT-104;catalog=s~0,0,1,0,0,0,0~1~0~si|ms~0,0,1,0,0,0,0~0.001~0~si|m~1,0,0,0,0,0,0~1~0~si|km~1,0,0,0,0,0,0~1000~0~si|kg~0,1,0,0,0,0,0~1~0~si|K~0,0,0,0,1,0,0~1~0~si|degC~0,0,0,0,1,0,0~1~273.15~si|degF~0,0,0,0,1,0,0~0.5555555555555556~459.66999999999996~si|L~3,0,0,0,0,0,0~0.001~0~si|cal~2,1,-2,0,0,0,0~4.184~0~si|cal_IT~2,1,-2,0,0,0,0~4.1868~0~si|N~1,1,-2,0,0,0,0~1~0~si|Hz~0,0,-1,0,0,0,0~1~0~si|W~2,1,-3,0,0,0,0~1~0~si|B~0,0,0,0,0,0,0~1~0~info|MiB~0,0,0,0,0,0,0~1048576~0~info|A~0,0,0,1,0,0,0~1~0~si|mol~0,0,0,0,0,1,0~1~0~si|C~0,0,1,1,0,0,0~1~0~si|V~2,1,-3,-1,0,0,0~1~0~si|J~2,1,-2,0,0,0,0~1~0~si|Pa~-1,1,-2,0,0,0,0~1~0~si|bar~-1,1,-2,0,0,0,0~100000~0~si|eV~2,1,-2,0,0,0,0~1.602176634e-19~0~si|min~0,0,1,0,0,0,0~60~0~si|g~0,1,0,0,0,0,0~0.001~0~si|degR~0,0,0,0,1,0,0~0.5555555555555556~0~si|rad~0,0,0,0,0,0,0~1~0~si|deg~0,0,0,0,0,0,0~0.017453292519943295~0~si|arcmin~0,0,0,0,0,0,0~0.0002908882086657216~0~si|arcsec~0,0,0,0,0,0,0~4.84813681109536e-06~0~si|grad~0,0,0,0,0,0,0~0.015707963267948967~0~si|turn~0,0,0,0,0,0,0~6.283185307179586~0~si|AU~1,0,0,0,0,0,0~1.495978707e11~0~si|pc~1,0,0,0,0,0,0~3.0856775814913673e16~0~si|ly~1,0,0,0,0,0,0~9.4607304725808e15~0~si|nmi~1,0,0,0,0,0,0~1852~0~si|mi~1,0,0,0,0,0,0~1609.344~0~si|ft~1,0,0,0,0,0,0~0.3048~0~si;aliases=Duration>s|Time>s|Millisecond>ms|Length>m|Kilometre>km|Kilometer>km|Mass>kg|Temperature>K|Celsius>degC|Fahrenheit>degF|liter>L|litre>L|Force>N|Byte>B|Bytes>B|Ampere>A|Mole>mol|Coulomb>C|Volt>V|Joule>J|Pascal>Pa|Minute>min|Gram>g|Rankine>degR|Radian>rad|Degree>deg|Gradian>grad|Revolution>turn|AstronomicalUnit>AU|Parsec>pc|LightYear>ly|NauticalMile>nmi|Mile>mi|Foot>ft;refusals=USD|EUR|GBP|JPY|CNY|CHF|CAD|AUD|INR|RUB|BTC|ETH|UTC|GMT|EST|PST|CST|CET|JST"
+    exactness: "f64 scale/offset literals are the exact nearest-f64 encodings named in the catalog"
+    effects: "pure"
+    worlds: "std.world.real"
+    providers: "n/a(local-reference | capsule data parsed by the generic unit resolver)"
+    artifacts: "source,value,diagnostic"
+    reference: "authored"
+    conformance: "positive:capsule_entries_resolve_bit_exact;negative:unknown_unit_refused,currency_policy_refusal;mutation:hardcoded_rust_entry_drifts"
+    migration: "legacy-active-dual-run -> capsule-active;authority-receipt:domain-science;rollback:scoped"
+    authority_target: "capsule-active"
+    presentation: "aliases=unit,catalog"
+    agent: "owners=language/spec/capabilities/units-catalog.emath;prerequisites=std.type.float64;hazards=offset-order,alias-rebinding,prefix-shadowing;edits=capsule,catalog-data,conformance;checks=domain_science_capsule_cutover"
+    projection: "semantics -> provided"
+    projection: "reference -> generated"

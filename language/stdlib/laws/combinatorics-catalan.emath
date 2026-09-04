@@ -1,0 +1,74 @@
+package combinatorics.catalan.laws
+
+# Catalan numbers: the convolution recurrence step and the closed-form
+# factorial ratio. Every test value is an exact small integer, so the
+# arithmetic is exact at the Int carrier. No asymptotic growth claim is
+# attached.
+
+emath law CatalanRecurrenceStep:
+    about:
+        summary: "The Catalan convolution step C_next = sum of the pairwise products of the seed row evaluates the next table entry."
+        summary: "The Catalan convolution recurrence evaluates the next table entry from the seed row."
+    assumptions:
+        assume: "The seed row C_0..C_3 holds the Catalan values 1, 1, 2, 5."
+    domain:
+        name: "enumerative combinatorics"
+    provenance:
+        source: "Leonhard Euler; the Segner recurrence"
+    citations:
+        cite: "C(m+1) = sum over k of C(k) C(m-k)"
+    inputs:
+        c0: Int
+        c1: Int
+        c2: Int
+        c3: Int
+    outputs:
+        c4: Int
+    definitions:
+        c4 = c0 * c3 + c1 * c2 + c2 * c1 + c3 * c0
+    goals:
+        evaluate <c4>:
+            produce rust.library
+    evidence:
+        claim <convolution_step_slice>:
+            statement: "Only the declared four-term convolution step is evaluated."
+            require stated_assumption
+            level E2
+    tests:
+        example <seeded_step>:
+            given c0 = 1
+            given c1 = 1
+            given c2 = 2
+            given c3 = 5
+            expect c4 == 14
+
+emath law CatalanClosedForm:
+    about:
+        summary: "The Catalan number equals the central binomial coefficient divided by one plus the index."
+    assumptions:
+        assume: "n is a small nonnegative integer; factorial stays within the exact i64 fold range (2n <= 20)."
+    domain:
+        name: "enumerative combinatorics"
+    provenance:
+        source: "Euler and the ballot problem (Bertrand's ballot theorem tradition)"
+    citations:
+        cite: "C_n = C(2n,n)/(n+1)"
+    inputs:
+        n: Int
+    outputs:
+        c_n: Int
+    definitions:
+        binomial = factorial(2 * n) / (factorial(n) * factorial(n))
+        c_n = binomial / (n + 1)
+    goals:
+        evaluate <c_n>:
+            produce rust.library
+    evidence:
+        claim <closed_form_slice>:
+            statement: "Only the declared closed-form evaluation at small n is evaluated; no asymptotic growth claim is attached."
+            require stated_assumption
+            level E2
+    tests:
+        example <fourth_catalan>:
+            given n = 4
+            expect c_n == 14

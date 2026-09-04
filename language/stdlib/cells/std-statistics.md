@@ -1,6 +1,6 @@
 # `std.statistics`; descriptive statistics and estimator contracts
 
-Status: std-layer package (bead `emath-r3-statistics-tpve`, Phase 11),
+Status: std-layer package (Phase 11),
 implemented in `crates/emath-core/src/statistics.rs`. Descriptive
 statistics are honest arithmetic over collections; inference machinery
 (p-values, regression, portfolios) lives in PACKAGES, not core.
