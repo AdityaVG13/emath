@@ -47,9 +47,11 @@ fn bars_get_stronger_with_level() {
         producer: EvidenceKind::Measurement,
         checker: Independence::None,
     };
-    assert!(policy
-        .admissible(EvidenceLevel::E1, "correctness")
-        .contains(&measurement));
+    assert!(
+        policy
+            .admissible(EvidenceLevel::E1, "correctness")
+            .contains(&measurement)
+    );
     assert!(!policy.satisfied_by(
         EvidenceLevel::E5,
         "correctness",
@@ -90,7 +92,9 @@ fn bars_get_stronger_with_level() {
         EvidenceKind::FormalProof,
         Independence::Independent
     ));
-    assert!(!policy
-        .admissible(EvidenceLevel::E4, "correctness")
-        .contains(&e5[0]));
+    assert!(
+        !policy
+            .admissible(EvidenceLevel::E4, "correctness")
+            .contains(&e5[0])
+    );
 }

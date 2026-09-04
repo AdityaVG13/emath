@@ -1,8 +1,8 @@
-//! Bead `emath-r3-sde-control-zxkl` — the SDE kernel surface (external,
+//! — the SDE kernel surface (external,
 //! owned, mutation-sensitive).
 //!
 //! Scalar SDE contract under test (the planted gap: no SDE machinery
-//! existed anywhere before this bead):
+//! existed anywhere before this ):
 //! - **Carrier**: dX = μ(X) dt + σ(X) dW with ASCENDING polynomial
 //!   coefficient carriers (the B28 law): μ(x) = Σ a_i x^i,
 //!   σ(x) = Σ b_i x^i; the empty carrier is the zero polynomial
@@ -15,7 +15,7 @@
 //!   state-dependent noise (σ(x) = σ·x) they differ — the correction
 //!   term is never silently dropped or merged.
 //! - **Noise**: one standard Normal Z per step, drawn deterministically
-//!   from the vnqo contract — the seed maps through
+//! from the contract — the seed maps through
 //!   `local_stream_seed(Seed, root)` into a SplitMix64 state, and each
 //!   Z comes from one Box–Muller pair of `splitmix64_next` uniforms
 //!   (the SAME mapping the established Normal sampler uses). No ambient
@@ -33,8 +33,8 @@
 //! each fail.
 
 use emath_core::stochastic::{Seed, StreamPath, local_stream_seed};
-use emath_rt::stochastic::{SdeError, SdeRule, sde_euler_maruyama};
 use emath_rt::splitmix64_next;
+use emath_rt::stochastic::{SdeError, SdeRule, sde_euler_maruyama};
 
 /// One Uniform[0, 1) from the SplitMix64 state (high 53 bits) — the
 /// spec mapping shared with the established samplers.
@@ -112,8 +112,16 @@ fn sde_ito_matches_spec_recurrence_pinned_seed() {
     let diffusion = [0.0_f64, 0.35]; // σ(x) = 0.35·x
     let zs = spec_zs(SEED_A.to_bits(), STEPS);
     let want = spec_ito(&drift, &diffusion, 1.0, H, &zs);
-    let got = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .expect("ito must run");
+    let got = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .expect("ito must run");
     assert_eq!(got.len(), STEPS + 1, "trajectory includes x0");
     assert_eq!(
         got, want,
@@ -129,9 +137,16 @@ fn sde_stratonovich_matches_heun_recurrence_pinned_seed() {
     let diffusion = [0.0_f64, 0.35];
     let zs = spec_zs(SEED_A.to_bits(), STEPS);
     let want = spec_strat(&drift, &diffusion, 1.0, H, &zs);
-    let got =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-            .expect("stratonovich must run");
+    let got = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .expect("stratonovich must run");
     assert_eq!(got.len(), STEPS + 1);
     assert_eq!(
         got, want,
@@ -147,11 +162,26 @@ fn sde_stratonovich_matches_heun_recurrence_pinned_seed() {
 fn sde_rules_differ_for_state_dependent_noise() {
     let drift = [0.0_f64, 0.25];
     let diffusion = [0.0_f64, 0.35];
-    let ito = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
-    let strat =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let ito = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
+    let strat = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_ne!(ito, strat, "ito and stratonovich must differ (same seed)");
     assert!(
         strat[STEPS] > ito[STEPS],
@@ -167,11 +197,26 @@ fn sde_rules_differ_for_state_dependent_noise() {
 fn sde_rules_agree_for_additive_noise() {
     let drift = [0.0_f64, 0.25];
     let diffusion = [0.5_f64]; // σ(x) = 0.5, σ' = 0
-    let ito = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
-    let strat =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let ito = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
+    let strat = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_eq!(
         ito, strat,
         "additive noise: ito and stratonovich are the same process"
@@ -187,11 +232,26 @@ fn sde_rules_agree_for_additive_noise() {
 fn sde_zero_noise_reduces_to_ode_euler() {
     let drift = [0.0_f64, 0.25];
     let diffusion: [f64; 0] = [];
-    let ito = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
-    let strat =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let ito = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
+    let strat = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_eq!(ito, strat, "zero noise: rules collapse to one ODE path");
     // The explicit Euler ODE recurrence, same evaluation order as the
     // kernel: xᵢ₊₁ = xᵢ + μ(xᵢ)·h.
@@ -217,14 +277,37 @@ fn sde_zero_noise_reduces_to_ode_euler() {
 fn sde_is_deterministic_per_seed() {
     let drift = [0.0_f64, 0.25];
     let diffusion = [0.0_f64, 0.35];
-    let a = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
-    let a_again =
-        sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let a = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
+    let a_again = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_eq!(a, a_again, "same seed must replay bit-identically");
-    let b = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A + 1.0))
-        .unwrap();
+    let b = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A + 1.0),
+    )
+    .unwrap();
     assert_ne!(a, b, "a different seed must change the trajectory");
 }
 
@@ -243,7 +326,11 @@ fn sde_missing_or_invalid_seed_refuses_e_sim_seed() {
     ] {
         let err = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, seed)
             .expect_err("invalid seed must refuse");
-        assert_eq!(err.code(), "E-SIM-SEED", "seed {seed:?} must refuse E-SIM-SEED");
+        assert_eq!(
+            err.code(),
+            "E-SIM-SEED",
+            "seed {seed:?} must refuse E-SIM-SEED"
+        );
     }
 }
 
@@ -269,9 +356,21 @@ fn sde_nonfinite_refuses() {
 fn sde_domain_refuses() {
     let drift = [0.0_f64, 0.25];
     let diffusion = [0.0_f64, 0.35];
-    for (h, steps, label) in [(0.0, STEPS, "zero step"), (-H, STEPS, "negative step"), (H, 0, "zero steps")] {
-        let err = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, h, steps, Some(SEED_A))
-            .expect_err("must refuse");
+    for (h, steps, label) in [
+        (0.0, STEPS, "zero step"),
+        (-H, STEPS, "negative step"),
+        (H, 0, "zero steps"),
+    ] {
+        let err = sde_euler_maruyama(
+            SdeRule::Ito,
+            &drift,
+            &diffusion,
+            1.0,
+            h,
+            steps,
+            Some(SEED_A),
+        )
+        .expect_err("must refuse");
         assert_eq!(err.code(), "E-SIM-002", "{label} must refuse E-SIM-002");
     }
 }
@@ -388,10 +487,26 @@ fn sde_timestep_refinement_distributional() {
 fn sde_refinement_replays_bit_identically() {
     let drift = [0.0_f64, 0.25];
     let diffusion = [0.0_f64, 0.35];
-    let a = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
-    let a2 = sde_euler_maruyama(SdeRule::Ito, &drift, &diffusion, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
+    let a = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
+    let a2 = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &diffusion,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_eq!(a, a2, "replay is bit-identical (refinement path)");
     // Halving h at fixed T doubles the step count (T = STEPS·H).
     let half = sde_euler_maruyama(
@@ -404,7 +519,11 @@ fn sde_refinement_replays_bit_identically() {
         Some(SEED_A),
     )
     .unwrap();
-    assert_eq!(half.len(), STEPS * 2 + 1, "halved h doubles the trajectory length");
+    assert_eq!(
+        half.len(),
+        STEPS * 2 + 1,
+        "halved h doubles the trajectory length"
+    );
 }
 
 /// P8c — COMPOUND: seed-replay + zero-noise + Itô-vs-Stratonovich in
@@ -417,11 +536,18 @@ fn sde_compound_metamorphic_chain() {
     let state_dep = [0.0_f64, 0.35]; // σ' ≠ 0
     // Chain link 1: additive noise → rules agree, and replay agrees
     // with itself.
-    let ito_a = sde_euler_maruyama(SdeRule::Ito, &drift, &additive, 1.0, H, STEPS, Some(SEED_A))
-        .unwrap();
-    let strat_a =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &additive, 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let ito_a =
+        sde_euler_maruyama(SdeRule::Ito, &drift, &additive, 1.0, H, STEPS, Some(SEED_A)).unwrap();
+    let strat_a = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &additive,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_eq!(ito_a, strat_a, "additive: rules identical");
     assert_eq!(
         sde_euler_maruyama(SdeRule::Ito, &drift, &additive, 1.0, H, STEPS, Some(SEED_A)).unwrap(),
@@ -429,17 +555,39 @@ fn sde_compound_metamorphic_chain() {
         "replay identical"
     );
     // Chain link 2: state-dependent noise → rules differ.
-    let ito_s =
-        sde_euler_maruyama(SdeRule::Ito, &drift, &state_dep, 1.0, H, STEPS, Some(SEED_A)).unwrap();
-    let strat_s =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &state_dep, 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let ito_s = sde_euler_maruyama(
+        SdeRule::Ito,
+        &drift,
+        &state_dep,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
+    let strat_s = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &state_dep,
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_ne!(ito_s, strat_s, "state-dependent: rules differ");
     // Chain link 3: zero noise → both reduce to the SAME ODE path,
     // and replay is stable.
     let ito_z = sde_euler_maruyama(SdeRule::Ito, &drift, &[], 1.0, H, STEPS, Some(SEED_A)).unwrap();
-    let strat_z =
-        sde_euler_maruyama(SdeRule::Stratonovich, &drift, &[], 1.0, H, STEPS, Some(SEED_A))
-            .unwrap();
+    let strat_z = sde_euler_maruyama(
+        SdeRule::Stratonovich,
+        &drift,
+        &[],
+        1.0,
+        H,
+        STEPS,
+        Some(SEED_A),
+    )
+    .unwrap();
     assert_eq!(ito_z, strat_z, "zero noise: one ODE path");
 }

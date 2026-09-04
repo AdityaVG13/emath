@@ -1,5 +1,4 @@
-//! Durable JSON write-parse equality roundtrip (AC G of
-//! `emath-conform-harness-thin-lfpg`): `emath.evidence-bundle` was
+//! Durable JSON write-parse equality roundtrip (acceptance criterion G): `emath.evidence-bundle` was
 //! previously untested for typed parse-back. The write and parse share
 //! no code path (the parser is an independent reader), so equality on
 //! the roundtrip is a real conformance check, not a tautology.
@@ -37,8 +36,8 @@ fn evidence_bundle_json_roundtrip_is_typed_equal() {
     };
 
     let json = write_evidence_bundle(&bundle);
-    let parsed =
-        evidence_bundle_from_json(&json).expect("typed parse-back must accept the written document");
+    let parsed = evidence_bundle_from_json(&json)
+        .expect("typed parse-back must accept the written document");
     assert_eq!(
         parsed, bundle,
         "emath.evidence-bundle must round-trip typed-equal through the independent parser"
@@ -48,7 +47,7 @@ fn evidence_bundle_json_roundtrip_is_typed_equal() {
 
 /// A truncated `\uXXXX` escape must be a typed malformed refusal, never
 /// a panic: the independent parser owns its own escaping rules, so
-/// malformed input is part of its contract (pass-5 bounds guard).
+/// malformed input is part of its contract (bounds guard).
 #[test]
 fn truncated_unicode_escape_is_typed_malformed_not_panic() {
     let malformed = "{\"schema\": \"emath.evidence-\\u12";

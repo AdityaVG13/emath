@@ -1,4 +1,4 @@
-#  Braket notation pack (04 section 2.4, emath-r3-braket-pack-fdby):
+#  Braket notation pack (04 section 2.4):
 #  kets, bras, bra-ket products, projectors, and sandwiches on the REAL
 #  2-level discrete carrier. Glyphs are opt-in at the mount; the inner
 #  product desugars to the admitted `dot` (sesquilinear conjugation is

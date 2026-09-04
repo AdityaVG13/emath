@@ -4,7 +4,9 @@
 //! f64 identity, structural (not lexical) line comparison, and the
 //! Exact/Loose/OutOfRange tolerance buckets.
 
-use emath_adapter_dew_tests::{bytes_eq, canonical_lines, classify_tolerance, f64_bits, ToleranceClass};
+use emath_adapter_dew_tests::{
+    ToleranceClass, bytes_eq, canonical_lines, classify_tolerance, f64_bits,
+};
 
 #[test]
 fn f64_bits_distinguishes_zero_signs() {
@@ -24,8 +26,14 @@ fn canonical_lines_ignores_trailing_whitespace_and_blanks() {
     let trailing_blanks = "{\n  \"a\": 1,\n\n\n  \"b\": [2, 3],\n}\n\n\n";
 
     let canonical = canonical_lines(structured);
-    assert!(bytes_eq(canonical.as_bytes(), canonical_lines(ragged).as_bytes()));
-    assert!(bytes_eq(canonical.as_bytes(), canonical_lines(trailing_blanks).as_bytes()));
+    assert!(bytes_eq(
+        canonical.as_bytes(),
+        canonical_lines(ragged).as_bytes()
+    ));
+    assert!(bytes_eq(
+        canonical.as_bytes(),
+        canonical_lines(trailing_blanks).as_bytes()
+    ));
 
     // Empty and all-whitespace input reduce to a single empty (no) line.
     assert_eq!(canonical_lines(""), "");
@@ -39,12 +47,33 @@ fn classify_tolerance_covers_all_three_arms() {
     let tight = 0.5;
     let loose = 1.0;
 
-    assert_eq!(classify_tolerance(100.0, 100.2, tight, loose), ToleranceClass::Exact, "{context}");
-    assert_eq!(classify_tolerance(100.0, 100.8, tight, loose), ToleranceClass::Loose, "{context}");
-    assert_eq!(classify_tolerance(100.0, 102.0, tight, loose), ToleranceClass::OutOfRange, "{context}");
+    assert_eq!(
+        classify_tolerance(100.0, 100.2, tight, loose),
+        ToleranceClass::Exact,
+        "{context}"
+    );
+    assert_eq!(
+        classify_tolerance(100.0, 100.8, tight, loose),
+        ToleranceClass::Loose,
+        "{context}"
+    );
+    assert_eq!(
+        classify_tolerance(100.0, 102.0, tight, loose),
+        ToleranceClass::OutOfRange,
+        "{context}"
+    );
 
     // Boundary ordering: at exactly tight it is still Exact (<=), beyond loose it is not.
-    assert_eq!(classify_tolerance(1.0, 1.5, tight, loose), ToleranceClass::Exact);
-    assert_eq!(classify_tolerance(1.0, 2.0, tight, loose), ToleranceClass::Loose);
-    assert_eq!(classify_tolerance(1.0, 2.1, tight, loose), ToleranceClass::OutOfRange);
+    assert_eq!(
+        classify_tolerance(1.0, 1.5, tight, loose),
+        ToleranceClass::Exact
+    );
+    assert_eq!(
+        classify_tolerance(1.0, 2.0, tight, loose),
+        ToleranceClass::Loose
+    );
+    assert_eq!(
+        classify_tolerance(1.0, 2.1, tight, loose),
+        ToleranceClass::OutOfRange
+    );
 }

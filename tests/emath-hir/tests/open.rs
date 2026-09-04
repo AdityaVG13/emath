@@ -45,8 +45,7 @@ fn missing_required_emits_ekind011() {
     assert!(
         violations
             .iter()
-            .any(|v| v.code == "E-KIND-011"
-                && v.reason == SectionViolationReason::MissingRequired)
+            .any(|v| v.code == "E-KIND-011" && v.reason == SectionViolationReason::MissingRequired)
     );
 }
 

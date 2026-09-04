@@ -1,4 +1,4 @@
-//! emath-mct-type-magnets-fnv-fitted-o7a6: single-ownership guarantees
+//!: single-ownership guarantees
 //! after the magnet consolidation.
 //!
 //! Hash parity: `emath_world_ir::fnv1a64` IS Tier-0 core's
@@ -38,10 +38,7 @@ fn fitted_table_round_trips_from_world_ir_home() {
     cells.insert(vec!["b".to_string(), "a".to_string()], "ba".to_string());
     let table = FittedTable::from_cells(SymbolId("op.mul".to_string()), 2, cells);
     // Lookup respects arity: right row hits, wrong arity misses.
-    assert_eq!(
-        table.get(&["a".to_string(), "b".to_string()]),
-        Some("ab")
-    );
+    assert_eq!(table.get(&["a".to_string(), "b".to_string()]), Some("ab"));
     assert_eq!(table.get(&["a".to_string()]), None, "arity mismatch = miss");
     // Rows iterate in deterministic lexicographic order.
     let rows: Vec<String> = table
@@ -51,6 +48,9 @@ fn fitted_table_round_trips_from_world_ir_home() {
     assert_eq!(rows, vec!["a,b:ab".to_string(), "b,a:ba".to_string()]);
     // Canonical form is deterministic and names operator + arity.
     let canonical = table.canonical();
-    assert!(canonical.starts_with("table:op.mul:arity=2:"), "{canonical}");
+    assert!(
+        canonical.starts_with("table:op.mul:arity=2:"),
+        "{canonical}"
+    );
     assert_eq!(canonical, table.canonical(), "canonicalization is stable");
 }

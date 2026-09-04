@@ -1,4 +1,4 @@
-#  emath-r3-table-literals-f3z1 (U9) positive fixture: `;` rows and a
+#  Table literals (U9) positive fixture: `;` rows and a
 #  table literal admit as rank-2 values.
 emath function table_matrix_fixture:
     definitions:

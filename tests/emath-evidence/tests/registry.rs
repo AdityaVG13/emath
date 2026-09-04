@@ -2,9 +2,7 @@
 //!
 //! Moved from #[cfg(test)] in crates/emath-evidence/src/registry.rs.
 
-use emath_evidence::{
-    CertificateKind, CertificateRegistry, CheckerContract, lookup_contract,
-};
+use emath_evidence::{CertificateKind, CertificateRegistry, CheckerContract, lookup_contract};
 
 fn contract(kind: CertificateKind, version: &str) -> CheckerContract {
     CheckerContract {
@@ -38,12 +36,16 @@ fn certificate_registry_lookup_and_refusal() {
         .unwrap();
     let found = lookup_contract(&registry, CertificateKind::Proof, "1.0.0").unwrap();
     assert_eq!(found.checker_id, "checker-proof");
-    assert!(registry
-        .admits(CertificateKind::Proof, "1.0.0", "correctness")
-        .unwrap());
-    assert!(!registry
-        .admits(CertificateKind::Proof, "1.0.0", "safety")
-        .unwrap());
+    assert!(
+        registry
+            .admits(CertificateKind::Proof, "1.0.0", "correctness")
+            .unwrap()
+    );
+    assert!(
+        !registry
+            .admits(CertificateKind::Proof, "1.0.0", "safety")
+            .unwrap()
+    );
 
     let duplicate = registry
         .register(contract(CertificateKind::Proof, "1.0.0"))

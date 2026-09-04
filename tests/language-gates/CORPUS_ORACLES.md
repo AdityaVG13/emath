@@ -1,4 +1,4 @@
-# Corpus Oracles; `language/examples` acceptance map (emath-ail.1)
+# Corpus Oracles; `language/examples` acceptance map
 
 Every README example row, the acceptance command, the pinned oracle, and the
 current verdict. Pinned in code by
@@ -19,7 +19,7 @@ with no `E-*` diagnostics (re-scanned 2026-08-30 with the local binary).
 ## Refuse-pinned examples
 
 None currently: the corpus refresh (2026-08-30) removed the pinned-refusal
-fixtures (`intro/v9_06_2rdq_17.emath`, `intro/sets-records.emath`'s
+fixtures (the former `intro/` refusal fixture, `intro/sets-records.emath`'s
 `E-TYPE-113` pin; sets-records now admits check with the `{}` surface
 executing; its ambiguity row is covered by
 `tests/invalid/r3_sets_tub8_ambiguous.emath` E-SYN-154). Any new intentional
@@ -57,7 +57,7 @@ These rows pin CURRENT failure; a flip requires consciously re-pinning.
 | intro/autodiff.emath | Forward-mode derivative runs | `emath run` exit 1 (re-verified 2026-08-30): generated `auto_diff_parabola` test fails | forward-mode dual-number backend defect |
 
 Removed 2026-08-30 with the corpus re-org (no longer in the gate):
-`intro/v9_06_2rdq_11.emath` (was: Mod17 law lowering gap) and the
+the former `intro/` Mod17 fixture (law lowering gap) and the
 heat-plate/heat-volume simulate rows (fixtures deleted; heat-rod remains the
 pinned spatial row).
 
@@ -67,14 +67,14 @@ pinned spatial row).
 Stencil3d fixes; mutation-evidence: reverting `SelfValue` → `Var("self")`
 failed the gate). `dae-rc-circuit.emath` check record superseded by the
 executed record in `numerical/dae-rc-circuit-check.md` (2026-08-30,
-SilentBear + BronzeCoyote probes).
+independent verification probes).
 
-## Doc-hygiene notes (fold into parent emath-ail)
+## Doc-hygiene notes (fold into the parent audit)
 
 - `tests/invalid/` `# expect:` headers vs actual `check` codes diverge for
   ~12 strategy fixtures (parse-first `E-PKG-081` before the intended
-  semantic code). Full header reconciliation belongs to the parent bead.
+  semantic code). Full header reconciliation belongs to the parent.
 - `validate.sh` negative-controls lane pins (`function_type` → E-TYPE-110,
   `named_call_arg` → E-SYN-121, `missing_state_assignment` → E-CTOR-030,
   `recursive_kind` → E-KIND-100) need re-verification against a fresh binary
-  once the emath-ir capability WIP (VioletGorge) lands.
+  once the emath-ir capability work lands.
