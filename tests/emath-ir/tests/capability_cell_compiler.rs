@@ -1,7 +1,7 @@
-//! emath-epic-machine-fjxh.5: Compile cell reference semantics to generic
+//! Compile cell reference semantics to generic
 //! bytecode.
 //!
-//! The bead's law: a pure cell's formula is a quoted `emath-term` term;
+//! The law: a pure cell's formula is a quoted `emath-term` term;
 //! the compiler lowers it into the SAME generic EMIR vocabulary the VM
 //! already executes (vector map/reduce over the closed builtin registry —
 //! never a per-cell op), and the VM seam dispatches cells from compiled
@@ -31,10 +31,13 @@ fn softmax_formula() -> (Term, Signature) {
     let x = || Term::Variable(VariableId("x".into()));
     let shift = || Term::Apply {
         operator: SymbolId("sub".into()),
-        arguments: vec![x(), Term::Apply {
-            operator: SymbolId("vmax".into()),
-            arguments: vec![x()],
-        }],
+        arguments: vec![
+            x(),
+            Term::Apply {
+                operator: SymbolId("vmax".into()),
+                arguments: vec![x()],
+            },
+        ],
     };
     let inner = || Term::Apply {
         operator: SymbolId("exp".into()),
@@ -42,13 +45,22 @@ fn softmax_formula() -> (Term, Signature) {
     };
     let term = Term::Apply {
         operator: SymbolId("div".into()),
-        arguments: vec![inner(), Term::Apply {
-            operator: SymbolId("sum".into()),
-            arguments: vec![inner()],
-        }],
+        arguments: vec![
+            inner(),
+            Term::Apply {
+                operator: SymbolId("sum".into()),
+                arguments: vec![inner()],
+            },
+        ],
     };
     let mut signature = Signature::default();
-    for (symbol, arity) in [("exp", 1usize), ("sub", 2), ("div", 2), ("sum", 1), ("vmax", 1)] {
+    for (symbol, arity) in [
+        ("exp", 1usize),
+        ("sub", 2),
+        ("div", 2),
+        ("sum", 1),
+        ("vmax", 1),
+    ] {
         signature
             .insert(SymbolId(symbol.into()), arity)
             .expect("formula signature is conflict-free");
@@ -285,13 +297,18 @@ fn term_compiler_refuses_malformed_reference() {
 
     // Signature arity mismatch: emath-term's own validator refuses.
     let mut sig2 = Signature::default();
-    sig2.insert(SymbolId("sub".into()), 2).expect("conflict-free");
+    sig2.insert(SymbolId("sub".into()), 2)
+        .expect("conflict-free");
     let bad_arity = Term::Apply {
         operator: SymbolId("sub".into()),
         arguments: vec![Term::Variable(VariableId("x".into()))],
     };
     match compile_reference(&bad_arity, &sig2, &params, Vec::new(), "test.arity") {
-        Err(TermCompileError::ArityMismatch { symbol, expected, actual }) => {
+        Err(TermCompileError::ArityMismatch {
+            symbol,
+            expected,
+            actual,
+        }) => {
             assert_eq!(symbol, "sub");
             assert_eq!(expected, 2);
             assert_eq!(actual, 1);
@@ -301,7 +318,8 @@ fn term_compiler_refuses_malformed_reference() {
 
     // Free variable outside the declared params: typed refusal.
     let mut sig3 = Signature::default();
-    sig3.insert(SymbolId("sum".into()), 1).expect("conflict-free");
+    sig3.insert(SymbolId("sum".into()), 1)
+        .expect("conflict-free");
     let unbound = Term::Apply {
         operator: SymbolId("sum".into()),
         arguments: vec![Term::Variable(VariableId("y".into()))],
@@ -318,7 +336,13 @@ fn term_compiler_refuses_malformed_reference() {
         arguments: vec![Term::Variable(VariableId("x".into()))],
     };
     let scalar_params = vec![("x".to_string(), ParamShape::Scalar)];
-    match compile_reference(&bound_scalar, &sig3, &scalar_params, Vec::new(), "test.shape") {
+    match compile_reference(
+        &bound_scalar,
+        &sig3,
+        &scalar_params,
+        Vec::new(),
+        "test.shape",
+    ) {
         Err(TermCompileError::ShapeMismatch { symbol, .. }) => assert_eq!(symbol, "sum"),
         other => panic!("expected ShapeMismatch, got {other:?}"),
     }
@@ -326,8 +350,8 @@ fn term_compiler_refuses_malformed_reference() {
 
 #[test]
 fn world_bundle_and_negative_seed() {
-    // WorldResultBundle fixture (bead e2e clause): the compiled-cell run
-    // as a world record. The World ABI (fjxh.7) consumes this shape.
+    // WorldResultBundle fixture: the compiled-cell run
+    // as a world record. The World ABI consumes this shape.
     #[derive(Debug)]
     struct WorldResultBundle {
         world: &'static str,
@@ -358,9 +382,10 @@ fn world_bundle_and_negative_seed() {
     assert!(matches!(cell.guards[0], ArgGuard::NonEmpty(0)));
     assert!(matches!(cell.guards[1], ArgGuard::AllFinite(0)));
 
-    // Bead negative seed: the seeded silent-success scenario declares a
+    // Negative seed: the seeded silent-success scenario declares a
     // typed refusal.
-    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_cell_compiler.emath");
+    const NEGATIVE_SEED: &str =
+        include_str!("../../../tests/invalid/capability_cell_compiler.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))

@@ -10,6 +10,7 @@ pub mod contracts;
 pub mod domains;
 pub mod evidence;
 pub mod expression;
+pub mod feature_capsule;
 pub mod goal;
 pub mod ids;
 pub mod kind_schema;
@@ -27,10 +28,10 @@ pub mod types;
 pub mod units;
 
 pub use capability::{
-    AdmissionRefusal, CAPABILITY_CELL_SCHEMA_V1, CellClass, CellSchema, Capability,
-    ClosureRefusal, MAX_CELL_ARITY, MigrationPolicy, ProjectionKind, ProjectionStatus,
-    SuppliedProjection, admit_cell, admit_cell_mutation, canonical_capability, canonical_cell,
-    cell_id, missing_required, plan_cell_closure, required_projections, softmax_axis_well_formed,
+    AdmissionRefusal, CAPABILITY_CELL_SCHEMA_V1, Capability, CellClass, CellSchema, ClosureRefusal,
+    MAX_CELL_ARITY, MigrationPolicy, ProjectionKind, ProjectionStatus, SuppliedProjection,
+    admit_cell, admit_cell_mutation, canonical_capability, canonical_cell, cell_id,
+    missing_required, plan_cell_closure, required_projections, softmax_axis_well_formed,
     softmax_reference_strict_f64,
 };
 pub use constructor::{
@@ -41,20 +42,29 @@ pub use contracts::{ContractRegistry, ProviderRepresentationContract};
 pub use domains::{BranchConvention, Domain, DomainError, Interval, branch_point};
 pub use evidence::{ClaimVerdict, EvidenceBundle, EvidenceClaim};
 pub use expression::{BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, SliceAxis, UnaryOp};
+pub use feature_capsule::{
+    CapsuleEdge, CapsuleProjection, CapsuleRecordError, CapsuleSlot, FEATURE_CAPSULE_SCHEMA,
+    FeatureCapsule, FeatureClass, LegacyCellMapping, Maturity, ProjectionDisposition,
+};
 pub use goal::{
     CompileSpec, DeterminismPolicy, EvidenceLevel, ExactnessPolicy, ExcludedCandidate, Export,
     FallbackPolicy, Goal, GoalKind, GoalPayload, GoalRequirements, PlanNodeDef, PlanOperation,
     ProviderRef, RequestSpec, ResolutionPlan, SafetyProfile, TargetProfile, build_goal,
     native_plan, plan_identity,
 };
-pub use ids::{CapabilityId, DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId};
+pub use ids::{
+    CapabilityId, DeclarationId, EvidenceClaimId, ExprId, GoalId, PlanNodeId, TestId, TypeId,
+};
 pub use kind_schema::{
     CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
     core_model_schema, core_policy_schema,
 };
 pub use layers::IrLayer;
 pub use meaning::{MEANING_CANONICAL_SCHEMA_V1, MeaningError, canonical_meaning_bytes, meaning_id};
-pub use mig::{Mig, MigEdge, MigEdgeKind, MigNode, MigNodeId, MigNodeKind};
+pub use mig::{
+    AgentContext, MeaningEdge, MeaningEdgeKind, MeaningResource, MeaningSpine, MeaningSpineError,
+    Mig, MigEdge, MigEdgeKind, MigNode, MigNodeId, MigNodeKind,
+};
 pub use numeric::{
     NumKind, NumericBehavior, NumericError, NumericProfile, NumericType, STRICT_F64_MACHINE_EPS,
     STRICT_F64_PRECISION_BITS, cast_cost, check_error_limit, check_precision_demand,
@@ -83,4 +93,7 @@ pub use type_system::{
     TypeScheme, TypeVar, canonical_of, render, unify,
 };
 pub use types::TypeNode;
-pub use units::{Unit, UnitDim, UnitError, UnitFamily, check_compatible, lookup_unit, per_unit, E_UNIT_CURRENCY_CORE};
+pub use units::{
+    E_UNIT_CURRENCY_CORE, Unit, UnitDim, UnitError, UnitFamily, check_compatible, lookup_unit,
+    per_unit,
+};

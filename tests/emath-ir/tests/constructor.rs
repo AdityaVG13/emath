@@ -3,9 +3,7 @@
 //! identity is deterministic and content-bound.
 
 use emath_core::Span;
-use emath_ir::{
-    Constructor, ConstructionReceipt, ExprId, ObligationClass, ObligationKind,
-};
+use emath_ir::{ConstructionReceipt, Constructor, ExprId, ObligationClass, ObligationKind};
 use std::collections::BTreeMap;
 
 fn constructor(preconditions: &[u32], postconditions: &[u32]) -> Constructor {

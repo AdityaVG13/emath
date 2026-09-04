@@ -1,7 +1,7 @@
-//! emath-r3-dynamical-03lh (B42, thin slice): `events:` section
+//! (B42, thin slice): `events:` section
 //! admission for hybrid/dynamical declarations.
 //!
-//! The bead's law, sliced to the admission seam (file-disjoint from the
+//! The law, sliced to the admission seam (file-disjoint from the
 //! parser and interpreter lanes):
 //! - ch7's `events:` section parses today (event declarations are
 //!   FnDecl heads / commands) but was refused as an unknown section —
@@ -13,7 +13,7 @@
 //!   parser lane (another agent's active zone). The fence test pins the
 //!   no-half-admit rule: the section stays refused until the parser
 //!   slice lands, and the WRITTEN seed (`tests/invalid/
-//!   r3_dynamical_03lh.emath`, expecting `E-EVENT-001` for a transition
+//! r3_dynamical_03lh.emath`, expecting `E-EVENT-001` for a transition
 //!   wired to an undeclared event) is that slice's failure-first input.
 //! - Event-triggering simulation (zero-crossing detection, reset
 //!   application during ODE stepping) is the interpreter lane — the
@@ -101,7 +101,7 @@ fn unsupported_dynamical_transition_refuses() {
 
 #[test]
 fn bouncing_ball_events_admit() {
-    // E2E (admission bar): the bead's bouncing-ball hybrid model
+    // E2E (admission bar): the bouncing-ball hybrid model
     // compiles — continuous state + event surface. (The bounce
     // TRANSITION rule and event-driven simulation are the named next
     // slices; this pins the declared-events half.)

@@ -1,69 +1,69 @@
 # emath-exec-ir Contract
 
-## Purpose
+## Purpose and layer
 
-`emath-exec-ir` is the executable semantic layer between admitted mathematical terms and interpreters or generated backends. It provides a small generic operation vocabulary, capability-cell application, optimization, execution, specialization, semantic images, and field-pack loading.
+`emath-exec-ir` is the stable executable machine between admitted semantic terms and execution providers. It owns universal literals, registers, construction/storage/indexing, control, capability application, provider continuations, semantic images, and artifact loading. It does not own mathematical feature identity or meaning.
 
-## Public behavior
+## Stable instruction boundary
 
-- Programs contain typed registers, operations, nested bodies, and declared outputs.
-- Capability calls use `CapabilityId` data rather than domain-specific operation variants.
-- The interpreter and emitter preserve operation order and typed refusal behavior.
-- Optimization may fold or remove work only when observable values and faults are preserved.
-- Every execution is budgeted; exhaustion refuses without exposing a partial answer.
+`EmirOp` contains only:
 
-## Capability cells
+- literal and input/state load instructions;
+- closed scalar and carrier instructions used by reference bytecode;
+- generic record, set, series, vector, matrix, tensor, Option, and Result construction/storage/indexing;
+- selection and finite fold control;
+- `ApplyCapability { capability, class, args }`.
 
-A capability cell supplies identity, class, version, migration policy, arity, numeric policy, guards, reference semantics, and provider contract. Applying an unregistered cell or violating a guard is a typed refusal.
+There are no graph, optimization, probability, differential-equation, PDE, control-theory, category-theory, exact-arithmetic, geometry, units, chemistry, or other domain-named public variants. A legacy `ExprNode::Call` or domain computation that reaches this layer is refused: semantic admission must first resolve it to an interned FeatureID application. No compatibility alias or fallback operation is provided.
 
-Pure cells execute through the reference VM. Provider cells produce an explicit outstanding provider request. The dispatcher is generic and must not grow branches keyed by individual capability names.
+## Capability execution
 
-## Semantic images
+`ApplyCapability` treats its capability string as an opaque FeatureID. Non-pure cells return an explicit `ProviderCallRequired` continuation. Pure cells execute either as an authored `EmirProgram` in the reference VM or, at an `ApplyCapability` boundary, through an optional native kernel binding selected from the checked Language Image by domain-neutral kernel ID plus exact carrier signature.
 
-A semantic image contains deterministic partitions for cells, bytecode, evidence, locks, and metadata. Partition and image identities derive from canonical content. Corrupt or inconsistent pages refuse.
+The VM never branches on a FeatureID spelling. An applied pure capability without an installed kernel binding refuses; it does not fall back to a handwritten cell registry. Argument count is checked before a native kernel runs. Kernel failures remain typed capability refusals.
 
-Tree shaking computes the reachable bytecode closure from declared entries. Required dependencies survive; unknown entries and attempts to demote required dependencies refuse. Source cell records are never removed by bytecode shaking.
+## Kernel boundary
 
-## Specialization
+Native kernels are immutable implementations keyed by domain-neutral kernel IDs and carrier signatures. `install_language_distribution` derives FeatureID bindings exclusively from capsule-active Language Image rows and starts from an empty binding map. There are no built-in FeatureID aliases or legacy bindings.
 
-Static specialization binds known inputs while preserving parity with the reference VM. Full binding may fold a program to constants. Unsupported bindings, guard failures, and seeded backend discrepancies are typed failures.
+A kernel computes values or faults only. It does not select feature identity, semantics, exactness, applicability, world, evidence, authority, or result labels.
 
-## Field packs and lazy loading
+## Optimization
 
-Field packs export existing registry cells. Installation resolves each export, writes a deterministic image and lock, and refuses unknown exports.
+Capability applications and storage/control operations are opaque to optimization. The optimizer does not inspect FeatureIDs or select kernels. The current stable optimizer performs no speculative rewrite; generic operand enumeration remains available to artifact/liveness consumers.
 
-`LazySession::boot` loads the nucleus, image lock pages, and the packs selected by `Minimal`, `Standard`, or `Custom` profile. `load_for_compile` loads exactly the named reachable packs. Accessing an unloaded page is `E-LAZY-001`; an unknown pack is `E-LAZY-002`. Optional chunks are the sorted set of still-unloaded packs.
+## Semantic images and artifacts
 
-## Optimization kernels
+Semantic images contain deterministic cell, bytecode, evidence, lock, and metadata partitions. Partition and image identities derive from canonical content. Corrupt, stale, duplicate, manually edited, or inconsistent pages refuse before partial authority is exposed.
 
-`LpMinimize(A, b, c)` handles the standard-form class `Ax <= b`, `x >= 0`, `b >= 0` with deterministic Bland tie-breaking. `ParetoFront` returns a strict non-dominated mask. Invalid shape, non-finite values, and unbounded objectives refuse.
+`LanguageImage`, `RuntimeTables`, and `GeneratedReferenceViews` are projections of authored capsules and authority data. Semantic, distribution, and operational hashes remain distinct. Operational metadata is outside semantic bytes.
 
-The general-form simplex and MILP surface remain in `emath-core`; the embedded execution runtime cannot call that crate and therefore owns its small compatible kernel.
+Tree shaking computes reachable bytecode closure from declared entries. Required dependencies survive; unknown entries and attempts to demote required dependencies refuse. Source cell records are not removed by bytecode shaking.
 
 ## Determinism
 
-Identical program, inputs, numeric policy, capability registry, and budget produce bit-identical results or the same typed refusal. No operation may read ambient time, entropy, network, or mutable global state.
+Identical program, inputs, state, installed Language Image, and budget produce bit-identical values or the same typed refusal. The machine reads no ambient time, entropy, network, or mutable process-global feature registry.
 
-## Cancellation
+## Budget and cancellation
 
-Execution observes its explicit budget at operation and capability boundaries. Cancellation or exhaustion discards incomplete work.
+Execution observes explicit step and capability-application budgets. Exhaustion returns `BudgetExhausted`; incomplete work and partial capability authority do not escape.
+
+## Error model
+
+Malformed registers, carriers, indices, storage shapes, missing inputs/state, budget exhaustion, missing kernels/reference bytecode, provider continuations, and kernel refusals are typed. Unsupported legacy named operations refuse during lowering. The machine does not silently coerce, truncate, invent an identity, or consult an obsolete path.
 
 ## Unsafe boundary
 
 None. The crate forbids unsafe code.
 
-## Conformance tests
+## Feature flags
 
-- `tests/emath-exec-ir/tests/interp.rs` covers operation values and faults.
-- `tests/emath-exec-ir/tests/optimize.rs` covers value and fault preservation.
-- `tests/emath-ir/tests/capability_reference_vm.rs` covers capability execution and budget refusal.
-- `tests/emath-ir/tests/semantic_images.rs` covers deterministic images and corruption.
-- `tests/emath-ir/tests/static_specialization.rs` covers VM parity and mutation detection.
-- `tests/emath-ir/tests/capability_cell_migration.rs` covers generic registration and dual-path parity.
-- `tests/emath-ir/tests/semantic_tree_shaking.rs` covers reachability and dependency preservation.
-- `tests/emath-ir/tests/lazy_image_loading.rs` covers profile loading and optional chunks.
-- `tests/emath-ir/tests/linear_programming.rs` covers objectives, certificates, refusals, and Pareto behavior.
+The stable machine has no domain feature flags. Feature availability is Language Image data.
+
+## Conformance
+
+Conformance must cover generic FeatureID lowering, capsule-derived kernel installation, reference/native parity, typed provider continuation, budget refusal, image tamper/staleness refusal, deterministic artifact identity, and the whole-nucleus contraction gate. Historical tests constructing removed domain-named `EmirOp` variants are external caller residue and must migrate to capsule applications before their packages can compile against this contract.
 
 ## No-claim boundaries
 
-Only the declared executable vocabulary and registered capability cells run. Exact arithmetic, undeclared providers, ambient effects, and unsupported carriers refuse rather than falling back.
+This crate does not claim that every authored capability has local reference bytecode or a native kernel. It does not assign mathematical meaning, prove a kernel equivalent to a capsule, choose a world/provider, or generate a compatibility path for removed operations. Missing executable material is an explicit refusal.

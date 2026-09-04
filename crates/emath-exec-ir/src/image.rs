@@ -1,4 +1,4 @@
-//! Compiled semantic image (fjxh.9): a field pack compiles into a
+//! Compiled semantic image: a field pack compiles into a
 //! compact, deterministic image — cells, bytecode, worlds, docs offsets,
 //! identities — organized in independently loadable partitions under a
 //! content id, with a lock recording prelude/packs/images/toolchain.

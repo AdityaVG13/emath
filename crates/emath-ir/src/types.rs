@@ -10,6 +10,12 @@ pub enum TypeNode {
     Nat,
     Int,
     Rational,
+    /// Stage-2 big integer (emath-t63iz): exact NON-NEGATIVE field
+    /// element with |F| < 2^256. Admitted only by the six modular
+    /// number-theory builtins (`mod_inv`, `sqrt_mod`, `pow_mod`,
+    /// `int_rem`, `poly_eval_mod`, `rs_encode`); binary IEEE-style
+    /// arithmetic refuses (exact x approximate is type confusion).
+    BigInt,
     /// Real under the selected numeric profile (default `strict-f64`).
     /// Not a claim about real-number arithmetic.
     Float64,
@@ -42,14 +48,16 @@ pub enum TypeNode {
     },
     OptionType(Box<TypeNode>),
     /// A prime field `Field<p>` / `GF<p>`: the integers modulo a fixed
-    /// prime `modulus` (emath-option-result-graph-field-aj8d). The prime
+    /// prime `modulus` . The prime
     /// is a TYPE-LEVEL constant carried by the type — `GF<7>` is a
     /// distinct node from plain `Int` and from `GF<5>` — so field-typed
     /// declarations keep their modulus instead of collapsing to
     /// `TypeNode::Int`. Values are exact i64 integers; modular reduction
     /// and inversion remain operational concerns of the builtins
     /// (`mod_inv`, `congruence`, `poly_eval_mod`).
-    FieldPrime { modulus: i64 },
+    FieldPrime {
+        modulus: i64,
+    },
     Opaque {
         name: QualifiedName,
         provider_contract: Option<emath_core::SchemaId>,
@@ -60,7 +68,7 @@ pub enum TypeNode {
         family: UnitFamily,
     },
     Other(QualifiedName),
-    /// Time-series value type (04 §5.4, emath-r3-timeseries-1nsa):
+    /// Time-series value type (04 §5.4):
     /// `Series<Real in s, Real in V>` — the sampled time axis and the
     /// value axis, each carrying their declared unit dimensions. The
     /// interpretation policy rides the VALUE (identity-bearing there),
@@ -84,6 +92,7 @@ impl TypeNode {
             Self::Nat => "Nat".to_string(),
             Self::Int => "Int".to_string(),
             Self::Rational => "Rational".to_string(),
+            Self::BigInt => "BigInt".to_string(),
             Self::Float64 => "Float64".to_string(),
             Self::Refinement { base, predicate } => {
                 format!("<{} {}>", predicate, base.display_name())
@@ -124,11 +133,7 @@ impl TypeNode {
             | Self::Opaque { name, .. }
             | Self::Other(name) => name.0.clone(),
             Self::Series { time, value } => {
-                format!(
-                    "Series<{}, {}>",
-                    time.display_name(),
-                    value.display_name()
-                )
+                format!("Series<{}, {}>", time.display_name(), value.display_name())
             }
             Self::Result { ok, error } => {
                 format!("Result<{}, {}>", ok.display_name(), error.display_name())

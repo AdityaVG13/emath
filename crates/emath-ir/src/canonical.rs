@@ -35,6 +35,8 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
         TypeNode::Nat => out.push_str("nat"),
         TypeNode::Int => out.push_str("int"),
         TypeNode::Rational => out.push_str("rational"),
+        // Stage-2 (emath-t63iz): the exact big field-element node.
+        TypeNode::BigInt => out.push_str("bigint"),
         TypeNode::Float64 => out.push_str("float64"),
         TypeNode::Refinement { base, predicate } => {
             out.push_str("refinement:");

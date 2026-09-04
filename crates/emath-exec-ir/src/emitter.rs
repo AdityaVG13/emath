@@ -1,7 +1,4 @@
-//! EMIR lowering emitter: converts semantic IR expressions into a linear
-//! list of [`crate::EmirOp`]s per output definition.
-
-mod call;
+//! Lower semantic expressions to the universal executable machine.
 
 use emath_core::Span;
 use emath_ir::{BinaryOp, BinderKind, ExprNode, Literal, SemanticPackage, SliceAxis, UnaryOp};
@@ -23,25 +20,21 @@ pub(crate) fn lower(
         states: states.to_vec(),
         obligations: Vec::new(),
     };
-    let value = emitter.emit(package, expr)?;
+    let result = emitter.emit(package, expr)?;
     Ok(EmirProgram {
         ops: emitter.ops,
-        result: value,
-        input_count: u16_count(inputs.len(), "input")?,
-        state_count: u16_count(states.len(), "state")?,
+        result,
+        input_count: count_u16(inputs.len(), "input")?,
+        state_count: count_u16(states.len(), "state")?,
         domain_obligations: emitter.obligations,
     })
 }
 
-fn u16_count(n: usize, what: &str) -> Result<u16, String> {
-    u16::try_from(n).map_err(|_| format!("{what} count {n} exceeds u16::MAX"))
+fn count_u16(value: usize, subject: &str) -> Result<u16, String> {
+    u16::try_from(value).map_err(|_| format!("{subject} count {value} exceeds u16::MAX"))
 }
 
-fn u16_index(n: usize, what: &str) -> Result<u16, String> {
-    u16::try_from(n).map_err(|_| format!("{what} index {n} exceeds u16::MAX"))
-}
-
-pub(crate) struct Emitter {
+struct Emitter {
     ops: Vec<(EmirOp, Span)>,
     inputs: Vec<String>,
     states: Vec<String>,
@@ -50,177 +43,117 @@ pub(crate) struct Emitter {
 
 impl Emitter {
     fn push(&mut self, op: EmirOp, span: Span) -> Result<EmirValue, String> {
-        let id = u32::try_from(self.ops.len())
+        let index = u32::try_from(self.ops.len())
             .map_err(|_| format!("EMIR op count {} exceeds u32::MAX", self.ops.len()))?;
         self.ops.push((op, span));
-        Ok(EmirValue(id))
+        Ok(EmirValue(index))
+    }
+
+    fn input_index(&self, name: &str) -> Result<u16, String> {
+        self.inputs
+            .iter()
+            .rposition(|candidate| candidate == name)
+            .ok_or_else(|| format!("unknown input `{name}`"))
+            .and_then(|index| count_u16(index, "input index"))
     }
 
     fn state_index(&self, name: &str) -> Result<u16, String> {
         self.states
             .iter()
-            .position(|s| s == name)
+            .position(|candidate| candidate == name)
             .ok_or_else(|| format!("unknown state field `{name}`"))
-            .and_then(|i| u16_index(i, "state"))
-    }
-
-    fn input_index(&self, name: &str) -> Result<u16, String> {
-        // Innermost binder wins: fold bodies append the dummy index even
-        // when a like-named input or prior definition is already in the
-        // table. First-match would leak the outer slot into the body.
-        self.inputs
-            .iter()
-            .rposition(|s| s == name)
-            .ok_or_else(|| format!("unknown input `{name}`"))
-            .and_then(|i| u16_index(i, "input"))
-    }
-
-    /// Create a sub-emitter that shares this emitter's input and state
-    /// tables.  Used by nested ops (`Differentiate`, `Solve`,
-    /// `Optimize`) so the sub-program can reference the same inputs.
-    fn sub_emitter(&self) -> Emitter {
-        Emitter {
-            ops: Vec::new(),
-            inputs: self.inputs.clone(),
-            states: self.states.clone(),
-            obligations: Vec::new(),
-        }
-    }
-
-    /// Finalize this emitter into an `EmirProgram` with the given result
-    /// value.  The state count comes from the parent emitter since
-    /// sub-programs share state tables.
-    fn finish(mut self, result: EmirValue, state_count: usize) -> Result<EmirProgram, String> {
-        Ok(EmirProgram {
-            ops: std::mem::take(&mut self.ops),
-            result,
-            input_count: u16_count(self.inputs.len(), "input")?,
-            state_count: u16_count(state_count, "state")?,
-            domain_obligations: std::mem::take(&mut self.obligations),
-        })
+            .and_then(|index| count_u16(index, "state index"))
     }
 
     fn emit(&mut self, package: &SemanticPackage, id: EmirExprRef) -> Result<EmirValue, String> {
-        let expr = package
+        let node = package
             .expr(id)
             .ok_or_else(|| "expression id out of range".to_string())?;
         let span = package.expr_span(id);
-        match expr {
+        match node {
             ExprNode::Literal(Literal::FloatBits(bits)) => {
-                // NaN/Infinity policy: strict-f64 refuses non-finite constants
                 let value = f64::from_bits(*bits);
                 if !value.is_finite() {
-                    return Err(format!(
-                        "non-finite constant {value:?} refused under strict-f64 policy"
-                    ));
+                    return Err("non-finite constant refused under strict-f64 policy".to_string());
                 }
                 self.push(EmirOp::ConstF64(*bits), span)
             }
             ExprNode::Literal(Literal::Integer(text)) => {
-                let stripped = text.replace('_', "");
-                if let Ok(value) = stripped.parse::<i64>() {
-                    return self.push(EmirOp::ConstI64(value), span);
+                let spelling = text.replace('_', "");
+                if let Ok(value) = spelling.parse::<i64>() {
+                    self.push(EmirOp::ConstI64(value), span)
+                } else {
+                    let value = emath_rt::UBig::parse_decimal(&spelling)
+                        .map_err(|_| format!("invalid integer literal `{text}`"))?;
+                    if value.bits() > emath_rt::LIMIT_BITS {
+                        return Err(
+                            "integer literal exceeds the executable carrier bound".to_string()
+                        );
+                    }
+                    self.push(EmirOp::ConstBigInt(value.to_decimal()), span)
                 }
-                let parsed: f64 = stripped
-                    .parse()
-                    .map_err(|_| format!("invalid integer literal `{text}`"))?;
-                if !parsed.is_finite() {
-                    return Err(format!(
-                        "integer literal `{text}` exceeds the strict-f64 finite range"
-                    ));
-                }
-                self.push(EmirOp::ConstF64(parsed.to_bits()), span)
             }
-            ExprNode::Literal(Literal::Bool(on)) => self.push(EmirOp::ConstBool(*on), span),
-            ExprNode::Literal(Literal::Text(text)) => {
-                self.push(EmirOp::ConstText(text.clone()), span)
+            ExprNode::Literal(Literal::Bool(value)) => self.push(EmirOp::ConstBool(*value), span),
+            ExprNode::Literal(Literal::Text(value)) => {
+                self.push(EmirOp::ConstText(value.clone()), span)
             }
             ExprNode::Literal(Literal::Complex { re_bits, im_bits }) => {
                 let re = f64::from_bits(*re_bits);
                 let im = f64::from_bits(*im_bits);
                 if !re.is_finite() || !im.is_finite() {
-                    return Err(format!(
-                        "non-finite complex constant {{re: {re:?}, im: {im:?}}} refused under strict-f64 policy"
-                    ));
+                    return Err("non-finite complex constant refused".to_string());
                 }
                 self.push(EmirOp::ConstComplex(re, im), span)
             }
-            ExprNode::Literal(_) => Err("unsupported literal in Phase 1 subset".to_string()),
+            ExprNode::Literal(Literal::Rational(_)) => {
+                Err("rational construction must be a capability application".to_string())
+            }
             ExprNode::Variable(name) => {
-                let name = &name.0;
-                if let Some(stripped) = name.strip_prefix("state.") {
-                    let index = self.state_index(stripped)?;
-                    self.push(EmirOp::LoadState(index), span)
+                if let Some(state) = name.0.strip_prefix("state.") {
+                    self.push(EmirOp::LoadState(self.state_index(state)?), span)
                 } else {
-                    let index = self.input_index(name)?;
-                    self.push(EmirOp::LoadInput(index), span)
+                    self.push(EmirOp::LoadInput(self.input_index(&name.0)?), span)
                 }
             }
-            ExprNode::Call {
-                function,
-                arguments,
-            } => self.emit_call(package, &function.0, arguments, span),
             ExprNode::Apply {
                 capability,
                 arguments,
             } => {
-                // Capability-cell application: the admitted record is
-                // package data (name + class). A dangling id refuses at
-                // the lowering seam instead of minting a silent identity.
                 let admitted = package.capability(*capability).ok_or_else(|| {
-                    format!(
-                        "capability cell id {} is not interned in the package",
-                        capability.index()
-                    )
+                    format!("capability cell id {} is not interned", capability.index())
                 })?;
-                let name = admitted.name.0.clone();
-                let class = admitted.class;
                 let mut args = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     args.push(self.emit(package, *argument)?);
                 }
                 self.push(
                     EmirOp::ApplyCapability {
-                        capability: name,
-                        class,
+                        capability: admitted.name.0.clone(),
+                        class: admitted.class,
                         args,
                     },
                     span,
                 )
             }
-            ExprNode::Series {
-                points,
-                interpolation,
-                extrapolation,
-            } => self.push(
-                EmirOp::SeriesCreate {
-                    points: points.clone(),
-                    interpolation: interpolation.clone(),
-                    extrapolation: extrapolation.clone(),
-                },
-                span,
-            ),
+            ExprNode::Call { function, .. } => Err(format!(
+                "legacy named call `{}` reached executable lowering; admission must resolve a FeatureID application",
+                function.0
+            )),
             ExprNode::Unary { operation, value } => {
-                let operand = self.emit(package, *value)?;
+                let value = self.emit(package, *value)?;
                 let op = match operation {
-                    UnaryOp::Negate => EmirOp::Neg(operand),
-                    UnaryOp::Not => EmirOp::Not(operand),
-                    UnaryOp::Sqrt => {
-                        self.obligations.push(DomainObligation::SqrtNonNegative);
-                        EmirOp::UnaryBuiltin(BuiltinId::Sqrt, operand)
-                    }
-                    UnaryOp::Exp => EmirOp::UnaryBuiltin(BuiltinId::Exp, operand),
-                    UnaryOp::Log => {
-                        self.obligations.push(DomainObligation::LogPositive);
-                        EmirOp::UnaryBuiltin(BuiltinId::Ln, operand)
-                    }
-                    UnaryOp::Sin => EmirOp::UnaryBuiltin(BuiltinId::Sin, operand),
-                    UnaryOp::Cos => EmirOp::UnaryBuiltin(BuiltinId::Cos, operand),
-                    UnaryOp::Tan => EmirOp::UnaryBuiltin(BuiltinId::Tan, operand),
-                    UnaryOp::Tanh => EmirOp::UnaryBuiltin(BuiltinId::Tanh, operand),
-                    UnaryOp::Abs => EmirOp::UnaryBuiltin(BuiltinId::Abs, operand),
-                    UnaryOp::Floor => EmirOp::UnaryBuiltin(BuiltinId::Floor, operand),
-                    UnaryOp::Ceil => EmirOp::UnaryBuiltin(BuiltinId::Ceil, operand),
+                    UnaryOp::Negate => EmirOp::Neg(value),
+                    UnaryOp::Not => EmirOp::Not(value),
+                    UnaryOp::Sqrt => EmirOp::UnaryBuiltin(BuiltinId::Sqrt, value),
+                    UnaryOp::Exp => EmirOp::UnaryBuiltin(BuiltinId::Exp, value),
+                    UnaryOp::Log => EmirOp::UnaryBuiltin(BuiltinId::Ln, value),
+                    UnaryOp::Sin => EmirOp::UnaryBuiltin(BuiltinId::Sin, value),
+                    UnaryOp::Cos => EmirOp::UnaryBuiltin(BuiltinId::Cos, value),
+                    UnaryOp::Tan => EmirOp::UnaryBuiltin(BuiltinId::Tan, value),
+                    UnaryOp::Tanh => EmirOp::UnaryBuiltin(BuiltinId::Tanh, value),
+                    UnaryOp::Abs => EmirOp::UnaryBuiltin(BuiltinId::Abs, value),
+                    UnaryOp::Floor => EmirOp::UnaryBuiltin(BuiltinId::Floor, value),
+                    UnaryOp::Ceil => EmirOp::UnaryBuiltin(BuiltinId::Ceil, value),
                 };
                 self.push(op, span)
             }
@@ -229,53 +162,36 @@ impl Emitter {
                 left,
                 right,
             } => {
-                let l = self.emit(package, *left)?;
-                let r = self.emit(package, *right)?;
+                let left = self.emit(package, *left)?;
+                let right = self.emit(package, *right)?;
                 let op = match operation {
-                    BinaryOp::StrictFloatAdd => EmirOp::F64Add(l, r),
-                    BinaryOp::StrictFloatSub => EmirOp::F64Sub(l, r),
-                    BinaryOp::StrictFloatMul => EmirOp::F64Mul(l, r),
-                    BinaryOp::StrictFloatDiv => {
-                        self.obligations.push(DomainObligation::DivisionNonZero);
-                        EmirOp::F64Div(l, r)
-                    }
-                    BinaryOp::StrictFloatPow => {
-                        self.obligations.push(DomainObligation::PowFiniteResult);
-                        EmirOp::F64Pow(l, r)
-                    }
-                    BinaryOp::Equal => EmirOp::Eq(l, r),
-                    BinaryOp::NotEqual => EmirOp::Ne(l, r),
-                    BinaryOp::Less => EmirOp::Lt(l, r),
-                    BinaryOp::LessEqual => EmirOp::Le(l, r),
-                    BinaryOp::Greater => EmirOp::Gt(l, r),
-                    BinaryOp::GreaterEqual => EmirOp::Ge(l, r),
-                    BinaryOp::And => EmirOp::And(l, r),
-                    BinaryOp::Or => EmirOp::Or(l, r),
-                    BinaryOp::Imply => EmirOp::Imply(l, r),
-                    BinaryOp::Iff => EmirOp::Iff(l, r),
-                    BinaryOp::SetContains => EmirOp::SetContains { element: l, set: r },
-                    BinaryOp::Min => EmirOp::BinaryBuiltin(BuiltinId::Min, l, r),
-                    BinaryOp::Max => EmirOp::BinaryBuiltin(BuiltinId::Max, l, r),
-                    BinaryOp::Atan2 => EmirOp::BinaryBuiltin(BuiltinId::Atan2, l, r),
-                    BinaryOp::VectorAdd => EmirOp::VectorAdd(l, r),
-                    BinaryOp::VectorSub => EmirOp::VectorSub(l, r),
-                    BinaryOp::VectorScale => EmirOp::VectorScale(l, r),
-                    BinaryOp::VectorDot => EmirOp::VectorDot(l, r),
-                    BinaryOp::MatrixAdd => EmirOp::MatrixAdd(l, r),
-                    BinaryOp::MatrixSub => EmirOp::MatrixSub(l, r),
-                    BinaryOp::MatrixScale => EmirOp::MatrixScale(l, r),
-                    BinaryOp::MatrixMulVector => EmirOp::MatrixMulVector(l, r),
-                    BinaryOp::MatrixMulMatrix => EmirOp::MatrixMulMatrix(l, r),
-                    BinaryOp::TensorAdd => EmirOp::TensorAdd(l, r),
-                    BinaryOp::TensorSub => EmirOp::TensorSub(l, r),
-                    BinaryOp::TensorScale => EmirOp::TensorScale(l, r),
-                    BinaryOp::ExactAdd
-                    | BinaryOp::ExactSub
-                    | BinaryOp::ExactMul
-                    | BinaryOp::ExactDiv => {
-                        return Err(
-                            "exact arithmetic is outside the Phase 1 strict-f64 subset".to_string()
-                        );
+                    BinaryOp::StrictFloatAdd => EmirOp::F64Add(left, right),
+                    BinaryOp::StrictFloatSub => EmirOp::F64Sub(left, right),
+                    BinaryOp::StrictFloatMul => EmirOp::F64Mul(left, right),
+                    BinaryOp::StrictFloatDiv => EmirOp::F64Div(left, right),
+                    BinaryOp::StrictFloatPow => EmirOp::F64Pow(left, right),
+                    BinaryOp::Equal => EmirOp::Eq(left, right),
+                    BinaryOp::NotEqual => EmirOp::Ne(left, right),
+                    BinaryOp::Less => EmirOp::Lt(left, right),
+                    BinaryOp::LessEqual => EmirOp::Le(left, right),
+                    BinaryOp::Greater => EmirOp::Gt(left, right),
+                    BinaryOp::GreaterEqual => EmirOp::Ge(left, right),
+                    BinaryOp::And => EmirOp::And(left, right),
+                    BinaryOp::Or => EmirOp::Or(left, right),
+                    BinaryOp::Imply => EmirOp::Imply(left, right),
+                    BinaryOp::Iff => EmirOp::Iff(left, right),
+                    BinaryOp::SetContains => EmirOp::SetContains {
+                        element: left,
+                        set: right,
+                    },
+                    BinaryOp::Min => EmirOp::BinaryBuiltin(BuiltinId::Min, left, right),
+                    BinaryOp::Max => EmirOp::BinaryBuiltin(BuiltinId::Max, left, right),
+                    BinaryOp::Atan2 => EmirOp::BinaryBuiltin(BuiltinId::Atan2, left, right),
+                    other => {
+                        return Err(format!(
+                            "legacy operation {:?} reached executable lowering; admission must resolve a FeatureID application",
+                            other
+                        ));
                     }
                 };
                 self.push(op, span)
@@ -297,29 +213,34 @@ impl Emitter {
                     span,
                 )
             }
-            ExprNode::Vector(elements) => {
-                let mut emitted = Vec::with_capacity(elements.len());
-                for &element in elements {
-                    emitted.push(self.emit(package, element)?);
-                }
-                self.push(EmirOp::VectorCreate(emitted), span)
-            }
+            ExprNode::Series {
+                points,
+                interpolation,
+                extrapolation,
+            } => self.push(
+                EmirOp::SeriesCreate {
+                    points: points.clone(),
+                    interpolation: interpolation.clone(),
+                    extrapolation: extrapolation.clone(),
+                },
+                span,
+            ),
             ExprNode::Set { elements, guards } => {
-                let mut emitted_elements = Vec::with_capacity(elements.len());
-                for &element in elements {
-                    emitted_elements.push(self.emit(package, element)?);
+                let mut values = Vec::with_capacity(elements.len());
+                for element in elements {
+                    values.push(self.emit(package, *element)?);
                 }
-                let mut emitted_guards = Vec::with_capacity(guards.len());
+                let mut conditions = Vec::with_capacity(guards.len());
                 for guard in guards {
-                    emitted_guards.push(match guard {
+                    conditions.push(match guard {
                         Some(guard) => Some(self.emit(package, *guard)?),
                         None => None,
                     });
                 }
                 self.push(
                     EmirOp::SetCreate {
-                        elements: emitted_elements,
-                        guards: emitted_guards,
+                        elements: values,
+                        guards: conditions,
                     },
                     span,
                 )
@@ -327,37 +248,44 @@ impl Emitter {
             ExprNode::Record { ty, fields } => {
                 let type_name = match package.ty(*ty) {
                     Some(emath_ir::TypeNode::Record(name)) => name.0.clone(),
-                    _ => return Err("record expression has no nominal record type".into()),
+                    _ => return Err("record expression has no nominal record type".to_string()),
                 };
-                let mut emitted = Vec::with_capacity(fields.len());
+                let mut values = Vec::with_capacity(fields.len());
                 for (name, value) in fields {
-                    emitted.push((name.clone(), self.emit(package, *value)?));
+                    values.push((name.clone(), self.emit(package, *value)?));
                 }
                 self.push(
                     EmirOp::RecordCreate {
                         type_name,
-                        fields: emitted,
+                        fields: values,
                     },
                     span,
                 )
             }
-            ExprNode::Matrix(rows) => {
-                let r = rows.len();
-                let c = rows.first().map_or(0, |row| row.len());
-                if rows.iter().any(|row| row.len() != c) {
-                    return Err("jagged matrix rows (unequal column counts)".into());
+            ExprNode::Vector(elements) => {
+                let mut values = Vec::with_capacity(elements.len());
+                for element in elements {
+                    values.push(self.emit(package, *element)?);
                 }
-                let mut elements = Vec::with_capacity(r.saturating_mul(c));
+                self.push(EmirOp::VectorCreate(values), span)
+            }
+            ExprNode::Matrix(rows) => {
+                let row_count = rows.len();
+                let col_count = rows.first().map_or(0, Vec::len);
+                if rows.iter().any(|row| row.len() != col_count) {
+                    return Err("jagged matrix rows".to_string());
+                }
+                let mut values = Vec::with_capacity(row_count.saturating_mul(col_count));
                 for row in rows {
-                    for &element in row {
-                        elements.push(self.emit(package, element)?);
+                    for value in row {
+                        values.push(self.emit(package, *value)?);
                     }
                 }
                 self.push(
                     EmirOp::MatrixCreate {
-                        rows: r,
-                        cols: c,
-                        elements,
+                        rows: row_count,
+                        cols: col_count,
+                        elements: values,
                     },
                     span,
                 )
@@ -365,63 +293,56 @@ impl Emitter {
             ExprNode::Tensor { shape, elements } => {
                 let expected = shape
                     .iter()
-                    .try_fold(1usize, |acc, &dim| acc.checked_mul(dim));
-                let Some(expected) = expected else {
-                    return Err("tensor shape product overflow".into());
-                };
-                if elements.len() != expected {
-                    return Err("tensor element count does not match shape product".into());
+                    .try_fold(1usize, |product, value| product.checked_mul(*value))
+                    .ok_or_else(|| "tensor shape product overflow".to_string())?;
+                if expected != elements.len() {
+                    return Err("tensor element count does not match shape".to_string());
                 }
-                let mut emitted = Vec::with_capacity(elements.len());
-                for &element in elements {
-                    emitted.push(self.emit(package, element)?);
+                let mut values = Vec::with_capacity(elements.len());
+                for value in elements {
+                    values.push(self.emit(package, *value)?);
                 }
                 self.push(
                     EmirOp::TensorCreate {
                         shape: shape.clone(),
-                        elements: emitted,
+                        elements: values,
                     },
                     span,
                 )
             }
             ExprNode::Index { value, indices } => {
-                let target = self.emit(package, *value)?;
-                if indices.len() == 1 {
-                    let idx = self.emit(package, indices[0])?;
-                    self.push(
+                let value = self.emit(package, *value)?;
+                let mut emitted = Vec::with_capacity(indices.len());
+                for index in indices {
+                    emitted.push(self.emit(package, *index)?);
+                }
+                match emitted.as_slice() {
+                    [index] => self.push(
                         EmirOp::VectorIndex {
-                            vector: target,
-                            index: idx,
+                            vector: value,
+                            index: *index,
                         },
                         span,
-                    )
-                } else if indices.len() == 2 {
-                    let row = self.emit(package, indices[0])?;
-                    let col = self.emit(package, indices[1])?;
-                    self.push(
+                    ),
+                    [row, col] => self.push(
                         EmirOp::MatrixIndex {
-                            matrix: target,
-                            row,
-                            col,
+                            matrix: value,
+                            row: *row,
+                            col: *col,
                         },
                         span,
-                    )
-                } else {
-                    let mut emitted = Vec::with_capacity(indices.len());
-                    for &index in indices {
-                        emitted.push(self.emit(package, index)?);
-                    }
-                    self.push(
+                    ),
+                    _ => self.push(
                         EmirOp::TensorIndex {
-                            tensor: target,
+                            tensor: value,
                             indices: emitted,
                         },
                         span,
-                    )
+                    ),
                 }
             }
             ExprNode::Slice { value, axes } => {
-                let target = self.emit(package, *value)?;
+                let value = self.emit(package, *value)?;
                 let mut emitted = Vec::with_capacity(axes.len());
                 for axis in axes {
                     emitted.push(match axis {
@@ -436,7 +357,7 @@ impl Emitter {
                 }
                 self.push(
                     EmirOp::TensorSlice {
-                        tensor: target,
+                        tensor: value,
                         axes: emitted,
                     },
                     span,
@@ -446,204 +367,80 @@ impl Emitter {
                 kind,
                 variables,
                 body,
-            } => {
-                if variables.len() != 1 {
-                    return Err("only a single binder variable is computed".to_string());
-                }
-                let binder = &variables[0];
-                let domain_expr = package
-                    .expr(binder.domain)
-                    .ok_or_else(|| "binder domain out of range".to_string())?;
-                let (start_id, end_id) = match domain_expr {
-                    ExprNode::Vector(els) if els.len() == 2 => (els[0], els[1]),
-                    _ => return Err("binder domain must be a range vector".to_string()),
-                };
-                let start_val = self.emit(package, start_id)?;
-                let end_val = self.emit(package, end_id)?;
-                let loop_var_index = u16_index(self.inputs.len(), "loop variable")?;
-                let mut body_inputs = self.inputs.clone();
-                body_inputs.push(binder.name.clone());
-                let mut body_emitter = Emitter {
-                    ops: Vec::new(),
-                    inputs: body_inputs,
-                    states: self.states.clone(),
-                    obligations: Vec::new(),
-                };
-                let body_result = body_emitter.emit(package, *body)?;
-                let body_program = EmirProgram {
-                    ops: std::mem::take(&mut body_emitter.ops),
-                    result: body_result,
-                    input_count: u16_count(body_emitter.inputs.len(), "input")?,
-                    state_count: u16_count(self.states.len(), "state")?,
-                    domain_obligations: std::mem::take(&mut body_emitter.obligations),
-                };
-                match kind {
-                    BinderKind::Sum
-                    | BinderKind::Product
-                    | BinderKind::ForAll
-                    | BinderKind::Exists => {
-                        let combine = match kind {
-                            BinderKind::Sum => FoldCombine::Add,
-                            BinderKind::Product => FoldCombine::Mul,
-                            BinderKind::ForAll => FoldCombine::And,
-                            BinderKind::Exists => FoldCombine::Or,
-                            BinderKind::Integral => {
-                                return Err(
-                                    "integral binder must lower via Integral op".to_string()
-                                );
-                            }
-                            BinderKind::Series => {
-                                return Err(
-                                    "series binder is a claim, not a computation".to_string()
-                                );
-                            }
-                        };
-                        let init_val = match combine {
-                            FoldCombine::Add => self.push(EmirOp::ConstI64(0), span)?,
-                            FoldCombine::Mul => self.push(EmirOp::ConstI64(1), span)?,
-                            FoldCombine::And => self.push(EmirOp::ConstBool(true), span)?,
-                            FoldCombine::Or => self.push(EmirOp::ConstBool(false), span)?,
-                        };
-                        self.push(
-                            EmirOp::Fold {
-                                start: start_val,
-                                end: end_val,
-                                init: init_val,
-                                combine,
-                                loop_var_index,
-                                body: body_program,
-                            },
-                            span,
-                        )
-                    }
-                    BinderKind::Integral => self.push(
-                        EmirOp::Integral {
-                            start: start_val,
-                            end: end_val,
-                            steps: 1000,
-                            loop_var_index,
-                            integrand: body_program,
-                        },
-                        span,
-                    ),
-                    BinderKind::Series => {
-                        return Err("series binder is a claim, not a computation".to_string());
-                    }
-                }
-            }
-            ExprNode::Differentiate { body, var } => {
-                let var_index = self.input_index(var)?;
-                let mut body_emitter = Emitter {
-                    ops: Vec::new(),
-                    inputs: self.inputs.clone(),
-                    states: self.states.clone(),
-                    obligations: Vec::new(),
-                };
-                let body_result = body_emitter.emit(package, *body)?;
-                let body_program = EmirProgram {
-                    ops: std::mem::take(&mut body_emitter.ops),
-                    result: body_result,
-                    input_count: u16_count(body_emitter.inputs.len(), "input")?,
-                    state_count: u16_count(self.states.len(), "state")?,
-                    domain_obligations: std::mem::take(&mut body_emitter.obligations),
-                };
-                self.push(
-                    EmirOp::Differentiate {
-                        body: body_program,
-                        var_index,
-                    },
-                    span,
-                )
-            }
-            ExprNode::Solve { body, var } => {
-                let var_index = self.input_index(var)?;
-                let sc = self.states.len();
-                let mut body_emitter = self.sub_emitter();
-                let body_result = body_emitter.emit(package, *body)?;
-                let body_program = body_emitter.finish(body_result, sc)?;
-                self.push(
-                    EmirOp::Solve {
-                        body: body_program,
-                        var_index,
-                        tolerance: 1e-12,
-                        max_iter: 100,
-                    },
-                    span,
-                )
-            }
-            ExprNode::Optimize {
-                body,
-                vars,
-                maximize,
-            } => {
-                let mut var_indices = Vec::with_capacity(vars.len());
-                for var in vars {
-                    var_indices.push(self.input_index(var)?);
-                }
-                let sc = self.states.len();
-                let mut body_emitter = self.sub_emitter();
-                let body_result = body_emitter.emit(package, *body)?;
-                let body_program = body_emitter.finish(body_result, sc)?;
-                self.push(
-                    EmirOp::Optimize {
-                        body: body_program,
-                        var_indices,
-                        maximize: *maximize,
-                        learning_rate: 0.01,
-                        tolerance: 1e-6,
-                        max_iter: 1000,
-                    },
-                    span,
-                )
-            }
-            ExprNode::SampleLimit {
-                body,
-                var,
-                target,
-                direction,
-            } => {
-                // The limit variable may be a declared input (sampled in
-                // place) or binder-introduced like a fold loop variable
-                // (registered as a phantom input at the end of the body's
-                // input table, mirroring the Binder arm).
-                let var_index = match self.inputs.iter().position(|n| n == var) {
-                    Some(pos) => u16_index(pos, "input")?,
-                    None => u16_index(self.inputs.len(), "limit variable")?,
-                };
-                let target_val = self.emit(package, *target)?;
-                let direction_val = self.emit(package, *direction)?;
-                let mut body_inputs = self.inputs.clone();
-                if body_inputs.len() as u16 <= var_index {
-                    body_inputs.push(var.clone());
-                }
-                let mut body_emitter = Emitter {
-                    ops: Vec::new(),
-                    inputs: body_inputs,
-                    states: self.states.clone(),
-                    obligations: Vec::new(),
-                };
-                let body_result = body_emitter.emit(package, *body)?;
-                let body_program = EmirProgram {
-                    ops: std::mem::take(&mut body_emitter.ops),
-                    result: body_result,
-                    input_count: u16_count(body_emitter.inputs.len(), "input")?,
-                    state_count: u16_count(self.states.len(), "state")?,
-                    domain_obligations: std::mem::take(&mut body_emitter.obligations),
-                };
-                self.push(
-                    EmirOp::SampleLimit {
-                        body: body_program,
-                        var_index,
-                        target: target_val,
-                        direction: direction_val,
-                    },
-                    span,
-                )
-            }
-            other => Err(format!(
-                "expression form {:?} is outside the Phase 1 strict-f64 subset",
-                std::mem::discriminant(other)
-            )),
+            } => self.emit_fold(package, *kind, variables, *body, span),
+            ExprNode::Differentiate { .. }
+            | ExprNode::Solve { .. }
+            | ExprNode::Optimize { .. }
+            | ExprNode::SampleLimit { .. } => Err(
+                "domain computation reached executable lowering without a FeatureID application"
+                    .to_string(),
+            ),
         }
+    }
+
+    fn emit_fold(
+        &mut self,
+        package: &SemanticPackage,
+        kind: BinderKind,
+        variables: &[emath_ir::BinderVariable],
+        body: EmirExprRef,
+        span: Span,
+    ) -> Result<EmirValue, String> {
+        let combine = match kind {
+            BinderKind::Sum => FoldCombine::Add,
+            BinderKind::Product => FoldCombine::Mul,
+            BinderKind::ForAll => FoldCombine::And,
+            BinderKind::Exists => FoldCombine::Or,
+            BinderKind::Integral | BinderKind::Series => {
+                return Err("binder computation requires a FeatureID application".to_string());
+            }
+        };
+        let [binder] = variables else {
+            return Err("only a single machine fold variable is supported".to_string());
+        };
+        let Some(ExprNode::Vector(bounds)) = package.expr(binder.domain) else {
+            return Err("fold domain must be a two-element range vector".to_string());
+        };
+        let [start, end] = bounds.as_slice() else {
+            return Err("fold domain must be a two-element range vector".to_string());
+        };
+        let start = self.emit(package, *start)?;
+        let end = self.emit(package, *end)?;
+        let loop_var_index = count_u16(self.inputs.len(), "loop variable index")?;
+        let mut body_emitter = Emitter {
+            ops: Vec::new(),
+            inputs: {
+                let mut inputs = self.inputs.clone();
+                inputs.push(binder.name.clone());
+                inputs
+            },
+            states: self.states.clone(),
+            obligations: Vec::new(),
+        };
+        let result = body_emitter.emit(package, body)?;
+        let body = EmirProgram {
+            ops: body_emitter.ops,
+            result,
+            input_count: loop_var_index.saturating_add(1),
+            state_count: count_u16(self.states.len(), "state")?,
+            domain_obligations: body_emitter.obligations,
+        };
+        let init = match combine {
+            FoldCombine::Add => self.push(EmirOp::ConstI64(0), span)?,
+            FoldCombine::Mul => self.push(EmirOp::ConstI64(1), span)?,
+            FoldCombine::And => self.push(EmirOp::ConstBool(true), span)?,
+            FoldCombine::Or => self.push(EmirOp::ConstBool(false), span)?,
+        };
+        self.push(
+            EmirOp::Fold {
+                start,
+                end,
+                init,
+                combine,
+                loop_var_index,
+                body,
+            },
+            span,
+        )
     }
 }

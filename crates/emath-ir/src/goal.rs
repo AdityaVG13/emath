@@ -21,7 +21,7 @@ pub struct Goal {
 }
 
 /// Goal-body payload for `differentiate` / `benchmark` (and unused on
-/// `evaluate`). The `fit` goal (04 §5.3, bead emath-r3-fit-goal-4xjh)
+/// `evaluate`). The `fit` goal (04 §5.3)
 /// reuses the payload as its generic fit-program data: model path,
 /// prediction label, residual method, optimizer method, initial seeds,
 /// explicit weights, and the identifiability honesty gate. All fit

@@ -1,6 +1,6 @@
-//! emath-epic-machine-fjxh.13: User-defined and law-synthesized worlds.
+//! User-defined and law-synthesized worlds.
 //!
-//! The bead's law: users author worlds (from language kinds, at the
+//! The law: users author worlds (from language kinds, at the
 //! execution layer — the parser lands later) or worlds are synthesized
 //! from laws (toy size ≤ 6); every world is LABELED (evidence: name,
 //! origin class, claimed laws), independently checked, and false models
@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 
 use emath_genesis::{
     Disposition, EvalError, FirstOrderWorld, ModularAlienWorld, ResultBundle, WorldBudget,
-    WorldDeclError, WorldEvidence, WorldOrigin, WorldName, evaluate_labeled, reference_alien_term,
-    select_world, synthesize_world, user_defined_world, WorldDecl, WorldLaw, WorldSourceClass,
+    WorldDecl, WorldDeclError, WorldEvidence, WorldLaw, WorldName, WorldOrigin, WorldSourceClass,
+    evaluate_labeled, reference_alien_term, select_world, synthesize_world, user_defined_world,
 };
 use emath_term::{SymbolId, Term, VariableId};
 
@@ -44,7 +44,10 @@ fn modular_five_decl() -> WorldDecl {
     }
     operations.insert("⋈".to_string(), emath_genesis::OperationTable::new(2, join));
     operations.insert("⊛".to_string(), emath_genesis::OperationTable::new(2, meet));
-    operations.insert("⧖".to_string(), emath_genesis::OperationTable::new(1, square));
+    operations.insert(
+        "⧖".to_string(),
+        emath_genesis::OperationTable::new(1, square),
+    );
     WorldDecl {
         name: "modular-five".to_string(),
         origin: WorldOrigin::UserDefined,
@@ -90,7 +93,10 @@ fn mod17_portfolio_is_labeled() {
     // Doctrine order: free-symbolic (always applicable) and the boolean
     // alien apply first; demanding the modular carrier excludes them and
     // selects modular-17 — every verdict stays on the trail.
-    let disposition = select_world(&signature, &[WorldName::FreeSymbolic, WorldName::BooleanAlien]);
+    let disposition = select_world(
+        &signature,
+        &[WorldName::FreeSymbolic, WorldName::BooleanAlien],
+    );
     assert_eq!(disposition.selected, Some(WorldName::ModularAlien));
     assert_eq!(disposition.trail.len(), 3);
     assert!(disposition.trail[0].contains("excluded"));
@@ -129,7 +135,9 @@ fn user_defined_world_is_labeled_and_checked() {
     // Malformed declarations refuse typed: a constant outside the
     // carrier, an incomplete table.
     let mut bad_constant = modular_five_decl();
-    bad_constant.constants.insert("δ".to_string(), "9".to_string());
+    bad_constant
+        .constants
+        .insert("δ".to_string(), "9".to_string());
     match user_defined_world(bad_constant) {
         Err(WorldDeclError::UnknownElement { element, .. }) => assert_eq!(element, "9"),
         other => panic!("expected UnknownElement, got {other:?}"),
@@ -185,14 +193,22 @@ fn law_synthesis_is_bounded_and_labeled() {
     // Identity element: row/col of the declared identity are the identity.
     let with_identity = synthesize_world(
         "synth-identity",
-        &WorldLaw::IdentityElement { element: "1".to_string() },
+        &WorldLaw::IdentityElement {
+            element: "1".to_string(),
+        },
         domain.clone(),
     )
     .expect("identity synthesis");
     let table = with_identity.table("⋈").expect("synthesized operation");
     for value in &domain {
-        assert_eq!(table.row(&["1".to_string(), value.clone()]).expect("total"), value);
-        assert_eq!(table.row(&[value.clone(), "1".to_string()]).expect("total"), value);
+        assert_eq!(
+            table.row(&["1".to_string(), value.clone()]).expect("total"),
+            value
+        );
+        assert_eq!(
+            table.row(&[value.clone(), "1".to_string()]).expect("total"),
+            value
+        );
     }
 
     // Every synthesized world returns a labeled portfolio.
@@ -204,7 +220,9 @@ fn law_synthesis_is_bounded_and_labeled() {
         ],
     };
     let mut signature = emath_term::Signature::default();
-    signature.insert(SymbolId("⋈".into()), 2).expect("conflict-free");
+    signature
+        .insert(SymbolId("⋈".into()), 2)
+        .expect("conflict-free");
     assert!(commutative.admits(&signature));
     let result = evaluate_labeled(
         &term,

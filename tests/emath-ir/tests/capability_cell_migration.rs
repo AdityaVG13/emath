@@ -1,9 +1,9 @@
-//! emath-epic-machine-fjxh.14: Ten-operation anti-LOC migration cohort.
+//! Ten-operation anti-LOC migration cohort.
 //!
-//! The bead's law: the architecture migrates real existing ops to
+//! The architecture migrates real existing ops to
 //! capability cells on the DUAL PATH — the handwritten generic-op program
 //! (the VM nucleus arm, inlined directly) vs the registry-compiled cell
-//! through the fjxh.6 seam — and the differential must agree BIT-FOR-BIT
+//! through the cell seam — and the differential must agree BIT-FOR-BIT
 //! under the declared numeric policy. Ops the closed vocabulary cannot
 //! express (matmul: matrix carrier shapes; RK4: integrator loops) refuse
 //! typed and DIAGNOSE the missing nucleus — never a silent wrong
@@ -14,13 +14,13 @@
 
 use std::collections::BTreeMap;
 
+use emath_core::QualifiedName;
 use emath_core::Span;
 use emath_exec_ir::interp::{Value, evaluate_with_budget};
 use emath_exec_ir::term_compile::{
     ArgGuard, ParamShape, TermCompileError, compile_reference, std_cell_registry,
 };
 use emath_exec_ir::{BuiltinId, CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget, ReduceId};
-use emath_core::QualifiedName;
 use emath_ir::capability::{
     CellClass as SchemaClass, CellSchema, MigrationPolicy, admit_cell_mutation,
     softmax_reference_strict_f64,
@@ -31,7 +31,7 @@ fn f64_bits(value: f64) -> u64 {
     value.to_bits()
 }
 
-/// The fjxh.6 seam for a registry cell: load inputs, then one
+/// The cell seam for a registry cell: load inputs, then one
 /// ApplyCapability. This is the CELL path.
 fn seam_eval(cell: &str, inputs: &[Value]) -> Value {
     let count = inputs.len();
@@ -72,7 +72,10 @@ fn direct_eval(ops: Vec<EmirOp>, consts: &[Value], result: u32) -> Value {
 }
 
 fn const_regs(values: &[f64]) -> Vec<EmirOp> {
-    values.iter().map(|&v| EmirOp::ConstF64(f64_bits(v))).collect()
+    values
+        .iter()
+        .map(|&v| EmirOp::ConstF64(f64_bits(v)))
+        .collect()
 }
 
 /// Bit-exact scalar parity (Bool compares directly).
@@ -94,18 +97,8 @@ fn assert_parity(label: &str, cell: &Value, direct: &Value) {
 #[test]
 fn scalar_cohort_dual_path_bit_exact() {
     for (cell, inputs, mut ops, result) in [
-        (
-            "std.math.add",
-            [2.0, 3.0],
-            const_regs(&[2.0, 3.0]),
-            2,
-        ),
-        (
-            "std.math.mul",
-            [1.5, 4.0],
-            const_regs(&[1.5, 4.0]),
-            2,
-        ),
+        ("std.math.add", [2.0, 3.0], const_regs(&[2.0, 3.0]), 2),
+        ("std.math.mul", [1.5, 4.0], const_regs(&[1.5, 4.0]), 2),
     ] {
         ops.push(match cell {
             "std.math.add" => EmirOp::F64Add(EmirValue(0), EmirValue(1)),
@@ -260,7 +253,7 @@ fn sum_reduction_dual_path_bit_exact() {
 #[test]
 fn softmax_stays_in_cohort() {
     // Softmax remains the cohort's tensor anchor: registry cell vs the
-    // emath-ir handwritten oracle, bit-for-bit (fjxh.5's differential,
+    // emath-ir handwritten oracle, bit-for-bit ('s differential,
     // re-run through the cohort harness).
     for logits in [&[1.0, 2.0, 3.0] as &[f64], &[-5.0, 0.0, 5.0, 500.0], &[0.0]] {
         let via_cell = match seam_eval("std.tensor.softmax", &[Value::Vector(logits.to_vec())]) {
@@ -277,18 +270,17 @@ fn softmax_stays_in_cohort() {
 #[test]
 fn registry_is_data_and_dispatch_is_branch_free() {
     // Anti-LOC law: the cohort is DATA. The registry must contain every
-    // REQUIRED migrated-cohort cell — the 7 migrated fjxh.14 ops +
-    // softmax + the four r3-linear `std.linalg` cells from 4wj0 + the
-    // five `std.graph` cells from masa slices 1-3 + the two
-    // `std.optimize` cells from r3-lp-milp-wlif slice 1 + the two
-    // `std.poly` cells from hjor slice 1 + the three `std.control`
-    // cells + the two `std.category` cells. The registry is OPEN by
+    // REQUIRED migrated-cohort cell — the 7 migrated ops +
+    // softmax + the four `std.linalg` cells, the five `std.graph`
+    // cells, the two `std.optimize` cells, the two `std.poly` cells,
+    // the three `std.control` cells, and the two `std.category` cells.
+    // The registry is OPEN by
     // design (adding a cell is one data entry, never an op variant or
     // dispatch arm), so the contract is required-set CONTAINMENT, not a
-    // frozen total: unrelated registry additions from later beads are
+    // frozen total: unrelated registry additions from later are
     // permitted and are not this assertion's concern. The seam gained
     // NO per-op branch for any of them (unknown cells still refuse
-    // typed, the fjxh.6 contract); no compiled op name carries a cell
+    // typed, the contract); no compiled op name carries a cell
     // path.
     const REQUIRED_MIGRATED_COHORT: &[&str] = &[
         "std.math.add",
@@ -350,7 +342,7 @@ fn registry_is_data_and_dispatch_is_branch_free() {
 fn missing_nucleus_diagnosed_typed() {
     // Matmul and RK4 are NOT in the closed reference vocabulary: the
     // compiler refuses typed, naming the missing nucleus (matrix carrier
-    // shapes; integrator loops in first-order terms). The bead's law:
+    // shapes; integrator loops in first-order terms). The law:
     // failures diagnose the missing nucleus — never a silent wrong
     // lowering.
     let x = || Term::Variable(VariableId("x".into()));
@@ -421,7 +413,8 @@ fn frozen_policy_mutation_refused() {
         Ok(_) => panic!("frozen cell mutation must refuse"),
     }
 
-    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_cell_migration.emath");
+    const NEGATIVE_SEED: &str =
+        include_str!("../../../tests/invalid/capability_cell_migration.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
@@ -459,17 +452,20 @@ fn cohort_mutant_is_caught_and_lands_in_bundle() {
     };
     let inputs = [Value::F64(2.0), Value::F64(3.0)];
     let via_cell = seam_eval("std.math.add", &inputs);
-    let via_mutant =
-        evaluate_with_budget(&mutant_program, &inputs, &[], EvalBudget::default())
-            .expect("mutant evaluates");
+    let via_mutant = evaluate_with_budget(&mutant_program, &inputs, &[], EvalBudget::default())
+        .expect("mutant evaluates");
     match (&via_cell, &via_mutant) {
         (Value::F64(a), Value::F64(b)) => {
-            assert_ne!(a.to_bits(), b.to_bits(), "the differential catches 2+3 vs 2-3")
+            assert_ne!(
+                a.to_bits(),
+                b.to_bits(),
+                "the differential catches 2+3 vs 2-3"
+            )
         }
         other => panic!("scalar outputs expected, got {other:?}"),
     }
 
-    // Labeled portfolio: the healthy cohort verdict in the fjxh.8
+    // Labeled portfolio: the healthy cohort verdict in the
     // envelope — every migrated op answers through the seam, labeled.
     struct CohortWorld;
     impl emath_genesis::FirstOrderWorld for CohortWorld {

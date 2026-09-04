@@ -1,159 +1,25 @@
-//! Bead `emath-r3-sde-control-zxkl` — pass 5: the immutable static
+//! — the immutable static
 //! native-kernel registry (approved generic ABI).
 //!
-//! These tests prove the registry shape WITHOUT the interpreter
-//! wiring (which waits on CalmPine's interp.rs release):
-//! - the table is keyed by capability name, resolves Pure cells, and
-//!   is immutable (no register API, no runtime mutation, no ambient
-//!   state);
-//! - a TOY entry (`std.stochastic.toy_double`) proves genericity — the
-//!   mechanism is domain-neutral, not an SDE branch;
-//! - the SDE entries (`euler_maruyama`, `stratonovich`) expose the
-//!   kernel through the existing exec-ir `Value` type with exact arity
-//!   and strict-f64 refusal discipline;
-//! - unknown names keep `None` (the caller's refusal path is
-//!   unchanged); wrong arity refuses with the same message the
-//!   compiled-cell path uses.
+//! These tests prove that capsule FeatureIDs bind immutable kernels by verified
+//! identity/signature/hash, refusals cannot mutate the installed distribution,
+//! and unknown names never fabricate handlers.
+
+use std::path::Path;
 
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::native_kernel::native_kernel;
+use emath_exec_ir::language_image::{LanguageDistribution, load_language_distribution};
+use emath_exec_ir::native_kernel::{
+    KernelBindingError, binding_semantic_hash, install_language_distribution, native_kernel,
+};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
-
-fn val_f64(x: f64) -> Value {
-    Value::F64(x)
-}
-
-fn val_vec(xs: &[f64]) -> Value {
-    Value::Vector(xs.to_vec())
-}
-
-/// The toy entry: pure doubling is generic kernel data.
-#[test]
-fn toy_kernel_doubles_scalar() {
-    let kernel = native_kernel("std.stochastic.toy_double").expect("toy entry exists");
-    assert_eq!(kernel.arity, 1);
-    let out = (kernel.handler)(&[val_f64(21.0)]).expect("toy runs");
-    assert_eq!(out, val_f64(42.0));
-    // Non-finite input refuses under the pure-cell strict-f64 guard.
-    let err = (kernel.handler)(&[val_f64(f64::NAN)]).expect_err("non-finite refuses");
-    assert!(err.contains("E-CELL-006"), "guard code present: {err}");
-    // A type-mismatched input refuses typed (not silently coerced).
-    let err = (kernel.handler)(&[val_vec(&[1.0])]).expect_err("non-scalar refuses");
-    assert!(err.contains("E-TYPE-012"), "type refusal present: {err}");
-}
-
-/// Wrong arity is refused identically to the compiled-cell path.
-#[test]
-fn kernel_enforces_arity() {
-    let kernel = native_kernel("std.stochastic.euler_maruyama").expect("sde entry exists");
-    // The registry stores the exact arity; the caller checks it BEFORE
-    // the handler (same discipline as apply_capability_cell).
-    assert_eq!(kernel.arity, 7, "sde cell contract is 7 args");
-    // A direct handler call with the wrong count still refuses typed
-    // (not a partial execution).
-    let err = (kernel.handler)(&[val_f64(1.0), val_f64(2.0)]).unwrap_err();
-    assert_eq!(
-        err, "capability argument count does not match the cell contract",
-        "arity refusal message matches the compiled-cell path"
-    );
-}
+use emath_ir::CapsuleSlot;
 
 /// Unknown names keep `None` — the registry never fabricates a handler.
 #[test]
 fn unknown_name_keeps_none() {
     assert!(native_kernel("std.stochastic.does_not_exist").is_none());
     assert!(native_kernel("").is_none());
-}
-
-/// Genericity: a name that is NOT SDE resolves through the SAME table
-/// mechanism (toy entry), so this is a generic capability ABI, not a
-/// domain match arm.
-#[test]
-fn registry_is_generic_not_domain_switch() {
-    let toy = native_kernel("std.stochastic.toy_double").expect("toy");
-    let sde = native_kernel("std.stochastic.euler_maruyama").expect("sde");
-    assert_ne!(toy.handler, sde.handler, "distinct handlers");
-}
-
-/// The SDE Itô entry: deterministic, matches the owned kernel oracle
-/// bit-for-bit under a fixed seed (the Z stream is the SAME Normal(0,1)
-/// draws the ProbSample cell yields).
-#[test]
-fn sde_ito_registry_matches_owned_kernel() {
-    let kernel = native_kernel("std.stochastic.euler_maruyama").expect("ito entry");
-    let drift = val_vec(&[0.0, 0.25]); // μ(x) = 0.25·x
-    let diffusion = val_vec(&[0.0, 0.35]); // σ(x) = 0.35·x
-    let seed = 7.0;
-    let args = &[
-        drift,
-        diffusion,
-        val_f64(1.0), // x0
-        val_f64(0.01), // h
-        val_f64(64.0), // steps
-        val_f64(seed), // seed
-        val_vec(&[]),   // stream (root)
-    ];
-    let got = (kernel.handler)(args).expect("ito runs");
-    let Value::Vector(trajectory) = got else {
-        panic!("ito must return a vector");
-    };
-    assert_eq!(trajectory.len(), 65, "x0 + 64 steps");
-    // Cross-check against the owned emath-rt kernel directly: the
-    // adapter must be a pure mirror with zero drift in the mapping.
-    let want = emath_rt::stochastic::sde_euler_maruyama(
-        emath_rt::stochastic::SdeRule::Ito,
-        &[0.0, 0.25],
-        &[0.0, 0.35],
-        1.0,
-        0.01,
-        64,
-        Some(seed),
-    )
-    .expect("owned kernel runs");
-    assert_eq!(trajectory, want, "registry adapter must mirror the owned kernel");
-}
-
-/// The SDE Stratonovich entry: distinct rule, same kernel, same
-/// oracle — the correction term is present, not merged.
-#[test]
-fn sde_stratonovich_registry_matches_owned_kernel() {
-    let kernel = native_kernel("std.stochastic.stratonovich").expect("strat entry");
-    let args = &[
-        val_vec(&[0.0, 0.25]),
-        val_vec(&[0.0, 0.35]),
-        val_f64(1.0), // x0
-        val_f64(0.01), // h
-        val_f64(64.0), // steps
-        val_f64(7.0),  // seed
-        val_vec(&[]),  // stream (root)
-    ];
-    let got = (kernel.handler)(args).expect("strat runs");
-    let Value::Vector(trajectory) = got else {
-        panic!("strat must return a vector");
-    };
-    let want = emath_rt::stochastic::sde_euler_maruyama(
-        emath_rt::stochastic::SdeRule::Stratonovich,
-        &[0.0, 0.25],
-        &[0.0, 0.35],
-        1.0,
-        0.01,
-        64,
-        Some(7.0),
-    )
-    .expect("owned kernel runs");
-    assert_eq!(trajectory, want, "registration of the distinct rule must mirror the kernel");
-    // The two registry entries are distinct cells, never aliased.
-    assert_ne!(
-        trajectory,
-        {
-            let ito = native_kernel("std.stochastic.euler_maruyama").unwrap();
-            let Value::Vector(ito_traj) = (ito.handler)(args).unwrap() else {
-                panic!("ito returns vector");
-            };
-            ito_traj
-        },
-        "ito and strat trajectories must differ for state-dependent noise"
-    );
 }
 
 /// --- The interpreter seam (ApplyCapability → native registry) ---
@@ -163,7 +29,7 @@ fn sde_stratonovich_registry_matches_owned_kernel() {
 /// arity/refusal discipline and NO new EmirOp or domain switch.
 /// Unknown names keep the exact pre-existing refusal.
 
-/// The fjxh.6 seam shape: load inputs, then one ApplyCapability.
+/// The seam shape: load inputs, then one ApplyCapability.
 fn seam_eval(capability: &str, inputs: &[Value]) -> Result<Value, EvalFault> {
     let count = inputs.len();
     let mut ops: Vec<(EmirOp, emath_core::Span)> = (0..count)
@@ -187,100 +53,242 @@ fn seam_eval(capability: &str, inputs: &[Value]) -> Result<Value, EvalFault> {
     evaluate_with_budget(&program, inputs, &[], EvalBudget::default())
 }
 
-/// The seam executes the TOY cell through the real interpreter: the
-/// native registry is reachable from ApplyCapability, not just from
-/// direct handler calls.
-#[test]
-fn interp_seam_runs_toy_cell() {
-    let out = seam_eval("std.stochastic.toy_double", &[val_f64(21.0)])
-        .expect("toy cell resolves through the seam");
-    assert_eq!(out, val_f64(42.0));
-}
-
-/// The seam executes the SDE cell through the real interpreter and the
-/// result is the owned kernel's trajectory bit-for-bit.
-#[test]
-fn interp_seam_runs_sde_cell() {
-    let inputs = vec![
-        val_vec(&[0.0, 0.25]),
-        val_vec(&[0.0, 0.35]),
-        val_f64(1.0),
-        val_f64(0.01),
-        val_f64(64.0),
-        val_f64(7.0),
-        val_vec(&[]),
-    ];
-    let got = seam_eval("std.stochastic.euler_maruyama", &inputs)
-        .expect("sde cell resolves through the seam");
-    let want = emath_rt::stochastic::sde_euler_maruyama(
-        emath_rt::stochastic::SdeRule::Ito,
-        &[0.0, 0.25],
-        &[0.0, 0.35],
-        1.0,
-        0.01,
-        64,
-        Some(7.0),
+fn reference_pow_mod(base: i64, exponent: i64, modulus: i64) -> Result<Value, EvalFault> {
+    // The reference execution is the capsule seam itself: the retired
+    // `EmirOp::PowMod` caller now dispatches the real
+    // `std.capability.exact.pow-mod` FeatureID through ApplyCapability.
+    seam_eval(
+        "std.capability.exact.pow-mod",
+        &[Value::I64(base), Value::I64(exponent), Value::I64(modulus)],
     )
-    .expect("owned kernel runs");
-    assert_eq!(got, Value::Vector(want), "seam result mirrors the owned kernel");
 }
 
-/// A wrong argument count through the seam refuses with the SAME
-/// message the compiled-cell path uses (one discipline, two backends).
-#[test]
-fn interp_seam_arity_refusal_matches_compiled_path() {
-    let err = seam_eval("std.stochastic.toy_double", &[val_f64(1.0), val_f64(2.0)])
-        .expect_err("arity mismatch refuses");
-    match err {
-        EvalFault::Arithmetic { detail, .. } => {
-            assert_eq!(
-                detail, "capability argument count does not match the cell contract",
-                "arity refusal matches the compiled-cell path"
-            );
-        }
-        other => panic!("expected Arithmetic fault, got {other:?}"),
-    }
+fn mutate_add_semantics(
+    distribution: &LanguageDistribution,
+    from: &str,
+    to: &str,
+) -> LanguageDistribution {
+    let mut mutated = distribution.clone();
+    let semantics = mutated
+        .capsules
+        .iter_mut()
+        .find(|capsule| capsule.feature_id.as_str() == "std.capability.math.add")
+        .and_then(|capsule| capsule.slots.get_mut("semantics"));
+    let Some(CapsuleSlot::Value(semantics)) = semantics else {
+        panic!("add capsule carries semantics")
+    };
+    *semantics = semantics.replace(from, to);
+    mutated
 }
 
-/// An unknown capability name through the seam keeps the EXACT
-/// pre-existing refusal — the registry never fabricates a handler and
-/// the miss path is unchanged.
 #[test]
-fn interp_seam_unknown_name_unchanged() {
-    let err = seam_eval("std.stochastic.does_not_exist", &[val_f64(1.0)])
-        .expect_err("unknown name refuses");
-    match err {
-        EvalFault::Arithmetic { detail, .. } => {
-            assert_eq!(
-                detail, "no local reference semantics for this pure cell",
-                "unknown-name refusal is unchanged"
-            );
-        }
-        other => panic!("expected Arithmetic fault, got {other:?}"),
+fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe() {
+    const ADD: &str = "std.capability.math.add";
+    const POW_MOD: &str = "std.capability.exact.pow-mod";
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+    let distribution = load_language_distribution(&root).expect("load capsule distribution");
+    install_language_distribution(&distribution).expect("install capsule-active kernels");
+
+    let capsule = |feature_id: &str| {
+        distribution
+            .capsules
+            .iter()
+            .find(|capsule| capsule.feature_id.as_str() == feature_id)
+            .expect("cutover capsule exists")
+    };
+    let add_capsule = capsule(ADD);
+    let kernel = native_kernel(ADD).expect("FeatureID resolves its native kernel");
+    assert_eq!(kernel.kernel_id, "checked-add");
+    assert_eq!(
+        binding_semantic_hash(ADD).as_deref(),
+        Some(add_capsule.semantic_hash.as_str()),
+        "the binding is pinned to the resolved capsule, not its alias or label"
+    );
+    let pow_capsule = capsule(POW_MOD);
+    let pow_kernel = native_kernel(POW_MOD).expect("number-theory FeatureID resolves its kernel");
+    assert_eq!(pow_kernel.arity, 3);
+    assert_eq!(
+        binding_semantic_hash(POW_MOD).as_deref(),
+        Some(pow_capsule.semantic_hash.as_str())
+    );
+
+    for (left, right, expected) in [
+        (0, 0, 0),
+        (-5, 7, 2),
+        (i64::MIN, 0, i64::MIN),
+        (i64::MAX, 0, i64::MAX),
+    ] {
+        let native = (kernel.handler)(&[Value::I64(left), Value::I64(right)]);
+        let reference = seam_eval(ADD, &[Value::I64(left), Value::I64(right)]);
+        assert_eq!(native, Ok(Value::I64(expected)));
+        assert_eq!(reference, Ok(Value::I64(expected)));
     }
+    assert!(
+        (kernel.handler)(&[Value::I64(i64::MAX), Value::I64(1)]).is_err(),
+        "native exact addition must refuse overflow"
+    );
+    assert!(
+        seam_eval(ADD, &[Value::I64(i64::MAX), Value::I64(1)]).is_err(),
+        "reference execution must refuse the same overflow boundary"
+    );
+
+    for (base, exponent, modulus, expected) in [
+        (2, 10, 1_000, 24),
+        (-2, 5, 7, 3),
+        (i64::MAX, 0, i64::MAX, 1),
+    ] {
+        let args = [Value::I64(base), Value::I64(exponent), Value::I64(modulus)];
+        let native = (pow_kernel.handler)(&args).expect("native pow_mod");
+        let reference = reference_pow_mod(base, exponent, modulus).expect("reference pow_mod");
+        assert_eq!(native, Value::I64(expected));
+        assert_eq!(reference, Value::I64(expected));
+    }
+    let zero_modulus = [Value::I64(2), Value::I64(3), Value::I64(0)];
+    assert!((pow_kernel.handler)(&zero_modulus).is_err());
+    assert!(
+        reference_pow_mod(2, 3, 0).is_err(),
+        "zero-modulus domain errors must never produce a value"
+    );
+
+    let wrong_kernel = mutate_add_semantics(&distribution, "checked-add", "scalar-double");
+    assert_eq!(
+        install_language_distribution(&wrong_kernel),
+        Err(KernelBindingError::MissingKernel("scalar-double".to_string()))
+    );
+    let stale_signature = mutate_add_semantics(&distribution, "output=Int", "output=Float64");
+    assert_eq!(
+        install_language_distribution(&stale_signature),
+        Err(KernelBindingError::SignatureMismatch(ADD.to_string()))
+    );
+    assert_eq!(
+        binding_semantic_hash(ADD).as_deref(),
+        Some(add_capsule.semantic_hash.as_str()),
+        "refused installs cannot replace the last valid binding"
+    );
+
+    let mut forged_label = distribution.clone();
+    let capsule = forged_label
+        .capsules
+        .iter_mut()
+        .find(|capsule| capsule.feature_id.as_str() == ADD)
+        .expect("add capsule exists");
+    capsule.summary = "result=999".to_string();
+    capsule.slots.insert(
+        "presentation".to_string(),
+        CapsuleSlot::Value("aliases=+,add;result=999".to_string()),
+    );
+    install_language_distribution(&forged_label).expect("labels do not define kernel meaning");
+    let kernel = native_kernel(ADD).expect("FeatureID remains bound");
+    assert_eq!(
+        (kernel.handler)(&[Value::I64(2), Value::I64(1)]),
+        Ok(Value::I64(3)),
+        "kernel output comes from operands and semantics, never a result label"
+    );
+
+    install_language_distribution(&distribution).expect("restore canonical distribution");
 }
 
-/// A kernel-side typed refusal (domain error) flows through the seam
-/// verbatim as a CapabilityRefused naming the capability and the
-/// stable code — typed, never a silent value.
+/// GCD/LCM cutover (emath-ehpal.7): the `std.capability.exact.gcd` /
+/// `std.capability.exact.lcm` capsules are capsule-active and bind the
+/// domain-neutral `euclidean-gcd` / `checked-lcm` kernels by verified
+/// identity/signature/hash. Inactive (uninstalled) and stale (mutated
+/// signature) images refuse typed; overflow refuses typed, never wraps.
 #[test]
-fn interp_seam_kernel_refusal_flows_through() {
-    let inputs = vec![
-        val_vec(&[0.0, 0.25]),
-        val_vec(&[0.0, 0.35]),
-        val_f64(1.0),
-        val_f64(0.0), // h ≤ 0 → E-SIM-002
-        val_f64(64.0),
-        val_f64(7.0),
-        val_vec(&[]),
-    ];
-    let err = seam_eval("std.stochastic.euler_maruyama", &inputs)
-        .expect_err("domain error refuses");
-    match err {
-        EvalFault::CapabilityRefused { capability, code } => {
-            assert_eq!(capability, "std.stochastic.euler_maruyama");
-            assert!(code.starts_with("E-SIM-002"), "stable code surfaced: {code}");
-        }
-        other => panic!("expected CapabilityRefused, got {other:?}"),
-    }
+fn gcd_lcm_cutover_is_feature_bound_and_refusal_safe() {
+    const GCD: &str = "std.capability.exact.gcd";
+    const LCM: &str = "std.capability.exact.lcm";
+    // Inactive image: no binding is installed on this thread, so the
+    // registry fabricates no handler and the seam keeps its typed refusal.
+    assert!(native_kernel(GCD).is_none());
+    assert!(native_kernel(LCM).is_none());
+    assert!(seam_eval(GCD, &[Value::I64(12), Value::I64(18)]).is_err());
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+    let distribution = load_language_distribution(&root).expect("load capsule distribution");
+    install_language_distribution(&distribution).expect("install capsule-active kernels");
+
+    let capsule = |feature_id: &str| {
+        distribution
+            .capsules
+            .iter()
+            .find(|capsule| capsule.feature_id.as_str() == feature_id)
+            .expect("cutover capsule exists")
+    };
+    let gcd_capsule = capsule(GCD);
+    let gcd_kernel = native_kernel(GCD).expect("gcd FeatureID resolves its native kernel");
+    assert_eq!(gcd_kernel.kernel_id, "euclidean-gcd");
+    assert_eq!(
+        binding_semantic_hash(GCD).as_deref(),
+        Some(gcd_capsule.semantic_hash.as_str()),
+        "the binding is pinned to the resolved capsule, not its alias or label"
+    );
+    let lcm_capsule = capsule(LCM);
+    let lcm_kernel = native_kernel(LCM).expect("lcm FeatureID resolves its native kernel");
+    assert_eq!(lcm_kernel.kernel_id, "checked-lcm");
+    assert_eq!(
+        binding_semantic_hash(LCM).as_deref(),
+        Some(lcm_capsule.semantic_hash.as_str())
+    );
+
+    // Happy paths execute through the capsule-active FeatureID seam.
+    assert_eq!(
+        seam_eval(GCD, &[Value::I64(12), Value::I64(18)]),
+        Ok(Value::I64(6))
+    );
+    assert_eq!(
+        seam_eval(LCM, &[Value::I64(4), Value::I64(6)]),
+        Ok(Value::I64(12))
+    );
+    // Edges: gcd(0,0)=0 lattice meet, sign normalization on magnitudes,
+    // lcm(0,x)=0.
+    assert_eq!(
+        seam_eval(GCD, &[Value::I64(0), Value::I64(0)]),
+        Ok(Value::I64(0))
+    );
+    assert_eq!(
+        seam_eval(GCD, &[Value::I64(-12), Value::I64(18)]),
+        Ok(Value::I64(6))
+    );
+    assert_eq!(
+        seam_eval(LCM, &[Value::I64(0), Value::I64(7)]),
+        Ok(Value::I64(0))
+    );
+    assert_eq!(
+        seam_eval(LCM, &[Value::I64(-4), Value::I64(6)]),
+        Ok(Value::I64(12))
+    );
+    // gcd(i64::MIN, 0) = 2^63 has no i64 carrier — typed refusal.
+    assert!(
+        seam_eval(GCD, &[Value::I64(i64::MIN), Value::I64(0)]).is_err(),
+        "gcd(i64::MIN, 0) must refuse: 2^63 exceeds the i64 carrier"
+    );
+    // lcm overflow refuses typed, never wraps.
+    assert!(
+        seam_eval(LCM, &[Value::I64(i64::MAX), Value::I64(i64::MAX - 1)]).is_err(),
+        "lcm(i64::MAX, i64::MAX-1) must refuse overflow typed"
+    );
+
+    // Stale image: a mutated carrier signature refuses install and cannot
+    // replace the last valid binding.
+    let mut stale = distribution.clone();
+    let semantics = stale
+        .capsules
+        .iter_mut()
+        .find(|capsule| capsule.feature_id.as_str() == GCD)
+        .and_then(|capsule| capsule.slots.get_mut("semantics"));
+    let Some(CapsuleSlot::Value(semantics)) = semantics else {
+        panic!("gcd capsule carries semantics")
+    };
+    *semantics = semantics.replace("output=Int", "output=Nat");
+    assert_eq!(
+        install_language_distribution(&stale),
+        Err(KernelBindingError::SignatureMismatch(GCD.to_string()))
+    );
+    assert_eq!(
+        binding_semantic_hash(GCD).as_deref(),
+        Some(gcd_capsule.semantic_hash.as_str()),
+        "refused installs cannot replace the last valid binding"
+    );
+
+    install_language_distribution(&distribution).expect("restore canonical distribution");
 }

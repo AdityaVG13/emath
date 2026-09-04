@@ -9,7 +9,9 @@ fn nanopass_projections_unit() {
         name: QualifiedName::single("std.math.softmax"),
         class: CellClass::Pure,
         version: "1.0.0".into(),
-        migration: MigrationPolicy::BumpAndNote { note: String::new() },
+        migration: MigrationPolicy::BumpAndNote {
+            note: String::new(),
+        },
         arity: 1,
         about: None,
     };

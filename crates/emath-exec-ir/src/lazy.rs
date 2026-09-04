@@ -1,4 +1,4 @@
-//! Lazy image loading, prelude-only startup, optional chunks (fjxh.10).
+//! Lazy image loading, prelude-only startup, optional chunks.
 //!
 //! Startup must not compile (or load) all installed fields. A lazy
 //! session boots with the NUCLEUS + the PRELUDE INDEX (each installed

@@ -1,26 +1,26 @@
-//! emath-epic-machine-fjxh.17: Generated provider adapter contracts and
+//! Generated provider adapter contracts and
 //! conformance fixtures.
 //!
-//! The bead's law: cell schemas (fjxh.2) GENERATE the adapter contract —
+//! The law: cell schemas GENERATE the adapter contract
 //! capability key, IR-facing trait shape (as data), deterministic
 //! conformance fixtures, and reference-oracle comparison. Providers are
 //! untrusted workers: their outputs are admitted only by bit-exact (or
 //! policy-declared) comparison against the local oracle. Provider-native
 //! types never appear in the IR-facing signature — the allowlist gate
 //! refuses them typed (Neutral IR Constitution §7; same rule as
-//! emath-epic-fm-0c8f.12). The provider is never the public meaning of
+//! ). The provider is never the public meaning of
 //! an operation: the oracle stays in emath-ir, the adapter only carries
 //! the comparison contract.
 
 use std::collections::BTreeMap;
 
+use emath_core::QualifiedName;
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_genesis::{
     Disposition, EvalError, FirstOrderWorld, ResultBundle, WorldBudget, evaluate_labeled,
 };
-use emath_core::QualifiedName;
 use emath_ir::capability::{CellClass as SchemaClass, CellSchema, MigrationPolicy};
 use emath_provider_api::adapter::{
     AdapterContractError, ConformanceVerdict, ProviderBinding, compare_outputs, ir_type_gate,
@@ -29,7 +29,7 @@ use emath_term::{SymbolId, Term};
 
 const STD_TENSOR_SOFTMAX: &str = "std.tensor.softmax";
 
-/// The softmax cell schema (fjxh.2 descriptor) as admitted on main.
+/// The softmax cell schema (descriptor) as admitted on main.
 fn softmax_schema() -> CellSchema {
     CellSchema {
         name: QualifiedName::single(STD_TENSOR_SOFTMAX),
@@ -42,7 +42,7 @@ fn softmax_schema() -> CellSchema {
 }
 
 /// The REAL provider binding used by the fixture harness: the compiled
-/// cell evaluated through the fjxh.6 VM seam (the provider-native side
+/// cell evaluated through the VM seam (the provider-native side
 /// is any implementation that speaks the adapter's IR-facing shape; the
 /// seam is the local stand-in so the comparison is live, not mocked).
 fn run_softmax_seam(vector: &[f64]) -> Result<Vec<f64>, EvalFault> {
@@ -85,12 +85,18 @@ fn contract_is_generated_from_schema() {
     // identity-affecting schema field, and ignores presentation.
     let contract = emath_provider_api::adapter::adapter_contract(&softmax_schema())
         .expect("softmax adapter contract generates");
-    assert!(contract.capability_key.starts_with("adapter:std.tensor.softmax@"), "{}", contract.capability_key);
+    assert!(
+        contract
+            .capability_key
+            .starts_with("adapter:std.tensor.softmax@"),
+        "{}",
+        contract.capability_key
+    );
     assert_eq!(contract.spec.arity, 1);
     assert_eq!(contract.spec.numeric_policy, "strict-f64");
 
-    let regenerated = emath_provider_api::adapter::adapter_contract(&softmax_schema())
-        .expect("regenerates");
+    let regenerated =
+        emath_provider_api::adapter::adapter_contract(&softmax_schema()).expect("regenerates");
     assert_eq!(contract.capability_key, regenerated.capability_key);
 
     // Identity-affecting schema mutation moves the key; presentation
@@ -99,8 +105,8 @@ fn contract_is_generated_from_schema() {
         version: "2.0.0".to_string(),
         ..softmax_schema()
     };
-    let bumped_contract = emath_provider_api::adapter::adapter_contract(&bumped)
-        .expect("bumped contract generates");
+    let bumped_contract =
+        emath_provider_api::adapter::adapter_contract(&bumped).expect("bumped contract generates");
     assert_ne!(contract.capability_key, bumped_contract.capability_key);
     let annotated = CellSchema {
         about: Some("presentation only".to_string()),
@@ -128,8 +134,8 @@ fn fixtures_compare_native_vs_provider_bit_exact() {
     for fixture in &contract.fixtures {
         let expected = fixture.expected.as_ref().expect("softmax has an oracle");
         for input in &fixture.inputs {
-            let native = emath_ir::capability::softmax_reference_strict_f64(input)
-                .expect("oracle computes");
+            let native =
+                emath_ir::capability::softmax_reference_strict_f64(input).expect("oracle computes");
             assert_eq!(&native, expected, "oracle pinned for {input:?}");
             let provider = run_softmax_seam(input).expect("provider binding evaluates");
             assert_eq!(
@@ -193,7 +199,13 @@ fn provider_native_types_fail_the_gate() {
             other => panic!("expected NativeTypeInIr for {native}, got {other:?}"),
         }
     }
-    for owned in ["scalar<f64>", "vector<f64>", "matrix<f64>", "tensor<f64>", "bool"] {
+    for owned in [
+        "scalar<f64>",
+        "vector<f64>",
+        "matrix<f64>",
+        "tensor<f64>",
+        "bool",
+    ] {
         ir_type_gate(owned).expect("IR-owned token passes");
     }
 
@@ -225,7 +237,8 @@ fn provider_native_types_fail_the_gate() {
 
     // Negative seed: the seeded silent-success declares the typed gate
     // refusal.
-    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/provider_adapter_contracts.emath");
+    const NEGATIVE_SEED: &str =
+        include_str!("../../../tests/invalid/provider_adapter_contracts.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
@@ -238,8 +251,8 @@ fn provider_native_types_fail_the_gate() {
 
 #[test]
 fn conformance_lands_in_bundle() {
-    // WorldResultBundle fixture (bead e2e clause): the conformance run
-    // is a labeled world record in the fjxh.8 envelope — the provider is
+    // WorldResultBundle fixture: the conformance run
+    // is a labeled world record in the envelope — the provider is
     // a checked WORKER, never the public meaning (the oracle stays in
     // emath-ir).
     struct ConformanceWorld;
@@ -253,8 +266,7 @@ fn conformance_lands_in_bundle() {
             for fixture in &contract.fixtures {
                 let expected = fixture.expected.as_ref().expect("oracle present");
                 for input in &fixture.inputs {
-                    let provider =
-                        run_softmax_seam(input).expect("provider binding evaluates");
+                    let provider = run_softmax_seam(input).expect("provider binding evaluates");
                     assert_eq!(
                         compare_outputs(expected, &provider),
                         ConformanceVerdict::Conformant

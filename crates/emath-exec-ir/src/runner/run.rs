@@ -1,9 +1,10 @@
 use super::eval::{
-    check_obligation, coerce_bindings, eval_constructor, eval_definitions, eval_expect,
-    eval_givens, outputs_of, seed_state_from_given,
+    check_obligation, coerce_bindings, eval_constructor, eval_definitions,
+    eval_definitions_symbolic, eval_expect, eval_givens, outputs_of, seed_state_from_given,
 };
 use super::{
-    DeclarationRun, PANE_TEST_NAME, RunReport, RunSummary, TestRun, TestVerdict, ZERO_TEST_NOTE,
+    DeclarationRun, HOLE_OPEN, PANE_TEST_NAME, RunReport, RunSummary, SYMBOLIC_ONLY, TestRun,
+    TestVerdict, ZERO_TEST_NOTE,
 };
 use crate::interp::Value;
 use emath_ir::{Declaration, SemanticPackage};
@@ -30,6 +31,8 @@ pub fn run_package_with_given(
                 summary.passed = summary.passed.saturating_add(1);
             } else if test.verdict.is_refused() {
                 summary.refused = summary.refused.saturating_add(1);
+            } else if test.verdict.is_symbolic() {
+                summary.symbolic = summary.symbolic.saturating_add(1);
             } else if test.verdict.is_computed() {
                 summary.computed = summary.computed.saturating_add(1);
             } else {
@@ -62,10 +65,11 @@ pub fn run_declaration_with_given(
     if let Some(given) = extra_given {
         tests.push(run_direct(package, declaration, given));
     } else if declaration.tests.is_empty() {
+        // nothing-returns-nothing: a zero-test declaration always
+        // produces its `_pane` run; unbound inputs yield the labeled
+        // symbolic form instead of skipping the run entirely.
         let empty = BTreeMap::new();
-        if missing_binding(declaration, &empty).is_none() {
-            tests.push(run_direct(package, declaration, &empty));
-        }
+        tests.push(run_direct(package, declaration, &empty));
     }
     let note = if tests.is_empty() {
         Some(ZERO_TEST_NOTE.to_string())
@@ -181,11 +185,12 @@ fn run_direct(
         verdict: TestVerdict::Computed,
     };
 
-    if let Some(missing) = missing_binding(declaration, &run.given) {
-        run.verdict = TestVerdict::LoweringRefused {
-            detail: format!("missing input `{missing}`"),
-        };
-        return run;
+    if !missing_bindings(declaration, &run.given).is_empty() {
+        // nothing-returns-nothing: no world in scope can bind every
+        // input, so the run returns the labeled symbolic form instead of
+        // a refusal. Typed refusals survive for genuinely impossible
+        // lowering (handled inside the symbolic lane).
+        return run_symbolic(package, declaration, run);
     }
     if let Err(verdict) = check_law_assumptions(package, declaration, &run.given) {
         run.verdict = verdict;
@@ -214,6 +219,15 @@ fn run_direct(
             }
         }
     } else if !declaration.state.is_empty() {
+        let state_unbound = declaration
+            .state
+            .iter()
+            .any(|field| !run.given.contains_key(&field.name));
+        if state_unbound {
+            // State no world can seed: the labeled symbolic form instead
+            // of a refusal.
+            return run_symbolic(package, declaration, run);
+        }
         match seed_state_from_given(declaration, &run.given) {
             Ok(mut state) => {
                 coerce_bindings(package, declaration, &mut state);
@@ -231,6 +245,33 @@ fn run_direct(
             run.outputs = outputs_of(package, declaration, &definitions);
             run.definitions = definitions;
             run.verdict = TestVerdict::Computed;
+        }
+        Err(verdict) => {
+            run.verdict = verdict;
+        }
+    }
+    run
+}
+
+/// nothing-returns-nothing lane: evaluate every definition that has an
+/// evaluable world, return the symbolic form for the rest, and attach
+/// the meaning label to the verdict. Never a naked refusal for a world
+/// gap; only genuinely impossible lowering still refuses typed.
+fn run_symbolic(package: &SemanticPackage, declaration: &Declaration, mut run: TestRun) -> TestRun {
+    match eval_definitions_symbolic(package, declaration, &run.given) {
+        Ok(symbolic) => {
+            run.outputs = outputs_of(package, declaration, &symbolic.definitions);
+            run.definitions = symbolic.definitions;
+            let label = if symbolic.forms.is_empty() {
+                HOLE_OPEN
+            } else {
+                SYMBOLIC_ONLY
+            };
+            run.verdict = TestVerdict::Symbolic {
+                label,
+                forms: symbolic.forms,
+                holes: symbolic.holes,
+            };
         }
         Err(verdict) => {
             run.verdict = verdict;
@@ -264,18 +305,21 @@ fn check_law_assumptions(
     Ok(())
 }
 
-fn missing_binding(declaration: &Declaration, given: &BTreeMap<String, Value>) -> Option<String> {
-    for field in &declaration.inputs {
-        if !given.contains_key(&field.name) {
-            return Some(field.name.clone());
-        }
-    }
+/// Every input or constructor parameter the given map does not bind, in
+/// declaration order (inputs first, then constructor parameters).
+fn missing_bindings(declaration: &Declaration, given: &BTreeMap<String, Value>) -> Vec<String> {
+    let mut missing: Vec<String> = declaration
+        .inputs
+        .iter()
+        .filter(|field| !given.contains_key(&field.name))
+        .map(|field| field.name.clone())
+        .collect();
     if let Some(constructor) = declaration.constructors.first() {
         for parameter in &constructor.parameters {
             if !given.contains_key(&parameter.name) {
-                return Some(parameter.name.clone());
+                missing.push(parameter.name.clone());
             }
         }
     }
-    None
+    missing
 }

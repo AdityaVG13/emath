@@ -1,4 +1,4 @@
-//! emath-r2-graphs-masa (slice 6): sparse storage — the COO triplet
+//! (slice 6): sparse storage — the COO triplet
 //! carrier.
 //!
 //! The epic's named "sparse STORAGE formats" deferral, thinned to the
@@ -22,15 +22,46 @@
 //! - Surface: call names + registry cells `std.graph.sparse_triplets`
 //!   and `std.graph.sparse_from_triplets` (cohort 32).
 
+use std::path::{Path, PathBuf};
+
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    compile_reference, std_cell_registry, ParamShape, TermCompileError,
+    ParamShape, TermCompileError, compile_reference, std_cell_registry,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
 
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("graph kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const SPARSE_TRIPLETS: &str = "std.capability.graph.sparse-triplets";
+const SPARSE_FROM_TRIPLETS: &str = "std.capability.graph.sparse-from-triplets";
+const SHORTEST_DISTANCES: &str = "std.capability.graph.shortest-distances";
+
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
+    install_language();
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -66,12 +97,8 @@ fn extraction_ascending_skips_zeros() {
     // 3-vertex carrier with edges 0→2 (2.5), 1→0 (−1), 2→1 (0.5);
     // explicit 0.0 entries are skipped; order ascending (u, v).
     let triplets = eval(
-        vec![EmirOp::GraphSparseTriplets(EmirValue(0))],
-        &[dense(
-            3,
-            3,
-            &[0.0, 0.0, 2.5, -1.0, 0.0, 0.0, 0.0, 0.5, 0.0],
-        )],
+        vec![cell(SPARSE_TRIPLETS, vec![EmirValue(0)])],
+        &[dense(3, 3, &[0.0, 0.0, 2.5, -1.0, 0.0, 0.0, 0.0, 0.5, 0.0])],
     )
     .expect("extraction computes");
     let flat = vector_of(&triplets);
@@ -87,21 +114,14 @@ fn round_trip_law() {
     // from_triplets(n, triplets(adj)) == adj when no duplicates and
     // no explicit zeros — the storage round trip at 1e-12 (kills
     // index-swaps and weight/transposed-weight mutants).
-    let adj = dense(
-        3,
-        3,
-        &[0.0, 0.0, 2.5, -1.0, 0.0, 0.0, 0.0, 0.5, 0.0],
-    );
+    let adj = dense(3, 3, &[0.0, 0.0, 2.5, -1.0, 0.0, 0.0, 0.0, 0.5, 0.0]);
     let triplets = eval(
-        vec![EmirOp::GraphSparseTriplets(EmirValue(0))],
+        vec![cell(SPARSE_TRIPLETS, vec![EmirValue(0)])],
         &[adj.clone()],
     )
     .expect("extraction computes");
     let rebuilt = eval(
-        vec![EmirOp::GraphSparseFromTriplets(
-            EmirValue(0),
-            EmirValue(1),
-        )],
+        vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(3.0), triplets],
     )
     .expect("build computes");
@@ -114,17 +134,18 @@ fn duplicate_entries_sum() {
     // add weights). (0→1, 1.5) + (0→1, 2.5) → adj[0][1] = 4.
     let triplets = Value::Vector(vec![0.0, 1.0, 1.5, 0.0, 1.0, 2.5]);
     let built = eval(
-        vec![EmirOp::GraphSparseFromTriplets(
-            EmirValue(0),
-            EmirValue(1),
-        )],
+        vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(2.0), triplets],
     )
     .expect("build computes");
     let Value::Matrix { data, .. } = built else {
         panic!("expected a matrix")
     };
-    assert!((data[1] - 4.0).abs() < 1e-12, "duplicates sum, got {}", data[1]);
+    assert!(
+        (data[1] - 4.0).abs() < 1e-12,
+        "duplicates sum, got {}",
+        data[1]
+    );
 }
 
 #[test]
@@ -135,28 +156,27 @@ fn composition_with_dijkstra() {
     let dense_adj = dense(
         4,
         4,
-        &[0.0, 1.0, 5.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0],
+        &[
+            0.0, 1.0, 5.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0,
+        ],
     );
     let reference = eval(
-        vec![EmirOp::GraphDijkstra(EmirValue(0), EmirValue(1))],
+        vec![cell(SHORTEST_DISTANCES, vec![EmirValue(0), EmirValue(1)])],
         &[dense_adj.clone(), Value::F64(0.0)],
     )
     .expect("dense dijkstra computes");
     let triplets = eval(
-        vec![EmirOp::GraphSparseTriplets(EmirValue(0))],
+        vec![cell(SPARSE_TRIPLETS, vec![EmirValue(0)])],
         &[dense_adj],
     )
     .expect("extraction computes");
     let built = eval(
-        vec![EmirOp::GraphSparseFromTriplets(
-            EmirValue(0),
-            EmirValue(1),
-        )],
+        vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(4.0), triplets],
     )
     .expect("build computes");
     let sparse_answer = eval(
-        vec![EmirOp::GraphDijkstra(EmirValue(0), EmirValue(1))],
+        vec![cell(SHORTEST_DISTANCES, vec![EmirValue(0), EmirValue(1)])],
         &[built, Value::F64(0.0)],
     )
     .expect("sparse-built dijkstra computes");
@@ -170,10 +190,7 @@ fn refusals() {
     // E-GRAPH-006. The negative seed cross-checks E-GRAPH-006.
     let out_of_range = Value::Vector(vec![0.0, 9.0, 1.0]);
     let error = eval(
-        vec![EmirOp::GraphSparseFromTriplets(
-            EmirValue(0),
-            EmirValue(1),
-        )],
+        vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(3.0), out_of_range],
     )
     .expect_err("out-of-range index refuses");
@@ -183,10 +200,7 @@ fn refusals() {
     );
     let non_finite = Value::Vector(vec![0.0, 1.0, f64::NAN]);
     let error = eval(
-        vec![EmirOp::GraphSparseFromTriplets(
-            EmirValue(0),
-            EmirValue(1),
-        )],
+        vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(2.0), non_finite],
     )
     .expect_err("non-finite weight refuses");
@@ -196,10 +210,7 @@ fn refusals() {
     );
     let ragged = Value::Vector(vec![0.0, 1.0, 1.0, 0.0]);
     let error = eval(
-        vec![EmirOp::GraphSparseFromTriplets(
-            EmirValue(0),
-            EmirValue(1),
-        )],
+        vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(2.0), ragged],
     )
     .expect_err("ragged triplet stream refuses");
@@ -287,12 +298,9 @@ fn bundle_fixture() {
 
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
             let adj = dense(2, 2, &[0.0, 3.0, 0.0, 0.0]);
-            let triplets = eval(
-                vec![EmirOp::GraphSparseTriplets(EmirValue(0))],
-                &[adj],
-            )
-            .ok()
-            .map(|value| vector_of(&value));
+            let triplets = eval(vec![cell(SPARSE_TRIPLETS, vec![EmirValue(0)])], &[adj])
+                .ok()
+                .map(|value| vector_of(&value));
             match triplets {
                 Some(stream) if stream == vec![0.0, 1.0, 3.0] => {
                     Ok("sparse-carrier-roundtrip".to_string())

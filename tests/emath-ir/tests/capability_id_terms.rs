@@ -1,4 +1,4 @@
-//! emath-epic-machine-fjxh.1: CapabilityId terms in stable IR.
+//! CapabilityId terms in stable IR.
 //!
 //! Domain operations are applications of stable ids over a package-side
 //! cell arena (`SemanticPackage::capabilities`); the core
@@ -7,16 +7,16 @@
 //! until the migration cohort moves it onto cells.
 
 use emath_core::{QualifiedName, Span};
+use emath_ir::canonical::canonical_expr;
 use emath_ir::constructor::{Field, Visibility};
 use emath_ir::goal::CompileSpec;
 use emath_ir::meaning::MeaningError;
-use emath_ir::canonical::canonical_expr;
 use emath_ir::{
-    Capability, CapabilityId, CellClass, DeclarationId, ExprId, ExprNode, Literal,
-    SemanticPackage, TypeNode, UnaryOp, canonical_capability,
+    Capability, CapabilityId, CellClass, DeclarationId, ExprId, ExprNode, Literal, SemanticPackage,
+    TypeNode, UnaryOp, canonical_capability,
 };
 
-/// Acceptance negative seed (bead emath-epic-machine-fjxh.1).
+/// Acceptance negative seed.
 const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_id_terms.emath");
 
 fn cell(name: &str) -> Capability {
@@ -113,7 +113,10 @@ fn capability_terms_carry_cells_without_core_enum_growth() {
         package.capability(softmax).map(|c| c.name.0.as_str()),
         Some("std.math.softmax")
     );
-    assert_eq!(canonical_capability(&cell("std.math.softmax")), "cap:std.math.softmax");
+    assert_eq!(
+        canonical_capability(&cell("std.math.softmax")),
+        "cap:std.math.softmax"
+    );
 }
 
 #[test]
@@ -126,7 +129,7 @@ fn capability_identity_is_name_based_not_slot_based() {
 
     // Package right: an unrelated cell is interned first, so the softmax
     // cell lands at a different arena slot. Same cell name, same term
-    // structure: term identity must not move. (fjxh.2 made the interned
+    // structure: term identity must not move. (made the interned
     // cell set part of package MeaningID, so meaning equality is asserted
     // only between packages admitting the same cell set below.)
     let mut right = SemanticPackage::new();
@@ -153,7 +156,7 @@ fn capability_identity_is_name_based_not_slot_based() {
     );
 
     // And meaning identity follows the same rule: same names, same meaning;
-    // different names, different meaning. fjxh.2 added the interned cell
+    // different names, different meaning. added the interned cell
     // set to the meaning preimage, so both packages must admit the same
     // set to share a MeaningID; slot order still does not matter because
     // cells enter the bytes by name in intern order.
@@ -192,14 +195,16 @@ fn capability_identity_is_name_based_not_slot_based() {
         renamed_ty,
         vec![("value".into(), renamed_apply)],
     );
-    let renamed_meaning = renamed.meaning_id(&[]).expect("well-formed capability term");
+    let renamed_meaning = renamed
+        .meaning_id(&[])
+        .expect("well-formed capability term");
     assert_ne!(left_meaning, renamed_meaning);
 }
 
 #[test]
 fn legacy_core_vocabulary_still_runs_unmoved() {
     // Compat path: sin/exp keep their core op spelling; the legacy terms
-    // canonicalize and receive meaning exactly as before this bead.
+    // canonicalize and receive meaning exactly as before this.
     assert_eq!(UnaryOp::Sin.name(), "sin");
     assert_eq!(UnaryOp::Exp.name(), "exp");
     assert_eq!(emath_ir::BinaryOp::StrictFloatAdd.name(), "f64-add");
@@ -227,7 +232,10 @@ fn legacy_core_vocabulary_still_runs_unmoved() {
     );
     let ty = float_type(&mut package);
     push_capability_declaration(&mut package, "Legacy", ty, vec![("value".into(), sum)]);
-    assert!(package.meaning_id(&[]).is_ok(), "legacy sin/exp path still computes");
+    assert!(
+        package.meaning_id(&[]).is_ok(),
+        "legacy sin/exp path still computes"
+    );
 
     // Term kinds stay discriminated: a legacy unary term and a capability
     // application never share canonical bytes.

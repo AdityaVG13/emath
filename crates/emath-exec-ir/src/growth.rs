@@ -1,7 +1,7 @@
-//! Core-growth gate (fjxh.18): CDLOC/SCBD/KGS measured; operation-name
+//! Core-growth gate: CDLOC/SCBD/KGS measured; operation-name
 //! branches blocked.
 //!
-//! The bead's law: a rising handwritten-core-per-capability slope is a
+//! The law: a rising handwritten-core-per-capability slope is a
 //! regression. A stable pure cell enters the nucleus as DATA (cell
 //! schema + registry entry); any parser/sema/backend/kernel-dispatch
 //! branch that NAMES a cohort operation fails the gate typed
@@ -17,7 +17,7 @@
 //!   bounded generic vocabulary. Grows only with NEW GENERIC ops, never
 //!   per cell.
 //!
-//! Numbers are hypotheses until calibrated (the bead's own caveat); the
+//! Numbers are hypotheses until calibrated (a stated caveat); the
 //! gate's BINDING rule is the zero-operation-name-branches invariant —
 //! the seeded PR fixture and the live nucleus prove both directions.
 

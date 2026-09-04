@@ -1,7 +1,7 @@
-//! emath-r3-linear-solves-4wj0 (B34+B35): linear solves, decompositions,
+//! (B34+B35): linear solves, decompositions,
 //! and norms/inner products.
 //!
-//! The bead's law, sliced along the file-disjoint seams:
+//! The law, scoped along the file-disjoint seams:
 //! - **B35 norms/inner product** enter as REGISTRY DATA (quoted terms
 //!   over the closed vector vocabulary the interp already executes):
 //!   `std.linalg.norm` (L2 default, the generic VectorNorm op),
@@ -14,15 +14,15 @@
 //!   calling them refuses typed (`TermCompileError::UnknownOperator`,
 //!   the matmul precedent), diagnosing the missing matrix nucleus.
 //!   Never a silent alias of `solve`, never a wrong answer.
-//! - The `p=` keyword surface for `norm` and the C8 quantifier `in`
-//!   fix are parser surface (`tree.rs`/`stmt_suite`, another lane's
-//!   active zone) — deferred with the slice boundary named in the pack.
+//! - The `p=` keyword for `norm` and the C8 quantifier `in` fix
+//!   belong to the parser (tree.rs/stmt_suite) — deferred with
+//!   the boundary named in the pack.
 
+use emath_core::Span;
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::term_compile::{ParamShape, std_cell_registry};
 use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, EvalBudget};
-use emath_core::Span;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use emath_term::{Signature, SymbolId, Term, VariableId};
@@ -76,9 +76,12 @@ fn euclidean_norm_computes() {
     let cell = registry
         .get("std.linalg.norm")
         .expect("std.linalg.norm is a registry cell");
-    let value = seam_eval("std.linalg.norm", &[Value::Vector(vec![3.0, 4.0])])
-        .expect("norm evaluates");
-    assert!((f64_of(&value) - 5.0).abs() < 1e-12, "‖[3,4]‖₂ = 5, got {value:?}");
+    let value =
+        seam_eval("std.linalg.norm", &[Value::Vector(vec![3.0, 4.0])]).expect("norm evaluates");
+    assert!(
+        (f64_of(&value) - 5.0).abs() < 1e-12,
+        "‖[3,4]‖₂ = 5, got {value:?}"
+    );
     let _ = cell;
 }
 
@@ -86,12 +89,18 @@ fn euclidean_norm_computes() {
 fn one_and_infinity_norms_compute() {
     // B35: L1 = sum |v_i|; Linf = max |v_i| — both compose the closed
     // vocabulary (abs map + sum/vmax reduces), no new ops.
-    let value = seam_eval("std.linalg.norm1", &[Value::Vector(vec![3.0, -4.0])])
-        .expect("norm1 evaluates");
-    assert!((f64_of(&value) - 7.0).abs() < 1e-12, "‖[3,-4]‖₁ = 7, got {value:?}");
+    let value =
+        seam_eval("std.linalg.norm1", &[Value::Vector(vec![3.0, -4.0])]).expect("norm1 evaluates");
+    assert!(
+        (f64_of(&value) - 7.0).abs() < 1e-12,
+        "‖[3,-4]‖₁ = 7, got {value:?}"
+    );
     let value = seam_eval("std.linalg.norminf", &[Value::Vector(vec![3.0, -4.0])])
         .expect("norminf evaluates");
-    assert!((f64_of(&value) - 4.0).abs() < 1e-12, "‖[3,-4]‖∞ = 4, got {value:?}");
+    assert!(
+        (f64_of(&value) - 4.0).abs() < 1e-12,
+        "‖[3,-4]‖∞ = 4, got {value:?}"
+    );
 }
 
 #[test]
@@ -100,7 +109,10 @@ fn inner_product_computes() {
     // refuses typed (the interp's vector-length law).
     let value = seam_eval(
         "std.linalg.inner_product",
-        &[Value::Vector(vec![1.0, 2.0, 3.0]), Value::Vector(vec![4.0, 5.0, 6.0])],
+        &[
+            Value::Vector(vec![1.0, 2.0, 3.0]),
+            Value::Vector(vec![4.0, 5.0, 6.0]),
+        ],
     )
     .expect("inner product evaluates");
     assert!(
@@ -131,15 +143,15 @@ fn linear_solve_is_distinct_and_typed() {
         ],
     )
     .expect("outer product computes");
-    assert_eq!(
-        outer,
-        matrix(2, 3, &[3.0, 4.0, 5.0, 6.0, 8.0, 10.0])
-    );
+    assert_eq!(outer, matrix(2, 3, &[3.0, 4.0, 5.0, 6.0, 8.0, 10.0]));
 
     for cell in ["std.linalg.lu", "std.linalg.qr"] {
         let factors = seam_eval(cell, &[matrix(2, 2, &[4.0, 3.0, 6.0, 3.0])])
             .expect("factorization computes");
-        assert!(matches!(factors, Value::Matrix { .. }), "{cell}: {factors:?}");
+        assert!(
+            matches!(factors, Value::Matrix { .. }),
+            "{cell}: {factors:?}"
+        );
     }
 
     // Wrong carriers still refuse at compile with the shape diagnosis.

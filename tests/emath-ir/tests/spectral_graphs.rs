@@ -1,7 +1,7 @@
-//! emath-r2-graphs-masa (slice 3): spectral graph basics.
+//! Spectral graph basics.
 //!
-//! The epic's named "spectral graph basics" slice, thinned to the
-//! unnormalized Laplacian: `graph_laplacian(adj)` = D − A (D the
+//! Scope: the unnormalized Laplacian:
+//! `graph_laplacian(adj)` = D − A (D the
 //! out-degree diagonal, A the adjacency carrier). The spectrum then
 //! composes through the EXISTING `EigenSymmetric` op — zero new
 //! spectral machinery.
@@ -17,13 +17,42 @@
 //! - The negative weight gate (`E-GRAPH-002`) still applies: a
 //!   negative adjacency entry is not a graph carrier for D − A.
 
+use std::path::{Path, PathBuf};
+
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    compile_reference, std_cell_registry, ParamShape, TermCompileError,
+    ParamShape, TermCompileError, compile_reference, std_cell_registry,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("graph kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const LAPLACIAN: &str = "std.capability.graph.laplacian";
+const EIGENVALUES: &str = "std.capability.linear.symmetric-eigenvalues";
 
 fn undirected_path4() -> Value {
     // Undirected path 0–1–2–3 (symmetric adjacency, unweighted).
@@ -40,7 +69,8 @@ fn undirected_path4() -> Value {
 }
 
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
-    // The .14 seam law: LoadInput per input, result = last register.
+    install_language();
+    // The seam law: LoadInput per input, result = last register.
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -67,8 +97,15 @@ fn matrix_param(name: &str) -> (String, ParamShape) {
     (name.to_string(), ParamShape::Matrix)
 }
 
-/// Registry-path evaluation of a one-matrix-arg graph cell.
-fn cell_seval(name: &str, operator: &str, inputs: &[Value]) -> Result<Value, EvalFault> {
+/// Registry-path evaluation of a one-matrix-arg graph cell: compile
+/// against the registry spelling, evaluate the capsule FeatureID.
+fn cell_seval(
+    registry_name: &str,
+    feature_id: &str,
+    operator: &str,
+    inputs: &[Value],
+) -> Result<Value, EvalFault> {
+    install_language();
     let term = Term::Apply {
         operator: SymbolId(operator.into()),
         arguments: vec![Term::Variable(VariableId("adj".into()))],
@@ -77,12 +114,12 @@ fn cell_seval(name: &str, operator: &str, inputs: &[Value]) -> Result<Value, Eva
     signature
         .insert(SymbolId(operator.into()), 1)
         .expect("single-operator signature is conflict-free");
-    let cell = compile_reference(
+    let compiled = compile_reference(
         &term,
         &signature,
         &[matrix_param("adj")],
         vec![emath_exec_ir::term_compile::ArgGuard::AllFinite(0)],
-        name,
+        registry_name,
     )
     .expect("graph cell compiles");
     let count = inputs.len();
@@ -91,7 +128,7 @@ fn cell_seval(name: &str, operator: &str, inputs: &[Value]) -> Result<Value, Eva
         .collect();
     ops.push((
         EmirOp::ApplyCapability {
-            capability: name.to_string(),
+            capability: feature_id.to_string(),
             class: CellClass::Pure,
             args: (0..count as u32).map(EmirValue).collect(),
         },
@@ -112,16 +149,11 @@ fn graph_laplacian_computes() {
     // D − A over the undirected path: out-degrees [1, 2, 2, 1], so
     // L = diag(1,2,2,1) − A.
     let laplacian = eval(
-        vec![EmirOp::GraphLaplacian(EmirValue(0))],
+        vec![cell(LAPLACIAN, vec![EmirValue(0)])],
         &[undirected_path4()],
     )
     .expect("laplacian computes");
-    let Value::Matrix {
-        rows,
-        cols,
-        data,
-    } = laplacian
-    else {
+    let Value::Matrix { rows, cols, data } = laplacian else {
         panic!("expected a matrix, got {laplacian:?}")
     };
     assert_eq!((rows, cols), (4, 4));
@@ -144,20 +176,15 @@ fn laplacian_spectrum_composes_through_eigen() {
     // symmetric eigen op, zero new spectral machinery.
     let spectrum = eval(
         vec![
-            EmirOp::GraphLaplacian(EmirValue(0)),
-            EmirOp::EigenSymmetric(EmirValue(1)),
+            cell(LAPLACIAN, vec![EmirValue(0)]),
+            cell(EIGENVALUES, vec![EmirValue(1)]),
         ],
         &[undirected_path4()],
     )
     .expect("laplacian spectrum composes");
     let values = vector_of(&spectrum);
     assert_eq!(values.len(), 4);
-    let expected = [
-        0.0,
-        2.0 - 2.0_f64.sqrt(),
-        2.0,
-        2.0 + 2.0_f64.sqrt(),
-    ];
+    let expected = [0.0, 2.0 - 2.0_f64.sqrt(), 2.0, 2.0 + 2.0_f64.sqrt()];
     for (got, want) in values.iter().zip(expected.iter()) {
         assert!(
             (got - want).abs() < 1e-9,
@@ -185,8 +212,8 @@ fn directed_laplacian_spectrum_refuses_typed() {
     };
     let error = eval(
         vec![
-            EmirOp::GraphLaplacian(EmirValue(0)),
-            EmirOp::EigenSymmetric(EmirValue(1)),
+            cell(LAPLACIAN, vec![EmirValue(0)]),
+            cell(EIGENVALUES, vec![EmirValue(1)]),
         ],
         &[directed],
     )
@@ -200,18 +227,15 @@ fn directed_laplacian_spectrum_refuses_typed() {
 
 #[test]
 fn non_square_laplacian_refuses_typed() {
-    // The carrier law from slice 1: a non-square adjacency matrix is
+    // The carrier law from the graph core: a non-square adjacency matrix is
     // not a graph carrier (E-GRAPH-001) — the negative seed's shape.
     let rectangular = Value::Matrix {
         rows: 2,
         cols: 3,
         data: vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
     };
-    let error = eval(
-        vec![EmirOp::GraphLaplacian(EmirValue(0))],
-        &[rectangular],
-    )
-    .expect_err("non-square adjacency refuses");
+    let error = eval(vec![cell(LAPLACIAN, vec![EmirValue(0)])], &[rectangular])
+        .expect_err("non-square adjacency refuses");
     let fault = format!("{error:?}");
     assert!(
         fault.contains("E-GRAPH-001"),
@@ -240,6 +264,7 @@ fn laplacian_registry_cell_computes() {
     );
     let laplacian = cell_seval(
         "std.graph.laplacian",
+        "std.capability.graph.laplacian",
         "graph_laplacian",
         &[undirected_path4()],
     )
@@ -253,7 +278,7 @@ fn laplacian_registry_cell_computes() {
 #[test]
 fn laplacian_call_surface_shape_law_refuses() {
     // A vector in the adjacency slot refuses at COMPILE (the closed
-    // vocabulary's shape law, slice 2's law extended to the new name).
+    // vocabulary's shape law, the call-surface law extended to the new name).
     let term = Term::Apply {
         operator: SymbolId("graph_laplacian".into()),
         arguments: vec![Term::Variable(VariableId("adj".into()))],

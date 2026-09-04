@@ -1,4 +1,4 @@
-//! Static specializer with VM parity (fjxh.12).
+//! Static specializer with VM parity.
 //!
 //! A fixed genome + program is a [`CompiledCell`] with some parameters
 //! bound to known constants. [`specialize_cell`] is a partial evaluator
@@ -6,7 +6,7 @@
 //! their load sites, residual parameters renumber onto the smaller input
 //! contract, and the EXISTING bit-exact folding pass (`optimize`) then
 //! collapses every constant chain — the residual is static EMIR, not a
-//! per-op backend (Wave 12 C8: never duplicate backends per op).
+//! per-op backend (never duplicate backends per op).
 //!
 //! Parity law: the specialized path executes under the same declared
 //! numeric policy as the generic VM seam — the shared guard runner runs

@@ -1,4 +1,4 @@
-//! Bead `emath-nanopass-projections-1d5jy` — positive unit test.
+//! Positive unit test.
 //!
 //! Each projection pass is named, ordered, and replayable (task, not a
 //! crate). Targeted verify: `cargo test -p emath-ir-tests
@@ -48,9 +48,7 @@ fn nanopass_projections_unit() {
             ),
         }
     }
-    let pass_list = emath_ir::capability::nanopass::pass_list(
-        &schema,
-        emath_ir::capability::CellClass::Pure,
-    );
+    let pass_list =
+        emath_ir::capability::nanopass::pass_list(&schema, emath_ir::capability::CellClass::Pure);
     assert_eq!(pass_list.len(), 9, "replayable pass list");
 }

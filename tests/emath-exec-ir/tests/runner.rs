@@ -7,9 +7,7 @@ use std::collections::BTreeMap;
 
 use emath_core::{QualifiedName, Span};
 use emath_exec_ir::interp::Value;
-use emath_exec_ir::runner::{
-    run_package, run_package_with_given, PANE_TEST_NAME, TestVerdict, ZERO_TEST_NOTE,
-};
+use emath_exec_ir::runner::{PANE_TEST_NAME, TestVerdict, run_package, run_package_with_given};
 use emath_ir::{
     BinaryOp, Constructor, DeclarationId, ExprNode, Field, Literal, SemanticPackage, TypeNode,
     Visibility,
@@ -299,11 +297,29 @@ fn square_no_tests() -> SemanticPackage {
 }
 
 #[test]
-fn runner_zero_tests_notes() {
+fn runner_unbound_declaration_returns_symbolic_form_with_label() {
+    // nothing-returns-nothing: the old zero-test note (no run at all)
+    // is replaced by one labeled `_pane` run that carries the symbolic
+    // form of the definitions no world can evaluate.
     let report = run_package(&square_no_tests());
-    assert_eq!(report.declarations[0].tests.len(), 0);
-    assert_eq!(report.declarations[0].note.as_deref(), Some(ZERO_TEST_NOTE));
-    assert_eq!(report.summary.tests, 0);
+    assert_eq!(report.declarations[0].tests.len(), 1);
+    assert_eq!(report.declarations[0].note, None);
+    assert_eq!(report.summary.symbolic, 1);
+    let test = &report.declarations[0].tests[0];
+    assert_eq!(test.name, PANE_TEST_NAME);
+    match &test.verdict {
+        TestVerdict::Symbolic {
+            label,
+            forms,
+            holes,
+        } => {
+            assert_eq!(*label, "symbolic-only");
+            assert_eq!(forms.get("y").map(String::as_str), Some("x * x"));
+            assert_eq!(holes.get("x").map(String::as_str), Some("Float64"));
+        }
+        other => panic!("expected a labeled symbolic verdict, got {other:?}"),
+    }
+    assert_eq!(test.definitions.get("y"), None);
 }
 
 #[test]
@@ -416,7 +432,7 @@ fn runner_definitions_evaluate_in_source_order_not_name_order() {
 }
 
 #[test]
-fn runner_pane_given_computes_and_missing_refuses() {
+fn runner_pane_given_computes_and_empty_binding_is_symbolic() {
     let package = square_no_tests();
     let mut given = BTreeMap::new();
     given.insert("x".to_string(), Value::F64(5.0));
@@ -426,14 +442,35 @@ fn runner_pane_given_computes_and_missing_refuses() {
     assert_eq!(test.name, PANE_TEST_NAME);
     assert_eq!(test.definitions.get("y"), Some(&Value::F64(25.0)));
 
+    // An empty pane binding map is still a run: no world can evaluate,
+    // so the labeled symbolic form comes back instead of a refusal.
     let empty = BTreeMap::new();
-    let refused = run_package_with_given(&package, Some(&empty));
-    assert_eq!(refused.summary.refused, 1);
-    match &refused.declarations[0].tests[0].verdict {
+    let symbolic = run_package_with_given(&package, Some(&empty));
+    assert_eq!(symbolic.summary.symbolic, 1);
+    match &symbolic.declarations[0].tests[0].verdict {
+        TestVerdict::Symbolic { label, forms, .. } => {
+            assert_eq!(*label, "symbolic-only");
+            assert_eq!(forms.get("y").map(String::as_str), Some("x * x"));
+        }
+        other => panic!("expected labeled symbolic verdict, got {other:?}"),
+    }
+}
+
+#[test]
+fn runner_named_test_missing_input_still_refuses_typed() {
+    // A named example that omits a required input is a program bug, not
+    // a world gap: the typed refusal must survive the symbolic fallback.
+    let mut package = square_package("9");
+    package.tests[0].given.clear();
+    let report = run_package(&package);
+    assert_eq!(report.summary.refused, 1);
+    let test = &report.declarations[0].tests[0];
+    assert!(!matches!(test.verdict, TestVerdict::Symbolic { .. }));
+    match &test.verdict {
         TestVerdict::LoweringRefused { detail } => {
             assert!(detail.contains("`x`"), "{detail}");
         }
-        other => panic!("expected missing-input refusal, got {other:?}"),
+        other => panic!("expected typed refusal, got {other:?}"),
     }
 }
 

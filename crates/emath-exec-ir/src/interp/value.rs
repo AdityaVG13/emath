@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
+use crate::EmirProgram;
+
 /// A typed register value. Locals match generated Rust (`f64` / `bool` / `Vec<f64>`).
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -26,10 +28,18 @@ pub enum Value {
     },
     /// Complex number (real + imaginary parts). B14.
     Complex { re: f64, im: f64 },
-    /// Exact rational `num/den` (emath-rat-real-types-p5cj). Canonical
+    /// Exact rational `num/den` . Canonical
     /// form: gcd-reduced with `den > 0`, so equality is componentwise.
     /// Built only from integer arithmetic — never from f64.
     Rat { num: i128, den: i128 },
+    /// Stage-2 big integer (emath-t63iz): exact NON-NEGATIVE field
+    /// element with |F| < 2^256, produced by `ConstBigInt` and the six
+    /// modular number-theory builtins when any operand is big. Never
+    /// coerced to f64/i64.
+    BigInt(emath_rt::UBig),
+    /// Vector of stage-2 big integers (the `rs_encode` codeword over a
+    /// big modulus).
+    BigVector(Vec<emath_rt::UBig>),
     /// Vector of Float64.
     Vector(Vec<f64>),
     /// Matrix of Float64 (row-major).
@@ -40,19 +50,46 @@ pub enum Value {
     },
     /// Rank-3+ tensor of Float64, row-major.
     Tensor { shape: Vec<usize>, data: Vec<f64> },
-    /// Certified interval `[lo, hi]` (8pjn). Constructed only through
+    /// Certified interval `[lo, hi]`. Constructed only through
     /// `IntervalCreate`, which refuses ill-formed bounds.
     Interval { lo: f64, hi: f64 },
-    /// Option value semantics (aj8d thin slice): `Some(inner)` or a
+    /// Option value semantics: `Some(inner)` or a
     /// None that genuinely carries NOTHING (never a hidden zero — the
     /// honesty gate is the TOTAL `OptionUnwrapOr`, since no panicking
     /// unwrap exists at this layer).
     Option(Option<Box<Value>>),
-    /// Result value semantics (aj8d thin slice): the `ok` flag
+    /// Result value semantics: the `ok` flag
     /// distinguishes Ok-payload from Err-payload on ONE carrier (a
     /// shared Option carrier could not — Err(42) would read as
     /// Ok(42)); the payload is the value when Ok, the error when Err.
     Result { ok: bool, payload: Box<Value> },
+    /// Universal program-as-value artifact produced by
+    /// `EmirOp::ProgramLiteral`. Domain-neutral: the carrier names no
+    /// FeatureID and dispatches nothing; it can flow into an
+    /// `ApplyCapability` argument register like any other value.
+    Program(EmirProgram),
+    /// Universal heterogeneous sequence: the ordinary carrier for
+    /// variadic capability arguments (a subscript `Text` plus a
+    /// rank-polymorphic operand list rides as one value).
+    /// Domain-neutral: no operand-shape or capability naming.
+    List(Vec<Value>),
+}
+
+impl Value {
+    /// Stage-2 (emath-t63iz): parse an exact non-negative decimal
+    /// integer into the big lane. Used by the eval `--set` binding path;
+    /// admits |F| < 2^256 only.
+    pub fn parse_bigint(raw: &str) -> Option<Value> {
+        let trimmed = raw.trim();
+        if trimmed.starts_with('-') {
+            return None;
+        }
+        let value = emath_rt::UBig::parse_decimal(trimmed).ok()?;
+        if value.bits() > emath_rt::LIMIT_BITS {
+            return None;
+        }
+        Some(Value::BigInt(value))
+    }
 }
 
 impl PartialEq for Value {
@@ -62,6 +99,8 @@ impl PartialEq for Value {
             (Self::I64(left), Self::I64(right)) => left == right,
             (Self::I64(left), Self::F64(right)) => emath_rt::eq_i64_f64(*left, *right),
             (Self::F64(left), Self::I64(right)) => emath_rt::eq_i64_f64(*right, *left),
+            (Self::BigInt(left), Self::BigInt(right)) => left == right,
+            (Self::BigVector(left), Self::BigVector(right)) => left == right,
             (Self::Bool(left), Self::Bool(right)) => left == right,
             (Self::Text(left), Self::Text(right)) => left == right,
             (
@@ -118,8 +157,14 @@ impl PartialEq for Value {
                 *im == 0.0 && emath_rt::eq_i64_f64(*left, *re)
             }
             (
-                Self::Rat { num: left_num, den: left_den },
-                Self::Rat { num: right_num, den: right_den },
+                Self::Rat {
+                    num: left_num,
+                    den: left_den,
+                },
+                Self::Rat {
+                    num: right_num,
+                    den: right_den,
+                },
             ) => left_num == right_num && left_den == right_den,
             (Self::Vector(left), Self::Vector(right)) => {
                 left.len() == right.len()
@@ -183,6 +228,8 @@ impl PartialEq for Value {
                     payload: p2,
                 },
             ) => ok1 == ok2 && p1 == p2,
+            (Self::Program(left), Self::Program(right)) => left == right,
+            (Self::List(left), Self::List(right)) => left == right,
             _ => false,
         }
     }
@@ -246,6 +293,17 @@ impl fmt::Display for Value {
                     write!(f, "{} + {}i", format_f64(*re), format_f64(*im))
                 }
             }
+            Self::BigInt(value) => f.write_str(&value.to_decimal()),
+            Self::BigVector(values) => {
+                f.write_str("[")?;
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    f.write_str(&value.to_decimal())?;
+                }
+                f.write_str("]")
+            }
             Self::Vector(vec) => {
                 f.write_str("[")?;
                 for (i, elem) in vec.iter().enumerate() {
@@ -296,6 +354,19 @@ impl fmt::Display for Value {
                 } else {
                     write!(f, "err({payload})")
                 }
+            }
+            // Canonical dump of the program artifact: the nested program's
+            // own Debug form, bracketed so the carrier is unmistakable.
+            Self::Program(program) => write!(f, "program({program:?})"),
+            Self::List(values) => {
+                f.write_str("[")?;
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{value}")?;
+                }
+                f.write_str("]")
             }
         }
     }

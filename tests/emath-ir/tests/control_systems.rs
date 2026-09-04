@@ -1,10 +1,10 @@
-//! emath-r3-sde-control-zxkl (thin B43 control surface): transfer
+//! (thin B43 control surface): transfer
 //! functions, state-space DC gain, and stability — stacked on B28
 //! polynomials, B34 linear solves, B14 complex.
 //!
-//! The bead's law, sliced to the numeric-kernel + EMIR seam (B37 SDE is
-//! WORLD-DEPENDENT and needs the AmberHarbor vnqo seed/stream
-//! coordination — the named deferral; controller DESIGN (pole
+//! The law, sliced to the numeric-kernel + EMIR seam (B37 SDE is
+//! WORLD-DEPENDENT and needs seed/stream World support — the
+//! delayed item; controller DESIGN (pole
 //! placement, LQR) is not claimed either):
 //! - **Transfer law**: `transfer_eval(num, den, x)` = num(x)/den(x)
 //!   over ASCENDING coefficient vectors (the B28 representation). A
@@ -29,21 +29,54 @@
 //!   tie-breaking (first index on exact ties).
 //! - **Shape law**: a non-square A or a b/c length ≠ n refuses
 //!   `E-CONTROL-004` at the kernel; a scalar where a vector is needed
-//!   refuses at COMPILE (the closed vocabulary's shape law). A
+//!   refuses through the capsule contract's carrier law. A
 //!   non-finite coefficient/entry/point refuses `E-CONTROL-001`.
-//! - Non-finite cell parameters refuse one layer earlier at the seam
-//!   (`E-CELL-006`, the all-finite guard).
+//!
+//! MIGRATION (dispatch `emath:cleanup0904:p1:dynamics`, correction
+//! mail 104): the retired domain-named `EmirOp::ControlTransferEval` /
+//! `ControlDcGain` / `ControlPolesStable` variants are gone from the
+//! closed op set; every call site is the universal `ApplyCapability`
+//! seam over the capsule-active FeatureIDs of
+//! `language/spec/capabilities/dynamics-control-pde.emath`, whose
+//! native kernels (`checked-polynomial-ratio`, `checked-linear-projection`,
+//! `checked-sign-table`) install with the checked-in Language Image.
+//! The kernels check non-finite parameters themselves, so the former
+//! cell-guard refusal (`E-CELL-006`) surfaces as the capsule's
+//! `E-CONTROL-001`.
+
+use std::path::{Path, PathBuf};
 
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::term_compile::{
-    compile_reference, std_cell_registry, ParamShape, TermCompileError,
-};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::{install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
-use emath_term::{Signature, SymbolId, Term, VariableId};
+
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("control kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
 
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
-    // The .14 seam law: LoadInput per input, result = last register.
+    install_language();
+    // The seam law: LoadInput per input, result = last register.
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -80,56 +113,9 @@ fn refused_code(fault: &EvalFault) -> String {
     code.clone()
 }
 
-/// Registry-path evaluation of a fixed-shape cell.
-fn cell_seval(
-    name: &str,
-    operator: &str,
-    arity: usize,
-    params: Vec<(String, ParamShape)>,
-    inputs: &[Value],
-) -> Result<Value, EvalFault> {
-    let term = Term::Apply {
-        operator: SymbolId(operator.into()),
-        arguments: params
-            .iter()
-            .map(|(name, _)| Term::Variable(VariableId(name.clone())))
-            .collect(),
-    };
-    let mut signature = Signature::default();
-    signature
-        .insert(SymbolId(operator.into()), arity)
-        .expect("single-operator signature is conflict-free");
-    let _cell = compile_reference(&term, &signature, &params, Vec::new(), name)
-        .expect("control cell compiles through the call surface");
-    let count = inputs.len();
-    let mut ops: Vec<(EmirOp, Span)> = (0..count)
-        .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
-        .collect();
-    ops.push((
-        EmirOp::ApplyCapability {
-            capability: name.to_string(),
-            class: CellClass::Pure,
-            args: (0..count as u32).map(EmirValue).collect(),
-        },
-        Span::default(),
-    ));
-    let program = EmirProgram {
-        ops,
-        result: EmirValue(count as u32),
-        input_count: count as u16,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    };
-    evaluate_with_budget(&program, inputs, &[], EvalBudget::default())
-}
-
-fn matrix(rows: usize, cols: usize, data: &[f64]) -> Value {
-    Value::Matrix {
-        rows,
-        cols,
-        data: data.to_vec(),
-    }
-}
+const TRANSFER_EVAL: &str = "std.capability.control.transfer-eval";
+const DC_GAIN: &str = "std.capability.control.dc-gain";
+const POLES_STABLE: &str = "std.capability.control.poles-stable";
 
 /// H(s) = (s + 6)/(s² + 3s + 2) = (s + 6)/((s + 1)(s + 2)): poles at
 /// −1 and −2, H(0) = 3, H(−3) = (−3 + 6)/(9 − 9 + 2) = 3/2 — exact
@@ -140,13 +126,19 @@ fn transfer_function_evaluates_known_rational() {
     let num = Value::Vector(vec![6.0, 1.0]);
     let den = Value::Vector(vec![2.0, 3.0, 1.0]);
     let at_0 = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[num.clone(), den.clone(), Value::F64(0.0)],
     )
     .expect("transfer evaluates at s = 0");
     assert_eq!(f64_of(&at_0), 3.0, "H(0) = 6/2");
     let at_minus_3 = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[num, den, Value::F64(-3.0)],
     )
     .expect("transfer evaluates at s = -3");
@@ -161,14 +153,20 @@ fn transfer_function_zero_denominator_refuses() {
     let num = Value::Vector(vec![6.0, 1.0]);
     let den = Value::Vector(vec![2.0, 3.0, 1.0]);
     let fault = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[num.clone(), den.clone(), Value::F64(-1.0)],
     )
     .expect_err("s = -1 is a pole of the denominator");
     assert_eq!(refused_code(&fault), "E-CONTROL-002");
     for zero_den in [Value::Vector(vec![]), Value::Vector(vec![0.0, 0.0])] {
         let fault = eval(
-            vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
+            vec![cell(
+                TRANSFER_EVAL,
+                vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+            )],
             &[num.clone(), zero_den, Value::F64(0.5)],
         )
         .expect_err("the zero polynomial divides nothing");
@@ -184,14 +182,20 @@ fn transfer_function_non_finite_input_refuses() {
     let num = Value::Vector(vec![6.0, f64::NAN]);
     let den = Value::Vector(vec![2.0, 3.0, 1.0]);
     let fault = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[num, den.clone(), Value::F64(0.0)],
     )
     .expect_err("NaN numerator coefficient");
     assert_eq!(refused_code(&fault), "E-CONTROL-001");
     let num = Value::Vector(vec![6.0, 1.0]);
     let fault = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[num, den, Value::F64(f64::INFINITY)],
     )
     .expect_err("non-finite evaluation point");
@@ -210,22 +214,39 @@ fn dc_gain_matches_transfer_function() {
     let b = Value::Vector(vec![0.0, 1.0]);
     let c = Value::Vector(vec![1.0, 0.0]);
     let dc = eval(
-        vec![EmirOp::ControlDcGain(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            DC_GAIN,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[stable_a, b.clone(), c.clone()],
     )
     .expect("stable carrier has a DC gain");
     assert_eq!(f64_of(&dc), 0.5, "c·(−A)⁻¹·b for the companion pair");
     let h0 = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
-        &[Value::Vector(vec![1.0]), Value::Vector(vec![2.0, 3.0, 1.0]), Value::F64(0.0)],
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
+        &[
+            Value::Vector(vec![1.0]),
+            Value::Vector(vec![2.0, 3.0, 1.0]),
+            Value::F64(0.0),
+        ],
     )
     .expect("transfer evaluates at s = 0");
-    assert_eq!(f64_of(&h0).to_bits(), f64_of(&dc).to_bits(), "bit-exact cross-form parity");
+    assert_eq!(
+        f64_of(&h0).to_bits(),
+        f64_of(&dc).to_bits(),
+        "bit-exact cross-form parity"
+    );
     // The unstable twin (poles +1 and −4) refuses: its DC gain does
     // not exist (E-CONTROL-003) — the honesty gate, not a garbage 0.5.
     let unstable_a = matrix(2, 2, &[0.0, 1.0, 2.0, -3.0]);
     let fault = eval(
-        vec![EmirOp::ControlDcGain(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            DC_GAIN,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[unstable_a, b, c],
     )
     .expect_err("poles at +1 and -4: no DC gain exists");
@@ -241,7 +262,10 @@ fn dc_gain_shape_refusals() {
     let b = Value::Vector(vec![0.0, 1.0]);
     let c = Value::Vector(vec![1.0, 0.0]);
     let fault = eval(
-        vec![EmirOp::ControlDcGain(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            DC_GAIN,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[nonsquare, b.clone(), c.clone()],
     )
     .expect_err("A is not square");
@@ -249,7 +273,10 @@ fn dc_gain_shape_refusals() {
     let short_b = Value::Vector(vec![1.0]);
     let square = matrix(2, 2, &[0.0, 1.0, -2.0, -3.0]);
     let fault = eval(
-        vec![EmirOp::ControlDcGain(EmirValue(0), EmirValue(1), EmirValue(2))],
+        vec![cell(
+            DC_GAIN,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[square, short_b, c],
     )
     .expect_err("b has the wrong length");
@@ -265,11 +292,8 @@ fn dc_gain_shape_refusals() {
 #[test]
 fn poles_and_stability_laws_hold() {
     let stable = |den: Value, label: &str| {
-        eval(
-            vec![EmirOp::ControlPolesStable(EmirValue(0))],
-            &[den],
-        )
-        .unwrap_or_else(|fault| panic!("{label}: stable-pole predicate computes: {fault:?}"))
+        eval(vec![cell(POLES_STABLE, vec![EmirValue(0)])], &[den])
+            .unwrap_or_else(|fault| panic!("{label}: stable-pole predicate computes: {fault:?}"))
     };
     assert!(
         bool_of(&stable(Value::Vector(vec![2.0, 3.0, 1.0]), "quadratic")),
@@ -282,178 +306,126 @@ fn poles_and_stability_laws_hold() {
     let unstable = stable(Value::Vector(vec![2.0, 1.0, 0.5, 1.0]), "unstable cubic");
     assert!(!bool_of(&unstable), "s³ + ½s² + s + 2 has two RHP roots");
     let fault = eval(
-        vec![EmirOp::ControlPolesStable(EmirValue(0))],
+        vec![cell(POLES_STABLE, vec![EmirValue(0)])],
         &[Value::Vector(vec![1.0, 0.0, 1.0])],
     )
     .expect_err("s² + 1 is marginal (zero first-column entry)");
     assert_eq!(refused_code(&fault), "E-CONTROL-005");
     for degenerate in [Value::Vector(vec![]), Value::Vector(vec![0.0])] {
-        let fault = eval(
-            vec![EmirOp::ControlPolesStable(EmirValue(0))],
-            &[degenerate],
-        )
-        .expect_err("the zero polynomial has no pole set");
+        let fault = eval(vec![cell(POLES_STABLE, vec![EmirValue(0)])], &[degenerate])
+            .expect_err("the zero polynomial has no pole set");
         assert_eq!(refused_code(&fault), "E-CONTROL-002");
     }
     let fault = eval(
-        vec![EmirOp::ControlPolesStable(EmirValue(0))],
+        vec![cell(POLES_STABLE, vec![EmirValue(0)])],
         &[Value::Vector(vec![2.0, f64::NAN, 1.0])],
     )
     .expect_err("NaN coefficient");
     assert_eq!(refused_code(&fault), "E-CONTROL-001");
 }
 
-/// Registry cells (the anti-LOC law): `std.control.transfer_eval`,
-/// `std.control.dc_gain`, and `std.control.poles_stable` agree
-/// BIT-FOR-BIT with the bare ops, and the all-finite guard refuses a
-/// NaN parameter one layer earlier (`E-CELL-006`).
+/// Capsule parity (the anti-LOC law): the three control capsules
+/// answer with the exact closed-form values of record —
+/// `std.control.transfer_eval` H(0) = 3, `std.control.dc_gain` = 1/2,
+/// `std.control.poles_stable` = TRUE — and the kernels' own carrier
+/// checks keep a NaN denominator out (`E-CONTROL-001`; the former
+/// `E-CELL-006` all-finite cell guard surfaces one layer lower now).
 #[test]
-fn control_cell_preserves_parity_and_guards() {
+fn control_cells_preserve_parity_and_guards() {
     let num = Value::Vector(vec![6.0, 1.0]);
     let den = Value::Vector(vec![2.0, 3.0, 1.0]);
-    let cell_value = cell_seval(
-        "std.control.transfer_eval",
-        "transfer_eval",
-        3,
-        vec![
-            ("num".to_string(), ParamShape::Vector),
-            ("den".to_string(), ParamShape::Vector),
-            ("x".to_string(), ParamShape::Scalar),
-        ],
+    let cell_value = eval(
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[num.clone(), den.clone(), Value::F64(0.0)],
     )
     .expect("transfer cell computes");
-    let bare_value = eval(
-        vec![EmirOp::ControlTransferEval(EmirValue(0), EmirValue(1), EmirValue(2))],
-        &[num.clone(), den.clone(), Value::F64(0.0)],
-    )
-    .expect("bare transfer op computes");
-    assert_eq!(
-        f64_of(&cell_value).to_bits(),
-        f64_of(&bare_value).to_bits(),
-        "cell and bare op agree bit-for-bit"
-    );
+    assert_eq!(f64_of(&cell_value), 3.0, "H(0) = 6/2 through the seam");
     let a = matrix(2, 2, &[0.0, 1.0, -2.0, -3.0]);
     let b = Value::Vector(vec![0.0, 1.0]);
     let c = Value::Vector(vec![1.0, 0.0]);
-    let cell_dc = cell_seval(
-        "std.control.dc_gain",
-        "dc_gain",
-        3,
-        vec![
-            ("A".to_string(), ParamShape::Matrix),
-            ("b".to_string(), ParamShape::Vector),
-            ("c".to_string(), ParamShape::Vector),
-        ],
-        &[a.clone(), b.clone(), c.clone()],
+    let cell_dc = eval(
+        vec![cell(
+            DC_GAIN,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
+        &[a, b, c],
     )
     .expect("dc-gain cell computes");
-    let bare_dc = eval(
-        vec![EmirOp::ControlDcGain(EmirValue(0), EmirValue(1), EmirValue(2))],
-        &[a.clone(), b.clone(), c.clone()],
-    )
-    .expect("bare dc-gain op computes");
-    assert_eq!(
-        f64_of(&cell_dc).to_bits(),
-        f64_of(&bare_dc).to_bits(),
-        "dc-gain cell and bare op agree bit-for-bit"
-    );
-    let cell_stable = cell_seval(
-        "std.control.poles_stable",
-        "poles_stable",
-        1,
-        vec![("den".to_string(), ParamShape::Vector)],
-        &[den],
-    )
-    .expect("stability cell computes");
-    let bare_stable = eval(
-        vec![EmirOp::ControlPolesStable(EmirValue(0))],
-        &[Value::Vector(vec![2.0, 3.0, 1.0])],
-    )
-    .expect("bare stability op computes");
-    assert_eq!(bool_of(&cell_stable), bool_of(&bare_stable));
-    let fault = cell_seval(
-        "std.control.transfer_eval",
-        "transfer_eval",
-        3,
-        vec![
-            ("num".to_string(), ParamShape::Vector),
-            ("den".to_string(), ParamShape::Vector),
-            ("x".to_string(), ParamShape::Scalar),
+    assert_eq!(f64_of(&cell_dc), 0.5, "c·(−A)⁻¹·b through the seam");
+    let cell_stable = eval(vec![cell(POLES_STABLE, vec![EmirValue(0)])], &[den.clone()])
+        .expect("stability cell computes");
+    assert!(bool_of(&cell_stable), "(s+1)(s+2) is strictly stable");
+    let fault = eval(
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
+        &[
+            num,
+            Value::Vector(vec![2.0, f64::NAN, 1.0]),
+            Value::F64(0.0),
         ],
-        &[num, Value::Vector(vec![2.0, f64::NAN, 1.0]), Value::F64(0.0)],
     )
-    .expect_err("the all-finite guard keeps NaN out of the cell seam");
-    assert_eq!(refused_code(&fault), "E-CELL-006");
+    .expect_err("the kernel's carrier checks keep NaN out of the seam");
+    assert_eq!(refused_code(&fault), "E-CONTROL-001");
 }
 
-/// Shape law at COMPILE: a scalar where a vector is needed (and a
-/// vector where a matrix is needed) refuses through the closed
-/// vocabulary's shape law — never a runtime surprise.
+/// Shape law at the capsule carrier: a scalar where a vector is needed
+/// (and a vector where a matrix is needed) refuses through the
+/// capsule's carrier law — never a runtime surprise. The former
+/// compile-time `ShapeMismatch` check rode the retired per-op
+/// compiler; the carrier law itself is capsule data now.
 #[test]
-fn control_compile_shape_refusals() {
-    let scalar_params = vec![
-        ("num".to_string(), ParamShape::Scalar),
-        ("den".to_string(), ParamShape::Vector),
-        ("x".to_string(), ParamShape::Scalar),
-    ];
-    let term = Term::Apply {
-        operator: SymbolId("transfer_eval".into()),
-        arguments: vec![
-            Term::Variable(VariableId("num".into())),
-            Term::Variable(VariableId("den".into())),
-            Term::Variable(VariableId("x".into())),
-        ],
-    };
-    let mut signature = Signature::default();
-    signature
-        .insert(SymbolId("transfer_eval".into()), 3)
-        .expect("single-operator signature is conflict-free");
-    let error = compile_reference(&term, &signature, &scalar_params, Vec::new(), "std.control.transfer_eval")
-        .expect_err("a scalar numerator is not a transfer carrier");
+fn control_shape_refusals() {
+    let scalar_num = Value::F64(6.0);
+    let den = Value::Vector(vec![2.0, 3.0, 1.0]);
+    let fault = eval(
+        vec![cell(
+            TRANSFER_EVAL,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
+        &[scalar_num, den.clone(), Value::F64(0.0)],
+    )
+    .expect_err("a scalar numerator is not a transfer carrier");
     assert!(
-        matches!(error, TermCompileError::ShapeMismatch { .. }),
-        "unexpected refusal: {error:?}"
+        refused_code(&fault).starts_with("E-CONTROL"),
+        "the transfer capsule refuses the wrong carrier typed: {fault:?}"
     );
-    let vector_params = vec![
-        ("A".to_string(), ParamShape::Vector),
-        ("b".to_string(), ParamShape::Vector),
-        ("c".to_string(), ParamShape::Vector),
-    ];
-    let term = Term::Apply {
-        operator: SymbolId("dc_gain".into()),
-        arguments: vec![
-            Term::Variable(VariableId("A".into())),
-            Term::Variable(VariableId("b".into())),
-            Term::Variable(VariableId("c".into())),
-        ],
-    };
-    let mut signature = Signature::default();
-    signature
-        .insert(SymbolId("dc_gain".into()), 3)
-        .expect("single-operator signature is conflict-free");
-    let error = compile_reference(&term, &signature, &vector_params, Vec::new(), "std.control.dc_gain")
-        .expect_err("a vector A is not a state-space carrier");
-    assert!(
-        matches!(error, TermCompileError::ShapeMismatch { .. }),
-        "unexpected refusal: {error:?}"
-    );
+    let vector_a = Value::Vector(vec![0.0, 1.0]);
+    let b = Value::Vector(vec![0.0, 1.0]);
+    let c = Value::Vector(vec![1.0, 0.0]);
+    let fault = eval(
+        vec![cell(
+            DC_GAIN,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
+        &[vector_a, b, c],
+    )
+    .expect_err("a vector A is not a state-space carrier");
+    assert_eq!(refused_code(&fault), "E-CONTROL-004");
 }
 
-/// The registry exposes exactly the three control cells (the cohort
-/// count law lives in the fjxh_14 suite; this pins the zxkl slice).
+/// The kernel ABI exposes exactly the three control kernels (the
+/// cohort count law lives in the dedicated tests; this pins the
+/// signature).
 #[test]
 fn control_registry_exposes_cells() {
-    let registry = std_cell_registry();
-    for name in [
-        "std.control.transfer_eval",
-        "std.control.dc_gain",
-        "std.control.poles_stable",
-    ] {
+    install_language();
+    for name in [TRANSFER_EVAL, DC_GAIN, POLES_STABLE] {
         assert!(
-            registry.contains_key(name),
-            "missing control cell {name}: {:?}",
-            registry.keys().collect::<Vec<_>>()
+            native_kernel(name).is_some(),
+            "missing control kernel binding {name}"
         );
+    }
+}
+
+fn matrix(rows: usize, cols: usize, data: &[f64]) -> Value {
+    Value::Matrix {
+        rows,
+        cols,
+        data: data.to_vec(),
     }
 }

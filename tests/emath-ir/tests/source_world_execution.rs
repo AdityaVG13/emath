@@ -1,4 +1,4 @@
-//! emath-epic-machine-fjxh.16: capstone — source-first-worlds.
+//! capstone — source-first-worlds.
 //!
 //! The capstone contract: a STRICT file runs through the strict lane and
 //! selects NO invented world (its source carries no custom section and
@@ -20,7 +20,9 @@ use emath_term::{SymbolId, Term, VariableId};
 use std::path::PathBuf;
 
 fn repo_file(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel)
 }
 
 fn label_i64(value: &i64) -> String {
@@ -92,7 +94,13 @@ fn labeled_custom_bundle() -> ResultBundle {
     .into_iter()
     .collect();
     let results = vec![
-        evaluate_labeled(&term, &ModularAlienWorld, &i64_environment, budget, label_i64),
+        evaluate_labeled(
+            &term,
+            &ModularAlienWorld,
+            &i64_environment,
+            budget,
+            label_i64,
+        ),
         evaluate_labeled(
             &term,
             &BooleanAlienWorld,
@@ -100,7 +108,13 @@ fn labeled_custom_bundle() -> ResultBundle {
             budget,
             |value: &bool| value.to_string(),
         ),
-        evaluate_labeled(&term, &ModularFiveWorld, &i64_environment, budget, label_i64),
+        evaluate_labeled(
+            &term,
+            &ModularFiveWorld,
+            &i64_environment,
+            budget,
+            label_i64,
+        ),
     ];
     ResultBundle::new(results).expect("all entries labeled")
 }
@@ -113,9 +127,7 @@ fn strict_file_runs_and_selects_no_invented_world() {
     let errors = diagnostics
         .items()
         .iter()
-        .filter(|item| {
-            item.severity == emath_core::Severity::Error && item.code.starts_with("E-")
-        })
+        .filter(|item| item.severity == emath_core::Severity::Error && item.code.starts_with("E-"))
         .count();
     assert_eq!(errors, 0, "strict example must admit with no E-* errors");
 
@@ -129,10 +141,7 @@ fn strict_file_runs_and_selects_no_invented_world() {
 
     // The strict run path exits ok through the CLI (production path):
     // `emath run <file>` returns Ok for the hello-square example.
-    let exit = run(&[
-        "run".to_string(),
-        source.display().to_string(),
-    ]);
+    let exit = run(&["run".to_string(), source.display().to_string()]);
     assert_eq!(exit, emath_cli::EXIT_OK, "strict run exits ok");
 }
 
@@ -211,13 +220,10 @@ fn naked_result_refused_and_negative_seed() {
         evidence_laws: vec!["ring-mod-17-table".into()],
         cost_steps: 3,
     };
-    assert_eq!(
-        stripped.validate(),
-        Err(NakedResultRefusal::MissingWorld)
-    );
+    assert_eq!(stripped.validate(), Err(NakedResultRefusal::MissingWorld));
     assert!(ResultBundle::new(vec![stripped]).is_err());
 
-    // Bead negative seed: the provenance-swap scenario declares a typed
+    // Negative seed: the provenance-swap scenario declares a typed
     // refusal.
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/source_world_execution.emath");
     let expect_line = NEGATIVE_SEED

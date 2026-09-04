@@ -1,4 +1,4 @@
-//! `emath-r3-intervals-8pjn`: interval and certified surface (B30).
+//!: interval and certified surface (B30).
 //!
 //! - `interval(a, b)` constructs a certified interval (C18: no `∎`
 //!   glyph; function-style constructor).
@@ -69,10 +69,7 @@ mod r3_intervals_8pjn {
     #[test]
     fn interval_constructor_builds_a_certified_interval() {
         let errors = error_codes(VALID);
-        assert!(
-            errors.is_empty(),
-            "interval surface must admit: {errors:?}"
-        );
+        assert!(errors.is_empty(), "interval surface must admit: {errors:?}");
         let report = run_package(&check_owned_package(VALID));
         let run = &report.declarations[0];
         let x = run.tests[0].outputs.get("x").expect("x computed");

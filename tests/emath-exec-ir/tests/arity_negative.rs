@@ -23,7 +23,7 @@ fn empty_unary_call_is_err_not_panic() {
         },
         OWNER,
     );
-    // e3wv (F042): pin the TYPED text, not just is_err — the sibling
+    // F042: pin the TYPED text, not just is_err — the sibling
     // (tests/emath-exec-ir/tests/lib.rs) pins `expects`; this file adds
     // the function name and the arity numbers for local clarity.
     let error = lower_definition(&package, bad, &[], &[]).unwrap_err();
@@ -36,8 +36,14 @@ fn empty_unary_call_is_err_not_panic() {
 #[test]
 fn oversize_binary_call_is_err_not_panic() {
     let mut package = SemanticPackage::new();
-    let one = package.push_expr(ExprNode::Literal(Literal::FloatBits(1.0f64.to_bits())), OWNER);
-    let two = package.push_expr(ExprNode::Literal(Literal::FloatBits(2.0f64.to_bits())), OWNER);
+    let one = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(1.0f64.to_bits())),
+        OWNER,
+    );
+    let two = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(2.0f64.to_bits())),
+        OWNER,
+    );
     let three = package.push_expr(
         ExprNode::Literal(Literal::FloatBits(3.0f64.to_bits())),
         OWNER,
@@ -59,7 +65,10 @@ fn oversize_binary_call_is_err_not_panic() {
 #[test]
 fn single_arg_unary_call_still_lowers() {
     let mut package = SemanticPackage::new();
-    let one = package.push_expr(ExprNode::Literal(Literal::FloatBits(1.0f64.to_bits())), OWNER);
+    let one = package.push_expr(
+        ExprNode::Literal(Literal::FloatBits(1.0f64.to_bits())),
+        OWNER,
+    );
     let good = package.push_expr(
         ExprNode::Call {
             function: QualifiedName("exp".into()),

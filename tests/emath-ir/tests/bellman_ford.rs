@@ -1,5 +1,4 @@
-//! emath-r2-graphs-masa (slice 5): negative-edge shortest paths —
-//! Bellman-Ford.
+//! Negative-edge shortest paths (Bellman-Ford).
 //!
 //! The epic's named "negative-edge methods (Bellman-Ford class)"
 //! deferral, thinned to the classic O(n·m) relaxation: negative edge
@@ -26,13 +25,42 @@
 //! - Surface: call name `bellman_ford(adj, source)` (compile-time
 //!   shape law), registry cell `std.graph.bellman_ford` (cohort 30).
 
+use std::path::{Path, PathBuf};
+
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    compile_reference, std_cell_registry, ParamShape, TermCompileError,
+    ParamShape, TermCompileError, compile_reference, std_cell_registry,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("graph kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const BELLMAN_FORD: &str = "std.capability.graph.bellman-ford";
+const SHORTEST_DISTANCES: &str = "std.capability.graph.shortest-distances";
 
 /// The classic negative-edge fixture: 0→1 (4), 0→2 (1), 2→1 (−2),
 /// 1→3 (1), 2→3 (5). Shortest distances: [0, −1, 1, 2] — the direct
@@ -52,6 +80,7 @@ fn negative_edge_carrier() -> Value {
 }
 
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
+    install_language();
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -69,7 +98,7 @@ fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
 
 fn distances_from(adj: &Value, source: f64) -> Result<Vec<f64>, EvalFault> {
     let value = eval(
-        vec![EmirOp::GraphBellmanFord(EmirValue(0), EmirValue(1))],
+        vec![cell(BELLMAN_FORD, vec![EmirValue(0), EmirValue(1)])],
         &[adj.clone(), Value::F64(source)],
     )?;
     let Value::Vector(distances) = value else {
@@ -85,7 +114,7 @@ fn negative_edges_beat_greedy() {
     // computes [0, −1, 1, 2]. A Dijkstra-style greedy mutant answers
     // d[1] = 4 (never revisits vertex 1) and fails.
     let dijkstra_error = eval(
-        vec![EmirOp::GraphDijkstra(EmirValue(0), EmirValue(1))],
+        vec![cell(SHORTEST_DISTANCES, vec![EmirValue(0), EmirValue(1)])],
         &[negative_edge_carrier(), Value::F64(0.0)],
     )
     .expect_err("Dijkstra refuses negative weights");
@@ -163,7 +192,11 @@ fn unreachable_is_positive_infinity() {
     // Honest numeric: no path in → +Inf (the Dijkstra convention,
     // shared; a 0.0-for-unreachable mutant fails).
     let distances = distances_from(&negative_edge_carrier(), 0.0).expect("BF computes");
-    assert!(distances[3] == 0.0, "vertex 3 reachable via 1→3: {}", distances[3]);
+    assert!(
+        distances[3] == 0.0,
+        "vertex 3 reachable via 1→3: {}",
+        distances[3]
+    );
     // Source = 3 (the sink): vertices 0..2 unreachable.
     let from_sink = distances_from(&negative_edge_carrier(), 3.0).expect("BF computes");
     assert!(from_sink[0].is_infinite() && from_from_is_infinite(&from_sink));
@@ -188,8 +221,8 @@ fn carrier_refusals_reuse_closed_set() {
         format!("{error:?}").contains("E-GRAPH-001"),
         "ragged must name E-GRAPH-001, got {error:?}"
     );
-    let error = distances_from(&negative_edge_carrier(), 9.0)
-        .expect_err("out-of-range source refuses");
+    let error =
+        distances_from(&negative_edge_carrier(), 9.0).expect_err("out-of-range source refuses");
     assert!(
         format!("{error:?}").contains("E-GRAPH-003"),
         "source must name E-GRAPH-003, got {error:?}"
@@ -211,6 +244,7 @@ fn cell_registry_and_shape_law() {
     // std.graph.bellman_ford is registry DATA (cohort 30), compiles
     // through the call seam, and evaluates the SAME distances; a
     // scalar adjacency refuses at COMPILE (ShapeMismatch).
+    install_language();
     let registry = std_cell_registry();
     assert!(
         registry.contains_key("std.graph.bellman_ford"),
@@ -241,14 +275,16 @@ fn cell_registry_and_shape_law() {
     )
     .expect("matrix adjacency compiles");
 
-    // Cell path evaluates the same distances as the bare op.
+    // Cell path evaluates the same distances as the bare op. The eval
+    // seam resolves the capsule FeatureID (hyphenated); the registry
+    // spelling above stays for the compile seam.
     let mut ops: Vec<(EmirOp, Span)> = vec![
         (EmirOp::LoadInput(0), Span::default()),
         (EmirOp::LoadInput(1), Span::default()),
     ];
     ops.push((
         EmirOp::ApplyCapability {
-            capability: "std.graph.bellman_ford".to_string(),
+            capability: "std.capability.graph.bellman-ford".to_string(),
             class: CellClass::Pure,
             args: vec![EmirValue(0), EmirValue(1)],
         },

@@ -1,4 +1,4 @@
-//! emath-epic-machine-fjxh.3: Softmax pure cell — first zero-core-delta
+//! Softmax pure cell — first zero-core-delta
 //! capability (schema `emath.capability-cell.v1`, class `pure`).
 //!
 //! The cell is data: descriptor + reference semantics + laws, all in the
@@ -28,7 +28,7 @@ fn softmax_pure_cell_admits_descriptor_only() {
     // Zero-core-delta proof, part 1: the cell admits as a descriptor and
     // its identity is stable, with NO core enum touched. If Softmax ever
     // became a core op variant this test would still pass — the negative
-    // guard lives in fjxh_1/fjxh_2 tests + the diff gate; here we pin that
+    // guard lives in the targeted tests elsewhere + the diff gate; here we pin that
     // the admitted record is arena data.
     let schema = softmax_schema();
     let admitted = admit_cell(&schema).expect("pure softmax cell admits");
@@ -49,8 +49,8 @@ fn softmax_pure_cell_admits_descriptor_only() {
 fn softmax_reference_semantics_compute() {
     // Happy path: softmax over a 3-vector, strict-f64, stable-max form.
     let logits = [1.0_f64, 2.0, 3.0];
-    let out = emath_ir::capability::softmax_reference_strict_f64(&logits)
-        .expect("finite logits compute");
+    let out =
+        emath_ir::capability::softmax_reference_strict_f64(&logits).expect("finite logits compute");
     let expected = [
         1.0 / (1.0 + (2.0_f64 - 1.0).exp() + (3.0_f64 - 1.0).exp()),
         (2.0_f64 - 1.0).exp() / (1.0 + (1.0_f64).exp() + (2.0_f64).exp()),
@@ -78,7 +78,10 @@ fn softmax_laws_hold() {
     ])
     .unwrap();
     for (a, b) in base.iter().zip(shifted.iter()) {
-        assert!((a - b).abs() < 1e-12, "shift invariance violated: {a} vs {b}");
+        assert!(
+            (a - b).abs() < 1e-12,
+            "shift invariance violated: {a} vs {b}"
+        );
     }
 
     // Law 1 (overflow guard): the stable-max shift must keep large finite
@@ -101,7 +104,10 @@ fn softmax_laws_hold() {
 
     // Law 3: normalization within tolerance T.
     let sum: f64 = base.iter().sum();
-    assert!((sum - 1.0).abs() < 1e-12, "normalization violated: sum={sum}");
+    assert!(
+        (sum - 1.0).abs() < 1e-12,
+        "normalization violated: sum={sum}"
+    );
 
     // Boundary: single-element input normalizes to exactly 1.
     let single = emath_ir::capability::softmax_reference_strict_f64(&[42.0]).unwrap();
@@ -111,7 +117,7 @@ fn softmax_laws_hold() {
 
 #[test]
 fn missing_numeric_policy_and_bad_axis_refuse_by_name() {
-    // Negative (bead): missing numeric policy refuses — an empty policy is
+    // Negative: missing numeric policy refuses — an empty policy is
     // not a silent empty distribution. The negative seed names the
     // refusal.
     let seed = include_str!("../../../tests/invalid/softmax_capability_cell.emath");
@@ -144,10 +150,19 @@ fn missing_numeric_policy_and_bad_axis_refuse_by_name() {
             .code(),
         "E-CELL-006"
     );
-    // Negative (bead): provider wrong-axis fails. The cell's contract is
+    // Negative: provider wrong-axis fails. The cell's contract is
     // a rank-1 vector evaluated whole; a 2D-style axis request (rank 2)
     // is a wrong-axis failure at the provider seam (typed, not silent).
-    assert!(!emath_ir::softmax_axis_well_formed(2), "rank-2 axis request is wrong-axis");
-    assert!(!emath_ir::softmax_axis_well_formed(0), "rank-0 scalar is wrong-axis");
-    assert!(emath_ir::softmax_axis_well_formed(1), "rank-1 vector is the contract");
+    assert!(
+        !emath_ir::softmax_axis_well_formed(2),
+        "rank-2 axis request is wrong-axis"
+    );
+    assert!(
+        !emath_ir::softmax_axis_well_formed(0),
+        "rank-0 scalar is wrong-axis"
+    );
+    assert!(
+        emath_ir::softmax_axis_well_formed(1),
+        "rank-1 vector is the contract"
+    );
 }

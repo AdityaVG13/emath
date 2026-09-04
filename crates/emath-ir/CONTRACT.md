@@ -35,6 +35,15 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   namespace-less names (`E-CELL-005`). Interned cells enter the MeaningID
   preimage by name, and every `ExprNode::Apply` must reference an interned
   cell or `meaning_id` refuses with `MeaningError::MissingCapability`.
+- `FeatureCapsule`, `FeatureClass`, `Maturity`, `CapsuleSlot`, typed edges and
+  projections: runtime-neutral records for the stable `emath.feature-capsule`
+  schema. The twenty-class taxonomy is data; candidate capsules append to
+  `SemanticPackage.feature_capsules` and grant no authority by admission.
+- `MeaningSpine`, `MeaningResource`, `MeaningEdgeKind`: the FeatureID/resource
+  projection of MIG. Twelve typed edges validate endpoints and cycles; closures
+  provide deterministic build dependencies, reverse impact, migrations,
+  conformance, and minimum agent context. External nodes are restricted to
+  normalized `ir://`, `test://`, and `doc://` resources.
 - `SymbolicExpr`, `RewritePattern`, `RewriteRule`, `SymbolicOracleContract`:
   provider-neutral symbolic contracts. Native v1 structurally simplifies
   exact integer scalar expressions and exactly decides bounded univariate
@@ -81,6 +90,9 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
 ## Invariants
 
 - IR is neutral and provider-free: no upstream type may appear.
+- Stable IR contains only universal representation/control. Named mathematics is
+  an authored FeatureID application; a domain-named operation variant cannot be
+  a source of meaning, authority, applicability, world, exactness, or evidence.
 - Canonical forms exist for expressions, operators and goals (round-trip).
 - Meaning identity alpha-normalizes local and binder names, resolves imported
   aliases, and binds meaning-affecting numeric/goal/world policy.
@@ -130,8 +142,12 @@ presentation/alpha/alias stability plus semantic-policy/dependency changes).
 ## No-claim boundaries
 
 Neutral representation only: no provider semantics, no certification of
-correctness beyond structure. Executable regions and world semantics are
-outside as per crate map. `NumericProfile` / `NumericBehavior` are
+correctness beyond structure. Authored capsules in `language/spec/`, selected by
+`language.lock`, are the source of named mathematical meaning; this crate only
+represents their verified Language Image projection. An IR type, variant,
+canonical identity, or successful validation creates no feature authority and
+raises no claim label. Executable regions and world semantics are outside as
+per crate map. `NumericProfile` / `NumericBehavior` are
 computation descriptors (rounding, overflow, precision ceiling). They are
 never claims about real-number arithmetic, and `Real` is not silently
 `f64` without a selected profile (the omitted-`numeric:` default is the

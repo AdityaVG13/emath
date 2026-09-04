@@ -3,8 +3,8 @@
 use emath_core::{QualifiedName, Span};
 use emath_exec_ir::interp::Value;
 use emath_exec_ir::{
-    simulate_continuous, simulate_continuous_with, step_continuous, step_continuous_values,
-    SimulateOptions, StepMethod,
+    SimulateOptions, StepMethod, simulate_continuous, simulate_continuous_with, step_continuous,
+    step_continuous_values,
 };
 use emath_ir::{
     Declaration, DeclarationId, ExprNode, Field, SemanticPackage, TypeNode, UnaryOp, Visibility,

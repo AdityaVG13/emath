@@ -1,9 +1,9 @@
-//! emath-epic-machine-fjxh.15: Field-pack layout, install, and `use`
+//! Field-pack layout, install, and `use`
 //! without rebuilding core.
 //!
 //! The capstone's law: add a toy pack, `use` it, NO core branches. The
-//! pack's admission (v9-06-2rdq.16 `emath field_pack`) yields export
-//! DATA; this tooling compiles the exported cells to a fjxh.9 semantic
+//! pack's admission (`emath field_pack`) yields export
+//! DATA; this tooling compiles the exported cells to a semantic
 //! image (`.emlib`) from the EXISTING registry — no compiler rebuild,
 //! no core branches — and `use <package>.<pack>` resolves against the
 //! installed pack registry. Layout is a closed directory set: a pack
@@ -47,7 +47,8 @@ fn toy_pack_installs_and_uses() {
     // it (exports → existing registry → semantic image), `use` it —
     // no core branches anywhere in the path.
     let entry = admitted_pack(TOY_PACK);
-    let installed: InstalledPack = install_pack(&entry, &["community".to_string()], &std_cell_registry()).expect("installs");
+    let installed: InstalledPack =
+        install_pack(&entry, &["community".to_string()], &std_cell_registry()).expect("installs");
     assert_eq!(installed.package, vec!["community".to_string()]);
     assert_eq!(installed.pack, "spectral_style");
     assert_eq!(installed.exports, vec!["std.tensor.softmax".to_string()]);
@@ -81,7 +82,9 @@ fn unknown_export_refuses() {
     // Install never fabricates: an export the registry does not provide
     // refuses typed (the installed image would otherwise claim a cell
     // nobody compiled — the silent-success shape).
-    let source = "package community\n\nemath field_pack ghost:\n    exports:\n        cell acme.magic\n".to_string();
+    let source =
+        "package community\n\nemath field_pack ghost:\n    exports:\n        cell acme.magic\n"
+            .to_string();
     let entry = admitted_pack(&source);
     match install_pack(&entry, &["community".to_string()], &std_cell_registry()) {
         Err(PackError::UnknownExport { export }) => {
@@ -93,11 +96,18 @@ fn unknown_export_refuses() {
 
 #[test]
 fn layout_is_closed() {
-    // The pack layout is a CLOSED directory set (the bead's fixed
+    // The pack layout is a CLOSED directory set (the fixed
     // layout); a directory outside it — e.g. a `keywords/` injection —
     // refuses typed at the tooling boundary.
-    validate_layout(&["src", "worlds", "methods", "examples", "providers", "migrations"])
-        .expect("the bead's fixed layout admits");
+    validate_layout(&[
+        "src",
+        "worlds",
+        "methods",
+        "examples",
+        "providers",
+        "migrations",
+    ])
+    .expect("the fixed layout admits");
     match validate_layout(&["src", "keywords"]) {
         Err(PackError::UnknownLayoutDir { dir }) => assert_eq!(dir, "keywords"),
         other => panic!("layout injection must refuse, got {other:?}"),
@@ -107,7 +117,7 @@ fn layout_is_closed() {
 #[test]
 fn keyword_injection_refused_before_install() {
     // NEGATIVE (the seed's silent-success): pack source that injects
-    // parser keywords refuses at ADMISSION (E-SYN-101, the v9-06-2rdq.16
+    // parser keywords refuses at ADMISSION (E-SYN-101, the
     // closed section table) — install only ever consumes admitted
     // FieldPackEntry data, so the injection never reaches tooling.
     let source = "package community\n\nemath field_pack injector:\n    exports:\n        cell softmax\n    keywords:\n        add match\n".to_string();
@@ -152,8 +162,8 @@ fn no_core_rebuild_bundle() {
 
         fn constant(&self, _symbol: &emath_term::SymbolId) -> Result<Self::Value, Self::Error> {
             let entry = admitted_pack(TOY_PACK);
-            let installed =
-                install_pack(&entry, &["community".to_string()], &std_cell_registry()).expect("installs");
+            let installed = install_pack(&entry, &["community".to_string()], &std_cell_registry())
+                .expect("installs");
             let cells = installed.image.load("cells").expect("cells page");
             if cells.contains("cell:std.tensor.softmax")
                 && installed.image.validate_partitions().is_ok()

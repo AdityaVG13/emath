@@ -1,8 +1,8 @@
-//! emath-epic-machine-fjxh.4: Projection planner and per-class closure
+//! Projection planner and per-class closure
 //! matrix — a cell is not done because it compiles.
 //!
 //! The planner lives in the capability layer (zero core delta: no core
-//! enum grows). It emits the bead's five statuses
+//! enum grows). It emits the five statuses
 //! (generated/provided/provider/not-applicable/refused) over the closed
 //! projection set (identity, schema, semantics, docs, assurance, evidence,
 //! evolution; plus reference/compilation for pure cells). Missing required
@@ -48,7 +48,11 @@ fn pure_supplied() -> Vec<(ProjectionKind, ProjectionStatus, Option<String>)> {
         (ProjectionKind::Evidence, ProjectionStatus::Provided, None),
         (ProjectionKind::Evolution, ProjectionStatus::Provided, None),
         (ProjectionKind::Reference, ProjectionStatus::Generated, None),
-        (ProjectionKind::Compilation, ProjectionStatus::Generated, None),
+        (
+            ProjectionKind::Compilation,
+            ProjectionStatus::Generated,
+            None,
+        ),
     ]
 }
 
@@ -87,19 +91,21 @@ fn pure_cell_full_closure_is_stable() {
 
 #[test]
 fn pure_cell_without_reference_blocks_stable() {
-    // THE bead unit: a pure cell without its reference projection is a
+    // THE unit: a pure cell without its reference projection is a
     // visible refusal, never a silent success. Drop Reference AND
     // Compilation (both required for pure) and both gaps surface.
     let schema = pure_cell();
     let supplied: Vec<_> = pure_supplied()
         .into_iter()
-        .filter(|(k, _, _)| {
-            !matches!(k, ProjectionKind::Reference | ProjectionKind::Compilation)
-        })
+        .filter(|(k, _, _)| !matches!(k, ProjectionKind::Reference | ProjectionKind::Compilation))
         .collect();
 
     let refusals = missing_required(&schema, &supplied);
-    assert_eq!(refusals.len(), 2, "both pure-only gaps surface: {refusals:?}");
+    assert_eq!(
+        refusals.len(),
+        2,
+        "both pure-only gaps surface: {refusals:?}"
+    );
     assert!(refusals.iter().any(|r| r.code() == "E-CELL-007"));
     assert!(
         refusals
