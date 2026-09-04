@@ -1,0 +1,26 @@
+# Check-only catalog example. std.kind.space remains cataloged with a blocking
+# semantics hole; this file proves the generic shell, not computing support.
+
+emath feature SpaceKindExample:
+    schema: "emath.feature-capsule"
+    feature_id: "std.kind.space"
+    semantic_hash: "sha256:0ad587a7382cb4ab5f77db2b33d3a456798e088b06e21abc3f43e35a70f3d523"
+    class: "kind"
+    maturity: "cataloged"
+    summary: "space declaration kind"
+    source: "wave-16-language-gap-space-declaration"
+    surface: "emath space Name: suite"
+    semantics: "hole(kind-semantics | requires field-pack theory and world contracts)"
+    exactness: "n/a(structural-kind | no numeric result)"
+    effects: "pure declaration data"
+    worlds: "n/a(structural-kind | world selected by instances)"
+    providers: "n/a(structural-kind | no provider required to catalog)"
+    artifacts: "source,diagnostic"
+    reference: "authored"
+    conformance: "positive:generic-shell;negative:unknown-section;mutation:class-mismatch"
+    migration: "n/a(initial-capsule | no prior authority)"
+    authority_target: "capsule-candidate"
+    presentation: "aliases=space"
+    agent: "owners=language/spec/kinds/geometry.emath;prerequisites=std.syntax.declaration.generic;hazards=catalog-as-support;edits=capsule,conformance;checks=wave16-geometry-kinds"
+    edge: "depends_on -> std.syntax.declaration.generic"
+    projection: "semantics -> hole(kind-semantics | unresolved semantic contract)"

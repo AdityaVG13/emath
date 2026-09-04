@@ -7,6 +7,8 @@
 # c > 0 dissipates. The undamped unit oscillator (m = 1, k = 1, c = 0,
 # s = [1, 0]) has analytic solution x = cos(t), v = -sin(t).
 #
+# Integrator selection remains capsule-candidate / legacy dual-run until the
+# callback, cancellation, and trajectory-artifact ABI is available.
 # `emath simulate` default method is classic 4-stage RK4 (not a
 # predictor-corrector, not symplectic). At small dt it tracks x = cos(t).
 # Forward Euler (`--method euler`) is first-order: on the undamped system

@@ -20,11 +20,75 @@ A diagnostic has a stable code, severity, primary span, message, related spans, 
 | `E-PROV` | providers and adapters |
 | `E-EVID` | evidence and certificates |
 | `E-CODEGEN` | generated artifacts |
+| `E-LANG` | checked-in Language Image and FeatureID authority (`E-LANG-IMAGE`, `E-LANG-FEATURE`) |
 | `E-RES` | resources and cancellation |
 
 `emath explain <code>` renders the structured explanation when available. A checker cannot report success without its required witness or receipt.
 
-## Non-negotiable refusals
+## Live source-to-artifact conformance
+
+The read-only `emath.live-conformance` adapter introspects the production
+compiler path. A response binds repository commit and compiler identity
+(operational), Language Image distribution hash, source hash, lossless CST
+identity, resolved FeatureIDs and authority states, type/exactness judgment,
+world plan, result or typed diagnosis, artifact manifest, and explicit status
+for parse, admit, lower, world, execute, and artifact stages.
+
+`available(value)` means the named production stage produced that value.
+`unavailable(reason)` is not success and cannot be omitted. Response validation
+rejects missing stages, forged commit/image IDs, missing authority, and a result
+or artifact bound to a different source/image. Operational fields never enter
+the semantic identity. This is exact live-compiler evidence for conformance; it
+does not define language meaning or certify itself.
+
+### First-cutover conformance receipt
+
+The foundational receipt compares the exact source and CST identity, resolved
+FeatureIDs/authority, neutral lowering, exactness judgment, selected world,
+result or diagnosis, and artifact manifest across the live legacy compiler,
+capsule candidate, and independent bounded reader. Every row binds repository
+commit, compiler identity, and candidate Language Image hash.
+
+`AddExact` must produce Int `3`, label `exact`, and world
+`std.world.exact.int`. `FloatIntoInt` must produce `exactness-loss`. Checked
+overflow, expected result `999`, missing stages, world/FeatureID/artifact
+mismatch, float widening, and self-certified evidence block authority. Re-run:
+`cargo test -p emath-sema-tests --test first_cutover_dual_run`.
+
+### Language Image inspection
+
+The library-backed `emath language` surface reads the same locked image as the
+compiler: `orient <FeatureID>` returns the minimum owner/hazard/dependency/test
+context; `impact` returns reverse generated/runtime consumers; `authority`
+returns maturity, active source, hashes and holes; `gaps [scope]` reports honest
+catalog/projection/conformance gaps; `check-image` validates lock and freshness;
+`receipt` returns scoped implementation/migration evidence and reproduction.
+
+Human and JSON output begin with/bind `image_id`; stale images fail before any
+fact is emitted. Unknown FeatureIDs, hidden holes, missing reverse impact,
+generated files presented as source, and incomplete receipts diagnose rather
+than guess. Contributor sequence: orient → edit capsule/conformance → impact →
+regenerate → targeted gates → receipt → authority request.
+
+Production semantic commands use the same refusal boundary. The CLI finds the
+nearest `language/` distribution from the source path, then from the current
+working directory, and validates authored capsules against `language.lock`,
+`generated/language.image`, `generated/source-map.lock`,
+`generated/runtime-tables.lock`, and every generated reference view before
+admission or execution. Missing roots, changed canonical bytes, stale hashes,
+missing source links, duplicate authority, forbidden capsule metadata, and
+capsule-active blocking holes produce `E-LANG-IMAGE`. No image-ID string by
+itself authorizes execution.
+
+
+In router terms, every diagnostic is a labeled exit, not a door: the
+code names what no in-scope world could compute, the message states
+what was understood, and the suggested repair is the route (the
+spelling, data, or world that completes the work). Nothing is refused
+at the door; input that parses always produces an artifact or a routed
+diagnosis.
+
+## Non-negotiable diagnoses
 
 The language never:
 
@@ -41,7 +105,7 @@ The language never:
 11. accepts confusable identifiers in one namespace;
 12. interprets juxtaposition such as `2x` as multiplication.
 
-These rules are typed refusals and cannot be disabled by a profile.
+These rules are typed diagnoses with routes and cannot be disabled by a profile.
 
 ## Common repairs
 
@@ -64,11 +128,11 @@ Diagnostics intended for teaching should state what was understood, what is miss
 
 Editor parsing may recover after an error to provide more diagnostics. Semantic admission fails when an error affects the requested artifact. Warnings may be promoted by policy.
 
-A refused construct produces one root refusal, never a cascade. When a section head demands an indented block and the block is empty, the parser refuses that section once (`E-SYN-112`) and continues with the sections that follow; it does not re-refuse the same head or misparse later heads (`E-SYN-101`). A downstream diagnostic that only restates an already-recorded root is suppressed as consequent noise: after `E-NAME-023` ("output `name` has no definition") has fired, later uses of that same output do not also fire `E-TYPE-002` ("unknown variable"). Independent errors elsewhere in the file stay visible.
+A misroute produces one root diagnosis, never a cascade. When a section head demands an indented block and the block is empty, the parser routes that section once (`E-SYN-112`) and continues with the sections that follow; it does not re-diagnose the same head or misparse later heads (`E-SYN-101`). A downstream diagnostic that only restates an already-recorded root is suppressed as consequent noise: after `E-NAME-023` ("output `name` has no definition") has fired, later uses of that same output do not also fire `E-TYPE-002` ("unknown variable"). Independent errors elsewhere in the file stay visible.
 
 ## Formatter
 
-`emath fmt` is idempotent, edition-aware, and comment-preserving. It does not invoke providers or execute user code. Formatter-backed migrations must preserve semantic identity when classified as presentation-only. Semantic corrections instead record checked before/after `MeaningId` values; ambiguous corrections refuse with candidates.
+`emath fmt` is idempotent, edition-aware, and comment-preserving. It does not invoke providers or execute user code. Formatter-backed migrations must preserve semantic identity when classified as presentation-only. Semantic corrections instead record checked before/after `MeaningId` values; ambiguous corrections come back as a diagnosis with candidates.
 
 ## CLI inspection
 
@@ -101,4 +165,4 @@ Generated Rust retains semantic error categories while adding backend context. P
 
 ## Coverage
 
-`emath coverage --emit json` produces a deterministic capability ledger over mathematical domains and facets. A claimed support level must cite an existing artifact. `--check <ledger>` compares regenerated output byte-for-byte and refuses drift.
+`emath coverage --emit json` produces a deterministic capability ledger over mathematical domains and facets. A claimed support level must cite an existing artifact. `--check <ledger>` compares regenerated output byte-for-byte and fails on drift.

@@ -51,7 +51,7 @@ attach provenance
 
 ## Recursive expansion
 
-Kind expansion depth and total generated nodes are capped. Recursive kinds require a structurally decreasing schema proof or are refused.
+Kind expansion depth and total generated nodes are capped. Recursive kinds require a structurally decreasing schema proof or route to a typed diagnosis.
 
 ## Native schema plugins
 
@@ -75,7 +75,7 @@ What a custom kind can do today, exactly:
   inputs, outputs, definitions, tests, and compile contract lower through the
   same typed function path used by built-in functions. The custom kind label
   remains attached to the declaration.
-- **Undefined kinds still refuse.** A name with no validated definition is
+- **Undefined kinds still diagnose.** A name with no validated definition is
   `E-KIND-100`; execution never guesses a base kind.
 
 ## Custom notation

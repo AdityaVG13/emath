@@ -1,0 +1,101 @@
+# Discrete Bayesian inference on finite grids (thin nucleus).
+#
+# Two-hypothesis update in exact dyadic arithmetic, then a three-hypothesis
+# grid posterior two ways: indexed components and the elementwise
+# contraction einsum("i,i->i", prior, likelihood). Both must agree.
+#
+# Phase 1 tests observe a single evaluate target, so each claim is its
+# own function: the dyadic two-hypothesis posterior, the three-hypothesis
+# posterior grid, and the component/einsum agreement check. The evidence
+# (total probability of the data) is exact when every factor is dyadic.
+# No prior-selection doctrine or decision rule is claimed.
+#
+emath function BayesGridTwoHypothesis:
+    inputs:
+        prior_bias: Float64
+    outputs:
+        evidence2: Float64
+        posterior2: Vector[2]
+    definitions:
+        # Fair-vs-loaded coin: dyadic likelihoods for the data under each
+        # hypothesis.
+        prior2 = [prior_bias, 1.0 - prior_bias]
+        likelihood2 = [0.75, 0.25]
+        evidence2 = prior2[0] * likelihood2[0] + prior2[1] * likelihood2[1]
+        posterior2 = [prior2[0] * likelihood2[0] / evidence2, prior2[1] * likelihood2[1] / evidence2]
+
+    goals:
+        evaluate <posterior2>:
+            produce rust.library
+
+    tests:
+        example <dyadic_update>:
+            given prior_bias = 0.5
+            expect posterior2 == [0.75, 0.25]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function BayesGridThreeHypothesis:
+    inputs:
+        prior_bias: Float64
+    outputs:
+        evidence3: Float64
+        posterior3: Vector[3]
+    definitions:
+        # Bias grid with prior [0.25, 0.5, 0.25] and declared dyadic data
+        # likelihoods [0.5, 0.25, 0.25]; the unnormalized masses are
+        # [0.125, 0.125, 0.0625], the evidence is 0.3125, and every
+        # posterior mass stays dyadic: [0.4, 0.4, 0.2].
+        prior3 = [0.25, 0.5, 0.25]
+        likelihood3 = [0.5, 0.25, 0.25]
+        unnorm3 = einsum("i,i->i", prior3, likelihood3)
+        evidence3 = unnorm3[0] + unnorm3[1] + unnorm3[2]
+        posterior3 = [unnorm3[0] / evidence3, unnorm3[1] / evidence3, unnorm3[2] / evidence3]
+
+    goals:
+        evaluate <posterior3>:
+            produce rust.library
+
+    tests:
+        example <three_hypothesis_grid>:
+            given prior_bias = 0.5
+            expect posterior3 == [0.4, 0.4, 0.2]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function BayesGridEinsumAgreement:
+    inputs:
+        prior_bias: Float64
+    outputs:
+        grids_agree: Bool
+    definitions:
+        # The elementwise contraction and the indexed components must
+        # produce the identical grid: the einsum form carries no new
+        # semantics.
+        prior3 = [0.25, 0.5, 0.25]
+        likelihood3 = [0.5, 0.25, 0.25]
+        unnorm3 = einsum("i,i->i", prior3, likelihood3)
+        evidence3 = unnorm3[0] + unnorm3[1] + unnorm3[2]
+        posterior3 = [unnorm3[0] / evidence3, unnorm3[1] / evidence3, unnorm3[2] / evidence3]
+        posterior3_einsum = unnorm3 * (1.0 / evidence3)
+        grids_agree = (posterior3 == posterior3_einsum)
+
+    goals:
+        evaluate <grids_agree>:
+            produce rust.library
+
+    tests:
+        example <component_einsum_agreement>:
+            given prior_bias = 0.5
+            expect grids_agree == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

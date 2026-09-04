@@ -69,4 +69,4 @@ review policy.
 
 No-claim: full Unicode NFC verification is not implemented in std; glyphs
 are authored NFC and the loader checks structural well-formedness only. A
-dedicated normalization gate lands with the notation-core governance bead.
+dedicated normalization gate lands with the notation-core governance.

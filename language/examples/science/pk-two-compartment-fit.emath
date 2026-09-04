@@ -1,4 +1,4 @@
-# Generic fit goal (04 §5.3, emath-r3-fit-goal-4xjh). The PK
+# Generic fit goal (04 §5.3). The PK
 # one-compartment disposition, the residual method, the optimizer
 # method, and the fit program are DECLARED SURFACE, not Rust: the fit
 # grammar is generic (`fit <params> to <observable>:`); execution goes

@@ -1,4 +1,4 @@
-# Bead `emath-r3-sde-control-zxkl` — runnable stochastic dynamics +
+# Runnable stochastic dynamics +
 # control example: Itô vs Stratonovich as capability cells under a
 # fixed seed, and the control cells reused unchanged.
 #

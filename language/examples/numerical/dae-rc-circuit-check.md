@@ -1,8 +1,5 @@
 # dae-rc-circuit.emath; check record
 
-Bead: emath-eoi0.2 (window emath-dae-disposition-b9flv)
-Dispatch: emath:dae-example-expose:1:1, mail id 17 (ack_required)
-
 ## Syntax verification
 
 CLI gate (via `cargo run -q -p emath-cli --`):
@@ -17,7 +14,7 @@ surface fix below.
 ## What changed in the example file
 
 - `events:` previously held two `when ... then:` blocks. The admitted
-  grammar (r3-dynamical-03lh, `emath-sema/src/admit/declaration.rs`)
+  grammar (`emath-sema/src/admit/declaration.rs`)
   only admits `event <Name>(field: Type)` declarations; the blocks
   refused with `E-SYN-101` ("only `event <Name>(field: Type)`
   declarations are allowed in `events:`"). Replaced with the named event
@@ -90,7 +87,7 @@ guess `current` (pass --set current=...)`, exit 2; the code appears
 only once the solve runs); singular residual (`R=0`) → `Regularize`
 refusal, never a trajectory.
 
-## Event locator probes (BronzeCoyote, same bindings, current=0)
+## Event locator probes (same bindings, current=0)
 
 - `--event current=5` → exit 0, crossing sample injected at
   `t=0.7262836955484092 charge=5.000000000366084 current=5.000000000092301`.
@@ -111,7 +108,7 @@ refusal, never a trajectory.
 
 ---
 
-# Event-execution slice (follow-up: r3-dynamical-03lh ch7)
+# Event-execution slice (follow-up: ch7)
 
 The events section now carries a payload suite with a condition and an
 action, and the generic runner EXECUTES it; the example's behavior
@@ -219,7 +216,7 @@ cargo test -q -p emath-sema-tests --test dae_disposition      # regression, 5/5 
 
 ---
 
-# Transitions slice (follow-up: r3-dynamical-03lh ch7)
+# Transitions slice (follow-up: ch7)
 
 The switch dispatches through the **transitions** channel: the event
 DETECTS the crossing, the firing `on ThresholdCrossed:` rule applies
@@ -286,7 +283,7 @@ control (threshold 50) leaves the plain RC trajectory: `charge` ends ≈
 > documented in the reference as declarative surface that is never
 > scheduled on its own (`language/reference/expressions-equations-state-and-events.md`).
 
-## MR evidence (pass 6, oracle-free, from `tests/emath-sema/tests/dae_transitions.rs`)
+## MR evidence (oracle-free, from `tests/emath-sema/tests/dae_transitions.rs`)
 
 - MR-1 timestep-refinement: BE firing time t(h) closes on t* = ln2;
   |t(h/2)−t(h)| halves as h halves (factors 1.60, 1.94), firing sample
@@ -351,9 +348,9 @@ error[E0004]: non-exhaustive patterns: `&EmirOp::ExactProductDelta(_, _)` not co
 ```
 
 `op_expr`'s strict-backend match lacks the `ExactProductDelta` arm
-(the op landed in exec-ir as part of the exact-arithmetic wave).
+(the op landed in the later expression work; the rust-backend port is pending).
 `crates/emath-rust-backend/src/codegen_render.rs` is exclusively
-reserved to the rust-backend lane (SilverMaple); per dispatch
+reserved to the rust-backend lane per dispatch
 no cross-owner edits. Interp-world DAE execution is unaffected (the
 41 tests above are green); the CLI evidence recorded earlier in this
 record is the last green state of that gate.

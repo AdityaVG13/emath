@@ -1,0 +1,186 @@
+# Affine geometry fundamentals — runnable cross-section of
+# `std.geometry.affine`: affine combinations, 2-D orientation
+# (signed area), barycentric coordinates, and 3-D coplanarity over
+# the generic Vector surface.  ZERO CORE DELTA: every operation is an
+# ordinary user function over the existing builtin/index/expression
+# surface (no new capability name, no IR variant, no parser branch;
+# the coplanarity witness is the 3x3 scalar determinant expansion,
+# the pure-builtin form of the triple product dot(e1, cross(e2, e3))
+# whose cross-based spelling is pinned in the `std.geometry`
+# reference).  Exact-first: every pinned witness uses integer-valued
+# coordinates and power-of-two scales, so every value is
+# exactly-representable and no epsilon appears anywhere.  Test shape:
+# each test-bearing declaration observes exactly one evaluate target
+# (Phase 1 generated-crate surface); vector-valued results are
+# asserted by whole-vector equality, never component indexing.
+package std.geometry
+
+emath function affine_combination2:
+    inputs:
+        t: Float64
+        p0: Vector[Float64]
+        p1: Vector[Float64]
+    outputs:
+        p: Vector[Float64]
+    definitions:
+        p = [p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])]
+    goals:
+        evaluate <p>:
+            produce rust.library
+
+emath function orient2:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+        p: Vector[Float64]
+    outputs:
+        o: Float64
+    definitions:
+        o = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+    goals:
+        evaluate <o>:
+            produce rust.library
+    tests:
+        example <ccw_positive>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 0.0]
+            given p = [0.0, 1.0]
+            expect o == 1.0
+
+        example <collinear_zero>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 0.0]
+            given p = [2.0, 0.0]
+            expect o == 0.0
+
+        example <cw_negative>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 0.0]
+            given p = [0.0, -1.0]
+            expect o == -1.0
+
+        example <diagonal_sign>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 1.0]
+            given p = [2.0, 0.0]
+            expect o == -2.0
+
+        example <signed_area>:
+            given a = [0.0, 0.0]
+            given b = [4.0, 0.0]
+            given p = [0.0, 3.0]
+            expect o == 12.0
+
+emath function barycentric2:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+        c: Vector[Float64]
+        p: Vector[Float64]
+    outputs:
+        lambda: Vector[Float64]
+    definitions:
+        total = orient2(a, b, c)
+        lambda_b = orient2(a, c, p) / orient2(a, c, b)
+        lambda_c = orient2(a, b, p) / total
+        lambda = [1.0 - lambda_b - lambda_c, lambda_b, lambda_c]
+    goals:
+        evaluate <lambda>:
+            produce rust.library
+
+emath function coplanarity3:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+        c: Vector[Float64]
+        d: Vector[Float64]
+    outputs:
+        t: Float64
+    definitions:
+        e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+        e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+        e3 = [d[0] - a[0], d[1] - a[1], d[2] - a[2]]
+        t = e1[0] * (e2[1] * e3[2] - e2[2] * e3[1]) - e1[1] * (e2[0] * e3[2] - e2[2] * e3[0]) + e1[2] * (e2[0] * e3[1] - e2[1] * e3[0])
+    goals:
+        evaluate <t>:
+            produce rust.library
+
+emath function affine_endpoints_witness:
+    inputs:
+        t: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        c_lo = affine_combination2(t, [1.0, 2.0], [3.0, 4.0])
+        c_mid = affine_combination2(0.5, [1.0, 2.0], [3.0, 4.0])
+        packed = [c_lo[0], c_lo[1], c_mid[0], c_mid[1]]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <t_zero_is_p0>:
+            given t = 0.0
+            expect packed == [1.0, 2.0, 2.0, 3.0]
+
+        example <t_one_is_p1>:
+            given t = 1.0
+            expect packed == [3.0, 4.0, 2.0, 3.0]
+
+        example <exact_midpoint>:
+            given t = 0.5
+            expect packed == [2.0, 3.0, 2.0, 3.0]
+
+emath function affine_scaling_equivariance:
+    inputs:
+        t: Float64
+    outputs:
+        diff: Vector[Float64]
+    definitions:
+        c_scaled = affine_combination2(t, [2.0, 4.0], [6.0, 8.0])
+        c_plain = affine_combination2(t, [1.0, 2.0], [3.0, 4.0])
+        diff = [c_scaled[0] - 2.0 * c_plain[0], c_scaled[1] - 2.0 * c_plain[1]]
+    goals:
+        evaluate <diff>:
+            produce rust.library
+    tests:
+        example <exact_scale_equivariance>:
+            given t = 0.25
+            expect diff == [0.0, 0.0]
+
+emath function barycentric_partition_witness:
+    inputs:
+        px: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        p = [px, 1.0]
+        lam = barycentric2([0.0, 0.0], [4.0, 0.0], [0.0, 4.0], p)
+        lam_at_a = barycentric2([0.0, 0.0], [4.0, 0.0], [0.0, 4.0], [0.0, 0.0])
+        recon_x = lam[0] * 0.0 + lam[1] * 4.0 + lam[2] * 0.0
+        recon_y = lam[0] * 0.0 + lam[1] * 0.0 + lam[2] * 4.0
+        packed = [lam[0], lam[1], lam[2], lam_at_a[0], recon_x, recon_y]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <exact_barycentric_witness>:
+            given px = 1.0
+            expect packed == [0.5, 0.25, 0.25, 1.0, 1.0, 1.0]
+
+emath function coplanarity_witness:
+    inputs:
+        dz: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        d_probe = [2.0, -1.0, dz]
+        cop_in = coplanarity3([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], d_probe)
+        cop_off = coplanarity3([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 1.0])
+        packed = [cop_in, cop_off]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <plane_and_off_plane>:
+            given dz = 0.0
+            expect packed == [0.0, 1.0]

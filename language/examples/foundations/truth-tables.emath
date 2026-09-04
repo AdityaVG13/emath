@@ -1,0 +1,119 @@
+# Classical propositional truth tables — exhaustive finite search.
+# (Wave-16 foundations lane: mathematical logic + classical logic, Tier A
+# constraint/search foundations angle.)
+#
+# A propositional formula over n variables is checked by enumerating ALL
+# 2^n valuations — the universal exhaustive finite search. Every verdict
+# carries a certificate:
+#   - SAT         → witness: the lexicographically FIRST satisfying row;
+#   - UNSAT       → exhaustiveness: the model count over all rows is 0;
+#   - consequence → the counterexample count over all rows is 0.
+# No proof search, no heuristics: the certificate IS the completed scan.
+#
+# Valuations are encoded by binder variables p,q,r in 0..2 (p == 1 means
+# "true"); `sum ...: if (formula): 1 else: 0` is the model count. The
+# connectives `and` / `or` / `not` / `==>` are the `core::notation::logic`
+# pack spellings (mount required; pack maps them to ∧ ∨ ¬ ⇒).
+#
+# Constant compute: no free variables, so no `inputs:`/`outputs:` contract
+# (E-SEC-130 refuses outputs without a declared input source).
+#
+# Run:
+#   emath check language/examples/foundations/truth-tables.emath
+#   emath test  language/examples/foundations/truth-tables.emath
+
+use core::notation::logic
+
+emath function demorgan2_agree:
+    definitions:
+        # ¬(p∧q) ≡ ¬p∨¬q row-by-row over all 2^2 valuations;
+        # rows_agree == 4 is the exhaustiveness certificate.
+        rows_agree = sum p in 0..2, q in 0..2: if ((not ((p == 1) and (q == 1))) == ((not (p == 1)) or (not (q == 1)))): 1 else: 0
+
+    tests:
+        example <demorgan>:
+            expect rows_agree == 4
+
+emath function exactly_one_models:
+    definitions:
+        # "exactly one of p,q,r": (p∨q∨r) ∧ ¬(p∧q) ∧ ¬(p∧r) ∧ ¬(q∧r);
+        # exactly 3 satisfying valuations over the 8-row truth table.
+        models = sum p in 0..2, q in 0..2, r in 0..2: if (((((p == 1) or (q == 1)) or (r == 1)) and (not ((p == 1) and (q == 1)))) and ((not ((p == 1) and (r == 1))) and (not ((q == 1) and (r == 1))))): 1 else: 0
+
+    tests:
+        example <exactly_one>:
+            expect models == 3
+
+# Capability data: the formula row "exactly one of p,q,r" at one
+# valuation, as 0/1.
+emath function exactly_one_sat_at:
+    inputs:
+        p: Int
+        q: Int
+        r: Int
+    outputs:
+        s: Int
+
+    definitions:
+        s = if (((((p == 1) or (q == 1)) or (r == 1)) and (not ((p == 1) and (q == 1)))) and ((not ((p == 1) and (r == 1))) and (not ((q == 1) and (r == 1))))): 1 else: 0
+
+# Capability data: how many lexicographically EARLIER rows satisfy the
+# formula — the exhaustive refutation sweep behind the witness side
+# condition (earlier = (a,b,c) < (p,q,r) lexicographically).
+emath function exactly_one_earlier_sat:
+    inputs:
+        p: Int
+        q: Int
+        r: Int
+    outputs:
+        earlier: Int
+
+    definitions:
+        earlier = sum a in 0..2, b in 0..2, c in 0..2: if (((((a < p) or ((a == p) and (b < q))) or (((a == p) and (b == q)) and (c < r)))) and (exactly_one_sat_at(a, b, c) == 1)): 1 else: 0
+
+# Capability data: 1 exactly when the valuation is the FIRST satisfying
+# row — it satisfies and the earlier-row sweep found no earlier model.
+emath function exactly_one_is_first:
+    inputs:
+        p: Int
+        q: Int
+        r: Int
+    outputs:
+        first: Int
+
+    definitions:
+        first = if ((exactly_one_sat_at(p, q, r) == 1) and (exactly_one_earlier_sat(p, q, r) == 0)): 1 else: 0
+
+emath function exactly_one_first_witness:
+    definitions:
+        # SAT witness certificate: the lexicographically FIRST satisfying
+        # valuation, encoded p*4 + q*2 + r (r-only → 1). A row
+        # contributes its code only when it is the first satisfying row.
+        witness = sum p in 0..2, q in 0..2, r in 0..2: (((p * 4) + (q * 2)) + r) * exactly_one_is_first(p, q, r)
+
+    tests:
+        example <witness>:
+            # The lexicographically first satisfying valuation is (0,0,1)
+            # (r-only; (0,0,1) < (0,1,0) < (1,0,0)), so the witness code
+            # is 1, and the p-only row 4 is correctly NOT the witness.
+            expect witness == 1
+
+emath function contradiction_models:
+    definitions:
+        # UNSAT exhaustiveness certificate: (p ∧ ¬p) has 0 models over
+        # all 2 rows.
+        models = sum p in 0..2: if ((p == 1) and (not (p == 1))): 1 else: 0
+
+    tests:
+        example <unsat>:
+            expect models == 0
+
+emath function syllogism_counterexamples:
+    definitions:
+        # Semantic consequence p→q, q→r ⊨ p→r: the counterexample count
+        # (premises true, conclusion false) over all 2^3 rows is 0.
+        counterexamples = sum p in 0..2, q in 0..2, r in 0..2: if ((((p == 1) ==> (q == 1)) and ((q == 1) ==> (r == 1))) and (not ((p == 1) ==> (r == 1)))): 1 else: 0
+
+    tests:
+        example <consequence>:
+            expect counterexamples == 0

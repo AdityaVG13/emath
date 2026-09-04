@@ -1,0 +1,26 @@
+# Catalog-to-capsule task template. Catalog presence is accounting, not support.
+# A coherent family may share a mechanism only when every catalog ID remains explicit.
+
+emath feature SELECTED_RECORD:
+    schema: "emath.feature-capsule"
+    feature_id: "AUTHORITY.CLASS.PATH"
+    semantic_hash: "sha256:CONTENT_HASH"
+    class: "TARGET_CLASS"
+    maturity: "cataloged"
+    summary: "EXACT CATALOG DESCRIPTION"
+    source: "EXACT_CATALOG_ID"
+    surface: "VALUE OR TYPED N/A"
+    semantics: "hole(feature-semantics | PRECISE MISSING CONTRACT)"
+    exactness: "VALUE OR TYPED N/A"
+    effects: "VALUE"
+    worlds: "REQUIRED WORLD IDS OR TYPED N/A"
+    providers: "REFERENCE/PROVIDER DISPOSITION"
+    artifacts: "REQUIRED ARTIFACTS"
+    reference: "authored"
+    conformance: "positive:CASE;negative:CASE;mutation:CASE;migration:CASE"
+    migration: "n/a(initial-capsule | no prior authority)"
+    authority_target: "capsule-candidate"
+    presentation: "HUMAN NAME AND ALIASES"
+    agent: "owners=FILES;prerequisites=FEATURE IDS;hazards=RISKS;edits=CAPSULE/REFERENCE/RUST BIND;checks=TARGETED COMMAND"
+    edge: "depends_on -> DIRECT.FEATURE.DEPENDENCY"
+    projection: "semantics -> hole(feature-semantics | BLOCKING REASON)"

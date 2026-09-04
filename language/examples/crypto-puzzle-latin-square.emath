@@ -1,0 +1,19 @@
+# 4x4 Latin-square/Sudoku verification. Finite-domain search remains an honest
+# gap; this checks a supplied solution rather than claiming to solve CSPs.
+emath function LatinRowCheck:
+    inputs:
+        a: Int
+        b: Int
+        c: Int
+        d: Int
+    outputs:
+        valid: Bool
+    definitions:
+        valid = a != b and a != c and a != d and b != c and b != d and c != d
+    tests:
+        example <valid_row>:
+            given a = 1
+            given b = 2
+            given c = 3
+            given d = 4
+            expect valid == true

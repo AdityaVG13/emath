@@ -41,8 +41,11 @@ emath test language/examples/intro/hello-square.emath
 emath run language/examples/intro/hello-square.emath
 ```
 
-`check` validates types and shapes. `test` runs examples. `run`
-evaluates and prints outputs.
+`check` prints the file's world-coverage map: what parses, which worlds
+run it, and a routed diagnosis for every gap. `test` runs examples.
+`run` evaluates and prints outputs, each labeled with how it was
+produced (`exact`, `approximate(±bound)`, `symbolic-only`, `hole-open`,
+`fault`).
 
 The examples folder is not a copy of this square. Start with an
 [open hole](examples/intro/scratch.emath) (`f` is not invented),

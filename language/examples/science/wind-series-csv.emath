@@ -1,4 +1,4 @@
-# CSV import into an executable time series (bead emath-xondg): the
+# CSV import into an executable time series: the
 # FIRST-CLASS subject here is `series_from_csv`, the pure-text bridge from
 # a CSV block to a `Series` you can sample with `series_at`. Import is
 # PURE TEXT: it reads the CSV string literal only — no filesystem, no

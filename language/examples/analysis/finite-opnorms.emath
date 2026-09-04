@@ -1,0 +1,68 @@
+# Operator norms on finite-dimensional matrices.
+#
+# Cell contract: language/stdlib/cells/analysis/std-analysis-finite-opnorms.md
+#
+# Demo matrix A = [[3, 0], [4, 5]]:
+#   ||A||_1   = max column abs-sum = max(3+4, 0+5)      = 7      (exact)
+#   ||A||_inf = max row abs-sum    = max(3+0, 4+5)      = 9      (exact)
+#   ||A||_F   = sqrt(9 + 0 + 16 + 25) = sqrt(50);  ||A||_F^2 = 50 (exact)
+#   ||A||_2   = sigma_max(A) = sqrt(45) ~ 6.7082       (APPROXIMATE:
+#               A^T A = [[25,20],[20,25]] has eigenvalues 45 and 5, so
+#               sigma_max^2 = 45 exactly in arithmetic; the f64 carrier
+#               is compared with an explicit tolerance, never ==).
+# All four values are distinct: no norm substitutes for another.
+#
+# Phase-1 test shape: ONE evaluate goal per declaration; its test
+# asserts only that goal. The numeric norms stay visible in
+# `emath eval` receipts; the aggregate Bool carries the assertions.
+emath function opnorms_2x2:
+    inputs:
+        m00: Float64
+        m01: Float64
+        m10: Float64
+        m11: Float64
+    outputs:
+        n1: Float64
+        ninf: Float64
+        fro2: Float64
+        sig2: Float64
+        norms_ok: Bool
+    definitions:
+        A = [[m00, m01], [m10, m11]]
+        # induced 1-norm: max over COLUMNS of the abs column sums.
+        # `abs`/`max` admit in the strict-f64 subset since emath-s9w1m;
+        # this spelling keeps the original exact composition from the
+        # admitted 2-norm: |x| = norm([x]) and
+        # max(a, b) = (a + b + |a - b|) / 2 (exact for these inputs).
+        a0 = norm([m00]) + norm([m10])
+        a1 = norm([m01]) + norm([m11])
+        n1 = (a0 + a1 + norm([a0 - a1])) / 2.0
+        # induced infinity-norm: max over ROWS of the abs row sums
+        r0 = norm([m00]) + norm([m01])
+        r1 = norm([m10]) + norm([m11])
+        ninf = (r0 + r1 + norm([r0 - r1])) / 2.0
+        # Frobenius SQUARED: the honest exact quantity (single sqrt later)
+        fro2 = m00 * m00 + m01 * m01 + m10 * m10 + m11 * m11
+        # spectral norm via the shipped singular-values contract
+        # (descending order, so sigma_max is entry 0)
+        sig = singular_values(A)[0]
+        sig2 = sig * sig
+        # aggregate assertion: exact parts equal, spectral part within an
+        # explicit tolerance and bracketed by Frobenius
+        norms_ok = ((n1 == 7.0) and (ninf == 9.0) and (fro2 == 50.0)
+                    and (norm([sig2 - 45.0]) < 0.0000001) and (sig2 <= fro2))
+    goals:
+        evaluate <norms_ok>:
+            produce rust.library
+    tests:
+        example <demo>:
+            given m00 = 3.0
+            given m01 = 0.0
+            given m10 = 4.0
+            given m11 = 5.0
+            expect norms_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

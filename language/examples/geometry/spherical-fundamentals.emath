@@ -1,0 +1,88 @@
+# Spherical geometry fundamentals — runnable cross-section of
+# `std.geometry.spherical`: chord metrics on the unit sphere over the
+# generic Vector surface.  ZERO CORE DELTA: ordinary user functions
+# over the `dot` builtin and the generic index/arithmetic surface
+# (the 3-4-5 Pythagorean unit vector is the rational exactness
+# witness).  NAMED FENCES: the central-angle form `atan2(|a x b|, a.b)`,
+# the haversine-equivalent chord-angle form
+# `theta = 2*atan2(c, sqrt(4 - c*c))`, great-circle arc length
+# `R*theta`, and the Van Oosterom-Strackee spherical excess
+# `2*atan2(|det(a,b,c)|, 1 + a.b + b.c + c.a)` — need
+# `atan2`/`sqrt`/`abs` CALLS, which ADMIT end-to-end in the Phase 1
+# strict-f64 execution subset since emath-s9w1m + fpl60 (probed
+# 2026-09-01 on language/examples/intro/clamp-distance-builtins.emath);
+# the fences stay because those forms are APPROXIMATE (catalogued-only
+# in the coverage map), not because execution refuses them; they are
+# specified with formulas in the cell contract and enter with a cell
+# revision.  Exact-first: every pinned
+# witness uses integer coordinates or the exact 3-4-5 unit vector; the
+# one non-representable chord pin (i to (3/5, 4/5, 0)) is pinned to
+# its correctly-rounded component-chain value 0.8000000000000002,
+# verified independently, with the dot-relation form (exactly 0.8)
+# documented as the 1-ULP-differing algebraic form.
+# Test shape: each test-bearing declaration observes exactly one
+# evaluate target.
+package std.geometry
+
+emath function sub3:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+    outputs:
+        d: Vector[Float64]
+    definitions:
+        d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+    goals:
+        evaluate <d>:
+            produce rust.library
+
+emath function chord_squared:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+    outputs:
+        c2: Float64
+    definitions:
+        d = sub3(a, b)
+        c2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+    goals:
+        evaluate <c2>:
+            produce rust.library
+
+emath function chord_dot_relation_witness:
+    inputs:
+        probe: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        cs_ij = chord_squared([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        cs_anti = chord_squared([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0])
+        cs_self = chord_squared([1.0, 0.0, 0.0], [1.0, 0.0, 0.0])
+        cs_pyth = chord_squared([1.0, 0.0, 0.0], [3.0 / 5.0, 4.0 / 5.0, 0.0])
+        rel_ij = 2.0 - 2.0 * dot([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        rel_anti = 2.0 - 2.0 * dot([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0])
+        rel_pyth = 2.0 - 2.0 * (1.0 * (3.0 / 5.0))
+        packed = [cs_ij, cs_anti, cs_pyth, rel_ij, rel_anti, cs_pyth]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <unit_sphere_chord_law>:
+            given probe = 0.0
+            expect packed == [2.0, 4.0, 0.8000000000000002, 2.0, 4.0, 0.8000000000000002]
+
+emath function pythagorean_unit_witness:
+    inputs:
+        probe: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        norm_sq = (3.0 / 5.0) * (3.0 / 5.0) + (4.0 / 5.0) * (4.0 / 5.0) + 0.0
+        packed = [norm_sq, dot([1.0, 0.0, 0.0], [3.0 / 5.0, 4.0 / 5.0, 0.0])]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <rational_unit_vector>:
+            given probe = 0.0
+            expect packed == [1.0, 0.6]

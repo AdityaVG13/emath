@@ -1,6 +1,6 @@
 # Language Specification
 
-Normative semantic specification of the emath language, in 17 chapters.
+Normative semantic specification of the emath language, in 18 chapters.
 Chapters are canonically ordered; this index is the source of order.
 Filenames are intentionally prefix-free, so listings sort alphabetically,
 not semantically.
@@ -22,8 +22,9 @@ not semantically.
 | 13 | Standard Library Constitution | [standard-library-constitution.md](standard-library-constitution.md) |
 | 14 | Rust Interop and Generation | [rust-interop-and-generation.md](rust-interop-and-generation.md) |
 | 15 | Total Compilation Protocol | [total-compilation-protocol.md](total-compilation-protocol.md) |
-| 16 | Language Acceptance Gates | [language-acceptance.md](language-acceptance.md) |
+| 16 | Language Acceptance | [language-acceptance.md](language-acceptance.md) |
 | 17 | House Style | [house-style.md](house-style.md) |
+| 18 | Using emath as a Mathematical Probe Lab | [probe-lab-workflow.md](probe-lab-workflow.md) |
 
 Each chapter carries its canonical number in its H1 title
 (e.g. `# Chapter 7: Expressions, Equations, State and Events`).

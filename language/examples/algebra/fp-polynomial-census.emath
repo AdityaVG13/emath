@@ -1,0 +1,76 @@
+# Fiber census of polynomial maps over F_p (cell std.finite_field.polynomial).
+# The census pattern: for f: F_p -> F_p given by ascending coefficients,
+# the cardinality of the fiber f^{-1}(t) is a sum over the whole domain:
+#
+#   #{x in F_p : f(x) = t} = sum x in 0..p if poly_eval_mod(coeffs, x, p) == t: 1
+#
+# `0..p` is half-open, so the binder walks exactly the p field elements
+# 0..p-1. poly_eval_mod evaluates c[0] + c[1]x + ... by Horner's method
+# over i128 intermediates (exact for p <= 2^63); coefficients must be
+# exact integers (a fractional coefficient refuses typed).
+#
+#   emath check language/examples/algebra/fp-polynomial-census.emath
+#   emath test  language/examples/algebra/fp-polynomial-census.emath
+#   emath eval  language/examples/algebra/fp-polynomial-census.emath \
+#       --function cube_fiber_census --set p=7 --set t=1
+#
+# Fiber-census synergy: the same count-a-fiber-by-sweep pattern is the
+# F_p substrate of the zero-sum fiber law (N1 = N2 counts subsets of a
+# domain with sum in a given residue class) — here the domain is F_p and
+# the map is an explicit polynomial.
+
+# Fiber census of f(x) = 1 - x^2 over F_7: the fiber f^{-1}(0) is the
+# root set {1, 6} (1 - 1 = 0; 1 - 36 = -35 = -5*7), so the count is 2
+# for every prime p >= 2 (the two square roots of 1).
+emath function unit_fiber_census:
+    inputs:
+        p: Int
+    outputs:
+        roots: Int
+    definitions:
+        coeffs = [1, 0, -1]
+        roots = sum x in 0..p if poly_eval_mod(coeffs, x, p) == 0: 1
+    goals:
+        evaluate <roots>:
+            produce rust.library
+    tests:
+        example <f7>:
+            given p = 7
+            expect roots == 2
+
+# Fermat's little theorem as a fiber census: x^p - x vanishes on ALL of
+# F_p (0^p - 0 = 0; Fermat x^(p-1) = 1 for x != 0), so the fiber
+# f^{-1}(0) of f(x) = x^7 - x over F_7 is the whole field: count 7.
+# coeffs [0, -1, 0, 0, 0, 0, 0, 1] is ascending c_0..c_7, inlined so the
+# declaration exposes a single evaluate target (Phase 1 test law).
+emath function fermat_census:
+    definitions:
+        roots = sum x in 0..7 if poly_eval_mod([0, -1, 0, 0, 0, 0, 0, 1], x, 7) == 0: 1
+    tests:
+        example <wholeField>:
+            expect roots == 7
+
+# The evaluation map of f(x) = x^3 is gcd(3, 6)-to-1 onto the cubes of
+# F_7: 1^3 = 2^3 = 4^3 = 1 (1, 8, 64 all congruent 1 mod 7), so the
+# fiber f^{-1}(1) has exactly 3 preimages; f^{-1}(0) = {0} only.
+emath function cube_fiber_census:
+    inputs:
+        p: Int
+        t: Int
+    outputs:
+        preimages: Int
+    definitions:
+        coeffs = [0, 0, 0, 1]
+        preimages = sum x in 0..p if poly_eval_mod(coeffs, x, p) == t: 1
+    goals:
+        evaluate <preimages>:
+            produce rust.library
+    tests:
+        example <cubes>:
+            given p = 7
+            given t = 1
+            expect preimages == 3
+        example <zeroFiber>:
+            given p = 7
+            given t = 0
+            expect preimages == 1

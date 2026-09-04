@@ -1,0 +1,94 @@
+# Exact 3x3 matrix spectra over F_7 by cofactor expansion.
+#
+# Cell contract: language/stdlib/cells/analysis/std-analysis-finite-spectra3.md
+#
+# A = [[2, 1, 0], [1, 2, 1], [0, 1, 2]] over F_7.
+#   tr = 6
+#   M  = principal 2x2 minors: (2*2-1*1) + (2*2-0*0) + (2*2-1*1)
+#        = 3 + 4 + 3 = 10 == 3 (mod 7)
+#   det = 2*(2*2 - 1*1) - 1*(1*2 - 1*0) + 0*(1*1 - 2*0) = 6 - 2 = 4
+#   chi(t) = t^3 - 6 t^2 + 10 t - 4 == t^3 + t^2 + 3 t + 3 (mod 7)
+# Root sweep over all of F_7:
+#   t=0: 3;  t=1: 8==1;  t=2: 21==0 YES;  t=3: 48==6;
+#   t=4: 95==4;  t=5: 168==0 YES;  t=6: 273==0 YES
+# spec = {2, 5, 6}. Vieta: sum 13==6=tr; pairwise 2*5+2*6+5*6=52==3=M;
+#   product 60==4=det. All three invariants hold exactly.
+# Eigenvector for lambda = 2: v = (1, 0, 6);
+#   A v = (2*1+1*0, 1*1+2*0+1*6, 0*1+1*0+2*6) = (2, 7, 12) == (2, 0, 5)
+#   2 v = (2, 0, 12) == (2, 0, 5). Exact match.
+#
+# Phase-1 test shape: ONE evaluate goal per declaration; tests assert
+# only that goal.
+emath function spectra3_fp7:
+    inputs:
+        p: Int
+    outputs:
+        tr: Int
+        mm: Int
+        det: Int
+        all_ok: Bool
+    definitions:
+        tr = int_rem(2 + 2 + 2, p)
+        mm = int_rem((2 * 2 - 1 * 1) + (2 * 2 - 0 * 0) + (2 * 2 - 1 * 1), p)
+        det = int_rem(2 * (2 * 2 - 1 * 1) - 1 * (1 * 2 - 1 * 0)
+                      + 0 * (1 * 1 - 2 * 0), p)
+        # chi(t) coefficients mod p: t^3 - tr t^2 + M t - det
+        chi0 = int_rem(0 * 0 * 0 - tr * 0 * 0 + mm * 0 - det, p)
+        chi1 = int_rem(1 * 1 * 1 - tr * 1 * 1 + mm * 1 - det, p)
+        chi2 = int_rem(2 * 2 * 2 - tr * 2 * 2 + mm * 2 - det, p)
+        chi3 = int_rem(3 * 3 * 3 - tr * 3 * 3 + mm * 3 - det, p)
+        chi4 = int_rem(4 * 4 * 4 - tr * 4 * 4 + mm * 4 - det, p)
+        chi5 = int_rem(5 * 5 * 5 - tr * 5 * 5 + mm * 5 - det, p)
+        chi6 = int_rem(6 * 6 * 6 - tr * 6 * 6 + mm * 6 - det, p)
+        spec = (congruence(chi2, 0, p) and congruence(chi5, 0, p)
+                and congruence(chi6, 0, p))
+        nonspec = (congruence(chi0, 3, p) and congruence(chi1, 1, p)
+                   and congruence(chi3, 6, p) and congruence(chi4, 4, p))
+        vieta = (congruence(tr, int_rem(2 + 5 + 6, p), p)
+                 and congruence(mm, int_rem(2 * 5 + 2 * 6 + 5 * 6, p), p)
+                 and congruence(det, int_rem(2 * 5 * 6, p), p))
+        all_ok = (spec and nonspec and vieta and congruence(tr, 6, p)
+                  and congruence(mm, 3, p) and congruence(det, 4, p))
+    goals:
+        evaluate <all_ok>:
+            produce rust.library
+    tests:
+        example <f7>:
+            given p = 7
+            expect all_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function spectra3_eigvec_fp7:
+    # Eigenvector certificate for lambda = 2, v = (1, 0, 6).
+    inputs:
+        p: Int
+    outputs:
+        av0: Int
+        av1: Int
+        av2: Int
+        eig_ok: Bool
+    definitions:
+        # A v = (2*1+1*0+0*6, 1*1+2*0+1*6, 0*1+1*0+2*6)
+        av0 = int_rem(2 * 1 + 1 * 0 + 0 * 6, p)
+        av1 = int_rem(1 * 1 + 2 * 0 + 1 * 6, p)
+        av2 = int_rem(0 * 1 + 1 * 0 + 2 * 6, p)
+        # (A - 2 I) v == 0 componentwise, equivalently A v == 2 v
+        cert = (congruence(av0, 2 * 1, p) and congruence(av1, 2 * 0, p)
+                and congruence(av2, 2 * 6, p))
+        eig_ok = cert
+    goals:
+        evaluate <eig_ok>:
+            produce rust.library
+    tests:
+        example <f7>:
+            given p = 7
+            expect eig_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

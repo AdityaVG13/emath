@@ -1,6 +1,8 @@
-# Exact-rational cells (emath-rat-real-types-p5cj): Rat is an exact
+# Exact-rational cells: Rat is an exact
 # i128/i128 rational, gcd-reduced with a positive denominator at every
-# step -- never a rounded f64.
+# step -- never a rounded f64. The active authored authorities are
+# std.capability.exact.rat, std.capability.exact.rat-add, and
+# std.capability.exact.rat-normalize.
 emath function probe:
     inputs:
         n: Int

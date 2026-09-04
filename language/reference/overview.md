@@ -101,7 +101,8 @@ Every admitted request yields a typed artifact disposition. Unsupported executio
 `edition = "2026"` in the nearest package `emath.toml` selects the parser
 epoch for every file in that package. `2030` is also shipped. A compiler
 session opened on a package reads this field before parsing; unknown
-values refuse `E-PKG-EDITION-UNKNOWN` rather than selecting a default.
+values diagnose with `E-PKG-EDITION-UNKNOWN` (route: pick a shipped
+edition) rather than selecting a default.
 
 Historical grammar is retained. Thus a 2026 package using a deprecated
 form still parses and lowers reproducibly under a newer toolchain, while
@@ -134,9 +135,10 @@ emath policy     stateful objects with constructors
 emath model      continuous ODEs you can simulate
 ```
 
-Other kind spellings still parse. Admission then treats them as a
-function or refuses their sections. That is a named refusal, not a
-silent guess.
+Other kind spellings still parse. Nothing is turned away at the door:
+an unknown kind enters as labeled data, each section no world computes
+comes back as a routed diagnosis (the code names the repair), and the
+artifact carries an explicit label, never a silent guess.
 
 Sections:
 
@@ -184,30 +186,42 @@ solve(expr) wrt x              (Newton's method root-finding)
 minimize(expr) wrt x / maximize(expr) wrt x  (Newton on ∇f = 0)
 einsum("ik,kj->ij", A, B)      (Einstein summation contraction)
 factorial(n)                   (exact i64 factorial, n in [0,20])
-mod_inv(a, m)                  (modular inverse via extended GCD)
+mod_inv(a, m)                  (modular inverse via extended GCD; i64 or big lane per operand width)
+pow_mod(b, e, m)               (modular exponentiation; i128 intermediates up to 2^63, big lane up to 2^256)
+sqrt_mod(a, p)                 (Tonelli-Shanks modular square root; non-residues diagnose typed)
 congruence(a, b, m)                  (congruence test: (a-b) mod m == 0)
-poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's method)
-rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p))
+poly_eval_mod(coeffs, x, p)    (polynomial evaluation over GF(p), Horner's method over i128 intermediates)
+rs_encode(coeffs, n, p)        (Reed-Solomon codeword: evaluate at 0..n over GF(p), shared Horner kernel)
 hamming_distance(a, b)         (count positions where two vectors differ)
 1 + 2i / 2i / 3.5i             (complex literals, Ni suffix - computes via Complex arithmetic)
-unit of E / dimension of E     (compile-time unit comparisons - computes; bare query as a value is a named refuse)
+unit of E / dimension of E     (compile-time unit comparisons - computes; bare query as a value is a named diagnosis)
 ```
 
 Commands:
 
 - `emath check` - check syntax and semantics
 - `emath run` / `emath test` - evaluate definitions and examples
-- `emath build` - generate a Rust crate when there is an `evaluate` goal
+- `emath build` - generate a Rust crate when there is an `evaluate` goal;
+  `--bin <entrypoint>` additionally emits a compiled function-spec probe —
+  a standalone native binary with the same `--set` CLI contract as
+  `emath eval` (same strict parsing and value display, plus a receipt
+  line: `engine=compiled-probe`, the build-time `meaning_id`, an
+  FNV-1a `inputs_hash`, and typed `world`/`method`
+  `not-applicable-to-function-probes` markers, since `--world` does not
+  apply to function files). The interpreter stays the
+  reference semantics; the compiled path must match it exactly on the
+  parity battery workloads (see `tests/emath-build/tests/probe_parity.rs`).
 - `emath simulate` - integrate an admitted `emath model`
 
 Simulating a model with `algebraic:` unknowns (an index-1 DAE) carries a
 disposition record beside the trajectory; structural index, the
 differential/constraint partition, and the consistent-initialization
-verdict. When initialization cannot be honored the run refuses
-`E-DAE-INIT` with a continuation note (supply the missing algebraic
+verdict. When initialization cannot be honored the run exits with
+`E-DAE-INIT` and a continuation note (supply the missing algebraic
 guess, or regularize); the constraint is never silently dropped and a
 partial result is never presented as the DAE solution.
 
-The compiler returns a number, trajectory, generated Rust, or named refusal.
-It does not claim that the submitted mathematics is true; truth claims require
-declared evidence.
+The compiler returns a number, trajectory, generated Rust, or a routed
+diagnosis, each labeled (`exact`, `approximate(±bound)`, `symbolic-only`,
+`hole-open`, `fault`). It does not claim that the submitted mathematics is
+true; truth claims require declared evidence.

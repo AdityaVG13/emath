@@ -1,4 +1,7 @@
 # Quantity literals: SI scale, area product, cancelled dims, affine Celsius.
+# Unit names and affine readings are authored capsule data. Their executable
+# nucleus is bound by FeatureID to `componentwise-integer-add` and `affine-map`;
+# shape, integral-exponent, and non-finite failures remain typed diagnostics.
 emath function Units:
     inputs:
         n: Float64

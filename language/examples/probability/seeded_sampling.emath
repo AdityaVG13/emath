@@ -1,4 +1,6 @@
-# Probability: seeded sampling + exact densities (xx0x.5 thin nucleus).
+# Probability: seeded sampling + closed-form strict-f64 densities.
+# The authored capsule owns family meaning; numeric leaves preserve the existing
+# stream contract while immutable native-registry binding remains rollback-pending.
 #
 # ONE generator story: the explicit seed and declared dot-separated split
 # path enter the counter-based stream contract. Same seed + same path is
@@ -19,6 +21,7 @@ emath function seeded_normal_draws:
         replay: Vector<Float64>
         replayed: Bool
         split: Bool
+        verified: Bool
     definitions:
         # Normal(0, 1): the same seed reproduces this exact stream
         # bit-for-bit on every run.
@@ -27,17 +30,17 @@ emath function seeded_normal_draws:
         replay = normal_sample([0.0, 1.0], seed, draws, "campaign.chain-a")
         replayed = (chain == replay)
         split = (stream != chain)
+        verified = replayed and split
 
     goals:
-        evaluate <chain>:
+        evaluate <verified>:
             produce rust.library
 
     tests:
         example <declared_stream>:
             given seed = 42.0
             given draws = 8.0
-            expect replayed == true
-            expect split == true
+            expect verified == true
 
     compile:
         target rust

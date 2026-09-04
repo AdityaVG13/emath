@@ -1,5 +1,5 @@
 # Option / Result / Graph / Field composite declaration types
-# (emath-option-result-graph-field-aj8d).
+#.
 #
 # This file demonstrates the composite compute types admitted on the
 # current tree: `Option<T>`, `Result<T, E>`, `Graph`, and `Field<p>` /
@@ -15,16 +15,17 @@
 # stateless function through EMIR lowering + the reference VM and prints
 # an `emath.eval-function` receipt. The second declaration below,
 # `CompositeTypesDeclare`, is a CHECK-ONLY admission surface: its inputs
-# are composite types, which `emath eval` cannot bind (Float64 and
-# Vector[Float64] only → E-EVAL-006), so select the graph function when
-# evaluating.
+# are composite types, which `emath eval` cannot bind (Float64, Int, Nat,
+# Vector[Float64], Vector[Int], and Vector[Nat] only → E-EVAL-006), so
+# select the graph function when evaluating.
 #
-# EXACT (compute genuinely runs from text): the dense graph literal +
-# `reachability` / `shortest_distances` / `out_degrees`; and — in the
+# EXACT (compute genuinely runs from text through capsule-active graph
+# FeatureIDs): the dense graph literal + `reachability` /
+# `shortest_distances` / `out_degrees`; and — in the
 # companion examples — the Option/Result carriers (`option_some` /
 # `option_is_some` / `option_unwrap_or`, `result_ok` / `result_error_of`)
 # and Field arithmetic as capability-cell data (`int_rem` + `field_inv`).
-# Every claim is pinned by an `aj8d_*` test in
+# Every claim is pinned by tests in
 # tests/emath-sema/tests/option_result_graph_field.rs and
 # tests/emath-ir/tests/option_result_values.rs.
 #

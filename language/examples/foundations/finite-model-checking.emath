@@ -1,0 +1,142 @@
+# Finite model checking — quantifiers over enumerated finite structures.
+# (Wave-16 foundations lane: finite model theory, Tier A constraint/search
+# foundations angle.)
+#
+# A finite structure is a finite domain (a binder range) plus interpreted
+# predicates written as ordinary .emath expressions. Model checking a
+# closed property is a COMPLETED finite scan — `forall` / `exists` binder
+# folds over the enumerated domain, model counts by guarded `sum`. Every
+# verdict carries its certificate:
+#   - ∀ refuted → the scan landed on a counterexample (witness count > 0);
+#   - ∀/∃ held  → the completed enumeration, with the documented
+#     empty-domain fold identities (empty → ∀ true, ∃ false).
+# No proof search, no heuristics: the verdict IS the completed scan.
+# Not a proof assistant — only exhaustive finite scans with
+# witness/counterexample counts.
+#
+# Capability data: primality as exhaustive finite search — the divisor
+# sweep IS the search (no oracle, no hardcoded table).
+#
+# Run:
+#   emath check language/examples/foundations/finite-model-checking.emath
+#   emath test  language/examples/foundations/finite-model-checking.emath
+#   emath eval  language/examples/foundations/finite-model-checking.emath --function prime_worlds_below_twenty
+
+use core::notation::logic
+
+# Capability data: divisor count of n over the finite divisor range 2..20
+# (the sweep is exhaustive over 2 <= d < 20; the guard d < n makes it the
+# proper-divisor sweep).
+emath function proper_divisor_count:
+    inputs:
+        n: Int
+    outputs:
+        divisors: Int
+
+    definitions:
+        divisors = sum d in 2..20: if ((d < n) and (int_rem(n, d) == 0)): 1 else: 0
+
+# Capability data: primality as exhaustive finite search — world i is a
+# prime world iff the completed divisor sweep found no divisor and the
+# world is in the model's intended range (i >= 2; worlds below 2 are
+# outside the structure, excluded by the caller, never by a silent fixup).
+emath function prime_at:
+    inputs:
+        i: Int
+    outputs:
+        prime: Int
+
+    definitions:
+        prime = if ((i >= 2) and (proper_divisor_count(i) == 0)): 1 else: 0
+
+    tests:
+        example <two_is_prime>:
+            given i = 2
+            expect prime == 1
+        example <one_not_prime>:
+            given i = 1
+            expect prime == 0
+        example <four_not_prime>:
+            given i = 4
+            expect prime == 0
+
+emath function prime_worlds_below_twenty:
+    definitions:
+        # Finite model of "prime" as a property of the structure 0..19:
+        # the model count is the completed enumeration of the domain
+        # through the pointwise kernel. Exactly 8 prime worlds.
+        prime_worlds = sum i in 0..20: if (prime_at(i) == 1): 1 else: 0
+
+    tests:
+        example <primes_below_twenty>:
+            expect prime_worlds == 8
+
+emath function no_square_four_refuted:
+    definitions:
+        # ∀i ∈ 0..8: i² ≠ 4 is REFUTED by the finite scan — the completed
+        # enumeration certifies that a counterexample exists (i = 2).
+        # A universal verdict is false exactly when the scan lands on a
+        # counterexample; no heuristic, no partial evidence.
+        refuted = not (forall i in 0..8: ((i * i) != 4))
+
+    tests:
+        example <refuted>:
+            expect refuted == true
+
+emath function square_four_witness_count:
+    definitions:
+        # Refutation certificate for the same claim: the number of
+        # counterexamples (i² = 4) in the finite domain is exactly 1.
+        counterexamples = sum i in 0..8: if ((i * i) == 4): 1 else: 0
+
+    tests:
+        example <refutation_count>:
+            expect counterexamples == 1
+
+emath function quantifier_duality:
+    definitions:
+        # Finite-domain quantifier duality (the metamorphic law of the
+        # slice): ¬∃x P(x) ≡ ∀x ¬P(x), computed on the same structure;
+        # the empty-domain identities (∀ true, ∃ false) make the law hold
+        # vacuously on empty domains too. Here the domain has an actual
+        # witness (2² = 4), so both sides are FALSE and agree.
+        duality = (not (exists i in 0..8: ((i * i) == 4))) == (forall i in 0..8: (not ((i * i) == 4)))
+
+    tests:
+        example <duality>:
+            expect duality == true
+
+emath function vacuous_universal_true:
+    definitions:
+        # Vacuity pin: the divisor sweep for i = 1 has an EMPTY guard set
+        # (no d with 2 <= d < 1), so the universal is the empty-fold
+        # identity `true` — documented, never silent. The sweep body is
+        # total (int_rem(1, d) for d >= 2 is total), so the eager fold
+        # never faults on an unselected cell.
+        vacuous = forall d in 2..20 if (d < 1): (int_rem(1, d) != 0)
+
+    tests:
+        example <empty_domain>:
+            expect vacuous == true
+
+emath function universal_guard_law:
+    definitions:
+        # Metamorphic law: the guarded fold equals its ==> expansion on
+        # the same finite domain — the guard is exactly material
+        # implication over the enumerated cells.
+        agrees = (forall i in 0..8 if (int_rem(i, 2) == 0): ((i * i) >= 0)) == (forall i in 0..8: ((int_rem(i, 2) != 0) ==> ((i * i) >= 0)))
+
+    tests:
+        example <guard_law>:
+            expect agrees == true
+
+emath function exists_prime_below_twenty:
+    definitions:
+        # ∃x P(x) over the finite structure: the existential fold lands on
+        # world 2 and certifies; false only when the completed enumeration
+        # finds nothing.
+        found = exists i in 0..20: (prime_at(i) == 1)
+
+    tests:
+        example <exists_prime>:
+            expect found == true

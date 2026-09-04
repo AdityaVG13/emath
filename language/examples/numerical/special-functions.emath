@@ -1,5 +1,6 @@
-# Certified strict-f64 special functions expose both the central value
-# and the implementation's declared error bound.
+# The authored special-function capsule keeps mathematical names and error
+# policy outside Rust kernels. The live strict-f64 route exposes both the
+# central value and its declared error bound; elliptic_pi remains refused.
 emath function SpecialFunctionValues:
     inputs:
         n: Float64

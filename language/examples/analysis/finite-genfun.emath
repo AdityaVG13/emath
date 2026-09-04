@@ -1,0 +1,81 @@
+# Exact generating-function arithmetic: Fibonacci world over the
+# admitted Sequence carrier.
+#
+# Cell contract: language/stdlib/cells/analysis/std-analysis-finite-genfun.md
+#
+# World: g = generating_function([0.0, 1.0], [1.0, 1.0], 16.0) is the formal
+# series x / (1 - x - x^2): coefficients 0, 1, 1, 2, 3, 5, 8, 13, 21, ...
+# (den = [1, 1] IS the recurrence x[n] = x[n-1] + x[n-2]; the values
+# are integers well below 2^53, so f64 arithmetic is EXACT here).
+#
+# Self-convolution c = g*g, direct Cauchy sums:
+#   c[0] = 0;  c[1] = 0*1 + 1*0 = 0
+#   c[2] = 0*1 + 1*1 + 1*0 = 1
+#   c[3] = 0*2 + 1*1 + 1*1 + 2*0 = 2
+# `convolution` must agree with the unrolled sums EXACTLY.
+#
+# Recurrence encoding: coefficient(g, 7.0) == 13 and
+#   coefficient(g, 8.0) - coefficient(g, 7.0) - coefficient(g, 6.0) == 0
+#   (21 - 13 - 8 = 0), the denominator read as a recurrence.
+#
+# Phase-1 test shape: ONE evaluate goal per declaration; tests assert
+# only that goal.
+emath function genfun_cauchy:
+    inputs:
+        n: Int
+    outputs:
+        cauchy_ok: Bool
+    definitions:
+        g = generating_function([0.0, 1.0], [1.0, 1.0], 16.0)
+        square = convolution(g, g, 16.0)
+        # direct Cauchy sums at n = 2 and n = 3 from the carrier itself
+        d2 = (coefficient(g, 0.0) * coefficient(g, 2.0)
+              + coefficient(g, 1.0) * coefficient(g, 1.0)
+              + coefficient(g, 2.0) * coefficient(g, 0.0))
+        d3 = (coefficient(g, 0.0) * coefficient(g, 3.0)
+              + coefficient(g, 1.0) * coefficient(g, 2.0)
+              + coefficient(g, 2.0) * coefficient(g, 1.0)
+              + coefficient(g, 3.0) * coefficient(g, 0.0))
+        cauchy_ok = ((square[2] == d2) and (square[3] == d3)
+                     and (square[0] == 0.0) and (square[1] == 0.0))
+    goals:
+        evaluate <cauchy_ok>:
+            produce rust.library
+    tests:
+        example <fib>:
+            given n = 3
+            expect cauchy_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function genfun_recurrence:
+    # The denominator IS the recurrence: pin the closed value and the
+    # recurrence identity, both exact in f64.
+    inputs:
+        n: Int
+    outputs:
+        fib7: Float64
+        rec_ok: Bool
+    definitions:
+        g = generating_function([0.0, 1.0], [1.0, 1.0], 16.0)
+        fib7 = coefficient(g, 7.0)
+        rec_ok = ((fib7 == 13.0)
+                  and (coefficient(g, 8.0) - coefficient(g, 7.0)
+                       - coefficient(g, 6.0) == 0.0)
+                  and (coefficient(g, 2.0) - coefficient(g, 1.0)
+                       - coefficient(g, 0.0) == 0.0))
+    goals:
+        evaluate <rec_ok>:
+            produce rust.library
+    tests:
+        example <fib>:
+            given n = 8
+            expect rec_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

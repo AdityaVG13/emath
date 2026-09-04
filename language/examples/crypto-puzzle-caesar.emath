@@ -1,0 +1,18 @@
+# Educational Caesar reference: round-trip verification, not semantic security.
+emath function CaesarRoundTrip:
+    inputs:
+        symbol: Int
+        key: Int
+        alphabet_size: Int
+    outputs:
+        ciphertext: Int
+        recovered: Int
+    definitions:
+        ciphertext = int_rem(symbol + key, alphabet_size)
+        recovered = int_rem(ciphertext - key + alphabet_size, alphabet_size)
+    tests:
+        example <round_trip>:
+            given symbol = 2
+            given key = 3
+            given alphabet_size = 26
+            expect recovered == 2

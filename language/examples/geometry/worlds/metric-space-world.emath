@@ -1,0 +1,130 @@
+# Metric-space world — Wave-16 catalog item "metric-space world"
+# (internal/catalog/v16/WAVE_16_GAPS/03_WORLD_GAPS.md, linear/geometric/
+# topological section).  A metric-space world is a carrier X with a
+# distance d satisfying the metric laws; this file delivers TWO world
+# instances as ordinary user functions and pins each law as an
+# executable witness:
+#   instance R3-L2:      carrier R^3, d(p, q) = norm(p - q)
+#   instance S2-chord:   carrier unit vectors of R^3,
+#                        d(u, v) = norm(u - v), with the chord law
+#                        chord^2(u, v) = 2 - 2·dot(u, v)
+# ZERO CORE DELTA: no new capability name, no IR variant, no parser
+# branch; only `norm`/`dot` builtins and generic arithmetic.
+# World framing, not new machinery: the genesis/world subsystem
+# (carrier/symbol/law sections of language/grammar/genesis.ebnf) is
+# design-stage and its unadmitted sections are refused by the parser;
+# this cell states the world as data + laws over the admitted
+# function surface instead.  LAW ENCODING FENCE: evaluate targets are
+# strict-f64 values with no comparison operators, so each metric law
+# is pinned as a signed slack (negative = strict inequality, zero =
+# equality case) rather than a boolean.
+# NAMED FENCE: the L1/Manhattan and L-infinity/Chebyshev instances of
+# this world need componentwise `abs`/`max`, which ADMIT end-to-end in
+# the strict-f64 emitter since emath-s9w1m + fpl60 (probed 2026-09-01
+# on language/examples/intro/clamp-distance-builtins.emath); they are
+# specified in `language/stdlib/cells/geometry/std-world-metric-space.md`
+# and enter with a cell revision, not an emitter change.
+# Exact-first: every witness uses integer-valued coordinates, so the
+# chord-squared chain is exact in strict f64; the L2 distance values
+# are single correctly-rounded sqrt literals verified independently
+# (sqrt(29), sqrt(20), sqrt(17), sqrt(53), sqrt(2), 2·sqrt(2)).
+# Test shape: each test-bearing declaration observes exactly one
+# evaluate target; vector-valued results are asserted by whole-vector
+# equality, never component indexing.
+package std.geometry
+
+emath function wms_l2:
+    inputs:
+        p: Vector[Float64]
+        q: Vector[Float64]
+    outputs:
+        d: Float64
+    definitions:
+        d = norm([p[0] - q[0], p[1] - q[1], p[2] - q[2]])
+    goals:
+        evaluate <d>:
+            produce rust.library
+
+emath function wms_chord_squared:
+    inputs:
+        u: Vector[Float64]
+        v: Vector[Float64]
+    outputs:
+        cs: Float64
+    definitions:
+        du = u[0] - v[0]
+        dv = u[1] - v[1]
+        dw = u[2] - v[2]
+        cs = du * du + dv * dv + dw * dw
+    goals:
+        evaluate <cs>:
+            produce rust.library
+    tests:
+        example <cardinal_chord_squares>:
+            given u = [1.0, 0.0, 0.0]
+            given v = [0.0, 1.0, 0.0]
+            expect cs == 2.0
+
+        example <antipodal_chord_square>:
+            given u = [1.0, 0.0, 0.0]
+            given v = [-1.0, 0.0, 0.0]
+            expect cs == 4.0
+
+        example <degenerate_chord_square>:
+            given u = [1.0, 0.0, 0.0]
+            given v = [1.0, 0.0, 0.0]
+            expect cs == 0.0
+
+emath function wms_r3_l2_laws:
+    inputs:
+        px: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        p = [px, 2.0, 3.0]
+        q = [4.0, 6.0, 1.0]
+        id_of_indiscernibles = wms_l2(p, p)
+        symmetry = wms_l2(p, q) - wms_l2(q, p)
+        tri_slack = wms_l2(p, q) - (wms_l2(p, [0.0, 0.0, 0.0]) + wms_l2([0.0, 0.0, 0.0], q))
+        d_pq = wms_l2(p, q)
+        lattice = wms_l2([0.0, 0.0, 0.0], [3.0, 4.0, 12.0])
+        packed = [id_of_indiscernibles, symmetry, tri_slack, d_pq, lattice]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <r3_metric_laws_first_probe>:
+            given px = 1.0
+            expect packed == [0.0, 0.0, -5.636602468919956, 5.385164807134504, 13.0]
+
+        example <r3_metric_laws_second_probe>:
+            given px = 4.0
+            expect packed == [0.0, 0.0, -8.193138741415442, 4.47213595499958, 13.0]
+
+emath function wms_sphere_chord_laws:
+    inputs:
+        t: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        u = [1.0, 0.0, 0.0]
+        v = [t, 0.0, 0.0]
+        e2 = [0.0, 1.0, 0.0]
+        cs_uv = wms_chord_squared(u, v)
+        law_slack = cs_uv - (2.0 - 2.0 * dot(u, v))
+        d_uv = norm([u[0] - v[0], u[1] - v[1], u[2] - v[2]])
+        d_ue = norm([u[0] - e2[0], u[1] - e2[1], u[2] - e2[2]])
+        d_ev = norm([e2[0] - v[0], e2[1] - v[1], e2[2] - v[2]])
+        tri_slack = d_uv - (d_ue + d_ev)
+        packed = [cs_uv, law_slack, d_uv, tri_slack]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <antipodal_chord_witness>:
+            given t = -1.0
+            expect packed == [4.0, 0.0, 2.0, -0.8284271247461903]
+
+        example <degenerate_chord_witness>:
+            given t = 1.0
+            expect packed == [0.0, 0.0, 0.0, -2.8284271247461903]

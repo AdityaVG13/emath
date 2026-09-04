@@ -1,0 +1,83 @@
+# The inertia tensor as a quadratic form (cell std.physics.inertia).
+# Rigid-body rotation about a fixed axis: angular momentum L = I w and
+# rotational kinetic energy T = (1/2) w^T I w, with I a symmetric
+# positive-definite 3x3. The diagonal carrier I = diag(2, 4, 6) keeps
+# every witness exact in f64; the off-diagonal generalization is the
+# same einsum surface (index j contracted twice).
+#
+#   emath check language/examples/physics-engineering/inertia-tensor.emath
+#   emath test  language/examples/physics-engineering/inertia-tensor.emath
+#   emath eval  language/examples/physics-engineering/inertia-tensor.emath \
+#       --function inertia_rotational_energy --set wx=1.0 --set wy=2.0 --set wz=1.0
+#
+# Physics reading: energy is a quadratic form on angular-velocity space;
+# its level sets are ellipsoids whose axes are the principal moments
+# (the diagonal entries here). The parallel-axis theorem shifts the
+# tensor by m*(|d|^2 E - d d^T) when the axis moves by d — trace grows
+# by exactly 2 m |d|^2 in 3-D.
+
+# Rotational kinetic energy T = (1/2) w^T I w for I = diag(2,4,6),
+# w = (1,2,1): (1/2)(2*1 + 4*4 + 6*1) = 12.
+emath function inertia_rotational_energy:
+    inputs:
+        wx: Float64
+        wy: Float64
+        wz: Float64
+    outputs:
+        energy: Float64
+    definitions:
+        inertia = [[2.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 6.0]]
+        energy = 0.5 * einsum("i,ij,j->", [wx, wy, wz], inertia, [wx, wy, wz])
+    goals:
+        evaluate <energy>:
+            produce rust.library
+    tests:
+        example <omega121>:
+            given wx = 1.0
+            given wy = 2.0
+            given wz = 1.0
+            expect energy == 12.0
+
+# Angular momentum consistency: w . (I w) == 2 T — the dot of L = I w
+# with w is exactly twice the quadratic form above (24 here).
+emath function inertia_angmom_dot:
+    inputs:
+        wx: Float64
+        wy: Float64
+        wz: Float64
+    outputs:
+        doubled: Float64
+    definitions:
+        inertia = [[2.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 6.0]]
+        doubled = einsum("i,i->", einsum("ij,j->i", inertia, [wx, wy, wz]), [wx, wy, wz])
+    goals:
+        evaluate <doubled>:
+            produce rust.library
+    tests:
+        example <omega121>:
+            given wx = 1.0
+            given wy = 2.0
+            given wz = 1.0
+            expect doubled == 24.0
+
+# Parallel-axis theorem: moving the axis by d adds m*(|d|^2 E - d d^T).
+# d = (1,0,0), m = 1: I' = diag(2, 5, 7); trace grows 12 -> 14, i.e.
+# by 2 m |d|^2 (3 |d|^2 on the diagonal minus |d|^2 from d d^T).
+emath function inertia_parallel_axis:
+    inputs:
+        m: Float64
+    outputs:
+        trace: Float64
+    definitions:
+        inertia = [[2.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 6.0]]
+        eye = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        d = [1.0, 0.0, 0.0]
+        outer = einsum("i,j->ij", d, d)
+        trace = einsum("ii->", inertia + m * (eye - outer))
+    goals:
+        evaluate <trace>:
+            produce rust.library
+    tests:
+        example <unitOffset>:
+            given m = 1.0
+            expect trace == 14.0

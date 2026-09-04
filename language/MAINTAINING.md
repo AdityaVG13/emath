@@ -20,7 +20,7 @@ Every language change updates four artifacts in the same commit:
    the feature is a new form of something already shown (`scratch`,
    `autodiff`, `heat-rod-sim`, a domain example). Add a new `.emath` file only when the
    user-visible program is genuinely a new kind of work, not a new
-   keyword. Do not add one intro file per bead or diagnostic.
+   keyword. Do not add one intro file per or diagnostic.
 
 4. **Example index** (`language/examples/README.md`) - if you added a
    file, add one row. If you reused a file, leave the index alone.

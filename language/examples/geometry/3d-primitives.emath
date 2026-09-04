@@ -1,4 +1,4 @@
-# 3D geometry primitives (bead emath-talo) — runnable cross-section of
+# 3D geometry primitives — runnable cross-section of
 # `std.geometry.cartesian3` over the generic Vector[3] surface.  The
 # named primitives `cross`/`normalize`/`distance` are DECLARED PURE
 # CAPABILITY CELLS called through the generic declared-capability call

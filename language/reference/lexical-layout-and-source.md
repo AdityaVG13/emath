@@ -4,7 +4,7 @@
 
 - Source is UTF-8.
 - Canonical line ending is LF.
-- A byte-order mark is rejected in canonical packages.
+- A byte-order mark is not canonical in packages (diagnosed `E-SYN-113`).
 - Identifiers use Unicode XID rules and are normalized to NFC for identity; original spelling remains available for diagnostics.
 - Confusable identifier linting is enabled by default for public declarations.
 
@@ -12,14 +12,14 @@
 
 No visually confusable glyphs in one namespace. The enforcement ladder:
 
-- a combining mark (U+0300–U+036F) in an identifier refuses with
+- a combining mark (U+0300–U+036F) in an identifier diagnoses with
   `E-SYN-115`; such a spelling is canonically non-NFC by construction
   and cannot be re-normalized without a Unicode table;
 - any other non-ASCII identifier warns with `E-SYN-114` (confusable
   Unicode lookalikes are a quality hazard);
 - a declaration name that folds onto an already-seen lookalike
   (Latin `a` vs Cyrillic `а` vs Greek `α`, per the `confusable_fold`
-  seed map) refuses with `E-NAME-024`; the public API would present two
+  seed map) diagnoses with `E-NAME-024`; the public API would present two
   visually indistinguishable names.
 
 No profile or capability disables the ladder; a package may only narrow
@@ -32,7 +32,7 @@ it (stricter admission), never widen it (anti-proposal A5, chapter 12).
 /// documentation attached to the following item
 ```
 
-Only line comments are admitted. Block comments are refused.
+Only line comments are admitted. Block comments are diagnosed.
 
 ## Colon charter
 
@@ -46,7 +46,7 @@ Only line comments are admitted. Block comments are refused.
    indented payload: `definitions:`, `inputs:`, `goals:`, `compile:`.
 
 Record-literal fields use path-prefixed `{}` (U3), not `:`. Every other
-`:` use is outside the grammar; the parser refuses it with `E-SYN-111`
+`:` use is outside the grammar; the parser diagnoses it with `E-SYN-111`
 (expected `:`) only where one of the two meanings was required; never by
 inventing a third meaning.
 
@@ -67,12 +67,12 @@ two complete operands. One ELP ambiguity scan covers both spellings per
 X13 (`tests/emath-syntax/tests/sets.rs`:
 `binder_in_stays_binder_not_membership`,
 `elp_x12_both_brace_forms_share_one_profile`). No third meaning: any
-other placement refuses with the enclosing construct's expected-token
+other placement diagnoses with the enclosing construct's expected-token
 code (e.g. `E-SYN-111`), never a new interpretation.
 
 ## Layout
 
-Indentation is semantic after a header ending in `:`. The canonical indentation unit is four spaces. Tabs are rejected in canonical source.
+Indentation is semantic after a header ending in `:`. The canonical indentation unit is four spaces. Tabs are not canonical source.
 
 `NEWLINE` is suppressed:
 
@@ -100,24 +100,53 @@ boolean
 Literal spelling, parsed exact value and target representation are distinct. A decimal literal does not become binary floating point until a numeric profile or explicit suffix requires it.
 
 Juxtaposition (A-bonus, normative): a unit identifier binds a numeric
-literal only across whitespace (`10 m`, `3//2 s`). `2x` is refused with a
+literal only across whitespace (`10 m`, `3//2 s`). `2x` is diagnosed with a
 suggestion naming `2 * x`; never a silent product or a silent quantity
 with unit `x` (chapter 12, anti-proposals; C15 pins reaction-line `2H2`
 to section grammar).
 
 ## Resource limits
 
-The parser exposes configurable caps for file bytes, token count, literal bytes, identifier bytes, nesting, indentation depth and recovery nodes. Refusals carry stable codes and spans.
+The parser exposes configurable caps for file bytes, token count, literal bytes, identifier bytes, nesting, indentation depth and recovery nodes. Diagnoses carry stable codes and spans.
+
+## Stage-0 Rust boundary
+
+The bootstrap parser permanently owns only UTF-8/source preservation;
+indent/newline layout; generic `emath <kind> Name:` declarations and named
+sections; `use` and qualified paths; identifiers/literals; calls, indexing,
+field access, lists, records, local `let`; registry-driven operator slots; one
+generic binder skeleton; holes; and unknown-glyph preservation.
+
+Unknown mathematical glyphs retain exact UTF-8 bytes and byte spans. Stage-0
+does not infer their meaning. A mounted syntax pack/operator registry may assign
+meaning later; without one, admission returns a typed hole/diagnosis.
+
+Cipher, puzzle, protocol, campaign, frontier, criterion, reaction-network,
+nabla, braket, graph-literal, softmax, and Hodge-specific grammar are explicitly
+outside Stage-0. Those names belong in Feature Capsules and syntax packs. A
+structural gate rejects direct feature-name matching added to parser, sema, or
+backend code outside approved generic registries.
+
+A rare Stage-0 extension requires a reviewed language-design decision proving
+the form cannot be represented by a capsule/syntax pack, benefits at least
+three domains, passes ambiguity/precedence/confusable analysis, and documents
+migration and cost. Otherwise add a capsule or syntax pack, not Rust grammar.
+
+Accepted extension: one generic binder skeleton used by sums, products,
+quantifiers, and integrals. Rejected extension: a `cipher` keyword branch or a
+special parser arm for one named transform. Registry-driven operator slots are
+accepted; matching `"softmax"` in parser code is rejected.
+
 
 ## Empty source
 
 A file that contains only comments and whitespace is not a package. After
 lexing, it has zero items. A file whose only items are `package` / `use` /
 `notation` (no `emath function` / `policy` / `model` / `kind`) also has no
-declarations. `check` and `plan` refuse both with `E-PKG-081`
+declarations. `check` and `plan` diagnose both with `E-PKG-081`
 (`source has no declarations`) instead of admitting vacuously (build used
 to fail later with "package has no declarations"). `eval` and `simulate`
-also refuse empty source. An empty file is invalid, not a successful no-op.
+also diagnose empty source. An empty file is invalid, not a successful no-op.
 
 ## Paths and modules
 

@@ -1,0 +1,27 @@
+# Feature Capsule template. Replace every VALUE; absence is missing work.
+# `n/a(rule | reason)` is legal only when a class rule makes the field inapplicable.
+# `hole(gate | reason)` records a visible Spec Hole and blocks accepted/stable publication.
+
+emath feature NAME:
+    schema: "emath.feature-capsule"
+    feature_id: "AUTHORITY.CLASS.PATH"
+    semantic_hash: "sha256:CANONICAL_SEMANTIC_HASH"
+    class: "CLASS"
+    maturity: "cataloged"
+    summary: "HUMAN SUMMARY"
+    source: "CATALOG OR NORMATIVE SOURCE"
+    surface: "VALUE OR TYPED N/A"
+    semantics: "VALUE OR SPEC HOLE"
+    exactness: "VALUE OR TYPED N/A"
+    effects: "VALUE OR TYPED N/A"
+    worlds: "VALUE OR TYPED N/A"
+    providers: "VALUE OR TYPED N/A"
+    artifacts: "VALUE OR TYPED N/A"
+    reference: "authored"
+    conformance: "POSITIVE,NEGATIVE,MUTATION CASES"
+    migration: "n/a(initial-capsule | no prior semantic hash)"
+    authority_target: "capsule-candidate"
+    presentation: "ALIASES AND HUMAN DISPLAY ONLY"
+    agent: "owners=FILES;prerequisites=IDS;hazards=RISKS;edits=ALLOWED;checks=COMMANDS"
+    edge: "depends_on -> AUTHORITY.CLASS.DEPENDENCY"
+    projection: "semantics -> required"

@@ -1,0 +1,120 @@
+# Markov chains: finite-state distribution evolution (thin nucleus).
+#
+# A row-stochastic two-state chain P (P[i][j] = P(next=j | now=i)) is
+# iterated by the transition contraction einsum("j,ji->i", d, P).
+# Starting from state 0 the distribution relaxes toward the stationary
+# vector (b/(a+b), a/(a+b)) = (2/3, 1/3) for a = 0.25, b = 0.5.
+#
+# Phase 1 tests observe a single evaluate target, so the example splits
+# into one function per claim: the exact dyadic one-, two-, four-, and
+# six-step distributions and exact mass conservation. Every step value
+# stays dyadic, so all assertions are exact; the stationary point 2/3 is
+# not exactly representable at the f64 carrier and is displayed, not
+# asserted. No mixing-time or convergence-rate theorem is claimed.
+#
+emath function MarkovChainStepOne:
+    inputs:
+        p0: Float64
+    outputs:
+        d2: Vector[2]
+    definitions:
+        P = [[0.75, 0.25], [0.5, 0.5]]
+        d1 = [p0, 1.0 - p0]
+        d2 = einsum("j,ji->i", d1, P)
+
+    goals:
+        evaluate <d2>:
+            produce rust.library
+
+    tests:
+        example <one_step>:
+            given p0 = 1.0
+            expect d2 == [0.75, 0.25]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function MarkovChainStepFour:
+    inputs:
+        p0: Float64
+    outputs:
+        d4: Vector[2]
+    definitions:
+        P = [[0.75, 0.25], [0.5, 0.5]]
+        d1 = [p0, 1.0 - p0]
+        d2 = einsum("j,ji->i", d1, P)
+        d3 = einsum("j,ji->i", d2, P)
+        d4 = einsum("j,ji->i", d3, P)
+
+    goals:
+        evaluate <d4>:
+            produce rust.library
+
+    tests:
+        example <four_steps>:
+            given p0 = 1.0
+            expect d4 == [0.671875, 0.328125]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function MarkovChainMassConservation:
+    inputs:
+        p0: Float64
+    outputs:
+        mass4: Float64
+    definitions:
+        P = [[0.75, 0.25], [0.5, 0.5]]
+        d1 = [p0, 1.0 - p0]
+        d2 = einsum("j,ji->i", d1, P)
+        d3 = einsum("j,ji->i", d2, P)
+        d4 = einsum("j,ji->i", d3, P)
+        mass4 = d4[0] + d4[1]
+
+    goals:
+        evaluate <mass4>:
+            produce rust.library
+
+    tests:
+        example <stochastic_matrix_preserves_mass>:
+            given p0 = 1.0
+            expect mass4 == 1.0
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function MarkovChainRelaxation:
+    inputs:
+        p0: Float64
+    outputs:
+        d6: Vector[2]
+        stationary: Vector[2]
+    definitions:
+        P = [[0.75, 0.25], [0.5, 0.5]]
+        d1 = [p0, 1.0 - p0]
+        d2 = einsum("j,ji->i", d1, P)
+        d3 = einsum("j,ji->i", d2, P)
+        d4 = einsum("j,ji->i", d3, P)
+        d5 = einsum("j,ji->i", d4, P)
+        d6 = einsum("j,ji->i", d5, P)
+        stationary = [0.5 / 0.75, 0.25 / 0.75]
+
+    goals:
+        evaluate <d6>:
+            produce rust.library
+
+    tests:
+        example <relaxation_to_stationary>:
+            given p0 = 1.0
+            expect d6 == [0.6669921875, 0.3330078125]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

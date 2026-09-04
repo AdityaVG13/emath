@@ -1,0 +1,5 @@
+# Beginner exact evaluation; this is the same first-cutover source used by the
+# capsule-authority conformance lane.
+emath function AddExact:
+    definitions:
+        result = 2 + 1

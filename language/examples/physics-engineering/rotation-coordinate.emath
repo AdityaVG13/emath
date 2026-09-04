@@ -1,0 +1,76 @@
+# Coordinate transforms: rotation matrices as the SO(2) group action
+# (cell std.physics.rotation). Geometry readings are capsule-active by
+# FeatureID; Rust contributes only domain-neutral pairwise, alternating, and
+# bilinear coordinate kernels with explicit shape/finiteness refusals.
+# A rotation by a quarter turn has EXACT
+# integer entries R90 = [[0, -1], [1, 0]], so group laws are witnessed
+# exactly in f64: length preservation, involution (two quarter turns =
+# half turn), orthogonality, and the inverse. General-angle rotations
+# with cos/sin entries wait on backend trig lowering (see note below).
+#
+#   emath check language/examples/physics-engineering/rotation-coordinate.emath
+#   emath test  language/examples/physics-engineering/rotation-coordinate.emath
+#
+# Carrier honesty: witnesses use integer-entry rotations and integer
+# vectors, so every expect is an exact f64 identity.
+
+# Length preservation: |R v|^2 == |v|^2 via the Gram matrix R^T R = I.
+# R90 v for v = [2, 3] is [-3, 2]; both squared norms are 13. (Note:
+# v^T R v itself is 0 for every v — R is antisymmetric — so the metric
+# must ride R^T R, exactly the O(2) defining law.)
+emath function rot_length_preserved:
+    inputs:
+        v1: Float64
+        v2: Float64
+    outputs:
+        norm_sq: Float64
+    definitions:
+        r90 = [[0.0, -1.0], [1.0, 0.0]]
+        rtr = einsum("ki,kj->ij", r90, r90)
+        norm_sq = einsum("i,ij,j->", [v1, v2], rtr, [v1, v2])
+    goals:
+        evaluate <norm_sq>:
+            produce rust.library
+    tests:
+        example <quarter>:
+            given v1 = 2.0
+            given v2 = 3.0
+            expect norm_sq == 13.0
+
+# Involution: R90 . R90 = R180 = -I, whose trace is -2 (two quarter
+# turns are a half turn; four are the identity — the cyclic group C4).
+# Constant computation: single definition + tests (no outputs contract).
+emath function rot_double_trace:
+    definitions:
+        trace = einsum("ii->", einsum("ik,kj->ij", [[0.0, -1.0], [1.0, 0.0]], [[0.0, -1.0], [1.0, 0.0]]))
+    tests:
+        example <halfTurn>:
+            expect trace == -2.0
+
+# Orthogonality: R . R^T = I, so its trace is the dimension 2. This is
+# the defining law of the orthogonal group O(2); rotations are the
+# determinant +1 component. Constant computation form as well.
+emath function rot_orthogonal_trace:
+    definitions:
+        trace = einsum("ii->", einsum("ik,kj->ij", [[0.0, -1.0], [1.0, 0.0]], transpose([[0.0, -1.0], [1.0, 0.0]])))
+    tests:
+        example <identity>:
+            expect trace == 2.0
+
+# General-angle rotation (honest f64): R(th) = [[cos(th), -sin(th)],
+# [sin(th), cos(th)]]. LIMITATION: cos/sin admit at sema (`emath check`
+# passes) but the backend strict-f64 EMIR subset used by `emath test`
+# refuses them ("unknown function `cos` in strict-f64 subset"), so the
+# general-angle spelling is intentionally NOT a function here. The
+# exact integer-entry witnesses carry the group laws; a general-angle
+# example waits on trig lowering in the backend subset.
+
+# Inverse witness: composing the quarter turn with its inverse (the
+# clockwise quarter [[0,1],[-1,0]]) is the identity — trace 2. With
+# R90^2 (trace -2) this is the C4 group table, all exact.
+emath function rot_inverse_quarter:
+    definitions:
+        trace = einsum("ii->", einsum("ik,kj->ij", [[0.0, -1.0], [1.0, 0.0]], [[0.0, 1.0], [-1.0, 0.0]]))
+    tests:
+        example <c4Identity>:
+            expect trace == 2.0

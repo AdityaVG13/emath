@@ -1,4 +1,6 @@
 # Stiff and symplectic integration use different mathematical structure.
+# Method meaning remains capsule-candidate / legacy dual-run until the model
+# callback, cancellation, and trajectory-artifact ABI is available.
 #
 # Backward Euler remains stable for StiffDecay at dt = 0.1, where forward
 # Euler leaves the positive decay envelope:

@@ -1,0 +1,192 @@
+# Discrete mathematics: exact combinatorial censuses (thin nucleus).
+#
+# Three leverage picks from the Wave 16 discrete-mathematics gap section,
+# evaluated as exact integer arithmetic on the admitted surface:
+#
+# 1. Binomial tables: the factorial form of C(n,k) with the row-sum
+#    identity sum_k C(5,k) = 2^5 = 32, plus a finite-field slice
+#    C(10,3) mod 7 = 1.
+# 2. Catalan numbers: the closed-form central-binomial ratio
+#    C_n = C(2n,n)/(n+1) against the convolution recurrence step from
+#    the seed row 1, 1, 2, 5; both authorities must give C_4 = 14.
+# 3. Inclusion-exclusion censuses: the three-set union census
+#    (12 from dyadic Venn counts) and the derangement census
+#    (alternating form 24 - 24 + 12 - 4 + 1 = 9; recurrence
+#    D_5 = 4*(D_4 + D_3) = 44).
+#
+# Phase 1 tests observe a single evaluate target, so each claim is its
+# own declaration. Integer arithmetic is exact i64; factorial stays
+# within the exact fold range (2n <= 20). No asymptotic claim is made.
+#
+emath function BinomialRowSumPascal:
+    inputs:
+        n: Int
+    outputs:
+        row_sum: Int
+    definitions:
+        # Row five of Pascal's triangle by the factorial form; the row
+        # sums to 2^5 = 32 (binomial theorem row-sum identity).
+        c0 = 1
+        c1 = factorial(n) / (factorial(1) * factorial(n - 1))
+        c2 = factorial(n) / (factorial(2) * factorial(n - 2))
+        c3 = factorial(n) / (factorial(3) * factorial(n - 3))
+        c4 = factorial(n) / (factorial(4) * factorial(n - 4))
+        c5 = factorial(n) / factorial(5)
+        row_sum = c0 + c1 + c2 + c3 + c4 + c5
+
+    goals:
+        evaluate <row_sum>:
+            produce rust.library
+
+    tests:
+        example <row_five_sums_to_power_of_two>:
+            given n = 5
+            expect row_sum == 32
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function CatalanTwoAuthorities:
+    inputs:
+        n: Int
+    outputs:
+        agree: Bool
+    definitions:
+        # Closed form C(2n,n)/(n+1) versus the convolution recurrence
+        # step from the seed row 1, 1, 2, 5: both must give 14 at n = 4.
+        closed = factorial(2 * n) / (factorial(n) * factorial(n)) / (n + 1)
+        c0 = 1
+        c1 = 1
+        c2 = 2
+        c3 = 5
+        recurrence = c0 * c3 + c1 * c2 + c2 * c1 + c3 * c0
+        agree = (closed == recurrence)
+
+    goals:
+        evaluate <agree>:
+            produce rust.library
+
+    tests:
+        example <closed_form_matches_recurrence>:
+            given n = 4
+            expect agree == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function DerangementAlternatingCensus:
+    inputs:
+        n: Int
+    outputs:
+        d_n: Int
+    definitions:
+        # The five alternating terms are n!/k! for k = 0..4; each
+        # quotient is an exact integer at the fixed four-element shape.
+        d_n = factorial(n) - factorial(n) / factorial(1) + factorial(n) / factorial(2) - factorial(n) / factorial(3) + factorial(n) / factorial(4)
+
+    goals:
+        evaluate <d_n>:
+            produce rust.library
+
+    tests:
+        example <four_elements>:
+            given n = 4
+            expect d_n == 9
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function DerangementRecurrenceCensus:
+    inputs:
+        seed0: Int
+        seed1: Int
+    outputs:
+        d5: Int
+    definitions:
+        # D_m = (m-1)(D_{m-1} + D_{m-2}) unrolled from the seed row
+        # D_0 = 1, D_1 = 0.
+        d2 = 1 * (seed1 + seed0)
+        d3 = 2 * (d2 + seed1)
+        d4 = 3 * (d3 + d2)
+        d5 = 4 * (d4 + d3)
+
+    goals:
+        evaluate <d5>:
+            produce rust.library
+
+    tests:
+        example <fifth_element>:
+            given seed0 = 1
+            given seed1 = 0
+            expect d5 == 44
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function InclusionExclusionCensus:
+    inputs:
+        single_a: Int
+        single_b: Int
+        single_c: Int
+        pair_ab: Int
+        pair_ac: Int
+        pair_bc: Int
+        triple: Int
+    outputs:
+        union_count: Int
+    definitions:
+        union_count = single_a + single_b + single_c - pair_ab - pair_ac - pair_bc + triple
+
+    goals:
+        evaluate <union_count>:
+            produce rust.library
+
+    tests:
+        example <three_set_census>:
+            given single_a = 8
+            given single_b = 6
+            given single_c = 4
+            given pair_ab = 3
+            given pair_ac = 2
+            given pair_bc = 2
+            given triple = 1
+            expect union_count == 12
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function BinomialModPrime:
+    inputs:
+        p: Int
+    outputs:
+        mod_check: Bool
+    definitions:
+        # C(10,3) = 120 by the exact factorial form; the congruence
+        # kernel checks 120 == 1 (mod 7). The mod builtin is fenced in
+        # the strict-f64 subset (emath-s9w1m), so the reduction is
+# # expressed through the congruence kernel instead.
+        c = factorial(10) / (factorial(3) * factorial(7))
+        mod_check = congruence(c, 1, p)
+    goals:
+        evaluate <mod_check>:
+            produce rust.library
+
+    tests:
+        example <ten_choose_three_mod_seven>:
+            given p = 7
+            expect mod_check == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

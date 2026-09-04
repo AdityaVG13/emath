@@ -3,7 +3,7 @@
 # The RC circuit is the index-1 DAE core: one differential state
 # (charge), one algebraic unknown (current), one square residual
 # (2 equations for 1 rate + 1 algebraic). The hybrid element is the
-# declared event + the declared transition (r3-dynamical-03lh ch7,
+# declared event + the declared transition (ch7,
 # transitions slice): the event DETECTS the crossing on a rising edge of
 # its condition, and the transition rule DISPATCHES the switch. The
 # event's payload carries the condition and a self-assignment action
@@ -16,6 +16,9 @@
 # `voltage = 0` and the circuit discharges through the resistor — the
 # trajectory's behavior switches at the threshold.
 #
+# Backward Euler/DAE and event meaning remains capsule-candidate / legacy
+# dual-run until model residuals, actions, cancellation, and trajectories cross
+# the generic ABI. Existing iteration and bisection retain their work ceilings.
 # Determinism: one event fires per accepted step, ties break in
 # declaration order, the crossing is bisected within the identical
 # 40-iteration budget as the dedicated `--event` locator, and identical

@@ -1,0 +1,54 @@
+# Wilson's theorem via the congruence primitive (cell std.numtheory.comb
+# model example C9). For a prime p, (p-1)! is congruent -1 (mod p); the
+# converse fails for no composite n > 4, so the same check separates
+# primes from composites — as a VERIFIED CONGRUENCE for given n, not a
+# proof of the theorem.
+#
+#   emath check language/examples/algebra/congruence-wilson.emath
+#   emath test  language/examples/algebra/congruence-wilson.emath
+#   emath eval  language/examples/algebra/congruence-wilson.emath \
+#       --function wilson_check --set p=11
+#
+# Carrier notes: factorial refuses typed outside n in [0, 20] (i64
+# range), so the Wilson check is expressible for p <= 21 here; the
+# big-integer factorial lane is a separate contract, not this example.
+# congruence normalizes Euclidean on both sides, so negative residues
+# compare honestly: 24 = 4*5 + 4 = 5*5 - 1, hence 24 ≡ -1 (mod 5).
+
+# Wilson check: (p-1)! ≡ -1 (mod p) exactly when p is prime
+# (factorial(6) = 720 = 103*7 - 1; factorial(10) = 3628800 = 329891*11 - 1;
+# for composite n the congruence is false: 7! = 5040 = 630*8 + 0).
+emath function wilson_check:
+    inputs:
+        p: Int
+    outputs:
+        ok: Bool
+    definitions:
+        ok = congruence(factorial(p - 1), -1, p)
+    goals:
+        evaluate <ok>:
+            produce rust.library
+    tests:
+        example <prime7>:
+            given p = 7
+            expect ok == true
+        example <prime11>:
+            given p = 11
+            expect ok == true
+        example <composite8>:
+            given p = 8
+            expect ok == false
+        example <composite9>:
+            given p = 9
+            expect ok == false
+
+# Euclidean normalization through the primitive directly: negative
+# operands compare honestly (the C9 spelling from the numtheory-comb
+# cell) — 24 ≡ -1 (mod 5) because both normalize to 4. Single evaluate
+# target per the Phase 1 test law.
+emath function congruence_negative_norm:
+    definitions:
+        neg_one_spelling = congruence(24, -1, 5)
+    tests:
+        example <c9>:
+            expect neg_one_spelling == true

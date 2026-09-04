@@ -1,0 +1,53 @@
+# Check: emath check language/examples/intro/feature-capsules.emath
+# Expected: both Feature Capsules admit as candidate data; neither becomes live authority.
+# Authored `.emath` owns identity, meaning, edges, projections, and conformance.
+# Rust may implement only the generic capsule parser/validator or optimized bindings.
+# Generated language images, tables, and reference views must never be hand-edited.
+
+emath feature AddCapability:
+    schema: "emath.feature-capsule"
+    feature_id: "std.capability.math.add"
+    semantic_hash: "sha256:b3c48065bed9c3cd20b8132c99e07ec148291c25ef24b31d67dcda58ea0e55a6"
+    class: "capability"
+    maturity: "proposed"
+    summary: "Exact integer addition candidate"
+    source: "catalog.capability-add"
+    surface: "infix plus"
+    semantics: "checked addition in the selected numeric world"
+    exactness: "exact or diagnosed"
+    effects: "pure"
+    worlds: "std.world.exact.int"
+    providers: "n/a(local-reference | generic VM implementation)"
+    artifacts: "value,diagnostic"
+    reference: "authored"
+    conformance: "positive,negative,mutation"
+    migration: "n/a(initial-capsule | legacy remains separately mapped)"
+    authority_target: "capsule-candidate"
+    presentation: "aliases=+"
+    agent: "owners=language/spec/capabilities;checks=feature_capsules"
+    edge: "requires_world -> std.world.exact.int"
+    projection: "semantics -> required"
+
+emath feature FiniteFieldPack:
+    schema: "emath.feature-capsule"
+    feature_id: "community.field_pack.finite_fields"
+    semantic_hash: "sha256:3b4f196864be5cfb6aa6d4ca75070bc9abbc629fade1ecf11cea81783fbed61d"
+    class: "field_pack"
+    maturity: "proposed"
+    summary: "Finite-field capsule bundle candidate"
+    source: "catalog.field-pack-finite-fields"
+    surface: "field pack import"
+    semantics: "exports admitted finite-field capabilities by FeatureID"
+    exactness: "exact or diagnosed"
+    effects: "pure"
+    worlds: "std.world.exact.field"
+    providers: "n/a(local-reference | generic VM implementation)"
+    artifacts: "value,diagnostic"
+    reference: "authored"
+    conformance: "positive,negative,mutation"
+    migration: "n/a(initial-capsule | legacy remains separately mapped)"
+    authority_target: "capsule-candidate"
+    presentation: "generated views only"
+    agent: "owners=language/spec/field_packs;checks=feature_capsules"
+    edge: "requires_world -> std.world.exact.field"
+    projection: "semantics -> required"

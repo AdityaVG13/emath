@@ -1,0 +1,126 @@
+# Tensor contraction over the admitted einsum surface (cell
+# std.tensor.contraction). Einstein summation is the tensor workhorse:
+# pairwise contraction, trace, quadratic form, matrix-vector product —
+# all one admitted primitive with explicit or implicit free indices.
+#
+#   emath check language/examples/physics-engineering/tensor-contraction.emath
+#   emath test  language/examples/physics-engineering/tensor-contraction.emath
+#   emath eval  language/examples/physics-engineering/tensor-contraction.emath \
+#       --function contract_quadform --set v1=1.0 --set v2=2.0
+#
+# Carrier honesty: Matrix/Vector values are Float64; the witnesses below
+# use small exact integers, where f64 arithmetic is exact (integer
+# magnitudes below 2^53), so every expect is an exact identity.
+
+# Matrix product: explicit and implicit einsum agree with the `*`
+# operator. A = [[1,2],[3,4]], B = [[5,6],[7,8]] ->
+# AB = [[1*5+2*7, 1*6+2*8], [3*5+4*7, 3*6+4*8]] = [[19,22],[43,50]].
+emath function contract_matmul:
+    inputs:
+        a11: Float64
+        a12: Float64
+        a21: Float64
+        a22: Float64
+    outputs:
+        ein: Matrix[2, 2]
+    definitions:
+        a = [[a11, a12], [a21, a22]]
+        b = [[5.0, 6.0], [7.0, 8.0]]
+        ein = einsum("ik,kj->ij", a, b)
+    goals:
+        evaluate <ein>:
+            produce rust.library
+    tests:
+        example <ab>:
+            given a11 = 1.0
+            given a12 = 2.0
+            given a21 = 3.0
+            given a22 = 4.0
+            expect ein == [[19.0, 22.0], [43.0, 50.0]]
+
+# Trace is linear: tr(A) + tr(B) == tr(A + B), and cyclic:
+# tr(AB) == tr(BA). A = [[1,2],[3,4]] has trace 5; B = [[5,6],[7,8]]
+# has trace 13; tr(AB) = 19 + 50 = 69 = tr(BA) (23 + 46).
+emath function contract_trace_linear:
+    inputs:
+        a11: Float64
+        a12: Float64
+        a21: Float64
+        a22: Float64
+    outputs:
+        gap: Float64
+    definitions:
+        a = [[a11, a12], [a21, a22]]
+        b = [[5.0, 6.0], [7.0, 8.0]]
+        gap = einsum("ii->", a) + einsum("ii->", b) - einsum("ii->", einsum("ik,kj->ij", a, b))
+    goals:
+        evaluate <gap>:
+            produce rust.library
+    tests:
+        example <linearity>:
+            given a11 = 1.0
+            given a12 = 2.0
+            given a21 = 3.0
+            given a22 = 4.0
+            expect gap == -51.0
+
+# Quadratic form v^T A v: the scalar a symmetric matrix cooks a pair of
+# vectors down to. A = [[2,0],[0,4]], v = [1,2] -> 2*1 + 4*4 = 18.
+emath function contract_quadform:
+    inputs:
+        v1: Float64
+        v2: Float64
+    outputs:
+        q: Float64
+    definitions:
+        a = [[2.0, 0.0], [0.0, 4.0]]
+        q = einsum("i,ij,j->", [v1, v2], a, [v1, v2])
+    goals:
+        evaluate <q>:
+            produce rust.library
+    tests:
+        example <diagonal>:
+            given v1 = 1.0
+            given v2 = 2.0
+            expect q == 18.0
+
+# The quadratic form sees only the symmetric part: v^T W v = 0 for any
+# antisymmetric W (W = [[0,1],[-1,0]] here) — the antisymmetric wedge
+# vanishes under contraction with a symmetric pair.
+emath function contract_antisymmetric_null:
+    inputs:
+        v1: Float64
+        v2: Float64
+    outputs:
+        w: Float64
+    definitions:
+        antisym = [[0.0, 1.0], [-1.0, 0.0]]
+        w = einsum("i,ij,j->", [v1, v2], antisym, [v1, v2])
+    goals:
+        evaluate <w>:
+            produce rust.library
+    tests:
+        example <vanishing>:
+            given v1 = 3.0
+            given v2 = 5.0
+            expect w == 0.0
+
+# Matrix-vector then dot: (Av) . v == v^T A v, the same quadratic form
+# reached through an intermediate vector. Av = [2, 8] -> dot = 2 + 16.
+emath function contract_matvec_energy:
+    inputs:
+        v1: Float64
+        v2: Float64
+    outputs:
+        energy: Float64
+    definitions:
+        a = [[2.0, 0.0], [0.0, 4.0]]
+        energy = einsum("i,i->", einsum("ij,j->i", a, [v1, v2]), [v1, v2])
+    goals:
+        evaluate <energy>:
+            produce rust.library
+    tests:
+        example <sameForm>:
+            given v1 = 1.0
+            given v2 = 2.0
+            expect energy == 18.0

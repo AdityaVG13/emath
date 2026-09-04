@@ -1,0 +1,141 @@
+# Affine-geometry world — Wave-16 catalog item "affine-geometry world"
+# (linear/geometric/topological worlds section of 03_WORLD_GAPS.md).
+# An affine-geometry world is a point carrier with affine combinations
+# and transformations; this file realizes the world over the 2-D point
+# plane as ordinary user functions and pins its laws as executable
+# witnesses: the 2-D orientation form (signed area), barycentric
+# coordinates of a point in a simplex, an affine map T(x) = (2x + y +
+# 1, 3y + 1), and the defining affine law
+#   T(lambda_A * A + lambda_B * B + lambda_C * C)
+#     == lambda_A * T(A) + lambda_B * B' + lambda_C * T(C)
+# together with invariance of barycentric coordinates under affine
+# maps: barycentric(T(A), T(B), T(C), T(P)) == barycentric(A, B, C, P).
+# ZERO CORE DELTA: ordinary user functions over the index/arithmetic
+# surface; the denominator subtended barycentric lambda_b must be
+# orient2(a, c, b), NOT the total — the compiler's generated-crate
+# tests caught that exact bug in the wave-16 math lane (probe
+# [16, -4, -16, 0.25]) and the corrected form is pinned here.
+# LAW ENCODING FENCE: affine independence and collinearity are stated
+# through orient2 values (0 = degenerate, sign = side), never through
+# comparison operators — the strict-f64 evaluate surface has no
+# boolean observation.
+# Exact-first: integer triangle coordinates and half-integer probes
+# make every orientation, barycentric weight, mapped point, and law
+# slack exactly representable in strict f64 (lambda values are
+# dyadic rationals 1/4 and 1/2 here; the map has integer matrix and
+# offset, so T preserves exact representability).
+package std.geometry
+
+emath function waf_orient2:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+        p: Vector[Float64]
+    outputs:
+        o: Float64
+    definitions:
+        o = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+    goals:
+        evaluate <o>:
+            produce rust.library
+    tests:
+        example <ccw_positive>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 0.0]
+            given p = [0.0, 1.0]
+            expect o == 1.0
+
+        example <collinear_zero>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 0.0]
+            given p = [2.0, 0.0]
+            expect o == 0.0
+
+        example <cw_negative>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 0.0]
+            given p = [0.0, -1.0]
+            expect o == -1.0
+
+        example <diagonal_sign>:
+            given a = [0.0, 0.0]
+            given b = [1.0, 1.0]
+            given p = [2.0, 0.0]
+            expect o == -2.0
+
+        example <signed_area>:
+            given a = [0.0, 0.0]
+            given b = [4.0, 0.0]
+            given p = [0.0, 3.0]
+            expect o == 12.0
+
+emath function waf_barycentric2:
+    inputs:
+        a: Vector[Float64]
+        b: Vector[Float64]
+        c: Vector[Float64]
+        p: Vector[Float64]
+    outputs:
+        lambda: Vector[Float64]
+    definitions:
+        total = waf_orient2(a, b, c)
+        lambda_b = waf_orient2(a, c, p) / waf_orient2(a, c, b)
+        lambda_c = waf_orient2(a, b, p) / total
+        lambda = [1.0 - lambda_b - lambda_c, lambda_b, lambda_c]
+    goals:
+        evaluate <lambda>:
+            produce rust.library
+
+emath function waf_affine_map2:
+    inputs:
+        q: Vector[Float64]
+    outputs:
+        tq: Vector[Float64]
+    definitions:
+        tq = [2.0 * q[0] + q[1] + 1.0, 3.0 * q[1] + 1.0]
+    goals:
+        evaluate <tq>:
+            produce rust.library
+    tests:
+        example <map_probe>:
+            given q = [1.0, 1.0]
+            expect tq == [4.0, 4.0]
+
+        example <map_origin>:
+            given q = [0.0, 0.0]
+            expect tq == [1.0, 1.0]
+
+        example <map_corner>:
+            given q = [4.0, 0.0]
+            expect tq == [9.0, 1.0]
+
+emath function waf_world_laws_witness:
+    inputs:
+        px: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        a = [0.0, 0.0]
+        b = [4.0, 0.0]
+        c = [0.0, 4.0]
+        p = [px, 1.0]
+        lam = waf_barycentric2(a, b, c, p)
+        ta = waf_affine_map2(a)
+        tb = waf_affine_map2(b)
+        tc = waf_affine_map2(c)
+        tp = waf_affine_map2(p)
+        rec_x = lam[0] * ta[0] + lam[1] * tb[0] + lam[2] * tc[0]
+        rec_y = lam[0] * ta[1] + lam[1] * tb[1] + lam[2] * tc[1]
+        lam2 = waf_barycentric2(ta, tb, tc, tp)
+        packed = [lam[0], lam[1], lam[2], tp[0] - rec_x, tp[1] - rec_y, lam2[0], lam2[1], lam2[2]]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <affine_laws_first_probe>:
+            given px = 1.0
+            expect packed == [0.5, 0.25, 0.25, 0.0, 0.0, 0.5, 0.25, 0.25]
+
+        example <affine_laws_second_probe>:
+            given px = 2.0
+            expect packed == [0.25, 0.5, 0.25, 0.0, 0.0, 0.25, 0.5, 0.25]

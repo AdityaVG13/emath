@@ -1,4 +1,4 @@
-# Parametric curves and surfaces (bead emath-0e68) — runnable proof that
+# Parametric curves and surfaces — runnable proof that
 # ordinary user-defined `emath function` declarations are CALLABLE from
 # other functions through the generic declared-call seam: a call to a
 # sibling function lowers by pure-inline substitution at sema (parameters

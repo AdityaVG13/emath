@@ -21,7 +21,119 @@ The built-in declaration kinds are:
 | `kind` | A user-defined declaration schema |
 | `reaction_network` | Species, reactions, rates, and stoichiometry |
 
-Additional kinds such as `capability`, `family`, `theory`, `morphism`, `method`, `experiment`, `migration`, and `field_pack` require their matching `use std.kinds.*` import. An unmounted kind is refused, never guessed.
+Additional kinds such as `capability`, `family`, `theory`, `morphism`, `method`, `experiment`, `migration`, and `field_pack` require their matching `use std.kinds.*` import. An unmounted kind is diagnosed, never guessed.
+
+### Feature Capsules
+
+`emath feature Name:` is the restricted, data-like shell for the stable
+`emath.feature-capsule` schema. The schema has twenty primary classes:
+`constitution`, `syntax`, `kind`, `section`, `surface`, `symbol`, `type`,
+`binder`, `capability`, `theory`, `instance`, `goal`, `method`, `world`,
+`provider`, `effect`, `artifact`, `diagnostic`, `migration`, and `field_pack`.
+The class segment of `feature_id` must equal the primary class.
+
+Every capsule records `feature_id`, `semantic_hash`, `class`, `maturity`,
+summary/source, typed edges, surface, semantics, exactness, effects, worlds,
+providers, artifacts, reference disposition, projections, conformance,
+migration, authority target, presentation, and agent guidance. The agent row
+names owner files, direct prerequisites, hazards, allowed edit categories, and
+required checks. New classes and class-specific obligations are schema data;
+they never create a feature-name parser branch or stable core operation variant.
+
+Maturity is coverage, not authority:
+
+```text
+cataloged -> proposed -> accepted -> stable -> deprecated -> retired
+```
+
+Direct reversals exist only from `deprecated` to `stable` and from `retired` to
+`deprecated`. Cataloged capsules cannot claim provided/generated/provider
+projections. A capsule becomes candidate data only after validation and does
+not become live language until the separate authority gate switches its exact
+FeatureID.
+
+`n/a(rule | reason)` is typed non-applicability. Both the applicable class rule
+and concrete reason are mandatory; a missing or empty field is unfinished work,
+not N/A. `hole(gate | reason)` is a first-class Spec Hole scoped to its feature
+and publication gate. Any blocking hole prevents `accepted` or `stable`.
+
+The canonical representation sorts typed edges, projections, and named slots;
+two clean canonicalizations are byte-identical. Presentation and agent guidance
+do not enter the semantic hash. Meaning changes retain the FeatureID, change the
+semantic hash, and require an explicit migration and authority receipt. Legacy
+capability-cell bytes remain separately tagged and addressable during migration;
+there is never split authority.
+
+Author from [`../templates/feature-capsule.emath`](../templates/feature-capsule.emath).
+The two candidate examples in
+[`../examples/intro/feature-capsules.emath`](../examples/intro/feature-capsules.emath)
+show arithmetic and field-pack classes. Generated images, tables, and reference
+views are projections and must never be edited by hand.
+
+#### Authority and publication
+
+Maturity never grants authority. The per-FeatureID authority lock uses exactly
+`legacy-active`, `capsule-candidate`, `legacy-active-dual-run`,
+`capsule-active`, `rollback-pending`, and `retired`. Exactly one source is the
+winner at a repository state; dual-run keeps legacy active while comparing the
+candidate.
+
+Publication modes are cumulative. **framework** requires valid schemas and
+reference vectors. **candidate-image** additionally requires a deterministic
+image and explicit unrealized coverage. **stable-language** additionally
+requires complete projections, live adapter evidence, unique authority, no
+blocking Spec Hole, valid migrations, independent conformance, fresh generated
+views/status, and authorized semantic changes.
+
+Every transition emits a receipt containing FeatureID, old/new semantic hashes,
+conformance, regenerated views, and the rollback image. Emergency rollback is
+`capsule-active -> rollback-pending -> legacy-active`; it changes only that
+FeatureID and never deletes prior capsules/images. A contributor distinguishes
+cataloged, implemented, candidate, and active state by reading both capsule
+maturity/coverage and the authority lock. `maturity: stable` without a
+`capsule-active` lock row is not active language.
+
+#### Generated runtime tables
+
+Stage-0 consumers read compact sorted tables generated from capsules for
+symbols/operators, binders, declaration kinds/sections, diagnostics, worlds,
+providers, and capability handles. Every row carries its FeatureID, capsule
+semantic hash, authored source, and generic dispatch handle. Operator rows also
+carry aliases/precedence; collisions and confusables refuse generation.
+
+Generated files begin `# @generated from Feature Capsules; DO NOT EDIT` and
+carry a distribution-hash lock. Manual changes or stale locks refuse loading.
+To add or change a feature, edit its authored capsule and conformance case, then
+regenerate the Language Image/tables. Never add a handwritten table row or a
+domain-specific match forest. During migration, legacy registries may dual-run,
+but the authority lock—not a generated edit—selects the active FeatureID.
+
+#### Active foundational slice
+
+The first capsule-authority packet contains exactly eighteen FeatureIDs:
+`std.syntax.source`, `std.syntax.declaration.generic`,
+`std.syntax.section.generic`, `std.section.inputs`, `std.section.outputs`,
+`std.section.definitions`, `std.section.tests`, `std.kind.function`,
+`std.type.int`, `std.symbol.math.add`, `std.capability.math.add`,
+`std.theory.additive_monoid`, `std.instance.int.additive_monoid`,
+`std.world.exact.int`, `std.artifact.source`, `std.artifact.value`,
+`std.artifact.diagnostic`, and `std.diagnostic.exactness_loss`.
+
+The cutover is atomic, but rollback remains per FeatureID. Every active row uses
+capsule source; legacy lookup is reserved only for the explicit
+`rollback-pending -> legacy-active` transition. `AddExact` produces exact Int
+`3` and source/value artifacts; `FloatIntoInt` produces the authorized
+exactness-loss diagnosis. No sum, symbolic, or unrelated catalog FeatureID is
+part of this packet.
+
+For capsule-active capabilities, semantic admission resolves the authored
+`presentation` aliases through the verified Language Image. The capsule's
+`semantics` value supplies machine-readable `arity`, `inputs`, `output`, and
+`diagnostic` fields. A matching call or operator lowers to a universal
+`ExprNode::Apply` carrying the capability arena's FeatureID; semantic Rust does
+not select it by a feature-specific match arm. An explicit `std::...` FeatureID
+that is absent, catalog-only, blocked by a hole, or not capsule-active diagnoses
+`E-LANG-FEATURE` rather than falling through to a guessed builtin.
 
 ## Named shorthand
 
@@ -71,11 +183,11 @@ A declaration carrying `outputs:`, `definitions:`, or `goals:` is in
 **contract mode**, and three rules keep the contract honest:
 
 - `outputs:` or `goals:` without `inputs:` (and without a `Hole`
-  placeholder) is refused with `E-SEC-130`: outputs with no declared
+  placeholder) is diagnosed with `E-SEC-130`: outputs with no declared
   input have no source.
-- A `definitions:` name that shadows an `inputs:` name is refused with
+- A `definitions:` name that shadows an `inputs:` name is diagnosed with
   `E-NAME-020`: a definition may not overwrite a declared input. A name
-  in both `inputs:` and `outputs:` is rejected by the same
+  in both `inputs:` and `outputs:` is diagnosed by the same
   duplicate-field rule.
 - Omitting `goals:` is allowed but warns with `E-SEC-133`: every
   definition defaults to `evaluate`, and the default must be visible.
@@ -112,7 +224,7 @@ emath law NewtonSecond:
             level E2
 ```
 
-`assumptions:`, `domain:`, `provenance:`, `citations:`, and at least one evidence claim are required. A false executable `require` refuses evaluation. Evidence levels are `E0` through `E5`.
+`assumptions:`, `domain:`, `provenance:`, `citations:`, and at least one evidence claim are required. A false executable `require` diagnoses evaluation. Evidence levels are `E0` through `E5`.
 
 ## Observations and provenance
 
@@ -142,11 +254,11 @@ provenance:
 
 ```emath
 definitions:
-    wind = [(0.0 s, 0.0 [unit m/s]), (0.1 s, 1.0 [unit m/s])] with interpolation: linear, extrapolation: refuse
+    wind = [(0.0 s, 0.0 [unit m/s]), (0.1 s, 1.0 [unit m/s])] with interpolation: linear, extrapolation: diagnose
     at_midpoint = series_at(wind, 0.05 s)
 ```
 
-Times must be strictly increasing. Interpolation is `previous`, `linear`, `nearest`, `pwc`, or `monotone_cubic`. Extrapolation is `refuse`, `clamp`, or `extend`; the default is `refuse`. The policy is part of semantic identity.
+Times must be strictly increasing. Interpolation is `previous`, `linear`, `nearest`, `pwc`, or `monotone_cubic`. Extrapolation is `diagnose`, `clamp`, or `extend`; the default is `diagnose`. The policy is part of semantic identity.
 
 ### Interpolation semantics
 
@@ -161,25 +273,25 @@ Let the support be the strictly increasing sample pairs `(t0, v0), ..., (tn, vn)
 
 Outside `[t0, tn]` the declared policy decides:
 
-- `refuse` (default): a typed out-of-support fault, never a value. The fault names the requested time and the support bounds (`SeriesOutOfSupport` at execution).
+- `diagnose` (default): a typed out-of-support fault, never a value. The fault names the requested time and the support bounds (`SeriesOutOfSupport` at execution).
 - `clamp`: the nearest endpoint value (`v0` before `t0`, `vn` after `tn`), for every interpolation mode.
 - `extend`: continue the OUTER interval's interpolation. `linear` and `monotone_cubic` extend their outer segment/slope; `nearest`, `previous`, and `pwc` hold the last sample on that side (`v0` before `t0`, `vn` after `tn`).
 
-### Series refusals
+### Series diagnoses
 
-- a non-increasing or equal time axis refuses; every mode orders the support by time (`E-SYN-101`);
-- an empty series and non-`(time, value)` rows refuse (`E-SYN-101`);
-- missing `with interpolation:` refuses; the mode changes every downstream number and is never guessed (`E-SYN-101`);
-- duplicate or unknown policy keys refuse (`E-SYN-103`, `E-SYN-101`);
-- CSV projection failures (missing/duplicated selected column, ragged row, non-finite cell, non-increasing selected time) refuse with `E-SERIES-CSV`.
+- a non-increasing or equal time axis diagnoses; every mode orders the support by time (`E-SYN-101`);
+- an empty series and non-`(time, value)` rows diagnose (`E-SYN-101`);
+- missing `with interpolation:` diagnoses; the mode changes every downstream number and is never guessed (`E-SYN-101`);
+- duplicate or unknown policy keys diagnose (`E-SYN-103`, `E-SYN-101`);
+- CSV projection failures (missing/duplicated selected column, ragged row, non-finite cell, non-increasing selected time) diagnose with `E-SERIES-CSV`.
 
 Pure CSV text can be mapped into a series by header name:
 
 ```emath
-wind = series_from_csv(csv_text, "time", "wind", "linear", "refuse")
+wind = series_from_csv(csv_text, "time", "wind", "linear", "diagnose")
 ```
 
-Headers may carry units as `time (s)`. Unmapped columns are ignored by the series projection. A missing or duplicated selected column, ragged row, non-finite selected cell, or non-increasing selected time column refuses with `E-SERIES-CSV`. This operation consumes text already present in the program; it performs no filesystem or network I/O.
+Headers may carry units as `time (s)`. Unmapped columns are ignored by the series projection. A missing or duplicated selected column, ragged row, non-finite selected cell, or non-increasing selected time column diagnoses with `E-SERIES-CSV`. This operation consumes text already present in the program; it performs no filesystem or network I/O.
 
 ## Reaction networks
 
@@ -217,7 +329,7 @@ emath capability Softmax:
 
 - `capability` declares a schema-validated capability cell.
 
-  A capability may use the biform surface (bead `emath-biform-cells-jswu6`): `class: biform` plus `version: "…"` and `migration:` rows, and `spec:` / `algorithm:` side sections each binding an independent quoted `evidence: "…"` with an optional `authority: authored | verified | provider` row (defaults: spec `authored`, algorithm `verified`). The sides reach the capability layer's closure planner at admission: a missing side refuses `E-CELL-009`, an authority that cannot attest a side refuses `E-CELL-010`, and one evidence object claimed for both sides refuses `E-CELL-011` (a green algorithm test never stamps the spec proved). The cell name is namespaced by the declared `package <path>`; a package-less biform declaration refuses `E-CELL-005`. Legacy capability declarations without a `class:` row keep the generic shape above.
+  A capability may use the biform surface: `class: biform` plus `version: "…"` and `migration:` rows, and `spec:` / `algorithm:` side sections each binding an independent quoted `evidence: "…"` with an optional `authority: authored | verified | provider` row (defaults: spec `authored`, algorithm `verified`). The sides reach the capability layer's closure planner at admission: a missing side diagnoses `E-CELL-009`, an authority that cannot attest a side diagnoses `E-CELL-010`, and one evidence object claimed for both sides diagnoses `E-CELL-011` (a green algorithm test never stamps the spec proved). The cell name is namespaced by the declared `package <path>`; a package-less biform declaration diagnoses `E-CELL-005`. Legacy capability declarations without a `class:` row keep the generic shape above.
 
 - `family` expands a bounded list of instances into ordinary capabilities.
 - `theory`, finite `model`, and `morphism` declarations are exhaustively checked on bounded carriers.
@@ -226,7 +338,7 @@ emath capability Softmax:
 - `migration` classifies changes as `presentation`, `meaning`, `evidence`, or `provider`; a meaning change requires evidence.
 - `field_pack` exports existing cells and metadata for installation.
 
-Unknown sections, unsupported members, invalid authority claims, and unclassified migration changes refuse with typed diagnostics.
+Unknown sections, unsupported members, invalid authority claims, and unclassified migration changes diagnose with typed diagnostics.
 
 ## Constructor defaults
 

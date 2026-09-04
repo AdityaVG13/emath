@@ -40,6 +40,25 @@ The package workflow is authoritative. Build-script and macro conveniences invok
 
 Public APIs include mathematical definition, assumptions, numeric profile, source reference, evidence level and fallback behavior.
 
+## Execution and generation boundary
+
+The execution contract landing in this wave, and what may be claimed:
+
+- Execution resolves a verified native binding FIRST, then falls back
+  (deoptimizes) to the loaded capsule reference when the native binding is
+  absent or unavailable, with the identical arity/refusal discipline. The
+  capsule reference is the three-slot contract `reference_params`,
+  `reference_signature`, and `reference_body`; the canonical term in
+  `reference_body` is compiled into `language.reference`. A native binding
+  is the optimized execution path; it never creates feature authority, and
+  its refusals surface as typed values. When neither the binding nor the
+  loaded capsule reference exists, execution refuses with the exact typed
+  diagnosis; it never falls back silently.
+- Generated Rust for capsule reference programs is a **no-claim** until the
+  bytecode spine step (`.5`) of the machine spine lands. Nothing in this
+  chapter asserts a generated-Rust path for reference semantics in this
+  wave, and docs and examples must not promise one.
+
 ## Naming contract
 
 One name travels through the whole pipeline; every mapping below is

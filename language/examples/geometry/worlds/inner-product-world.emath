@@ -1,0 +1,133 @@
+# Inner-product world — Wave-16 catalog item "inner-product world"
+# (linear/geometric/topological worlds section of 03_WORLD_GAPS.md).
+# An inner-product world is a vector space carrier with an inner
+# product and the geometry it induces; this file realizes the world
+# over (R^3, dot) as ordinary user functions and pins its laws as
+# executable witnesses: symmetry, additivity, and scale homogeneity
+# of the inner product, the Cauchy-Schwarz inequality (with its
+# equality case), the angle from the induced norm, the parallelogram
+# law, and the polarization identity.
+# ZERO CORE DELTA: only the `dot`/`norm` builtins and the generic
+# arithmetic surface; no new capability name, no IR variant, no parser
+# branch.  World framing fence: the genesis/world machinery
+# (language/grammar/genesis.ebnf) is design-only today — the parser
+# refuses unadmitted sections — so the world lands as a capability
+# cell over the admitted function surface, not a `world` declaration.
+# LAW ENCODING FENCE: evaluate targets are strict-f64 values with no
+# comparison operators, so each axiom is encoded as a signed slack
+# (0 = identity holds exactly, negative = strict inequality holds),
+# never as a boolean.
+# Exact-first: integer-valued vectors make every dot product, squared
+# norm, and slack exactly representable; the single irrational pin
+# (the cosine 3/sqrt(14*6) = 0.3273268353539886) is one correctly
+# rounded literal from the f64 chain dot(a,c)/(norm(a)*norm(b)),
+# verified independently.
+package std.geometry
+
+emath function wip_dot:
+    inputs:
+        u: Vector[Float64]
+        v: Vector[Float64]
+    outputs:
+        s: Float64
+    definitions:
+        s = dot(u, v)
+    goals:
+        evaluate <s>:
+            produce rust.library
+
+emath function wip_axioms_witness:
+    inputs:
+        t: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        a = [1.0, 2.0, 3.0]
+        b = [4.0, 6.0, 1.0]
+        sym_slack = wip_dot(a, b) - wip_dot(b, a)
+        add_slack = wip_dot([a[0] + 2.0, a[1] - 1.0, a[2] + 1.0], b) - (wip_dot(a, b) + wip_dot([2.0, -1.0, 1.0], b))
+        hom_slack = wip_dot(a, [t * b[0], t * b[1], t * b[2]]) - t * wip_dot(a, b)
+        packed = [sym_slack, add_slack, hom_slack]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <inner_product_axioms>:
+            given t = 2.0
+            expect packed == [0.0, 0.0, 0.0]
+
+        example <inner_product_axioms_half_scale>:
+            given t = 0.5
+            expect packed == [0.0, 0.0, 0.0]
+
+emath function wip_cauchy_schwarz_witness:
+    inputs:
+        t: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        a = [1.0, 2.0, 3.0]
+        b = [2.0, -1.0, 1.0]
+        eq_v = [t * a[0], t * a[1], t * a[2]]
+        cs_slack = wip_dot(a, a) * wip_dot(b, b) - wip_dot(a, b) * wip_dot(a, b)
+        eq_slack = wip_dot(a, a) * wip_dot(eq_v, eq_v) - wip_dot(a, eq_v) * wip_dot(a, eq_v)
+        angle = wip_dot(a, b) / (norm(a) * norm(b))
+        packed = [cs_slack, eq_slack, angle]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <cauchy_schwarz_slack_equality_angle>:
+            given t = 3.0
+            expect packed == [75.0, 0.0, 0.3273268353539886]
+
+emath function wip_parallelogram_witness:
+    inputs:
+        t: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        a = [1.0, 2.0, 3.0]
+        b = [2.0, -1.0, 1.0]
+        bt = [t * b[0], t * b[1], t * b[2]]
+        apb = [a[0] + bt[0], a[1] + bt[1], a[2] + bt[2]]
+        amb = [a[0] - bt[0], a[1] - bt[1], a[2] - bt[2]]
+        para_slack = wip_dot(apb, apb) + wip_dot(amb, amb) - 2.0 * wip_dot(a, a) - 2.0 * wip_dot(bt, bt)
+        polar_slack = wip_dot(apb, apb) - wip_dot(amb, amb) - 4.0 * wip_dot(a, bt)
+        packed = [para_slack, polar_slack]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <parallelogram_and_polarization>:
+            given t = 2.0
+            expect packed == [0.0, 0.0]
+
+        example <half_scale_parallelogram>:
+            given t = 0.5
+            expect packed == [0.0, 0.0]
+
+emath function wip_induced_norm_witness:
+    inputs:
+        t: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        v = [3.0, 4.0, 0.0]
+        sv = [t * v[0], t * v[1], t * v[2]]
+        n_v = norm(v)
+        n_sv = norm(sv)
+        hom_slack = n_sv - t * n_v
+        induced_slack = n_v * n_v - wip_dot(v, v)
+        packed = [n_v, n_sv, hom_slack, induced_slack]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <induced_norm_identity>:
+            given t = 2.0
+            expect packed == [5.0, 10.0, 0.0, 0.0]
+
+        example <induced_norm_unit_scale>:
+            given t = 1.0
+            expect packed == [5.0, 5.0, 0.0, 0.0]

@@ -1,0 +1,60 @@
+# Monte Carlo estimation: the live mean alias on a declared sample slice.
+# The descriptive-statistics capsule owns estimator meaning and labels; the
+# numeric reduction returns only the strict-f64 value (thin nucleus).
+#
+# The seeded stream contract (see seeded_sampling.emath) fixes the sample
+# set bit-for-bit; this example evaluates the estimator arithmetic on a
+# declared 8-draw slice of that stream. Every sample is dyadic, so the
+# estimates are exact at the f64 carrier and the gaps to E[X] = 1/2 and
+# E[X^2] = 1/3 for X ~ Uniform(0, 1) are honest finite-set discrepancies,
+# not floating noise.
+#
+# Phase 1 tests observe a single evaluate target, so the mean and the
+# second moment are separate functions. Reductions over dynamically
+# sized streams refuse E-TYPE-010 by design; a fixed declared size makes
+# the reduction total. No variance bound or confidence interval is
+# claimed.
+#
+emath function MonteCarloMeanQuadrature:
+    inputs:
+        xs: Vector[8]
+    outputs:
+        mean_est: Float64
+    definitions:
+        mean_est = mean(xs)
+
+    goals:
+        evaluate <mean_est>:
+            produce rust.library
+
+    tests:
+        example <declared_slice_mean>:
+            given xs = [0.125, 0.375, 0.625, 0.875, 0.25, 0.5, 0.0, 1.0]
+            expect mean_est == 0.46875
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function MonteCarloSecondMomentQuadrature:
+    inputs:
+        xs: Vector[8]
+    outputs:
+        mean_sq_est: Float64
+    definitions:
+        mean_sq_est = einsum("i,i->", xs, xs) / 8.0
+
+    goals:
+        evaluate <mean_sq_est>:
+            produce rust.library
+
+    tests:
+        example <declared_slice_second_moment>:
+            given xs = [0.125, 0.375, 0.625, 0.875, 0.25, 0.5, 0.0, 1.0]
+            expect mean_sq_est == 0.328125
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

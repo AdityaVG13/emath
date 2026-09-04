@@ -1,10 +1,11 @@
-# Field<p> / GF<p> arithmetic and the universal exact-Euclidean remainder
-# (emath-option-result-graph-field-aj8d, pass 6/8).
-#
+# Field<p> / GF<p> arithmetic and the universal exact-Euclidean remainder.#
 # `Field<p>` / `GF<p>` are exact-integer prime-field types: the modulus is
 # a type-level prime integer literal; values are exact i64 (a float
-# definition in a `Field` output refuses `E-TYPE-012`). Field
-# arithmetic is expressed as CAPABILITY-CELL DATA over the universal
+# definition in a `Field` output refuses `E-TYPE-012`). The active authored
+# operation authorities are std.capability.exact.int-rem,
+# std.capability.exact.field-inverse, std.capability.exact.pow-mod, and
+# std.capability.exact.sqrt-mod. Field arithmetic is expressed as
+# CAPABILITY-CELL DATA over the universal
 # `int_rem` primitive (`int_rem(a, m)` = `a.rem_euclid(m)` on i64) and the
 # exact modular inverse `field_inv(a, p)`. There is NO field-named parser
 # branch or EmirOp in the compiler — the `field7_add` / `field7_mul` /
@@ -17,7 +18,7 @@
 # Each `outputs:` value is a `Field<7>` element (exact, in 0..=6). The
 # `field7_add` / `field7_mul` / `field7_inv`/`field7_rem` declarations take
 # `Int` inputs and are the same capability-data forms proven by the
-# `aj8d_field7_*` and `aj8d_meta_field7_distribution_law` tests.
+# Field-arithmetic test suites.
 
 emath function field7_ops:
     inputs:
@@ -77,3 +78,38 @@ emath function field7_rem:
         c: Int
     definitions:
         c = int_rem(a, m)
+
+# Capability data: field7_pow(b, e) = b^e mod 7 via the universal
+# pow_mod primitive (square-and-multiply over i128 intermediates; i64
+# operands never overflow). E.g. 3^5 = 243 ≡ 5 (mod 7).
+emath function field7_pow:
+    inputs:
+        b: Int
+        e: Int
+    outputs:
+        c: Field<7>
+    definitions:
+        c = pow_mod(b, e, 7)
+
+# Capability data: field7_sqrt(a) = sqrt(a) mod 7 via the Tonelli-Shanks
+# sqrt_mod primitive (3² = 9 ≡ 2, so sqrt(2) = 3 in F₇; non-residues
+# refuse typed instead of fabricating a root).
+emath function field7_sqrt:
+    inputs:
+        a: Int
+    outputs:
+        c: Field<7>
+    definitions:
+        c = sqrt_mod(a, 7)
+
+# Multi-binder fold over an n×m grid: the double sum desugars to nested
+# single-binder folds (leftmost outermost), enumerating n·m cells — the
+# shape the 9-deep MCA probe chains needed.
+emath function field7_grid:
+    inputs:
+        n: Int
+        m: Int
+    outputs:
+        c: Int
+    definitions:
+        c = sum i in 0..n, j in 0..m: 1

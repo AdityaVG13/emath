@@ -1,4 +1,4 @@
-# Bead `emath-stdlib-object-packs-hpzgf` — live example: std.core is a
+# Live example: std.core is a
 # mounted executable object pack, not copied source.
 #
 # Run `emath library mount std` first: it mounts the std.core census —

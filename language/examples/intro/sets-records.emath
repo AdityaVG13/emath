@@ -1,4 +1,4 @@
-# Sets, set comprehensions, and inline records (emath-r3-sets-tub8, B01+U3).
+# Sets, set comprehensions, and inline records (B01+U3).
 # The `{}` surface executes set literals, comprehensions with a guard,
 # and path-prefixed record literals; `v in s` is the comparison-tier
 # membership operator (ASCII for ∈), disjoint from the binder `in` (X13

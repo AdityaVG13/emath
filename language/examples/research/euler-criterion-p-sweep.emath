@@ -1,0 +1,66 @@
+# Euler's criterion vs the Tonelli-Shanks gate — a probe-lab worked example.#
+# The hypothesis (probe-lab workflow, reference chapter 18): for an odd
+# prime p and a not divisible by p, Euler's criterion
+# `a^((p-1)/2) mod p` returns 1 exactly when `a` is a quadratic residue
+# (so `sqrt_mod(a, p)` admits) and `p-1` exactly when it is a
+# non-residue (so `sqrt_mod(a, p)` refuses typed). The counterexample
+# shape is a pair `(a, p)` where the two engines disagree.
+#
+# Probe rules (one per engine-under-test, so the cross-check can run
+# each side separately):
+#   euler_symbol(a, p)  — the criterion, via pow_mod (square-and-
+#                         multiply over i128 intermediates).
+#   residue_sqrt(a, p)  — the gate, via Tonelli-Shanks sqrt_mod
+#                         (deterministic min(x, p-x) tie-break; typed
+#                         refusal on non-residues is the signal).
+#   residue_count(p)    — how many a in 0..p the criterion calls
+#                         residues; the criterion cannot call 0 a
+#                         residue (0^((p-1)/2) = 0 ≠ 1), so the count
+#                         is (p-1)/2 — the classic (p+1)/2 figure adds
+#                         zero separately. The sweep checks (p-1)/2.
+#
+# Sweep commands (never trust small-p: report the range, not an
+# impression — reference chapter 18, step 5):
+#   for p in 7 11 13 19 29; do
+#     for a in $(seq 0 $((p - 1))); do
+#       emath eval language/examples/research/euler-criterion-p-sweep.emath \
+#           --function euler_symbol --set a=$a --set p=$p --json
+#     done
+#   done
+#
+# Independent cross-engine check (interpreter is the reference; the
+# compiled probe must match it byte-for-byte on the value lines):
+#   emath build language/examples/research/euler-criterion-p-sweep.emath \
+#       --bin euler_symbol --out target/emath
+#   target/emath-cargo/probe-*-release/euler_symbol --set a=3 --set p=7
+#
+# Hand-checkable points at p = 7 (squares mod 7 are 0, 1, 2, 4):
+#   euler_symbol(3, 7) = 3^3 mod 7 = 27 mod 7 = 6 = p-1 (non-residue)
+#   residue_sqrt(2, 7) = 3 (3^2 = 9 ≡ 2), and 3^2 mod 7 = 2 round-trips
+#   residue_count(7)   = 3 = (7-1)/2 (the criterion's residues: 1, 2, 4)
+
+emath function euler_symbol:
+    inputs:
+        a: Int
+        p: Int
+    outputs:
+        e: Int
+    definitions:
+        e = pow_mod(a, (p - 1) / 2, p)
+
+emath function residue_sqrt:
+    inputs:
+        a: Int
+        p: Int
+    outputs:
+        r: Int
+    definitions:
+        r = sqrt_mod(a, p)
+
+emath function residue_count:
+    inputs:
+        p: Int
+    outputs:
+        n: Int
+    definitions:
+        n = sum a in 0..p if pow_mod(a, (p - 1) / 2, p) == 1: 1

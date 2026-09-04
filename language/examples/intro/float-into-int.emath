@@ -1,0 +1,9 @@
+# Check: emath check language/examples/intro/float-into-int.emath
+# Expected diagnosis: exactness-loss. A Float value cannot silently enter Int;
+# no float widening or wrapping is an authorized fallback.
+
+emath function FloatIntoInt:
+    outputs:
+        result: Int
+    definitions:
+        result = 1.5

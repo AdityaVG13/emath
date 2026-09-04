@@ -1,4 +1,4 @@
-# Bead `emath-r2-graphs-masa` — runnable example: graph/network routing.
+# Runnable example: graph/network routing.
 #
 # A tiny network router: the dense adjacency carrier is a graph literal
 # (nodes list; edges as `u --> v` unweighted or `u -[w]-> v` weighted),
@@ -12,8 +12,10 @@
 #   - `shortest_distances(g, 0)` -> [0, 1, 1, 2]
 #   - `out_degrees(g)`       -> [2, 1, 1, 0]
 #
-# Deterministic: vertices are indices, neighbor scans ascend, Dijkstra
-# ties break to the lowest index; identical inputs are bit-identical.
+# Capsule-active behavior is deterministic: vertices are indices, neighbor
+# scans ascend, Dijkstra ties break to the lowest index, and identical inputs
+# are bit-identical. With capsule authority inactive these calls do not fall
+# back to legacy name dispatch.
 # Typed refusals: non-square carrier E-GRAPH-001, Dijkstra on negative
 # weights E-GRAPH-002, out-of-range source E-GRAPH-003, non-finite
 # weight E-GRAPH-004, reachable negative cycle (Bellman-Ford) E-GRAPH-005.

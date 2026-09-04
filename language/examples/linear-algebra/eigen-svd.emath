@@ -1,12 +1,15 @@
-# emath-xx0x.2 example: eigenvalues, singular values, iterative solves.
+# example: eigenvalues, singular values, iterative solves.
 
-# The richer linear-algebra surface computes on admitted matrices:
+# These calls resolve through capsule-active FeatureIDs rather than
+# operation-name branches: std.capability.linear.symmetric-eigenvalues,
+# symmetric-eigenvectors, singular-values, svd-factors, and iterative-solve.
 # eigvals/eigvecs run cyclic Jacobi on real SYMMETRIC square matrices
-# (eigenvalues ascending, columns aligned); svd returns the singular
-# values DESCENDING (factors via SvdFactors satisfy A = U S Vt); and
-# solve_iterative runs conjugate gradient on the matrix's dense storage
-# (SPD-convergence-checked: a non-converging system refuses typed).
-# Non-square or materially non-symmetric spectral input refuses typed.
+# (eigenvalues ascending, columns aligned); singular_values is DESCENDING;
+# svd_factors packs [U; s; Vt]; and solve_iterative runs conjugate gradient
+# on dense storage (SPD-convergence-checked). Non-square, materially
+# non-symmetric, malformed-layout, or non-converging input refuses typed.
+# Variadic einsum, rank-polymorphic indexing, and polymorphic sum/product
+# remain explicit capsule-candidate holes and retain their live legacy paths.
 
 emath function spectrum:
     inputs:

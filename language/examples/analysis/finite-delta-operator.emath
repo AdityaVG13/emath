@@ -1,0 +1,81 @@
+# Exact finite difference operator: cyclic forward difference on F_p^3.
+#
+# Cell contract: language/stdlib/cells/analysis/std-analysis-finite-delta.md
+#
+# Operator: (Dx)[k] = x[(k+1) mod 3] - x[k]; D == S - I with S the
+# cyclic shift. Demo field F_7, x = (1, 3, 2):
+#   Dx = (3-1, 2-3, 1-2) = (2, -1, -1) == (2, 6, 6) mod 7.
+#   Telescoping: 2 + 6 + 6 = 14 == 0 (mod 7).        [exact]
+# Abel with f = (1, 3, 2), g = (5, 1, 3):
+#   Dg = (1-5, 3-1, 5-3) = (-4, 2, 2) == (3, 2, 2) mod 7
+#   LHS = sum f*Dg  = 1*3 + 3*2 + 2*2 = 13 == 6
+#   RHS = sum g*(f[k-1]-f[k]) = 5*(2-1) + 1*(1-3) + 3*(3-2) = 5 - 2 + 3 = 6
+#   LHS == RHS == 6 (mod 7).                          [exact, nontrivial]
+# Spectrum (tie-in with the shift cell): the Fourier mode v = (1,2,4)
+#   (g = 2, N = 3) is an eigenvector of D with eigenvalue g - 1 = 1:
+#   Dv = (2-1, 4-2, 1-4) = (1, 2, -3) == (1, 2, 4) == 1 * v (mod 7).
+#
+# Phase-1 test shape: ONE evaluate goal per declaration; tests assert
+# only that goal.
+emath function delta3_telescope:
+    inputs:
+        p: Int
+    outputs:
+        d0: Int
+        d1: Int
+        d2: Int
+        delta_ok: Bool
+    definitions:
+        d0 = int_rem(3 - 1, p)
+        d1 = int_rem(2 - 3, p)
+        d2 = int_rem(1 - 2, p)
+        telescope_ok = congruence(d0 + d1 + d2, 0, p)
+        delta_ok = (telescope_ok and congruence(d0, 2, p)
+                    and congruence(d1, 6, p) and congruence(d2, 6, p))
+    goals:
+        evaluate <delta_ok>:
+            produce rust.library
+    tests:
+        example <f7>:
+            given p = 7
+            expect delta_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function delta3_abel_spectrum:
+    # Cyclic Abel (summation by parts) and the shift-cell spectrum law.
+    inputs:
+        p: Int
+    outputs:
+        lhs: Int
+        rhs: Int
+        abel_spec_ok: Bool
+    definitions:
+        # f = (1, 3, 2), g = (5, 1, 3); Dg = (3, 2, 2) mod 7
+        lhs = int_rem(1 * 3 + 3 * 2 + 2 * 2, p)
+        rhs = int_rem(5 * (2 - 1) + 1 * (1 - 3) + 3 * (3 - 2), p)
+        abel_ok = congruence(lhs, rhs, p)
+        # spectrum: Fourier mode v = (1, 2, 4) has eigenvalue g - 1 = 1
+        dv0 = int_rem(2 - 1, p)
+        dv1 = int_rem(4 - 2, p)
+        dv2 = int_rem(1 - 4, p)
+        lam = int_rem(2 - 1, p)
+        spec_ok = (congruence(dv0, lam * 1, p)
+                   and congruence(dv1, lam * 2, p)
+                   and congruence(dv2, lam * 4, p))
+        abel_spec_ok = abel_ok and spec_ok
+    goals:
+        evaluate <abel_spec_ok>:
+            produce rust.library
+    tests:
+        example <f7>:
+            given p = 7
+            expect abel_spec_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

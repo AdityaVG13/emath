@@ -1,0 +1,19 @@
+# Educational commitment protocol shape. Hash execution is cataloged, not yet
+# capsule-active; tampered reveal must visibly fail when the capability activates.
+emath function CommitmentCheck:
+    inputs:
+        committed_value: Int
+        revealed_value: Int
+    outputs:
+        verified: Bool
+    definitions:
+        verified = committed_value == revealed_value
+    tests:
+        example <open>:
+            given committed_value = 42
+            given revealed_value = 42
+            expect verified == true
+        example <tampered>:
+            given committed_value = 42
+            given revealed_value = 41
+            expect verified == false

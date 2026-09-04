@@ -70,7 +70,7 @@ notation_fixity  = "prefix" | "postfix" | "infixl" | "infixr" | "infix" ;
 --     never changes the semantic identity of a program.
 extern_decl      = "extern" , ( function_decl | type_decl | operator_decl ) ;
 
--- 04 section 3.1 (emath-r3-reactions-section-92hq): reaction lines are T3
+-- 04 section 3.1: reaction lines are T3
 -- SECTION grammar, not expression grammar — stoichiometric coefficients
 -- attach to species here while expression juxtaposition stays refused
 -- (C15). `species:` closes the world: every reaction-line species must be
@@ -81,7 +81,7 @@ extern_decl      = "extern" , ( function_decl | type_decl | operator_decl ) ;
 -- any other arrow spelling refuses E-SYN-156 (`<==>` is the logical Iff
 -- token, not a reaction arrow).
 reaction_network_decl = "emath" , "reaction_network" , declaration_head , ":" , suite ;
--- 04 §3.2 (emath-r3-stoich-tables-pqs6): the network body also admits the
+-- 04 §3.2: the network body also admits the
 -- §3.2 table sections — `stoichiometry:` (RHS exactly `stoich(reactions)`),
 -- `extents:` (typed extent rows), `ice_table <reaction>:` (two-word section
 -- head; initial/change rows + equilibrium identity), `constraints:`
@@ -127,10 +127,14 @@ call_suffix      = "(" , [ argument_list ] , ")" ;
    path primary. The first argument is a string literal (subscripts);
    remaining arguments are tensor operands. Recognized as a builtin by
    sema and lowered to EmirOp::Einsum. *)
-(* Modular/field arithmetic builtins (aj8d): `int_rem(a, m)` → i64
+(* Modular/field arithmetic builtins: `int_rem(a, m)` → i64
    (exact Euclidean remainder, typed fault when m ≤ 0),
    `mod_inv(a, m)` / `field_inv(a, p)` → i64 (exact modular inverse over
-   a prime), `congruence(a, b, m)` → Bool, `poly_eval_mod(coeffs, x, p)`
+   a prime), `pow_mod(b, e, m)` → i64 (modular exponentiation via
+   square-and-multiply over i128 intermediates; refuses m ≤ 0 or e < 0),
+   `sqrt_mod(a, p)` → i64 (Tonelli-Shanks modular square root; non-residues
+   refuse typed),
+   `congruence(a, b, m)` → Bool, `poly_eval_mod(coeffs, x, p)`
    → i64 (Horner over GF(p)), `rs_encode(coeffs, n, p)` → Vector (RS
    codeword). Option/Result carriers: `option_some(v)`, `option_none()`,
    `option_is_some(o)`, `option_unwrap_or(o, default)`, `result_ok(v)`,
@@ -157,7 +161,7 @@ primary_expr     = literal
 tuple_expr       = "(" , expression , "," , [ expression , { "," , expression } ] , ")" ;
 list_expr        = "[" , [ expression , { "," , expression } ] , "]"
                  | "[" , expression , "for" , pattern , "in" , expression , [ "if" , expression ] , "]" ;
--- U9 (emath-r3-table-literals-f3z1): `;` separates rows inside a list
+-- U9: `;` separates rows inside a list
 -- literal; `[1, 2; 3, 4]` folds to the nested-list matrix shape. Row
 -- lengths must match (E-SYN-102). Comma-only lists never reparse.
 matrix_rows_expr = "[" , row_cells , { ";" , row_cells } , "]"
@@ -169,7 +173,7 @@ row_cells        = expression , { "," , expression } ;
 table_literal    = "|" , identifier , identifier , { identifier } , "|" ,
                    table_row , { "|" , table_row } , "|" ;
 table_row        = [ expression , { "," , expression } ] ;
--- Nabla pack (emath-r3-nabla-pack-o6jp): glyphs lex as single tokens and
+-- Nabla pack: glyphs lex as single tokens and
 -- parse only when `use sci::physics::notation::nabla` is mounted; each
 -- form desugars to an existing core::pde builtin. Fields are Matrix
 -- values and spacing is ONE explicit cell-width argument (world data,
@@ -179,7 +183,7 @@ nabla_grad       = "∇"  , "(" , expression , "," , expression , ")" ;   (* cor
 nabla_lap        = "∇²" , "(" , expression , "," , expression , ")" ;   (* core::pde::laplacian_2d(u, dx) *)
 nabla_div        = "∇·" , "(" , expression , "," , expression , "," , expression , ")" ;  (* core::pde::div_2d(vx, vy, dx) *)
 nabla_curl_2d    = "∇×" , "(" , expression , "," , expression , "," , expression , ")" ;  (* gradient_2d_x(v,dx) - gradient_2d_y(u,dx) *)
--- 04 §2.4 (emath-r3-braket-pack-fdby): braket pack on the REAL 2-level
+-- 04 §2.4: braket pack on the REAL 2-level
 -- discrete carrier. Glyphs `⟨`/`⟩` lex as single tokens and parse only
 -- when `use sci::physics::notation::braket` is mounted (optionally with
 -- the declared convention parameter). `⟨i|j⟩` constant-folds to the
@@ -196,7 +200,7 @@ bra_form         = "⟨" , ( carrier_label | identifier ) , "|" ,
                    [ ( carrier_label | identifier ) , "⟩" | sandwich_mid ] ;
 sandwich_mid     = ( carrier_label | identifier ) , "|" , ( carrier_label | identifier ) , "⟩" ;
 carrier_label    = "0" | "1" ;
--- U8 (emath-r3-string-interp-og2e): interpolated string templates.
+-- U8: interpolated string templates.
 -- A hole carries only a name or a dotted path (purity: no expressions,
 -- calls, or indexing — `{f(x)}` refuses at parse); the format spec is
 -- FIXED (`.` digits `f`); `{{`/`}}` escape literal braces; any other
@@ -204,11 +208,11 @@ carrier_label    = "0" | "1" ;
 -- string literal: runtime substitution awaits the string world, which
 -- is outside the Phase 1 subset (all string values refuse at
 -- admission) — parse and shape now, typed refusal at the missing
--- carrier (sets-tub8 Phase B pattern).
+-- carrier (Phase B pattern).
 interpolated_string = '"' , { string_char | hole | "{{" | "}}" } , '"' ;
 hole             = "{" , dotted_name , [ ":" , "." , digits , "f" ] , "}" ;
 dotted_name      = identifier , { "." , identifier } ;
--- U6 (emath-r3-match-expr-dnbd): `match` in expression position is
+-- U6: `match` in expression position is
 -- surface sugar for `cases` (U1). Literal patterns (Int/Float/Str/Bool,
 -- optional leading `-`) become `subject == pattern` conditions; the
 -- mandatory FINAL catch-all (`_` or a binding name; a binding
@@ -220,7 +224,7 @@ dotted_name      = identifier , { "." , identifier } ;
 match_expression = "match" , postfix_expr , "{" , match_arm , { "," , match_arm } , [ "," ] , "}" ;
 match_arm        = ( numeric_literal | string | "true" | "false" | identifier ) , "=>" , expression ;
 numeric_literal  = [ "-" ] , ( integer | decimal ) ;
--- B23 (emath-r3-graphs-ybob + aj8d): `graph { <nodes> ; <edges> }` is a
+-- B23: `graph { <nodes> ; <edges> }` is a
 -- contextual literal. Edge spellings exist ONLY between the `;` and
 -- the closing brace; outside a graph literal `x--y` stays arithmetic
 -- (G4: no `--` token is glued, `-->` beats `->` in the lexer). The
@@ -229,14 +233,14 @@ numeric_literal  = [ "-" ] , ( integer | decimal ) ;
 -- where each edge is the 4-tuple row `[ from , to , weight , directed
 -- ]` (weight 1.0 when unspecified; directed 1.0 for `-->`/`-[w]->`,
 -- 0.0 for `-`/`-[w]-`). `.emath` admission lowers this to the dense
--- `Matrix<Float64>` adjacency carrier and the graph computes (aj8d).
+-- `Matrix<Float64>` adjacency carrier and the graph computes.
 -- See the option/result/graph/field builtins note below for the carrier
 -- call surface.
 graph_literal    = "graph" , "{" , [ expression , { "," , expression } ] ,
                    [ ";" , [ graph_edge , { "," , graph_edge } ] ] , "}" ;
 graph_edge       = expression , edge_operator , expression ;
 edge_operator    = "-->" | "-[" , expression , "]->" | "-" | "-[" , expression , "]-" ;
--- B01 (emath-r3-sets-tub8): `{2, 3, 5}` is a set literal; `{}` is the
+-- B01: `{2, 3, 5}` is a set literal; `{}` is the
 -- empty set. Inside braces a top-level `element in domain` binding is a
 -- set comprehension, optionally guarded; outside braces `in` is the
 -- membership operator (comparison precedence). One ELP ambiguity scan

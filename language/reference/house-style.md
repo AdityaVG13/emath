@@ -4,7 +4,7 @@
 
 House style is what `emath fmt` accepts as canonical; nothing more
 inventive. The formatter is the arbiter: a file either round-trips
-(`fmt` confirms `canonical form`) or is refused as `NOT canonical`
+(`fmt` confirms `canonical form`) or comes back diagnosed `NOT canonical`
 (never silently rewritten). This chapter documents that canonical style
 so a reader can write it correctly the first time. Where this chapter
 and the formatter disagree, the formatter wins and this chapter must be
@@ -42,8 +42,8 @@ that orders sections differently still admits if its schema allows it.
 Chapter 1 §4 is normative: a `definitions:` entry states meaning; a
 `goals:` entry asks the compiler for work. House style adds one rule:
 never mix them. A section that both defines and requests is a style
-refusal waiting to happen; the payload-shape table (ch. 7, F3) already
-refuses any payload that does not match its family.
+diagnosis waiting to happen; the payload-shape table (ch. 7, F3) already
+routes any payload that does not match its family to its code.
 
 ## 4. Decision table: `=`, `==`, and the goal verb
 
@@ -56,7 +56,7 @@ refuses any payload that does not match its family.
 
 `==` never defines (ch. 7, F6); the diagnostic names both readings when
 the spellings are mixed. A goal verb is never a one-line heading; the
-flat-goal sugar is refused (`E-SYN-112`).
+flat-goal sugar routes to `E-SYN-112`.
 
 ## 5. `///` scope
 
@@ -77,12 +77,12 @@ payload: they never carry semantics.
   break; `NEWLINE` is suppressed after an incomplete assignment or
   infix operator (ch. 2 layout, C4). Bracketed continuation is equally
   canonical; pick one per file.
-- Indentation is the canonical four spaces; tabs are rejected (ch. 2).
+- Indentation is the canonical four spaces; tabs are not canonical (ch. 2).
 
 ## 7. `emath fmt` is the contract
 
 `emath fmt <file>` confirms canonicality: canonical files round-trip
-byte-identically; anything else is refused with `NOT canonical` and no
+byte-identically; anything else comes back `NOT canonical` with no
 rewrite (the diagnostic lists the expected canonical lines). The
 formatter is idempotent, edition-aware, preserves comments, and never
 changes semantic identity (ch. 12). Honesty fence: the lossless

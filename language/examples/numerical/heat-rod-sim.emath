@@ -6,6 +6,8 @@
 # the rod toward the uniform mean. Phase 1 fixes dx = 1.0 (a literal
 # constant); variable dx is not yet supported.
 #
+# `laplacian` meaning is supplied by the capsule-active finite-difference
+# capability; the native weighted-stencil kernel owns no boundary or PDE name.
 # Simulate with `emath simulate` (RK4). The explicit step is stable when
 # dt <= dx^2 / (2 * alpha); dt = 0.01 is well within for alpha = 1.0,
 # dx = 1.0. See tests/emath-sema/tests/model_ode.rs for the conservation

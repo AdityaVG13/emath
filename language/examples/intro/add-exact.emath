@@ -1,0 +1,14 @@
+# Check: emath eval language/examples/intro/add-exact.emath --json
+# Expected value: result = 3, label exact, world std.world.exact.int.
+# Conformance compares source/CST, resolved FeatureIDs, lowering, exactness,
+# world, result, and source/value artifact identity across legacy, candidate,
+# and independent readers before any authority transition.
+
+emath function AddExact:
+    outputs:
+        result: Int
+    definitions:
+        result = 2 + 1
+    tests:
+        example <two_plus_one>:
+            expect result == 3

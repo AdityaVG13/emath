@@ -1,6 +1,6 @@
 # Hydrogen combustion: derive the balanced equation and certify it,
 # exported as std.chem.balance + std.chem.mass_balance cells through
-# the std::chemistry field pack (science lane rymw).
+# the std::chemistry field pack.
 #
 # balance(S): S is the SIGN-BLIND species composition matrix (rows =
 # elements H, O; cols = species H2, O2, H2O; entry = atoms of the
@@ -15,6 +15,10 @@
 # The cell chain balance(S) then mass_balance(S, balance(S)) is the
 # mass-conservation certificate. Both cells are registry DATA over
 # generic nucleus ops (matvec, int_nullspace); no per-reaction code.
+# The capsule-active conservation check binds
+# std.capability.chemistry.conservation-residual to the domain-neutral
+# `rectangular-linear-residual` kernel. Element/species names are not Rust
+# kernel authority, and matrix/vector shape mismatch refuses E-SHAPE-001.
 # Run: emath check language/examples/chemistry/combustion-mass-balance.emath
 package std
 

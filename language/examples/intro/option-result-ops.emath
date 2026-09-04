@@ -1,6 +1,4 @@
-# Option<T> / Result<T, E> carrier ops from text
-# (emath-option-result-graph-field-aj8d, pass 2/3/10).
-#
+# `Option<T>` / `Result<T, E>` carrier ops from text.
 # The composite types admit recursively (`Option<Option<Int>>`,
 # `Option<Result<Int, Bool>>`) and their EXPRESSION surface computes from
 # ordinary `.emath` calls: `option_some(v)` / `option_none()` /
@@ -14,7 +12,7 @@
 #   emath check language/examples/intro/option-result-ops.emath
 #   emath eval  language/examples/intro/option-result-ops.emath \
 #       --function carrier_ops --set v=1.0 --set err=7.0 --set dflt=9.0
-# Every row is pinned by an `aj8d_text_*` sema test.
+# Every row is pinned by a semantics test.
 #
 # REFUSED (typed): a scalar where a carrier is required, `result_error_of`
 # on an Option, and a mismatched carrier kind in an `unwrap_or` default all

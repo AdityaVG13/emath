@@ -94,8 +94,8 @@ obligation holds under the outline's assumptions), `qed <name>`
 (the concluding obligation). Completeness is checked: an outline must
 contain at least one step and end with its `qed`, `check`/`qed` must
 name obligations declared earlier in the same outline, and an unknown
-kind refuses (`E-SYN-101` naming the four). A complete outline admits
-as data; an incomplete outline refuses.
+kind diagnoses with `E-SYN-101` (naming the four). A complete outline
+admits as data; an incomplete outline routes to the same diagnosis.
 
 Each outline lowers to `emath.proof-obligation v1` records; the
 stable machine target providers code against:

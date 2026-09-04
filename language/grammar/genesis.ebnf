@@ -1,9 +1,19 @@
-(* emath Semantic Genesis grammar addendum: design grammar *)
+(* emath Semantic Genesis grammar addendum: design grammar.
+
+   Implemented today: body, construct meaning (explore / protect / keep
+   clauses), and answer sections parse; the parser refuses a `syntax:`
+   section as an unknown section (E-SYN-202), so `syntax:` here is
+   design-only, not an admitted form. *)
 
 genesis-declaration = "emath", ( "custom", "<", identifier, ">" | kind, identifier ), ":", newline, genesis-section* ;
 
-genesis-section = syntax-section
-                | carrier-section
+(* Design-only: the implemented parser refuses `syntax:` (E-SYN-202). *)
+syntax-section = indent, "syntax", ":", newline, syntax-decl+ ;
+syntax-decl = indent, ( "prefix" | "postfix" | "infixl" | "infixr" | "infix" ), integer, glyph, newline
+            | indent, "constant", glyph, newline
+            | indent, "delimiter", glyph, glyph, newline ;
+
+genesis-section = carrier-section
                 | symbol-section
                 | operator-section
                 | constructor-section
@@ -16,11 +26,6 @@ genesis-section = syntax-section
                 | tuning-section
                 | evidence-section
                 | host-section ;
-
-syntax-section = indent, "syntax", ":", newline, syntax-decl+ ;
-syntax-decl = indent, ( "prefix" | "postfix" | "infixl" | "infixr" | "infix" ), integer, glyph, newline
-            | indent, "constant", glyph, newline
-            | indent, "delimiter", glyph, glyph, newline ;
 
 carrier-section = indent, ( "carrier" | "carriers" ), ":", newline, carrier-decl+ ;
 carrier-decl = indent, identifier, ( "=", type-expr )?, ":"?, newline, field-decl* ;

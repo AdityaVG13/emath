@@ -1,5 +1,5 @@
 # Guided L1: a named relationship with `example` bindings. This is the
-# first-ten-minutes shape (emath-v9-06-2rdq.18): emath expands it, prints
+# first-ten-minutes shape: emath expands it, prints
 # what it inferred, and never picks a hidden default.
 #
 #   emath expand    language/examples/intro/l1_guided.emath   -> the desugared function

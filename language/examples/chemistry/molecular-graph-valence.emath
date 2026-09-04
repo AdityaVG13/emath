@@ -1,8 +1,7 @@
 # Reaction-mechanism rewrite as (L, K, R) graph data: valence
 # preservation across the allyl shift C1=C2-C3 -> C1-C2=C3 (an H
 # transfers from C3 to C1), checked by the std.chem package's
-# graph_rewrite_preserve cell (science lane rymw, molecular-graph
-# slice).
+# graph_rewrite_preserve cell.
 #
 # Representation (all generic carriers, no per-reaction code):
 # - matrix rows = CONTEXT atoms (the three carbons);

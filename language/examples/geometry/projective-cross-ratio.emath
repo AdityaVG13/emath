@@ -1,0 +1,120 @@
+# Projective geometry fundamentals — runnable cross-section of
+# `std.geometry.projective`: the cross-ratio of four collinear points,
+# its invariance under projective maps, and homogeneous incidence via
+# the 3x3 determinant.  ZERO CORE DELTA: ordinary user functions over
+# the arithmetic/index surface (no new capability name, no IR variant,
+# no parser branch).  Exact-first: every pinned witness uses
+# integer-valued coordinates whose divisions are exact in strict f64
+# (the invariance witness divides 24/16 and 6/4, both exact); the
+# harmonic-conjugate family and general P^2 projectivities are NAMED
+# FENCES specified in the cell contract.
+# Test shape: each test-bearing declaration observes exactly one
+# evaluate target (Phase 1 generated-crate surface).
+package std.geometry
+
+emath function cross_ratio:
+    inputs:
+        xa: Float64
+        xb: Float64
+        xc: Float64
+        xd: Float64
+    outputs:
+        cr: Float64
+    definitions:
+        cr = ((xa - xc) * (xb - xd)) / ((xa - xd) * (xb - xc))
+    goals:
+        evaluate <cr>:
+            produce rust.library
+    tests:
+        example <affine_chart_witness>:
+            given xa = 0.0
+            given xb = 1.0
+            given xc = 2.0
+            given xd = 4.0
+            expect cr == 1.5
+
+        example <second_exact_witness>:
+            given xa = 0.0
+            given xb = 1.0
+            given xc = 3.0
+            given xd = 4.0
+            expect cr == 1.125
+
+emath function homogeneous_apply:
+    inputs:
+        m: Vector[Float64]
+        p: Vector[Float64]
+    outputs:
+        out: Vector[Float64]
+    definitions:
+        out = [m[0] * p[0] + m[1] * p[1], m[2] * p[0] + m[3] * p[1]]
+    goals:
+        evaluate <out>:
+            produce rust.library
+
+emath function det3:
+    inputs:
+        r1: Vector[Float64]
+        r2: Vector[Float64]
+        r3: Vector[Float64]
+    outputs:
+        d: Float64
+    definitions:
+        d = r1[0] * (r2[1] * r3[2] - r2[2] * r3[1]) - r1[1] * (r2[0] * r3[2] - r2[2] * r3[0]) + r1[2] * (r2[0] * r3[1] - r2[1] * r3[0])
+    goals:
+        evaluate <d>:
+            produce rust.library
+
+emath function cr_invariance_witness:
+    inputs:
+        alpha: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        cr_plain = cross_ratio(0.0, 1.0, 2.0, 4.0)
+        cr_mapped = cross_ratio(alpha * 0.0 + 1.0, alpha * 1.0 + 1.0, alpha * 2.0 + 1.0, alpha * 4.0 + 1.0)
+        packed = [cr_plain, cr_mapped]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <cross_ratio_invariance>:
+            given alpha = 2.0
+            expect packed == [1.5, 1.5]
+
+emath function homogeneous_map_witness:
+    inputs:
+        alpha: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        packed = homogeneous_apply([alpha, 1.0, 0.0, 1.0], [1.0, 1.0])
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <affine_chart_map>:
+            given alpha = 2.0
+            expect packed == [3.0, 1.0]
+
+emath function affine_line_incidence_witness:
+    inputs:
+        qx: Float64
+        qy: Float64
+    outputs:
+        t: Float64
+    definitions:
+        t = det3([0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [qx, qy, 1.0])
+    goals:
+        evaluate <t>:
+            produce rust.library
+    tests:
+        example <collinear_zero>:
+            given qx = 2.0
+            given qy = 0.0
+            expect t == 0.0
+
+        example <off_line_unit>:
+            given qx = 2.0
+            given qy = 1.0
+            expect t == 1.0

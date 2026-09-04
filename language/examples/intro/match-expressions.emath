@@ -1,4 +1,4 @@
-#  Match expressions (U6, emath-r3-match-expr-dnbd): `match` in
+# Match expressions (U6): `match` in
 #  expression position. It is surface sugar for `cases` (U1): literal
 #  patterns become `subject == pattern` conditions and the mandatory
 #  final catch-all (`_`, or a binding name whose arm value has the

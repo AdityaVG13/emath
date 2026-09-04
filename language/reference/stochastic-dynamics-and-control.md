@@ -56,9 +56,9 @@ emath capability euler_maruyama:
   declared `Vector[Float64]` output types the call result, so indexing
   `trajectory[n]` is admitted).
 - A call to a name that is neither a builtin nor a declared capability
-  cell refuses with the typed unknown-function diagnostic (`E-TYPE-003`)
+  cell diagnoses with the typed unknown-function diagnostic (`E-TYPE-003`)
  ; the capability path never silently admits unknown names. A wrong
-  argument count admits at the call site and refuses at evaluation with
+  argument count admits at the call site and diagnoses at evaluation with
   the cell contract's typed message (one arity discipline across the
   compiled-cell and native-kernel paths).
 
@@ -70,9 +70,9 @@ seed maps to a local stream seed, and each step's standard Normal draw
 Z comes from the SAME Box–Muller pair the `Normal(0,1)` sampler uses.
 There is no ambient entropy and no hidden seed. Same seed ⟹
 bit-identical trajectory; a different seed ⟹ a different trajectory.
-A run without a legal seed refuses.
+A run without a legal seed routes to a typed diagnosis.
 
-### Typed refusals
+### Typed diagnoses
 
 | Code | Meaning |
 |---|---|
@@ -97,9 +97,35 @@ A run without a legal seed refuses.
 
 The transfer-function, state-space DC-gain, and Routh–Hurwitz stability
 cells execute through the existing control paths (`control.rs`), with
-the same typed refusals `E-CONTROL-001..005`. The SDE drift and control
+the same typed diagnoses `E-CONTROL-001..005`. The SDE drift and control
 carriers share the ascending-polynomial law; no SDE-specific control
 code exists.
+
+## ODE stepping and spectral Poisson (capability seam)
+
+Direct-call stepping and solving execute through capsule-active
+capability cells at the universal `ApplyCapability` seam — no
+domain-named `EmirOp`, no new EMIR variant. A verified installed native
+binding is the fast path; authored reference bytecode from the Language
+Image is the fallback when no binding is installed (none is authored for
+these cells today, so a missing binding with no image body refuses
+typed — never a silent fallback). The kernel-backed behavior reuses the
+public `emath_rt` compute paths; refusal codes are the stable
+diagnostics below.
+
+| Cell (FeatureID) | Step | Laws |
+|---|---|---|
+| `std.capability.ode.backward-euler` | `y₁ = y₀ + h·rate(y₁)` — damped Newton on the implicit residual, ascending polynomial rate | `h` positive finite (`E-ODE-003`); non-finite carriers refuse (`E-ODE-004`); unconverged Newton refuses (`E-ODE-001`) |
+| `std.capability.ode.velocity-verlet` | kick-drift-kick for `q' = v`, `v' = a(q)`; returns `[q₁, v₁]` | `h` finite and NON-ZERO — negative `h` is the time reversal (`E-ODE-003`); non-finite carriers refuse (`E-ODE-004`) |
+| `std.capability.pde.poisson-sine` | DST-I sine diagonalization of `-u'' = f` on [0,1], `u(0) = u(1) = 0` | empty interior refuses (`E-PDE-001`); non-finite load refuses (`E-PDE-002`) |
+| `std.capability.pde.stencil-3d-clamp` | checked 3×3×3 weighted stencil over a rank-3 tensor, clamp ghosts | 27 weights exactly, finite carriers (`E-SHAPE-005`/`E-PDE-001`/`E-TYPE-012`); wrong carriers refuse typed |
+| `std.capability.pde.stencil-3d-neumann` | the same stencil with zero-normal-derivative ghosts | identical contract to the clamp class |
+
+The boundary class of the rank-3 stencil is kernel identity, not a
+Value: a 3D Dirichlet boundary is not representable in the current
+kernel and refuses typed — an honest no-claim, never a shim. Worldful
+simulation (events, transitions, DAE projection, cancellation) remains
+the `std.capability.dynamics.simulation-world` candidate hole.
 
 ## No-claim boundaries
 
@@ -107,7 +133,7 @@ Only scalar SDEs with polynomial drift/diffusion. Multi-dimensional
 systems, general non-polynomial coefficients, adaptive stepping, and
 strong/weak error estimation are named deferrals. Kernel-backed cells
 are interpreted (local reference semantics); Rust-backend codegen for
-kernel-backed cells is an explicit refusal today; a documented
+kernel-backed cells is an explicit gap today; a documented
 no-claim boundary, never a silent fallback.
 
 ## Example

@@ -1,0 +1,149 @@
+# Exact finite Fourier transform (number-theoretic transform, NTT).
+#
+# Cell contract: language/stdlib/cells/analysis/std-analysis-finite-fourier.md
+#
+# World: N = 4 over F_5, principal root g = 2 (order of 2 mod 5 is 4:
+# 2,4,3,1). x = [1,2,3,4]. Every value below is an EXACT integer
+# identity in F_5 -- no floats, no tolerance.
+#
+# Forward (exponent n*k mod 4, g^0=1 g^1=2 g^2=4 g^3=3):
+#   X[0] = 1+2+3+4        = 10 == 0
+#   X[1] = 1+2*2+3*4+4*3  = 29 == 4
+#   X[2] = 1+2*4+3*1+4*4  = 28 == 3
+#   X[3] = 1+2*3+3*4+4*2  = 27 == 2
+# Inverse: x[n] = N^-1 sum_k X[k] g^(-(n*k) mod 4), N^-1 = 4 (4*4=16==1).
+# Parseval (conjugate-paired): sum x^2 == N^-1 * sum_k X[k]*X[(-k) mod 4]:
+#   LHS = 1+4+9+16 = 30 == 0;  RHS = 4*(0 + 4*2 + 3*3 + 2*4) = 4*25 = 100 == 0.
+# Cyclic convolution theorem: c = x (*_4) x, direct c[0]=26==1, c[1]=28==3;
+#   NTT route: (X.X) = [0,16,9,4] == [0,1,4,4]; c[0]=4*(0+1+4+4)=36==1,
+#   c[1]=4*(0*g^3+1*g^2+4*g^3+4*g^0)=4*(3+16+8)=108==3. Exact agreement.
+#
+# Phase-1 test shape: each declaration carries ONE evaluate goal, and
+# its test asserts only that goal; intermediate values stay visible in
+# `emath eval` receipts but are folded into the aggregate Bool here.
+emath function ntt4:
+    inputs:
+        p: Int
+    outputs:
+        X0: Int
+        X1: Int
+        X2: Int
+        X3: Int
+        ntt_ok: Bool
+    definitions:
+        g = 2
+        X0 = int_rem(1 + 2 + 3 + 4, p)
+        X1 = int_rem(1 + 2 * pow_mod(g, 1, p) + 3 * pow_mod(g, 2, p)
+                     + 4 * pow_mod(g, 3, p), p)
+        X2 = int_rem(1 + 2 * pow_mod(g, 2, p) + 3 * pow_mod(g, 0, p)
+                     + 4 * pow_mod(g, 2, p), p)
+        X3 = int_rem(1 + 2 * pow_mod(g, 3, p) + 3 * pow_mod(g, 2, p)
+                     + 4 * pow_mod(g, 1, p), p)
+        ntt_ok = (congruence(X0, 0, p) and congruence(X1, 4, p)
+                  and congruence(X2, 3, p) and congruence(X3, 2, p))
+    goals:
+        evaluate <ntt_ok>:
+            produce rust.library
+    tests:
+        example <f5>:
+            given p = 5
+            expect ntt_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function ntt4_inverse:
+    # Round trip: feed X = [0,4,3,2] through the inverse kernel and
+    # recover x = [1,2,3,4] exactly. Inverse exponents (4 - n*k) mod 4.
+    inputs:
+        p: Int
+    outputs:
+        y0: Int
+        y1: Int
+        y2: Int
+        y3: Int
+        roundtrip_ok: Bool
+    definitions:
+        g = 2
+        X0 = 0
+        X1 = 4
+        X2 = 3
+        X3 = 2
+        ninv = mod_inv(4, p)
+        y0 = int_rem(ninv * (X0 + X1 + X2 + X3), p)
+        y1 = int_rem(ninv * (X0 * pow_mod(g, int_rem(4 - 0, 4), p)
+                             + X1 * pow_mod(g, int_rem(4 - 1, 4), p)
+                             + X2 * pow_mod(g, int_rem(4 - 2, 4), p)
+                             + X3 * pow_mod(g, int_rem(4 - 3, 4), p)), p)
+        y2 = int_rem(ninv * (X0 * pow_mod(g, int_rem(4 - 0, 4), p)
+                             + X1 * pow_mod(g, int_rem(4 - 2, 4), p)
+                             + X2 * pow_mod(g, int_rem(4 - 4, 4), p)
+                             + X3 * pow_mod(g, int_rem(4 - 6, 4), p)), p)
+        y3 = int_rem(ninv * (X0 * pow_mod(g, int_rem(4 - 0, 4), p)
+                             + X1 * pow_mod(g, int_rem(4 - 3, 4), p)
+                             + X2 * pow_mod(g, int_rem(4 - 6, 4), p)
+                             + X3 * pow_mod(g, int_rem(4 - 9, 4), p)), p)
+        roundtrip_ok = (congruence(ninv, 4, p) and congruence(y0, 1, p)
+                        and congruence(y1, 2, p) and congruence(y2, 3, p)
+                        and congruence(y3, 4, p))
+    goals:
+        evaluate <roundtrip_ok>:
+            produce rust.library
+    tests:
+        example <roundtrip>:
+            given p = 5
+            expect roundtrip_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64
+
+emath function ntt4_parseval_convolution:
+    # Conjugate-paired Parseval and the cyclic convolution theorem,
+    # both checked EXACTLY in F_5.
+    inputs:
+        p: Int
+    outputs:
+        lhs: Int
+        rhs: Int
+        c0: Int
+        c1: Int
+        analysis_ok: Bool
+    definitions:
+        g = 2
+        X0 = 0
+        X1 = 4
+        X2 = 3
+        X3 = 2
+        ninv = mod_inv(4, p)
+        # sum x[n]^2 == N^-1 * sum_k X[k] * X[(-k) mod N]
+        lhs = int_rem(1 * 1 + 2 * 2 + 3 * 3 + 4 * 4, p)
+        rhs = int_rem(ninv * (X0 * X0 + X1 * X3 + X2 * X2 + X3 * X1), p)
+        parseval_ok = congruence(lhs, rhs, p)
+        # cyclic convolution c = x (*_4) x, direct definition:
+        c0 = int_rem(1 * 1 + 2 * 4 + 3 * 3 + 4 * 2, p)
+        c1 = int_rem(1 * 2 + 2 * 1 + 3 * 4 + 4 * 3, p)
+        # theorem: c[k] == N^-1 * sum_k' (X.X)[k'] * g^(-(k*k') mod 4)
+        # (X.X) = [0, 16, 9, 4] == [0, 1, 4, 4] (mod 5)
+        t0 = int_rem(ninv * (0 + 1 + 4 + 4), p)
+        t1 = int_rem(ninv * (0 * pow_mod(g, int_rem(4 - 0, 4), p)
+                             + 1 * pow_mod(g, int_rem(4 - 1, 4), p)
+                             + 4 * pow_mod(g, int_rem(4 - 2, 4), p)
+                             + 4 * pow_mod(g, int_rem(4 - 3, 4), p)), p)
+        conv_theorem_ok = congruence(c0, t0, p) and congruence(c1, t1, p)
+        analysis_ok = parseval_ok and conv_theorem_ok
+    goals:
+        evaluate <analysis_ok>:
+            produce rust.library
+    tests:
+        example <f5>:
+            given p = 5
+            expect analysis_ok == true
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

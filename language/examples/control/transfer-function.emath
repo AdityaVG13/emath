@@ -1,5 +1,5 @@
 # Control surface — transfer functions, DC gain, stability
-# (emath-r3-sde-control-zxkl, thin B43; registry cells std.control.*,
+# (thin B43; registry cells std.control.*,
 # stacked on B28 polynomials + B34 linear solves + B14 complex).
 #
 # THE worked fixture: H(s) = (s + 6)/(s² + 3s + 2) = (s + 6)/((s + 1)(s + 2))
@@ -27,7 +27,9 @@
 #   seam one layer earlier).
 #
 # transfer_eval, dc_gain, and poles_stable execute from strict `.emath`
-# source through the std.control kernels. Named deferrals:
+# source under their capsule-active FeatureIDs. Their native ratio, linear
+# projection, and sign-table kernels do not own the control-system names.
+# Named deferrals:
 # B37 SDE (world-dependent — needs the seed/stream coordination),
 # controller design (pole placement, LQR), auxiliary-polynomial
 # refinement of degenerate Routh tables, full feedthrough D.

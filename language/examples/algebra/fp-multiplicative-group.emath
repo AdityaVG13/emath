@@ -1,0 +1,167 @@
+# The multiplicative group F_p^* (cell std.finite_field.group).
+# F_p^* is cyclic of order n = p - 1; the group law is expressed purely
+# as capability data over the universal pow_mod primitive (square-and-
+# multiply over i128 intermediates, exact for p <= 2^63) — no field-named
+# compiler branch, no core IR enum growth.
+#
+#   emath check language/examples/algebra/fp-multiplicative-group.emath
+#   emath test  language/examples/algebra/fp-multiplicative-group.emath
+#   emath eval  language/examples/algebra/fp-multiplicative-group.emath \
+#       --function mu_census --set d=4 --set p=13
+#
+# Census facts verified below (p = 13, n = 12):
+#   - Lagrange: every x in F_13^* satisfies x^12 = 1 -> lagrange hits 12.
+#   - mu_d = {x : x^d = 1} has exactly gcd(d, 12) elements:
+#     d=4 -> 4, d=6 -> 6, d=5 -> 1 (5 coprime 12: only x = 1).
+#   - Generators (primitive roots): x generates F_13^* iff x^6 != 1 AND
+#     x^4 != 1 (the maximal proper divisors 12/2 = 6, 12/3 = 4); the
+#     census counts phi(12) = 4 generators: {2, 6, 7, 11}.
+#   - Euler's criterion: residues are exactly the x with x^6 = 1 (the
+#     index-2 subgroup); 3^6 = 1 with sqrt_mod(3, 13) = 4 (9^2 = 81 = 3
+#     mod 13, tie-break min(9, 4) = 4); 2^6 = 64 = 12 = -1 mod 13, so 2
+#     is a non-residue and sqrt_mod(2, 13) refuses typed.
+# Fiber-census synergy: the zero-sum fiber law counts subsets of mu_d
+# domains (mu_12 = F_13^*, mu_32/mu_64 at big primes); mu_census is the
+# exact F_p verification that a declared root-of-unity domain really has
+# d elements when d | p - 1.
+
+# Lagrange's theorem as a census: x^(p-1) = 1 for all p-1 elements.
+emath function lagrange_census:
+    inputs:
+        p: Int
+    outputs:
+        hits: Int
+    definitions:
+        hits = sum x in 1..p if pow_mod(x, p - 1, p) == 1: 1
+    goals:
+        evaluate <hits>:
+            produce rust.library
+    tests:
+        example <f13>:
+            given p = 13
+            expect hits == 12
+
+# Roots-of-unity census: mu_d = {x in F_p^* : x^d = 1} has exactly
+# gcd(d, p - 1) elements. The exponent d is a plain input.
+emath function mu_census:
+    inputs:
+        d: Int
+        p: Int
+    outputs:
+        count: Int
+    definitions:
+        count = sum x in 1..p if pow_mod(x, d, p) == 1: 1
+    goals:
+        evaluate <count>:
+            produce rust.library
+    tests:
+        example <mu4>:
+            given d = 4
+            given p = 13
+            expect count == 4
+        example <mu6>:
+            given d = 6
+            given p = 13
+            expect count == 6
+        example <coprimeTrivial>:
+            given d = 5
+            given p = 13
+            expect count == 1
+        example <fullGroup>:
+            given d = 12
+            given p = 13
+            expect count == 12
+
+# Generator census for p = 13: x is a primitive root iff x^6 != 1 and
+# x^4 != 1 (the maximal proper divisors of 12); exactly phi(12) = 4
+# elements pass: {2, 6, 7, 11}. The maximal-divisor exponents are
+# inputs, so the same function re-runs for any cyclic order.
+emath function generator_census:
+    inputs:
+        p: Int
+        e2: Int
+        e3: Int
+    outputs:
+        generators: Int
+    definitions:
+        generators = sum x in 1..p if pow_mod(x, e2, p) != 1 and pow_mod(x, e3, p) != 1: 1
+    goals:
+        evaluate <generators>:
+            produce rust.library
+    tests:
+        example <phi12>:
+            given p = 13
+            given e2 = 6
+            given e3 = 4
+            expect generators == 4
+
+# Element order witness: 3 has order 3 in F_13^* (3^3 = 27 = 1 mod 13,
+# while 3^1 = 3 and 3^2 = 9 are not 1) — the order divides 12, as
+# Lagrange demands. Single evaluate target per the Phase 1 test law.
+emath function order_witness:
+    inputs:
+        p: Int
+    outputs:
+        three_is_order3: Bool
+    definitions:
+        three_is_order3 = pow_mod(3, 3, p) == 1 and not (pow_mod(3, 1, p) == 1) and not (pow_mod(3, 2, p) == 1)
+    goals:
+        evaluate <three_is_order3>:
+            produce rust.library
+    tests:
+        example <f13order>:
+            given p = 13
+            expect three_is_order3 == true
+
+# Euler's criterion probes at p = 13, one scalar evaluate target each
+# (vector-indexed test asserts currently refuse in the Phase 1 backend,
+# so the three probes are separate named capability data):
+#   euler_of_3: 3^6 = 729 = 56*13 + 1 -> 1 (3 is a quadratic residue)
+#   euler_of_2: 2^6 = 64 = 4*13 + 12 -> 12 = -1 (2 is a non-residue, so
+#               sqrt_mod(2, 13) refuses typed instead of fabricating)
+#   sqrt_of_3:  sqrt_mod(3, 13) = 4 (9^2 = 81 = 3 mod 13; the Tonelli-
+#               Shanks tie-break returns min(9, 4) = 4)
+emath function euler_of_3:
+    inputs:
+        p: Int
+    outputs:
+        e: Int
+    definitions:
+        e = pow_mod(3, 6, p)
+    goals:
+        evaluate <e>:
+            produce rust.library
+    tests:
+        example <f13residue>:
+            given p = 13
+            expect e == 1
+
+emath function euler_of_2:
+    inputs:
+        p: Int
+    outputs:
+        e: Int
+    definitions:
+        e = pow_mod(2, 6, p)
+    goals:
+        evaluate <e>:
+            produce rust.library
+    tests:
+        example <f13nonresidue>:
+            given p = 13
+            expect e == 12
+
+emath function sqrt_of_3:
+    inputs:
+        p: Int
+    outputs:
+        r: Int
+    definitions:
+        r = sqrt_mod(3, p)
+    goals:
+        evaluate <r>:
+            produce rust.library
+    tests:
+        example <f13sqrt>:
+            given p = 13
+            expect r == 4
