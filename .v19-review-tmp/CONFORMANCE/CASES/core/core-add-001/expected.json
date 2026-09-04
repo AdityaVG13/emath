@@ -1,0 +1,8 @@
+{
+  "kind": "std.kind.function@1",
+  "operator": "std.symbol.math.add@1",
+  "capability": "std.capability.math.add@1",
+  "result": 3,
+  "label": "exact",
+  "world": "std.world.exact.int@1"
+}

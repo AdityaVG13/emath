@@ -1,0 +1,5 @@
+emath function InfiniteSum:
+    outputs:
+        y: Int
+    definitions:
+        y = sum i in Nat: i

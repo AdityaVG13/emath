@@ -1,0 +1,276 @@
+{
+  "schema": "emath.v19.current-gap-audit.v1",
+  "repo_commit": "ffec253ab08e7a40d260798f348634e522a18e66",
+  "gaps": [
+    {
+      "id": "GAP-001",
+      "severity": "critical",
+      "finding": "Authority is distributed among project constitution, reference prose, grammar, capability matrix, executable object packs, tests, and code.",
+      "target": "Introduce a feature-scoped authority lock with exactly one authority source per FeatureID."
+    },
+    {
+      "id": "GAP-002",
+      "severity": "high",
+      "finding": "The current maintenance order begins with implementation rather than a machine-readable semantic contract.",
+      "target": "Move to capsule and conformance first; implementation completes the accepted contract."
+    },
+    {
+      "id": "GAP-003",
+      "severity": "high",
+      "finding": "The four-artifact rule covers reference, grammar, examples, and tests but omits exactness, worlds, reference semantics, providers, artifacts, diagnostics, migrations, and agent views.",
+      "target": "Replace it with fifteen-projection closure while retaining current G4 gates during transition."
+    },
+    {
+      "id": "GAP-004",
+      "severity": "high",
+      "finding": "CAPABILITY.md is manually maintained and collapses parse, admit, execute, evidence, world, and artifact status.",
+      "target": "Generate orthogonal status views from capsules, conformance, and implementation coverage."
+    },
+    {
+      "id": "GAP-005",
+      "severity": "high",
+      "finding": "Reference prose is normative over grammar, while selected standard-library object packs are also described as executable truth.",
+      "target": "Use feature-scoped authority so each feature has one source; distinguish normative language definition from executable distribution."
+    },
+    {
+      "id": "GAP-006",
+      "severity": "high",
+      "finding": "The current surface grammar mixes stable syntax, implementation commentary, aspirational rules, and domain-specific productions.",
+      "target": "Separate Stage-0 grammar, generated accepted surface, syntax-pack sources, and proposal-only grammar."
+    },
+    {
+      "id": "GAP-007",
+      "severity": "high",
+      "finding": "Syntax-pack growth is a decided doctrine but no complete generic pack-to-parser/lowering/formatter/LSP/conformance pipeline is the universal path.",
+      "target": "Make syntax-pack compilation a V19 capstone."
+    },
+    {
+      "id": "GAP-008",
+      "severity": "critical",
+      "finding": "No stable FeatureID joins a concept across grammar, reference, code, worlds, diagnostics, tests, artifacts, and migration.",
+      "target": "Adopt FeatureID as the cross-plane join key."
+    },
+    {
+      "id": "GAP-009",
+      "severity": "high",
+      "finding": "There is no complete Meaning Spine for dependency, reverse impact, load, migration, test, and agent closure.",
+      "target": "Generate a typed feature graph."
+    },
+    {
+      "id": "GAP-010",
+      "severity": "high",
+      "finding": "There is no compiled Language Image containing the accepted language and exact identities.",
+      "target": "Build deterministic partitioned Language Image and lock."
+    },
+    {
+      "id": "GAP-011",
+      "severity": "high",
+      "finding": "There is no explicit Stage-0 boundary or Stage1/Stage2 fixed-point gate.",
+      "target": "Define minimal bootstrap and semantic fixed-point comparison."
+    },
+    {
+      "id": "GAP-012",
+      "severity": "high",
+      "finding": "ELPs are detailed prose but do not carry one canonical machine-readable Feature Capsule delta.",
+      "target": "Adopt ELP v2 with capsule delta and projection closure."
+    },
+    {
+      "id": "GAP-013",
+      "severity": "high",
+      "finding": "No Spec Hole object prevents an implementation agent from deciding an unresolved semantic detail.",
+      "target": "Make unresolved choices explicit and stable-build blocking when required."
+    },
+    {
+      "id": "GAP-014",
+      "severity": "medium",
+      "finding": "Quickstart examples use bare declaration names while the current surface EBNF excerpt appears to require a bracketed declaration head.",
+      "target": "Resolve through authoritative source cases and goldens; do not let agents choose an interpretation."
+    },
+    {
+      "id": "GAP-015",
+      "severity": "high",
+      "finding": "Current status vocabulary mixes maturity, parse support, admission, execution, evidence, artifact disposition, and world coverage.",
+      "target": "Use orthogonal status axes."
+    },
+    {
+      "id": "GAP-016",
+      "severity": "high",
+      "finding": "There is no standardized cross-layer golden from source bytes through CST, expansion, Core AST, typed HIR, worlds, result, and artifact.",
+      "target": "Create a semantic-stack Conformance Corpus."
+    },
+    {
+      "id": "GAP-017",
+      "severity": "high",
+      "finding": "Tests are discovered by crate/file rather than indexed by FeatureID and projection.",
+      "target": "Generate a Conformance Graph and targeted closure."
+    },
+    {
+      "id": "GAP-018",
+      "severity": "medium",
+      "finding": "Diagnostics have stable codes, but feature conditions, mathematical explanations, routes, and negative controls are not uniformly one machine record.",
+      "target": "Use diagnostic capsules and generated constructors/reference."
+    },
+    {
+      "id": "GAP-019",
+      "severity": "high",
+      "finding": "World definitions and capability/evidence manifests are not uniformly one executable capsule per world.",
+      "target": "Use World Capsules with applicability, representation, strategy, effects, and authority."
+    },
+    {
+      "id": "GAP-020",
+      "severity": "medium",
+      "finding": "User-defined worlds remain an open design question without a machine-visible blocker.",
+      "target": "Represent it as a Spec Hole and experimental feature decision."
+    },
+    {
+      "id": "GAP-021",
+      "severity": "high",
+      "finding": "Phase-1 builtins still live in compiler tables while capability cells/object packs are the intended scalable path.",
+      "target": "Migrate leaf builtins with dual-run reference semantics."
+    },
+    {
+      "id": "GAP-022",
+      "severity": "high",
+      "finding": "The V16 catalog has 1,224 entries but no uniform catalog-to-specified-to-conformant promotion ledger.",
+      "target": "Generate a default catalog-only promotion ledger."
+    },
+    {
+      "id": "GAP-023",
+      "severity": "high",
+      "finding": "V15–V18 concepts can be implemented differently by models because the waves are prose authority only.",
+      "target": "Provide cross-wave Feature Capsules and conformance slices."
+    },
+    {
+      "id": "GAP-024",
+      "severity": "high",
+      "finding": "No root machine manifest tells an agent authority, baseline, invariants, commands, and context budget.",
+      "target": "Add AGENT_START.json."
+    },
+    {
+      "id": "GAP-025",
+      "severity": "high",
+      "finding": "No generated task-specific read and impact closure exists.",
+      "target": "Add Task Capsule, Context Capsule, Impact Closure, and orientation tool."
+    },
+    {
+      "id": "GAP-026",
+      "severity": "medium",
+      "finding": "Agent decisions, failures, and learned constraints are not append-only language artifacts.",
+      "target": "Add Change Receipts and Accretion Ledger."
+    },
+    {
+      "id": "GAP-027",
+      "severity": "medium",
+      "finding": "File paths and line-number search are brittle semantic anchors under refactors.",
+      "target": "Use FeatureID and generated owner/projection anchors."
+    },
+    {
+      "id": "GAP-028",
+      "severity": "medium",
+      "finding": "No metrics measure agent orientation cost, unnecessary reads, tool calls, or rework.",
+      "target": "Add agent-economy fields and acceptance targets."
+    },
+    {
+      "id": "GAP-029",
+      "severity": "high",
+      "finding": "Independent implementations lack a complete semantic conformance protocol.",
+      "target": "Standardize cross-implementation inputs and comparisons."
+    },
+    {
+      "id": "GAP-030",
+      "severity": "medium",
+      "finding": "Generated-file policy is distributed and direct edits can be difficult to distinguish.",
+      "target": "Use one generated header/lock and CI regeneration gate."
+    },
+    {
+      "id": "GAP-031",
+      "severity": "high",
+      "finding": "Legacy and capsule authority could overlap during migration.",
+      "target": "Make authority transitions feature-scoped and reject dual authority."
+    },
+    {
+      "id": "GAP-032",
+      "severity": "medium",
+      "finding": "Router doctrine says nothing is refused at the door, while older documents and capability rows still use refusal language.",
+      "target": "Generate a consistent distinction between parse failure, semantic contradiction, routed diagnostic, hole, and runtime fault."
+    },
+    {
+      "id": "GAP-033",
+      "severity": "medium",
+      "finding": "Current Float64 execution can be labeled numerical even when no rigorous error bound exists, while the public label vocabulary emphasizes approximate-with-bound.",
+      "target": "Separate floating numerical result from certified bounded approximation in status/evidence."
+    },
+    {
+      "id": "GAP-034",
+      "severity": "high",
+      "finding": "Current traceability uses a legacy FNV identity chain while public/global semantic distribution needs versioned collision-resistant identity domains.",
+      "target": "Version identity algorithms and migrate without invalidating legacy artifacts silently."
+    },
+    {
+      "id": "GAP-035",
+      "severity": "medium",
+      "finding": "Naming policy says aliases are removed while notation/import systems permit canonical aliases and V15 needs `cypher`→`cipher`.",
+      "target": "Distinguish deprecated semantic synonyms from registered accept-many/canon-one surface aliases."
+    },
+    {
+      "id": "GAP-036",
+      "severity": "high",
+      "finding": "The standard-library README and capability matrix can drift; for example, support statements about Option/Result may differ by snapshot.",
+      "target": "Generate both from the same feature and conformance data."
+    },
+    {
+      "id": "GAP-037",
+      "severity": "medium",
+      "finding": "Current `custom` documentation spans parser, genesis, and capability descriptions with differing execution status language.",
+      "target": "Assign separate FeatureIDs for custom surface, genesis execution, and curated world support."
+    },
+    {
+      "id": "GAP-038",
+      "severity": "high",
+      "finding": "A feature can exist in grammar or code without a complete artifact/evidence consequence.",
+      "target": "Require projection closure and artifact disposition."
+    },
+    {
+      "id": "GAP-039",
+      "severity": "medium",
+      "finding": "Current documentation gates have known pre-existing inconsistencies noted in the latest commit.",
+      "target": "Make gap radar output a blocking or explicitly waived artifact rather than hidden CI debt."
+    },
+    {
+      "id": "GAP-040",
+      "severity": "high",
+      "finding": "There is no automatic check that a domain addition avoided core parser and stable-IR branches.",
+      "target": "Add anti-domain-branch architectural lint keyed by FeatureID class."
+    },
+    {
+      "id": "GAP-041",
+      "severity": "medium",
+      "finding": "No canonical agent handoff/resume object exists.",
+      "target": "Task/Context/Change Capsules make restart state explicit."
+    },
+    {
+      "id": "GAP-042",
+      "severity": "medium",
+      "finding": "Multi-agent semantic conflicts can appear as ordinary file merge conflicts.",
+      "target": "Detect semantic and golden conflicts by FeatureID before merge."
+    },
+    {
+      "id": "GAP-043",
+      "severity": "high",
+      "finding": "A model may update goldens to match a bug.",
+      "target": "Golden changes require ELP/identity/migration authority."
+    },
+    {
+      "id": "GAP-044",
+      "severity": "medium",
+      "finding": "A provider can be integrated without one generated coverage and evidence view.",
+      "target": "Provider Capsules and capability/world matrices are generated."
+    },
+    {
+      "id": "GAP-045",
+      "severity": "medium",
+      "finding": "No uniform distinction exists between specification completeness and implementation completeness.",
+      "target": "Feature maturity and projection/implementation coverage are independent."
+    }
+  ]
+}

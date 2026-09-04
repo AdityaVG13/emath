@@ -1,0 +1,17 @@
+{
+  "schema": "emath.v19.gap-report.v1",
+  "feature_specs": 156,
+  "prototype_features_missing_realization": 156,
+  "current_repo_gaps": 45,
+  "current_repo_gap_severity": {
+    "critical": 2,
+    "high": 27,
+    "medium": 16
+  },
+  "v16_catalog_entries": 1224,
+  "v16_promotion_status": {
+    "catalog-only": 1184,
+    "prototype-specified": 40
+  },
+  "spec_holes": 5
+}

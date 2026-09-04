@@ -1,0 +1,20 @@
+{
+  "schema": "emath.change-receipt.v1",
+  "receipt_id": "",
+  "task_id": "",
+  "baseline": {},
+  "final": {},
+  "features": [],
+  "files": [],
+  "semantic_delta": "",
+  "identity_decisions": [],
+  "commands": [],
+  "gates": [],
+  "negative_controls": [],
+  "decisions": [],
+  "assumptions": [],
+  "new_holes": [],
+  "knowledge_accreted": [],
+  "resource_cost": {},
+  "rollback": ""
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "emath.impact-closure.v1",
+  "root": "std.capability.math.add@1",
+  "affected": [
+    "std.capability.math.add@1",
+    "std.field_pack.core@1"
+  ]
+}

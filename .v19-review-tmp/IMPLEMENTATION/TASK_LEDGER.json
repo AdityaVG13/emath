@@ -1,0 +1,3784 @@
+{
+  "schema": "emath.v19.tasks.v1",
+  "count": 420,
+  "tasks": [
+    {
+      "id": "V19-00-01",
+      "phase": "V19-00",
+      "title": "define normative contract: freeze baseline, authority census, and gap inventory",
+      "depends_on": [],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-02",
+      "phase": "V19-00",
+      "title": "add schema and stable identity: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-03",
+      "phase": "V19-00",
+      "title": "author positive conformance: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-04",
+      "phase": "V19-00",
+      "title": "author negative and mutation conformance: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-05",
+      "phase": "V19-00",
+      "title": "implement minimal producer: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-06",
+      "phase": "V19-00",
+      "title": "implement minimal consumer: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-07",
+      "phase": "V19-00",
+      "title": "generate projection skeletons: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-08",
+      "phase": "V19-00",
+      "title": "integrate owner crate or provider: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-09",
+      "phase": "V19-00",
+      "title": "run impact-closure gates: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-10",
+      "phase": "V19-00",
+      "title": "emit authority and change receipts: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-11",
+      "phase": "V19-00",
+      "title": "measure agent and LOC economy: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-00-12",
+      "phase": "V19-00",
+      "title": "update migration, docs, and capstone: freeze baseline, authority census, and gap inventory",
+      "depends_on": [
+        "V19-00-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-01",
+      "phase": "V19-01",
+      "title": "define normative contract: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-00-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-02",
+      "phase": "V19-01",
+      "title": "add schema and stable identity: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-03",
+      "phase": "V19-01",
+      "title": "author positive conformance: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-04",
+      "phase": "V19-01",
+      "title": "author negative and mutation conformance: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-05",
+      "phase": "V19-01",
+      "title": "implement minimal producer: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-06",
+      "phase": "V19-01",
+      "title": "implement minimal consumer: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-07",
+      "phase": "V19-01",
+      "title": "generate projection skeletons: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-08",
+      "phase": "V19-01",
+      "title": "integrate owner crate or provider: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-09",
+      "phase": "V19-01",
+      "title": "run impact-closure gates: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-10",
+      "phase": "V19-01",
+      "title": "emit authority and change receipts: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-11",
+      "phase": "V19-01",
+      "title": "measure agent and LOC economy: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-01-12",
+      "phase": "V19-01",
+      "title": "update migration, docs, and capstone: featureid grammar and identity domains",
+      "depends_on": [
+        "V19-01-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-01",
+      "phase": "V19-02",
+      "title": "define normative contract: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-01-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-02",
+      "phase": "V19-02",
+      "title": "add schema and stable identity: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-03",
+      "phase": "V19-02",
+      "title": "author positive conformance: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-04",
+      "phase": "V19-02",
+      "title": "author negative and mutation conformance: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-05",
+      "phase": "V19-02",
+      "title": "implement minimal producer: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-06",
+      "phase": "V19-02",
+      "title": "implement minimal consumer: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-07",
+      "phase": "V19-02",
+      "title": "generate projection skeletons: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-08",
+      "phase": "V19-02",
+      "title": "integrate owner crate or provider: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-09",
+      "phase": "V19-02",
+      "title": "run impact-closure gates: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-10",
+      "phase": "V19-02",
+      "title": "emit authority and change receipts: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-11",
+      "phase": "V19-02",
+      "title": "measure agent and LOC economy: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-02-12",
+      "phase": "V19-02",
+      "title": "update migration, docs, and capstone: stage-0 grammar and seed-class contract",
+      "depends_on": [
+        "V19-02-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-01",
+      "phase": "V19-03",
+      "title": "define normative contract: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-02-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-02",
+      "phase": "V19-03",
+      "title": "add schema and stable identity: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-03",
+      "phase": "V19-03",
+      "title": "author positive conformance: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-04",
+      "phase": "V19-03",
+      "title": "author negative and mutation conformance: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-05",
+      "phase": "V19-03",
+      "title": "implement minimal producer: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-06",
+      "phase": "V19-03",
+      "title": "implement minimal consumer: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-07",
+      "phase": "V19-03",
+      "title": "generate projection skeletons: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-08",
+      "phase": "V19-03",
+      "title": "integrate owner crate or provider: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-09",
+      "phase": "V19-03",
+      "title": "run impact-closure gates: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-10",
+      "phase": "V19-03",
+      "title": "emit authority and change receipts: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-11",
+      "phase": "V19-03",
+      "title": "measure agent and LOC economy: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-03-12",
+      "phase": "V19-03",
+      "title": "update migration, docs, and capstone: feature capsule parser and canonical serializer",
+      "depends_on": [
+        "V19-03-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-01",
+      "phase": "V19-04",
+      "title": "define normative contract: feature-class schemas and validation",
+      "depends_on": [
+        "V19-03-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-02",
+      "phase": "V19-04",
+      "title": "add schema and stable identity: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-03",
+      "phase": "V19-04",
+      "title": "author positive conformance: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-04",
+      "phase": "V19-04",
+      "title": "author negative and mutation conformance: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-05",
+      "phase": "V19-04",
+      "title": "implement minimal producer: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-06",
+      "phase": "V19-04",
+      "title": "implement minimal consumer: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-07",
+      "phase": "V19-04",
+      "title": "generate projection skeletons: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-08",
+      "phase": "V19-04",
+      "title": "integrate owner crate or provider: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-09",
+      "phase": "V19-04",
+      "title": "run impact-closure gates: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-10",
+      "phase": "V19-04",
+      "title": "emit authority and change receipts: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-11",
+      "phase": "V19-04",
+      "title": "measure agent and LOC economy: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-04-12",
+      "phase": "V19-04",
+      "title": "update migration, docs, and capstone: feature-class schemas and validation",
+      "depends_on": [
+        "V19-04-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-01",
+      "phase": "V19-05",
+      "title": "define normative contract: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-04-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-02",
+      "phase": "V19-05",
+      "title": "add schema and stable identity: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-03",
+      "phase": "V19-05",
+      "title": "author positive conformance: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-04",
+      "phase": "V19-05",
+      "title": "author negative and mutation conformance: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-05",
+      "phase": "V19-05",
+      "title": "implement minimal producer: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-06",
+      "phase": "V19-05",
+      "title": "implement minimal consumer: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-07",
+      "phase": "V19-05",
+      "title": "generate projection skeletons: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-08",
+      "phase": "V19-05",
+      "title": "integrate owner crate or provider: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-09",
+      "phase": "V19-05",
+      "title": "run impact-closure gates: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-10",
+      "phase": "V19-05",
+      "title": "emit authority and change receipts: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-11",
+      "phase": "V19-05",
+      "title": "measure agent and LOC economy: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-05-12",
+      "phase": "V19-05",
+      "title": "update migration, docs, and capstone: meaning spine and dependency/impact closures",
+      "depends_on": [
+        "V19-05-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-01",
+      "phase": "V19-06",
+      "title": "define normative contract: feature-scoped authority lock",
+      "depends_on": [
+        "V19-05-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-02",
+      "phase": "V19-06",
+      "title": "add schema and stable identity: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-03",
+      "phase": "V19-06",
+      "title": "author positive conformance: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-04",
+      "phase": "V19-06",
+      "title": "author negative and mutation conformance: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-05",
+      "phase": "V19-06",
+      "title": "implement minimal producer: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-06",
+      "phase": "V19-06",
+      "title": "implement minimal consumer: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-07",
+      "phase": "V19-06",
+      "title": "generate projection skeletons: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-08",
+      "phase": "V19-06",
+      "title": "integrate owner crate or provider: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-09",
+      "phase": "V19-06",
+      "title": "run impact-closure gates: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-10",
+      "phase": "V19-06",
+      "title": "emit authority and change receipts: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-11",
+      "phase": "V19-06",
+      "title": "measure agent and LOC economy: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-06-12",
+      "phase": "V19-06",
+      "title": "update migration, docs, and capstone: feature-scoped authority lock",
+      "depends_on": [
+        "V19-06-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-01",
+      "phase": "V19-07",
+      "title": "define normative contract: spec hole and decision ledger",
+      "depends_on": [
+        "V19-06-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-02",
+      "phase": "V19-07",
+      "title": "add schema and stable identity: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-03",
+      "phase": "V19-07",
+      "title": "author positive conformance: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-04",
+      "phase": "V19-07",
+      "title": "author negative and mutation conformance: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-05",
+      "phase": "V19-07",
+      "title": "implement minimal producer: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-06",
+      "phase": "V19-07",
+      "title": "implement minimal consumer: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-07",
+      "phase": "V19-07",
+      "title": "generate projection skeletons: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-08",
+      "phase": "V19-07",
+      "title": "integrate owner crate or provider: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-09",
+      "phase": "V19-07",
+      "title": "run impact-closure gates: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-10",
+      "phase": "V19-07",
+      "title": "emit authority and change receipts: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-11",
+      "phase": "V19-07",
+      "title": "measure agent and LOC economy: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-07-12",
+      "phase": "V19-07",
+      "title": "update migration, docs, and capstone: spec hole and decision ledger",
+      "depends_on": [
+        "V19-07-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-01",
+      "phase": "V19-08",
+      "title": "define normative contract: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-07-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-02",
+      "phase": "V19-08",
+      "title": "add schema and stable identity: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-03",
+      "phase": "V19-08",
+      "title": "author positive conformance: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-04",
+      "phase": "V19-08",
+      "title": "author negative and mutation conformance: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-05",
+      "phase": "V19-08",
+      "title": "implement minimal producer: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-06",
+      "phase": "V19-08",
+      "title": "implement minimal consumer: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-07",
+      "phase": "V19-08",
+      "title": "generate projection skeletons: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-08",
+      "phase": "V19-08",
+      "title": "integrate owner crate or provider: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-09",
+      "phase": "V19-08",
+      "title": "run impact-closure gates: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-10",
+      "phase": "V19-08",
+      "title": "emit authority and change receipts: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-11",
+      "phase": "V19-08",
+      "title": "measure agent and LOC economy: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-08-12",
+      "phase": "V19-08",
+      "title": "update migration, docs, and capstone: projection closure and generated skeletons",
+      "depends_on": [
+        "V19-08-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-01",
+      "phase": "V19-09",
+      "title": "define normative contract: language image format and deterministic builder",
+      "depends_on": [
+        "V19-08-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-02",
+      "phase": "V19-09",
+      "title": "add schema and stable identity: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-03",
+      "phase": "V19-09",
+      "title": "author positive conformance: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-04",
+      "phase": "V19-09",
+      "title": "author negative and mutation conformance: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-05",
+      "phase": "V19-09",
+      "title": "implement minimal producer: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-06",
+      "phase": "V19-09",
+      "title": "implement minimal consumer: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-07",
+      "phase": "V19-09",
+      "title": "generate projection skeletons: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-08",
+      "phase": "V19-09",
+      "title": "integrate owner crate or provider: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-09",
+      "phase": "V19-09",
+      "title": "run impact-closure gates: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-10",
+      "phase": "V19-09",
+      "title": "emit authority and change receipts: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-11",
+      "phase": "V19-09",
+      "title": "measure agent and LOC economy: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-09-12",
+      "phase": "V19-09",
+      "title": "update migration, docs, and capstone: language image format and deterministic builder",
+      "depends_on": [
+        "V19-09-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-01",
+      "phase": "V19-10",
+      "title": "define normative contract: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-09-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-02",
+      "phase": "V19-10",
+      "title": "add schema and stable identity: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-03",
+      "phase": "V19-10",
+      "title": "author positive conformance: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-04",
+      "phase": "V19-10",
+      "title": "author negative and mutation conformance: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-05",
+      "phase": "V19-10",
+      "title": "implement minimal producer: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-06",
+      "phase": "V19-10",
+      "title": "implement minimal consumer: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-07",
+      "phase": "V19-10",
+      "title": "generate projection skeletons: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-08",
+      "phase": "V19-10",
+      "title": "integrate owner crate or provider: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-09",
+      "phase": "V19-10",
+      "title": "run impact-closure gates: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-10",
+      "phase": "V19-10",
+      "title": "emit authority and change receipts: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-11",
+      "phase": "V19-10",
+      "title": "measure agent and LOC economy: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-10-12",
+      "phase": "V19-10",
+      "title": "update migration, docs, and capstone: bootstrap stage1/stage2 fixed point",
+      "depends_on": [
+        "V19-10-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-01",
+      "phase": "V19-11",
+      "title": "define normative contract: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-10-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-02",
+      "phase": "V19-11",
+      "title": "add schema and stable identity: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-03",
+      "phase": "V19-11",
+      "title": "author positive conformance: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-04",
+      "phase": "V19-11",
+      "title": "author negative and mutation conformance: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-05",
+      "phase": "V19-11",
+      "title": "implement minimal producer: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-06",
+      "phase": "V19-11",
+      "title": "implement minimal consumer: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-07",
+      "phase": "V19-11",
+      "title": "generate projection skeletons: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-08",
+      "phase": "V19-11",
+      "title": "integrate owner crate or provider: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-09",
+      "phase": "V19-11",
+      "title": "run impact-closure gates: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-10",
+      "phase": "V19-11",
+      "title": "emit authority and change receipts: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-11",
+      "phase": "V19-11",
+      "title": "measure agent and LOC economy: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-11-12",
+      "phase": "V19-11",
+      "title": "update migration, docs, and capstone: symbol, binder, alias, confusable, and precedence registry",
+      "depends_on": [
+        "V19-11-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-01",
+      "phase": "V19-12",
+      "title": "define normative contract: kind and section schema generation",
+      "depends_on": [
+        "V19-11-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-02",
+      "phase": "V19-12",
+      "title": "add schema and stable identity: kind and section schema generation",
+      "depends_on": [
+        "V19-12-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-03",
+      "phase": "V19-12",
+      "title": "author positive conformance: kind and section schema generation",
+      "depends_on": [
+        "V19-12-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-04",
+      "phase": "V19-12",
+      "title": "author negative and mutation conformance: kind and section schema generation",
+      "depends_on": [
+        "V19-12-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-05",
+      "phase": "V19-12",
+      "title": "implement minimal producer: kind and section schema generation",
+      "depends_on": [
+        "V19-12-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-06",
+      "phase": "V19-12",
+      "title": "implement minimal consumer: kind and section schema generation",
+      "depends_on": [
+        "V19-12-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-07",
+      "phase": "V19-12",
+      "title": "generate projection skeletons: kind and section schema generation",
+      "depends_on": [
+        "V19-12-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-08",
+      "phase": "V19-12",
+      "title": "integrate owner crate or provider: kind and section schema generation",
+      "depends_on": [
+        "V19-12-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-09",
+      "phase": "V19-12",
+      "title": "run impact-closure gates: kind and section schema generation",
+      "depends_on": [
+        "V19-12-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-10",
+      "phase": "V19-12",
+      "title": "emit authority and change receipts: kind and section schema generation",
+      "depends_on": [
+        "V19-12-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-11",
+      "phase": "V19-12",
+      "title": "measure agent and LOC economy: kind and section schema generation",
+      "depends_on": [
+        "V19-12-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-12-12",
+      "phase": "V19-12",
+      "title": "update migration, docs, and capstone: kind and section schema generation",
+      "depends_on": [
+        "V19-12-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-01",
+      "phase": "V19-13",
+      "title": "define normative contract: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-12-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-02",
+      "phase": "V19-13",
+      "title": "add schema and stable identity: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-03",
+      "phase": "V19-13",
+      "title": "author positive conformance: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-04",
+      "phase": "V19-13",
+      "title": "author negative and mutation conformance: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-05",
+      "phase": "V19-13",
+      "title": "implement minimal producer: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-06",
+      "phase": "V19-13",
+      "title": "implement minimal consumer: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-07",
+      "phase": "V19-13",
+      "title": "generate projection skeletons: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-08",
+      "phase": "V19-13",
+      "title": "integrate owner crate or provider: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-09",
+      "phase": "V19-13",
+      "title": "run impact-closure gates: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-10",
+      "phase": "V19-13",
+      "title": "emit authority and change receipts: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-11",
+      "phase": "V19-13",
+      "title": "measure agent and LOC economy: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-13-12",
+      "phase": "V19-13",
+      "title": "update migration, docs, and capstone: type, exactness, effect, and coercion specifications",
+      "depends_on": [
+        "V19-13-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-01",
+      "phase": "V19-14",
+      "title": "define normative contract: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-13-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-02",
+      "phase": "V19-14",
+      "title": "add schema and stable identity: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-03",
+      "phase": "V19-14",
+      "title": "author positive conformance: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-04",
+      "phase": "V19-14",
+      "title": "author negative and mutation conformance: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-05",
+      "phase": "V19-14",
+      "title": "implement minimal producer: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-06",
+      "phase": "V19-14",
+      "title": "implement minimal consumer: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-07",
+      "phase": "V19-14",
+      "title": "generate projection skeletons: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-08",
+      "phase": "V19-14",
+      "title": "integrate owner crate or provider: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-09",
+      "phase": "V19-14",
+      "title": "run impact-closure gates: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-10",
+      "phase": "V19-14",
+      "title": "emit authority and change receipts: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-11",
+      "phase": "V19-14",
+      "title": "measure agent and LOC economy: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-14-12",
+      "phase": "V19-14",
+      "title": "update migration, docs, and capstone: capability reference semantics and provider dispositions",
+      "depends_on": [
+        "V19-14-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-01",
+      "phase": "V19-15",
+      "title": "define normative contract: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-14-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-02",
+      "phase": "V19-15",
+      "title": "add schema and stable identity: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-03",
+      "phase": "V19-15",
+      "title": "author positive conformance: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-04",
+      "phase": "V19-15",
+      "title": "author negative and mutation conformance: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-05",
+      "phase": "V19-15",
+      "title": "implement minimal producer: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-06",
+      "phase": "V19-15",
+      "title": "implement minimal consumer: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-07",
+      "phase": "V19-15",
+      "title": "generate projection skeletons: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-08",
+      "phase": "V19-15",
+      "title": "integrate owner crate or provider: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-09",
+      "phase": "V19-15",
+      "title": "run impact-closure gates: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-10",
+      "phase": "V19-15",
+      "title": "emit authority and change receipts: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-11",
+      "phase": "V19-15",
+      "title": "measure agent and LOC economy: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-15-12",
+      "phase": "V19-15",
+      "title": "update migration, docs, and capstone: theory, instance, family, method, and world capsules",
+      "depends_on": [
+        "V19-15-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-01",
+      "phase": "V19-16",
+      "title": "define normative contract: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-15-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-02",
+      "phase": "V19-16",
+      "title": "add schema and stable identity: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-03",
+      "phase": "V19-16",
+      "title": "author positive conformance: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-04",
+      "phase": "V19-16",
+      "title": "author negative and mutation conformance: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-05",
+      "phase": "V19-16",
+      "title": "implement minimal producer: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-06",
+      "phase": "V19-16",
+      "title": "implement minimal consumer: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-07",
+      "phase": "V19-16",
+      "title": "generate projection skeletons: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-08",
+      "phase": "V19-16",
+      "title": "integrate owner crate or provider: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-09",
+      "phase": "V19-16",
+      "title": "run impact-closure gates: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-10",
+      "phase": "V19-16",
+      "title": "emit authority and change receipts: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-11",
+      "phase": "V19-16",
+      "title": "measure agent and LOC economy: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-16-12",
+      "phase": "V19-16",
+      "title": "update migration, docs, and capstone: artifact, diagnostic, field-pack, lens, and migration capsules",
+      "depends_on": [
+        "V19-16-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-01",
+      "phase": "V19-17",
+      "title": "define normative contract: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-16-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-02",
+      "phase": "V19-17",
+      "title": "add schema and stable identity: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-03",
+      "phase": "V19-17",
+      "title": "author positive conformance: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-04",
+      "phase": "V19-17",
+      "title": "author negative and mutation conformance: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-05",
+      "phase": "V19-17",
+      "title": "implement minimal producer: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-06",
+      "phase": "V19-17",
+      "title": "implement minimal consumer: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-07",
+      "phase": "V19-17",
+      "title": "generate projection skeletons: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-08",
+      "phase": "V19-17",
+      "title": "integrate owner crate or provider: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-09",
+      "phase": "V19-17",
+      "title": "run impact-closure gates: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-10",
+      "phase": "V19-17",
+      "title": "emit authority and change receipts: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-11",
+      "phase": "V19-17",
+      "title": "measure agent and LOC economy: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-17-12",
+      "phase": "V19-17",
+      "title": "update migration, docs, and capstone: conformance corpus and semantic-stack goldens",
+      "depends_on": [
+        "V19-17-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-01",
+      "phase": "V19-18",
+      "title": "define normative contract: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-17-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-02",
+      "phase": "V19-18",
+      "title": "add schema and stable identity: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-03",
+      "phase": "V19-18",
+      "title": "author positive conformance: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-04",
+      "phase": "V19-18",
+      "title": "author negative and mutation conformance: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-05",
+      "phase": "V19-18",
+      "title": "implement minimal producer: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-06",
+      "phase": "V19-18",
+      "title": "implement minimal consumer: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-07",
+      "phase": "V19-18",
+      "title": "generate projection skeletons: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-08",
+      "phase": "V19-18",
+      "title": "integrate owner crate or provider: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-09",
+      "phase": "V19-18",
+      "title": "run impact-closure gates: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-10",
+      "phase": "V19-18",
+      "title": "emit authority and change receipts: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-11",
+      "phase": "V19-18",
+      "title": "measure agent and LOC economy: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-18-12",
+      "phase": "V19-18",
+      "title": "update migration, docs, and capstone: mutation, differential, fuzz, and cross-implementation gates",
+      "depends_on": [
+        "V19-18-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-01",
+      "phase": "V19-19",
+      "title": "define normative contract: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-18-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-02",
+      "phase": "V19-19",
+      "title": "add schema and stable identity: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-03",
+      "phase": "V19-19",
+      "title": "author positive conformance: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-04",
+      "phase": "V19-19",
+      "title": "author negative and mutation conformance: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-05",
+      "phase": "V19-19",
+      "title": "implement minimal producer: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-06",
+      "phase": "V19-19",
+      "title": "implement minimal consumer: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-07",
+      "phase": "V19-19",
+      "title": "generate projection skeletons: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-08",
+      "phase": "V19-19",
+      "title": "integrate owner crate or provider: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-09",
+      "phase": "V19-19",
+      "title": "run impact-closure gates: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-10",
+      "phase": "V19-19",
+      "title": "emit authority and change receipts: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-11",
+      "phase": "V19-19",
+      "title": "measure agent and LOC economy: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-19-12",
+      "phase": "V19-19",
+      "title": "update migration, docs, and capstone: generated reference, capability matrix, lsp, and tooling",
+      "depends_on": [
+        "V19-19-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-01",
+      "phase": "V19-20",
+      "title": "define normative contract: agent start and generated agent index",
+      "depends_on": [
+        "V19-19-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-02",
+      "phase": "V19-20",
+      "title": "add schema and stable identity: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-03",
+      "phase": "V19-20",
+      "title": "author positive conformance: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-04",
+      "phase": "V19-20",
+      "title": "author negative and mutation conformance: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-05",
+      "phase": "V19-20",
+      "title": "implement minimal producer: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-06",
+      "phase": "V19-20",
+      "title": "implement minimal consumer: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-07",
+      "phase": "V19-20",
+      "title": "generate projection skeletons: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-08",
+      "phase": "V19-20",
+      "title": "integrate owner crate or provider: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-09",
+      "phase": "V19-20",
+      "title": "run impact-closure gates: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-10",
+      "phase": "V19-20",
+      "title": "emit authority and change receipts: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-11",
+      "phase": "V19-20",
+      "title": "measure agent and LOC economy: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-20-12",
+      "phase": "V19-20",
+      "title": "update migration, docs, and capstone: agent start and generated agent index",
+      "depends_on": [
+        "V19-20-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-01",
+      "phase": "V19-21",
+      "title": "define normative contract: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-20-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-02",
+      "phase": "V19-21",
+      "title": "add schema and stable identity: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-03",
+      "phase": "V19-21",
+      "title": "author positive conformance: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-04",
+      "phase": "V19-21",
+      "title": "author negative and mutation conformance: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-05",
+      "phase": "V19-21",
+      "title": "implement minimal producer: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-06",
+      "phase": "V19-21",
+      "title": "implement minimal consumer: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-07",
+      "phase": "V19-21",
+      "title": "generate projection skeletons: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-08",
+      "phase": "V19-21",
+      "title": "integrate owner crate or provider: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-09",
+      "phase": "V19-21",
+      "title": "run impact-closure gates: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-10",
+      "phase": "V19-21",
+      "title": "emit authority and change receipts: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-11",
+      "phase": "V19-21",
+      "title": "measure agent and LOC economy: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-21-12",
+      "phase": "V19-21",
+      "title": "update migration, docs, and capstone: task, context, impact, and change capsules",
+      "depends_on": [
+        "V19-21-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-01",
+      "phase": "V19-22",
+      "title": "define normative contract: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-21-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-02",
+      "phase": "V19-22",
+      "title": "add schema and stable identity: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-03",
+      "phase": "V19-22",
+      "title": "author positive conformance: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-04",
+      "phase": "V19-22",
+      "title": "author negative and mutation conformance: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-05",
+      "phase": "V19-22",
+      "title": "implement minimal producer: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-06",
+      "phase": "V19-22",
+      "title": "implement minimal consumer: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-07",
+      "phase": "V19-22",
+      "title": "generate projection skeletons: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-08",
+      "phase": "V19-22",
+      "title": "integrate owner crate or provider: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-09",
+      "phase": "V19-22",
+      "title": "run impact-closure gates: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-10",
+      "phase": "V19-22",
+      "title": "emit authority and change receipts: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-11",
+      "phase": "V19-22",
+      "title": "measure agent and LOC economy: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-22-12",
+      "phase": "V19-22",
+      "title": "update migration, docs, and capstone: accretion ledger, decisions, negative knowledge, and resume",
+      "depends_on": [
+        "V19-22-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-01",
+      "phase": "V19-23",
+      "title": "define normative contract: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-22-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-02",
+      "phase": "V19-23",
+      "title": "add schema and stable identity: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-03",
+      "phase": "V19-23",
+      "title": "author positive conformance: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-04",
+      "phase": "V19-23",
+      "title": "author negative and mutation conformance: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-05",
+      "phase": "V19-23",
+      "title": "implement minimal producer: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-06",
+      "phase": "V19-23",
+      "title": "implement minimal consumer: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-07",
+      "phase": "V19-23",
+      "title": "generate projection skeletons: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-08",
+      "phase": "V19-23",
+      "title": "integrate owner crate or provider: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-09",
+      "phase": "V19-23",
+      "title": "run impact-closure gates: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-10",
+      "phase": "V19-23",
+      "title": "emit authority and change receipts: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-11",
+      "phase": "V19-23",
+      "title": "measure agent and LOC economy: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-23-12",
+      "phase": "V19-23",
+      "title": "update migration, docs, and capstone: agent resource-economy metrics and ergonomics gates",
+      "depends_on": [
+        "V19-23-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-01",
+      "phase": "V19-24",
+      "title": "define normative contract: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-23-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-02",
+      "phase": "V19-24",
+      "title": "add schema and stable identity: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-03",
+      "phase": "V19-24",
+      "title": "author positive conformance: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-04",
+      "phase": "V19-24",
+      "title": "author negative and mutation conformance: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-05",
+      "phase": "V19-24",
+      "title": "implement minimal producer: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-06",
+      "phase": "V19-24",
+      "title": "implement minimal consumer: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-07",
+      "phase": "V19-24",
+      "title": "generate projection skeletons: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-08",
+      "phase": "V19-24",
+      "title": "integrate owner crate or provider: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-09",
+      "phase": "V19-24",
+      "title": "run impact-closure gates: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-10",
+      "phase": "V19-24",
+      "title": "emit authority and change receipts: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-11",
+      "phase": "V19-24",
+      "title": "measure agent and LOC economy: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-24-12",
+      "phase": "V19-24",
+      "title": "update migration, docs, and capstone: current function/add/sum/type vertical slice",
+      "depends_on": [
+        "V19-24-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-01",
+      "phase": "V19-25",
+      "title": "define normative contract: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-24-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-02",
+      "phase": "V19-25",
+      "title": "add schema and stable identity: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-03",
+      "phase": "V19-25",
+      "title": "author positive conformance: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-04",
+      "phase": "V19-25",
+      "title": "author negative and mutation conformance: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-05",
+      "phase": "V19-25",
+      "title": "implement minimal producer: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-06",
+      "phase": "V19-25",
+      "title": "implement minimal consumer: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-07",
+      "phase": "V19-25",
+      "title": "generate projection skeletons: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-08",
+      "phase": "V19-25",
+      "title": "integrate owner crate or provider: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-09",
+      "phase": "V19-25",
+      "title": "run impact-closure gates: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-10",
+      "phase": "V19-25",
+      "title": "emit authority and change receipts: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-11",
+      "phase": "V19-25",
+      "title": "measure agent and LOC economy: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-25-12",
+      "phase": "V19-25",
+      "title": "update migration, docs, and capstone: current free-symbolic world vertical slice",
+      "depends_on": [
+        "V19-25-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-01",
+      "phase": "V19-26",
+      "title": "define normative contract: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-25-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-02",
+      "phase": "V19-26",
+      "title": "add schema and stable identity: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-03",
+      "phase": "V19-26",
+      "title": "author positive conformance: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-04",
+      "phase": "V19-26",
+      "title": "author negative and mutation conformance: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-05",
+      "phase": "V19-26",
+      "title": "implement minimal producer: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-06",
+      "phase": "V19-26",
+      "title": "implement minimal consumer: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-07",
+      "phase": "V19-26",
+      "title": "generate projection skeletons: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-08",
+      "phase": "V19-26",
+      "title": "integrate owner crate or provider: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-09",
+      "phase": "V19-26",
+      "title": "run impact-closure gates: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-10",
+      "phase": "V19-26",
+      "title": "emit authority and change receipts: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-11",
+      "phase": "V19-26",
+      "title": "measure agent and LOC economy: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-26-12",
+      "phase": "V19-26",
+      "title": "update migration, docs, and capstone: v15 cipher and puzzle realization slice",
+      "depends_on": [
+        "V19-26-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-01",
+      "phase": "V19-27",
+      "title": "define normative contract: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-26-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-02",
+      "phase": "V19-27",
+      "title": "add schema and stable identity: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-03",
+      "phase": "V19-27",
+      "title": "author positive conformance: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-04",
+      "phase": "V19-27",
+      "title": "author negative and mutation conformance: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-05",
+      "phase": "V19-27",
+      "title": "implement minimal producer: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-06",
+      "phase": "V19-27",
+      "title": "implement minimal consumer: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-07",
+      "phase": "V19-27",
+      "title": "generate projection skeletons: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-08",
+      "phase": "V19-27",
+      "title": "integrate owner crate or provider: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-09",
+      "phase": "V19-27",
+      "title": "run impact-closure gates: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-10",
+      "phase": "V19-27",
+      "title": "emit authority and change receipts: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-11",
+      "phase": "V19-27",
+      "title": "measure agent and LOC economy: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-27-12",
+      "phase": "V19-27",
+      "title": "update migration, docs, and capstone: v16 1,224-entry promotion ledger and first promotion",
+      "depends_on": [
+        "V19-27-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-01",
+      "phase": "V19-28",
+      "title": "define normative contract: v17 campaign realization slice",
+      "depends_on": [
+        "V19-27-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-02",
+      "phase": "V19-28",
+      "title": "add schema and stable identity: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-03",
+      "phase": "V19-28",
+      "title": "author positive conformance: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-04",
+      "phase": "V19-28",
+      "title": "author negative and mutation conformance: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-05",
+      "phase": "V19-28",
+      "title": "implement minimal producer: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-06",
+      "phase": "V19-28",
+      "title": "implement minimal consumer: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-07",
+      "phase": "V19-28",
+      "title": "generate projection skeletons: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-08",
+      "phase": "V19-28",
+      "title": "integrate owner crate or provider: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-09",
+      "phase": "V19-28",
+      "title": "run impact-closure gates: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-10",
+      "phase": "V19-28",
+      "title": "emit authority and change receipts: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-11",
+      "phase": "V19-28",
+      "title": "measure agent and LOC economy: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-28-12",
+      "phase": "V19-28",
+      "title": "update migration, docs, and capstone: v17 campaign realization slice",
+      "depends_on": [
+        "V19-28-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-01",
+      "phase": "V19-29",
+      "title": "define normative contract: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-28-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-02",
+      "phase": "V19-29",
+      "title": "add schema and stable identity: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-03",
+      "phase": "V19-29",
+      "title": "author positive conformance: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-04",
+      "phase": "V19-29",
+      "title": "author negative and mutation conformance: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-05",
+      "phase": "V19-29",
+      "title": "implement minimal producer: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-06",
+      "phase": "V19-29",
+      "title": "implement minimal consumer: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-07",
+      "phase": "V19-29",
+      "title": "generate projection skeletons: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-08",
+      "phase": "V19-29",
+      "title": "integrate owner crate or provider: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-09",
+      "phase": "V19-29",
+      "title": "run impact-closure gates: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-10",
+      "phase": "V19-29",
+      "title": "emit authority and change receipts: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-11",
+      "phase": "V19-29",
+      "title": "measure agent and LOC economy: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-29-12",
+      "phase": "V19-29",
+      "title": "update migration, docs, and capstone: v18 criterion/frontier realization slice",
+      "depends_on": [
+        "V19-29-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-01",
+      "phase": "V19-30",
+      "title": "define normative contract: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-29-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-02",
+      "phase": "V19-30",
+      "title": "add schema and stable identity: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-03",
+      "phase": "V19-30",
+      "title": "author positive conformance: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-04",
+      "phase": "V19-30",
+      "title": "author negative and mutation conformance: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-05",
+      "phase": "V19-30",
+      "title": "implement minimal producer: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-06",
+      "phase": "V19-30",
+      "title": "implement minimal consumer: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-07",
+      "phase": "V19-30",
+      "title": "generate projection skeletons: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-08",
+      "phase": "V19-30",
+      "title": "integrate owner crate or provider: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-09",
+      "phase": "V19-30",
+      "title": "run impact-closure gates: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-10",
+      "phase": "V19-30",
+      "title": "emit authority and change receipts: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-11",
+      "phase": "V19-30",
+      "title": "measure agent and LOC economy: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-30-12",
+      "phase": "V19-30",
+      "title": "update migration, docs, and capstone: legacy reference and capability-view generation",
+      "depends_on": [
+        "V19-30-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-01",
+      "phase": "V19-31",
+      "title": "define normative contract: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-30-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-02",
+      "phase": "V19-31",
+      "title": "add schema and stable identity: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-03",
+      "phase": "V19-31",
+      "title": "author positive conformance: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-04",
+      "phase": "V19-31",
+      "title": "author negative and mutation conformance: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-05",
+      "phase": "V19-31",
+      "title": "implement minimal producer: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-06",
+      "phase": "V19-31",
+      "title": "implement minimal consumer: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-07",
+      "phase": "V19-31",
+      "title": "generate projection skeletons: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-08",
+      "phase": "V19-31",
+      "title": "integrate owner crate or provider: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-09",
+      "phase": "V19-31",
+      "title": "run impact-closure gates: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-10",
+      "phase": "V19-31",
+      "title": "emit authority and change receipts: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-11",
+      "phase": "V19-31",
+      "title": "measure agent and LOC economy: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-31-12",
+      "phase": "V19-31",
+      "title": "update migration, docs, and capstone: core grammar contraction and syntax-pack migration",
+      "depends_on": [
+        "V19-31-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-01",
+      "phase": "V19-32",
+      "title": "define normative contract: independent implementation conformance",
+      "depends_on": [
+        "V19-31-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-02",
+      "phase": "V19-32",
+      "title": "add schema and stable identity: independent implementation conformance",
+      "depends_on": [
+        "V19-32-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-03",
+      "phase": "V19-32",
+      "title": "author positive conformance: independent implementation conformance",
+      "depends_on": [
+        "V19-32-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-04",
+      "phase": "V19-32",
+      "title": "author negative and mutation conformance: independent implementation conformance",
+      "depends_on": [
+        "V19-32-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-05",
+      "phase": "V19-32",
+      "title": "implement minimal producer: independent implementation conformance",
+      "depends_on": [
+        "V19-32-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-06",
+      "phase": "V19-32",
+      "title": "implement minimal consumer: independent implementation conformance",
+      "depends_on": [
+        "V19-32-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-07",
+      "phase": "V19-32",
+      "title": "generate projection skeletons: independent implementation conformance",
+      "depends_on": [
+        "V19-32-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-08",
+      "phase": "V19-32",
+      "title": "integrate owner crate or provider: independent implementation conformance",
+      "depends_on": [
+        "V19-32-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-09",
+      "phase": "V19-32",
+      "title": "run impact-closure gates: independent implementation conformance",
+      "depends_on": [
+        "V19-32-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-10",
+      "phase": "V19-32",
+      "title": "emit authority and change receipts: independent implementation conformance",
+      "depends_on": [
+        "V19-32-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-11",
+      "phase": "V19-32",
+      "title": "measure agent and LOC economy: independent implementation conformance",
+      "depends_on": [
+        "V19-32-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-32-12",
+      "phase": "V19-32",
+      "title": "update migration, docs, and capstone: independent implementation conformance",
+      "depends_on": [
+        "V19-32-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-01",
+      "phase": "V19-33",
+      "title": "define normative contract: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-32-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-02",
+      "phase": "V19-33",
+      "title": "add schema and stable identity: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-03",
+      "phase": "V19-33",
+      "title": "author positive conformance: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-04",
+      "phase": "V19-33",
+      "title": "author negative and mutation conformance: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-05",
+      "phase": "V19-33",
+      "title": "implement minimal producer: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-06",
+      "phase": "V19-33",
+      "title": "implement minimal consumer: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-07",
+      "phase": "V19-33",
+      "title": "generate projection skeletons: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-08",
+      "phase": "V19-33",
+      "title": "integrate owner crate or provider: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-09",
+      "phase": "V19-33",
+      "title": "run impact-closure gates: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-10",
+      "phase": "V19-33",
+      "title": "emit authority and change receipts: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-11",
+      "phase": "V19-33",
+      "title": "measure agent and LOC economy: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-33-12",
+      "phase": "V19-33",
+      "title": "update migration, docs, and capstone: wasm language image and agent-view loading",
+      "depends_on": [
+        "V19-33-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-01",
+      "phase": "V19-34",
+      "title": "define normative contract: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-33-12"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-02",
+      "phase": "V19-34",
+      "title": "add schema and stable identity: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-01"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-03",
+      "phase": "V19-34",
+      "title": "author positive conformance: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-02"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-04",
+      "phase": "V19-34",
+      "title": "author negative and mutation conformance: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-03"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-05",
+      "phase": "V19-34",
+      "title": "implement minimal producer: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-04"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-06",
+      "phase": "V19-34",
+      "title": "implement minimal consumer: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-05"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-07",
+      "phase": "V19-34",
+      "title": "generate projection skeletons: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-06"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-08",
+      "phase": "V19-34",
+      "title": "integrate owner crate or provider: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-07"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-09",
+      "phase": "V19-34",
+      "title": "run impact-closure gates: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-08"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-10",
+      "phase": "V19-34",
+      "title": "emit authority and change receipts: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-09"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-11",
+      "phase": "V19-34",
+      "title": "measure agent and LOC economy: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-10"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    },
+    {
+      "id": "V19-34-12",
+      "phase": "V19-34",
+      "title": "update migration, docs, and capstone: repository-wide gap closure and stabilization",
+      "depends_on": [
+        "V19-34-11"
+      ],
+      "acceptance": "FeatureID, conformance evidence, generated closure, agent context, and rollback are required."
+    }
+  ]
+}

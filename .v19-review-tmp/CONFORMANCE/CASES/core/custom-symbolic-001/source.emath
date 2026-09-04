@@ -1,0 +1,5 @@
+emath custom Strange:
+    definitions:
+        result = ⧖(a ⋈ b) ⊛ ζ
+    worlds:
+        free_symbolic

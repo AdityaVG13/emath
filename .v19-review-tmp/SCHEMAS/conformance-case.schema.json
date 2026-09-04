@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Conformance Case",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "features",
+    "positive_source",
+    "negative_source",
+    "expected",
+    "expected_diagnostic",
+    "projections"
+  ]
+}

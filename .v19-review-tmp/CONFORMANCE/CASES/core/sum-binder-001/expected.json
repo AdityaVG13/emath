@@ -1,0 +1,5 @@
+{
+  "binder": "std.binder.sum@1",
+  "lower_to": "std.capability.aggregate.sum@1",
+  "label": "exact"
+}

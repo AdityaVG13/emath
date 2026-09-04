@@ -1,0 +1,23 @@
+{
+  "schema": "emath.conformance-case.v1",
+  "id": "v16-promotion-001",
+  "features": [
+    "std.type.gf@1",
+    "std.capability.field.mod_inverse@1",
+    "std.world.exact.prime_field@1"
+  ],
+  "positive_source": "source.emath",
+  "negative_source": "negative.emath",
+  "expected": "expected.json",
+  "expected_diagnostic": "E-CAPABILITY-DOMAIN",
+  "projections": [
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "worlds",
+    "artifact",
+    "diagnostics"
+  ],
+  "golden_change_authority": "ELP + FeatureID decision"
+}

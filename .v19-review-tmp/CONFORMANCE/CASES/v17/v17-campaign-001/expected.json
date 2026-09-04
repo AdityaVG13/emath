@@ -1,0 +1,5 @@
+{
+  "kind": "std.kind.performance_campaign@1",
+  "lower_to": "ExperimentManifest",
+  "artifact": "std.artifact.experiment@1"
+}

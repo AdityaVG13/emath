@@ -1,0 +1,20 @@
+emath spec NewKind:
+    identity: "org.example.kind.new_kind@1"
+    class: "kind"
+    status: "proposed"
+    edition: 1
+    summary: "Top-level declaration semantic purpose."
+    dependencies: ["std.syntax.declaration.generic@1","std.syntax.section.generic@1"]
+    surface: {"role":"item-kind","form":"emath new_kind Name: suite","spellings":["new_kind"]}
+    canonical: {"lower_to":"ExistingCoreHIR","identity_fields":["kind","canonical sections"]}
+    semantics: {"required_sections":[],"optional_sections":[],"repeatable_sections":[],"defaults":{}}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"kind-defined"}
+    reference: {"mode":"schema-lowering","target":"ExistingCoreHIR"}
+    artifact: {"classes":["diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SECTION-INVALID"]
+    conformance: {"positive":[],"negative":[],"mutation":[]}
+    evolution: {"meaning_change":"new major or migration"}
+    agent: {"owner":"emath-schema","read":[],"edit":[],"hazards":["no parser branch","bounded lowering"]}

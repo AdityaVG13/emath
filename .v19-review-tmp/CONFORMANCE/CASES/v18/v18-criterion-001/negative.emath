@@ -1,0 +1,7 @@
+use conjecture_dynamics
+
+emath criterion Overclaim:
+    definitions:
+        finite_prefix == universal_claim
+    evidence:
+        finite_test

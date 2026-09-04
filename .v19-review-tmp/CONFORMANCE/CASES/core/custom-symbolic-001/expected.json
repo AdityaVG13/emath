@@ -1,0 +1,11 @@
+{
+  "kind": "std.kind.custom@1",
+  "world": "std.world.symbolic.free@1",
+  "label": "symbolic-only",
+  "unknown_symbols": [
+    "⧖",
+    "⋈",
+    "⊛",
+    "ζ"
+  ]
+}

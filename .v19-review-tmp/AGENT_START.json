@@ -1,0 +1,40 @@
+{
+  "schema": "emath.agent-start.v1",
+  "repo_baseline": "ffec253ab08e7a40d260798f348634e522a18e66",
+  "language_epoch": "v19-transition",
+  "authority_order": [
+    "implementation/CONSTITUTION.md",
+    "feature-scoped authority lock",
+    "accepted Feature Capsule",
+    "Language Image",
+    "Conformance Corpus",
+    "implementation",
+    "generated views",
+    "design and wave documents"
+  ],
+  "first_read": [
+    "START_HERE.md",
+    "AGENT/README.md",
+    "GENERATED/agent-index.json"
+  ],
+  "commands": {
+    "validate": "python tools/validate_all.py",
+    "orient": "python tools/agent_orient.py --feature <FeatureID>",
+    "gaps": "python tools/gap_audit.py",
+    "build_index": "python tools/build_language_index.py"
+  },
+  "invariants": [
+    "one authority per FeatureID",
+    "no silent Spec Hole resolution",
+    "no direct generated edits",
+    "no evidence escalation",
+    "no domain-named core parser or stable-IR branches",
+    "different implementations may not alter canonical semantics"
+  ],
+  "context_budgets": {
+    "L0_tokens": 600,
+    "L1_tokens": 2500,
+    "ordinary_task_tokens": 8000
+  },
+  "receipt_path": "AGENT/receipts/<task-id>.json"
+}

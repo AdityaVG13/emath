@@ -1,0 +1,635 @@
+{
+  "schema": "emath.authority-lock.v1",
+  "repo_commit": "ffec253ab08e7a40d260798f348634e522a18e66",
+  "status": "target example; feature authority has not been switched in the repository",
+  "features": {
+    "std.artifact.cargo@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/CargoArtifact.emath"
+    },
+    "std.artifact.certificate@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/CertificateArtifact.emath"
+    },
+    "std.artifact.continuation@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/ContinuationArtifact.emath"
+    },
+    "std.artifact.diagnostic@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/DiagnosticArtifact.emath"
+    },
+    "std.artifact.experiment@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/ExperimentArtifact.emath"
+    },
+    "std.artifact.proof_obligation@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/ProofObligationArtifact.emath"
+    },
+    "std.artifact.research_state@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/ResearchStateArtifact.emath"
+    },
+    "std.artifact.source@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/SourceArtifact.emath"
+    },
+    "std.artifact.symbolic@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/SymbolicArtifact.emath"
+    },
+    "std.artifact.value@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/ValueArtifact.emath"
+    },
+    "std.artifact.wasm@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/WasmArtifact.emath"
+    },
+    "std.artifact.world_portfolio@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/ARTIFACTS/WorldPortfolioArtifact.emath"
+    },
+    "std.binder.exists@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/ExistsBinder.emath"
+    },
+    "std.binder.forall@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/ForallBinder.emath"
+    },
+    "std.binder.integral@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/IntegralBinder.emath"
+    },
+    "std.binder.limit@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/LimitBinder.emath"
+    },
+    "std.binder.product@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/ProductBinder.emath"
+    },
+    "std.binder.series@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/SeriesBinder.emath"
+    },
+    "std.binder.sum@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/BINDERS/SumBinder.emath"
+    },
+    "std.capability.aggregate.product@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/ProductCapability.emath"
+    },
+    "std.capability.aggregate.sum@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/SumCapability.emath"
+    },
+    "std.capability.analysis.integral@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/IntegralCapability.emath"
+    },
+    "std.capability.analysis.limit@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/LimitCapability.emath"
+    },
+    "std.capability.analysis.series@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/SeriesCapability.emath"
+    },
+    "std.capability.coding.rs_encode@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/RSEncodeCapability.emath"
+    },
+    "std.capability.evidence.check@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/EvidenceCheckCapability.emath"
+    },
+    "std.capability.field.mod_inverse@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/ModInverseCapability.emath"
+    },
+    "std.capability.field.mod_power@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/ModPowerCapability.emath"
+    },
+    "std.capability.goal.solve@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/SolveGoalCapability.emath"
+    },
+    "std.capability.logic.exists@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/ExistsCapability.emath"
+    },
+    "std.capability.logic.forall@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/ForallCapability.emath"
+    },
+    "std.capability.logic.implies@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/ImpliesCapability.emath"
+    },
+    "std.capability.math.add@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/AddCapability.emath"
+    },
+    "std.capability.math.divide@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/DivideCapability.emath"
+    },
+    "std.capability.math.multiply@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/MultiplyCapability.emath"
+    },
+    "std.capability.math.power@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/PowerCapability.emath"
+    },
+    "std.capability.math.subtract@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/SubtractCapability.emath"
+    },
+    "std.capability.tensor.softmax@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CAPABILITIES/SoftmaxCapability.emath"
+    },
+    "std.diagnostic.artifact.overclaim@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/ArtifactOverclaim.emath"
+    },
+    "std.diagnostic.authority.dual@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/DualAuthority.emath"
+    },
+    "std.diagnostic.exactness.loss@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/ExactnessLoss.emath"
+    },
+    "std.diagnostic.projection.missing@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/MissingProjection.emath"
+    },
+    "std.diagnostic.section.invalid@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/InvalidSection.emath"
+    },
+    "std.diagnostic.spec_hole.blocking@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/BlockingSpecHole.emath"
+    },
+    "std.diagnostic.symbol.unresolved@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/UnresolvedSymbol.emath"
+    },
+    "std.diagnostic.world.unsupported@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/DIAGNOSTICS/WorldUnsupported.emath"
+    },
+    "std.family.constraint_puzzle@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FAMILIES/ConstraintPuzzleFamily.emath"
+    },
+    "std.family.criterion_edge@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FAMILIES/CriterionEdgeFamily.emath"
+    },
+    "std.family.elementwise_unary@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FAMILIES/ElementwiseUnaryFamily.emath"
+    },
+    "std.family.execution_transform@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FAMILIES/ExecutionTransformFamily.emath"
+    },
+    "std.family.finite_cipher@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FAMILIES/FiniteCipherFamily.emath"
+    },
+    "std.field_pack.conjecture_dynamics@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FIELD_PACKS/ConjectureDynamicsPack.emath"
+    },
+    "std.field_pack.core@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FIELD_PACKS/CorePack.emath"
+    },
+    "std.field_pack.cryptology@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FIELD_PACKS/CryptologyPack.emath"
+    },
+    "std.field_pack.exact_algebra@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FIELD_PACKS/ExactAlgebraPack.emath"
+    },
+    "std.field_pack.execution_dynamics@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/FIELD_PACKS/ExecutionDynamicsPack.emath"
+    },
+    "std.instance.gf.field@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/INSTANCES/PrimeFieldInstance.emath"
+    },
+    "std.instance.int.add_monoid@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/INSTANCES/IntAddMonoid.emath"
+    },
+    "std.instance.int.ring@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/INSTANCES/IntRing.emath"
+    },
+    "std.instance.matrix.mul_monoid@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/INSTANCES/MatrixMulMonoid.emath"
+    },
+    "std.kind.capability@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/CapabilityKind.emath"
+    },
+    "std.kind.cipher@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/CipherKind.emath"
+    },
+    "std.kind.code@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/CodeKind.emath"
+    },
+    "std.kind.criterion@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/CriterionKind.emath"
+    },
+    "std.kind.custom@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/CustomKind.emath"
+    },
+    "std.kind.family@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/FamilyKind.emath"
+    },
+    "std.kind.field_pack@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/FieldPackKind.emath"
+    },
+    "std.kind.frontier@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/FrontierKind.emath"
+    },
+    "std.kind.function@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/FunctionKind.emath"
+    },
+    "std.kind.instance@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/InstanceKind.emath"
+    },
+    "std.kind.kind@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/KindDefinition.emath"
+    },
+    "std.kind.method@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/MethodKind.emath"
+    },
+    "std.kind.model@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/ModelKind.emath"
+    },
+    "std.kind.performance_campaign@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/PerformanceCampaignKind.emath"
+    },
+    "std.kind.policy@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/PolicyKind.emath"
+    },
+    "std.kind.protocol@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/ProtocolKind.emath"
+    },
+    "std.kind.puzzle@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/PuzzleKind.emath"
+    },
+    "std.kind.theory@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/TheoryKind.emath"
+    },
+    "std.kind.world@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/KINDS/WorldKind.emath"
+    },
+    "std.lens.agent@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/LENSES/AgentLens.emath"
+    },
+    "std.lens.formal@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/LENSES/FormalLens.emath"
+    },
+    "std.lens.user@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/LENSES/UserLens.emath"
+    },
+    "std.method.measure.paired@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/METHODS/PairedBenchmarkMethod.emath"
+    },
+    "std.method.proof.external@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/METHODS/ProofProviderMethod.emath"
+    },
+    "std.method.research.counterexample@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/METHODS/CounterexampleSearchMethod.emath"
+    },
+    "std.method.search.exhaustive@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/METHODS/ExhaustiveFiniteSearch.emath"
+    },
+    "std.method.solve.newton@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/METHODS/NewtonMethod.emath"
+    },
+    "std.method.world.portfolio@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/METHODS/WorldPortfolioMethod.emath"
+    },
+    "std.migration.capability_manual_to_generated@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/MIGRATIONS/CapabilityManualToGenerated.emath"
+    },
+    "std.migration.cypher_to_cipher@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/MIGRATIONS/CypherToCipher.emath"
+    },
+    "std.migration.domain_grammar_to_pack@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/MIGRATIONS/DomainGrammarToPack.emath"
+    },
+    "std.migration.reference_to_capsule@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/MIGRATIONS/LegacyReferenceToCapsule.emath"
+    },
+    "std.section.budget@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/BudgetSection.emath"
+    },
+    "std.section.compile@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/CompileSection.emath"
+    },
+    "std.section.constraints@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/ConstraintsSection.emath"
+    },
+    "std.section.constructors@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/ConstructorsSection.emath"
+    },
+    "std.section.definitions@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/DefinitionsSection.emath"
+    },
+    "std.section.equations@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/EquationsSection.emath"
+    },
+    "std.section.evidence@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/EvidenceSection.emath"
+    },
+    "std.section.goals@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/GoalsSection.emath"
+    },
+    "std.section.inputs@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/InputsSection.emath"
+    },
+    "std.section.methods@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/MethodsSection.emath"
+    },
+    "std.section.outputs@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/OutputsSection.emath"
+    },
+    "std.section.provenance@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/ProvenanceSection.emath"
+    },
+    "std.section.state@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/StateSection.emath"
+    },
+    "std.section.tests@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/TestsSection.emath"
+    },
+    "std.section.worlds@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SECTIONS/WorldsSection.emath"
+    },
+    "std.symbol.definition@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/DefinitionSymbol.emath"
+    },
+    "std.symbol.equality.approx@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/ApproxEqualitySymbol.emath"
+    },
+    "std.symbol.equality.exact@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/ExactEqualitySymbol.emath"
+    },
+    "std.symbol.logic.implies@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/ImplicationSymbol.emath"
+    },
+    "std.symbol.math.add@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/AdditionSymbol.emath"
+    },
+    "std.symbol.math.divide@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/DivisionSymbol.emath"
+    },
+    "std.symbol.math.multiply@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/MultiplicationSymbol.emath"
+    },
+    "std.symbol.math.power@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/PowerSymbol.emath"
+    },
+    "std.symbol.math.subtract@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/SubtractionSymbol.emath"
+    },
+    "std.symbol.membership@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/SYMBOLS/MembershipSymbol.emath"
+    },
+    "std.syntax.binder.generic@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/UniformBinder.emath"
+    },
+    "std.syntax.declaration.generic@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/GenericDeclaration.emath"
+    },
+    "std.syntax.expression.core@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/ExpressionCore.emath"
+    },
+    "std.syntax.glyph.unknown@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/UnknownGlyph.emath"
+    },
+    "std.syntax.let@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/LocalLet.emath"
+    },
+    "std.syntax.section.generic@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/GenericSection.emath"
+    },
+    "std.syntax.source@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/CoreSource.emath"
+    },
+    "std.syntax.use@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/UseImport.emath"
+    },
+    "std.syntax_pack.scratch@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/CORE/ScratchSurface.emath"
+    },
+    "std.theory.field@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/THEORIES/FieldTheory.emath"
+    },
+    "std.theory.magma@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/THEORIES/MagmaTheory.emath"
+    },
+    "std.theory.monoid@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/THEORIES/MonoidTheory.emath"
+    },
+    "std.theory.ring@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/THEORIES/RingTheory.emath"
+    },
+    "std.theory.semiring@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/THEORIES/SemiringTheory.emath"
+    },
+    "std.theory.world@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/THEORIES/WorldTheory.emath"
+    },
+    "std.type.bigint@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/BigIntType.emath"
+    },
+    "std.type.bool@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/BoolType.emath"
+    },
+    "std.type.complex@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/ComplexType.emath"
+    },
+    "std.type.float64@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/Float64Type.emath"
+    },
+    "std.type.gf@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/PrimeFieldType.emath"
+    },
+    "std.type.int@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/IntType.emath"
+    },
+    "std.type.interval@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/IntervalType.emath"
+    },
+    "std.type.matrix@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/MatrixType.emath"
+    },
+    "std.type.meaning_hole@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/MeaningHoleType.emath"
+    },
+    "std.type.nat@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/NatType.emath"
+    },
+    "std.type.option@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/OptionType.emath"
+    },
+    "std.type.rational@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/RationalType.emath"
+    },
+    "std.type.result@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/ResultType.emath"
+    },
+    "std.type.tensor@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/TensorType.emath"
+    },
+    "std.type.vector@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/TYPES/VectorType.emath"
+    },
+    "std.world.exact.int@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/ExactIntegerWorld.emath"
+    },
+    "std.world.exact.prime_field@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/PrimeFieldWorld.emath"
+    },
+    "std.world.exact.rational@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/ExactRationalWorld.emath"
+    },
+    "std.world.finite.canonical@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/CanonicalFiniteWorld.emath"
+    },
+    "std.world.numeric.interval@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/IntervalWorld.emath"
+    },
+    "std.world.numeric.strict_f64@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/StrictFloatWorld.emath"
+    },
+    "std.world.performance.measured@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/MeasuredPerformanceWorld.emath"
+    },
+    "std.world.research.criterion@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/CriterionResearchWorld.emath"
+    },
+    "std.world.symbolic.free@1": {
+      "authority": "v19-prototype",
+      "source": "SPEC/WORLDS/FreeSymbolicWorld.emath"
+    }
+  },
+  "legacy_default": {
+    "authority": "legacy-reference",
+    "source": "language/reference/"
+  }
+}

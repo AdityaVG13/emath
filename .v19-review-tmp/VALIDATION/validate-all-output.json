@@ -1,0 +1,54 @@
+{
+  "status": "PASS",
+  "build": {
+    "features": 156,
+    "classes": {
+      "artifact": 12,
+      "binder": 7,
+      "capability": 19,
+      "diagnostic": 8,
+      "family": 5,
+      "field-pack": 5,
+      "instance": 4,
+      "kind": 19,
+      "lens": 3,
+      "method": 6,
+      "migration": 4,
+      "section": 15,
+      "symbol": 10,
+      "syntax": 8,
+      "syntax-pack": 1,
+      "theory": 6,
+      "type": 15,
+      "world": 9
+    },
+    "image_id": "sha256:5d6bda518ade3aadf96c89735f9e7029dab2d91e2f86e649cd1e40f4d89bdb43",
+    "edges": 163
+  },
+  "authority": {
+    "status": "PASS",
+    "features": 156,
+    "lock_status": "target example; feature authority has not been switched in the repository"
+  },
+  "gaps": {
+    "schema": "emath.v19.gap-report.v1",
+    "feature_specs": 156,
+    "prototype_features_missing_realization": 156,
+    "current_repo_gaps": 45,
+    "current_repo_gap_severity": {
+      "critical": 2,
+      "high": 27,
+      "medium": 16
+    },
+    "v16_catalog_entries": 1224,
+    "v16_promotion_status": {
+      "catalog-only": 1184,
+      "prototype-specified": 40
+    },
+    "spec_holes": 5
+  },
+  "conformance_cases": 8,
+  "orientation_feature": "std.kind.cipher@1",
+  "impact_features": 2,
+  "receipt_lint": "PASS"
+}

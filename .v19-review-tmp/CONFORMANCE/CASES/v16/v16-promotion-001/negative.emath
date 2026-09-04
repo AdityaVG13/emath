@@ -1,0 +1,7 @@
+use exact_algebra
+
+emath function NonUnit:
+    outputs:
+        y: GF<7>
+    definitions:
+        y = mod_inverse(0, 7)

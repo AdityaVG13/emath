@@ -1,0 +1,6 @@
+{
+  "kind": "std.kind.criterion@1",
+  "lower_to": "CriterionEdge",
+  "authority": "structural",
+  "artifact": "std.artifact.research_state@1"
+}

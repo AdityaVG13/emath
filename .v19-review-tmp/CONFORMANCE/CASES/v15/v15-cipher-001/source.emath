@@ -1,0 +1,12 @@
+use cryptology
+
+emath cipher Caesar:
+    inputs:
+        message: Text
+        key: GF<26>
+    definitions:
+        ciphertext = shift(message, key)
+        plaintext = shift(ciphertext, -key)
+    tests:
+        example:
+            expect plaintext == message

@@ -1,0 +1,20 @@
+emath spec FeatureName:
+    identity: "org.example.capability.feature@1"
+    class: "capability"
+    status: "proposed"
+    edition: 1
+    summary: "One exact semantic sentence."
+    dependencies: []
+    surface: {"role":"call","spellings":["feature"]}
+    canonical: {"lower_to":"CapabilityApplication","identity_fields":["capability","operands"]}
+    semantics: {"contract":"signature and mathematical meaning"}
+    exactness: {"policy":"exact|bounded|approximate|symbolic","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"reference-term|provider-only","target":"..."}
+    artifact: {"classes":["value","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: []
+    conformance: {"positive":[],"negative":[],"mutation":[]}
+    evolution: {"meaning_change":"new major or migration"}
+    agent: {"owner":"...","read":[],"edit":[],"hazards":[]}

@@ -1,0 +1,6 @@
+{
+  "kind": "std.kind.cipher@1",
+  "canonical_spelling": "cipher",
+  "lower_to": "HiddenStateSystem",
+  "alias": "cypher"
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "emath.task-capsule.v1",
+  "task_id": "",
+  "goal": "",
+  "non_goals": [],
+  "features": [],
+  "baseline": {},
+  "allowed_files": [],
+  "forbidden_files": [],
+  "required_projections": [],
+  "read_order": [],
+  "commands": [],
+  "acceptance": [],
+  "human_decisions": [],
+  "rollback": ""
+}

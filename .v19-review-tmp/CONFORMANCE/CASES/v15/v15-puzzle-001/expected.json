@@ -1,0 +1,5 @@
+{
+  "kind": "std.kind.puzzle@1",
+  "lower_to": "ConstraintProblem",
+  "artifact": "std.artifact.world_portfolio@1"
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "emath.conformance-case.v1",
+  "id": "v18-criterion-001",
+  "features": [
+    "std.kind.criterion@1",
+    "std.field_pack.conjecture_dynamics@1",
+    "std.artifact.research_state@1"
+  ],
+  "positive_source": "source.emath",
+  "negative_source": "negative.emath",
+  "expected": "expected.json",
+  "expected_diagnostic": "E-ARTIFACT-OVERCLAIM",
+  "projections": [
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "worlds",
+    "artifact",
+    "diagnostics"
+  ],
+  "golden_change_authority": "ELP + FeatureID decision"
+}

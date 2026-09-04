@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Projection Closure",
+  "type": "object",
+  "required": [
+    "schema",
+    "feature_id",
+    "required",
+    "present",
+    "missing",
+    "status"
+  ]
+}

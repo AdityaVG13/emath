@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Change Receipt",
+  "type": "object",
+  "required": [
+    "schema",
+    "receipt_id",
+    "baseline",
+    "features",
+    "files",
+    "commands",
+    "gates",
+    "decisions",
+    "new_holes",
+    "rollback"
+  ]
+}

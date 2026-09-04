@@ -1,0 +1,11 @@
+[package]
+name = "emath-agent-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+emath-language-model = { path = "../emath-language-model" }
+
+[lints]
+workspace = true

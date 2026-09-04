@@ -1,0 +1,9 @@
+use exact_algebra
+
+emath function Inverse:
+    inputs:
+        x: GF<7>
+    outputs:
+        y: GF<7>
+    definitions:
+        y = mod_inverse(x, 7)

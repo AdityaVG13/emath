@@ -1,0 +1,69 @@
+{
+  "schema": "emath.context-capsule.v1",
+  "feature": "std.kind.cipher@1",
+  "baseline": {
+    "repo_commit": "ffec253ab08e7a40d260798f348634e522a18e66",
+    "language_image": "sha256:5d6bda518ade3aadf96c89735f9e7029dab2d91e2f86e649cd1e40f4d89bdb43"
+  },
+  "authority": {
+    "spec_hash": "8127839df84924a96e17c369b171c41826e0a3e1c9878e99c309039af62d2d49",
+    "path": "SPEC/KINDS/CipherKind.emath",
+    "status": "proposed"
+  },
+  "summary": "Defines message/key types, encrypt/decrypt, correctness, security, and providers.",
+  "dependency_closure": [
+    "std.kind.cipher@1",
+    "std.syntax.declaration.generic@1",
+    "std.syntax.section.generic@1",
+    "std.syntax.source@1"
+  ],
+  "reverse_impact": [
+    "std.field_pack.cryptology@1"
+  ],
+  "read_order": [
+    "SPEC/KINDS/CipherKind.emath",
+    "SPEC/CORE/GenericDeclaration.emath",
+    "SPEC/CORE/GenericSection.emath",
+    "SPEC/CORE/CoreSource.emath",
+    "SYSTEM/02_FEATURE_CAPSULE.md",
+    "SYSTEM/07_PROJECTION_CLOSURE.md",
+    "CONFORMANCE/README.md"
+  ],
+  "owner": "emath-schema",
+  "allowed_edit_categories": [
+    "normative capsule",
+    "owner implementation",
+    "targeted tests"
+  ],
+  "required_projections": [
+    "identity",
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "reference",
+    "worlds",
+    "execution",
+    "artifact",
+    "diagnostics",
+    "documentation",
+    "tooling",
+    "conformance",
+    "migration",
+    "agent-view"
+  ],
+  "gates": [
+    "spec parse",
+    "dependency closure",
+    "positive",
+    "negative",
+    "mutation/differential",
+    "generated freshness"
+  ],
+  "hazards": [
+    "no parser branch",
+    "bounded lowering",
+    "canonical aliases"
+  ],
+  "next_command": "python tools/validate_all.py"
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "emath.spec-holes.v1",
+  "holes": [
+    {
+      "id": "SPEC-HOLE-001",
+      "question": "How quickly should legacy reference prose become generated?",
+      "affected": [
+        "reference migration"
+      ],
+      "alternatives": [
+        "feature-scoped gradual",
+        "one-time freeze"
+      ],
+      "blocking": "migration policy",
+      "owner": "language governance"
+    },
+    {
+      "id": "SPEC-HOLE-002",
+      "question": "What token distinction should permanently separate definition from mutation/assignment?",
+      "affected": [
+        "std.symbol.definition@1"
+      ],
+      "alternatives": [
+        "contextual equals",
+        "dedicated definition token"
+      ],
+      "blocking": "self-hosted stable constitution",
+      "owner": "ELP decision"
+    },
+    {
+      "id": "SPEC-HOLE-003",
+      "question": "When do user-defined worlds leave the experimental lane?",
+      "affected": [
+        "std.kind.world@1"
+      ],
+      "alternatives": [
+        "experimental bounded worlds",
+        "stable declarative worlds"
+      ],
+      "blocking": "world authoring stability",
+      "owner": "world architecture"
+    },
+    {
+      "id": "SPEC-HOLE-004",
+      "question": "Must bootstrap images be byte-identical or semantically identical after excluding declared metadata?",
+      "affected": [
+        "Language Image"
+      ],
+      "alternatives": [
+        "byte identity",
+        "semantic identity"
+      ],
+      "blocking": "fixed-point gate",
+      "owner": "language compiler"
+    },
+    {
+      "id": "SPEC-HOLE-005",
+      "question": "Which current domain productions remain Stage-0 core versus edition-migrated syntax packs?",
+      "affected": [
+        "reaction",
+        "table",
+        "nabla",
+        "braket",
+        "graph literal"
+      ],
+      "alternatives": [
+        "edition migration",
+        "compatibility shim",
+        "retain cross-domain literal"
+      ],
+      "blocking": "core contraction",
+      "owner": "syntax governance"
+    }
+  ]
+}

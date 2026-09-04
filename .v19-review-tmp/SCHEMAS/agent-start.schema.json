@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent Start",
+  "type": "object",
+  "required": [
+    "schema",
+    "repo_baseline",
+    "authority_order",
+    "commands",
+    "invariants",
+    "context_budgets"
+  ]
+}

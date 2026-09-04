@@ -1,0 +1,1060 @@
+{
+  "schema": "emath.surface-registry.v1",
+  "rows": [
+    {
+      "feature_id": "std.binder.exists@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "exists x in domain if guard: body",
+        "spellings": [
+          "exists"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.binder.forall@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "forall x in domain if guard: body",
+        "spellings": [
+          "forall"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.binder.integral@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "integral x in domain if guard: body",
+        "spellings": [
+          "integral"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.binder.limit@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "limit x in domain if guard: body",
+        "spellings": [
+          "limit"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.binder.product@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "product x in domain if guard: body",
+        "spellings": [
+          "product"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.binder.series@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "series x in domain if guard: body",
+        "spellings": [
+          "series"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.binder.sum@1",
+      "class": "binder",
+      "surface": {
+        "role": "binder",
+        "form": "sum x in domain if guard: body",
+        "spellings": [
+          "sum"
+        ],
+        "scope": [
+          "guard",
+          "body"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.aggregate.product@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "product"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.aggregate.sum@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "sum"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.analysis.integral@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "integral"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.analysis.limit@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "limit"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.analysis.series@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "series"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.coding.rs_encode@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "rs_encode"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.evidence.check@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "check"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.field.mod_inverse@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "mod_inverse"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.field.mod_power@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "mod_power"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.goal.solve@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "solve"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.logic.exists@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "exists"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.logic.forall@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "forall"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.logic.implies@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "implies"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.math.add@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "add"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.math.divide@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "divide"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.math.multiply@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "multiply"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.math.power@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "power"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.math.subtract@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "subtract"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.capability.tensor.softmax@1",
+      "class": "capability",
+      "surface": {
+        "role": "call-or-operator",
+        "spellings": [
+          "softmax"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.artifact.overclaim@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-ARTIFACT-OVERCLAIM"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.authority.dual@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-AUTHORITY-DUAL"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.exactness.loss@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-EXACTNESS-LOSS"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.projection.missing@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-PROJECTION-MISSING"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.section.invalid@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-SECTION-INVALID"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.spec_hole.blocking@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-SPEC-HOLE"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.symbol.unresolved@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-SYMBOL-UNRESOLVED"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.diagnostic.world.unsupported@1",
+      "class": "diagnostic",
+      "surface": {
+        "role": "diagnostic",
+        "spellings": [
+          "E-WORLD-UNSUPPORTED"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.capability@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath capability Name: suite",
+        "spellings": [
+          "capability"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.cipher@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath cipher Name: suite",
+        "spellings": [
+          "cipher",
+          "cypher"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.code@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath code Name: suite",
+        "spellings": [
+          "code"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.criterion@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath criterion Name: suite",
+        "spellings": [
+          "criterion"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.custom@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath custom Name: suite",
+        "spellings": [
+          "custom"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.family@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath family Name: suite",
+        "spellings": [
+          "family"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.field_pack@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath field_pack Name: suite",
+        "spellings": [
+          "field_pack"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.frontier@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath frontier Name: suite",
+        "spellings": [
+          "frontier"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.function@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath function Name: suite",
+        "spellings": [
+          "function"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.instance@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath instance Name: suite",
+        "spellings": [
+          "instance"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.kind@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath kind Name: suite",
+        "spellings": [
+          "kind"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.method@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath method Name: suite",
+        "spellings": [
+          "method"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.model@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath model Name: suite",
+        "spellings": [
+          "model"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.performance_campaign@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath campaign Name: suite",
+        "spellings": [
+          "campaign"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.policy@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath policy Name: suite",
+        "spellings": [
+          "policy"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.protocol@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath protocol Name: suite",
+        "spellings": [
+          "protocol"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.puzzle@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath puzzle Name: suite",
+        "spellings": [
+          "puzzle"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.theory@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath theory Name: suite",
+        "spellings": [
+          "theory"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.kind.world@1",
+      "class": "kind",
+      "surface": {
+        "role": "item-kind",
+        "form": "emath world Name: suite",
+        "spellings": [
+          "world"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.budget@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "budget: suite",
+        "spellings": [
+          "budget"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.compile@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "compile: suite",
+        "spellings": [
+          "compile"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.constraints@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "constraints: suite",
+        "spellings": [
+          "constraints"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.constructors@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "constructors: suite",
+        "spellings": [
+          "constructors"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.definitions@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "definitions: suite",
+        "spellings": [
+          "definitions"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.equations@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "equations: suite",
+        "spellings": [
+          "equations"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.evidence@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "evidence: suite",
+        "spellings": [
+          "evidence"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.goals@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "goals: suite",
+        "spellings": [
+          "goals"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.inputs@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "inputs: suite",
+        "spellings": [
+          "inputs"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.methods@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "methods: suite",
+        "spellings": [
+          "methods"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.outputs@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "outputs: suite",
+        "spellings": [
+          "outputs"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.provenance@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "provenance: suite",
+        "spellings": [
+          "provenance"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.state@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "state: suite",
+        "spellings": [
+          "state"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.tests@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "tests: suite",
+        "spellings": [
+          "tests"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.section.worlds@1",
+      "class": "section",
+      "surface": {
+        "role": "section-head",
+        "form": "worlds: suite",
+        "spellings": [
+          "worlds"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.symbol.definition@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "="
+        ],
+        "fixity": "contextual",
+        "precedence": 10,
+        "associativity": "contextual",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.equality.approx@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "~="
+        ],
+        "fixity": "infix",
+        "precedence": 20,
+        "associativity": "infix",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.equality.exact@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "=="
+        ],
+        "fixity": "infix",
+        "precedence": 20,
+        "associativity": "infix",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.logic.implies@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "==>"
+        ],
+        "fixity": "infixr",
+        "precedence": 15,
+        "associativity": "infixr",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.math.add@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "+"
+        ],
+        "fixity": "infixl",
+        "precedence": 60,
+        "associativity": "infixl",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.math.divide@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "/"
+        ],
+        "fixity": "infixl",
+        "precedence": 70,
+        "associativity": "infixl",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.math.multiply@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "*"
+        ],
+        "fixity": "infixl",
+        "precedence": 70,
+        "associativity": "infixl",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.math.power@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "^"
+        ],
+        "fixity": "infixr",
+        "precedence": 80,
+        "associativity": "infixr",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.math.subtract@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "-"
+        ],
+        "fixity": "infixl",
+        "precedence": 60,
+        "associativity": "infixl",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.symbol.membership@1",
+      "class": "symbol",
+      "surface": {
+        "role": "operator",
+        "spellings": [
+          "in"
+        ],
+        "fixity": "infix",
+        "precedence": 40,
+        "associativity": "infix",
+        "confusable_class": "registry-required"
+      }
+    },
+    {
+      "feature_id": "std.type.bigint@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "BigInt",
+        "spellings": [
+          "BigInt"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.bool@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Bool",
+        "spellings": [
+          "Bool"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.complex@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Complex<T>",
+        "spellings": [
+          "Complex"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.float64@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Float64",
+        "spellings": [
+          "Float64"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.gf@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "GF<p>",
+        "spellings": [
+          "GF"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.int@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Int",
+        "spellings": [
+          "Int"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.interval@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Interval<T>",
+        "spellings": [
+          "Interval"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.matrix@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Matrix<T,r,c>",
+        "spellings": [
+          "Matrix"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.meaning_hole@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "MeaningHole<K>",
+        "spellings": [
+          "MeaningHole"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.nat@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Nat",
+        "spellings": [
+          "Nat"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.option@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Option<T>",
+        "spellings": [
+          "Option"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.rational@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Rational",
+        "spellings": [
+          "Rational"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.result@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Result<T,E>",
+        "spellings": [
+          "Result"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.tensor@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Tensor<T,shape>",
+        "spellings": [
+          "Tensor"
+        ]
+      }
+    },
+    {
+      "feature_id": "std.type.vector@1",
+      "class": "type",
+      "surface": {
+        "role": "type-expression",
+        "form": "Vector<T,n>",
+        "spellings": [
+          "Vector"
+        ]
+      }
+    }
+  ]
+}

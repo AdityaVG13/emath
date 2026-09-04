@@ -1,0 +1,789 @@
+{
+  "schema": "emath.language-lock.v1",
+  "image_id": "sha256:5d6bda518ade3aadf96c89735f9e7029dab2d91e2f86e649cd1e40f4d89bdb43",
+  "features": {
+    "std.artifact.cargo@1": {
+      "spec_hash": "5bc267a8fd98b0a773d77d2fe0b4fc943194f33e92a6832a567a7febdeab6a67",
+      "path": "SPEC/ARTIFACTS/CargoArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.certificate@1": {
+      "spec_hash": "2edbee257ac3969be258bb556cb02acf9cd6b6aacecb1a12fabc1b2c7a565ad3",
+      "path": "SPEC/ARTIFACTS/CertificateArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.continuation@1": {
+      "spec_hash": "d27921ca082b6c96079423b34d058705e36a35df3632ade2974a59496048c00e",
+      "path": "SPEC/ARTIFACTS/ContinuationArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.diagnostic@1": {
+      "spec_hash": "f07670c070b5b23a7a4071a3a80693d9a4a6381c2fb5c809375c2419bdd57875",
+      "path": "SPEC/ARTIFACTS/DiagnosticArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.experiment@1": {
+      "spec_hash": "c87eeb98fd194e1c75ebd9c3108cd2998edbd6825d74430540f9c991bf2e065b",
+      "path": "SPEC/ARTIFACTS/ExperimentArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.proof_obligation@1": {
+      "spec_hash": "d2947b3ef65075471f374efc9e068facad7183c025a182d935054bfe5e0ff707",
+      "path": "SPEC/ARTIFACTS/ProofObligationArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.research_state@1": {
+      "spec_hash": "e3ce1e6b1ca39ec7895568263453ba7b504a3bc7e157e45226e567bd6fbbb45a",
+      "path": "SPEC/ARTIFACTS/ResearchStateArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.source@1": {
+      "spec_hash": "d0851e9a0118ff777809b91ca35ff3e90bb4be15373855b45771f2dddf87ac6f",
+      "path": "SPEC/ARTIFACTS/SourceArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.symbolic@1": {
+      "spec_hash": "3f3b74467fd3b5a0e0f41b4c264fa3748a07fc58607a26f0b2dc9c01601ba414",
+      "path": "SPEC/ARTIFACTS/SymbolicArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.value@1": {
+      "spec_hash": "8bba4f5e4f707c809051d2d8f160fcc4cc7e7a5a40d61cf5071d1087c8ad0764",
+      "path": "SPEC/ARTIFACTS/ValueArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.wasm@1": {
+      "spec_hash": "9eab4a1fe799a0dbb0af0a22ddf67f5485543698ffe8cc278c683e2adbb693ca",
+      "path": "SPEC/ARTIFACTS/WasmArtifact.emath",
+      "status": "proposed"
+    },
+    "std.artifact.world_portfolio@1": {
+      "spec_hash": "96a7a9b63729bc9a9286a5c24cb004c19be0222c469168db39eab8d6fa50b69c",
+      "path": "SPEC/ARTIFACTS/WorldPortfolioArtifact.emath",
+      "status": "proposed"
+    },
+    "std.binder.exists@1": {
+      "spec_hash": "09dfe2872a2447620bd252ab1639308b130f8a168bfb137eb417b274082c9f8f",
+      "path": "SPEC/BINDERS/ExistsBinder.emath",
+      "status": "proposed"
+    },
+    "std.binder.forall@1": {
+      "spec_hash": "a6437623697bc59c86c9548a540f1c003b2788e1323415f471679802b09f6a0e",
+      "path": "SPEC/BINDERS/ForallBinder.emath",
+      "status": "proposed"
+    },
+    "std.binder.integral@1": {
+      "spec_hash": "c20dbac4e37e0f7347f6e2d48d588218ffcf103dda4e49a87a08c94a2470cd6f",
+      "path": "SPEC/BINDERS/IntegralBinder.emath",
+      "status": "proposed"
+    },
+    "std.binder.limit@1": {
+      "spec_hash": "ba9dad739aa1108f3b3758f02518f4ae4be00099c163ccf67fd09e3a0faad8c8",
+      "path": "SPEC/BINDERS/LimitBinder.emath",
+      "status": "proposed"
+    },
+    "std.binder.product@1": {
+      "spec_hash": "14beee5a3db71bb0ec5c5bba312289592b91f38d808863b9789ef948512841bf",
+      "path": "SPEC/BINDERS/ProductBinder.emath",
+      "status": "proposed"
+    },
+    "std.binder.series@1": {
+      "spec_hash": "2bb93777eb517175d96e77edca7d5a354dde2cdc337809c922074f075a610d39",
+      "path": "SPEC/BINDERS/SeriesBinder.emath",
+      "status": "proposed"
+    },
+    "std.binder.sum@1": {
+      "spec_hash": "d2d419bb56707b54a18f99f26e0f5dd9c40bc38949c3307a83f7af362c1f5163",
+      "path": "SPEC/BINDERS/SumBinder.emath",
+      "status": "proposed"
+    },
+    "std.capability.aggregate.product@1": {
+      "spec_hash": "ede1a2a629c03d35aa818ec252c3c6b27993e8f569663a43033c044d00fd1017",
+      "path": "SPEC/CAPABILITIES/ProductCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.aggregate.sum@1": {
+      "spec_hash": "b88bf15b69e49235ab36a2cc75cdb9540e9900b8ce198c928a2675132589dab9",
+      "path": "SPEC/CAPABILITIES/SumCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.analysis.integral@1": {
+      "spec_hash": "3372c4f9b7eb4de641d1f42586ed4b5502e725b1fae209e1f501ac0193fcd103",
+      "path": "SPEC/CAPABILITIES/IntegralCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.analysis.limit@1": {
+      "spec_hash": "27adb63f40e852d754896e523470b5dfdbb2d8462100849972cbe762b5998d36",
+      "path": "SPEC/CAPABILITIES/LimitCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.analysis.series@1": {
+      "spec_hash": "4057151689aa1ba37e4d33eeddb49995265f1a0aee693dd88cfde4588dfd191f",
+      "path": "SPEC/CAPABILITIES/SeriesCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.coding.rs_encode@1": {
+      "spec_hash": "8e5a49cd5adc202b690a88dd50f08a639ffec2bb03aff0189423ce8423247c34",
+      "path": "SPEC/CAPABILITIES/RSEncodeCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.evidence.check@1": {
+      "spec_hash": "9735506628e26d5e63cd3fb3758c0e80a01aa0e3a72a6656621eeadca27138a2",
+      "path": "SPEC/CAPABILITIES/EvidenceCheckCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.field.mod_inverse@1": {
+      "spec_hash": "0803a44f860c0ed2d99315b4f0b543d270db413f79946db16932526e4f82075d",
+      "path": "SPEC/CAPABILITIES/ModInverseCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.field.mod_power@1": {
+      "spec_hash": "71ca9c46db44f1fb56e9f0b5213864cb3b7f22a25496b86845e671bd142b5421",
+      "path": "SPEC/CAPABILITIES/ModPowerCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.goal.solve@1": {
+      "spec_hash": "78e2b6bc2058ee816daf4368f37577c47c021758159c421e92e8e892981be0aa",
+      "path": "SPEC/CAPABILITIES/SolveGoalCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.logic.exists@1": {
+      "spec_hash": "7ad33f5998e55e1e09228fdef22e7a45a32e3cc186275c1062b9617da029cef4",
+      "path": "SPEC/CAPABILITIES/ExistsCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.logic.forall@1": {
+      "spec_hash": "93cdc19684f588afc09a5659f8afc0594707b0c04ba1a61e4c4cedaed2124072",
+      "path": "SPEC/CAPABILITIES/ForallCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.logic.implies@1": {
+      "spec_hash": "e1a63ada270a6037f06b41940ae40606ff35f5b13aba4742fd8f9d0d6d83d07b",
+      "path": "SPEC/CAPABILITIES/ImpliesCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.math.add@1": {
+      "spec_hash": "e757408f7e6a39f67e8e244875f9beb7cc313075fb7538a4de64dd5bb67564a5",
+      "path": "SPEC/CAPABILITIES/AddCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.math.divide@1": {
+      "spec_hash": "82c661ade39beac4125545287a2530e2ace9c9db0dd1261e8da7c68bf653231b",
+      "path": "SPEC/CAPABILITIES/DivideCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.math.multiply@1": {
+      "spec_hash": "bff020cb8a3817e36b25768848c6e466173d8e5781de433b7dd03e48a4a5045d",
+      "path": "SPEC/CAPABILITIES/MultiplyCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.math.power@1": {
+      "spec_hash": "796869b0e6cabc555e310644c4dd4c259ff983813df568f8abc17c6ad2520d6e",
+      "path": "SPEC/CAPABILITIES/PowerCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.math.subtract@1": {
+      "spec_hash": "bf1d461a39ac448209dbc0ca2d8ac6e21afd46aa28d47733d7c0519cf2425516",
+      "path": "SPEC/CAPABILITIES/SubtractCapability.emath",
+      "status": "proposed"
+    },
+    "std.capability.tensor.softmax@1": {
+      "spec_hash": "00f785b087092f0d641bb18633686ad81b0d464f83bc9352fc8381c8acf46a18",
+      "path": "SPEC/CAPABILITIES/SoftmaxCapability.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.artifact.overclaim@1": {
+      "spec_hash": "8f691a95762e734b9f95bf77da4bfcc8bb59adefd6f380ec0dfc6e39d93f641d",
+      "path": "SPEC/DIAGNOSTICS/ArtifactOverclaim.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.authority.dual@1": {
+      "spec_hash": "a6312151664099a62eac43f5727b0bc8a280ed2471a6b45a0db2e3d99f27cb50",
+      "path": "SPEC/DIAGNOSTICS/DualAuthority.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.exactness.loss@1": {
+      "spec_hash": "bffaae91570326788015f18c0512bb535d82c6362c1c64b1047f8a21352e80a6",
+      "path": "SPEC/DIAGNOSTICS/ExactnessLoss.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.projection.missing@1": {
+      "spec_hash": "3fdb66195492abdae91083801dff4deb1826c12073e1759a7902275a1620dbbb",
+      "path": "SPEC/DIAGNOSTICS/MissingProjection.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.section.invalid@1": {
+      "spec_hash": "a74d782f6ee2ea39141c6fa0c5c7f5ad0fab7d5479b4ab9131314a52f1a6c230",
+      "path": "SPEC/DIAGNOSTICS/InvalidSection.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.spec_hole.blocking@1": {
+      "spec_hash": "4cf95861332de91a2912f0014c45e82c3454504e6ccd48c468337fc998d84e26",
+      "path": "SPEC/DIAGNOSTICS/BlockingSpecHole.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.symbol.unresolved@1": {
+      "spec_hash": "bff7983e5fc9b869751d43f7f64c6a3884dd6f602680180003585215eacdbbaa",
+      "path": "SPEC/DIAGNOSTICS/UnresolvedSymbol.emath",
+      "status": "proposed"
+    },
+    "std.diagnostic.world.unsupported@1": {
+      "spec_hash": "555c66596baff15cd874f019e06be11cb84d7ab32bfb7cc334bea32b7789f6ec",
+      "path": "SPEC/DIAGNOSTICS/WorldUnsupported.emath",
+      "status": "proposed"
+    },
+    "std.family.constraint_puzzle@1": {
+      "spec_hash": "a7d9892cbc79d013d9777ed84f138542f75a4bbf8dd6d92d2b9bc15e4354972d",
+      "path": "SPEC/FAMILIES/ConstraintPuzzleFamily.emath",
+      "status": "proposed"
+    },
+    "std.family.criterion_edge@1": {
+      "spec_hash": "f7c01f90cebc186c4d72d4ae50087b318009fbbe7496bcff5bb6f15c68bb0bf5",
+      "path": "SPEC/FAMILIES/CriterionEdgeFamily.emath",
+      "status": "proposed"
+    },
+    "std.family.elementwise_unary@1": {
+      "spec_hash": "69d7115e7aa09fa88fc55967b460a714a3f7ec1da60e2d09ff73bca0c8f3a76d",
+      "path": "SPEC/FAMILIES/ElementwiseUnaryFamily.emath",
+      "status": "proposed"
+    },
+    "std.family.execution_transform@1": {
+      "spec_hash": "05ed34b77701872e528a55159bdd083375c5f493c953ff90de1172830f8e8988",
+      "path": "SPEC/FAMILIES/ExecutionTransformFamily.emath",
+      "status": "proposed"
+    },
+    "std.family.finite_cipher@1": {
+      "spec_hash": "9bc38d1f3300127d9a3607a9a59f6b4ee045345cd024d9408e67ca2dc6604725",
+      "path": "SPEC/FAMILIES/FiniteCipherFamily.emath",
+      "status": "proposed"
+    },
+    "std.field_pack.conjecture_dynamics@1": {
+      "spec_hash": "39983985ff036d63d99f0e324660d09d910ea43cc047cae0f570851eda0c58d6",
+      "path": "SPEC/FIELD_PACKS/ConjectureDynamicsPack.emath",
+      "status": "proposed"
+    },
+    "std.field_pack.core@1": {
+      "spec_hash": "53f4a17d0d3c2718e141d9817d6cf7faaaa36f8c5b756f3f990bb385f0eddd2b",
+      "path": "SPEC/FIELD_PACKS/CorePack.emath",
+      "status": "proposed"
+    },
+    "std.field_pack.cryptology@1": {
+      "spec_hash": "73c3fe484dfdda5f933600845c6ac40b5687c97d01a695841951b4104cec7a94",
+      "path": "SPEC/FIELD_PACKS/CryptologyPack.emath",
+      "status": "proposed"
+    },
+    "std.field_pack.exact_algebra@1": {
+      "spec_hash": "9d03010c4569ef8eb591c1f3ac97c89ff1bba754493bb5209d874710a494989f",
+      "path": "SPEC/FIELD_PACKS/ExactAlgebraPack.emath",
+      "status": "proposed"
+    },
+    "std.field_pack.execution_dynamics@1": {
+      "spec_hash": "3165e6fd8be7d98c62762eb7f006fc2acab1f23609b57c9eb751d5e2756f2ad4",
+      "path": "SPEC/FIELD_PACKS/ExecutionDynamicsPack.emath",
+      "status": "proposed"
+    },
+    "std.instance.gf.field@1": {
+      "spec_hash": "ee2423f4522d83e84811abab1c50e54e9661a6a482a3a35bf262da02f6929176",
+      "path": "SPEC/INSTANCES/PrimeFieldInstance.emath",
+      "status": "proposed"
+    },
+    "std.instance.int.add_monoid@1": {
+      "spec_hash": "0e7db943604159f82d65d7d2a1e241aa874e544362dab7b6dfc52d452d3b205c",
+      "path": "SPEC/INSTANCES/IntAddMonoid.emath",
+      "status": "proposed"
+    },
+    "std.instance.int.ring@1": {
+      "spec_hash": "b43c14fb9cebff475b9c10610c77c6f946afb1a35a204c1b1ca820289dd4d890",
+      "path": "SPEC/INSTANCES/IntRing.emath",
+      "status": "proposed"
+    },
+    "std.instance.matrix.mul_monoid@1": {
+      "spec_hash": "ee9bd65b8cbb81592b6e0a716fe0bf43a70f25b05963460d55e3bfa99c2f22b9",
+      "path": "SPEC/INSTANCES/MatrixMulMonoid.emath",
+      "status": "proposed"
+    },
+    "std.kind.capability@1": {
+      "spec_hash": "41e937450ec7bee5d4c9c3fcc6f4c53eeaa7924aaa381e6ed959661923983609",
+      "path": "SPEC/KINDS/CapabilityKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.cipher@1": {
+      "spec_hash": "8127839df84924a96e17c369b171c41826e0a3e1c9878e99c309039af62d2d49",
+      "path": "SPEC/KINDS/CipherKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.code@1": {
+      "spec_hash": "9ead40d1e709306ee41cec0394d1257b80d4051845af7d9aa90019b4201372c5",
+      "path": "SPEC/KINDS/CodeKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.criterion@1": {
+      "spec_hash": "f1fa0a70206956d960b3806dcaaa81229c96f24cde1c22fb728e768d1938181c",
+      "path": "SPEC/KINDS/CriterionKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.custom@1": {
+      "spec_hash": "cec9625142980bcea0f0792d7d190548523737b501fcb85df64a49f6905ba90c",
+      "path": "SPEC/KINDS/CustomKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.family@1": {
+      "spec_hash": "7b2bac61588e1b132fc2bddfd6f96fc1586a56b2354c9eedf9ebcf348774886c",
+      "path": "SPEC/KINDS/FamilyKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.field_pack@1": {
+      "spec_hash": "b014a6487a0a818a9355f3e8d96882f08835016493846da3b70c0d1f9edb5948",
+      "path": "SPEC/KINDS/FieldPackKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.frontier@1": {
+      "spec_hash": "5fca43967065f916bd955ee13a576ca55af31d88ea42b5df54f007520f360bfa",
+      "path": "SPEC/KINDS/FrontierKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.function@1": {
+      "spec_hash": "edf28e933c239f2b8929a5da38dd5e392e048a94652b1c44a5ead5768008b715",
+      "path": "SPEC/KINDS/FunctionKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.instance@1": {
+      "spec_hash": "a0cf28af4294bed6063f523bf78d36528e2320ee2bccf456550f79710c7b8d01",
+      "path": "SPEC/KINDS/InstanceKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.kind@1": {
+      "spec_hash": "c3afaf4fca0e5692e551eb250ec887d7e7bb3681e841b3e72f22ad093a94d269",
+      "path": "SPEC/KINDS/KindDefinition.emath",
+      "status": "proposed"
+    },
+    "std.kind.method@1": {
+      "spec_hash": "76ed71448e8220cca384327b8b452fb2867ccdf6324c2988a1735e90af147b30",
+      "path": "SPEC/KINDS/MethodKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.model@1": {
+      "spec_hash": "17d9bd87a7169a55f69c101d871470fd4e3fc93c742757781106cec2fe944f71",
+      "path": "SPEC/KINDS/ModelKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.performance_campaign@1": {
+      "spec_hash": "692f8c490d33ff210256803d00ca8fe68635004415233ee025af54426b7d6743",
+      "path": "SPEC/KINDS/PerformanceCampaignKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.policy@1": {
+      "spec_hash": "daac4c3885c6ae67f423c6594c1ada7267e84e70dc6cf8c12706b37c37f08088",
+      "path": "SPEC/KINDS/PolicyKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.protocol@1": {
+      "spec_hash": "5789562db43b53ebc27a73a3986c0308d675334dd1c75282a306e161255ab4c0",
+      "path": "SPEC/KINDS/ProtocolKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.puzzle@1": {
+      "spec_hash": "0ee91f25f7a01e7e99bf9e8908e82971d6e09684944cc77b20f707ed7ae48937",
+      "path": "SPEC/KINDS/PuzzleKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.theory@1": {
+      "spec_hash": "1932bb1c96db87f8f2bc2e125e18047c04c21cdd19b5f261171230ffde69af6e",
+      "path": "SPEC/KINDS/TheoryKind.emath",
+      "status": "proposed"
+    },
+    "std.kind.world@1": {
+      "spec_hash": "9a7b41b6119f4201998c8bf7c9feffb7221f3f61b112f753c1e83be6ba6fa8de",
+      "path": "SPEC/KINDS/WorldKind.emath",
+      "status": "proposed"
+    },
+    "std.lens.agent@1": {
+      "spec_hash": "8d9ea50f856487f665aacd1c0736c20c82487731d76f6f8b3019d141622a8a43",
+      "path": "SPEC/LENSES/AgentLens.emath",
+      "status": "proposed"
+    },
+    "std.lens.formal@1": {
+      "spec_hash": "dfb173ae89c413e7ee1b0624e934fb4134ccbfef76c6f068a158071cf6dac138",
+      "path": "SPEC/LENSES/FormalLens.emath",
+      "status": "proposed"
+    },
+    "std.lens.user@1": {
+      "spec_hash": "d043822fa9bc2a452b4b34a993a0c7b77b30cfc6dde989bc89c0e4c4cab34b70",
+      "path": "SPEC/LENSES/UserLens.emath",
+      "status": "proposed"
+    },
+    "std.method.measure.paired@1": {
+      "spec_hash": "cdb5ef9c56734a4dea92279e9eb1ec4e9e7ac023433206aa0d455ff7a594fde2",
+      "path": "SPEC/METHODS/PairedBenchmarkMethod.emath",
+      "status": "proposed"
+    },
+    "std.method.proof.external@1": {
+      "spec_hash": "10726be26dcc4cfa0ef621d7abfdcd236badc19afa20a9643f8eef06a08f69da",
+      "path": "SPEC/METHODS/ProofProviderMethod.emath",
+      "status": "proposed"
+    },
+    "std.method.research.counterexample@1": {
+      "spec_hash": "4280f91b2f5fa6008e550fa8c52bfb62db41b71723c6c7b5798078eee178fd8c",
+      "path": "SPEC/METHODS/CounterexampleSearchMethod.emath",
+      "status": "proposed"
+    },
+    "std.method.search.exhaustive@1": {
+      "spec_hash": "3ccbfea2d48041a687335fba83554e4e4f162e98a7da5a5e5d5979ad6b46441c",
+      "path": "SPEC/METHODS/ExhaustiveFiniteSearch.emath",
+      "status": "proposed"
+    },
+    "std.method.solve.newton@1": {
+      "spec_hash": "447941eb4f6a21b394180d404dc880afd1aa1ea13813202183e4e54a3b36a4e2",
+      "path": "SPEC/METHODS/NewtonMethod.emath",
+      "status": "proposed"
+    },
+    "std.method.world.portfolio@1": {
+      "spec_hash": "f3444313cf8e6a49ea99ad6e8f85eec957eb6f94af820544963b2b8e87a2cfe4",
+      "path": "SPEC/METHODS/WorldPortfolioMethod.emath",
+      "status": "proposed"
+    },
+    "std.migration.capability_manual_to_generated@1": {
+      "spec_hash": "c3d20c7162cf8f7e3a829fe527db05a832c578b0751e9912e783f9cd0b183755",
+      "path": "SPEC/MIGRATIONS/CapabilityManualToGenerated.emath",
+      "status": "proposed"
+    },
+    "std.migration.cypher_to_cipher@1": {
+      "spec_hash": "e773ef55b4449881314b859e6b5fa6174217eca7d5022a9fc7f3a6eb82d1711c",
+      "path": "SPEC/MIGRATIONS/CypherToCipher.emath",
+      "status": "proposed"
+    },
+    "std.migration.domain_grammar_to_pack@1": {
+      "spec_hash": "52e6c99d1a2a8f3d99650160bf68bb4a5caaf69f8a0085148a67c5d6e238a91e",
+      "path": "SPEC/MIGRATIONS/DomainGrammarToPack.emath",
+      "status": "proposed"
+    },
+    "std.migration.reference_to_capsule@1": {
+      "spec_hash": "76124137302de41dcef92c881c93dac241deb9aa5aa2483cdb8961a18728b311",
+      "path": "SPEC/MIGRATIONS/LegacyReferenceToCapsule.emath",
+      "status": "proposed"
+    },
+    "std.section.budget@1": {
+      "spec_hash": "e643bf03373da70cd9ba8b4e5db5ee7481debef1b0f3d0969988cb7c43b768a1",
+      "path": "SPEC/SECTIONS/BudgetSection.emath",
+      "status": "proposed"
+    },
+    "std.section.compile@1": {
+      "spec_hash": "72a4f57f5f11befa412a7b9ec0e7d320f9d2fdbc18471d389d31dbd524b084b3",
+      "path": "SPEC/SECTIONS/CompileSection.emath",
+      "status": "proposed"
+    },
+    "std.section.constraints@1": {
+      "spec_hash": "cfd6baf5309f9d705f6b1bb0d983ffc8ea635942f73282c39e9b15d3c82649bf",
+      "path": "SPEC/SECTIONS/ConstraintsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.constructors@1": {
+      "spec_hash": "151e2df98ff87c857d06978e9a0d47cffd4ad066109291fc9c85bd2493e574d9",
+      "path": "SPEC/SECTIONS/ConstructorsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.definitions@1": {
+      "spec_hash": "f972d2f75bbbc45d17e9cbce7ee044f3ac44239c9fe67a3469e251605a638827",
+      "path": "SPEC/SECTIONS/DefinitionsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.equations@1": {
+      "spec_hash": "0b4ecfd118824cbfbca559d629ee865ff65de05e815ac6140a0296304a8a39b5",
+      "path": "SPEC/SECTIONS/EquationsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.evidence@1": {
+      "spec_hash": "01bde6c137a5d141ff837a03077a0487faab64ab43d6506e89d2ad65fed29b20",
+      "path": "SPEC/SECTIONS/EvidenceSection.emath",
+      "status": "proposed"
+    },
+    "std.section.goals@1": {
+      "spec_hash": "14888818869fbbbb97214da3b4a6cd2c77b94956229a8a85edd63712545b8ea0",
+      "path": "SPEC/SECTIONS/GoalsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.inputs@1": {
+      "spec_hash": "14a7aa8aea3ae185cebb656e639f0e33d473915df4abec2a1a0fffc09daa7515",
+      "path": "SPEC/SECTIONS/InputsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.methods@1": {
+      "spec_hash": "27378fa0b5f9c179d104813d259afa2c429dac3a149a033c90c306c4218f76bb",
+      "path": "SPEC/SECTIONS/MethodsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.outputs@1": {
+      "spec_hash": "1ec202625565d56f2af545e3a88a739d744266992626bc0f51b5712259639a87",
+      "path": "SPEC/SECTIONS/OutputsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.provenance@1": {
+      "spec_hash": "25f8665cfa7d5fb6552c569f4ce64e86409a58246daa6aef8b06276a2ab3ea1b",
+      "path": "SPEC/SECTIONS/ProvenanceSection.emath",
+      "status": "proposed"
+    },
+    "std.section.state@1": {
+      "spec_hash": "0635b3a76b7741ec958eb859168ed9188b84007d7eab40c304300f3d839c2311",
+      "path": "SPEC/SECTIONS/StateSection.emath",
+      "status": "proposed"
+    },
+    "std.section.tests@1": {
+      "spec_hash": "3c7536d0234af3123ec6031739d39507ef633e02ce18ba771303ffccde7d4b2f",
+      "path": "SPEC/SECTIONS/TestsSection.emath",
+      "status": "proposed"
+    },
+    "std.section.worlds@1": {
+      "spec_hash": "70a27f0ad421602ac0c6d9334f2a76575e88fc88b051af76609bb213fee301ff",
+      "path": "SPEC/SECTIONS/WorldsSection.emath",
+      "status": "proposed"
+    },
+    "std.symbol.definition@1": {
+      "spec_hash": "d4ba1b2d64b9b9b0fc1549e687c51db3644e6ba0e037bb983e7d4bd35f9cf09c",
+      "path": "SPEC/SYMBOLS/DefinitionSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.equality.approx@1": {
+      "spec_hash": "32d8ff29b35a7250963b3db75c40f61309c9edaaa7a28d7c303de5980fd963e4",
+      "path": "SPEC/SYMBOLS/ApproxEqualitySymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.equality.exact@1": {
+      "spec_hash": "0d497fc6683c1045db604339ff7732d36e60101e43c8e3b2081dfd9dbaa841f2",
+      "path": "SPEC/SYMBOLS/ExactEqualitySymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.logic.implies@1": {
+      "spec_hash": "52a205c4b419e78d366cea8bb40a7ed88694096e276f592931e216b8be4e4228",
+      "path": "SPEC/SYMBOLS/ImplicationSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.math.add@1": {
+      "spec_hash": "e67af01c118104b465a0ab7a133a82de445a4e147a8ff71034cc41c787b8e824",
+      "path": "SPEC/SYMBOLS/AdditionSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.math.divide@1": {
+      "spec_hash": "52efc262c179cf63d9920b6db7e3a063ed740b922d862b049e207727383ad8ff",
+      "path": "SPEC/SYMBOLS/DivisionSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.math.multiply@1": {
+      "spec_hash": "babaf52f868c5efdc2b6f625a0bd93eb7ff0965fccbcfa3fd542e4b2c21324c7",
+      "path": "SPEC/SYMBOLS/MultiplicationSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.math.power@1": {
+      "spec_hash": "e88d63355330d6c49daa092a64530391a2003e5ad356230ec9b260ca02cfb079",
+      "path": "SPEC/SYMBOLS/PowerSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.math.subtract@1": {
+      "spec_hash": "5aa9aa4348269a2e86a5ad834800fda0369bcc6c2f8830a4c49ed78b3a22062f",
+      "path": "SPEC/SYMBOLS/SubtractionSymbol.emath",
+      "status": "proposed"
+    },
+    "std.symbol.membership@1": {
+      "spec_hash": "0399d6b00dfb3f17fcd3d6bbdbbdbb7317df75f0b4d98fbf9fb50180a3b0e064",
+      "path": "SPEC/SYMBOLS/MembershipSymbol.emath",
+      "status": "proposed"
+    },
+    "std.syntax.binder.generic@1": {
+      "spec_hash": "089f418d0a0f4dd6b0efa78e205270bfdcae1747549afe2a80a1c722fcf080d3",
+      "path": "SPEC/CORE/UniformBinder.emath",
+      "status": "accepted"
+    },
+    "std.syntax.declaration.generic@1": {
+      "spec_hash": "7297543c8a0f04ff3bf546e7bdeb799dbe401cab12603bb7b0c7bb3e8bf10458",
+      "path": "SPEC/CORE/GenericDeclaration.emath",
+      "status": "accepted"
+    },
+    "std.syntax.expression.core@1": {
+      "spec_hash": "8ba8b3102d7cff14b6980167880a380bc9887dd5d9514576306deee86944a76b",
+      "path": "SPEC/CORE/ExpressionCore.emath",
+      "status": "accepted"
+    },
+    "std.syntax.glyph.unknown@1": {
+      "spec_hash": "8121f13cb3d780e920852fc8dc31aebe263f788c0964fb6ac00cb4838cb64378",
+      "path": "SPEC/CORE/UnknownGlyph.emath",
+      "status": "accepted"
+    },
+    "std.syntax.let@1": {
+      "spec_hash": "484a307f057f92242d63a019299103d51ab6bb6ccf1eebd737fae1be37339f9d",
+      "path": "SPEC/CORE/LocalLet.emath",
+      "status": "accepted"
+    },
+    "std.syntax.section.generic@1": {
+      "spec_hash": "419eb6f6ac7cb0f63c74ff9bde2c77fe1cb8ee71d73566436e1d7d3de7f84709",
+      "path": "SPEC/CORE/GenericSection.emath",
+      "status": "accepted"
+    },
+    "std.syntax.source@1": {
+      "spec_hash": "45332ed9ccd403c983d918f799f216b438df5063b1323bf460728c563ccde3db",
+      "path": "SPEC/CORE/CoreSource.emath",
+      "status": "accepted"
+    },
+    "std.syntax.use@1": {
+      "spec_hash": "2c782c719e9cb0d73ec22bef7e06f81bcc3953ad82d3807e945df0db13fb5f55",
+      "path": "SPEC/CORE/UseImport.emath",
+      "status": "accepted"
+    },
+    "std.syntax_pack.scratch@1": {
+      "spec_hash": "5f02c55d97d7d61c79936e96841a6e2f3393423cafbf4dfce429b321595e64ba",
+      "path": "SPEC/CORE/ScratchSurface.emath",
+      "status": "proposed"
+    },
+    "std.theory.field@1": {
+      "spec_hash": "61390f00e4353417cefb472012841c2d39f9a977111b2a667298cd3cfd574477",
+      "path": "SPEC/THEORIES/FieldTheory.emath",
+      "status": "proposed"
+    },
+    "std.theory.magma@1": {
+      "spec_hash": "878c005b58016a7875b4de86f8191bb27d5a2fc43657e1dc43a9f3443096d99d",
+      "path": "SPEC/THEORIES/MagmaTheory.emath",
+      "status": "proposed"
+    },
+    "std.theory.monoid@1": {
+      "spec_hash": "a6cd44faa6a02ad0794e67bff24cc19fcb3322e2098c422e25f834b2d7500189",
+      "path": "SPEC/THEORIES/MonoidTheory.emath",
+      "status": "proposed"
+    },
+    "std.theory.ring@1": {
+      "spec_hash": "4826db04e1942a337702cf2cf188cc1832b1e15550595d8c643d4f0543c4a309",
+      "path": "SPEC/THEORIES/RingTheory.emath",
+      "status": "proposed"
+    },
+    "std.theory.semiring@1": {
+      "spec_hash": "69df29fa6f68ed779e811dee920690a4c2e64da566af822052576b1a6296670c",
+      "path": "SPEC/THEORIES/SemiringTheory.emath",
+      "status": "proposed"
+    },
+    "std.theory.world@1": {
+      "spec_hash": "5f35e56cf249fb0d238bd2442e2e2c7de17a53b9e034b6c3da20b7e637ea97a4",
+      "path": "SPEC/THEORIES/WorldTheory.emath",
+      "status": "proposed"
+    },
+    "std.type.bigint@1": {
+      "spec_hash": "00bdb8fb574403729a0f2ab69287cb6b1e297734d84be9fc0d0037519fdb50ed",
+      "path": "SPEC/TYPES/BigIntType.emath",
+      "status": "proposed"
+    },
+    "std.type.bool@1": {
+      "spec_hash": "964548517ee9adb5af9944e04ab4543fd1764e1c9813db33cef35baa50c30f82",
+      "path": "SPEC/TYPES/BoolType.emath",
+      "status": "proposed"
+    },
+    "std.type.complex@1": {
+      "spec_hash": "e7b091b29779bf7cb04331f30746967bb17e554cd8849268bece9f81ac921e4d",
+      "path": "SPEC/TYPES/ComplexType.emath",
+      "status": "proposed"
+    },
+    "std.type.float64@1": {
+      "spec_hash": "4db223e6f14adb5f01f8391b3377c6096237892ffd20dda8e70b28a1bf07cd7b",
+      "path": "SPEC/TYPES/Float64Type.emath",
+      "status": "proposed"
+    },
+    "std.type.gf@1": {
+      "spec_hash": "d6602c8fe60c37d53b5af9c5fff722ac77720e189deb9f0f8e11ba814ac09c14",
+      "path": "SPEC/TYPES/PrimeFieldType.emath",
+      "status": "proposed"
+    },
+    "std.type.int@1": {
+      "spec_hash": "d6dac804cd2754f5cb2e58af09959c6b6d3da336514ebf1a5884ff0f762a05b6",
+      "path": "SPEC/TYPES/IntType.emath",
+      "status": "proposed"
+    },
+    "std.type.interval@1": {
+      "spec_hash": "5492e5b0637c85285271e9f208a2cca15fcc5be5742a6c02e28db36b20c3527b",
+      "path": "SPEC/TYPES/IntervalType.emath",
+      "status": "proposed"
+    },
+    "std.type.matrix@1": {
+      "spec_hash": "0862e5e3e470edf04fbdfd34d2656ee0065d382021111263e34e8f9bd830a846",
+      "path": "SPEC/TYPES/MatrixType.emath",
+      "status": "proposed"
+    },
+    "std.type.meaning_hole@1": {
+      "spec_hash": "ce0afb1939787fd7b745ea59749bfda0d228072804fa61145ec5e2c6ac10e968",
+      "path": "SPEC/TYPES/MeaningHoleType.emath",
+      "status": "proposed"
+    },
+    "std.type.nat@1": {
+      "spec_hash": "f09fe9e9aaf08bafd3ac2fd363ffc92115ddd85479cc5f9368bc31d8b9256d65",
+      "path": "SPEC/TYPES/NatType.emath",
+      "status": "proposed"
+    },
+    "std.type.option@1": {
+      "spec_hash": "bf0a82d867c0c4f6e520329765702721bc9633ce42cd8a0447cfdc74a54ddc16",
+      "path": "SPEC/TYPES/OptionType.emath",
+      "status": "proposed"
+    },
+    "std.type.rational@1": {
+      "spec_hash": "47c327210f32271f6ea56d8f6b152a5fcce8106d00ca54798be7f8573ca17ae5",
+      "path": "SPEC/TYPES/RationalType.emath",
+      "status": "proposed"
+    },
+    "std.type.result@1": {
+      "spec_hash": "efd4d4ba3c834cdcedddcc663d623ccd019a2a3ff57722c3ebedd5349afd1299",
+      "path": "SPEC/TYPES/ResultType.emath",
+      "status": "proposed"
+    },
+    "std.type.tensor@1": {
+      "spec_hash": "283f5308e6b4616460cbdaf0bd87b2e6d0e90cb63d22ed262df1c24636cdb008",
+      "path": "SPEC/TYPES/TensorType.emath",
+      "status": "proposed"
+    },
+    "std.type.vector@1": {
+      "spec_hash": "25c58277a2e96f5cd1b75079fd0addaa6368172083be3e19f0effa9c965116a7",
+      "path": "SPEC/TYPES/VectorType.emath",
+      "status": "proposed"
+    },
+    "std.world.exact.int@1": {
+      "spec_hash": "f4fd3c6717b453271a82e31721c8f1bd75d68aa06fe8deebb84a4ceec8a08968",
+      "path": "SPEC/WORLDS/ExactIntegerWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.exact.prime_field@1": {
+      "spec_hash": "cfc41e6bb811ce31d59377dcbc1dc048f7d6f104441bcd8cbbb39a08dc935033",
+      "path": "SPEC/WORLDS/PrimeFieldWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.exact.rational@1": {
+      "spec_hash": "805aaaf25c5f0ca73840a5e56b60f4fdc53ea1b4191b81ba7195685a9ccca5e7",
+      "path": "SPEC/WORLDS/ExactRationalWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.finite.canonical@1": {
+      "spec_hash": "b818429874c71ef3a08f0475b875a8a1bc3b868c0ba8a553374ae3785339b798",
+      "path": "SPEC/WORLDS/CanonicalFiniteWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.numeric.interval@1": {
+      "spec_hash": "8436bd64636e170026fb023fc39476ff9300d378392288a63c562a5546a7ffac",
+      "path": "SPEC/WORLDS/IntervalWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.numeric.strict_f64@1": {
+      "spec_hash": "b821d752c3271e21dbe3b652a1b3f2279ee4801c41a5d92666bb39614c954099",
+      "path": "SPEC/WORLDS/StrictFloatWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.performance.measured@1": {
+      "spec_hash": "a835dfd9ca6c54bce0e6c398354c874eb55058bdbe9e084d993a9bed36d989b8",
+      "path": "SPEC/WORLDS/MeasuredPerformanceWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.research.criterion@1": {
+      "spec_hash": "a9f0bbd7cd4001736fbeef375ed8f45fa264624cb47ad6cbe3cea2f2efde8968",
+      "path": "SPEC/WORLDS/CriterionResearchWorld.emath",
+      "status": "proposed"
+    },
+    "std.world.symbolic.free@1": {
+      "spec_hash": "ff627cf248ba77bd00cece62ab252511fa4ba42013c208c7f92d19398d551f6d",
+      "path": "SPEC/WORLDS/FreeSymbolicWorld.emath",
+      "status": "proposed"
+    }
+  },
+  "authority": "GENERATED/authority-target.json",
+  "spec_holes": "SPEC_HOLES.json",
+  "status": "prototype target; not active repository authority"
+}
