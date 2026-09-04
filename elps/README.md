@@ -96,7 +96,7 @@ RULE 0.3: what computes, what is refused, what is still design):
 | --- | --- |
 | Capability declaration + file-scope gate | Implemented (`@capabilities(experimental-syntax)`, `admit_capability_gates`) |
 | Typed refusals for the capability matrix | Implemented (E-SYN-117/118, E-PKG-064/065) |
-| Nightly-vs-stable channel enforcement | Deferred; lands with the version-stack deck (`emath-r3-version-stack-9z1a`) |
+| Nightly-vs-stable channel enforcement | Deferred; lands with the version-stack deck |
 | `edition: experimental` provenance marking on artifacts | Deferred; lands with the version-stack deck |
 | SG-15-style structural quarantine of experimental artifacts | Not implemented; today the mechanism is the capability gate plus quarantine-by-review |
 | Two-release-cycle retirement without promotion | Procedure stated in Lifecycle step 4; not yet mechanically enforced (no clock/tracking) |

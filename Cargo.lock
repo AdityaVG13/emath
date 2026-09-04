@@ -739,6 +739,7 @@ dependencies = [
 name = "emath-build-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-build",
  "emath-core",
 ]
@@ -776,7 +777,9 @@ dependencies = [
  "emath-artifact",
  "emath-cli",
  "emath-core",
+ "emath-exec-ir",
  "emath-genesis",
+ "emath-ir",
  "emath-lab-core",
  "emath-plan",
  "emath-sema",
@@ -821,9 +824,11 @@ dependencies = [
 name = "emath-exec-ir"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-core",
  "emath-ir",
  "emath-rt",
+ "emath-schema",
  "emath-term",
 ]
 
@@ -831,11 +836,14 @@ dependencies = [
 name = "emath-exec-ir-tests"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-core",
  "emath-exec-ir",
  "emath-ir",
  "emath-rt",
+ "emath-schema",
  "emath-sema",
+ "emath-store",
  "emath-syntax",
 ]
 
@@ -1031,6 +1039,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-ir",
+ "emath-term",
 ]
 
 [[package]]
@@ -1040,6 +1049,7 @@ dependencies = [
  "emath-core",
  "emath-exec-ir",
  "emath-ir",
+ "emath-schema",
  "emath-syntax",
 ]
 
@@ -2897,6 +2907,7 @@ version = "0.1.0"
 dependencies = [
  "emath-cli",
  "emath-core",
+ "emath-exec-ir",
  "emath-genesis",
  "emath-lab-core",
  "emath-sema",

@@ -5,23 +5,27 @@
   "bumps": [
     {
       "date": "2026-08-31",
+      "note": "docs polish pass: workflow artifact identifiers removed from ERROR_CODES prose; text-only, no error-code semantics changed"
+    },
+    {
+      "date": "2026-08-31",
       "note": "docs polish pass: em-dashes and en-dashes removed across the pinned contract docs and README set (punctuation-only changes, no semantic content); VISION.md rewritten (dates removed, router framing kept, structure tightened)"
     },
     {
       "date": "2026-08-29",
-      "note": "emath-r3-observations-9ffu: ERROR_CODES gains E-OBS-WRITE + E-OBS-HASH stories and the annex re-splices to the current emitted set (353 emitted; emath-rt linalg E-LINALG-00x remain foreign-lane in-flight); CLI_REFERENCE check row documents --verify-data"
+      "note": "observations tooling: ERROR_CODES gains E-OBS-WRITE + E-OBS-HASH stories and the annex re-splices to the current emitted set (353 emitted; emath-rt linalg E-LINALG-00x not yet emitted); CLI_REFERENCE check row documents --verify-data"
     },
     {
       "date": "2026-08-29",
-      "note": "explain-defaults-yt97 window: ERROR_CODES annex re-spliced to current emitted set (cross-lane drift absorbed); CLI_REFERENCE explain row gains --show-defaults"
+      "note": "ERROR_CODES annex re-spliced to current emitted set; CLI_REFERENCE explain row gains --show-defaults"
     },
     {
       "date": "2026-08-29",
-      "note": "explain-defaults-yt97: CLI_REFERENCE explain row gains --show-defaults (effective-defaults table + declaration_overrides JSON) and the [<symbol>] form"
+      "note": "CLI_REFERENCE explain row gains --show-defaults (effective-defaults table + declaration_overrides JSON) and the [<symbol>] form"
     },
     {
       "date": "2026-08-29",
-      "note": "honesty-syntax-x83o: ERROR_CODES annex re-spliced to 336 emitted codes (added E-UNIT-106 bare-quantity-under-profile + E-UNIT-107 publication-requires-provenance rows; absorbed cross-lane emissions incl. E-WORLD-00x); CLI_REFERENCE check row documents the honesty table + units_profiles JSON field"
+      "note": "ERROR_CODES annex re-spliced to 336 emitted codes (added E-UNIT-106 bare-quantity-under-profile + E-UNIT-107 publication-requires-provenance rows; absorbed additional emissions incl. E-WORLD-00x); CLI_REFERENCE check row documents the honesty table + units_profiles JSON field"
     },
     {
       "date": "2026-08-25",
@@ -33,7 +37,7 @@
     },
     {
       "date": "2026-08-25",
-      "note": "ERROR_CODES annex re-spliced to 272 emitted codes: E-KIND-017 story + row (CLI causalized-residual capability gate); examples-lane repair re-pinned the registry"
+      "note": "ERROR_CODES annex re-spliced to 272 emitted codes: E-KIND-017 story + row (CLI causalized-residual capability gate); examples repair re-pinned the registry"
     },
     {
       "date": "2026-08-25",
@@ -129,7 +133,7 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "993d675a1a3e7b21674f272d518ac8ebe413ca66f15431b774afc8f0476a344c",
+    "implementation/ERROR_CODES.md": "05972399783589f8e1a8cf388d9921941a84505f4ee7490a552e18ca20260637",
     "implementation/CLI_REFERENCE.md": "81c05db43fb3e439743ff542f606bbbab5cf79b00b42a8cbd84d1c743c1220e2",
     "implementation/CRATE_MAP.md": "836e9bb7f20ed0d8b077288a578d0ad9e9a3b5989d10f9e688b7373491b87162",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"

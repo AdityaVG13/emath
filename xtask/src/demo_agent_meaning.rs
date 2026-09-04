@@ -3,9 +3,9 @@
 //! a seeded non-associative table with its counterexample.
 
 use emath_genesis::{
-    admit, challenge, AdmissionStatus, AgentProposal, ChallengeRefusal, ChallengeStatus,
-    MeaningChecker, OpTable, SynthLaw, AUTHORITY_NONE, AUTHORITY_STRUCTURAL_CHECKED,
-    PROVIDER_VERSION, REQUIRED_CAPABILITY,
+    AUTHORITY_NONE, AUTHORITY_STRUCTURAL_CHECKED, AdmissionStatus, AgentProposal, ChallengeRefusal,
+    ChallengeStatus, MeaningChecker, OpTable, PROVIDER_VERSION, REQUIRED_CAPABILITY, SynthLaw,
+    admit, challenge,
 };
 use emath_world_ir::fnv1a64;
 
@@ -71,7 +71,7 @@ fn run_demo() -> Result<(), String> {
         other => {
             return Err(format!(
                 "same-producer challenge must be SelfCertification, got {other:?}"
-            ))
+            ));
         }
     }
 

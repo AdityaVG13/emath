@@ -3,8 +3,8 @@
 //! budget refusal plus resumed continuation, and a deterministic receipt.
 
 use emath_genesis::{
-    candidate_id, tune, HostExample, ImplVariant, OpTable, ProtectedObjective, TuningBudget,
-    TuningError, TuningRequest, TUNING_VERSION,
+    HostExample, ImplVariant, OpTable, ProtectedObjective, TUNING_VERSION, TuningBudget,
+    TuningError, TuningRequest, candidate_id, tune,
 };
 use emath_world_ir::fnv1a64;
 

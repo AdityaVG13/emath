@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Language specification pin register (emath-conform-pin-register-1iip).
+"""Language specification pin register.
 
 Pins the normative language surface — `language/reference/**` and
 `language/grammar/**` — with SHA-256 under `implementation/SPEC_PIN.json`,

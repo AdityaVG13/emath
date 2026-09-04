@@ -3,8 +3,8 @@
 //! a budget refusal, and detect a seeded wrong quadrature by recomputation.
 
 use emath_genesis::{
-    AnalogueDomain, AnalogueError, AnalogueRequest, AnalogueVerdict, BinderBudget, BinderKind,
-    BinderTerm, ANALOGUE_VERSION,
+    ANALOGUE_VERSION, AnalogueDomain, AnalogueError, AnalogueRequest, AnalogueVerdict,
+    BinderBudget, BinderKind, BinderTerm,
 };
 use emath_term::{SymbolId, Term, VariableId};
 use emath_world_ir::fnv1a64;

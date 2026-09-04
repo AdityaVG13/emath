@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 
 use emath_cli::portfolio::{
-    archive, evaluate, rank_candidates, replay, Authority, CollapsePolicy, InterpretationPolicy,
-    MetricAxis, MetricPolarity, PortfolioError, WorldCandidate,
+    Authority, CollapsePolicy, InterpretationPolicy, MetricAxis, MetricPolarity, PortfolioError,
+    WorldCandidate, archive, evaluate, rank_candidates, replay,
 };
 
 pub(crate) fn run() -> u8 {

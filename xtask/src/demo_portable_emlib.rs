@@ -1,17 +1,17 @@
-//! emath-epic-emlib-nz1n.12 CAPSTONE: `cargo xtask demo portable-emlib`.
+//! `cargo xtask demo portable-emlib`.
 //!
 //! The offline share-unit walkthrough: create (canonical bytes),
 //! verify (corruption refuses by name), mount into a fresh space,
 //! thin-pack against a parent, then REJECT a corrupt pack. No network,
-//! no daemon: every layer is in-memory (nz1n.3 format + nz1n.6 spaces
-//! + nz1n.4 graph).
+//! no daemon: every layer is in-memory (format + spaces
+//! + graph).
 
 use std::sync::Arc;
 
 use emath_core::MeaningId;
+use emath_store::Space;
 use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
 use emath_store::pack::{PackBudgets, PackEntry, PackReader, PackWriter};
-use emath_store::Space;
 
 const MAGIC: &[u8] = b"EMATHLIB\0";
 
@@ -74,10 +74,19 @@ fn run_demo() -> Result<(), String> {
     }
     let space = Space::new("fresh-workbench", Arc::new(graph.clone()))
         .map_err(|error| format!("space refused: {error:?}"))?;
-    let lock = emath_store::LibraryLock::from_snapshot(&space.snapshot().map_err(|error| format!("snapshot refused: {error:?}"))?, mounted.clone());
+    let lock = emath_store::LibraryLock::from_snapshot(
+        &space
+            .snapshot()
+            .map_err(|error| format!("snapshot refused: {error:?}"))?,
+        mounted.clone(),
+    );
     lock.verify(&graph)
         .map_err(|error| format!("mounted lock refused: {error:?}"))?;
-    println!("portable-emlib|mount|space={}|objects={}", space.name(), mounted.len());
+    println!(
+        "portable-emlib|mount|space={}|objects={}",
+        space.name(),
+        mounted.len()
+    );
 
     // 4) THIN-PACK: delta against the parent; refuses without closure.
     let thin = PackWriter::new(budgets)
@@ -93,7 +102,10 @@ fn run_demo() -> Result<(), String> {
         .read(&thin, Some(&pack))
         .map_err(|error| format!("thin-pack merge refused: {error}"))?;
     if merged.len() != 3 {
-        return Err(format!("thin merge must carry 3 cells, got {}", merged.len()));
+        return Err(format!(
+            "thin merge must carry 3 cells, got {}",
+            merged.len()
+        ));
     }
     println!("portable-emlib|thin-pack|merged|{}", merged.len());
 
