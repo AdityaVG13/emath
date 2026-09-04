@@ -1,0 +1,20 @@
+emath spec SolveGoalCapability:
+    identity: "std.capability.goal.solve@1"
+    class: "capability"
+    status: "proposed"
+    edition: 1
+    summary: "Construct a typed solve goal without hidden method selection."
+    dependencies: ["std.syntax.expression.core@1"]
+    surface: {"role":"call-or-operator","spellings":["solve"]}
+    canonical: {"lower_to":"CapabilityApplication","identity_fields":["CapabilityID","type arguments","operands","numeric policy"]}
+    semantics: {"contract":"Construct a typed solve goal without hidden method selection.","signature":"Problem<T> -> Goal<Result<T>>","totality":"result or routed diagnosis"}
+    exactness: {"policy":"goal","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"reference-term-or-provider","target":"std.capability.goal.solve@1"}
+    artifact: {"classes":["value","symbolic","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-CAPABILITY-DOMAIN","E-CAPABILITY-UNSUPPORTED","E-EXACTNESS-LOSS"]
+    conformance: {"positive":["std.capability.goal.solve@1:positive"],"negative":["std.capability.goal.solve@1:negative"],"mutation":["std.capability.goal.solve@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-term","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["no stable op enum","arity/domain","numeric-policy identity"]}

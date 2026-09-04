@@ -1,0 +1,20 @@
+emath spec ConjectureDynamicsPack:
+    identity: "std.field_pack.conjecture_dynamics@1"
+    class: "field-pack"
+    status: "proposed"
+    edition: 1
+    summary: "V18 frontiers, criteria, research worlds, and research-state artifacts."
+    dependencies: ["std.kind.frontier@1","std.kind.criterion@1","std.world.research.criterion@1","std.artifact.research_state@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"FieldPackManifest","identity_fields":["exports","dependencies","worlds","methods","image roots"]}
+    semantics: {"contract":"V18 frontiers, criteria, research worlds, and research-state artifacts."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"pack-image","target":"std.field_pack.conjecture_dynamics@1"}
+    artifact: {"classes":["field-pack","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-PACK-DEPENDENCY","E-PACK-IDENTITY","E-PACK-MIGRATION"]
+    conformance: {"positive":["std.field_pack.conjecture_dynamics@1:positive"],"negative":["std.field_pack.conjecture_dynamics@1:negative"],"mutation":["std.field_pack.conjecture_dynamics@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-store","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["cycles","alias collision","stale image"]}

@@ -1,0 +1,20 @@
+emath spec ApproxEqualitySymbol:
+    identity: "std.symbol.equality.approx@1"
+    class: "symbol"
+    status: "proposed"
+    edition: 1
+    summary: "Forms an explicitly bounded approximate relation."
+    dependencies: ["std.syntax.expression.core@1"]
+    surface: {"role":"operator","spellings":["~="],"fixity":"infix","precedence":20,"associativity":"infix","confusable_class":"registry-required"}
+    canonical: {"lower_to":"ApproximateRelation","identity_fields":["resolved capability","operands"]}
+    semantics: {"contract":"Forms an explicitly bounded approximate relation."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"ApproximateRelation"}
+    artifact: {"classes":["value","symbolic","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SYMBOL-UNRESOLVED","E-SYMBOL-AMBIGUOUS","E-SYMBOL-PRECEDENCE"]
+    conformance: {"positive":["std.symbol.equality.approx@1:positive"],"negative":["std.symbol.equality.approx@1:negative"],"mutation":["std.symbol.equality.approx@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["Unicode confusables","precedence drift","multi-role glyph"]}

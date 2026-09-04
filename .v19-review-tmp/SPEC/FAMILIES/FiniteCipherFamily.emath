@@ -1,0 +1,20 @@
+emath spec FiniteCipherFamily:
+    identity: "std.family.finite_cipher@1"
+    class: "family"
+    status: "proposed"
+    edition: 1
+    summary: "Generates finite-alphabet cipher capabilities, round-trip laws, and analysis fixtures."
+    dependencies: ["std.kind.family@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"FeatureFamily","identity_fields":["template","parameters","generated FeatureIDs"]}
+    semantics: {"contract":"Generates finite-alphabet cipher capabilities, round-trip laws, and analysis fixtures.","bounded":"yes"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"generated capsules"}
+    artifact: {"classes":["field-pack","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-FAMILY-BOUNDS","E-FAMILY-DUPLICATE"]
+    conformance: {"positive":["std.family.finite_cipher@1:positive"],"negative":["std.family.finite_cipher@1:negative"],"mutation":["std.family.finite_cipher@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-schema","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["bounded expansion","generated identity","third-repetition rule"]}

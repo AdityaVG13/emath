@@ -1,0 +1,20 @@
+emath spec GoalsSection:
+    identity: "std.section.goals@1"
+    class: "section"
+    status: "proposed"
+    edition: 1
+    summary: "Requested work, separate from definitions."
+    dependencies: ["std.syntax.section.generic@1"]
+    surface: {"role":"section-head","form":"goals: suite","spellings":["goals"]}
+    canonical: {"lower_to":"GoalList","identity_fields":["owning kind","payload","multiplicity"]}
+    semantics: {"contract":"Requested work, separate from definitions.","owner_policy":"kind-defined"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"GoalList"}
+    artifact: {"classes":["not-applicable"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SECTION-INVALID","E-SECTION-DUPLICATE"]
+    conformance: {"positive":["std.section.goals@1:positive"],"negative":["std.section.goals@1:negative"],"mutation":["std.section.goals@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-schema","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["payload schema","order/multiplicity","owner restrictions"]}

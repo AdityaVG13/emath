@@ -1,0 +1,20 @@
+emath spec CryptologyPack:
+    identity: "std.field_pack.cryptology@1"
+    class: "field-pack"
+    status: "proposed"
+    edition: 1
+    summary: "V15 ciphers, puzzles, codes, protocols, worlds, methods, and evidence."
+    dependencies: ["std.kind.cipher@1","std.kind.puzzle@1","std.kind.protocol@1","std.kind.code@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"FieldPackManifest","identity_fields":["exports","dependencies","worlds","methods","image roots"]}
+    semantics: {"contract":"V15 ciphers, puzzles, codes, protocols, worlds, methods, and evidence."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"pack-image","target":"std.field_pack.cryptology@1"}
+    artifact: {"classes":["field-pack","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-PACK-DEPENDENCY","E-PACK-IDENTITY","E-PACK-MIGRATION"]
+    conformance: {"positive":["std.field_pack.cryptology@1:positive"],"negative":["std.field_pack.cryptology@1:negative"],"mutation":["std.field_pack.cryptology@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-store","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["cycles","alias collision","stale image"]}

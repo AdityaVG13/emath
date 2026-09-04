@@ -1,0 +1,20 @@
+emath spec NewtonMethod:
+    identity: "std.method.solve.newton@1"
+    class: "method"
+    status: "proposed"
+    edition: 1
+    summary: "Root solving for differentiable scalar functions."
+    dependencies: ["std.kind.method@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"MethodDescriptor","identity_fields":["goal","requirements","guarantees","provider"]}
+    semantics: {"contract":"Root solving for differentiable scalar functions.","requires":"differentiable function and initial guess","returns":"candidate root plus residual"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"reference/provider","target":"std.method.solve.newton@1"}
+    artifact: {"classes":["value","certificate","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-METHOD-INAPPLICABLE","E-METHOD-BUDGET","E-METHOD-PROVIDER"]
+    conformance: {"positive":["std.method.solve.newton@1:positive"],"negative":["std.method.solve.newton@1:negative"],"mutation":["std.method.solve.newton@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-plan","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["preconditions","guarantee scope","fallback"]}

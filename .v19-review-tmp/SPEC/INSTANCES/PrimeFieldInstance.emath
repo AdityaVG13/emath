@@ -1,0 +1,20 @@
+emath spec PrimeFieldInstance:
+    identity: "std.instance.gf.field@1"
+    class: "instance"
+    status: "proposed"
+    edition: 1
+    summary: "Prime field for literal prime p."
+    dependencies: ["std.theory.field@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"TheoryModel","identity_fields":["theory","carrier","operation bindings"]}
+    semantics: {"contract":"Prime field for literal prime p.","implements":"std.theory.field@1","carrier":"GF<p>"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"operation-bindings","target":"std.instance.gf.field@1"}
+    artifact: {"classes":["certificate","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-INSTANCE-LAW","E-INSTANCE-COHERENCE"]
+    conformance: {"positive":["std.instance.gf.field@1:positive"],"negative":["std.instance.gf.field@1:negative"],"mutation":["std.instance.gf.field@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-world-ir","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["coherence","conditional laws","carrier exactness"]}

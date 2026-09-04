@@ -1,0 +1,20 @@
+emath spec FieldPackKind:
+    identity: "std.kind.field_pack@1"
+    class: "kind"
+    status: "proposed"
+    edition: 1
+    summary: "Defines an installable semantic feature bundle."
+    dependencies: ["std.syntax.declaration.generic@1","std.syntax.section.generic@1"]
+    surface: {"role":"item-kind","form":"emath field_pack Name: suite","spellings":["field_pack"]}
+    canonical: {"lower_to":"FieldPackManifest","identity_fields":["kind FeatureID","canonical sections","semantic fields"]}
+    semantics: {"contract":"Defines an installable semantic feature bundle.","section_schema":"class-specific"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"FieldPackManifest"}
+    artifact: {"classes":["native","hybrid","parametric","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-KIND-UNDEFINED","E-SECTION-INVALID","E-KIND-LOWERING"]
+    conformance: {"positive":["std.kind.field_pack@1:positive"],"negative":["std.kind.field_pack@1:negative"],"mutation":["std.kind.field_pack@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-store","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["no parser branch","bounded lowering","canonical aliases"]}

@@ -1,0 +1,20 @@
+emath spec ProofProviderMethod:
+    identity: "std.method.proof.external@1"
+    class: "method"
+    status: "proposed"
+    edition: 1
+    summary: "Send exact obligations to a proof provider."
+    dependencies: ["std.kind.method@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"MethodDescriptor","identity_fields":["goal","requirements","guarantees","provider"]}
+    semantics: {"contract":"Send exact obligations to a proof provider.","requires":"closed definitions and statement","returns":"scoped proof verdict"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"provider","target":"std.method.proof.external@1"}
+    artifact: {"classes":["value","certificate","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-METHOD-INAPPLICABLE","E-METHOD-BUDGET","E-METHOD-PROVIDER"]
+    conformance: {"positive":["std.method.proof.external@1:positive"],"negative":["std.method.proof.external@1:negative"],"mutation":["std.method.proof.external@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-plan","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["preconditions","guarantee scope","fallback"]}

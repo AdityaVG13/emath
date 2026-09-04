@@ -1,0 +1,20 @@
+emath spec CertificateArtifact:
+    identity: "std.artifact.certificate@1"
+    class: "artifact"
+    status: "proposed"
+    edition: 1
+    summary: "Witness plus bounded independent checker."
+    dependencies: []
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"ArtifactManifest","identity_fields":["class","semantic inputs","world/provider","target","files"]}
+    semantics: {"contract":"Witness plus bounded independent checker.","labels":["exact","approximate","symbolic-only","hole-open","fault"]}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"artifact-schema","target":"std.artifact.certificate@1"}
+    artifact: {"classes":["std.artifact.certificate@1"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-ARTIFACT-INCOMPLETE","E-ARTIFACT-OVERCLAIM"]
+    conformance: {"positive":["std.artifact.certificate@1:positive"],"negative":["std.artifact.certificate@1:negative"],"mutation":["std.artifact.certificate@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-artifact","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["determinism","authority","required paths","sensitive fields"]}

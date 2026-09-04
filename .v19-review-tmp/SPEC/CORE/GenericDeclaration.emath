@@ -1,0 +1,20 @@
+emath spec GenericDeclaration:
+    identity: "std.syntax.declaration.generic@1"
+    class: "syntax"
+    status: "accepted"
+    edition: 1
+    summary: "Parses `emath <kind> Name: suite` without domain knowledge."
+    dependencies: ["std.syntax.source@1"]
+    surface: {"role":"stage0","form":"emath <kind> Name: suite","spellings":[]}
+    canonical: {"lower_to":"Declaration","identity_fields":["edition","resolved features","canonical payload"]}
+    semantics: {"contract":"Parses `emath <kind> Name: suite` without domain knowledge."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"Declaration"}
+    artifact: {"classes":["source","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SYNTAX","E-LAYOUT"]
+    conformance: {"positive":["std.syntax.declaration.generic@1:positive"],"negative":["std.syntax.declaration.generic@1:negative"],"mutation":["std.syntax.declaration.generic@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["panic-free UTF-8","exact spans","no domain keyword"]}

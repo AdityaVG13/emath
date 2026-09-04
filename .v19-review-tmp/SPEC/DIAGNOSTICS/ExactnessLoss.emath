@@ -1,0 +1,20 @@
+emath spec ExactnessLoss:
+    identity: "std.diagnostic.exactness.loss@1"
+    class: "diagnostic"
+    status: "proposed"
+    edition: 1
+    summary: "Exact request would silently round/demote."
+    dependencies: []
+    surface: {"role":"diagnostic","spellings":["E-EXACTNESS-LOSS"]}
+    canonical: {"lower_to":"DiagnosticRecord","identity_fields":["code","FeatureID","reason","route"]}
+    semantics: {"contract":"Exact request would silently round/demote.","route":"select exact or permit bounded approximation"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"diagnostic-constructor","target":"E-EXACTNESS-LOSS"}
+    artifact: {"classes":["diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-EXACTNESS-LOSS"]
+    conformance: {"positive":["E-EXACTNESS-LOSS:emit"],"negative":["E-EXACTNESS-LOSS:not-overemit"],"mutation":["E-EXACTNESS-LOSS:route-drift"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"error registry","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["stable code","structured payload","route accuracy"]}

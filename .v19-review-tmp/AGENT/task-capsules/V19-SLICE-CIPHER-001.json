@@ -1,0 +1,67 @@
+{
+  "schema": "emath.task-capsule.v1",
+  "task_id": "V19-SLICE-CIPHER-001",
+  "goal": "Realize std.kind.cipher@1 through generic schema lowering without parser branches.",
+  "non_goals": [
+    "production cryptography",
+    "new cipher AST/IR enum variant",
+    "direct generated-file edits"
+  ],
+  "features": [
+    "std.kind.cipher@1",
+    "std.field_pack.cryptology@1"
+  ],
+  "baseline": {
+    "repo_commit": "ffec253ab08e7a40d260798f348634e522a18e66",
+    "authority": "legacy until switched"
+  },
+  "allowed_files": [
+    "language/spec/**",
+    "crates/emath-schema/**",
+    "tests/emath-schema/**",
+    "language/conformance/**"
+  ],
+  "forbidden_files": [
+    "language/generated/**",
+    "domain-named stable core IR variants"
+  ],
+  "required_projections": [
+    "identity",
+    "surface",
+    "parse",
+    "lowering",
+    "static-semantics",
+    "reference",
+    "worlds",
+    "execution",
+    "artifact",
+    "diagnostics",
+    "documentation",
+    "tooling",
+    "conformance",
+    "migration",
+    "agent-view"
+  ],
+  "read_order": [
+    "AGENT_START.json",
+    "SPEC/KINDS/CipherKind.emath",
+    "SPEC/FIELD_PACKS/CryptologyPack.emath",
+    "CONFORMANCE/CASES/v15/v15-cipher-001/case.json"
+  ],
+  "commands": [
+    "python tools/agent_orient.py --feature std.kind.cipher@1",
+    "python tools/validate_all.py",
+    "cargo test -p emath-schema-tests"
+  ],
+  "acceptance": [
+    "cypher canonicalizes to cipher",
+    "valid source lowers generically",
+    "missing sections route diagnostically",
+    "no parser branch",
+    "receipt complete"
+  ],
+  "human_decisions": [
+    "production status policy remains V15 provider-owned"
+  ],
+  "rollback": "restore feature authority to legacy anchor and remove capsule-generated target projection"
+}

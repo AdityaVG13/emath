@@ -1,0 +1,20 @@
+emath spec MembershipSymbol:
+    identity: "std.symbol.membership@1"
+    class: "symbol"
+    status: "proposed"
+    edition: 1
+    summary: "Membership relation and binder-domain connective."
+    dependencies: ["std.syntax.expression.core@1"]
+    surface: {"role":"operator","spellings":["in"],"fixity":"infix","precedence":40,"associativity":"infix","confusable_class":"registry-required"}
+    canonical: {"lower_to":"Membership","identity_fields":["resolved capability","operands"]}
+    semantics: {"contract":"Membership relation and binder-domain connective."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"Membership"}
+    artifact: {"classes":["value","symbolic","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SYMBOL-UNRESOLVED","E-SYMBOL-AMBIGUOUS","E-SYMBOL-PRECEDENCE"]
+    conformance: {"positive":["std.symbol.membership@1:positive"],"negative":["std.symbol.membership@1:negative"],"mutation":["std.symbol.membership@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["Unicode confusables","precedence drift","multi-role glyph"]}

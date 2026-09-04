@@ -1,0 +1,13 @@
+{
+  "schema": "emath.change-contract.v1",
+  "contract_id": "CHANGE-CONTRACT-TEMPLATE",
+  "semantic_delta": "",
+  "features": [],
+  "identity_classification": "none|compatible|meaning-breaking|diagnostic|migration",
+  "unchanged_invariants": [],
+  "expected_changes": [],
+  "expected_non_changes": [],
+  "projections": [],
+  "validation": [],
+  "rollback": ""
+}

@@ -1,0 +1,20 @@
+emath spec PairedBenchmarkMethod:
+    identity: "std.method.measure.paired@1"
+    class: "method"
+    status: "proposed"
+    edition: 1
+    summary: "Paired baseline/candidate measurement."
+    dependencies: ["std.kind.method@1"]
+    surface: {"role":"none","spellings":[]}
+    canonical: {"lower_to":"MethodDescriptor","identity_fields":["goal","requirements","guarantees","provider"]}
+    semantics: {"contract":"Paired baseline/candidate measurement.","requires":"trusted target/workload protocol","returns":"measurement receipt"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"provider","target":"std.method.measure.paired@1"}
+    artifact: {"classes":["value","certificate","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-METHOD-INAPPLICABLE","E-METHOD-BUDGET","E-METHOD-PROVIDER"]
+    conformance: {"positive":["std.method.measure.paired@1:positive"],"negative":["std.method.measure.paired@1:negative"],"mutation":["std.method.measure.paired@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-plan","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["preconditions","guarantee scope","fallback"]}

@@ -1,0 +1,20 @@
+emath spec MethodKind:
+    identity: "std.kind.method@1"
+    class: "kind"
+    status: "proposed"
+    edition: 1
+    summary: "Defines a strategy for satisfying a typed goal."
+    dependencies: ["std.syntax.declaration.generic@1","std.syntax.section.generic@1"]
+    surface: {"role":"item-kind","form":"emath method Name: suite","spellings":["method"]}
+    canonical: {"lower_to":"MethodDescriptor","identity_fields":["kind FeatureID","canonical sections","semantic fields"]}
+    semantics: {"contract":"Defines a strategy for satisfying a typed goal.","section_schema":"class-specific"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"MethodDescriptor"}
+    artifact: {"classes":["native","hybrid","parametric","exploration","continuation","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-KIND-UNDEFINED","E-SECTION-INVALID","E-KIND-LOWERING"]
+    conformance: {"positive":["std.kind.method@1:positive"],"negative":["std.kind.method@1:negative"],"mutation":["std.kind.method@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-plan","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["no parser branch","bounded lowering","canonical aliases"]}

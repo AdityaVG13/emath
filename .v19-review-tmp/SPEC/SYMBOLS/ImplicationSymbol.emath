@@ -1,0 +1,20 @@
+emath spec ImplicationSymbol:
+    identity: "std.symbol.logic.implies@1"
+    class: "symbol"
+    status: "proposed"
+    edition: 1
+    summary: "Logical implication."
+    dependencies: ["std.syntax.expression.core@1"]
+    surface: {"role":"operator","spellings":["==>"],"fixity":"infixr","precedence":15,"associativity":"infixr","confusable_class":"registry-required"}
+    canonical: {"lower_to":"std.capability.logic.implies@1","identity_fields":["resolved capability","operands"]}
+    semantics: {"contract":"Logical implication."}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"schema-lowering","target":"std.capability.logic.implies@1"}
+    artifact: {"classes":["value","symbolic","diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SYMBOL-UNRESOLVED","E-SYMBOL-AMBIGUOUS","E-SYMBOL-PRECEDENCE"]
+    conformance: {"positive":["std.symbol.logic.implies@1:positive"],"negative":["std.symbol.logic.implies@1:negative"],"mutation":["std.symbol.logic.implies@1:mutation"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"emath-syntax","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["Unicode confusables","precedence drift","multi-role glyph"]}

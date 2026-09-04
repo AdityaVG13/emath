@@ -1,0 +1,20 @@
+emath spec InvalidSection:
+    identity: "std.diagnostic.section.invalid@1"
+    class: "diagnostic"
+    status: "proposed"
+    edition: 1
+    summary: "Section violates owning kind schema."
+    dependencies: []
+    surface: {"role":"diagnostic","spellings":["E-SECTION-INVALID"]}
+    canonical: {"lower_to":"DiagnosticRecord","identity_fields":["code","FeatureID","reason","route"]}
+    semantics: {"contract":"Section violates owning kind schema.","route":"show required/allowed payload and minimal correction"}
+    exactness: {"policy":"inherited","implicit_demotion":false}
+    effects: {"allowed":[]}
+    worlds: {"applicability":"manifest-declared"}
+    reference: {"mode":"diagnostic-constructor","target":"E-SECTION-INVALID"}
+    artifact: {"classes":["diagnostic"]}
+    projections: ["identity","surface","parse","lowering","static-semantics","reference","worlds","execution","artifact","diagnostics","documentation","tooling","conformance","migration","agent-view"]
+    diagnostics: ["E-SECTION-INVALID"]
+    conformance: {"positive":["E-SECTION-INVALID:emit"],"negative":["E-SECTION-INVALID:not-overemit"],"mutation":["E-SECTION-INVALID:route-drift"]}
+    evolution: {"meaning_change":"new major or explicit migration"}
+    agent: {"owner":"error registry","read":["Feature Capsule","direct dependencies","conformance cases","current owner contract"],"edit":["normative capsule","owner implementation","targeted tests"],"hazards":["stable code","structured payload","route accuracy"]}
