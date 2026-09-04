@@ -1,4 +1,4 @@
-//! Bead `emath-0e68` — prove curve evaluation `r(t) -> Vector[3]`,
+//! Prove curve evaluation `r(t) -> Vector[3]`,
 //! surface evaluation `r(u,v) -> Vector[3]`, and implicit-field
 //! evaluation `f(p) -> Float64` end to end from ordinary `.emath`
 //! source through the generic call machinery.
@@ -52,7 +52,7 @@ fn curve_point_evaluates_end_to_end() {
     );
 }
 
-/// Pass 5 artifact — a call with the wrong argument count must be
+/// A call with the wrong argument count must be
 /// refused with a diagnostic that names the arity problem (not a generic
 /// "unknown function").
 const ARITY_SOURCE: &str = r#"
@@ -95,7 +95,7 @@ fn eval_source(source: &str, session_name: &str, entry: &str) -> BTreeMap<String
     .unwrap_or_else(|fault| panic!("source must evaluate: {fault}"))
 }
 
-/// Intended behavior (pass 3): paraboloid(0.5, 2.0) == [0.5, 2.0, 4.25],
+/// Intended behavior: paraboloid(0.5, 2.0) == [0.5, 2.0, 4.25],
 /// paraboloid(1.0, -1.0) == [1.0, -1.0, 2.0], sphere(0,0) == [0,0,1]
 /// exactly (sin(0)=0, cos(0)=1 are exact in f64), and the torus outer
 /// equator torus(0,0) == [3,0,0] exactly ((2+cos(0))·cos(0) = 3·1).
@@ -128,7 +128,7 @@ fn surface_point_evaluates_end_to_end() {
     );
 }
 
-/// Intended behavior (pass 5): the implicit sphere field evaluates
+/// Intended behavior: the implicit sphere field evaluates
 /// exactly at representable points: f([1,2,2]) = 9, f([0,0,0]) = 0.
 #[test]
 fn implicit_field_evaluates_end_to_end() {
@@ -145,7 +145,7 @@ fn implicit_field_evaluates_end_to_end() {
     );
 }
 
-/// Intended behavior (pass 5): a wrong-arity call is refused with a
+/// Intended behavior: a wrong-arity call is refused with a
 /// diagnostic that names the arity problem. Failure-first: today the
 /// refusal is the generic E-TYPE-003 "unknown function", which does NOT
 /// mention arity, so this test is RED until the typed refusal lands.
@@ -166,7 +166,7 @@ fn wrong_arity_call_refused_typed() {
     );
 }
 
-/// Pass 6 artifact — metamorphic: reparametrization by a period shift
+/// Metamorphic: reparametrization by a period shift
 /// preserves the sampled point set within tolerance. The sphere shifted
 /// by 2*pi in u is the same point map; IEEE double rounding makes the
 /// components agree only to ~1e-16 at generic points, while the
@@ -202,7 +202,7 @@ emath function ReparamAcceptance:
         dz_ok = abs(r_b[2] - r_a[2]) < 1e-12
 "#;
 
-/// Pass 6 artifact — metamorphic: pure-call determinism (same args,
+/// Metamorphic: pure-call determinism (same args,
 /// bitwise-identical result), symmetry of the paraboloid under the
 /// (u,v) swap in the shared z component (IEEE addition commutes
 /// exactly), and exact reproduction of a value through a wrapper call.
@@ -238,7 +238,7 @@ emath function DeterminismAcceptance:
         wrap_match = p_wrap == p_a
 "#;
 
-/// Pass 7 artifact — strict-f64: a called function that leaves the
+/// Strict-f64: a called function that leaves the
 /// function's domain (ln of a negative argument, sqrt of a negative
 /// argument) must refuse with a typed diagnostic, never return NaN.
 const DOMAIN_SOURCE: &str = r#"
@@ -291,11 +291,16 @@ fn try_eval_source(
         .iter()
         .find(|declaration| declaration.name.leaf() == entry)
         .expect("the acceptance function must be present");
-    eval_definitions_values(&checked.package, declaration, &BTreeMap::new(), &BTreeMap::new())
-        .map_err(|fault| format!("evaluation fault: {fault}"))
+    eval_definitions_values(
+        &checked.package,
+        declaration,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .map_err(|fault| format!("evaluation fault: {fault}"))
 }
 
-/// Intended behavior (pass 6): the 2*pi-shifted sphere agrees with the
+/// Intended behavior: the 2*pi-shifted sphere agrees with the
 /// original within 1e-12 at a generic point and EXACTLY at (0,0).
 #[test]
 fn reparameterization_invariance_within_tolerance() {
@@ -310,10 +315,9 @@ fn reparameterization_invariance_within_tolerance() {
     // Component-wise f64 equality (not Value equality): the shifted
     // path computes 0.0 * sin(2pi) = -0.0 in y — the same real number
     // zero, so f64 `==` (which treats -0.0 == 0.0) is the honest check.
-    let (Some(Value::Vector(a)), Some(Value::Vector(b))) = (
-        values.get("r_origin_a"),
-        values.get("r_origin_b"),
-    ) else {
+    let (Some(Value::Vector(a)), Some(Value::Vector(b))) =
+        (values.get("r_origin_a"), values.get("r_origin_b"))
+    else {
         panic!("north-pole bindings must be vectors");
     };
     assert!(
@@ -322,7 +326,7 @@ fn reparameterization_invariance_within_tolerance() {
     );
 }
 
-/// Intended behavior (pass 6): same-args calls are bitwise identical,
+/// Intended behavior: same-args calls are bitwise identical,
 /// the (u,v) swap leaves the shared z component bit-identical, and a
 /// wrapper call reproduces the direct call exactly.
 #[test]
@@ -341,13 +345,13 @@ fn symmetric_determinism_and_exact_reproduction() {
     );
 }
 
-/// Pass 7 pin — strict-f64 discipline through the call path. The
+/// Strict-f64 discipline through the call path. The
 /// builtin contract (crates/emath-exec-ir/src/builtin.rs, the 9bj1
 /// convention) is IEEE-faithful propagation: ln/sqrt of a negative
 /// argument yield NaN, detectable with `is_finite`, and the tangent
 /// stays NaN-consistent. The call path must preserve that convention
 /// exactly — inlining may not perturb, silence, or magnify it. (The
-/// bead's own typed-refusal duty — degenerate parameter domains —
+/// 's own typed-refusal duty — degenerate parameter domains
 /// lands in the sampling cell, where the domain is mine to define.)
 #[test]
 fn log_domain_violation_propagates_nan_per_ieee() {
@@ -359,7 +363,7 @@ fn log_domain_violation_propagates_nan_per_ieee() {
     );
 }
 
-/// Pass 7 pin — sqrt mirrors ln: IEEE NaN through the call path.
+/// Sqrt mirrors ln: IEEE NaN through the call path.
 #[test]
 fn sqrt_domain_violation_propagates_nan_per_ieee() {
     let values = eval_source(SQRT_DOMAIN_SOURCE, "sqrt-domain", "SqrtDomainAcceptance");

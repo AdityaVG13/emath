@@ -17,6 +17,118 @@ fn const_bits(value: f64) -> EmirOp {
     EmirOp::ConstF64(value.to_bits())
 }
 
+// ── capability-seam harness (emath:cleanup0904:p0:interp) ────────────────
+//
+// Retired `EmirOp` variants execute through the universal
+// `ApplyCapability` seam: the FeatureID resolves against the installed
+// Language Distribution, whose active capsules bind the immutable
+// native-kernel registry. No feature-name dispatch, no new variants.
+// Pattern sources: `native_kernel_registry.rs`,
+// `dynamics_capsule_cutover.rs`.
+
+/// Apply one pure capability to `inputs` through the interpreter seam.
+fn cap_eval(capability: &str, inputs: &[Value]) -> Result<Value, EvalFault> {
+    let count = inputs.len();
+    let mut ops: Vec<(EmirOp, Span)> = (0..count)
+        .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
+        .collect();
+    ops.push((
+        EmirOp::ApplyCapability {
+            capability: capability.to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: (0..count as u32).map(EmirValue).collect(),
+        },
+        Span::default(),
+    ));
+    evaluate(
+        &EmirProgram {
+            ops,
+            result: EmirValue(count as u32),
+            input_count: count as u16,
+            state_count: 0,
+            domain_obligations: Vec::new(),
+        },
+        inputs,
+        &[],
+    )
+}
+
+fn optimize_eval(
+    body: EmirProgram,
+    inputs: Vec<f64>,
+    var_indices: Vec<f64>,
+    maximize: bool,
+    tolerance: f64,
+    max_iter: i64,
+) -> Result<Value, EvalFault> {
+    install_active_language();
+    cap_eval(
+        "std.capability.program.optimize",
+        &[
+            Value::Program(body),
+            Value::Vector(inputs),
+            Value::Vector(var_indices),
+            Value::Bool(maximize),
+            Value::F64(0.01),
+            Value::F64(tolerance),
+            Value::I64(max_iter),
+        ],
+    )
+}
+
+fn reverse_eval(
+    body: EmirProgram,
+    inputs: &[Value],
+    var_indices: Vec<f64>,
+) -> Result<Value, EvalFault> {
+    install_active_language();
+    let environment = inputs
+        .iter()
+        .map(|value| match value {
+            Value::F64(value) => *value,
+            other => panic!("expected Float64 AD input, got {other:?}"),
+        })
+        .collect();
+    cap_eval(
+        "std.capability.calculus.reverse-gradient",
+        &[
+            Value::Program(body),
+            Value::Vector(environment),
+            Value::Vector(var_indices),
+        ],
+    )
+}
+
+fn forward_eval(body: EmirProgram, inputs: &[Value], var: u16) -> Result<Value, EvalFault> {
+    install_active_language();
+    let environment = inputs
+        .iter()
+        .map(|value| match value {
+            Value::F64(value) => *value,
+            other => panic!("expected Float64 AD input, got {other:?}"),
+        })
+        .collect();
+    cap_eval(
+        "std.capability.calculus.forward-difference",
+        &[
+            Value::Program(body),
+            Value::Vector(environment),
+            Value::I64(i64::from(var)),
+        ],
+    )
+}
+
+/// Install the checked-in authored Language Distribution (active
+/// capsules bind their kernels; candidates deliberately do not).
+fn install_active_language() {
+    use emath_exec_ir::language_image::load_language_distribution;
+    use emath_exec_ir::native_kernel::install_language_distribution;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+    let distribution =
+        load_language_distribution(&root).expect("checked-in language distribution loads");
+    install_language_distribution(&distribution).expect("active capsules bind their kernels");
+}
+
 #[test]
 fn tensor_create_and_slice_spot() {
     let program = program(vec![
@@ -207,17 +319,17 @@ fn differentiate_pow_variable_exponent() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = EmirProgram {
-        ops: vec![(
-            EmirOp::Differentiate { body, var_index: 0 },
-            Span::default(),
-        )],
-        result: EmirValue(0),
-        input_count: 1,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    };
-    let got = match evaluate(&prog, &[Value::F64(3.0)], &[]).unwrap() {
+    install_active_language();
+    let got = match cap_eval(
+        "std.capability.calculus.forward-difference",
+        &[
+            Value::Program(body),
+            Value::Vector(vec![3.0]),
+            Value::I64(0),
+        ],
+    )
+    .unwrap()
+    {
         Value::F64(value) => value,
         other => panic!("expected F64, got {other:?}"),
     };
@@ -242,17 +354,17 @@ fn differentiate_pow_constant_exponent() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = EmirProgram {
-        ops: vec![(
-            EmirOp::Differentiate { body, var_index: 0 },
-            Span::default(),
-        )],
-        result: EmirValue(0),
-        input_count: 1,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    };
-    let got = match evaluate(&prog, &[Value::F64(2.0)], &[]).unwrap() {
+    install_active_language();
+    let got = match cap_eval(
+        "std.capability.calculus.forward-difference",
+        &[
+            Value::Program(body),
+            Value::Vector(vec![2.0]),
+            Value::I64(0),
+        ],
+    )
+    .unwrap()
+    {
         Value::F64(value) => value,
         other => panic!("expected F64, got {other:?}"),
     };
@@ -381,6 +493,7 @@ fn type_confusion_and_on_vector() {
 
 #[test]
 fn vector_and_matrix_ops_spot() {
+    install_active_language();
     // [1.0, 2.0] + [3.0, 4.0] = [4.0, 6.0]
     let v1_ops = vec![
         const_bits(1.0),
@@ -389,7 +502,11 @@ fn vector_and_matrix_ops_spot() {
         const_bits(3.0),
         const_bits(4.0),
         EmirOp::VectorCreate(vec![EmirValue(3), EmirValue(4)]),
-        EmirOp::VectorAdd(EmirValue(2), EmirValue(5)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.linear.vector-add".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(2), EmirValue(5)],
+        },
     ];
     let prog = program(v1_ops);
     assert_eq!(
@@ -411,7 +528,11 @@ fn vector_and_matrix_ops_spot() {
         const_bits(2.0),
         const_bits(1.0),
         EmirOp::VectorCreate(vec![EmirValue(5), EmirValue(6)]),
-        EmirOp::MatrixMulVector(EmirValue(4), EmirValue(7)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.linear.matrix-vector-product".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(4), EmirValue(7)],
+        },
     ];
     let prog2 = program(mv_ops);
     assert_eq!(
@@ -435,7 +556,7 @@ fn vector_index_out_of_bounds_is_a_fault() {
     assert_eq!(
         evaluate(&program, &[], &[]).unwrap_err(),
         EvalFault::IndexOutOfBounds {
-            op: "vec-index",
+            op: "vector-index",
             index: 2,
             len: 2,
         }
@@ -457,7 +578,7 @@ fn vector_negative_index_is_a_fault() {
     assert_eq!(
         evaluate(&program, &[], &[]).unwrap_err(),
         EvalFault::IndexOutOfBounds {
-            op: "vec-index",
+            op: "vector-index",
             index: -1,
             len: 2,
         }
@@ -518,6 +639,7 @@ fn fold_rejects_non_whole_bounds() {
 
 #[test]
 fn integral_rejects_zero_or_odd_steps() {
+    install_active_language();
     let integrand = EmirProgram {
         ops: vec![(EmirOp::LoadInput(0), Span::default())],
         result: EmirValue(0),
@@ -525,82 +647,90 @@ fn integral_rejects_zero_or_odd_steps() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let zero_steps = program(vec![
-        const_bits(0.0),
-        const_bits(1.0),
-        EmirOp::Integral {
-            start: EmirValue(0),
-            end: EmirValue(1),
-            steps: 0,
-            loop_var_index: 0,
-            integrand: integrand.clone(),
-        },
-    ]);
     assert_eq!(
-        evaluate(&zero_steps, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "integral",
-            detail: "integral steps must be positive and even",
+        cap_eval(
+            "std.capability.calculus.simpson-integral",
+            &[
+                Value::Program(integrand.clone()),
+                Value::Vector(vec![]),
+                Value::F64(0.0),
+                Value::F64(1.0),
+                Value::I64(0),
+                Value::I64(0),
+            ],
+        )
+        .unwrap_err(),
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.calculus.simpson-integral".to_string(),
+            code: "integral steps must be positive and even".to_string(),
         }
     );
 
-    let odd_steps = program(vec![
-        const_bits(0.0),
-        const_bits(1.0),
-        EmirOp::Integral {
-            start: EmirValue(0),
-            end: EmirValue(1),
-            steps: 3,
-            loop_var_index: 0,
-            integrand,
-        },
-    ]);
     assert_eq!(
-        evaluate(&odd_steps, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "integral",
-            detail: "integral steps must be positive and even",
+        cap_eval(
+            "std.capability.calculus.simpson-integral",
+            &[
+                Value::Program(integrand),
+                Value::Vector(vec![]),
+                Value::F64(0.0),
+                Value::F64(1.0),
+                Value::I64(3),
+                Value::I64(0),
+            ],
+        )
+        .unwrap_err(),
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.calculus.simpson-integral".to_string(),
+            code: "integral steps must be positive and even".to_string(),
         }
     );
 }
 
+/// Migrated (emath:prod0904:p0:interp-supported:1): both length-mismatch
+/// refusals ride capsule-active capabilities — the dot half via
+/// `std.capability.geometry.inner-product` (kernel
+/// `pairwise-sum-products`), the add half via
+/// `std.capability.linear.vector-add` (kernel `dense-vector-add`). The
+/// shape law `E-SHAPE-001` is preserved through the seam's typed
+/// `CapabilityRefused` payload.
 #[test]
 fn vector_ops_refuse_length_mismatch() {
+    install_active_language();
     let add = program(vec![
         const_bits(1.0),
         const_bits(2.0),
         EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
         const_bits(3.0),
         EmirOp::VectorCreate(vec![EmirValue(3)]),
-        EmirOp::VectorAdd(EmirValue(2), EmirValue(4)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.linear.vector-add".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(2), EmirValue(4)],
+        },
     ]);
-    assert_eq!(
-        evaluate(&add, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "vec-add",
-            detail: "vector length mismatch",
+    match evaluate(&add, &[], &[]) {
+        Err(EvalFault::CapabilityRefused { code, .. }) => {
+            assert!(
+                code.contains("E-SHAPE-001"),
+                "vector-add length mismatch must name E-SHAPE-001, got {code}"
+            );
         }
-    );
+        other => panic!("expected capability refusal, got {other:?}"),
+    }
 
-    let dot = program(vec![
-        const_bits(1.0),
-        const_bits(2.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
-        const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(3)]),
-        EmirOp::VectorDot(EmirValue(2), EmirValue(4)),
-    ]);
-    assert_eq!(
-        evaluate(&dot, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "vec-dot",
-            detail: "vector length mismatch",
-        }
+    let dot = cap_eval(
+        "std.capability.geometry.inner-product",
+        &[Value::Vector(vec![1.0, 2.0]), Value::Vector(vec![3.0])],
+    );
+    assert!(
+        dot.is_err(),
+        "inner-product length mismatch must refuse, got {dot:?}"
     );
 }
 
 #[test]
 fn matrix_ops_refuse_shape_mismatch() {
+    install_active_language();
     // Same numel (6) but 2×3 vs 3×2 must not silently zip.
     let add = program(vec![
         const_bits(1.0),
@@ -619,15 +749,21 @@ fn matrix_ops_refuse_shape_mismatch() {
             cols: 2,
             elements: (0..6).map(EmirValue).collect(),
         },
-        EmirOp::MatrixAdd(EmirValue(6), EmirValue(7)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.linear.matrix-add".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(6), EmirValue(7)],
+        },
     ]);
-    assert_eq!(
-        evaluate(&add, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "mat-add",
-            detail: "matrix shape mismatch",
+    match evaluate(&add, &[], &[]) {
+        Err(EvalFault::CapabilityRefused { code, .. }) => {
+            assert!(
+                code.contains("E-SHAPE-001"),
+                "mat-add shape mismatch must name E-SHAPE-001, got {code}"
+            );
         }
-    );
+        other => panic!("expected capability refusal, got {other:?}"),
+    }
 
     let mul = program(vec![
         const_bits(1.0),
@@ -644,15 +780,21 @@ fn matrix_ops_refuse_shape_mismatch() {
             cols: 2,
             elements: vec![EmirValue(0), EmirValue(1)],
         },
-        EmirOp::MatrixMulMatrix(EmirValue(4), EmirValue(5)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.linear.matrix-product".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(4), EmirValue(5)],
+        },
     ]);
-    assert_eq!(
-        evaluate(&mul, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "mat-mul-mat",
-            detail: "matrix product inner dimensions mismatch",
+    match evaluate(&mul, &[], &[]) {
+        Err(EvalFault::CapabilityRefused { code, .. }) => {
+            assert!(
+                code.contains("E-SHAPE-001"),
+                "inner-dimension mismatch must name E-SHAPE-001, got {code}"
+            );
         }
-    );
+        other => panic!("expected capability refusal, got {other:?}"),
+    }
 
     let mv = program(vec![
         const_bits(1.0),
@@ -666,31 +808,51 @@ fn matrix_ops_refuse_shape_mismatch() {
         },
         const_bits(9.0),
         EmirOp::VectorCreate(vec![EmirValue(5)]),
-        EmirOp::MatrixMulVector(EmirValue(4), EmirValue(6)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.linear.matrix-vector-product".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(4), EmirValue(6)],
+        },
     ]);
-    assert_eq!(
-        evaluate(&mv, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "mat-mul-vec",
-            detail: "matrix×vector width mismatch",
+    match evaluate(&mv, &[], &[]) {
+        Err(EvalFault::CapabilityRefused { code, .. }) => {
+            assert!(
+                code.contains("E-SHAPE-001"),
+                "matrix×vector width mismatch must name E-SHAPE-001, got {code}"
+            );
         }
-    );
+        other => panic!("expected capability refusal, got {other:?}"),
+    }
 }
 
 /// Build a `Solve` wrapper program over a one-input residual body with
 /// the given seed and Newton budget (emath-9bj1 fallback tests).
-fn solve_program(body: EmirProgram, seed: f64, max_iter: u32) -> EmirProgram {
+fn solve_program(body: EmirProgram, _seed: f64, max_iter: u32) -> EmirProgram {
+    install_active_language();
     EmirProgram {
-        ops: vec![(
-            EmirOp::Solve {
-                body,
-                var_index: 0,
-                tolerance: 1e-12,
-                max_iter,
-            },
-            Span::default(),
-        )],
-        result: EmirValue(0),
+        ops: vec![
+            (EmirOp::ProgramLiteral(body), Span::default()),
+            (EmirOp::LoadInput(0), Span::default()),
+            (EmirOp::VectorCreate(vec![EmirValue(1)]), Span::default()),
+            (EmirOp::ConstI64(0), Span::default()),
+            (const_bits(1e-12), Span::default()),
+            (EmirOp::ConstI64(i64::from(max_iter)), Span::default()),
+            (
+                EmirOp::ApplyCapability {
+                    capability: "std.capability.calculus.scalar-solve".to_string(),
+                    class: emath_exec_ir::CellClass::Pure,
+                    args: vec![
+                        EmirValue(0),
+                        EmirValue(2),
+                        EmirValue(3),
+                        EmirValue(4),
+                        EmirValue(5),
+                    ],
+                },
+                Span::default(),
+            ),
+        ],
+        result: EmirValue(6),
         input_count: 1,
         state_count: 0,
         domain_obligations: Vec::new(),
@@ -784,9 +946,9 @@ fn solve_without_a_real_root_still_refuses_after_the_fallback() {
     let prog = solve_program(body, 0.0, 8);
     assert_eq!(
         evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "solve",
-            detail: "solve derivative vanished before convergence",
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.calculus.scalar-solve".to_string(),
+            code: "solve derivative vanished before convergence".to_string(),
         }
     );
 }
@@ -801,26 +963,12 @@ fn solve_refuses_vanished_derivative() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = EmirProgram {
-        ops: vec![(
-            EmirOp::Solve {
-                body,
-                var_index: 0,
-                tolerance: 1e-12,
-                max_iter: 8,
-            },
-            Span::default(),
-        )],
-        result: EmirValue(0),
-        input_count: 1,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    };
+    let prog = solve_program(body, 0.0, 8);
     assert_eq!(
         evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "solve",
-            detail: "solve derivative vanished before convergence",
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.calculus.scalar-solve".to_string(),
+            code: "solve derivative vanished before convergence".to_string(),
         }
     );
 }
@@ -836,26 +984,12 @@ fn solve_refuses_max_iter_without_root() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = EmirProgram {
-        ops: vec![(
-            EmirOp::Solve {
-                body,
-                var_index: 0,
-                tolerance: 1e-12,
-                max_iter: 0,
-            },
-            Span::default(),
-        )],
-        result: EmirValue(0),
-        input_count: 1,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    };
+    let prog = solve_program(body, 1.0, 0);
     assert_eq!(
         evaluate(&prog, &[Value::F64(1.0)], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "solve",
-            detail: "solve did not converge within max_iter",
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.calculus.scalar-solve".to_string(),
+            code: "solve did not converge within max_iter".to_string(),
         }
     );
 }
@@ -894,21 +1028,7 @@ fn square_shift_body(shift: f64) -> EmirProgram {
 
 #[test]
 fn solve_root_has_near_zero_residual() {
-    let prog = EmirProgram {
-        ops: vec![(
-            EmirOp::Solve {
-                body: square_minus_four_body(),
-                var_index: 0,
-                tolerance: 1e-12,
-                max_iter: 100,
-            },
-            Span::default(),
-        )],
-        result: EmirValue(0),
-        input_count: 1,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    };
+    let prog = solve_program(square_minus_four_body(), 3.0, 100);
     let root = match evaluate(&prog, &[Value::F64(1.0)], &[]).unwrap() {
         Value::F64(v) => v,
         other => panic!("expected F64 root, got {other:?}"),
@@ -930,15 +1050,9 @@ fn solve_root_has_near_zero_residual() {
 
 #[test]
 fn optimize_min_is_stationary() {
-    let prog = program(vec![EmirOp::Optimize {
-        body: square_shift_body(3.0),
-        var_indices: vec![0],
-        maximize: false,
-        learning_rate: 0.01,
-        tolerance: 1e-6,
-        max_iter: 8,
-    }]);
-    let min_x = match evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap() {
+    let min_x = match optimize_eval(square_shift_body(3.0), vec![0.0], vec![0.0], false, 1e-6, 8)
+        .unwrap()
+    {
         Value::F64(v) => v,
         other => panic!("expected F64 min, got {other:?}"),
     };
@@ -960,19 +1074,11 @@ fn optimize_refuses_max_iter_without_stationarity() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![EmirOp::Optimize {
-        body,
-        var_indices: vec![0],
-        maximize: false,
-        learning_rate: 0.01,
-        tolerance: 1e-8,
-        max_iter: 0,
-    }]);
     assert_eq!(
-        evaluate(&prog, &[Value::F64(10.0)], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "optimize",
-            detail: "optimize did not converge within max_iter",
+        optimize_eval(body, vec![10.0], vec![0.0], false, 1e-8, 0).unwrap_err(),
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.program.optimize".to_string(),
+            code: "optimize did not converge within max_iter".to_string(),
         }
     );
 }
@@ -987,19 +1093,11 @@ fn optimize_refuses_vanished_hessian() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![EmirOp::Optimize {
-        body,
-        var_indices: vec![0],
-        maximize: false,
-        learning_rate: 0.01,
-        tolerance: 1e-8,
-        max_iter: 8,
-    }]);
     assert_eq!(
-        evaluate(&prog, &[Value::F64(10.0)], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "optimize",
-            detail: "optimize hessian vanished before stationarity",
+        optimize_eval(body, vec![10.0], vec![0.0], false, 1e-8, 8).unwrap_err(),
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.program.optimize".to_string(),
+            code: "optimize hessian vanished before stationarity".to_string(),
         }
     );
 }
@@ -1008,19 +1106,11 @@ fn optimize_refuses_vanished_hessian() {
 fn optimize_refuses_min_as_a_max() {
     // maximize (x-3)^2 has a minimum at x=3, not a maximum. Newton must
     // refuse the wrong-curvature stationary point rather than return 3.
-    let prog = program(vec![EmirOp::Optimize {
-        body: square_shift_body(3.0),
-        var_indices: vec![0],
-        maximize: true,
-        learning_rate: 0.01,
-        tolerance: 1e-6,
-        max_iter: 8,
-    }]);
     assert_eq!(
-        evaluate(&prog, &[Value::F64(0.0)], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "optimize",
-            detail: "optimize hessian has the wrong curvature for maximize",
+        optimize_eval(square_shift_body(3.0), vec![0.0], vec![0.0], true, 1e-6, 8,).unwrap_err(),
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.program.optimize".to_string(),
+            code: "optimize hessian has the wrong curvature for maximize".to_string(),
         }
     );
 }
@@ -1034,19 +1124,11 @@ fn optimize_refuses_empty_var_indices() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![EmirOp::Optimize {
-        body,
-        var_indices: Vec::new(),
-        maximize: false,
-        learning_rate: 0.1,
-        tolerance: 1e-8,
-        max_iter: 4,
-    }]);
     assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "optimize",
-            detail: "optimize requires at least one variable",
+        optimize_eval(body, vec![], vec![], false, 1e-8, 4).unwrap_err(),
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.program.optimize".to_string(),
+            code: "optimize requires at least one variable".to_string(),
         }
     );
 }
@@ -1080,47 +1162,22 @@ fn fold_and_accepts_bool_init() {
     assert_eq!(evaluate(&prog, &[], &[]).unwrap(), Value::Bool(true));
 }
 
-// Build a program that constructs `input` as a vector via VectorCreate,
-// applies a 1D stencil, and returns the result. Mirrors how
-// `laplacian(u, dx)` lowers to `EmirOp::Stencil1d`.
-fn stencil_prog(weights: Vec<f64>, center: usize, input: Vec<f64>) -> EmirProgram {
-    stencil_prog_edge(weights, center, input, EdgePolicy::Clamp)
-}
-
-fn stencil_prog_edge(
-    weights: Vec<f64>,
-    center: usize,
-    input: Vec<f64>,
-    edge: EdgePolicy,
-) -> EmirProgram {
-    let n = input.len();
-    let mut ops: Vec<EmirOp> = input.iter().map(|x| const_bits(*x)).collect();
-    let elems: Vec<EmirValue> = (0..n).map(|i| EmirValue(i as u32)).collect();
-    ops.push(EmirOp::VectorCreate(elems));
-    let vec_reg = u32::try_from(n).unwrap_or(0);
-    ops.push(EmirOp::Stencil1d {
-        input: EmirValue(vec_reg),
-        weights,
-        center,
-        edge,
-    });
-    let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
-    EmirProgram {
-        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
-        result: EmirValue(last),
-        input_count: 0,
-        state_count: 0,
-        domain_obligations: Vec::new(),
-    }
-}
+// The retired `EmirOp::Stencil1d` surface executes through the PDE
+// capability family: the kernels pin the same second-difference /
+// first-difference math and their own edge policies, so the arbitrary
+// weight vectors are gone and the FeatureID carries the stencil.
 
 #[test]
 fn stencil_laplacian_constant_is_zero() {
     // The laplacian of a constant field is zero everywhere, including the
     // clamped boundary cells (the replicated neighbor equals the cell).
-    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![3.0; 5]);
+    install_active_language();
     assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
+        cap_eval(
+            "std.capability.pde.laplacian",
+            &[Value::Vector(vec![3.0; 5]), Value::F64(1.0)]
+        )
+        .unwrap(),
         Value::Vector(vec![0.0; 5])
     );
 }
@@ -1128,8 +1185,16 @@ fn stencil_laplacian_constant_is_zero() {
 #[test]
 fn stencil_laplacian_linear_is_zero_interior() {
     // The central second difference of a linear field is zero on interior.
-    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
+    install_active_language();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian",
+        &[
+            Value::Vector(vec![0.0, 1.0, 2.0, 3.0, 4.0]),
+            Value::F64(1.0),
+        ],
+    )
+    .unwrap()
+    {
         Value::Vector(v) => v,
         _ => panic!("expected vector"),
     };
@@ -1142,8 +1207,16 @@ fn stencil_laplacian_linear_is_zero_interior() {
 fn stencil_laplacian_quadratic_is_two_interior() {
     // The central second difference is exact on quadratics: u[i-1] - 2u[i]
     // + u[i+1] of x^2 with dx = 1 equals 2 on the interior.
-    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![0.0, 1.0, 4.0, 9.0, 16.0]);
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
+    install_active_language();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian",
+        &[
+            Value::Vector(vec![0.0, 1.0, 4.0, 9.0, 16.0]),
+            Value::F64(1.0),
+        ],
+    )
+    .unwrap()
+    {
         Value::Vector(v) => v,
         _ => panic!("expected vector"),
     };
@@ -1155,14 +1228,19 @@ fn stencil_laplacian_quadratic_is_two_interior() {
 #[test]
 fn stencil_laplacian_sine_matches_continuous() {
     // u[i] = sin(x_i), x_i = i * dx, dx = 0.1. The continuous Laplacian
-    // d^2/dx^2 sin(x) = -sin(x); the discrete stencil (weights
-    // [1, -2, 1] / dx^2) approximates -u[i] on the interior.
+    // d^2/dx^2 sin(x) = -sin(x); the second-difference kernel (dx²
+    // denominator inside the capability) approximates -u[i] on the
+    // interior.
     let dx = 0.1;
-    let inv = 1.0 / (dx * dx);
     let n = 20;
     let input: Vec<f64> = (0..n).map(|i| ((i as f64) * dx).sin()).collect();
-    let prog = stencil_prog(vec![inv, -2.0 * inv, inv], 1, input.clone());
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
+    install_active_language();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian",
+        &[Value::Vector(input.clone()), Value::F64(dx)],
+    )
+    .unwrap()
+    {
         Value::Vector(v) => v,
         _ => panic!("expected vector"),
     };
@@ -1181,8 +1259,13 @@ fn stencil_laplacian_sine_matches_continuous() {
 fn stencil_clamped_edge_replicates_boundary() {
     // At i = 0 with Clamp the left neighbor is u[0] itself, so the stencil
     // collapses to u[1] - u[0]; symmetrically at the right edge.
-    let prog = stencil_prog(vec![1.0, -2.0, 1.0], 1, vec![5.0, 7.0, 9.0]);
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
+    install_active_language();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian",
+        &[Value::Vector(vec![5.0, 7.0, 9.0]), Value::F64(1.0)],
+    )
+    .unwrap()
+    {
         Value::Vector(v) => v,
         _ => panic!("expected vector"),
     };
@@ -1195,17 +1278,18 @@ fn stencil_dirichlet_matching_value_is_zero() {
     // Dirichlet boundaries held at the field's own constant value: the
     // ghost cells match the interior, so the laplacian is zero everywhere,
     // including the boundary cells.
-    let prog = stencil_prog_edge(
-        vec![1.0, -2.0, 1.0],
-        1,
-        vec![5.0; 5],
-        EdgePolicy::Dirichlet {
-            left: 5.0,
-            right: 5.0,
-        },
-    );
+    install_active_language();
     assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
+        cap_eval(
+            "std.capability.pde.laplacian-dirichlet",
+            &[
+                Value::Vector(vec![5.0; 5]),
+                Value::F64(1.0),
+                Value::F64(5.0),
+                Value::F64(5.0),
+            ]
+        )
+        .unwrap(),
         Value::Vector(vec![0.0; 5])
     );
 }
@@ -1215,16 +1299,18 @@ fn stencil_dirichlet_mismatched_value_shifts_boundary() {
     // Constant field c = 5 with Dirichlet boundaries held at 0: only the
     // boundary cells see the ghost value, so L[0] = L[4] = (0 - 5) = -5
     // and the interior stays zero.
-    let prog = stencil_prog_edge(
-        vec![1.0, -2.0, 1.0],
-        1,
-        vec![5.0; 5],
-        EdgePolicy::Dirichlet {
-            left: 0.0,
-            right: 0.0,
-        },
-    );
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
+    install_active_language();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian-dirichlet",
+        &[
+            Value::Vector(vec![5.0; 5]),
+            Value::F64(1.0),
+            Value::F64(0.0),
+            Value::F64(0.0),
+        ],
+    )
+    .unwrap()
+    {
         Value::Vector(v) => v,
         _ => panic!("expected vector"),
     };
@@ -1241,13 +1327,16 @@ fn stencil_neumann_mirror_reflects_linear_field() {
     // (u[-1] = u[1], u[n] = u[n-2]). For a linear field the interior
     // second difference is 0; the mirrored ghost creates a kink, giving
     // L[0] = 2*(u[1]-u[0]) = 2 and L[4] = 2*(u[3]-u[4]) = -2.
-    let prog = stencil_prog_edge(
-        vec![1.0, -2.0, 1.0],
-        1,
-        vec![0.0, 1.0, 2.0, 3.0, 4.0],
-        EdgePolicy::Neumann,
-    );
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
+    install_active_language();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian-neumann",
+        &[
+            Value::Vector(vec![0.0, 1.0, 2.0, 3.0, 4.0]),
+            Value::F64(1.0),
+        ],
+    )
+    .unwrap()
+    {
         Value::Vector(v) => v,
         _ => panic!("expected vector"),
     };
@@ -1258,39 +1347,147 @@ fn stencil_neumann_mirror_reflects_linear_field() {
     assert_eq!(out[4], -2.0);
 }
 
-// Build a program that constructs `data` as a row-major matrix via
-// MatrixCreate, applies a 2D 3x3 stencil, and returns the result.
-fn stencil2d_prog(
-    weights: Vec<f64>,
-    center: (usize, usize),
-    rows: usize,
-    cols: usize,
-    data: Vec<f64>,
-    edge: EdgePolicy,
-) -> EmirProgram {
-    let n = data.len();
-    let mut ops: Vec<EmirOp> = data.iter().map(|x| const_bits(*x)).collect();
-    let elems: Vec<EmirValue> = (0..n).map(|i| EmirValue(i as u32)).collect();
-    ops.push(EmirOp::MatrixCreate {
-        rows,
-        cols,
-        elements: elems,
-    });
-    let mat_reg = u32::try_from(n).unwrap_or(0);
-    ops.push(EmirOp::Stencil2d {
-        input: EmirValue(mat_reg),
-        weights,
-        center,
-        edge,
-    });
-    let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
-    EmirProgram {
-        ops: ops.into_iter().map(|op| (op, Span::default())).collect(),
-        result: EmirValue(last),
-        input_count: 0,
-        state_count: 0,
-        domain_obligations: Vec::new(),
+// The retired `EmirOp::Stencil2d` surface executes through the 2D PDE
+// capability family (`laplacian-2d`, `gradient-2d-x/y`); the 5-point and
+// axis-difference kernels pin the weight math and edge policies.
+
+#[test]
+fn stencil2d_laplacian_constant_is_zero() {
+    // The 5-point laplacian of a constant field is zero everywhere,
+    // including the clamped boundary cells.
+    install_active_language();
+    assert_eq!(
+        cap_eval(
+            "std.capability.pde.laplacian-2d",
+            &[
+                Value::Matrix {
+                    rows: 3,
+                    cols: 3,
+                    data: vec![7.0; 9]
+                },
+                Value::F64(1.0),
+            ]
+        )
+        .unwrap(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![0.0; 9]
+        }
+    );
+}
+
+#[test]
+fn stencil2d_laplacian_quadratic_is_four_interior() {
+    // u[r][c] = r^2 + c^2; the continuous laplacian is 4, and the
+    // 5-point stencil recovers it exactly on the interior (dx = 1).
+    install_active_language();
+    let rows = 5;
+    let cols = 5;
+    let data: Vec<f64> = (0..rows)
+        .flat_map(|r| (0..cols).map(move |c| (r as f64).powi(2) + (c as f64).powi(2)))
+        .collect();
+    let out = match cap_eval(
+        "std.capability.pde.laplacian-2d",
+        &[Value::Matrix { rows, cols, data }, Value::F64(1.0)],
+    )
+    .unwrap()
+    {
+        Value::Matrix { data, .. } => data,
+        _ => panic!("expected matrix"),
+    };
+    for r in 1..(rows - 1) {
+        for c in 1..(cols - 1) {
+            assert_eq!(out[r * cols + c], 4.0, "interior ({r},{c})");
+        }
     }
+}
+
+#[test]
+fn gradient_constant_field_is_zero() {
+    // du/dx of a constant field is zero everywhere (dx = 1).
+    install_active_language();
+    assert_eq!(
+        cap_eval(
+            "std.capability.pde.gradient-1d",
+            &[Value::Vector(vec![5.0; 5]), Value::F64(1.0)]
+        )
+        .unwrap(),
+        Value::Vector(vec![0.0; 5])
+    );
+}
+
+#[test]
+fn gradient_linear_field_is_one_everywhere() {
+    // u = [0,1,2,3,4] (slope 1). The centered kernel's one-sided edges
+    // stay exact on linear fields, so the derivative is 1 everywhere
+    // (clamp would return 0.5 at the boundary — not the derivative).
+    install_active_language();
+    assert_eq!(
+        cap_eval(
+            "std.capability.pde.gradient-1d",
+            &[
+                Value::Vector(vec![0.0, 1.0, 2.0, 3.0, 4.0]),
+                Value::F64(1.0)
+            ]
+        )
+        .unwrap(),
+        Value::Vector(vec![1.0, 1.0, 1.0, 1.0, 1.0])
+    );
+}
+
+#[test]
+fn gradient_2d_x_linear_in_columns() {
+    // u[r][c] = c (increasing along columns). du/dc is 1 everywhere
+    // under the kernel's edges, constant along rows.
+    install_active_language();
+    let data = vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0];
+    assert_eq!(
+        cap_eval(
+            "std.capability.pde.gradient-2d-x",
+            &[
+                Value::Matrix {
+                    rows: 3,
+                    cols: 3,
+                    data
+                },
+                Value::F64(1.0),
+            ]
+        )
+        .unwrap(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![1.0; 9]
+        }
+    );
+}
+
+#[test]
+fn gradient_2d_y_linear_in_rows() {
+    // u[r][c] = r (increasing along rows). du/dr is 1 everywhere
+    // under the kernel's edges, constant along columns.
+    install_active_language();
+    let data = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0];
+    assert_eq!(
+        cap_eval(
+            "std.capability.pde.gradient-2d-y",
+            &[
+                Value::Matrix {
+                    rows: 3,
+                    cols: 3,
+                    data
+                },
+                Value::F64(1.0),
+            ]
+        )
+        .unwrap(),
+        Value::Matrix {
+            rows: 3,
+            cols: 3,
+            data: vec![1.0; 9]
+        }
+    );
 }
 
 fn stencil3d_prog(
@@ -1306,11 +1503,31 @@ fn stencil3d_prog(
         shape: shape.to_vec(),
         elements,
     });
-    ops.push(EmirOp::Stencil3d {
-        input: EmirValue(n as u32),
-        weights,
-        center: (1, 1, 1),
-        edge,
+    let weight_base = ops.len() as u32;
+    ops.extend(weights.iter().map(|value| const_bits(*value)));
+    ops.push(EmirOp::VectorCreate(
+        (0..weights.len() as u32)
+            .map(|index| EmirValue(weight_base + index))
+            .collect(),
+    ));
+    ops.push(EmirOp::ConstI64(1));
+    ops.push(EmirOp::ConstI64(1));
+    ops.push(EmirOp::ConstI64(1));
+    let capability = match edge {
+        EdgePolicy::Clamp => "std.capability.pde.stencil-3d-clamp",
+        EdgePolicy::OneSided => "std.capability.pde.stencil-3d-one-sided",
+        _ => "std.capability.pde.stencil-3d-neumann",
+    };
+    ops.push(EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![
+            EmirValue(n as u32),
+            EmirValue(ops.len() as u32 - 4),
+            EmirValue(ops.len() as u32 - 3),
+            EmirValue(ops.len() as u32 - 2),
+            EmirValue(ops.len() as u32 - 1),
+        ],
     });
     EmirProgram {
         result: EmirValue(ops.len() as u32 - 1),
@@ -1331,110 +1548,8 @@ fn derivative3d_weights(axis: usize, spacing: f64) -> Vec<f64> {
 }
 
 #[test]
-fn stencil2d_laplacian_constant_is_zero() {
-    // The 5-point laplacian of a constant field is zero everywhere,
-    // including the clamped boundary cells.
-    let weights = vec![0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0];
-    let prog = stencil2d_prog(weights, (1, 1), 3, 3, vec![7.0; 9], EdgePolicy::Clamp);
-    assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
-        Value::Matrix {
-            rows: 3,
-            cols: 3,
-            data: vec![0.0; 9]
-        }
-    );
-}
-
-#[test]
-fn stencil2d_laplacian_quadratic_is_four_interior() {
-    // u[r][c] = r^2 + c^2; the continuous laplacian is 4, and the
-    // 5-point stencil recovers it exactly on the interior (dx = 1).
-    let rows = 5;
-    let cols = 5;
-    let data: Vec<f64> = (0..rows)
-        .flat_map(|r| (0..cols).map(move |c| (r as f64).powi(2) + (c as f64).powi(2)))
-        .collect();
-    let weights = vec![0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0];
-    let prog = stencil2d_prog(weights, (1, 1), rows, cols, data, EdgePolicy::Clamp);
-    let out = match evaluate(&prog, &[], &[]).unwrap() {
-        Value::Matrix { data, .. } => data,
-        _ => panic!("expected matrix"),
-    };
-    for r in 1..(rows - 1) {
-        for c in 1..(cols - 1) {
-            assert_eq!(out[r * cols + c], 4.0, "interior ({r},{c})");
-        }
-    }
-}
-
-#[test]
-fn gradient_constant_field_is_zero() {
-    // du/dx of a constant field is zero everywhere (dx = 1, inv = 1/2).
-    let weights = vec![-0.5, 0.0, 0.5];
-    let prog = stencil_prog(weights, 1, vec![5.0; 5]);
-    assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
-        Value::Vector(vec![0.0; 5])
-    );
-}
-
-#[test]
-fn gradient_linear_field_is_one_everywhere() {
-    // u = [0,1,2,3,4] (slope 1). Central interior + one-sided edges
-    // (linear ghost) is 1 everywhere. Clamp on this stencil would
-    // return 0.5 at the boundary — that is not the derivative.
-    let weights = vec![-0.5, 0.0, 0.5];
-    let prog = stencil_prog_edge(
-        weights,
-        1,
-        vec![0.0, 1.0, 2.0, 3.0, 4.0],
-        EdgePolicy::OneSided,
-    );
-    assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
-        Value::Vector(vec![1.0, 1.0, 1.0, 1.0, 1.0])
-    );
-}
-
-#[test]
-fn gradient_2d_x_linear_in_columns() {
-    // u[r][c] = c (increasing along columns). du/dc is 1 everywhere
-    // under one-sided edges, constant along rows.
-    let data = vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0];
-    let weights = vec![0.0, 0.0, 0.0, -0.5, 0.0, 0.5, 0.0, 0.0, 0.0];
-    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::OneSided);
-    let expected = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-    assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
-        Value::Matrix {
-            rows: 3,
-            cols: 3,
-            data: expected
-        }
-    );
-}
-
-#[test]
-fn gradient_2d_y_linear_in_rows() {
-    // u[r][c] = r (increasing along rows). du/dr is 1 everywhere under
-    // one-sided edges, constant along columns.
-    let data = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0];
-    let weights = vec![0.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0];
-    let prog = stencil2d_prog(weights, (1, 1), 3, 3, data, EdgePolicy::OneSided);
-    let expected = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-    assert_eq!(
-        evaluate(&prog, &[], &[]).unwrap(),
-        Value::Matrix {
-            rows: 3,
-            cols: 3,
-            data: expected
-        }
-    );
-}
-
-#[test]
 fn stencil3d_laplacian_recovers_quadratic_interior() {
+    install_active_language();
     let data = (0..3)
         .flat_map(|x| (0..3).flat_map(move |y| (0..3).map(move |z| (x * x + y * y + z * z) as f64)))
         .collect();
@@ -1457,6 +1572,7 @@ fn stencil3d_laplacian_recovers_quadratic_interior() {
 
 #[test]
 fn gradient3d_axes_are_exact_on_linear_ramps() {
+    install_active_language();
     for axis in 0..3 {
         let data = (0..3)
             .flat_map(|x| {
@@ -1487,6 +1603,7 @@ fn gradient3d_axes_are_exact_on_linear_ramps() {
 
 #[test]
 fn divergence3d_sums_axis_derivatives() {
+    install_active_language();
     let fields: Vec<Vec<f64>> = (0..3)
         .map(|axis| {
             (0..3)
@@ -1517,13 +1634,34 @@ fn divergence3d_sums_axis_derivatives() {
             },
             Span::default(),
         ));
+        let weight_base = ops.len() as u32;
+        for weight in derivative3d_weights(axis, 1.0) {
+            ops.push((const_bits(weight), Span::default()));
+        }
+        let weights_vector = EmirValue(ops.len() as u32);
+        ops.push((
+            EmirOp::VectorCreate(
+                (0..27u32)
+                    .map(|index| EmirValue(weight_base + index))
+                    .collect(),
+            ),
+            Span::default(),
+        ));
+        ops.push((EmirOp::ConstI64(1), Span::default()));
+        ops.push((EmirOp::ConstI64(1), Span::default()));
+        ops.push((EmirOp::ConstI64(1), Span::default()));
         let derivative = EmirValue(ops.len() as u32);
         ops.push((
-            EmirOp::Stencil3d {
-                input: tensor,
-                weights: derivative3d_weights(axis, 1.0),
-                center: (1, 1, 1),
-                edge: EdgePolicy::OneSided,
+            EmirOp::ApplyCapability {
+                capability: "std.capability.pde.stencil-3d-one-sided".to_string(),
+                class: emath_exec_ir::CellClass::Pure,
+                args: vec![
+                    tensor,
+                    weights_vector,
+                    EmirValue(ops.len() as u32 - 3),
+                    EmirValue(ops.len() as u32 - 2),
+                    EmirValue(ops.len() as u32 - 1),
+                ],
             },
             Span::default(),
         ));
@@ -1531,11 +1669,22 @@ fn divergence3d_sums_axis_derivatives() {
     }
     let xy = EmirValue(ops.len() as u32);
     ops.push((
-        EmirOp::TensorAdd(derivatives[0], derivatives[1]),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.tensor.add".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![derivatives[0], derivatives[1]],
+        },
         Span::default(),
     ));
     let result = EmirValue(ops.len() as u32);
-    ops.push((EmirOp::TensorAdd(xy, derivatives[2]), Span::default()));
+    ops.push((
+        EmirOp::ApplyCapability {
+            capability: "std.capability.tensor.add".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![xy, derivatives[2]],
+        },
+        Span::default(),
+    ));
     let program = EmirProgram {
         ops,
         result,
@@ -1554,28 +1703,55 @@ fn divergence3d_sums_axis_derivatives() {
 
 #[test]
 fn stencil3d_refuses_non_tensor_input() {
+    install_active_language();
+    let mut ops: Vec<(EmirOp, Span)> = vec![(EmirOp::VectorCreate(Vec::new()), Span::default())];
+    let weight_base = ops.len() as u32;
+    for _ in 0..27 {
+        ops.push((const_bits(0.0), Span::default()));
+    }
+    let weights_vector = EmirValue(ops.len() as u32);
+    ops.push((
+        EmirOp::VectorCreate(
+            (0..27u32)
+                .map(|index| EmirValue(weight_base + index))
+                .collect(),
+        ),
+        Span::default(),
+    ));
+    ops.push((EmirOp::ConstI64(1), Span::default()));
+    ops.push((EmirOp::ConstI64(1), Span::default()));
+    ops.push((EmirOp::ConstI64(1), Span::default()));
+    ops.push((
+        EmirOp::ApplyCapability {
+            capability: "std.capability.pde.stencil-3d-clamp".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![
+                EmirValue(0),
+                weights_vector,
+                EmirValue(ops.len() as u32 - 3),
+                EmirValue(ops.len() as u32 - 2),
+                EmirValue(ops.len() as u32 - 1),
+            ],
+        },
+        Span::default(),
+    ));
+    let result = EmirValue(ops.len() as u32 - 1);
     let program = EmirProgram {
-        ops: vec![
-            (EmirOp::VectorCreate(Vec::new()), Span::default()),
-            (
-                EmirOp::Stencil3d {
-                    input: EmirValue(0),
-                    weights: vec![0.0; 27],
-                    center: (1, 1, 1),
-                    edge: EdgePolicy::Clamp,
-                },
-                Span::default(),
-            ),
-        ],
-        result: EmirValue(1),
+        ops,
+        result,
         input_count: 0,
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    assert!(matches!(
-        evaluate(&program, &[], &[]),
-        Err(EvalFault::TypeConfusion { .. })
-    ));
+    match evaluate(&program, &[], &[]) {
+        Err(EvalFault::CapabilityRefused { code, .. }) => {
+            assert!(
+                code.contains("E-TYPE-012"),
+                "non-tensor input must name E-TYPE-012, got {code}"
+            );
+        }
+        other => panic!("expected capability refusal, got {other:?}"),
+    }
 }
 
 // ---- B12: logic connectives evaluation ----------------------------------
@@ -1643,12 +1819,35 @@ fn iff_truth_table() {
 }
 
 // ---- einsum tests (B08) ---------------------------------------------------
+//
+// Variadic operands cross the universal Sequence carrier. Capsule data binds
+// the public feature to the generic contraction kernel.
+
+fn push_einsum(ops: &mut Vec<EmirOp>, subscripts: &str, inputs: Vec<EmirValue>) {
+    let text = EmirValue(ops.len() as u32);
+    ops.push(EmirOp::ConstText(subscripts.to_string()));
+    let sequence = EmirValue(ops.len() as u32);
+    ops.push(EmirOp::RecordCreate {
+        type_name: "Sequence".to_string(),
+        fields: inputs
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| (format!("{index:08}"), value))
+            .collect(),
+    });
+    ops.push(EmirOp::ApplyCapability {
+        capability: "std.capability.tensor.einsum".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![text, sequence],
+    });
+}
 
 #[test]
 fn einsum_matrix_multiply() {
+    install_active_language();
     // A = [[1, 2], [3, 4]], B = [[5, 6], [7, 8]]
     // C = einsum("ik,kj->ij", A, B) = [[19, 22], [43, 50]]
-    let program = program(vec![
+    let mut ops = vec![
         const_bits(1.0), // 0
         const_bits(2.0), // 1
         const_bits(3.0), // 2
@@ -1667,11 +1866,9 @@ fn einsum_matrix_multiply() {
             cols: 2,
             elements: vec![EmirValue(5), EmirValue(6), EmirValue(7), EmirValue(8)],
         }, // 9: B
-        EmirOp::Einsum {
-            subscripts: "ik,kj->ij".to_string(),
-            inputs: vec![EmirValue(4), EmirValue(9)],
-        }, // 10: C
-    ]);
+    ];
+    push_einsum(&mut ops, "ik,kj->ij", vec![EmirValue(4), EmirValue(9)]);
+    let program = program(ops);
     let result = evaluate(&program, &[], &[]).unwrap();
     assert_eq!(
         result,
@@ -1685,9 +1882,10 @@ fn einsum_matrix_multiply() {
 
 #[test]
 fn einsum_vector_dot_product() {
+    install_active_language();
     // a = [1, 2, 3], b = [4, 5, 6]
     // einsum("i,i->", a, b) = 1*4 + 2*5 + 3*6 = 32
-    let program = program(vec![
+    let mut ops = vec![
         const_bits(1.0),                                                      // 0
         const_bits(2.0),                                                      // 1
         const_bits(3.0),                                                      // 2
@@ -1696,20 +1894,19 @@ fn einsum_vector_dot_product() {
         const_bits(5.0),                                                      // 5
         const_bits(6.0),                                                      // 6
         EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // 7: b
-        EmirOp::Einsum {
-            subscripts: "i,i->".to_string(),
-            inputs: vec![EmirValue(3), EmirValue(7)],
-        }, // 8: scalar
-    ]);
+    ];
+    push_einsum(&mut ops, "i,i->", vec![EmirValue(3), EmirValue(7)]);
+    let program = program(ops);
     let result = evaluate(&program, &[], &[]).unwrap();
     assert_eq!(result, Value::F64(32.0));
 }
 
 #[test]
 fn einsum_transpose() {
+    install_active_language();
     // A = [[1, 2, 3], [4, 5, 6]] (2x3)
     // einsum("ij->ji", A) = [[1, 4], [2, 5], [3, 6]] (3x2)
-    let program = program(vec![
+    let mut ops = vec![
         const_bits(1.0), // 0
         const_bits(2.0), // 1
         const_bits(3.0), // 2
@@ -1728,11 +1925,9 @@ fn einsum_transpose() {
                 EmirValue(5),
             ],
         }, // 6: A
-        EmirOp::Einsum {
-            subscripts: "ij->ji".to_string(),
-            inputs: vec![EmirValue(6)],
-        }, // 7: A^T
-    ]);
+    ];
+    push_einsum(&mut ops, "ij->ji", vec![EmirValue(6)]);
+    let program = program(ops);
     let result = evaluate(&program, &[], &[]).unwrap();
     assert_eq!(
         result,
@@ -1773,6 +1968,7 @@ fn eval_ops(ops: Vec<EmirOp>) -> Value {
 /// iteration order); `"i,i->"` == `dot`.
 #[test]
 fn einsum_matches_matmul_and_dot() {
+    install_active_language();
     // A 2×3, B 3×2: C = A @ B = [[58, 64], [139, 154]]
     let a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     let b = [7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
@@ -1785,17 +1981,22 @@ fn einsum_matches_matmul_and_dot() {
     let mut mul = Vec::new();
     let a_reg = push_matrix(&mut mul, 2, 3, &a);
     let b_reg = push_matrix(&mut mul, 3, 2, &b);
-    mul.push(EmirOp::MatrixMulMatrix(EmirValue(a_reg), EmirValue(b_reg)));
+    mul.push(EmirOp::ApplyCapability {
+        capability: "std.capability.linear.matrix-product".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![EmirValue(a_reg), EmirValue(b_reg)],
+    });
     assert_eq!(eval_ops(mul), expected);
 
     for subscripts in ["ik,kj->ij", "ik,kj", "i k, k j -> i j"] {
         let mut ops = Vec::new();
         let a_reg = push_matrix(&mut ops, 2, 3, &a);
         let b_reg = push_matrix(&mut ops, 3, 2, &b);
-        ops.push(EmirOp::Einsum {
-            subscripts: subscripts.to_string(),
-            inputs: vec![EmirValue(a_reg), EmirValue(b_reg)],
-        });
+        push_einsum(
+            &mut ops,
+            subscripts,
+            vec![EmirValue(a_reg), EmirValue(b_reg)],
+        );
         assert_eq!(eval_ops(ops), expected, "subscripts {subscripts:?}");
     }
 
@@ -1803,11 +2004,12 @@ fn einsum_matches_matmul_and_dot() {
     let u = push_vector(&mut dot, &[1.0, 2.0, 3.0]);
     let v = push_vector(&mut dot, &[4.0, 5.0, 6.0]);
     let mut ein = dot.clone();
-    dot.push(EmirOp::VectorDot(EmirValue(u), EmirValue(v)));
-    ein.push(EmirOp::Einsum {
-        subscripts: "i,i->".to_string(),
-        inputs: vec![EmirValue(u), EmirValue(v)],
+    dot.push(EmirOp::ApplyCapability {
+        capability: "std.capability.geometry.inner-product".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![EmirValue(u), EmirValue(v)],
     });
+    push_einsum(&mut ein, "i,i->", vec![EmirValue(u), EmirValue(v)]);
     assert_eq!(eval_ops(dot), Value::F64(32.0));
     assert_eq!(eval_ops(ein), Value::F64(32.0));
 }
@@ -1816,6 +2018,7 @@ fn einsum_matches_matmul_and_dot() {
 /// `transpose(transpose(A)) == A` for a rectangular matrix.
 #[test]
 fn einsum_implicit_ji_and_transpose_involution() {
+    install_active_language();
     let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     let a = Value::Matrix {
         rows: 2,
@@ -1830,16 +2033,21 @@ fn einsum_implicit_ji_and_transpose_involution() {
 
     let mut implicit = Vec::new();
     let a_reg = push_matrix(&mut implicit, 2, 3, &data);
-    implicit.push(EmirOp::Einsum {
-        subscripts: "ji".to_string(),
-        inputs: vec![EmirValue(a_reg)],
-    });
+    push_einsum(&mut implicit, "ji", vec![EmirValue(a_reg)]);
     assert_eq!(eval_ops(implicit), at);
 
     let mut twice = Vec::new();
     let a_reg = push_matrix(&mut twice, 2, 3, &data);
-    twice.push(EmirOp::MatrixTranspose(EmirValue(a_reg)));
-    twice.push(EmirOp::MatrixTranspose(EmirValue(a_reg + 1)));
+    twice.push(EmirOp::ApplyCapability {
+        capability: "std.capability.linear.transpose".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![EmirValue(a_reg)],
+    });
+    twice.push(EmirOp::ApplyCapability {
+        capability: "std.capability.linear.transpose".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![EmirValue(a_reg + 1)],
+    });
     assert_eq!(eval_ops(twice), a);
 }
 
@@ -1847,12 +2055,10 @@ fn einsum_implicit_ji_and_transpose_involution() {
 /// used to write v[j] into every column of row-major output).
 #[test]
 fn einsum_diagonal_embed_and_broadcast() {
+    install_active_language();
     let mut diag = Vec::new();
     let v = push_vector(&mut diag, &[1.0, 2.0, 3.0]);
-    diag.push(EmirOp::Einsum {
-        subscripts: "i->ii".to_string(),
-        inputs: vec![EmirValue(v)],
-    });
+    push_einsum(&mut diag, "i->ii", vec![EmirValue(v)]);
     assert_eq!(
         eval_ops(diag),
         Value::Matrix {
@@ -1866,10 +2072,7 @@ fn einsum_diagonal_embed_and_broadcast() {
     let mut bc = Vec::new();
     let a = push_matrix(&mut bc, 2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     let b = push_matrix(&mut bc, 1, 3, &[10.0, 20.0, 30.0]);
-    bc.push(EmirOp::Einsum {
-        subscripts: "ij,ij->ij".to_string(),
-        inputs: vec![EmirValue(a), EmirValue(b)],
-    });
+    push_einsum(&mut bc, "ij,ij->ij", vec![EmirValue(a), EmirValue(b)]);
     assert_eq!(
         eval_ops(bc),
         Value::Matrix {
@@ -1883,15 +2086,12 @@ fn einsum_diagonal_embed_and_broadcast() {
     let mut bad = Vec::new();
     let a = push_matrix(&mut bad, 2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     let b = push_matrix(&mut bad, 2, 2, &[1.0, 2.0, 3.0, 4.0]);
-    bad.push(EmirOp::Einsum {
-        subscripts: "ik,kj->ij".to_string(),
-        inputs: vec![EmirValue(a), EmirValue(b)],
-    });
+    push_einsum(&mut bad, "ik,kj->ij", vec![EmirValue(a), EmirValue(b)]);
     assert_eq!(
         evaluate(&program(bad), &[], &[]).unwrap_err(),
-        EvalFault::Arithmetic {
-            op: "einsum",
-            detail: "einsum dimension mismatch",
+        EvalFault::CapabilityRefused {
+            capability: "std.capability.tensor.einsum".to_string(),
+            code: "E-EINSUM-001: einsum dimension mismatch".to_string(),
         }
     );
 }
@@ -1899,15 +2099,19 @@ fn einsum_diagonal_embed_and_broadcast() {
 /// Empty contraction is the sum identity (0), empty vector norm is 0,
 /// empty VectorCreate does not panic. Language `Vector[0]` / `[]` are
 /// named-refused at admit; these are the eval-side empty leaves.
+/// VectorNorm and Einsum execute through capsule-bound kernels.
 #[test]
 fn empty_vector_norm_and_einsum_are_identities() {
     let empty = program(vec![EmirOp::VectorCreate(vec![])]);
     assert_eq!(evaluate(&empty, &[], &[]).unwrap(), Value::Vector(vec![]));
 
-    let mut norm = Vec::new();
-    let v = push_vector(&mut norm, &[]);
-    norm.push(EmirOp::VectorNorm(EmirValue(v)));
-    match eval_ops(norm) {
+    install_active_language();
+    match cap_eval(
+        "std.capability.linear.vector-norm",
+        &[Value::Vector(vec![])],
+    )
+    .expect("empty norm is the sum identity")
+    {
         Value::F64(n) => assert_eq!(
             n.to_bits(),
             0.0f64.to_bits(),
@@ -1919,10 +2123,7 @@ fn empty_vector_norm_and_einsum_are_identities() {
     let mut ein = Vec::new();
     let a = push_vector(&mut ein, &[]);
     let b = push_vector(&mut ein, &[]);
-    ein.push(EmirOp::Einsum {
-        subscripts: "i,i->".to_string(),
-        inputs: vec![EmirValue(a), EmirValue(b)],
-    });
+    push_einsum(&mut ein, "i,i->", vec![EmirValue(a), EmirValue(b)]);
     assert_eq!(
         eval_ops(ein),
         Value::F64(0.0),
@@ -2015,89 +2216,249 @@ fn tensor_slice_out_of_bounds_is_a_fault() {
 }
 
 // ─── Modular arithmetic (consolidated) ───
+//
+// Migrated (emath:cleanup0904:p0:interp): the retired `EmirOp::Factorial`
+// / `ModInv` / `Congruence` surfaces execute through the exact
+// number-theory capabilities (`bounded-product`, `extended-gcd-inverse`,
+// `euclidean-congruence`), one ApplyCapability per step.
 
 #[test]
 fn modular_arithmetic_evaluates() {
     // Factorial, modular inverse, and congruence all exercise the
-    // i64 integer path. One test covers the happy paths.
-    let prog = program(vec![
-        EmirOp::ConstI64(0),                                          // 0
-        EmirOp::Factorial(EmirValue(0)),                              // 1: 0! = 1
-        EmirOp::ConstI64(5),                                          // 2
-        EmirOp::Factorial(EmirValue(2)),                              // 3: 5! = 120
-        EmirOp::ConstI64(3),                                          // 4: a
-        EmirOp::ConstI64(7),                                          // 5: m
-        EmirOp::ModInv(EmirValue(4), EmirValue(5)),                   // 6: 3^(-1) mod 7 = 5
-        EmirOp::ConstI64(-1),                                         // 7: a
-        EmirOp::ConstI64(6),                                          // 8: b
-        EmirOp::ConstI64(7),                                          // 9: m
-        EmirOp::Congruence(EmirValue(7), EmirValue(8), EmirValue(9)), // 10: -1 ≡ 6 (mod 7)
-    ]);
-    let result = evaluate(&prog, &[], &[]).unwrap();
-    // result is the last op (congruence) → Bool
-    assert_eq!(result, Value::Bool(true));
-
-    // Verify factorial and mod_inv individually
-    let p0 = program(vec![EmirOp::ConstI64(0), EmirOp::Factorial(EmirValue(0))]);
-    assert_eq!(evaluate(&p0, &[], &[]).unwrap(), Value::I64(1));
-
-    let p5 = program(vec![EmirOp::ConstI64(5), EmirOp::Factorial(EmirValue(0))]);
-    assert_eq!(evaluate(&p5, &[], &[]).unwrap(), Value::I64(120));
-
-    let pinv = program(vec![
-        EmirOp::ConstI64(3),
-        EmirOp::ConstI64(7),
-        EmirOp::ModInv(EmirValue(0), EmirValue(1)),
-    ]);
-    assert_eq!(evaluate(&pinv, &[], &[]).unwrap(), Value::I64(5));
+    // exact-i64 lane. One test covers the happy paths.
+    install_active_language();
+    const FACTORIAL: &str = "std.capability.exact.factorial";
+    const MOD_INVERSE: &str = "std.capability.exact.mod-inverse";
+    const CONGRUENCE: &str = "std.capability.exact.congruence";
+    assert_eq!(
+        cap_eval(FACTORIAL, &[Value::I64(0)]).unwrap(),
+        Value::I64(1)
+    );
+    assert_eq!(
+        cap_eval(FACTORIAL, &[Value::I64(5)]).unwrap(),
+        Value::I64(120)
+    );
+    assert_eq!(
+        cap_eval(MOD_INVERSE, &[Value::I64(3), Value::I64(7)]).unwrap(),
+        Value::I64(5)
+    );
+    assert_eq!(
+        cap_eval(CONGRUENCE, &[Value::I64(-1), Value::I64(6), Value::I64(7)]).unwrap(),
+        Value::Bool(true)
+    );
 }
 
 #[test]
 fn factorial_overflow_guard() {
-    let program = program(vec![EmirOp::ConstI64(21), EmirOp::Factorial(EmirValue(0))]);
-    assert!(evaluate(&program, &[], &[]).is_err());
+    install_active_language();
+    assert!(
+        cap_eval("std.capability.exact.factorial", &[Value::I64(21)]).is_err(),
+        "21! must refuse on the bounded-product domain"
+    );
 }
 
-/// `as i64` maps NaN→0 / Inf→sat / subnormal→0, so factorial would
-/// silently return 0! = 1. Whole finite F64 still converts.
+/// Int-only factorial contract (mail 113): positive I64 computes through
+/// the capsule-active bounded-product kernel; every F64 carrier — NaN,
+/// ±Inf, subnormal, and the legacy whole-finite 5.0 — refuses typed
+/// instead of the retired whole-F64 coercion (`as i64` mapped NaN→0 /
+/// Inf→sat / subnormal→0, which would silently yield 0! = 1).
 #[test]
 fn factorial_refuses_nan_inf_subnormal() {
-    let whole = program(vec![const_bits(5.0), EmirOp::Factorial(EmirValue(0))]);
-    assert_eq!(evaluate(&whole, &[], &[]).unwrap(), Value::I64(120));
+    install_active_language();
+    assert_eq!(
+        cap_eval("std.capability.exact.factorial", &[Value::I64(5)]).unwrap(),
+        Value::I64(120)
+    );
 
     for value in [
         f64::NAN,
         f64::INFINITY,
         f64::NEG_INFINITY,
         f64::from_bits(1),
+        5.0,
     ] {
-        let program = program(vec![
-            EmirOp::ConstF64(value.to_bits()),
-            EmirOp::Factorial(EmirValue(0)),
-        ]);
-        assert!(
-            evaluate(&program, &[], &[]).is_err(),
-            "factorial({value:?}) must not become a silent finite i64"
-        );
+        match cap_eval("std.capability.exact.factorial", &[Value::F64(value)]) {
+            Err(EvalFault::CapabilityRefused { capability, .. }) => {
+                assert_eq!(capability, "std.capability.exact.factorial");
+            }
+            other => panic!("factorial({value:?}) must refuse typed, got {other:?}"),
+        }
     }
 }
 
 #[test]
 fn mod_inv_no_inverse_errors() {
     // gcd(2,4)=2, not 1 → no modular inverse exists
-    let program = program(vec![
-        EmirOp::ConstI64(2),
-        EmirOp::ConstI64(4),
-        EmirOp::ModInv(EmirValue(0), EmirValue(1)),
-    ]);
-    assert!(evaluate(&program, &[], &[]).is_err());
+    install_active_language();
+    assert!(
+        cap_eval(
+            "std.capability.exact.mod-inverse",
+            &[Value::I64(2), Value::I64(4)]
+        )
+        .is_err(),
+        "gcd(2,4)=2 must refuse the inverse"
+    );
+}
+
+// ── pow_mod: square-and-multiply over i128 intermediates ────────────────
+
+fn pow_mod_program(base: i64, exp: i64, m: i64) -> EmirProgram {
+    program(vec![
+        EmirOp::ConstI64(base),
+        EmirOp::ConstI64(exp),
+        EmirOp::ConstI64(m),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.exact.pow-mod".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        },
+    ])
+}
+
+#[test]
+fn pow_mod_known_values() {
+    // 2^10 mod 1000 = 1024 mod 1000 = 24; 3^5 mod 7 = 243 mod 7 = 5.
+    install_active_language();
+    assert_eq!(
+        evaluate(&pow_mod_program(2, 10, 1000), &[], &[]).unwrap(),
+        Value::I64(24)
+    );
+    assert_eq!(
+        evaluate(&pow_mod_program(3, 5, 7), &[], &[]).unwrap(),
+        Value::I64(5)
+    );
+}
+
+#[test]
+fn pow_mod_identity_edges() {
+    // e = 0 → 1 % m: 1 for m > 1, 0 for the m = 1 zero ring.
+    install_active_language();
+    assert_eq!(
+        evaluate(&pow_mod_program(5, 0, 13), &[], &[]).unwrap(),
+        Value::I64(1)
+    );
+    assert_eq!(
+        evaluate(&pow_mod_program(5, 0, 1), &[], &[]).unwrap(),
+        Value::I64(0)
+    );
+}
+
+#[test]
+fn pow_mod_refuses_bad_domain() {
+    // m = 0 refuses (mirrors mod_inv's positive-modulus policy).
+    install_active_language();
+    assert!(evaluate(&pow_mod_program(2, 3, 0), &[], &[]).is_err());
+    // Negative exponent refuses typed, never silent.
+    assert!(evaluate(&pow_mod_program(2, -3, 7), &[], &[]).is_err());
+}
+
+/// i128 intermediates: a naive i64 product overflows long before these
+/// exponents; Fermat and Mersenne identities pin exactness.
+#[test]
+fn pow_mod_exact_beyond_i64_products() {
+    install_active_language();
+    // Fermat: 3^(p-1) ≡ 1 (mod p), p = 998244353 (NTT prime).
+    assert_eq!(
+        evaluate(&pow_mod_program(3, 998_244_352, 998_244_353), &[], &[]).unwrap(),
+        Value::I64(1)
+    );
+    // Mersenne: 2^61 mod (2^61 - 1) = 1 (2^61-1 is prime).
+    assert_eq!(
+        evaluate(&pow_mod_program(2, 61, 2_305_843_009_213_693_951), &[], &[]).unwrap(),
+        Value::I64(1)
+    );
+}
+
+// ── sqrt_mod: Tonelli-Shanks square root in F_p ─────────────────────────
+
+fn sqrt_mod_program(a: i64, p: i64) -> EmirProgram {
+    program(vec![
+        EmirOp::ConstI64(a),
+        EmirOp::ConstI64(p),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.exact.sqrt-mod".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(0), EmirValue(1)],
+        },
+    ])
+}
+
+#[test]
+fn sqrt_mod_known_values() {
+    // p ≡ 3 (mod 4) fast path: 2 is a residue mod 7 (3² = 9 ≡ 2);
+    // deterministic tie-break returns min(3, 4) = 3.
+    install_active_language();
+    assert_eq!(
+        evaluate(&sqrt_mod_program(2, 7), &[], &[]).unwrap(),
+        Value::I64(3)
+    );
+    // p ≡ 1 (mod 4) with 2-adic valuation s = 4 (p-1 = 16): 2 is a
+    // residue mod 17 (6² = 36 ≡ 2); tie-break returns min(6, 11) = 6.
+    assert_eq!(
+        evaluate(&sqrt_mod_program(2, 17), &[], &[]).unwrap(),
+        Value::I64(6)
+    );
+    // Large prime with s = 23 (998244353 = 119·2^23 + 1): full
+    // Tonelli-Shanks loop, hand-derivable roots.
+    assert_eq!(
+        evaluate(&sqrt_mod_program(4, 998_244_353), &[], &[]).unwrap(),
+        Value::I64(2)
+    );
+    assert_eq!(
+        evaluate(&sqrt_mod_program(121, 998_244_353), &[], &[]).unwrap(),
+        Value::I64(11)
+    );
+    // a = 0 → 0; a = 1 → 1 for any prime.
+    assert_eq!(
+        evaluate(&sqrt_mod_program(0, 13), &[], &[]).unwrap(),
+        Value::I64(0)
+    );
+    assert_eq!(
+        evaluate(&sqrt_mod_program(1, 13), &[], &[]).unwrap(),
+        Value::I64(1)
+    );
+}
+
+#[test]
+fn sqrt_mod_p2_and_edge_domains() {
+    // p = 2: the root is a mod 2.
+    install_active_language();
+    assert_eq!(
+        evaluate(&sqrt_mod_program(1, 2), &[], &[]).unwrap(),
+        Value::I64(1)
+    );
+    assert_eq!(
+        evaluate(&sqrt_mod_program(0, 2), &[], &[]).unwrap(),
+        Value::I64(0)
+    );
+    // Non-prime / non-positive moduli refuse (mirror mod_inv policy).
+    assert!(evaluate(&sqrt_mod_program(2, 0), &[], &[]).is_err());
+    assert!(evaluate(&sqrt_mod_program(2, -7), &[], &[]).is_err());
+}
+
+/// Non-residues refuse typed (never a fabricated root): 3 is a
+/// non-residue mod 7 (squares mod 7 are 0,1,2,4).
+#[test]
+fn sqrt_mod_refuses_non_residue() {
+    install_active_language();
+    assert!(evaluate(&sqrt_mod_program(3, 7), &[], &[]).is_err());
+    // -1 is a non-residue for p ≡ 3 (mod 4), e.g. p = 7: sqrt(6, 7) refuses.
+    assert!(evaluate(&sqrt_mod_program(6, 7), &[], &[]).is_err());
+    // emath-t63iz regression: a non-residue on the GENERAL Tonelli-Shanks
+    // path (p ≡ 1 mod 4) used to underflow m - i - 1 before the Legendre
+    // pre-check. 3 is a non-residue mod 17 (squares mod 17 are
+    // 0,1,2,4,8,9,13,15,16) — must refuse typed, never panic.
+    assert!(evaluate(&sqrt_mod_program(3, 17), &[], &[]).is_err());
 }
 
 /// Remaining domain edges after Float64 `sqrt(-1)`/`ln(-1)`/`log(0)`/
-/// `factorial(21)`/`mod_inv(0,n)`. Spec: IEEE for libm; GF builtins
-/// refuse `p <= 0`; `mod` is the floating remainder.
+/// `factorial(21)`/`mod_inv(0,n)`. Spec: IEEE for libm; the exact
+/// number-theory capabilities refuse invalid moduli with the kernel's
+/// typed refusal (the pre-migration `detail.contains("positive")` text
+/// coupling became the kernel's stable refusal path).
 #[test]
 fn remaining_domain_edges_match_documented_policy() {
+    install_active_language();
     let mod0 = program(vec![
         const_bits(1.0),
         const_bits(0.0),
@@ -2126,30 +2487,25 @@ fn remaining_domain_edges_match_documented_policy() {
         other => panic!("tan(π/2) must be F64, got {other:?}"),
     }
 
-    let p0 = program(vec![
-        const_bits(1.0),
-        EmirOp::VectorCreate(vec![EmirValue(0)]),
-        EmirOp::ConstI64(0),
-        EmirOp::ConstI64(0),
-        EmirOp::PolyEvalMod(EmirValue(1), EmirValue(2), EmirValue(3)),
-    ]);
-    match evaluate(&p0, &[], &[]) {
-        Err(EvalFault::Arithmetic { detail, .. }) => {
-            assert!(
-                detail.contains("positive"),
-                "poly_eval_mod p=0 must name the modulus, got {detail}"
-            );
-        }
-        other => panic!("poly_eval_mod p=0 must named-refuse, got {other:?}"),
-    }
+    let poly_eval_mod_program = |coeffs: &[f64], x: i64, p: i64| {
+        let mut ops: Vec<EmirOp> = coeffs.iter().map(|c| const_bits(*c)).collect();
+        let count = coeffs.len() as u32;
+        ops.push(EmirOp::VectorCreate((0..count).map(EmirValue).collect()));
+        ops.push(EmirOp::ConstI64(x));
+        ops.push(EmirOp::ConstI64(p));
+        ops.push(EmirOp::ApplyCapability {
+            capability: "std.capability.exact.poly-eval-mod".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(count), EmirValue(count + 1), EmirValue(count + 2)],
+        });
+        program(ops)
+    };
+    assert!(
+        evaluate(&poly_eval_mod_program(&[1.0], 0, 0), &[], &[]).is_err(),
+        "poly_eval_mod p=0 must named-refuse"
+    );
 
-    let p1 = program(vec![
-        const_bits(5.0),
-        EmirOp::VectorCreate(vec![EmirValue(0)]),
-        EmirOp::ConstI64(3),
-        EmirOp::ConstI64(1),
-        EmirOp::PolyEvalMod(EmirValue(1), EmirValue(2), EmirValue(3)),
-    ]);
+    let p1 = poly_eval_mod_program(&[5.0], 3, 1);
     assert_eq!(
         evaluate(&p1, &[], &[]).unwrap(),
         Value::I64(0),
@@ -2159,7 +2515,11 @@ fn remaining_domain_edges_match_documented_policy() {
     let inv1 = program(vec![
         EmirOp::ConstI64(1),
         EmirOp::ConstI64(1),
-        EmirOp::ModInv(EmirValue(0), EmirValue(1)),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.exact.mod-inverse".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(0), EmirValue(1)],
+        },
     ]);
     assert_eq!(
         evaluate(&inv1, &[], &[]).unwrap(),
@@ -2167,22 +2527,23 @@ fn remaining_domain_edges_match_documented_policy() {
         "mod_inv(1,1): gcd(0,1)=1 so inverse exists in the zero ring"
     );
 
-    let rs0 = program(vec![
-        const_bits(1.0),
-        EmirOp::VectorCreate(vec![EmirValue(0)]),
-        EmirOp::ConstI64(1),
-        EmirOp::ConstI64(0),
-        EmirOp::RSEncode(EmirValue(1), EmirValue(2), EmirValue(3)),
-    ]);
-    match evaluate(&rs0, &[], &[]) {
-        Err(EvalFault::Arithmetic { detail, .. }) => {
-            assert!(
-                detail.contains("positive"),
-                "rs_encode p=0 must name the modulus, got {detail}"
-            );
-        }
-        other => panic!("rs_encode p=0 must named-refuse, got {other:?}"),
-    }
+    let rs_encode_program = |coeffs: &[f64], n: i64, p: i64| {
+        let mut ops: Vec<EmirOp> = coeffs.iter().map(|c| const_bits(*c)).collect();
+        let count = coeffs.len() as u32;
+        ops.push(EmirOp::VectorCreate((0..count).map(EmirValue).collect()));
+        ops.push(EmirOp::ConstI64(n));
+        ops.push(EmirOp::ConstI64(p));
+        ops.push(EmirOp::ApplyCapability {
+            capability: "std.capability.exact.rs-encode".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(count), EmirValue(count + 1), EmirValue(count + 2)],
+        });
+        program(ops)
+    };
+    assert!(
+        evaluate(&rs_encode_program(&[1.0], 1, 0), &[], &[]).is_err(),
+        "rs_encode p=0 must named-refuse"
+    );
 
     let sqrt_i = program(vec![
         EmirOp::ConstComplex(0.0, 1.0),
@@ -2239,58 +2600,66 @@ fn complex_arithmetic_evaluates() {
 
 // ─── RS code construction (consolidated) ───
 
+/// Migrated per mail 113: all three stages run through capsule-active
+/// exact FeatureIDs on the installed Language Distribution —
+/// `poly-eval-mod` (modular-horner), `rs-encode`
+/// (modular-evaluation-sequence), and the new `hamming-distance`
+/// binding. Original assertions preserved: f(2) = 3, self-distance 0,
+/// and the Singleton bound.
 #[test]
 fn rs_code_pipeline_evaluates() {
-    // Full pipeline: polynomial eval mod p → RS encode → hamming distance →
-    // Singleton bound. If any stage is broken, this fails.
-    let prog = program(vec![
-        // poly_eval_mod: f(x) = 1 + 2x + 3x² over GF(7), f(2) = 17 mod 7 = 3
-        const_bits(1.0),
-        const_bits(2.0),
-        const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // 3: coeffs
-        const_bits(2.0),                                                      // 4: x
-        const_bits(7.0),                                                      // 5: p
-        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)),        // 6: f(2) mod 7
-        // rs_encode: same poly, n=7, p=7
-        const_bits(7.0),                                            // 7: n
-        EmirOp::RSEncode(EmirValue(3), EmirValue(7), EmirValue(5)), // 8: codeword
-        // hamming_distance: codeword vs itself → 0
-        EmirOp::HammingDistance(EmirValue(8), EmirValue(8)), // 9: dist=0
-    ]);
-    let result = evaluate(&prog, &[], &[]).unwrap();
-    assert_eq!(result, Value::I64(0));
+    install_active_language();
 
-    // Verify poly_eval_mod result
-    let p_pe = program(vec![
-        const_bits(1.0),
-        const_bits(2.0),
-        const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]),
-        const_bits(2.0),
-        const_bits(7.0),
-        EmirOp::PolyEvalMod(EmirValue(3), EmirValue(4), EmirValue(5)),
-    ]);
-    assert_eq!(evaluate(&p_pe, &[], &[]).unwrap(), Value::I64(3));
+    // poly_eval_mod: f(x) = 1 + 2x + 3x² over GF(7), f(2) = 17 mod 7 = 3
+    let f2 = cap_eval(
+        "std.capability.exact.poly-eval-mod",
+        &[
+            Value::Vector(vec![1.0, 2.0, 3.0]),
+            Value::I64(2),
+            Value::I64(7),
+        ],
+    );
+    assert_eq!(f2.unwrap(), Value::I64(3));
+
+    // rs_encode: same poly, n=7, p=7
+    let codeword = cap_eval(
+        "std.capability.exact.rs-encode",
+        &[
+            Value::Vector(vec![1.0, 2.0, 3.0]),
+            Value::I64(7),
+            Value::I64(7),
+        ],
+    )
+    .unwrap();
+
+    // hamming_distance: codeword vs itself → 0
+    let self_distance = cap_eval(
+        "std.capability.exact.hamming-distance",
+        &[codeword.clone(), codeword.clone()],
+    );
+    assert_eq!(self_distance.unwrap(), Value::I64(0));
 
     // Singleton bound: two distinct degree-2 polynomials over GF(7)
     // agree on at most 2 points, so distance >= n-k+1 = 5.
-    let p_singleton = program(vec![
-        const_bits(1.0),
-        const_bits(2.0),
-        const_bits(3.0),
-        EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1), EmirValue(2)]), // f1
-        const_bits(2.0),
-        const_bits(3.0),
-        const_bits(1.0),
-        EmirOp::VectorCreate(vec![EmirValue(4), EmirValue(5), EmirValue(6)]), // f2
-        const_bits(7.0),
-        const_bits(7.0),
-        EmirOp::RSEncode(EmirValue(3), EmirValue(8), EmirValue(9)), // cw1
-        EmirOp::RSEncode(EmirValue(7), EmirValue(8), EmirValue(9)), // cw2
-        EmirOp::HammingDistance(EmirValue(10), EmirValue(11)),
-    ]);
-    let dist = match evaluate(&p_singleton, &[], &[]).unwrap() {
+    let cw1 = cap_eval(
+        "std.capability.exact.rs-encode",
+        &[
+            Value::Vector(vec![1.0, 2.0, 3.0]),
+            Value::I64(7),
+            Value::I64(7),
+        ],
+    )
+    .unwrap();
+    let cw2 = cap_eval(
+        "std.capability.exact.rs-encode",
+        &[
+            Value::Vector(vec![2.0, 3.0, 1.0]),
+            Value::I64(7),
+            Value::I64(7),
+        ],
+    )
+    .unwrap();
+    let dist = match cap_eval("std.capability.exact.hamming-distance", &[cw1, cw2]).unwrap() {
         Value::I64(d) => d,
         other => panic!("expected I64, got {other:?}"),
     };
@@ -2300,6 +2669,7 @@ fn rs_code_pipeline_evaluates() {
 // ─── sample_limit computation (B04) ───
 #[test]
 fn sample_limit_sin_x_over_x_approaches_one() {
+    install_active_language();
     // Body sub-program: sin(x) / x where x is input 0.
     let body = EmirProgram {
         ops: vec![
@@ -2316,18 +2686,17 @@ fn sample_limit_sin_x_over_x_approaches_one() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    // Main program: target=0, direction=0 (two-sided), sample_limit.
-    let prog = program(vec![
-        const_bits(0.0), // 0: target = 0
-        const_bits(0.0), // 1: direction = two-sided
-        EmirOp::SampleLimit {
-            body,
-            var_index: 0,
-            target: EmirValue(0),
-            direction: EmirValue(1),
-        },
-    ]);
-    let result = evaluate(&prog, &[], &[]).unwrap();
+    let result = cap_eval(
+        "std.capability.program.sample-limit",
+        &[
+            Value::Program(body),
+            Value::Vector(vec![]),
+            Value::I64(0),
+            Value::F64(0.0),
+            Value::F64(0.0),
+        ],
+    )
+    .unwrap();
     let val = match result {
         Value::F64(v) => v,
         other => panic!("expected F64, got {other:?}"),
@@ -2342,6 +2711,7 @@ fn sample_limit_sin_x_over_x_approaches_one() {
 
 #[test]
 fn sample_limit_one_sided_from_above() {
+    install_active_language();
     // Body: 1/x where x is input 0. From above (direction=1), as x→0+,
     // 1/x → +inf. The sampler should produce large positive values.
     let body = EmirProgram {
@@ -2355,17 +2725,17 @@ fn sample_limit_one_sided_from_above() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![
-        const_bits(0.0), // target = 0
-        const_bits(1.0), // direction = from above
-        EmirOp::SampleLimit {
-            body,
-            var_index: 0,
-            target: EmirValue(0),
-            direction: EmirValue(1),
-        },
-    ]);
-    let result = evaluate(&prog, &[], &[]).unwrap();
+    let result = cap_eval(
+        "std.capability.program.sample-limit",
+        &[
+            Value::Program(body),
+            Value::Vector(vec![]),
+            Value::I64(0),
+            Value::F64(0.0),
+            Value::F64(1.0),
+        ],
+    )
+    .unwrap();
     let val = match result {
         Value::F64(v) => v,
         other => panic!("expected F64, got {other:?}"),
@@ -2377,6 +2747,9 @@ fn sample_limit_one_sided_from_above() {
 }
 
 // ─── reverse-mode AD ───
+//
+// Program and environment carriers keep authored bodies behind capsule-bound
+// forward and reverse kernels.
 
 #[test]
 fn reverse_mode_quadratic_gradient() {
@@ -2398,11 +2771,7 @@ fn reverse_mode_quadratic_gradient() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![EmirOp::ReverseMode {
-        body,
-        var_indices: vec![0, 1],
-    }]);
-    let result = evaluate(&prog, &[Value::F64(3.0), Value::F64(2.0)], &[]).unwrap();
+    let result = reverse_eval(body, &[Value::F64(3.0), Value::F64(2.0)], vec![0.0, 1.0]).unwrap();
     let grads = match result {
         Value::Vector(v) => v,
         other => panic!("expected Vector, got {other:?}"),
@@ -2448,10 +2817,9 @@ fn reverse_mode_ten_inputs_matches_forward() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let var_indices: Vec<u16> = (0..n as u16).collect();
-    let prog = program(vec![EmirOp::ReverseMode { body, var_indices }]);
+    let var_indices: Vec<f64> = (0..n).map(|index| index as f64).collect();
     let inputs: Vec<Value> = (1..=n).map(|i| Value::F64(i as f64)).collect();
-    let result = evaluate(&prog, &inputs, &[]).unwrap();
+    let result = reverse_eval(body, &inputs, var_indices).unwrap();
     let grads = match result {
         Value::Vector(v) => v,
         other => panic!("expected Vector, got {other:?}"),
@@ -2495,13 +2863,9 @@ fn reverse_mode_transcendental_gradient() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let prog = program(vec![EmirOp::ReverseMode {
-        body,
-        var_indices: vec![0, 1],
-    }]);
     let x = 1.0_f64;
     let y = 0.5_f64;
-    let result = evaluate(&prog, &[Value::F64(x), Value::F64(y)], &[]).unwrap();
+    let result = reverse_eval(body, &[Value::F64(x), Value::F64(y)], vec![0.0, 1.0]).unwrap();
     let grads = match result {
         Value::Vector(v) => v,
         other => panic!("expected Vector, got {other:?}"),
@@ -2533,19 +2897,11 @@ fn scalar_body(ops: Vec<EmirOp>, input_count: u16) -> EmirProgram {
 
 /// Forward-mode tangent and reverse-mode adjoint for the same scalar body.
 fn adjoint_pair(body: EmirProgram, inputs: &[Value], var: u16) -> (f64, f64) {
-    let dual_prog = program(vec![EmirOp::Differentiate {
-        body: body.clone(),
-        var_index: var,
-    }]);
-    let fwd = match evaluate(&dual_prog, inputs, &[]).unwrap() {
+    let fwd = match forward_eval(body.clone(), inputs, var).unwrap() {
         Value::F64(v) => v,
         other => panic!("expected F64 tangent, got {other:?}"),
     };
-    let rev_prog = program(vec![EmirOp::ReverseMode {
-        body,
-        var_indices: vec![var],
-    }]);
-    let rev = match evaluate(&rev_prog, inputs, &[]).unwrap() {
+    let rev = match reverse_eval(body, inputs, vec![f64::from(var)]).unwrap() {
         Value::Vector(v) => v[0],
         other => panic!("expected Vector adjoint, got {other:?}"),
     };
@@ -2693,6 +3049,30 @@ fn adjoint_identity_select() {
     assert_adjoint_eq(fwd, rev, 4.0, "d/dx select(x>0, x*x, -x) at 2");
 }
 
+#[test]
+fn vectordot_adjoint_identity() {
+    install_active_language();
+    // d/dx dot([x, 1], [1, x]) = d/dx (2x) = 2. The dot itself rides
+    // the capsule-active inner-product capability; the AD wrapper
+    // (Differentiate/ReverseMode) remains the blocked caller.
+    let body = scalar_body(
+        vec![
+            EmirOp::LoadInput(0),
+            const_bits(1.0),
+            EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
+            EmirOp::VectorCreate(vec![EmirValue(1), EmirValue(0)]),
+            EmirOp::ApplyCapability {
+                capability: "std.capability.geometry.inner-product".to_string(),
+                class: emath_exec_ir::CellClass::Pure,
+                args: vec![EmirValue(2), EmirValue(3)],
+            },
+        ],
+        1,
+    );
+    let (fwd, rev) = adjoint_pair(body, &[Value::F64(3.0)], 0);
+    assert_adjoint_eq(fwd, rev, 2.0, "d/dx dot([x,1],[1,x])");
+}
+
 /// Metamorphic involution: `f(f⁻¹(x)) == x` where the inverse is defined.
 /// `i64::MIN` negate must named-fault (two's-complement has no `−MIN`), not wrap.
 #[test]
@@ -2747,6 +3127,10 @@ fn invertible_ops_are_involutions() {
     }
 
     // transpose(transpose(A)) == A, including 0-width and 0-height.
+    // Migrated (emath:prod0904:p0:interp-supported:1): the transpose
+    // involution rides `std.capability.linear.transpose` (kernel
+    // `dense-transpose`).
+    install_active_language();
     for (rows, cols, data) in [
         (1usize, 1usize, vec![7.0]),
         (2, 2, vec![1.0, 2.0, 3.0, 4.0]),
@@ -2759,8 +3143,16 @@ fn invertible_ops_are_involutions() {
     ] {
         let mut ops = Vec::new();
         let a = push_matrix(&mut ops, rows, cols, &data);
-        ops.push(EmirOp::MatrixTranspose(EmirValue(a)));
-        ops.push(EmirOp::MatrixTranspose(EmirValue(a + 1)));
+        ops.push(EmirOp::ApplyCapability {
+            capability: "std.capability.linear.transpose".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(a)],
+        });
+        ops.push(EmirOp::ApplyCapability {
+            capability: "std.capability.linear.transpose".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(a + 1)],
+        });
         assert_eq!(
             eval_ops(ops),
             Value::Matrix {
@@ -2773,14 +3165,24 @@ fn invertible_ops_are_involutions() {
     }
 
     // mod_inv(mod_inv(a, p), p) == a when gcd(a, p)=1 and a ∈ (0, p).
+    // Migrated half: `std.capability.exact.mod-inverse` (supported).
+    install_active_language();
     for p in [2i64, 3, 7, 11, 13, 101, 1009] {
         for a in 1..p {
             let pinv = program(vec![
                 EmirOp::ConstI64(a),
                 EmirOp::ConstI64(p),
-                EmirOp::ModInv(EmirValue(0), EmirValue(1)),
+                EmirOp::ApplyCapability {
+                    capability: "std.capability.exact.mod-inverse".to_string(),
+                    class: emath_exec_ir::CellClass::Pure,
+                    args: vec![EmirValue(0), EmirValue(1)],
+                },
                 EmirOp::ConstI64(p),
-                EmirOp::ModInv(EmirValue(2), EmirValue(3)),
+                EmirOp::ApplyCapability {
+                    capability: "std.capability.exact.mod-inverse".to_string(),
+                    class: emath_exec_ir::CellClass::Pure,
+                    args: vec![EmirValue(2), EmirValue(3)],
+                },
             ]);
             match evaluate(&pinv, &[], &[]) {
                 Ok(Value::I64(back)) => {
@@ -2821,19 +3223,226 @@ fn complex_sqrt_ln_principal_branch() {
     }
 }
 
+// ── emath-t63iz stage 1: number-theory builtins at the 2^63 width ───────
+//
+// M61 = 2^61 - 1 is the Mersenne prime P(61): products of two residues
+// reach 2^122, far past i64 (and past the ~3e9 naive-i64-product
+// ceiling, which these width tests subsume: any p > sqrt(2^63) ≈
+// 3.04e9 overflows an i64 product). pow_mod/sqrt_mod/mod_inv/int_rem
+// already run i128 intermediates (mp9tz/h8atz); poly_eval_mod and
+// rs_encode Horner steps must match them at the same width.
+// Migrated (emath:cleanup0904:p0:interp): PolyEvalMod / RSEncode /
+// ModInv / IntRem execute through the exact number-theory capabilities.
+
+const M61: i64 = 2_305_843_009_213_693_951;
+
+fn poly_eval_mod_program(coeffs: &[f64], x: i64, p: i64) -> EmirProgram {
+    let mut ops = Vec::new();
+    for coeff in coeffs {
+        ops.push(const_bits(*coeff));
+    }
+    let count = u32::try_from(coeffs.len()).expect("coeff count fits u32");
+    ops.push(EmirOp::VectorCreate((0..count).map(EmirValue).collect()));
+    ops.push(EmirOp::ConstI64(x));
+    ops.push(EmirOp::ConstI64(p));
+    ops.push(EmirOp::ApplyCapability {
+        capability: "std.capability.exact.poly-eval-mod".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![EmirValue(count), EmirValue(count + 1), EmirValue(count + 2)],
+    });
+    program(ops)
+}
+
+fn rs_encode_program(coeffs: &[f64], n: i64, p: i64) -> EmirProgram {
+    let mut ops = Vec::new();
+    for coeff in coeffs {
+        ops.push(const_bits(*coeff));
+    }
+    let count = u32::try_from(coeffs.len()).expect("coeff count fits u32");
+    ops.push(EmirOp::VectorCreate((0..count).map(EmirValue).collect()));
+    ops.push(EmirOp::ConstI64(n));
+    ops.push(EmirOp::ConstI64(p));
+    ops.push(EmirOp::ApplyCapability {
+        capability: "std.capability.exact.rs-encode".to_string(),
+        class: emath_exec_ir::CellClass::Pure,
+        args: vec![EmirValue(count), EmirValue(count + 1), EmirValue(count + 2)],
+    });
+    program(ops)
+}
+
+/// f(t) = 1 + 2^52·t (coeffs[0] is the constant term; 2^52 is the
+/// widest f64-exact coefficient scale) at t = M61 − 1 ≡ −1 (mod M61):
+/// 2^52·(M61−1) = 2^52·M61 − 2^52 ≡ −2^52, so f ≡ 1 − 2^52 →
+/// M61 + 1 − 2^52. The Horner step 2^52·(M61−1) ≈ 2^113 overflows i64
+/// in debug and wraps silently in release — only an i128 product
+/// computes it exactly. (Coefficients above 2^53 are not f64-exact, so
+/// the *coefficient* surface cannot carry M61-scale values; the widened
+/// quantity is the product, which is exactly what stage 1 widens.)
 #[test]
-fn vectordot_adjoint_identity() {
-    // d/dx dot([x, 1], [1, x]) = d/dx (2x) = 2
-    let body = scalar_body(
-        vec![
-            EmirOp::LoadInput(0),
-            const_bits(1.0),
-            EmirOp::VectorCreate(vec![EmirValue(0), EmirValue(1)]),
-            EmirOp::VectorCreate(vec![EmirValue(1), EmirValue(0)]),
-            EmirOp::VectorDot(EmirValue(2), EmirValue(3)),
-        ],
-        1,
+fn poly_eval_mod_exact_at_2p61_width() {
+    install_active_language();
+    assert_eq!(
+        evaluate(
+            &poly_eval_mod_program(&[1.0, 4_503_599_627_370_496.0], M61 - 1, M61),
+            &[],
+            &[]
+        )
+        .unwrap(),
+        Value::I64(M61 + 1 - 4_503_599_627_370_496)
     );
-    let (fwd, rev) = adjoint_pair(body, &[Value::F64(3.0)], 0);
-    assert_adjoint_eq(fwd, rev, 2.0, "d/dx dot([x,1],[1,x])");
+}
+
+/// rs_encode shares the Horner kernel with poly_eval_mod (both call
+/// `horner_mod_i128`); its codeword surface is f64 by contract, so
+/// beyond 2^53 elements round. The wide pin is kernel PARITY: every
+/// codeword element equals poly_eval_mod at the same point exactly as
+/// f64 (same i128 kernel, same cast), with the exact elements cw[0]=1
+/// and cw[1]=1+2^52 (below 2^53) pinned outright. The Horner step
+/// 2^52·x overflows i64 for x ≥ 2^11 — the shared-validity parity is
+/// the bead's rs criterion.
+#[test]
+fn rs_encode_parity_with_poly_at_2p61_width() {
+    install_active_language();
+    let coeffs = [1.0, 4_503_599_627_370_496.0];
+    let n = 12i64;
+    let got = evaluate(&rs_encode_program(&coeffs, n, M61), &[], &[]).unwrap();
+    let Value::Vector(codeword) = got else {
+        panic!("rs_encode must return a vector, got {got:?}");
+    };
+    assert_eq!(codeword.len(), n as usize);
+    assert_eq!(codeword[0], 1.0, "f(0) = 1");
+    assert_eq!(
+        codeword[1], 4_503_599_627_370_497.0,
+        "f(1) = 1 + 2^52, exact below 2^53"
+    );
+    for x in 0..n {
+        let Value::I64(point) =
+            evaluate(&poly_eval_mod_program(&coeffs, x, M61), &[], &[]).unwrap()
+        else {
+            panic!("poly_eval_mod must be I64");
+        };
+        assert_eq!(
+            codeword[x as usize], point as f64,
+            "rs_encode({x}) must equal poly_eval_mod({x}) on the shared kernel"
+        );
+    }
+}
+
+/// All six builtins hold their exact identities at the M61 width:
+/// mod_inv(3) = (2·M61 + 1)/3 (3x ≡ 1, hand-derived from
+/// 2^62 - 1 = 2·M61 + 1 ≡ 0 mod 3); sqrt_mod of the perfect squares
+/// 4 and 9 (M61 ≡ 3 mod 4 fast path); int_rem sign law; and
+/// 2^61 ≡ 1 (mod M61) via pow_mod.
+#[test]
+fn number_theory_identities_at_2p61_width() {
+    install_active_language();
+    let mod_inv_p = program(vec![
+        EmirOp::ConstI64(3),
+        EmirOp::ConstI64(M61),
+        EmirOp::ApplyCapability {
+            capability: "std.capability.exact.mod-inverse".to_string(),
+            class: emath_exec_ir::CellClass::Pure,
+            args: vec![EmirValue(0), EmirValue(1)],
+        },
+    ]);
+    assert_eq!(
+        evaluate(&mod_inv_p, &[], &[]).unwrap(),
+        Value::I64(1_537_228_672_809_129_301),
+        "3 · (2^62 - 1)/3 = 2 M61 + 1 ≡ 1 (mod M61)"
+    );
+    assert_eq!(
+        evaluate(&sqrt_mod_program(4, M61), &[], &[]).unwrap(),
+        Value::I64(2)
+    );
+    assert_eq!(
+        evaluate(&sqrt_mod_program(9, M61), &[], &[]).unwrap(),
+        Value::I64(3)
+    );
+    assert_eq!(
+        evaluate(
+            &program(vec![
+                EmirOp::ConstI64(-5),
+                EmirOp::ConstI64(M61),
+                EmirOp::ApplyCapability {
+                    capability: "std.capability.exact.int-rem".to_string(),
+                    class: emath_exec_ir::CellClass::Pure,
+                    args: vec![EmirValue(0), EmirValue(1)],
+                },
+            ]),
+            &[],
+            &[]
+        )
+        .unwrap(),
+        Value::I64(M61 - 5),
+        "int_rem(-5, M61) = M61 - 5 (exact-Euclidean remainder)"
+    );
+    assert_eq!(
+        evaluate(&pow_mod_program(2, 61, M61), &[], &[]).unwrap(),
+        Value::I64(1)
+    );
+}
+
+/// Fixed-seed property band [2^62, 2^63): modulus-independent
+/// identities (no primality needed, so the band needs no Mersenne
+/// luck). pow_mod additivity a^(m+n) = a^m·a^n and Horner parity
+/// between poly_eval_mod and rs_encode at the same point; both fail
+/// under any i64 product wraparound in the kernels. Test-side math is
+/// i128 (the same arithmetic the kernels must perform).
+#[test]
+fn wide_modulus_property_band_2p62_to_2p63() {
+    install_active_language();
+    // Odd modulus in [2^62, 2^63): 2^62 + 1 (any i64 is < 2^63 by
+    // construction, so the band's upper edge is the type itself).
+    let p: i64 = 4_611_686_018_427_387_905;
+    assert!(p > (1i64 << 62) && p % 2 == 1);
+    for a in 1..=6i64 {
+        for m in [1i64, 7, 12345] {
+            let lhs = match evaluate(&pow_mod_program(a, 2 * m + 3, p), &[], &[]).unwrap() {
+                Value::I64(v) => v,
+                other => panic!("{other:?}"),
+            };
+            let Value::I64(am) = evaluate(&pow_mod_program(a, m, p), &[], &[]).unwrap() else {
+                panic!("pow_mod must be I64");
+            };
+            let Value::I64(an) = evaluate(&pow_mod_program(a, m + 3, p), &[], &[]).unwrap() else {
+                panic!("pow_mod must be I64");
+            };
+            let rhs = ((am as i128) * (an as i128)).rem_euclid(p as i128) as i64;
+            assert_eq!(lhs, rhs, "a^({m}+{m}+3) = a^{m}·a^({m}+3) mod p");
+        }
+        // Horner parity: rs_encode element at x equals poly_eval_mod
+        // at the same x (same coeffs, same modulus, shared kernel).
+        let coeffs = [a as f64, (a + 1) as f64];
+        let x = 1_000_003i64;
+        let Value::I64(point) = evaluate(&poly_eval_mod_program(&coeffs, x, p), &[], &[]).unwrap()
+        else {
+            panic!("poly_eval_mod must be I64");
+        };
+        let got = evaluate(&rs_encode_program(&coeffs, x + 1, p), &[], &[]).unwrap();
+        let Value::Vector(codeword) = got else {
+            panic!("rs_encode must be a vector, got {got:?}");
+        };
+        assert_eq!(
+            codeword[x as usize], point as f64,
+            "rs_encode(x) and poly_eval_mod(x) must agree on the shared kernel"
+        );
+        // Wraparound sensitivity at band scale: the Horner step
+        // (a+1)·(p−2) ≈ 2.8e19 wraps a 64-bit product; the test-side
+        // i128 derivation (the width the kernel must compute) catches
+        // any silent wrap, not just a debug panic.
+        let point = p - 2;
+        let expected = ((a as i128 + 1) * (p as i128 - 2) + a as i128).rem_euclid(p as i128) as i64;
+        let Value::I64(wide) = evaluate(
+            &poly_eval_mod_program(&[a as f64, (a + 1) as f64], point, p),
+            &[],
+            &[],
+        )
+        .unwrap() else {
+            panic!("poly_eval_mod must be I64");
+        };
+        assert_eq!(
+            wide, expected,
+            "Horner at band width must be i128-exact (a+1)(p-2) wraps i64"
+        );
+    }
 }

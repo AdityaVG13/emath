@@ -1,7 +1,7 @@
-//! emath-epic-machine-fjxh.9: compiled semantic image — partitions, lock,
+//! compiled semantic image — partitions, lock,
 //! not generated Rust source.
 //!
-//! The bead's law: a field pack compiles into a COMPACT image — symbols,
+//! The law: a field pack compiles into a COMPACT image — symbols,
 //! cells, bytecode, worlds, docs offsets, identities — organized in
 //! independently loadable partitions under a deterministic content id,
 //! with a lock recording prelude/packs/images/toolchain. The image is
@@ -9,9 +9,7 @@
 //! truth, and a corrupt partition refuses typed — never a silent load,
 //! never partial authority.
 
-use emath_exec_ir::image::{
-    ImageLock, ImagePartition, ImageRefusal, PartitionKind, SemanticImage,
-};
+use emath_exec_ir::image::{ImageLock, ImagePartition, ImageRefusal, PartitionKind, SemanticImage};
 use emath_exec_ir::term_compile::std_cell_registry;
 use emath_genesis::{
     Disposition, EvalError, FirstOrderWorld, ResultBundle, WorldBudget, evaluate_labeled,
@@ -94,7 +92,13 @@ fn corrupt_page_refuses_typed() {
         Err(ImageRefusal::CorruptPartition { name }) => assert_eq!(name, partition.name),
         other => panic!("expected CorruptPartition, got {other:?}"),
     }
-    assert_eq!(ImageRefusal::CorruptPartition { name: String::new() }.code(), "E-IMAGE-001");
+    assert_eq!(
+        ImageRefusal::CorruptPartition {
+            name: String::new()
+        }
+        .code(),
+        "E-IMAGE-001"
+    );
 
     // A partition with an empty name/page refuses (no blank pages).
     let blank = ImagePartition {
@@ -120,7 +124,7 @@ fn image_paths_cells_and_bundle_fixture() {
     // The image is built FROM cells (the .5 compiler output) — the
     // bytecode partition carries the leaf cell's compiled SSA program in
     // the generic vocabulary, and its labeled reference answer lands in
-    // a WorldResultBundle (fjxh.8 envelope).
+    // a WorldResultBundle (envelope).
     let image = build_softmax_image();
     let bytecode = &image
         .partitions
@@ -128,7 +132,10 @@ fn image_paths_cells_and_bundle_fixture() {
         .find(|partition| partition.name == "worlds.bytecode")
         .expect("bytecode partition")
         .body;
-    assert!(bytecode.contains("vector-map"), "generic vocabulary: {bytecode}");
+    assert!(
+        bytecode.contains("vector-map"),
+        "generic vocabulary: {bytecode}"
+    );
 
     let result = evaluate_labeled(
         &reference_softmax_term(),
@@ -202,8 +209,7 @@ fn build_softmax_image() -> SemanticImage {
     let mut docs = std::collections::BTreeMap::new();
     docs.insert(
         "std.tensor.softmax".to_string(),
-        "softmax reference: stable-max strict-f64; laws: shift invariance, "
-            .to_string()
+        "softmax reference: stable-max strict-f64; laws: shift invariance, ".to_string()
             + "nonnegativity, normalization",
     );
     SemanticImage::build(

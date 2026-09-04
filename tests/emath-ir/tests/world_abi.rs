@@ -1,6 +1,6 @@
-//! emath-epic-machine-fjxh.7: World ABI and default custom world portfolio.
+//! World ABI and default custom world portfolio.
 //!
-//! The bead's law: the World ABI is trait-style — carrier, constants,
+//! The World ABI is trait-style — carrier, constants,
 //! variables, apply, effects, budgets, evidence — and a NEW world
 //! implements the ABI only: the evaluator gains no match arm for it. The
 //! default custom portfolio orders candidate worlds (free symbolic,
@@ -20,10 +20,14 @@ use emath_term::{Signature, SymbolId, Term, VariableId};
 fn new_world_implements_abi_only() {
     // A brand-new world, defined HERE in the test, implements the trait
     // and evaluates through the UNCHANGED generic evaluator. If this
-    // required a genesis evaluator match arm, the bead's law would fail.
+    // required a genesis evaluator match arm, the law would fail.
     let mut signature = Signature::default();
-    signature.insert(SymbolId("f".into()), 1).expect("conflict-free");
-    signature.insert(SymbolId("e".into()), 0).expect("conflict-free");
+    signature
+        .insert(SymbolId("f".into()), 1)
+        .expect("conflict-free");
+    signature
+        .insert(SymbolId("e".into()), 0)
+        .expect("conflict-free");
 
     struct DoubleItWorld;
     impl FirstOrderWorld for DoubleItWorld {
@@ -88,10 +92,12 @@ fn default_portfolio_orders_and_disposes_typed() {
     // world by default; the trail records every candidate verdict.
     let default = select_world(&signature, &[]);
     assert_eq!(default.selected, Some(WorldName::FreeSymbolic));
-    assert!(default
-        .trail
-        .iter()
-        .any(|entry| entry.contains("free-symbolic") && entry.contains("applicable")));
+    assert!(
+        default
+            .trail
+            .iter()
+            .any(|entry| entry.contains("free-symbolic") && entry.contains("applicable"))
+    );
 
     // Demand a concrete canonical-finite carrier: excluding the free
     // symbolic world selects the Boolean world when applicable.
@@ -100,7 +106,10 @@ fn default_portfolio_orders_and_disposes_typed() {
 
     // Excluding both free symbolic and Boolean selects the modular world
     // (modular when applicable).
-    let modular = select_world(&signature, &[WorldName::FreeSymbolic, WorldName::BooleanAlien]);
+    let modular = select_world(
+        &signature,
+        &[WorldName::FreeSymbolic, WorldName::BooleanAlien],
+    );
     assert_eq!(modular.selected, Some(WorldName::ModularAlien));
 
     // Excluding everything: a TYPED disposition with the full trail —
@@ -115,18 +124,27 @@ fn default_portfolio_orders_and_disposes_typed() {
     );
     assert_eq!(exhausted.selected, None);
     assert_eq!(exhausted.trail.len(), 3);
-    assert!(exhausted.trail.iter().all(|entry| entry.contains("excluded")));
+    assert!(
+        exhausted
+            .trail
+            .iter()
+            .all(|entry| entry.contains("excluded"))
+    );
 
     // A signature no concrete seed world binds still disposes through the
     // free symbolic baseline, and the trail names the concrete refusals.
     let mut alien = Signature::default();
-    alien.insert(SymbolId("q".into()), 1).expect("conflict-free");
+    alien
+        .insert(SymbolId("q".into()), 1)
+        .expect("conflict-free");
     let other = select_world(&alien, &[]);
     assert_eq!(other.selected, Some(WorldName::FreeSymbolic));
-    assert!(other
-        .trail
-        .iter()
-        .any(|entry| entry.contains("boolean-alien") && entry.contains("not applicable")));
+    assert!(
+        other
+            .trail
+            .iter()
+            .any(|entry| entry.contains("boolean-alien") && entry.contains("not applicable"))
+    );
 }
 
 #[test]
@@ -171,8 +189,8 @@ fn abi_evidence_and_world_bundle() {
     assert!(BooleanAlienWorld.effects().is_empty());
     assert_eq!(ModularAlienWorld.evidence().world, "modular-17");
 
-    // WorldResultBundle fixture (bead e2e clause): the custom-world run
-    // as a world record; fjxh.8 (no naked answers) consumes this shape.
+    // WorldResultBundle fixture: the custom-world run
+    // as a world record; the no-naked-answers rule consumes this shape.
     #[derive(Debug)]
     struct WorldResultBundle {
         world: String,
@@ -190,7 +208,11 @@ fn abi_evidence_and_world_bundle() {
     let value = evaluate(&term, &ModularAlienWorld, &environment).ok();
     let bundle = WorldResultBundle {
         world: ModularAlienWorld.evidence().world,
-        verdict: if value.is_some() { "evaluated" } else { "refused" },
+        verdict: if value.is_some() {
+            "evaluated"
+        } else {
+            "refused"
+        },
         value,
         refusals: Vec::new(),
     };
@@ -199,7 +221,7 @@ fn abi_evidence_and_world_bundle() {
     assert_eq!(bundle.value, Some(6));
     assert!(bundle.refusals.is_empty());
 
-    // Bead negative seed: the seeded invented-world scenario declares a
+    // Negative seed: the seeded invented-world scenario declares a
     // typed refusal.
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/world_abi.emath");
     let expect_line = NEGATIVE_SEED

@@ -108,7 +108,7 @@ pub enum ExprNode {
         capability: CapabilityId,
         arguments: Vec<ExprId>,
     },
-    /// Time-series data constant (04 §5.4, emath-r3-timeseries-1nsa
+    /// Time-series data constant (04 §5.4,
     /// slice 1): SI-scaled `(time, value)` pairs plus the DECLARED
     /// interpretation policy. The policy is identity-bearing — it
     /// changes every downstream number — so it encodes into meaning.

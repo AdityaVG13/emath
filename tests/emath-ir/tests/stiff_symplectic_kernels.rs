@@ -1,23 +1,24 @@
-//! emath-xx0x.3 (thin nucleus slice): stiff + symplectic ODE kernels at
+//! (thin nucleus slice): stiff + symplectic ODE kernels at
 //! the EMIR seam.
 //!
-//! The bead's law, thinned to the compute layer (the RUNNER
-//! `StepMethod` surface is BronzeCoyote's exclusive — b9flv DAE work
-//! in flight; wiring these methods into `simulate` is the named
-//! follow-up slice for that lane):
-//! - **Stiff path — implicit (backward) Euler** (`OdeBackwardEuler`):
+//! The law, thinned to the compute layer (the runner's
+//! `StepMethod` surface; wiring these methods into
+//! `simulate` is future work):
+//! - **Stiff path — implicit (backward) Euler**
+//!   (`std.capability.ode.backward-euler`):
 //!   `x_{n+1} = x_n + h·f(x_{n+1})` via damped Newton on the residual
 //!   `g(x) = x − h·f(x) − x_n` with an analytic-or-forward-difference
 //!   Jacobian, deterministic smallest-|Δ|-pivot Gaussian elimination,
 //!   and a closed iteration budget. Unconverged Newton refuses typed
 //!   `E-ODE-001` — never a silently wrong trajectory point.
-//! - **Symplectic path — velocity Verlet** (`OdeVelocityVerlet`) for
+//! - **Symplectic path — velocity Verlet**
+//!   (`std.capability.ode.velocity-verlet`) for
 //!   separable Hamiltonian form `q' = v`, `v' = a(q)`: one
 //!   force-per-step kick-drift-kick, time-reversible, symplectic.
 //!   The STRUCTURE gate refuses typed `E-ODE-002` when the rate law
 //!   is not separable in the required `q' = v` shape — symplectic
 //!   integrators preserve structure only for structure-preserving
-//!   problems (the bead's misuse-refusal law).
+//! problems (the misuse-refusal law).
 //! - Scalar-ODE carrier: a single state variable (the nucleus slice;
 //!   vector/DAE coupling is the follow-up). `dt` must be positive
 //!   finite (`E-ODE-003`, the negative seed's shape). Non-finite
@@ -27,13 +28,43 @@
 //!   and monotone) and the harmonic oscillator (velocity Verlet energy
 //!   drift ≪ Euler's; energy bounded oscillation, not secular growth).
 
+use std::path::{Path, PathBuf};
+
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, EvalBudget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
+use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{SymbolId, Term};
 
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("dynamics kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const BACKWARD_EULER: &str = "std.capability.ode.backward-euler";
+const VELOCITY_VERLET: &str = "std.capability.ode.velocity-verlet";
+
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
-    // The .14 seam law: LoadInput per input, result = last register.
+    install_language();
+    // The seam law: LoadInput per input, result = last register.
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -71,9 +102,10 @@ fn backward_euler_stiff_stable_where_explicit_diverges() {
     // toward 0, monotone, bounded. A mutant that computes the EXPLICIT
     // step fails the boundedness/monotonicity assertions.
     let trajectory = eval(
-        vec![
-            EmirOp::OdeBackwardEuler(EmirValue(0), EmirValue(1), EmirValue(2)),
-        ],
+        vec![cell(
+            BACKWARD_EULER,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
+        )],
         &[
             stiff_rate(),
             Value::F64(1.0), // y0
@@ -105,10 +137,9 @@ fn backward_euler_iterated_decay_matches_closed_form() {
     let mut y = 1.0f64;
     for _ in 0..3 {
         let next = eval(
-            vec![EmirOp::OdeBackwardEuler(
-                EmirValue(0),
-                EmirValue(1),
-                EmirValue(2),
+            vec![cell(
+                BACKWARD_EULER,
+                vec![EmirValue(0), EmirValue(1), EmirValue(2)],
             )],
             &[stiff_rate(), Value::F64(y), Value::F64(0.1)],
         )
@@ -135,11 +166,9 @@ fn velocity_verlet_energy_drift_small() {
         // acceleration as a polynomial of q. Rate carrier for a(q):
         // a(q) = −q → coefficients [0, −1].
         let next = eval(
-            vec![EmirOp::OdeVelocityVerlet(
-                EmirValue(0),
-                EmirValue(1),
-                EmirValue(2),
-                EmirValue(3),
+            vec![cell(
+                VELOCITY_VERLET,
+                vec![EmirValue(0), EmirValue(1), EmirValue(2), EmirValue(3)],
             )],
             &[
                 Value::Vector(vec![0.0, -1.0]), // a(q) = −q
@@ -172,11 +201,9 @@ fn verlet_reversibility_law() {
     let dt = 0.05f64;
     for _ in 0..40 {
         let next = eval(
-            vec![EmirOp::OdeVelocityVerlet(
-                EmirValue(0),
-                EmirValue(1),
-                EmirValue(2),
-                EmirValue(3),
+            vec![cell(
+                VELOCITY_VERLET,
+                vec![EmirValue(0), EmirValue(1), EmirValue(2), EmirValue(3)],
             )],
             &[a.clone(), Value::F64(q), Value::F64(v), Value::F64(dt)],
         )
@@ -189,11 +216,9 @@ fn verlet_reversibility_law() {
     }
     for _ in 0..40 {
         let next = eval(
-            vec![EmirOp::OdeVelocityVerlet(
-                EmirValue(0),
-                EmirValue(1),
-                EmirValue(2),
-                EmirValue(3),
+            vec![cell(
+                VELOCITY_VERLET,
+                vec![EmirValue(0), EmirValue(1), EmirValue(2), EmirValue(3)],
             )],
             &[a.clone(), Value::F64(q), Value::F64(v), Value::F64(-dt)],
         )
@@ -217,10 +242,9 @@ fn non_positive_dt_refuses_typed() {
     // "integrated" value).
     for dt in [0.0, -0.1] {
         let error = eval(
-            vec![EmirOp::OdeBackwardEuler(
-                EmirValue(0),
-                EmirValue(1),
-                EmirValue(2),
+            vec![cell(
+                BACKWARD_EULER,
+                vec![EmirValue(0), EmirValue(1), EmirValue(2)],
             )],
             &[stiff_rate(), Value::F64(1.0), Value::F64(dt)],
         )
@@ -231,7 +255,8 @@ fn non_positive_dt_refuses_typed() {
             "dt={dt} must name E-ODE-003, got {fault}"
         );
     }
-    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/stiff_symplectic_kernels.emath");
+    const NEGATIVE_SEED: &str =
+        include_str!("../../../tests/invalid/stiff_symplectic_kernels.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
@@ -247,10 +272,9 @@ fn non_finite_coefficients_refuse_typed() {
     // E-ODE-004: a NaN rate coefficient refuses — never a silently
     // corrupted trajectory.
     let error = eval(
-        vec![EmirOp::OdeBackwardEuler(
-            EmirValue(0),
-            EmirValue(1),
-            EmirValue(2),
+        vec![cell(
+            BACKWARD_EULER,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
         )],
         &[
             Value::Vector(vec![f64::NAN, -50.0]),
@@ -277,10 +301,9 @@ fn nonlinear_rate_newton_converges() {
     let y0 = 1.0f64;
     let h = 0.01f64;
     let next = eval(
-        vec![EmirOp::OdeBackwardEuler(
-            EmirValue(0),
-            EmirValue(1),
-            EmirValue(2),
+        vec![cell(
+            BACKWARD_EULER,
+            vec![EmirValue(0), EmirValue(1), EmirValue(2)],
         )],
         &[rate, Value::F64(y0), Value::F64(h)],
     )
@@ -307,10 +330,9 @@ fn bundle_fixture() {
 
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
             let step = eval(
-                vec![EmirOp::OdeBackwardEuler(
-                    EmirValue(0),
-                    EmirValue(1),
-                    EmirValue(2),
+                vec![cell(
+                    BACKWARD_EULER,
+                    vec![EmirValue(0), EmirValue(1), EmirValue(2)],
                 )],
                 &[stiff_rate(), Value::F64(1.0), Value::F64(0.1)],
             )

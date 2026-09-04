@@ -1,6 +1,6 @@
-//! emath-epic-machine-fjxh.12: Static specializer with VM parity.
+//!: Static specializer with VM parity.
 //!
-//! The bead's law: a fixed genome + program specializes into static EMIR
+//! The law: a fixed genome + program specializes into static EMIR
 //! (constants substituted, generic dispatch dropped, existing bit-exact
 //! folding reused — no per-op backend duplication), and the specialized
 //! path must agree with the generic VM seam BIT-FOR-BIT under the
@@ -30,7 +30,7 @@ fn f64_bits(value: f64) -> u64 {
 }
 
 /// The generic VM seam for the registry softmax cell (the same shape the
-/// fjxh.6 seam executes): ApplyCapability dispatch, guards at the seam.
+/// seam executes): ApplyCapability dispatch, guards at the seam.
 fn run_softmax_seam(vector: &[f64]) -> Result<Value, EvalFault> {
     let program = EmirProgram {
         ops: vec![
@@ -66,20 +66,18 @@ fn compile_gain_cell() -> CompiledCell {
     let x = || Term::Variable(VariableId("x".into()));
     let gain = || Term::Variable(VariableId("gain".into()));
     let one = || Term::Constant(SymbolId("1.0".into()));
-    let inner = || {
-        Term::Apply {
-            operator: SymbolId("add".into()),
-            arguments: vec![
-                Term::Apply {
-                    operator: SymbolId("exp".into()),
-                    arguments: vec![Term::Apply {
-                        operator: SymbolId("neg".into()),
-                        arguments: vec![x()],
-                    }],
-                },
-                one(),
-            ],
-        }
+    let inner = || Term::Apply {
+        operator: SymbolId("add".into()),
+        arguments: vec![
+            Term::Apply {
+                operator: SymbolId("exp".into()),
+                arguments: vec![Term::Apply {
+                    operator: SymbolId("neg".into()),
+                    arguments: vec![x()],
+                }],
+            },
+            one(),
+        ],
     };
     let term = Term::Apply {
         operator: SymbolId("mul".into()),
@@ -152,11 +150,7 @@ fn expect_vector(value: &Value) -> &[f64] {
 fn assert_bit_exact(label: &str, got: &[f64], want: &[f64]) {
     assert_eq!(got.len(), want.len(), "{label}");
     for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
-        assert_eq!(
-            g.to_bits(),
-            w.to_bits(),
-            "{label} element {i}: {g} != {w}"
-        );
+        assert_eq!(g.to_bits(), w.to_bits(), "{label} element {i}: {g} != {w}");
     }
 }
 
@@ -349,15 +343,23 @@ fn seeded_backend_mutant_is_caught() {
 
     let xs = [0.0_f64, 1.0, 2.0];
     let generic = run_gain_generic(&cell, &xs, 2.0).expect("generic evaluates");
-    let mutant_run = evaluate_with_budget(&mutant, &[Value::Vector(xs.to_vec())], &[], EvalBudget::default())
-        .expect("mutant evaluates");
+    let mutant_run = evaluate_with_budget(
+        &mutant,
+        &[Value::Vector(xs.to_vec())],
+        &[],
+        EvalBudget::default(),
+    )
+    .expect("mutant evaluates");
     let got = expect_vector(&mutant_run);
     let want = expect_vector(&generic);
     let differs = got
         .iter()
         .zip(want.iter())
         .any(|(g, w)| g.to_bits() != w.to_bits());
-    assert!(differs, "the parity differential catches the backend mutant");
+    assert!(
+        differs,
+        "the parity differential catches the backend mutant"
+    );
 }
 
 #[test]
@@ -418,8 +420,8 @@ fn refusals_are_typed() {
 
 #[test]
 fn specialized_answer_lands_in_bundle() {
-    // WorldResultBundle fixture (bead e2e clause): the specialized run's
-    // answer is a labeled world record in the fjxh.8 envelope.
+    // WorldResultBundle fixture: the specialized run's
+    // answer is a labeled world record in the envelope.
     struct ParityWorld;
     impl FirstOrderWorld for ParityWorld {
         type Value = f64;
@@ -458,9 +460,7 @@ fn specialized_answer_lands_in_bundle() {
         &term,
         &ParityWorld,
         &environment,
-        WorldBudget {
-            max_steps: 8,
-        },
+        WorldBudget { max_steps: 8 },
         |answer: &f64| format!("{answer:.6}"),
     );
     assert!(matches!(result.disposition, Disposition::Answer { .. }));

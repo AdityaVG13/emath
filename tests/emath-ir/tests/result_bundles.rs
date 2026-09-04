@@ -1,8 +1,8 @@
-//! emath-epic-machine-fjxh.8: WorldResultBundle — no naked answers.
+//! WorldResultBundle — no naked answers.
 //!
-//! The bead's law: every execution labels world, method, inputs,
+//! The law: every execution labels world, method, inputs,
 //! assumptions, answer-or-disposition, evidence, and cost — the envelope
-//! over the World ABI producer (fjxh.7). A bare scalar never escapes a
+//! over the World ABI producer. A bare scalar never escapes a
 //! public path: dispositions (answer/open/refused/fault) are first-class,
 //! the bundle id is a deterministic content id (replay from IDs
 //! reconstructs the labeled result), and a result without its world label
@@ -45,7 +45,10 @@ fn bundle_labels_every_execution() {
     assert_eq!(result.method, "evaluate-bounded");
     assert_eq!(result.inputs.len(), 2);
     assert_eq!(result.inputs["a"], "2");
-    assert!(result.assumptions.is_empty(), "seed worlds declare no effects");
+    assert!(
+        result.assumptions.is_empty(),
+        "seed worlds declare no effects"
+    );
     assert!(!result.evidence_laws.is_empty());
     assert!(result.cost_steps > 0);
     match &result.disposition {
@@ -230,9 +233,12 @@ fn naked_results_are_refused() {
         ..unlabeled
     };
     open_result.disposition = Disposition::Open { missing: vec![] };
-    assert!(open_result.validate().is_ok(), "open disposition is complete");
+    assert!(
+        open_result.validate().is_ok(),
+        "open disposition is complete"
+    );
 
-    // Bead negative seed: the naked-result scenario declares a typed
+    // Negative seed: the naked-result scenario declares a typed
     // refusal.
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/result_bundles.emath");
     let expect_line = NEGATIVE_SEED

@@ -1,4 +1,4 @@
-//! Bead `emath-talo` — IR-level acceptance for the 3D geometry pack.
+//! IR-level acceptance for the 3D geometry pack.
 //!
 //! IR truth: geometry is DATA over the generic surface, so the IR
 //! contract is (1) the runnable example admits and evaluates to the
@@ -20,7 +20,7 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
-/// The runnable 3D-primitives example: the language truth for this bead.
+/// The runnable 3D-primitives example: the language truth for this.
 const GEOMETRY_EXAMPLE: &str =
     include_str!("../../../language/examples/geometry/3d-primitives.emath");
 
@@ -73,16 +73,13 @@ fn geometry_example_is_runnable() {
         &Value::Vector(vec![0.0, 0.0, 1.0]),
         "right-hand basis cross"
     );
-    vector_eq(values.get("cross_uv").expect("cross_uv"), &[-3.0, 6.0, -3.0]);
     vector_eq(
-        values.get("cross_vu").expect("cross_vu"),
-        &[3.0, -6.0, 3.0],
+        values.get("cross_uv").expect("cross_uv"),
+        &[-3.0, 6.0, -3.0],
     );
+    vector_eq(values.get("cross_vu").expect("cross_vu"), &[3.0, -6.0, 3.0]);
 
-    vector_eq(
-        values.get("u").expect("u"),
-        &[1.0, 2.0, 3.0],
-    );
+    vector_eq(values.get("u").expect("u"), &[1.0, 2.0, 3.0]);
     assert_eq!(
         values.get("length_u"),
         Some(&Value::F64(3.7416573867739413)),
@@ -143,8 +140,7 @@ fn geometry_meaning_canonical_identity_deterministic() {
     // Semantic perturbation: swap the cross argument order (an
     // anti-commutativity-relevant edit that changes meaning, not
     // presentation).
-    let perturbed =
-        GEOMETRY_EXAMPLE.replace("cross_uv = cross(u, v)", "cross_uv = cross(v, u)");
+    let perturbed = GEOMETRY_EXAMPLE.replace("cross_uv = cross(u, v)", "cross_uv = cross(v, u)");
     assert_ne!(
         perturbed, GEOMETRY_EXAMPLE,
         "perturbation probe must differ from the example"

@@ -1,22 +1,22 @@
-//! emath-epic-machine-fjxh.2: capability-cell schema, identity, and bounded
+//! capability-cell schema, identity, and bounded
 //! admission (schema `emath.capability-cell.v1`).
 //!
 //! Cells are data with a closed class taxonomy, a required schema version
 //! and migration policy, and a typed bounded-admission refusal set.
 //! Identity is exactly the identity-affecting fields: mutating one moves
 //! `CellId`; mutating `about` never does. No domain-named core enum variants
-//! enter the IR in this bead.
+//! enter the IR in this.
 
 use emath_core::QualifiedName;
+use emath_ir::SemanticPackage;
 use emath_ir::canonical::canonical_expr;
 use emath_ir::meaning::MeaningError;
 use emath_ir::{
     AdmissionRefusal, Capability, CapabilityId, CellClass, CellSchema, ExprId, ExprNode,
     MAX_CELL_ARITY, MigrationPolicy, admit_cell, admit_cell_mutation, canonical_cell, cell_id,
 };
-use emath_ir::SemanticPackage;
 
-/// Acceptance negative seed (bead emath-epic-machine-fjxh.2).
+/// Acceptance negative seed.
 const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_cells.emath");
 
 fn softmax(version: &str, migration: MigrationPolicy) -> CellSchema {
@@ -71,7 +71,10 @@ fn softmax_cell_validates_with_identity() {
         "migration:6:frozen",
         "arity:1:1",
     ] {
-        assert!(canonical.contains(token), "canonical missing `{token}`: {canonical}");
+        assert!(
+            canonical.contains(token),
+            "canonical missing `{token}`: {canonical}"
+        );
     }
     assert!(!canonical.contains("about"), "about is presentation-only");
 }
@@ -95,7 +98,11 @@ fn identity_field_mutation_moves_cell_id() {
             note: "initial".into(),
         },
     );
-    assert_ne!(v1, cell_id(&migratable), "migration policy is identity-affecting");
+    assert_ne!(
+        v1,
+        cell_id(&migratable),
+        "migration policy is identity-affecting"
+    );
 
     // Identity: arity moves the id.
     let mut wider = softmax("1.0.0", MigrationPolicy::Frozen);
@@ -142,7 +149,9 @@ fn mutation_is_policy_gated_never_silent() {
     // bump-and-note with an empty note: refuses (a policy without a note
     // is not a policy).
     let noteless_to = CellSchema {
-        migration: MigrationPolicy::BumpAndNote { note: String::new() },
+        migration: MigrationPolicy::BumpAndNote {
+            note: String::new(),
+        },
         ..softmax("2.0.0", MigrationPolicy::Frozen)
     };
     assert_eq!(
@@ -200,7 +209,8 @@ fn bounded_admission_refuses_by_code() {
     let versionless = CellSchema {
         version: String::new(),
         ..softmax("1.0.0", MigrationPolicy::Frozen)
-    };    assert_eq!(
+    };
+    assert_eq!(
         admit_cell(&versionless),
         Err(AdmissionRefusal::MissingVersion {
             name: "std.math.softmax".into(),
@@ -238,14 +248,17 @@ fn bounded_admission_refuses_by_code() {
         arity: MAX_CELL_ARITY,
         ..softmax("1.0.0", MigrationPolicy::Frozen)
     };
-    assert!(admit_cell(&boundary).is_ok(), "arity == MAX_CELL_ARITY admits");
+    assert!(
+        admit_cell(&boundary).is_ok(),
+        "arity == MAX_CELL_ARITY admits"
+    );
 }
 
 #[test]
 fn admitted_cell_terms_stay_slot_stable() {
     // Wiring: a cell descriptor that admits produces the same arena term
     // and the same expression identity regardless of intern order; a
-    // dangling capability application still refuses with the fjxh.1
+    // dangling capability application still refuses with the
     // typed refusal (admission never papers over the seam).
     let schema = softmax("1.0.0", MigrationPolicy::Frozen);
     let admitted = admit_cell(&schema).expect("softmax admits");

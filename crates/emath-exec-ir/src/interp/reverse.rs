@@ -4,7 +4,8 @@
 
 use std::collections::HashMap;
 
-use super::{EvalFault, Value, eval_op};
+use super::ops::eval_op;
+use super::{EvalFault, Value};
 use crate::{EmirOp, EmirProgram, EmirValue};
 
 /// Gradients of `program` w.r.t. each `var_indices` entry: forward pass

@@ -1,7 +1,7 @@
-//! emath-option-result-graph-field-aj8d (thin slice): Option/Result
+//! Option/Result
 //! value semantics at the compute layer.
 //!
-//! The bead's Option/Result need, thinned to TOTAL value semantics on
+//! The Option/Result need, thinned to TOTAL value semantics on
 //! a real option carrier (`Value::Option(Option<Box<Value>>)` — a
 //! None genuinely carries nothing, never a hidden zero):
 //! - Constructors: `OptionSome` / `OptionNone` / `ResultOk` /
@@ -22,16 +22,46 @@
 //!   negative-seed law does not bind here (documented in the pack).
 //!   Registry cells ride the type admission (option-typed parameters
 //!   have no ParamShape yet — named follow-up, not this slice).
-//! - Graph is NOT reworked here (masa s1–5 delivered the adjacency
+//! - Graph is NOT reworked here (s1–5 delivered the adjacency
 //!   compute layer); Field/GF is the disjoint follow-up.
+
+use std::path::{Path, PathBuf};
 
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::term_compile::{compile_reference, ParamShape, TermCompileError};
-use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, EvalBudget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
+use emath_exec_ir::term_compile::{ParamShape, TermCompileError, compile_reference};
+use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
 
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("exact-arith kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const MOD_INVERSE: &str = "std.capability.exact.mod-inverse";
+const INT_REM: &str = "std.capability.exact.int-rem";
+
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
+    install_language();
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -67,13 +97,11 @@ fn eval1(op: EmirOp, input: Value) -> Result<Value, EvalFault> {
 }
 
 #[test]
-fn aj8d_option_polarity_and_unwrap_laws() {
+fn option_polarity_and_unwrap_laws() {
     // Some(5): IsSome = true; UnwrapOr(7) = 5 (the VALUE, not the
     // default — kills an always-default mutant).
-    let some = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0))
-        .expect("Some computes");
-    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some.clone())
-        .expect("IsSome computes");
+    let some = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0)).expect("Some computes");
+    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some.clone()).expect("IsSome computes");
     assert!(bool_of(&is_some), "Some(5).is_some()");
     let unwrapped = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
@@ -85,8 +113,7 @@ fn aj8d_option_polarity_and_unwrap_laws() {
     // None: IsSome = false; UnwrapOr(7) = 7 (the DEFAULT — kills an
     // always-value mutant).
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
-    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), none.clone())
-        .expect("IsSome computes");
+    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), none.clone()).expect("IsSome computes");
     assert!(!bool_of(&is_some), "None.is_some() = false");
     let unwrapped = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
@@ -97,12 +124,10 @@ fn aj8d_option_polarity_and_unwrap_laws() {
 }
 
 #[test]
-fn aj8d_result_polarity_error_preserved() {
+fn result_polarity_error_preserved() {
     // Ok(3): IsOk = true; UnwrapOr(9) = 3; ErrorOf = Option NONE.
-    let ok = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0))
-        .expect("Ok computes");
-    let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), ok.clone())
-        .expect("IsOk computes");
+    let ok = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0)).expect("Ok computes");
+    let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), ok.clone()).expect("IsOk computes");
     assert!(bool_of(&is_ok), "Ok(3).is_ok()");
     let unwrapped = eval(
         vec![EmirOp::ResultUnwrapOr(EmirValue(0), EmirValue(1))],
@@ -110,18 +135,14 @@ fn aj8d_result_polarity_error_preserved() {
     )
     .expect("UnwrapOr computes");
     assert_eq!(scalar_of(&unwrapped), 3.0, "Ok(3).unwrap_or(9) = 3");
-    let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), ok)
-        .expect("ErrorOf computes");
-    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), error_of)
-        .expect("IsSome computes");
+    let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), ok).expect("ErrorOf computes");
+    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), error_of).expect("IsSome computes");
     assert!(!bool_of(&is_some), "Ok(3).error_of() = None (composition)");
 
     // Err(42): IsOk = false; UnwrapOr(9) = 9; ErrorOf = Option SOME(42)
     // — the error payload SURVIVES (never swallowed into the default).
-    let err = eval1(EmirOp::ResultErr(EmirValue(0)), Value::F64(42.0))
-        .expect("Err computes");
-    let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), err.clone())
-        .expect("IsOk computes");
+    let err = eval1(EmirOp::ResultErr(EmirValue(0)), Value::F64(42.0)).expect("Err computes");
+    let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), err.clone()).expect("IsOk computes");
     assert!(!bool_of(&is_ok), "Err(42).is_ok() = false");
     let unwrapped = eval(
         vec![EmirOp::ResultUnwrapOr(EmirValue(0), EmirValue(1))],
@@ -129,8 +150,7 @@ fn aj8d_result_polarity_error_preserved() {
     )
     .expect("UnwrapOr computes");
     assert_eq!(scalar_of(&unwrapped), 9.0, "Err(42).unwrap_or(9) = 9");
-    let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), err)
-        .expect("ErrorOf computes");
+    let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), err).expect("ErrorOf computes");
     let recovered = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
         &[error_of, Value::F64(-1.0)],
@@ -144,13 +164,13 @@ fn aj8d_result_polarity_error_preserved() {
 }
 
 #[test]
-fn aj8d_shape_preservation_through_carrier() {
+fn shape_preservation_through_carrier() {
     // The carrier preserves ANY payload shape: Vector and Matrix
     // payloads round-trip through Some/UnwrapOr bit-for-bit (kills
     // shape-losing mutants that would coerce to scalar).
     let vector = Value::Vector(vec![1.5, -2.5, 3.5]);
-    let some = eval1(EmirOp::OptionSome(EmirValue(0)), vector.clone())
-        .expect("Some(vector) computes");
+    let some =
+        eval1(EmirOp::OptionSome(EmirValue(0)), vector.clone()).expect("Some(vector) computes");
     let unwrapped = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
         &[some, Value::Vector(vec![0.0; 3])],
@@ -163,35 +183,36 @@ fn aj8d_shape_preservation_through_carrier() {
         cols: 2,
         data: vec![1.0, 2.0, 3.0, 4.0],
     };
-    let some = eval1(EmirOp::OptionSome(EmirValue(0)), matrix.clone())
-        .expect("Some(matrix) computes");
+    let some =
+        eval1(EmirOp::OptionSome(EmirValue(0)), matrix.clone()).expect("Some(matrix) computes");
     let unwrapped = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
-        &[some, Value::Matrix {
-            rows: 2,
-            cols: 2,
-            data: vec![0.0; 4],
-        }],
+        &[
+            some,
+            Value::Matrix {
+                rows: 2,
+                cols: 2,
+                data: vec![0.0; 4],
+            },
+        ],
     )
     .expect("UnwrapOr computes");
     assert_eq!(unwrapped, matrix, "matrix payload round-trips");
 }
 
 #[test]
-fn aj8d_some_of_none_is_some() {
+fn some_of_none_is_some() {
     // Tag-vs-content distinction: Some(None) IS Some (the polarity op
     // reads the TAG, not the content). A mutant that probes content
     // fails.
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
-    let some_of_none = eval1(EmirOp::OptionSome(EmirValue(0)), none)
-        .expect("Some(None) computes");
-    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some_of_none)
-        .expect("IsSome computes");
+    let some_of_none = eval1(EmirOp::OptionSome(EmirValue(0)), none).expect("Some(None) computes");
+    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some_of_none).expect("IsSome computes");
     assert!(bool_of(&is_some), "Some(None).is_some() = true (the tag)");
 }
 
 #[test]
-fn aj8d_bundle_fixture() {
+fn bundle_fixture() {
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct OptionWorld;
     impl emath_genesis::FirstOrderWorld for OptionWorld {
@@ -259,7 +280,7 @@ fn aj8d_bundle_fixture() {
     assert!(bundle.bundle_id.starts_with("fnv1a64:"));
 }
 
-// ── Pass 3: the term-compile CALL surface (nine names) ────────────────
+// ── the term-compile CALL surface (nine names) ────────────────
 //
 // The nine Option/Result names bind the already-landed value-semantics
 // ops through the PUBLIC `compile_reference` seam (the graph-call-
@@ -290,7 +311,7 @@ const CALL_SURFACE_DECLS: &[(&str, usize)] = &[
     ("result_is_ok", 1),
     ("result_unwrap_or", 2),
     ("result_error_of", 1),
-    // Pass 7: the prime-field call surface. `field_inv(a, p)` lowers to
+    // The prime-field call surface. `field_inv(a, p)` lowers to
     // the interpreter's exact modular inverse `ModInv(a, p)`; generic
     // modular ADD/MUL EmirOps do not exist, so `field_add`/`field_mul`
     // are deliberately NOT registered here (handoff spec, never
@@ -316,6 +337,7 @@ fn call_signature(constants: &[&str]) -> Signature {
 /// Compile a constant-only call-surface program (no params) and
 /// evaluate it through the reference interpreter.
 fn call_eval(term: Term, constants: &[&str]) -> Result<Value, EvalFault> {
+    install_language();
     let cell = compile_reference(
         &term,
         &call_signature(constants),
@@ -335,6 +357,7 @@ fn call_eval_params(
     inputs: &[Value],
     constants: &[&str],
 ) -> Result<Value, EvalFault> {
+    install_language();
     let cell = compile_reference(
         &term,
         &call_signature(constants),
@@ -347,7 +370,7 @@ fn call_eval_params(
 }
 
 #[test]
-fn aj8d_call_surface_option_constructors_polarity_unwrap() {
+fn call_surface_option_constructors_polarity_unwrap() {
     // is_some(some(5)) == true — the polarity op over the compiled
     // constructor.
     let value = call_eval(
@@ -394,7 +417,7 @@ fn aj8d_call_surface_option_constructors_polarity_unwrap() {
 }
 
 #[test]
-fn aj8d_call_surface_result_polarity_unwrap_error_of() {
+fn call_surface_result_polarity_unwrap_error_of() {
     // is_ok(ok(3.5)) == true; is_ok(err(7)) == false.
     let value = call_eval(
         opt_apply(
@@ -431,7 +454,10 @@ fn aj8d_call_surface_result_polarity_unwrap_error_of() {
     let value = call_eval(
         opt_apply(
             "result_unwrap_or",
-            vec![opt_apply("result_err", vec![opt_const("7")]), opt_const("9")],
+            vec![
+                opt_apply("result_err", vec![opt_const("7")]),
+                opt_const("9"),
+            ],
         ),
         &["7", "9"],
     )
@@ -455,7 +481,11 @@ fn aj8d_call_surface_result_polarity_unwrap_error_of() {
         &["7", "-1"],
     )
     .expect("err(7).error_of().unwrap_or(-1) evaluates");
-    assert_eq!(value, Value::F64(7.0), "the error payload round-trips through error_of");
+    assert_eq!(
+        value,
+        Value::F64(7.0),
+        "the error payload round-trips through error_of"
+    );
 
     // error_of(ok(1)) == none: Ok carries no error, so the composed
     // Option is empty.
@@ -474,7 +504,7 @@ fn aj8d_call_surface_result_polarity_unwrap_error_of() {
 }
 
 #[test]
-fn aj8d_call_surface_vector_payload_round_trips() {
+fn call_surface_vector_payload_round_trips() {
     // option_some(v) wraps a Vector payload; unwrap_or over a
     // vector-shaped default returns the Vector shape and the payload
     // round-trips bit-for-bit (the opaque-carrier shape law).
@@ -496,7 +526,10 @@ fn aj8d_call_surface_vector_payload_round_trips() {
         &[],
     )
     .expect("vector payload compiles and evaluates");
-    assert_eq!(out, vector, "vector payload round-trips through the call surface");
+    assert_eq!(
+        out, vector,
+        "vector payload round-trips through the call surface"
+    );
 
     // The Result twin: err(v) wraps the payload slot; error_of then
     // yields Some(v) and the unwrap recovers it.
@@ -505,7 +538,10 @@ fn aj8d_call_surface_vector_payload_round_trips() {
         vec![
             opt_apply(
                 "result_error_of",
-                vec![opt_apply("result_err", vec![Term::Variable(VariableId("v".into()))])],
+                vec![opt_apply(
+                    "result_err",
+                    vec![Term::Variable(VariableId("v".into()))],
+                )],
             ),
             Term::Variable(VariableId("w".into())),
         ],
@@ -520,11 +556,14 @@ fn aj8d_call_surface_vector_payload_round_trips() {
         &[],
     )
     .expect("result error payload compiles and evaluates");
-    assert_eq!(out, vector, "result error payload round-trips through error_of");
+    assert_eq!(
+        out, vector,
+        "result error payload round-trips through error_of"
+    );
 }
 
 #[test]
-fn aj8d_call_surface_arity_refuses_typed() {
+fn call_surface_arity_refuses_typed() {
     // some() — zero args where one is declared: the arity refusal is a
     // TYPED TermCompileError (the emath-term signature check), never a
     // panic and never an empty lowering.
@@ -562,7 +601,7 @@ fn aj8d_call_surface_arity_refuses_typed() {
 }
 
 #[test]
-fn aj8d_call_surface_shape_law_refuses_typed() {
+fn call_surface_shape_law_refuses_typed() {
     // is_some(5): a Scalar in the Option carrier slot refuses at
     // COMPILE (ShapeMismatch — the closed vocabulary's shape law),
     // never a silent mis-lowering and never a panic.
@@ -603,7 +642,7 @@ fn aj8d_call_surface_shape_law_refuses_typed() {
     );
 }
 
-// ── Pass 4: interp TOTAL-VALUE laws (test-only) ──────────────────────
+// ── interp TOTAL-VALUE laws (test-only) ──────────────────────
 //
 // Four assertions of the total value semantics on the real carrier:
 // (1) Some(None) / Some(Some(7)) STRUCTURAL nesting is preserved (the
@@ -618,13 +657,13 @@ fn aj8d_call_surface_shape_law_refuses_typed() {
 // the sole fault class for cross-carrier misuse.
 
 #[test]
-fn aj8d_law_nested_none_structural_identity() {
+fn law_nested_none_structural_identity() {
     // Some(None) is NOT flattened to None and NOT a hidden zero: the
     // Some tag and its None content are distinct (kills a "flatten
     // Some(None) → None" mutant at the structural assert below).
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
-    let some_of_none = eval1(EmirOp::OptionSome(EmirValue(0)), none.clone())
-        .expect("Some(None) computes");
+    let some_of_none =
+        eval1(EmirOp::OptionSome(EmirValue(0)), none.clone()).expect("Some(None) computes");
     assert_eq!(
         some_of_none,
         Value::Option(Some(Box::new(Value::Option(None)))),
@@ -636,8 +675,8 @@ fn aj8d_law_nested_none_structural_identity() {
     );
 
     // The polarity op reads the OUTER tag: Some(None) is Some.
-    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some_of_none.clone())
-        .expect("is_some computes");
+    let is_some =
+        eval1(EmirOp::OptionIsSome(EmirValue(0)), some_of_none.clone()).expect("is_some computes");
     assert!(bool_of(&is_some), "Some(None).is_some() = true (the tag)");
 
     // unwrap_or through Some(None) yields the CONTENT (None), not the
@@ -655,11 +694,11 @@ fn aj8d_law_nested_none_structural_identity() {
 }
 
 #[test]
-fn aj8d_law_double_some_nesting() {
+fn law_double_some_nesting() {
     let seven = Value::F64(7.0);
     let inner = eval1(EmirOp::OptionSome(EmirValue(0)), seven).expect("Some(7) computes");
-    let outer = eval1(EmirOp::OptionSome(EmirValue(0)), inner.clone())
-        .expect("Some(Some(7)) computes");
+    let outer =
+        eval1(EmirOp::OptionSome(EmirValue(0)), inner.clone()).expect("Some(Some(7)) computes");
     assert_eq!(
         outer,
         Value::Option(Some(Box::new(Value::Option(Some(Box::new(Value::F64(
@@ -669,8 +708,8 @@ fn aj8d_law_double_some_nesting() {
     );
 
     // Polarity reads only the outermost tag.
-    let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), outer.clone())
-        .expect("is_some computes");
+    let is_some =
+        eval1(EmirOp::OptionIsSome(EmirValue(0)), outer.clone()).expect("is_some computes");
     assert!(bool_of(&is_some), "Some(Some(7)).is_some() = true");
 
     // unwrap_or unwraps ONE level → the inner Option.
@@ -683,10 +722,10 @@ fn aj8d_law_double_some_nesting() {
 }
 
 #[test]
-fn aj8d_law_display_distinguishes_some_none_from_none() {
+fn law_display_distinguishes_some_none_from_none() {
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
-    let some_of_none = eval1(EmirOp::OptionSome(EmirValue(0)), none.clone())
-        .expect("Some(None) computes");
+    let some_of_none =
+        eval1(EmirOp::OptionSome(EmirValue(0)), none.clone()).expect("Some(None) computes");
     assert_eq!(
         some_of_none.to_string(),
         "some(none)",
@@ -707,7 +746,7 @@ fn aj8d_law_display_distinguishes_some_none_from_none() {
 }
 
 #[test]
-fn aj8d_law_matrix_payload_round_trip_through_carriers() {
+fn law_matrix_payload_round_trip_through_carriers() {
     // Matrix payloads round-trip EXACTLY through Some/Ok/Err-UnwrapOr
     // at the term call surface (the Vector precedent extended to
     // Matrix; kills shape-losing mutants that coerce to scalar).
@@ -788,7 +827,7 @@ fn aj8d_law_matrix_payload_round_trip_through_carriers() {
 }
 
 #[test]
-fn aj8d_law_polarity_totality_table() {
+fn law_polarity_totality_table() {
     // Every carrier answers BOTH polarities, unwrap_or, and (for
     // Result) error_of — no partial match leaves a carrier unhandled.
     // Table-driven over the (constructor × observer) matrix.
@@ -918,7 +957,7 @@ fn aj8d_law_polarity_totality_table() {
 }
 
 #[test]
-fn aj8d_law_none_and_err_return_default_total() {
+fn law_none_and_err_return_default_total() {
     // The honesty gate: none/err UNWRAP_OR returns the EAGER DEFAULT.
     // Never a fault, never a panicking unwrap.
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
@@ -939,7 +978,7 @@ fn aj8d_law_none_and_err_return_default_total() {
 }
 
 #[test]
-fn aj8d_law_typeconfusion_is_some_on_result() {
+fn law_typeconfusion_is_some_on_result() {
     // is_some on a Result carrier is a TYPED evaluation error (a
     // TypeConfusion fault), never a panic, never a silent wrong answer.
     let result = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0)).expect("Ok computes");
@@ -952,7 +991,7 @@ fn aj8d_law_typeconfusion_is_some_on_result() {
 }
 
 #[test]
-fn aj8d_law_typeconfusion_is_ok_on_option() {
+fn law_typeconfusion_is_ok_on_option() {
     let option = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0)).expect("Some computes");
     let fault = eval1(EmirOp::ResultIsOk(EmirValue(0)), option)
         .expect_err("is_ok on an Option carrier must refuse");
@@ -963,7 +1002,7 @@ fn aj8d_law_typeconfusion_is_ok_on_option() {
 }
 
 #[test]
-fn aj8d_law_typeconfusion_unwrap_or_wrong_carrier() {
+fn law_typeconfusion_unwrap_or_wrong_carrier() {
     // unwrap_or checks the carrier kind strictly too: an Option unwrap
     // over a Result carrier (and vice versa) is TypeConfusion — the
     // eager default is NOT silently handed out on the wrong carrier.
@@ -991,14 +1030,14 @@ fn aj8d_law_typeconfusion_unwrap_or_wrong_carrier() {
 }
 
 #[test]
-fn aj8d_nested_carrier_in_payload_compiles_and_evaluates() {
-    // Pass 3 lift (emath-option-result-graph-field-aj8d): a carrier is a
+fn nested_carrier_in_payload_compiles_and_evaluates() {
+    // Lift: a carrier is a
     // valid PAYLOAD for the constructors. `option_some(option_none())`
     // now COMPILES at the term surface (TermCompileError::ShapeMismatch
     // is gone) and evaluates to the nested value `Some(None)` — the
     // tag-vs-content distinction proven from a compiled term, not just
-    // the raw-value laws. This REPLACES the earlier pass-4 pin test
-    // `aj8d_law_carrier_in_payload_refuses_compile`, which asserted the
+    // the raw-value laws. This REPLACES the earlier pin test, which
+    // asserted the
     // OLD restriction; the capability was deliberately extended, so the
     // pin is rewritten to the stronger positive contract (fail-first
     // law — never silently weakened, only re-scoped to the new rule).
@@ -1015,7 +1054,7 @@ fn aj8d_nested_carrier_in_payload_compiles_and_evaluates() {
 }
 
 #[test]
-fn aj8d_nested_double_some_compiles_and_evaluates() {
+fn nested_double_some_compiles_and_evaluates() {
     // `option_some(option_some(5.0))` compiles and yields Some(Some(5)):
     // the inner carrier survives intact through the outer constructor.
     let term = opt_apply(
@@ -1033,7 +1072,7 @@ fn aj8d_nested_double_some_compiles_and_evaluates() {
     );
 }
 
-// ── Pass 7: Field/GF<p> exact modular value semantics ──────────────
+// ── Field/GF<p> exact modular value semantics ──────────────
 //
 // The prime-field VALUE layer is the exact-i64 modular ops that already
 // exist in the interpreter: `ModInv(a, m)` (interp.rs:2004 →
@@ -1048,18 +1087,18 @@ fn aj8d_nested_double_some_compiles_and_evaluates() {
 // I64 variant — a float cast would produce `Value::F64` and fail.
 
 #[test]
-fn aj8d_field_inv_value_law() {
+fn field_inv_value_law() {
     // field_inv(a, p) = a^-1 mod p over the prime field, exactly:
     // 3^-1 ≡ 5 (mod 7) and 2^-1 ≡ 3 (mod 5).
     let out = eval(
-        vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+        vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(3), Value::I64(7)],
     )
     .expect("field_inv(3, 7) computes");
     assert_eq!(out, Value::I64(5), "3^-1 ≡ 5 (mod 7) — exact I64");
 
     let out = eval(
-        vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+        vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(2), Value::I64(5)],
     )
     .expect("field_inv(2, 5) computes");
@@ -1067,33 +1106,33 @@ fn aj8d_field_inv_value_law() {
 }
 
 #[test]
-fn aj8d_field_inv_refusals_typed() {
+fn field_inv_refusals_typed() {
     // A non-invertible a (gcd(a, p) ≠ 1) and a non-positive modulus are
-    // TYPED Arithmetic refusals from the kernel, never a panic and never
-    // a silent answer.
+    // TYPED CapabilityRefused refusals carrying the kernel's code, never
+    // a panic and never a silent answer.
     let fault = eval(
-        vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+        vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(2), Value::I64(4)],
     )
     .expect_err("field_inv(2, 4) must refuse: gcd(2,4) = 2 ≠ 1");
     assert!(
-        matches!(fault, EvalFault::Arithmetic { .. }),
+        matches!(fault, EvalFault::CapabilityRefused { .. }),
         "a non-invertible value must be a typed Arithmetic fault, got {fault:?}"
     );
 
     let fault = eval(
-        vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+        vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(3), Value::I64(0)],
     )
     .expect_err("field_inv(3, 0) must refuse: modulus must be positive");
     assert!(
-        matches!(fault, EvalFault::Arithmetic { .. }),
+        matches!(fault, EvalFault::CapabilityRefused { .. }),
         "a non-positive modulus must be a typed Arithmetic fault, got {fault:?}"
     );
 }
 
 #[test]
-fn aj8d_field_inv_term_surface_values() {
+fn field_inv_term_surface_values() {
     // The closed call surface: `field_inv(a, p)` compiles to ModInv and
     // evaluates exactly. RED before the term_compile arm landed (the
     // operator was unknown to the closed vocabulary).
@@ -1110,7 +1149,7 @@ fn aj8d_field_inv_term_surface_values() {
 }
 
 #[test]
-fn aj8d_field_inv_arity_shape_refused_typed() {
+fn field_inv_arity_shape_refused_typed() {
     // field_inv() with zero args refuses as a typed ARITY refusal; a
     // Vector in the scalar operand slot refuses as a typed SHAPE refusal.
     // Never a panic, never an empty lowering.
@@ -1146,7 +1185,7 @@ fn aj8d_field_inv_arity_shape_refused_typed() {
     );
 }
 
-// ── Pass 9: metamorphic / property-encoded laws + mutation kills ─────
+// ── metamorphic / property-encoded laws + mutation kills ─────
 //
 // TEST-ONLY pass (no production edits). Each law is table-driven over a
 // value set (deterministic loops, no proptest — the test crate's
@@ -1167,24 +1206,33 @@ fn aj8d_field_inv_arity_shape_refused_typed() {
 //
 
 #[test]
-fn aj8d_meta_unwrap_or_identity_law() {
+fn meta_unwrap_or_identity_law() {
     // unwrap_or(some(x), d) == x (the payload, never the default) and
     // unwrap_or(none, d) == d, over a payload vector. The interpreter's
     // default is EAGER (register discipline); both branches agree on the
     // VALUE equality here, so the law asserts the value, not laziness.
     let payloads: [f64; 7] = [
-        -1e9, -0.5, 0.0, 1.5, 42.0, 9007199254740992.0, // 2^53 exact
+        -1e9,
+        -0.5,
+        0.0,
+        1.5,
+        42.0,
+        9007199254740992.0, // 2^53 exact
         -0.0,
     ];
     for &x in &payloads {
-        let some = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(x))
-            .expect("Some(x) computes");
+        let some =
+            eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(x)).expect("Some(x) computes");
         let out = eval(
             vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
             &[some, Value::F64(7.0)],
         )
         .expect("some(x).unwrap_or(d) computes (total)");
-        assert_eq!(out, Value::F64(x), "Some({x}).unwrap_or(7) == {x} (identity)");
+        assert_eq!(
+            out,
+            Value::F64(x),
+            "Some({x}).unwrap_or(7) == {x} (identity)"
+        );
     }
     for &d in &payloads {
         let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
@@ -1198,7 +1246,7 @@ fn aj8d_meta_unwrap_or_identity_law() {
 }
 
 #[test]
-fn aj8d_meta_result_error_channel_law() {
+fn meta_result_error_channel_law() {
     // Metamorphic duality: is_some(error_of(r)) == !is_ok(r) over both
     // branches, plus the error round-trip err(x).error_of().unwrap_or(y)
     // == x. Table-driven over a payload set.
@@ -1211,10 +1259,10 @@ fn aj8d_meta_result_error_channel_law() {
                 EmirOp::ResultErr(EmirValue(0))
             };
             let r = eval1(ctor, Value::F64(x)).expect("constructor computes");
-            let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), r.clone())
-                .expect("error_of computes");
-            let is_some_eo =
-                eval1(EmirOp::OptionIsSome(EmirValue(0)), error_of.clone()).expect("is_some computes");
+            let error_of =
+                eval1(EmirOp::ResultErrorOf(EmirValue(0)), r.clone()).expect("error_of computes");
+            let is_some_eo = eval1(EmirOp::OptionIsSome(EmirValue(0)), error_of.clone())
+                .expect("is_some computes");
             let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), r).expect("is_ok computes");
             assert_eq!(
                 bool_of(&is_some_eo),
@@ -1238,7 +1286,7 @@ fn aj8d_meta_result_error_channel_law() {
 }
 
 #[test]
-fn aj8d_meta_double_wrap_associativity() {
+fn meta_double_wrap_associativity() {
     // Carrier associativity: some(some(x)).unwrap_or(d) == some(x) — one
     // unwrap pops ONE wrapper, not two (kills a double-unwrap mutant) and
     // not zero (kills a no-unwrap mutant); the result stays Some.
@@ -1256,7 +1304,10 @@ fn aj8d_meta_double_wrap_associativity() {
             "Some(Some({x})).unwrap_or(9) == Some({x}) — one wrapper popped"
         );
         let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), out).expect("is_some computes");
-        assert!(bool_of(&is_some), "double-wrap unwrap_or keeps Some for {x}");
+        assert!(
+            bool_of(&is_some),
+            "double-wrap unwrap_or keeps Some for {x}"
+        );
     }
 }
 
@@ -1334,7 +1385,7 @@ fn permute_matrix(p: &[usize], value: &Value) -> Value {
 }
 
 #[test]
-fn aj8d_meta_graph_relabel_reachability_equivariance() {
+fn meta_graph_relabel_reachability_equivariance() {
     // Adjacency: edges 0->1, 1->3, 2->3 — vertex 2 is NOT reachable
     // from 0 and vertex 3 is not a fork from 0. Relative reachability
     // differs per vertex so a relabel that permutes ENDPOINTS changes the
@@ -1396,7 +1447,7 @@ fn aj8d_meta_graph_relabel_reachability_equivariance() {
 }
 
 #[test]
-fn aj8d_meta_graph_relabel_out_degrees_equivariance() {
+fn meta_graph_relabel_out_degrees_equivariance() {
     // out_degrees(A')[u] = out_degrees(A)[Pinv(u)] — row sums permute
     // under a relabel: P ⊳ out_degrees(A). Values CHANGE under the
     // rotation (the discriminant is a real permutation of the degree
@@ -1445,7 +1496,7 @@ fn aj8d_meta_graph_relabel_out_degrees_equivariance() {
 //
 
 #[test]
-fn aj8d_meta_field_involution_range_totality() {
+fn meta_field_involution_range_totality() {
     // For every prime p in scope and every nonzero a in 1..p-1:
     //  (a) totality: field_inv(a,p) computes with NO EvalFault;
     //  (b) range:   field_inv(a,p) in 1..p-1 (never 0, never ≥ p);
@@ -1456,14 +1507,14 @@ fn aj8d_meta_field_involution_range_totality() {
     let primes = [3i64, 5, 7, 13];
     for &p in &primes {
         let inv1 = eval(
-            vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+            vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
             &[Value::I64(1), Value::I64(p)],
         )
         .expect("field_inv(1, p) computes");
         assert_eq!(inv1, Value::I64(1), "1^-1 == 1 (mod {p}) — exact I64");
         for a in 1..p {
             let inv = eval(
-                vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
                 &[Value::I64(a), Value::I64(p)],
             )
             .expect("field_inv(a,p) computes (totality)");
@@ -1475,7 +1526,7 @@ fn aj8d_meta_field_involution_range_totality() {
                 "range: field_inv({a},{p}) = {b} must lie in 1..{p}-1"
             );
             let inv_inv = eval(
-                vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
                 &[Value::I64(b), Value::I64(p)],
             )
             .expect("field_inv(inv(a),p) computes");
@@ -1489,7 +1540,7 @@ fn aj8d_meta_field_involution_range_totality() {
 }
 
 #[test]
-fn aj8d_meta_field_negative_controls_discriminate() {
+fn meta_field_negative_controls_discriminate() {
     // NEGATIVE CONTROLS: operands with gcd(a, p) ≠ 1 — a equal to the
     // modulus and a zero representative — must FAULT typed, never return
     // a silent answer. These fail every "total silence" mutant: an
@@ -1500,12 +1551,12 @@ fn aj8d_meta_field_negative_controls_discriminate() {
     for &p in &primes {
         for &a in &[p, 0i64] {
             let fault = eval(
-                vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
                 &[Value::I64(a), Value::I64(p)],
             )
             .expect_err("field_inv({a}, {p}) must fault: gcd != 1");
             assert!(
-                matches!(fault, EvalFault::Arithmetic { .. }),
+                matches!(fault, EvalFault::CapabilityRefused { .. }),
                 "field_inv({a}, {p}) must be a TYPED Arithmetic fault — \
                  a silent answer would be a correctness bug; got {fault:?}"
             );
@@ -1514,21 +1565,16 @@ fn aj8d_meta_field_negative_controls_discriminate() {
 }
 
 #[test]
-fn aj8d_meta_field_concrete_anchors_discriminate() {
+fn meta_field_concrete_anchors_discriminate() {
     // CONCRETE anchors: hand-computed inverses that fail under a
     // "wrong inverse" mutant (inv(a) := a-1, or inv(a) := 2a mod p).
     // 3^{-1} ≡ 5 (mod 7): 3*5 = 15 ≡ 1 (mod 7).
     // 2^{-1} ≡ 3 (mod 5): 2*3 = 6 ≡ 1 (mod 5).
     // 5^{-1} ≡ 3 (mod 7): 5*3 = 15 ≡ 1 (mod 7).
     // 3^{-1} ≡ 5 (mod 13): 3*5 = 15 ≡ 2? no — 3*9=27 ≡ 1 (mod 13).
-    for (a, p, want) in [
-        (3i64, 7i64, 5i64),
-        (2, 5, 3),
-        (5, 7, 3),
-        (3, 13, 9),
-    ] {
+    for (a, p, want) in [(3i64, 7i64, 5i64), (2, 5, 3), (5, 7, 3), (3, 13, 9)] {
         let out = eval(
-            vec![EmirOp::ModInv(EmirValue(0), EmirValue(1))],
+            vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
             &[Value::I64(a), Value::I64(p)],
         )
         .expect("field_inv(a,p) computes");
@@ -1540,7 +1586,7 @@ fn aj8d_meta_field_concrete_anchors_discriminate() {
     }
 }
 
-// --- Pass 6: universal int_rem (aj8d pass 6) ---
+// --- universal int_rem ---
 // Exact-Euclidean remainder `a.rem_euclid(m)` on i64. Result is always
 // Value::I64 (no float cast anywhere — the 2^31 / 2 exactness case proves
 // i64 path). m <= 0 is a typed EvalFault::Arithmetic, never a panic.
@@ -1548,23 +1594,27 @@ fn aj8d_meta_field_concrete_anchors_discriminate() {
 /// int_rem concrete exact values (Euclidean, non-negative): 7 rem 7 = 0,
 /// 5 rem 7 = 5, and the sign law int_rem(-1, 7) = 6.
 #[test]
-fn aj8d_int_rem_value_law() {
+fn int_rem_value_law() {
     for (a, m, want) in [(7i64, 7i64, 0), (5, 7, 5), (-1, 7, 6), (13, 7, 6)] {
         let out = eval(
-            vec![EmirOp::IntRem(EmirValue(0), EmirValue(1))],
+            vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
             &[Value::I64(a), Value::I64(m)],
         )
         .expect("int_rem(a, m) computes");
-        assert_eq!(out, Value::I64(want), "int_rem({a}, {m}) = {want} (Euclidean)");
+        assert_eq!(
+            out,
+            Value::I64(want),
+            "int_rem({a}, {m}) = {want} (Euclidean)"
+        );
     }
 }
 
 /// Exactness: int_rem(2^31, 2) = 0 as a REAL i64 (no value may fall back
 /// to f64 in the exact-integer path).
 #[test]
-fn aj8d_int_rem_exact_i64_large() {
+fn int_rem_exact_i64_large() {
     let out = eval(
-        vec![EmirOp::IntRem(EmirValue(0), EmirValue(1))],
+        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(2_147_483_648), Value::I64(2)],
     )
     .expect("int_rem(2^31, 2) computes");
@@ -1575,33 +1625,33 @@ fn aj8d_int_rem_exact_i64_large() {
     );
 }
 
-/// m <= 0 is a TYPED Arithmetic fault (modulus must be positive), never a
+/// m <= 0 is a TYPED CapabilityRefused fault (modulus must be positive), never a
 /// panic and never a silent truncated result.
 #[test]
-fn aj8d_int_rem_zero_modulus_faults_ir() {
+fn int_rem_zero_modulus_faults_ir() {
     let fault = eval(
-        vec![EmirOp::IntRem(EmirValue(0), EmirValue(1))],
+        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(5), Value::I64(0)],
     )
     .expect_err("int_rem(5, 0) must refuse: modulus must be positive");
     assert!(
-        matches!(fault, EvalFault::Arithmetic { .. }),
+        matches!(fault, EvalFault::CapabilityRefused { .. }),
         "int_rem(5, 0) must be a typed Arithmetic fault, got {fault:?}"
     );
     let neg = eval(
-        vec![EmirOp::IntRem(EmirValue(0), EmirValue(1))],
+        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(5), Value::I64(-3)],
     )
     .expect_err("int_rem(5, -3) must refuse: modulus must be positive");
     assert!(
-        matches!(neg, EvalFault::Arithmetic { .. }),
+        matches!(neg, EvalFault::CapabilityRefused { .. }),
         "int_rem(5, -3) must be a typed Arithmetic fault, got {neg:?}"
     );
 }
 
-// ── Pass 10: the three aj8d .emath examples are RUNNABLE from disk ──
+// ── the three .emath examples are RUNNABLE from disk ──
 #[test]
-fn aj8d_language_examples_admit_and_evaluate_from_disk() {
+fn language_examples_admit_and_evaluate_from_disk() {
     use emath_sema::CompilerSession;
     use std::collections::BTreeMap;
     use std::path::PathBuf;

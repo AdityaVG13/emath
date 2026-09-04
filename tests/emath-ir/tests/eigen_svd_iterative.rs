@@ -1,33 +1,68 @@
-//! emath-xx0x.2: richer linear algebra — eigen, SVD, iterative solves.
+//! richer linear algebra — eigen, SVD, iterative solves.
 //!
-//! The bead's law, sliced to the numeric-kernel + EMIR seam (disjoint
+//! The law, sliced to the numeric-kernel + EMIR seam (disjoint
 //! from the parser lanes):
 //! - **Eigen** on real SYMMETRIC square matrices (the documented class):
 //!   cyclic Jacobi rotations — deterministic, convergence-checked —
-//!   via `EigenSymmetric`/`EigenVectorsSymmetric` EMIR ops. Non-square
+//!   via the `std.capability.linear.symmetric-*` capsules at the
+//!   `ApplyCapability` seam. Non-square
 //!   or materially non-symmetric input refuses typed (`E-LINALG-001/2`,
 //!   the negative seed's silent-success shape). Eigenvalues are
 //!   ascending; eigenvector columns are aligned to them.
 //! - **SVD**: thin decomposition via the symmetric AᵀA eigenproblem —
-//!   singular values DESCENDING (`SvdSingularValues`), U/Vᵀ factors
-//!   (`SvdFactors`) satisfying the reconstruction property
+//!   singular values DESCENDING (`std.capability.linear.singular-values`),
+//!   U/Vᵀ factors (`std.capability.linear.svd-factors`) satisfying the
+//!   reconstruction property
 //!   A ≈ U·diag(s)·Vᵀ within the strict-f64 policy. Rank-deficient
 //!   columns are zero-filled (documented), never NaN.
 //! - **Iterative solve**: conjugate gradient over the matrix's dense
-//!   storage (`CgSolve`) — SPD-convergence-checked; a non-converging
+//!   storage (`std.capability.linear.iterative-solve`) —
+//!   SPD-convergence-checked; a non-converging
 //!   system (non-SPD or indefinite) refuses typed `E-LINALG-003`,
 //!   never a silently wrong x. The sparse STORAGE type is the named
 //!   deferred slice; the iterative METHOD computes now.
-//! - LU/QR/Cholesky stay on 4wj0 (their typed refusals unchanged);
+//! - LU/QR/Cholesky stay on (their typed refusals unchanged);
 //!   large-scale/GPU eigensolvers are Horizon (honest refuse here).
 
+use std::path::{Path, PathBuf};
+
+use emath_core::Span;
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
-use emath_core::Span;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use emath_term::{SymbolId, Term};
+
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("linear kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const EIGEN_VALUES: &str = "std.capability.linear.symmetric-eigenvalues";
+const EIGEN_VECTORS: &str = "std.capability.linear.symmetric-eigenvectors";
+const SVD_VALUES: &str = "std.capability.linear.singular-values";
+const SVD_FACTORS: &str = "std.capability.linear.svd-factors";
+const CG_SOLVE: &str = "std.capability.linear.iterative-solve";
 
 fn matrix(rows: usize, cols: usize, data: &[f64]) -> Value {
     Value::Matrix {
@@ -38,7 +73,8 @@ fn matrix(rows: usize, cols: usize, data: &[f64]) -> Value {
 }
 
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
-    // The .14 seam law: inputs enter registers through LoadInput ops,
+    install_language();
+    // The seam law: inputs enter registers through LoadInput ops,
     // then the kernel ops consume them by register index.
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
@@ -83,20 +119,14 @@ fn eigen_known_2x2() {
     // Known 2x2 symmetric: [[2,1],[1,2]] has eigenvalues {1, 3} with
     // eigenvectors (1,-1)/√2 and (1,1)/√2 — the classic fixture.
     let a = matrix(2, 2, &[2.0, 1.0, 1.0, 2.0]);
-    let values = eval(
-        vec![EmirOp::EigenSymmetric(EmirValue(0))],
-        &[a.clone()],
-    )
-    .expect("eigen computes");
+    let values =
+        eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a.clone()]).expect("eigen computes");
     let values = vector_of(&values);
     assert_eq!(values.len(), 2);
     assert!((values[0] - 1.0).abs() < 1e-10, "ascending: {values:?}");
     assert!((values[1] - 3.0).abs() < 1e-10, "ascending: {values:?}");
-    let vectors = eval(
-        vec![EmirOp::EigenVectorsSymmetric(EmirValue(0))],
-        &[a],
-    )
-    .expect("eigenvectors compute");
+    let vectors =
+        eval(vec![cell(EIGEN_VECTORS, vec![EmirValue(0)])], &[a]).expect("eigenvectors compute");
     let (_rows, cols, data) = matrix_of(&vectors);
     assert_eq!(cols, 2);
     // Column j pairs with eigenvalue j; the strong law is A·v_j = λ_j·v_j
@@ -119,11 +149,7 @@ fn eigen_diagonal_and_sorted() {
     // A diagonal matrix is already in eigenform: values are the diagonal
     // entries SORTED ASCENDING, vectors are permutation columns.
     let a = matrix(3, 3, &[3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0]);
-    let values = eval(
-        vec![EmirOp::EigenSymmetric(EmirValue(0))],
-        &[a],
-    )
-    .expect("eigen computes");
+    let values = eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a]).expect("eigen computes");
     let values = vector_of(&values);
     let expected = [1.0, 2.0, 3.0];
     for (got, want) in values.iter().zip(expected.iter()) {
@@ -137,11 +163,8 @@ fn eigen_non_square_refuses_typed() {
     // matrix refuses typed E-LINALG-001 — never a silently truncated
     // or garbage spectrum.
     let a = matrix(2, 3, &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
-    let error = eval(
-        vec![EmirOp::EigenSymmetric(EmirValue(0))],
-        &[a],
-    )
-    .expect_err("non-square eigen refuses");
+    let error = eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a])
+        .expect_err("non-square eigen refuses");
     let fault = format!("{error:?}");
     assert!(
         fault.contains("E-LINALG-001"),
@@ -164,11 +187,8 @@ fn eigen_non_symmetric_refuses_typed() {
     // non-symmetric matrix refuses typed E-LINALG-002 (never a silent
     // garbage spectrum from running Jacobi on a non-symmetric input).
     let a = matrix(2, 2, &[1.0, 2.0, 3.0, 4.0]);
-    let error = eval(
-        vec![EmirOp::EigenSymmetric(EmirValue(0))],
-        &[a],
-    )
-    .expect_err("non-symmetric eigen refuses");
+    let error = eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a])
+        .expect_err("non-symmetric eigen refuses");
     let fault = format!("{error:?}");
     assert!(
         fault.contains("E-LINALG-002"),
@@ -178,28 +198,22 @@ fn eigen_non_symmetric_refuses_typed() {
 
 #[test]
 fn svd_reconstruction_property() {
-    // Property (the bead's acceptance): A = U·diag(s)·Vᵀ within the
+    // Property (the acceptance): A = U·diag(s)·Vᵀ within the
     // numeric policy, singular values DESCENDING, factors are
     // orthonormal (UᵀU = I, VᵀV = I on the computed columns).
     let rows = 3usize;
     let cols = 2usize;
     let a = matrix(rows, cols, &[3.0, 0.0, 0.0, 2.0, 0.0, 0.0]);
-    let singular = eval(
-        vec![EmirOp::SvdSingularValues(EmirValue(0))],
-        &[a.clone()],
-    )
-    .expect("svd computes");
+    let singular =
+        eval(vec![cell(SVD_VALUES, vec![EmirValue(0)])], &[a.clone()]).expect("svd computes");
     let s = vector_of(&singular);
     assert_eq!(s.len(), cols.min(rows));
     assert!(
         s[0] >= s[1] && (s[0] - 3.0).abs() < 1e-9 && (s[1] - 2.0).abs() < 1e-9,
         "descending singular values: {s:?}"
     );
-    let factors = eval(
-        vec![EmirOp::SvdFactors(EmirValue(0))],
-        &[a],
-    )
-    .expect("svd factors compute");
+    let factors =
+        eval(vec![cell(SVD_FACTORS, vec![EmirValue(0)])], &[a]).expect("svd factors compute");
     // The factors value is the interleaved [U | s | Vᵀ] bundle packed as
     // a matrix with rows = rows + 1 + cols (documented packing).
     let (frows, _fcols, fdata) = matrix_of(&factors);
@@ -237,7 +251,10 @@ fn svd_reconstruction_property() {
         for c2 in 0..cols {
             let dot: f64 = v_t[c1].iter().zip(v_t[c2].iter()).map(|(x, y)| x * y).sum();
             let want = if c1 == c2 { 1.0 } else { 0.0 };
-            assert!((dot - want).abs() < 1e-9, "Vᵀ orthonormal at {c1},{c2}: {dot}");
+            assert!(
+                (dot - want).abs() < 1e-9,
+                "Vᵀ orthonormal at {c1},{c2}: {dot}"
+            );
         }
     }
 }
@@ -258,22 +275,20 @@ fn iterative_solve_computes_and_refuses() {
     }
     let b = Value::Vector(vec![1.0, 1.0, 1.0, 1.0]);
     let solved = eval(
-        vec![EmirOp::CgSolve(EmirValue(0), EmirValue(1))],
+        vec![cell(CG_SOLVE, vec![EmirValue(0), EmirValue(1)])],
         &[matrix(n, n, &laplacian), b],
     )
     .expect("cg solves the SPD system");
     let x = vector_of(&solved);
     // Verify A x = b directly.
     for i in 0..n {
-        let lhs: f64 = (0..n)
-            .map(|j| laplacian[i * n + j] * x[j])
-            .sum();
+        let lhs: f64 = (0..n).map(|j| laplacian[i * n + j] * x[j]).sum();
         assert!((lhs - 1.0).abs() < 1e-8, "A x = b at row {i}: {lhs}");
     }
     // Non-SPD: a matrix with a negative eigenvalue must refuse.
     let indefinite = matrix(2, 2, &[1.0, 0.0, 0.0, -1.0]);
     let error = eval(
-        vec![EmirOp::CgSolve(EmirValue(0), EmirValue(1))],
+        vec![cell(CG_SOLVE, vec![EmirValue(0), EmirValue(1)])],
         &[indefinite, Value::Vector(vec![1.0, 1.0])],
     )
     .expect_err("indefinite system refuses");
@@ -321,12 +336,9 @@ fn bundle_fixture() {
 
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
             let a = matrix(2, 2, &[2.0, 1.0, 1.0, 2.0]);
-            let values = eval(
-                vec![EmirOp::EigenSymmetric(EmirValue(0))],
-                &[a],
-            )
-            .map(|v| vector_of(&v))
-            .unwrap_or_default();
+            let values = eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a])
+                .map(|v| vector_of(&v))
+                .unwrap_or_default();
             if values.len() == 2
                 && (values[0] - 1.0).abs() < 1e-10
                 && (values[1] - 3.0).abs() < 1e-10

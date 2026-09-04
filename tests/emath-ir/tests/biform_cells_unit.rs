@@ -1,4 +1,4 @@
-//! Bead `emath-biform-cells-jswu6` — biform cells: spec vs algorithm with
+//! Biform cells: spec vs algorithm with
 //! independent evidence. Positive fixture + negative authority-launder
 //! control, proven with the softmax cell only as fixture data (schema
 //! descriptor + evidence id tokens — Softmax is never a Rust branch).
@@ -7,13 +7,13 @@
 
 use emath_core::id::QualifiedName;
 use emath_ir::capability::{
-    BiformAuthority, BiformRefusal, BiformSide, BiformSideDisposition, SideEvidence,
-    assess_biform_closure, biform_side_disposition,
+    AdmissionRefusal, CellClass, CellSchema, ClosureRefusal, MigrationPolicy, ProjectionKind,
+    ProjectionStatus, admit_cell, admit_cell_mutation, canonical_cell, cell_id, missing_required,
+    plan_cell_closure, required_projections,
 };
 use emath_ir::capability::{
-    CellClass, CellSchema, ClosureRefusal, MigrationPolicy, ProjectionKind, ProjectionStatus,
-    AdmissionRefusal, admit_cell, admit_cell_mutation, canonical_cell, cell_id, missing_required,
-    plan_cell_closure, required_projections,
+    BiformAuthority, BiformRefusal, BiformSide, BiformSideDisposition, SideEvidence,
+    assess_biform_closure, biform_side_disposition,
 };
 
 const STD_MATH_SOFTMAX: &str = "std.math.softmax";
@@ -23,7 +23,8 @@ const ALGO_EVIDENCE: &str = "evidence:std.math.softmax:algorithm:v2";
 /// The fixture files are the language truth: the positive example and the
 /// negative launder seed, read as data (never re-derived from this test's
 /// constants).
-const POSITIVE_FIXTURE: &str = include_str!("../../../language/examples/intro/01_softmax_cell.emath");
+const POSITIVE_FIXTURE: &str =
+    include_str!("../../../language/examples/intro/01_softmax_cell.emath");
 const LAUNDER_FIXTURE: &str = include_str!("../../../tests/invalid/biform_authority_launder.emath");
 
 /// Extract the `evidence:` tokens a fixture binds, in order. The tokens
@@ -45,8 +46,7 @@ fn softmax_biform_schema() -> CellSchema {
         migration: MigrationPolicy::Frozen,
         arity: 1,
         about: Some(
-            "softmax as biform cell: spec law (stable-max) vs algorithm (reference eval)"
-                .into(),
+            "softmax as biform cell: spec law (stable-max) vs algorithm (reference eval)".into(),
         ),
     }
 }
@@ -78,7 +78,11 @@ fn full_supply(schema: &CellSchema) -> Vec<(ProjectionKind, ProjectionStatus, Op
         (ProjectionKind::Assurance, ProjectionStatus::Provided, None),
         (ProjectionKind::Evidence, ProjectionStatus::Provided, None),
         (ProjectionKind::Evolution, ProjectionStatus::Provided, None),
-        (ProjectionKind::Specification, ProjectionStatus::Provided, None),
+        (
+            ProjectionKind::Specification,
+            ProjectionStatus::Provided,
+            None,
+        ),
         (ProjectionKind::Algorithm, ProjectionStatus::Provided, None),
     ]
 }
@@ -94,7 +98,9 @@ fn biform_cells_unit() {
         CellClass::Biform
     );
     assert_eq!(
-        admit_cell(&schema).expect("biform softmax cell admits").class,
+        admit_cell(&schema)
+            .expect("biform softmax cell admits")
+            .class,
         CellClass::Biform
     );
 
@@ -153,12 +159,7 @@ fn biform_cells_unit() {
     let holes: Vec<_> = supplied
         .iter()
         .cloned()
-        .filter(|(k, _, _)| {
-            !matches!(
-                k,
-                ProjectionKind::Specification | ProjectionKind::Algorithm
-            )
-        })
+        .filter(|(k, _, _)| !matches!(k, ProjectionKind::Specification | ProjectionKind::Algorithm))
         .collect();
     let refusals = missing_required(&schema, &holes);
     assert_eq!(
@@ -166,12 +167,20 @@ fn biform_cells_unit() {
         2,
         "one E-CELL-007 per missing biform row: {refusals:?}"
     );
-    assert!(refusals
-        .iter()
-        .any(|r| matches!(r, ClosureRefusal::MissingRequired { projection: ProjectionKind::Specification, .. })));
-    assert!(refusals
-        .iter()
-        .any(|r| matches!(r, ClosureRefusal::MissingRequired { projection: ProjectionKind::Algorithm, .. })));
+    assert!(refusals.iter().any(|r| matches!(
+        r,
+        ClosureRefusal::MissingRequired {
+            projection: ProjectionKind::Specification,
+            ..
+        }
+    )));
+    assert!(refusals.iter().any(|r| matches!(
+        r,
+        ClosureRefusal::MissingRequired {
+            projection: ProjectionKind::Algorithm,
+            ..
+        }
+    )));
 }
 
 #[test]
@@ -327,11 +336,7 @@ fn biform_launder_fixture_refuses() {
     // fixture's bindings refuses with E-CELL-011 (side-evidence
     // collision): the launder is impossible, not silently accepted.
     let tokens = evidence_tokens(LAUNDER_FIXTURE);
-    assert_eq!(
-        tokens.len(),
-        2,
-        "launder fixture binds one token per side"
-    );
+    assert_eq!(tokens.len(), 2, "launder fixture binds one token per side");
     assert_eq!(
         tokens[0], tokens[1],
         "launder fixture reuses the algorithm evidence on the spec side"
@@ -437,7 +442,7 @@ fn biform_identity_stable_across_supplies() {
     // Side evidence is evidence, not identity: binding different
     // evidence objects (or none) must never move the CellId — proofs and
     // tests attach without changing the cell's meaning identity
-    // (emath-epic-emlib-nz1n.5) — while the biform class token itself is
+    // While the biform class token itself is
     // identity-affecting and stable.
     let schema = softmax_biform_schema();
     let id_a = cell_id(&schema);

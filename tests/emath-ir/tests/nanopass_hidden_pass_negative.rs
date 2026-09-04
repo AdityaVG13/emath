@@ -1,4 +1,4 @@
-//! Bead `emath-nanopass-projections-1d5jy` — negative control.
+//! Negative control.
 //!
 //! A required projection skipped from the closure refuses with
 //! `E-CELL-007` — one typed refusal per gap — so nothing is silently
@@ -38,11 +38,7 @@ fn nanopass_hidden_pass_negative() {
     ]
     .into_iter()
     .collect();
-    assert_eq!(
-        refusals.len(),
-        7,
-        "one E-CELL-007 per missing required row"
-    );
+    assert_eq!(refusals.len(), 7, "one E-CELL-007 per missing required row");
     let got: std::collections::BTreeSet<_> = refusals
         .iter()
         .map(|r| {

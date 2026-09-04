@@ -1,7 +1,7 @@
-//! emath-xx0x.4 (thin nucleus slice): spectral Poisson on the unit
+//! (thin nucleus slice): spectral Poisson on the unit
 //! interval, Dirichlet class, via the discrete sine diagonalization.
 //!
-//! The bead's law, thinned to one honest end-to-end path (FEM assembly
+//! The law, thinned to one honest end-to-end path (FEM assembly
 //! and BC classes beyond Dirichlet are named deferrals, not claims):
 //! - **The method**: sample the load `f` at the `n` interior nodes of
 //!   a uniform grid on [0,1] (`h = 1/(n+1)`, `u(0) = u(1) = 0`); the
@@ -22,20 +22,35 @@
 //! - **Typed refusals**: an empty interior (`E-PDE-001` — no nodes,
 //!   no solve; the negative seed's shape) and non-finite loads
 //!   (`E-PDE-002`) refuse; never a silently wrong field.
-//! - **Surface**: EMIR op `PoissonDirichletSine(f)`, closed call name
-//!   `poisson_sine` with the compile-time shape law (vector in, vector
-//!   out; a scalar load refuses at COMPILE), registry cell
-//!   `std.pde.poisson_sine` (cohort 22).
+//! - **Surface**: capsule FeatureID
+//!   `std.capability.pde.poisson-sine` with a checked vector carrier;
+//!   scalar loads refuse at the installed kernel ABI.
+
+use std::path::{Path, PathBuf};
 
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::term_compile::{
-    compile_reference, std_cell_registry, ParamShape, TermCompileError,
-};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::{KernelArity, install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
-use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_term::{SymbolId, Term};
+
+const POISSON_SINE: &str = "std.capability.pde.poisson-sine";
+
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("pde kernels install");
+}
 
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
+    install_language();
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -53,13 +68,23 @@ fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
 
 fn solve(load: &[f64]) -> Result<Vec<f64>, EvalFault> {
     let value = eval(
-        vec![EmirOp::PoissonDirichletSine(EmirValue(0))],
+        vec![cell(POISSON_SINE, vec![EmirValue(0)])],
         &[Value::Vector(load.to_vec())],
     )?;
     let Value::Vector(field) = value else {
         panic!("expected a vector field, got {value:?}")
     };
     Ok(field)
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
 }
 
 /// The exact solution of `-u'' = 1, u(0) = u(1) = 0`.
@@ -105,8 +130,8 @@ fn first_eigenmode_second_order_convergence() {
         let mid = n / 2; // interior index of x ≈ 0.5
         let x = (mid as f64 + 1.0) * h;
         // Exact solution of -u'' = sin(πx), u(0)=u(1)=0: sin(πx)/π².
-        let continuous = (std::f64::consts::PI * x).sin()
-            / (std::f64::consts::PI * std::f64::consts::PI);
+        let continuous =
+            (std::f64::consts::PI * x).sin() / (std::f64::consts::PI * std::f64::consts::PI);
         (field[mid] - continuous).abs()
     };
     let coarse = midpoint_error(7);
@@ -178,44 +203,16 @@ fn non_finite_load_refuses_typed() {
 }
 
 #[test]
-fn cell_registry_and_shape_law() {
-    // The .emath surface: `std.pde.poisson_sine` is registry DATA
-    // (cohort 22), compiles through the call seam, and evaluates the
-    // SAME field as the bare op. A scalar load refuses at COMPILE
-    // (ShapeMismatch) — the closed vocabulary's shape law.
-    let registry = std_cell_registry();
-    assert!(
-        registry.contains_key("std.pde.poisson_sine"),
-        "registry cell present; have {:?}",
-        registry.keys().collect::<Vec<_>>()
-    );
+fn poisson_capsule_kernel_abi_and_shape_law() {
+    install_language();
+    let kernel = native_kernel(POISSON_SINE).expect("Poisson capsule kernel bound");
+    assert_eq!(kernel.kernel_id, "checked-poisson-dirichlet-sine");
+    assert_eq!(kernel.arity_contract(), KernelArity::Exact(1));
 
-    let term = Term::Apply {
-        operator: SymbolId("poisson_sine".into()),
-        arguments: vec![Term::Variable(VariableId("f".into()))],
-    };
-    let mut signature = Signature::default();
-    signature
-        .insert(SymbolId("poisson_sine".into()), 1)
-        .expect("poisson_sine signature is conflict-free");
-    let params = vec![("f".to_string(), ParamShape::Vector)];
-    compile_reference(&term, &signature, &params, Vec::new(), "std.pde.poisson_sine")
-        .expect("vector load compiles");
-
-    // Evaluate through ApplyCapability: f ≡ 1 on n = 7 → 1/8 field.
+    // Evaluate through ApplyCapability: f ≡ 1 on n = 7.
     let n = 7usize;
-    let mut ops: Vec<(EmirOp, Span)> = vec![(
-        EmirOp::LoadInput(0),
-        Span::default(),
-    )];
-    ops.push((
-        EmirOp::ApplyCapability {
-            capability: "std.pde.poisson_sine".to_string(),
-            class: CellClass::Pure,
-            args: vec![EmirValue(0)],
-        },
-        Span::default(),
-    ));
+    let mut ops: Vec<(EmirOp, Span)> = vec![(EmirOp::LoadInput(0), Span::default())];
+    ops.push((cell(POISSON_SINE, vec![EmirValue(0)]), Span::default()));
     let program = EmirProgram {
         ops,
         result: EmirValue(1),
@@ -236,31 +233,21 @@ fn cell_registry_and_shape_law() {
     let h = 1.0 / (n as f64 + 1.0);
     for (j, u) in field.iter().enumerate() {
         let exact = quadratic_exact((j as f64 + 1.0) * h);
-        assert!((u - exact).abs() < 1e-12, "cell field node {j}: {u} vs {exact}");
+        assert!(
+            (u - exact).abs() < 1e-12,
+            "cell field node {j}: {u} vs {exact}"
+        );
     }
 
-    // Shape law: a scalar load refuses at COMPILE.
-    let scalar_params = vec![("f".to_string(), ParamShape::Scalar)];
-    let error = compile_reference(
-        &Term::Apply {
-            operator: SymbolId("poisson_sine".into()),
-            arguments: vec![Term::Variable(VariableId("f".into()))],
-        },
-        &signature,
-        &scalar_params,
-        Vec::new(),
-        "std.pde.poisson_sine",
+    let error = eval(
+        vec![cell(POISSON_SINE, vec![EmirValue(0)])],
+        &[Value::F64(1.0)],
     )
-    .expect_err("scalar load refuses at compile");
-    let compile_error = format!("{error:?}");
+    .expect_err("scalar load refuses at the kernel ABI");
     assert!(
-        compile_error.contains("ShapeMismatch"),
-        "scalar load must ShapeMismatch at compile, got {compile_error}"
+        matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")),
+        "scalar load must refuse typed, got {error:?}"
     );
-    let _ = TermCompileError::ShapeMismatch {
-        symbol: "poisson_sine".to_string(),
-        detail: "unused".to_string(),
-    };
 }
 
 #[test]
@@ -272,7 +259,9 @@ fn bundle_fixture() {
         type Error = emath_genesis::EvalError;
 
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
-            let field = solve(&vec![1.0; 7]).map(|field| field[3]).unwrap_or(f64::NAN);
+            let field = solve(&vec![1.0; 7])
+                .map(|field| field[3])
+                .unwrap_or(f64::NAN);
             // Midpoint of the n = 7 constant-load field = 1/32.
             if (field - 1.0 / 32.0).abs() < 1e-12 {
                 Ok("spectral-poisson-exact".to_string())

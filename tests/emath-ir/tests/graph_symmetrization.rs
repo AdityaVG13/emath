@@ -1,11 +1,11 @@
-//! emath-r2-graphs-masa (slice 4): directed graphs reach the spectral
+//! (slice 4): directed graphs reach the spectral
 //! path via EXPLICIT symmetrization.
 //!
 //! The epic's named "directed/symmetrized spectra" slice, thinned to
 //! one op: `graph_symmetrize(adj)` = (A + Aᵀ)/2 — the weight-preserving
 //! symmetrization convention, documented. Zero new spectral machinery:
 //! the symmetrized carrier is a symmetric adjacency, so the EXISTING
-//! `graph_laplacian` + `EigenSymmetric` path applies (the masa slice-3
+//! `graph_laplacian` + `EigenSymmetric` path applies (the slice-3
 //! directed-refusal fence stays: symmetrization is a USER choice, never
 //! a silent one inside laplacian/eigen).
 //!
@@ -22,13 +22,43 @@
 //! - Surface: call name `graph_symmetrize` (compile-time shape law),
 //!   registry cell `std.graph.symmetrize` (cohort 29).
 
+use std::path::{Path, PathBuf};
+
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    compile_reference, std_cell_registry, ParamShape, TermCompileError,
+    ParamShape, TermCompileError, compile_reference, std_cell_registry,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+
+fn language_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
+}
+
+/// Capability cells resolve against the installed Language Image
+/// (thread-local bindings); every evaluating test installs the
+/// checked-in distribution first.
+fn install_language() {
+    let distribution = load_language_distribution(&language_root()).expect("language distribution");
+    install_language_distribution(&distribution).expect("graph kernels install");
+}
+
+/// The active universal seam for domain math: an `ApplyCapability`
+/// over a capsule-active FeatureID (no domain-named `EmirOp`).
+fn cell(capability: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: capability.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+const SYMMETRIZE: &str = "std.capability.graph.symmetrize";
+const LAPLACIAN: &str = "std.capability.graph.laplacian";
+const EIGENVALUES: &str = "std.capability.linear.symmetric-eigenvalues";
 
 fn directed_path4() -> Value {
     // Directed path 0→1→2→3 (asymmetric adjacency, unweighted).
@@ -45,6 +75,7 @@ fn directed_path4() -> Value {
 }
 
 fn eval(ops: Vec<EmirOp>, inputs: &[Value]) -> Result<Value, EvalFault> {
+    install_language();
     let mut program_ops: Vec<(EmirOp, Span)> = (0..inputs.len())
         .map(|index| (EmirOp::LoadInput(index as u16), Span::default()))
         .collect();
@@ -72,7 +103,7 @@ fn defining_law_and_idempotence() {
     // The output IS symmetric; a symmetric input passes through
     // unchanged at 1e-12.
     let symmetrized = eval(
-        vec![EmirOp::GraphSymmetrize(EmirValue(0))],
+        vec![cell(SYMMETRIZE, vec![EmirValue(0)])],
         &[directed_path4()],
     )
     .expect("directed carrier symmetrizes");
@@ -107,7 +138,7 @@ fn defining_law_and_idempotence() {
         data: expected.clone(),
     };
     let again = eval(
-        vec![EmirOp::GraphSymmetrize(EmirValue(0))],
+        vec![cell(SYMMETRIZE, vec![EmirValue(0)])],
         &[symmetric_input],
     )
     .expect("symmetric carrier symmetrizes");
@@ -127,11 +158,19 @@ fn weight_preserving_convention() {
         cols: 2,
         data: vec![0.0, 4.0, 0.0, 0.0],
     };
-    let symmetrized = eval(vec![EmirOp::GraphSymmetrize(EmirValue(0))], &[carrier])
+    let symmetrized = eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[carrier])
         .expect("weighted carrier symmetrizes");
     let (_, _, data) = matrix_of(&symmetrized);
-    assert!((data[1] - 2.0).abs() < 1e-12, "S[0][1] = 2, got {}", data[1]);
-    assert!((data[2] - 2.0).abs() < 1e-12, "S[1][0] = 2, got {}", data[2]);
+    assert!(
+        (data[1] - 2.0).abs() < 1e-12,
+        "S[0][1] = 2, got {}",
+        data[1]
+    );
+    assert!(
+        (data[2] - 2.0).abs() < 1e-12,
+        "S[1][0] = 2, got {}",
+        data[2]
+    );
 }
 
 #[test]
@@ -153,7 +192,7 @@ fn composition_spectrum_law() {
         ],
     };
     let symmetrized = eval(
-        vec![EmirOp::GraphSymmetrize(EmirValue(0))],
+        vec![cell(SYMMETRIZE, vec![EmirValue(0)])],
         &[directed_cycle4],
     )
     .expect("symmetrize computes");
@@ -161,7 +200,7 @@ fn composition_spectrum_law() {
         panic!("expected a matrix")
     };
     let laplacian = eval(
-        vec![EmirOp::GraphLaplacian(EmirValue(0))],
+        vec![cell(LAPLACIAN, vec![EmirValue(0)])],
         &[Value::Matrix { rows, cols, data }],
     )
     .expect("laplacian computes");
@@ -174,7 +213,7 @@ fn composition_spectrum_law() {
         panic!("expected a matrix")
     };
     let spectrum = eval(
-        vec![EmirOp::EigenSymmetric(EmirValue(0))],
+        vec![cell(EIGENVALUES, vec![EmirValue(0)])],
         &[Value::Matrix {
             rows: lrows,
             cols: lcols,
@@ -208,8 +247,8 @@ fn refusals_reuse_closed_set() {
         cols: 3,
         data: vec![0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
     };
-    let error = eval(vec![EmirOp::GraphSymmetrize(EmirValue(0))], &[ragged])
-        .expect_err("ragged refuses");
+    let error =
+        eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[ragged]).expect_err("ragged refuses");
     assert!(
         format!("{error:?}").contains("E-GRAPH-001"),
         "ragged must name E-GRAPH-001, got {error:?}"
@@ -219,7 +258,7 @@ fn refusals_reuse_closed_set() {
         cols: 2,
         data: vec![0.0, -1.0, 0.0, 0.0],
     };
-    let error = eval(vec![EmirOp::GraphSymmetrize(EmirValue(0))], &[negative])
+    let error = eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[negative])
         .expect_err("negative weight refuses");
     assert!(
         format!("{error:?}").contains("E-GRAPH-002"),
@@ -230,7 +269,7 @@ fn refusals_reuse_closed_set() {
         cols: 2,
         data: vec![0.0, f64::NAN, 0.0, 0.0],
     };
-    let error = eval(vec![EmirOp::GraphSymmetrize(EmirValue(0))], &[non_finite])
+    let error = eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[non_finite])
         .expect_err("non-finite refuses");
     assert!(
         format!("{error:?}").contains("E-GRAPH-004"),
@@ -252,6 +291,7 @@ fn cell_registry_and_shape_law() {
     // std.graph.symmetrize is registry DATA (cohort 29), compiles
     // through the call seam, and evaluates the SAME symmetrization;
     // a scalar adjacency refuses at COMPILE (ShapeMismatch).
+    install_language();
     let registry = std_cell_registry();
     assert!(
         registry.contains_key("std.graph.symmetrize"),
@@ -276,11 +316,12 @@ fn cell_registry_and_shape_law() {
     )
     .expect("matrix adjacency compiles");
 
-    // Cell path evaluates the same convention: A[0][1]=4 → S=2.
+    // Cell path evaluates the same convention: A[0][1]=4 → S=2. The
+    // eval seam resolves the capsule FeatureID (hyphenated).
     let mut ops: Vec<(EmirOp, Span)> = vec![(EmirOp::LoadInput(0), Span::default())];
     ops.push((
         EmirOp::ApplyCapability {
-            capability: "std.graph.symmetrize".to_string(),
+            capability: "std.capability.graph.symmetrize".to_string(),
             class: CellClass::Pure,
             args: vec![EmirValue(0)],
         },
@@ -336,7 +377,7 @@ fn bundle_fixture() {
 
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
             let symmetrized = eval(
-                vec![EmirOp::GraphSymmetrize(EmirValue(0))],
+                vec![cell(SYMMETRIZE, vec![EmirValue(0)])],
                 &[directed_path4()],
             )
             .ok()
@@ -362,7 +403,11 @@ fn bundle_fixture() {
         fn evidence(&self) -> emath_genesis::WorldEvidence {
             emath_genesis::WorldEvidence::seed(
                 "directed-symmetrized-spectra",
-                &["graph-symmetrize", "avg-convention", "laplacian-composition"],
+                &[
+                    "graph-symmetrize",
+                    "avg-convention",
+                    "laplacian-composition",
+                ],
             )
         }
     }

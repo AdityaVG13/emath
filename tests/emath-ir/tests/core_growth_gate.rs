@@ -1,7 +1,7 @@
-//! emath-epic-machine-fjxh.18: Core-growth gate — CDLOC/SCBD/KGS measured;
+//!: Core-growth gate — CDLOC/SCBD/KGS measured;
 //! operation-name branches blocked.
 //!
-//! The bead's law: a rising handwritten-core-per-capability slope is a
+//! The law: a rising handwritten-core-per-capability slope is a
 //! regression. The gate MEASURES the nucleus and BLOCKES the mutation:
 //! a stable pure cell must enter as DATA (cell schema + registry entry);
 //! any parser/sema/backend/kernel-dispatch branch that names a cohort
@@ -100,7 +100,10 @@ fn lower_apply(op: &str, args: &[Value]) -> Result<Expr, Error> {
     // like every registry entry.
     let registry_entry = r#"map.insert("std.math.add".to_string(), compiled_cell);
 "#;
-    let report = growth_gate(&[("kernel:term_compile.rs", registry_entry)], &["std.math.add"]);
+    let report = growth_gate(
+        &[("kernel:term_compile.rs", registry_entry)],
+        &["std.math.add"],
+    );
     assert!(report.violations.is_empty());
     assert_eq!(report.data_zone_mentions, 1);
 
@@ -126,7 +129,10 @@ fn comments_and_unrelated_names_do_not_trip() {
 /// The softmax cell ships as registry data (see term_compile).
 fn unrelated() -> u32 { 0 }
 "#;
-    let report = growth_gate(&[("backend:notes.rs", notes)], &["std.math.exp", "std.tensor.softmax"]);
+    let report = growth_gate(
+        &[("backend:notes.rs", notes)],
+        &["std.math.exp", "std.tensor.softmax"],
+    );
     assert!(report.violations.is_empty(), "{:?}", report.violations);
     assert_eq!(report.mentions_per_file["backend:notes.rs"], 0);
 
@@ -140,7 +146,7 @@ fn unrelated() -> u32 { 0 }
 
 #[test]
 fn metrics_reported_for_the_cohort() {
-    // CDLOC/SCBD/KGS (hypotheses until calibrated — the bead asks for
+    // CDLOC/SCBD/KGS (hypotheses until calibrated — the asks for
     // NUMBERS, and the numbers must respond to the inputs):
     // CDLOC = core lines naming a capability outside the data zone
     // (0 on a clean nucleus); SCBD = branch deltas on capability
@@ -183,7 +189,10 @@ fn metrics_reported_for_the_cohort() {
 #[test]
 fn nucleus_classification_and_bundle_fixture() {
     // File classes drive the gate: data zones vs gated nucleus files.
-    assert_eq!(nucleus_class("kernel:term_compile.rs"), NucleusClass::DataZone);
+    assert_eq!(
+        nucleus_class("kernel:term_compile.rs"),
+        NucleusClass::DataZone
+    );
     for name in [
         "kernel:interp.rs",
         "kernel:emitter.rs",
@@ -198,7 +207,7 @@ fn nucleus_classification_and_bundle_fixture() {
     // does not silently escape the gate).
     assert_eq!(nucleus_class("weird:new.rs"), NucleusClass::Gated);
 
-    // Labeled portfolio: the healthy gate verdict lands in the fjxh.8
+    // Labeled portfolio: the healthy gate verdict lands in the
     // envelope (gate-as-world: evidence carries the metric laws).
     struct GateWorld;
     impl emath_genesis::FirstOrderWorld for GateWorld {

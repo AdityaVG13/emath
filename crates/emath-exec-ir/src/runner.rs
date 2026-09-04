@@ -29,6 +29,14 @@ pub use simulate::{
 /// be computed directly (an input or constructor parameter is unbound).
 pub const ZERO_TEST_NOTE: &str = "no examples; add a worked example or use input fields";
 
+/// Meaning label (Vision law 2) for a fallback run that returned the
+/// symbolic form of at least one definition no world could evaluate.
+pub const SYMBOLIC_ONLY: &str = "symbolic-only";
+
+/// Meaning label (Vision law 2) for a fallback run that could only
+/// report the open holes with their declared types attached.
+pub const HOLE_OPEN: &str = "hole-open";
+
 /// Synthetic worked-run name used when the pane supplies givens or when a
 /// declaration has no examples and every input is already bound.
 pub const PANE_TEST_NAME: &str = "_pane";
@@ -58,6 +66,20 @@ pub enum TestVerdict {
         /// The typed fault.
         fault: EvalFault,
     },
+    /// nothing-returns-nothing: no world in scope could evaluate every
+    /// expression, so the run returns the symbolic form (and/or the open
+    /// holes) with its meaning label attached instead of erroring.
+    /// Computed definitions stay computed; uncomputable ones carry their
+    /// form, and every unbound name carries its declared type.
+    Symbolic {
+        /// Meaning label: [`SYMBOLIC_ONLY`] when at least one form is
+        /// returned, [`HOLE_OPEN`] when only holes are available.
+        label: &'static str,
+        /// Definition name → symbolic form (source-level rendering).
+        forms: BTreeMap<String, String>,
+        /// Unbound name → declared type (constraints attached).
+        holes: BTreeMap<String, String>,
+    },
 }
 
 impl TestVerdict {
@@ -83,6 +105,7 @@ impl TestVerdict {
             Self::ConstructorRefused { .. } => Some("constructor-refused"),
             Self::LoweringRefused { .. } => Some("lowering-refused"),
             Self::Fault { .. } => Some("fault"),
+            Self::Symbolic { .. } => None,
             Self::Passed | Self::Failed | Self::Computed => None,
         }
     }
@@ -93,6 +116,45 @@ impl TestVerdict {
         matches!(self, Self::Computed)
     }
 
+    /// Whether this is a labeled symbolic fallback run.
+    #[must_use]
+    pub const fn is_symbolic(&self) -> bool {
+        matches!(self, Self::Symbolic { .. })
+    }
+
+    /// The meaning label (`symbolic-only` / `hole-open`) carried by a
+    /// symbolic fallback; `None` for computed, failed, or refused runs.
+    #[must_use]
+    pub const fn meaning_label(&self) -> Option<&'static str> {
+        match self {
+            Self::Symbolic { label, .. } => Some(label),
+            Self::Passed
+            | Self::Failed
+            | Self::Computed
+            | Self::ConstructorRefused { .. }
+            | Self::LoweringRefused { .. }
+            | Self::Fault { .. } => None,
+        }
+    }
+
+    /// Definition name → symbolic form for a symbolic fallback.
+    #[must_use]
+    pub const fn symbolic_forms(&self) -> Option<&BTreeMap<String, String>> {
+        match self {
+            Self::Symbolic { forms, .. } => Some(forms),
+            _ => None,
+        }
+    }
+
+    /// Unbound name → declared type for a symbolic fallback.
+    #[must_use]
+    pub const fn symbolic_holes(&self) -> Option<&BTreeMap<String, String>> {
+        match self {
+            Self::Symbolic { holes, .. } => Some(holes),
+            _ => None,
+        }
+    }
+
     /// Human-readable refusal / fault text.
     #[must_use]
     pub fn reason_text(&self) -> Option<String> {
@@ -100,6 +162,7 @@ impl TestVerdict {
             Self::ConstructorRefused { obligation } => Some(obligation.clone()),
             Self::LoweringRefused { detail } => Some(detail.clone()),
             Self::Fault { fault } => Some(fault.to_string()),
+            Self::Symbolic { .. } => None,
             Self::Passed | Self::Failed | Self::Computed => None,
         }
     }
@@ -116,6 +179,20 @@ impl fmt::Display for TestVerdict {
             }
             Self::LoweringRefused { detail } => write!(f, "lowering refused: {detail}"),
             Self::Fault { fault } => write!(f, "fault: {fault}"),
+            Self::Symbolic {
+                label,
+                forms,
+                holes,
+            } => {
+                write!(f, "{label}:")?;
+                for (name, form) in forms {
+                    write!(f, " {name} = {form};")?;
+                }
+                for (name, ty) in holes {
+                    write!(f, " hole {name}: {ty};")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -150,6 +227,9 @@ pub struct RunSummary {
     pub refused: u32,
     /// Worked examples (`expect` omitted).
     pub computed: u32,
+    /// Labeled symbolic fallbacks (`nothing-returns-nothing`): neither a
+    /// pass/fail claim nor a refusal.
+    pub symbolic: u32,
 }
 
 /// Per-declaration run.

@@ -339,175 +339,167 @@ pub struct UnitError {
     pub message: String,
 }
 
-/// Looks up a language-surface unit name. Unknown names are `E-UNIT-104`.
-pub fn lookup_unit(name: &str) -> Result<Unit, UnitError> {
-    match name {
-        "s" | "Duration" | "Time" => Ok(Unit::si("s".into(), UnitDim::base(0, 0, 1, 0, 0, 0, 0))),
-        "ms" | "Millisecond" => Ok(Unit::new(
-            "ms".into(),
-            UnitDim::base(0, 0, 1, 0, 0, 0, 0),
-            1e-3,
-            0.0,
-        )),
-        "m" | "Length" => Ok(Unit::si("m".into(), UnitDim::base(1, 0, 0, 0, 0, 0, 0))),
-        "km" | "Kilometre" | "Kilometer" => Ok(Unit::new(
-            "km".into(),
-            UnitDim::base(1, 0, 0, 0, 0, 0, 0),
-            1_000.0,
-            0.0,
-        )),
-        "kg" | "Mass" => Ok(Unit::si("kg".into(), UnitDim::base(0, 1, 0, 0, 0, 0, 0))),
-        "K" | "Temperature" => Ok(Unit::si("K".into(), UnitDim::base(0, 0, 0, 0, 1, 0, 0))),
-        "degC" | "Celsius" => Ok(Unit::new(
-            "degC".into(),
-            UnitDim::base(0, 0, 0, 0, 1, 0, 0),
-            1.0,
-            273.15,
-        )),
-        "degF" | "Fahrenheit" => Ok(Unit::new(
-            "degF".into(),
-            UnitDim::base(0, 0, 0, 0, 1, 0, 0),
-            5.0 / 9.0,
-            // Nearest-f64 pre-scale offset normalized through the freezing
-            // point, so both 32°F and 212°F compare exactly with their
-            // decimal Kelvin spellings after source lowering.
-            273.15 / (5.0 / 9.0) - 32.0,
-        )),
-        "L" | "liter" | "litre" => Ok(Unit::new(
-            "L".into(),
-            UnitDim::base(3, 0, 0, 0, 0, 0, 0),
-            1e-3,
-            0.0,
-        )),
-        "cal" => Ok(Unit::new(
-            "cal".into(),
-            UnitDim::base(2, 1, -2, 0, 0, 0, 0),
-            4.184,
-            0.0,
-        )),
-        "cal_IT" => Ok(Unit::new(
-            "cal_IT".into(),
-            UnitDim::base(2, 1, -2, 0, 0, 0, 0),
-            4.1868,
-            0.0,
-        )),
-        "N" | "Force" => Ok(Unit::si("N".into(), UnitDim::base(1, 1, -2, 0, 0, 0, 0))),
-        "Hz" => Ok(Unit::si("Hz".into(), UnitDim::base(0, 0, -1, 0, 0, 0, 0))),
-        "W" => Ok(Unit::si("W".into(), UnitDim::base(2, 1, -3, 0, 0, 0, 0))),
-        "Byte" | "Bytes" | "B" => Ok(Unit::with_family(
-            "B".into(),
-            UnitDim::one(),
-            1.0,
-            0.0,
-            UnitFamily::Information,
-        )),
-        "MiB" => Ok(Unit::with_family(
-            "MiB".into(),
-            UnitDim::one(),
-            1_048_576.0,
-            0.0,
-            UnitFamily::Information,
-        )),
-        // --- core::units_ext (bead 8u7h, Phase 13) --------------------------
-        // SI companions: the base electric/amount units and the pressure/
-        // energy derived units physics law contracts need.
-        "A" | "Ampere" => Ok(Unit::si("A".into(), UnitDim::base(0, 0, 0, 1, 0, 0, 0))),
-        "mol" | "Mole" => Ok(Unit::si("mol".into(), UnitDim::base(0, 0, 0, 0, 0, 1, 0))),
-        "C" | "Coulomb" => Ok(Unit::si("C".into(), UnitDim::base(0, 0, 1, 1, 0, 0, 0))),
-        "V" | "Volt" => Ok(Unit::si("V".into(), UnitDim::base(2, 1, -3, -1, 0, 0, 0))),
-        "J" | "Joule" => Ok(Unit::si("J".into(), UnitDim::base(2, 1, -2, 0, 0, 0, 0))),
-        "Pa" | "Pascal" => Ok(Unit::si("Pa".into(), UnitDim::base(-1, 1, -2, 0, 0, 0, 0))),
-        "bar" => Ok(Unit::new("bar".into(), UnitDim::base(-1, 1, -2, 0, 0, 0, 0), 1e5, 0.0)),
-        "eV" => Ok(Unit::new(
-            "eV".into(),
-            UnitDim::base(2, 1, -2, 0, 0, 0, 0),
-            1.602_176_634e-19, // exact: SI 2019 definition of the electronvolt
-            0.0,
-        )),
-        "min" | "Minute" => Ok(Unit::new("min".into(), UnitDim::base(0, 0, 1, 0, 0, 0, 0), 60.0, 0.0)),
-        "g" | "Gram" => Ok(Unit::new("g".into(), UnitDim::base(0, 1, 0, 0, 0, 0, 0), 1e-3, 0.0)),
-        // Affine-temperature extension of the Phase 2 family (C13 order):
-        // Rankine is an ABSOLUTE scale (offset 0), same dimension as K.
-        "degR" | "Rankine" => Ok(Unit::new(
-            "degR".into(),
-            UnitDim::base(0, 0, 0, 0, 1, 0, 0),
-            5.0 / 9.0,
-            0.0,
-        )),
-        // Angle units: dimensionless BY DECLARATION. The SI radian is
-        // m/m; the policy here is explicit, not accidental — an angle
-        // carries the dimensionless vector with angle scales, so
-        // `dimension of` a degree equals that of a radian.
-        "rad" | "Radian" => Ok(Unit::si("rad".into(), UnitDim::one())),
-        "deg" | "Degree" => Ok(Unit::new(
-            "deg".into(),
-            UnitDim::one(),
-            std::f64::consts::PI / 180.0, // π/180, nearest f64
-            0.0,
-        )),
-        "arcmin" => Ok(Unit::new("arcmin".into(), UnitDim::one(), std::f64::consts::PI / 10_800.0, 0.0)),
-        "arcsec" => Ok(Unit::new("arcsec".into(), UnitDim::one(), std::f64::consts::PI / 648_000.0, 0.0)),
-        "grad" | "Gradian" => Ok(Unit::new("grad".into(), UnitDim::one(), std::f64::consts::PI / 200.0, 0.0)),
-        "turn" | "Revolution" => Ok(Unit::new(
-            "turn".into(),
-            UnitDim::one(),
-            2.0 * std::f64::consts::PI,
-            0.0,
-        )),
-        // Astronomical scales (exact by definition):
-        "AU" | "AstronomicalUnit" => Ok(Unit::new(
-            "AU".into(),
-            UnitDim::base(1, 0, 0, 0, 0, 0, 0),
-            1.495_978_707e11, // IAU 2012, exact
-            0.0,
-        )),
-        "pc" | "Parsec" => Ok(Unit::new(
-            "pc".into(),
-            UnitDim::base(1, 0, 0, 0, 0, 0, 0),
-            3.085_677_581_491_367_3e16, // 648000/π AU
-            0.0,
-        )),
-        "ly" | "LightYear" => Ok(Unit::new(
-            "ly".into(),
-            UnitDim::base(1, 0, 0, 0, 0, 0, 0),
-            9.460_730_472_580_8e15, // Julian light year
-            0.0,
-        )),
-        // Geodetic / imperial lengths (exact by definition):
-        "nmi" | "NauticalMile" => Ok(Unit::new("nmi".into(), UnitDim::base(1, 0, 0, 0, 0, 0, 0), 1_852.0, 0.0)),
-        "mi" | "Mile" => Ok(Unit::new("mi".into(), UnitDim::base(1, 0, 0, 0, 0, 0, 0), 1_609.344, 0.0)),
-        "ft" | "Foot" => Ok(Unit::new("ft".into(), UnitDim::base(1, 0, 0, 0, 0, 0, 0), 0.3048, 0.0)),
-        // Currencies and time zones are refused IN CORE. They are
-        // socially versioned data and live in packages (never the
-        // nucleus); a distinct code makes the policy a typed refusal,
-        // not a generic unknown-unit miss.
-        "USD" | "EUR" | "GBP" | "JPY" | "CNY" | "CHF" | "CAD" | "AUD" | "INR" | "RUB"
-        | "BTC" | "ETH" | "UTC" | "GMT" | "EST" | "PST" | "CST" | "CET" | "JST" => {
-            Err(UnitError {
-                code: E_UNIT_CURRENCY_CORE,
-                message: format!(
-                    "`{name}` is a currency or time zone: these live in versioned packages, \
-                     never in the core unit table (declare them in a package, not core)"
-                ),
-            })
+/// Capsule-authored unit catalog: `language/spec/capabilities/units-catalog.emath`,
+/// FeatureID `std.capability.units.catalog`. Named units, aliases, and the
+/// currency/time-zone refusal list are capsule DATA parsed here; Rust keeps
+/// no named-unit table of its own. The catalog capsule is capsule-active
+/// authority (see `language.lock`); drift between this parser and the
+/// capsule fails `domain_science_capsule_cutover` bit-exactly.
+const UNIT_CATALOG_CAPSULE: &str =
+    include_str!("../../../language/spec/capabilities/units-catalog.emath");
+
+/// One capsule-declared unit entry (parsed, never hardcoded).
+struct CatalogEntry {
+    name: String,
+    dims: [i64; 7],
+    scale: f64,
+    offset: f64,
+    family: UnitFamily,
+}
+
+struct CatalogData {
+    entries: Vec<CatalogEntry>,
+    aliases: Vec<(String, String)>,
+    refused: Vec<String>,
+}
+
+/// Extract `key=value` subfields of a capsule `semantics` value.
+fn semantics_field<'a>(semantics: &'a str, field: &str) -> Option<&'a str> {
+    semantics
+        .split(';')
+        .find_map(|part| part.trim().strip_prefix(field)?.strip_prefix('='))
+}
+
+fn capsule_block<'a>(text: &'a str, header: &str) -> Option<&'a str> {
+    let start = text.find(header)?;
+    let rest = &text[start..];
+    let end = rest[1..]
+        .find("\nemath feature ")
+        .map(|offset| offset + 1)
+        .unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+fn parse_catalog(text: &str) -> CatalogData {
+    let empty = CatalogData {
+        entries: Vec::new(),
+        aliases: Vec::new(),
+        refused: Vec::new(),
+    };
+    let Some(block) = capsule_block(text, "emath feature UnitCatalog:") else {
+        return empty;
+    };
+    let Some(semantics) = block.lines().find_map(|raw| {
+        let line = raw.trim();
+        let (key, value) = line.split_once(':')?;
+        (key.trim() == "semantics").then(|| value.trim().trim_matches('"'))
+    }) else {
+        return empty;
+    };
+    let parse_dims = |body: &str| -> [i64; 7] {
+        let mut dims = [0_i64; 7];
+        for (slot, exponent) in body.split(',').enumerate().take(7) {
+            dims[slot] = exponent.trim().parse().unwrap_or(0);
         }
-        name => prefixed_unit(name)
-            .unwrap_or_else(|| {
-                Err(UnitError {
-                    code: "E-UNIT-104",
-                    message: format!("unknown unit `{name}`"),
+        dims
+    };
+    let entries = semantics_field(semantics, "catalog")
+        .map(|catalog| {
+            catalog
+                .split('|')
+                .filter_map(|entry| {
+                    let mut fields = entry.split('~');
+                    let name = fields.next()?;
+                    Some(CatalogEntry {
+                        name: name.to_string(),
+                        dims: parse_dims(fields.next()?),
+                        scale: fields.next()?.parse().ok()?,
+                        offset: fields.next()?.parse().ok()?,
+                        family: match fields.next()? {
+                            "info" => UnitFamily::Information,
+                            _ => UnitFamily::Si,
+                        },
+                    })
                 })
-            }),
+                .collect()
+        })
+        .unwrap_or_default();
+    let aliases = semantics_field(semantics, "aliases")
+        .map(|aliases| {
+            aliases
+                .split('|')
+                .filter_map(|alias| {
+                    let (name, target) = alias.split_once('>')?;
+                    Some((name.to_string(), target.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let refused = semantics_field(semantics, "refusals")
+        .map(|refusals| refusals.split('|').map(str::to_string).collect())
+        .unwrap_or_default();
+    CatalogData {
+        entries,
+        aliases,
+        refused,
     }
 }
 
-/// Typed refusal code for currency/time-zone spellings used in core
-/// (bead 8u7h): the policy violation is distinct from the generic
+fn catalog_data() -> &'static CatalogData {
+    static CATALOG: std::sync::OnceLock<CatalogData> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(|| parse_catalog(UNIT_CATALOG_CAPSULE))
+}
+
+/// Looks up a language-surface unit name. Resolution order is
+/// capsule-declared: alias chain, then exact catalog entry, then the
+/// capsule's typed refusal list (currencies and time zones,
+/// `E-UNIT-CURRENCY-1`), then SI-prefix composition. Unknown names are
+/// `E-UNIT-104`.
+pub fn lookup_unit(name: &str) -> Result<Unit, UnitError> {
+    let data = catalog_data();
+    let canonical = data
+        .aliases
+        .iter()
+        .find(|(alias, _)| alias == name)
+        .map(|(_, target)| target.as_str())
+        .unwrap_or(name);
+    if let Some(entry) = data.entries.iter().find(|entry| entry.name == canonical) {
+        return Ok(Unit::with_family(
+            entry.name.clone(),
+            UnitDim(entry.dims),
+            entry.scale,
+            entry.offset,
+            entry.family,
+        ));
+    }
+    // Currencies and time zones are refused IN CORE by capsule policy.
+    // They are socially versioned data and live in packages (never the
+    // nucleus); a distinct code makes the policy a typed refusal, not a
+    // generic unknown-unit miss.
+    if data.refused.iter().any(|refused| refused == canonical) {
+        return Err(UnitError {
+            code: E_UNIT_CURRENCY_CORE,
+            message: format!(
+                "`{name}` is a currency or time zone: these live in versioned packages, \
+                     never in the core unit table (declare them in a package, not core)"
+            ),
+        });
+    }
+    prefixed_unit(name).unwrap_or_else(|| {
+        Err(UnitError {
+            code: "E-UNIT-104",
+            message: format!("unknown unit `{name}`"),
+        })
+    })
+}
+
+/// Typed refusal code for currency/time-zone spellings used in core:
+/// the policy violation is distinct from the generic
 /// `E-UNIT-104` unknown-unit miss.
 pub const E_UNIT_CURRENCY_CORE: &str = "E-UNIT-CURRENCY-1";
 
-/// SI prefixes admitted systematically over every known unit spelling
-/// (bead 8u7h): `nm`, `mmol`, `kPa`, `MJ`, `mK`, `nC`, `kB`, … Strip one
+/// SI prefixes admitted systematically over every known unit spelling:
+/// `nm`, `mmol`, `kPa`, `MJ`, `mK`, `nC`, `kB`, … Strip one
 /// prefix, resolve the base recursively, scale. Exact spellings always
 /// win (the match above), so `kg`, `ms`, `km`, `MiB` are untouched.
 /// Returns `None` when no prefix strips to a known unit.

@@ -73,7 +73,7 @@ pub struct ModelResidual {
     pub rates: Vec<String>,
 }
 
-/// One hybrid event rule (r3-dynamical-03lh ch7, event-execution slice):
+/// One hybrid event rule (ch7, event-execution slice):
 /// a declared event with a `.emath` Boolean condition over the model's
 /// inputs, state, and algebraic unknowns (definitions inlined at
 /// admission) plus exactly one deterministic action. The runner fires
@@ -110,7 +110,7 @@ pub struct EventAction {
     pub expr: ExprId,
 }
 
-/// One transition rule (r3-dynamical-03lh ch7, transitions slice): an
+/// One transition rule (ch7, transitions slice): an
 /// `on <Event>:` rule attaches deterministic re-assignments to a
 /// DECLARED event by name. The runner applies the actions when the
 /// named event fires; the action values may reference the event's
@@ -223,7 +223,7 @@ pub struct LawMetadata {
     pub citations: Vec<String>,
 }
 
-/// One admitted `emath field_pack` declaration (v9-06-2rdq.16): the
+/// One admitted `emath field_pack` declaration: the
 /// pack's exports as artifact data. Packs compile to a semantic image /
 /// `.emlib` consumed by layout/install tooling — admission never lowers
 /// a pack into runnable meaning, and the exports carry no parser
@@ -250,9 +250,12 @@ pub struct SemanticPackage {
     /// Admitted capability cells. Domain operations are arena data: adding
     /// a cell appends here and never adds an `ExprNode` variant.
     pub capabilities: Vec<crate::capability::Capability>,
-    /// Admitted `emath field_pack` declarations (v9-06-2rdq.16). Pack
+    /// Registered `emath field_pack` declarations. Pack
     /// data appends here; adding a pack never adds a core variant.
     pub field_packs: Vec<FieldPackEntry>,
+    /// Candidate Feature Capsules admitted through the generic mounted schema.
+    /// Catalog presence does not grant live authority.
+    pub feature_capsules: Vec<crate::feature_capsule::FeatureCapsule>,
     /// Law-only metadata keyed by declaration id. Keeping this package-side
     /// leaves ordinary function/model declarations unchanged.
     pub law_metadata: BTreeMap<DeclarationId, LawMetadata>,
@@ -262,7 +265,7 @@ pub struct SemanticPackage {
     /// Causalized implicit residuals per model declaration; package-side
     /// so adding a section does not churn every `Declaration` literal.
     pub residuals: std::collections::BTreeMap<DeclarationId, Vec<ModelResidual>>,
-    /// Hybrid event rules per model declaration (r3-dynamical-03lh ch7,
+    /// Hybrid event rules per model declaration (ch7,
     /// event-execution slice): each declared event carries a `.emath`
     /// Boolean condition and one deterministic action. The runner fires
     /// an event at most once per rising edge of its condition; bare
@@ -270,7 +273,7 @@ pub struct SemanticPackage {
     /// suite) are surface-only and never scheduled. Package-side so
     /// adding the section does not churn every `Declaration` literal.
     pub events: std::collections::BTreeMap<DeclarationId, Vec<EventDecl>>,
-    /// Transition rules per model declaration (r3-dynamical-03lh ch7,
+    /// Transition rules per model declaration (ch7,
     /// transitions slice): each `on <Event>:` rule attaches deterministic
     /// re-assignments to a declared event by name. The runner applies
     /// them when the event fires. Package-side so adding the section does
@@ -294,6 +297,7 @@ impl SemanticPackage {
             declarations: Vec::new(),
             capabilities: Vec::new(),
             field_packs: Vec::new(),
+            feature_capsules: Vec::new(),
             law_metadata: BTreeMap::new(),
             binding_provenance: BTreeMap::new(),
             residuals: std::collections::BTreeMap::new(),

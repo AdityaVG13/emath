@@ -1,8 +1,8 @@
-//! emath-epic-machine-fjxh.11: Reachable-closure analysis and semantic
+//! Reachable-closure analysis and semantic
 //! tree shaking.
 //!
-//! The bead's law: generated artifacts must not contain unused
-//! mathematics. The reachable closure over the semantic image (fjxh.9)
+//! The law: generated artifacts must not contain unused
+//! mathematics. The reachable closure over the semantic image
 //! starts from a pinned entry set (entries + the lock's required
 //! prelude/packs) and follows the ONLY internal edge — an
 //! `ApplyCapability` reference from one cell's bytecode to another
@@ -11,7 +11,7 @@
 //! "do not delete source cells"). Required dependencies (reachable from
 //! entries) CANNOT be shaken out — shaking one refuses typed
 //! (`E-SHAKE-002`, the negative seed's silent-success: a smaller but
-//! broken artifact). The shaken image keeps the fjxh.9 determinism law:
+//! broken artifact). The shaken image keeps the determinism law:
 //! sorted, stamped, self-validating; its id changes because its content
 //! changed (never silently identical).
 
@@ -30,7 +30,7 @@ const STD_MATH_ADD: &str = "std.math.add";
 
 /// A two-cell fixture pack: the ENTRY cell calls `std.math.add` through
 /// an `ApplyCapability` edge; the UNUSED cell (sum) is reachable from
-/// nothing. Built through the real fjxh.9 image builder.
+/// nothing. Built through the real image builder.
 fn fixture_image() -> SemanticImage {
     // Entry cell: wrapper(x) = add(x, 1.0) — its compiled body carries
     // the only cross-cell edge the seam's registry can express (the
@@ -84,8 +84,14 @@ fn fixture_image() -> SemanticImage {
 
     let mut docs = BTreeMap::new();
     docs.insert(STD_MATH_ADD.to_string(), "add: scalar sum".to_string());
-    docs.insert(STD_TENSOR_SUM.to_string(), "sum: vector reduction".to_string());
-    docs.insert(STD_TENSOR_SOFTMAX.to_string(), "softmax reference".to_string());
+    docs.insert(
+        STD_TENSOR_SUM.to_string(),
+        "sum: vector reduction".to_string(),
+    );
+    docs.insert(
+        STD_TENSOR_SOFTMAX.to_string(),
+        "softmax reference".to_string(),
+    );
 
     SemanticImage::build(
         "shake-fixture",
@@ -243,8 +249,7 @@ fn shaken_artifact_lands_in_bundle() {
             let shaken = shake_image(&image, &[STD_TENSOR_SOFTMAX]).expect("shakes");
             let before = image.load("worlds.bytecode").expect("page").len();
             let after = shaken.shaken.load("worlds.bytecode").expect("page").len();
-            if after < before && !shaken.is_kept(STD_TENSOR_SUM) && shaken.is_kept(STD_MATH_ADD)
-            {
+            if after < before && !shaken.is_kept(STD_TENSOR_SUM) && shaken.is_kept(STD_MATH_ADD) {
                 Ok("tree-shaken".to_string())
             } else {
                 Ok("shake-refused".to_string())

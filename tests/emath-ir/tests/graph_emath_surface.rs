@@ -1,9 +1,9 @@
-//! Bead `emath-r2-graphs-masa` — acceptance: the runnable router
+//! Graph .emath surface tests — acceptance: the runnable
 //! example and the human reference chapter.
 //!
 //! Failure-first: both tests were RED (example file did not exist;
 //! reference chapter had no graphs section) before this pass; fixing
-//! them is the user-visible gap of the bead. The executable .emath
+//! them closed the user-visible gap. The executable .emath
 //! graph surface itself is proven in
 //! `tests/emath-sema/tests/graph_emath_surface.rs` (this package's
 //! surface tests share the emath-cli dep; sema-tests is cli-free).
@@ -15,7 +15,7 @@ use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
-/// The runnable router example: the language truth for this bead.
+/// The runnable router example: the language truth for this.
 const ROUTER_EXAMPLE: &str =
     include_str!("../../../language/examples/numerical/graph-router.emath");
 
@@ -59,7 +59,10 @@ fn graph_router_example_is_runnable() {
         }),
         "example carrier"
     );
-    vector_eq(values.get("r").expect("reachability"), &[1.0, 1.0, 1.0, 1.0]);
+    vector_eq(
+        values.get("r").expect("reachability"),
+        &[1.0, 1.0, 1.0, 1.0],
+    );
     vector_eq(values.get("b").expect("bfs order"), &[0.0, 1.0, 2.0, 3.0]);
     vector_eq(values.get("d").expect("distances"), &[0.0, 1.0, 1.0, 2.0]);
     vector_eq(values.get("o").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
@@ -102,9 +105,15 @@ emath function GraphSurfaceFromText:
     .unwrap_or_else(|fault| panic!("graph surface must evaluate: {fault}"));
 
     // Reachability from node 0: every node is reachable (0->1, 0->2, 1->3).
-    vector_eq(values.get("mask").expect("reachability"), &[1.0, 1.0, 1.0, 1.0]);
+    vector_eq(
+        values.get("mask").expect("reachability"),
+        &[1.0, 1.0, 1.0, 1.0],
+    );
     // Out-degrees: node 0 has two outgoing edges, 1 and 2 one each, 3 none.
-    vector_eq(values.get("degrees").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
+    vector_eq(
+        values.get("degrees").expect("out degrees"),
+        &[2.0, 1.0, 1.0, 0.0],
+    );
 }
 
 /// Typed runtime refusal: an out-of-range reachability source must fault

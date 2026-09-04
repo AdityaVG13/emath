@@ -1,11 +1,22 @@
-//! Optimizer conformance: constant folding and dead-register elimination
-//! preserve evaluation results bit-exactly, strict eager fault semantics
-//! included (unused faulting ops are never dropped).
+//! Optimizer conformance under the final no-speculation contract.
+//!
+//! The universal machine performs no speculative rewrites: authored
+//! reference bytecode and kernel bindings are the only authority
+//! (crates/emath-exec-ir/src/optimize.rs). `optimize_program` must
+//! therefore leave every program structurally unchanged and preserve
+//! evaluation results bit-exactly, strict eager fault semantics included
+//! (unused faulting ops are never dropped). The retired constant-folding
+//! and dead-register-elimination behavior is legacy; these tests pin the
+//! contract that replaced it.
+
+use std::path::Path;
 
 use emath_core::Span;
-use emath_exec_ir::interp::{evaluate, EvalFault, Value};
+use emath_exec_ir::interp::{EvalFault, Value, evaluate};
+use emath_exec_ir::language_image::load_language_distribution;
+use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::optimize::optimize_program;
-use emath_exec_ir::{BuiltinId, EmirOp, EmirProgram, EmirValue};
+use emath_exec_ir::{BuiltinId, CellClass, EmirOp, EmirProgram, EmirValue};
 
 fn program(ops: Vec<EmirOp>) -> EmirProgram {
     let last = u32::try_from(ops.len().saturating_sub(1)).unwrap_or(0);
@@ -22,8 +33,54 @@ fn c(value: f64) -> EmirOp {
     EmirOp::ConstF64(value.to_bits())
 }
 
-/// Constant arithmetic chains collapse to a single `ConstF64`, and the
-/// folded value is bit-identical to evaluating the original program.
+/// Executing through the capsule seam requires the checked-in distribution:
+/// capability FeatureIDs resolve to public kernel ABI bindings only after
+/// `install_language_distribution` (no injection API, no static table).
+fn install_checked_in_distribution() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
+    let distribution = load_language_distribution(&root).expect("load capsule distribution");
+    install_language_distribution(&distribution).expect("install capsule-active kernels");
+}
+
+/// The clean caller shape: one `ApplyCapability` naming the real capsule
+/// FeatureID; no retired domain op, no handwritten dispatch.
+fn capability(name: &str, args: Vec<EmirValue>) -> EmirOp {
+    EmirOp::ApplyCapability {
+        capability: name.to_string(),
+        class: CellClass::Pure,
+        args,
+    }
+}
+
+fn derivative_program(body: EmirProgram, reverse: bool) -> EmirProgram {
+    install_checked_in_distribution();
+    let mut ops = vec![
+        EmirOp::ProgramLiteral(body),
+        EmirOp::LoadInput(0),
+        EmirOp::VectorCreate(vec![EmirValue(1)]),
+    ];
+    if reverse {
+        ops.push(c(0.0));
+        ops.push(EmirOp::VectorCreate(vec![EmirValue(3)]));
+        ops.push(capability(
+            "std.capability.calculus.reverse-gradient",
+            vec![EmirValue(0), EmirValue(2), EmirValue(4)],
+        ));
+    } else {
+        ops.push(EmirOp::ConstI64(0));
+        ops.push(capability(
+            "std.capability.calculus.forward-difference",
+            vec![EmirValue(0), EmirValue(2), EmirValue(3)],
+        ));
+    }
+    let mut program = program(ops);
+    program.input_count = 1;
+    program
+}
+
+/// Constant arithmetic chains are NOT folded (no speculative rewrites);
+/// the optimizer leaves the program untouched and evaluation stays
+/// bit-identical to the original program.
 #[test]
 fn constant_arithmetic_collapses_bit_exactly() {
     let original = program(vec![
@@ -38,8 +95,11 @@ fn constant_arithmetic_collapses_bit_exactly() {
 
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
-    assert_eq!(optimized.ops.len(), 1, "expected a single folded constant");
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstF64(_)));
+    assert_eq!(
+        optimized.ops.len(),
+        original.ops.len(),
+        "no-speculation contract: constants must not be folded"
+    );
     assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 }
 
@@ -77,8 +137,8 @@ fn ieee_edge_values_fold_identically() {
     assert!(matches!(evaluate(&optimized, &[], &[]).unwrap(), Value::F64(v) if v.is_nan()));
 }
 
-/// Dead chains are removed and surviving registers are renumbered, without
-/// changing the result for any inputs.
+/// Dead chains are NOT eliminated: the no-speculation optimizer keeps
+/// every register, and evaluation agrees with the original for any inputs.
 #[test]
 fn dead_registers_are_eliminated_and_renumbered() {
     // reg4 (sin of a const) is dead; c99 stays (used by the final add).
@@ -96,33 +156,42 @@ fn dead_registers_are_eliminated_and_renumbered() {
 
         let mut optimized = original.clone();
         optimize_program(&mut optimized);
-        // LoadInput, c3, Mul, c99, Add: the sin register is gone.
-        assert_eq!(optimized.ops.len(), 5);
+        assert_eq!(
+            optimized.ops.len(),
+            original.ops.len(),
+            "no-speculation contract: dead registers must survive"
+        );
         assert_eq!(
             optimized.ops[0].0,
             EmirOp::LoadInput(0),
-            "register numbering must be compacted in order"
+            "register numbering must be untouched"
         );
         assert_eq!(evaluate(&optimized, &inputs, &[]).unwrap(), expected);
     }
 }
 
 /// Strict eager semantics: an op whose result is unused but which can
-/// fault at runtime (factorial of a negative) is preserved, and its
+/// fault at runtime (factorial of a negative through the
+/// `std.capability.exact.factorial` capsule seam) is preserved, and its
 /// operands stay alive, so the program still faults.
 #[test]
 fn unused_faulting_op_is_preserved() {
+    install_checked_in_distribution();
     let mut p = program(vec![
         EmirOp::ConstI64(-1),
-        EmirOp::Factorial(EmirValue(0)),
+        capability("std.capability.exact.factorial", vec![EmirValue(0)]),
         c(42.0),
     ]);
     optimize_program(&mut p);
     assert_eq!(p.ops.len(), 3, "factorial and its operand must survive DCE");
     let result = evaluate(&p, &[], &[]);
     assert!(
-        matches!(result, Err(EvalFault::Arithmetic { .. })),
-        "strict eager evaluation must still fault"
+        matches!(
+            result,
+            Err(EvalFault::CapabilityRefused { ref capability, .. })
+                if capability == "std.capability.exact.factorial"
+        ),
+        "strict eager evaluation must still fault through the capsule seam: {result:?}"
     );
 
     // Same for a dynamic out-of-range load (input_count is 0).
@@ -136,8 +205,8 @@ fn unused_faulting_op_is_preserved() {
     assert!(evaluate(&q, &[], &[]).is_err());
 }
 
-/// Nested sub-programs (solver/derivative bodies) are optimized too, and
-/// the outer op still evaluates identically.
+/// Nested authored programs remain opaque, and the outer capability evaluates
+/// identically across the optimizer boundary.
 #[test]
 fn nested_body_is_optimized() {
     let body = EmirProgram {
@@ -152,19 +221,19 @@ fn nested_body_is_optimized() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let original = program(vec![EmirOp::Differentiate { body, var_index: 0 }]);
+    let original = derivative_program(body, false);
     let expected = evaluate(&original, &[Value::F64(5.0)], &[]).unwrap();
     assert_eq!(expected, Value::F64(3.0), "d/dx 3x = 3");
 
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
-    let EmirOp::Differentiate { body, .. } = &optimized.ops[0].0 else {
-        panic!("outer op must survive");
+    let EmirOp::ProgramLiteral(body) = &optimized.ops[0].0 else {
+        panic!("program carrier must survive");
     };
     assert_eq!(
         body.ops.len(),
-        3,
-        "dead constant inside the derivative body must be removed"
+        4,
+        "the generic optimizer must not rewrite inside an authored program carrier"
     );
     assert_eq!(
         evaluate(&optimized, &[Value::F64(5.0)], &[]).unwrap(),
@@ -228,8 +297,8 @@ fn values_equivalent(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Comparisons over constants fold to `ConstBool` with interpreter-equal
-/// results, and `Select` over a folded condition picks the right branch.
+/// Comparisons over constants and `Select` stay unfolded under the
+/// no-speculation contract, with interpreter-equal results.
 #[test]
 fn comparisons_and_select_fold_to_const_bool() {
     let original = program(vec![
@@ -248,50 +317,50 @@ fn comparisons_and_select_fold_to_const_bool() {
 
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
-    // Lt folds to ConstBool, Select folds to the then-branch const (2.0);
-    // the now-total dead chain is eliminated, leaving one constant.
+    // No folding: Lt and Select survive untouched, evaluation matches.
     assert_eq!(
         optimized.ops.len(),
-        1,
-        "expected fully folded Select result"
+        original.ops.len(),
+        "no-speculation contract: Select must not fold"
     );
-    let EmirOp::ConstF64(bits) = optimized.ops[0].0 else {
-        panic!("expected ConstF64");
-    };
-    assert_eq!(f64::from_bits(bits), 2.0);
     assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 }
 
-/// Boolean op chains (And/Or/Not/Imply) over constant operands fold to a
-/// single `ConstBool`.
+/// Boolean op chains (And/Or/Not/Imply) over F64 constants are a strict
+/// typed fault: `bool_of` admits only `Value::Bool`, so with no folding
+/// anywhere both original and optimized fault identically.
 #[test]
 fn boolean_chains_fold_to_const_bool() {
     let original = program(vec![
-        c(1.0), // truthy
-        c(0.0), // falsy
+        c(1.0),
+        c(0.0),
         EmirOp::Or(EmirValue(0), EmirValue(1)),
         EmirOp::Not(EmirValue(2)),
         EmirOp::And(EmirValue(2), EmirValue(0)),
         EmirOp::Imply(EmirValue(1), EmirValue(0)),
     ]);
-    // Or(true,false)=true; Not(true)=false; And(true,true)=true;
-    // Imply(false,true)=true.
-    let expected = evaluate(&original, &[], &[]).unwrap();
-    assert_eq!(expected, Value::Bool(true));
+    let expected = evaluate(&original, &[], &[]);
+    assert!(
+        matches!(expected, Err(EvalFault::TypeConfusion { op: "or", .. })),
+        "strict bool_of must refuse F64 operands: {expected:?}"
+    );
 
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
     assert_eq!(
         optimized.ops.len(),
-        1,
-        "whole chain collapses to one ConstBool"
+        original.ops.len(),
+        "no-speculation contract: boolean chains must not fold"
     );
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstBool(true)));
-    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
+    assert_eq!(
+        evaluate(&optimized, &[], &[]),
+        expected,
+        "optimized program must fault identically"
+    );
 }
 
-/// `IsFinite` over constants folds: finite → true, infinities and NaN →
-/// false, each collapsing to one `ConstBool`.
+/// `IsFinite` over constants stays unfolded: finite → true, infinities
+/// and NaN → false, identically before and after the optimizer.
 #[test]
 fn is_finite_folds() {
     for value in [3.0, f64::INFINITY, f64::NAN] {
@@ -299,17 +368,17 @@ fn is_finite_folds() {
         let expected = evaluate(&original, &[], &[]).unwrap();
         let mut optimized = original.clone();
         optimize_program(&mut optimized);
-        assert_eq!(optimized.ops.len(), 1, "IsFinite must fold for {value}");
-        let EmirOp::ConstBool(folded) = optimized.ops[0].0 else {
-            panic!("expected ConstBool for {value}");
-        };
-        assert_eq!(folded, value.is_finite());
+        assert_eq!(
+            optimized.ops.len(),
+            original.ops.len(),
+            "no-speculation contract: IsFinite must not fold for {value}"
+        );
         assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
     }
 }
 
-/// I64 add/mul fold as `ConstI64`, not through f64 (2^53+1 + 0 must stay
-/// exact). Overflow is left unfolded so interp still faults.
+/// I64 add/mul stay unfolded (2^53+1 + 0 must stay exact through the
+/// interpreter). Overflow is left unfolded so interp still faults.
 #[test]
 fn i64_arithmetic_folds_exactly() {
     let a = (1i64 << 53) + 1;
@@ -322,8 +391,11 @@ fn i64_arithmetic_folds_exactly() {
     assert_eq!(expected, Value::I64(a));
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
-    assert_eq!(optimized.ops.len(), 1);
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstI64(v) if v == a));
+    assert_eq!(
+        optimized.ops.len(),
+        original.ops.len(),
+        "no-speculation contract: i64 add must not fold"
+    );
     assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 
     let overflow = program(vec![
@@ -344,7 +416,8 @@ fn i64_arithmetic_folds_exactly() {
     assert!(evaluate(&optimized, &[], &[]).is_err());
 }
 
-/// Mixed I64×F64 `==`/`>` fold with exact compare, not `n as f64`.
+/// Mixed I64×F64 `==`/`>` evaluate with exact compare, not `n as f64`,
+/// and the optimizer must not rewrite them.
 #[test]
 fn mixed_i64_f64_eq_folds_exactly() {
     let past = (1i64 << 53) + 1;
@@ -358,7 +431,11 @@ fn mixed_i64_f64_eq_folds_exactly() {
     assert_eq!(expected, Value::Bool(false));
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstBool(false)));
+    assert_eq!(
+        optimized.ops.len(),
+        original.ops.len(),
+        "no-speculation contract: mixed eq must not fold"
+    );
     assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 
     let gt = program(vec![
@@ -370,7 +447,8 @@ fn mixed_i64_f64_eq_folds_exactly() {
     assert_eq!(expected, Value::Bool(true));
     let mut optimized = gt.clone();
     optimize_program(&mut optimized);
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstBool(true)));
+    assert_eq!(optimized.ops.len(), gt.ops.len());
+    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 
     let z = program(vec![
         EmirOp::ConstI64(0),
@@ -381,11 +459,13 @@ fn mixed_i64_f64_eq_folds_exactly() {
     assert_eq!(expected, Value::Bool(true));
     let mut optimized = z.clone();
     optimize_program(&mut optimized);
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstBool(true)));
+    assert_eq!(optimized.ops.len(), z.ops.len());
+    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 }
 
 /// `min`/`max` ignore NaN (Rust/`minNum` semantics) and preserve signed
-/// zero; folding must be bit-identical to evaluating the op.
+/// zero; the optimizer must not rewrite them, and evaluation stays
+/// bit-identical.
 #[test]
 fn min_max_nan_and_signed_zero_fold_identically() {
     let cases: &[(f64, f64, BuiltinId)] = &[
@@ -408,52 +488,52 @@ fn min_max_nan_and_signed_zero_fold_identically() {
         let expected = evaluate(&original, &[], &[]).unwrap();
         let mut optimized = original.clone();
         optimize_program(&mut optimized);
-        assert_eq!(optimized.ops.len(), 1, "{id:?}({a:?},{b:?}) must fold");
+        assert_eq!(
+            optimized.ops.len(),
+            original.ops.len(),
+            "no-speculation contract: {id:?}({a:?},{b:?}) must not fold"
+        );
         assert_eq!(
             evaluate(&optimized, &[], &[]).unwrap(),
             expected,
-            "fold/interp mismatch for {id:?}({a:?},{b:?})"
+            "optimizer/interp mismatch for {id:?}({a:?},{b:?})"
         );
     }
 }
 
-/// NaN is truthy (`NaN != 0`), `-0` is falsy; comparisons with NaN are
-/// IEEE (all orderings false, `==` false, `!=` true). Folded ConstBool /
-/// Select must match the interpreter bit-for-bit.
+/// `Select` over an F64 condition (NaN or -0) is a strict typed fault:
+/// `bool_of` admits only `Value::Bool`. The legacy truthiness behavior
+/// existed only in the retired folder; with no folding, original and
+/// optimized fault identically. NaN comparisons remain IEEE (all
+/// orderings false, `==` false, `!=` true) and unfoldable.
 #[test]
 fn nan_and_neg_zero_select_and_cmp_fold() {
     let nan = f64::NAN;
-    let original = program(vec![
-        c(nan),
-        c(1.0),
-        c(2.0),
-        EmirOp::Select {
-            condition: EmirValue(0),
-            then_value: EmirValue(1),
-            else_value: EmirValue(2),
-        },
-    ]);
-    let expected = evaluate(&original, &[], &[]).unwrap();
-    assert_eq!(expected, Value::F64(1.0), "NaN condition is truthy");
-    let mut optimized = original.clone();
-    optimize_program(&mut optimized);
-    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
-
-    let original = program(vec![
-        c(-0.0),
-        c(1.0),
-        c(2.0),
-        EmirOp::Select {
-            condition: EmirValue(0),
-            then_value: EmirValue(1),
-            else_value: EmirValue(2),
-        },
-    ]);
-    let expected = evaluate(&original, &[], &[]).unwrap();
-    assert_eq!(expected, Value::F64(2.0), "-0 condition is falsy");
-    let mut optimized = original.clone();
-    optimize_program(&mut optimized);
-    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
+    for condition in [nan, -0.0] {
+        let original = program(vec![
+            c(condition),
+            c(1.0),
+            c(2.0),
+            EmirOp::Select {
+                condition: EmirValue(0),
+                then_value: EmirValue(1),
+                else_value: EmirValue(2),
+            },
+        ]);
+        let expected = evaluate(&original, &[], &[]);
+        assert!(
+            matches!(expected, Err(EvalFault::TypeConfusion { op: "select", .. })),
+            "strict bool_of must refuse F64 select condition {condition:?}: {expected:?}"
+        );
+        let mut optimized = original.clone();
+        optimize_program(&mut optimized);
+        assert_eq!(optimized.ops.len(), original.ops.len());
+        assert_eq!(
+            evaluate(&optimized, &[], &[]),
+            expected,
+            "optimized program must fault identically"
+        );
+    }
 
     for (op, want) in [
         (EmirOp::Lt(EmirValue(0), EmirValue(1)), false),
@@ -470,18 +550,24 @@ fn nan_and_neg_zero_select_and_cmp_fold() {
         assert_eq!(expected, Value::Bool(want));
         let mut optimized = original.clone();
         optimize_program(&mut optimized);
-        assert!(matches!(optimized.ops[0].0, EmirOp::ConstBool(b) if b == want));
+        assert_eq!(
+            optimized.ops.len(),
+            original.ops.len(),
+            "no-speculation contract: NaN comparisons must not fold"
+        );
         assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
     }
 }
 
-/// I64÷0 and F64÷0 both fold to ±Inf (IEEE, not a fault); I64÷I64 stays
-/// F64 like interp, never an I64 quotient. Bool never widens to F64.
+/// F64÷0 evaluates to ±Inf (IEEE, not a fault) and stays unfolded;
+/// I64÷0 and non-exact I64÷I64 are checked exact-arithmetic faults in
+/// the interpreter (legacy folding hid them behind folded constants);
+/// exact I64÷I64 stays type-preserving. Bool never widens to F64.
 #[test]
 fn div_by_zero_and_kind_widening() {
     let original = program(vec![
-        EmirOp::ConstI64(1),
-        EmirOp::ConstI64(0),
+        c(1.0),
+        c(0.0),
         EmirOp::F64Div(EmirValue(0), EmirValue(1)),
     ]);
     let expected = evaluate(&original, &[], &[]).unwrap();
@@ -489,18 +575,69 @@ fn div_by_zero_and_kind_widening() {
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
     assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
-    assert!(matches!(optimized.ops[0].0, EmirOp::ConstF64(_)));
+    assert!(
+        matches!(optimized.ops.last().map(|(op, _)| op), Some(EmirOp::F64Div(..))),
+        "no-speculation contract: division must not fold"
+    );
+
+    // Checked I64 arithmetic: 1/0 faults, identically before and after
+    // the no-speculation optimizer.
+    let original = program(vec![
+        EmirOp::ConstI64(1),
+        EmirOp::ConstI64(0),
+        EmirOp::F64Div(EmirValue(0), EmirValue(1)),
+    ]);
+    let expected = evaluate(&original, &[], &[]);
+    assert!(
+        matches!(expected, Err(EvalFault::Arithmetic { .. })),
+        "checked i64 div-by-zero must fault: {expected:?}"
+    );
+    let mut optimized = original.clone();
+    optimize_program(&mut optimized);
+    assert_eq!(evaluate(&optimized, &[], &[]), expected);
+
+    // Exact I64÷I64 stays type-preserving (6/2 = I64 3); a non-exact
+    // quotient (7/2) is a checked refusal, never a silent F64 widening.
+    let original = program(vec![
+        EmirOp::ConstI64(6),
+        EmirOp::ConstI64(2),
+        EmirOp::F64Div(EmirValue(0), EmirValue(1)),
+    ]);
+    let expected = evaluate(&original, &[], &[]).unwrap();
+    assert_eq!(expected, Value::I64(3));
+    let mut optimized = original.clone();
+    optimize_program(&mut optimized);
+    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
 
     let original = program(vec![
         EmirOp::ConstI64(7),
         EmirOp::ConstI64(2),
         EmirOp::F64Div(EmirValue(0), EmirValue(1)),
     ]);
-    let expected = evaluate(&original, &[], &[]).unwrap();
-    assert_eq!(expected, Value::F64(3.5));
+    let expected = evaluate(&original, &[], &[]);
+    assert!(
+        matches!(expected, Err(EvalFault::Arithmetic { .. })),
+        "non-exact i64 division must refuse: {expected:?}"
+    );
     let mut optimized = original.clone();
     optimize_program(&mut optimized);
-    assert_eq!(evaluate(&optimized, &[], &[]).unwrap(), expected);
+    assert_eq!(evaluate(&optimized, &[], &[]), expected);
+
+    // Mixed I64/F64 arithmetic is a strict type confusion (never a
+    // silent coercion), identical before and after the optimizer.
+    let original = program(vec![
+        EmirOp::ConstI64(7),
+        c(2.0),
+        EmirOp::F64Div(EmirValue(0), EmirValue(1)),
+    ]);
+    let expected = evaluate(&original, &[], &[]);
+    assert!(
+        matches!(expected, Err(EvalFault::TypeConfusion { .. })),
+        "mixed i64/f64 arithmetic must refuse: {expected:?}"
+    );
+    let mut optimized = original.clone();
+    optimize_program(&mut optimized);
+    assert_eq!(evaluate(&optimized, &[], &[]), expected);
 
     // Comparison → ConstBool, then F64Add must still type-fault, not
     // widen true to 1.0.
@@ -517,9 +654,10 @@ fn div_by_zero_and_kind_widening() {
     assert!(evaluate(&optimized, &[], &[]).is_err());
 }
 
-/// Folding Imply/Iff to ConstBool used to make `Differentiate` succeed
-/// (ConstBool is dual-encodable) while the unfolded ops were unsupported
-/// in dual eval — one-error-one-OK. Both paths now return tangent 0.
+/// Imply/Iff differentiation used to depend on folding to ConstBool
+/// (dual-encodable) while the unfolded ops were unsupported in dual eval.
+/// With no folding anywhere, both paths return tangent 0 through the
+/// capsule seam.
 #[test]
 fn imply_iff_differentiate_agrees_after_fold() {
     let imply_body = EmirProgram {
@@ -533,10 +671,7 @@ fn imply_iff_differentiate_agrees_after_fold() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let original = program(vec![EmirOp::Differentiate {
-        body: imply_body,
-        var_index: 0,
-    }]);
+    let original = derivative_program(imply_body, false);
     let expected = evaluate(&original, &[Value::F64(3.0)], &[]).unwrap();
     assert_eq!(expected, Value::F64(0.0));
     let mut optimized = original.clone();
@@ -557,10 +692,7 @@ fn imply_iff_differentiate_agrees_after_fold() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let original = program(vec![EmirOp::Differentiate {
-        body: iff_body,
-        var_index: 0,
-    }]);
+    let original = derivative_program(iff_body, false);
     let expected = evaluate(&original, &[Value::F64(3.0)], &[]).unwrap();
     assert_eq!(expected, Value::F64(0.0));
     let mut optimized = original.clone();
@@ -571,9 +703,9 @@ fn imply_iff_differentiate_agrees_after_fold() {
     );
 }
 
-/// Reverse-mode `/0` and `ln(-1)` used to fault in the forward pass while
-/// folding produced Inf/NaN constants (success, zero gradient). IEEE
-/// agreement: both Inf/NaN, both succeed.
+/// Reverse-mode `/0` and `ln(-1)` used to disagree with folded constants
+/// (fault vs Inf/NaN success). Under the no-speculation contract there is
+/// only the interpreter path: IEEE Inf/NaN, zero gradient, success.
 #[test]
 fn reverse_div0_and_ln_neg_agree_after_fold() {
     let div_body = EmirProgram {
@@ -587,10 +719,7 @@ fn reverse_div0_and_ln_neg_agree_after_fold() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let original = program(vec![EmirOp::ReverseMode {
-        body: div_body,
-        var_indices: vec![0],
-    }]);
+    let original = derivative_program(div_body, true);
     let expected = evaluate(&original, &[Value::F64(4.0)], &[]).unwrap();
     assert_eq!(expected, Value::Vector(vec![0.0]));
     let mut optimized = original.clone();
@@ -613,10 +742,7 @@ fn reverse_div0_and_ln_neg_agree_after_fold() {
         state_count: 0,
         domain_obligations: Vec::new(),
     };
-    let original = program(vec![EmirOp::ReverseMode {
-        body: ln_body,
-        var_indices: vec![0],
-    }]);
+    let original = derivative_program(ln_body, true);
     let expected = evaluate(&original, &[Value::F64(4.0)], &[]).unwrap();
     assert_eq!(expected, Value::Vector(vec![0.0]));
     let mut optimized = original.clone();
@@ -627,9 +753,9 @@ fn reverse_div0_and_ln_neg_agree_after_fold() {
     );
 }
 
-/// Fold never rewrites a typed fault: `And` over an I64 constant is a
-/// `bool_of` type confusion in the interpreter, and the op must survive —
-/// both folded and original fault identically.
+/// The optimizer never rewrites a typed fault: `And` over an I64 constant
+/// is a `bool_of` type confusion in the interpreter, and the op must
+/// survive — optimized and original fault identically.
 #[test]
 fn bool_fold_preserves_typed_faults() {
     let p = program(vec![

@@ -1,19 +1,19 @@
-//! Field-pack install tooling (fjxh.15): add a toy pack, `use` it, no
+//! Field-pack install tooling: add a toy pack, `use` it, no
 //! core branches.
 //!
 //! This module is the TOOLING half of the field-pack capstone — the
-//! language kind (`emath field_pack`, v9-06-2rdq.16) is admission; here
+//! language kind (`emath field_pack`) is admission; here
 //! an admitted [`emath_ir::FieldPackEntry`] becomes an INSTALLED
 //! artifact:
 //!
-//! 1. **Layout** is a closed directory set ([`LAYOUT_DIRS`], the bead's
+//! 1. **Layout** is a fixed directory set ([`LAYOUT_DIRS`], the
 //!    fixed `pack.emath.toml` + `src/ worlds/ methods/ examples/
 //!    providers/ migrations/` shape). A directory outside the set —
 //!    e.g. a `keywords/` injection — refuses typed; packs cannot add
 //!    parser surface through layout.
 //! 2. **Install** resolves the pack's declared exports against the
 //!    EXISTING std cell registry (exact canonical match first, then a
-//!    unique leaf match) and compiles the resolved cells into a fjxh.9
+//!    unique leaf match) and compiles the resolved cells into the
 //!    [`SemanticImage`] — the same data-driven builder, no new core
 //!    branches, no compiler rebuild. Install never fabricates: an
 //!    export nobody provides refuses typed, and a pack with no
@@ -22,7 +22,7 @@
 //! 3. **Use** — `use <package>.<pack>` resolves against the installed
 //!    pack registry ([`PackRegistry::resolve_use`]); an uninstalled
 //!    path refuses typed. This is the data-level form of the language
-//!    `use` admission (r3-imports-utzd).
+//!    `use` admission.
 //!
 //! Install consumes ONLY admitted pack data (`FieldPackEntry`): pack
 //! source that injects parser keywords is refused at admission
@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use crate::image::{ImageLock, ImageWorld, SemanticImage};
 use crate::term_compile::CompiledCell;
 
-/// The closed field-pack layout (the bead's fixed directories).
+/// The closed field-pack layout (fixed directories).
 pub const LAYOUT_DIRS: &[&str] = &[
     "src",
     "worlds",
@@ -141,7 +141,7 @@ pub fn validate_layout(dirs: &[&str]) -> Result<(), PackError> {
 }
 
 /// One installed field pack: the admitted pack data plus its compiled
-/// semantic image (the `.emlib` shape — self-validating fjxh.9 image).
+/// semantic image (the `.emlib` shape — self-validating image).
 #[derive(Clone, Debug)]
 pub struct InstalledPack {
     /// The `package <dotted>` identity the pack was declared under.

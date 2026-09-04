@@ -2,7 +2,7 @@ use super::{TestVerdict, definition_order};
 use crate::interp::{EvalFault, Value, evaluate};
 use crate::{lower_definition, lower_requirement};
 use emath_ir::{
-    BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, TypeNode, UnaryOp,
+    BinaryOp, Declaration, ExprId, ExprNode, Literal, SemanticPackage, SliceAxis, TypeNode, UnaryOp,
 };
 use std::collections::BTreeMap;
 
@@ -105,6 +105,9 @@ pub(super) fn check_obligation(
         }),
         Ok(Value::F64(_))
         | Ok(Value::I64(_))
+        // Stage-2 (emath-t63iz): exact big values are not obligations.
+        | Ok(Value::BigInt(_))
+        | Ok(Value::BigVector(_))
         | Ok(Value::Rat { .. })
         | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
@@ -115,8 +118,10 @@ pub(super) fn check_obligation(
         | Ok(Value::Series { .. })
         | Ok(Value::Set(_))
         | Ok(Value::Record { .. })
+        | Ok(Value::List(_))
         | Ok(Value::Option(_))
-        | Ok(Value::Result { .. }) => Err(TestVerdict::Fault {
+        | Ok(Value::Result { .. })
+        | Ok(Value::Program(_)) => Err(TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: keyword,
@@ -218,6 +223,229 @@ pub fn eval_definitions_values(
         }
     }
     Ok(definitions)
+}
+
+/// nothing-returns-nothing outcome: the definitions that computed, the
+/// definitions returned as symbolic form, and the unbound names with
+/// their declared types (constraints attached).
+#[derive(Default)]
+pub(super) struct SymbolicDefinitions {
+    /// Definitions with an evaluable world, declaration-map order.
+    pub definitions: BTreeMap<String, Value>,
+    /// Definition name → symbolic form for definitions no world here can
+    /// evaluate (they reference an unbound name or a symbolic result).
+    pub forms: BTreeMap<String, String>,
+    /// Unbound name → declared type (constraints attached).
+    pub holes: BTreeMap<String, String>,
+}
+
+/// Symbolic lane of [`eval_definitions_values`]: definitions with an
+/// evaluable world still compute; definitions that reference an unbound
+/// name (or a symbolic definition) return their source-level form with
+/// the meaning label carried by the verdict. Never a naked refusal for a
+/// world gap; genuinely impossible lowering still refuses typed.
+pub(super) fn eval_definitions_symbolic(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    given: &BTreeMap<String, Value>,
+) -> Result<SymbolicDefinitions, TestVerdict> {
+    let mut holes: BTreeMap<String, String> = BTreeMap::new();
+    let mut seen: Vec<String> = Vec::new();
+    let mut seen_values: Vec<Value> = Vec::with_capacity(given.len());
+
+    let mut bind_names: Vec<String> = declaration
+        .inputs
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    // Algebraic variables bind like inputs (mirrors the strict lane);
+    // a missing one is a hole with its declared type.
+    if let Some(residuals) = package.residuals.get(&declaration.id) {
+        if let Some(first) = residuals.first() {
+            for name in &first.algebraic {
+                if !bind_names.iter().any(|existing| existing == name) {
+                    bind_names.push(name.clone());
+                }
+            }
+        }
+    }
+    for name in &bind_names {
+        match given.get(name).cloned() {
+            Some(value) => {
+                seen.push(name.clone());
+                seen_values.push(coerce_to_slot(value, slot_ty(package, declaration, name)));
+            }
+            None => {
+                holes
+                    .entry(name.clone())
+                    .or_insert_with(|| hole_type_text(package, declaration, name));
+            }
+        }
+    }
+
+    // State is a hole unless every field can be seeded from the given
+    // map; in this lane the constructor never ran.
+    let state_names: Vec<String> = declaration
+        .state
+        .iter()
+        .map(|field| field.name.clone())
+        .collect();
+    let state_seeded =
+        !state_names.is_empty() && state_names.iter().all(|name| given.contains_key(name));
+    let lowered_state_names: &[String] = if state_seeded {
+        &state_names
+    } else {
+        for name in &state_names {
+            holes
+                .entry(name.clone())
+                .or_insert_with(|| hole_type_text(package, declaration, name));
+        }
+        &[]
+    };
+    let state_values: Vec<Value> = if state_seeded {
+        state_names
+            .iter()
+            .map(|name| coerce_to_slot(given[name].clone(), slot_ty(package, declaration, name)))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let mut out = SymbolicDefinitions {
+        definitions: BTreeMap::new(),
+        forms: BTreeMap::new(),
+        holes,
+    };
+    // A definition is symbolic when it references an unbound name or a
+    // definition that itself came back symbolic (transitively).
+    let mut symbolic_names: std::collections::BTreeSet<String> =
+        out.holes.keys().cloned().collect();
+    for (name, expr) in definition_order(package, declaration) {
+        if expr_references(package, expr, &symbolic_names) {
+            out.forms.insert(name.clone(), expr_text(package, expr));
+            symbolic_names.insert(name.clone());
+            continue;
+        }
+        let program = lower_definition(package, expr, &seen, lowered_state_names)
+            .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
+        match evaluate(&program, &seen_values, &state_values) {
+            Ok(value) => {
+                let value = coerce_to_slot(value, slot_ty(package, declaration, name));
+                out.definitions.insert(name.clone(), value.clone());
+                if !seen.iter().any(|existing| existing == name) {
+                    seen.push(name.clone());
+                    seen_values.push(value);
+                }
+            }
+            Err(fault) => return Err(TestVerdict::Fault { fault }),
+        }
+    }
+    Ok(out)
+}
+
+/// Whether the expression tree references any name in `unbound` (leaf
+/// matching; binder variables shadow outer names of the same leaf in
+/// their body, never in their own domain expression).
+fn expr_references(
+    package: &SemanticPackage,
+    id: ExprId,
+    unbound: &std::collections::BTreeSet<String>,
+) -> bool {
+    let Some(expr) = package.expr(id) else {
+        return false;
+    };
+    match expr {
+        ExprNode::Literal(_) | ExprNode::Series { .. } => false,
+        ExprNode::Variable(name) => unbound.contains(name.leaf()),
+        ExprNode::Call { arguments, .. } | ExprNode::Apply { arguments, .. } => arguments
+            .iter()
+            .any(|argument| expr_references(package, *argument, unbound)),
+        ExprNode::Unary { value, .. } => expr_references(package, *value, unbound),
+        ExprNode::Binary { left, right, .. } => {
+            expr_references(package, *left, unbound) || expr_references(package, *right, unbound)
+        }
+        ExprNode::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            expr_references(package, *condition, unbound)
+                || expr_references(package, *then_value, unbound)
+                || expr_references(package, *else_value, unbound)
+        }
+        ExprNode::Record { fields, .. } => fields
+            .values()
+            .any(|field| expr_references(package, *field, unbound)),
+        ExprNode::Index { value, indices } => {
+            expr_references(package, *value, unbound)
+                || indices
+                    .iter()
+                    .any(|index| expr_references(package, *index, unbound))
+        }
+        ExprNode::Slice { value, axes } => {
+            expr_references(package, *value, unbound)
+                || axes.iter().any(|axis| match axis {
+                    SliceAxis::Point(point) => expr_references(package, *point, unbound),
+                    SliceAxis::Range { start, end } => {
+                        expr_references(package, *start, unbound)
+                            || expr_references(package, *end, unbound)
+                    }
+                })
+        }
+        ExprNode::Binder {
+            variables, body, ..
+        } => {
+            let inner: std::collections::BTreeSet<String> = unbound
+                .iter()
+                .filter(|name| !variables.iter().any(|variable| &variable.name == *name))
+                .cloned()
+                .collect();
+            variables
+                .iter()
+                .any(|variable| expr_references(package, variable.domain, unbound))
+                || expr_references(package, *body, &inner)
+        }
+        ExprNode::Set { elements, guards } => {
+            elements
+                .iter()
+                .any(|element| expr_references(package, *element, unbound))
+                || guards
+                    .iter()
+                    .filter_map(|guard| guard.as_ref())
+                    .any(|guard| expr_references(package, *guard, unbound))
+        }
+        ExprNode::Vector(elements) => elements
+            .iter()
+            .any(|element| expr_references(package, *element, unbound)),
+        ExprNode::Matrix(rows) => rows
+            .iter()
+            .flatten()
+            .any(|element| expr_references(package, *element, unbound)),
+        ExprNode::Tensor { elements, .. } => elements
+            .iter()
+            .any(|element| expr_references(package, *element, unbound)),
+        ExprNode::Differentiate { body, .. } | ExprNode::Solve { body, .. } => {
+            expr_references(package, *body, unbound)
+        }
+        ExprNode::Optimize { body, .. } => expr_references(package, *body, unbound),
+        ExprNode::SampleLimit {
+            body,
+            target,
+            direction,
+            ..
+        } => {
+            expr_references(package, *body, unbound)
+                || expr_references(package, *target, unbound)
+                || expr_references(package, *direction, unbound)
+        }
+    }
+}
+
+/// Declared type of a bind slot, for hole constraints (`x: Float64`).
+fn hole_type_text(package: &SemanticPackage, declaration: &Declaration, name: &str) -> String {
+    slot_ty(package, declaration, name)
+        .map(|ty| ty.display_name())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Widen I64→F64 (and whole F64→I64) so a named map matches typed slots.
@@ -328,6 +556,9 @@ pub(super) fn eval_expect(
         Ok(Value::Bool(false)) => TestVerdict::Failed,
         Ok(Value::F64(_))
         | Ok(Value::I64(_))
+        // Stage-2 (emath-t63iz): exact big values are not obligations.
+        | Ok(Value::BigInt(_))
+        | Ok(Value::BigVector(_))
         | Ok(Value::Rat { .. })
         | Ok(Value::Complex { .. })
         | Ok(Value::Vector(_))
@@ -338,8 +569,10 @@ pub(super) fn eval_expect(
         | Ok(Value::Series { .. })
         | Ok(Value::Set(_))
         | Ok(Value::Record { .. })
+        | Ok(Value::List(_))
         | Ok(Value::Option(_))
-        | Ok(Value::Result { .. }) => TestVerdict::Fault {
+        | Ok(Value::Result { .. })
+        | Ok(Value::Program(_)) => TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: "expect",

@@ -155,7 +155,7 @@ mod exec_ir {
     }
 }
 
-// e3wv (F042): the empty/oversized arity negatives live in
+// F042: the empty/oversized arity negatives live in
 // `arity_negative.rs` (same crate, shared target via this module
 // include — the standalone file had no `[[test]]` entry and never
 // compiled).

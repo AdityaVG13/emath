@@ -1,7 +1,7 @@
-//! emath-epic-machine-fjxh.10: Lazy image loading, prelude-only
+//! Lazy image loading, prelude-only
 //! startup, WASM chunks.
 //!
-//! The bead's law: startup must not compile (or load) all installed
+//! The law: startup must not compile (or load) all installed
 //! fields. A lazy session boots with the nucleus + the prelude index
 //! (each installed image's lock page); a file compile loads the
 //! REACHABLE packs' pages on demand; the initialization receipt names
@@ -15,14 +15,14 @@
 use std::collections::BTreeMap;
 
 use emath_exec_ir::image::{ImageLock, ImageWorld, SemanticImage};
-use emath_exec_ir::lazy::{LazyError, LoadProfile, LazySession, optional_chunks};
+use emath_exec_ir::lazy::{LazyError, LazySession, LoadProfile, optional_chunks};
 use emath_exec_ir::term_compile::{ParamShape, compile_reference, std_cell_registry};
 use emath_term::{Signature, SymbolId, Term, VariableId};
 
 const FIELD_A: &str = "field-a";
 const FIELD_B: &str = "field-b";
 
-/// One minimal field pack image: a single registry cell, real fjxh.9
+/// One minimal field pack image: a single registry cell, real
 /// builder, deterministic.
 fn field_pack(pack_name: &str, capability: &str) -> SemanticImage {
     let mut signature = Signature::default();
@@ -148,7 +148,10 @@ fn unknown_pack_refused_typed() {
         other => panic!("unknown pack must refuse, got {other:?}"),
     }
     // The same law at boot: a custom profile naming an uninstalled pack.
-    match LazySession::boot(&images, LoadProfile::Custom(vec!["acme.missing".to_string()])) {
+    match LazySession::boot(
+        &images,
+        LoadProfile::Custom(vec!["acme.missing".to_string()]),
+    ) {
         Err(LazyError::UnknownPack { pack }) => assert_eq!(pack, "acme.missing"),
         other => panic!("custom profile with unknown pack must refuse, got {other:?}"),
     }
@@ -163,8 +166,7 @@ fn profiles_admit_distinct_sets() {
     assert!(standard.receipt().names(FIELD_A, "cells"));
     assert!(standard.receipt().names(FIELD_B, "worlds.bytecode"));
     let custom =
-        LazySession::boot(&images, LoadProfile::Custom(vec![FIELD_B.to_string()]))
-            .expect("boots");
+        LazySession::boot(&images, LoadProfile::Custom(vec![FIELD_B.to_string()])).expect("boots");
     assert!(custom.receipt().names(FIELD_B, "cells"));
     assert!(
         !custom.receipt().names(FIELD_A, "cells"),
@@ -178,7 +180,10 @@ fn unloaded_packs_are_wasm_optional_chunks() {
     // deterministically (sorted); loading one shrinks the chunk set.
     let images = installed();
     let mut session = LazySession::boot(&images, LoadProfile::Minimal).expect("boots");
-    assert_eq!(optional_chunks(&images, &session.receipt()), vec![FIELD_A, FIELD_B]);
+    assert_eq!(
+        optional_chunks(&images, &session.receipt()),
+        vec![FIELD_A, FIELD_B]
+    );
     let _ = session.load_for_compile(&[FIELD_A]).expect("compiles");
     assert_eq!(
         optional_chunks(&images, &session.receipt()),
@@ -193,8 +198,7 @@ fn unloaded_packs_are_wasm_optional_chunks() {
 
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
             let images = installed();
-            let mut session =
-                LazySession::boot(&images, LoadProfile::Minimal).expect("boots");
+            let mut session = LazySession::boot(&images, LoadProfile::Minimal).expect("boots");
             let before = optional_chunks(&images, &session.receipt()).len();
             let _ = session.load_for_compile(&[FIELD_A]).expect("compiles");
             let after = optional_chunks(&images, &session.receipt()).len();

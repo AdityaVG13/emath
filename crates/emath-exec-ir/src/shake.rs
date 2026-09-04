@@ -1,7 +1,7 @@
-//! Reachable-closure analysis and semantic tree shaking (fjxh.11).
+//! Reachable-closure analysis and semantic tree shaking.
 //!
 //! Generated artifacts must not contain unused mathematics. The
-//! reachable closure over a [`SemanticImage`] (fjxh.9) starts from the
+//! reachable closure over a [`SemanticImage`] starts from the
 //! pinned entry set and keeps every cell the artifact can reach;
 //! shaking drops the UNREACHABLE cells' bytecode from the ARTIFACT —
 //! never from source ("do not delete source cells": the `cells` page's
@@ -17,7 +17,7 @@
 //! Shaking an unknown identity refuses typed (`E-SHAKE-001`) — never a
 //! silent no-op.
 //!
-//! The shaken image keeps the fjxh.9 determinism law (sorted, stamped,
+//! The shaken image keeps the determinism law (sorted, stamped,
 //! self-validating): its id changes because its content changed, and a
 //! no-op shake rebuilds the identical image. An empty closure ships no
 //! bytecode page at all (an empty page cannot validate under
@@ -81,7 +81,7 @@ impl std::fmt::Display for ShakeError {
 impl std::error::Error for ShakeError {}
 
 /// The tree-shaken artifact plus its closure report. The shaken image
-/// keeps the fjxh.9 invariants (sorted partitions, stamped ids, one
+/// keeps the invariants (sorted partitions, stamped ids, one
 /// fnv1a64 image id over the canonical encoding).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShakenImage {
@@ -114,7 +114,7 @@ impl ShakenImage {
 }
 
 /// The image's cell identities from the `cells` page (`cell:<identity>
-/// class=...` records, in the fjxh.9 builder's sorted order).
+/// class=...` records, in the builder's sorted order).
 fn image_cells(image: &SemanticImage) -> Vec<String> {
     let Some(cells_page) = image.load("cells") else {
         return Vec::new();
@@ -236,7 +236,7 @@ fn bytecode_sections(bytecode: &str) -> Vec<(String, String)> {
 /// Rebuild the artifact with only the kept cells' bytecode sections;
 /// every other partition passes through unchanged (the cells page is
 /// the source records — "do not delete source cells"). The image id is
-/// re-derived by the fjxh.9 canonical recipe, so a content change is
+/// re-derived by the canonical recipe, so a content change is
 /// always a new id and an identical shake is the identical image.
 fn rebuild(image: &SemanticImage, kept: &[String]) -> SemanticImage {
     let mut partitions: Vec<ImagePartition> = Vec::new();
