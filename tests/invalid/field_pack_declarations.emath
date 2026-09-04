@@ -1,4 +1,4 @@
-// emath-v9-06-2rdq.16 negative seed: pack source injecting parser keywords.
+// negative seed: pack source injecting parser keywords.
 //
 // Seeded silent-success: a field_pack body claims a `keywords:` section
 // — a lexer/keyword injection. The section table for `field_pack` is

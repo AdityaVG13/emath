@@ -1,4 +1,4 @@
-// emath-epic-machine-fjxh.12 negative seed: static specializer with VM parity.
+// negative seed: static specializer with VM parity.
 //
 // Seeded silent-success: a specializer asked to bind a parameter that is
 // OUTSIDE the cell's declared contract must refuse typed, never silently

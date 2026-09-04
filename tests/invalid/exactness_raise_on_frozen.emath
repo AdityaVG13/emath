@@ -1,5 +1,5 @@
 # expect: E-SYN-155 raise refused — this file freezes, and `--raise units`
-# on a frozen meaning is refused (zql4b). The unit test
+# on a frozen meaning is refused. The unit test
 # tests/emath-cli/tests/meaning_budget_display_unit.rs freezes a copy of
 # this fixture and asserts the refusal.
 emath function P:

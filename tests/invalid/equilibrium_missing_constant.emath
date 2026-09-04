@@ -1,5 +1,5 @@
 # expect: E-CHEM-THERMO — the missing-constant arm of the honesty triangle
-# (emath-r3-equilibrium-ds6x): a network declaring BOTH a reversible
+# Rule: a network declaring BOTH a reversible
 # kinetic pair (`<->`) AND an equilibrium (`<=>`) must declare the
 # equilibrium constant. Here no constant line exists at all — admission
 # refuses instead of leaving the consistency claim unstated.

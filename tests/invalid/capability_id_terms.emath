@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.1 negative seed.
+# negative seed.
 #
 # Scenario: a capability cell applies `Undeclared`, a capability that was
 # never admitted to the package capability arena. Silent success would be a

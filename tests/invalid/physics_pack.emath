@@ -1,4 +1,4 @@
-# NEGATIVE (emath-r3-units-ext-physics-8u7h.1): a "physics" pack that FORKS
+# NEGATIVE: a "physics" pack that FORKS
 # notation by injecting parser keywords refuses at admission (E-SYN-101,
 # the closed field-pack section table) — a forked nabla never becomes
 # installable data. Composition lists existing packages; it never forks.

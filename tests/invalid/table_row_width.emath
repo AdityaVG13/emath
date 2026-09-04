@@ -1,4 +1,4 @@
-#  emath-r3-table-literals-f3z1 (U9) negative control: ragged `;` rows
+#  Tables (U9) negative control: ragged `;` rows
 #  refuse at parse time (E-SYN-102), never fold silently.
 emath function ragged_rows:
     definitions:

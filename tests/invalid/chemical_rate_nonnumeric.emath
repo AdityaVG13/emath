@@ -1,5 +1,5 @@
 # expect: E-KIND-027 — a `rate:` entry value must be a numeric literal
-# (emath-r3-chem-surface-i6ri): rate constants feed the ds6x honesty
+# Rate constants feed the honesty
 # gate and the seeded-determinism creed, so a bare path value is not a
 # rate — admission refuses instead of guessing.
 emath reaction_network NonNumericRate:

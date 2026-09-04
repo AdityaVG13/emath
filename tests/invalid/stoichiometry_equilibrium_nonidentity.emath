@@ -1,7 +1,7 @@
 # expect: E-CHEM-STOICH — the equilibrium row is the derived identity
 # `initial + xi * change`; re-entering any other formula (here a made-up
-# `2 * initial - xi`) is the classic transcription error the bead refuses
-# (emath-r3-stoich-tables-pqs6).
+# `2 * initial - xi`) is the classic transcription error the check
+# refuses.
 emath reaction_network NonIdentity:
     species:
         A

@@ -1,4 +1,4 @@
-// emath-epic-machine-fjxh.14 negative seed: ten-operation anti-LOC cohort.
+// ten-operation anti-LOC cohort.
 //
 // Seeded wrong-output / silent-success: an identity-affecting mutation of
 // a frozen cell's numeric policy (version bump without an admitted

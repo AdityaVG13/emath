@@ -1,4 +1,4 @@
-#  Negative control (B23, emath-r3-graphs-ybob): an edge with no target
+# Negative control (B23): an edge with no target
 #  operand. Edge grammar is binary — a dangling `-->` refuses at parse
 #  time instead of silently producing a half edge.
 emath function f:

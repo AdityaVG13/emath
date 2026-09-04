@@ -1,5 +1,5 @@
 # expect: E-KIND-027 — an `assumptions:` entry must be a bare name
-# (emath-r3-chem-surface-i6ri): declared approximations hash into the
+# Declared approximations hash into the
 # artifact by name, so a call-shaped entry is not a declaration and
 # refuses instead of being silently ignored.
 emath reaction_network MalformedAssumption:

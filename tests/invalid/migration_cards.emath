@@ -1,4 +1,4 @@
-#  Negative control (v9-06-2rdq.19): a migration card that declares a
+# Negative control: a migration card that declares a
 #  semantic change but never classifies it. Hidden desugars and silent
 #  custom->strict fallthroughs refuse; omission is not a classification.
 use std.kinds.migration

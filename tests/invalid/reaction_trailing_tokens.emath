@@ -1,5 +1,5 @@
 # expect: E-SYN-156 — a `reactions:` line is `name: terms <arrow> terms`
-# and the line must END after the products (emath-r3-reactions-section-92hq).
+# and the line must END after the products.
 # A token after the RHS terms that is not a `+`-joined term refuses —
 # no silent truncation. (`+ heat` would parse as an undeclared species
 # term and refuse E-CHEM-SPECIES at admission instead.)

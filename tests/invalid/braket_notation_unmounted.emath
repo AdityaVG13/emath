@@ -1,4 +1,4 @@
-#  Negative control (04 section 2.4, emath-r3-braket-pack-fdby): braket
+#  Negative control (04 section 2.4): braket
 #  glyphs are opt-in — without the pack mount the ket form refuses,
 #  naming the import, instead of reading `|` as a table or an arm.
 emath function f:

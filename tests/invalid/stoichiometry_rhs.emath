@@ -1,7 +1,7 @@
 # expect: E-CHEM-STOICH — the stoichiometry section derives its matrix
 # from the reaction lines; the only admitted right-hand side is exactly
 # `stoich(reactions)`. A re-entered/invented matrix defeats the
-# anti-transcription design (emath-r3-stoich-tables-pqs6).
+# anti-transcription design.
 emath reaction_network InventedMatrix:
     species:
         A

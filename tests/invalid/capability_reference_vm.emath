@@ -1,4 +1,4 @@
-# emath-epic-machine-fjxh.6 negative seed.
+# negative seed.
 #
 # Scenario: a capability cell application is lowered into the reference VM
 # with the wrong argument shape (a scalar where the cell contract declares

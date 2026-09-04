@@ -1,11 +1,11 @@
-// emath-epic-machine-fjxh.10 negative seed: lazy image loading.
+// negative seed: lazy image loading.
 //
 // Seeded silent-success: an UNUSED field pack's pages must never load at
 // startup (prelude-only boot) nor during a compile that does not reach
 // that pack. A mutant that eagerly loads every installed page (or serves
 // unloaded pages silently) would report a lazy session while shipping a
 // fully-eager loader — exactly the "startup compiles all installed
-// fields" behavior this bead exists to remove.
+// fields" behavior this file exists to remove.
 # expect: refuse E-LAZY-001 (unused pack page access on a lazy session)
 
 package epic_machine_fjxh_10_invalid {
