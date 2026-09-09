@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+emath-test-harness = { workspace = true }
 emath-term = { path = "../../crates/emath-term" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 semantic-genesis-worlds = { path = "../../examples/generated/semantic-genesis-worlds" }
