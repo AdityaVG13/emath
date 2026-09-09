@@ -154,3 +154,38 @@ pub struct DAEDisposition {
     /// exist. Empty on success.
     pub continuation: Option<Continuation>,
 }
+
+/// Evaluate one authored model-step capability cell over flat values.
+///
+/// Pure wiring: builds the `LoadInput`/`ApplyCapability` program the
+/// capsule-active reference program executes, mapping typed refusals
+/// to their capsule codes. Stage coefficients, update formulas, and
+/// convergence rules live in the capsule cell, never here.
+pub(super) fn eval_capsule_cell(capability: &str, args: Vec<Value>) -> Result<Value, String> {
+    use crate::{CellClass, EmirOp, EmirProgram, EmirValue};
+    let input_count = u16::try_from(args.len())
+        .map_err(|_| "model step frame exceeds u16 input count".to_string())?;
+    let mut ops = Vec::with_capacity(args.len() + 1);
+    for index in 0..args.len() {
+        ops.push((EmirOp::LoadInput(index as u16), emath_core::Span::default()));
+    }
+    ops.push((
+        EmirOp::ApplyCapability {
+            capability: capability.to_string(),
+            class: CellClass::Pure,
+            args: (0..args.len() as u32).map(EmirValue).collect(),
+        },
+        emath_core::Span::default(),
+    ));
+    let program = EmirProgram {
+        ops,
+        result: EmirValue(args.len() as u32),
+        input_count,
+        state_count: 0,
+        domain_obligations: Vec::new(),
+    };
+    crate::interp::evaluate(&program, &args, &[]).map_err(|fault| match fault {
+        crate::interp::EvalFault::CarrierRefused { detail, .. } => detail,
+        fault => fault.to_string(),
+    })
+}

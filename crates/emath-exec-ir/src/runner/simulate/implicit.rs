@@ -122,37 +122,140 @@ pub(super) fn implicit_backward_euler_step(
     };
     let mut y = y0; // start from the explicit guess — always finite here
     let mut converged = false;
-    const MAX_ITER: usize = 50;
-    for _ in 0..MAX_ITER {
+    let mut index = 0usize;
+    let mut max_iter = 0usize;
+    let mut residual_at_limit = 0.0;
+    loop {
         let f = rate_at(&state_of_y(&name, y))?;
-        let residual = y - y0 - dt * f;
-        if residual.abs() < 1e-12 * (1.0 + y.abs()) {
-            converged = true;
-            break;
+        let check = super::eval_capsule_cell(
+            "std.capability.dynamics.model-newton-check",
+            vec![Value::F64(y), Value::F64(y0), Value::F64(dt), Value::F64(f)],
+        )?;
+        let (residual, h_fd, y_plus) = match check {
+            Value::Record { fields, .. } => {
+                let residual = match fields.get("residual") {
+                    Some(Value::F64(residual)) => *residual,
+                    _ => {
+                        return Err(
+                            "model Newton check cell returned a non-float residual".to_string()
+                        );
+                    }
+                };
+                let done = match fields.get("converged") {
+                    Some(Value::Bool(done)) => *done,
+                    _ => {
+                        return Err(
+                            "model Newton check cell returned a non-boolean verdict".to_string()
+                        );
+                    }
+                };
+                let h_fd = match fields.get("h") {
+                    Some(Value::F64(h)) => *h,
+                    _ => {
+                        return Err(
+                            "model Newton check cell returned a non-float spacing".to_string()
+                        );
+                    }
+                };
+                let budget = match fields.get("budget") {
+                    Some(Value::I64(budget)) => *budget,
+                    _ => return Err("model Newton budget cell returned a non-integer bound".into()),
+                };
+                max_iter = usize::try_from(budget).map_err(|_| {
+                    "model Newton budget cell returned a non-index bound".to_string()
+                })?;
+                if index >= max_iter {
+                    residual_at_limit = residual;
+                    break;
+                }
+                if done {
+                    converged = true;
+                    break;
+                }
+                let y_plus = match fields.get("y_plus") {
+                    Some(Value::F64(y_plus)) => *y_plus,
+                    _ => {
+                        return Err(
+                            "model Newton check cell returned a non-float probe".to_string()
+                        );
+                    }
+                };
+                (residual, h_fd, y_plus)
+            }
+            _ => {
+                return Err("model Newton check cell did not return a check record".to_string());
+            }
+        };
+        // Forward-difference Jacobian dr/dy through the model probe state.
+        let f_plus = rate_at(&state_of_y(&name, y_plus))?;
+        let update = super::eval_capsule_cell(
+            "std.capability.dynamics.model-newton-update",
+            vec![
+                Value::F64(y),
+                Value::F64(dt),
+                Value::F64(f),
+                Value::F64(f_plus),
+                Value::F64(residual),
+                Value::F64(h_fd),
+            ],
+        )?;
+        match update {
+            Value::Record { fields, .. } => {
+                let d = match fields.get("d") {
+                    Some(Value::F64(d)) => *d,
+                    _ => {
+                        return Err(
+                            "model Newton update cell returned a non-float Jacobian".to_string()
+                        );
+                    }
+                };
+                let singular = match fields.get("singular") {
+                    Some(Value::Bool(singular)) => *singular,
+                    _ => {
+                        return Err(
+                            "model Newton update cell returned a non-boolean verdict".to_string()
+                        );
+                    }
+                };
+                if singular {
+                    return Err(format!(
+                        "E-ODE-001: implicit residual Jacobian is singular (dr/dy = {d}); the \
+                         implicit equation may have no solution for this state and dt"
+                    ));
+                }
+                let nonfinite = match fields.get("nonfinite") {
+                    Some(Value::Bool(nonfinite)) => *nonfinite,
+                    _ => {
+                        return Err(
+                            "model Newton update cell returned a non-boolean verdict".to_string()
+                        );
+                    }
+                };
+                if nonfinite {
+                    return Err(format!(
+                        "E-ODE-001: Newton iterate left the finite range while solving the implicit \
+                         step (residual {residual:.3e}); no real solution reachable"
+                    ));
+                }
+                match fields.get("next") {
+                    Some(Value::F64(next)) => y = *next,
+                    _ => {
+                        return Err(
+                            "model Newton update cell returned a non-float iterate".to_string()
+                        );
+                    }
+                }
+            }
+            _ => {
+                return Err("model Newton update cell did not return an update record".to_string());
+            }
         }
-        // Forward-difference Jacobian dr/dy ≈ 1 − h·(f(y+h) − f(y))/h.
-        let h_fd = 1e-7 * (1.0 + y.abs());
-        let f_plus = rate_at(&state_of_y(&name, y + h_fd))?;
-        let d = 1.0 - dt * (f_plus - f) / h_fd;
-        if !d.is_finite() || d.abs() < 1e-300 {
-            return Err(format!(
-                "E-ODE-001: implicit residual Jacobian is singular (dr/dy = {d}); the \
-                 implicit equation may have no solution for this state and dt"
-            ));
-        }
-        let step = residual / d;
-        y -= step;
-        if !y.is_finite() {
-            return Err(format!(
-                "E-ODE-001: Newton iterate left the finite range while solving the implicit \
-                 step (residual {residual:.3e}); no real solution reachable"
-            ));
-        }
+        index += 1;
     }
     if !converged {
-        let residual_check = y - y0 - dt * rate_at(&state_of_y(&name, y))?;
+        let residual_check = residual_at_limit;
         return Err(format!(
-            "E-ODE-001: implicit backward-Euler step did not converge within {MAX_ITER} Newton \
+            "E-ODE-001: implicit backward-Euler step did not converge within {max_iter} Newton \
              iterations (residual {residual_check:.3e}); the implicit equation may have no \
              real solution at this state and dt — refine the model or reduce the step"
         ));
@@ -220,19 +323,38 @@ pub(super) fn velocity_verlet_step(
         Some(Value::F64(v)) => *v,
         other => return Err(structure_error(&format!("has non-scalar q rate {other:?}"))),
     };
-    if (q_rate - v0).abs() > 1e-9 * (1.0 + v0.abs()) {
+    if match super::eval_capsule_cell(
+        "std.capability.dynamics.model-verlet-reject",
+        vec![Value::F64(q_rate), Value::F64(v0), Value::Bool(false)],
+    )? {
+        Value::Bool(reject) => reject,
+        _ => return Err("model Verlet admission cell returned a non-boolean verdict".into()),
+    } {
         return Err(structure_error(
             "does not satisfy `der_q = v` (the separable identity)",
         ));
     }
     let mut v_probed = state.clone();
-    v_probed.insert(v_name.clone(), Value::F64(v0 + 1.0));
+    let probe_velocity = super::eval_capsule_cell(
+        "std.capability.dynamics.model-verlet-probe",
+        vec![Value::F64(v0)],
+    )?;
+    if !matches!(probe_velocity, Value::F64(_)) {
+        return Err("model Verlet probe cell returned a non-float velocity".into());
+    }
+    v_probed.insert(v_name.clone(), probe_velocity);
     let rates_probed = eval_rates(package, declaration, inputs, &v_probed)?;
     let q_rate_probed = match rates_probed.get(&q_name) {
         Some(Value::F64(v)) => *v,
         other => return Err(structure_error(&format!("has non-scalar q rate {other:?}"))),
     };
-    if (q_rate_probed - (v0 + 1.0)).abs() > 1e-9 * (2.0 + v0.abs()) {
+    if match super::eval_capsule_cell(
+        "std.capability.dynamics.model-verlet-reject",
+        vec![Value::F64(q_rate_probed), Value::F64(v0), Value::Bool(true)],
+    )? {
+        Value::Bool(reject) => reject,
+        _ => return Err("model Verlet admission cell returned a non-boolean verdict".into()),
+    } {
         return Err(structure_error(
             "does not satisfy `der_q = v` (the separable identity) away from the initial \
              velocity",
@@ -254,16 +376,52 @@ pub(super) fn velocity_verlet_step(
         Some(Value::F64(a)) => *a,
         other => return Err(structure_error(&format!("has non-scalar a {other:?}"))),
     };
-    if (acceleration - acceleration_at_v).abs() > 1e-9 * (1.0 + acceleration.abs()) {
+    if match super::eval_capsule_cell(
+        "std.capability.dynamics.model-verlet-reject",
+        vec![
+            Value::F64(acceleration_at_v),
+            Value::F64(acceleration),
+            Value::Bool(false),
+        ],
+    )? {
+        Value::Bool(reject) => reject,
+        _ => return Err("model Verlet admission cell returned a non-boolean verdict".into()),
+    } {
         return Err(structure_error(
             "has an acceleration depending on `v` (not separable: `v' = a(q)` required)",
         ));
     }
-    // Kick-drift-kick, one acceleration evaluation per half-kick pair:
-    // v½ = v + a(q)·h/2; q₁ = q + v½·h; then re-evaluate a(q₁), v₁ =
-    // v½ + a(q₁)·h/2.
-    let half_kick = v0 + acceleration * dt / 2.0;
-    let q1 = q0 + half_kick * dt;
+    // Kick-drift-kick through the authored half-kick cells, with one
+    // acceleration evaluation per half-kick pair: v½ = v + a(q)·h/2;
+    // q₁ = q + v½·h; then re-evaluate a(q₁), v₁ = v½ + a(q₁)·h/2.
+    let (half_kick, q1) = match super::eval_capsule_cell(
+        "std.capability.dynamics.model-verlet-half",
+        vec![
+            Value::F64(q0),
+            Value::F64(v0),
+            Value::F64(acceleration),
+            Value::F64(dt),
+        ],
+    )? {
+        Value::Record { fields, .. } => {
+            let half = match fields.get("half") {
+                Some(Value::F64(half)) => *half,
+                _ => {
+                    return Err("model Verlet half cell returned a non-float kick".to_string());
+                }
+            };
+            let q1 = match fields.get("q") {
+                Some(Value::F64(q1)) => *q1,
+                _ => {
+                    return Err("model Verlet half cell returned a non-float drift".to_string());
+                }
+            };
+            (half, q1)
+        }
+        _ => {
+            return Err("model Verlet half cell did not return a kick record".to_string());
+        }
+    };
     let mut mid = state.clone();
     mid.insert(q_name.clone(), Value::F64(q1));
     // Re-derive the acceleration at q1 through the model (definitions
@@ -273,7 +431,15 @@ pub(super) fn velocity_verlet_step(
         Some(Value::F64(a)) => *a,
         other => return Err(structure_error(&format!("has non-scalar a {other:?}"))),
     };
-    let v1 = half_kick + a1 * dt / 2.0;
+    let v1 = match super::eval_capsule_cell(
+        "std.capability.dynamics.model-verlet-finish",
+        vec![Value::F64(half_kick), Value::F64(a1), Value::F64(dt)],
+    )? {
+        Value::F64(v1) => v1,
+        _ => {
+            return Err("model Verlet finish cell did not return a float velocity".to_string());
+        }
+    };
     let mut next = state.clone();
     next.insert(q_name, Value::F64(q1));
     next.insert(v_name, Value::F64(v1));
@@ -445,7 +611,7 @@ pub(super) fn eval_rates(
             | Value::Record { .. }
             | Value::List(_)
             | Value::Interval { .. }
-            | Value::Program(_) => return Err(format!("rate `{key}` is not numeric")),
+            | Value::Program(_) | Value::DenseLayout(_) => return Err(format!("rate `{key}` is not numeric")),
             // Option/Result carriers are not numeric rates.
             Value::Option(_) | Value::Result { .. } => {
                 return Err(format!("rate `{key}` is not numeric"));

@@ -15,65 +15,61 @@ pub(super) fn cash_karp_stages(
     dt: f64,
 ) -> Result<CashKarp, String> {
     let skip = algebraic_name_set(declaration);
+    let (fields, s0) = pack_state_fields(state, &skip)?;
     let k1 = eval_rates(package, declaration, inputs, state)?;
-    let s2 = apply_scaled(state, &[(1.0 / 5.0, &k1)], dt, &skip)?;
-    let k2 = eval_rates(package, declaration, inputs, &s2)?;
-    let s3 = apply_scaled(state, &[(3.0 / 40.0, &k1), (9.0 / 40.0, &k2)], dt, &skip)?;
-    let k3 = eval_rates(package, declaration, inputs, &s3)?;
-    let s4 = apply_scaled(
-        state,
-        &[(3.0 / 10.0, &k1), (-9.0 / 10.0, &k2), (6.0 / 5.0, &k3)],
+    let s2 = combine_step(
+        &fields,
+        &s0,
         dt,
-        &skip,
+        "std.capability.dynamics.model-rk45-s2",
+        &pack_rate_set(&[&k1], &fields)?,
+    )?;
+    let k2 = eval_rates(package, declaration, inputs, &s2)?;
+    let s3 = combine_step(
+        &fields,
+        &s0,
+        dt,
+        "std.capability.dynamics.model-rk45-s3",
+        &pack_rate_set(&[&k1, &k2], &fields)?,
+    )?;
+    let k3 = eval_rates(package, declaration, inputs, &s3)?;
+    let s4 = combine_step(
+        &fields,
+        &s0,
+        dt,
+        "std.capability.dynamics.model-rk45-s4",
+        &pack_rate_set(&[&k1, &k2, &k3], &fields)?,
     )?;
     let k4 = eval_rates(package, declaration, inputs, &s4)?;
-    let s5 = apply_scaled(
-        state,
-        &[
-            (-11.0 / 54.0, &k1),
-            (5.0 / 2.0, &k2),
-            (-70.0 / 27.0, &k3),
-            (35.0 / 27.0, &k4),
-        ],
+    let s5 = combine_step(
+        &fields,
+        &s0,
         dt,
-        &skip,
+        "std.capability.dynamics.model-rk45-s5",
+        &pack_rate_set(&[&k1, &k2, &k3, &k4], &fields)?,
     )?;
     let k5 = eval_rates(package, declaration, inputs, &s5)?;
-    let s6 = apply_scaled(
-        state,
-        &[
-            (1631.0 / 55296.0, &k1),
-            (175.0 / 512.0, &k2),
-            (575.0 / 13824.0, &k3),
-            (44275.0 / 110592.0, &k4),
-            (253.0 / 4096.0, &k5),
-        ],
+    let s6 = combine_step(
+        &fields,
+        &s0,
         dt,
-        &skip,
+        "std.capability.dynamics.model-rk45-s6",
+        &pack_rate_set(&[&k1, &k2, &k3, &k4, &k5], &fields)?,
     )?;
     let k6 = eval_rates(package, declaration, inputs, &s6)?;
-    let fifth = apply_scaled(
-        state,
-        &[
-            (37.0 / 378.0, &k1),
-            (250.0 / 621.0, &k3),
-            (125.0 / 594.0, &k4),
-            (512.0 / 1771.0, &k6),
-        ],
+    let fourth = combine_step(
+        &fields,
+        &s0,
         dt,
-        &skip,
+        "std.capability.dynamics.model-rk45-fourth",
+        &pack_rate_set(&[&k1, &k3, &k4, &k5, &k6], &fields)?,
     )?;
-    let fourth = apply_scaled(
-        state,
-        &[
-            (2825.0 / 27648.0, &k1),
-            (18575.0 / 48384.0, &k3),
-            (13525.0 / 55296.0, &k4),
-            (277.0 / 14336.0, &k5),
-            (1.0 / 4.0, &k6),
-        ],
+    let fifth = combine_step(
+        &fields,
+        &s0,
         dt,
-        &skip,
+        "std.capability.dynamics.model-rk45-fifth",
+        &pack_rate_set(&[&k1, &k3, &k4, &k6], &fields)?,
     )?;
     Ok(CashKarp { fourth, fifth })
 }
@@ -92,50 +88,281 @@ pub(super) fn adaptive_rk45_try(
     if !values_finite(&stages.fourth) || !values_finite(&stages.fifth) {
         return Err("adaptive RK45 step produced a non-finite state".to_string());
     }
-    let err = state_error(&stages.fourth, &stages.fifth);
-    let scale = error_scale(state, &stages.fifth, options);
-    let rel = if scale > 0.0 { err / scale } else { err };
-    if !rel.is_finite() {
-        return Err("adaptive RK45 error estimate is non-finite".to_string());
+    let skip = algebraic_name_set(declaration);
+    let (fields, start_flat) = pack_state_fields(state, &skip)?;
+    let fourth_flat = flatten_map(&stages.fourth, &fields)?;
+    let fifth_flat = flatten_map(&stages.fifth, &fields)?;
+    let mut offsets = vec![0.0];
+    let mut total = 0.0;
+    for (_, layout) in &fields {
+        total += layout.len() as f64;
+        offsets.push(total);
     }
-    if rel <= 1.0 {
-        Ok((stages.fifth, dt, rel))
-    } else {
-        let next = (0.9 * dt * rel.powf(-0.2)).max(dt * 0.2);
-        if !next.is_finite() || next >= dt {
-            return Err("adaptive step rejected but could not shrink dt".to_string());
+    let atol = options.atol.unwrap_or(1e-6);
+    let rtol = options.rtol.unwrap_or(1e-3);
+    let norms = super::eval_capsule_cell(
+        "std.capability.dynamics.model-rk45-err-scale",
+        vec![
+            Value::Vector(fourth_flat),
+            Value::Vector(fifth_flat),
+            Value::Vector(start_flat),
+            Value::Vector(offsets),
+            Value::F64(atol),
+            Value::F64(rtol),
+        ],
+    )?;
+    let (err, mut scale) = match norms {
+        Value::Record { fields, .. } => {
+            let err = match fields.get("err") {
+                Some(Value::F64(err)) => *err,
+                _ => {
+                    return Err("model RK45 error cell returned a non-float error".to_string());
+                }
+            };
+            let scale = match fields.get("scale") {
+                Some(Value::F64(scale)) => *scale,
+                _ => {
+                    return Err("model RK45 error cell returned a non-float scale".to_string());
+                }
+            };
+            (err, scale)
         }
-        Ok((stages.fifth, next, rel))
+        _ => {
+            return Err("model RK45 error cell did not return a norm record".to_string());
+        }
+    };
+    // Algebraic fields never pack; fold their tolerance terms with the
+    // generic magnitude traversal, recombining by max exactly as the
+    // native whole-map fold does.
+    for (name, value) in state {
+        if skip.contains(name) {
+            scale = match super::eval_capsule_cell(
+                "std.capability.dynamics.model-algebraic-scale",
+                vec![
+                    Value::F64(scale),
+                    Value::F64(atol),
+                    Value::F64(rtol),
+                    Value::F64(value_abs_max(value)),
+                ],
+            )? {
+                Value::F64(value) => value,
+                _ => return Err("model algebraic tolerance cell returned a non-float scale".into()),
+            };
+        }
+    }
+    let decision = super::eval_capsule_cell(
+        "std.capability.dynamics.model-rk45-decide",
+        vec![Value::F64(err), Value::F64(scale), Value::F64(dt)],
+    )?;
+    let (code, rel, next) = match decision {
+        Value::Record { fields, .. } => {
+            let code = match fields.get("code") {
+                Some(Value::I64(code)) => *code,
+                _ => {
+                    return Err("model RK45 decision cell returned a non-integer code".to_string());
+                }
+            };
+            let rel = match fields.get("rel") {
+                Some(Value::F64(rel)) => *rel,
+                _ => {
+                    return Err("model RK45 decision cell returned a non-float ratio".to_string());
+                }
+            };
+            let next = match fields.get("next") {
+                Some(Value::F64(next)) => *next,
+                _ => {
+                    return Err("model RK45 decision cell returned a non-float step".to_string());
+                }
+            };
+            (code, rel, next)
+        }
+        _ => {
+            return Err("model RK45 decision cell did not return a decision record".to_string());
+        }
+    };
+    match code {
+        0 => Ok((stages.fifth, dt, rel)),
+        1 => Ok((stages.fifth, next, rel)),
+        2 => Err("adaptive RK45 error estimate is non-finite".to_string()),
+        _ => Err("adaptive step rejected but could not shrink dt".to_string()),
     }
 }
 
-pub(super) fn grow_step(dt: f64, rel: f64, options: &SimulateOptions, remaining: f64) -> f64 {
-    let grown = if rel <= 0.0 {
-        dt * 5.0
-    } else {
-        (0.9 * dt * rel.powf(-0.2)).min(dt * 5.0).max(dt)
+pub(super) fn grow_step(
+    dt: f64,
+    rel: f64,
+    options: &SimulateOptions,
+    remaining: f64,
+) -> Result<f64, String> {
+    let (limit, capped) = match options.dt_max {
+        Some(dt_max) => (dt_max, true),
+        None => (0.0, false),
     };
-    let grown = match options.dt_max {
-        Some(dt_max) => grown.min(dt_max),
-        None => grown,
-    };
-    grown.min(remaining.max(dt))
+    match super::eval_capsule_cell(
+        "std.capability.dynamics.model-rk45-grow",
+        vec![
+            Value::F64(dt),
+            Value::F64(rel),
+            Value::F64(limit),
+            Value::Bool(capped),
+            Value::F64(remaining),
+        ],
+    )? {
+        Value::F64(grown) => Ok(grown),
+        _ => Err("model RK45 growth cell did not return Float64 storage".to_string()),
+    }
 }
 
-pub(super) fn state_error(left: &BTreeMap<String, Value>, right: &BTreeMap<String, Value>) -> f64 {
-    let mut max = 0.0_f64;
-    for (name, a) in left {
-        if let Some(b) = right.get(name) {
-            let diff = value_abs_diff(a, b);
-            // `f64::max` returns the non-NaN arg when the other is NaN, which
-            // would under-report a poisoned comparison as err=0.
-            if !diff.is_finite() {
-                return f64::INFINITY;
-            }
-            max = max.max(diff);
+/// One packed differential field: its map name, dense layout, and the
+/// flat values packed in `BTreeMap` order. Algebraic (`skip`) fields never
+/// pack; they ride along outside the integration and are re-solved after.
+type PackedFields = Vec<(String, emath_rt::DenseLayout)>;
+
+/// Flatten one numeric value exactly as the native update formula widens
+/// it: `I64` becomes `f64`, vectors/matrices/tensors contribute row-major
+/// data. Anything else is not a combinable carrier.
+fn flatten_like(value: &Value, layout: &emath_rt::DenseLayout) -> Result<Vec<f64>, String> {
+    use emath_rt::DenseLayout;
+    let shape_err =
+        || "state and rate must have the same scalar/vector/matrix/tensor shape".to_string();
+    match (layout, value) {
+        (DenseLayout::Scalar, Value::F64(x)) => Ok(vec![*x]),
+        (DenseLayout::Scalar, Value::I64(x)) => Ok(vec![*x as f64]),
+        (DenseLayout::Vector(n), Value::Vector(items)) if n == &items.len() => Ok(items.clone()),
+        (
+            DenseLayout::Matrix { rows, cols, len },
+            Value::Matrix {
+                rows: actual_rows,
+                cols: actual_cols,
+                data,
+            },
+        ) if rows == actual_rows && cols == actual_cols && len == &data.len() => Ok(data.clone()),
+        (
+            DenseLayout::Tensor { shape, len },
+            Value::Tensor {
+                shape: actual,
+                data,
+            },
+        ) if shape == actual && len == &data.len() => Ok(data.clone()),
+        _ => Err(shape_err()),
+    }
+}
+
+/// Pack every differential state field into one flat vector, recording
+/// layouts for the matching unpack. Exotic carriers refuse with the
+/// native shape error; every packed state is combined, so no guard
+/// precedence is lost against the per-field native loop.
+fn pack_state_fields(
+    state: &BTreeMap<String, Value>,
+    skip: &BTreeSet<String>,
+) -> Result<(PackedFields, Vec<f64>), String> {
+    let mut fields = Vec::new();
+    let mut flat = Vec::new();
+    for (name, value) in state {
+        if skip.contains(name) {
+            continue;
+        }
+        let Some(layout) = value.dense_layout() else {
+            return Err(
+                "state and rate must have the same scalar/vector/matrix/tensor shape".to_string(),
+            );
+        };
+        flat.extend(flatten_like(value, &layout)?);
+        fields.push((name.clone(), layout));
+    }
+    Ok((fields, flat))
+}
+
+/// Pack rate maps against packed state fields in field-major order, so
+/// the native per-field guard precedence holds: a missing rate reports
+/// before a later pair shape, exactly as the staged native loop does.
+fn pack_rate_set(
+    rate_maps: &[&BTreeMap<String, Value>],
+    fields: &PackedFields,
+) -> Result<Vec<Vec<f64>>, String> {
+    let mut flats = vec![Vec::new(); rate_maps.len()];
+    for (name, layout) in fields {
+        for (index, rates) in rate_maps.iter().enumerate() {
+            let rate = rates
+                .get(name)
+                .ok_or_else(|| format!("missing rate `der_{name}`"))?;
+            flats[index].extend(flatten_like(rate, layout)?);
         }
     }
-    max
+    Ok(flats)
+}
+
+/// Flatten an already-packed-shaped map against recorded layouts.
+/// Packed outputs always match their fields; anything else names the
+/// storage fault instead of inventing storage.
+fn flatten_map(map: &BTreeMap<String, Value>, fields: &PackedFields) -> Result<Vec<f64>, String> {
+    let mut flat = Vec::new();
+    for (name, layout) in fields {
+        let value = map
+            .get(name)
+            .ok_or_else(|| "model step storage does not match state".to_string())?;
+        flat.extend(flatten_like(value, layout)?);
+    }
+    Ok(flat)
+}
+
+/// Rebuild the state map from flat update storage using the recorded
+/// layouts. Scalars always come back `F64`: the native update widens
+/// integer carriers to `F64` on combination.
+fn unpack_fields(fields: &PackedFields, data: Vec<f64>) -> Result<BTreeMap<String, Value>, String> {
+    let total: usize = fields.iter().map(|(_, layout)| layout.len()).sum();
+    if data.len() != total {
+        return Err("model step storage does not match state".to_string());
+    }
+    let mut next = BTreeMap::new();
+    let mut offset = 0usize;
+    for (name, layout) in fields {
+        let end = offset
+            .checked_add(layout.len())
+            .ok_or_else(|| "model state length exceeds usize".to_string())?;
+        let chunk = data
+            .get(offset..end)
+            .ok_or_else(|| "model step storage does not match state".to_string())?;
+        let value = match layout {
+            emath_rt::DenseLayout::Scalar => Value::F64(chunk[0]),
+            emath_rt::DenseLayout::Vector(_) => Value::Vector(chunk.to_vec()),
+            emath_rt::DenseLayout::Matrix { rows, cols, .. } => Value::Matrix {
+                rows: *rows,
+                cols: *cols,
+                data: chunk.to_vec(),
+            },
+            emath_rt::DenseLayout::Tensor { shape, .. } => Value::Tensor {
+                shape: shape.clone(),
+                data: chunk.to_vec(),
+            },
+        };
+        next.insert(name.clone(), value);
+        offset = end;
+    }
+    Ok(next)
+}
+
+/// One authored Cash-Karp combination over packed flat vectors: the
+/// stage coefficients and left-to-right accumulation live in the
+/// capsule cell; packing, guards, and map restoration stay here.
+fn combine_step(
+    fields: &PackedFields,
+    state_flat: &[f64],
+    dt: f64,
+    capability: &str,
+    rates: &[Vec<f64>],
+) -> Result<BTreeMap<String, Value>, String> {
+    let mut args = Vec::with_capacity(2 + rates.len());
+    args.push(Value::Vector(state_flat.to_vec()));
+    for flat in rates {
+        args.push(Value::Vector(flat.clone()));
+    }
+    args.push(Value::F64(dt));
+    let out = super::eval_capsule_cell(capability, args)?;
+    let Value::Vector(data) = out else {
+        return Err("model step did not return Float64 storage".to_string());
+    };
+    unpack_fields(fields, data)
 }
 
 pub(super) fn values_finite(state: &BTreeMap<String, Value>) -> bool {
@@ -166,43 +393,7 @@ pub(super) fn value_is_finite(value: &Value) -> bool {
         Value::Option(None) => true,
         Value::Option(Some(inner)) => value_is_finite(inner),
         Value::Result { payload, .. } => value_is_finite(payload),
-        Value::Program(_) => false,
-    }
-}
-
-pub(super) fn error_scale(
-    start: &BTreeMap<String, Value>,
-    end: &BTreeMap<String, Value>,
-    options: &SimulateOptions,
-) -> f64 {
-    let atol = options.atol.unwrap_or(1e-6);
-    let rtol = options.rtol.unwrap_or(1e-3);
-    let mut max = atol;
-    for (name, a) in start {
-        let mag = value_abs_max(a).max(end.get(name).map(value_abs_max).unwrap_or(0.0));
-        max = max.max(atol + rtol * mag);
-    }
-    max
-}
-
-pub(super) fn value_abs_diff(left: &Value, right: &Value) -> f64 {
-    match (left, right) {
-        (Value::F64(a), Value::F64(b)) => (a - b).abs(),
-        (Value::I64(a), Value::I64(b)) => (*a as f64 - *b as f64).abs(),
-        (Value::I64(a), Value::F64(b)) => (*a as f64 - b).abs(),
-        (Value::F64(a), Value::I64(b)) => (a - *b as f64).abs(),
-        (Value::Vector(a), Value::Vector(b)) => a
-            .iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).abs())
-            .fold(0.0, f64::max),
-        (Value::Matrix { data: a, .. }, Value::Matrix { data: b, .. })
-        | (Value::Tensor { data: a, .. }, Value::Tensor { data: b, .. }) => a
-            .iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).abs())
-            .fold(0.0, f64::max),
-        _ => f64::INFINITY,
+        Value::Program(_) | Value::DenseLayout(_) => false,
     }
 }
 
@@ -242,7 +433,7 @@ pub(super) fn value_abs_max(value: &Value) -> f64 {
         Value::Option(None) => 0.0,
         Value::Option(Some(inner)) => value_abs_max(inner),
         Value::Result { payload, .. } => value_abs_max(payload),
-        Value::Program(_) => f64::INFINITY,
+        Value::Program(_) | Value::DenseLayout(_) => f64::INFINITY,
     }
 }
 

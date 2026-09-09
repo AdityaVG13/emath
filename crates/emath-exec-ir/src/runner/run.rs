@@ -84,7 +84,8 @@ pub fn run_declaration_with_given(
     }
 }
 
-fn run_test(
+/// Execute one source example without evaluating sibling cases.
+pub fn run_test(
     package: &SemanticPackage,
     declaration: &Declaration,
     test: &emath_ir::TestCase,
@@ -147,15 +148,17 @@ fn run_test(
         }
     }
 
-    match eval_definitions(package, declaration, &run.given, &run.state) {
-        Ok(definitions) => {
-            run.outputs = outputs_of(package, declaration, &definitions);
-            run.definitions = definitions;
-        }
-        Err(verdict) => {
-            run.verdict = verdict;
-            return run;
-        }
+    let outcome = eval_definitions(
+        package,
+        declaration,
+        &run.given,
+        &run.state,
+        &mut run.definitions,
+    );
+    run.outputs = outputs_of(package, declaration, &run.definitions);
+    if let Err(verdict) = outcome {
+        run.verdict = verdict;
+        return run;
     }
 
     run.verdict = eval_expect(
@@ -169,7 +172,8 @@ fn run_test(
     run
 }
 
-fn run_direct(
+/// Execute one direct call through the ordinary binding and verdict rules.
+pub fn run_direct(
     package: &SemanticPackage,
     declaration: &Declaration,
     given: &BTreeMap<String, Value>,
@@ -240,16 +244,15 @@ fn run_direct(
         }
     }
 
-    match eval_definitions(package, declaration, &run.given, &run.state) {
-        Ok(definitions) => {
-            run.outputs = outputs_of(package, declaration, &definitions);
-            run.definitions = definitions;
-            run.verdict = TestVerdict::Computed;
-        }
-        Err(verdict) => {
-            run.verdict = verdict;
-        }
-    }
+    let outcome = eval_definitions(
+        package,
+        declaration,
+        &run.given,
+        &run.state,
+        &mut run.definitions,
+    );
+    run.outputs = outputs_of(package, declaration, &run.definitions);
+    run.verdict = outcome.err().unwrap_or(TestVerdict::Computed);
     run
 }
 

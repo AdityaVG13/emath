@@ -3,7 +3,7 @@
 //! causalized implicit-DAE Newton solving.
 
 mod newton;
-use newton::causal_newton;
+pub use newton::{authored_implicit_explicit_step, causal_newton, residual_model_step_program};
 
 use crate::EmirExprRef;
 use crate::interp::Value;

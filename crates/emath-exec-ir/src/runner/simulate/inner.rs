@@ -186,7 +186,7 @@ pub(super) fn simulate_continuous_inner(
             state: current.clone(),
         });
         if options.adaptive() {
-            h = grow_step(h, err, options, remaining);
+            h = grow_step(h, err, options, remaining)?;
         }
         guard += 1;
         if guard > MAX_STEPS {

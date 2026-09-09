@@ -121,7 +121,7 @@ pub(super) fn check_obligation(
         | Ok(Value::List(_))
         | Ok(Value::Option(_))
         | Ok(Value::Result { .. })
-        | Ok(Value::Program(_)) => Err(TestVerdict::Fault {
+        | Ok(Value::Program(_)) | Ok(Value::DenseLayout(_)) => Err(TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: keyword,
@@ -136,8 +136,9 @@ pub(super) fn eval_definitions(
     declaration: &Declaration,
     given: &BTreeMap<String, Value>,
     state: &BTreeMap<String, Value>,
-) -> Result<BTreeMap<String, Value>, TestVerdict> {
-    eval_definitions_values(package, declaration, given, state)
+    definitions: &mut BTreeMap<String, Value>,
+) -> Result<(), TestVerdict> {
+    eval_definitions_into(package, declaration, given, state, definitions, true)
 }
 
 pub(super) fn seed_state_from_given(
@@ -165,6 +166,19 @@ pub fn eval_definitions_values(
     inputs: &BTreeMap<String, Value>,
     state: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, TestVerdict> {
+    let mut definitions = BTreeMap::new();
+    eval_definitions_into(package, declaration, inputs, state, &mut definitions, false)?;
+    Ok(definitions)
+}
+
+fn eval_definitions_into(
+    package: &SemanticPackage,
+    declaration: &Declaration,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+    definitions: &mut BTreeMap<String, Value>,
+    retain_independent: bool,
+) -> Result<(), TestVerdict> {
     let input_names: Vec<String> = declaration
         .inputs
         .iter()
@@ -206,11 +220,15 @@ pub fn eval_definitions_values(
         state_values.push(coerce_to_slot(value, slot_ty(package, declaration, name)));
     }
 
-    let mut definitions = BTreeMap::new();
+    let mut first_failure = None;
     for (name, expr) in definition_order(package, declaration) {
-        let program = lower_definition(package, expr, &bind_names, &state_names)
-            .map_err(|detail| TestVerdict::LoweringRefused { detail })?;
-        match evaluate(&program, &bind_values, &state_values) {
+        let result = lower_definition(package, expr, &bind_names, &state_names)
+            .map_err(|detail| TestVerdict::LoweringRefused { detail })
+            .and_then(|program| {
+                evaluate(&program, &bind_values, &state_values)
+                    .map_err(|fault| TestVerdict::Fault { fault })
+            });
+        match result {
             Ok(value) => {
                 let value = coerce_to_slot(value, slot_ty(package, declaration, name));
                 definitions.insert(name.clone(), value.clone());
@@ -219,10 +237,19 @@ pub fn eval_definitions_values(
                     bind_values.push(value);
                 }
             }
-            Err(fault) => return Err(TestVerdict::Fault { fault }),
+            Err(verdict) => {
+                if !retain_independent {
+                    return Err(verdict);
+                }
+                // A failed definition never becomes a binding. Dependent
+                // expressions therefore cannot consume a guessed value.
+                if first_failure.is_none() {
+                    first_failure = Some(verdict);
+                }
+            }
         }
     }
-    Ok(definitions)
+    first_failure.map_or(Ok(()), Err)
 }
 
 /// nothing-returns-nothing outcome: the definitions that computed, the
@@ -424,19 +451,9 @@ fn expr_references(
         ExprNode::Tensor { elements, .. } => elements
             .iter()
             .any(|element| expr_references(package, *element, unbound)),
-        ExprNode::Differentiate { body, .. } | ExprNode::Solve { body, .. } => {
-            expr_references(package, *body, unbound)
-        }
-        ExprNode::Optimize { body, .. } => expr_references(package, *body, unbound),
-        ExprNode::SampleLimit {
-            body,
-            target,
-            direction,
-            ..
-        } => {
-            expr_references(package, *body, unbound)
-                || expr_references(package, *target, unbound)
-                || expr_references(package, *direction, unbound)
+        ExprNode::Program { body, inputs } => {
+            let free = unbound.iter().filter(|name| !inputs.contains(name)).cloned().collect();
+            expr_references(package, *body, &free)
         }
     }
 }
@@ -482,7 +499,7 @@ fn slot_ty<'a>(
         })
 }
 
-fn coerce_to_slot(value: Value, ty: Option<&TypeNode>) -> Value {
+pub(super) fn coerce_to_slot(value: Value, ty: Option<&TypeNode>) -> Value {
     match (&value, ty) {
         (Value::I64(n), Some(TypeNode::Float64)) => Value::F64(*n as f64),
         (Value::F64(n), Some(TypeNode::Int | TypeNode::Nat))
@@ -572,7 +589,7 @@ pub(super) fn eval_expect(
         | Ok(Value::List(_))
         | Ok(Value::Option(_))
         | Ok(Value::Result { .. })
-        | Ok(Value::Program(_)) => TestVerdict::Fault {
+        | Ok(Value::Program(_)) | Ok(Value::DenseLayout(_)) => TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: "expect",
@@ -623,12 +640,14 @@ fn expr_text(package: &SemanticPackage, id: ExprId) -> String {
             left,
             right,
         } => match operation {
-            BinaryOp::Min | BinaryOp::Max | BinaryOp::Atan2 => format!(
-                "{}({}, {})",
-                operation.name(),
-                expr_text(package, *left),
-                expr_text(package, *right)
-            ),
+            BinaryOp::Min | BinaryOp::Max | BinaryOp::Atan2 | BinaryOp::Hypot | BinaryOp::Mod => {
+                format!(
+                    "{}({}, {})",
+                    operation.name(),
+                    expr_text(package, *left),
+                    expr_text(package, *right)
+                )
+            }
             _ => format!(
                 "{} {} {}",
                 expr_text(package, *left),
