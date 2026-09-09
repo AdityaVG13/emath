@@ -1,5 +1,4 @@
-//! core::statistics — descriptive statistics and estimator contracts
-//! (Phase 11).
+//! core::statistics — descriptive statistics and estimator contracts.
 //!
 //! Honesty doctrine of this package:
 //!
@@ -23,6 +22,11 @@
 //! Inference machinery (p-value computation, regression, portfolios)
 //! lives in packages, not core — this is the descriptive layer and the
 //! contract vocabulary.
+//!
+//! Leaves are selected by capsule kernel ids (`finite-average`,
+//! `type7-middle-order-statistic`, `centered-square-n-minus-one`,
+//! `centered-square-n`, `type7-order-statistic`). Meaning and FeatureIDs
+//! live in `language/spec/capabilities/probability/probability-statistics.emath`.
 
 /// Typed refusal: an empty sample where at least one value is required.
 pub const E_STATS_EMPTY: &str = "E-STATS-1";
@@ -56,29 +60,6 @@ pub enum VarianceKind {
     Population,
 }
 
-impl VarianceKind {
-    fn method(self) -> &'static str {
-        match self {
-            Self::Sample => "variance_sample",
-            Self::Population => "variance_population",
-        }
-    }
-
-    fn denominator(self, n: usize) -> Result<f64, String> {
-        match self {
-            Self::Population => Ok(n as f64),
-            Self::Sample => {
-                if n < 2 {
-                    return Err(format!(
-                        "{E_STATS_SAMPLE_N}: sample variance needs n >= 2 (n-1 denominator is zero), got n = {n}"
-                    ));
-                }
-                Ok((n - 1) as f64)
-            }
-        }
-    }
-}
-
 fn validated(values: &[f64], what: &str) -> Result<(), String> {
     if values.is_empty() {
         return Err(format!(
@@ -94,89 +75,6 @@ fn validated(values: &[f64], what: &str) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-/// Arithmetic mean.
-pub fn mean(values: &[f64]) -> Result<Estimate, String> {
-    validated(values, "mean")?;
-    let total: f64 = values.iter().sum();
-    Ok(Estimate {
-        value: total / values.len() as f64,
-        method: "mean",
-        n: values.len(),
-    })
-}
-
-/// Variance with the explicit denominator kind.
-pub fn variance(values: &[f64], kind: VarianceKind) -> Result<Estimate, String> {
-    validated(values, "variance")?;
-    let n = values.len();
-    let denominator = kind.denominator(n)?;
-    let mu = values.iter().sum::<f64>() / n as f64;
-    let squared = values
-        .iter()
-        .map(|value| (value - mu) * (value - mu))
-        .sum::<f64>();
-    Ok(Estimate {
-        value: squared / denominator,
-        method: kind.method(),
-        n,
-    })
-}
-
-/// Median: middle element for odd n, mean of the two middle elements
-/// for even n (linear interpolation at p = 0.5).
-pub fn median(values: &[f64]) -> Result<Estimate, String> {
-    quantile(values, 0.5).map(|mut estimate| {
-        estimate.method = "median";
-        estimate
-    })
-}
-
-/// Quantile by type-7 linear interpolation: with the sorted sample and
-/// `h = (n−1)·p`, the result is `sorted[floor(h)] + frac(h) ·
-/// (sorted[ceil(h)] − sorted[floor(h)])`. This is the numpy default
-/// and the declared method label of this package.
-pub fn quantile(values: &[f64], probability: f64) -> Result<Estimate, String> {
-    validated(values, "quantile")?;
-    if !(0.0..=1.0).contains(&probability) {
-        return Err(format!(
-            "{E_STATS_PROB}: quantile probability {probability} is outside [0, 1]"
-        ));
-    }
-    let mut sorted = values.to_vec();
-    sorted.sort_by(|a, b| a.total_cmp(b));
-    let n = sorted.len();
-    let h = (n - 1) as f64 * probability;
-    let lower = h.floor() as usize;
-    let upper = h.ceil() as usize;
-    let fraction = h - h.floor();
-    let value = if lower == upper {
-        sorted[lower]
-    } else {
-        sorted[lower] + fraction * (sorted[upper] - sorted[lower])
-    };
-    Ok(Estimate {
-        value,
-        method: "quantile_type7",
-        n,
-    })
-}
-
-/// Dispatch a descriptive statistic by name. Unknown names refuse
-/// typed — in particular, `p_value` and every inference notion are NOT
-/// descriptive statistics and are never silently computed here.
-pub fn describe(values: &[f64], name: &str) -> Result<Estimate, String> {
-    match name {
-        "mean" => mean(values),
-        "median" => median(values),
-        "variance_sample" => variance(values, VarianceKind::Sample),
-        "variance_population" => variance(values, VarianceKind::Population),
-        other => Err(format!(
-            "{E_STATS_NAME}: `{other}` is not a descriptive statistic; inference \
-             (p-values, regression, significance) lives in packages, not core"
-        )),
-    }
 }
 
 /// Bias declaration of an estimator contract: data, not prose.

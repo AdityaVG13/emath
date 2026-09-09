@@ -32,13 +32,13 @@
 //!
 //! Capsule authority (emath-ehpal.12): the NAMED unit catalog is capsule
 //! data (`std.capability.units.catalog`,
-//! `language/spec/capabilities/units-catalog.emath`) parsed by
+//! `language/spec/capabilities/surface/units-catalog.emath`) parsed by
 //! `seed_table`. The dimensional-analysis group law (`dim_add`/`dim_neg`/
 //! `dim_pow`/`check_homogeneity`/`dim_rank`/`dimensionless_groups`) is
 //! generic Z^7 algebra whose language-surface authority lives in the
 //! `std.capability.units.dimension-*`, `std.capability.units.homogeneity-check`,
 //! and `std.capability.units.dimensionless-groups` capsules
-//! (`language/spec/capabilities/domain-science.emath`), bound to the
+//! (`language/spec/capabilities/surface/domain-science.emath`), bound to the
 //! domain-neutral native kernels in
 //! `emath-exec-ir/src/native_kernels/domain_science.rs`. What remains here
 //! is the generic registry mechanics (alias-as-identity, affine/difference
@@ -250,13 +250,13 @@ impl UnitTable {
     }
 }
 
-/// Capsule-authored unit catalog: `language/spec/capabilities/units-catalog.emath`,
+/// Capsule-authored unit catalog: `language/spec/capabilities/surface/units-catalog.emath`,
 /// FeatureID `std.capability.units.catalog`. The seed table is capsule DATA
 /// parsed here; this module declares no named unit of its own, only the
 /// generic registry mechanics (`UnitTable`, alias-as-identity, affine
 /// typing) and the generic Z^7 dimension-group algebra.
 const UNIT_CATALOG_CAPSULE: &str =
-    include_str!("../../../language/spec/capabilities/units-catalog.emath");
+    include_str!("../../../language/spec/capabilities/surface/units-catalog.emath");
 
 /// Seed table with every SI-family capsule catalog entry (temperature
 /// family with the C13 pre-scale offset order, SI bases, and the declared
@@ -593,7 +593,11 @@ pub fn dim_is_identity(a: Dims) -> bool {
 
 fn gcd(a: i64, b: i64) -> i64 {
     let (a, b) = (a.abs(), b.abs());
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 /// Canonical multiplicative notation over the base symbols: `m^2*kg*s^-2`;

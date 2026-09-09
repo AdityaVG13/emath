@@ -25,7 +25,7 @@
 //! Capsule authority (emath-ehpal.12): the sig-fig count/round policy is
 //! bound capsule-actively as `std.capability.precision.sigfig-count` and
 //! `std.capability.precision.sigfig-round`
-//! (`language/spec/capabilities/domain-science.emath`); the native kernels
+//! (`language/spec/capabilities/surface/domain-science.emath`); the native kernels
 //! `decimal-significance-count` / `decimal-significance-round` call
 //! `count_sig_figs` / `round_to_sig_figs` here, so this module is the
 //! hash-checked generic kernel body, not an independent authority.

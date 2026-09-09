@@ -7,11 +7,11 @@
 //! Until a parser is installed, session parse operations return a typed
 //! refusal (E-SYN-120) instead of failing silently.
 
-use crate::Edition;
 use crate::diagnostic::Diagnostics;
 use crate::id::FileId;
 use crate::limits::Limits;
 use crate::tree::SyntaxTree;
+use crate::Edition;
 
 /// Contract implemented by a source-language parser.
 pub trait SourceParser: Send + Sync {

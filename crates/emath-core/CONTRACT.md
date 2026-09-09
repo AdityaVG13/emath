@@ -45,9 +45,10 @@ history.
   `signal.rs`, `codata.rs`, `game_theory.rs`) were deleted on 2026-09-04
   with user authorization (never module-declared; recoverable from git
   history). The narrow root
-  kernel surface consists of `KernelSpecialFn`, `KernelDomainRefusal`,
-  `evaluate_special_kernel`, `kernel_mean`, `kernel_median`, `kernel_quantile`,
-  `kernel_variance`, and the generic deterministic seed values `Seed`,
+  kernel surface consists of `KernelDomainRefusal`,
+  `evaluate_special_kernel` (capsule kernel id, never a domain enum),
+  `evaluate_statistic_kernel` (capsule kernel id, never a named-statistic
+  public API), and the generic deterministic seed values `Seed`,
   `StreamPath`, and `local_stream_seed`.
 - `sigfigs`, `special`, and `units` remain available only as retained generic
   presentation/representation plumbing re-exported at the crate root (for
