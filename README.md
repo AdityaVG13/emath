@@ -5,7 +5,7 @@
 [![Status](https://img.shields.io/badge/status-active%20Rust%20workspace-2ea44f)](#what-exists-now)
 [![Rust](https://img.shields.io/badge/rust-nightly%202026--08--04-b7410e)](rust-toolchain.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Language](https://img.shields.io/badge/docs-language%2Freference-0969da)](language/reference/overview.md)
+[![Language](https://img.shields.io/badge/docs-language-0969da)](language/README.md)
 
 </div>
 
@@ -32,15 +32,15 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 | Gates | `emath check`, `emath build --verify`, `emath artifact check`; demos exit 0 with `ok` |
 | Capstone demos | `cargo xtask demo all` (affine-scorer + semantic-genesis) |
 | Web playground | `emath web` (in-page WASM compiler; Stage 1 subset today) |
-| Providers (Phase 1) | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
-| Docs of record | [`language/reference/`](language/reference/overview.md), [`language/examples/`](language/examples/), [`MANUAL.md`](MANUAL.md) |
+| Providers | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
+| Docs of record | [`language/`](language/README.md), [`language/examples/`](language/examples/), [`MANUAL.md`](MANUAL.md) |
 
 ### Honest boundaries
 
 - **Compiling is not proving.** The pipeline guarantees the artifact matches what you asked for, never that the idea is true. Lean / FrankenLean is planned as hired evidence, not authority.
 - Illustrative README sketches may parse and then return labeled partial results for unimplemented parts (a symbol, a bound, an open hole) with a route to what would compute them. That is expected.
 - There is no crates.io product claim yet. The workspace is the deliverable today.
-- Upstream engines are not absorbed into emath; adapters only, and not consumed yet in Phase 1.
+- Upstream engines are not absorbed into emath; adapters only, and not consumed yet.
 
 ## What emath is not
 
@@ -86,7 +86,7 @@ The shortest path from nothing to a running program:
 
 ```console
 $ emath new hello
-$ emath run hello/src/main.emath
+$ emath run hello/src/main.emath --set x=3
 ```
 
 `emath new hello` writes a manifest and one source file (`src/main.emath`):
@@ -99,7 +99,17 @@ emath function Greeter:
         y = x
 ```
 
-Declare only what you need: `inputs:`, `outputs:`, `goals:`, `exports:`, and `compile:` are optional. A bare input name (`x`) defaults to `Float64`. Definitions are the surface; an omitted `goals:` section evaluates every definition and `emath run` admits, builds, publishes under `target/emath`, and executes the example tests (`emath test <file>` reports them, `emath build <file> [--out <dir>]` publishes without running).
+Declare only what you need: `inputs:`, `outputs:`, `goals:`, `exports:`, and `compile:` are optional. A bare input name (`x`) defaults to `Float64`. `emath run` admits the source and evaluates definitions or source examples on the reference VM. It prints values and saves a checkpoint. Use `emath test <file>` for generated Rust tests. Use `emath build <file> [--out <dir>]` to publish a Rust artifact.
+
+### CLI change: 2026-09-08
+
+`run` and `step` now commit each complete case. Retries reuse saved results; revision locks prevent competing commits. `--cancel-file` stops between cases. Failed definitions retain independent values without turning failure into success.
+
+`run --branch-from <checkpoint> --relation <relation>` keeps changed problems separate from the original target. `run --measure N` records real reference-execution timings, not generated-kernel speedups. [Runtime controls and limits](implementation/CLI_REFERENCE.md#durable-execution-controls-2026-09-08). No mathematical capability or `language/` file changed in this update.
+
+### CLI change: 2026-09-07
+
+`run` now returns mathematical results, not Cargo test output. Its `--out` directory holds saved runs, not generated crates. Existing scripts that need generated Rust tests must use `emath test`. `emath api --json` reports the command interface and verified Language Image features. `step`, `inspect`, and `verify` accept saved run files. [Execution contract](language/reference/diagnostics-and-tooling-contract.md#saved-mathematical-runs).
 
 **Prerequisites:** a nightly Rust toolchain. The repo pins `nightly-2026-08-27` via `rust-toolchain.toml` (with `rustfmt` and `clippy`). Rustup follows it automatically on first build; stable is not supported. Default features and demos are std-only; optional storage, search, and async-runtime features pull the exact dependencies recorded in `forks/UPSTREAM_LOCK.json`.
 
@@ -114,10 +124,10 @@ $ cargo xtask demo all
 
 `cargo xtask demo all` runs both capstones; each prints `ok` and exits 0 on success:
 
-- **affine-scorer**: the Phase 1 vertical slice. Compiles `tests/valid/affine_scorer.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
+- **affine-scorer**: the current vertical slice. Compiles `tests/valid/affine_scorer.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
 - **semantic-genesis**: the G0-G3 pipeline. Parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
 
-Exit criteria: both demos reach their final `ok` lines; the command exits 0. Language contract and CLI surface: start at [`language/reference/overview.md`](language/reference/overview.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
+Exit criteria: both demos reach their final `ok` lines; the command exits 0. Language: start at [`language/README.md`](language/README.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
 
 ## Example
 
@@ -163,9 +173,9 @@ emath policy CachePriority:
 
 What actually runs today is smaller and more concrete than that sketch:
 
-- `emath function` formulas (`tests/valid/square.emath`, `language/examples/intro/hello-square.emath`)
+- `emath function` formulas (`tests/valid/square.emath`, `language/examples/intro/add-exact.emath`)
 - `emath policy` with a constructor (`tests/valid/affine_scorer.emath`)
-- `emath model` ODEs you can `emath simulate` (`language/examples/numerical/explicit-mass-spring.emath`)
+- `emath model` ODEs you can `emath simulate` (`language/examples/numerical/solver-methods.emath`)
 - vectors, matrices, rank-3 tensors, slices, units, and Nat/Int indexes
 
 The rest of the sketch is the target language. The compiler parses all of it and returns the parts it cannot run yet as labeled symbols, bounds, or open holes, with a route to what would compute them. That is expected. Compiling is not proving.
@@ -222,7 +232,7 @@ $ emath web
 Everything in the pane executes in-page through a C-ABI WASM build of the compiler (no server round-trips, no cargo, nothing leaves the machine):
 
 - **Check / Plan / Intent Graph / Generate Rust / Format**: the same deterministic pipeline as the CLI.
-- **Run**: executes example tests through a strict-f64 interpreter over the lowered execution IR, honestly labeled `interpreted-strict-f64`. The compiled-Rust tier (`emath run` / `emath test`) remains the native lane; agreement between the two tiers is checked differentially, not assumed.
+- **Run**: executes example tests through a strict-f64 interpreter over the lowered execution IR, honestly labeled `interpreted-strict-f64`. `emath run` returns reference-VM results in the terminal. `emath test` runs generated Rust tests. Agreement between the tiers requires a separate comparison.
 - **Worked examples**: an `example` with only `given` bindings (no `expect`) is not an error: it computes and displays the values, claiming nothing. Add an `expect` and it becomes a test with a pass/fail verdict.
 
 Edit the source, hit Run, watch the values move. That loop is the point. A lone expression or assignment in the pane (`y = x * x`, `3 * 7 + 1`) is wrapped to a declaration (the wrapped text is shown, not hidden) and declared inputs appear as fields you can wiggle without editing source.
@@ -233,7 +243,7 @@ emath is built on the shoulders of giants. When a capability already exists in a
 
 emath owns what makes it distinct: its language, semantic IR, goals, evidence model, artifact format, and runtime outcome contract. For anything already done well elsewhere, emath calls out through an adapter rather than duplicating it.
 
-Adapters, honest status (Phase 1 is std-only; no upstream engine is consumed yet, as in-tree adapter crates ship native stand-ins):
+Adapters, honest status (std-only today; no upstream engine is consumed yet, as in-tree adapter crates ship native stand-ins):
 
 ```text
 Dew (in-tree)          scalar strict-f64 mapping + Rust source/token backends
@@ -276,7 +286,11 @@ The core toolchain is Rust-first. Optional providers may use other implementatio
 
 | Doc | Role |
 |-----|------|
-| [`language/reference/overview.md`](language/reference/overview.md) | Normative language contract (start here) |
+| [`language/README.md`](language/README.md) | Language home (start here) |
+| [`language/spec/`](language/spec/README.md) | Authored Feature Capsules |
+| [`language/CAPABILITY.md`](language/CAPABILITY.md) | What parses, admits, and computes |
+| [`language/AGENTS.md`](language/AGENTS.md) | How to extend the language |
+| [`language/reference/overview.md`](language/reference/overview.md) | Normative syntax and semantics |
 | [`language/examples/`](language/examples/) | Runnable programs by category |
 | [`MANUAL.md`](MANUAL.md) | Operator / developer manual |
 | [`tests/README.md`](tests/README.md) | Test surface and intent |

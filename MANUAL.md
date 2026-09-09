@@ -498,8 +498,11 @@ Verify, plan, and execute `.emath` files from the command line:
 # Check syntax and semantic types
 $ emath check path/to/file.emath
 
-# Execute tests through the interpreter
-$ emath run path/to/file.emath
+# Return mathematical values and a checkpoint
+$ emath run path/to/file.emath --json
+
+# Discover installed features and command arguments
+$ emath api --json
 
 # Synthesize goal execution plan
 $ emath plan path/to/file.emath
