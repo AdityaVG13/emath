@@ -5,7 +5,8 @@
 [![Status](https://img.shields.io/badge/status-active%20Rust%20workspace-2ea44f)](#what-exists-now)
 [![Rust](https://img.shields.io/badge/rust-nightly%202026--08--04-b7410e)](rust-toolchain.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Language](https://img.shields.io/badge/docs-language-0969da)](language/README.md)
+[![Manual](https://img.shields.io/badge/docs-manual-0969da)](MANUAL.md)
+[![Constitution](https://img.shields.io/badge/docs-constitution-blue)](implementation/CONSTITUTION.md)
 
 </div>
 
@@ -33,7 +34,7 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 | Capstone demos | `cargo xtask demo all` (affine-scorer + semantic-genesis) |
 | Web playground | `emath web` (in-page WASM compiler; Stage 1 subset today) |
 | Providers | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
-| Docs of record | [`language/`](language/README.md), [`language/examples/`](language/examples/), [`MANUAL.md`](MANUAL.md) |
+| Docs of record | [`MANUAL.md`](MANUAL.md), [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md), [`examples/`](examples/README.md) |
 
 ### Honest boundaries
 
@@ -127,7 +128,7 @@ $ cargo xtask demo all
 - **affine-scorer**: the current vertical slice. Compiles `tests/valid/affine_scorer.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
 - **semantic-genesis**: the G0-G3 pipeline. Parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
 
-Exit criteria: both demos reach their final `ok` lines; the command exits 0. Language: start at [`language/README.md`](language/README.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
+Exit criteria: both demos reach their final `ok` lines; the command exits 0. Manual: [`MANUAL.md`](MANUAL.md). Architecture: [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
 
 ## Example
 
@@ -173,9 +174,9 @@ emath policy CachePriority:
 
 What actually runs today is smaller and more concrete than that sketch:
 
-- `emath function` formulas (`tests/valid/square.emath`, `language/examples/intro/add-exact.emath`)
+- `emath function` formulas (`tests/valid/square.emath`, `tests/fixtures/language/`)
 - `emath policy` with a constructor (`tests/valid/affine_scorer.emath`)
-- `emath model` ODEs you can `emath simulate` (`language/examples/numerical/solver-methods.emath`)
+- `emath model` ODEs you can `emath simulate` (`tests/fixtures/language/`)
 - vectors, matrices, rank-3 tensors, slices, units, and Nat/Int indexes
 
 The rest of the sketch is the target language. The compiler parses all of it and returns the parts it cannot run yet as labeled symbols, bounds, or open holes, with a route to what would compute them. That is expected. Compiling is not proving.
@@ -216,7 +217,7 @@ Implemented today:
 | `emath architecture` / `help` | Stable docs entry |
 | `emath web` | Localhost web playground (Ctrl-C to stop) |
 
-Also implemented: `serve` (alias for `web`), `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider list|inspect|test`, `fork status|sync`, `agent check|plan|build`, and `import modelica`. Planned (see `language/reference/diagnostics-and-tooling-contract.md`): `migrate`.
+Also implemented: `serve` (alias for `web`), `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider list|inspect|test`, `fork status|sync`, `agent check|plan|build`, and `import modelica`. Planned (see [`MANUAL.md`](MANUAL.md)): `migrate`.
 
 ## Web playground
 
@@ -272,9 +273,9 @@ Answers are labeled: a value, a bound, a symbol, or an open hole. Worlds stay as
 
 Unsupported surface is named and routed, never silently guessed. Compiling is not proving. Partial sketches are welcome; incomplete capability is not disguised as success.
 
-### `language/` is the source of truth
+### Capability specification is the source of truth
 
-If a capability is not written down in `language/`, it does not exist for the user. The reference, examples, and grammar stay current with every admitted or refused feature.
+Every mathematical capability, algorithm, and syntactic contract is authored as a declarative capability capsule. Rust implements the thin universal nucleus (parse, semantic admission, IR lowering, VM, and code generation), while mathematical theories, solvers, and contracts compile against that nucleus.
 
 ## Why Rust
 
@@ -286,16 +287,16 @@ The core toolchain is Rust-first. Optional providers may use other implementatio
 
 | Doc | Role |
 |-----|------|
-| [`language/README.md`](language/README.md) | Language home (start here) |
-| [`language/spec/`](language/spec/README.md) | Authored Feature Capsules |
-| [`language/CAPABILITY.md`](language/CAPABILITY.md) | What parses, admits, and computes |
-| [`language/AGENTS.md`](language/AGENTS.md) | How to extend the language |
-| [`language/reference/overview.md`](language/reference/overview.md) | Normative syntax and semantics |
-| [`language/examples/`](language/examples/) | Runnable programs by category |
-| [`MANUAL.md`](MANUAL.md) | Operator / developer manual |
-| [`tests/README.md`](tests/README.md) | Test surface and intent |
-| [`SECURITY.md`](SECURITY.md) | Security notes |
-| [`AGENTS.md`](AGENTS.md) | Agent operating contract for this repo |
+| [`MANUAL.md`](MANUAL.md) | Operator and developer manual |
+| [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md) | Formal architectural principles and laws |
+| [`implementation/CRATE_MAP.md`](implementation/CRATE_MAP.md) | Workspace layout and crate roles |
+| [`implementation/PUBLIC_API_INVENTORY.md`](implementation/PUBLIC_API_INVENTORY.md) | Public interfaces and ABI inventory |
+| [`implementation/ERROR_CODES.md`](implementation/ERROR_CODES.md) | Compiler error code specifications |
+| [`examples/README.md`](examples/README.md) | Host integration examples |
+| [`web/README.md`](web/README.md) | WebAssembly interactive workbench |
+| [`tests/README.md`](tests/README.md) | Test surface and verification intent |
+| [`SECURITY.md`](SECURITY.md) | Security policy |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution guidelines |
 
 ## Contributing
 

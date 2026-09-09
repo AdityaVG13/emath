@@ -1,10 +1,10 @@
 # ELP; emath Language Proposals
 
 Every capability change to the emath language lands through an ELP. The
-pipeline makes the finish-line gates of
-[`language/reference/language-acceptance.md`](../language/reference/language-acceptance.md)
-(chapter 16) part of the proposal itself, so an accepted syntax change
-arrives already satisfying its slice of the twelve gates; never as a
+pipeline enforces formal finish-line acceptance gates
+(documented in [`../MANUAL.md`](../MANUAL.md) and [`../implementation/CONSTITUTION.md`](../implementation/CONSTITUTION.md))
+as part of the proposal itself, so an accepted syntax change
+arrives already satisfying its slice of the verification gates; never as a
 silent drift between grammar, reference, examples, and tests.
 
 ## Lifecycle
