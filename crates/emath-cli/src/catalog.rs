@@ -6,8 +6,28 @@ use crate::CliExit;
 /// Production `emath` tokens (compiler / user surface). Extracted tokens live
 /// in `EXTRACTED_COMMANDS` and are served by `emath-lab`.
 pub const COMMANDS: &[&str] = &[
-    "api", "check", "plan", "planner", "build", "simulate", "new", "fmt", "migrate", "explain",
-    "run", "search", "step", "test", "verify", "inspect", "diff", "doctor", "help", "version",
+    "api",
+    "check",
+    "plan",
+    "planner",
+    "build",
+    "simulate",
+    "new",
+    "fmt",
+    "migrate",
+    "explain",
+    "run",
+    "search",
+    "step",
+    "test",
+    "verify",
+    "inspect",
+    "diff",
+    "doctor",
+    "capabilities",
+    "robot-docs",
+    "help",
+    "version",
 ];
 
 /// Tokens moved to `emath-lab` (emath-qbk53). Production `emath` hints here.
@@ -41,8 +61,6 @@ pub const EXTRACTED_COMMANDS: &[&str] = &[
     "provider",
     "fork",
     "agent",
-    "capabilities",
-    "robot-docs",
 ];
 
 /// One-line usage after `emath` for a known command.
@@ -271,27 +289,7 @@ pub fn command_help_text(command: &str) -> Option<String> {
 /// emit the same deterministic document.
 #[must_use]
 pub fn capabilities_json() -> String {
-    let mut commands = Vec::new();
-    for name in COMMANDS {
-        let mut entry = emath_artifact::JsonWriter::object();
-        entry.string("name", name);
-        entry.string("usage", command_usage(name).unwrap_or(name));
-        entry.string("summary", command_summary(name).unwrap_or(""));
-        commands.push(entry.finish());
-    }
-    let mut codes = emath_artifact::JsonWriter::object();
-    codes.string("0", "ok");
-    codes.string("1", "refused or admission/build diagnostics");
-    codes.string("2", "usage or io error");
-    let mut out = emath_artifact::JsonWriter::object();
-    out.string("schema", "emath.capabilities");
-    out.string("tool", "emath");
-    out.string("version", env!("CARGO_PKG_VERSION"));
-    out.string("contract", "emath-cli Phase 1 + Semantic Genesis G0-G3");
-    out.object_field("exit_codes", codes.finish().trim());
-    out.strings("env_vars", &["EMATH_WEB_DIST".to_string()]);
-    out.objects("commands", &commands);
-    out.finish()
+    crate::capabilities::capabilities_json()
 }
 
 /// Paste-ready handbook for agents. No timestamps, no host paths.
@@ -404,7 +402,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "fork" => &["--dry-run", "--json", "--help", "-h"],
-        "robot-docs" => &["--guide", "--help", "-h"],
+        "robot-docs" => &["--guide", "guide", "--json", "--help", "-h"],
         "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
         "fmt" => &["--value", "--sf", "--from", "--format", "--help", "-h"],
         "migrate" => &[

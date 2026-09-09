@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod catalog;
+pub mod capabilities;
 pub mod diagnostics;
 pub mod execution;
 pub mod language_cmd;
