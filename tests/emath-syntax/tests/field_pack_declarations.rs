@@ -19,10 +19,8 @@
 
 use emath_core::limits::Limits;
 use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
 
 fn session() -> CompilerSession {
-    install_source_parser();
     CompilerSession::new(Limits::default())
 }
 
@@ -38,49 +36,60 @@ fn spectral_pack_source() -> String {
     "package community\n\nemath field_pack spectral_style:\n    exports:\n        cell softmax\n        theory spectral\n    metadata:\n        description reference spectral pack\n".to_string()
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn pack_admits_and_lists_exports() {
+fn field_pack_declarations() {
+    boot();
+    let mut probe = Probe::new("`emath field_pack` / `genome` package declaration — syntax + admission. The law: packs are how cells/theories/methods/worlds SHIP one declaration kind");
+    probe.case("pack_admits_and_lists_exports", |p| {
+    let f0 = p.failures().len();
+
     // Happy path: `community::spectral-style` — the package line names
     // `community`, the declaration names the pack; the admission lists
     // the exports in source order as artifact data.
     let mut session = session();
     let result = session.check_owned("spectral-style", &spectral_pack_source());
     let codes = error_codes(&result);
-    assert!(
-        codes.is_empty(),
+    p.demand("1",codes.is_empty(), format!(
         "the pack fixture admits with no errors, got {codes:?}"
-    );
-    assert_eq!(result.package.field_packs.len(), 1, "one pack entry");
+    ));
+    if p.failures().len() != f0 { return; }
+    p.eq("2", result.package.field_packs.len(), 1);
     let pack = &result.package.field_packs[0];
-    assert_eq!(pack.name, "spectral_style");
-    assert_eq!(
-        pack.exports,
-        vec![
+    p.demand("3", (pack.name) == ("spectral_style"), format!("expected {:?}, got {:?}", ("spectral_style"), (pack.name)));
+    if p.failures().len() != f0 { return; }
+    p.demand("4", (pack.exports) == (vec![
             ("cell".to_string(), "softmax".to_string()),
             ("theory".to_string(), "spectral".to_string()),
-        ],
-        "exports list in source order"
-    );
-}
+        ]), format!("expected {:?}, got {:?}", (vec![
+            ("cell".to_string(), "softmax".to_string()),
+            ("theory".to_string(), "spectral".to_string()),
+        ]), (pack.exports)));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn metadata_only_pack_admits() {
+    });
+    probe.case("metadata_only_pack_admits", |p| {
+    let f0 = p.failures().len();
+
     // Boundary: a minimal pack that exports nothing but metadata admits
     // (nothing blocks on rich exports).
     let source = "package community\n\nemath field_pack minimal:\n    metadata:\n        description exports nothing yet\n".to_string();
     let mut session = session();
     let result = session.check_owned("minimal-pack", &source);
     let codes = error_codes(&result);
-    assert!(codes.is_empty(), "metadata-only pack admits, got {codes:?}");
-    assert_eq!(result.package.field_packs.len(), 1);
-    assert!(
-        result.package.field_packs[0].exports.is_empty(),
+    p.demand("1",codes.is_empty(), format!( "metadata-only pack admits, got {codes:?}"));
+    if p.failures().len() != f0 { return; }
+    p.eq("2", result.package.field_packs.len(), 1);
+    p.demand("3",result.package.field_packs[0].exports.is_empty(), format!(
         "no exports claimed"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn pack_cannot_inject_parser_keywords() {
+    });
+    probe.case("pack_cannot_inject_parser_keywords", |p| {
+    let f0 = p.failures().len();
+
     // NEGATIVE (the seed's silent-success): a pack body section that is
     // not in the closed table — here a lexer/keyword injection — refuses
     // typed. The section table is closed: pack source cannot add a
@@ -89,36 +98,36 @@ fn pack_cannot_inject_parser_keywords() {
     let mut session = session();
     let result = session.check_owned("injector", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.iter().any(|code| code == "E-SYN-101"),
+    p.demand("1",codes.iter().any(|code| code == "E-SYN-101"), format!(
         "a `keywords:` injection section must refuse, got {codes:?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/field_pack_declarations.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-SYN-101"),
+    p.demand("2",expect_line.contains("E-SYN-101"), format!(
         "seed expects the injection-section refusal, found: {expect_line}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn no_custom_fallthrough() {
+    });
+    probe.case("no_custom_fallthrough", |p| {
+    let f0 = p.failures().len();
+
     // The pack is never lowered into runnable meaning: it must not
     // appear in `package.declarations` (no hidden desugar, no silent
     // custom→strict fallthrough — the pack is artifact data only).
     let mut session = session();
     let result = session.check_owned("fallthrough", &spectral_pack_source());
     let codes = error_codes(&result);
-    assert!(
-        codes.is_empty(),
+    p.demand("1",codes.is_empty(), format!(
         "the admission itself is clean, got {codes:?}"
-    );
-    assert!(
-        result.package.declarations.is_empty(),
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",result.package.declarations.is_empty(), format!(
         "a pack must not become a package declaration: {:?}",
         result
             .package
@@ -126,39 +135,45 @@ fn no_custom_fallthrough() {
             .iter()
             .map(|declaration| declaration.name.leaf())
             .collect::<Vec<_>>()
-    );
-    assert!(
-        !result
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",!result
             .package
             .field_packs
             .iter()
-            .any(|pack| pack.name == "spectral_style" && pack.exports.is_empty()),
+            .any(|pack| pack.name == "spectral_style" && pack.exports.is_empty()), format!(
         "the admitted pack keeps its declared exports"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn field_pack_fixture_preserves_declared_exports() {
+    });
+    probe.case("field_pack_fixture_preserves_declared_exports", |p| {
+    let f0 = p.failures().len();
+
     let source =
         include_str!("../../../tests/fixtures/language/intro/field-pack-declarations.emath");
     let mut session = session();
     let result = session.check_owned("example", source);
     let codes = error_codes(&result);
-    assert!(
-        codes.is_empty(),
+    p.demand("1",codes.is_empty(), format!(
         "field-pack fixture must typecheck, got {codes:?} (messages: {:?})",
         result
             .diagnostics
             .errors()
             .map(|diagnostic| diagnostic.message.clone())
             .collect::<Vec<_>>()
-    );
-    assert_eq!(result.package.field_packs.len(), 1);
-    assert_eq!(
-        result.package.field_packs[0].exports,
-        vec![
+    ));
+    if p.failures().len() != f0 { return; }
+    p.eq("2", result.package.field_packs.len(), 1);
+    p.demand("3", (result.package.field_packs[0].exports) == (vec![
             ("cell".to_string(), "softmax".to_string()),
             ("theory".to_string(), "spectral".to_string()),
-        ]
-    );
+        ]), format!("expected {:?}, got {:?}", (vec![
+            ("cell".to_string(), "softmax".to_string()),
+            ("theory".to_string(), "spectral".to_string()),
+        ]), (result.package.field_packs[0].exports)));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

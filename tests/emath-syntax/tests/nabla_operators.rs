@@ -30,9 +30,9 @@ use emath_syntax::parse_str;
 
 const MOUNT: &str = "use sci::physics::notation::nabla\n\n";
 
-fn def_expr_of(source: &str) -> ExprKind {
+fn def_expr_of(p: &mut Probe, source: &str) -> ExprKind {
     let (tree, diags) = parse_str(source);
-    assert!(!diags.has_errors(), "{diags:?}");
+    p.demand("parse", !diags.has_errors(), format!("{diags:?}"));
     let Some(emath_core::tree::Item::Declaration(decl)) = tree.items.last() else {
         panic!("declaration expected");
     };
@@ -52,7 +52,7 @@ fn def_expr_of(source: &str) -> ExprKind {
     }
 }
 
-fn assert_target(expr: &ExprKind, expected: &[&str], arity: usize) {
+fn assert_target(p: &mut Probe, expr: &ExprKind, expected: &[&str], arity: usize) {
     let ExprKind::Call { function, args } = expr else {
         panic!("call expected, got {expr:?}")
     };
@@ -60,63 +60,67 @@ fn assert_target(expr: &ExprKind, expected: &[&str], arity: usize) {
         panic!("call target must be a path, got {:?}", function.kind)
     };
     let got: Vec<&str> = segments.iter().map(String::as_str).collect();
-    assert_eq!(
-        got, expected,
-        "desugar target mismatch for {expected:?}, got {got:?}"
-    );
-    assert_eq!(args.len(), arity, "desugar arity mismatch for {expected:?}");
+    p.eq("eq", got, expected);
+    p.eq("arity", args.len(), arity);
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn unmounted_nabla_glyph_refuses_naming_the_pack() {
+fn nabla_operators() {
+    boot();
+    let mut probe = Probe::new("Nabla operators pack with world-dependent meaning (spec 04 section 2.3) — parser pack-mount slice. `use sci::physics::notation::nabla` mounts the pack");
+    probe.case("unmounted_nabla_glyph_refuses_naming_the_pack", |p| {
+    let f0 = p.failures().len();
+
     // Opt-in only: without the use line the glyph is refused with the
     // pack import named — never a silent unknown-ident.
     let (_, diags) = parse_str(
         "emath function f:\n    inputs:\n        u: Float64\n        dx: Float64\n    definitions:\n        g = ∇(u, dx)\n",
     );
-    assert!(
-        diags.errors().any(|error| error.code == "E-SYN-101"
-            && error.message.contains("sci::physics::notation::nabla")),
+    p.demand("1",diags.errors().any(|error| error.code == "E-SYN-101"
+            && error.message.contains("sci::physics::notation::nabla")), format!(
         "unmounted ∇ must refuse E-SYN-101 naming the pack, got {:?}",
         diags.errors().map(|e| e.code.clone()).collect::<Vec<_>>()
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn nabla_grad_desugars_to_gradient_call() {
+    });
+    probe.case("nabla_grad_desugars_to_gradient_call", |p| {
+
     // `∇` is the Vector-field gradient (1D); fields for the rank-2 forms
     // are Matrix values — shapes mirror the real builtins exactly.
-    let expr = def_expr_of(&format!(
+    let expr = def_expr_of(p, &format!(
         "{MOUNT}emath function f:\n    inputs:\n        u: Float64\n        dx: Float64\n    definitions:\n        g = ∇(u, dx)\n"
     ));
-    assert_target(&expr, &["core", "pde", "gradient"], 2);
-}
+    assert_target(p, &expr, &["core", "pde", "gradient"], 2);
 
-#[test]
-fn nabla_lap_desugars_to_laplacian_2d_call() {
+    });
+    probe.case("nabla_lap_desugars_to_laplacian_2d_call", |p| {
+
     // ∇² on the stencil lane is the discrete 5-point Laplacian over a
     // Matrix field; ONE explicit cell-width argument (2D is implicit in
     // the field shape).
-    let expr = def_expr_of(&format!(
+    let expr = def_expr_of(p, &format!(
         "{MOUNT}emath function f:\n    inputs:\n        u: Float64\n        dx: Float64\n    definitions:\n        l = ∇²(u, dx)\n"
     ));
-    assert_target(&expr, &["core", "pde", "laplacian_2d"], 2);
-}
+    assert_target(p, &expr, &["core", "pde", "laplacian_2d"], 2);
 
-#[test]
-fn nabla_div_desugars_to_div_2d_call() {
-    let expr = def_expr_of(&format!(
+    });
+    probe.case("nabla_div_desugars_to_div_2d_call", |p| {
+
+    let expr = def_expr_of(p, &format!(
         "{MOUNT}emath function f:\n    inputs:\n        vx: Float64\n        vy: Float64\n        dx: Float64\n    definitions:\n        d = ∇·(vx, vy, dx)\n"
     ));
-    assert_target(&expr, &["core", "pde", "div_2d"], 3);
-}
+    assert_target(p, &expr, &["core", "pde", "div_2d"], 3);
 
-#[test]
-fn nabla_curl_2d_desugars_to_component_sugar() {
+    });
+    probe.case("nabla_curl_2d_desugars_to_component_sugar", |p| {
+
     // 2D scalar curl = ∂v/∂x − ∂u/∂y, expressed through existing
     // component-gradient builtins with one shared cell width —
     // computable today, no new op.
-    let expr = def_expr_of(&format!(
+    let expr = def_expr_of(p, &format!(
         "{MOUNT}emath function f:\n    inputs:\n        u: Float64\n        v: Float64\n        dx: Float64\n    definitions:\n        c = ∇×(u, v, dx)\n"
     ));
     let ExprKind::Binary {
@@ -127,33 +131,37 @@ fn nabla_curl_2d_desugars_to_component_sugar() {
     else {
         panic!("curl 2D must desugar to a subtraction, got {expr:?}")
     };
-    assert_target(&left.kind, &["core", "pde", "gradient_2d_x"], 2);
-    assert_target(&right.kind, &["core", "pde", "gradient_2d_y"], 2);
-}
+    assert_target(p, &left.kind, &["core", "pde", "gradient_2d_x"], 2);
+    assert_target(p, &right.kind, &["core", "pde", "gradient_2d_y"], 2);
 
-#[test]
-fn nabla_curl_3d_arity_refuses_typed() {
+    });
+    probe.case("nabla_curl_3d_arity_refuses_typed", |p| {
+    let f0 = p.failures().len();
+
     // The 3D curl OperatorDef is pending in the discrete stencil world;
     // a 4-argument ∇× (three fields + spacing) refuses with the boundary
     // named, never a silent wrong-world computation.
     let (_, diags) = parse_str(&format!(
         "{MOUNT}emath function f:\n    inputs:\n        u: Float64\n        v: Float64\n        w: Float64\n        dx: Float64\n    definitions:\n        c = ∇×(u, v, w, dx)\n"
     ));
-    assert!(
-        diags
+    p.demand("1",diags
             .errors()
-            .any(|error| error.code == "E-SYN-101" && error.message.contains("3D curl")),
+            .any(|error| error.code == "E-SYN-101" && error.message.contains("3D curl")), format!(
         "3D-arity ∇× must refuse typed naming the pending OperatorDef, got {:?}",
         diags.errors().map(|e| e.code.clone()).collect::<Vec<_>>()
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn unmounted_ascii_builtins_still_admit_as_plain_calls() {
+    });
+    probe.case("unmounted_ascii_builtins_still_admit_as_plain_calls", |p| {
+
     // The pack gates GLYPHS only; the direct builtin spellings
     // (`laplacian_2d(u, dx)`) are untouched plain calls.
-    let expr = def_expr_of(
+    let expr = def_expr_of(p, 
         "emath function f:\n    inputs:\n        u: Float64\n        dx: Float64\n    definitions:\n        l = laplacian_2d(u, dx)\n",
     );
-    assert_target(&expr, &["laplacian_2d"], 2);
+    assert_target(p, &expr, &["laplacian_2d"], 2);
+
+    });
+    probe.finish();
 }

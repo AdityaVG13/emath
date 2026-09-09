@@ -1,56 +1,63 @@
 //! `emath method` language kind: algorithm + falsifier, proposal-only.
 
-use emath_core::limits::Limits;
 use emath_ir::{ClaimVerdict, EvidenceLevel};
-use emath_sema::CompilerSession;
-use emath_syntax::{install_source_parser, parse_str};
+use emath_syntax::{parse_str};
 
 fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
+    Source::from_str(name, source).check()
 }
 
+use emath_test_harness::{Probe, Source, boot};
+
 #[test]
-fn method_kind_admits_as_proposal_only() {
+fn method_declarations() {
+    boot();
+    let mut probe = Probe::new("`emath method` language kind: algorithm + falsifier, proposal-only.");
+    probe.case("method_kind_admits_as_proposal_only", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/fixtures/language/intro/method-declarations.emath");
     let (_, parse_diagnostics) = parse_str(source);
-    assert!(!parse_diagnostics.has_errors());
+    p.demand("1",!parse_diagnostics.has_errors(), stringify!(!parse_diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
 
     let checked = check("method-kind", source);
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("2",!checked.diagnostics.has_errors(), format!(
         "{:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert_eq!(
-        checked
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3", (checked
             .package
             .declarations
             .iter()
             .map(|declaration| declaration.name.leaf())
-            .collect::<Vec<_>>(),
-        ["RungeKutta4"]
-    );
+            .collect::<Vec<_>>()) == (["RungeKutta4"]), format!("expected {:?}, got {:?}", (["RungeKutta4"]), (checked
+            .package
+            .declarations
+            .iter()
+            .map(|declaration| declaration.name.leaf())
+            .collect::<Vec<_>>())));
+    if p.failures().len() != f0 { return; }
     let method = &checked.package.declarations[0];
-    assert_eq!(method.kind_label, "method");
-    assert_eq!(method.definitions.len(), 0);
-    assert_eq!(method.evidence.len(), 1);
+    p.demand("4", (method.kind_label) == ("method"), format!("expected {:?}, got {:?}", ("method"), (method.kind_label)));
+    if p.failures().len() != f0 { return; }
+    p.eq("5", method.definitions.len(), 0);
+    p.eq("6", method.evidence.len(), 1);
     let claim = &method.evidence[0];
-    assert_eq!(claim.verdict, ClaimVerdict::NotRun);
-    assert_eq!(claim.level, EvidenceLevel::E1);
-    assert_eq!(claim.checker, None);
-    assert_eq!(claim.falsifiers.len(), 1);
+    p.eq("7", claim.verdict, ClaimVerdict::NotRun);
+    p.eq("8", claim.level, EvidenceLevel::E1);
+    p.demand("9", claim.checker == None, format!("expected None, got {:?}", (claim.checker)));
+    if p.failures().len() != f0 { return; }
+    p.eq("10", claim.falsifiers.len(), 1);
 
     let repeated = check("method-kind-repeat", source);
-    assert_eq!(
-        checked.package.meaning_id(&[]).unwrap(),
-        repeated.package.meaning_id(&[]).unwrap()
-    );
-}
+    p.eq("11", checked.package.meaning_id(&[]).unwrap(), repeated.package.meaning_id(&[]).unwrap());
 
-#[test]
-fn methods_optional_and_refusals() {
+    });
+    probe.case("methods_optional_and_refusals", |p| {
+    let f0 = p.failures().len();
+
     // Methods are not required on ordinary files: a plain function with no
     // method involvement still admits.
     let plain = check(
@@ -65,24 +72,27 @@ emath function Add:
         y = x + x
 ",
     );
-    assert!(
-        !plain.diagnostics.has_errors(),
+    p.demand("1",!plain.diagnostics.has_errors(), format!(
         "{:?}",
         plain.diagnostics.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
 
     // A method cannot raise its own evidence authority (fixture refuses).
     let invalid = check(
         "invalid-method",
         include_str!("../../../tests/invalid/method_declarations.emath"),
     );
-    assert!(
-        invalid
+    p.demand("2",invalid
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-KIND-027")
-    );
-    assert!(invalid.package.declarations.is_empty());
+            .any(|error| error.code == "E-KIND-027"), stringify!(invalid
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-KIND-027")));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",invalid.package.declarations.is_empty(), stringify!(invalid.package.declarations.is_empty()));
+    if p.failures().len() != f0 { return; }
 
     // The schema requires exactly one algorithm and one falsifier section.
     let incomplete = check(
@@ -95,13 +105,16 @@ emath method RungeKutta4:
         condition: \"step-doubling residual exceeds tolerance\"
 ",
     );
-    assert!(
-        incomplete
+    p.demand("4",incomplete
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-KIND-003")
-    );
-    assert!(incomplete.package.declarations.is_empty());
+            .any(|error| error.code == "E-KIND-003"), stringify!(incomplete
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-KIND-003")));
+    if p.failures().len() != f0 { return; }
+    p.demand("5",incomplete.package.declarations.is_empty(), stringify!(incomplete.package.declarations.is_empty()));
+    if p.failures().len() != f0 { return; }
 
     // Without the schema import the kind is an unknown custom kind.
     let missing_kind = check(
@@ -114,11 +127,17 @@ emath method RungeKutta4:
         condition: \"step-doubling residual exceeds tolerance\"
 ",
     );
-    assert!(
-        missing_kind
+    p.demand("6",missing_kind
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-KIND-100")
-    );
-    assert!(missing_kind.package.declarations.is_empty());
+            .any(|error| error.code == "E-KIND-100"), stringify!(missing_kind
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-KIND-100")));
+    if p.failures().len() != f0 { return; }
+    p.demand("7",missing_kind.package.declarations.is_empty(), stringify!(missing_kind.package.declarations.is_empty()));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

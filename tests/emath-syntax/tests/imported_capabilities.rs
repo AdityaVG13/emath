@@ -2,13 +2,21 @@
 
 use emath_core::limits::Limits;
 use emath_sema::CompilerSession;
-use emath_syntax::{install_source_parser, parse_str};
+use emath_syntax::{parse_str};
+
+use emath_test_harness::{Probe, boot};
 
 #[test]
-fn imported_capability_schema_admits() {
+fn imported_capabilities() {
+    boot();
+    let mut probe = Probe::new("Imported `emath capability` schema, without a parser fork.");
+    probe.case("imported_capability_schema_admits", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/fixtures/language/intro/imported-capabilities.emath");
     let (tree, parse_diagnostics) = parse_str(source);
-    assert!(!parse_diagnostics.has_errors());
+    p.demand("1",!parse_diagnostics.has_errors(), stringify!(!parse_diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
     let declaration = tree
         .items
         .iter()
@@ -19,18 +27,20 @@ fn imported_capability_schema_admits() {
             _ => None,
         })
         .expect("Softmax declaration");
-    assert_eq!(declaration.item_kind, "custom");
-    assert_eq!(declaration.as_kind, "capability");
+    p.demand("2", (declaration.item_kind) == ("custom"), format!("expected {:?}, got {:?}", ("custom"), (declaration.item_kind)));
+    if p.failures().len() != f0 { return; }
+    p.demand("3", (declaration.as_kind) == ("capability"), format!("expected {:?}, got {:?}", ("capability"), (declaration.as_kind)));
+    if p.failures().len() != f0 { return; }
 
-    install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("capability", source);
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("4",!checked.diagnostics.has_errors(), format!(
         "imported capability schema must admit: {:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert_eq!(checked.package.declarations[0].kind_label, "capability");
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("5", (checked.package.declarations[0].kind_label) == ("capability"), format!("expected {:?}, got {:?}", ("capability"), (checked.package.declarations[0].kind_label)));
+    if p.failures().len() != f0 { return; }
     let first_id = checked
         .package
         .meaning_id(&[])
@@ -40,19 +50,24 @@ fn imported_capability_schema_admits() {
         .package
         .meaning_id(&[])
         .expect("repeat capability MeaningID");
-    assert_eq!(first_id, second_id);
-}
+    p.eq("6", &first_id, &second_id);
 
-#[test]
-fn unknown_capability_section_refuses() {
+    });
+    probe.case("unknown_capability_section_refuses", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/invalid/imported_capabilities.emath");
-    install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("capability-invalid", source);
-    assert!(
-        checked
+    p.demand("1",checked
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-SYN-101")
-    );
+            .any(|error| error.code == "E-SYN-101"), stringify!(checked
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-SYN-101")));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

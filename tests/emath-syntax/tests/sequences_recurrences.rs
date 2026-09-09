@@ -6,15 +6,9 @@ use emath_exec_ir::interp::Value;
 use emath_exec_ir::runner::run_package;
 use emath_sema::session::CompilerSession;
 
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
 fn check(text: &str, name: &str) -> Vec<String> {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, text);
-    result
+    Source::from_str(name, text)
+        .check()
         .diagnostics
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
@@ -78,14 +72,13 @@ emath function fibonacci_convolution:
             expect y == 10
 ";
 
-fn evaluated_output(text: &str, name: &str, output: &str) -> Value {
-    install_source_parser();
+fn evaluated_output(p: &mut Probe, text: &str, name: &str, output: &str) -> Value {
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned(name, text);
-    assert!(
+    p.demand(
+        "admit",
         !checked.diagnostics.has_errors(),
-        "{:?}",
-        checked.diagnostics.errors().collect::<Vec<_>>()
+        format!("{:?}", checked.diagnostics.errors().collect::<Vec<_>>()),
     );
     let report = run_package(&checked.package);
     report.declarations[0].tests[0]
@@ -95,41 +88,45 @@ fn evaluated_output(text: &str, name: &str, output: &str) -> Value {
         .clone()
 }
 
-#[test]
-fn indexed_fibonacci_recurrence_evaluates() {
-    assert_eq!(
-        evaluated_output(FIB_RECURRENCE, "seq-fibonacci", "y"),
-        Value::F64(55.0)
-    );
-}
+use emath_test_harness::{Probe, Source, boot};
 
 #[test]
-fn non_decreasing_recurrence_refuses() {
+fn sequences_recurrences() {
+    boot();
+    let mut probe = Probe::new("Sequences as values, structurally decreasing indexed recurrences, and generating functions (B07+B33).");
+    probe.case("indexed_fibonacci_recurrence_evaluates", |p| {
+
+    let y = evaluated_output(p, FIB_RECURRENCE, "seq-fibonacci", "y");
+    p.eq("1", y, Value::F64(55.0));
+
+    });
+    probe.case("non_decreasing_recurrence_refuses", |p| {
+    let f0 = p.failures().len();
+
     let source = FIB_RECURRENCE.replace(
         "fib[n] = fib[n-1] + fib[n-2]",
         "fib[n] = fib[n+1] + fib[n-2]",
     );
     let errors = check(&source, "seq-nonterminating");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|error| error.starts_with("E-SEQ-TERMINATION")),
+            .any(|error| error.starts_with("E-SEQ-TERMINATION")), format!(
         "a forward self-reference must refuse termination checking: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn generating_function_extracts_coefficients() {
-    assert_eq!(
-        evaluated_output(GENERATING_FUNCTION, "seq-generating", "y"),
-        Value::F64(55.0)
-    );
-}
+    });
+    probe.case("generating_function_extracts_coefficients", |p| {
 
-#[test]
-fn generating_function_convolution_is_cauchy_product() {
-    assert_eq!(
-        evaluated_output(CONVOLUTION, "seq-convolution", "y"),
-        Value::F64(10.0)
-    );
+    let y = evaluated_output(p, GENERATING_FUNCTION, "seq-generating", "y");
+    p.eq("1", y, Value::F64(55.0));
+
+    });
+    probe.case("generating_function_convolution_is_cauchy_product", |p| {
+
+    let y = evaluated_output(p, CONVOLUTION, "seq-convolution", "y");
+    p.eq("1", y, Value::F64(10.0));
+
+    });
+    probe.finish();
 }

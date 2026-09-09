@@ -17,10 +17,6 @@
 use emath_core::limits::Limits;
 use emath_sema::session::CompilerSession;
 
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
 const OBSERVATIONS_FIXTURE: &str = "\
 emath policy PkRun:
     inputs:
@@ -53,9 +49,15 @@ emath policy PkRun:
             produce rust.library
 ";
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn observations_section_admits_with_obs_rows() {
-    install_source_parser();
+fn observations() {
+    boot();
+    let mut probe = Probe::new("`observations:` sections — read-only measured evidence (spec 04 §5.2). Contracts: - an `observations:` section admits; each `obs` row is a measured");
+    probe.case("observations_section_admits_with_obs_rows", |p| {
+    let f0 = p.failures().len();
+
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("observations-admit", OBSERVATIONS_FIXTURE);
     let errors: Vec<String> = result
@@ -63,15 +65,15 @@ fn observations_section_admits_with_obs_rows() {
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
         .collect();
-    assert!(
-        !result.diagnostics.has_errors(),
+    p.demand("1",!result.diagnostics.has_errors(), format!(
         "an observations: section with obs rows must admit; got {errors:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn writing_to_an_observation_is_refused() {
-    install_source_parser();
+    });
+    probe.case("writing_to_an_observation_is_refused", |p| {
+    let f0 = p.failures().len();
+
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
 emath function Tamper:
@@ -90,22 +92,22 @@ emath function Tamper:
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
         .collect();
-    assert!(
-        rendered
+    p.demand("1",rendered
             .iter()
-            .any(|m| m.contains("E-OBS-WRITE") && m.contains("observation")),
+            .any(|m| m.contains("E-OBS-WRITE") && m.contains("observation")), format!(
         "a definitions: binding named like an observation must refuse E-OBS-WRITE; got {rendered:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn observation_rows_parse_with_typed_values() {
+    });
+    probe.case("observation_rows_parse_with_typed_values", |p| {
+    let f0 = p.failures().len();
+
     // Parse-level: the `obs` head word must produce a structured row
     // (name + optional type annotation + value), not a generic command
     // or a silent drop. A `Vector<3>` value with a scalar annotation is
     // a type mismatch (E-TYPE-012), proving the value was parsed and
     // checked rather than skipped.
-    install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let text = "\
 emath function Typed:
@@ -118,8 +120,11 @@ emath function Typed:
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
         .collect();
-    assert!(
-        rendered.iter().any(|m| m.contains("E-TYPE-012")),
+    p.demand("1",rendered.iter().any(|m| m.contains("E-TYPE-012")), format!(
         "typed obs row must be type-checked (annotation vs value), got {rendered:?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

@@ -21,18 +21,9 @@
 //! empty-side reaction was unrepresentable, and the two sections died
 //! with the generic whitelist/unknown-section errors.
 
-use emath_core::limits::Limits;
-use emath_sema::session::CompilerSession;
-
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
 fn check(text: &str, name: &str) -> Vec<String> {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, text);
-    result
+    Source::from_str(name, text)
+        .check()
         .diagnostics
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
@@ -85,67 +76,82 @@ emath reaction_network Simple:
         convert: A -> B
 ";
 
-#[test]
-fn declared_sink_reaction_admits() {
-    let errors = check(SINK_REACTION, "sink-admit");
-    assert!(
-        errors.is_empty(),
-        "`Drug -> ∅` (the declared sink) must admit; got: {errors:#?}"
-    );
-}
+use emath_test_harness::{Probe, Source, boot};
 
 #[test]
-fn empty_side_without_sink_refuses() {
+fn compartments() {
+    boot();
+    let mut probe = Probe::new("Compartments and populations thin slice ( , 04 §4.1+§4.2). Contracts: - **Declared sink `∅`**: a reaction endpoint that is deliberately nothing is the");
+    probe.case("declared_sink_reaction_admits", |p| {
+    let f0 = p.failures().len();
+
+    let errors = check(SINK_REACTION, "sink-admit");
+    p.demand("1",errors.is_empty(), format!(
+        "`Drug -> ∅` (the declared sink) must admit; got: {errors:#?}"
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.case("empty_side_without_sink_refuses", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(EMPTY_SIDE, "empty-side-fence");
-    assert!(
-        errors.iter().any(|e| e.starts_with("E-SYN-156")),
+    p.demand("1",errors.iter().any(|e| e.starts_with("E-SYN-156")), format!(
         "a reaction endpoint that is empty without the declared `∅` must \
          refuse (E-SYN-156 at parse); got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn sink_glyph_never_glues_into_identifier() {
+    });
+    probe.case("sink_glyph_never_glues_into_identifier", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(SINK_REACTION, "sink-lexer");
-    assert!(
-        !errors
+    p.demand("1",!errors
             .iter()
-            .any(|e| e.contains("E-SYN-114") || e.contains("non-ASCII")),
+            .any(|e| e.contains("E-SYN-114") || e.contains("non-ASCII")), format!(
         "the sink glyph must be its own token, never glued into a \
          non-ASCII identifier warning; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn compartments_section_refuses_naming_design_fork() {
+    });
+    probe.case("compartments_section_refuses_naming_design_fork", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(COMPARTMENTS_SECTION, "compartments-fence");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|e| e.contains("compartments") && (e.contains("C15") || e.contains("@"))),
+            .any(|e| e.contains("compartments") && (e.contains("C15") || e.contains("@"))), format!(
         "`compartments:` must refuse naming the C15 `@` collision fork; \
          got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn populations_section_refuses_naming_world_fork() {
+    });
+    probe.case("populations_section_refuses_naming_world_fork", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(POPULATIONS_SECTION, "populations-fence");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|e| e.contains("populations") && e.contains("gillespie_exact")),
+            .any(|e| e.contains("populations") && e.contains("gillespie_exact")), format!(
         "`populations:` must refuse naming the ODE-vs-SSA two-readings \
          design fork and the stochastic-world prerequisite; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn plain_networks_admit_unchanged() {
+    });
+    probe.case("plain_networks_admit_unchanged", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(PLAIN_NETWORK, "sink-plain-guard");
-    assert!(
-        errors.is_empty(),
+    p.demand("1",errors.is_empty(), format!(
         "the sink slice must not affect ordinary reaction networks; got: \
          {errors:#?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

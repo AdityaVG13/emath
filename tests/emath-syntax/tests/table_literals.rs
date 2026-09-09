@@ -13,9 +13,9 @@
 use emath_core::tree::{ExprKind, StmtKind};
 use emath_syntax::parse_str;
 
-fn def_expr_of(source: &str) -> ExprKind {
+fn def_expr_of(p: &mut Probe, source: &str) -> ExprKind {
     let (tree, diags) = parse_str(source);
-    assert!(!diags.has_errors(), "{diags:?}");
+    p.demand("parse", !diags.has_errors(), format!("{diags:?}"));
     let Some(emath_core::tree::Item::Declaration(decl)) = tree.items.first() else {
         panic!("declaration expected");
     };
@@ -42,192 +42,191 @@ fn int_of(expr: &ExprKind) -> &str {
     text
 }
 
+// ---- admission: table content lowers through the Matrix path -------------
+
+use emath_sema::CompilerSession;
+
+fn check_source(source: &str) -> emath_sema::admit::CheckResult {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    session.check_owned("table-literals", source)
+}
+
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn semicolon_rows_fold_to_matrix_lists() {
+fn table_literals() {
+    boot();
+    let mut probe = Probe::new("Table literals (U9): semicolon rows and table literals. Two additive spellings (A1: no juxtaposition — cells are comma-separated): - `[1, 2; 3, 4]`");
+    probe.case("semicolon_rows_fold_to_matrix_lists", |p| {
+
     // `[1, 2; 3, 4]` is one 2x2 literal: two rows, two cells each. The pin
     // dies while `;` is unlexed (E-SYN-101 unexpected character) or when a
     // mutant collapses rows into one flat list.
-    let expr = def_expr_of("emath function f:\n    definitions:\n        m = [1, 2; 3, 4]\n");
+    let expr = def_expr_of(p, "emath function f:\n    definitions:\n        m = [1, 2; 3, 4]\n");
     let ExprKind::List(rows) = &expr else {
         panic!("list expected, got {expr:?}")
     };
-    assert_eq!(rows.len(), 2, "two `;`-separated rows, got {rows:?}");
+    p.eq("1", rows.len(), 2);
     let ExprKind::List(row0) = &rows[0].kind else {
         panic!("row 0 must be a list, got {:?}", rows[0].kind)
     };
     let ExprKind::List(row1) = &rows[1].kind else {
         panic!("row 1 must be a list, got {:?}", rows[1].kind)
     };
-    assert_eq!(
-        (int_of(&row0[0].kind), int_of(&row0[1].kind)),
-        ("1", "2"),
-        "row 0 cells"
-    );
-    assert_eq!(
-        (int_of(&row1[0].kind), int_of(&row1[1].kind)),
-        ("3", "4"),
-        "row 1 cells"
-    );
-}
+    p.eq("2", (int_of(&row0[0].kind), int_of(&row0[1].kind)), ("1", "2"));
+    p.eq("3", (int_of(&row1[0].kind), int_of(&row1[1].kind)), ("3", "4"));
 
-#[test]
-fn single_cell_rows_stay_rank_two() {
+    });
+    probe.case("single_cell_rows_stay_rank_two", |p| {
+
     // `[1; 2; 3]` is a 3x1 matrix (three one-cell rows), never a flat
     // vector — the `;` is what makes it rank 2.
-    let expr = def_expr_of("emath function f:\n    definitions:\n        v = [1; 2; 3]\n");
+    let expr = def_expr_of(p, "emath function f:\n    definitions:\n        v = [1; 2; 3]\n");
     let ExprKind::List(rows) = &expr else {
         panic!("list expected, got {expr:?}")
     };
-    assert_eq!(rows.len(), 3, "three rows, got {rows:?}");
+    p.eq("1", rows.len(), 3);
     for row in rows {
         let ExprKind::List(cells) = &row.kind else {
             panic!("each row must be a list, got {:?}", row.kind)
         };
-        assert_eq!(cells.len(), 1, "one cell per row, got {cells:?}");
+        p.eq("2", cells.len(), 1);
     }
-}
 
-#[test]
-fn flat_list_is_unchanged_by_semicolon_support() {
+    });
+    probe.case("flat_list_is_unchanged_by_semicolon_support", |p| {
+    let f0 = p.failures().len();
+
     // Regression: a comma-only list never gains a nesting level.
-    let expr = def_expr_of("emath function f:\n    definitions:\n        v = [1, 2, 3]\n");
+    let expr = def_expr_of(p, "emath function f:\n    definitions:\n        v = [1, 2, 3]\n");
     let ExprKind::List(items) = &expr else {
         panic!("list expected, got {expr:?}")
     };
-    assert_eq!(items.len(), 3, "flat list stays flat, got {items:?}");
-    assert!(
-        items
+    p.eq("1", items.len(), 3);
+    p.demand("2",items
             .iter()
-            .all(|item| matches!(item.kind, ExprKind::Int(_))),
+            .all(|item| matches!(item.kind, ExprKind::Int(_))), format!(
         "no row wrapping without `;`, got {items:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn ragged_semicolon_rows_refuse() {
+    });
+    probe.case("ragged_semicolon_rows_refuse", |p| {
+    let f0 = p.failures().len();
+
     // `[1, 2, 3; 4]`: row lengths must match at parse time (E-SYN-102) —
     // ragged rows must not silently fold into a shape error downstream.
     let (_, diags) = parse_str("emath function f:\n    definitions:\n        m = [1, 2, 3; 4]\n");
-    assert!(
-        diags.errors().any(|error| error.code == "E-SYN-102"),
+    p.demand("1",diags.errors().any(|error| error.code == "E-SYN-102"), format!(
         "ragged `;` rows must refuse E-SYN-102, got {:?}",
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn table_literal_folds_with_headers_and_rows() {
+    });
+    probe.case("table_literal_folds_with_headers_and_rows", |p| {
+
     // `|x y| 1, 2 | 3, 4 |` is one Table literal: named columns, cells
     // comma-separated (A1 — space-separated cells would be juxtaposition).
     let expr =
-        def_expr_of("emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, 4 |\n");
+        def_expr_of(p, "emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, 4 |\n");
     let ExprKind::Table { headers, rows } = &expr else {
         panic!("table expected, got {expr:?}")
     };
-    assert_eq!(headers, &["x".to_string(), "y".to_string()], "headers");
-    assert_eq!(rows.len(), 2, "two table rows");
-    assert_eq!(
-        (int_of(&rows[0][0].kind), int_of(&rows[0][1].kind)),
-        ("1", "2"),
-        "row 0 cells"
-    );
-    assert_eq!(
-        (int_of(&rows[1][0].kind), int_of(&rows[1][1].kind)),
-        ("3", "4"),
-        "row 1 cells"
-    );
-}
+    p.eq("1", headers.clone(), vec!["x".to_string(), "y".to_string()]);
+    p.eq("2", rows.len(), 2);
+    p.eq("3", (int_of(&rows[0][0].kind), int_of(&rows[0][1].kind)), ("1", "2"));
+    p.eq("4", (int_of(&rows[1][0].kind), int_of(&rows[1][1].kind)), ("3", "4"));
 
-#[test]
-fn cases_pipe_still_parses_as_cases() {
+    });
+    probe.case("cases_pipe_still_parses_as_cases", |p| {
+    let f0 = p.failures().len();
+
     // Disambiguation guard (HEAD-true): `| cond => …` after `cases` stays
     // a cases arm — the table primary must not capture arm-leading `|`.
-    let expr = def_expr_of(
+    let expr = def_expr_of(p, 
         "emath function f:\n    inputs:\n        x: Float64\n    definitions:\n        r = cases x: | x > 0 => 1 | else => 0\n",
     );
-    assert!(
-        matches!(&expr, ExprKind::Cases { .. }),
+    p.demand("1",matches!(&expr, ExprKind::Cases { .. }), format!(
         "cases pipe must stay cases, got {expr:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn pipe_infix_or_is_unchanged() {
+    });
+    probe.case("pipe_infix_or_is_unchanged", |p| {
+    let f0 = p.failures().len();
+
     // Disambiguation guard (HEAD-true): infix `|` as `or` between operands
     // is untouched by the table primary (tables only start at pipe position).
-    let expr = def_expr_of("emath function f:\n    definitions:\n        r = true | false\n");
-    assert!(
-        matches!(
+    let expr = def_expr_of(p, "emath function f:\n    definitions:\n        r = true | false\n");
+    p.demand("1",matches!(
             &expr,
             ExprKind::Binary {
                 op: emath_core::tree::BinaryOp::Or,
                 ..
             }
-        ),
+        ), format!(
         "infix `|` must stay or, got {expr:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn single_column_pipe_is_not_a_table() {
+    });
+    probe.case("single_column_pipe_is_not_a_table", |p| {
+    let f0 = p.failures().len();
+
     // Disambiguation negative: `|x| …` (one header before `|`) is not a
     // table — the ≥2-header rule is what keeps `|` unambiguous with
     // cases arms and infix `or`.
     let (_, diags) = parse_str("emath function f:\n    definitions:\n        t = |x| 1 |\n");
-    assert!(
-        diags.has_errors(),
+    p.demand("1",diags.has_errors(), format!(
         "single-column `|…|` must refuse, not fold to a table"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn table_ragged_rows_refuse() {
+    });
+    probe.case("table_ragged_rows_refuse", |p| {
+    let f0 = p.failures().len();
+
     // Negative: a row with fewer cells than headers refuses at parse time
     // (E-SYN-102), never folds into a ragged table for admission to trip on.
     let (_, diags) =
         parse_str("emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3 |\n");
-    assert!(
-        diags.errors().any(|error| error.code == "E-SYN-102"),
+    p.demand("1",diags.errors().any(|error| error.code == "E-SYN-102"), format!(
         "ragged table rows must refuse E-SYN-102, got {:?}",
         diags.errors().map(|e| e.code).collect::<Vec<_>>()
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-// ---- admission: table content lowers through the Matrix path -------------
+    });
+    probe.case("semicolon_matrix_admits", |p| {
+    let f0 = p.failures().len();
 
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
-
-fn check_source(source: &str) -> emath_sema::admit::CheckResult {
-    install_source_parser();
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    session.check_owned("table-literals", source)
-}
-
-#[test]
-fn semicolon_matrix_admits() {
     // `[1, 2; 3, 4]` admits as a rank-2 value: a 2-index lookup must be
     // legal. If a mutant collapsed `;` rows into one flat vector, the
     // rank-1 `m[0, 1]` would refuse (shape) — this pin kills that mutant.
     let checked = check_source(
         "emath function f:\n    definitions:\n        m = [1, 2; 3, 4]\n        r = m[0, 1]\n\n    outputs:\n        r: Float64\n",
     );
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("1",!checked.diagnostics.has_errors(), format!(
         "{:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn table_non_numeric_column_refuses() {
+    });
+    probe.case("table_non_numeric_column_refuses", |p| {
+    let f0 = p.failures().len();
+
     // Column-type check: a bare identifier cell in a numeric table is a
     // typed refusal (E-TYPE-002 unknown variable — the matrix element
     // path's numeric gate), never a silent mixed-type table.
     let checked =
         check_source("emath function f:\n    definitions:\n        t = |x y| 1, 2 | 3, zz |\n");
-    assert!(
-        checked.diagnostics.has_errors(),
+    p.demand("1",checked.diagnostics.has_errors(), format!(
         "non-numeric table cell must refuse"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

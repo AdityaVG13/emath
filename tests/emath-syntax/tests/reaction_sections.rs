@@ -22,15 +22,18 @@
 use emath_core::tree::{Item, ReactionArrow, ReactionTerm, StmtKind};
 use emath_syntax::parse_str;
 
-fn declaration_body(source: &str) -> Vec<StmtKind> {
+fn declaration_body(p: &mut Probe, source: &str) -> Vec<StmtKind> {
     let (tree, diagnostics) = parse_str(source);
-    assert!(
+    p.demand(
+        "parse",
         !diagnostics.has_errors(),
-        "expected clean parse, got {:?}",
-        diagnostics
-            .errors()
-            .map(|error| (error.code, error.message.clone()))
-            .collect::<Vec<_>>()
+        format!(
+            "expected clean parse, got {:?}",
+            diagnostics
+                .errors()
+                .map(|error| (error.code, error.message.clone()))
+                .collect::<Vec<_>>()
+        ),
     );
     let Some(Item::Declaration(decl)) = tree.items.first() else {
         panic!("expected a declaration item");
@@ -46,8 +49,15 @@ fn declaration_body(source: &str) -> Vec<StmtKind> {
         .collect()
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn reaction_network_parses_species_and_reactions() {
+fn reaction_sections() {
+    boot();
+    let mut probe = Probe::new("(04 section 3.1) failure-first tests. Reaction lines are T3 SECTION grammar, not expression grammar: `2H2 + O2 -> 2H2O` must parse as a labeled");
+    probe.case("reaction_network_parses_species_and_reactions", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath reaction_network HydrogenCombustion:
     species:
@@ -57,17 +67,18 @@ emath reaction_network HydrogenCombustion:
     reactions:
         r1: 2H2 + O2 -> 2H2O
 ";
-    let statements = declaration_body(source);
-    assert!(
-        statements
+    let statements = declaration_body(p, source);
+    p.demand("1",statements
             .iter()
-            .any(|kind| matches!(kind, StmtKind::Reaction { .. })),
+            .any(|kind| matches!(kind, StmtKind::Reaction { .. })), format!(
         "a reaction line must parse as StmtKind::Reaction, got {statements:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn stoichiometric_coefficients_are_pairs_not_token_surgery() {
+    });
+    probe.case("stoichiometric_coefficients_are_pairs_not_token_surgery", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath reaction_network Combustion:
     species:
@@ -77,7 +88,7 @@ emath reaction_network Combustion:
     reactions:
         r1: 2H2 + O2 -> 2H2O
 ";
-    let statements = declaration_body(source);
+    let statements = declaration_body(p, source);
     let (lhs, rhs): (&Vec<ReactionTerm>, &Vec<ReactionTerm>) = statements
         .iter()
         .find_map(|kind| match kind {
@@ -85,18 +96,22 @@ emath reaction_network Combustion:
             _ => None,
         })
         .expect("reaction line must lower to StmtKind::Reaction");
-    assert_eq!(lhs.len(), 2, "two LHS terms");
-    assert_eq!(lhs[0].coefficient, 2);
-    assert_eq!(lhs[0].species, "H2");
-    assert_eq!(lhs[1].coefficient, 1);
-    assert_eq!(lhs[1].species, "O2");
-    assert_eq!(rhs.len(), 1);
-    assert_eq!(rhs[0].coefficient, 2);
-    assert_eq!(rhs[0].species, "H2O");
-}
+    p.eq("1", lhs.len(), 2);
+    p.eq("2", lhs[0].coefficient, 2);
+    p.demand("3", (lhs[0].species) == ("H2"), format!("expected {:?}, got {:?}", ("H2"), (lhs[0].species)));
+    if p.failures().len() != f0 { return; }
+    p.eq("4", lhs[1].coefficient, 1);
+    p.demand("5", (lhs[1].species) == ("O2"), format!("expected {:?}, got {:?}", ("O2"), (lhs[1].species)));
+    if p.failures().len() != f0 { return; }
+    p.eq("6", rhs.len(), 1);
+    p.eq("7", rhs[0].coefficient, 2);
+    p.demand("8", (rhs[0].species) == ("H2O"), format!("expected {:?}, got {:?}", ("H2O"), (rhs[0].species)));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn arrow_kinds_are_distinct() {
+    });
+    probe.case("arrow_kinds_are_distinct", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath reaction_network Arrows:
     species:
@@ -107,7 +122,7 @@ emath reaction_network Arrows:
         reversible: A <-> B
         equilibrium: A <=> B
 ";
-    let statements = declaration_body(source);
+    let statements = declaration_body(p, source);
     let arrows: Vec<ReactionArrow> = statements
         .iter()
         .filter_map(|kind| match kind {
@@ -115,14 +130,18 @@ emath reaction_network Arrows:
             _ => None,
         })
         .collect();
-    assert_eq!(arrows.len(), 3, "three reaction lines, got {arrows:?}");
-    assert!(matches!(arrows[0], ReactionArrow::Irreversible));
-    assert!(matches!(arrows[1], ReactionArrow::Reversible));
-    assert!(matches!(arrows[2], ReactionArrow::Equilibrium));
-}
+    p.eq("1", arrows.len(), 3);
+    p.demand("2",matches!(arrows[0], ReactionArrow::Irreversible), stringify!(matches!(arrows[0], ReactionArrow::Irreversible)));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",matches!(arrows[1], ReactionArrow::Reversible), stringify!(matches!(arrows[1], ReactionArrow::Reversible)));
+    if p.failures().len() != f0 { return; }
+    p.demand("4",matches!(arrows[2], ReactionArrow::Equilibrium), stringify!(matches!(arrows[2], ReactionArrow::Equilibrium)));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn lambda_arrow_is_token_identical_to_irreversible() {
+    });
+    probe.case("lambda_arrow_is_token_identical_to_irreversible", |p| {
+    let f0 = p.failures().len();
+
     // C15/C6 shape: `=>` and `->` share one lexer token (the notation
     // mapping arrow depends on that sharing), so inside `reactions:` the
     // `=>` spelling denotes the irreversible reaction arrow. The test
@@ -138,7 +157,7 @@ emath reaction_network BadArrow:
     reactions:
         wrong: A => B
 ";
-    let statements = declaration_body(source);
+    let statements = declaration_body(p, source);
     let arrows: Vec<ReactionArrow> = statements
         .iter()
         .filter_map(|kind| match kind {
@@ -146,50 +165,56 @@ emath reaction_network BadArrow:
             _ => None,
         })
         .collect();
-    assert_eq!(arrows, vec![ReactionArrow::Irreversible]);
-}
+    p.demand("1", (arrows) == (vec![ReactionArrow::Irreversible]), format!("expected {:?}, got {:?}", (vec![ReactionArrow::Irreversible]), (arrows)));
+    if p.failures().len() != f0 { return; }
 
-/// `<==>` is the logical Iff token, not a reaction arrow: refuses E-SYN-156.
-#[test]
-fn iff_arrow_is_refused_inside_reactions() {
+    });
+    probe.case("iff_arrow_is_refused_inside_reactions", |p| {
+    // `<==>` is the logical Iff token, not a reaction arrow: refuses E-SYN-156.
+    let f0 = p.failures().len();
+
     let fixture = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/invalid/reaction_lambda_arrow.emath"
     ));
-    assert!(
-        fixture.contains("expect: E-SYN-156"),
+    p.demand("1",fixture.contains("expect: E-SYN-156"), format!(
         "fixture must pin E-SYN-156"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let (_tree, diagnostics) = parse_str(fixture);
-    assert!(
-        diagnostics.errors().any(|error| error.code == "E-SYN-156"),
+    p.demand("2",diagnostics.errors().any(|error| error.code == "E-SYN-156"), format!(
         "`<==>` inside `reactions:` must refuse E-SYN-156, got {:?}",
         diagnostics
             .errors()
             .map(|error| (error.code, error.message.clone()))
             .collect::<Vec<_>>()
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-/// Trailing tokens after the products refuse E-SYN-156: the line ends
-/// after the RHS terms, and nothing is silently truncated.
-#[test]
-fn trailing_tokens_after_products_are_refused() {
+    });
+    probe.case("trailing_tokens_after_products_are_refused", |p| {
+    // Trailing tokens after the products refuse E-SYN-156: the line ends
+    // after the RHS terms, and nothing is silently truncated.
+    let f0 = p.failures().len();
+
     let fixture = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/invalid/reaction_trailing_tokens.emath"
     ));
-    assert!(
-        fixture.contains("expect: E-SYN-156"),
+    p.demand("1",fixture.contains("expect: E-SYN-156"), format!(
         "fixture must pin E-SYN-156"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let (_tree, diagnostics) = parse_str(fixture);
-    assert!(
-        diagnostics.errors().any(|error| error.code == "E-SYN-156"),
+    p.demand("2",diagnostics.errors().any(|error| error.code == "E-SYN-156"), format!(
         "trailing tokens after products must refuse E-SYN-156, got {:?}",
         diagnostics
             .errors()
             .map(|error| (error.code, error.message.clone()))
             .collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

@@ -11,36 +11,45 @@ fn has_error(text: &str, code: &str) -> bool {
     diagnostics.errors().any(|error| error.code == code)
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn l0_expansion_is_visible_and_round_trips() {
+fn inspectable_desugaring() {
+    boot();
+    let mut probe = Probe::new("Inspectable desugaring across progressive-exactness levels.");
+    probe.case("l0_expansion_is_visible_and_round_trips", |p| {
+    let f0 = p.failures().len();
+
     let source = "2+2\n";
     let expansion = expand_scratch(source);
-    assert!(expansion.rewritten());
-    assert!(
-        expansion.expanded.contains("emath function Scratch:"),
+    p.demand("1",expansion.rewritten(), stringify!(expansion.rewritten()));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",expansion.expanded.contains("emath function Scratch:"), format!(
         "{}",
         expansion.expanded
-    );
-    assert!(
-        expansion
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",expansion
             .diagnostics
             .items()
             .iter()
-            .any(|item| item.code == "N-SCRATCH-001"),
+            .any(|item| item.code == "N-SCRATCH-001"), format!(
         "desugar must not be silent"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let parsed = parse_lossless(&expansion.expanded, FileId(0), &Limits::default());
-    assert!(!parsed.diagnostics.has_errors());
+    p.demand("4",!parsed.diagnostics.has_errors(), stringify!(!parsed.diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
     let once = format(&parsed.tree, &parsed.comments);
     let twice = format(
         &parse_lossless(&once, FileId(0), &Limits::default()).tree,
         &[],
     );
-    assert_eq!(twice, once, "fmt(fmt(expanded)) must equal fmt(expanded)");
-}
+    p.eq("5", &twice, &once);
 
-#[test]
-fn l0_and_l3_share_declaration_center() {
+    });
+    probe.case("l0_and_l3_share_declaration_center", |p| {
+
     let l0 = parse_str("2+2\n").0;
     // Canonical no-input wrapped form: E-SEC-130 refuses a synthesized
     // `outputs:` without a declared I/O surface, so the L0 wrap (and this
@@ -52,29 +61,36 @@ fn l0_and_l3_share_declaration_center() {
     let Item::Declaration(b) = &l3.items[0] else {
         panic!("l3");
     };
-    assert_eq!(a.name, b.name);
-    assert_eq!(a.body.len(), b.body.len());
-}
+    p.eq("1", &a.name, &b.name);
+    p.eq("2", a.body.len(), b.body.len());
 
-#[test]
-fn inspectable_example_file_expands() {
+    });
+    probe.case("inspectable_example_file_expands", |p| {
+    let f0 = p.failures().len();
+
     let source = "2 + 2\n";
     let expansion = expand_scratch(source);
-    assert!(expansion.rewritten());
-    assert!(
-        expansion.expanded.contains("result = 2 + 2"),
+    p.demand("1",expansion.rewritten(), stringify!(expansion.rewritten()));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",expansion.expanded.contains("result = 2 + 2"), format!(
         "{}",
         expansion.expanded
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let (_, diagnostics) = parse_str(source);
-    assert!(!diagnostics.has_errors());
-}
+    p.demand("3",!diagnostics.has_errors(), stringify!(!diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn hidden_desugar_is_e_syn_144() {
+    });
+    probe.case("hidden_desugar_is_e_syn_144", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/invalid/inspectable_desugaring.emath");
-    assert!(
-        has_error(source, "E-SYN-144"),
+    p.demand("1",has_error(source, "E-SYN-144"), format!(
         "hidden desugar must refuse with E-SYN-144"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

@@ -30,38 +30,46 @@ emath function SpecialValues:
 ";
 
 fn checked(source: &str) -> emath_sema::CheckResult {
-    emath_syntax::install_source_parser();
     CompilerSession::new(Limits::default()).check_owned("special-functions", source)
 }
 
-#[test]
-fn special_functions_admit_and_execute_with_declared_bound() {
-    let checked = checked(SOURCE);
-    assert!(
-        !checked.diagnostics.has_errors(),
-        "{:?}",
-        checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-    let run = run_package(&checked.package);
-    assert_eq!(run.summary.passed, 1, "{run:#?}");
-    assert_eq!(
-        run.declarations[0].tests[0].definitions.get("gamma_five"),
-        Some(&Value::F64(24.0))
-    );
-}
+use emath_test_harness::{Probe, boot};
 
 #[test]
-fn gamma_pole_refuses_at_runtime() {
+fn special_functions_language() {
+    boot();
+    let mut probe = Probe::new("End-to-end `.emath` admission and reference execution for `core::special_functions`.");
+    probe.case("special_functions_admit_and_execute_with_declared_bound", |p| {
+    let f0 = p.failures().len();
+
+    let checked = checked(SOURCE);
+    p.demand("1",!checked.diagnostics.has_errors(), format!(
+        "{:?}",
+        checked.diagnostics.errors().collect::<Vec<_>>()
+    ));
+    if p.failures().len() != f0 { return; }
+    let run = run_package(&checked.package);
+    p.eq("2", run.summary.passed, 1);
+    p.eq("3", run.declarations[0].tests[0].definitions.get("gamma_five"), Some(&Value::F64(24.0)));
+
+    });
+    probe.case("gamma_pole_refuses_at_runtime", |p| {
+    let f0 = p.failures().len();
+
     let source = SOURCE.replace("gamma(5)", "gamma(0)");
     let checked = checked(&source);
-    assert!(!checked.diagnostics.has_errors());
+    p.demand("1",!checked.diagnostics.has_errors(), stringify!(!checked.diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
     let run = run_package(&checked.package);
-    assert!(
-        matches!(
+    p.demand("2",matches!(
             &run.declarations[0].tests[0].verdict,
             TestVerdict::Fault { fault }
                 if format!("{fault:?}").contains("E-SPECIAL-POLE")
-        ),
+        ), format!(
         "{run:#?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

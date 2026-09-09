@@ -20,18 +20,9 @@
 //! Design prose of record: ch.7 "Action integrals and variation goals
 //! (04 section 2.5)".
 
-use emath_core::limits::Limits;
-use emath_sema::session::CompilerSession;
-
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
 fn check(text: &str, name: &str) -> Vec<String> {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, text);
-    result
+    Source::from_str(name, text)
+        .check()
         .diagnostics
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
@@ -85,56 +76,65 @@ emath model PlainProbe:
         der(v) = -2.0 * q
 ";
 
+use emath_test_harness::{Probe, Source, boot};
+
 #[test]
-fn action_binder_refuses_naming_design() {
+fn lagrangian_action() {
+    boot();
+    let mut probe = Probe::new("Lagrangian/action thin slice (04 section 2.5). Contracts: - **Action-integral binder refuses naming the design of record**: `S = action integral t in");
+    probe.case("action_binder_refuses_naming_design", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(ACTION_BINDER, "action-fence");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|e| e.contains("action integral") && e.contains("Functional")),
+            .any(|e| e.contains("action integral") && e.contains("Functional")), format!(
         "`S = action integral ...` must refuse naming the Functional \
          design of record; got: {errors:#?}"
-    );
-    assert!(
-        errors.iter().any(|e| e.contains("C14")),
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",errors.iter().any(|e| e.contains("C14")), format!(
         "the action fence must name the C14 admitted-surface fix; got: \
          {errors:#?}"
-    );
-    assert!(
-        !errors
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",!errors
             .iter()
-            .any(|e| e.contains("E-TYPE-002") && e.contains("`action`")),
+            .any(|e| e.contains("E-TYPE-002") && e.contains("`action`")), format!(
         "the action spelling must never resurface as `unknown variable \
          action`; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn variation_goal_refuses_naming_lowering() {
+    });
+    probe.case("variation_goal_refuses_naming_lowering", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(VARIATION_GOAL, "variation-fence");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|e| e.contains("variation") && e.contains("Euler-Lagrange")),
+            .any(|e| e.contains("variation") && e.contains("Euler-Lagrange")), format!(
         "`variation <S> wrt q:` must refuse naming the core-goal \
          lowering; got: {errors:#?}"
-    );
-    assert!(
-        errors
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",errors
             .iter()
-            .any(|e| e.contains("boundary: fixed_endpoints")),
+            .any(|e| e.contains("boundary: fixed_endpoints")), format!(
         "the variation fence must name the boundary identity rule; got: \
          {errors:#?}"
-    );
-    assert!(
-        !errors.iter().any(|e| e.contains("unexpected `:`")),
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",!errors.iter().any(|e| e.contains("unexpected `:`")), format!(
         "the variation goal must never die with a generic `unexpected \
          ':'` error; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn bare_action_and_variation_stay_plain_idents() {
+    });
+    probe.case("bare_action_and_variation_stay_plain_idents", |p| {
+    let f0 = p.failures().len();
+
     // `action = 5` and a mention of `variation` as a name must NOT hit
     // the design fences — the fences fire only on the two-word binder
     // spelling and the goal spelling.
@@ -147,21 +147,25 @@ emath model IdentProbe:
 ",
         "ident-guard",
     );
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .all(|e| !e.contains("action/variation design")),
+            .all(|e| !e.contains("action/variation design")), format!(
         "bare `action`/`variation` identifiers must not trip the design \
          fences; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn plain_models_admit_unchanged() {
+    });
+    probe.case("plain_models_admit_unchanged", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(PLAIN_MODEL, "plain-guard");
-    assert!(
-        errors.is_empty(),
+    p.demand("1",errors.is_empty(), format!(
         "the lagrangian fences must not affect ordinary models; got: \
          {errors:#?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

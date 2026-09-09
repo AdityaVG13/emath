@@ -31,8 +31,15 @@ fn def_expr<'a>(
     None
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn cases_with_subject_parses() {
+fn cases_expr() {
+    boot();
+    let mut probe = Probe::new("U1: cases expression parse, format, and contextual keyword tests.");
+    probe.case("cases_with_subject_parses", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
@@ -42,11 +49,11 @@ emath function f(x: Float64) -> Float64:
             | else => 0
 ";
     let (tree, diags) = parse_str(source);
-    assert!(
-        diags.errors().next().is_none(),
+    p.demand("1",diags.errors().next().is_none(), format!(
         "cases with subject should parse, got errors: {:?}",
         diags.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let expr = def_expr(&tree, "f").expect("definition `f` not found");
     match &expr.kind {
         ExprKind::Cases {
@@ -54,23 +61,33 @@ emath function f(x: Float64) -> Float64:
             arms,
             else_arm,
         } => {
-            assert!(subject.is_some(), "subject should be present");
-            assert_eq!(arms.len(), 2, "should have 2 condition arms");
-            assert!(matches!(
+            p.demand("2",subject.is_some(), format!( "subject should be present"));
+            if p.failures().len() != f0 { return; }
+            p.eq("3", arms.len(), 2);
+            p.demand("4",matches!(
                 &arms[0].0.kind,
                 ExprKind::Binary {
                     op: BinaryOp::Gt,
                     ..
                 }
-            ));
-            assert!(matches!(&else_arm.kind, ExprKind::Int(_)));
+            ), stringify!(matches!(
+                &arms[0].0.kind,
+                ExprKind::Binary {
+                    op: BinaryOp::Gt,
+                    ..
+                }
+            )));
+            if p.failures().len() != f0 { return; }
+            p.demand("5",matches!(&else_arm.kind, ExprKind::Int(_)), stringify!(matches!(&else_arm.kind, ExprKind::Int(_))));
+            if p.failures().len() != f0 { return; }
         }
         other => panic!("expected Cases, got {other:?}"),
     }
-}
 
-#[test]
-fn cases_without_subject_parses() {
+    });
+    probe.case("cases_without_subject_parses", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
@@ -79,23 +96,25 @@ emath function f(x: Float64) -> Float64:
             | else => 0
 ";
     let (tree, diags) = parse_str(source);
-    assert!(
-        diags.errors().next().is_none(),
+    p.demand("1",diags.errors().next().is_none(), format!(
         "cases without subject should parse, got errors: {:?}",
         diags.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let expr = def_expr(&tree, "f").expect("definition `f` not found");
     match &expr.kind {
         ExprKind::Cases { subject, arms, .. } => {
-            assert!(subject.is_none(), "subject should be absent");
-            assert_eq!(arms.len(), 1, "should have 1 condition arm");
+            p.demand("2",subject.is_none(), format!( "subject should be absent"));
+            if p.failures().len() != f0 { return; }
+            p.eq("3", arms.len(), 1);
         }
         other => panic!("expected Cases, got {other:?}"),
     }
-}
 
-#[test]
-fn cases_missing_else_is_parse_error() {
+    });
+    probe.case("cases_missing_else_is_parse_error", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
@@ -105,16 +124,17 @@ emath function f(x: Float64) -> Float64:
 ";
     let (_, diags) = parse_str(source);
     let errors: Vec<_> = diags.errors().collect();
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|d| d.code == "E-SYN-110" && d.message.contains("else")),
+            .any(|d| d.code == "E-SYN-110" && d.message.contains("else")), format!(
         "missing else must be E-SYN-110 naming the else arm, got {errors:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn cases_empty_body_expects_arm_pipe() {
+    });
+    probe.case("cases_empty_body_expects_arm_pipe", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
@@ -122,43 +142,45 @@ emath function f(x: Float64) -> Float64:
 ";
     let (_, diags) = parse_str(source);
     let errors: Vec<_> = diags.errors().collect();
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|d| d.code == "E-SYN-110" && d.message.contains("expected `|`")),
+            .any(|d| d.code == "E-SYN-110" && d.message.contains("expected `|`")), format!(
         "empty cases body must be E-SYN-110 expecting an arm, got {errors:?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn cases_contextual_keyword_remains_valid_identifier() {
+    });
+    probe.case("cases_contextual_keyword_remains_valid_identifier", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
         f = cases + 1
 ";
     let (tree, diags) = parse_str(source);
-    assert!(
-        diags.errors().next().is_none(),
+    p.demand("1",diags.errors().next().is_none(), format!(
         "`cases` as identifier should parse, got errors: {:?}",
         diags.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let expr = def_expr(&tree, "f").expect("definition `f` not found");
-    assert!(
-        matches!(
+    p.demand("2",matches!(
             &expr.kind,
             ExprKind::Binary {
                 op: BinaryOp::Add,
                 ..
             }
-        ),
+        ), format!(
         "expected addition, got {:?}",
         expr.kind
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn cases_formatter_roundtrips() {
+    });
+    probe.case("cases_formatter_roundtrips", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
@@ -168,20 +190,23 @@ emath function f(x: Float64) -> Float64:
             | else => 0
 ";
     let parsed = parse_lossless(source, FileId(0), &Limits::default());
-    assert!(
-        !parsed.diagnostics.has_errors(),
+    p.demand("1",!parsed.diagnostics.has_errors(), format!(
         "source must parse cleanly"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let formatted = format(&parsed.tree, &parsed.comments);
     let reparsed = parse_lossless(&formatted, FileId(0), &Limits::default());
-    assert!(
-        !reparsed.diagnostics.has_errors(),
+    p.demand("2",!reparsed.diagnostics.has_errors(), format!(
         "formatter output should reparse"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let expr = def_expr(&reparsed.tree, "f").expect("definition `f` not found in reparsed");
-    assert!(
-        matches!(&expr.kind, ExprKind::Cases { .. }),
+    p.demand("3",matches!(&expr.kind, ExprKind::Cases { .. }), format!(
         "reparsed should have Cases expression, got {:?}",
         expr.kind
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

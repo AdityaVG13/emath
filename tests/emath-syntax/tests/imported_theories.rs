@@ -1,73 +1,83 @@
 //! Imported theory/model/morphism kinds with bounded finite checking.
 
-use emath_core::limits::Limits;
 use emath_ir::{ClaimVerdict, EvidenceLevel};
-use emath_sema::CompilerSession;
-use emath_syntax::{install_source_parser, parse_str};
+use emath_syntax::{parse_str};
 
 fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
+    Source::from_str(name, source).check()
 }
 
+use emath_test_harness::{Probe, Source, boot};
+
 #[test]
-fn checks_finite_model_and_power_morphism() {
+fn imported_theories() {
+    boot();
+    let mut probe = Probe::new("Imported theory/model/morphism kinds with bounded finite checking.");
+    probe.case("checks_finite_model_and_power_morphism", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/fixtures/language/intro/imported-theories.emath");
     let (_, parse_diagnostics) = parse_str(source);
-    assert!(!parse_diagnostics.has_errors());
+    p.demand("1",!parse_diagnostics.has_errors(), stringify!(!parse_diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
 
     let checked = check("finite-categories", source);
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("2",!checked.diagnostics.has_errors(), format!(
         "{:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert_eq!(
-        checked
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3", (checked
             .package
             .declarations
             .iter()
             .map(|declaration| declaration.kind_label.as_str())
-            .collect::<Vec<_>>(),
-        ["theory", "model", "morphism"]
-    );
+            .collect::<Vec<_>>()) == (["theory", "model", "morphism"]), format!("expected {:?}, got {:?}", (["theory", "model", "morphism"]), (checked
+            .package
+            .declarations
+            .iter()
+            .map(|declaration| declaration.kind_label.as_str())
+            .collect::<Vec<_>>())));
+    if p.failures().len() != f0 { return; }
 
     let theory = &checked.package.declarations[0];
-    assert!(
-        theory
+    p.demand("4",theory
             .evidence
             .iter()
-            .all(|claim| claim.verdict == ClaimVerdict::NotRun && claim.level == EvidenceLevel::E1)
-    );
+            .all(|claim| claim.verdict == ClaimVerdict::NotRun && claim.level == EvidenceLevel::E1), stringify!(theory
+            .evidence
+            .iter()
+            .all(|claim| claim.verdict == ClaimVerdict::NotRun && claim.level == EvidenceLevel::E1)));
+    if p.failures().len() != f0 { return; }
     for declaration in &checked.package.declarations[1..] {
-        assert!(
-            declaration.evidence.iter().all(
+        p.demand("5",declaration.evidence.iter().all(
                 |claim| claim.verdict == ClaimVerdict::Pass && claim.level == EvidenceLevel::E2
-            )
-        );
+            ), stringify!(declaration.evidence.iter().all(
+                |claim| claim.verdict == ClaimVerdict::Pass && claim.level == EvidenceLevel::E2
+            )));
+        if p.failures().len() != f0 { return; }
     }
 
     let repeated = check("finite-categories-repeat", source);
-    assert_eq!(
-        checked.package.meaning_id(&[]).unwrap(),
-        repeated.package.meaning_id(&[]).unwrap()
-    );
-}
+    p.eq("6", checked.package.meaning_id(&[]).unwrap(), repeated.package.meaning_id(&[]).unwrap());
 
-#[test]
-fn refuses_false_laws_and_unimported_kinds() {
+    });
+    probe.case("refuses_false_laws_and_unimported_kinds", |p| {
+    let f0 = p.failures().len();
+
     let invalid = check(
         "false-associativity",
         include_str!("../../../tests/invalid/imported_theories.emath"),
     );
-    assert!(
-        invalid
+    p.demand("1",invalid
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-LAW-003")
-    );
-    assert_eq!(invalid.package.declarations.len(), 1);
+            .any(|error| error.code == "E-LAW-003"), stringify!(invalid
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-LAW-003")));
+    if p.failures().len() != f0 { return; }
+    p.eq("2", invalid.package.declarations.len(), 1);
 
     let unimported = check(
         "unimported-theory",
@@ -81,17 +91,21 @@ emath theory Monoid:
         \"associative\"
 ",
     );
-    assert!(
-        unimported
+    p.demand("3",unimported
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-KIND-100")
-    );
-    assert!(unimported.package.declarations.is_empty());
-}
+            .any(|error| error.code == "E-KIND-100"), stringify!(unimported
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-KIND-100")));
+    if p.failures().len() != f0 { return; }
+    p.demand("4",unimported.package.declarations.is_empty(), stringify!(unimported.package.declarations.is_empty()));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn refuses_non_preserving_morphism() {
+    });
+    probe.case("refuses_non_preserving_morphism", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 use std.kinds.theory
 use std.kinds.model
@@ -124,11 +138,16 @@ emath morphism InvalidReduction:
         scale: 1
 ";
     let checked = check("invalid-morphism", source);
-    assert!(
-        checked
+    p.demand("1",checked
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-LAW-003")
-    );
-    assert_eq!(checked.package.declarations.len(), 3);
+            .any(|error| error.code == "E-LAW-003"), stringify!(checked
+            .diagnostics
+            .errors()
+            .any(|error| error.code == "E-LAW-003")));
+    if p.failures().len() != f0 { return; }
+    p.eq("2", checked.package.declarations.len(), 3);
+
+    });
+    probe.finish();
 }

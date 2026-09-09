@@ -6,55 +6,59 @@
 //! section argument lists stored as args: None).
 
 use emath_syntax::parse_str;
+use emath_test_harness::Probe;
 
-fn has_error(text: &str, code: &str) -> bool {
+fn error_codes(text: &str) -> Vec<String> {
     let (_, diagnostics) = parse_str(text);
-    let found = diagnostics.errors().any(|e| e.code == code);
-    found
+    diagnostics
+        .errors()
+        .map(|error| error.code.to_string())
+        .collect()
 }
 
 #[test]
-fn fn_type_in_field_is_refused_with_e_type_110() {
-    let source = include_str!("fixtures/fn_type.emath");
-    assert!(
-        has_error(source, "E-TYPE-110"),
-        "fn type must be refused, not parsed into a lossy Path"
+fn probe() {
+    let mut p = Probe::new(
+        "Phase 1 refuses fn types, type aliases, generic extern operators, and broken args; the baseline parses clean",
     );
-}
-
-#[test]
-fn type_alias_is_refused_with_e_type_111() {
-    let source = include_str!("fixtures/type_alias.emath");
-    assert!(
-        has_error(source, "E-TYPE-111"),
-        "type alias RHS must not be silently dropped"
-    );
-}
-
-#[test]
-fn generic_extern_operator_is_refused_with_e_type_112() {
-    let source = include_str!("fixtures/extern_op.emath");
-    assert!(
-        has_error(source, "E-TYPE-112"),
-        "generic extern operator must be refused, not have generics dropped"
-    );
-}
-
-#[test]
-fn broken_section_argument_list_is_refused_with_e_syn_101() {
-    let source = include_str!("fixtures/broken_args.emath");
-    assert!(
-        has_error(source, "E-SYN-101"),
-        "malformed argument list must refuse the statement, not record args: None"
-    );
-}
-
-#[test]
-fn plain_doc_without_refused_constructs_parses_clean() {
-    let source = include_str!("fixtures/baseline.emath");
-    let (_, diagnostics) = parse_str(source);
-    assert!(
-        !diagnostics.has_errors(),
-        "baseline doc must parse without errors"
-    );
+    for (name, source, code) in [
+        (
+            "fn-type",
+            include_str!("fixtures/fn_type.emath"),
+            Some("E-TYPE-110"),
+        ),
+        (
+            "type-alias",
+            include_str!("fixtures/type_alias.emath"),
+            Some("E-TYPE-111"),
+        ),
+        (
+            "generic-extern",
+            include_str!("fixtures/extern_op.emath"),
+            Some("E-TYPE-112"),
+        ),
+        (
+            "broken-args",
+            include_str!("fixtures/broken_args.emath"),
+            Some("E-SYN-101"),
+        ),
+        ("baseline", include_str!("fixtures/baseline.emath"), None),
+    ] {
+        p.case(name, |p| {
+            let found = error_codes(source);
+            match code {
+                Some(want) => {
+                    p.demand(
+                        want,
+                        found.iter().any(|got| got == want),
+                        format!("must refuse with {want}, got {found:?}"),
+                    );
+                }
+                None => {
+                    p.eq("errors", found, Vec::<String>::new());
+                }
+            }
+        });
+    }
+    p.finish();
 }

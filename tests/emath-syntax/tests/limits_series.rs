@@ -39,26 +39,48 @@ fn def_expr<'a>(
     None
 }
 
-fn assert_parses_clean(source: &str) -> emath_core::tree::SyntaxTree {
+fn assert_parses_clean(p: &mut Probe, source: &str) -> emath_core::tree::SyntaxTree {
     let (tree, diags) = parse_str(source);
-    assert!(
+    p.demand(
+        "parse",
         !diags.has_errors(),
-        "must parse cleanly, got errors: {:?}",
-        diags.errors().map(|e| e.code).collect::<Vec<_>>()
+        format!(
+            "must parse cleanly, got errors: {:?}",
+            diags.errors().map(|e| e.code).collect::<Vec<_>>()
+        ),
     );
     tree
 }
 
 // ---- B04: limit binder as claim -------------------------------------------
 
+// ---- B04: sample_limit as computation -------------------------------------
+
+// ---- B06: series with contextual keyword ----------------------------------
+
+// ---- B18: asymptotic equivalence ~~ ---------------------------------------
+
+// ---- Contextual keyword safety --------------------------------------------
+
+// ---- Formatter roundtrip ---------------------------------------------------
+
+// ---- Negative: `~~` token lexes correctly ---------------------------------
+
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn limit_parses_as_claim_node() {
+fn limits_series() {
+    boot();
+    let mut probe = Probe::new("Intent-driven tests for B04 (limit/sample_limit), B06 (series), and B18 (asymptotic equivalence `~~`). These tests verify PARSING behavior: that the");
+    probe.case("limit_parses_as_claim_node", |p| {
+    let f0 = p.failures().len();
+
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
         result = limit x -> 0: x * x
 ";
-    let tree = assert_parses_clean(source);
+    let tree = assert_parses_clean(p, source);
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
         ExprKind::Limit {
@@ -67,37 +89,39 @@ emath function f(x: Float64) -> Float64:
             direction,
             body,
         } => {
-            assert_eq!(var, "x");
-            assert!(matches!(&target.kind, ExprKind::Int(t) if t == "0"));
-            assert_eq!(*direction, LimitDirection::TwoSided);
-            assert!(
-                matches!(
+            p.demand("1", (var) == ("x"), format!("expected {:?}, got {:?}", ("x"), (var)));
+            if p.failures().len() != f0 { return; }
+            p.demand("2",matches!(&target.kind, ExprKind::Int(t) if t == "0"), stringify!(matches!(&target.kind, ExprKind::Int(t) if t == "0")));
+            if p.failures().len() != f0 { return; }
+            p.eq("3", *direction, LimitDirection::TwoSided);
+            p.demand("4",matches!(
                     &body.kind,
                     ExprKind::Binary {
                         op: BinaryOp::Mul,
                         ..
                     }
-                ),
+                ), format!(
                 "body should be x * x"
-            );
+            ));
+            if p.failures().len() != f0 { return; }
         }
         other => panic!("expected ExprKind::Limit, got {other:?}"),
     }
-}
 
-#[test]
-fn one_sided_limits_parse_correctly() {
+    });
+    probe.case("one_sided_limits_parse_correctly", |p| {
+
     // From above: 0+
     let source_plus = "\
 emath function f(x: Float64) -> Float64:
     definitions:
         a = limit x -> 0+: 1 / x
 ";
-    let tree = assert_parses_clean(source_plus);
+    let tree = assert_parses_clean(p, source_plus);
     let expr = def_expr(&tree, "a").expect("expected `a` binding");
     match &expr.kind {
         ExprKind::Limit { direction, .. } => {
-            assert_eq!(*direction, LimitDirection::FromAbove);
+            p.eq("1", *direction, LimitDirection::FromAbove);
         }
         other => panic!("expected Limit, got {other:?}"),
     }
@@ -108,26 +132,25 @@ emath function f(x: Float64) -> Float64:
     definitions:
         b = limit x -> 0-: 1 / x
 ";
-    let tree = assert_parses_clean(source_minus);
+    let tree = assert_parses_clean(p, source_minus);
     let expr = def_expr(&tree, "b").expect("expected `b` binding");
     match &expr.kind {
         ExprKind::Limit { direction, .. } => {
-            assert_eq!(*direction, LimitDirection::FromBelow);
+            p.eq("2", *direction, LimitDirection::FromBelow);
         }
         other => panic!("expected Limit, got {other:?}"),
     }
-}
 
-// ---- B04: sample_limit as computation -------------------------------------
+    });
+    probe.case("sample_limit_parses_as_computation", |p| {
+    let f0 = p.failures().len();
 
-#[test]
-fn sample_limit_parses_as_computation() {
     let source = "\
 emath function f(x: Float64) -> Float64:
     definitions:
         result = sample_limit x -> 0: sin(x) / x
 ";
-    let tree = assert_parses_clean(source);
+    let tree = assert_parses_clean(p, source);
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
         ExprKind::SampleLimit {
@@ -136,35 +159,36 @@ emath function f(x: Float64) -> Float64:
             direction,
             body,
         } => {
-            assert_eq!(var, "x");
-            assert!(matches!(&target.kind, ExprKind::Int(t) if t == "0"));
-            assert_eq!(*direction, LimitDirection::TwoSided);
+            p.demand("1", (var) == ("x"), format!("expected {:?}, got {:?}", ("x"), (var)));
+            if p.failures().len() != f0 { return; }
+            p.demand("2",matches!(&target.kind, ExprKind::Int(t) if t == "0"), stringify!(matches!(&target.kind, ExprKind::Int(t) if t == "0")));
+            if p.failures().len() != f0 { return; }
+            p.eq("3", *direction, LimitDirection::TwoSided);
             // body is sin(x) / x → Binary(Div, Call(sin, [x]), x)
-            assert!(
-                matches!(
+            p.demand("4",matches!(
                     &body.kind,
                     ExprKind::Binary {
                         op: BinaryOp::Div,
                         ..
                     }
-                ),
+                ), format!(
                 "body should be a division"
-            );
+            ));
+            if p.failures().len() != f0 { return; }
         }
         other => panic!("expected ExprKind::SampleLimit, got {other:?}"),
     }
-}
 
-// ---- B06: series with contextual keyword ----------------------------------
+    });
+    probe.case("series_parses_with_contextual_keyword", |p| {
+    let f0 = p.failures().len();
 
-#[test]
-fn series_parses_with_contextual_keyword() {
     let source = "\
 emath function s(n: Nat) -> Float64:
     definitions:
         result = series k in 0..10: 1 / (k + 1)
 ";
-    let tree = assert_parses_clean(source);
+    let tree = assert_parses_clean(p, source);
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
         ExprKind::Binder {
@@ -173,61 +197,60 @@ emath function s(n: Nat) -> Float64:
             body,
             ..
         } => {
-            assert_eq!(*kind, BinderKind::Series, "should be Series binder");
-            assert_eq!(binders.len(), 1);
-            assert_eq!(binders[0].name, "k");
-            assert!(
-                matches!(
+            p.eq("1", *kind, BinderKind::Series);
+            p.eq("2", binders.len(), 1);
+            p.demand("3", (binders[0].name) == ("k"), format!("expected {:?}, got {:?}", ("k"), (binders[0].name)));
+            if p.failures().len() != f0 { return; }
+            p.demand("4",matches!(
                     &body.kind,
                     ExprKind::Binary {
                         op: BinaryOp::Div,
                         ..
                     }
-                ),
+                ), format!(
                 "body should be a division"
-            );
+            ));
+            if p.failures().len() != f0 { return; }
         }
         other => panic!("expected Binder with Series kind, got {other:?}"),
     }
-}
 
-// ---- B18: asymptotic equivalence ~~ ---------------------------------------
+    });
+    probe.case("asymp_parses_as_binary_op", |p| {
+    let f0 = p.failures().len();
 
-#[test]
-fn asymp_parses_as_binary_op() {
     let source = "\
 emath function f(n: Nat) -> Float64:
     definitions:
         result = factorial(n) ~~ n ^ n
 ";
-    let tree = assert_parses_clean(source);
+    let tree = assert_parses_clean(p, source);
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
     match &expr.kind {
         ExprKind::Binary { op, left, right } => {
-            assert_eq!(*op, BinaryOp::Asymp, "operator should be Asymp");
-            assert!(
-                matches!(&left.kind, ExprKind::Call { .. }),
+            p.eq("1", *op, BinaryOp::Asymp);
+            p.demand("2",matches!(&left.kind, ExprKind::Call { .. }), format!(
                 "left should be factorial(n)"
-            );
-            assert!(
-                matches!(
+            ));
+            if p.failures().len() != f0 { return; }
+            p.demand("3",matches!(
                     &right.kind,
                     ExprKind::Binary {
                         op: BinaryOp::Pow,
                         ..
                     }
-                ),
+                ), format!(
                 "right should be n^n"
-            );
+            ));
+            if p.failures().len() != f0 { return; }
         }
         other => panic!("expected Binary with Asymp, got {other:?}"),
     }
-}
 
-// ---- Contextual keyword safety --------------------------------------------
+    });
+    probe.case("contextual_keywords_remain_valid_identifiers", |p| {
+    let f0 = p.failures().len();
 
-#[test]
-fn contextual_keywords_remain_valid_identifiers() {
     // `limit` used as a variable name must NOT trigger limit parsing.
     let source = "\
 emath function f(x: Float64) -> Float64:
@@ -236,36 +259,35 @@ emath function f(x: Float64) -> Float64:
         series = 3
         result = limit + series
 ";
-    let tree = assert_parses_clean(source);
+    let tree = assert_parses_clean(p, source);
     let expr = def_expr(&tree, "limit").expect("expected `limit` binding");
-    assert!(
-        matches!(&expr.kind, ExprKind::Int(t) if t == "5"),
+    p.demand("1",matches!(&expr.kind, ExprKind::Int(t) if t == "5"), format!(
         "`limit` as identifier should bind to 5, got {:?}",
         expr.kind
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let expr = def_expr(&tree, "series").expect("expected `series` binding");
-    assert!(
-        matches!(&expr.kind, ExprKind::Int(t) if t == "3"),
+    p.demand("2",matches!(&expr.kind, ExprKind::Int(t) if t == "3"), format!(
         "`series` as identifier should bind to 3, got {:?}",
         expr.kind
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let expr = def_expr(&tree, "result").expect("expected `result` binding");
-    assert!(
-        matches!(
+    p.demand("3",matches!(
             &expr.kind,
             ExprKind::Binary {
                 op: BinaryOp::Add,
                 ..
             }
-        ),
+        ), format!(
         "result should be limit + series"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-// ---- Formatter roundtrip ---------------------------------------------------
+    });
+    probe.case("formatter_roundtrips_new_constructs", |p| {
+    let f0 = p.failures().len();
 
-#[test]
-fn formatter_roundtrips_new_constructs() {
     let cases = [
         "emath function f(x: Float64) -> Float64:\n    definitions:\n        result = limit x -> 0: x * x\n",
         "emath function f(x: Float64) -> Float64:\n    definitions:\n        result = limit x -> 0+: 1 / x\n",
@@ -276,29 +298,31 @@ fn formatter_roundtrips_new_constructs() {
     ];
     for source in cases {
         let parsed = parse_lossless(source, FileId(0), &Limits::default());
-        assert!(
-            !parsed.diagnostics.has_errors(),
+        p.demand("1",!parsed.diagnostics.has_errors(), format!(
             "source must parse cleanly: {source}"
-        );
+        ));
+        if p.failures().len() != f0 { return; }
         let once = format(&parsed.tree, &parsed.comments);
         let reparsed = parse_lossless(&once, FileId(0), &Limits::default());
-        assert!(
-            !reparsed.diagnostics.has_errors(),
+        p.demand("2",!reparsed.diagnostics.has_errors(), format!(
             "formatted output must parse back: {once}"
-        );
+        ));
+        if p.failures().len() != f0 { return; }
         let twice = format(&reparsed.tree, &reparsed.comments);
-        assert_eq!(once, twice, "format must be idempotent");
+        p.eq("3", &once, &twice);
     }
-}
 
-// ---- Negative: `~~` token lexes correctly ---------------------------------
+    });
+    probe.case("single_tilde_is_rejected", |p| {
+    let f0 = p.failures().len();
 
-#[test]
-fn single_tilde_is_rejected() {
     use emath_syntax::lexer::lex;
     let (_, diags) = lex("a ~ b", FileId(0), &Limits::default());
-    assert!(
-        diags.errors().any(|e| e.code == "E-SYN-101"),
+    p.demand("1",diags.errors().any(|e| e.code == "E-SYN-101"), format!(
         "single `~` should be rejected, use `~~`"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

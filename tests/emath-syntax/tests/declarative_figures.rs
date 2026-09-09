@@ -20,18 +20,9 @@
 //! Design prose of record: ch.3 "Figures: declarative plot specs
 //! (§7.4, seed)".
 
-use emath_core::limits::Limits;
-use emath_sema::session::CompilerSession;
-
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
 fn check(text: &str, name: &str) -> Vec<String> {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, text);
-    result
+    Source::from_str(name, text)
+        .check()
         .diagnostics
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
@@ -64,40 +55,51 @@ emath model PlainFigProbe:
         der(v) = -2.0 * q
 ";
 
-#[test]
-fn payload_rows_refuse_naming_design_forks() {
-    let errors = check(FIGURES_PAYLOAD_ROWS, "figures-fence");
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("budget") && e.contains("nondeterminism")),
-        "`figures:` payload rows must refuse naming the budgeted-sampling \
-         fork (unbounded sampling = first nondeterminism); got: {errors:#?}"
-    );
-    assert!(
-        errors.iter().any(|e| e.contains("sampling receipt")),
-        "the figures fence must name the sampling-receipt honesty contract; \
-         got: {errors:#?}"
-    );
-    assert!(
-        errors.iter().any(|e| e.contains("Renderer")),
-        "the figures fence must name the Renderer provider contract; got: \
-         {errors:#?}"
-    );
-    assert!(
-        !errors
-            .iter()
-            .any(|e| e.contains("outside the Phase 1 subset (known:")),
-        "the section name is RESERVED: the section head must not die with \
-         the generic roster error; got: {errors:#?}"
-    );
-}
+use emath_test_harness::{Probe, Source, boot};
 
 #[test]
-fn plain_models_admit_unchanged() {
+fn declarative_figures() {
+    boot();
+    let mut probe = Probe::new("Declarative figures seed (05 §7.4). Contracts: - **Section name + payload grammar slot RESERVED**: `figures:` is out of the generic E-SEC-101 roster");
+    probe.case("payload_rows_refuse_naming_design_forks", |p| {
+    let f0 = p.failures().len();
+
+    let errors = check(FIGURES_PAYLOAD_ROWS, "figures-fence");
+    p.demand("1",errors
+            .iter()
+            .any(|e| e.contains("budget") && e.contains("nondeterminism")), format!(
+        "`figures:` payload rows must refuse naming the budgeted-sampling \
+         fork (unbounded sampling = first nondeterminism); got: {errors:#?}"
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",errors.iter().any(|e| e.contains("sampling receipt")), format!(
+        "the figures fence must name the sampling-receipt honesty contract; \
+         got: {errors:#?}"
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",errors.iter().any(|e| e.contains("Renderer")), format!(
+        "the figures fence must name the Renderer provider contract; got: \
+         {errors:#?}"
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("4",!errors
+            .iter()
+            .any(|e| e.contains("outside the Phase 1 subset (known:")), format!(
+        "the section name is RESERVED: the section head must not die with \
+         the generic roster error; got: {errors:#?}"
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.case("plain_models_admit_unchanged", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(PLAIN_MODEL, "figures-plain-guard");
-    assert!(
-        errors.is_empty(),
+    p.demand("1",errors.is_empty(), format!(
         "the figures seed must not affect ordinary models; got: {errors:#?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

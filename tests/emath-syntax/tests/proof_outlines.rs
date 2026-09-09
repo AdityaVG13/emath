@@ -24,18 +24,9 @@
 //! complete and the incomplete outline refused E-SEC-101 at the
 //! section whitelist (recorded in the pack).
 
-use emath_core::limits::Limits;
-use emath_sema::session::CompilerSession;
-
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
 fn check(text: &str, name: &str) -> Vec<String> {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, text);
-    result
+    Source::from_str(name, text)
+        .check()
         .diagnostics
         .errors()
         .map(|d| format!("{} {}", d.code, d.message))
@@ -126,59 +117,73 @@ emath function bounded:
         y = a * a
 ";
 
+use emath_test_harness::{Probe, Source, boot};
+
 #[test]
-fn complete_outline_admits_as_data() {
+fn proof_outlines() {
+    boot();
+    let mut probe = Probe::new("Proof outlines as sections (B13 + 05 §7.2) — THIN design+slice: obligation kinds as DATA (assumption / lemma / check / qed), refuse incomplete");
+    probe.case("complete_outline_admits_as_data", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(COMPLETE_OUTLINE, "proof-complete");
-    assert!(
-        errors.is_empty(),
+    p.demand("1",errors.is_empty(), format!(
         "a complete obligation outline (assumption/lemma/check/qed) must \
          admit as data; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn incomplete_outline_refuses_naming_the_rule() {
+    });
+    probe.case("incomplete_outline_refuses_naming_the_rule", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(INCOMPLETE_OUTLINE, "proof-incomplete");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|e| e.starts_with("E-SYN-101") && e.contains("incomplete") && e.contains("qed")),
+            .any(|e| e.starts_with("E-SYN-101") && e.contains("incomplete") && e.contains("qed")), format!(
         "an outline without a closing qed must refuse naming the \
          completeness rule; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn unknown_step_kind_refuses_naming_the_four() {
+    });
+    probe.case("unknown_step_kind_refuses_naming_the_four", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(UNKNOWN_STEP, "proof-unknown-step");
-    assert!(
-        errors.iter().any(|e| e.starts_with("E-SYN-101")
+    p.demand("1",errors.iter().any(|e| e.starts_with("E-SYN-101")
             && e.contains("assumption")
             && e.contains("lemma")
             && e.contains("check")
-            && e.contains("qed")),
+            && e.contains("qed")), format!(
         "an unknown obligation kind must refuse naming the four kinds; \
          got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn dangling_qed_target_refuses() {
+    });
+    probe.case("dangling_qed_target_refuses", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(DANGLING_QED, "proof-dangling-qed");
-    assert!(
-        errors
+    p.demand("1",errors
             .iter()
-            .any(|e| e.starts_with("E-SYN-101") && e.contains("never_declared")),
+            .any(|e| e.starts_with("E-SYN-101") && e.contains("never_declared")), format!(
         "a qed naming an undeclared obligation must refuse; got: {errors:#?}"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn proofs_are_not_admission_tickets() {
+    });
+    probe.case("proofs_are_not_admission_tickets", |p| {
+    let f0 = p.failures().len();
+
     let errors = check(NO_PROOFS, "proof-additive-authority");
-    assert!(
-        errors.is_empty(),
+    p.demand("1",errors.is_empty(), format!(
         "an unproved declaration must compile to its full artifact \
          (proofs are additive authority); got: {errors:#?}"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

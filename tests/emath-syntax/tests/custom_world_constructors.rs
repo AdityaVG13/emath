@@ -13,19 +13,22 @@
 //! Expansion safety: determinism (same source → same identity), no
 //! evidence minting, and refusal of unimplemented lowering.
 
-use emath_core::limits::Limits;
 use emath_ir::{ClaimVerdict, EvidenceLevel};
-use emath_sema::CompilerSession;
-use emath_syntax::{install_source_parser, parse_str};
+use emath_syntax::{parse_str};
 
 fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
+    Source::from_str(name, source).check()
 }
 
+use emath_test_harness::{Probe, Source, boot};
+
 #[test]
-fn nko_value_constructor_level_admits_deterministically() {
+fn custom_world_constructors() {
+    boot();
+    let mut probe = Probe::new("`emath-nko`: custom world constructor levels (value / world / artifact). The three constructor levels from spec 09: - value constructor: builds a");
+    probe.case("nko_value_constructor_level_admits_deterministically", |p| {
+    let f0 = p.failures().len();
+
     // Value level (spec 09): a constructor that validates and builds.
     // `emath policy` is the stateful value-constructor lane on HEAD.
     let source = "\
@@ -46,25 +49,23 @@ emath policy Probability:
         p = state.value
 ";
     let (_, parse_diagnostics) = parse_str(source);
-    assert!(!parse_diagnostics.has_errors());
+    p.demand("1",!parse_diagnostics.has_errors(), stringify!(!parse_diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
     let checked = check("value-level", source);
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("2",!checked.diagnostics.has_errors(), format!(
         "{:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert_eq!(checked.package.declarations[0].constructors.len(), 1);
+    ));
+    if p.failures().len() != f0 { return; }
+    p.eq("3", checked.package.declarations[0].constructors.len(), 1);
 
     let repeated = check("value-level-repeat", source);
-    assert_eq!(
-        checked.package.meaning_id(&[]).unwrap(),
-        repeated.package.meaning_id(&[]).unwrap(),
-        "custom expansion must be deterministic (same source, same identity)"
-    );
-}
+    p.eq("4", checked.package.meaning_id(&[]).unwrap(), repeated.package.meaning_id(&[]).unwrap());
 
-#[test]
-fn nko_world_constructor_level_admits_with_labeled_portfolio_output() {
+    });
+    probe.case("nko_world_constructor_level_admits_with_labeled_portfolio_output", |p| {
+    let f0 = p.failures().len();
+
     // World level (spec 09): strategies + protect + portfolio output.
     // Deterministic, evidence-neutral: the declaration never mints a
     // claim higher than E1/not-run.
@@ -80,29 +81,30 @@ emath custom AlienWorld:
         output: \"InterpretationPortfolio\"
 ";
     let (_, parse_diagnostics) = parse_str(source);
-    assert!(!parse_diagnostics.has_errors());
+    p.demand("1",!parse_diagnostics.has_errors(), stringify!(!parse_diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
     let checked = check("world-level", source);
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("2",!checked.diagnostics.has_errors(), format!(
         "{:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let world = &checked.package.declarations[0];
-    assert_eq!(world.kind_label, "custom");
-    assert_eq!(world.evidence.len(), 1);
-    assert_eq!(world.evidence[0].verdict, ClaimVerdict::NotRun);
-    assert_eq!(world.evidence[0].level, EvidenceLevel::E1);
-    assert_eq!(world.evidence[0].checker, None);
+    p.demand("3", (world.kind_label) == ("custom"), format!("expected {:?}, got {:?}", ("custom"), (world.kind_label)));
+    if p.failures().len() != f0 { return; }
+    p.eq("4", world.evidence.len(), 1);
+    p.eq("5", world.evidence[0].verdict, ClaimVerdict::NotRun);
+    p.eq("6", world.evidence[0].level, EvidenceLevel::E1);
+    p.demand("7", world.evidence[0].checker == None, format!("expected None, got {:?}", (world.evidence[0].checker)));
+    if p.failures().len() != f0 { return; }
 
     let repeated = check("world-level-repeat", source);
-    assert_eq!(
-        checked.package.meaning_id(&[]).unwrap(),
-        repeated.package.meaning_id(&[]).unwrap()
-    );
-}
+    p.eq("8", checked.package.meaning_id(&[]).unwrap(), repeated.package.meaning_id(&[]).unwrap());
 
-#[test]
-fn nko_artifact_constructor_refused_until_implemented() {
+    });
+    probe.case("nko_artifact_constructor_refused_until_implemented", |p| {
+    let f0 = p.failures().len();
+
     // Artifact level (spec 09): packaging is not a Phase 1 capability.
     // "Do not silently accept a custom construct the Phase 1 subset does
     // not implement" — the refusal must be typed, not a crash.
@@ -113,27 +115,32 @@ emath custom RustWorld:
             evaluator
 ";
     let checked = check("artifact-level", source);
-    assert!(
-        checked.diagnostics.has_errors(),
+    p.demand("1",checked.diagnostics.has_errors(), format!(
         "artifact constructor must be refused in Phase 1"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn nko_forbidden_expansion_refuses() {
+    });
+    probe.case("nko_forbidden_expansion_refuses", |p| {
+    let f0 = p.failures().len();
+
     // Expansion safety: a custom declaration cannot mint evidence
     // authority by declaration alone (invalid fixture, typed refusal).
     let invalid = check(
         "invalid-nko",
         include_str!("../../../tests/invalid/custom_world_missing_witness.emath"),
     );
-    assert!(
-        invalid
+    p.demand("1",invalid
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-KIND-027"),
+            .any(|error| error.code == "E-KIND-027"), format!(
         "{:?}",
         invalid.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert!(invalid.package.declarations.is_empty());
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",invalid.package.declarations.is_empty(), stringify!(invalid.package.declarations.is_empty()));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

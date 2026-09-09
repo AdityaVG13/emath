@@ -9,25 +9,41 @@ fn has_error(text: &str, code: &str) -> bool {
     diagnostics.errors().any(|error| error.code == code)
 }
 
-#[test]
-fn freeze_keeps_open_holes_visible() {
-    let source = include_str!("../../../language/examples/intro/scratch.emath");
-    let expansion = expand_scratch(source);
-    assert!(expansion.rewritten());
-    let ledger = exactness_ledger(source);
-    assert!(ledger.count(ExactnessStatus::Open) >= 1);
-    let notes = explanation_notes(source);
-    assert!(
-        notes
-            .iter()
-            .any(|note| note.stability == ExactnessStatus::Inferred)
-    );
-    let (_, diagnostics) = parse_str(source);
-    assert!(!diagnostics.has_errors());
-}
+use emath_test_harness::{Probe, boot};
 
 #[test]
-fn freeze_must_not_claim_open_holes() {
+fn exactness_introspection() {
+    boot();
+    let mut probe = Probe::new("`emath freeze` / `why` / `expand` / `assumptions` CLI surface (syntax half).");
+    probe.case("freeze_keeps_open_holes_visible", |p| {
+    let f0 = p.failures().len();
+
+    let source = include_str!("../../../tests/fixtures/language/intro/scratch.emath");
+    let expansion = expand_scratch(source);
+    p.demand("1",expansion.rewritten(), stringify!(expansion.rewritten()));
+    if p.failures().len() != f0 { return; }
+    let ledger = exactness_ledger(source);
+    p.demand("2",ledger.count(ExactnessStatus::Open) >= 1, stringify!(ledger.count(ExactnessStatus::Open) >= 1));
+    if p.failures().len() != f0 { return; }
+    let notes = explanation_notes(source);
+    p.demand("3",notes
+            .iter()
+            .any(|note| note.stability == ExactnessStatus::Inferred), stringify!(notes
+            .iter()
+            .any(|note| note.stability == ExactnessStatus::Inferred)));
+    if p.failures().len() != f0 { return; }
+    let (_, diagnostics) = parse_str(source);
+    p.demand("4",!diagnostics.has_errors(), stringify!(!diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.case("freeze_must_not_claim_open_holes", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/invalid/exactness_introspection.emath");
-    assert!(has_error(source, "E-SYN-147"));
+    p.demand("1",has_error(source, "E-SYN-147"), stringify!(has_error(source, "E-SYN-147")));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

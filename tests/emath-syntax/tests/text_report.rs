@@ -21,69 +21,68 @@ emath function Report:
 ";
 
 fn checked(source: &str) -> emath_sema::CheckResult {
-    emath_syntax::install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned("text-report", source)
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn text_unicode_and_reports_execute_deterministically() {
+fn text_report() {
+    boot();
+    let mut probe = Probe::new("Executable `core::text` and pure deterministic report construction.");
+    probe.case("text_unicode_and_reports_execute_deterministically", |p| {
+    let f0 = p.failures().len();
+
     let package = checked(REPORT);
-    assert!(
-        !package.diagnostics.has_errors(),
+    p.demand("1",!package.diagnostics.has_errors(), format!(
         "{:?}",
         package.diagnostics.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let first = run_package(&package.package);
     let second = run_package(&package.package);
     let definitions = &first.declarations[0].tests[0].definitions;
-    assert_eq!(
-        definitions.get("normalized"),
-        Some(&Value::Text("Café".to_string()))
-    );
-    assert_eq!(definitions.get("code_points"), Some(&Value::I64(4)));
-    assert_eq!(
-        definitions.get("markdown"),
-        Some(&Value::Text(
+    p.eq("2", definitions.get("normalized"), Some(&Value::Text("Café".to_string())));
+    p.eq("3", definitions.get("code_points"), Some(&Value::I64(4)));
+    p.eq("4", definitions.get("markdown"), Some(&Value::Text(
             "# Experiment\n\n## Results\n\nx = 4\n".to_string()
-        ))
-    );
-    assert_eq!(
-        definitions.get("latex"),
-        Some(&Value::Text(
+        )));
+    p.eq("5", definitions.get("latex"), Some(&Value::Text(
             "\\section{Experiment}\n\\subsection{Results}\nx = 4\n".to_string()
-        ))
-    );
-    assert_eq!(
-        first.declarations[0].tests[0].definitions,
-        second.declarations[0].tests[0].definitions
-    );
-}
+        )));
+    p.eq("6", &first.declarations[0].tests[0].definitions, &second.declarations[0].tests[0].definitions);
 
-#[test]
-fn nfc_equivalent_text_has_the_same_meaning_identity() {
+    });
+    probe.case("nfc_equivalent_text_has_the_same_meaning_identity", |p| {
+    let f0 = p.failures().len();
+
     let decomposed = checked("emath function T:\n    definitions:\n        x = \"Cafe\u{301}\"\n");
     let composed = checked("emath function T:\n    definitions:\n        x = \"Café\"\n");
-    assert!(!decomposed.diagnostics.has_errors());
-    assert!(!composed.diagnostics.has_errors());
-    assert_eq!(
-        decomposed.package.meaning_id(&[]).expect("decomposed"),
-        composed.package.meaning_id(&[]).expect("composed")
-    );
-}
+    p.demand("1",!decomposed.diagnostics.has_errors(), stringify!(!decomposed.diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",!composed.diagnostics.has_errors(), stringify!(!composed.diagnostics.has_errors()));
+    if p.failures().len() != f0 { return; }
+    p.eq("3", decomposed.package.meaning_id(&[]).expect("decomposed"), composed.package.meaning_id(&[]).expect("composed"));
+;
 
-#[test]
-fn report_side_effect_operation_refuses() {
+    });
+    probe.case("report_side_effect_operation_refuses", |p| {
+    let f0 = p.failures().len();
+
     let result = checked(
         "emath function BadReport:\n    definitions:\n        report = document(\"Title\", section(\"Body\", \"value\"))\n        written = render_file(report, \"out.md\")\n",
     );
-    assert!(
-        result
+    p.demand("1",result
             .diagnostics
             .errors()
             .any(|diagnostic| diagnostic.code == "E-TYPE-003"
-                && diagnostic.message.contains("render_file")),
+                && diagnostic.message.contains("render_file")), format!(
         "{:?}",
         result.diagnostics.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

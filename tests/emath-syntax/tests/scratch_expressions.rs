@@ -12,15 +12,18 @@ fn has_error(text: &str, code: &str) -> bool {
     diagnostics.errors().any(|error| error.code == code)
 }
 
-fn parse_ok(text: &str) -> emath_core::tree::SyntaxTree {
+fn parse_ok(p: &mut Probe, text: &str) -> emath_core::tree::SyntaxTree {
     let (tree, diagnostics) = parse_str(text);
-    assert!(
+    p.demand(
+        "parse_ok",
         !diagnostics.has_errors(),
-        "must parse cleanly, got {:?}",
-        diagnostics
-            .errors()
-            .map(|error| format!("{} {}", error.code, error.message))
-            .collect::<Vec<_>>()
+        format!(
+            "must parse cleanly, got {:?}",
+            diagnostics
+                .errors()
+                .map(|error| format!("{} {}", error.code, error.message))
+                .collect::<Vec<_>>()
+        ),
     );
     tree
 }
@@ -32,76 +35,84 @@ fn first_decl<'a>(tree: &'a emath_core::tree::SyntaxTree) -> &'a emath_core::tre
     decl
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn two_plus_two_parses_as_implicit_function() {
-    let tree = parse_ok("2+2\n");
+fn scratch_expressions() {
+    boot();
+    let mut probe = Probe::new("L0 scratch grammar: expressions, plot, solve, convert without declarations.");
+    probe.case("two_plus_two_parses_as_implicit_function", |p| {
+    let f0 = p.failures().len();
+
+    let tree = parse_ok(p, "2+2\n");
     let decl = first_decl(&tree);
-    assert_eq!(decl.name, "Scratch");
-    assert!(
-        decl.body.iter().any(
+    p.demand("1", (decl.name) == ("Scratch"), format!("expected {:?}, got {:?}", ("Scratch"), (decl.name)));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",decl.body.iter().any(
             |stmt| matches!(&stmt.kind, StmtKind::Section(section) if section.name == "definitions")
-        ),
+        ), format!(
         "L0 must lower to definitions, got {:?}",
         decl.body
-    );
+    ));
+    if p.failures().len() != f0 { return; }
 
-    emath_syntax::install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("l0-two-plus-two", "2+2\n");
-    assert!(
-        !checked.diagnostics.has_errors(),
+    p.demand("3",!checked.diagnostics.has_errors(), format!(
         "{:?}",
         checked.diagnostics.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     let report = emath_exec_ir::runner::run_package(&checked.package);
-    assert_eq!(
-        report.declarations[0].tests[0].definitions.get("result"),
-        Some(&Value::F64(4.0))
-    );
-}
+    p.eq("4", report.declarations[0].tests[0].definitions.get("result"), Some(&Value::F64(4.0)));
 
-#[test]
-fn two_plus_two_example_file_parses() {
-    let source = include_str!("../../../language/examples/intro/scratch.emath");
-    let _tree = parse_ok(source);
-}
+    });
+    probe.case("two_plus_two_example_file_parses", |p| {
 
-#[test]
-fn plot_solve_convert_expand() {
+    let source = include_str!("../../../tests/fixtures/language/intro/scratch.emath");
+    let _tree = parse_ok(p, source);
+
+    });
+    probe.case("plot_solve_convert_expand", |p| {
+    let f0 = p.failures().len();
+
     let plot = expand_scratch("plot sin(x) on -3.14..3.14\n");
-    assert!(plot.rewritten(), "plot must wrap");
-    assert!(plot.expanded.contains("sin(x)"), "{}", plot.expanded);
-    assert!(
-        plot.expanded.contains("emath function Scratch:"),
+    p.demand("1",plot.rewritten(), format!( "plot must wrap"));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",plot.expanded.contains("sin(x)"), format!( "{}", plot.expanded));
+    if p.failures().len() != f0 { return; }
+    p.demand("3",plot.expanded.contains("emath function Scratch:"), format!(
         "{}",
         plot.expanded
-    );
+    ));
+    if p.failures().len() != f0 { return; }
 
     let solve = expand_scratch("solve x^2 = 2 over Real\n");
-    assert!(solve.rewritten());
-    assert!(
-        solve.expanded.contains("solve(residual) wrt x"),
+    p.demand("4",solve.rewritten(), stringify!(solve.rewritten()));
+    if p.failures().len() != f0 { return; }
+    p.demand("5",solve.expanded.contains("solve(residual) wrt x"), format!(
         "{}",
         solve.expanded
-    );
-    assert!(
-        solve
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("6",solve
             .notes
             .iter()
-            .any(|note| note.inferred.contains("Real")),
+            .any(|note| note.inferred.contains("Real")), format!(
         "{:?}",
         solve.notes
-    );
+    ));
+    if p.failures().len() != f0 { return; }
 
     let convert = expand_scratch("convert 1 km to m\n");
-    assert!(convert.rewritten());
-    assert!(
-        convert.expanded.contains("(1 km) / (1 m)"),
+    p.demand("7",convert.rewritten(), stringify!(convert.rewritten()));
+    if p.failures().len() != f0 { return; }
+    p.demand("8",convert.expanded.contains("(1 km) / (1 m)"), format!(
         "{}",
         convert.expanded
-    );
+    ));
+    if p.failures().len() != f0 { return; }
 
-    emath_syntax::install_source_parser();
     for (name, source, given, expected, tolerance) in [
         (
             "plot",
@@ -127,11 +138,11 @@ fn plot_solve_convert_expand() {
     ] {
         let mut session = CompilerSession::new(Limits::default());
         let checked = session.check_owned(name, source);
-        assert!(
-            !checked.diagnostics.has_errors(),
+        p.demand("9",!checked.diagnostics.has_errors(), format!(
             "{name}: {:?}",
             checked.diagnostics.errors().collect::<Vec<_>>()
-        );
+        ));
+        if p.failures().len() != f0 { return; }
         let report = emath_exec_ir::runner::run_package_with_given(&checked.package, Some(&given));
         let value = report.declarations[0].tests[0]
             .definitions
@@ -141,26 +152,31 @@ fn plot_solve_convert_expand() {
         let Value::F64(actual) = value else {
             panic!("{name} must compute a scalar, got {value:?}");
         };
-        assert!(
-            (actual - expected).abs() <= tolerance,
+        p.demand("10",(actual - expected).abs() <= tolerance, format!(
             "{name}: expected {expected}, got {actual}"
-        );
+        ));
+        if p.failures().len() != f0 { return; }
     }
-}
 
-#[test]
-fn mix_scratch_and_declaration_is_e_syn_141() {
+    });
+    probe.case("mix_scratch_and_declaration_is_e_syn_141", |p| {
+    let f0 = p.failures().len();
+
     let source = include_str!("../../../tests/invalid/scratch_expressions.emath");
-    assert!(
-        has_error(source, "E-SYN-141"),
+    p.demand("1",has_error(source, "E-SYN-141"), format!(
         "mixed scratch + declaration must refuse with E-SYN-141"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn junk_words_are_e_syn_145_not_a_silent_function() {
-    assert!(
-        has_error("this is not emath at all\n", "E-SYN-145"),
+    });
+    probe.case("junk_words_are_e_syn_145_not_a_silent_function", |p| {
+    let f0 = p.failures().len();
+
+    p.demand("1",has_error("this is not emath at all\n", "E-SYN-145"), format!(
         "non-expression scratch must refuse"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }

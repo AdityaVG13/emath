@@ -1,5 +1,4 @@
-//! core::units_ext and core::physics
-//! (Phase 13-14).
+//! core::units_ext and core::physics.
 //!
 //! core::units_ext: SI prefixes work systematically over every known
 //! spelling, astronomical (AU/pc/ly) and geodetic (nmi/mi/ft) scales are
@@ -24,10 +23,8 @@
 
 use emath_ir::{UnitDim, lookup_unit};
 use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
 
 fn check(source: &str) -> Vec<(String, String)> {
-    install_source_parser();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     session
         .check_owned("r3_units_ext_physics", source)
@@ -57,25 +54,38 @@ fn errors_of(source: &str) -> Vec<String> {
         .collect()
 }
 
-mod r3_units_ext_physics {
-    use super::*;
+// --- Rust-level pins: scales and dimension vectors are exact ----------
 
-    // --- Rust-level pins: scales and dimension vectors are exact ----------
+// --- Typed refusal: currencies and time zones are packages, not core --
 
-    #[test]
-    fn astro_and_geodetic_scales_are_exact_by_definition() {
+// --- Surface: extended spellings admit through the annotation layer ---
+
+// --- core::physics: undirected relations over quantities --------------
+
+const VALID: &str = include_str!("../../../tests/valid/physics_units.emath");
+const INVALID: &str = include_str!("../../../tests/invalid/physics_units.emath");
+
+use emath_test_harness::{Probe, boot};
+
+#[test]
+fn physics_units() {
+    boot();
+    let mut probe = Probe::new("core::units_ext and core::physics. core::units_ext: SI prefixes work systematically over every known spelling, astronomical (AU/pc/ly)");
+    probe.case("astro_and_geodetic_scales_are_exact_by_definition", |p| {
+
         let au = lookup_unit("AU").unwrap();
-        assert_eq!(au.scale, 1.495_978_707e11, "IAU 2012 exact");
-        assert_eq!(au.dimensions(), UnitDim::base(1, 0, 0, 0, 0, 0, 0));
-        assert_eq!(lookup_unit("pc").unwrap().scale, 3.085_677_581_491_367_3e16);
-        assert_eq!(lookup_unit("ly").unwrap().scale, 9.460_730_472_580_8e15);
-        assert_eq!(lookup_unit("nmi").unwrap().scale, 1_852.0);
-        assert_eq!(lookup_unit("mi").unwrap().scale, 1_609.344);
-        assert_eq!(lookup_unit("ft").unwrap().scale, 0.3048);
-    }
+        p.eq("1", au.scale, 1.495_978_707e11);
+        p.eq("2", au.dimensions(), UnitDim::base(1, 0, 0, 0, 0, 0, 0));
+        p.eq("3", lookup_unit("pc").unwrap().scale, 3.085_677_581_491_367_3e16);
+        p.eq("4", lookup_unit("ly").unwrap().scale, 9.460_730_472_580_8e15);
+        p.eq("5", lookup_unit("nmi").unwrap().scale, 1_852.0);
+        p.eq("6", lookup_unit("mi").unwrap().scale, 1_609.344);
+        p.eq("7", lookup_unit("ft").unwrap().scale, 0.3048);
+    
+    });
+    probe.case("angle_units_are_dimensionless_by_declaration", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn angle_units_are_dimensionless_by_declaration() {
         for (spelling, scale) in [
             ("rad", 1.0),
             ("deg", std::f64::consts::PI / 180.0),
@@ -85,17 +95,15 @@ mod r3_units_ext_physics {
             ("turn", 2.0 * std::f64::consts::PI),
         ] {
             let unit = lookup_unit(spelling).unwrap();
-            assert_eq!(
-                unit.dimensions(),
-                UnitDim::one(),
-                "{spelling} must carry the dimensionless vector (SI radian = m/m policy)"
-            );
-            assert!((unit.scale - scale).abs() < 1e-15, "{spelling} scale");
+            p.eq("1", unit.dimensions(), UnitDim::one());
+            p.demand("2",(unit.scale - scale).abs() < 1e-15, format!( "{spelling} scale"));
+            if p.failures().len() != f0 { return; }
         }
-    }
+    
+    });
+    probe.case("si_prefixes_apply_systematically", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn si_prefixes_apply_systematically() {
         for (spelling, base, factor) in [
             ("nm", "m", 1e-9),
             ("mm", "m", 1e-3),
@@ -115,126 +123,120 @@ mod r3_units_ext_physics {
         ] {
             let unit = lookup_unit(spelling).unwrap();
             let expected = lookup_unit(base).unwrap();
-            assert!(
-                (unit.scale - expected.scale * factor).abs() < expected.scale.abs() * 1e-9,
+            p.demand("1",(unit.scale - expected.scale * factor).abs() < expected.scale.abs() * 1e-9, format!(
                 "{spelling} scale"
-            );
-            assert_eq!(unit.dimensions(), expected.dimensions(), "{spelling} dims");
+            ));
+            if p.failures().len() != f0 { return; }
+            p.eq("2", unit.dimensions(), expected.dimensions());
         }
-    }
+    
+    });
+    probe.case("exact_spellings_win_over_prefix_fallback", |p| {
 
-    #[test]
-    fn exact_spellings_win_over_prefix_fallback() {
         // kg is the SI base (1.0), NOT kilo-gram via `g` (which would also
         // land on 1.0 but must not be produced that way); ms and km keep
         // their historical names.
-        assert_eq!(lookup_unit("kg").unwrap().scale, 1.0);
-        assert_eq!(lookup_unit("ms").unwrap().scale, 1e-3);
-        assert_eq!(lookup_unit("km").unwrap().scale, 1e3);
-        assert_eq!(lookup_unit("MiB").unwrap().scale, 1_048_576.0);
-    }
+        p.eq("1", lookup_unit("kg").unwrap().scale, 1.0);
+        p.eq("2", lookup_unit("ms").unwrap().scale, 1e-3);
+        p.eq("3", lookup_unit("km").unwrap().scale, 1e3);
+        p.eq("4", lookup_unit("MiB").unwrap().scale, 1_048_576.0);
+    
+    });
+    probe.case("rankine_extends_the_affine_temperature_family", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn rankine_extends_the_affine_temperature_family() {
         let deg_r = lookup_unit("degR").unwrap();
-        assert_eq!(deg_r.dimensions(), UnitDim::base(0, 0, 0, 0, 1, 0, 0));
-        assert!((deg_r.scale - 5.0 / 9.0).abs() < 1e-15);
-        assert_eq!(deg_r.offset, 0.0, "Rankine is absolute: no affine offset");
-    }
+        p.eq("1", deg_r.dimensions(), UnitDim::base(0, 0, 0, 0, 1, 0, 0));
+        p.demand("2",(deg_r.scale - 5.0 / 9.0).abs() < 1e-15, stringify!((deg_r.scale - 5.0 / 9.0).abs() < 1e-15));
+        if p.failures().len() != f0 { return; }
+        p.eq("3", deg_r.offset, 0.0);
+    
+    });
+    probe.case("electronvolt_is_the_exact_si2019_value", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn electronvolt_is_the_exact_si2019_value() {
         let ev = lookup_unit("eV").unwrap();
-        assert!((ev.scale - 1.602_176_634e-19).abs() < 1e-36);
-        assert_eq!(ev.dimensions(), UnitDim::base(2, 1, -2, 0, 0, 0, 0));
-    }
+        p.demand("1",(ev.scale - 1.602_176_634e-19).abs() < 1e-36, stringify!((ev.scale - 1.602_176_634e-19).abs() < 1e-36));
+        if p.failures().len() != f0 { return; }
+        p.eq("2", ev.dimensions(), UnitDim::base(2, 1, -2, 0, 0, 0, 0));
+    
+    });
+    probe.case("currency_in_core_is_a_distinct_typed_refusal", |p| {
+    let f0 = p.failures().len();
 
-    // --- Typed refusal: currencies and time zones are packages, not core --
+        p.demand("1", (errors_of(&fn_with_input("USD"))) == (vec!["E-UNIT-CURRENCY-1".to_string()]), format!("expected {:?}, got {:?}", (vec!["E-UNIT-CURRENCY-1".to_string()]), (errors_of(&fn_with_input("USD")))));
+        if p.failures().len() != f0 { return; }
+        p.demand("2", (errors_of(&fn_with_input("EUR"))) == (vec!["E-UNIT-CURRENCY-1".to_string()]), format!("expected {:?}, got {:?}", (vec!["E-UNIT-CURRENCY-1".to_string()]), (errors_of(&fn_with_input("EUR")))));
+        if p.failures().len() != f0 { return; }
+        p.demand("3", (errors_of(&fn_with_input("UTC"))) == (vec!["E-UNIT-CURRENCY-1".to_string()]), format!("expected {:?}, got {:?}", (vec!["E-UNIT-CURRENCY-1".to_string()]), (errors_of(&fn_with_input("UTC")))));
+        if p.failures().len() != f0 { return; }
+    
+    });
+    probe.case("currency_behind_a_prefix_keeps_the_policy_refusal", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn currency_in_core_is_a_distinct_typed_refusal() {
-        assert_eq!(
-            errors_of(&fn_with_input("USD")),
-            vec!["E-UNIT-CURRENCY-1".to_string()]
-        );
-        assert_eq!(
-            errors_of(&fn_with_input("EUR")),
-            vec!["E-UNIT-CURRENCY-1".to_string()]
-        );
-        assert_eq!(
-            errors_of(&fn_with_input("UTC")),
-            vec!["E-UNIT-CURRENCY-1".to_string()]
-        );
-    }
-
-    #[test]
-    fn currency_behind_a_prefix_keeps_the_policy_refusal() {
         // mUSD is still a currency: the policy refusal survives prefixing
         // instead of degrading to the generic unknown-unit miss.
-        assert_eq!(
-            errors_of(&fn_with_input("mUSD")),
-            vec!["E-UNIT-CURRENCY-1".to_string()]
-        );
-    }
+        p.demand("1", (errors_of(&fn_with_input("mUSD"))) == (vec!["E-UNIT-CURRENCY-1".to_string()]), format!("expected {:?}, got {:?}", (vec!["E-UNIT-CURRENCY-1".to_string()]), (errors_of(&fn_with_input("mUSD")))));
+        if p.failures().len() != f0 { return; }
+    
+    });
+    probe.case("unknown_units_still_miss_generically", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn unknown_units_still_miss_generically() {
         // The gate must not swallow genuine unknowns.
-        assert_eq!(
-            errors_of(&fn_with_input("Flurble")),
-            vec!["E-UNIT-104".to_string()]
-        );
-    }
+        p.demand("1", (errors_of(&fn_with_input("Flurble"))) == (vec!["E-UNIT-104".to_string()]), format!("expected {:?}, got {:?}", (vec!["E-UNIT-104".to_string()]), (errors_of(&fn_with_input("Flurble")))));
+        if p.failures().len() != f0 { return; }
+    
+    });
+    probe.case("extended_annotations_admit", |p| {
+    let f0 = p.failures().len();
 
-    // --- Surface: extended spellings admit through the annotation layer ---
-
-    #[test]
-    fn extended_annotations_admit() {
         for annotation in [
             "AU", "pc", "ly", "nmi", "mi", "ft", "rad", "deg", "arcsec", "nm", "kPa", "MJ", "degR",
             "C", "mol", "Pa",
         ] {
-            assert!(
-                errors_of(&fn_with_input(annotation)).is_empty(),
+            p.demand("1",errors_of(&fn_with_input(annotation)).is_empty(), format!(
                 "`in {annotation}` must admit"
-            );
+            ));
+            if p.failures().len() != f0 { return; }
         }
-    }
+    
+    });
+    probe.case("angle_dimension_policy_is_explicit_in_comparisons", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn angle_dimension_policy_is_explicit_in_comparisons() {
         // deg and rad share the dimensionless vector: a dimension equality
         // between them computes true (admits with a receipt, no error).
         let source = "emath function A:\n    inputs:\n        x: Float64 in deg\n        y: Float64 in rad\n    outputs:\n        z: Float64\n    definitions:\n        z = 0.0\n    constraints:\n        dimension of x == dimension of y\n";
-        assert!(
-            errors_of(source).is_empty(),
+        p.demand("1",errors_of(source).is_empty(), format!(
             "deg and rad must compare dimension-equal under the declared policy"
-        );
-    }
+        ));
+        if p.failures().len() != f0 { return; }
+    
+    });
+    probe.case("physics_law_contracts_admit_and_carry_the_relation", |p| {
+    let f0 = p.failures().len();
 
-    // --- core::physics: undirected relations over quantities --------------
-
-    const VALID: &str = include_str!("../../../tests/valid/physics_units.emath");
-    const INVALID: &str = include_str!("../../../tests/invalid/physics_units.emath");
-
-    #[test]
-    fn physics_law_contracts_admit_and_carry_the_relation() {
         let errors = errors_of(VALID);
-        assert!(
-            errors.is_empty(),
+        p.demand("1",errors.is_empty(), format!(
             "physics law contracts must admit: {errors:?}"
-        );
-    }
+        ));
+        if p.failures().len() != f0 { return; }
+    
+    });
+    probe.case("seeded_wrong_output_refuses_with_dimension_mismatch", |p| {
+    let f0 = p.failures().len();
 
-    #[test]
-    fn seeded_wrong_output_refuses_with_dimension_mismatch() {
         // Velocity (m/s) where acceleration (m/s^2) belongs: the residual
         // `F - m*a` infers kg*m/s against the force output — a typed refusal
         // at admission, never a silently-true law.
         let errors = errors_of(INVALID);
-        assert!(
-            errors.iter().any(|code| code == "E-UNIT-101"),
+        p.demand("1",errors.iter().any(|code| code == "E-UNIT-101"), format!(
             "seeded wrong-output must refuse with E-UNIT-101: {errors:?}"
-        );
-    }
+        ));
+        if p.failures().len() != f0 { return; }
+    
+    });
+    probe.finish();
 }

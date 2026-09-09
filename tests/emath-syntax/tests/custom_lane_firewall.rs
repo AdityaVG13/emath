@@ -10,7 +10,6 @@ use emath_sema::CompilerSession;
 use emath_syntax::genesis::parse_genesis;
 
 fn check_strict(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    emath_syntax::install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     session.check_owned(name, source)
 }
@@ -23,8 +22,15 @@ fn genesis_source(body: &str, answer: &str) -> String {
     format!("emath custom W:\n  body:\n  {body}\n  answer:\n  return {answer}\n")
 }
 
+use emath_test_harness::{Probe, boot};
+
 #[test]
-fn custom_glyphs_stay_labeled_not_strict_meaning() {
+fn custom_lane_firewall() {
+    boot();
+    let mut probe = Probe::new("Custom-lane firewall (fixtures, constitutional pins). The custom lane must never silently fall through into strict meaning: alien glyphs stay a");
+    probe.case("custom_glyphs_stay_labeled_not_strict_meaning", |p| {
+    let f0 = p.failures().len();
+
     // The custom lane keeps alien glyphs byte-exact; it never invents a
     // Real-typed interpretation for them.
     let file = parse_genesis(
@@ -32,8 +38,9 @@ fn custom_glyphs_stay_labeled_not_strict_meaning() {
         &Limits::default(),
     )
     .expect("custom lane admits the alien body");
-    assert_eq!(file.body_text, ALIEN_BODY, "byte-exact body preservation");
-    assert_eq!(file.world_name, "W");
+    p.eq("1", file.body_text.as_str(), ALIEN_BODY);
+    p.demand("2", (file.world_name) == ("W"), format!("expected {:?}, got {:?}", ("W"), (file.world_name)));
+    if p.failures().len() != f0 { return; }
 
     // The same glyphs are NOT admissible strict-lane meaning: a strict
     // function using them as identifiers refuses with a typed error.
@@ -41,38 +48,39 @@ fn custom_glyphs_stay_labeled_not_strict_meaning() {
         "strict-glyphs",
         "emath function F:\n    inputs:\n        \u{03b6}: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = \u{29d6}(\u{03b6})\n",
     );
-    assert!(
-        strict.diagnostics.has_errors(),
+    p.demand("3",strict.diagnostics.has_errors(), format!(
         "alien glyphs must not become strict meaning"
-    );
-}
+    ));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn strict_unknown_name_never_becomes_a_world() {
+    });
+    probe.case("strict_unknown_name_never_becomes_a_world", |p| {
+    let f0 = p.failures().len();
+
     // Strict lane: an unknown callee is a typed refusal (E-TYPE-003), not
     // a silently-guessed custom world.
     let invalid = check_strict(
         "strict-unknown",
         include_str!("../../../tests/invalid/custom_lane_firewall.emath"),
     );
-    assert!(
-        invalid
+    p.demand("1",invalid
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-TYPE-003"),
+            .any(|error| error.code == "E-TYPE-003"), format!(
         "{:?}",
         invalid.diagnostics.errors().collect::<Vec<_>>()
-    );
+    ));
+    if p.failures().len() != f0 { return; }
     // No guessed world: the ordinary function is not admitted with a
     // custom interpretation attached.
-    assert!(
-        invalid
+    p.demand("2",invalid
             .package
             .declarations
             .iter()
-            .all(|declaration| declaration.kind_label != "custom"),
+            .all(|declaration| declaration.kind_label != "custom"), format!(
         "a strict refusal must not surface as a custom world"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
 
     // Custom lane: the same unknown callee stays a labeled candidate bag;
     // it is interpreted structurally, never claimed.
@@ -81,11 +89,13 @@ fn strict_unknown_name_never_becomes_a_world() {
         &Limits::default(),
     )
     .expect("custom lane admits unknown names as open body text");
-    assert_eq!(file.body_text, "mystery_op(x)");
-}
+    p.demand("3", (file.body_text) == ("mystery_op(x)"), format!("expected {:?}, got {:?}", ("mystery_op(x)"), (file.body_text)));
+    if p.failures().len() != f0 { return; }
 
-#[test]
-fn refused_custom_kind_never_silently_admits() {
+    });
+    probe.case("refused_custom_kind_never_silently_admits", |p| {
+    let f0 = p.failures().len();
+
     // A bare `emath custom W:` body file is the genesis lane's job. The
     // strict check must refuse it (E-KIND-100) and admit NOTHING — a
     // silent custom->strict fallthrough would put a "custom" declaration
@@ -94,16 +104,19 @@ fn refused_custom_kind_never_silently_admits() {
         "bare-custom",
         "emath custom W:\n  body:\n  ⓳(é ⋈ e´)\n  answer:\n  return r\n",
     );
-    assert!(
-        refused
+    p.demand("1",refused
             .diagnostics
             .errors()
-            .any(|error| error.code == "E-KIND-100"),
+            .any(|error| error.code == "E-KIND-100"), format!(
         "{:?}",
         refused.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert!(
-        refused.package.declarations.is_empty(),
+    ));
+    if p.failures().len() != f0 { return; }
+    p.demand("2",refused.package.declarations.is_empty(), format!(
         "a refused custom declaration must not be silently admitted into strict meaning"
-    );
+    ));
+    if p.failures().len() != f0 { return; }
+
+    });
+    probe.finish();
 }
