@@ -4,7 +4,7 @@ use std::path::Path;
 
 use emath_store::{PackBudgets, PackEntry, PackReader, PackWriter};
 
-const SOURCE: &str = "language/examples/intro/easy-math.emath";
+const SOURCE: &str = "tests/fixtures/language/intro/easy-math.emath";
 
 pub fn demo() -> u8 {
     println!("== demo easy-math ==");

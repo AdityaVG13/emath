@@ -19,7 +19,7 @@ use emath_genesis::{
 };
 use emath_term::{SymbolId, Term, VariableId};
 
-const STRICT_SOURCE: &str = "language/examples/intro/hello-square.emath";
+const STRICT_SOURCE: &str = "tests/fixtures/language/intro/hello-square.emath";
 
 pub(crate) fn demo() -> u8 {
     println!("== demo source-first-worlds ==");
