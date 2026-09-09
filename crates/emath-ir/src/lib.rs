@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod authority;
 pub mod canonical;
 pub mod capability;
 pub mod constructor;
@@ -10,10 +11,8 @@ pub mod contracts;
 pub mod domains;
 pub mod evidence;
 pub mod expression;
-pub mod feature_capsule;
 pub mod goal;
 pub mod ids;
-pub mod kind_schema;
 pub mod layers;
 pub mod meaning;
 pub mod mig;
@@ -26,7 +25,16 @@ pub mod symbolic;
 pub mod type_system;
 pub mod types;
 pub mod units;
+pub mod world;
+pub mod world_translation;
 
+pub use emath_schema::capsule_record as feature_capsule;
+pub use emath_schema::kind_schema;
+
+pub use authority::{
+    AUTHORITY_LOCK_SCHEMA, AUTHORITY_RECEIPT_SCHEMA, AuthorityEntry, AuthorityError,
+    AuthorityEvidence, AuthorityLock, AuthorityReceipt, AuthorityState,
+};
 pub use capability::{
     AdmissionRefusal, CAPABILITY_CELL_SCHEMA_V1, Capability, CellClass, CellSchema, ClosureRefusal,
     MAX_CELL_ARITY, MigrationPolicy, ProjectionKind, ProjectionStatus, SuppliedProjection,
@@ -97,3 +105,10 @@ pub use units::{
     E_UNIT_CURRENCY_CORE, Unit, UnitDim, UnitError, UnitFamily, check_compatible, lookup_unit,
     per_unit,
 };
+pub use world::{
+    WORLD_IR_SCHEMA, WORLD_IR_VERSION, CarrierDef, FittedTable, MeaningHole, MeaningHoleId,
+    MeaningHoleKind, MeaningHoleState, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef,
+    WorldId, WorldIr,
+};
+pub use world_translation::{EvidenceHandle, PreservationRelation, WorldMorphism};
+

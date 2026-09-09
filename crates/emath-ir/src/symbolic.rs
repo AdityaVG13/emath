@@ -154,6 +154,34 @@ pub fn expression_from_package(
             left: Box::new(expression_from_package(package, *left)?),
             right: Box::new(expression_from_package(package, *right)?),
         }),
+        ExprNode::Apply {
+            capability,
+            arguments,
+        } if arguments.len() == 2 => {
+            let name = package
+                .capability(*capability)
+                .map(|cell| cell.name.0.as_str())
+                .unwrap_or("");
+            let leaf = name.rsplit(['.', ':']).next().unwrap_or(name);
+            let operation = match leaf {
+                "add" | "checked-add" => BinaryOp::StrictFloatAdd,
+                "sub" | "checked-sub" => BinaryOp::StrictFloatSub,
+                "mul" | "checked-mul" | "product" => BinaryOp::StrictFloatMul,
+                _ => {
+                    return Err(symbolic_error(
+                        "E-SYM-003",
+                        format!(
+                            "native symbolic v1 supports exact integer scalar expressions, not `capability application`"
+                        ),
+                    ));
+                }
+            };
+            Ok(SymbolicExpr::Binary {
+                operation,
+                left: Box::new(expression_from_package(package, arguments[0])?),
+                right: Box::new(expression_from_package(package, arguments[1])?),
+            })
+        }
         other => Err(symbolic_error(
             "E-SYM-003",
             format!(
@@ -607,10 +635,7 @@ fn expression_kind(expression: &ExprNode) -> &'static str {
         ExprNode::Matrix(_) => "matrix",
         ExprNode::Tensor { .. } => "tensor",
         ExprNode::Apply { .. } => "capability application",
-        ExprNode::Differentiate { .. } => "differentiate",
-        ExprNode::Solve { .. } => "solve",
-        ExprNode::Optimize { .. } => "optimize",
-        ExprNode::SampleLimit { .. } => "sample-limit",
+        ExprNode::Program { .. } => "program",
         ExprNode::Series { .. } => "series",
     }
 }

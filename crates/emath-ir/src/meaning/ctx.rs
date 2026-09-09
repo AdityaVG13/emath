@@ -273,39 +273,12 @@ impl MeaningContext<'_> {
                     self.encode_expr(out, *element)?;
                 }
             }
-            ExprNode::Differentiate { body, var } => {
-                out.tag(13);
-                self.encode_name(out, var)?;
-                self.encode_expr(out, *body)?;
-            }
-            ExprNode::Solve { body, var } => {
-                out.tag(14);
-                self.encode_name(out, var)?;
-                self.encode_expr(out, *body)?;
-            }
-            ExprNode::Optimize {
-                body,
-                vars,
-                maximize,
-            } => {
-                out.tag(15);
-                out.bool(*maximize);
-                out.usize(vars.len());
-                for var in vars {
-                    self.encode_name(out, var)?;
+            ExprNode::Program { body, inputs } => {
+                out.tag(19);
+                out.usize(inputs.len());
+                for name in inputs {
+                    self.encode_name(out, name)?;
                 }
-                self.encode_expr(out, *body)?;
-            }
-            ExprNode::SampleLimit {
-                body,
-                var,
-                target,
-                direction,
-            } => {
-                out.tag(16);
-                self.encode_name(out, var)?;
-                self.encode_expr(out, *target)?;
-                self.encode_expr(out, *direction)?;
                 self.encode_expr(out, *body)?;
             }
             ExprNode::Apply {

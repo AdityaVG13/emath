@@ -8,6 +8,8 @@ rust-version.workspace = true
 
 [dependencies]
 emath-core = { workspace = true }
+emath-schema = { workspace = true }
+emath-term = { workspace = true }
 
 [lints]
 workspace = true

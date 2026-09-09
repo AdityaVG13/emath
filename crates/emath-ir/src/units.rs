@@ -339,14 +339,14 @@ pub struct UnitError {
     pub message: String,
 }
 
-/// Capsule-authored unit catalog: `language/spec/capabilities/units-catalog.emath`,
+/// Capsule-authored unit catalog: `language/spec/capabilities/surface/units-catalog.emath`,
 /// FeatureID `std.capability.units.catalog`. Named units, aliases, and the
 /// currency/time-zone refusal list are capsule DATA parsed here; Rust keeps
 /// no named-unit table of its own. The catalog capsule is capsule-active
 /// authority (see `language.lock`); drift between this parser and the
 /// capsule fails `domain_science_capsule_cutover` bit-exactly.
 const UNIT_CATALOG_CAPSULE: &str =
-    include_str!("../../../language/spec/capabilities/units-catalog.emath");
+    include_str!("../../../language/spec/capabilities/surface/units-catalog.emath");
 
 /// One capsule-declared unit entry (parsed, never hardcoded).
 struct CatalogEntry {

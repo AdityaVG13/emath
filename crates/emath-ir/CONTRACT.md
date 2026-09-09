@@ -17,7 +17,10 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   `ExprNode::Apply { capability, arguments }` is the capability-cell
   application term: the payload is a stable `CapabilityId` into the owning
   package's `capabilities` arena, so adding a domain cell appends data and
-  never adds a core enum variant. A dangling capability id refuses with
+  never adds a core enum variant. Domain SIR nodes
+  `Differentiate` / `Solve` / `Optimize` / `SampleLimit` are gone.
+  `ExprNode::Program` is a nested executable carrier (`EmirOp::ProgramLiteral`).
+  `ExprNode::Series` is a time-series data constant. A dangling capability id refuses with
   `MeaningError::MissingCapability` at the `meaning_id` seam (canonical
   bytes stay deterministic with a `<missing-capability>` marker); the
   native symbolic fragment refuses capability applications with `E-SYM-003`.
@@ -135,7 +138,7 @@ Coverage lives in workspace test members `tests/emath-ir` (canonical,
 goal, layers, numeric_models, symbolic, constructor, mig, domain_logic, containment,
 including `interval_containment_holds_on_seeded_grid` for
 `Interval`/`Domain` membership; and `capability_id_terms.rs` for
-CapabilityId terms, name-based cell identity, legacy sin/exp compat, and the
+CapabilityId terms, name-based cell identity, and the
 dangling-capability typed refusal) and `tests/emath-store` (MeaningID
 presentation/alpha/alias stability plus semantic-policy/dependency changes).
 

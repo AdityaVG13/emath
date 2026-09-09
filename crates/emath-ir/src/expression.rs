@@ -73,33 +73,6 @@ pub enum ExprNode {
         shape: Vec<usize>,
         elements: Vec<ExprId>,
     },
-    /// Forward-mode autodiff: derivative of `body` wrt input `var`;
-    /// the EMIR emitter lowers it to `EmirOp::Differentiate`.
-    Differentiate {
-        body: ExprId,
-        var: String,
-    },
-    /// Newton's-method root-finding: value of input `var` driving
-    /// `body` to zero; forward-mode autodiff for the Jacobian step.
-    Solve {
-        body: ExprId,
-        var: String,
-    },
-    /// Newton-on-∇f optimization: values of inputs `vars` at a
-    /// stationary point of `body`; dual-number gradient, FD Hessian.
-    Optimize {
-        body: ExprId,
-        vars: Vec<String>,
-        maximize: bool,
-    },
-    /// Numerical limit approximation (B04): samples `body` approaching
-    /// `target` from `direction` (0 = two-sided, 1 = above, -1 = below).
-    SampleLimit {
-        body: ExprId,
-        var: String,
-        target: ExprId,
-        direction: ExprId,
-    },
     /// Capability-cell application: `capability` indexes the owning
     /// package's `capabilities` arena. The payload is a stable id, so
     /// adding a domain cell never adds an `ExprNode` variant (no
@@ -107,6 +80,14 @@ pub enum ExprNode {
     Apply {
         capability: CapabilityId,
         arguments: Vec<ExprId>,
+    },
+    /// Nested executable program carrier. Universal machinery matching
+    /// `EmirOp::ProgramLiteral`: `inputs` are the body's LoadInput names
+    /// in order. Domain meaning stays in FeatureID applications that
+    /// consume the carrier.
+    Program {
+        body: ExprId,
+        inputs: Vec<String>,
     },
     /// Time-series data constant (04 §5.4,
     /// slice 1): SI-scaled `(time, value)` pairs plus the DECLARED
@@ -142,6 +123,13 @@ pub enum UnaryOp {
     Abs,
     Floor,
     Ceil,
+    Sign,
+    Cbrt,
+    Recip,
+    Log2,
+    Log10,
+    IsFinite,
+    Length,
 }
 
 impl UnaryOp {
@@ -159,6 +147,13 @@ impl UnaryOp {
             Self::Abs => "abs",
             Self::Floor => "floor",
             Self::Ceil => "ceil",
+            Self::Sign => "sign",
+            Self::Cbrt => "cbrt",
+            Self::Recip => "recip",
+            Self::Log2 => "log2",
+            Self::Log10 => "log10",
+            Self::IsFinite => "is_finite",
+            Self::Length => "length",
         }
     }
 }
@@ -192,18 +187,8 @@ pub enum BinaryOp {
     Min,
     Max,
     Atan2,
-    VectorAdd,
-    VectorSub,
-    VectorScale,
-    VectorDot,
-    MatrixAdd,
-    MatrixSub,
-    MatrixScale,
-    MatrixMulVector,
-    MatrixMulMatrix,
-    TensorAdd,
-    TensorSub,
-    TensorScale,
+    Hypot,
+    Mod,
 }
 
 impl BinaryOp {
@@ -232,18 +217,8 @@ impl BinaryOp {
             Self::Min => "f64-min",
             Self::Max => "f64-max",
             Self::Atan2 => "f64-atan2",
-            Self::VectorAdd => "vec-add",
-            Self::VectorSub => "vec-sub",
-            Self::VectorScale => "vec-scale",
-            Self::VectorDot => "vec-dot",
-            Self::MatrixAdd => "mat-add",
-            Self::MatrixSub => "mat-sub",
-            Self::MatrixScale => "mat-scale",
-            Self::MatrixMulVector => "mat-mul-vec",
-            Self::MatrixMulMatrix => "mat-mul-mat",
-            Self::TensorAdd => "tensor-add",
-            Self::TensorSub => "tensor-sub",
-            Self::TensorScale => "tensor-scale",
+            Self::Hypot => "f64-hypot",
+            Self::Mod => "f64-mod",
         }
     }
 
@@ -414,19 +389,16 @@ impl ExprNode {
                 }
             }
             Self::Literal(_) => {}
-            Self::Differentiate { body, .. }
-            | Self::Solve { body, .. }
-            | Self::Optimize { body, .. } => {
-                exprs[body.index()].collect_free(exprs, seen, out);
-            }
-            Self::SampleLimit { body, target, .. } => {
-                exprs[target.index()].collect_free(exprs, seen, out);
-                exprs[body.index()].collect_free(exprs, seen, out);
-            }
             Self::Apply { arguments, .. } => {
                 for &argument in arguments {
                     exprs[argument.index()].collect_free(exprs, seen, out);
                 }
+            }
+            Self::Program { body, inputs } => {
+                for name in inputs {
+                    seen.insert(name.clone());
+                }
+                exprs[body.index()].collect_free(exprs, seen, out);
             }
             // A series data constant carries no free variables: the
             // pairs are literals and the policy is declared.

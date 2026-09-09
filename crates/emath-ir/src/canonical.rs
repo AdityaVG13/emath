@@ -369,37 +369,13 @@ fn encode_expr(out: &mut String, package: &SemanticPackage, id: crate::ids::Expr
                 encode_expr(out, package, element);
             }
         }
-        ExprNode::Differentiate { body, var } => {
-            push_str(out, "differentiate");
-            push_str(out, var);
-            encode_expr(out, package, *body);
-        }
-        ExprNode::Solve { body, var } => {
-            push_str(out, "solve");
-            push_str(out, var);
-            encode_expr(out, package, *body);
-        }
-        ExprNode::Optimize {
-            body,
-            vars,
-            maximize,
-        } => {
-            push_str(out, if *maximize { "maximize" } else { "minimize" });
-            for v in vars {
-                push_str(out, v);
+        ExprNode::Program { body, inputs } => {
+            push_str(out, "program");
+            out.push_str(&inputs.len().to_string());
+            out.push('\n');
+            for name in inputs {
+                push_str(out, name);
             }
-            encode_expr(out, package, *body);
-        }
-        ExprNode::SampleLimit {
-            body,
-            var,
-            target,
-            direction,
-        } => {
-            push_str(out, "sample-limit");
-            push_str(out, var);
-            encode_expr(out, package, *target);
-            encode_expr(out, package, *direction);
             encode_expr(out, package, *body);
         }
         ExprNode::Apply {
