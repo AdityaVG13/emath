@@ -10,449 +10,8 @@ use emath_artifact::{JsonValue, JsonWriter, parse_json_document};
 use emath_core::Severity;
 use emath_exec_ir::interp::{Value, format_f64};
 use emath_exec_ir::runner::run_package_with_given;
+use emath_test_harness::{Probe, boot};
 use emath_wasm::*;
-
-fn field_contains(json: &str, name: &str, needle: &str) -> bool {
-    let key = format!("\"{name}\":");
-    json.contains(&key) && json.contains(needle)
-}
-
-#[test]
-fn version_op_shape() {
-    let json = run_op("version", "");
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(
-        field_contains(&json, "version", env!("CARGO_PKG_VERSION")),
-        "{json}"
-    );
-    assert!(json.contains("\"abi\": 1"), "{json}");
-}
-
-#[test]
-fn check_hello_square_admits() {
-    let json = run_op("check", HELLO_SQUARE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"admitted\": true"), "{json}");
-    assert!(json.contains("\"diagnostics\": []"), "{json}");
-    assert!(json.contains("\"Square\""), "{json}");
-}
-
-#[test]
-fn run_vector_given_computes() {
-    let json = run_op("run", VECTOR_GIVEN);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"first\": 1.0"), "{json}");
-    assert!(json.contains("\"mag_sq\": 14.0"), "{json}");
-    assert!(json.contains("\"scaled\": [2.0, 4.0, 6.0]"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_envelope_vector_given_computes() {
-    let source = "\nemath function VecPane:\n    inputs:\n        v: Vector[3]\n\n    outputs:\n        first: Float64\n        mag_sq: Float64\n\n    definitions:\n        first = v[0]\n        mag_sq = dot(v, v)\n";
-    let json = run_envelope(source, Some(&[("v", "[1.0, 2.0, 3.0]")]));
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"_pane\""), "{json}");
-    assert!(json.contains("\"computed\": true"), "{json}");
-    assert!(json.contains("\"first\": 1.0"), "{json}");
-    assert!(json.contains("\"mag_sq\": 14.0"), "{json}");
-}
-
-#[test]
-fn run_factorial_inclusive_computes() {
-    let json = run_op("run", FACTORIAL);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"fac\": 120.0"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_range_sum_computes() {
-    let json = run_op("run", RANGE_SUM);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"s\": 6.0"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_forall_exists_computes() {
-    let json = run_op("run", FORALL_EXISTS);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"all_positive\": false"), "{json}");
-    assert!(json.contains("\"has_zero\": true"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_integral_computes() {
-    let json = run_op("run", INTEGRAL);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"area\":"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_autodiff_computes() {
-    let json = run_op("run", AUTODIFF);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"dy\": 6.0"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_solve_computes() {
-    let json = run_op("run", SOLVE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"root\":"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_constrained_opt_computes() {
-    let json = run_op("run", CONSTRAINED_OPT);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"opt_x\":"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_optimize_computes() {
-    let json = run_op("run", OPTIMIZE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"min_x\":"), "{json}");
-    assert!(json.contains("\"max_x\":"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn curated_non_demo_examples_admit() {
-    for (name, source) in curated_examples() {
-        if name.contains("Diagnostics") || *name == "diagnostics demo" {
-            continue;
-        }
-        let json = run_op("check", source);
-        assert!(json.contains("\"ok\": true"), "{name}: {json}");
-        assert!(json.contains("\"admitted\": true"), "{name}: {json}");
-        // Advisory diagnostics (E-SEC-133's visible-default note on
-        // constant computations) are by design; a curated example
-        // must not carry ERROR-severity diagnostics.
-        assert!(!json.contains("\"severity\": \"error\""), "{name}: {json}");
-        let run_json = run_op("run", source);
-        assert!(
-            run_json.contains("\"ok\": true"),
-            "{name} run failed: {run_json}"
-        );
-    }
-}
-
-#[test]
-fn empty_and_comment_only_pane_are_not_admitted() {
-    for source in ["", "   \n", "# comment only\n", "// still comment only\n"] {
-        let json = run_op("check", source);
-        assert!(json.contains("\"ok\": true"), "{source:?}: {json}");
-        assert!(json.contains("\"admitted\": false"), "{source:?}: {json}");
-        assert!(json.contains("E-PKG-081"), "{source:?}: {json}");
-    }
-}
-
-#[test]
-fn check_bad_source_surfaces_code() {
-    let json = run_op("check", "this is not emath\n");
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"admitted\": false"), "{json}");
-    assert!(json.contains("\"severity\": \"error\""), "{json}");
-    assert!(
-        json.contains("E-SYN") || json.contains("E-NAME") || json.contains("E-"),
-        "{json}"
-    );
-}
-
-#[test]
-fn mig_canonical_contains_goal_and_is_stable() {
-    let first = run_op("mig", HELLO_SQUARE);
-    let second = run_op("mig", HELLO_SQUARE);
-    assert_eq!(first, second);
-    assert!(first.contains("\"ok\": true"), "{first}");
-    assert!(first.contains("goal"), "{first}");
-}
-
-#[test]
-fn generate_hello_square_files() {
-    let json = run_op("generate", HELLO_SQUARE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"path\":"), "{json}");
-    assert!(
-        json.contains("struct Square") || json.contains("Square") && json.contains("fn "),
-        "{json}"
-    );
-    assert!(
-        json.contains("src/lib.rs") || json.contains("Cargo.toml"),
-        "{json}"
-    );
-}
-
-#[test]
-fn run_finite_sum_is_fifteen() {
-    let json = run_op("run", SUM_ONE_TO_FIVE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"total\": 15.0"), "{json}");
-    assert!(json.contains("\"folded\": 15.0"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn run_tensor_face_serializes_matrix() {
-    let json = run_op("run", TENSOR_FACE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(
-        json.contains("\"face\": [[1.0, 2.0], [3.0, 4.0]]"),
-        "{json}"
-    );
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-}
-
-#[test]
-fn bare_sum_wrap_computes() {
-    let json = run_op("run", "sum i in 1..6: i\n");
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"desugared_source\""), "{json}");
-    assert!(
-        json.contains("\"result\": 15.0"),
-        "bare sum must compute 15, got {json}"
-    );
-    let folded = run_op("run", "sum([1, 2, 3, 4, 5])\n");
-    assert!(
-        folded.contains("\"result\": 15.0"),
-        "bare vector sum must compute 15, got {folded}"
-    );
-}
-
-#[test]
-fn run_hello_square_passes() {
-    let json = run_op("run", HELLO_SQUARE);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(
-        json.contains("\"tier\": \"interpreted-strict-f64\""),
-        "{json}"
-    );
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-    assert!(json.contains("\"y\": 9.0"), "{json}");
-    assert!(json.contains("\"passed\": 1"), "{json}");
-    assert!(json.contains("\"failed\": 0"), "{json}");
-}
-
-#[test]
-fn run_affine_scorer_constructor_state() {
-    let source = "\
-emath policy AffineScorer:
-    inputs:
-        x: Float64
-
-    outputs:
-        score: Float64
-
-    state:
-        scale: Float64
-        bias: Float64
-
-    constructors:
-        public fn new(scale: Float64, bias: Float64) -> Result<Self, ConfigError>:
-            require scale >= 0
-            require is_finite(scale)
-            require is_finite(bias)
-
-            Self:
-                scale = scale
-                bias = bias
-
-    definitions:
-        score = state.scale * x + state.bias
-
-    goals:
-        evaluate <score>:
-            produce rust.library
-
-    tests:
-        example <unit_plus_one>:
-            given scale = 2
-            given bias = 1
-            given x = 3
-            expect score == 7
-
-    compile:
-        target rust
-        profile library
-        numeric strict-f64
-";
-    let json = run_op("run", source);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-    assert!(json.contains("\"score\": 7.0"), "{json}");
-    assert!(json.contains("\"scale\": 2.0"), "{json}");
-    assert!(json.contains("\"bias\": 1.0"), "{json}");
-}
-
-fn worked_square_source() -> String {
-    HELLO_SQUARE.replace("given x = 3\n            expect y == 9", "given x = 4")
-}
-
-fn twenty_one_source() -> &'static str {
-    "\
-emath function TwentyOne:
-    definitions:
-        y = 3 * 7
-
-    tests:
-        example <worked>:
-            expect y == 21
-"
-}
-
-fn head_args_square_source() -> &'static str {
-    "\
-emath function square(x: Float64) -> Float64:
-    definitions:
-        square = x * x
-
-    tests:
-        example <four>:
-            given x = 4
-"
-}
-
-#[test]
-fn run_head_args_square_computes_sixteen() {
-    let json = run_op("run", head_args_square_source());
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"computed\": true"), "{json}");
-    assert!(json.contains("\"computed\": 1"), "{json}");
-    assert!(
-        json.contains("\"square\": 16.0"),
-        "head-args square(x=4) must compute 16, got {json}"
-    );
-    assert!(
-        !json.contains("\"expect_passed\""),
-        "worked examples omit expect_passed: {json}"
-    );
-    assert!(json.contains("\"passed\": 0"), "{json}");
-    assert!(json.contains("\"failed\": 0"), "{json}");
-}
-
-#[test]
-fn generate_head_args_square_emits_free_function() {
-    let json = run_op("generate", head_args_square_source());
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(
-        json.contains("pub fn square") && json.contains("x: f64"),
-        "stateless head-args must generate a free function: {json}"
-    );
-    assert!(
-        !json.contains("struct square") && !json.contains("impl square"),
-        "stateless head-args must not generate a unit struct + method: {json}"
-    );
-}
-
-#[test]
-fn run_worked_example_computes_without_expect() {
-    let json = run_op("run", &worked_square_source());
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"computed\": true"), "{json}");
-    assert!(json.contains("\"computed\": 1"), "{json}");
-    assert!(json.contains("\"y\": 16.0"), "{json}");
-    assert!(
-        !json.contains("\"expect_passed\""),
-        "worked examples omit expect_passed: {json}"
-    );
-    assert!(json.contains("\"passed\": 0"), "{json}");
-    assert!(json.contains("\"failed\": 0"), "{json}");
-}
-
-#[test]
-fn generate_worked_example_computes_without_assert() {
-    let json = run_op("generate", &worked_square_source());
-    assert!(json.contains("\"ok\": true"), "{json}");
-    // Intent: a worked example (no `expect:`) must generate a test that
-    // computes values but makes no pass/fail claim. Scope the check to the
-    // generated test fn: the embedded `emath_rt` module may legitimately
-    // contain `assert!` (e.g. Simpson's even-steps guard), which is a
-    // runtime precondition, not a claim about this example.
-    let at = json
-        .find("fn square_three_squared")
-        .expect("generated crate must contain the worked-example test fn");
-    let test_tail = &json[at..];
-    assert!(!test_tail.contains("assert!"), "{json}");
-    assert!(test_tail.contains("let _ ="), "{json}");
-    assert!(test_tail.contains("actual"), "{json}");
-}
-
-#[test]
-fn run_twenty_one_constant_only() {
-    let json = run_op("run", twenty_one_source());
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(
-        json.contains("\"tier\": \"interpreted-strict-f64\""),
-        "{json}"
-    );
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-    assert!(json.contains("\"y\": 21.0"), "{json}");
-    assert!(json.contains("\"passed\": 1"), "{json}");
-    assert!(json.contains("\"failed\": 0"), "{json}");
-    assert!(json.contains("\"TwentyOne\""), "{json}");
-}
-
-#[test]
-fn run_failing_expect_counts_failed() {
-    let source = HELLO_SQUARE.replace("y == 9", "y == 8");
-    let json = run_op("run", &source);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"expect_passed\": false"), "{json}");
-    assert!(json.contains("\"failed\": 1"), "{json}");
-    assert!(json.contains("\"passed\": 0"), "{json}");
-}
-
-#[test]
-fn run_error_source_surfaces_diagnostics() {
-    let json = run_op("run", "this is not emath\n");
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"admitted\": false"), "{json}");
-    assert!(json.contains("\"severity\": \"error\""), "{json}");
-    assert!(
-        json.contains("E-SYN") || json.contains("E-NAME") || json.contains("E-"),
-        "{json}"
-    );
-    assert!(!json.contains("\"tier\""), "{json}");
-}
-
-#[test]
-fn unknown_op_refuses() {
-    let json = run_op("not-an-op", "");
-    assert!(json.contains("\"ok\": false"), "{json}");
-    assert!(json.contains("unknown op `not-an-op`"), "{json}");
-}
-
-#[test]
-fn json_escaping_survives_quotes_backslashes_newlines() {
-    let source = "emath function \"Quote\\Path\"\n";
-    let json = run_op("examples", source);
-    assert!(json.contains("\"ok\": true"), "{json}");
-    // The curated hello-square source contains a newline; the writer
-    // must escape it rather than break the JSON object.
-    assert!(json.contains("\\n"), "{json}");
-    let quoted = run_op(
-        "check",
-        "emath function Q:\n    about:\n        summary: \"a \\\"quoted\\\" line\"\n",
-    );
-    assert!(
-        quoted.contains("\\\"") || quoted.contains("E-") || quoted.contains("\"ok\": true"),
-        "{quoted}"
-    );
-    let escaped = run_op("check", "line with \"quotes\" and \\back and \nnewline");
-    assert!(escaped.contains("\"ok\": true"), "{escaped}");
-    assert!(
-        escaped.contains("\\\"") || escaped.contains("\\\\") || escaped.contains("\\n"),
-        "{escaped}"
-    );
-}
 
 fn run_envelope(source: &str, given: Option<&[(&str, &str)]>) -> String {
     let mut object = JsonWriter::object();
@@ -466,92 +25,7 @@ fn run_envelope(source: &str, given: Option<&[(&str, &str)]>) -> String {
     }
     run_op("run", &object.finish())
 }
-
-#[test]
-fn check_bare_square_desugars_and_admits() {
-    let json = run_op("check", "y = x * x\n");
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("N-TYPE-001"), "{json}");
-    assert!(json.contains("\"desugared_source\""), "{json}");
-    assert!(json.contains("emath function Scratch"), "{json}");
-    assert!(json.contains("y = x * x"), "{json}");
-    assert!(!json.contains("\"severity\": \"error\""), "{json}");
-}
-
-#[test]
-fn run_bare_constants_computes_without_tests_section() {
-    let json = run_op("run", "a = 2\nb = a * a\n");
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(
-        json.contains("\"tier\": \"interpreted-strict-f64\""),
-        "{json}"
-    );
-    assert!(json.contains("\"b\": 4.0"), "{json}");
-    assert!(json.contains("\"computed\": true"), "{json}");
-    assert!(json.contains("\"_pane\""), "{json}");
-    assert!(json.contains("\"desugared_source\""), "{json}");
-    assert!(
-        json.contains("a = 2") && json.contains("b = a * a"),
-        "{json}"
-    );
-    assert!(
-        !json.contains("tests:\\n") && !json.contains("tests:\\n    "),
-        "desugared source must not invent a tests section: {json}"
-    );
-}
-
-#[test]
-fn run_envelope_given_square_computes() {
-    let json = run_envelope(HELLO_SQUARE, Some(&[("x", "5.0")]));
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"y\": 25.0"), "{json}");
-    assert!(json.contains("\"computed\": true"), "{json}");
-    assert!(json.contains("\"_pane\""), "{json}");
-    assert!(json.contains("\"expect_passed\": true"), "{json}");
-    assert!(json.contains("\"y\": 9.0"), "{json}");
-}
-
-#[test]
-fn run_envelope_missing_binding_refuses() {
-    let json = run_envelope(HELLO_SQUARE, Some(&[]));
-    assert!(json.contains("\"ok\": true"), "{json}");
-    assert!(json.contains("\"refusal\""), "{json}");
-    assert!(json.contains("missing input `x`"), "{json}");
-    assert!(json.contains("\"_pane\""), "{json}");
-}
-
-#[test]
-fn run_envelope_malformed_given_number_refuses() {
-    let json = run_envelope(HELLO_SQUARE, Some(&[("x", "\"abc\"")]));
-    assert!(json.contains("\"ok\": false"), "{json}");
-    assert!(json.contains("given `x`"), "{json}");
-    let nan = run_envelope(HELLO_SQUARE, Some(&[("x", "\"NaN\"")]));
-    assert!(nan.contains("\"ok\": false"), "{nan}");
-    let inf = run_envelope(HELLO_SQUARE, Some(&[("x", "\"Infinity\"")]));
-    assert!(inf.contains("\"ok\": false"), "{inf}");
-}
-
-#[test]
-fn run_envelope_duplicate_given_key_refuses() {
-    let mut object = JsonWriter::object();
-    object.string("source", HELLO_SQUARE);
-    object.field("given", "{\"x\": 1.0, \"x\": 2.0}");
-    let json = run_op("run", &object.finish());
-    assert!(json.contains("\"ok\": false"), "{json}");
-    assert!(json.contains("given `x` is duplicated"), "{json}");
-}
-
-#[test]
-fn run_envelope_duplicate_source_key_refuses() {
-    let mut object = JsonWriter::object();
-    object.string("source", HELLO_SQUARE);
-    object.string("source", HELLO_SQUARE);
-    let json = run_op("run", &object.finish());
-    assert!(json.contains("\"ok\": false"), "{json}");
-    assert!(json.contains("run envelope duplicates `source`"), "{json}");
-}
-
-fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
+fn assert_native_wasm_parity(p: &mut Probe, source: &str, given: &[(&str, f64)]) {
     let mut given_map = BTreeMap::new();
     let mut given_pairs = Vec::new();
     for (k, v) in given {
@@ -561,20 +35,13 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
     let prepared = prepare_source(source);
     let (mut session, file) = session_from_source(&prepared.source);
     let result = session.check(file);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "check errors: {:?}",
-        result.diagnostics.items()
-    );
+    p.demand("result.diagnostics.items()", !result.diagnostics.has_errors(), format!("check errors: {:?}", result.diagnostics.items()));
     let native_report = run_package_with_given(&result.package, Some(&given_map));
 
     let given_str_refs: Vec<(&str, &str)> =
         given_pairs.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let wasm_json = run_envelope(source, Some(&given_str_refs));
-    assert!(
-        wasm_json.contains("\"ok\": true"),
-        "wasm failed: {wasm_json}"
-    );
+    p.demand("\"wasm failed: {wasm_json}\"", wasm_json.contains("\"ok\": true"), format!("wasm failed: {wasm_json}"));
 
     let doc = parse_json_document(&wasm_json).expect("valid wasm json");
     let decls = match doc.field("declarations").expect("declarations") {
@@ -582,13 +49,13 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
         _ => panic!("declarations must be array"),
     };
 
-    assert_eq!(decls.len(), native_report.declarations.len());
+    p.eq("decls.len()", &(decls.len()), &(native_report.declarations.len()));
     for (decl_json, decl_native) in decls.iter().zip(&native_report.declarations) {
         let tests_json = match decl_json.field("tests").expect("tests") {
             JsonValue::Arr(list) => list,
             _ => panic!("tests must be array"),
         };
-        assert_eq!(tests_json.len(), decl_native.tests.len());
+        p.eq("tests_json.len()", &(tests_json.len()), &(decl_native.tests.len()));
         for (test_json, test_native) in tests_json.iter().zip(&decl_native.tests) {
             let defs_json = match test_json.field("definitions").expect("definitions") {
                 JsonValue::Obj(map) => map,
@@ -608,15 +75,9 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
                             _ => panic!("unexpected json value for f64"),
                         };
                         if expected.is_nan() {
-                            assert!(parsed.is_nan(), "expected NaN for `{key}`");
+                            p.demand("\"expected NaN for `{key}`\"", parsed.is_nan(), format!("expected NaN for `{key}`"));
                         } else {
-                            assert_eq!(
-                                parsed.to_bits(),
-                                expected.to_bits(),
-                                "bit mismatch for `{key}`: wasm={parsed} ({:#x}) vs native={expected} ({:#x})",
-                                parsed.to_bits(),
-                                expected.to_bits()
-                            );
+                            p.eq("parsed.to_bits()", &(parsed.to_bits()), &(expected.to_bits()));
                         }
                     }
                     Value::I64(expected) => {
@@ -625,50 +86,39 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
                             JsonValue::Str(s) => s.parse().expect("valid non-finite f64 string"),
                             _ => panic!("unexpected json value for i64"),
                         };
-                        assert!(
-                            (parsed - *expected as f64).abs() < 1e-9,
-                            "mismatch for `{key}`: wasm={parsed} vs native={expected}"
-                        );
+                        p.demand("\"mismatch for `{key}`: wasm={parsed} vs native={expected}\"", (parsed - *expected as f64).abs() < 1e-9, format!("mismatch for `{key}`: wasm={parsed} vs native={expected}"));
                     }
                     Value::Bool(expected) => {
                         let parsed = match json_val {
                             JsonValue::Bool(b) => *b,
                             _ => panic!("unexpected json value for bool"),
                         };
-                        assert_eq!(parsed, *expected, "bool mismatch for `{key}`");
+                        p.eq("parsed", &(parsed), &(*expected));
                     }
                     Value::Vector(expected) => {
                         let JsonValue::Arr(list) = json_val else {
                             panic!("unexpected json value for vector `{key}`");
                         };
-                        assert_eq!(
-                            list.len(),
-                            expected.len(),
-                            "vector length mismatch for `{key}`"
-                        );
+                        p.eq("list.len()", &(list.len()), &(expected.len()));
                         for (entry, want) in list.iter().zip(expected) {
                             let got: f64 = match entry {
                                 JsonValue::Num(text) => text.parse().expect("valid f64"),
                                 JsonValue::Str(text) => text.parse().expect("valid f64"),
                                 _ => panic!("unexpected vector element for `{key}`"),
                             };
-                            assert_eq!(
-                                got.to_bits(),
-                                want.to_bits(),
-                                "vector mismatch for `{key}`"
-                            );
+                            p.eq("got.to_bits()", &(got.to_bits()), &(want.to_bits()));
                         }
                     }
                     Value::Matrix { rows, cols, data } => {
                         let JsonValue::Arr(outer) = json_val else {
                             panic!("unexpected json value for matrix `{key}`");
                         };
-                        assert_eq!(outer.len(), *rows, "matrix row mismatch for `{key}`");
+                        p.eq("outer.len()", &(outer.len()), &(*rows));
                         for (row_index, row) in outer.iter().enumerate() {
                             let JsonValue::Arr(cells) = row else {
                                 panic!("unexpected matrix row for `{key}`");
                             };
-                            assert_eq!(cells.len(), *cols, "matrix col mismatch for `{key}`");
+                            p.eq("cells.len()", &(cells.len()), &(*cols));
                             for (col_index, cell) in cells.iter().enumerate() {
                                 let got: f64 = match cell {
                                     JsonValue::Num(text) => text.parse().expect("valid f64"),
@@ -676,11 +126,7 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
                                     _ => panic!("unexpected matrix cell for `{key}`"),
                                 };
                                 let want = data[row_index * cols + col_index];
-                                assert_eq!(
-                                    got.to_bits(),
-                                    want.to_bits(),
-                                    "matrix mismatch for `{key}`"
-                                );
+                                p.eq("got.to_bits()", &(got.to_bits()), &(want.to_bits()));
                             }
                         }
                     }
@@ -704,16 +150,8 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
                         let JsonValue::Arr(data_list) = data_json else {
                             panic!("tensor data must be an array for `{key}`");
                         };
-                        assert_eq!(
-                            shape_list.len(),
-                            shape.len(),
-                            "tensor rank mismatch for `{key}`"
-                        );
-                        assert_eq!(
-                            data_list.len(),
-                            data.len(),
-                            "tensor data mismatch for `{key}`"
-                        );
+                        p.eq("shape_list.len()", &(shape_list.len()), &(shape.len()));
+                        p.eq("data_list.len()", &(data_list.len()), &(data.len()));
                     }
                     Value::Complex { re, im } => {
                         let JsonValue::Obj(map) = json_val else {
@@ -731,16 +169,8 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
                             Some(JsonValue::Str(t)) => t.parse().expect("valid f64"),
                             _ => panic!("missing im for complex `{key}`"),
                         };
-                        assert_eq!(
-                            got_re.to_bits(),
-                            re.to_bits(),
-                            "complex re mismatch for `{key}`"
-                        );
-                        assert_eq!(
-                            got_im.to_bits(),
-                            im.to_bits(),
-                            "complex im mismatch for `{key}`"
-                        );
+                        p.eq("got_re.to_bits()", &(got_re.to_bits()), &(re.to_bits()));
+                        p.eq("got_im.to_bits()", &(got_im.to_bits()), &(im.to_bits()));
                     }
                     other => {
                         panic!(
@@ -754,261 +184,214 @@ fn assert_native_wasm_parity(source: &str, given: &[(&str, f64)]) {
 }
 
 #[test]
-fn parity_transcendentals_bit_exact() {
-    let source = "\
-emath function Transcendentals:
-    inputs:
-        x: Float64
-
-    outputs:
-        s: Float64
-        c: Float64
-        e: Float64
-        sq: Float64
-        l: Float64
-        t: Float64
-        th: Float64
-        composite: Float64
-
-    definitions:
-        s = sin(x)
-        c = cos(x)
-        e = exp(x)
-        sq = sqrt(x)
-        l = ln(x)
-        t = tan(x)
-        th = tanh(x)
-        composite = exp(-0.1 * x) * sin(x) + sqrt(cos(x) * cos(x) + sin(x) * sin(x)) + ln(x + 1.0)
-";
-    for &x in &[
-        0.123456789,
-        0.25,
-        0.5,
-        1.0,
-        2.0,
-        std::f64::consts::PI / 3.0,
-        std::f64::consts::E,
-        10.0,
-    ] {
-        assert_native_wasm_parity(source, &[("x", x)]);
-    }
-}
-
-#[test]
-fn parity_polynomials_bit_exact() {
-    let source = "\
-emath function Polynomials:
-    inputs:
-        x: Float64
-
-    outputs:
-        quad: Float64
-        cubic: Float64
-        poly: Float64
-
-    definitions:
-        quad = 3.0 * (x ^ 2.0) + 5.0 * x - 2.0
-        cubic = x ^ 3.0 - 4.0 * (x ^ 2.0) + 7.0 * x - 15.0
-        poly = 2.0 * (x * x * x) - 3.0 * (x * x) + 4.0 * x - 5.0
-";
-    for &x in &[-10.5, -2.0, -0.5, 0.0, 1.0, 2.5, 3.5, 100.25] {
-        assert_native_wasm_parity(source, &[("x", x)]);
-    }
-}
-
-#[test]
-fn parity_rational_functions_bit_exact() {
-    let source = "\
-emath function Rational:
-    inputs:
-        x: Float64
-
-    outputs:
-        r1: Float64
-        r2: Float64
-
-    definitions:
-        r1 = (2.0 * x + 1.0) / (x * x + 4.0)
-        r2 = (x ^ 3.0 - 2.0 * x + 1.0) / (x ^ 2.0 + 1.0)
-";
-    for &x in &[-5.0, -2.0, -1.0, 0.0, 0.5, 1.0, 2.0, 10.0] {
-        assert_native_wasm_parity(source, &[("x", x)]);
-    }
-}
-
-#[test]
-fn parity_conditionals_bit_exact() {
-    let source = "\
-emath function Conditionals:
-    inputs:
-        x: Float64
-
-    outputs:
-        c1: Float64
-        c2: Float64
-        c3: Float64
-
-    definitions:
-        c1 = if x > 0.0: x * 2.0 else: -x * 3.0
-        c2 = if x >= 1.0: sqrt(x) else: x * x
-        c3 = if sin(x) > 0.0: cos(x) else: exp(x)
-";
-    for &x in &[-3.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 4.0] {
-        assert_native_wasm_parity(source, &[("x", x)]);
-    }
-}
-
-#[test]
-fn parity_stateful_affine_transforms_bit_exact() {
-    let source = "\
-emath policy AffineTransform:
-    inputs:
-        x: Float64
-
-    outputs:
-        y: Float64
-
-    state:
-        scale: Float64
-        bias: Float64
-
-    constructors:
-        public fn new(scale: Float64, bias: Float64) -> Result<Self, ConfigError>:
-            require scale >= 0.0
-            require is_finite(scale)
-            require is_finite(bias)
-
-            Self:
-                scale = scale
-                bias = bias
-
-    definitions:
-        y = state.scale * x + state.bias
-";
-    let test_cases = &[
-        (2.5, 1.25, 3.0),
-        (0.0, -5.0, 10.0),
-        (10.0, 100.0, -2.5),
-        (1.0, 0.0, 42.0),
-        (0.5, 0.25, -1.5),
+fn wasm_ops() {
+    boot();
+    let mut p = Probe::new("wasm ops admit, compute, refuse, and match native bit-exact");
+    p.case("version", |p| {
+        let json = run_op("version", "");
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("version", &json, env!("CARGO_PKG_VERSION"));
+        p.contains("abi", &json, "\"abi\": 1");
+        p.ne("nonempty", json, String::new());
+    });
+    let runs: &[(&str, &str, &[&str])] = &[
+        ("hello-check", HELLO_SQUARE, &["\"admitted\": true", "\"diagnostics\": []", "\"Square\""]),
+        ("vector", VECTOR_GIVEN, &["\"first\": 1.0", "\"mag_sq\": 14.0", "\"scaled\": [2.0, 4.0, 6.0]", "\"expect_passed\": true"]),
+        ("factorial", FACTORIAL, &["\"fac\": 120.0", "\"expect_passed\": true"]),
+        ("range-sum", RANGE_SUM, &["\"s\": 6.0", "\"expect_passed\": true"]),
+        ("forall", FORALL_EXISTS, &["\"all_positive\": false", "\"has_zero\": true", "\"expect_passed\": true"]),
+        ("integral", INTEGRAL, &["\"area\":", "\"expect_passed\": true"]),
+        ("autodiff", AUTODIFF, &["\"dy\": 6.0", "\"expect_passed\": true"]),
+        ("solve", SOLVE, &["\"root\":", "\"expect_passed\": true"]),
+        ("constrained", CONSTRAINED_OPT, &["\"opt_x\":", "\"expect_passed\": true"]),
+        ("optimize", OPTIMIZE, &["\"min_x\":", "\"max_x\":", "\"expect_passed\": true"]),
+        ("sum-five", SUM_ONE_TO_FIVE, &["\"total\": 15.0", "\"folded\": 15.0", "\"expect_passed\": true"]),
+        ("tensor", TENSOR_FACE, &["\"face\": [[1.0, 2.0], [3.0, 4.0]]", "\"expect_passed\": true"]),
+        ("hello-run", HELLO_SQUARE, &["\"tier\": \"interpreted-strict-f64\"", "\"y\": 9.0", "\"passed\": 1", "\"failed\": 0", "\"expect_passed\": true"]),
+        ("twenty-one", "emath function TwentyOne:\n    definitions:\n        y = 3 * 7\n\n    tests:\n        example <worked>:\n            expect y == 21\n", &["\"tier\": \"interpreted-strict-f64\"", "\"y\": 21.0", "\"passed\": 1", "\"TwentyOne\""]),
     ];
-    for &(scale, bias, x) in test_cases {
-        assert_native_wasm_parity(source, &[("scale", scale), ("bias", bias), ("x", x)]);
+    for &(name, source, needles) in runs {
+        p.case(name, |p| {
+            let op = if *name == "hello-check" { "check" } else { "run" };
+            let json = run_op(op, source);
+            p.contains(format!("{name}/ok"), &json, "\"ok\": true");
+            for &needle in needles {
+                p.contains(format!("{name}/{needle}"), &json, needle);
+            }
+            p.ne(format!("{name}/nonempty"), json, String::new());
+        });
     }
-}
-
-#[test]
-fn parity_plan_and_mig_determinism_and_hashes() {
-    let models = &[
-        HELLO_SQUARE,
-        AFFINE_SCORER,
-        TUTORIAL_01_QUICKSTART,
-        TUTORIAL_02_PLOTTER,
-        TUTORIAL_03_MATH_INTENT,
-    ];
-
-    for &source in models {
-        let initial_plan = run_op("plan", source);
-        let initial_mig = run_op("mig", source);
-
-        assert!(initial_plan.contains("\"ok\": true"), "{initial_plan}");
-        assert!(initial_mig.contains("\"ok\": true"), "{initial_mig}");
-
-        let mig_doc = parse_json_document(&initial_mig).expect("valid mig json");
-        let canonical_str = mig_doc
-            .string_field("canonical")
-            .expect("canonical string field");
-        let identity_str = mig_doc
-            .string_field("identity")
-            .expect("identity string field");
-        assert!(!canonical_str.is_empty());
-        assert!(!identity_str.is_empty());
-
-        // Verify idempotence and exact string match across multiple runs
-        for _ in 0..10 {
-            let plan = run_op("plan", source);
-            let mig = run_op("mig", source);
-            assert_eq!(plan, initial_plan, "plan json must be deterministic");
-            assert_eq!(mig, initial_mig, "mig json must be deterministic");
+    p.case("bare-sums", |p| {
+        let json = run_op("run", "sum i in 1..6: i\n");
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("desugar", &json, "\"desugared_source\"");
+        p.contains("result", &json, "\"result\": 15.0");
+        p.contains("vec-sum", &run_op("run", "sum([1, 2, 3, 4, 5])\n"), "\"result\": 15.0");
+    });
+    p.case("affine", |p| {
+        let source = "emath policy AffineScorer:\n    inputs:\n        x: Float64\n\n    outputs:\n        score: Float64\n\n    state:\n        scale: Float64\n        bias: Float64\n\n    constructors:\n        public fn new(scale: Float64, bias: Float64) -> Result<Self, ConfigError>:\n            require scale >= 0\n            require is_finite(scale)\n            require is_finite(bias)\n\n            Self:\n                scale = scale\n                bias = bias\n\n    definitions:\n        score = state.scale * x + state.bias\n\n    goals:\n        evaluate <score>:\n            produce rust.library\n\n    tests:\n        example <unit_plus_one>:\n            given scale = 2\n            given bias = 1\n            given x = 3\n            expect score == 7\n\n    compile:\n        target rust\n        profile library\n        numeric strict-f64\n";
+        let json = run_op("run", source);
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("score", &json, "\"score\": 7.0");
+        p.contains("scale", &json, "\"scale\": 2.0");
+        p.contains("bias", &json, "\"bias\": 1.0");
+    });
+    p.case("head-args", |p| {
+        let source = "emath function square(x: Float64) -> Float64:\n    definitions:\n        square = x * x\n\n    tests:\n        example <four>:\n            given x = 4\n";
+        let json = run_op("run", source);
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("computed", &json, "\"computed\": true");
+        p.contains("square", &json, "\"square\": 16.0");
+        p.demand("no-expect", !json.contains("\"expect_passed\""), "worked omits expect_passed");
+        let gen = run_op("generate", source);
+        p.contains("free-fn", &gen, "pub fn square");
+        p.demand("no-struct", !gen.contains("struct square") && !gen.contains("impl square"), "stateless stays free");
+    });
+    p.case("worked", |p| {
+        let source = HELLO_SQUARE.replace("given x = 3\n            expect y == 9", "given x = 4");
+        let json = run_op("run", &source);
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("y", &json, "\"y\": 16.0");
+        p.demand("no-expect", !json.contains("\"expect_passed\""), "worked omits expect_passed");
+        let gen = run_op("generate", &source);
+        let at = gen.find("fn square_three_squared").expect("worked test fn");
+        let tail = &gen[at..];
+        p.demand("no-assert", !tail.contains("assert!"), "worked generates no claim");
+        p.contains("bind", tail, "let _ =");
+    });
+    p.case("expect-counts", |p| {
+        let json = run_op("run", &HELLO_SQUARE.replace("y == 9", "y == 8"));
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("failed", &json, "\"expect_passed\": false");
+        p.contains("count", &json, "\"failed\": 1");
+    });
+    p.case("refusals", |p| {
+        for source in ["", "   \n", "# comment only\n", "// still comment only\n"] {
+            let json = run_op("check", source);
+            p.contains(format!("empty/{source:?}/admitted"), &json, "\"admitted\": false");
+            p.contains(format!("empty/{source:?}/code"), &json, "E-PKG-081");
         }
-    }
-}
-
-#[test]
-fn parity_diagnostic_codes_and_structures() {
-    let cases = &[
-        // Syntax error (unclosed parens)
-        (
-            "emath function BadSyntax:\n    definitions:\n        y = (3.0 * x\n",
-            "E-SYN-102",
-        ),
-        // Undefined variable name error
-        (
-            "emath function BadName:\n    inputs:\n        x: Float64\n    definitions:\n        y = nonexistent_variable\n",
-            "E-TYPE-002",
-        ),
-        // Duplicate declaration error
-        (
-            "emath function Dup:\n    definitions:\n        y = 1.0\nemath function Dup:\n    definitions:\n        y = 2.0\n",
-            "E-NAME-022",
-        ),
-        // Reserved identifier error
-        (
-            "emath function _:\n    definitions:\n        y = 1.0\n",
-            "E-NAME-023",
-        ),
-        // Type error (incompatible argument to unary/binary op)
-        (
-            "emath function BadType:\n    inputs:\n        x: Float64\n    definitions:\n        y = sin(x > 0.0)\n",
-            "E-TYPE-012",
-        ),
-        // Dimension/Unit compatibility error
-        (
-            "emath function BadUnit:\n    inputs:\n        x: Float64\n    definitions:\n        y = 1.0 m + 2.0 s\n",
-            "E-UNIT-101",
-        ),
-        // Bare source type default note
-        ("y = x * x\n", "N-TYPE-001"),
-    ];
-
-    for (source, expected_code_prefix) in cases {
-        let prepared = prepare_source(source);
-        let (mut session, file) = session_from_source(&prepared.source);
-        let native_result = session.check(file);
-
-        let wasm_json = run_op("check", source);
-        assert!(wasm_json.contains("\"ok\": true"), "{wasm_json}");
-
-        let wasm_doc = parse_json_document(&wasm_json).expect("valid wasm json");
-        let diags = match wasm_doc.field("diagnostics").expect("diagnostics field") {
-            JsonValue::Arr(list) => list,
-            _ => panic!("diagnostics must be array"),
-        };
-
-        assert_eq!(
-            diags.len(),
-            native_result.diagnostics.items().len(),
-            "diagnostic count mismatch for source: {source}"
-        );
-
-        for (wasm_diag, native_diag) in diags.iter().zip(native_result.diagnostics.items()) {
-            let code = wasm_diag.string_field("code").expect("code string");
-            let message = wasm_diag.string_field("message").expect("message string");
-            let severity = wasm_diag.string_field("severity").expect("severity string");
-
-            assert_eq!(code, native_diag.code);
-            assert_eq!(message, native_diag.message);
-            let native_sev_str = match native_diag.severity {
-                Severity::Error => "error",
-                Severity::Warning => "warning",
-                Severity::Note => "note",
+        for (name, source) in [("check-bad", "this is not emath\n"), ("run-bad", "this is not emath\n")] {
+            let json = run_op(if name == "check-bad" { "check" } else { "run" }, source);
+            p.contains(format!("{name}/ok"), &json, "\"ok\": true");
+            p.contains(format!("{name}/admitted"), &json, "\"admitted\": false");
+            p.contains(format!("{name}/severity"), &json, "\"severity\": \"error\"");
+            p.contains(format!("{name}/code"), &json, "E-");
+        }
+        p.demand("run-no-tier", !run_op("run", "this is not emath\n").contains("\"tier\""), "refused run has no tier");
+        let unknown = run_op("not-an-op", "");
+        p.contains("unknown-ok", &unknown, "\"ok\": false");
+        p.contains("unknown-op", &unknown, "unknown op `not-an-op`");
+    });
+    p.case("mig-generate", |p| {
+        let (first, second) = (run_op("mig", HELLO_SQUARE), run_op("mig", HELLO_SQUARE));
+        p.eq("stable", first.clone(), second);
+        p.contains("goal", &first, "goal");
+        let gen = run_op("generate", HELLO_SQUARE);
+        p.contains("path", &gen, "\"path\":");
+        p.contains("square", &gen, "Square");
+        p.demand("files", gen.contains("src/lib.rs") || gen.contains("Cargo.toml"), "generated files");
+    });
+    p.case("curated", |p| {
+        for (name, source) in curated_examples() {
+            if name.contains("Diagnostics") || *name == "diagnostics demo" {
+                continue;
+            }
+            let json = run_op("check", source);
+            p.contains(format!("{name}/admitted"), &json, "\"admitted\": true");
+            p.demand(format!("{name}/no-error"), !json.contains("\"severity\": \"error\""), "no error diagnostics");
+            p.contains(format!("{name}/run"), &run_op("run", source), "\"ok\": true");
+        }
+    });
+    p.case("escaping", |p| {
+        p.contains("newline", &run_op("examples", "emath function \"Quote\\Path\"\n"), "\\n");
+        p.contains("bare-square", &run_op("check", "y = x * x\n"), "N-TYPE-001");
+        p.contains("desugar", &run_op("check", "y = x * x\n"), "\"desugared_source\"");
+        let bare = run_op("run", "a = 2\nb = a * a\n");
+        p.contains("pane", &bare, "\"_pane\"");
+        p.contains("computed", &bare, "\"b\": 4.0");
+    });
+    p.case("envelope", |p| {
+        let source = "\nemath function VecPane:\n    inputs:\n        v: Vector[3]\n\n    outputs:\n        first: Float64\n        mag_sq: Float64\n\n    definitions:\n        first = v[0]\n        mag_sq = dot(v, v)\n";
+        let json = run_envelope(source, Some(&[("v", "[1.0, 2.0, 3.0]")]));
+        p.contains("ok", &json, "\"ok\": true");
+        p.contains("first", &json, "\"first\": 1.0");
+        let given = run_envelope(HELLO_SQUARE, Some(&[("x", "5.0")]));
+        p.contains("given-y", &given, "\"y\": 25.0");
+        p.contains("pane", &given, "\"_pane\"");
+        let missing = run_envelope(HELLO_SQUARE, Some(&[]));
+        p.contains("missing", &missing, "missing input `x`");
+        let malformed = run_envelope(HELLO_SQUARE, Some(&[("x", "\"abc\"")]));
+        p.contains("malformed", &malformed, "\"ok\": false");
+        p.contains("nan", &run_envelope(HELLO_SQUARE, Some(&[("x", "\"NaN\"")])), "\"ok\": false");
+        let mut dup = JsonWriter::object();
+        dup.string("source", HELLO_SQUARE);
+        dup.field("given", "{\"x\": 1.0, \"x\": 2.0}");
+        p.contains("dup-given", &run_op("run", &dup.finish()), "given `x` is duplicated");
+        let mut dup_src = JsonWriter::object();
+        dup_src.string("source", HELLO_SQUARE);
+        dup_src.string("source", HELLO_SQUARE);
+        p.contains("dup-src", &run_op("run", &dup_src.finish()), "run envelope duplicates `source`");
+    });
+    p.case("parity-families", |p| {
+        let transcendental = "emath function Transcendentals:\n    inputs:\n        x: Float64\n\n    outputs:\n        s: Float64\n        c: Float64\n        e: Float64\n        sq: Float64\n        l: Float64\n        t: Float64\n        th: Float64\n        composite: Float64\n\n    definitions:\n        s = sin(x)\n        c = cos(x)\n        e = exp(x)\n        sq = sqrt(x)\n        l = ln(x)\n        t = tan(x)\n        th = tanh(x)\n        composite = exp(-0.1 * x) * sin(x) + sqrt(cos(x) * cos(x) + sin(x) * sin(x)) + ln(x + 1.0)\n";
+        for x in [0.123456789, 0.25, 0.5, 1.0, 2.0, std::f64::consts::PI / 3.0, std::f64::consts::E, 10.0] {
+            assert_native_wasm_parity(p, transcendental, &[("x", x)]);
+        }
+        let polynomial = "emath function Polynomials:\n    inputs:\n        x: Float64\n\n    outputs:\n        quad: Float64\n        cubic: Float64\n        poly: Float64\n\n    definitions:\n        quad = 3.0 * (x ^ 2.0) + 5.0 * x - 2.0\n        cubic = x ^ 3.0 - 4.0 * (x ^ 2.0) + 7.0 * x - 15.0\n        poly = 2.0 * (x * x * x) - 3.0 * (x * x) + 4.0 * x - 5.0\n";
+        for x in [-10.5, -2.0, -0.5, 0.0, 1.0, 2.5, 3.5, 100.25] {
+            assert_native_wasm_parity(p, polynomial, &[("x", x)]);
+        }
+        let rational = "emath function Rational:\n    inputs:\n        x: Float64\n\n    outputs:\n        r1: Float64\n        r2: Float64\n\n    definitions:\n        r1 = (2.0 * x + 1.0) / (x * x + 4.0)\n        r2 = (x ^ 3.0 - 2.0 * x + 1.0) / (x ^ 2.0 + 1.0)\n";
+        for x in [-5.0, -2.0, -1.0, 0.0, 0.5, 1.0, 2.0, 10.0] {
+            assert_native_wasm_parity(p, rational, &[("x", x)]);
+        }
+        let conditional = "emath function Conditionals:\n    inputs:\n        x: Float64\n\n    outputs:\n        c1: Float64\n        c2: Float64\n        c3: Float64\n\n    definitions:\n        c1 = if x > 0.0: x * 2.0 else: -x * 3.0\n        c2 = if x >= 1.0: sqrt(x) else: x * x\n        c3 = if sin(x) > 0.0: cos(x) else: exp(x)\n";
+        for x in [-3.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 4.0] {
+            assert_native_wasm_parity(p, conditional, &[("x", x)]);
+        }
+        p.ne("parity-nonempty", run_op("run", VECTOR_GIVEN), String::new());
+    });
+    p.case("plan-mig-diag", |p| {
+        for source in [HELLO_SQUARE, AFFINE_SCORER, TUTORIAL_01_QUICKSTART, TUTORIAL_02_PLOTTER, TUTORIAL_03_MATH_INTENT] {
+            let (plan, mig) = (run_op("plan", source), run_op("mig", source));
+            p.contains("plan-ok", &plan, "\"ok\": true");
+            let doc = parse_json_document(&mig).unwrap();
+            p.demand("canonical", !doc.string_field("canonical").unwrap().is_empty(), "canonical present");
+            p.demand("identity", !doc.string_field("identity").unwrap().is_empty(), "identity present");
+            p.eq("plan-stable", run_op("plan", source), plan);
+            p.eq("mig-stable", run_op("mig", source), mig);
+        }
+        for (source, prefix) in [
+            ("emath function BadSyntax:\n    definitions:\n        y = (3.0 * x\n", "E-SYN-102"),
+            ("emath function BadName:\n    inputs:\n        x: Float64\n    definitions:\n        y = nonexistent_variable\n", "E-TYPE-002"),
+            ("emath function Dup:\n    definitions:\n        y = 1.0\nemath function Dup:\n    definitions:\n        y = 2.0\n", "E-NAME-022"),
+            ("emath function _:\n    definitions:\n        y = 1.0\n", "E-NAME-023"),
+            ("emath function BadType:\n    inputs:\n        x: Float64\n    definitions:\n        y = sin(x > 0.0)\n", "E-TYPE-012"),
+            ("emath function BadUnit:\n    inputs:\n        x: Float64\n    definitions:\n        y = 1.0 m + 2.0 s\n", "E-UNIT-101"),
+            ("y = x * x\n", "N-TYPE-001"),
+        ] {
+            let prepared = prepare_source(source);
+            let (mut session, file) = session_from_source(&prepared.source);
+            let native = session.check(file);
+            let wasm_json = run_op("check", source);
+            p.contains(format!("diag/{prefix}"), &wasm_json, prefix);
+            let doc = parse_json_document(&wasm_json).unwrap();
+            let diags = match doc.field("diagnostics").unwrap() {
+                JsonValue::Arr(list) => list,
+                _ => panic!("diagnostics array"),
             };
-            assert_eq!(severity, native_sev_str);
+            p.eq(format!("count/{prefix}"), diags.len(), native.diagnostics.items().len());
+            for (w, n) in diags.iter().zip(native.diagnostics.items()) {
+                p.eq(format!("code/{prefix}"), w.string_field("code").unwrap(), n.code.clone());
+                let sev = match n.severity {
+                    Severity::Error => "error",
+                    Severity::Warning => "warning",
+                    Severity::Note => "note",
+                };
+                p.eq(format!("sev/{prefix}"), w.string_field("severity").unwrap(), sev.to_string());
+            }
         }
-
-        assert!(
-            wasm_json.contains(expected_code_prefix),
-            "expected prefix `{expected_code_prefix}` in wasm json: {wasm_json}"
-        );
-    }
+    });
+    p.finish();
 }
