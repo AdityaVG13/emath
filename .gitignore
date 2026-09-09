@@ -28,6 +28,8 @@ language/**/target/
 
 # internal planning docs (not for public release)
 /internal/
+# language specification, runtime image, and standard library (local-only, not shipped)
+/language/
 # agent ergonomics audit (local-only, not shipped)
 /agent_ergonomics_audit/
 
