@@ -1,71 +1,32 @@
-#![forbid(unsafe_code)]
-//! Negative tests: programmatic test lowering returns BuilderError on
-//! malformed given/expect expressions instead of panicking on the public
-//! ModelBuilder::build path (bug-hunt residual).
-//!
-//! F041: the negatives pin the TYPED error text, not
-//! just `is_err` — a wrong-payload error or an empty message must fail
-//! these tests.
-
+//! Negative tests: programmatic test lowering returns BuilderError on malformed given/expect.
 use emath_build::builder::{BuilderError, BuilderModel, Expression, ModelBuilder, TestModel};
+use emath_test_harness::Probe;
 
 #[test]
-fn bad_test_given_returns_error_not_panic() {
-    let model = BuilderModel::custom("f").test(TestModel {
-        name: "bad".into(),
-        // `x` is referenced in `given` BEFORE it is bound (given env is
-        // built in order) — the lowered error names the symbol.
-        given: vec![("x".into(), Expression::Symbol("x".into()))],
-        expect: Expression::Float(1.0),
+fn probe() {
+    let mut p = Probe::new("test lowering refuses malformed given/expect with typed symbol errors");
+    p.case("bad-given", |p| {
+        let model = BuilderModel::custom("f").test(TestModel { name: "bad".into(), given: vec![("x".into(), Expression::Symbol("x".into()))], expect: Expression::Float(1.0) });
+        match model.build() {
+            Ok(_) => p.fail("given", "self-referential given must refuse"),
+            Err(BuilderError(m)) => p.contains("given/symbol", &m, "unknown symbol `x`"),
+        };
     });
-    let error = model.build().expect_err("self-referential given refuses");
-    let BuilderError(message) = &error;
-    assert!(
-        message.contains("unknown symbol `x`"),
-        "given-negative must name the unknown symbol, got: {message}"
-    );
-}
-
-#[test]
-fn bad_test_expect_returns_error_not_panic() {
-    let model = BuilderModel::custom("f").test(TestModel {
-        name: "bad".into(),
-        given: vec![("x".into(), Expression::Float(1.0))],
-        expect: Expression::Symbol("nope".into()),
+    p.case("bad-expect", |p| {
+        let model = BuilderModel::custom("f").test(TestModel { name: "bad".into(), given: vec![("x".into(), Expression::Float(1.0))], expect: Expression::Symbol("nope".into()) });
+        match model.build() {
+            Ok(_) => p.fail("expect", "unknown expect must refuse"),
+            Err(BuilderError(m)) => p.contains("expect/symbol", &m, "unknown symbol `nope`"),
+        };
     });
-    let error = model.build().expect_err("unknown expect symbol refuses");
-    let BuilderError(message) = &error;
-    assert!(
-        message.contains("unknown symbol `nope`"),
-        "expect-negative must name the unknown symbol, got: {message}"
-    );
-}
-
-#[test]
-fn well_formed_test_still_builds() {
-    let model = BuilderModel::custom("f").test(TestModel {
-        name: "ok".into(),
-        given: vec![("x".into(), Expression::Float(1.0))],
-        expect: Expression::Symbol("x".into()),
+    p.case("well-formed", |p| {
+        let package = BuilderModel::custom("f").test(TestModel { name: "ok".into(), given: vec![("x".into(), Expression::Float(1.0))], expect: Expression::Symbol("x".into()) }).build().expect("must build");
+        let decl = package.declarations.first().expect("one declaration");
+        p.eq("count", decl.tests.len(), 1);
+        match package.tests.get(decl.tests[0].index()) {
+            None => p.fail("resolve", "must resolve"),
+            Some(t) => p.demand("expect", t.expect.is_some(), "must carry expect"),
+        };
     });
-    let package = model.build().expect("well-formed test builds");
-    // The payload is real: the package carries the ONE test case with
-    // its expect expression present.
-    let declaration = package
-        .declarations
-        .first()
-        .expect("builder lowers one declaration");
-    assert_eq!(
-        declaration.tests.len(),
-        1,
-        "the test case lowers into the package"
-    );
-    let test = package
-        .tests
-        .get(declaration.tests[0].index())
-        .expect("declaration test id must resolve into package.tests");
-    assert!(
-        test.expect.is_some(),
-        "an `expect`-carrying test must lower with its expect expression"
-    );
+    p.finish();
 }
