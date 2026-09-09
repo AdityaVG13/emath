@@ -6,6 +6,7 @@ use emath_ir::{
     apply_rewrite, decide_univariate_polynomial_identity, simplify_expression,
     symbolic_oracle_contract,
 };
+use emath_test_harness::Probe;
 
 fn integer(package: &mut SemanticPackage, value: i128) -> emath_ir::ExprId {
     package.push_expr(
@@ -38,7 +39,10 @@ fn binary(
 }
 
 #[test]
-fn native_simplify_and_pattern_rewrite_compute() {
+fn intent() {
+    let mut p = Probe::new("Native symbolic simplification, rewrite matching, and polynomial decisions.");
+    p.case("native_simplify_and_pattern_rewrite_compute", |p| {
+
     let mut package = SemanticPackage::default();
     let x = variable(&mut package, "x");
     let zero = integer(&mut package, 0);
@@ -47,14 +51,8 @@ fn native_simplify_and_pattern_rewrite_compute() {
     let root = binary(&mut package, BinaryOp::ExactMul, add_zero, one);
 
     let simplified = simplify_expression(&mut package, root).unwrap();
-    assert_eq!(
-        package.expr(simplified.expression),
-        Some(&ExprNode::Variable(QualifiedName("x".into())))
-    );
-    assert_eq!(
-        simplified.rewrites,
-        ["add-zero-right", "multiply-one-right"]
-    );
+    p.eq("native_simplify_and_pattern_rewrite_compute#1", package.expr(simplified.expression), Some(&ExprNode::Variable(QualifiedName("x".into()))));
+    p.eq("native_simplify_and_pattern_rewrite_compute#2", simplified.rewrites, vec!["add-zero-right".to_string(), "multiply-one-right".to_string()]);
 
     let rule = RewriteRule::new(
         "double",
@@ -76,11 +74,11 @@ fn native_simplify_and_pattern_rewrite_compute() {
         left: Box::new(SymbolicExpr::Variable("x".into())),
         right: Box::new(SymbolicExpr::Variable("x".into())),
     };
-    assert!(apply_rewrite(&expression, &rule).unwrap().is_some());
-}
+    p.demand("native_simplify_and_pattern_rewrite_compute#3", apply_rewrite(&expression, &rule).unwrap().is_some(), "native_simplify_and_pattern_rewrite_compute#3: apply_rewrite(&expression, &rule).unwrap().is_some()");
 
-#[test]
-fn univariate_polynomial_identity_is_decided_exactly() {
+    });
+    p.case("univariate_polynomial_identity_is_decided_exactly", |p| {
+
     let mut package = SemanticPackage::default();
     let x = variable(&mut package, "x");
     let one = integer(&mut package, 1);
@@ -92,13 +90,13 @@ fn univariate_polynomial_identity_is_decided_exactly() {
     let right = binary(&mut package, BinaryOp::ExactSub, squared, one);
 
     let decision = decide_univariate_polynomial_identity(&package, left, right, "x").unwrap();
-    assert!(decision.equal);
-    assert_eq!(decision.left_coefficients, [-1, 0, 1]);
-    assert_eq!(decision.right_coefficients, [-1, 0, 1]);
-}
+    p.demand("univariate_polynomial_identity_is_decided_exactly#1", decision.equal, "univariate_polynomial_identity_is_decided_exactly#1: decision.equal");
+    p.eq("univariate_polynomial_identity_is_decided_exactly#2", decision.left_coefficients, vec![-1, 0, 1]);
+    p.eq("univariate_polynomial_identity_is_decided_exactly#3", decision.right_coefficients, vec![-1, 0, 1]);
 
-#[test]
-fn unsupported_claims_and_false_authority_refuse_by_name() {
+    });
+    p.case("unsupported_claims_and_false_authority_refuse_by_name", |p| {
+
     let mut package = SemanticPackage::default();
     let call = package.push_expr(
         ExprNode::Call {
@@ -109,7 +107,7 @@ fn unsupported_claims_and_false_authority_refuse_by_name() {
     );
     let zero = integer(&mut package, 0);
     let refusal = decide_univariate_polynomial_identity(&package, call, zero, "x").unwrap_err();
-    assert_eq!(refusal.code, "E-SYM-003");
+    p.demand("unsupported_claims_and_false_authority_refuse_by_name#1", refusal.code == "E-SYM-003", format!("expected {:?}, got {:?}", "E-SYM-003", refusal.code));
 
     let authority = RewriteRule::new(
         "unsupported-proof-claim",
@@ -118,8 +116,16 @@ fn unsupported_claims_and_false_authority_refuse_by_name() {
         "proved",
     )
     .unwrap_err();
-    assert_eq!(authority.code, "E-SYM-004");
+    p.demand("unsupported_claims_and_false_authority_refuse_by_name#2", authority.code == "E-SYM-004", format!("expected {:?}, got {:?}", "E-SYM-004", authority.code));
 
     let contract = symbolic_oracle_contract();
-    assert_eq!(contract.schema.0, "emath.symbolic/v1");
+    p.demand("unsupported_claims_and_false_authority_refuse_by_name#3", contract.schema.0 == "emath.symbolic/v1", format!("expected {:?}, got {:?}", "emath.symbolic/v1", contract.schema.0));
+
+    });
+    p.finish();
 }
+
+
+
+
+

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use emath_test_harness::Probe;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ResidueKind {
@@ -200,6 +201,7 @@ fn is_universal_ir_mechanism(variant: &str) -> bool {
             | "SetContains"
             | "RecordCreate"
             | "VectorCreate"
+            | "VectorLength"
             | "MatrixCreate"
             | "TensorCreate"
             | "VectorIndex"
@@ -549,7 +551,10 @@ fn scan_repository(root: &Path) -> Vec<Residue> {
 }
 
 #[test]
-fn whole_nucleus_inventory_is_exact_and_actionable() {
+fn intent() {
+    let mut p = Probe::new("tests/emath-ir/tests/contraction_gate.rs");
+    p.case("whole_nucleus_inventory_is_exact_and_actionable", |p| {
+
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let residues = scan_repository(&root);
     let (active, retained) = partition_gate_residues(&root, residues);
@@ -558,16 +563,15 @@ fn whole_nucleus_inventory_is_exact_and_actionable() {
     // retained unreferenced files (pending deletion approval) is reported,
     // never forced to zero by an exemption.
     println!("retained unreferenced-file residue (pending deletion approval): {retained:#?}");
-    assert!(
-        active.is_empty(),
-        "forbidden authority is reachable from compiled/declared nucleus modules or test callers; \
+    p.demand(format!("forbidden authority is reachable from compiled/declared nucleus modules or test callers; \
          retained unreferenced-file residue (pending deletion approval): {retained:#?}; \
-         active residue: {active:#?}"
-    );
-}
+         active residue: {active:#?}"), active.is_empty(), format!("forbidden authority is reachable from compiled/declared nucleus modules or test callers; \
+         retained unreferenced-file residue (pending deletion approval): {retained:#?}; \
+         active residue: {active:#?}"));
 
-#[test]
-fn structural_gate_detects_every_forbidden_authority_shape() {
+    });
+    p.case("structural_gate_detects_every_forbidden_authority_shape", |p| {
+
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let names = authored_feature_names(&root);
     let seeds = [
@@ -610,15 +614,12 @@ fn structural_gate_detects_every_forbidden_authority_shape() {
     for (file, source, expected) in seeds {
         let mut residues = Vec::new();
         scan_source(file, source, &names, &mut residues);
-        assert!(
-            residues.iter().any(|residue| residue.kind == expected),
-            "seed escaped: {file}: {source}"
-        );
+        p.demand(format!("seed escaped: {file}: {source}"), residues.iter().any(|residue| residue.kind == expected), format!("seed escaped: {file}: {source}"));
     }
-}
 
-#[test]
-fn universal_ir_and_kernel_mechanisms_remain_legal() {
+    });
+    p.case("universal_ir_and_kernel_mechanisms_remain_legal", |p| {
+
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let names = authored_feature_names(&root);
     let sources = [
@@ -638,20 +639,17 @@ fn universal_ir_and_kernel_mechanisms_remain_legal() {
     for (file, source) in sources {
         let mut residues = Vec::new();
         scan_source(file, source, &names, &mut residues);
-        assert!(
-            residues.is_empty(),
-            "universal mechanism must remain legal: {file}: {residues:#?}"
-        );
+        p.demand(format!("universal mechanism must remain legal: {file}: {residues:#?}"), residues.is_empty(), format!("universal mechanism must remain legal: {file}: {residues:#?}"));
     }
-}
 
+    });
+    p.case("retired_exemption_cannot_hide_planted_forbidden_source", |p| {
 // Failure-first proof for the honest active-source boundary: a forbidden
 // module planted at a path the retired exemption used to blanket-skip must be
 // caught by the repository scan. Against the old gate this assertion failed
 // because `is_retired_source` skipped `crates/emath-core/src/geometry.rs`
 // entirely, hiding reachable authority from the result.
-#[test]
-fn retired_exemption_cannot_hide_planted_forbidden_source() {
+
     let root = std::env::temp_dir().join(format!("emath-ehpal13-gate-{}", std::process::id()));
     let core = root.join("crates/emath-core/src/retired");
     fs::create_dir_all(&core).unwrap();
@@ -666,20 +664,17 @@ fn retired_exemption_cannot_hide_planted_forbidden_source() {
     )
     .unwrap();
     let (active, retained) = partition_gate_residues(&root, scan_repository(&root));
-    assert!(
-        active
+    p.demand(format!("path-attributed forbidden source must be active; active: {active:#?} retained: {retained:#?}"), active
             .iter()
             .any(|residue| residue.kind == ResidueKind::StableIrVariant
-                && residue.file == "crates/emath-core/src/retired/geometry.rs"),
-        "path-attributed forbidden source must be active; active: {active:#?} retained: {retained:#?}"
-    );
-}
+                && residue.file == "crates/emath-core/src/retired/geometry.rs"), format!("path-attributed forbidden source must be active; active: {active:#?} retained: {retained:#?}"));
 
+    });
+    p.case("nested_module_reachability_distinguishes_compiled_and_uncompiled_sources", |p| {
 // Rust resolves `mod child;` in `parent.rs` from `parent/child.rs`, not beside
 // `parent.rs`. The active boundary must follow that rule while leaving
 // undeclared source retained.
-#[test]
-fn nested_module_reachability_distinguishes_compiled_and_uncompiled_sources() {
+
     let root = std::env::temp_dir().join(format!("emath-ehpal13-nested-{}", std::process::id()));
     let src = root.join("crates/emath-exec-ir/src");
     fs::create_dir_all(src.join("term_compile")).unwrap();
@@ -707,26 +702,20 @@ fn nested_module_reachability_distinguishes_compiled_and_uncompiled_sources() {
     .unwrap();
 
     let (active, retained) = partition_gate_residues(&root, scan_repository(&root));
-    assert!(
-        active
+    p.demand(format!("declared nested module must be active; active: {active:#?} retained: {retained:#?}"), active
             .iter()
             .any(|residue| residue.file
-                == "crates/emath-exec-ir/src/term_compile/registry.rs"),
-        "declared nested module must be active; active: {active:#?} retained: {retained:#?}"
-    );
-    assert!(
-        retained
+                == "crates/emath-exec-ir/src/term_compile/registry.rs"), format!("declared nested module must be active; active: {active:#?} retained: {retained:#?}"));
+    p.demand(format!("undeclared nested source must remain retained; active: {active:#?} retained: {retained:#?}"), retained
             .iter()
             .any(|residue| residue.file
-                == "crates/emath-exec-ir/src/emitter/call/math_misc.rs"),
-        "undeclared nested source must remain retained; active: {active:#?} retained: {retained:#?}"
-    );
-}
+                == "crates/emath-exec-ir/src/emitter/call/math_misc.rs"), format!("undeclared nested source must remain retained; active: {active:#?} retained: {retained:#?}"));
 
+    });
+    p.case("ordinary_domain_words_in_data_do_not_flag", |p| {
 // Ordinary domain vocabulary in data or prose is not authority. Without a
 // branch on a feature identity there is no dispatch, registry entry, or claim.
-#[test]
-fn ordinary_domain_words_in_data_do_not_flag() {
+
     let root = std::env::temp_dir().join(format!("emath-ehpal13-fp-{}", std::process::id()));
     let core = root.join("crates/emath-core/src");
     fs::create_dir_all(&core).unwrap();
@@ -736,18 +725,15 @@ fn ordinary_domain_words_in_data_do_not_flag() {
     )
     .unwrap();
     let residues = scan_repository(&root);
-    assert!(
-        residues.is_empty(),
-        "ordinary domain words in data must not be flagged: {residues:#?}"
-    );
-}
+    p.demand(format!("ordinary domain words in data must not be flagged: {residues:#?}"), residues.is_empty(), format!("ordinary domain words in data must not be flagged: {residues:#?}"));
 
+    });
+    p.case("test_caller_residue_fails_active_classification", |p| {
 // Mutation proof for active test-caller classification: an obsolete op in a
 // test-caller binary must fail as active, not hide as retained. Against the
 // referenced-only partition this assertion fails because test files were
 // never reachable from a crate root and were therefore misclassified.
-#[test]
-fn test_caller_residue_fails_active_classification() {
+
     let root = std::env::temp_dir().join(format!("emath-ehpal13-caller-{}", std::process::id()));
     let core = root.join("crates/emath-core/src");
     let callers = root.join("tests/emath-core/tests");
@@ -764,20 +750,35 @@ fn test_caller_residue_fails_active_classification() {
     )
     .unwrap();
     let (active, retained) = partition_gate_residues(&root, scan_repository(&root));
-    assert!(
-        active
+    p.demand(format!("test-caller residue must fail active classification; active: {active:#?} retained: {retained:#?}"), active
             .iter()
             .any(|residue| residue.kind == ResidueKind::StableIrVariant
-                && residue.file == "tests/emath-core/tests/caller.rs"),
-        "test-caller residue must fail active classification; active: {active:#?} retained: {retained:#?}"
-    );
+                && residue.file == "tests/emath-core/tests/caller.rs"), format!("test-caller residue must fail active classification; active: {active:#?} retained: {retained:#?}"));
+
+    });
+    p.case("generated_and_authored_authority_remain_separate", |p| {
+
+    let tables = fs::read_to_string("../../crates/emath-exec-ir/src/language_tables.rs").unwrap();
+    p.demand("generated_and_authored_authority_remain_separate#1", tables.contains("DO NOT EDIT"), "generated_and_authored_authority_remain_separate#1: tables.contains(\"DO NOT EDIT\")");
+    let authored = fs::read_to_string("../../language/spec/capabilities/core/add.emath").unwrap();
+    p.demand("generated_and_authored_authority_remain_separate#2", !authored.contains("@generated"), "generated_and_authored_authority_remain_separate#2: !authored.contains(\"@generated\")");
+    p.demand("generated_and_authored_authority_remain_separate#3", authored.contains("std.capability.math.add"), "generated_and_authored_authority_remain_separate#3: authored.contains(\"std.capability.math.add\")");
+
+    });
+    p.finish();
 }
 
-#[test]
-fn generated_and_authored_authority_remain_separate() {
-    let tables = fs::read_to_string("../../crates/emath-exec-ir/src/language_tables.rs").unwrap();
-    assert!(tables.contains("DO NOT EDIT"));
-    let authored = fs::read_to_string("../../language/spec/capabilities/core/add.emath").unwrap();
-    assert!(!authored.contains("@generated"));
-    assert!(authored.contains("std.capability.math.add"));
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+

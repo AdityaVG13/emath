@@ -36,6 +36,7 @@ use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{SymbolId, Term};
+use emath_test_harness::Probe;
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -95,7 +96,10 @@ fn stiff_rate() -> Value {
 }
 
 #[test]
-fn backward_euler_stiff_stable_where_explicit_diverges() {
+fn intent() {
+    let mut p = Probe::new("(thin nucleus slice): stiff + symplectic ODE kernels at");
+    p.case("backward_euler_stiff_stable_where_explicit_diverges", |p| {
+
     // y' = −50y, y(0) = 1, h = 0.1 (the stability limit of explicit
     // Euler is h < 2/50 = 0.04, so explicit DIVERGES here). Backward
     // Euler is unconditionally stable: y_{n+1} = y_n/(1 + 50h) — decay
@@ -121,15 +125,11 @@ fn backward_euler_stiff_stable_where_explicit_diverges() {
     let _ = (y1, y2, y3);
     // One-step law: y(0.1) = 1/(1+5) = 1/6 ≈ 0.1667 (closed form for a
     // linear rate — the exact implicit update, not an approximation).
-    assert!(
-        (f64_of(&trajectory) - 1.0 / 6.0).abs() < 1e-12,
-        "one backward-Euler step of y'=-50y at h=0.1 is 1/6, got {}",
-        f64_of(&trajectory)
-    );
-}
+    p.demand(format!("one backward-Euler step of y'=-50y at h=0.1 is 1/6, got {}", f64_of(&trajectory)), (f64_of(&trajectory) - 1.0 / 6.0).abs() < 1e-12, format!("one backward-Euler step of y'=-50y at h=0.1 is 1/6, got {}", f64_of(&trajectory)));
 
-#[test]
-fn backward_euler_iterated_decay_matches_closed_form() {
+    });
+    p.case("backward_euler_iterated_decay_matches_closed_form", |p| {
+
     // Three steps at h = 0.1: y_3 = (1/6)³ — Newton must converge to
     // the machine-exact implicit point at every step (a mutant that
     // takes a single fixed-point iteration instead of Newton's
@@ -147,11 +147,11 @@ fn backward_euler_iterated_decay_matches_closed_form() {
         y = f64_of(&next);
     }
     let expected = (1.0f64 / 6.0).powi(3);
-    assert!((y - expected).abs() < 1e-12, "(1/6)³ law, got {y}");
-}
+    p.demand(format!("(1/6)³ law, got {y}"), (y - expected).abs() < 1e-12, format!("(1/6)³ law, got {y}"));
 
-#[test]
-fn velocity_verlet_energy_drift_small() {
+    });
+    p.case("velocity_verlet_energy_drift_small", |p| {
+
     // Harmonic oscillator q' = v, v' = −ω²q (ω = 1): velocity Verlet's
     // energy error is BOUNDED (oscillates near the exact energy); a
     // non-symplectic mutant (e.g. plain Euler on the coupled system)
@@ -179,20 +179,16 @@ fn velocity_verlet_energy_drift_small() {
         )
         .expect("verlet step computes");
         let Value::Vector(pair) = next else {
-            panic!("expected [q, v], got {next:?}")
-        };
+            { p.fail("velocity_verlet_energy_drift_small#1", format!("expected [q, v], got {next:?}")); return; }};
         q = pair[0];
         v = pair[1];
     }
     let energy = 0.5 * v * v + 0.5 * q * q;
-    assert!(
-        (energy - 0.5).abs() < 0.01,
-        "velocity Verlet energy drift after one period must be small, got E={energy} (q={q}, v={v})"
-    );
-}
+    p.demand(format!("velocity Verlet energy drift after one period must be small, got E={energy} (q={q}, v={v})"), (energy - 0.5).abs() < 0.01, format!("velocity Verlet energy drift after one period must be small, got E={energy} (q={q}, v={v})"));
 
-#[test]
-fn verlet_reversibility_law() {
+    });
+    p.case("verlet_reversibility_law", |p| {
+
     // Time-reversibility (the symplectic law RK4-family cannot claim
     // this exactly): integrate N steps forward, then N steps with
     // −dt; the state returns to the start within the numeric policy.
@@ -209,8 +205,7 @@ fn verlet_reversibility_law() {
         )
         .expect("forward step");
         let Value::Vector(pair) = next else {
-            panic!("expected [q, v]")
-        };
+            { p.fail("verlet_reversibility_law#1", format!("expected [q, v]")); return; }};
         q = pair[0];
         v = pair[1];
     }
@@ -224,19 +219,15 @@ fn verlet_reversibility_law() {
         )
         .expect("backward step");
         let Value::Vector(pair) = next else {
-            panic!("expected [q, v], got {next:?}")
-        };
+            { p.fail("verlet_reversibility_law#2", format!("expected [q, v], got {next:?}")); return; }};
         q = pair[0];
         v = pair[1];
     }
-    assert!(
-        (q - 1.0).abs() < 1e-9 && v.abs() < 1e-9,
-        "reversibility: (q, v) = (1, 0), got ({q}, {v})"
-    );
-}
+    p.demand(format!("reversibility: (q, v) = (1, 0), got ({q}, {v})"), (q - 1.0).abs() < 1e-9 && v.abs() < 1e-9, format!("reversibility: (q, v) = (1, 0), got ({q}, {v})"));
 
-#[test]
-fn non_positive_dt_refuses_typed() {
+    });
+    p.case("non_positive_dt_refuses_typed", |p| {
+
     // dt ≤ 0 refuses E-ODE-003 — the negative seed's silent-success
     // shape (a non-advancing step must never return the input as an
     // "integrated" value).
@@ -250,10 +241,7 @@ fn non_positive_dt_refuses_typed() {
         )
         .expect_err("non-positive dt refuses");
         let fault = format!("{error:?}");
-        assert!(
-            fault.contains("E-ODE-003"),
-            "dt={dt} must name E-ODE-003, got {fault}"
-        );
+        p.demand(format!("dt={dt} must name E-ODE-003, got {fault}"), fault.contains("E-ODE-003"), format!("dt={dt} must name E-ODE-003, got {fault}"));
     }
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/stiff_symplectic_kernels.emath");
@@ -261,14 +249,11 @@ fn non_positive_dt_refuses_typed() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-ODE-003"),
-        "seed expects the dt refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the dt refusal, found: {expect_line}"), expect_line.contains("E-ODE-003"), format!("seed expects the dt refusal, found: {expect_line}"));
 
-#[test]
-fn non_finite_coefficients_refuse_typed() {
+    });
+    p.case("non_finite_coefficients_refuse_typed", |p| {
+
     // E-ODE-004: a NaN rate coefficient refuses — never a silently
     // corrupted trajectory.
     let error = eval(
@@ -284,14 +269,11 @@ fn non_finite_coefficients_refuse_typed() {
     )
     .expect_err("non-finite rate refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-ODE-004"),
-        "non-finite coefficients must name E-ODE-004, got {fault}"
-    );
-}
+    p.demand(format!("non-finite coefficients must name E-ODE-004, got {fault}"), fault.contains("E-ODE-004"), format!("non-finite coefficients must name E-ODE-004, got {fault}"));
 
-#[test]
-fn nonlinear_rate_newton_converges() {
+    });
+    p.case("nonlinear_rate_newton_converges", |p| {
+
     // Nonlinear stiff carrier: y' = −50y − y³ (a realistic stiff
     // nonlinearity). Backward Euler with Newton: the implicit equation
     // y₁ = y₀ + h(−50y₁ − y₁³) is solved to tolerance — the result
@@ -312,16 +294,13 @@ fn nonlinear_rate_newton_converges() {
     // Rate polynomial evaluated at y1 (ascending coefficients).
     let rate_at = |y: f64| -50.0 * y - y * y * y;
     let residual = y1 - y0 - h * rate_at(y1);
-    assert!(
-        residual.abs() < 1e-10,
-        "implicit residual |x − h·f(x) − x_n| ≤ 1e-10, got {residual} (y1={y1})"
-    );
+    p.demand(format!("implicit residual |x − h·f(x) − x_n| ≤ 1e-10, got {residual} (y1={y1})"), residual.abs() < 1e-10, format!("implicit residual |x − h·f(x) − x_n| ≤ 1e-10, got {residual} (y1={y1})"));
     // And the step decays (stiff stability direction).
-    assert!(y1 < y0, "decaying mode, got {y1}");
-}
+    p.demand(format!("decaying mode, got {y1}"), y1 < y0, format!("decaying mode, got {y1}"));
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct DynamicsWorld;
     impl emath_genesis::FirstOrderWorld for DynamicsWorld {
@@ -370,11 +349,29 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "stiff-symplectic-nucleus");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "stiff-symplectic-nucleus", format!("expected {:?}, got {:?}", "stiff-symplectic-nucleus", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

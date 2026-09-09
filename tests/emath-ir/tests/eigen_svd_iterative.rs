@@ -35,6 +35,7 @@ use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use emath_term::{SymbolId, Term};
+use emath_test_harness::{Probe, boot};
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -115,20 +116,24 @@ fn matrix_of(value: &Value) -> (usize, usize, Vec<f64>) {
 }
 
 #[test]
-fn eigen_known_2x2() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("richer linear algebra — eigen, SVD, iterative solves.");
+    p.case("eigen_known_2x2", |p| {
+
     // Known 2x2 symmetric: [[2,1],[1,2]] has eigenvalues {1, 3} with
     // eigenvectors (1,-1)/√2 and (1,1)/√2 — the classic fixture.
     let a = matrix(2, 2, &[2.0, 1.0, 1.0, 2.0]);
     let values =
         eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a.clone()]).expect("eigen computes");
     let values = vector_of(&values);
-    assert_eq!(values.len(), 2);
-    assert!((values[0] - 1.0).abs() < 1e-10, "ascending: {values:?}");
-    assert!((values[1] - 3.0).abs() < 1e-10, "ascending: {values:?}");
+    p.eq("eigen_known_2x2#1", values.len(), 2);
+    p.demand(format!("ascending: {values:?}"), (values[0] - 1.0).abs() < 1e-10, format!("ascending: {values:?}"));
+    p.demand(format!("ascending: {values:?}"), (values[1] - 3.0).abs() < 1e-10, format!("ascending: {values:?}"));
     let vectors =
         eval(vec![cell(EIGEN_VECTORS, vec![EmirValue(0)])], &[a]).expect("eigenvectors compute");
     let (_rows, cols, data) = matrix_of(&vectors);
-    assert_eq!(cols, 2);
+    p.eq("eigen_known_2x2#4", cols, 2);
     // Column j pairs with eigenvalue j; the strong law is A·v_j = λ_j·v_j
     // for each column (checked below), which also pins unit-norm columns
     // for this fixture's eigenbasis.
@@ -137,15 +142,12 @@ fn eigen_known_2x2() {
         let v1 = data[2 + j];
         let av0 = 2.0 * v0 + 1.0 * v1;
         let av1 = 1.0 * v0 + 2.0 * v1;
-        assert!(
-            (av0 - values[j] * v0).abs() < 1e-9 && (av1 - values[j] * v1).abs() < 1e-9,
-            "A v_{j} = lambda_{j} v_{{j}} failed: {values:?} vs columns {v0},{v1}"
-        );
+        p.demand(format!("A v_{j} = lambda_{j} v_{{j}} failed: {values:?} vs columns {v0},{v1}"), (av0 - values[j] * v0).abs() < 1e-9 && (av1 - values[j] * v1).abs() < 1e-9, format!("A v_{j} = lambda_{j} v_{{j}} failed: {values:?} vs columns {v0},{v1}"));
     }
-}
 
-#[test]
-fn eigen_diagonal_and_sorted() {
+    });
+    p.case("eigen_diagonal_and_sorted", |p| {
+
     // A diagonal matrix is already in eigenform: values are the diagonal
     // entries SORTED ASCENDING, vectors are permutation columns.
     let a = matrix(3, 3, &[3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0]);
@@ -153,12 +155,12 @@ fn eigen_diagonal_and_sorted() {
     let values = vector_of(&values);
     let expected = [1.0, 2.0, 3.0];
     for (got, want) in values.iter().zip(expected.iter()) {
-        assert!((got - want).abs() < 1e-10, "ascending {values:?}");
+        p.demand(format!("ascending {values:?}"), (got - want).abs() < 1e-10, format!("ascending {values:?}"));
     }
-}
 
-#[test]
-fn eigen_non_square_refuses_typed() {
+    });
+    p.case("eigen_non_square_refuses_typed", |p| {
+
     // NEGATIVE (the seed's silent-success): eigen on a non-square
     // matrix refuses typed E-LINALG-001 — never a silently truncated
     // or garbage spectrum.
@@ -166,23 +168,17 @@ fn eigen_non_square_refuses_typed() {
     let error = eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a])
         .expect_err("non-square eigen refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-LINALG-001"),
-        "non-square eigen must name E-LINALG-001, got {fault}"
-    );
+    p.demand(format!("non-square eigen must name E-LINALG-001, got {fault}"), fault.contains("E-LINALG-001"), format!("non-square eigen must name E-LINALG-001, got {fault}"));
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/eigen_svd_iterative.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-LINALG-001"),
-        "seed expects the non-square refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the non-square refusal, found: {expect_line}"), expect_line.contains("E-LINALG-001"), format!("seed expects the non-square refusal, found: {expect_line}"));
 
-#[test]
-fn eigen_non_symmetric_refuses_typed() {
+    });
+    p.case("eigen_non_symmetric_refuses_typed", |p| {
+
     // The documented class is real SYMMETRIC: a materially
     // non-symmetric matrix refuses typed E-LINALG-002 (never a silent
     // garbage spectrum from running Jacobi on a non-symmetric input).
@@ -190,14 +186,11 @@ fn eigen_non_symmetric_refuses_typed() {
     let error = eval(vec![cell(EIGEN_VALUES, vec![EmirValue(0)])], &[a])
         .expect_err("non-symmetric eigen refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-LINALG-002"),
-        "non-symmetric eigen must name E-LINALG-002, got {fault}"
-    );
-}
+    p.demand(format!("non-symmetric eigen must name E-LINALG-002, got {fault}"), fault.contains("E-LINALG-002"), format!("non-symmetric eigen must name E-LINALG-002, got {fault}"));
 
-#[test]
-fn svd_reconstruction_property() {
+    });
+    p.case("svd_reconstruction_property", |p| {
+
     // Property (the acceptance): A = U·diag(s)·Vᵀ within the
     // numeric policy, singular values DESCENDING, factors are
     // orthonormal (UᵀU = I, VᵀV = I on the computed columns).
@@ -207,17 +200,14 @@ fn svd_reconstruction_property() {
     let singular =
         eval(vec![cell(SVD_VALUES, vec![EmirValue(0)])], &[a.clone()]).expect("svd computes");
     let s = vector_of(&singular);
-    assert_eq!(s.len(), cols.min(rows));
-    assert!(
-        s[0] >= s[1] && (s[0] - 3.0).abs() < 1e-9 && (s[1] - 2.0).abs() < 1e-9,
-        "descending singular values: {s:?}"
-    );
+    p.eq("svd_reconstruction_property#1", s.len(), cols.min(rows));
+    p.demand(format!("descending singular values: {s:?}"), s[0] >= s[1] && (s[0] - 3.0).abs() < 1e-9 && (s[1] - 2.0).abs() < 1e-9, format!("descending singular values: {s:?}"));
     let factors =
         eval(vec![cell(SVD_FACTORS, vec![EmirValue(0)])], &[a]).expect("svd factors compute");
     // The factors value is the interleaved [U | s | Vᵀ] bundle packed as
     // a matrix with rows = rows + 1 + cols (documented packing).
     let (frows, _fcols, fdata) = matrix_of(&factors);
-    assert_eq!(frows, rows + 1 + cols);
+    p.eq("svd_reconstruction_property#3", frows, rows + 1 + cols);
     let u: Vec<Vec<f64>> = (0..rows)
         .map(|r| fdata[r * cols..r * cols + cols].to_vec())
         .collect();
@@ -226,7 +216,7 @@ fn svd_reconstruction_property() {
         .map(|r| fdata[r * cols..r * cols + cols].to_vec())
         .collect();
     for (got, want) in sv.iter().zip(s.iter()) {
-        assert!((got - want).abs() < 1e-12, "factor bundle carries s");
+        p.demand("factor bundle carries s", (got - want).abs() < 1e-12, "factor bundle carries s");
     }
     // Reconstruction: A - U·diag(s)·Vᵀ ≈ 0.
     for i in 0..rows {
@@ -240,10 +230,7 @@ fn svd_reconstruction_property() {
                 (1, 1) => 2.0,
                 _ => 0.0,
             };
-            assert!(
-                (reconstructed - original).abs() < 1e-9,
-                "reconstruction A[{i}][{j}]: {reconstructed} vs {original}"
-            );
+            p.demand(format!("reconstruction A[{i}][{j}]: {reconstructed} vs {original}"), (reconstructed - original).abs() < 1e-9, format!("reconstruction A[{i}][{j}]: {reconstructed} vs {original}"));
         }
     }
     // Orthonormality of Vᵀ rows (columns of V).
@@ -251,16 +238,13 @@ fn svd_reconstruction_property() {
         for c2 in 0..cols {
             let dot: f64 = v_t[c1].iter().zip(v_t[c2].iter()).map(|(x, y)| x * y).sum();
             let want = if c1 == c2 { 1.0 } else { 0.0 };
-            assert!(
-                (dot - want).abs() < 1e-9,
-                "Vᵀ orthonormal at {c1},{c2}: {dot}"
-            );
+            p.demand(format!("Vᵀ orthonormal at {c1},{c2}: {dot}"), (dot - want).abs() < 1e-9, format!("Vᵀ orthonormal at {c1},{c2}: {dot}"));
         }
     }
-}
 
-#[test]
-fn iterative_solve_computes_and_refuses() {
+    });
+    p.case("iterative_solve_computes_and_refuses", |p| {
+
     // CG on an SPD system (1D Laplacian): x solves A x = b. A
     // non-converging (non-SPD) system refuses typed E-LINALG-003 —
     // never a silently wrong x.
@@ -283,7 +267,7 @@ fn iterative_solve_computes_and_refuses() {
     // Verify A x = b directly.
     for i in 0..n {
         let lhs: f64 = (0..n).map(|j| laplacian[i * n + j] * x[j]).sum();
-        assert!((lhs - 1.0).abs() < 1e-8, "A x = b at row {i}: {lhs}");
+        p.demand(format!("A x = b at row {i}: {lhs}"), (lhs - 1.0).abs() < 1e-8, format!("A x = b at row {i}: {lhs}"));
     }
     // Non-SPD: a matrix with a negative eigenvalue must refuse.
     let indefinite = matrix(2, 2, &[1.0, 0.0, 0.0, -1.0]);
@@ -293,14 +277,11 @@ fn iterative_solve_computes_and_refuses() {
     )
     .expect_err("indefinite system refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-LINALG-003"),
-        "indefinite iterative solve must name E-LINALG-003, got {fault}"
-    );
-}
+    p.demand(format!("indefinite iterative solve must name E-LINALG-003, got {fault}"), fault.contains("E-LINALG-003"), format!("indefinite iterative solve must name E-LINALG-003, got {fault}"));
 
-#[test]
-fn strict_source_compiles() {
+    });
+    p.case("strict_source_compiles", |p| {
+
     // E2E: a strict-source model calling the new surface compiles
     // through the emitter vocabulary.
     install_source_parser();
@@ -320,14 +301,11 @@ fn strict_source_compiles() {
         .errors()
         .map(|diagnostic| diagnostic.message.clone())
         .collect();
-    assert!(
-        codes.iter().all(|code| code != "E-SYN-101"),
-        "eigen surface must not be an unknown function: {codes:?} {messages:?}"
-    );
-}
+    p.demand(format!("eigen surface must not be an unknown function: {codes:?} {messages:?}"), codes.iter().all(|code| code != "E-SYN-101"), format!("eigen surface must not be an unknown function: {codes:?} {messages:?}"));
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct LinalgWorld;
     impl emath_genesis::FirstOrderWorld for LinalgWorld {
@@ -374,11 +352,29 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "richer-linalg");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "richer-linalg", format!("expected {:?}, got {:?}", "richer-linalg", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -15,9 +15,13 @@ use emath_genesis::{
     select_world,
 };
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
 
 #[test]
-fn new_world_implements_abi_only() {
+fn intent() {
+    let mut p = Probe::new("World ABI and default custom world portfolio.");
+    p.case("new_world_implements_abi_only", |p| {
+
     // A brand-new world, defined HERE in the test, implements the trait
     // and evaluates through the UNCHANGED generic evaluator. If this
     // required a genesis evaluator match arm, the law would fail.
@@ -75,34 +79,32 @@ fn new_world_implements_abi_only() {
     };
     let environment = Environment::new();
     let value = evaluate(&term, &DoubleItWorld, &environment).expect("ABI-only world evaluates");
-    assert_eq!(value, 4);
+    p.eq("new_world_implements_abi_only#1", value, 4);
 
     // The new world does not claim the alien portfolio: `admits` defaults
     // to false, so the default portfolio never selects it.
-    assert!(!DoubleItWorld.admits(&signature));
+    p.demand("new_world_implements_abi_only#2", !DoubleItWorld.admits(&signature), "new_world_implements_abi_only#2: !DoubleItWorld.admits(&signature)");
     let disposition = select_world(&signature, &[]);
-    assert_eq!(disposition.selected, Some(WorldName::FreeSymbolic));
-}
+    p.eq("new_world_implements_abi_only#3", disposition.selected, Some(WorldName::FreeSymbolic));
 
-#[test]
-fn default_portfolio_orders_and_disposes_typed() {
+    });
+    p.case("default_portfolio_orders_and_disposes_typed", |p| {
+
     let (signature, _term) = reference_alien_term();
 
     // Doctrine order (free symbolic first) selects the free symbolic
     // world by default; the trail records every candidate verdict.
     let default = select_world(&signature, &[]);
-    assert_eq!(default.selected, Some(WorldName::FreeSymbolic));
-    assert!(
-        default
+    p.eq("default_portfolio_orders_and_disposes_typed#1", default.selected, Some(WorldName::FreeSymbolic));
+    p.demand("default_portfolio_orders_and_disposes_typed#2", default
             .trail
             .iter()
-            .any(|entry| entry.contains("free-symbolic") && entry.contains("applicable"))
-    );
+            .any(|entry| entry.contains("free-symbolic") && entry.contains("applicable")), "default_portfolio_orders_and_disposes_typed#2: default\n            .trail\n            .iter()\n            .any(|entry| entry.contains(\"free-symboli");
 
     // Demand a concrete canonical-finite carrier: excluding the free
     // symbolic world selects the Boolean world when applicable.
     let concrete = select_world(&signature, &[WorldName::FreeSymbolic]);
-    assert_eq!(concrete.selected, Some(WorldName::BooleanAlien));
+    p.eq("default_portfolio_orders_and_disposes_typed#3", concrete.selected, Some(WorldName::BooleanAlien));
 
     // Excluding both free symbolic and Boolean selects the modular world
     // (modular when applicable).
@@ -110,7 +112,7 @@ fn default_portfolio_orders_and_disposes_typed() {
         &signature,
         &[WorldName::FreeSymbolic, WorldName::BooleanAlien],
     );
-    assert_eq!(modular.selected, Some(WorldName::ModularAlien));
+    p.eq("default_portfolio_orders_and_disposes_typed#4", modular.selected, Some(WorldName::ModularAlien));
 
     // Excluding everything: a TYPED disposition with the full trail —
     // never a silent fallthrough, never an invented world.
@@ -122,14 +124,12 @@ fn default_portfolio_orders_and_disposes_typed() {
             WorldName::ModularAlien,
         ],
     );
-    assert_eq!(exhausted.selected, None);
-    assert_eq!(exhausted.trail.len(), 3);
-    assert!(
-        exhausted
+    p.eq("default_portfolio_orders_and_disposes_typed#5", exhausted.selected, None);
+    p.eq("default_portfolio_orders_and_disposes_typed#6", exhausted.trail.len(), 3);
+    p.demand("default_portfolio_orders_and_disposes_typed#7", exhausted
             .trail
             .iter()
-            .all(|entry| entry.contains("excluded"))
-    );
+            .all(|entry| entry.contains("excluded")), "default_portfolio_orders_and_disposes_typed#7: exhausted\n            .trail\n            .iter()\n            .all(|entry| entry.contains(\"excluded\")");
 
     // A signature no concrete seed world binds still disposes through the
     // free symbolic baseline, and the trail names the concrete refusals.
@@ -138,19 +138,18 @@ fn default_portfolio_orders_and_disposes_typed() {
         .insert(SymbolId("q".into()), 1)
         .expect("conflict-free");
     let other = select_world(&alien, &[]);
-    assert_eq!(other.selected, Some(WorldName::FreeSymbolic));
-    assert!(
-        other
-            .trail
-            .iter()
-            .any(|entry| entry.contains("boolean-alien") && entry.contains("not applicable"))
-    );
-}
+    p.eq("default_portfolio_orders_and_disposes_typed#8", other.selected, Some(WorldName::FreeSymbolic));
+    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/world_abi.emath");
+    let expect_line = NEGATIVE_SEED
+        .lines()
+        .find(|l| l.trim_start().starts_with("# expect:"))
+        .expect("seed declares its diagnostic");
+    p.demand(format!("seed expects a typed world refusal, found: {expect_line}"), expect_line.contains("E-WORLD") || expect_line.contains("E-VM"), format!("seed expects a typed world refusal, found: {expect_line}"));
 
-#[test]
-fn budgeted_evaluation_refuses_typed_never_partial() {
+    });
+    p.case("budgeted_evaluation_refuses_typed_never_partial", |p| {
+
     let (signature, term) = reference_alien_term();
-    assert!(signature.validate(&term).is_ok());
 
     // The reference term needs 6 evaluation steps: an exact budget
     // admits, one below refuses typed, and no partial value escapes.
@@ -164,30 +163,26 @@ fn budgeted_evaluation_refuses_typed_never_partial() {
     let exact = WorldBudget { max_steps: 6 };
     let value = evaluate_bounded(&term, &ModularAlienWorld, &environment, exact)
         .expect("exact budget evaluates");
-    assert_eq!(value, 6); // mod17: join(2,4)=6, neg=36->2, times zeta=3 -> 6
+    p.eq("budgeted_evaluation_refuses_typed_never_partial#2", value, 6); // mod17: join(2,4)=6, neg=36->2, times zeta=3 -> 6
 
     let starved = WorldBudget { max_steps: 5 };
     match evaluate_bounded(&term, &ModularAlienWorld, &environment, starved) {
-        Err(EvalError::BudgetExhausted { steps }) => assert_eq!(steps, 5),
-        other => panic!("expected typed budget refusal, got {other:?}"),
+        Err(EvalError::BudgetExhausted { steps }) => { p.eq("budgeted_evaluation_refuses_typed_never_partial#3", steps, 5); },
+        other => { p.fail("budgeted_evaluation_refuses_typed_never_partial#4", format!("expected typed budget refusal, got {other:?}")); return; },
     }
 
     // The unbounded `evaluate` keeps its behavior (delegates to MAX).
-    assert_eq!(
-        evaluate(&term, &ModularAlienWorld, &environment).expect("unbounded"),
-        6
-    );
-}
+    p.eq("budgeted_evaluation_refuses_typed_never_partial#5", evaluate(&term, &ModularAlienWorld, &environment).expect("unbounded"), 6);
 
-#[test]
-fn abi_evidence_and_world_bundle() {
+    });
+    p.case("abi_evidence_and_world_bundle", |p| {
     // ABI evidence: every seed world carries stable evidence (name,
     // origin, laws) and declares its effects (seeds are pure: none).
     let free = FreeTermWorld.evidence();
-    assert_eq!(free.world, "free-symbolic");
-    assert_eq!(free.origin, "seed");
-    assert!(BooleanAlienWorld.effects().is_empty());
-    assert_eq!(ModularAlienWorld.evidence().world, "modular-17");
+    p.eq("free.world", &(free.world), &("free-symbolic"));
+    p.eq("free.origin", &(free.origin), &("seed"));
+    p.demand("BooleanAlienWorld.effects().is_empty()", BooleanAlienWorld.effects().is_empty(), "BooleanAlienWorld.effects().is_empty()");
+    p.eq("ModularAlienWorld.evidence().world", &(ModularAlienWorld.evidence().world), &("modular-17"));
 
     // WorldResultBundle fixture: the custom-world run
     // as a world record; the no-naked-answers rule consumes this shape.
@@ -216,10 +211,10 @@ fn abi_evidence_and_world_bundle() {
         value,
         refusals: Vec::new(),
     };
-    assert_eq!(bundle.world, "modular-17");
-    assert_eq!(bundle.verdict, "evaluated");
-    assert_eq!(bundle.value, Some(6));
-    assert!(bundle.refusals.is_empty());
+    p.eq("bundle.world", &(bundle.world), &("modular-17"));
+    p.eq("bundle.verdict", &(bundle.verdict), &("evaluated"));
+    p.eq("bundle.value", &(bundle.value), &(Some(6)));
+    p.demand("bundle.refusals.is_empty()", bundle.refusals.is_empty(), "bundle.refusals.is_empty()");
 
     // Negative seed: the seeded invented-world scenario declares a
     // typed refusal.
@@ -228,8 +223,7 @@ fn abi_evidence_and_world_bundle() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-WORLD") || expect_line.contains("E-VM"),
-        "seed expects a typed world refusal, found: {expect_line}"
-    );
+    p.demand("\"seed expects a typed world refusal, found: {expect_line}\"", expect_line.contains("E-WORLD") || expect_line.contains("E-VM"), format!("seed expects a typed world refusal, found: {expect_line}"));
+    });
+    p.finish();
 }

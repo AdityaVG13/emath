@@ -15,6 +15,7 @@ use emath_ir::{
     Capability, CapabilityId, CellClass, DeclarationId, ExprId, ExprNode, Literal, SemanticPackage,
     TypeNode, UnaryOp, canonical_capability,
 };
+use emath_test_harness::Probe;
 
 /// Acceptance negative seed.
 const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_id_terms.emath");
@@ -90,7 +91,10 @@ fn push_capability_declaration(
 }
 
 #[test]
-fn capability_terms_carry_cells_without_core_enum_growth() {
+fn intent() {
+    let mut p = Probe::new("CapabilityId terms in stable IR.");
+    p.case("capability_terms_carry_cells_without_core_enum_growth", |p| {
+
     let mut package = SemanticPackage::new();
     let softmax = package.push_capability(cell("std.math.softmax"));
     let x = var(&mut package, "x");
@@ -99,28 +103,19 @@ fn capability_terms_carry_cells_without_core_enum_growth() {
     // Stable term shape: the payload is a cell id, not a domain-named
     // variant. Adding `Softmax` above added zero enum variants; it appended
     // arena data.
-    assert!(
-        matches!(
+    p.demand("Apply term payload must be the stable cell id with its arguments", matches!(
             package.expr(applied),
             Some(ExprNode::Apply {
                 capability,
                 arguments,
             }) if *capability == softmax && arguments == &[x]
-        ),
-        "Apply term payload must be the stable cell id with its arguments"
-    );
-    assert_eq!(
-        package.capability(softmax).map(|c| c.name.0.as_str()),
-        Some("std.math.softmax")
-    );
-    assert_eq!(
-        canonical_capability(&cell("std.math.softmax")),
-        "cap:std.math.softmax"
-    );
-}
+        ), "Apply term payload must be the stable cell id with its arguments");
+    p.eq("capability_terms_carry_cells_without_core_enum_growth#2", package.capability(softmax).map(|c| c.name.0.as_str()), Some("std.math.softmax"));
+    p.demand("capability_terms_carry_cells_without_core_enum_growth#3", canonical_capability(&cell("std.math.softmax")) == "cap:std.math.softmax", format!("expected {:?}, got {:?}", "cap:std.math.softmax", canonical_capability(&cell("std.math.softmax"))));
 
-#[test]
-fn capability_identity_is_name_based_not_slot_based() {
+    });
+    p.case("capability_identity_is_name_based_not_slot_based", |p| {
+
     // Package A: the cell is the first interned capability.
     let mut left = SemanticPackage::new();
     let left_cell = left.push_capability(cell("std.math.softmax"));
@@ -138,22 +133,15 @@ fn capability_identity_is_name_based_not_slot_based() {
     let right_x = var(&mut right, "x");
     let right_apply = apply_term(&mut right, right_cell, vec![right_x]);
 
-    assert_ne!(left_cell, right_cell, "arena slots differ by construction");
-    assert_eq!(
-        canonical_expr(&left, left_apply),
-        canonical_expr(&right, right_apply),
-        "cell name, not arena slot, carries identity"
-    );
+    p.ne("arena slots differ by construction", left_cell, right_cell);
+    p.eq("cell name, not arena slot, carries identity", canonical_expr(&left, left_apply), canonical_expr(&right, right_apply));
 
     // A different cell name is different admitted math.
     let mut other = SemanticPackage::new();
     let other_cell = other.push_capability(cell("std.math.sigmoid"));
     let other_x = var(&mut other, "x");
     let other_apply = apply_term(&mut other, other_cell, vec![other_x]);
-    assert_ne!(
-        canonical_expr(&left, left_apply),
-        canonical_expr(&other, other_apply)
-    );
+    p.ne("capability_identity_is_name_based_not_slot_based#3", canonical_expr(&left, left_apply), canonical_expr(&other, other_apply));
 
     // And meaning identity follows the same rule: same names, same meaning;
     // different names, different meaning. added the interned cell
@@ -182,7 +170,7 @@ fn capability_identity_is_name_based_not_slot_based() {
     let right_meaning = right_meaning_package
         .meaning_id(&[])
         .expect("well-formed capability term");
-    assert_eq!(left_meaning, right_meaning);
+    p.eq("capability_identity_is_name_based_not_slot_based#4", left_meaning.clone(), right_meaning);
 
     let mut renamed = SemanticPackage::new();
     let renamed_cell = renamed.push_capability(cell("std.math.sigmoid"));
@@ -198,16 +186,16 @@ fn capability_identity_is_name_based_not_slot_based() {
     let renamed_meaning = renamed
         .meaning_id(&[])
         .expect("well-formed capability term");
-    assert_ne!(left_meaning, renamed_meaning);
-}
+    p.ne("capability_identity_is_name_based_not_slot_based#5", left_meaning, renamed_meaning);
 
-#[test]
-fn legacy_core_vocabulary_still_runs_unmoved() {
+    });
+    p.case("legacy_core_vocabulary_still_runs_unmoved", |p| {
+
     // Compat path: sin/exp keep their core op spelling; the legacy terms
     // canonicalize and receive meaning exactly as before this.
-    assert_eq!(UnaryOp::Sin.name(), "sin");
-    assert_eq!(UnaryOp::Exp.name(), "exp");
-    assert_eq!(emath_ir::BinaryOp::StrictFloatAdd.name(), "f64-add");
+    p.demand("legacy_core_vocabulary_still_runs_unmoved#1", UnaryOp::Sin.name() == "sin", format!("expected {:?}, got {:?}", "sin", UnaryOp::Sin.name()));
+    p.demand("legacy_core_vocabulary_still_runs_unmoved#2", UnaryOp::Exp.name() == "exp", format!("expected {:?}, got {:?}", "exp", UnaryOp::Exp.name()));
+    p.demand("legacy_core_vocabulary_still_runs_unmoved#3", emath_ir::BinaryOp::StrictFloatAdd.name() == "f64-add", format!("expected {:?}, got {:?}", "f64-add", emath_ir::BinaryOp::StrictFloatAdd.name()));
 
     let mut package = SemanticPackage::new();
     let x = var(&mut package, "x");
@@ -232,10 +220,7 @@ fn legacy_core_vocabulary_still_runs_unmoved() {
     );
     let ty = float_type(&mut package);
     push_capability_declaration(&mut package, "Legacy", ty, vec![("value".into(), sum)]);
-    assert!(
-        package.meaning_id(&[]).is_ok(),
-        "legacy sin/exp path still computes"
-    );
+    p.demand("legacy sin/exp path still computes", package.meaning_id(&[]).is_ok(), "legacy sin/exp path still computes");
 
     // Term kinds stay discriminated: a legacy unary term and a capability
     // application never share canonical bytes.
@@ -243,23 +228,17 @@ fn legacy_core_vocabulary_still_runs_unmoved() {
     let cell_id = with_cell.push_capability(cell("std.math.sin"));
     let cell_x = var(&mut with_cell, "x");
     let applied = apply_term(&mut with_cell, cell_id, vec![cell_x]);
-    assert_ne!(
-        canonical_expr(&package, sin),
-        canonical_expr(&with_cell, applied)
-    );
-}
+    p.ne("legacy_core_vocabulary_still_runs_unmoved#5", canonical_expr(&package, sin), canonical_expr(&with_cell, applied));
 
-#[test]
-fn dangling_capability_application_is_a_typed_refusal_not_silent_success() {
+    });
+    p.case("dangling_capability_application_is_a_typed_refusal_not_silent_success", |p| {
+
     // The negative seed names the required diagnostic.
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|line| line.trim_start().starts_with("# expect:"))
         .expect("negative seed must name its required diagnostic");
-    assert!(
-        expect_line.contains("MeaningError::MissingCapability"),
-        "seed expects the typed IR refusal, found: {expect_line}"
-    );
+    p.demand(format!("seed expects the typed IR refusal, found: {expect_line}"), expect_line.contains("MeaningError::MissingCapability"), format!("seed expects the typed IR refusal, found: {expect_line}"));
 
     // The seeded hazard at the IR seam: a capability application whose cell
     // id was never admitted (the `Undeclared(x)` lowering). Silent success
@@ -275,15 +254,18 @@ fn dangling_capability_application_is_a_typed_refusal_not_silent_success() {
         vec![("value".into(), dangling)],
     );
 
-    assert_eq!(
-        package.meaning_id(&[]),
-        Err(MeaningError::MissingCapability(CapabilityId(u32::MAX))),
-        "dangling capability application must be a typed refusal"
-    );
+    p.eq("dangling capability application must be a typed refusal", package.meaning_id(&[]), Err(MeaningError::MissingCapability(CapabilityId(u32::MAX))));
 
     // Canonical bytes stay deterministic in the refused state.
-    assert_eq!(
-        canonical_expr(&package, dangling),
-        canonical_expr(&package, dangling)
-    );
+    p.eq("dangling_capability_application_is_a_typed_refusal_not_silent_success#3", canonical_expr(&package, dangling), canonical_expr(&package, dangling));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+

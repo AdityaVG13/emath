@@ -29,10 +29,27 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    ParamShape, TermCompileError, compile_reference, std_cell_registry,
+    ParamShape, TermCompileError,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -99,7 +116,10 @@ fn matrix_of(value: &Value) -> (usize, usize, Vec<f64>) {
 }
 
 #[test]
-fn defining_law_and_idempotence() {
+fn intent() {
+    let mut p = Probe::new("(slice 4): directed graphs reach the spectral");
+    p.case("defining_law_and_idempotence", |p| {
+
     // The output IS symmetric; a symmetric input passes through
     // unchanged at 1e-12.
     let symmetrized = eval(
@@ -108,14 +128,10 @@ fn defining_law_and_idempotence() {
     )
     .expect("directed carrier symmetrizes");
     let (rows, cols, data) = matrix_of(&symmetrized);
-    assert_eq!((rows, cols), (4, 4));
+    p.eq("defining_law_and_idempotence#1", (rows, cols), (4, 4));
     for i in 0..4 {
         for j in 0..4 {
-            assert_eq!(
-                data[i * 4 + j],
-                data[j * 4 + i],
-                "S[{i}][{j}] = S[{j}][{i}] (defining law)"
-            );
+            p.eq(format!("S[{i}][{j}] = S[{j}][{i}] (defining law)"), data[i * 4 + j], data[j * 4 + i]);
         }
     }
     // Idempotence law: the symmetrized path IS the undirected path
@@ -129,7 +145,7 @@ fn defining_law_and_idempotence() {
         0.0, 0.0, 0.5, 0.0,
     ];
     for (got, want) in data.iter().zip(expected.iter()) {
-        assert!((got - want).abs() < 1e-12, "{got} vs {want}");
+        p.demand(format!("{got} vs {want}"), (got - want).abs() < 1e-12, format!("{got} vs {want}"));
     }
     // A symmetric input maps to itself.
     let symmetric_input = Value::Matrix {
@@ -144,12 +160,12 @@ fn defining_law_and_idempotence() {
     .expect("symmetric carrier symmetrizes");
     let (_, _, again_data) = matrix_of(&again);
     for (got, want) in again_data.iter().zip(expected.iter()) {
-        assert!((got - want).abs() < 1e-12, "idempotence: {got} vs {want}");
+        p.demand(format!("idempotence: {got} vs {want}"), (got - want).abs() < 1e-12, format!("idempotence: {got} vs {want}"));
     }
-}
 
-#[test]
-fn weight_preserving_convention() {
+    });
+    p.case("weight_preserving_convention", |p| {
+
     // (A + Aᵀ)/2, NOT max and NOT boolean-or: A[0][1]=4, A[1][0]=0 →
     // S[0][1] = S[1][0] = 2. A max-convention mutant yields 4; a
     // boolean-or mutant yields 1.
@@ -161,20 +177,12 @@ fn weight_preserving_convention() {
     let symmetrized = eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[carrier])
         .expect("weighted carrier symmetrizes");
     let (_, _, data) = matrix_of(&symmetrized);
-    assert!(
-        (data[1] - 2.0).abs() < 1e-12,
-        "S[0][1] = 2, got {}",
-        data[1]
-    );
-    assert!(
-        (data[2] - 2.0).abs() < 1e-12,
-        "S[1][0] = 2, got {}",
-        data[2]
-    );
-}
+    p.demand(format!("S[0][1] = 2, got {}", data[1]), (data[1] - 2.0).abs() < 1e-12, format!("S[0][1] = 2, got {}", data[1]));
+    p.demand(format!("S[1][0] = 2, got {}", data[2]), (data[2] - 2.0).abs() < 1e-12, format!("S[1][0] = 2, got {}", data[2]));
 
-#[test]
-fn composition_spectrum_law() {
+    });
+    p.case("composition_spectrum_law", |p| {
+
     // Directed 4-cycle 0→1→2→3→0 (weight 1): avg-symmetrize gives
     // S = 0.5·A(C4); the existing count-degree laplacian gives
     // L = 2I − S (every vertex has exactly two nonzero neighbors);
@@ -197,8 +205,7 @@ fn composition_spectrum_law() {
     )
     .expect("symmetrize computes");
     let Value::Matrix { rows, cols, data } = symmetrized else {
-        panic!("expected a matrix")
-    };
+        { p.fail("composition_spectrum_law#1", format!("expected a matrix")); return; }};
     let laplacian = eval(
         vec![cell(LAPLACIAN, vec![EmirValue(0)])],
         &[Value::Matrix { rows, cols, data }],
@@ -210,8 +217,7 @@ fn composition_spectrum_law() {
         data: ldata,
     } = laplacian
     else {
-        panic!("expected a matrix")
-    };
+        { p.fail("composition_spectrum_law#2", format!("expected a matrix")); return; }};
     let spectrum = eval(
         vec![cell(EIGENVALUES, vec![EmirValue(0)])],
         &[Value::Matrix {
@@ -223,22 +229,18 @@ fn composition_spectrum_law() {
     .expect("eigen computes");
     let vector_of = |value: &Value| {
         let Value::Vector(v) = value else {
-            panic!("expected a vector, got {value:?}")
-        };
+            panic!("expected a vector, got {value:?}"); };
         v.clone()
     };
     let eigenvalues = vector_of(&spectrum);
     let expected = [1.0, 2.0, 2.0, 3.0];
     for (got, want) in eigenvalues.iter().zip(expected.iter()) {
-        assert!(
-            (got - want).abs() < 1e-9,
-            "symmetrized-cycle spectrum law: {got} vs {want}"
-        );
+        p.demand(format!("symmetrized-cycle spectrum law: {got} vs {want}"), (got - want).abs() < 1e-9, format!("symmetrized-cycle spectrum law: {got} vs {want}"));
     }
-}
 
-#[test]
-fn refusals_reuse_closed_set() {
+    });
+    p.case("refusals_reuse_closed_set", |p| {
+
     // Ragged → E-GRAPH-001; negative weight → E-GRAPH-002; non-finite
     // → E-GRAPH-004 (the established graph refusal set; no new codes
     // minted for an op that composes existing semantics).
@@ -249,10 +251,7 @@ fn refusals_reuse_closed_set() {
     };
     let error =
         eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[ragged]).expect_err("ragged refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-001"),
-        "ragged must name E-GRAPH-001, got {error:?}"
-    );
+    p.demand(format!("ragged must name E-GRAPH-001, got {error:?}"), format!("{error:?}").contains("E-GRAPH-001"), format!("ragged must name E-GRAPH-001, got {error:?}"));
     let negative = Value::Matrix {
         rows: 2,
         cols: 2,
@@ -260,10 +259,7 @@ fn refusals_reuse_closed_set() {
     };
     let error = eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[negative])
         .expect_err("negative weight refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-002"),
-        "negative must name E-GRAPH-002, got {error:?}"
-    );
+    p.demand(format!("negative must name E-GRAPH-002, got {error:?}"), format!("{error:?}").contains("E-GRAPH-002"), format!("negative must name E-GRAPH-002, got {error:?}"));
     let non_finite = Value::Matrix {
         rows: 2,
         cols: 2,
@@ -271,33 +267,23 @@ fn refusals_reuse_closed_set() {
     };
     let error = eval(vec![cell(SYMMETRIZE, vec![EmirValue(0)])], &[non_finite])
         .expect_err("non-finite refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-004"),
-        "non-finite must name E-GRAPH-004, got {error:?}"
-    );
+    p.demand(format!("non-finite must name E-GRAPH-004, got {error:?}"), format!("{error:?}").contains("E-GRAPH-004"), format!("non-finite must name E-GRAPH-004, got {error:?}"));
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/graph_weights.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-GRAPH-001"),
-        "seed expects the carrier refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the carrier refusal, found: {expect_line}"), expect_line.contains("E-GRAPH-001"), format!("seed expects the carrier refusal, found: {expect_line}"));
 
-#[test]
-fn cell_registry_and_shape_law() {
+    });
+    p.case("cell_registry_and_shape_law", |p| {
+
     // std.graph.symmetrize is registry DATA (cohort 29), compiles
     // through the call seam, and evaluates the SAME symmetrization;
     // a scalar adjacency refuses at COMPILE (ShapeMismatch).
     install_language();
     let registry = std_cell_registry();
-    assert!(
-        registry.contains_key("std.graph.symmetrize"),
-        "registry cell present; have {:?}",
-        registry.keys().collect::<Vec<_>>()
-    );
+    p.demand(format!("registry cell present; have {:?}", registry.keys().collect::<Vec<_>>()), registry.contains_key("std.graph.symmetrize"), format!("registry cell present; have {:?}", registry.keys().collect::<Vec<_>>()));
 
     let term = Term::Apply {
         operator: SymbolId("graph_symmetrize".into()),
@@ -346,7 +332,7 @@ fn cell_registry_and_shape_law() {
     )
     .expect("cell evaluates");
     let (_, _, data) = matrix_of(&value);
-    assert!((data[1] - 2.0).abs() < 1e-12 && (data[2] - 2.0).abs() < 1e-12);
+    p.demand("cell_registry_and_shape_law#2", (data[1] - 2.0).abs() < 1e-12 && (data[2] - 2.0).abs() < 1e-12, "cell_registry_and_shape_law#2: (data[1] - 2.0).abs() < 1e-12 && (data[2] - 2.0).abs() < 1e-12");
 
     // Shape law: a scalar adjacency refuses at COMPILE.
     let error = compile_reference(
@@ -357,18 +343,15 @@ fn cell_registry_and_shape_law() {
         "std.graph.symmetrize",
     )
     .expect_err("scalar adjacency refuses at compile");
-    assert!(
-        format!("{error:?}").contains("ShapeMismatch"),
-        "scalar adjacency must ShapeMismatch at compile, got {error:?}"
-    );
+    p.demand(format!("scalar adjacency must ShapeMismatch at compile, got {error:?}"), format!("{error:?}").contains("ShapeMismatch"), format!("scalar adjacency must ShapeMismatch at compile, got {error:?}"));
     let _ = TermCompileError::ShapeMismatch {
         symbol: "graph_symmetrize".to_string(),
         detail: "unused".to_string(),
     };
-}
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct GraphWorld;
     impl emath_genesis::FirstOrderWorld for GraphWorld {
@@ -421,11 +404,25 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "directed-symmetrized-spectra");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "directed-symmetrized-spectra", format!("expected {:?}, got {:?}", "directed-symmetrized-spectra", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

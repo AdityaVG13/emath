@@ -21,12 +21,29 @@
 use emath_core::Span;
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::term_compile::{ParamShape, std_cell_registry};
+use emath_exec_ir::term_compile::{ParamShape};
 use emath_exec_ir::{EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use emath_term::{Signature, SymbolId, Term, VariableId};
 use std::collections::BTreeMap;
+use emath_test_harness::{Probe, boot};
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 /// The .14 seam for a registry cell: load inputs, then one
 /// ApplyCapability. This is the CELL path.
@@ -69,7 +86,11 @@ fn matrix(rows: usize, cols: usize, data: &[f64]) -> Value {
 }
 
 #[test]
-fn euclidean_norm_computes() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("(B34+B35): linear solves, decompositions,");
+    p.case("euclidean_norm_computes", |p| {
+
     // B35: `norm(v, p=2)` — L2 is the default norm; the registry cell
     // lowers to the generic VectorNorm op.
     let registry = std_cell_registry();
@@ -78,33 +99,24 @@ fn euclidean_norm_computes() {
         .expect("std.linalg.norm is a registry cell");
     let value =
         seam_eval("std.linalg.norm", &[Value::Vector(vec![3.0, 4.0])]).expect("norm evaluates");
-    assert!(
-        (f64_of(&value) - 5.0).abs() < 1e-12,
-        "‖[3,4]‖₂ = 5, got {value:?}"
-    );
+    p.demand(format!("‖[3,4]‖₂ = 5, got {value:?}"), (f64_of(&value) - 5.0).abs() < 1e-12, format!("‖[3,4]‖₂ = 5, got {value:?}"));
     let _ = cell;
-}
 
-#[test]
-fn one_and_infinity_norms_compute() {
+    });
+    p.case("one_and_infinity_norms_compute", |p| {
+
     // B35: L1 = sum |v_i|; Linf = max |v_i| — both compose the closed
     // vocabulary (abs map + sum/vmax reduces), no new ops.
     let value =
         seam_eval("std.linalg.norm1", &[Value::Vector(vec![3.0, -4.0])]).expect("norm1 evaluates");
-    assert!(
-        (f64_of(&value) - 7.0).abs() < 1e-12,
-        "‖[3,-4]‖₁ = 7, got {value:?}"
-    );
+    p.demand(format!("‖[3,-4]‖₁ = 7, got {value:?}"), (f64_of(&value) - 7.0).abs() < 1e-12, format!("‖[3,-4]‖₁ = 7, got {value:?}"));
     let value = seam_eval("std.linalg.norminf", &[Value::Vector(vec![3.0, -4.0])])
         .expect("norminf evaluates");
-    assert!(
-        (f64_of(&value) - 4.0).abs() < 1e-12,
-        "‖[3,-4]‖∞ = 4, got {value:?}"
-    );
-}
+    p.demand(format!("‖[3,-4]‖∞ = 4, got {value:?}"), (f64_of(&value) - 4.0).abs() < 1e-12, format!("‖[3,-4]‖∞ = 4, got {value:?}"));
 
-#[test]
-fn inner_product_computes() {
+    });
+    p.case("inner_product_computes", |p| {
+
     // B35: inner_product(u, v) — the generic dot; length mismatch
     // refuses typed (the interp's vector-length law).
     let value = seam_eval(
@@ -115,14 +127,11 @@ fn inner_product_computes() {
         ],
     )
     .expect("inner product evaluates");
-    assert!(
-        (f64_of(&value) - 32.0).abs() < 1e-12,
-        "⟨[1,2,3],[4,5,6]⟩ = 32, got {value:?}"
-    );
-}
+    p.demand(format!("⟨[1,2,3],[4,5,6]⟩ = 32, got {value:?}"), (f64_of(&value) - 32.0).abs() < 1e-12, format!("⟨[1,2,3],[4,5,6]⟩ = 32, got {value:?}"));
 
-#[test]
-fn linear_solve_is_distinct_and_typed() {
+    });
+    p.case("linear_solve_is_distinct_and_typed", |p| {
+
     // B34: `solve_linear` is a matrix operation, not the nonlinear
     // `solve` goal. The registry path computes the known system.
     let solved = seam_eval(
@@ -133,7 +142,7 @@ fn linear_solve_is_distinct_and_typed() {
         ],
     )
     .expect("nonsingular system solves");
-    assert_eq!(solved, Value::Vector(vec![2.0, 3.0]));
+    p.eq("linear_solve_is_distinct_and_typed#1", solved, Value::Vector(vec![2.0, 3.0]));
 
     let outer = seam_eval(
         "std.linalg.outer_product",
@@ -143,15 +152,12 @@ fn linear_solve_is_distinct_and_typed() {
         ],
     )
     .expect("outer product computes");
-    assert_eq!(outer, matrix(2, 3, &[3.0, 4.0, 5.0, 6.0, 8.0, 10.0]));
+    p.eq("linear_solve_is_distinct_and_typed#2", outer, matrix(2, 3, &[3.0, 4.0, 5.0, 6.0, 8.0, 10.0]));
 
     for cell in ["std.linalg.lu", "std.linalg.qr"] {
         let factors = seam_eval(cell, &[matrix(2, 2, &[4.0, 3.0, 6.0, 3.0])])
             .expect("factorization computes");
-        assert!(
-            matches!(factors, Value::Matrix { .. }),
-            "{cell}: {factors:?}"
-        );
+        p.demand(format!("{cell}: {factors:?}"), matches!(factors, Value::Matrix { .. }), format!("{cell}: {factors:?}"));
     }
 
     // Wrong carriers still refuse at compile with the shape diagnosis.
@@ -166,7 +172,7 @@ fn linear_solve_is_distinct_and_typed() {
             Term::Variable(VariableId("b".into())),
         ],
     };
-    let error = emath_exec_ir::term_compile::compile_reference(
+    let error = compile_reference(
         &term,
         &signature,
         &[
@@ -177,17 +183,14 @@ fn linear_solve_is_distinct_and_typed() {
         "test.solve_linear",
     )
     .expect_err("scalar matrix carrier refuses");
-    assert!(
-        matches!(
+    p.demand(format!("wrong carrier must be a shape refusal, got {error:?}"), matches!(
             error,
             emath_exec_ir::term_compile::TermCompileError::ShapeMismatch { .. }
-        ),
-        "wrong carrier must be a shape refusal, got {error:?}"
-    );
-}
+        ), format!("wrong carrier must be a shape refusal, got {error:?}"));
 
-#[test]
-fn strict_linear_algebra_source_compiles() {
+    });
+    p.case("strict_linear_algebra_source_compiles", |p| {
+
     // E2E: strict source admits and evaluates the matrix vocabulary.
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
@@ -198,15 +201,15 @@ fn strict_linear_algebra_source_compiles() {
         .errors()
         .map(|diagnostic| diagnostic.code.to_string())
         .collect();
-    assert!(
-        codes.is_empty(),
-        "a linear-algebra model compiles, got {codes:?} (messages: {:?})",
-        result
+    p.demand(format!("a linear-algebra model compiles, got {codes:?} (messages: {:?})", result
             .diagnostics
             .errors()
             .map(|diagnostic| diagnostic.message.clone())
-            .collect::<Vec<_>>()
-    );
+            .collect::<Vec<_>>()), codes.is_empty(), format!("a linear-algebra model compiles, got {codes:?} (messages: {:?})", result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()));
     let values = emath_exec_ir::runner::eval_definitions_values(
         &result.package,
         &result.package.declarations[0],
@@ -214,11 +217,11 @@ fn strict_linear_algebra_source_compiles() {
         &BTreeMap::new(),
     )
     .expect("matrix source evaluates");
-    assert_eq!(values.get("y"), Some(&Value::F64(5.0)));
-}
+    p.eq("strict_linear_algebra_source_compiles#2", values.get("y"), Some(&Value::F64(5.0)));
 
-#[test]
-fn linear_algebra_result_bundle_is_complete() {
+    });
+    p.case("linear_algebra_result_bundle_is_complete", |p| {
+
     // WorldResultBundle fixture (e2e clause; the cell path is touched):
     // the labeled world verdict records the norm family computing
     // through the registry path.
@@ -272,11 +275,25 @@ fn linear_algebra_result_bundle_is_complete() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("linear_algebra_result_bundle_is_complete#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "linear-solves-b35");
+    ), "linear_algebra_result_bundle_is_complete#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("linear_algebra_result_bundle_is_complete#2", result.world == "linear-solves-b35", format!("expected {:?}, got {:?}", "linear-solves-b35", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("linear_algebra_result_bundle_is_complete#3", bundle.bundle_id.starts_with("fnv1a64:"), "linear_algebra_result_bundle_is_complete#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

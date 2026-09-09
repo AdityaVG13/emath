@@ -6,20 +6,24 @@ use emath_ir::{
     BinderKind, BinderVariable, BranchConvention, Domain, ExprId, ExprNode, Interval, NumericType,
     Shape, branch_point, promote,
 };
+use emath_test_harness::Probe;
 
 #[test]
-fn empty_box_contains_nothing_and_is_not_field() {
+fn intent() {
+    let mut p = Probe::new("Negative/positive witnesses for the domain, numeric, shape and");
+    p.case("empty_box_contains_nothing_and_is_not_field", |p| {
+
     let boxed = Domain::Box(vec![]);
-    assert!(!boxed.contains(0.0));
-    assert!(!boxed.contains(-3.5));
-    assert_ne!(boxed.canonical(), Domain::Field.canonical());
+    p.demand("empty_box_contains_nothing_and_is_not_field#1", !boxed.contains(0.0), "empty_box_contains_nothing_and_is_not_field#1: !boxed.contains(0.0)");
+    p.demand("empty_box_contains_nothing_and_is_not_field#2", !boxed.contains(-3.5), "empty_box_contains_nothing_and_is_not_field#2: !boxed.contains(-3.5)");
+    p.ne("empty_box_contains_nothing_and_is_not_field#3", boxed.canonical(), Domain::Field.canonical());
     // No deterministic branch point for an empty box.
-    assert_eq!(branch_point(&boxed, BranchConvention::Lower), None);
-    assert_eq!(branch_point(&boxed, BranchConvention::Center), None);
-}
+    p.eq("empty_box_contains_nothing_and_is_not_field#4", branch_point(&boxed, BranchConvention::Lower), None);
+    p.eq("empty_box_contains_nothing_and_is_not_field#5", branch_point(&boxed, BranchConvention::Center), None);
 
-#[test]
-fn box_bounds_span_all_axes() {
+    });
+    p.case("box_bounds_span_all_axes", |p| {
+
     // A scalar must satisfy every axis; disjoint axes mean no scalar is
     // inside, and the reported bounds must agree with that instead of
     // reporting only the first axis.
@@ -27,109 +31,103 @@ fn box_bounds_span_all_axes() {
         Interval::closed(0.0, 1.0),
         Interval::closed(10.0, 20.0),
     ]);
-    assert!(!boxed.contains(0.5));
-    assert_eq!(boxed.lower_bound(), 10.0);
-    assert_eq!(boxed.upper_bound(), 1.0);
+    p.demand("box_bounds_span_all_axes#1", !boxed.contains(0.5), "box_bounds_span_all_axes#1: !boxed.contains(0.5)");
+    p.eq("box_bounds_span_all_axes#2", boxed.lower_bound(), 10.0);
+    p.eq("box_bounds_span_all_axes#3", boxed.upper_bound(), 1.0);
     // Overlapping axes stay honest.
     let overlapping = Domain::Box(vec![Interval::closed(0.0, 5.0), Interval::closed(1.0, 3.0)]);
-    assert!(overlapping.contains(2.0));
-    assert_eq!(overlapping.lower_bound(), 1.0);
-    assert_eq!(overlapping.upper_bound(), 3.0);
-}
+    p.demand("box_bounds_span_all_axes#4", overlapping.contains(2.0), "box_bounds_span_all_axes#4: overlapping.contains(2.0)");
+    p.eq("box_bounds_span_all_axes#5", overlapping.lower_bound(), 1.0);
+    p.eq("box_bounds_span_all_axes#6", overlapping.upper_bound(), 3.0);
 
-#[test]
-fn union_bounds_cover_every_member() {
+    });
+    p.case("union_bounds_cover_every_member", |p| {
+
     let union = Domain::Union(vec![
         Domain::Interval(Interval::closed(0.0, 1.0)),
         Domain::Interval(Interval::closed(10.0, 11.0)),
     ]);
-    assert_eq!(union.lower_bound(), 0.0);
-    assert_eq!(union.upper_bound(), 11.0);
+    p.eq("union_bounds_cover_every_member#1", union.lower_bound(), 0.0);
+    p.eq("union_bounds_cover_every_member#2", union.upper_bound(), 11.0);
     for member in [0.0, 0.5, 1.0, 10.0, 11.0] {
-        assert!(union.contains(member));
-        assert!(member >= union.lower_bound() && member <= union.upper_bound());
+        p.demand("union_bounds_cover_every_member#3", union.contains(member), "union_bounds_cover_every_member#3: union.contains(member)");
+        p.demand("union_bounds_cover_every_member#4", member >= union.lower_bound() && member <= union.upper_bound(), "union_bounds_cover_every_member#4: member >= union.lower_bound() && member <= union.upper_bound()");
     }
-    assert!(!union.contains(5.5));
-}
+    p.demand("union_bounds_cover_every_member#5", !union.contains(5.5), "union_bounds_cover_every_member#5: !union.contains(5.5)");
 
-#[test]
-fn empty_set_boundary_is_defined() {
+    });
+    p.case("empty_set_boundary_is_defined", |p| {
+
     let empty = Domain::finite_set(vec![]);
-    assert!(!empty.contains(0.0));
-    assert!(empty.lower_bound().is_nan());
-    assert!(empty.upper_bound().is_nan());
-    assert_eq!(branch_point(&empty, BranchConvention::Lower), None);
-    assert_eq!(branch_point(&empty, BranchConvention::Center), None);
-}
+    p.demand("empty_set_boundary_is_defined#1", !empty.contains(0.0), "empty_set_boundary_is_defined#1: !empty.contains(0.0)");
+    p.demand("empty_set_boundary_is_defined#2", empty.lower_bound().is_nan(), "empty_set_boundary_is_defined#2: empty.lower_bound().is_nan()");
+    p.demand("empty_set_boundary_is_defined#3", empty.upper_bound().is_nan(), "empty_set_boundary_is_defined#3: empty.upper_bound().is_nan()");
+    p.eq("empty_set_boundary_is_defined#4", branch_point(&empty, BranchConvention::Lower), None);
+    p.eq("empty_set_boundary_is_defined#5", branch_point(&empty, BranchConvention::Center), None);
 
-#[test]
-fn field_does_not_contain_nan() {
-    assert!(!Domain::Field.contains(f64::NAN));
-    assert!(Domain::Field.contains(0.0));
-    assert!(Domain::Field.contains(f64::INFINITY));
-}
+    });
+    p.case("field_does_not_contain_nan", |p| {
 
-#[test]
-fn finite_set_drops_nan_and_dedups_infinities() {
+    p.demand("field_does_not_contain_nan#1", !Domain::Field.contains(f64::NAN), "field_does_not_contain_nan#1: !Domain::Field.contains(f64::NAN)");
+    p.demand("field_does_not_contain_nan#2", Domain::Field.contains(0.0), "field_does_not_contain_nan#2: Domain::Field.contains(0.0)");
+    p.demand("field_does_not_contain_nan#3", Domain::Field.contains(f64::INFINITY), "field_does_not_contain_nan#3: Domain::Field.contains(f64::INFINITY)");
+
+    });
+    p.case("finite_set_drops_nan_and_dedups_infinities", |p| {
+
     let set = Domain::finite_set(vec![f64::NAN, f64::INFINITY, 2.0, f64::INFINITY, 2.0]);
-    assert!(set.contains(f64::INFINITY));
-    assert!(set.contains(2.0));
-    assert!(!set.contains(f64::NAN));
+    p.demand("finite_set_drops_nan_and_dedups_infinities#1", set.contains(f64::INFINITY), "finite_set_drops_nan_and_dedups_infinities#1: set.contains(f64::INFINITY)");
+    p.demand("finite_set_drops_nan_and_dedups_infinities#2", set.contains(2.0), "finite_set_drops_nan_and_dedups_infinities#2: set.contains(2.0)");
+    p.demand("finite_set_drops_nan_and_dedups_infinities#3", !set.contains(f64::NAN), "finite_set_drops_nan_and_dedups_infinities#3: !set.contains(f64::NAN)");
     let canonical = set.canonical();
-    assert_eq!(canonical.matches("inf").count(), 1, "{canonical}");
-    assert!(!canonical.contains("NaN"), "{canonical}");
-}
+    p.eq(format!("{canonical}"), canonical.matches("inf").count(), 1);
+    p.demand(format!("{canonical}"), !canonical.contains("NaN"), format!("{canonical}"));
 
-#[test]
-fn mixed_sign_promote_refuses_at_any_equal_width() {
+    });
+    p.case("mixed_sign_promote_refuses_at_any_equal_width", |p| {
+
     let u32 = NumericType::integer(false, 32);
     let i32 = NumericType::integer(true, 32);
     let error = promote(u32, i32).expect_err("u32+i32 must refuse");
-    assert_eq!(error.code, "E-TYPE-311");
+    p.demand("mixed_sign_promote_refuses_at_any_equal_width#1", error.code == "E-TYPE-311", format!("expected {:?}, got {:?}", "E-TYPE-311", error.code));
 
     let u8 = NumericType::integer(false, 8);
     let i8 = NumericType::integer(true, 8);
-    assert_eq!(
-        promote(u8, i8).expect_err("u8+i8 must refuse").code,
-        "E-TYPE-311"
-    );
-}
+    p.demand("mixed_sign_promote_refuses_at_any_equal_width#2", promote(u8, i8).expect_err("u8+i8 must refuse").code == "E-TYPE-311", format!("expected {:?}, got {:?}", "E-TYPE-311", promote(u8, i8).expect_err("u8+i8 must refuse").code));
 
-#[test]
-fn mixed_sign_promote_widens_to_lossless_side() {
+    });
+    p.case("mixed_sign_promote_widens_to_lossless_side", |p| {
+
     // u32+i64 -> i64 (covers every u32 value).
     let widened = promote(
         NumericType::integer(false, 32),
         NumericType::integer(true, 64),
     )
     .expect("lossless widening must promote");
-    assert!(widened.signed);
-    assert_eq!(widened.bits, 64);
+    p.demand("mixed_sign_promote_widens_to_lossless_side#1", widened.signed, "mixed_sign_promote_widens_to_lossless_side#1: widened.signed");
+    p.eq("mixed_sign_promote_widens_to_lossless_side#2", widened.bits, 64);
     // u64+i32 -> u64 (covers every i32 value).
     let widened = promote(
         NumericType::integer(false, 64),
         NumericType::integer(true, 32),
     )
     .expect("lossless widening must promote");
-    assert!(!widened.signed);
-    assert_eq!(widened.bits, 64);
-}
+    p.demand("mixed_sign_promote_widens_to_lossless_side#3", !widened.signed, "mixed_sign_promote_widens_to_lossless_side#3: !widened.signed");
+    p.eq("mixed_sign_promote_widens_to_lossless_side#4", widened.bits, 64);
 
-#[test]
-fn rank_zero_never_broadcasts() {
+    });
+    p.case("rank_zero_never_broadcasts", |p| {
+
     let scalar = Shape::scalar();
     let vector = Shape::vector("n");
-    assert!(
-        !scalar.broadcastable_with(&vector),
-        "rank-0 must not broadcast to rank-1"
-    );
-    assert!(!vector.broadcastable_with(&scalar));
+    p.demand("rank-0 must not broadcast to rank-1", !scalar.broadcastable_with(&vector), "rank-0 must not broadcast to rank-1");
+    p.demand("rank_zero_never_broadcasts#2", !vector.broadcastable_with(&scalar), "rank_zero_never_broadcasts#2: !vector.broadcastable_with(&scalar)");
     // Scalar-scalar is identity, not a broadcast.
-    assert!(scalar.broadcastable_with(&scalar));
-}
+    p.demand("rank_zero_never_broadcasts#3", scalar.broadcastable_with(&scalar), "rank_zero_never_broadcasts#3: scalar.broadcastable_with(&scalar)");
 
-#[test]
-fn binder_bound_names_are_not_free() {
+    });
+    p.case("binder_bound_names_are_not_free", |p| {
+
     // `sum(i in 1..n, i)`: `i` is bound by the binder, `n` stays free.
     let exprs = vec![
         ExprNode::Variable(QualifiedName("i".into())), // body
@@ -144,5 +142,27 @@ fn binder_bound_names_are_not_free() {
         body: ExprId(0),
     };
     let free = binder.free_variables(&exprs);
-    assert_eq!(free, vec![QualifiedName("n".into())]);
+    p.eq("binder_bound_names_are_not_free#1", free, vec![QualifiedName("n".into())]);
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

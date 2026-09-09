@@ -17,6 +17,7 @@ use emath_genesis::{
     evaluate_labeled, reference_alien_term, select_world, synthesize_world, user_defined_world,
 };
 use emath_term::{SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
 
 /// The reference alien declaration over the toy carrier {0..4}: the
 /// mod-17 seed semantics scaled to mod 5 (⋈ add, ⧖ square, ⊛ mul, ζ=3).
@@ -66,12 +67,15 @@ fn alien_environment() -> BTreeMap<VariableId, String> {
 }
 
 #[test]
-fn mod17_portfolio_is_labeled() {
+fn intent() {
+    let mut p = Probe::new("User-defined and law-synthesized worlds.");
+    p.case("mod17_portfolio_is_labeled", |p| {
+
     // The mod-17 seed world returns a LABELED portfolio: the reference
     // alien term evaluates through the World ABI and the answer lands in
     // a bundle whose evidence names the world, origin, and laws.
     let (signature, term) = reference_alien_term();
-    assert!(ModularAlienWorld.admits(&signature));
+    p.demand("mod17_portfolio_is_labeled#1", ModularAlienWorld.admits(&signature), "mod17_portfolio_is_labeled#1: ModularAlienWorld.admits(&signature)");
     let environment = BTreeMap::from([
         (VariableId("a".into()), 2_i64),
         (VariableId("b".into()), 3_i64),
@@ -83,11 +87,11 @@ fn mod17_portfolio_is_labeled() {
         WorldBudget { max_steps: 16 },
         |answer: &i64| answer.to_string(),
     );
-    assert!(matches!(result.disposition, Disposition::Answer { .. }));
-    assert_eq!(result.world, "modular-17");
-    assert_eq!(result.origin, "seed");
+    p.demand("mod17_portfolio_is_labeled#2", matches!(result.disposition, Disposition::Answer { .. }), "mod17_portfolio_is_labeled#2: matches!(result.disposition, Disposition::Answer { .. })");
+    p.demand("mod17_portfolio_is_labeled#3", result.world == "modular-17", format!("expected {:?}, got {:?}", "modular-17", result.world));
+    p.demand("mod17_portfolio_is_labeled#4", result.origin == "seed", format!("expected {:?}, got {:?}", "seed", result.origin));
     let bundle = ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("mod17_portfolio_is_labeled#5", bundle.bundle_id.starts_with("fnv1a64:"), "mod17_portfolio_is_labeled#5: bundle.bundle_id.starts_with(\"fnv1a64:\")");
 
     // The portfolio disposition trail records EVERY candidate verdict.
     // Doctrine order: free-symbolic (always applicable) and the boolean
@@ -97,14 +101,14 @@ fn mod17_portfolio_is_labeled() {
         &signature,
         &[WorldName::FreeSymbolic, WorldName::BooleanAlien],
     );
-    assert_eq!(disposition.selected, Some(WorldName::ModularAlien));
-    assert_eq!(disposition.trail.len(), 3);
-    assert!(disposition.trail[0].contains("excluded"));
-    assert!(disposition.trail[2].contains("applicable"));
-}
+    p.eq("mod17_portfolio_is_labeled#6", disposition.selected, Some(WorldName::ModularAlien));
+    p.eq("mod17_portfolio_is_labeled#7", disposition.trail.len(), 3);
+    p.demand("mod17_portfolio_is_labeled#8", disposition.trail[0].contains("excluded"), "mod17_portfolio_is_labeled#8: disposition.trail[0].contains(\"excluded\")");
+    p.demand("mod17_portfolio_is_labeled#9", disposition.trail[2].contains("applicable"), "mod17_portfolio_is_labeled#9: disposition.trail[2].contains(\"applicable\")");
 
-#[test]
-fn user_defined_world_is_labeled_and_checked() {
+    });
+    p.case("user_defined_world_is_labeled_and_checked", |p| {
+
     // A user-declared world (language kind at the execution layer)
     // constructs only when its declaration is internally consistent:
     // total operation tables over the declared carrier, constants in the
@@ -112,12 +116,12 @@ fn user_defined_world_is_labeled_and_checked() {
     // labeled origin=user-defined.
     let world = user_defined_world(modular_five_decl()).expect("consistent declaration");
     let (signature, term) = reference_alien_term();
-    assert!(world.admits(&signature));
+    p.demand("user_defined_world_is_labeled_and_checked#1", world.admits(&signature), "user_defined_world_is_labeled_and_checked#1: world.admits(&signature)");
 
     // ⊛(⧖(⋈(2,3)), ζ) = (2+3)² · 3 = 25·3 = 75 ≡ 0 (mod 5).
     let value = emath_genesis::evaluate(&term, &world, &alien_environment())
         .expect("user-defined world evaluates");
-    assert_eq!(value, "0");
+    p.demand("user_defined_world_is_labeled_and_checked#2", value == "0", format!("expected {:?}, got {:?}", "0", value));
 
     let result = evaluate_labeled(
         &term,
@@ -126,11 +130,11 @@ fn user_defined_world_is_labeled_and_checked() {
         WorldBudget { max_steps: 16 },
         |element: &String| element.clone(),
     );
-    assert!(matches!(result.disposition, Disposition::Answer { .. }));
-    assert_eq!(result.world, "modular-five");
-    assert_eq!(result.origin, "user-defined");
+    p.demand("user_defined_world_is_labeled_and_checked#3", matches!(result.disposition, Disposition::Answer { .. }), "user_defined_world_is_labeled_and_checked#3: matches!(result.disposition, Disposition::Answer { .. })");
+    p.demand("user_defined_world_is_labeled_and_checked#4", result.world == "modular-five", format!("expected {:?}, got {:?}", "modular-five", result.world));
+    p.demand("user_defined_world_is_labeled_and_checked#5", result.origin == "user-defined", format!("expected {:?}, got {:?}", "user-defined", result.origin));
     let bundle = ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("user_defined_world_is_labeled_and_checked#6", bundle.bundle_id.starts_with("fnv1a64:"), "user_defined_world_is_labeled_and_checked#6: bundle.bundle_id.starts_with(\"fnv1a64:\")");
 
     // Malformed declarations refuse typed: a constant outside the
     // carrier, an incomplete table.
@@ -139,8 +143,8 @@ fn user_defined_world_is_labeled_and_checked() {
         .constants
         .insert("δ".to_string(), "9".to_string());
     match user_defined_world(bad_constant) {
-        Err(WorldDeclError::UnknownElement { element, .. }) => assert_eq!(element, "9"),
-        other => panic!("expected UnknownElement, got {other:?}"),
+        Err(WorldDeclError::UnknownElement { element, .. }) => { p.demand("user_defined_world_is_labeled_and_checked#7", element == "9", format!("expected {:?}, got {:?}", "9", element)); },
+        other => { p.fail("user_defined_world_is_labeled_and_checked#8", format!("expected UnknownElement, got {other:?}")); return; },
     }
     let mut incomplete = modular_five_decl();
     incomplete
@@ -149,14 +153,14 @@ fn user_defined_world_is_labeled_and_checked() {
         .expect("table present")
         .rows
         .remove(&vec!["0".to_string(), "0".to_string()]);
-    assert!(matches!(
+    p.demand("user_defined_world_is_labeled_and_checked#9", matches!(
         user_defined_world(incomplete),
         Err(WorldDeclError::IncompleteTable { .. })
-    ));
-}
+    ), "user_defined_world_is_labeled_and_checked#9: matches!(\n        user_defined_world(incomplete),\n        Err(WorldDeclError::IncompleteTable { .. }");
 
-#[test]
-fn law_synthesis_is_bounded_and_labeled() {
+    });
+    p.case("law_synthesis_is_bounded_and_labeled", |p| {
+
     // Law-synthesized worlds: the canonical model of the law over the
     // declared carrier (toy size ≤ 6), labeled origin=synthesized, and
     // the law VERIFIED over the whole carrier (independently checked).
@@ -164,7 +168,7 @@ fn law_synthesis_is_bounded_and_labeled() {
 
     let commutative = synthesize_world("synth-comm", &WorldLaw::Commutative, domain.clone())
         .expect("commutative synthesis");
-    assert_eq!(commutative.evidence().origin, "synthesized");
+    p.demand("law_synthesis_is_bounded_and_labeled#1", commutative.evidence().origin == "synthesized", format!("expected {:?}, got {:?}", "synthesized", commutative.evidence().origin));
     let table = commutative.table("⋈").expect("synthesized operation");
     for left in &domain {
         for right in &domain {
@@ -174,7 +178,7 @@ fn law_synthesis_is_bounded_and_labeled() {
             let backward = table
                 .row(&[right.clone(), left.clone()])
                 .expect("total table");
-            assert_eq!(forward, backward, "commutativity holds: {left}⋈{right}");
+            p.eq(format!("commutativity holds: {left}⋈{right}"), forward, backward);
         }
     }
 
@@ -183,11 +187,7 @@ fn law_synthesis_is_bounded_and_labeled() {
         .expect("idempotent synthesis");
     let table = idempotent.table("⋈").expect("synthesized operation");
     for value in &domain {
-        assert_eq!(
-            table.row(&[value.clone(), value.clone()]).expect("total"),
-            value,
-            "idempotence holds for {value}"
-        );
+        p.eq(format!("idempotence holds for {value}"), table.row(&[value.clone(), value.clone()]).expect("total"), value);
     }
 
     // Identity element: row/col of the declared identity are the identity.
@@ -201,14 +201,8 @@ fn law_synthesis_is_bounded_and_labeled() {
     .expect("identity synthesis");
     let table = with_identity.table("⋈").expect("synthesized operation");
     for value in &domain {
-        assert_eq!(
-            table.row(&["1".to_string(), value.clone()]).expect("total"),
-            value
-        );
-        assert_eq!(
-            table.row(&[value.clone(), "1".to_string()]).expect("total"),
-            value
-        );
+        p.eq("law_synthesis_is_bounded_and_labeled#4", table.row(&["1".to_string(), value.clone()]).expect("total"), value);
+        p.eq("law_synthesis_is_bounded_and_labeled#5", table.row(&[value.clone(), "1".to_string()]).expect("total"), value);
     }
 
     // Every synthesized world returns a labeled portfolio.
@@ -223,7 +217,7 @@ fn law_synthesis_is_bounded_and_labeled() {
     signature
         .insert(SymbolId("⋈".into()), 2)
         .expect("conflict-free");
-    assert!(commutative.admits(&signature));
+    p.demand("law_synthesis_is_bounded_and_labeled#6", commutative.admits(&signature), "law_synthesis_is_bounded_and_labeled#6: commutative.admits(&signature)");
     let result = evaluate_labeled(
         &term,
         &commutative,
@@ -231,23 +225,23 @@ fn law_synthesis_is_bounded_and_labeled() {
         WorldBudget { max_steps: 16 },
         |element: &String| element.clone(),
     );
-    assert!(matches!(result.disposition, Disposition::Answer { .. }));
-    assert_eq!(result.world, "synth-comm");
-    assert_eq!(result.origin, "synthesized");
+    p.demand("law_synthesis_is_bounded_and_labeled#7", matches!(result.disposition, Disposition::Answer { .. }), "law_synthesis_is_bounded_and_labeled#7: matches!(result.disposition, Disposition::Answer { .. })");
+    p.demand("law_synthesis_is_bounded_and_labeled#8", result.world == "synth-comm", format!("expected {:?}, got {:?}", "synth-comm", result.world));
+    p.demand("law_synthesis_is_bounded_and_labeled#9", result.origin == "synthesized", format!("expected {:?}, got {:?}", "synthesized", result.origin));
 
     // Size bound: a carrier over the toy bound refuses typed.
     let oversized: Vec<String> = (0..7).map(|v| v.to_string()).collect();
     match synthesize_world("synth-big", &WorldLaw::Commutative, oversized) {
         Err(emath_genesis::SynthesisError::SizeBoundExceeded { size, max }) => {
-            assert_eq!(size, 7);
-            assert_eq!(max, 6);
+            p.eq("law_synthesis_is_bounded_and_labeled#10", size, 7);
+            p.eq("law_synthesis_is_bounded_and_labeled#11", max, 6);
         }
-        other => panic!("expected SizeBoundExceeded, got {other:?}"),
+        other => { p.fail("law_synthesis_is_bounded_and_labeled#12", format!("expected SizeBoundExceeded, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn false_models_are_rejected_typed() {
+    });
+    p.case("false_models_are_rejected_typed", |p| {
+
     // A model CLAIM about the world is checked against the world's own
     // table: the claim ⊛(3,3) = 0 is FALSE (9 mod 5 = 4) — typed
     // rejection, never a silent agreement with a wrong model.
@@ -259,8 +253,8 @@ fn false_models_are_rejected_typed() {
         expected: "0".to_string(),
     };
     match world.check_model(&false_claim) {
-        Err(WorldDeclError::FalseModel { actual, .. }) => assert_eq!(actual, "4"),
-        other => panic!("expected FalseModel, got {other:?}"),
+        Err(WorldDeclError::FalseModel { actual, .. }) => { p.demand("false_models_are_rejected_typed#1", actual == "4", format!("expected {:?}, got {:?}", "4", actual)); },
+        other => { p.fail("false_models_are_rejected_typed#2", format!("expected FalseModel, got {other:?}")); return; },
     }
 
     // The TRUE claim passes (independent check, not a tautology: the
@@ -278,26 +272,26 @@ fn false_models_are_rejected_typed() {
         arguments: vec!["1".to_string()],
         expected: "1".to_string(),
     };
-    assert!(matches!(
+    p.demand("false_models_are_rejected_typed#3", matches!(
         world.check_model(&unknown),
         Err(WorldDeclError::UnknownElement { .. })
-    ));
-}
+    ), "false_models_are_rejected_typed#3: matches!(\n        world.check_model(&unknown),\n        Err(WorldDeclError::UnknownElement { .. })\n  ");
 
-#[test]
-fn strict_source_refuses_world_attachment() {
+    });
+    p.case("strict_source_refuses_world_attachment", |p| {
+
     // The firewall clause: a STRICT source never carries a custom world.
     // The attachment seam refuses typed (E-WORLD-006); a custom-lane
     // source attaches the same declaration fine.
     let decl = modular_five_decl();
     match emath_genesis::attach_world(WorldSourceClass::Strict, "gaussian-model", decl.clone()) {
-        Err(WorldDeclError::StrictFirewall { source }) => assert_eq!(source, "gaussian-model"),
-        other => panic!("expected StrictFirewall, got {other:?}"),
+        Err(WorldDeclError::StrictFirewall { source }) => { p.demand("strict_source_refuses_world_attachment#1", source == "gaussian-model", format!("expected {:?}, got {:?}", "gaussian-model", source)); },
+        other => { p.fail("strict_source_refuses_world_attachment#2", format!("expected StrictFirewall, got {other:?}")); return; },
     }
     let attached = emath_genesis::attach_world(WorldSourceClass::Custom, "alien-model", decl)
         .expect("custom source attaches its world");
-    assert_eq!(attached.name(), "modular-five");
-    assert_eq!(attached.evidence().origin, "user-defined");
+    p.demand("strict_source_refuses_world_attachment#3", attached.name() == "modular-five", format!("expected {:?}, got {:?}", "modular-five", attached.name()));
+    p.demand("strict_source_refuses_world_attachment#4", attached.evidence().origin == "user-defined", format!("expected {:?}, got {:?}", "user-defined", attached.evidence().origin));
 
     // Negative seed: the seeded silent-success scenario declares the
     // typed refusal.
@@ -306,24 +300,35 @@ fn strict_source_refuses_world_attachment() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-WORLD-006"),
-        "seed expects the strict-firewall refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the strict-firewall refusal, found: {expect_line}"), expect_line.contains("E-WORLD-006"), format!("seed expects the strict-firewall refusal, found: {expect_line}"));
 
-#[test]
-fn evidence_is_owned_for_runtime_worlds() {
+    });
+    p.case("evidence_is_owned_for_runtime_worlds", |p| {
+
     // Runtime-authored worlds cannot borrow 'static names: the evidence
     // record is OWNED, and static seed worlds keep their one-line shape
     // through the seed constructor.
     let seed = WorldEvidence::seed("modular-17", &["ring-mod-17-table"]);
-    assert_eq!(seed.world, "modular-17");
-    assert_eq!(seed.origin, "seed");
+    p.demand("evidence_is_owned_for_runtime_worlds#1", seed.world == "modular-17", format!("expected {:?}, got {:?}", "modular-17", seed.world));
+    p.demand("evidence_is_owned_for_runtime_worlds#2", seed.origin == "seed", format!("expected {:?}, got {:?}", "seed", seed.origin));
     let world = user_defined_world(modular_five_decl()).expect("consistent declaration");
     let evidence: WorldEvidence = world.evidence();
-    assert_eq!(evidence.world, "modular-five");
-    assert_eq!(evidence.origin, "user-defined");
-    assert_eq!(evidence.laws, vec!["ring-mod-5-table".to_string()]);
+    p.demand("evidence_is_owned_for_runtime_worlds#3", evidence.world == "modular-five", format!("expected {:?}, got {:?}", "modular-five", evidence.world));
+    p.demand("evidence_is_owned_for_runtime_worlds#4", evidence.origin == "user-defined", format!("expected {:?}, got {:?}", "user-defined", evidence.origin));
+    p.eq("evidence_is_owned_for_runtime_worlds#5", evidence.laws, vec!["ring-mod-5-table".to_string()]);
     let _ = EvalError::UnknownSymbol(SymbolId("unused".into()));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

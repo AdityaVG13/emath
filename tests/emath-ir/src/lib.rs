@@ -15,6 +15,7 @@ mod canonical_identity {
     use emath_ir::package::{Declaration, SemanticPackage};
     use emath_ir::types::TypeNode;
     use std::collections::BTreeMap;
+    use emath_test_harness::Probe;
 
     fn package_with_input(ty: TypeNode) -> SemanticPackage {
         let mut package = SemanticPackage::new();
@@ -49,19 +50,18 @@ mod canonical_identity {
     }
 
     #[test]
-    fn distinct_field_types_produce_distinct_content_ids() {
-        let float_id = canonical_package(&package_with_input(TypeNode::Float64));
-        let bool_id = canonical_package(&package_with_input(TypeNode::Bool));
-        assert_ne!(
-            float_id, bool_id,
-            "canonical identity must bind field types"
-        );
-    }
-
-    #[test]
-    fn same_field_types_produce_same_content_id() {
-        let left = canonical_package(&package_with_input(TypeNode::Float64));
-        let right = canonical_package(&package_with_input(TypeNode::Float64));
-        assert_eq!(left, right, "canonical identity must be deterministic");
+    fn intent() {
+        let mut p = Probe::new("canonical content identity binds field types deterministically");
+        p.case("distinct_field_types_produce_distinct_content_ids", |p| {
+            let float_id = canonical_package(&package_with_input(TypeNode::Float64));
+            let bool_id = canonical_package(&package_with_input(TypeNode::Bool));
+            p.ne("canonical identity must bind field types", float_id, bool_id);
+        });
+        p.case("same_field_types_produce_same_content_id", |p| {
+            let left = canonical_package(&package_with_input(TypeNode::Float64));
+            let right = canonical_package(&package_with_input(TypeNode::Float64));
+            p.eq("canonical identity must be deterministic", left, right);
+        });
+        p.finish();
     }
 }

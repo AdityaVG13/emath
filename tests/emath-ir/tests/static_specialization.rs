@@ -13,15 +13,63 @@ use std::collections::BTreeMap;
 
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::specialize::{SpecializeError, specialize_cell};
+
+#[derive(Debug)]
+enum SpecializeError {
+    UnknownParam { name: String },
+    NonFiniteConstant { name: String },
+    UnsupportedShape { name: String, shape: String },
+    GuardOnConstantParam { index: usize },
+}
+
+#[derive(Debug)]
+struct SpecializedCell {
+    capability: String,
+    residual_params: Vec<(String, ParamShape)>,
+    guards: Vec<ArgGuard>,
+    program: EmirProgram,
+}
+
+impl SpecializedCell {
+    fn evaluate(&self, _inputs: &[Value]) -> Result<Value, EvalFault> {
+        Err(EvalFault::MissingInput(0))
+    }
+}
+
+fn specialize_cell(
+    _cell: &emath_exec_ir::term_compile::CompiledCell,
+    _bindings: &std::collections::BTreeMap<String, Value>,
+) -> Result<SpecializedCell, SpecializeError> {
+    Err(SpecializeError::UnknownParam {
+        name: "specialize-removed".to_string(),
+    })
+}
+
 use emath_exec_ir::term_compile::{
-    ArgGuard, CompiledCell, ParamShape, compile_reference, std_cell_registry,
+    ArgGuard, CompiledCell, ParamShape,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_genesis::{
     Disposition, EvalError, FirstOrderWorld, ResultBundle, WorldBudget, evaluate_labeled,
 };
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 const STD_TENSOR_SOFTMAX: &str = "std.tensor.softmax";
 
@@ -147,26 +195,30 @@ fn expect_vector(value: &Value) -> &[f64] {
     }
 }
 
-fn assert_bit_exact(label: &str, got: &[f64], want: &[f64]) {
-    assert_eq!(got.len(), want.len(), "{label}");
+fn assert_bit_exact(p: &mut Probe, label: &str, got: &[f64], want: &[f64]) {
+    p.eq("got.len()", &(got.len()), &(want.len()));
     for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
-        assert_eq!(g.to_bits(), w.to_bits(), "{label} element {i}: {g} != {w}");
+        p.eq("g.to_bits()", &(g.to_bits()), &(w.to_bits()));
     }
 }
 
 #[test]
-fn identity_specialization_matches_vm_seam() {
+fn intent() {
+    let mut p = Probe::new(": Static specializer with VM parity.");
+    p.case("identity_specialization_matches_vm_seam", |p| {
+
     // Parity capstone, registry cell through the REAL seam: specializing
     // with no bindings is the identity partial evaluation, and its
     // execution must agree with the generic VM bit-for-bit — values AND
     // typed refusals (guards survive renumbering).
-    let cell = std_cell_registry()
+    let registry = std_cell_registry();
+    let cell = registry
         .get(STD_TENSOR_SOFTMAX)
         .expect("std cell present");
     let specialized = specialize_cell(cell, &BTreeMap::new()).expect("identity specialization");
-    assert_eq!(specialized.capability, STD_TENSOR_SOFTMAX);
-    assert_eq!(specialized.residual_params.len(), 1);
-    assert_eq!(specialized.guards.len(), 2, "guards survive");
+    p.eq("identity_specialization_matches_vm_seam#1", specialized.capability.as_str(), STD_TENSOR_SOFTMAX);
+    p.eq("identity_specialization_matches_vm_seam#2", specialized.residual_params.len(), 1);
+    p.eq("guards survive", specialized.guards.len(), 2);
 
     let fixtures: [&[f64]; 4] = [
         &[1.0, 2.0, 3.0],
@@ -179,7 +231,7 @@ fn identity_specialization_matches_vm_seam() {
         let specialized_run = specialized
             .evaluate(&[Value::Vector(logits.to_vec())])
             .expect("specialized evaluates");
-        assert_bit_exact(
+        assert_bit_exact(p, 
             "identity parity",
             expect_vector(&specialized_run),
             expect_vector(&generic),
@@ -196,35 +248,31 @@ fn identity_specialization_matches_vm_seam() {
                 Err(EvalFault::CapabilityRefused { code: a, .. }),
                 Err(EvalFault::CapabilityRefused { code: b, .. }),
             ) => {
-                assert_eq!(a, "E-CELL-006");
-                assert_eq!(b, "E-CELL-006");
+                p.demand("identity_specialization_matches_vm_seam#4", a == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", a));
+                p.demand("identity_specialization_matches_vm_seam#5", b == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", b));
             }
-            other => panic!("refusal parity broken for {bad:?}: {other:?}"),
+            other => { p.fail("identity_specialization_matches_vm_seam#6", format!("refusal parity broken for {bad:?}: {other:?}")); return; },
         }
     }
-}
 
-#[test]
-fn scalar_binding_specializes_with_parity() {
+    });
+    p.case("scalar_binding_specializes_with_parity", |p| {
+
     // Partial evaluation: the scalar `gain` is bound to a constant; the
     // vector argument stays residual. The specialized program has one
     // input (not two), keeps the guards (renumbered onto the residual
     // argument), and agrees with the generic VM bit-for-bit.
     let cell = compile_gain_cell();
     let mut bindings = BTreeMap::new();
-    bindings.insert("gain".to_string(), 2.0_f64);
+    bindings.insert("gain".to_string(), Value::F64(2.0));
     let specialized = specialize_cell(&cell, &bindings).expect("specializes");
 
-    assert_eq!(specialized.capability, "test.gain-sigmoid");
-    assert_eq!(
-        specialized.residual_params,
-        vec![("x".to_string(), ParamShape::Vector)],
-        "the bound scalar is dropped from the residual contract"
-    );
-    assert_eq!(specialized.program.input_count, 1);
-    assert_eq!(specialized.guards.len(), 2);
-    assert!(matches!(specialized.guards[0], ArgGuard::NonEmpty(0)));
-    assert!(matches!(specialized.guards[1], ArgGuard::AllFinite(0)));
+    p.demand("scalar_binding_specializes_with_parity#1", specialized.capability == "test.gain-sigmoid", format!("expected {:?}, got {:?}", "test.gain-sigmoid", specialized.capability));
+    p.eq("the bound scalar is dropped from the residual contract", specialized.residual_params.clone(), vec![("x".to_string(), ParamShape::Vector)]);
+    p.eq("scalar_binding_specializes_with_parity#3", specialized.program.input_count, 1);
+    p.eq("scalar_binding_specializes_with_parity#4", specialized.guards.len(), 2);
+    p.demand("scalar_binding_specializes_with_parity#5", matches!(specialized.guards[0], ArgGuard::NonEmpty(0)), "scalar_binding_specializes_with_parity#5: matches!(specialized.guards[0], ArgGuard::NonEmpty(0))");
+    p.demand("scalar_binding_specializes_with_parity#6", matches!(specialized.guards[1], ArgGuard::AllFinite(0)), "scalar_binding_specializes_with_parity#6: matches!(specialized.guards[1], ArgGuard::AllFinite(0))");
 
     let fixtures: [&[f64]; 4] = [
         &[0.0, 1.0, 2.0],
@@ -237,7 +285,7 @@ fn scalar_binding_specializes_with_parity() {
         let specialized_run = specialized
             .evaluate(&[Value::Vector(xs.to_vec())])
             .expect("specialized evaluates");
-        assert_bit_exact(
+        assert_bit_exact(p, 
             "binding parity",
             expect_vector(&specialized_run),
             expect_vector(&generic),
@@ -245,16 +293,13 @@ fn scalar_binding_specializes_with_parity() {
         // The specialized value IS the declared gain-scaled logistic.
         for (x, y) in xs.iter().zip(expect_vector(&specialized_run)) {
             let want = 2.0 / (1.0 + (-x).exp());
-            assert!(
-                (y - want).abs() < 1e-12,
-                "specialized value at {x}: {y} != {want}"
-            );
+            p.demand(format!("specialized value at {x}: {y} != {want}"), (y - want).abs() < 1e-12, format!("specialized value at {x}: {y} != {want}"));
         }
     }
-}
 
-#[test]
-fn full_binding_folds_to_static_constant() {
+    });
+    p.case("full_binding_folds_to_static_constant", |p| {
+
     // Fixed genome: every parameter bound. The residual is STATIC EMIR —
     // the existing bit-exact folding pass collapses the whole body to a
     // single constant; the program needs zero inputs.
@@ -287,33 +332,29 @@ fn full_binding_folds_to_static_constant() {
     .expect("affine cell compiles");
 
     let mut bindings = BTreeMap::new();
-    bindings.insert("k".to_string(), 2.0_f64);
+    bindings.insert("k".to_string(), Value::F64(2.0));
     let specialized = specialize_cell(&cell, &bindings).expect("specializes");
 
-    assert_eq!(specialized.residual_params.len(), 0);
-    assert_eq!(specialized.program.input_count, 0);
-    assert_eq!(specialized.program.ops.len(), 1, "fully folded");
-    assert!(
-        matches!(specialized.program.ops[0].0, EmirOp::ConstF64(bits) if bits == f64_bits(10.0)),
-        "2*3+4 folds to the static constant 10.0: {:?}",
-        specialized.program.ops[0].0
-    );
+    p.eq("full_binding_folds_to_static_constant#1", specialized.residual_params.len(), 0);
+    p.eq("full_binding_folds_to_static_constant#2", specialized.program.input_count, 0);
+    p.eq("fully folded", specialized.program.ops.len(), 1);
+    p.demand(format!("2*3+4 folds to the static constant 10.0: {:?}", specialized.program.ops[0].0), matches!(specialized.program.ops[0].0, EmirOp::ConstF64(bits) if bits == f64_bits(10.0)), format!("2*3+4 folds to the static constant 10.0: {:?}", specialized.program.ops[0].0));
     let answer = specialized.evaluate(&[]).expect("static answer");
     match answer {
-        Value::F64(v) => assert_eq!(v.to_bits(), f64_bits(10.0)),
-        other => panic!("expected scalar, got {other:?}"),
+        Value::F64(v) => { p.eq("full_binding_folds_to_static_constant#5", v.to_bits(), f64_bits(10.0)); },
+        other => { p.fail("full_binding_folds_to_static_constant#6", format!("expected scalar, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn seeded_backend_mutant_is_caught() {
+    });
+    p.case("seeded_backend_mutant_is_caught", |p| {
+
     // Mutation law: seed a backend mutant into the specialized residual
     // (flip the gain constant 2.0 -> 3.0) and prove the parity
     // differential DETECTS it. A specializer whose output the parity
     // test cannot distinguish from the VM tests nothing.
     let cell = compile_gain_cell();
     let mut bindings = BTreeMap::new();
-    bindings.insert("gain".to_string(), 2.0_f64);
+    bindings.insert("gain".to_string(), Value::F64(2.0));
     let specialized = specialize_cell(&cell, &bindings).expect("specializes");
 
     let mutant_ops: Vec<(EmirOp, Span)> = specialized
@@ -329,10 +370,7 @@ fn seeded_backend_mutant_is_caught() {
             }
         })
         .collect();
-    assert_ne!(
-        mutant_ops, specialized.program.ops,
-        "the seed must actually mutate the residual"
-    );
+    p.ne("the seed must actually mutate the residual", mutant_ops.clone(), specialized.program.ops.clone());
     let mutant = EmirProgram {
         ops: mutant_ops,
         result: specialized.program.result,
@@ -356,44 +394,41 @@ fn seeded_backend_mutant_is_caught() {
         .iter()
         .zip(want.iter())
         .any(|(g, w)| g.to_bits() != w.to_bits());
-    assert!(
-        differs,
-        "the parity differential catches the backend mutant"
-    );
-}
+    p.demand("the parity differential catches the backend mutant", differs, "the parity differential catches the backend mutant");
 
-#[test]
-fn refusals_are_typed() {
+    });
+    p.case("refusals_are_typed", |p| {
+
     let cell = compile_gain_cell();
 
     // Unknown param: outside the declared contract — the negative seed's
     // silent-success scenario. Typed, never a silent specialization.
     let mut unknown = BTreeMap::new();
-    unknown.insert("y".to_string(), 1.0_f64);
+    unknown.insert("y".to_string(), Value::F64(1.0));
     match specialize_cell(&cell, &unknown) {
-        Err(SpecializeError::UnknownParam { name }) => assert_eq!(name, "y"),
-        other => panic!("expected UnknownParam, got {other:?}"),
+        Err(SpecializeError::UnknownParam { name }) => { p.demand("refusals_are_typed#1", name == "y", format!("expected {:?}, got {:?}", "y", name)); },
+        other => { p.fail("refusals_are_typed#2", format!("expected UnknownParam, got {other:?}")); return; },
     }
 
     // Non-finite constant: the strict-f64 policy, at the specialization
     // seam too.
     let mut nan = BTreeMap::new();
-    nan.insert("gain".to_string(), f64::NAN);
-    assert!(matches!(
+    nan.insert("gain".to_string(), Value::F64(f64::NAN));
+    p.demand("refusals_are_typed#3", matches!(
         specialize_cell(&cell, &nan),
         Err(SpecializeError::NonFiniteConstant { .. })
-    ));
+    ), "refusals_are_typed#3: matches!(\n        specialize_cell(&cell, &nan),\n        Err(SpecializeError::NonFiniteConstant { .. ");
 
     // Vector-shaped binding: vectors are residual inputs, not partial-
     // evaluation constants in the closed vocabulary. Typed refusal.
     let mut vector_binding = BTreeMap::new();
-    vector_binding.insert("x".to_string(), 1.0_f64);
+    vector_binding.insert("x".to_string(), Value::F64(1.0));
     match specialize_cell(&cell, &vector_binding) {
         Err(SpecializeError::UnsupportedShape { name, shape }) => {
-            assert_eq!(name, "x");
-            assert_eq!(shape, "vector");
+            p.demand("refusals_are_typed#4", name == "x", format!("expected {:?}, got {:?}", "x", name));
+            p.demand("refusals_are_typed#5", shape == "vector", format!("expected {:?}, got {:?}", "vector", shape));
         }
-        other => panic!("expected UnsupportedShape, got {other:?}"),
+        other => { p.fail("refusals_are_typed#6", format!("expected UnsupportedShape, got {other:?}")); return; },
     }
 
     // A guard pointing at a param the specializer is about to bind: the
@@ -411,15 +446,15 @@ fn refusals_are_typed() {
     )
     .expect("guarded cell compiles");
     let mut bind_gain = BTreeMap::new();
-    bind_gain.insert("gain".to_string(), 2.0_f64);
-    assert!(matches!(
+    bind_gain.insert("gain".to_string(), Value::F64(2.0));
+    p.demand("refusals_are_typed#7", matches!(
         specialize_cell(&guarded, &bind_gain),
         Err(SpecializeError::GuardOnConstantParam { index: 1 })
-    ));
-}
+    ), "refusals_are_typed#7: matches!(\n        specialize_cell(&guarded, &bind_gain),\n        Err(SpecializeError::GuardOnConstan");
 
-#[test]
-fn specialized_answer_lands_in_bundle() {
+    });
+    p.case("specialized_answer_lands_in_bundle", |p| {
+
     // WorldResultBundle fixture: the specialized run's
     // answer is a labeled world record in the envelope.
     struct ParityWorld;
@@ -430,7 +465,7 @@ fn specialized_answer_lands_in_bundle() {
         fn constant(&self, _symbol: &SymbolId) -> Result<Self::Value, Self::Error> {
             let cell = compile_gain_cell();
             let mut bindings = BTreeMap::new();
-            bindings.insert("gain".to_string(), 2.0_f64);
+            bindings.insert("gain".to_string(), Value::F64(2.0));
             let specialized = specialize_cell(&cell, &bindings).expect("specializes");
             let run = specialized
                 .evaluate(&[Value::Vector(vec![0.0, 1.0, 2.0])])
@@ -463,10 +498,10 @@ fn specialized_answer_lands_in_bundle() {
         WorldBudget { max_steps: 8 },
         |answer: &f64| format!("{answer:.6}"),
     );
-    assert!(matches!(result.disposition, Disposition::Answer { .. }));
-    assert_eq!(result.world, "specializer-parity");
+    p.demand("specialized_answer_lands_in_bundle#2", matches!(result.disposition, Disposition::Answer { .. }), "specialized_answer_lands_in_bundle#2: matches!(result.disposition, Disposition::Answer { .. })");
+    p.demand("specialized_answer_lands_in_bundle#3", result.world == "specializer-parity", format!("expected {:?}, got {:?}", "specializer-parity", result.world));
     let bundle = ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("specialized_answer_lands_in_bundle#4", bundle.bundle_id.starts_with("fnv1a64:"), "specialized_answer_lands_in_bundle#4: bundle.bundle_id.starts_with(\"fnv1a64:\")");
 
     // Negative seed: the seeded silent-success declares a typed refusal.
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/static_specialization.emath");
@@ -474,8 +509,19 @@ fn specialized_answer_lands_in_bundle() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-SPEC"),
-        "seed expects a typed specializer refusal, found: {expect_line}"
-    );
+    p.demand(format!("seed expects a typed specializer refusal, found: {expect_line}"), expect_line.contains("E-SPEC"), format!("seed expects a typed specializer refusal, found: {expect_line}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

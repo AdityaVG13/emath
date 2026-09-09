@@ -6,6 +6,7 @@ use emath_ir::{
     MeaningEdge, MeaningEdgeKind, MeaningResource, MeaningSpine, MeaningSpineError,
     ProjectionDisposition,
 };
+use emath_test_harness::Probe;
 
 fn id(value: &str) -> FeatureId {
     FeatureId::from_str(value).unwrap()
@@ -49,8 +50,11 @@ fn graph() -> MeaningSpine {
 }
 
 #[test]
-fn twelve_edge_kinds_load_as_one_hundred_fifty_seven_canonical_seeds() {
-    assert_eq!(MeaningEdgeKind::ALL.len(), 12);
+fn intent() {
+    let mut p = Probe::new("tests/emath-ir/tests/meaning_spine.rs");
+    p.case("twelve_edge_kinds_load_as_one_hundred_fifty_seven_canonical_seeds", |p| {
+
+    p.eq("twelve_edge_kinds_load_as_one_hundred_fifty_seven_canonical_seeds#1", MeaningEdgeKind::ALL.len(), 12);
     let mut graph = graph();
     let sources = [
         "std.capability.math.add",
@@ -71,12 +75,12 @@ fn twelve_edge_kinds_load_as_one_hundred_fifty_seven_canonical_seeds() {
     }
     let first = graph.canonical();
     let second = graph.canonical();
-    assert_eq!(first, second);
-    assert_eq!(graph.canonical_edges().len(), 157);
-}
+    p.eq("twelve_edge_kinds_load_as_one_hundred_fifty_seven_canonical_seeds#2", first, second);
+    p.eq("twelve_edge_kinds_load_as_one_hundred_fifty_seven_canonical_seeds#3", graph.canonical_edges().len(), 157);
 
-#[test]
-fn endpoint_cycle_duplicate_and_resource_boundaries_refuse() {
+    });
+    p.case("endpoint_cycle_duplicate_and_resource_boundaries_refuse", |p| {
+
     let mut graph = graph();
     let dep = edge(
         "std.capability.math.add",
@@ -84,45 +88,45 @@ fn endpoint_cycle_duplicate_and_resource_boundaries_refuse() {
         feature("std.type.int"),
     );
     graph.insert(dep.clone()).unwrap();
-    assert!(matches!(
+    p.demand("endpoint_cycle_duplicate_and_resource_boundaries_refuse#1", matches!(
         graph.insert(dep),
         Err(MeaningSpineError::Duplicate(_))
-    ));
+    ), "endpoint_cycle_duplicate_and_resource_boundaries_refuse#1: matches!(\n        graph.insert(dep),\n        Err(MeaningSpineError::Duplicate(_))\n    )");
 
     let reverse = edge(
         "std.type.int",
         MeaningEdgeKind::DependsOn,
         feature("std.capability.math.add"),
     );
-    assert!(matches!(
+    p.demand("endpoint_cycle_duplicate_and_resource_boundaries_refuse#2", matches!(
         graph.insert(reverse),
         Err(MeaningSpineError::Cycle { .. })
-    ));
+    ), "endpoint_cycle_duplicate_and_resource_boundaries_refuse#2: matches!(\n        graph.insert(reverse),\n        Err(MeaningSpineError::Cycle { .. })\n    )");
 
-    assert!(matches!(
+    p.demand("endpoint_cycle_duplicate_and_resource_boundaries_refuse#3", matches!(
         graph.insert(edge(
             "std.capability.math.add",
             MeaningEdgeKind::RequiresWorld,
             feature("std.type.int")
         )),
         Err(MeaningSpineError::EndpointMismatch { .. })
-    ));
-    assert!(matches!(
+    ), "endpoint_cycle_duplicate_and_resource_boundaries_refuse#3: matches!(\n        graph.insert(edge(\n            \"std.capability.math.add\",\n            MeaningEdgeK");
+    p.demand("endpoint_cycle_duplicate_and_resource_boundaries_refuse#4", matches!(
         MeaningResource::parse("file://tmp/add"),
         Err(MeaningSpineError::AmbiguousResource(_))
-    ));
-    assert!(matches!(
+    ), "endpoint_cycle_duplicate_and_resource_boundaries_refuse#4: matches!(\n        MeaningResource::parse(\"file://tmp/add\"),\n        Err(MeaningSpineError::Ambiguous");
+    p.demand("endpoint_cycle_duplicate_and_resource_boundaries_refuse#5", matches!(
         graph.insert(edge(
             "std.capability.math.add",
             MeaningEdgeKind::ConformsTo,
             feature("std.diagnostic.missing")
         )),
         Err(MeaningSpineError::Unresolved(_))
-    ));
-}
+    ), "endpoint_cycle_duplicate_and_resource_boundaries_refuse#5: matches!(\n        graph.insert(edge(\n            \"std.capability.math.add\",\n            MeaningEdgeK");
 
-#[test]
-fn closures_and_reverse_impact_are_exact_and_sorted() {
+    });
+    p.case("closures_and_reverse_impact_are_exact_and_sorted", |p| {
+
     let mut graph = graph();
     graph
         .insert(edge(
@@ -167,26 +171,20 @@ fn closures_and_reverse_impact_are_exact_and_sorted() {
         ))
         .unwrap();
 
-    assert_eq!(
-        graph.transitive_build_dependencies(&id("std.capability.math.add")),
-        vec![
+    p.eq("closures_and_reverse_impact_are_exact_and_sorted#1", graph.transitive_build_dependencies(&id("std.capability.math.add")), vec![
             feature("std.type.int"),
             feature("std.world.exact.int"),
             MeaningResource::parse("ir://vm/add").unwrap(),
-        ]
-    );
-    assert_eq!(
-        graph.reverse_impact(&feature("std.capability.math.add")),
-        vec![
+        ]);
+    p.eq("closures_and_reverse_impact_are_exact_and_sorted#2", graph.reverse_impact(&feature("std.capability.math.add")), vec![
             MeaningResource::parse("ir://runtime/table/add").unwrap(),
             MeaningResource::parse("test://conformance/add-exact").unwrap(),
             MeaningResource::parse("doc://reference/math/add").unwrap(),
-        ]
-    );
-}
+        ]);
 
-#[test]
-fn minimum_agent_context_contains_only_owned_edit_information() {
+    });
+    p.case("minimum_agent_context_contains_only_owned_edit_information", |p| {
+
     let mut graph = graph();
     graph
         .insert(edge(
@@ -217,13 +215,17 @@ fn minimum_agent_context_contains_only_owned_edit_information() {
         }],
     };
     let context = graph.minimum_agent_context(&capsule);
-    assert_eq!(
-        context.owner_contract,
-        "language/spec/capabilities/add.emath"
-    );
-    assert_eq!(context.hazards, "exactness");
-    assert_eq!(
-        context.conformance,
-        vec![MeaningResource::parse("test://conformance/add-exact").unwrap()]
-    );
+    p.demand("minimum_agent_context_contains_only_owned_edit_information#1", context.owner_contract == "language/spec/capabilities/add.emath", format!("expected {:?}, got {:?}", "language/spec/capabilities/add.emath", context.owner_contract));
+    p.demand("minimum_agent_context_contains_only_owned_edit_information#2", context.hazards == "exactness", format!("expected {:?}, got {:?}", "exactness", context.hazards));
+    p.eq("minimum_agent_context_contains_only_owned_edit_information#3", context.conformance, vec![MeaningResource::parse("test://conformance/add-exact").unwrap()]);
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+

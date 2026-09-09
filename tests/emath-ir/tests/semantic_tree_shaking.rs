@@ -20,9 +20,26 @@ use std::collections::BTreeMap;
 use emath_core::Span;
 use emath_exec_ir::image::{ImageLock, ImageWorld, SemanticImage};
 use emath_exec_ir::shake::{ShakeError, shake_image};
-use emath_exec_ir::term_compile::{ParamShape, compile_reference, std_cell_registry};
+use emath_exec_ir::term_compile::{ParamShape};
 use emath_exec_ir::{CellClass, EmirOp, EmirValue};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 const STD_TENSOR_SOFTMAX: &str = "std.tensor.softmax";
 const STD_TENSOR_SUM: &str = "std.tensor.sum";
@@ -113,7 +130,10 @@ fn fixture_image() -> SemanticImage {
 }
 
 #[test]
-fn closure_reaches_required_and_skips_unused() {
+fn intent() {
+    let mut p = Probe::new("Reachable-closure analysis and semantic");
+    p.case("closure_reaches_required_and_skips_unused", |p| {
+
     // The closure: entry = softmax; the artifact's cells partition is
     // scanned for the entry's identity. Reachable = {softmax} + its
     // bytecode. `std.tensor.sum` is reachable from NOTHING -> absent
@@ -121,30 +141,24 @@ fn closure_reaches_required_and_skips_unused() {
     let image = fixture_image();
     let shaken = shake_image(&image, &[STD_TENSOR_SOFTMAX]).expect("shakes");
 
-    assert_eq!(shaken.entry_count(), 1);
-    assert!(shaken.is_kept(STD_TENSOR_SOFTMAX), "entry is reachable");
-    assert!(shaken.is_kept(STD_MATH_ADD), "add stays (in the pack)");
-    assert!(
-        !shaken.is_kept(STD_TENSOR_SUM),
-        "the unused helper is SHAKEN OUT of the artifact"
-    );
+    p.eq("closure_reaches_required_and_skips_unused#1", shaken.entry_count(), 1);
+    p.demand("entry is reachable", shaken.is_kept(STD_TENSOR_SOFTMAX), "entry is reachable");
+    p.demand("add stays (in the pack)", shaken.is_kept(STD_MATH_ADD), "add stays (in the pack)");
+    p.demand("the unused helper is SHAKEN OUT of the artifact", !shaken.is_kept(STD_TENSOR_SUM), "the unused helper is SHAKEN OUT of the artifact");
     // The shaken bytecode partition is SMALLER and still self-validating.
     let before = image.load("worlds.bytecode").expect("page").len();
     let after = shaken.shaken.load("worlds.bytecode").expect("page").len();
-    assert!(after < before, "bytecode shrinks: {before} -> {after}");
+    p.demand(format!("bytecode shrinks: {before} -> {after}"), after < before, format!("bytecode shrinks: {before} -> {after}"));
     shaken
         .shaken
         .validate_partitions()
         .expect("shaken image revalidates");
-    assert!(shaken.shaken.image_id.starts_with("fnv1a64:"));
-    assert_ne!(
-        shaken.shaken.image_id, image.image_id,
-        "content changed -> id changed (never silently identical)"
-    );
-}
+    p.demand("closure_reaches_required_and_skips_unused#6", shaken.shaken.image_id.starts_with("fnv1a64:"), "closure_reaches_required_and_skips_unused#6: shaken.shaken.image_id.starts_with(\"fnv1a64:\")");
+    p.ne("content changed -> id changed (never silently identical)", shaken.shaken.image_id, image.image_id);
 
-#[test]
-fn transitive_closure_follows_apply_edges() {
+    });
+    p.case("transitive_closure_follows_apply_edges", |p| {
+
     // The closure FOLLOWS ApplyCapability edges: a cell whose body
     // applies another registry cell keeps that dependency reachable.
     // Fixture: the seam program `softmax(add(x))` — the entry applies
@@ -172,22 +186,22 @@ fn transitive_closure_follows_apply_edges() {
     // edge; softmax's body has no outbound edge; the ARTIFACT entry
     // manifest is what the closure starts from.
     let shaken = shake_image(&image, &[STD_TENSOR_SOFTMAX]).expect("shakes");
-    assert!(shaken.is_kept(STD_MATH_ADD), "required dep survives");
-    assert!(!shaken.is_kept(STD_TENSOR_SUM));
+    p.demand("required dep survives", shaken.is_kept(STD_MATH_ADD), "required dep survives");
+    p.demand("transitive_closure_follows_apply_edges#2", !shaken.is_kept(STD_TENSOR_SUM), "transitive_closure_follows_apply_edges#2: !shaken.is_kept(STD_TENSOR_SUM)");
     let _ = program; // the edge SHAPE (ApplyCapability) is the closure's edge type
-}
 
-#[test]
-fn required_dependency_cannot_be_shaken() {
+    });
+    p.case("required_dependency_cannot_be_shaken", |p| {
+
     // REQUIRED dependencies cannot be shaken out: entries (and anything
     // reachable from them) refuse typed E-SHAKE-002 — a smaller-but-
     // broken artifact is the silent-success the negative seed pins.
     let image = fixture_image();
     match shake_image(&image, &[STD_TENSOR_SOFTMAX, STD_MATH_ADD]) {
         Err(ShakeError::RequiredDependency { capability }) => {
-            assert_eq!(capability, STD_MATH_ADD);
+            p.eq("required_dependency_cannot_be_shaken#1", capability, STD_MATH_ADD.to_string());
         }
-        other => panic!("shaking a required dep must refuse, got {other:?}"),
+        other => { p.fail("required_dependency_cannot_be_shaken#2", format!("shaking a required dep must refuse, got {other:?}")); return; },
     }
 
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/semantic_tree_shaking.emath");
@@ -195,48 +209,44 @@ fn required_dependency_cannot_be_shaken() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-SHAKE-002"),
-        "seed expects the required-dep refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the required-dep refusal, found: {expect_line}"), expect_line.contains("E-SHAKE-002"), format!("seed expects the required-dep refusal, found: {expect_line}"));
 
-#[test]
-fn unknown_shake_target_is_typed() {
+    });
+    p.case("unknown_shake_target_is_typed", |p| {
+
     // Shaking a cell the image does not contain: typed refusal (never a
     // silent no-op that pretends to shake).
     let image = fixture_image();
     match shake_image(&image, &[STD_TENSOR_SUM, "acme.never-imported"]) {
         Err(ShakeError::UnknownCell { capability }) => {
-            assert_eq!(capability, "acme.never-imported");
+            p.demand("unknown_shake_target_is_typed#1", capability == "acme.never-imported", format!("expected {:?}, got {:?}", "acme.never-imported", capability));
         }
-        other => panic!("unknown shake target must refuse, got {other:?}"),
+        other => { p.fail("unknown_shake_target_is_typed#2", format!("unknown shake target must refuse, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn empty_entries_shake_everything_shakable() {
+    });
+    p.case("empty_entries_shake_everything_shakable", |p| {
+
     // Boundary: NO entries -> every cell is unreachable -> the shaken
     // bytecode is empty; the artifact still validates (the lock/worlds
     // partitions are the artifact's identity, not its cells). Size
     // comparison vs the pinned fixture (relative, not marketing).
     let image = fixture_image();
     let shaken = shake_image(&image, &[]).expect("empty entry set shakes");
-    assert_eq!(shaken.kept().len(), 0);
-    assert!(
-        shaken.shaken.load("worlds.bytecode").is_none(),
-        "no entries -> the bytecode page is not shipped: an empty page \
+    p.eq("empty_entries_shake_everything_shakable#1", shaken.kept().len(), 0);
+    p.demand("no entries -> the bytecode page is not shipped: an empty page \
          would refuse E-IMAGE-002 on load, so the shake drops it (the \
-         lock/worlds/docs/cells partitions remain the artifact)"
-    );
+         lock/worlds/docs/cells partitions remain the artifact)", shaken.shaken.load("worlds.bytecode").is_none(), "no entries -> the bytecode page is not shipped: an empty page \
+         would refuse E-IMAGE-002 on load, so the shake drops it (the \
+         lock/worlds/docs/cells partitions remain the artifact)");
     shaken
         .shaken
         .validate_partitions()
         .expect("the shaken artifact still validates");
-}
 
-#[test]
-fn shaken_artifact_lands_in_bundle() {
+    });
+    p.case("shaken_artifact_lands_in_bundle", |p| {
+
     // WorldResultBundle fixture (e2e clause): the tree-shake verdict is
     // a labeled world record — shaken size, kept cells, determinism.
     struct ShakeWorld;
@@ -281,11 +291,25 @@ fn shaken_artifact_lands_in_bundle() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("shaken_artifact_lands_in_bundle#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "tree-shaken-build");
+    ), "shaken_artifact_lands_in_bundle#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("shaken_artifact_lands_in_bundle#2", result.world == "tree-shaken-build", format!("expected {:?}, got {:?}", "tree-shaken-build", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("shaken_artifact_lands_in_bundle#3", bundle.bundle_id.starts_with("fnv1a64:"), "shaken_artifact_lands_in_bundle#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

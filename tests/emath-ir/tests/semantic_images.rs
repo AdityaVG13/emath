@@ -10,22 +10,29 @@
 //! never partial authority.
 
 use emath_exec_ir::image::{ImageLock, ImagePartition, ImageRefusal, PartitionKind, SemanticImage};
-use emath_exec_ir::term_compile::std_cell_registry;
 use emath_genesis::{
     Disposition, EvalError, FirstOrderWorld, ResultBundle, WorldBudget, evaluate_labeled,
 };
 use emath_term::SymbolId;
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
 
 #[test]
-fn image_is_deterministic_and_partitioned() {
+fn intent() {
+    let mut p = Probe::new("compiled semantic image — partitions, lock,");
+    p.case("image_is_deterministic_and_partitioned", |p| {
+
     // Build the std softmax cell's compiled image twice: identical id,
     // identical canonical encoding, every partition independently
     // loadable (each validates its own content id).
     let first = build_softmax_image();
     let second = build_softmax_image();
-    assert_eq!(first.image_id, second.image_id);
-    assert_eq!(first.to_canonical(), second.to_canonical());
-    assert!(first.image_id.starts_with("fnv1a64:"), "content id shape");
+    p.eq("image_is_deterministic_and_partitioned#1", first.image_id.as_str(), second.image_id.as_str());
+    p.eq("image_is_deterministic_and_partitioned#2", first.to_canonical(), second.to_canonical());
+    p.demand("content id shape", first.image_id.starts_with("fnv1a64:"), "content id shape");
 
     // Partitions, sorted by name, each loadable alone.
     let names: Vec<&str> = first
@@ -33,15 +40,12 @@ fn image_is_deterministic_and_partitioned() {
         .iter()
         .map(|partition| partition.name.as_str())
         .collect();
-    assert_eq!(
-        names,
-        ["cells", "docs", "lock", "worlds", "worlds.bytecode"]
-    );
+    p.eq("image_is_deterministic_and_partitioned#4", names, ["cells", "docs", "lock", "worlds", "worlds.bytecode"].to_vec());
     for partition in &first.partitions {
         partition
             .validate()
             .expect("each partition loads independently");
-        assert!(!partition.body.is_empty(), "no empty page: {partition:?}");
+        p.demand(format!("no empty page: {partition:?}"), !partition.body.is_empty(), format!("no empty page: {partition:?}"));
     }
 
     // The bytecode partition carries the cell's compiled SSA program (the
@@ -54,13 +58,10 @@ fn image_is_deterministic_and_partitioned() {
         .find(|partition| partition.name == "worlds.bytecode")
         .expect("bytecode partition")
         .body;
-    assert!(bytecode.contains("cell:std.tensor.softmax"), "{bytecode}");
-    assert!(bytecode.contains("load-input"), "{bytecode}");
-    assert!(bytecode.contains("result:"), "{bytecode}");
-    assert!(
-        !bytecode.contains("fn main") && !bytecode.contains("impl "),
-        "image is not generated Rust source: {bytecode}"
-    );
+    p.demand(format!("{bytecode}"), bytecode.contains("cell:std.tensor.softmax"), format!("{bytecode}"));
+    p.demand(format!("{bytecode}"), bytecode.contains("load-input"), format!("{bytecode}"));
+    p.demand(format!("{bytecode}"), bytecode.contains("result:"), format!("{bytecode}"));
+    p.demand(format!("image is not generated Rust source: {bytecode}"), !bytecode.contains("fn main") && !bytecode.contains("impl "), format!("image is not generated Rust source: {bytecode}"));
 
     // The lock records the four required identities.
     let lock = &first
@@ -69,14 +70,14 @@ fn image_is_deterministic_and_partitioned() {
         .find(|partition| partition.name == "lock")
         .expect("lock partition")
         .body;
-    assert!(lock.contains("prelude:"), "{lock}");
-    assert!(lock.contains("packs:"), "{lock}");
-    assert!(lock.contains("images:"), "{lock}");
-    assert!(lock.contains("toolchain:"), "{lock}");
-}
+    p.demand(format!("{lock}"), lock.contains("prelude:"), format!("{lock}"));
+    p.demand(format!("{lock}"), lock.contains("packs:"), format!("{lock}"));
+    p.demand(format!("{lock}"), lock.contains("images:"), format!("{lock}"));
+    p.demand(format!("{lock}"), lock.contains("toolchain:"), format!("{lock}"));
 
-#[test]
-fn corrupt_page_refuses_typed() {
+    });
+    p.case("corrupt_page_refuses_typed", |p| {
+
     let image = build_softmax_image();
     let partition = &image.partitions[0];
 
@@ -89,16 +90,16 @@ fn corrupt_page_refuses_typed() {
         body: format!("{}/*corrupt*/", partition.body),
     };
     match corrupted.validate() {
-        Err(ImageRefusal::CorruptPartition { name }) => assert_eq!(name, partition.name),
-        other => panic!("expected CorruptPartition, got {other:?}"),
+        Err(ImageRefusal::CorruptPartition { name }) => { p.eq("corrupt_page_refuses_typed#1", name, partition.name.clone()); },
+        other => { p.fail("corrupt_page_refuses_typed#2", format!("expected CorruptPartition, got {other:?}")); return; },
     }
-    assert_eq!(
-        ImageRefusal::CorruptPartition {
+    p.demand("corrupt_page_refuses_typed#3", ImageRefusal::CorruptPartition {
             name: String::new()
         }
-        .code(),
-        "E-IMAGE-001"
-    );
+        .code() == "E-IMAGE-001", format!("expected {:?}, got {:?}", "E-IMAGE-001", ImageRefusal::CorruptPartition {
+            name: String::new()
+        }
+        .code()));
 
     // A partition with an empty name/page refuses (no blank pages).
     let blank = ImagePartition {
@@ -107,20 +108,20 @@ fn corrupt_page_refuses_typed() {
         content_id: partition.content_id.clone(),
         body: partition.body.clone(),
     };
-    assert!(matches!(
+    p.demand("corrupt_page_refuses_typed#4", matches!(
         blank.validate(),
         Err(ImageRefusal::MalformedPartition { .. })
-    ));
+    ), "corrupt_page_refuses_typed#4: matches!(\n        blank.validate(),\n        Err(ImageRefusal::MalformedPartition { .. })\n    )");
 
     // The whole image refuses if ANY partition is corrupt.
     let mut tampered = image.clone();
     tampered.partitions[1].body.push_str("/*tampered*/");
-    assert!(tampered.validate_partitions().is_err());
-    assert!(image.validate_partitions().is_ok());
-}
+    p.demand("corrupt_page_refuses_typed#5", tampered.validate_partitions().is_err(), "corrupt_page_refuses_typed#5: tampered.validate_partitions().is_err()");
+    p.demand("corrupt_page_refuses_typed#6", image.validate_partitions().is_ok(), "corrupt_page_refuses_typed#6: image.validate_partitions().is_ok()");
 
-#[test]
-fn image_paths_cells_and_bundle_fixture() {
+    });
+    p.case("image_paths_cells_and_bundle_fixture", |p| {
+
     // The image is built FROM cells (the .5 compiler output) — the
     // bytecode partition carries the leaf cell's compiled SSA program in
     // the generic vocabulary, and its labeled reference answer lands in
@@ -132,10 +133,7 @@ fn image_paths_cells_and_bundle_fixture() {
         .find(|partition| partition.name == "worlds.bytecode")
         .expect("bytecode partition")
         .body;
-    assert!(
-        bytecode.contains("vector-map"),
-        "generic vocabulary: {bytecode}"
-    );
+    p.demand(format!("generic vocabulary: {bytecode}"), bytecode.contains("vector-map"), format!("generic vocabulary: {bytecode}"));
 
     let result = evaluate_labeled(
         &reference_softmax_term(),
@@ -147,10 +145,10 @@ fn image_paths_cells_and_bundle_fixture() {
     // The world evaluates the cell's reference semantics through the
     // envelope: a labeled answer, bundleable with the image id recorded
     // alongside (the image id is the artifact identity in the lock).
-    assert!(matches!(result.disposition, Disposition::Answer { .. }));
+    p.demand("image_paths_cells_and_bundle_fixture#2", matches!(result.disposition, Disposition::Answer { .. }), "image_paths_cells_and_bundle_fixture#2: matches!(result.disposition, Disposition::Answer { .. })");
     let bundle = ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
-    assert!(image.image_id.starts_with("fnv1a64:"));
+    p.demand("image_paths_cells_and_bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "image_paths_cells_and_bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+    p.demand("image_paths_cells_and_bundle_fixture#4", image.image_id.starts_with("fnv1a64:"), "image_paths_cells_and_bundle_fixture#4: image.image_id.starts_with(\"fnv1a64:\")");
 
     // Negative seed: corrupt partition is a typed refusal.
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/semantic_images.emath");
@@ -158,11 +156,16 @@ fn image_paths_cells_and_bundle_fixture() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-IMAGE"),
-        "seed expects a typed image refusal, found: {expect_line}"
-    );
+    p.demand(format!("seed expects a typed image refusal, found: {expect_line}"), expect_line.contains("E-IMAGE"), format!("seed expects a typed image refusal, found: {expect_line}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
 
 // ── Fixture: a minimal custom world evaluating the softmax reference ──
 
@@ -203,9 +206,8 @@ fn reference_softmax_term() -> emath_term::Term {
 }
 
 fn build_softmax_image() -> SemanticImage {
-    let cell = std_cell_registry()
-        .get("std.tensor.softmax")
-        .expect("std cell present");
+    let registry = std_cell_registry();
+    let cell = registry.get("std.tensor.softmax").expect("std cell present");
     let mut docs = std::collections::BTreeMap::new();
     docs.insert(
         "std.tensor.softmax".to_string(),

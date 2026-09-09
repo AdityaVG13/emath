@@ -32,10 +32,27 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    ParamShape, TermCompileError, compile_reference, std_cell_registry,
+    ParamShape, TermCompileError,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -108,7 +125,10 @@ fn distances_from(adj: &Value, source: f64) -> Result<Vec<f64>, EvalFault> {
 }
 
 #[test]
-fn negative_edges_beat_greedy() {
+fn intent() {
+    let mut p = Probe::new("Negative-edge shortest paths (Bellman-Ford).");
+    p.case("negative_edges_beat_greedy", |p| {
+
     // The closed-form law on the classic fixture; the cross-op law:
     // Dijkstra REFUSES this carrier (E-GRAPH-002) while Bellman-Ford
     // computes [0, −1, 1, 2]. A Dijkstra-style greedy mutant answers
@@ -118,19 +138,16 @@ fn negative_edges_beat_greedy() {
         &[negative_edge_carrier(), Value::F64(0.0)],
     )
     .expect_err("Dijkstra refuses negative weights");
-    assert!(
-        format!("{dijkstra_error:?}").contains("E-GRAPH-002"),
-        "cross-op law: Dijkstra refuses, got {dijkstra_error:?}"
-    );
+    p.demand(format!("cross-op law: Dijkstra refuses, got {dijkstra_error:?}"), format!("{dijkstra_error:?}").contains("E-GRAPH-002"), format!("cross-op law: Dijkstra refuses, got {dijkstra_error:?}"));
     let distances = distances_from(&negative_edge_carrier(), 0.0).expect("BF computes");
     let expected = [0.0, -1.0, 1.0, 0.0];
     for (got, want) in distances.iter().zip(expected.iter()) {
-        assert!((got - want).abs() < 1e-12, "d = {got} vs {want}");
+        p.demand(format!("d = {got} vs {want}"), (got - want).abs() < 1e-12, format!("d = {got} vs {want}"));
     }
-}
 
-#[test]
-fn negative_cycle_refuses_typed() {
+    });
+    p.case("negative_cycle_refuses_typed", |p| {
+
     // A reachable cycle of total weight −2: no shortest-path answer
     // EXISTS, so E-GRAPH-005 refuses — never fabricated distances.
     let cycle = Value::Matrix {
@@ -144,24 +161,18 @@ fn negative_cycle_refuses_typed() {
         ],
     };
     let error = distances_from(&cycle, 0.0).expect_err("negative cycle refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-005"),
-        "negative cycle must name E-GRAPH-005, got {error:?}"
-    );
+    p.demand(format!("negative cycle must name E-GRAPH-005, got {error:?}"), format!("{error:?}").contains("E-GRAPH-005"), format!("negative cycle must name E-GRAPH-005, got {error:?}"));
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/bellman_ford_negative_weight.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-GRAPH-005"),
-        "seed expects the negative-cycle refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the negative-cycle refusal, found: {expect_line}"), expect_line.contains("E-GRAPH-005"), format!("seed expects the negative-cycle refusal, found: {expect_line}"));
 
-#[test]
-fn zero_cycle_terminates() {
+    });
+    p.case("zero_cycle_terminates", |p| {
+
     // A cycle of total weight ZERO is legal (1→2 = −1, 2→1 = +1):
     // distances stabilize and the op terminates with the correct
     // values. An over-eager cycle-detection mutant (any relaxation
@@ -177,37 +188,26 @@ fn zero_cycle_terminates() {
         ],
     };
     let distances = distances_from(&zero_cycle, 0.0).expect("zero cycle terminates");
-    assert_eq!(distances.len(), 4);
+    p.eq("zero_cycle_terminates#1", distances.len(), 4);
     let expected = [0.0, 1.0, 0.0, f64::INFINITY];
     for (got, want) in distances.iter().zip(expected.iter()) {
-        assert!(
-            (got - want).abs() < 1e-12 || (got.is_infinite() && want.is_infinite()),
-            "d = {got} vs {want}"
-        );
+        p.demand(format!("d = {got} vs {want}"), (got - want).abs() < 1e-12 || (got.is_infinite() && want.is_infinite()), format!("d = {got} vs {want}"));
     }
-}
 
-#[test]
-fn unreachable_is_positive_infinity() {
+    });
+    p.case("unreachable_is_positive_infinity", |p| {
+
     // Honest numeric: no path in → +Inf (the Dijkstra convention,
     // shared; a 0.0-for-unreachable mutant fails).
     let distances = distances_from(&negative_edge_carrier(), 0.0).expect("BF computes");
-    assert!(
-        distances[3] == 0.0,
-        "vertex 3 reachable via 1→3: {}",
-        distances[3]
-    );
+    p.demand(format!("vertex 3 reachable via 1→3: {}", distances[3]), distances[3] == 0.0, format!("vertex 3 reachable via 1→3: {}", distances[3]));
     // Source = 3 (the sink): vertices 0..2 unreachable.
     let from_sink = distances_from(&negative_edge_carrier(), 3.0).expect("BF computes");
-    assert!(from_sink[0].is_infinite() && from_from_is_infinite(&from_sink));
-}
+    p.demand("unreachable_is_positive_infinity#2", from_sink[0].is_infinite() && from_from_is_infinite(&from_sink), "unreachable_is_positive_infinity#2: from_sink[0].is_infinite() && from_from_is_infinite(&from_sink)");
 
-fn from_from_is_infinite(distances: &[f64]) -> bool {
-    distances[1..3].iter().all(|d| d.is_infinite())
-}
+    });
+    p.case("carrier_refusals_reuse_closed_set", |p| {
 
-#[test]
-fn carrier_refusals_reuse_closed_set() {
     // Ragged → E-GRAPH-001; source outside 0..n → E-GRAPH-003;
     // non-finite → E-GRAPH-004 (the established set; only the
     // negative-cycle class is new here).
@@ -217,40 +217,27 @@ fn carrier_refusals_reuse_closed_set() {
         data: vec![0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
     };
     let error = distances_from(&ragged, 0.0).expect_err("ragged refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-001"),
-        "ragged must name E-GRAPH-001, got {error:?}"
-    );
+    p.demand(format!("ragged must name E-GRAPH-001, got {error:?}"), format!("{error:?}").contains("E-GRAPH-001"), format!("ragged must name E-GRAPH-001, got {error:?}"));
     let error =
         distances_from(&negative_edge_carrier(), 9.0).expect_err("out-of-range source refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-003"),
-        "source must name E-GRAPH-003, got {error:?}"
-    );
+    p.demand(format!("source must name E-GRAPH-003, got {error:?}"), format!("{error:?}").contains("E-GRAPH-003"), format!("source must name E-GRAPH-003, got {error:?}"));
     let non_finite = Value::Matrix {
         rows: 2,
         cols: 2,
         data: vec![0.0, f64::NAN, 0.0, 0.0],
     };
     let error = distances_from(&non_finite, 0.0).expect_err("non-finite refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-004"),
-        "non-finite must name E-GRAPH-004, got {error:?}"
-    );
-}
+    p.demand(format!("non-finite must name E-GRAPH-004, got {error:?}"), format!("{error:?}").contains("E-GRAPH-004"), format!("non-finite must name E-GRAPH-004, got {error:?}"));
 
-#[test]
-fn cell_registry_and_shape_law() {
+    });
+    p.case("cell_registry_and_shape_law", |p| {
+
     // std.graph.bellman_ford is registry DATA (cohort 30), compiles
     // through the call seam, and evaluates the SAME distances; a
     // scalar adjacency refuses at COMPILE (ShapeMismatch).
     install_language();
     let registry = std_cell_registry();
-    assert!(
-        registry.contains_key("std.graph.bellman_ford"),
-        "registry cell present; have {:?}",
-        registry.keys().collect::<Vec<_>>()
-    );
+    p.demand(format!("registry cell present; have {:?}", registry.keys().collect::<Vec<_>>()), registry.contains_key("std.graph.bellman_ford"), format!("registry cell present; have {:?}", registry.keys().collect::<Vec<_>>()));
 
     let term = Term::Apply {
         operator: SymbolId("bellman_ford".into()),
@@ -305,11 +292,10 @@ fn cell_registry_and_shape_law() {
     )
     .expect("cell evaluates");
     let Value::Vector(distances) = value else {
-        panic!("expected a distance vector")
-    };
+        { p.fail("cell_registry_and_shape_law#2", format!("expected a distance vector")); return; }};
     let expected = [0.0, -1.0, 1.0, 0.0];
     for (got, want) in distances.iter().zip(expected.iter()) {
-        assert!((got - want).abs() < 1e-12, "cell d = {got} vs {want}");
+        p.demand(format!("cell d = {got} vs {want}"), (got - want).abs() < 1e-12, format!("cell d = {got} vs {want}"));
     }
 
     // Shape law: a scalar adjacency refuses at COMPILE.
@@ -324,18 +310,15 @@ fn cell_registry_and_shape_law() {
         "std.graph.bellman_ford",
     )
     .expect_err("scalar adjacency refuses at compile");
-    assert!(
-        format!("{error:?}").contains("ShapeMismatch"),
-        "scalar adjacency must ShapeMismatch at compile, got {error:?}"
-    );
+    p.demand(format!("scalar adjacency must ShapeMismatch at compile, got {error:?}"), format!("{error:?}").contains("ShapeMismatch"), format!("scalar adjacency must ShapeMismatch at compile, got {error:?}"));
     let _ = TermCompileError::ShapeMismatch {
         symbol: "bellman_ford".to_string(),
         detail: "unused".to_string(),
     };
-}
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct GraphWorld;
     impl emath_genesis::FirstOrderWorld for GraphWorld {
@@ -376,11 +359,31 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "negative-edge-methods");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "negative-edge-methods", format!("expected {:?}, got {:?}", "negative-edge-methods", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+fn from_from_is_infinite(distances: &[f64]) -> bool {
+    distances[1..3].iter().all(|d| d.is_infinite())
+}
+
+
+
+
+
+

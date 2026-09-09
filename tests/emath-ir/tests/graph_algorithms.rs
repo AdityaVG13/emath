@@ -32,6 +32,7 @@ use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{SymbolId, Term};
+use emath_test_harness::Probe;
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -120,24 +121,27 @@ fn reference_adjacency() -> Value {
 }
 
 #[test]
-fn graph_reachability_computes() {
+fn intent() {
+    let mut p = Probe::new("Graph data structure + graph EMIR ops.");
+    p.case("graph_reachability_computes", |p| {
+
     // From 0: {0, 1, 2, 3}. From 3: {3} (the sink reaches only itself).
     let reachable = eval(
         vec![cell(REACHABILITY, vec![EmirValue(0), EmirValue(1)])],
         &[reference_adjacency(), Value::F64(0.0)],
     )
     .expect("reachability computes");
-    assert_eq!(vector_of(&reachable), vec![1.0, 1.0, 1.0, 1.0]);
+    p.eq("graph_reachability_computes#1", vector_of(&reachable), vec![1.0, 1.0, 1.0, 1.0]);
     let reachable = eval(
         vec![cell(REACHABILITY, vec![EmirValue(0), EmirValue(1)])],
         &[reference_adjacency(), Value::F64(3.0)],
     )
     .expect("sink reachability computes");
-    assert_eq!(vector_of(&reachable), vec![0.0, 0.0, 0.0, 1.0]);
-}
+    p.eq("graph_reachability_computes#2", vector_of(&reachable), vec![0.0, 0.0, 0.0, 1.0]);
 
-#[test]
-fn bfs_order_is_breadth_first_not_depth_first() {
+    });
+    p.case("bfs_order_is_breadth_first_not_depth_first", |p| {
+
     // The order law: [0, 1, 2, 3] — breadth-first with ascending-index
     // discovery. A depth-first traversal on this carrier yields
     // [0, 1, 3, 2]; an insertion-order traversal yields [0, 2, 1, 3].
@@ -147,11 +151,11 @@ fn bfs_order_is_breadth_first_not_depth_first() {
         &[reference_adjacency(), Value::F64(0.0)],
     )
     .expect("bfs order computes");
-    assert_eq!(vector_of(&order), vec![0.0, 1.0, 2.0, 3.0]);
-}
+    p.eq("bfs_order_is_breadth_first_not_depth_first#1", vector_of(&order), vec![0.0, 1.0, 2.0, 3.0]);
 
-#[test]
-fn dijkstra_computes_and_marks_unreachable_vertices() {
+    });
+    p.case("dijkstra_computes_and_marks_unreachable_vertices", |p| {
+
     // Weighted carrier: 0→1 (1), 1→2 (1), 0→2 (3), and 3 unreachable.
     // Distances [0, 1, 2, +Inf]: the direct 0→2 edge of weight 3 must
     // LOSE to the path 0→1→2 of total 2 (a greedy-first-edge mutant
@@ -173,18 +177,15 @@ fn dijkstra_computes_and_marks_unreachable_vertices() {
     )
     .expect("dijkstra computes");
     let d = vector_of(&distances);
-    assert_eq!(d.len(), 4);
-    assert_eq!(f64_of(&Value::F64(d[0])), 0.0);
-    assert!((d[1] - 1.0).abs() < 1e-12, "d[1] = 1, got {d:?}");
-    assert!((d[2] - 2.0).abs() < 1e-12, "d[2] = 2 via 0→1→2, got {d:?}");
-    assert!(
-        d[3].is_infinite() && d[3] > 0.0,
-        "unreachable is +Inf, got {d:?}"
-    );
-}
+    p.eq("dijkstra_computes_and_marks_unreachable_vertices#1", d.len(), 4);
+    p.eq("dijkstra_computes_and_marks_unreachable_vertices#2", f64_of(&Value::F64(d[0])), 0.0);
+    p.demand(format!("d[1] = 1, got {d:?}"), (d[1] - 1.0).abs() < 1e-12, format!("d[1] = 1, got {d:?}"));
+    p.demand(format!("d[2] = 2 via 0→1→2, got {d:?}"), (d[2] - 2.0).abs() < 1e-12, format!("d[2] = 2 via 0→1→2, got {d:?}"));
+    p.demand(format!("unreachable is +Inf, got {d:?}"), d[3].is_infinite() && d[3] > 0.0, format!("unreachable is +Inf, got {d:?}"));
 
-#[test]
-fn dijkstra_refuses_negative_weight() {
+    });
+    p.case("dijkstra_refuses_negative_weight", |p| {
+
     // Dijkstra's precondition is nonnegative weights; a negative entry
     // refuses typed E-GRAPH-002 — never a silently wrong distance set
     // (negative edges need Bellman-Ford-class methods, a named deferral).
@@ -202,14 +203,11 @@ fn dijkstra_refuses_negative_weight() {
     )
     .expect_err("negative weight refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-GRAPH-002"),
-        "negative-weight dijkstra must name E-GRAPH-002, got {fault}"
-    );
-}
+    p.demand(format!("negative-weight dijkstra must name E-GRAPH-002, got {fault}"), fault.contains("E-GRAPH-002"), format!("negative-weight dijkstra must name E-GRAPH-002, got {fault}"));
 
-#[test]
-fn non_square_graph_matrix_refuses_typed() {
+    });
+    p.case("non_square_graph_matrix_refuses_typed", |p| {
+
     // NEGATIVE (the seed's silent-success): a non-square adjacency
     // carrier refuses typed E-GRAPH-001 — never a silently truncated
     // traversal over garbage shape.
@@ -220,23 +218,17 @@ fn non_square_graph_matrix_refuses_typed() {
     )
     .expect_err("non-square adjacency refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-GRAPH-001"),
-        "non-square adjacency must name E-GRAPH-001, got {fault}"
-    );
+    p.demand(format!("non-square adjacency must name E-GRAPH-001, got {fault}"), fault.contains("E-GRAPH-001"), format!("non-square adjacency must name E-GRAPH-001, got {fault}"));
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/graph_weights.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-GRAPH-001"),
-        "seed expects the non-square refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the non-square refusal, found: {expect_line}"), expect_line.contains("E-GRAPH-001"), format!("seed expects the non-square refusal, found: {expect_line}"));
 
-#[test]
-fn graph_source_out_of_range_refuses_typed() {
+    });
+    p.case("graph_source_out_of_range_refuses_typed", |p| {
+
     // A source vertex outside 0..n refuses typed E-GRAPH-003 — never a
     // silently empty traversal.
     let error = eval(
@@ -245,14 +237,11 @@ fn graph_source_out_of_range_refuses_typed() {
     )
     .expect_err("out-of-range source refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-GRAPH-003"),
-        "out-of-range source must name E-GRAPH-003, got {fault}"
-    );
-}
+    p.demand(format!("out-of-range source must name E-GRAPH-003, got {fault}"), fault.contains("E-GRAPH-003"), format!("out-of-range source must name E-GRAPH-003, got {fault}"));
 
-#[test]
-fn graph_out_degree_computes() {
+    });
+    p.case("graph_out_degree_computes", |p| {
+
     // Out-degree = count of NONZERO entries per row (0.0 is no edge even
     // in a weighted carrier; a self-loop counts). Reference carrier:
     // [2, 1, 1, 0]. In-degree is the same op on the transposed carrier
@@ -262,7 +251,7 @@ fn graph_out_degree_computes() {
         &[reference_adjacency()],
     )
     .expect("degrees compute");
-    assert_eq!(vector_of(&degrees), vec![2.0, 1.0, 1.0, 0.0]);
+    p.eq("graph_out_degree_computes#1", vector_of(&degrees), vec![2.0, 1.0, 1.0, 0.0]);
     // Weighted carrier: weights do not multiply the degree.
     let weighted = matrix(
         2,
@@ -274,11 +263,11 @@ fn graph_out_degree_computes() {
     );
     let degrees = eval(vec![cell(OUT_DEGREES, vec![EmirValue(0)])], &[weighted])
         .expect("weighted degrees compute");
-    assert_eq!(vector_of(&degrees), vec![1.0, 0.0]);
-}
+    p.eq("graph_out_degree_computes#2", vector_of(&degrees), vec![1.0, 0.0]);
 
-#[test]
-fn graph_algorithm_result_bundle_is_complete() {
+    });
+    p.case("graph_algorithm_result_bundle_is_complete", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct GraphWorld;
     impl emath_genesis::FirstOrderWorld for GraphWorld {
@@ -324,14 +313,48 @@ fn graph_algorithm_result_bundle_is_complete() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("graph_algorithm_result_bundle_is_complete#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "graph-traversal");
+    ), "graph_algorithm_result_bundle_is_complete#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("graph_algorithm_result_bundle_is_complete#2", result.world == "graph-traversal", format!("expected {:?}, got {:?}", "graph-traversal", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("graph_algorithm_result_bundle_is_complete#3", bundle.bundle_id.starts_with("fnv1a64:"), "graph_algorithm_result_bundle_is_complete#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    vertex_relabel_laws::probe(&mut p);
+    sparse_error_classification::probe(&mut p);
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /// Vertex-relabel metamorphic laws at
 /// the kernel wrapper seam (crates/emath-rt::graph). Relabeling
@@ -342,6 +365,7 @@ fn graph_algorithm_result_bundle_is_complete() {
 /// permutation-equivariant. Twins at the .emath surface live in
 /// `tests/emath-sema/tests/graph_emath_surface.rs`.
 mod vertex_relabel_laws {
+    use emath_test_harness::Probe;
     // The kernel wrappers moved behind the private `emath_rt::graph`
     // module; the crate root re-exports them under their kernel ABI
     // names (same functions, same signatures, same error type).
@@ -374,87 +398,15 @@ mod vertex_relabel_laws {
         P.iter().map(|&u| relabeled[u]).collect()
     }
 
-    #[test]
-    fn reachability_is_permutation_equivariant() {
-        let base = reachable_mask(&base_adjacency(), SQUARE, SQUARE, 0).unwrap();
-        let relabeled = reachable_mask(&relabeled_adjacency(), SQUARE, SQUARE, 2).unwrap();
-        assert_eq!(
-            relabel_view(&relabeled),
-            base,
-            "reachability relabel law: relabeled[p[u]] == base[u]"
-        );
-    }
+    
 
-    #[test]
-    fn shortest_distances_permute_with_the_relabel() {
-        let base = nonnegative_shortest_path(&base_adjacency(), SQUARE, SQUARE, 0).unwrap();
-        let relabeled =
-            nonnegative_shortest_path(&relabeled_adjacency(), SQUARE, SQUARE, 2).unwrap();
-        for old in 0..4usize {
-            if base[old].is_finite() {
-                assert_eq!(
-                    relabeled[P[old]], base[old],
-                    "distance relabel law at vertex {old}"
-                );
-            } else {
-                assert!(
-                    !relabeled[P[old]].is_finite(),
-                    "unreachable stays unreachable at {old}"
-                );
-            }
-        }
-    }
+    
 
-    #[test]
-    fn out_degrees_permute_with_the_relabel() {
-        let base = row_nonzero_counts(&base_adjacency(), SQUARE, SQUARE).unwrap();
-        let relabeled = row_nonzero_counts(&relabeled_adjacency(), SQUARE, SQUARE).unwrap();
-        assert_eq!(
-            relabel_view(&relabeled),
-            base,
-            "out-degree relabel law: relabeled[p[u]] == base[u]"
-        );
-    }
+    
 
-    #[test]
-    fn laplacian_diagonal_permutes_and_trace_is_invariant() {
-        // L = D − A. The spectrum is invariant (P L Pᵀ is a
-        // permutation similarity); the full spectrum through the
-        // interpreter seam lives at the .emath surface, here we pin
-        // the flat invariants that are kernel-visible.
-        let base = degree_minus_carrier(&base_adjacency(), SQUARE, SQUARE).unwrap();
-        let relabeled = degree_minus_carrier(&relabeled_adjacency(), SQUARE, SQUARE).unwrap();
-        let trace = |flat: &[f64]| -> f64 { (0..SQUARE).map(|i| flat[i * SQUARE + i]).sum() };
-        assert_eq!(trace(&base), trace(&relabeled));
-        let base_diag: Vec<f64> = (0..SQUARE).map(|i| base[i * SQUARE + i]).collect();
-        let relabeled_diag: Vec<f64> = (0..SQUARE).map(|i| relabeled[i * SQUARE + i]).collect();
-        assert_eq!(
-            relabel_view(&relabeled_diag),
-            base_diag,
-            "degree diagonal permutes"
-        );
-    }
+    
 
-    #[test]
-    fn sparse_round_trip_is_relabel_equivariant() {
-        let base_triplets = dense_to_coordinate_stream(&base_adjacency(), SQUARE, SQUARE).unwrap();
-        let relabeled_triplets =
-            dense_to_coordinate_stream(&relabeled_adjacency(), SQUARE, SQUARE).unwrap();
-        for chunk in base_triplets.chunks_exact(3) {
-            let [u, v, w] = chunk else {
-                unreachable!();
-            };
-            let found = relabeled_triplets.chunks_exact(3).any(|t| {
-                t[0] == P[*u as usize] as f64 && t[1] == P[*v as usize] as f64 && t[2] == *w
-            });
-            assert!(
-                found,
-                "relabeled stream must contain the permuted pair ({}, {}, {})",
-                P[*u as usize], P[*v as usize], w
-            );
-        }
-        assert_eq!(base_triplets.len(), relabeled_triplets.len());
-    }
+    
 
     /// The discriminator: 0→1, 0→2, 1→3, 2→4. BFS discovers
     /// [0, 1, 2, 3, 4]; a depth-first (LIFO) stack pops 2 before 1 and
@@ -468,35 +420,100 @@ mod vertex_relabel_laws {
 
     const FIVE: usize = 5;
 
-    #[test]
-    fn bfs_order_is_breadth_first_ascending() {
-        let order = breadth_order(&discriminator_adjacency(), FIVE, FIVE, 0).unwrap();
-        assert_eq!(
-            order,
-            vec![0.0, 1.0, 2.0, 3.0, 4.0],
-            "BFS, never DFS (a LIFO stack discovers 4 before 3)"
-        );
-    }
+    
 
-    #[test]
-    fn dijkstra_tie_break_is_lowest_index() {
+    
+
+    
+
+    pub(super) fn probe(p: &mut Probe) {
+        p.case("reachability_is_permutation_equivariant", |p| {
+        
+        let base = reachable_mask(&base_adjacency(), SQUARE, SQUARE, 0).unwrap();
+        let relabeled = reachable_mask(&relabeled_adjacency(), SQUARE, SQUARE, 2).unwrap();
+        p.eq("reachability relabel law: relabeled[p[u]] == base[u]", relabel_view(&relabeled), base);
+        
+        });
+        p.case("shortest_distances_permute_with_the_relabel", |p| {
+        
+        let base = nonnegative_shortest_path(&base_adjacency(), SQUARE, SQUARE, 0).unwrap();
+        let relabeled =
+        nonnegative_shortest_path(&relabeled_adjacency(), SQUARE, SQUARE, 2).unwrap();
+        for old in 0..4usize {
+        if base[old].is_finite() {
+        p.eq(format!("distance relabel law at vertex {old}"), relabeled[P[old]], base[old]);
+        } else {
+        p.demand(format!("unreachable stays unreachable at {old}"), !relabeled[P[old]].is_finite(), format!("unreachable stays unreachable at {old}"));
+        }
+        }
+        
+        });
+        p.case("out_degrees_permute_with_the_relabel", |p| {
+        
+        let base = row_nonzero_counts(&base_adjacency(), SQUARE, SQUARE).unwrap();
+        let relabeled = row_nonzero_counts(&relabeled_adjacency(), SQUARE, SQUARE).unwrap();
+        p.eq("out-degree relabel law: relabeled[p[u]] == base[u]", relabel_view(&relabeled), base);
+        
+        });
+        p.case("laplacian_diagonal_permutes_and_trace_is_invariant", |p| {
+        
+        // L = D − A. The spectrum is invariant (P L Pᵀ is a
+        // permutation similarity); the full spectrum through the
+        // interpreter seam lives at the .emath surface, here we pin
+        // the flat invariants that are kernel-visible.
+        let base = degree_minus_carrier(&base_adjacency(), SQUARE, SQUARE).unwrap();
+        let relabeled = degree_minus_carrier(&relabeled_adjacency(), SQUARE, SQUARE).unwrap();
+        let trace = |flat: &[f64]| -> f64 { (0..SQUARE).map(|i| flat[i * SQUARE + i]).sum() };
+        p.eq("laplacian_diagonal_permutes_and_trace_is_invariant#1", trace(&base), trace(&relabeled));
+        let base_diag: Vec<f64> = (0..SQUARE).map(|i| base[i * SQUARE + i]).collect();
+        let relabeled_diag: Vec<f64> = (0..SQUARE).map(|i| relabeled[i * SQUARE + i]).collect();
+        p.eq("degree diagonal permutes", relabel_view(&relabeled_diag), base_diag);
+        
+        });
+        p.case("sparse_round_trip_is_relabel_equivariant", |p| {
+        
+        let base_triplets = dense_to_coordinate_stream(&base_adjacency(), SQUARE, SQUARE).unwrap();
+        let relabeled_triplets =
+        dense_to_coordinate_stream(&relabeled_adjacency(), SQUARE, SQUARE).unwrap();
+        for chunk in base_triplets.chunks_exact(3) {
+        let [u, v, w] = chunk else {
+        unreachable!();
+        };
+        let found = relabeled_triplets.chunks_exact(3).any(|t| {
+        t[0] == P[*u as usize] as f64 && t[1] == P[*v as usize] as f64 && t[2] == *w
+        });
+        p.demand(format!("relabeled stream must contain the permuted pair ({}, {}, {})", P[*u as usize], P[*v as usize], w), found, format!("relabeled stream must contain the permuted pair ({}, {}, {})", P[*u as usize], P[*v as usize], w));
+        }
+        p.eq("sparse_round_trip_is_relabel_equivariant#2", base_triplets.len(), relabeled_triplets.len());
+        
+        });
+        p.case("bfs_order_is_breadth_first_ascending", |p| {
+        
+        let order = breadth_order(&discriminator_adjacency(), FIVE, FIVE, 0).unwrap();
+        p.eq("BFS, never DFS (a LIFO stack discovers 4 before 3)", order, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+        
+        });
+        p.case("dijkstra_tie_break_is_lowest_index", |p| {
+        
         // Equal forks 0→1 (1.0) and 0→2 (1.0): distances are
         // deterministic [0,1,1,2], and re-running is bit-identical
         // (the deterministic tie-break law).
         let flat = vec![
-            0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
         ];
         let first = nonnegative_shortest_path(&flat, SQUARE, SQUARE, 0).unwrap();
         let second = nonnegative_shortest_path(&flat, SQUARE, SQUARE, 0).unwrap();
-        assert_eq!(first, vec![0.0, 1.0, 1.0, 2.0]);
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn evaluation_is_bit_identical_for_identical_inputs() {
+        p.eq("dijkstra_tie_break_is_lowest_index#1", first.clone(), vec![0.0, 1.0, 1.0, 2.0]);
+        p.eq("dijkstra_tie_break_is_lowest_index#2", first, second);
+        
+        });
+        p.case("evaluation_is_bit_identical_for_identical_inputs", |p| {
+        
         let first = breadth_order(&base_adjacency(), SQUARE, SQUARE, 0).unwrap();
         let second = breadth_order(&base_adjacency(), SQUARE, SQUARE, 0).unwrap();
-        assert_eq!(first, second, "determinism class: pure sequence");
+        p.eq("determinism class: pure sequence", first, second);
+        
+        });
     }
 }
 
@@ -510,6 +527,7 @@ mod vertex_relabel_laws {
 /// the true defect).
 mod sparse_error_classification {
     use emath_rt::{DenseCarrierError, coordinate_stream_to_dense};
+    use emath_test_harness::Probe;
 
     fn code_of(error: DenseCarrierError) -> String {
         // The wrapper's error carries its class in the Display/code
@@ -522,54 +540,65 @@ mod sparse_error_classification {
             .unwrap_or(text)
     }
 
-    #[test]
-    fn bad_index_in_a_later_triplet_refuses_e_graph_003() {
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    pub(super) fn probe(p: &mut Probe) {
+        p.case("bad_index_in_a_later_triplet_refuses_e_graph_003", |p| {
+        
         // First triplet fine; the second triplet's v is out of range.
         // The refusal must name the index class — not fall through to
         // the weight class (the pre-fix scan only inspected triplet 0's
         // v and misclassified this as E-GRAPH-004).
         let error = coordinate_stream_to_dense(3.0, &[0.0, 1.0, 1.0, 1.0, 9.0, 2.0]).unwrap_err();
-        assert_eq!(
-            code_of(error),
-            "E-GRAPH-003",
-            "bad v in triplet 2 must be E-GRAPH-003"
-        );
-    }
-
-    #[test]
-    fn bad_u_index_in_first_triplet_refuses_e_graph_003() {
+        p.eq("bad v in triplet 2 must be E-GRAPH-003", code_of(error), "E-GRAPH-003".to_string());
+        
+        });
+        p.case("bad_u_index_in_first_triplet_refuses_e_graph_003", |p| {
+        
         // u is out of range in the FIRST triplet: the pre-fix scan only
         // validated v, so this also misclassified as E-GRAPH-004.
         let error = coordinate_stream_to_dense(3.0, &[7.0, 1.0, 1.0]).unwrap_err();
-        assert_eq!(code_of(error), "E-GRAPH-003", "bad u must be E-GRAPH-003");
-    }
-
-    #[test]
-    fn non_finite_weight_refuses_e_graph_004() {
+        p.eq("bad u must be E-GRAPH-003", code_of(error), "E-GRAPH-003".to_string());
+        
+        });
+        p.case("non_finite_weight_refuses_e_graph_004", |p| {
+        
         let error = coordinate_stream_to_dense(3.0, &[0.0, 1.0, f64::NAN]).unwrap_err();
-        assert_eq!(code_of(error), "E-GRAPH-004");
-    }
-
-    #[test]
-    fn malformed_length_refuses_e_graph_006() {
+        p.eq("non_finite_weight_refuses_e_graph_004#1", code_of(error), "E-GRAPH-004".to_string());
+        
+        });
+        p.case("malformed_length_refuses_e_graph_006", |p| {
+        
         let error = coordinate_stream_to_dense(3.0, &[0.0, 1.0, 1.0, 2.0]).unwrap_err();
-        assert_eq!(code_of(error), "E-GRAPH-006");
-    }
-
-    #[test]
-    fn non_integral_index_refuses_e_graph_003() {
+        p.eq("malformed_length_refuses_e_graph_006#1", code_of(error), "E-GRAPH-006".to_string());
+        
+        });
+        p.case("non_integral_index_refuses_e_graph_003", |p| {
+        
         // The kernel's index law: finite, integral, 0 <= index < n.
         // A fractional index is an index-class defect, not a weight one.
         let error = coordinate_stream_to_dense(3.0, &[0.5, 1.0, 1.0]).unwrap_err();
-        assert_eq!(code_of(error), "E-GRAPH-003");
-    }
-
-    #[test]
-    fn well_formed_stream_builds_and_parallel_edges_sum() {
+        p.eq("non_integral_index_refuses_e_graph_003#1", code_of(error), "E-GRAPH-003".to_string());
+        
+        });
+        p.case("well_formed_stream_builds_and_parallel_edges_sum", |p| {
+        
         // The COO law: parallel edges add their weights (2.0 + 3.0 = 5.0
         // at (0, 1)); a clean stream builds the dense n×n carrier.
         let built = coordinate_stream_to_dense(2.0, &[0.0, 1.0, 2.0, 0.0, 1.0, 3.0]).unwrap();
-        assert_eq!(built, vec![0.0, 5.0, 0.0, 0.0]);
-        assert_eq!(built.len(), 4); // n × n
+        p.eq("well_formed_stream_builds_and_parallel_edges_sum#1", built.clone(), vec![0.0, 5.0, 0.0, 0.0]);
+        p.eq("well_formed_stream_builds_and_parallel_edges_sum#2", built.len(), 4); // n × n
+        
+        });
     }
 }

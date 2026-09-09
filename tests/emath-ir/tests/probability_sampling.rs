@@ -30,6 +30,7 @@ use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::{KernelArity, install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{SymbolId, Term};
+use emath_test_harness::{Probe, boot};
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -100,22 +101,26 @@ fn normal_sample(params: &[f64], seed: f64, draws: f64) -> Result<Vec<f64>, Eval
 }
 
 #[test]
-fn seed_reproducibility_bit_exact() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("(thin nucleus slice): probability distributions +");
+    p.case("seed_reproducibility_bit_exact", |p| {
+
     // THE law: fixed seed ⟹ deterministic draws across runs and
     // across separate eval invocations (bit-for-bit). A mutant that
     // derives state from anything but the seed fails.
     let a = normal_sample(&[0.0, 1.0], 42.0, 64.0).expect("seeded sample computes");
     let b = normal_sample(&[0.0, 1.0], 42.0, 64.0).expect("second invocation computes");
-    assert_eq!(a.len(), 64);
-    assert_eq!(a, b, "same seed must reproduce the exact draw vector");
+    p.eq("seed_reproducibility_bit_exact#1", a.len(), 64);
+    p.eq("same seed must reproduce the exact draw vector", a.clone(), b);
     // A different seed produces a different stream (kills
     // constant-output and seed-ignored mutants).
     let c = normal_sample(&[0.0, 1.0], 43.0, 64.0).expect("other seed computes");
-    assert_ne!(a, c, "different seeds must give different streams");
-}
+    p.ne("different seeds must give different streams", a, c);
 
-#[test]
-fn declared_stream_paths_split_and_replay() {
+    });
+    p.case("declared_stream_paths_split_and_replay", |p| {
+
     let sample_path = |path: &str| {
         let value = eval(
             vec![cell(
@@ -131,17 +136,16 @@ fn declared_stream_paths_split_and_replay() {
         )
         .expect("declared stream samples");
         let Value::Vector(values) = value else {
-            panic!("expected draw vector")
-        };
+            panic!("expected draw vector"); };
         values
     };
     let first = sample_path("campaign.chain-a");
-    assert_eq!(first, sample_path("campaign.chain-a"));
-    assert_ne!(first, sample_path("campaign.chain-b"));
-}
+    p.eq("declared_stream_paths_split_and_replay#2", first.clone(), sample_path("campaign.chain-a"));
+    p.ne("declared_stream_paths_split_and_replay#3", first, sample_path("campaign.chain-b"));
 
-#[test]
-fn public_stream_example_executes() {
+    });
+    p.case("public_stream_example_executes", |p| {
+
     emath_syntax::install_source_parser();
     // The CLI bootstrap contract (cli_dispatch): the Language Image is
     // located, loaded, and installed before any semantic command. The
@@ -156,22 +160,18 @@ fn public_stream_example_executes() {
         "seeded-sampling",
         include_str!("../../../language/examples/probability/seeded_sampling.emath"),
     );
-    assert!(
-        !checked.diagnostics.has_errors(),
-        "{:?}",
-        checked.diagnostics.errors().collect::<Vec<_>>()
-    );
+    p.demand(format!("{:?}", checked.diagnostics.errors().collect::<Vec<_>>()), !checked.diagnostics.has_errors(), format!("{:?}", checked.diagnostics.errors().collect::<Vec<_>>()));
     let report = emath_exec_ir::runner::run_package(&checked.package);
     let definitions = &report.declarations[0].tests[0].definitions;
-    assert_eq!(definitions.get("replayed"), Some(&Value::Bool(true)));
-    assert_eq!(definitions.get("split"), Some(&Value::Bool(true)));
+    p.eq("public_stream_example_executes#2", definitions.get("replayed"), Some(&Value::Bool(true)));
+    p.eq("public_stream_example_executes#3", definitions.get("split"), Some(&Value::Bool(true)));
     let mut planner = emath_sema::CompilerSession::new(Limits::default());
     let planned_file = planner.load_text(
         "seeded-sampling",
         include_str!("../../../language/examples/probability/seeded_sampling.emath"),
     );
     let planned = planner.plan(planned_file);
-    assert!(!planned.diagnostics.has_errors());
+    p.demand("public_stream_example_executes#4", !planned.diagnostics.has_errors(), "public_stream_example_executes#4: !planned.diagnostics.has_errors()");
 
     let generated = emath_rust_backend::BackendInput {
         package: &planned.package,
@@ -181,81 +181,68 @@ fn public_stream_example_executes() {
     .generate()
     .expect("stream-aware sampling generates Rust");
     let rust = emath_rust_backend::rust_ir::render::render_module(&generated.module).code;
-    assert!(rust.contains("prob_sample_in_stream"), "{rust}");
-    assert!(rust.contains("Family::Normal"), "{rust}");
-    assert!(rust.contains("campaign.chain-a"), "{rust}");
-}
+    p.demand(format!("{rust}"), rust.contains("prob_sample_in_stream"), format!("{rust}"));
+    p.demand(format!("{rust}"), rust.contains("prob_sample_in_stream(0"), format!("{rust}"));
+    p.demand(format!("{rust}"), rust.contains("campaign.chain-a"), format!("{rust}"));
 
-#[test]
-fn uniform_range_and_moments() {
+    });
+    p.case("uniform_range_and_moments", |p| {
+
     // Uniform(2, 5): every draw in [2, 5) EXACTLY (kills scale,
     // offset, and interval-order mutants), and the fixed-seed
     // empirical mean lands in a fixed band around 3.5.
     let draws =
         sample(UNIFORM_SAMPLE, &[2.0, 5.0], 7.0, 10_000.0).expect("uniform sample computes");
-    assert_eq!(draws.len(), 10_000);
+    p.eq("uniform_range_and_moments#1", draws.len(), 10_000);
     let mut sum = 0.0;
     for draw in &draws {
-        assert!(
-            (2.0..5.0).contains(draw),
-            "uniform draw out of [a, b): {draw}"
-        );
+        p.demand(format!("uniform draw out of [a, b): {draw}"), (2.0..5.0).contains(draw), format!("uniform draw out of [a, b): {draw}"));
         sum += draw;
     }
     let mean = sum / draws.len() as f64;
-    assert!(
-        (mean - 3.5).abs() < 0.05,
-        "uniform mean near 3.5 under fixed seed, got {mean}"
-    );
-}
+    p.demand(format!("uniform mean near 3.5 under fixed seed, got {mean}"), (mean - 3.5).abs() < 0.05, format!("uniform mean near 3.5 under fixed seed, got {mean}"));
 
-#[test]
-fn normal_moments_fixed_band() {
+    });
+    p.case("normal_moments_fixed_band", |p| {
+
     // Normal(0, 1): the fixed-seed empirical mean of 20k Box–Muller
     // draws is a DETERMINISTIC number (no flake possible); the band
     // catches biased generators (wrong sign, dropped uniform, mean
     // not subtracted). |mean| < 0.025 ≈ 3.5 standard errors.
     let draws = normal_sample(&[0.0, 1.0], 11.0, 20_000.0).expect("normal computes");
-    assert_eq!(draws.len(), 20_000);
+    p.eq("normal_moments_fixed_band#1", draws.len(), 20_000);
     let mean: f64 = draws.iter().sum::<f64>() / draws.len() as f64;
-    assert!(
-        mean.abs() < 0.025,
-        "standard normal mean near 0 under fixed seed, got {mean}"
-    );
+    p.demand(format!("standard normal mean near 0 under fixed seed, got {mean}"), mean.abs() < 0.025, format!("standard normal mean near 0 under fixed seed, got {mean}"));
     // Affine transform law: Normal(5, 2) = 5 + 2·Normal(0, 1) with the
     // same seed (kills scale/shift mutants in the sampler).
     let shifted = normal_sample(&[5.0, 2.0], 11.0, 20_000.0).expect("shifted computes");
     for (standard, transformed) in draws.iter().zip(shifted.iter()) {
-        assert!(
-            (transformed - (5.0 + 2.0 * standard)).abs() < 1e-9,
-            "affine law: {transformed} vs {}",
-            5.0 + 2.0 * standard
-        );
+        p.demand(format!("affine law: {transformed} vs {}", 5.0 + 2.0 * standard), (transformed - (5.0 + 2.0 * standard)).abs() < 1e-9, format!("affine law: {transformed} vs {}", 5.0 + 2.0 * standard));
     }
-}
 
-#[test]
-fn bernoulli_edges_and_law() {
+    });
+    p.case("bernoulli_edges_and_law", |p| {
+
     // Bernoulli(p): draws are EXACTLY {0.0, 1.0}; the edges p ∈ {0, 1}
     // are exact (all-zero / all-one); p = 0.7 gives ~0.7 ones.
-    let fraction = |p: f64| -> f64 {
-        let draws = sample(BERNOULLI_SAMPLE, &[p], 5.0, 10_000.0).expect("bernoulli computes");
-        draws
-            .iter()
-            .for_each(|draw| assert!(draw == &0.0 || draw == &1.0, "draw {draw} not in {{0,1}}"));
-        draws.iter().sum::<f64>() / draws.len() as f64
+    let fraction = |prob: f64| -> (f64, bool) {
+        let draws = sample(BERNOULLI_SAMPLE, &[prob], 5.0, 10_000.0).expect("bernoulli computes");
+        let valid = draws.iter().all(|draw| draw == &0.0 || draw == &1.0);
+        (draws.iter().sum::<f64>() / draws.len() as f64, valid)
     };
-    assert_eq!(fraction(0.0), 0.0, "p = 0 edge: all zeros");
-    assert_eq!(fraction(1.0), 1.0, "p = 1 edge: all ones");
-    let mean = fraction(0.7);
-    assert!(
-        (mean - 0.7).abs() < 0.02,
-        "bernoulli(0.7) fraction near 0.7 under fixed seed, got {mean}"
-    );
-}
+    let (f0, ok0) = fraction(0.0);
+    p.demand("bernoulli draws are all in {0,1} (p=0)", ok0, "bernoulli draws are all in {0,1} (p=0)");
+    p.eq("p = 0 edge: all zeros", f0, 0.0);
+    let (f1, ok1) = fraction(1.0);
+    p.demand("bernoulli draws are all in {0,1} (p=1)", ok1, "bernoulli draws are all in {0,1} (p=1)");
+    p.eq("p = 1 edge: all ones", f1, 1.0);
+    let (mean, ok7) = fraction(0.7);
+    p.demand("bernoulli draws are all in {0,1} (p=0.7)", ok7, "bernoulli draws are all in {0,1} (p=0.7)");
+    p.demand(format!("bernoulli(0.7) fraction near 0.7 under fixed seed, got {mean}"), (mean - 0.7).abs() < 0.02, format!("bernoulli(0.7) fraction near 0.7 under fixed seed, got {mean}"));
 
-#[test]
-fn densities_closed_forms() {
+    });
+    p.case("densities_closed_forms", |p| {
+
     // Densities/PMFs at exact points (1e-12): Normal pdf(0) =
     // 1/√(2π); Uniform pdf inside = 1/(b−a) and pdf outside = 0;
     // Bernoulli pmf(1) = p, pmf(0) = 1−p.
@@ -265,30 +252,23 @@ fn densities_closed_forms() {
             &[Value::Vector(params.to_vec()), Value::F64(x)],
         )?;
         let Value::F64(d) = value else {
-            panic!("expected a density scalar, got {value:?}")
-        };
+            panic!("expected a density scalar, got {value:?}"); };
         Ok(d)
     };
     let two_pi_sqrt = std::f64::consts::SQRT_2 * std::f64::consts::PI.sqrt();
     let normal_pdf_0 = density(NORMAL_DENSITY, &[0.0, 1.0], 0.0).expect("pdf computes");
-    assert!(
-        (normal_pdf_0 - 1.0 / two_pi_sqrt).abs() < 1e-12,
-        "normal pdf(0) = 1/√(2π), got {normal_pdf_0}"
-    );
+    p.demand(format!("normal pdf(0) = 1/√(2π), got {normal_pdf_0}"), (normal_pdf_0 - 1.0 / two_pi_sqrt).abs() < 1e-12, format!("normal pdf(0) = 1/√(2π), got {normal_pdf_0}"));
     let uniform_mid = density(UNIFORM_DENSITY, &[2.0, 5.0], 3.5).expect("pdf computes");
-    assert!(
-        (uniform_mid - 1.0 / 3.0).abs() < 1e-12,
-        "uniform density = 1/(b−a), got {uniform_mid}"
-    );
+    p.demand(format!("uniform density = 1/(b−a), got {uniform_mid}"), (uniform_mid - 1.0 / 3.0).abs() < 1e-12, format!("uniform density = 1/(b−a), got {uniform_mid}"));
     let uniform_out = density(UNIFORM_DENSITY, &[2.0, 5.0], 9.0).expect("pdf computes");
-    assert_eq!(uniform_out, 0.0, "uniform density outside [a, b] is 0");
+    p.eq("uniform density outside [a, b] is 0", uniform_out, 0.0);
     let pmf_one = density(BERNOULLI_PMF, &[0.3], 1.0).expect("pmf computes");
     let pmf_zero = density(BERNOULLI_PMF, &[0.3], 0.0).expect("pmf computes");
-    assert!((pmf_one - 0.3).abs() < 1e-12 && (pmf_zero - 0.7).abs() < 1e-12);
-}
+    p.demand("densities_closed_forms#5", (pmf_one - 0.3).abs() < 1e-12 && (pmf_zero - 0.7).abs() < 1e-12, "densities_closed_forms#5: (pmf_one - 0.3).abs() < 1e-12 && (pmf_zero - 0.7).abs() < 1e-12");
 
-#[test]
-fn invalid_parameters_refuse_typed() {
+    });
+    p.case("invalid_parameters_refuse_typed", |p| {
+
     // E-PROB-001: σ ≤ 0 (the negative seed's shape), a > b,
     // p ∉ [0,1], non-integer draws. E-PROB-002: non-finite params.
     // E-PROB-003: wrong arity.
@@ -303,35 +283,23 @@ fn invalid_parameters_refuse_typed() {
     for (feature_id, params, draws, label) in cases {
         let error = sample(feature_id, &params, 1.0, draws).expect_err(label);
         let fault = format!("{error:?}");
-        assert!(
-            fault.contains("E-PROB-001"),
-            "{label} must name E-PROB-001, got {fault}"
-        );
+        p.demand(format!("{label} must name E-PROB-001, got {fault}"), fault.contains("E-PROB-001"), format!("{label} must name E-PROB-001, got {fault}"));
     }
     let non_finite =
         sample(NORMAL_SAMPLE, &[f64::NAN, 1.0], 1.0, 4.0).expect_err("non-finite refuses");
-    assert!(
-        format!("{non_finite:?}").contains("E-PROB-002"),
-        "non-finite must name E-PROB-002, got {non_finite:?}"
-    );
+    p.demand(format!("non-finite must name E-PROB-002, got {non_finite:?}"), format!("{non_finite:?}").contains("E-PROB-002"), format!("non-finite must name E-PROB-002, got {non_finite:?}"));
     let wrong_arity = sample(BERNOULLI_SAMPLE, &[0.5, 0.5], 1.0, 4.0).expect_err("arity refuses");
-    assert!(
-        format!("{wrong_arity:?}").contains("E-PROB-003"),
-        "arity must name E-PROB-003, got {wrong_arity:?}"
-    );
+    p.demand(format!("arity must name E-PROB-003, got {wrong_arity:?}"), format!("{wrong_arity:?}").contains("E-PROB-003"), format!("arity must name E-PROB-003, got {wrong_arity:?}"));
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/probability_sampling.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-PROB-001"),
-        "seed expects the invalid-param refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the invalid-param refusal, found: {expect_line}"), expect_line.contains("E-PROB-001"), format!("seed expects the invalid-param refusal, found: {expect_line}"));
 
-#[test]
-fn cell_registry_and_shape_law() {
+    });
+    p.case("cell_registry_and_shape_law", |p| {
+
     // The .emath surface: std.probability.* sampling is distribution
     // DATA bound by FeatureID (cohort 28), with the capsule contract's
     // arity law at the kernel ABI (samples admit (params, seed,
@@ -346,18 +314,11 @@ fn cell_registry_and_shape_law() {
         UNIFORM_DENSITY,
         BERNOULLI_PMF,
     ] {
-        assert!(
-            native_kernel(feature_id).is_some(),
-            "capability kernel {feature_id} bound"
-        );
+        p.demand(format!("capability kernel {feature_id} bound"), native_kernel(feature_id).is_some(), format!("capability kernel {feature_id} bound"));
     }
-    assert_eq!(
-        native_kernel(NORMAL_SAMPLE)
+    p.eq("sampling admits (params, seed, draws[, stream])", native_kernel(NORMAL_SAMPLE)
             .expect("normal-sample bound")
-            .arity_contract(),
-        KernelArity::Bounded { min: 3, max: 4 },
-        "sampling admits (params, seed, draws[, stream])"
-    );
+            .arity_contract(), KernelArity::Bounded { min: 3, max: 4 });
 
     // Shape law at the ABI: a scalar params slot refuses typed.
     let error = eval(
@@ -369,14 +330,11 @@ fn cell_registry_and_shape_law() {
     )
     .expect_err("scalar params refuse");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-TYPE-012"),
-        "scalar params must refuse typed, got {fault}"
-    );
-}
+    p.demand(format!("scalar params must refuse typed, got {fault}"), fault.contains("E-TYPE-012"), format!("scalar params must refuse typed, got {fault}"));
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct ProbWorld;
     impl emath_genesis::FirstOrderWorld for ProbWorld {
@@ -418,11 +376,33 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "probability-nucleus");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "probability-nucleus", format!("expected {:?}, got {:?}", "probability-nucleus", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

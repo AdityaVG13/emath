@@ -39,6 +39,7 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::{KernelArity, install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
+use emath_test_harness::Probe;
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -143,10 +144,13 @@ fn free_arrow_category() -> (Value, Value, Value) {
     )
 }
 
-/// Z/3 certifies as a category (the gate returns TRUE — the value is
-/// the certification; every failure is a typed refusal, never false).
 #[test]
-fn category_check_certifies_z3() {
+fn intent() {
+    let mut p = Probe::new("(thin B39 slice): finite-category");
+    p.case("category_check_certifies_z3", |p| {
+// Z/3 certifies as a category (the gate returns TRUE — the value is
+// the certification; every failure is a typed refusal, never false).
+
     let (dom, cod, comp) = z3_category();
     let checked = eval(
         vec![cell(
@@ -156,13 +160,13 @@ fn category_check_certifies_z3() {
         &[dom, cod, comp],
     )
     .expect("Z/3 is a category");
-    assert!(bool_of(&checked));
-}
+    p.demand("category_check_certifies_z3#1", bool_of(&checked), "category_check_certifies_z3#1: bool_of(&checked)");
 
-/// Composition-law refusals (E-CAT-004): an aligned pair with a
-/// missing entry, and a defined entry on a misaligned pair.
-#[test]
-fn category_entry_law_refusals() {
+    });
+    p.case("category_entry_law_refusals", |p| {
+// Composition-law refusals (E-CAT-004): an aligned pair with a
+// missing entry, and a defined entry on a misaligned pair.
+
     let (dom, cod, comp) = z3_category();
     let Value::Matrix {
         mut data,
@@ -170,8 +174,7 @@ fn category_entry_law_refusals() {
         cols,
     } = comp
     else {
-        panic!("z3 comp is a matrix")
-    };
+        { p.fail("category_entry_law_refusals#1", format!("z3 comp is a matrix")); return; }};
     let _ = (rows, cols);
     data[1 * 3 + 2] = -1.0; // comp[1][2]: aligned (single object) but missing
     let fault = eval(
@@ -182,12 +185,11 @@ fn category_entry_law_refusals() {
         &[dom.clone(), cod.clone(), matrix(3, 3, &data)],
     )
     .expect_err("aligned pair without a composite");
-    assert_eq!(refused_code(&fault), "E-CAT-004");
+    p.demand("category_entry_law_refusals#2", refused_code(&fault) == "E-CAT-004", format!("expected {:?}, got {:?}", "E-CAT-004", refused_code(&fault)));
 
     let (dom, cod, comp) = free_arrow_category();
     let Value::Matrix { mut data, .. } = comp else {
-        panic!("free-arrow comp is a matrix")
-    };
+        { p.fail("category_entry_law_refusals#3", format!("free-arrow comp is a matrix")); return; }};
     data[0 * 3 + 2] = 0.0; // comp[id0][f]: misaligned (cod[f]=1 ≠ dom[id0]=0)
     let fault = eval(
         vec![cell(
@@ -197,18 +199,17 @@ fn category_entry_law_refusals() {
         &[dom, cod, matrix(3, 3, &data)],
     )
     .expect_err("defined entry on a misaligned pair");
-    assert_eq!(refused_code(&fault), "E-CAT-004");
-}
+    p.demand("category_entry_law_refusals#4", refused_code(&fault) == "E-CAT-004", format!("expected {:?}, got {:?}", "E-CAT-004", refused_code(&fault)));
 
-/// Identity-law refusal (E-CAT-005): break the identity action
-/// (comp[0][1] = 2) and NO morphism of Z/3 acts as the identity —
-/// the object has no identity morphism.
-#[test]
-fn category_identity_law_refusal() {
+    });
+    p.case("category_identity_law_refusal", |p| {
+// Identity-law refusal (E-CAT-005): break the identity action
+// (comp[0][1] = 2) and NO morphism of Z/3 acts as the identity —
+// the object has no identity morphism.
+
     let (dom, cod, comp) = z3_category();
     let Value::Matrix { mut data, .. } = comp else {
-        panic!("z3 comp is a matrix")
-    };
+        { p.fail("category_identity_law_refusal#1", format!("z3 comp is a matrix")); return; }};
     data[0 * 3 + 1] = 2.0; // id no longer acts on m1; no other candidate works
     let fault = eval(
         vec![cell(
@@ -218,17 +219,16 @@ fn category_identity_law_refusal() {
         &[dom, cod, matrix(3, 3, &data)],
     )
     .expect_err("object 0 lost its identity morphism");
-    assert_eq!(refused_code(&fault), "E-CAT-005");
-}
+    p.demand("category_identity_law_refusal#2", refused_code(&fault) == "E-CAT-005", format!("expected {:?}, got {:?}", "E-CAT-005", refused_code(&fault)));
 
-/// Associativity-law refusal (E-CAT-006): comp[1][1] = 0 keeps every
-/// entry/identity law intact but breaks (1∘1)∘2 = 2 ≠ 1 = 1∘(1∘2).
-#[test]
-fn category_associativity_law_refusal() {
+    });
+    p.case("category_associativity_law_refusal", |p| {
+// Associativity-law refusal (E-CAT-006): comp[1][1] = 0 keeps every
+// entry/identity law intact but breaks (1∘1)∘2 = 2 ≠ 1 = 1∘(1∘2).
+
     let (dom, cod, comp) = z3_category();
     let Value::Matrix { mut data, .. } = comp else {
-        panic!("z3 comp is a matrix")
-    };
+        { p.fail("category_associativity_law_refusal#1", format!("z3 comp is a matrix")); return; }};
     data[1 * 3 + 1] = 0.0;
     let fault = eval(
         vec![cell(
@@ -238,14 +238,14 @@ fn category_associativity_law_refusal() {
         &[dom, cod, matrix(3, 3, &data)],
     )
     .expect_err("(1∘1)∘2 ≠ 1∘(1∘2) after the mutation");
-    assert_eq!(refused_code(&fault), "E-CAT-006");
-}
+    p.demand("category_associativity_law_refusal#2", refused_code(&fault) == "E-CAT-006", format!("expected {:?}, got {:?}", "E-CAT-006", refused_code(&fault)));
 
-/// Honesty fence (E-CAT-007): a 65-morphism one-object carrier is a
-/// category but TOO LARGE to certify associativity by the k ≤ 64
-/// bound — refused, never commute-checked over an unverified table.
-#[test]
-fn oversized_category_refuses() {
+    });
+    p.case("oversized_category_refuses", |p| {
+// Honesty fence (E-CAT-007): a 65-morphism one-object carrier is a
+// category but TOO LARGE to certify associativity by the k ≤ 64
+// bound — refused, never commute-checked over an unverified table.
+
     let k = 65usize;
     let comp: Vec<f64> = (0..k)
         .flat_map(|i| (0..k).map(move |j| ((i + j) % k) as f64))
@@ -260,18 +260,17 @@ fn oversized_category_refuses() {
         &[dom, cod, matrix(k, k, &comp)],
     )
     .expect_err("k = 65 exceeds the certifiable associativity bound");
-    assert_eq!(refused_code(&fault), "E-CAT-007");
-}
+    p.demand("oversized_category_refuses#1", refused_code(&fault) == "E-CAT-007", format!("expected {:?}, got {:?}", "E-CAT-007", refused_code(&fault)));
 
-/// Index/shape/finiteness refusals: NaN entry (E-CAT-001), non-square
-/// table and mismatched lengths and malformed face records (E-CAT-002),
-/// out-of-range / non-integral indices (E-CAT-003).
-#[test]
-fn category_index_shape_and_finiteness_refusals() {
+    });
+    p.case("category_index_shape_and_finiteness_refusals", |p| {
+// Index/shape/finiteness refusals: NaN entry (E-CAT-001), non-square
+// table and mismatched lengths and malformed face records (E-CAT-002),
+// out-of-range / non-integral indices (E-CAT-003).
+
     let (dom, cod, comp) = z3_category();
     let Value::Matrix { mut data, .. } = comp else {
-        panic!("z3 comp is a matrix")
-    };
+        { p.fail("category_index_shape_and_finiteness_refusals#1", format!("z3 comp is a matrix")); return; }};
     data[2 * 3 + 1] = f64::NAN;
     let fault = eval(
         vec![cell(
@@ -281,7 +280,7 @@ fn category_index_shape_and_finiteness_refusals() {
         &[dom.clone(), cod.clone(), matrix(3, 3, &data)],
     )
     .expect_err("NaN composition entry");
-    assert_eq!(refused_code(&fault), "E-CAT-001");
+    p.demand("category_index_shape_and_finiteness_refusals#2", refused_code(&fault) == "E-CAT-001", format!("expected {:?}, got {:?}", "E-CAT-001", refused_code(&fault)));
     // Restore the clean table: the finiteness pass precedes the index
     // pass, so the later cases must not carry the NaN.
     data[2 * 3 + 1] = 0.0;
@@ -294,7 +293,7 @@ fn category_index_shape_and_finiteness_refusals() {
         &[dom.clone(), cod.clone(), matrix(3, 2, &data[..6])],
     )
     .expect_err("non-square composition table");
-    assert_eq!(refused_code(&fault), "E-CAT-002");
+    p.demand("category_index_shape_and_finiteness_refusals#3", refused_code(&fault) == "E-CAT-002", format!("expected {:?}, got {:?}", "E-CAT-002", refused_code(&fault)));
 
     let short_cod = Value::Vector(vec![0.0, 0.0]);
     let fault = eval(
@@ -305,7 +304,7 @@ fn category_index_shape_and_finiteness_refusals() {
         &[dom.clone(), short_cod, matrix(3, 3, &data)],
     )
     .expect_err("dom and cod lengths differ");
-    assert_eq!(refused_code(&fault), "E-CAT-002");
+    p.demand("category_index_shape_and_finiteness_refusals#4", refused_code(&fault) == "E-CAT-002", format!("expected {:?}, got {:?}", "E-CAT-002", refused_code(&fault)));
 
     // Out-of-range E-CAT-003 manifests in comp TABLE entries (with
     // implicit object indexing, a dom/cod value only widens the object
@@ -323,7 +322,7 @@ fn category_index_shape_and_finiteness_refusals() {
         ],
     )
     .expect_err("composition entry 7 is not a morphism index");
-    assert_eq!(refused_code(&fault), "E-CAT-003");
+    p.demand("category_index_shape_and_finiteness_refusals#5", refused_code(&fault) == "E-CAT-003", format!("expected {:?}, got {:?}", "E-CAT-003", refused_code(&fault)));
 
     let fractional = Value::Vector(vec![0.0, 0.5, 0.0]);
     let fault = eval(
@@ -334,7 +333,7 @@ fn category_index_shape_and_finiteness_refusals() {
         &[fractional, cod.clone(), matrix(3, 3, &data)],
     )
     .expect_err("a morphism index must be a whole number");
-    assert_eq!(refused_code(&fault), "E-CAT-003");
+    p.demand("category_index_shape_and_finiteness_refusals#6", refused_code(&fault) == "E-CAT-003", format!("expected {:?}, got {:?}", "E-CAT-003", refused_code(&fault)));
 
     let (dom, cod, comp) = z3_category();
     let faces = Value::Vector(vec![0.0, 0.0, 5.0, 1.0]);
@@ -346,14 +345,14 @@ fn category_index_shape_and_finiteness_refusals() {
         &[dom, cod, comp, faces],
     )
     .expect_err("face record overruns the stream");
-    assert_eq!(refused_code(&fault), "E-CAT-002");
-}
+    p.demand("category_index_shape_and_finiteness_refusals#7", refused_code(&fault) == "E-CAT-002", format!("expected {:?}, got {:?}", "E-CAT-002", refused_code(&fault)));
 
-/// Commutativity on Z/3: the square face (1∘2 vs 2∘1, both = 0) is
-/// commutative; the triangle face (1 vs 2) is NOT — the per-face mask
-/// in face order.
-#[test]
-fn category_commutative_mask_computes() {
+    });
+    p.case("category_commutative_mask_computes", |p| {
+// Commutativity on Z/3: the square face (1∘2 vs 2∘1, both = 0) is
+// commutative; the triangle face (1 vs 2) is NOT — the per-face mask
+// in face order.
+
     let (dom, cod, comp) = z3_category();
     // Face 1: start 0, end 0, left [1, 2], right [2, 1].
     // Face 2: start 0, end 0, left [1], right [2].
@@ -368,15 +367,15 @@ fn category_commutative_mask_computes() {
         &[dom, cod, comp, faces],
     )
     .expect("faces evaluate");
-    assert_eq!(vector_of(&mask), vec![1.0, 0.0], "1∘2 = 2∘1 = 0 but 1 ≠ 2");
-}
+    p.eq("1∘2 = 2∘1 = 0 but 1 ≠ 2", vector_of(&mask), vec![1.0, 0.0]);
 
-/// Path-geometry refusals through the commutative op: a dangling path
-/// segment (comp[f][f] undefined in the free category) refuses
-/// `E-CAT-004`; a path that does not run the face's declared
-/// start→end refuses `E-CAT-002`.
-#[test]
-fn category_path_geometry_refusals() {
+    });
+    p.case("category_path_geometry_refusals", |p| {
+// Path-geometry refusals through the commutative op: a dangling path
+// segment (comp[f][f] undefined in the free category) refuses
+// `E-CAT-004`; a path that does not run the face's declared
+// start→end refuses `E-CAT-002`.
+
     let (dom, cod, comp) = free_arrow_category();
     // Face: start 0, end 1, left [f, f] (dangling: f ∘ f undefined),
     // right [f].
@@ -389,7 +388,7 @@ fn category_path_geometry_refusals() {
         &[dom.clone(), cod.clone(), comp.clone(), faces],
     )
     .expect_err("f ∘ f is not defined");
-    assert_eq!(refused_code(&fault), "E-CAT-004");
+    p.demand("category_path_geometry_refusals#1", refused_code(&fault) == "E-CAT-004", format!("expected {:?}, got {:?}", "E-CAT-004", refused_code(&fault)));
 
     // Face: start 0, end 0 declared, but the only path [f] runs 0→1.
     let faces = Value::Vector(vec![0.0, 0.0, 1.0, 1.0, 2.0, 2.0]);
@@ -401,22 +400,22 @@ fn category_path_geometry_refusals() {
         &[dom, cod, comp, faces],
     )
     .expect_err("path [f] does not end at the declared end object");
-    assert_eq!(refused_code(&fault), "E-CAT-002");
-}
+    p.demand("category_path_geometry_refusals#2", refused_code(&fault) == "E-CAT-002", format!("expected {:?}, got {:?}", "E-CAT-002", refused_code(&fault)));
 
-/// Both capsule FeatureIDs resolve to the expected public kernel ABI.
-/// Kernel-backed cells take the native path, so a NaN parameter
-/// refuses through the kernel's own finiteness pass (`E-CAT-001`).
-#[test]
-fn category_capsules_bind_public_kernels_and_guards() {
+    });
+    p.case("category_capsules_bind_public_kernels_and_guards", |p| {
+// Both capsule FeatureIDs resolve to the expected public kernel ABI.
+// Kernel-backed cells take the native path, so a NaN parameter
+// refuses through the kernel's own finiteness pass (`E-CAT-001`).
+
     install_language();
     let check = native_kernel(CATEGORY_CHECK).expect("category check kernel bound");
     let commutative =
         native_kernel(CATEGORY_COMMUTATIVE).expect("category commutativity kernel bound");
-    assert_eq!(check.kernel_id, "finite-category-certification");
-    assert_eq!(commutative.kernel_id, "diagram-commutativity-mask");
-    assert_eq!(check.arity_contract(), KernelArity::Exact(3));
-    assert_eq!(commutative.arity_contract(), KernelArity::Exact(4));
+    p.demand("category_capsules_bind_public_kernels_and_guards#1", check.kernel_id == "finite-category-certification", format!("expected {:?}, got {:?}", "finite-category-certification", check.kernel_id));
+    p.demand("category_capsules_bind_public_kernels_and_guards#2", commutative.kernel_id == "diagram-commutativity-mask", format!("expected {:?}, got {:?}", "diagram-commutativity-mask", commutative.kernel_id));
+    p.eq("category_capsules_bind_public_kernels_and_guards#3", check.arity_contract(), KernelArity::Exact(3));
+    p.eq("category_capsules_bind_public_kernels_and_guards#4", commutative.arity_contract(), KernelArity::Exact(4));
 
     let (dom, cod, comp) = z3_category();
     let faces = Value::Vector(vec![0.0, 0.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0]);
@@ -428,7 +427,7 @@ fn category_capsules_bind_public_kernels_and_guards() {
         &[dom.clone(), cod.clone(), comp.clone(), faces.clone()],
     )
     .expect("commutative cell computes");
-    assert_eq!(vector_of(&cell_mask), vec![1.0]);
+    p.eq("category_capsules_bind_public_kernels_and_guards#5", vector_of(&cell_mask), vec![1.0]);
 
     let nan_dom = Value::Vector(vec![0.0, f64::NAN, 0.0]);
     let fault = eval(
@@ -439,12 +438,12 @@ fn category_capsules_bind_public_kernels_and_guards() {
         &[nan_dom, cod, comp],
     )
     .expect_err("the kernel's finiteness pass keeps NaN out of the certification");
-    assert_eq!(refused_code(&fault), "E-CAT-001");
-}
+    p.demand("category_capsules_bind_public_kernels_and_guards#6", refused_code(&fault) == "E-CAT-001", format!("expected {:?}, got {:?}", "E-CAT-001", refused_code(&fault)));
 
-/// The category-check capsule returns TRUE on a certified carrier.
-#[test]
-fn category_capsule_check_returns_certification() {
+    });
+    p.case("category_capsule_check_returns_certification", |p| {
+// The category-check capsule returns TRUE on a certified carrier.
+
     let (dom, cod, comp) = z3_category();
     let cell_check = eval(
         vec![cell(
@@ -454,12 +453,12 @@ fn category_capsule_check_returns_certification() {
         &[dom.clone(), cod.clone(), comp.clone()],
     )
     .expect("check cell computes");
-    assert!(bool_of(&cell_check));
-}
+    p.demand("category_capsule_check_returns_certification#1", bool_of(&cell_check), "category_capsule_check_returns_certification#1: bool_of(&cell_check)");
 
-/// Carrier shape mismatches refuse at the installed kernel ABI.
-#[test]
-fn category_carrier_shape_refusals() {
+    });
+    p.case("category_carrier_shape_refusals", |p| {
+// Carrier shape mismatches refuse at the installed kernel ABI.
+
     let (_, cod, comp) = z3_category();
     let error = eval(
         vec![cell(
@@ -469,10 +468,7 @@ fn category_carrier_shape_refusals() {
         &[Value::F64(0.0), cod, comp],
     )
     .expect_err("a scalar dom is not a vector carrier");
-    assert!(
-        matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")),
-        "unexpected refusal: {error:?}"
-    );
+    p.demand(format!("unexpected refusal: {error:?}"), matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")), format!("unexpected refusal: {error:?}"));
 
     let (dom, cod, _) = z3_category();
     let error = eval(
@@ -488,20 +484,40 @@ fn category_carrier_shape_refusals() {
         ],
     )
     .expect_err("a vector comp is not a matrix carrier");
-    assert!(
-        matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")),
-        "unexpected refusal: {error:?}"
-    );
-}
+    p.demand(format!("unexpected refusal: {error:?}"), matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")), format!("unexpected refusal: {error:?}"));
 
-/// The installed Language Image exposes both category capsules.
-#[test]
-fn category_language_image_exposes_capsules() {
+    });
+    p.case("category_language_image_exposes_capsules", |p| {
+// The installed Language Image exposes both category capsules.
+
     install_language();
     for feature_id in [CATEGORY_CHECK, CATEGORY_COMMUTATIVE] {
-        assert!(
-            native_kernel(feature_id).is_some(),
-            "missing category capsule {feature_id}"
-        );
+        p.demand(format!("missing category capsule {feature_id}"), native_kernel(feature_id).is_some(), format!("missing category capsule {feature_id}"));
     }
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

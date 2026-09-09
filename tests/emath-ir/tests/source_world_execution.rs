@@ -18,6 +18,7 @@ use emath_genesis::{
 use emath_syntax::install_source_parser;
 use emath_term::{SymbolId, Term, VariableId};
 use std::path::PathBuf;
+use emath_test_harness::{Probe, boot};
 
 fn repo_file(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -77,9 +78,9 @@ impl FirstOrderWorld for ModularFiveWorld {
     }
 }
 
-fn labeled_custom_bundle() -> ResultBundle {
+fn labeled_custom_bundle(p: &mut Probe) -> ResultBundle {
     let (signature, term) = reference_alien_term();
-    assert!(signature.validate(&term).is_ok());
+    p.demand("signature.validate(&term).is_ok()", signature.validate(&term).is_ok(), "signature.validate(&term).is_ok()");
     let budget = WorldBudget { max_steps: 64 };
     let i64_environment: Environment<i64> = [
         (VariableId("a".into()), 2_i64),
@@ -120,74 +121,75 @@ fn labeled_custom_bundle() -> ResultBundle {
 }
 
 #[test]
-fn strict_file_runs_and_selects_no_invented_world() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("capstone — source-first-worlds.");
+    p.case("strict_file_runs_and_selects_no_invented_world", |p| {
+
     install_source_parser();
-    let source = repo_file("language/examples/intro/hello-square.emath");
+    let source = repo_file("tests/fixtures/language/intro/hello-square.emath");
     let (diagnostics, _, _) = run_check(&source);
     let errors = diagnostics
         .items()
         .iter()
         .filter(|item| item.severity == emath_core::Severity::Error && item.code.starts_with("E-"))
         .count();
-    assert_eq!(errors, 0, "strict example must admit with no E-* errors");
+    p.eq("strict example must admit with no E-* errors", errors, 0);
 
     // Firewall: the strict file carries no custom section, so the strict
     // lane selected no invented world; its provenance is the reference VM.
     let text = std::fs::read_to_string(&source).expect("read strict source");
-    assert!(
-        !text.contains("emath custom"),
-        "a strict source must not carry a custom section"
-    );
+    p.demand("a strict source must not carry a custom section", !text.contains("emath custom"), "a strict source must not carry a custom section");
 
     // The strict run path exits ok through the CLI (production path):
     // `emath run <file>` returns Ok for the hello-square example.
     let exit = run(&["run".to_string(), source.display().to_string()]);
-    assert_eq!(exit, emath_cli::EXIT_OK, "strict run exits ok");
-}
+    p.eq("strict run exits ok", exit, emath_cli::EXIT_OK);
 
-#[test]
-fn custom_file_interprets_with_labeled_worlds() {
-    let bundle = labeled_custom_bundle();
-    assert_eq!(bundle.results.len(), 3);
+    });
+    p.case("custom_file_interprets_with_labeled_worlds", |p| {
+
+    let bundle = labeled_custom_bundle(p, );
+    p.eq("custom_file_interprets_with_labeled_worlds#1", bundle.results.len(), 3);
     let worlds: Vec<&str> = bundle
         .results
         .iter()
         .map(|result| result.world.as_str())
         .collect();
-    assert_eq!(worlds, ["modular-17", "boolean-alien", "modular-5"]);
+    p.eq("custom_file_interprets_with_labeled_worlds#2", worlds, ["modular-17", "boolean-alien", "modular-5"].to_vec());
 
     // Every entry is a labeled answer with evidence — no naked scalars.
     for result in &bundle.results {
-        assert!(!result.world.is_empty());
-        assert!(!result.method.is_empty());
-        assert!(!result.evidence_laws.is_empty());
+        p.demand("custom_file_interprets_with_labeled_worlds#3", !result.world.is_empty(), "custom_file_interprets_with_labeled_worlds#3: !result.world.is_empty()");
+        p.demand("custom_file_interprets_with_labeled_worlds#4", !result.method.is_empty(), "custom_file_interprets_with_labeled_worlds#4: !result.method.is_empty()");
+        p.demand("custom_file_interprets_with_labeled_worlds#5", !result.evidence_laws.is_empty(), "custom_file_interprets_with_labeled_worlds#5: !result.evidence_laws.is_empty()");
         match &result.disposition {
-            Disposition::Answer { canonical } => assert!(!canonical.is_empty()),
-            other => panic!("expected labeled answer, got {other:?}"),
+            Disposition::Answer { canonical } => { p.demand("custom_file_interprets_with_labeled_worlds#6", !canonical.is_empty(), "custom_file_interprets_with_labeled_worlds#6: !canonical.is_empty()"); },
+            other => { p.fail("custom_file_interprets_with_labeled_worlds#7", format!("expected labeled answer, got {other:?}")); return; },
         }
     }
     // Modular values from the same term differ per world (labeled, not
     // one hidden number): mod17 answer 6, mod5 answer 2, boolean false
     // (xor -> not -> and over a=true, b=false, zeta=true).
     match &bundle.results[0].disposition {
-        Disposition::Answer { canonical } => assert_eq!(canonical, "6"),
-        other => panic!("mod17 answer expected, got {other:?}"),
+        Disposition::Answer { canonical } => { p.demand("custom_file_interprets_with_labeled_worlds#8", canonical == "6", format!("expected {:?}, got {:?}", "6", canonical)); },
+        other => { p.fail("custom_file_interprets_with_labeled_worlds#9", format!("mod17 answer expected, got {other:?}")); return; },
     }
     match &bundle.results[2].disposition {
-        Disposition::Answer { canonical } => assert_eq!(canonical, "2"),
-        other => panic!("mod5 answer expected, got {other:?}"),
+        Disposition::Answer { canonical } => { p.demand("custom_file_interprets_with_labeled_worlds#10", canonical == "2", format!("expected {:?}, got {:?}", "2", canonical)); },
+        other => { p.fail("custom_file_interprets_with_labeled_worlds#11", format!("mod5 answer expected, got {other:?}")); return; },
     }
     match &bundle.results[1].disposition {
-        Disposition::Answer { canonical } => assert_eq!(canonical, "false"),
-        other => panic!("boolean answer expected, got {other:?}"),
+        Disposition::Answer { canonical } => { p.demand("custom_file_interprets_with_labeled_worlds#12", canonical == "false", format!("expected {:?}, got {:?}", "false", canonical)); },
+        other => { p.fail("custom_file_interprets_with_labeled_worlds#13", format!("boolean answer expected, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn bundle_id_replays_and_json_carries_labels() {
-    let first = labeled_custom_bundle();
-    let second = labeled_custom_bundle();
-    assert_eq!(first.bundle_id, second.bundle_id, "deterministic replay id");
+    });
+    p.case("bundle_id_replays_and_json_carries_labels", |p| {
+
+    let first = labeled_custom_bundle(p, );
+    let second = labeled_custom_bundle(p, );
+    p.eq("deterministic replay id", first.bundle_id.clone(), second.bundle_id);
     let json = first.to_json();
     for key in [
         "\"bundle_id\"",
@@ -198,13 +200,13 @@ fn bundle_id_replays_and_json_carries_labels() {
         "\"cost_steps\"",
         "\"schema\"",
     ] {
-        assert!(json.contains(key), "bundle JSON must carry {key}: {json}");
+        p.demand(format!("bundle JSON must carry {key}: {json}"), json.contains(key), format!("bundle JSON must carry {key}: {json}"));
     }
-    assert!(json.contains("\"modular-5\""), "the new world is labeled");
-}
+    p.demand("the new world is labeled", json.contains("\"modular-5\""), "the new world is labeled");
 
-#[test]
-fn naked_result_refused_and_negative_seed() {
+    });
+    p.case("naked_result_refused_and_negative_seed", |p| {
+
     // A bundle entry stripped of its world label is a typed refusal —
     // the provenance swap cannot pass silently.
     let stripped = WorldResult {
@@ -220,8 +222,8 @@ fn naked_result_refused_and_negative_seed() {
         evidence_laws: vec!["ring-mod-17-table".into()],
         cost_steps: 3,
     };
-    assert_eq!(stripped.validate(), Err(NakedResultRefusal::MissingWorld));
-    assert!(ResultBundle::new(vec![stripped]).is_err());
+    p.eq("naked_result_refused_and_negative_seed#1", stripped.validate(), Err(NakedResultRefusal::MissingWorld));
+    p.demand("naked_result_refused_and_negative_seed#2", ResultBundle::new(vec![stripped]).is_err(), "naked_result_refused_and_negative_seed#2: ResultBundle::new(vec![stripped]).is_err()");
 
     // Negative seed: the provenance-swap scenario declares a typed
     // refusal.
@@ -230,8 +232,15 @@ fn naked_result_refused_and_negative_seed() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-WORLD"),
-        "seed expects a typed provenance refusal, found: {expect_line}"
-    );
+    p.demand(format!("seed expects a typed provenance refusal, found: {expect_line}"), expect_line.contains("E-WORLD"), format!("seed expects a typed provenance refusal, found: {expect_line}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+

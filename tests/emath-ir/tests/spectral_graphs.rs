@@ -24,10 +24,27 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    ParamShape, TermCompileError, compile_reference, std_cell_registry,
+    ParamShape, TermCompileError,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -145,7 +162,10 @@ fn cell_seval(
 }
 
 #[test]
-fn graph_laplacian_computes() {
+fn intent() {
+    let mut p = Probe::new("Spectral graph basics.");
+    p.case("graph_laplacian_computes", |p| {
+
     // D − A over the undirected path: out-degrees [1, 2, 2, 1], so
     // L = diag(1,2,2,1) − A.
     let laplacian = eval(
@@ -154,9 +174,8 @@ fn graph_laplacian_computes() {
     )
     .expect("laplacian computes");
     let Value::Matrix { rows, cols, data } = laplacian else {
-        panic!("expected a matrix, got {laplacian:?}")
-    };
-    assert_eq!((rows, cols), (4, 4));
+        { p.fail("graph_laplacian_computes#1", format!("expected a matrix, got {laplacian:?}")); return; }};
+    p.eq("graph_laplacian_computes#2", (rows, cols), (4, 4));
     let expected = [
         1.0, -1.0, 0.0, 0.0, //
         -1.0, 2.0, -1.0, 0.0, //
@@ -164,12 +183,12 @@ fn graph_laplacian_computes() {
         0.0, 0.0, -1.0, 1.0,
     ];
     for (got, want) in data.iter().zip(expected.iter()) {
-        assert!((got - want).abs() < 1e-12, "L = D − A: {data:?}");
+        p.demand(format!("L = D − A: {data:?}"), (got - want).abs() < 1e-12, format!("L = D − A: {data:?}"));
     }
-}
 
-#[test]
-fn laplacian_spectrum_composes_through_eigen() {
+    });
+    p.case("laplacian_spectrum_composes_through_eigen", |p| {
+
     // The spectral law (P4 path graph): eigenvalues of L are
     // {0, 2−√2, 2, 2+√2} ascending — the composition
     // eigvals(graph_laplacian(A)) computes through the EXISTING
@@ -183,19 +202,16 @@ fn laplacian_spectrum_composes_through_eigen() {
     )
     .expect("laplacian spectrum composes");
     let values = vector_of(&spectrum);
-    assert_eq!(values.len(), 4);
+    p.eq("laplacian_spectrum_composes_through_eigen#1", values.len(), 4);
     let expected = [0.0, 2.0 - 2.0_f64.sqrt(), 2.0, 2.0 + 2.0_f64.sqrt()];
     for (got, want) in values.iter().zip(expected.iter()) {
-        assert!(
-            (got - want).abs() < 1e-9,
-            "P4 Laplacian spectrum {{0, 2−√2, 2, 2+√2}}, got {values:?}"
-        );
+        p.demand(format!("P4 Laplacian spectrum {{0, 2−√2, 2, 2+√2}}, got {values:?}"), (got - want).abs() < 1e-9, format!("P4 Laplacian spectrum {{0, 2−√2, 2, 2+√2}}, got {values:?}"));
     }
-    assert!(values[0].abs() < 1e-9, "the smallest eigenvalue is 0");
-}
+    p.demand("the smallest eigenvalue is 0", values[0].abs() < 1e-9, "the smallest eigenvalue is 0");
 
-#[test]
-fn directed_laplacian_spectrum_refuses_typed() {
+    });
+    p.case("directed_laplacian_spectrum_refuses_typed", |p| {
+
     // The class fence: the directed reference carrier's Laplacian is
     // NOT symmetric, and the symmetric-only eigen gate refuses it
     // (E-LINALG-002) — never a silently symmetrized spectrum. The
@@ -219,14 +235,11 @@ fn directed_laplacian_spectrum_refuses_typed() {
     )
     .expect_err("directed Laplacian spectrum refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-LINALG-002"),
-        "directed Laplacian spectrum must name the symmetric gate, got {fault}"
-    );
-}
+    p.demand(format!("directed Laplacian spectrum must name the symmetric gate, got {fault}"), fault.contains("E-LINALG-002"), format!("directed Laplacian spectrum must name the symmetric gate, got {fault}"));
 
-#[test]
-fn non_square_laplacian_refuses_typed() {
+    });
+    p.case("non_square_laplacian_refuses_typed", |p| {
+
     // The carrier law from the graph core: a non-square adjacency matrix is
     // not a graph carrier (E-GRAPH-001) — the negative seed's shape.
     let rectangular = Value::Matrix {
@@ -237,31 +250,22 @@ fn non_square_laplacian_refuses_typed() {
     let error = eval(vec![cell(LAPLACIAN, vec![EmirValue(0)])], &[rectangular])
         .expect_err("non-square adjacency refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-GRAPH-001"),
-        "non-square Laplacian must name E-GRAPH-001, got {fault}"
-    );
+    p.demand(format!("non-square Laplacian must name E-GRAPH-001, got {fault}"), fault.contains("E-GRAPH-001"), format!("non-square Laplacian must name E-GRAPH-001, got {fault}"));
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/spectral_graph_asymmetry.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-GRAPH-001"),
-        "seed expects the non-square refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the non-square refusal, found: {expect_line}"), expect_line.contains("E-GRAPH-001"), format!("seed expects the non-square refusal, found: {expect_line}"));
 
-#[test]
-fn laplacian_registry_cell_computes() {
+    });
+    p.case("laplacian_registry_cell_computes", |p| {
+
     // std.graph.laplacian: the same kernel as registry DATA (the
     // anti-LOC law), evaluated through the ApplyCapability path.
     let registry = std_cell_registry();
-    assert!(
-        registry.contains_key("std.graph.laplacian"),
-        "std.graph.laplacian registered"
-    );
+    p.demand("std.graph.laplacian registered", registry.contains_key("std.graph.laplacian"), "std.graph.laplacian registered");
     let laplacian = cell_seval(
         "std.graph.laplacian",
         "std.capability.graph.laplacian",
@@ -270,13 +274,12 @@ fn laplacian_registry_cell_computes() {
     )
     .expect("registry cell evaluates");
     let Value::Matrix { data, .. } = laplacian else {
-        panic!("expected a matrix, got {laplacian:?}")
-    };
-    assert!((data[0] - 1.0).abs() < 1e-12 && (data[1] + 1.0).abs() < 1e-12);
-}
+        { p.fail("laplacian_registry_cell_computes#2", format!("expected a matrix, got {laplacian:?}")); return; }};
+    p.demand("laplacian_registry_cell_computes#3", (data[0] - 1.0).abs() < 1e-12 && (data[1] + 1.0).abs() < 1e-12, "laplacian_registry_cell_computes#3: (data[0] - 1.0).abs() < 1e-12 && (data[1] + 1.0).abs() < 1e-12");
 
-#[test]
-fn laplacian_call_surface_shape_law_refuses() {
+    });
+    p.case("laplacian_call_surface_shape_law_refuses", |p| {
+
     // A vector in the adjacency slot refuses at COMPILE (the closed
     // vocabulary's shape law, the call-surface law extended to the new name).
     let term = Term::Apply {
@@ -296,8 +299,19 @@ fn laplacian_call_surface_shape_law_refuses() {
     )
     .expect_err("a vector in the adjacency slot refuses at compile");
     let text = format!("{error:?}");
-    assert!(
-        matches!(error, TermCompileError::ShapeMismatch { .. }),
-        "shape law must refuse the adjacency slot, got {text}"
-    );
+    p.demand(format!("shape law must refuse the adjacency slot, got {text}"), matches!(error, TermCompileError::ShapeMismatch { .. }), format!("shape law must refuse the adjacency slot, got {text}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

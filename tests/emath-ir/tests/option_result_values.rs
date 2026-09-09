@@ -31,9 +31,22 @@ use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
-use emath_exec_ir::term_compile::{ParamShape, TermCompileError, compile_reference};
+use emath_exec_ir::term_compile::{ParamShape, TermCompileError};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::{Probe, boot};
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -97,74 +110,74 @@ fn eval1(op: EmirOp, input: Value) -> Result<Value, EvalFault> {
 }
 
 #[test]
-fn option_polarity_and_unwrap_laws() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("Option/Result");
+    p.case("option_polarity_and_unwrap_laws", |p| {
+
     // Some(5): IsSome = true; UnwrapOr(7) = 5 (the VALUE, not the
     // default — kills an always-default mutant).
     let some = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0)).expect("Some computes");
     let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some.clone()).expect("IsSome computes");
-    assert!(bool_of(&is_some), "Some(5).is_some()");
+    p.demand("Some(5).is_some()", bool_of(&is_some), "Some(5).is_some()");
     let unwrapped = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
         &[some, Value::F64(7.0)],
     )
     .expect("UnwrapOr computes");
-    assert_eq!(scalar_of(&unwrapped), 5.0, "Some(5).unwrap_or(7) = 5");
+    p.eq("Some(5).unwrap_or(7) = 5", scalar_of(&unwrapped), 5.0);
 
     // None: IsSome = false; UnwrapOr(7) = 7 (the DEFAULT — kills an
     // always-value mutant).
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
     let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), none.clone()).expect("IsSome computes");
-    assert!(!bool_of(&is_some), "None.is_some() = false");
+    p.demand("None.is_some() = false", !bool_of(&is_some), "None.is_some() = false");
     let unwrapped = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
         &[none, Value::F64(7.0)],
     )
     .expect("UnwrapOr computes");
-    assert_eq!(scalar_of(&unwrapped), 7.0, "None.unwrap_or(7) = 7");
-}
+    p.eq("None.unwrap_or(7) = 7", scalar_of(&unwrapped), 7.0);
 
-#[test]
-fn result_polarity_error_preserved() {
+    });
+    p.case("result_polarity_error_preserved", |p| {
+
     // Ok(3): IsOk = true; UnwrapOr(9) = 3; ErrorOf = Option NONE.
     let ok = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0)).expect("Ok computes");
     let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), ok.clone()).expect("IsOk computes");
-    assert!(bool_of(&is_ok), "Ok(3).is_ok()");
+    p.demand("Ok(3).is_ok()", bool_of(&is_ok), "Ok(3).is_ok()");
     let unwrapped = eval(
         vec![EmirOp::ResultUnwrapOr(EmirValue(0), EmirValue(1))],
         &[ok.clone(), Value::F64(9.0)],
     )
     .expect("UnwrapOr computes");
-    assert_eq!(scalar_of(&unwrapped), 3.0, "Ok(3).unwrap_or(9) = 3");
+    p.eq("Ok(3).unwrap_or(9) = 3", scalar_of(&unwrapped), 3.0);
     let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), ok).expect("ErrorOf computes");
     let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), error_of).expect("IsSome computes");
-    assert!(!bool_of(&is_some), "Ok(3).error_of() = None (composition)");
+    p.demand("Ok(3).error_of() = None (composition)", !bool_of(&is_some), "Ok(3).error_of() = None (composition)");
 
     // Err(42): IsOk = false; UnwrapOr(9) = 9; ErrorOf = Option SOME(42)
     // — the error payload SURVIVES (never swallowed into the default).
     let err = eval1(EmirOp::ResultErr(EmirValue(0)), Value::F64(42.0)).expect("Err computes");
     let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), err.clone()).expect("IsOk computes");
-    assert!(!bool_of(&is_ok), "Err(42).is_ok() = false");
+    p.demand("Err(42).is_ok() = false", !bool_of(&is_ok), "Err(42).is_ok() = false");
     let unwrapped = eval(
         vec![EmirOp::ResultUnwrapOr(EmirValue(0), EmirValue(1))],
         &[err.clone(), Value::F64(9.0)],
     )
     .expect("UnwrapOr computes");
-    assert_eq!(scalar_of(&unwrapped), 9.0, "Err(42).unwrap_or(9) = 9");
+    p.eq("Err(42).unwrap_or(9) = 9", scalar_of(&unwrapped), 9.0);
     let error_of = eval1(EmirOp::ResultErrorOf(EmirValue(0)), err).expect("ErrorOf computes");
     let recovered = eval(
         vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
         &[error_of, Value::F64(-1.0)],
     )
     .expect("composition unwraps");
-    assert_eq!(
-        scalar_of(&recovered),
-        42.0,
-        "Err(42).error_of().unwrap_or(-1) = 42 (error round-trip)"
-    );
-}
+    p.eq("Err(42).error_of().unwrap_or(-1) = 42 (error round-trip)", scalar_of(&recovered), 42.0);
 
-#[test]
-fn shape_preservation_through_carrier() {
+    });
+    p.case("shape_preservation_through_carrier", |p| {
+
     // The carrier preserves ANY payload shape: Vector and Matrix
     // payloads round-trip through Some/UnwrapOr bit-for-bit (kills
     // shape-losing mutants that would coerce to scalar).
@@ -176,7 +189,7 @@ fn shape_preservation_through_carrier() {
         &[some, Value::Vector(vec![0.0; 3])],
     )
     .expect("UnwrapOr computes");
-    assert_eq!(unwrapped, vector, "vector payload round-trips");
+    p.eq("vector payload round-trips", unwrapped, vector);
 
     let matrix = Value::Matrix {
         rows: 2,
@@ -197,22 +210,22 @@ fn shape_preservation_through_carrier() {
         ],
     )
     .expect("UnwrapOr computes");
-    assert_eq!(unwrapped, matrix, "matrix payload round-trips");
-}
+    p.eq("matrix payload round-trips", unwrapped, matrix);
 
-#[test]
-fn some_of_none_is_some() {
+    });
+    p.case("some_of_none_is_some", |p| {
+
     // Tag-vs-content distinction: Some(None) IS Some (the polarity op
     // reads the TAG, not the content). A mutant that probes content
     // fails.
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
     let some_of_none = eval1(EmirOp::OptionSome(EmirValue(0)), none).expect("Some(None) computes");
     let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), some_of_none).expect("IsSome computes");
-    assert!(bool_of(&is_some), "Some(None).is_some() = true (the tag)");
-}
+    p.demand("Some(None).is_some() = true (the tag)", bool_of(&is_some), "Some(None).is_some() = true (the tag)");
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct OptionWorld;
     impl emath_genesis::FirstOrderWorld for OptionWorld {
@@ -271,106 +284,17 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "option-result-value-semantics");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "option-result-value-semantics", format!("expected {:?}, got {:?}", "option-result-value-semantics", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
-}
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
 
-// ── the term-compile CALL surface (nine names) ────────────────
-//
-// The nine Option/Result names bind the already-landed value-semantics
-// ops through the PUBLIC `compile_reference` seam (the graph-call-
-// surface precedent): the same CompiledCell → EmirProgram → reference
-// interpreter path, with NO sema lowering (the `.emath`-text surface is
-// the named follow-up lane). Carriers are opaque at the shape level;
-// payload/default slots admit the concrete Scalar/Vector/Matrix shapes.
+    });
+    p.case("call_surface_option_constructors_polarity_unwrap", |p| {
 
-fn opt_apply(operator: &str, arguments: Vec<Term>) -> Term {
-    Term::Apply {
-        operator: SymbolId(operator.into()),
-        arguments,
-    }
-}
-
-fn opt_const(text: &str) -> Term {
-    Term::Constant(SymbolId(text.into()))
-}
-
-/// The nine call-surface operators with their declared arities.
-const CALL_SURFACE_DECLS: &[(&str, usize)] = &[
-    ("option_some", 1),
-    ("option_none", 0),
-    ("option_is_some", 1),
-    ("option_unwrap_or", 2),
-    ("result_ok", 1),
-    ("result_err", 1),
-    ("result_is_ok", 1),
-    ("result_unwrap_or", 2),
-    ("result_error_of", 1),
-    // The prime-field call surface. `field_inv(a, p)` lowers to
-    // the interpreter's exact modular inverse `ModInv(a, p)`; generic
-    // modular ADD/MUL EmirOps do not exist, so `field_add`/`field_mul`
-    // are deliberately NOT registered here (handoff spec, never
-    // half-wired names).
-    ("field_inv", 2),
-];
-
-fn call_signature(constants: &[&str]) -> Signature {
-    let mut signature = Signature::default();
-    for (name, arity) in CALL_SURFACE_DECLS {
-        signature
-            .insert(SymbolId(name.to_string()), *arity)
-            .expect("call-surface declarations are conflict-free");
-    }
-    for constant in constants {
-        signature
-            .insert(SymbolId(constant.to_string()), 0)
-            .expect("constant declarations are conflict-free");
-    }
-    signature
-}
-
-/// Compile a constant-only call-surface program (no params) and
-/// evaluate it through the reference interpreter.
-fn call_eval(term: Term, constants: &[&str]) -> Result<Value, EvalFault> {
-    install_language();
-    let cell = compile_reference(
-        &term,
-        &call_signature(constants),
-        &[],
-        Vec::new(),
-        "test.option-result-call",
-    )
-    .expect("call-surface program compiles");
-    evaluate_with_budget(&cell.program, &[], &[], EvalBudget::default())
-}
-
-/// Compile a call-surface program over declared params and evaluate it
-/// over input values (vector/matrix payload fixtures).
-fn call_eval_params(
-    term: Term,
-    params: Vec<(String, ParamShape)>,
-    inputs: &[Value],
-    constants: &[&str],
-) -> Result<Value, EvalFault> {
-    install_language();
-    let cell = compile_reference(
-        &term,
-        &call_signature(constants),
-        &params,
-        Vec::new(),
-        "test.option-result-call",
-    )
-    .expect("call-surface program compiles");
-    evaluate_with_budget(&cell.program, inputs, &[], EvalBudget::default())
-}
-
-#[test]
-fn call_surface_option_constructors_polarity_unwrap() {
     // is_some(some(5)) == true — the polarity op over the compiled
     // constructor.
     let value = call_eval(
@@ -381,7 +305,7 @@ fn call_surface_option_constructors_polarity_unwrap() {
         &["5"],
     )
     .expect("is_some(some(5)) evaluates");
-    assert_eq!(value, Value::Bool(true), "is_some(some(5)) = true");
+    p.eq("is_some(some(5)) = true", value, Value::Bool(true));
 
     // unwrap_or(some(2), 9) == 2 — the VALUE, not the default (kills an
     // always-default mutant).
@@ -396,7 +320,7 @@ fn call_surface_option_constructors_polarity_unwrap() {
         &["2", "9"],
     )
     .expect("unwrap_or(some(2), 9) evaluates");
-    assert_eq!(value, Value::F64(2.0), "Some(2).unwrap_or(9) = 2");
+    p.eq("Some(2).unwrap_or(9) = 2", value, Value::F64(2.0));
 
     // unwrap_or(none, 9) == 9 — the DEFAULT (the honesty gate; no
     // panicking unwrap exists at this layer).
@@ -408,16 +332,16 @@ fn call_surface_option_constructors_polarity_unwrap() {
         &["9"],
     )
     .expect("unwrap_or(none, 9) evaluates");
-    assert_eq!(value, Value::F64(9.0), "None.unwrap_or(9) = 9");
+    p.eq("None.unwrap_or(9) = 9", value, Value::F64(9.0));
 
     // The zero-arg constructor alone evaluates to Option None (None
     // carries NOTHING).
     let value = call_eval(opt_apply("option_none", Vec::new()), &[]).expect("none evaluates");
-    assert_eq!(value, Value::Option(None), "none = Option::None");
-}
+    p.eq("none = Option::None", value, Value::Option(None));
 
-#[test]
-fn call_surface_result_polarity_unwrap_error_of() {
+    });
+    p.case("call_surface_result_polarity_unwrap_error_of", |p| {
+
     // is_ok(ok(3.5)) == true; is_ok(err(7)) == false.
     let value = call_eval(
         opt_apply(
@@ -427,7 +351,7 @@ fn call_surface_result_polarity_unwrap_error_of() {
         &["3.5"],
     )
     .expect("is_ok(ok(3.5)) evaluates");
-    assert_eq!(value, Value::Bool(true), "Ok(3.5).is_ok() = true");
+    p.eq("Ok(3.5).is_ok() = true", value, Value::Bool(true));
     let value = call_eval(
         opt_apply(
             "result_is_ok",
@@ -436,7 +360,7 @@ fn call_surface_result_polarity_unwrap_error_of() {
         &["7"],
     )
     .expect("is_ok(err(7)) evaluates");
-    assert_eq!(value, Value::Bool(false), "Err(7).is_ok() = false");
+    p.eq("Err(7).is_ok() = false", value, Value::Bool(false));
 
     // unwrap_or(ok(3.5), 9) == 3.5; unwrap_or(err(7), 9) == 9.
     let value = call_eval(
@@ -450,7 +374,7 @@ fn call_surface_result_polarity_unwrap_error_of() {
         &["3.5", "9"],
     )
     .expect("unwrap_or(ok(3.5), 9) evaluates");
-    assert_eq!(value, Value::F64(3.5), "Ok(3.5).unwrap_or(9) = 3.5");
+    p.eq("Ok(3.5).unwrap_or(9) = 3.5", value, Value::F64(3.5));
     let value = call_eval(
         opt_apply(
             "result_unwrap_or",
@@ -462,7 +386,7 @@ fn call_surface_result_polarity_unwrap_error_of() {
         &["7", "9"],
     )
     .expect("unwrap_or(err(7), 9) evaluates");
-    assert_eq!(value, Value::F64(9.0), "Err(7).unwrap_or(9) = 9");
+    p.eq("Err(7).unwrap_or(9) = 9", value, Value::F64(9.0));
 
     // error_of(err(7)) composes as an Option and the error payload
     // round-trips through a SECOND unwrap_or: == 7 (never swallowed
@@ -481,11 +405,7 @@ fn call_surface_result_polarity_unwrap_error_of() {
         &["7", "-1"],
     )
     .expect("err(7).error_of().unwrap_or(-1) evaluates");
-    assert_eq!(
-        value,
-        Value::F64(7.0),
-        "the error payload round-trips through error_of"
-    );
+    p.eq("the error payload round-trips through error_of", value, Value::F64(7.0));
 
     // error_of(ok(1)) == none: Ok carries no error, so the composed
     // Option is empty.
@@ -500,11 +420,11 @@ fn call_surface_result_polarity_unwrap_error_of() {
         &["1"],
     )
     .expect("ok(1).error_of() evaluates");
-    assert_eq!(value, Value::Bool(false), "Ok(1).error_of() = none");
-}
+    p.eq("Ok(1).error_of() = none", value, Value::Bool(false));
 
-#[test]
-fn call_surface_vector_payload_round_trips() {
+    });
+    p.case("call_surface_vector_payload_round_trips", |p| {
+
     // option_some(v) wraps a Vector payload; unwrap_or over a
     // vector-shaped default returns the Vector shape and the payload
     // round-trips bit-for-bit (the opaque-carrier shape law).
@@ -526,10 +446,7 @@ fn call_surface_vector_payload_round_trips() {
         &[],
     )
     .expect("vector payload compiles and evaluates");
-    assert_eq!(
-        out, vector,
-        "vector payload round-trips through the call surface"
-    );
+    p.eq("vector payload round-trips through the call surface", out, vector.clone());
 
     // The Result twin: err(v) wraps the payload slot; error_of then
     // yields Some(v) and the unwrap recovers it.
@@ -556,14 +473,11 @@ fn call_surface_vector_payload_round_trips() {
         &[],
     )
     .expect("result error payload compiles and evaluates");
-    assert_eq!(
-        out, vector,
-        "result error payload round-trips through error_of"
-    );
-}
+    p.eq("result error payload round-trips through error_of", out, vector.clone());
 
-#[test]
-fn call_surface_arity_refuses_typed() {
+    });
+    p.case("call_surface_arity_refuses_typed", |p| {
+
     // some() — zero args where one is declared: the arity refusal is a
     // TYPED TermCompileError (the emath-term signature check), never a
     // panic and never an empty lowering.
@@ -571,15 +485,12 @@ fn call_surface_arity_refuses_typed() {
     let error = compile_reference(
         &zero_arg,
         &call_signature(&[]),
-        &[],
+        &[] as &[(String, emath_exec_ir::term_compile::ParamShape)],
         Vec::new(),
         "test.option-result-call",
     )
     .expect_err("option_some() refuses at compile");
-    assert!(
-        matches!(error, TermCompileError::ArityMismatch { .. }),
-        "zero-arg some must be a typed arity refusal, got {error:?}"
-    );
+    p.demand(format!("zero-arg some must be a typed arity refusal, got {error:?}"), matches!(error, TermCompileError::ArityMismatch { .. }), format!("zero-arg some must be a typed arity refusal, got {error:?}"));
 
     // unwrap_or(some(1)) — one argument where two are declared.
     let short = opt_apply(
@@ -589,19 +500,16 @@ fn call_surface_arity_refuses_typed() {
     let error = compile_reference(
         &short,
         &call_signature(&["1"]),
-        &[],
+        &[] as &[(String, emath_exec_ir::term_compile::ParamShape)],
         Vec::new(),
         "test.option-result-call",
     )
     .expect_err("option_unwrap_or(some(1)) refuses at compile");
-    assert!(
-        matches!(error, TermCompileError::ArityMismatch { .. }),
-        "short unwrap_or must be a typed arity refusal, got {error:?}"
-    );
-}
+    p.demand(format!("short unwrap_or must be a typed arity refusal, got {error:?}"), matches!(error, TermCompileError::ArityMismatch { .. }), format!("short unwrap_or must be a typed arity refusal, got {error:?}"));
 
-#[test]
-fn call_surface_shape_law_refuses_typed() {
+    });
+    p.case("call_surface_shape_law_refuses_typed", |p| {
+
     // is_some(5): a Scalar in the Option carrier slot refuses at
     // COMPILE (ShapeMismatch — the closed vocabulary's shape law),
     // never a silent mis-lowering and never a panic.
@@ -609,15 +517,12 @@ fn call_surface_shape_law_refuses_typed() {
     let error = compile_reference(
         &term,
         &call_signature(&["5"]),
-        &[],
+        &[] as &[(String, emath_exec_ir::term_compile::ParamShape)],
         Vec::new(),
         "test.option-result-call",
     )
     .expect_err("is_some(5) refuses at compile");
-    assert!(
-        matches!(error, TermCompileError::ShapeMismatch { .. }),
-        "a scalar in the Option carrier slot must refuse typed, got {error:?}"
-    );
+    p.demand(format!("a scalar in the Option carrier slot must refuse typed, got {error:?}"), matches!(error, TermCompileError::ShapeMismatch { .. }), format!("a scalar in the Option carrier slot must refuse typed, got {error:?}"));
 
     // unwrap_or(err(7), none): an opaque Option carrier in the DEFAULT
     // slot refuses (defaults must be concrete payloads).
@@ -631,17 +536,15 @@ fn call_surface_shape_law_refuses_typed() {
     let error = compile_reference(
         &term,
         &call_signature(&["7"]),
-        &[],
+        &[] as &[(String, emath_exec_ir::term_compile::ParamShape)],
         Vec::new(),
         "test.option-result-call",
     )
     .expect_err("unwrap_or with an option default refuses at compile");
-    assert!(
-        matches!(error, TermCompileError::ShapeMismatch { .. }),
-        "an Option carrier in the default slot must refuse typed, got {error:?}"
-    );
-}
+    p.demand(format!("an Option carrier in the default slot must refuse typed, got {error:?}"), matches!(error, TermCompileError::ShapeMismatch { .. }), format!("an Option carrier in the default slot must refuse typed, got {error:?}"));
 
+    });
+    p.case("law_nested_none_structural_identity", |p| {
 // ── interp TOTAL-VALUE laws (test-only) ──────────────────────
 //
 // Four assertions of the total value semantics on the real carrier:
@@ -656,28 +559,19 @@ fn call_surface_shape_law_refuses_typed() {
 // polarities, unwrap_or, and error_of (table-driven). TypeConfusion is
 // the sole fault class for cross-carrier misuse.
 
-#[test]
-fn law_nested_none_structural_identity() {
     // Some(None) is NOT flattened to None and NOT a hidden zero: the
     // Some tag and its None content are distinct (kills a "flatten
     // Some(None) → None" mutant at the structural assert below).
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
     let some_of_none =
         eval1(EmirOp::OptionSome(EmirValue(0)), none.clone()).expect("Some(None) computes");
-    assert_eq!(
-        some_of_none,
-        Value::Option(Some(Box::new(Value::Option(None)))),
-        "Some(None) keeps the outer Some and the inner None"
-    );
-    assert_ne!(
-        some_of_none, none,
-        "Some(None) is NOT the same value as None"
-    );
+    p.eq("Some(None) keeps the outer Some and the inner None", some_of_none.clone(), Value::Option(Some(Box::new(Value::Option(None)))));
+    p.ne("Some(None) is NOT the same value as None", some_of_none.clone(), none.clone());
 
     // The polarity op reads the OUTER tag: Some(None) is Some.
     let is_some =
         eval1(EmirOp::OptionIsSome(EmirValue(0)), some_of_none.clone()).expect("is_some computes");
-    assert!(bool_of(&is_some), "Some(None).is_some() = true (the tag)");
+    p.demand("Some(None).is_some() = true (the tag)", bool_of(&is_some), "Some(None).is_some() = true (the tag)");
 
     // unwrap_or through Some(None) yields the CONTENT (None), not the
     // default — the carrier payload passes through untouched.
@@ -686,31 +580,23 @@ fn law_nested_none_structural_identity() {
         &[some_of_none, Value::F64(9.0)],
     )
     .expect("unwrap_or(Some(None)) computes");
-    assert_eq!(
-        out,
-        Value::Option(None),
-        "Some(None).unwrap_or(9) = the content (None), NOT the default"
-    );
-}
+    p.eq("Some(None).unwrap_or(9) = the content (None), NOT the default", out, Value::Option(None));
 
-#[test]
-fn law_double_some_nesting() {
+    });
+    p.case("law_double_some_nesting", |p| {
+
     let seven = Value::F64(7.0);
     let inner = eval1(EmirOp::OptionSome(EmirValue(0)), seven).expect("Some(7) computes");
     let outer =
         eval1(EmirOp::OptionSome(EmirValue(0)), inner.clone()).expect("Some(Some(7)) computes");
-    assert_eq!(
-        outer,
-        Value::Option(Some(Box::new(Value::Option(Some(Box::new(Value::F64(
+    p.eq("two wrapper levels preserve structural nesting", outer.clone(), Value::Option(Some(Box::new(Value::Option(Some(Box::new(Value::F64(
             7.0
-        ))))))),
-        "two wrapper levels preserve structural nesting"
-    );
+  .clone()      ))))))));
 
     // Polarity reads only the outermost tag.
     let is_some =
         eval1(EmirOp::OptionIsSome(EmirValue(0)), outer.clone()).expect("is_some computes");
-    assert!(bool_of(&is_some), "Some(Some(7)).is_some() = true");
+    p.demand("Some(Some(7)).is_some() = true", bool_of(&is_some), "Some(Some(7)).is_some() = true");
 
     // unwrap_or unwraps ONE level → the inner Option.
     let out = eval(
@@ -718,35 +604,31 @@ fn law_double_some_nesting() {
         &[outer, Value::F64(9.0)],
     )
     .expect("unwrap_or(Some(Some(7))) computes");
-    assert_eq!(out, inner, "Some(Some(7)).unwrap_or(9) = Some(7)");
-}
+    p.eq("Some(Some(7)).unwrap_or(9) = Some(7)", out, inner);
 
-#[test]
-fn law_display_distinguishes_some_none_from_none() {
+    });
+    p.case("law_display_distinguishes_some_none_from_none", |p| {
+
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
     let some_of_none =
         eval1(EmirOp::OptionSome(EmirValue(0)), none.clone()).expect("Some(None) computes");
-    assert_eq!(
-        some_of_none.to_string(),
-        "some(none)",
-        "Some(None) renders some(none), so display is not conflated with None"
-    );
-    assert_eq!(none.to_string(), "none", "None renders none");
+    p.demand("Some(None) renders some(none), so display is not conflated with None", some_of_none.to_string() == "some(none)", format!("expected {:?}, got {:?}", "some(none)", some_of_none.to_string()));
+    p.demand("None renders none", none.to_string() == "none", format!("expected {:?}, got {:?}", "none", none.to_string()));
 
     // Some(Some(7)) renders nested, not flattened.
     let inner = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(7.0)).expect("Some(7) computes");
     let outer = eval1(EmirOp::OptionSome(EmirValue(0)), inner).expect("Some(Some(7)) computes");
-    assert_eq!(outer.to_string(), "some(some(7.0))");
+    p.demand("law_display_distinguishes_some_none_from_none#3", outer.to_string() == "some(some(7.0))", format!("expected {:?}, got {:?}", "some(some(7.0))", outer.to_string()));
 
     // The Result display keeps ok/err tags for the round-trip evidence.
     let ok = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0)).expect("Ok(3) computes");
     let err = eval1(EmirOp::ResultErr(EmirValue(0)), Value::F64(42.0)).expect("Err(42) computes");
-    assert_eq!(ok.to_string(), "ok(3.0)");
-    assert_eq!(err.to_string(), "err(42.0)");
-}
+    p.demand("law_display_distinguishes_some_none_from_none#4", ok.to_string() == "ok(3.0)", format!("expected {:?}, got {:?}", "ok(3.0)", ok.to_string()));
+    p.demand("law_display_distinguishes_some_none_from_none#5", err.to_string() == "err(42.0)", format!("expected {:?}, got {:?}", "err(42.0)", err.to_string()));
 
-#[test]
-fn law_matrix_payload_round_trip_through_carriers() {
+    });
+    p.case("law_matrix_payload_round_trip_through_carriers", |p| {
+
     // Matrix payloads round-trip EXACTLY through Some/Ok/Err-UnwrapOr
     // at the term call surface (the Vector precedent extended to
     // Matrix; kills shape-losing mutants that coerce to scalar).
@@ -778,7 +660,7 @@ fn law_matrix_payload_round_trip_through_carriers() {
         &[],
     )
     .expect("Matrix payload through Some/UnwrapOr");
-    assert_eq!(out, matrix, "Some matrix round-trip exact");
+    p.eq("Some matrix round-trip exact", out, matrix.clone());
 
     let term = opt_apply(
         "result_unwrap_or",
@@ -797,7 +679,7 @@ fn law_matrix_payload_round_trip_through_carriers() {
         &[],
     )
     .expect("Matrix payload through Ok/UnwrapOr");
-    assert_eq!(out, matrix, "Ok matrix round-trip exact");
+    p.eq("Ok matrix round-trip exact", out, matrix.clone());
 
     // Err matrix → error_of → unwrap: the error payload survives.
     let term = opt_apply(
@@ -823,21 +705,21 @@ fn law_matrix_payload_round_trip_through_carriers() {
         &[],
     )
     .expect("Matrix error payload through Err/ErrorOf/UnwrapOr");
-    assert_eq!(out, matrix, "Err matrix round-trip exact");
-}
+    p.eq("Err matrix round-trip exact", out, matrix);
 
-#[test]
-fn law_polarity_totality_table() {
+    });
+    p.case("law_polarity_totality_table", |p| {
+
     // Every carrier answers BOTH polarities, unwrap_or, and (for
     // Result) error_of — no partial match leaves a carrier unhandled.
     // Table-driven over the (constructor × observer) matrix.
-    type Probe = Box<dyn Fn() -> Result<Value, EvalFault>>;
+    type ProbeFn = Box<dyn Fn() -> Result<Value, EvalFault>>;
     let some = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0)).expect("Some computes");
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
     let ok = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0)).expect("Ok computes");
     let err = eval1(EmirOp::ResultErr(EmirValue(0)), Value::F64(42.0)).expect("Err computes");
 
-    let rows: Vec<(&str, &str, Probe, Value)> = vec![
+    let rows: Vec<(&str, &str, ProbeFn, Value)> = vec![
         (
             "some",
             "is_some",
@@ -949,15 +831,15 @@ fn law_polarity_totality_table() {
             Value::Option(Some(Box::new(Value::F64(42.0)))),
         ),
     ];
-    for (carrier, observer, probe, expected) in rows {
-        let value = probe()
+    for (carrier, observer, probe_fn, expected) in rows {
+        let value = probe_fn()
             .unwrap_or_else(|fault| panic!("{carrier}.{observer} must be total, got {fault:?}"));
-        assert_eq!(value, expected, "{carrier}.{observer} = {:?}", expected);
+        p.eq(format!("{carrier}.{observer} = {:?}", expected), value, expected);
     }
-}
 
-#[test]
-fn law_none_and_err_return_default_total() {
+    });
+    p.case("law_none_and_err_return_default_total", |p| {
+
     // The honesty gate: none/err UNWRAP_OR returns the EAGER DEFAULT.
     // Never a fault, never a panicking unwrap.
     let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
@@ -966,7 +848,7 @@ fn law_none_and_err_return_default_total() {
         &[none, Value::F64(7.0)],
     )
     .expect("none.unwrap_or(7) computes (no panic, no fault)");
-    assert_eq!(out, Value::F64(7.0), "None.unwrap_or(7) = 7");
+    p.eq("None.unwrap_or(7) = 7", out, Value::F64(7.0));
 
     let err = eval1(EmirOp::ResultErr(EmirValue(0)), Value::F64(42.0)).expect("Err computes");
     let out = eval(
@@ -974,35 +856,29 @@ fn law_none_and_err_return_default_total() {
         &[err, Value::F64(9.0)],
     )
     .expect("err.unwrap_or(9) computes (no panic, no fault)");
-    assert_eq!(out, Value::F64(9.0), "Err(42).unwrap_or(9) = 9");
-}
+    p.eq("Err(42).unwrap_or(9) = 9", out, Value::F64(9.0));
 
-#[test]
-fn law_typeconfusion_is_some_on_result() {
+    });
+    p.case("law_typeconfusion_is_some_on_result", |p| {
+
     // is_some on a Result carrier is a TYPED evaluation error (a
     // TypeConfusion fault), never a panic, never a silent wrong answer.
     let result = eval1(EmirOp::ResultOk(EmirValue(0)), Value::F64(3.0)).expect("Ok computes");
     let fault = eval1(EmirOp::OptionIsSome(EmirValue(0)), result)
         .expect_err("is_some on a Result carrier must refuse");
-    assert!(
-        matches!(fault, EvalFault::TypeConfusion { .. }),
-        "expected a TypeConfusion fault, got {fault:?}"
-    );
-}
+    p.demand(format!("expected a TypeConfusion fault, got {fault:?}"), matches!(fault, EvalFault::TypeConfusion { .. }), format!("expected a TypeConfusion fault, got {fault:?}"));
 
-#[test]
-fn law_typeconfusion_is_ok_on_option() {
+    });
+    p.case("law_typeconfusion_is_ok_on_option", |p| {
+
     let option = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0)).expect("Some computes");
     let fault = eval1(EmirOp::ResultIsOk(EmirValue(0)), option)
         .expect_err("is_ok on an Option carrier must refuse");
-    assert!(
-        matches!(fault, EvalFault::TypeConfusion { .. }),
-        "expected a TypeConfusion fault, got {fault:?}"
-    );
-}
+    p.demand(format!("expected a TypeConfusion fault, got {fault:?}"), matches!(fault, EvalFault::TypeConfusion { .. }), format!("expected a TypeConfusion fault, got {fault:?}"));
 
-#[test]
-fn law_typeconfusion_unwrap_or_wrong_carrier() {
+    });
+    p.case("law_typeconfusion_unwrap_or_wrong_carrier", |p| {
+
     // unwrap_or checks the carrier kind strictly too: an Option unwrap
     // over a Result carrier (and vice versa) is TypeConfusion — the
     // eager default is NOT silently handed out on the wrong carrier.
@@ -1012,10 +888,7 @@ fn law_typeconfusion_unwrap_or_wrong_carrier() {
         &[ok, Value::F64(9.0)],
     )
     .expect_err("OptionUnwrapOr on a Result carrier must refuse");
-    assert!(
-        matches!(fault, EvalFault::TypeConfusion { .. }),
-        "expected a TypeConfusion fault, got {fault:?}"
-    );
+    p.demand(format!("expected a TypeConfusion fault, got {fault:?}"), matches!(fault, EvalFault::TypeConfusion { .. }), format!("expected a TypeConfusion fault, got {fault:?}"));
 
     let some = eval1(EmirOp::OptionSome(EmirValue(0)), Value::F64(5.0)).expect("Some computes");
     let fault = eval(
@@ -1023,14 +896,11 @@ fn law_typeconfusion_unwrap_or_wrong_carrier() {
         &[some, Value::F64(9.0)],
     )
     .expect_err("ResultUnwrapOr on an Option carrier must refuse");
-    assert!(
-        matches!(fault, EvalFault::TypeConfusion { .. }),
-        "expected a TypeConfusion fault, got {fault:?}"
-    );
-}
+    p.demand(format!("expected a TypeConfusion fault, got {fault:?}"), matches!(fault, EvalFault::TypeConfusion { .. }), format!("expected a TypeConfusion fault, got {fault:?}"));
 
-#[test]
-fn nested_carrier_in_payload_compiles_and_evaluates() {
+    });
+    p.case("nested_carrier_in_payload_compiles_and_evaluates", |p| {
+
     // Lift: a carrier is a
     // valid PAYLOAD for the constructors. `option_some(option_none())`
     // now COMPILES at the term surface (TermCompileError::ShapeMismatch
@@ -1043,18 +913,15 @@ fn nested_carrier_in_payload_compiles_and_evaluates() {
     // law — never silently weakened, only re-scoped to the new rule).
     let term = opt_apply("option_some", vec![opt_apply("option_none", Vec::new())]);
     let out = call_eval(term, &[]).expect("option_some(option_none()) compiles and evaluates");
-    assert!(
-        matches!(
+    p.demand(format!("option_some(option_none()) must evaluate to Some(None), got {out:?}"), matches!(
             &out,
             Value::Option(Some(inner))
                 if matches!(&**inner, Value::Option(None))
-        ),
-        "option_some(option_none()) must evaluate to Some(None), got {out:?}"
-    );
-}
+        ), format!("option_some(option_none()) must evaluate to Some(None), got {out:?}"));
 
-#[test]
-fn nested_double_some_compiles_and_evaluates() {
+    });
+    p.case("nested_double_some_compiles_and_evaluates", |p| {
+
     // `option_some(option_some(5.0))` compiles and yields Some(Some(5)):
     // the inner carrier survives intact through the outer constructor.
     let term = opt_apply(
@@ -1062,16 +929,14 @@ fn nested_double_some_compiles_and_evaluates() {
         vec![opt_apply("option_some", vec![opt_const("5")])],
     );
     let out = call_eval(term, &["5"]).expect("double Some compiles and evaluates");
-    assert!(
-        matches!(
+    p.demand(format!("option_some(option_some(5.0)) must evaluate to Some(Some(5.0)), got {out:?}"), matches!(
             &out,
             Value::Option(Some(inner))
                 if matches!(&**inner, Value::Option(Some(n)) if matches!(n.as_ref(), Value::F64(x) if *x == 5.0))
-        ),
-        "option_some(option_some(5.0)) must evaluate to Some(Some(5.0)), got {out:?}"
-    );
-}
+        ), format!("option_some(option_some(5.0)) must evaluate to Some(Some(5.0)), got {out:?}"));
 
+    });
+    p.case("field_inv_value_law", |p| {
 // ── Field/GF<p> exact modular value semantics ──────────────
 //
 // The prime-field VALUE layer is the exact-i64 modular ops that already
@@ -1086,8 +951,6 @@ fn nested_double_some_compiles_and_evaluates() {
 // Exactness: results are `Value::I64` and the equality asserts pin the
 // I64 variant — a float cast would produce `Value::F64` and fail.
 
-#[test]
-fn field_inv_value_law() {
     // field_inv(a, p) = a^-1 mod p over the prime field, exactly:
     // 3^-1 ≡ 5 (mod 7) and 2^-1 ≡ 3 (mod 5).
     let out = eval(
@@ -1095,18 +958,18 @@ fn field_inv_value_law() {
         &[Value::I64(3), Value::I64(7)],
     )
     .expect("field_inv(3, 7) computes");
-    assert_eq!(out, Value::I64(5), "3^-1 ≡ 5 (mod 7) — exact I64");
+    p.eq("3^-1 ≡ 5 (mod 7) — exact I64", out, Value::I64(5));
 
     let out = eval(
         vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(2), Value::I64(5)],
     )
     .expect("field_inv(2, 5) computes");
-    assert_eq!(out, Value::I64(3), "2^-1 ≡ 3 (mod 5) — exact I64");
-}
+    p.eq("2^-1 ≡ 3 (mod 5) — exact I64", out, Value::I64(3));
 
-#[test]
-fn field_inv_refusals_typed() {
+    });
+    p.case("field_inv_refusals_typed", |p| {
+
     // A non-invertible a (gcd(a, p) ≠ 1) and a non-positive modulus are
     // TYPED CapabilityRefused refusals carrying the kernel's code, never
     // a panic and never a silent answer.
@@ -1115,24 +978,18 @@ fn field_inv_refusals_typed() {
         &[Value::I64(2), Value::I64(4)],
     )
     .expect_err("field_inv(2, 4) must refuse: gcd(2,4) = 2 ≠ 1");
-    assert!(
-        matches!(fault, EvalFault::CapabilityRefused { .. }),
-        "a non-invertible value must be a typed Arithmetic fault, got {fault:?}"
-    );
+    p.demand(format!("a non-invertible value must be a typed Arithmetic fault, got {fault:?}"), matches!(fault, EvalFault::CapabilityRefused { .. }), format!("a non-invertible value must be a typed Arithmetic fault, got {fault:?}"));
 
     let fault = eval(
         vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
         &[Value::I64(3), Value::I64(0)],
     )
     .expect_err("field_inv(3, 0) must refuse: modulus must be positive");
-    assert!(
-        matches!(fault, EvalFault::CapabilityRefused { .. }),
-        "a non-positive modulus must be a typed Arithmetic fault, got {fault:?}"
-    );
-}
+    p.demand(format!("a non-positive modulus must be a typed Arithmetic fault, got {fault:?}"), matches!(fault, EvalFault::CapabilityRefused { .. }), format!("a non-positive modulus must be a typed Arithmetic fault, got {fault:?}"));
 
-#[test]
-fn field_inv_term_surface_values() {
+    });
+    p.case("field_inv_term_surface_values", |p| {
+
     // The closed call surface: `field_inv(a, p)` compiles to ModInv and
     // evaluates exactly. RED before the term_compile arm landed (the
     // operator was unknown to the closed vocabulary).
@@ -1141,15 +998,11 @@ fn field_inv_term_surface_values() {
         &["3", "7"],
     )
     .expect("field_inv(3, 7) compiles and evaluates");
-    assert_eq!(
-        value,
-        Value::I64(5),
-        "field_inv(3, 7) = 5 through the call surface"
-    );
-}
+    p.eq("field_inv(3, 7) = 5 through the call surface", value, Value::I64(5));
 
-#[test]
-fn field_inv_arity_shape_refused_typed() {
+    });
+    p.case("field_inv_arity_shape_refused_typed", |p| {
+
     // field_inv() with zero args refuses as a typed ARITY refusal; a
     // Vector in the scalar operand slot refuses as a typed SHAPE refusal.
     // Never a panic, never an empty lowering.
@@ -1157,15 +1010,12 @@ fn field_inv_arity_shape_refused_typed() {
     let error = compile_reference(
         &zero,
         &call_signature(&[]),
-        &[],
+        &[] as &[(String, emath_exec_ir::term_compile::ParamShape)],
         Vec::new(),
         "test.field-call",
     )
     .expect_err("field_inv() refuses at compile");
-    assert!(
-        matches!(error, TermCompileError::ArityMismatch { .. }),
-        "zero-arg field_inv must be a typed arity refusal, got {error:?}"
-    );
+    p.demand(format!("zero-arg field_inv must be a typed arity refusal, got {error:?}"), matches!(error, TermCompileError::ArityMismatch { .. }), format!("zero-arg field_inv must be a typed arity refusal, got {error:?}"));
 
     let term = opt_apply(
         "field_inv",
@@ -1179,12 +1029,10 @@ fn field_inv_arity_shape_refused_typed() {
         "test.field-call",
     )
     .expect_err("field_inv over a Vector refuses at compile");
-    assert!(
-        matches!(error, TermCompileError::ShapeMismatch { .. }),
-        "a Vector in the scalar slot must refuse typed, got {error:?}"
-    );
-}
+    p.demand(format!("a Vector in the scalar slot must refuse typed, got {error:?}"), matches!(error, TermCompileError::ShapeMismatch { .. }), format!("a Vector in the scalar slot must refuse typed, got {error:?}"));
 
+    });
+    p.case("meta_unwrap_or_identity_law", |p| {
 // ── metamorphic / property-encoded laws + mutation kills ─────
 //
 // TEST-ONLY pass (no production edits). Each law is table-driven over a
@@ -1200,13 +1048,10 @@ fn field_inv_arity_shape_refused_typed() {
 //   inverse" mutant that returns e.g. inv(a)=a-1.
 // - Graph relabel uses DIFFERENT-reachability graphs so the metamorphic
 //   value changes (not writes a coincidentally-equal mask).
-
 //
 // (1) Option/Result laws — metamorphic identity + error channel.
 //
 
-#[test]
-fn meta_unwrap_or_identity_law() {
     // unwrap_or(some(x), d) == x (the payload, never the default) and
     // unwrap_or(none, d) == d, over a payload vector. The interpreter's
     // default is EAGER (register discipline); both branches agree on the
@@ -1228,11 +1073,7 @@ fn meta_unwrap_or_identity_law() {
             &[some, Value::F64(7.0)],
         )
         .expect("some(x).unwrap_or(d) computes (total)");
-        assert_eq!(
-            out,
-            Value::F64(x),
-            "Some({x}).unwrap_or(7) == {x} (identity)"
-        );
+        p.eq(format!("Some({x}).unwrap_or(7) == {x} (identity)"), out, Value::F64(x));
     }
     for &d in &payloads {
         let none = eval1(EmirOp::OptionNone, Value::F64(0.0)).expect("None computes");
@@ -1241,12 +1082,12 @@ fn meta_unwrap_or_identity_law() {
             &[none, Value::F64(d)],
         )
         .expect("none.unwrap_or(d) computes (total)");
-        assert_eq!(out, Value::F64(d), "None.unwrap_or({d}) == {d} (identity)");
+        p.eq(format!("None.unwrap_or({d}) == {d} (identity)"), out, Value::F64(d));
     }
-}
 
-#[test]
-fn meta_result_error_channel_law() {
+    });
+    p.case("meta_result_error_channel_law", |p| {
+
     // Metamorphic duality: is_some(error_of(r)) == !is_ok(r) over both
     // branches, plus the error round-trip err(x).error_of().unwrap_or(y)
     // == x. Table-driven over a payload set.
@@ -1264,29 +1105,21 @@ fn meta_result_error_channel_law() {
             let is_some_eo = eval1(EmirOp::OptionIsSome(EmirValue(0)), error_of.clone())
                 .expect("is_some computes");
             let is_ok = eval1(EmirOp::ResultIsOk(EmirValue(0)), r).expect("is_ok computes");
-            assert_eq!(
-                bool_of(&is_some_eo),
-                !bool_of(&is_ok),
-                "is_some(error_of(r)) == !is_ok(r) for payload {x}"
-            );
+            p.eq(format!("is_some(error_of(r)) == !is_ok(r) for payload {x}"), bool_of(&is_some_eo), !bool_of(&is_ok));
             if !ok {
                 let rec = eval(
                     vec![EmirOp::OptionUnwrapOr(EmirValue(0), EmirValue(1))],
                     &[error_of, Value::F64(-1.0)],
                 )
                 .expect("error round-trip computes");
-                assert_eq!(
-                    rec,
-                    Value::F64(x),
-                    "err({x}).error_of().unwrap_or(-1) == {x} (round-trip)"
-                );
+                p.eq(format!("err({x}).error_of().unwrap_or(-1) == {x} (round-trip)"), rec, Value::F64(x));
             }
         }
     }
-}
 
-#[test]
-fn meta_double_wrap_associativity() {
+    });
+    p.case("meta_double_wrap_associativity", |p| {
+
     // Carrier associativity: some(some(x)).unwrap_or(d) == some(x) — one
     // unwrap pops ONE wrapper, not two (kills a double-unwrap mutant) and
     // not zero (kills a no-unwrap mutant); the result stays Some.
@@ -1299,17 +1132,431 @@ fn meta_double_wrap_associativity() {
             &[outer, Value::F64(9.0)],
         )
         .expect("unwrap computes");
-        assert_eq!(
-            out, inner,
-            "Some(Some({x})).unwrap_or(9) == Some({x}) — one wrapper popped"
-        );
+        p.eq(format!("Some(Some({x})).unwrap_or(9) == Some({x}) — one wrapper popped"), out.clone(), inner);
         let is_some = eval1(EmirOp::OptionIsSome(EmirValue(0)), out).expect("is_some computes");
-        assert!(
-            bool_of(&is_some),
-            "double-wrap unwrap_or keeps Some for {x}"
-        );
+        p.demand(format!("double-wrap unwrap_or keeps Some for {x}"), bool_of(&is_some), format!("double-wrap unwrap_or keeps Some for {x}"));
+    }
+
+    });
+    p.case("meta_graph_relabel_reachability_equivariance", |p| {
+
+    // Adjacency: edges 0->1, 1->3, 2->3 — vertex 2 is NOT reachable
+    // from 0 and vertex 3 is not a fork from 0. Relative reachability
+    // differs per vertex so a relabel that permutes ENDPOINTS changes the
+    // reachability mask (not coincidentally equal). LAW: for every
+    // permutation P (old->new) and every source,
+    //   reachability(A', P(src)) == P ⊳ reachability(A, src)
+    let adj = Value::Matrix {
+        rows: 4,
+        cols: 4,
+        data: vec![
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0, //
+            0.0, 0.0, 0.0, 1.0, //
+            0.0, 0.0, 0.0, 0.0, //
+        ],
+    };
+    let permutations: &[&[usize]] = &[
+        &[1, 2, 3, 0], // rotation
+        &[3, 1, 0, 2], // derangement
+        &[0, 1, 2, 3], // identity (control)
+    ];
+    let term = opt_apply(
+        "reachability",
+        vec![
+            Term::Variable(VariableId("a".into())),
+            Term::Variable(VariableId("s".into())),
+        ],
+    );
+    for &perm in permutations {
+        for src in 0u32..4 {
+            let orig = graph_eval(
+                term.clone(),
+                vec![
+                    ("a".to_string(), ParamShape::Matrix),
+                    ("s".to_string(), ParamShape::Scalar),
+                ],
+                &[adj.clone(), Value::F64(src as f64)],
+            )
+            .expect("reachability(A, src) computes");
+            let expected = permute_vector(perm, &orig);
+            let a_perm = permute_matrix(p, perm, &adj);
+            let got = graph_eval(
+                term.clone(),
+                vec![
+                    ("a".to_string(), ParamShape::Matrix),
+                    ("s".to_string(), ParamShape::Scalar),
+                ],
+                &[a_perm, Value::F64(perm[src as usize] as f64)],
+            )
+            .expect("reachability(A', P(src)) computes");
+            p.eq(format!("relabel P={perm:?}: reachability(A', {0}) must equal P ⊳ \
+                 reachability(A, {0})", perm[src as usize]), got, expected);
+        }
+    }
+
+    });
+    p.case("meta_graph_relabel_out_degrees_equivariance", |p| {
+
+    // out_degrees(A')[u] = out_degrees(A)[Pinv(u)] — row sums permute
+    // under a relabel: P ⊳ out_degrees(A). Values CHANGE under the
+    // rotation (the discriminant is a real permutation of the degree
+    // vector, not a coincidental fixpoint).
+    let adj = Value::Matrix {
+        rows: 4,
+        cols: 4,
+        data: vec![
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0, //
+            0.0, 0.0, 0.0, 1.0, //
+            0.0, 0.0, 0.0, 0.0, //
+        ],
+    };
+    let perm: &[usize] = &[1, 2, 3, 0];
+    let term = opt_apply("out_degrees", vec![Term::Variable(VariableId("a".into()))]);
+    let orig = graph_eval(
+        term.clone(),
+        vec![("a".to_string(), ParamShape::Matrix)],
+        &[adj.clone()],
+    )
+    .expect("out_degrees(A) computes");
+    let expected = permute_vector(perm, &orig);
+    let a_perm = permute_matrix(p, perm, &adj);
+    let got = graph_eval(
+        term.clone(),
+        vec![("a".to_string(), ParamShape::Matrix)],
+        &[a_perm],
+    )
+    .expect("out_degrees(A') computes");
+    p.eq(format!("relabel P={perm:?}: out_degrees(A') must equal P ⊳ out_degrees(A)"), got, expected);
+
+    });
+    p.case("meta_field_involution_range_totality", |p| {
+//
+// (3) Finite-field algebra — metamorphic involution + totality + controls.
+//
+// WITHIN the no-claim boundary (only field_inv + generic i64 integer
+// family; field_add/field_mul not registered). The generic-i64 `mul` is
+// reachable, but there is NO integer remainder/mod at the term surface
+// and NO `congruence` name, so the inverse-product law a*inv(a) ≡ 1 (mod p)
+// is NOT reachable — reported, not implemented. The reduced form is
+// asserted instead: involution, range, totality, and concrete anchors.
+//
+
+    // For every prime p in scope and every nonzero a in 1..p-1:
+    //  (a) totality: field_inv(a,p) computes with NO EvalFault;
+    //  (b) range:   field_inv(a,p) in 1..p-1 (never 0, never ≥ p);
+    //  (c) anchor:  field_inv(1,p) == 1;
+    //  (d) involution: field_inv(field_inv(a,p), p) == a.
+    // (a) discriminates "total silence" (a fault-suppressing mutant); (b)
+    // and (d) discriminate wrong-inverse and out-of-range mutants.
+    let primes = [3i64, 5, 7, 13];
+    for &prime in &primes {
+        let inv1 = eval(
+            vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
+            &[Value::I64(1), Value::I64(prime)],
+        )
+        .expect("field_inv(1, p) computes");
+        p.eq(format!("1^-1 == 1 (mod {prime}) — exact I64"), inv1, Value::I64(1));
+        for a in 1..prime {
+            let inv = eval(
+                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
+                &[Value::I64(a), Value::I64(prime)],
+            )
+            .expect("field_inv(a,p) computes (totality)");
+            let Value::I64(b) = inv else {
+                { p.fail("meta_field_involution_range_totality#2", format!("field_inv must be exact I64 for a={a} p={prime}, got {inv:?}")); panic!("probe failure: meta_field_involution_range_totality#2"); }};
+            p.demand(format!("range: field_inv({a},{prime}) = {b} must lie in 1..{prime}-1"), 1 <= b && b < prime, format!("range: field_inv({a},{prime}) = {b} must lie in 1..{prime}-1"));
+            let inv_inv = eval(
+                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
+                &[Value::I64(b), Value::I64(prime)],
+            )
+            .expect("field_inv(inv(a),p) computes");
+            p.eq(format!("involution: field_inv(field_inv({a},{prime}),{prime}) == {a}"), inv_inv, Value::I64(a));
+        }
+    }
+
+    });
+    p.case("meta_field_negative_controls_discriminate", |p| {
+
+    // NEGATIVE CONTROLS: operands with gcd(a, p) ≠ 1 — a equal to the
+    // modulus and a zero representative — must FAULT typed, never return
+    // a silent answer. These fail every "total silence" mutant: an
+    // implementation that returned *something* (e.g. 0, or a / a = 1) for
+    // a zero divisor without faulting would pass naive positive laws yet
+    // FAIL these rows. (p prime: gcd(a,p)≠1 iff a ≡ 0 mod p.)
+    let primes = [3i64, 5, 7, 13];
+    for &prime in &primes {
+        for &a in &[prime, 0i64] {
+            let fault = eval(
+                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
+                &[Value::I64(a), Value::I64(prime)],
+            )
+            .expect_err("field_inv({a}, {prime}) must fault: gcd != 1");
+            p.demand(format!("field_inv({a}, {prime}) must be a TYPED Arithmetic fault — \
+                 a silent answer would be a correctness bug; got {fault:?}"), matches!(fault, EvalFault::CapabilityRefused { .. }), format!("field_inv({a}, {prime}) must be a TYPED Arithmetic fault — \
+                 a silent answer would be a correctness bug; got {fault:?}"));
+        }
+    }
+
+    });
+    p.case("meta_field_concrete_anchors_discriminate", |p| {
+
+    // CONCRETE anchors: hand-computed inverses that fail under a
+    // "wrong inverse" mutant (inv(a) := a-1, or inv(a) := 2a mod p).
+    // 3^{-1} ≡ 5 (mod 7): 3*5 = 15 ≡ 1 (mod 7).
+    // 2^{-1} ≡ 3 (mod 5): 2*3 = 6 ≡ 1 (mod 5).
+    // 5^{-1} ≡ 3 (mod 7): 5*3 = 15 ≡ 1 (mod 7).
+    // 3^{-1} ≡ 5 (mod 13): 3*5 = 15 ≡ 2? no — 3*9=27 ≡ 1 (mod 13).
+    for (a, prime, want) in [(3i64, 7i64, 5i64), (2, 5, 3), (5, 7, 3), (3, 13, 9)] {
+        let out = eval(
+            vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
+            &[Value::I64(a), Value::I64(prime)],
+        )
+        .expect("field_inv(a,p) computes");
+        p.eq(format!("concrete anchor: {a}^-1 == {want} (mod {prime})"), out, Value::I64(want));
+    }
+
+    });
+    p.case("int_rem_value_law", |p| {
+// --- universal int_rem ---
+// Exact-Euclidean remainder `a.rem_euclid(m)` on i64. Result is always
+// Value::I64 (no float cast anywhere — the 2^31 / 2 exactness case proves
+// i64 path). m <= 0 is a typed EvalFault::Arithmetic, never a panic.
+// int_rem concrete exact values (Euclidean, non-negative): 7 rem 7 = 0,
+// 5 rem 7 = 5, and the sign law int_rem(-1, 7) = 6.
+
+    for (a, m, want) in [(7i64, 7i64, 0), (5, 7, 5), (-1, 7, 6), (13, 7, 6)] {
+        let out = eval(
+            vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
+            &[Value::I64(a), Value::I64(m)],
+        )
+        .expect("int_rem(a, m) computes");
+        p.eq(format!("int_rem({a}, {m}) = {want} (Euclidean)"), out, Value::I64(want));
+    }
+
+    });
+    p.case("int_rem_exact_i64_large", |p| {
+// Exactness: int_rem(2^31, 2) = 0 as a REAL i64 (no value may fall back
+// to f64 in the exact-integer path).
+
+    let out = eval(
+        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
+        &[Value::I64(2_147_483_648), Value::I64(2)],
+    )
+    .expect("int_rem(2^31, 2) computes");
+    p.eq(format!("int_rem(2^31, 2) must be I64-exact 0 (no float path), got {out:?}"), out, Value::I64(0));
+
+    });
+    p.case("int_rem_zero_modulus_faults_ir", |p| {
+// m <= 0 is a TYPED CapabilityRefused fault (modulus must be positive), never a
+// panic and never a silent truncated result.
+
+    let fault = eval(
+        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
+        &[Value::I64(5), Value::I64(0)],
+    )
+    .expect_err("int_rem(5, 0) must refuse: modulus must be positive");
+    p.demand(format!("int_rem(5, 0) must be a typed Arithmetic fault, got {fault:?}"), matches!(fault, EvalFault::CapabilityRefused { .. }), format!("int_rem(5, 0) must be a typed Arithmetic fault, got {fault:?}"));
+    let neg = eval(
+        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
+        &[Value::I64(5), Value::I64(-3)],
+    )
+    .expect_err("int_rem(5, -3) must refuse: modulus must be positive");
+    p.demand(format!("int_rem(5, -3) must be a typed Arithmetic fault, got {neg:?}"), matches!(neg, EvalFault::CapabilityRefused { .. }), format!("int_rem(5, -3) must be a typed Arithmetic fault, got {neg:?}"));
+
+    });
+    p.case("language_examples_admit_and_evaluate_from_disk", |p| {
+// ── the three .emath examples are RUNNABLE from disk ──
+
+    use emath_sema::CompilerSession;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    emath_syntax::install_source_parser();
+
+    let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../language/examples/intro");
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/language/intro");
+    for (dir, file) in [
+        (&fixtures, "option-result-ops.emath"),
+        (&examples, "option-result-graph-field.emath"),
+        (&examples, "field-mod-arithmetic.emath"),
+    ] {
+        let source = std::fs::read_to_string(dir.join(file))
+            .unwrap_or_else(|e| { p.fail("language_examples_admit_and_evaluate_from_disk#1", format!("{file} must exist on disk: {e}")); panic!("probe failure: language_examples_admit_and_evaluate_from_disk#1"); });
+        let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+        let checked = session.check_owned(file, &source);
+        let errors: Vec<String> = checked
+            .diagnostics
+            .errors()
+            .map(|d| d.to_string())
+            .collect();
+        p.demand(format!("{file} must admit clean: {errors:#?}"), errors.is_empty(), format!("{file} must admit clean: {errors:#?}"));
+        p.demand(format!("{file} must declare at least one function"), !checked.package.declarations.is_empty(), format!("{file} must declare at least one function"));
+        for declaration in &checked.package.declarations {
+            if !declaration.inputs.is_empty() {
+                // Parameterized definitions need caller-supplied inputs;
+                // only the nullary entry points auto-run here.
+                continue;
+            }
+            let values = emath_exec_ir::runner::eval_definitions_values(
+                &checked.package,
+                declaration,
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+            )
+            .unwrap_or_else(|fault| { p.fail("language_examples_admit_and_evaluate_from_disk#4", format!("{file} must evaluate: {fault}")); panic!("probe failure: language_examples_admit_and_evaluate_from_disk#4"); });
+            p.demand(format!("{file}: {:?} must produce values", declaration.name), !values.is_empty(), format!("{file}: {:?} must produce values", declaration.name));
+        }
+    }
+
+    });
+    p.finish();
+}
+
+
+
+
+
+
+
+
+
+
+// ── the term-compile CALL surface (nine names) ────────────────
+//
+// The nine Option/Result names bind the already-landed value-semantics
+// ops through the PUBLIC `compile_reference` seam (the graph-call-
+// surface precedent): the same CompiledCell → EmirProgram → reference
+// interpreter path, with NO sema lowering (the `.emath`-text surface is
+// the named follow-up lane). Carriers are opaque at the shape level;
+// payload/default slots admit the concrete Scalar/Vector/Matrix shapes.
+
+fn opt_apply(operator: &str, arguments: Vec<Term>) -> Term {
+    Term::Apply {
+        operator: SymbolId(operator.into()),
+        arguments,
     }
 }
+
+fn opt_const(text: &str) -> Term {
+    Term::Constant(SymbolId(text.into()))
+}
+
+/// The nine call-surface operators with their declared arities.
+const CALL_SURFACE_DECLS: &[(&str, usize)] = &[
+    ("option_some", 1),
+    ("option_none", 0),
+    ("option_is_some", 1),
+    ("option_unwrap_or", 2),
+    ("result_ok", 1),
+    ("result_err", 1),
+    ("result_is_ok", 1),
+    ("result_unwrap_or", 2),
+    ("result_error_of", 1),
+    // The prime-field call surface. `field_inv(a, p)` lowers to
+    // the interpreter's exact modular inverse `ModInv(a, p)`; generic
+    // modular ADD/MUL EmirOps do not exist, so `field_add`/`field_mul`
+    // are deliberately NOT registered here (handoff spec, never
+    // half-wired names).
+    ("field_inv", 2),
+];
+
+fn call_signature(constants: &[&str]) -> Signature {
+    let mut signature = Signature::default();
+    for (name, arity) in CALL_SURFACE_DECLS {
+        signature
+            .insert(SymbolId(name.to_string()), *arity)
+            .expect("call-surface declarations are conflict-free");
+    }
+    for constant in constants {
+        signature
+            .insert(SymbolId(constant.to_string()), 0)
+            .expect("constant declarations are conflict-free");
+    }
+    signature
+}
+
+/// Compile a constant-only call-surface program (no params) and
+/// evaluate it through the reference interpreter.
+fn call_eval(term: Term, constants: &[&str]) -> Result<Value, EvalFault> {
+    install_language();
+    let cell = compile_reference(
+        &term,
+        &call_signature(constants),
+        &[] as &[(String, emath_exec_ir::term_compile::ParamShape)],
+        Vec::new(),
+        "test.option-result-call",
+    )
+    .expect("call-surface program compiles");
+    evaluate_with_budget(&cell.program, &[], &[], EvalBudget::default())
+}
+
+/// Compile a call-surface program over declared params and evaluate it
+/// over input values (vector/matrix payload fixtures).
+fn call_eval_params(
+    term: Term,
+    params: Vec<(String, ParamShape)>,
+    inputs: &[Value],
+    constants: &[&str],
+) -> Result<Value, EvalFault> {
+    install_language();
+    let cell = compile_reference(
+        &term,
+        &call_signature(constants),
+        &params,
+        Vec::new(),
+        "test.option-result-call",
+    )
+    .expect("call-surface program compiles");
+    evaluate_with_budget(&cell.program, inputs, &[], EvalBudget::default())
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //
 // (2) Graph relabel — metamorphic permutation equivariance.
@@ -1364,17 +1611,17 @@ fn permute_vector(p: &[usize], value: &Value) -> Value {
 }
 
 /// A'[P[i]][P[j]] = A[i][j]: relabel (conjugate) the adjacency matrix.
-fn permute_matrix(p: &[usize], value: &Value) -> Value {
+fn permute_matrix(probe: &mut Probe, perm: &[usize], value: &Value) -> Value {
     let Value::Matrix { rows, cols, data } = value else {
         panic!("expected a matrix, got {value:?}")
     };
-    assert_eq!(rows, cols, "relabel needs a square adjacency");
+    probe.eq("rows", rows, cols);
     let n = *rows as usize;
     let mut out = vec![0.0; data.len()];
     for i in 0..n {
         for j in 0..n {
             let a = data[i * n + j];
-            out[p[i] * n + p[j]] = a;
+            out[perm[i] * n + perm[j]] = a;
         }
     }
     Value::Matrix {
@@ -1384,105 +1631,9 @@ fn permute_matrix(p: &[usize], value: &Value) -> Value {
     }
 }
 
-#[test]
-fn meta_graph_relabel_reachability_equivariance() {
-    // Adjacency: edges 0->1, 1->3, 2->3 — vertex 2 is NOT reachable
-    // from 0 and vertex 3 is not a fork from 0. Relative reachability
-    // differs per vertex so a relabel that permutes ENDPOINTS changes the
-    // reachability mask (not coincidentally equal). LAW: for every
-    // permutation P (old->new) and every source,
-    //   reachability(A', P(src)) == P ⊳ reachability(A, src)
-    let adj = Value::Matrix {
-        rows: 4,
-        cols: 4,
-        data: vec![
-            0.0, 1.0, 0.0, 0.0, //
-            0.0, 0.0, 0.0, 1.0, //
-            0.0, 0.0, 0.0, 1.0, //
-            0.0, 0.0, 0.0, 0.0, //
-        ],
-    };
-    let permutations: &[&[usize]] = &[
-        &[1, 2, 3, 0], // rotation
-        &[3, 1, 0, 2], // derangement
-        &[0, 1, 2, 3], // identity (control)
-    ];
-    let term = opt_apply(
-        "reachability",
-        vec![
-            Term::Variable(VariableId("a".into())),
-            Term::Variable(VariableId("s".into())),
-        ],
-    );
-    for &p in permutations {
-        for src in 0u32..4 {
-            let orig = graph_eval(
-                term.clone(),
-                vec![
-                    ("a".to_string(), ParamShape::Matrix),
-                    ("s".to_string(), ParamShape::Scalar),
-                ],
-                &[adj.clone(), Value::F64(src as f64)],
-            )
-            .expect("reachability(A, src) computes");
-            let expected = permute_vector(p, &orig);
-            let a_perm = permute_matrix(p, &adj);
-            let got = graph_eval(
-                term.clone(),
-                vec![
-                    ("a".to_string(), ParamShape::Matrix),
-                    ("s".to_string(), ParamShape::Scalar),
-                ],
-                &[a_perm, Value::F64(p[src as usize] as f64)],
-            )
-            .expect("reachability(A', P(src)) computes");
-            assert_eq!(
-                got, expected,
-                "relabel P={p:?}: reachability(A', {0}) must equal P ⊳ \
-                 reachability(A, {0})",
-                p[src as usize]
-            );
-        }
-    }
-}
 
-#[test]
-fn meta_graph_relabel_out_degrees_equivariance() {
-    // out_degrees(A')[u] = out_degrees(A)[Pinv(u)] — row sums permute
-    // under a relabel: P ⊳ out_degrees(A). Values CHANGE under the
-    // rotation (the discriminant is a real permutation of the degree
-    // vector, not a coincidental fixpoint).
-    let adj = Value::Matrix {
-        rows: 4,
-        cols: 4,
-        data: vec![
-            0.0, 1.0, 0.0, 0.0, //
-            0.0, 0.0, 0.0, 1.0, //
-            0.0, 0.0, 0.0, 1.0, //
-            0.0, 0.0, 0.0, 0.0, //
-        ],
-    };
-    let p: &[usize] = &[1, 2, 3, 0];
-    let term = opt_apply("out_degrees", vec![Term::Variable(VariableId("a".into()))]);
-    let orig = graph_eval(
-        term.clone(),
-        vec![("a".to_string(), ParamShape::Matrix)],
-        &[adj.clone()],
-    )
-    .expect("out_degrees(A) computes");
-    let expected = permute_vector(p, &orig);
-    let a_perm = permute_matrix(p, &adj);
-    let got = graph_eval(
-        term.clone(),
-        vec![("a".to_string(), ParamShape::Matrix)],
-        &[a_perm],
-    )
-    .expect("out_degrees(A') computes");
-    assert_eq!(
-        got, expected,
-        "relabel P={p:?}: out_degrees(A') must equal P ⊳ out_degrees(A)"
-    );
-}
+
+
 
 //
 // (3) Finite-field algebra — metamorphic involution + totality + controls.
@@ -1493,209 +1644,16 @@ fn meta_graph_relabel_out_degrees_equivariance() {
 // and NO `congruence` name, so the inverse-product law a*inv(a) ≡ 1 (mod p)
 // is NOT reachable — reported, not implemented. The reduced form is
 // asserted instead: involution, range, totality, and concrete anchors.
-//
 
-#[test]
-fn meta_field_involution_range_totality() {
-    // For every prime p in scope and every nonzero a in 1..p-1:
-    //  (a) totality: field_inv(a,p) computes with NO EvalFault;
-    //  (b) range:   field_inv(a,p) in 1..p-1 (never 0, never ≥ p);
-    //  (c) anchor:  field_inv(1,p) == 1;
-    //  (d) involution: field_inv(field_inv(a,p), p) == a.
-    // (a) discriminates "total silence" (a fault-suppressing mutant); (b)
-    // and (d) discriminate wrong-inverse and out-of-range mutants.
-    let primes = [3i64, 5, 7, 13];
-    for &p in &primes {
-        let inv1 = eval(
-            vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
-            &[Value::I64(1), Value::I64(p)],
-        )
-        .expect("field_inv(1, p) computes");
-        assert_eq!(inv1, Value::I64(1), "1^-1 == 1 (mod {p}) — exact I64");
-        for a in 1..p {
-            let inv = eval(
-                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
-                &[Value::I64(a), Value::I64(p)],
-            )
-            .expect("field_inv(a,p) computes (totality)");
-            let Value::I64(b) = inv else {
-                panic!("field_inv must be exact I64 for a={a} p={p}, got {inv:?}")
-            };
-            assert!(
-                1 <= b && b < p,
-                "range: field_inv({a},{p}) = {b} must lie in 1..{p}-1"
-            );
-            let inv_inv = eval(
-                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
-                &[Value::I64(b), Value::I64(p)],
-            )
-            .expect("field_inv(inv(a),p) computes");
-            assert_eq!(
-                inv_inv,
-                Value::I64(a),
-                "involution: field_inv(field_inv({a},{p}),{p}) == {a}"
-            );
-        }
-    }
-}
 
-#[test]
-fn meta_field_negative_controls_discriminate() {
-    // NEGATIVE CONTROLS: operands with gcd(a, p) ≠ 1 — a equal to the
-    // modulus and a zero representative — must FAULT typed, never return
-    // a silent answer. These fail every "total silence" mutant: an
-    // implementation that returned *something* (e.g. 0, or a / a = 1) for
-    // a zero divisor without faulting would pass naive positive laws yet
-    // FAIL these rows. (p prime: gcd(a,p)≠1 iff a ≡ 0 mod p.)
-    let primes = [3i64, 5, 7, 13];
-    for &p in &primes {
-        for &a in &[p, 0i64] {
-            let fault = eval(
-                vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
-                &[Value::I64(a), Value::I64(p)],
-            )
-            .expect_err("field_inv({a}, {p}) must fault: gcd != 1");
-            assert!(
-                matches!(fault, EvalFault::CapabilityRefused { .. }),
-                "field_inv({a}, {p}) must be a TYPED Arithmetic fault — \
-                 a silent answer would be a correctness bug; got {fault:?}"
-            );
-        }
-    }
-}
 
-#[test]
-fn meta_field_concrete_anchors_discriminate() {
-    // CONCRETE anchors: hand-computed inverses that fail under a
-    // "wrong inverse" mutant (inv(a) := a-1, or inv(a) := 2a mod p).
-    // 3^{-1} ≡ 5 (mod 7): 3*5 = 15 ≡ 1 (mod 7).
-    // 2^{-1} ≡ 3 (mod 5): 2*3 = 6 ≡ 1 (mod 5).
-    // 5^{-1} ≡ 3 (mod 7): 5*3 = 15 ≡ 1 (mod 7).
-    // 3^{-1} ≡ 5 (mod 13): 3*5 = 15 ≡ 2? no — 3*9=27 ≡ 1 (mod 13).
-    for (a, p, want) in [(3i64, 7i64, 5i64), (2, 5, 3), (5, 7, 3), (3, 13, 9)] {
-        let out = eval(
-            vec![cell(MOD_INVERSE, vec![EmirValue(0), EmirValue(1)])],
-            &[Value::I64(a), Value::I64(p)],
-        )
-        .expect("field_inv(a,p) computes");
-        assert_eq!(
-            out,
-            Value::I64(want),
-            "concrete anchor: {a}^-1 == {want} (mod {p})"
-        );
-    }
-}
 
-// --- universal int_rem ---
-// Exact-Euclidean remainder `a.rem_euclid(m)` on i64. Result is always
-// Value::I64 (no float cast anywhere — the 2^31 / 2 exactness case proves
-// i64 path). m <= 0 is a typed EvalFault::Arithmetic, never a panic.
 
-/// int_rem concrete exact values (Euclidean, non-negative): 7 rem 7 = 0,
-/// 5 rem 7 = 5, and the sign law int_rem(-1, 7) = 6.
-#[test]
-fn int_rem_value_law() {
-    for (a, m, want) in [(7i64, 7i64, 0), (5, 7, 5), (-1, 7, 6), (13, 7, 6)] {
-        let out = eval(
-            vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
-            &[Value::I64(a), Value::I64(m)],
-        )
-        .expect("int_rem(a, m) computes");
-        assert_eq!(
-            out,
-            Value::I64(want),
-            "int_rem({a}, {m}) = {want} (Euclidean)"
-        );
-    }
-}
 
-/// Exactness: int_rem(2^31, 2) = 0 as a REAL i64 (no value may fall back
-/// to f64 in the exact-integer path).
-#[test]
-fn int_rem_exact_i64_large() {
-    let out = eval(
-        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
-        &[Value::I64(2_147_483_648), Value::I64(2)],
-    )
-    .expect("int_rem(2^31, 2) computes");
-    assert_eq!(
-        out,
-        Value::I64(0),
-        "int_rem(2^31, 2) must be I64-exact 0 (no float path), got {out:?}"
-    );
-}
 
-/// m <= 0 is a TYPED CapabilityRefused fault (modulus must be positive), never a
-/// panic and never a silent truncated result.
-#[test]
-fn int_rem_zero_modulus_faults_ir() {
-    let fault = eval(
-        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
-        &[Value::I64(5), Value::I64(0)],
-    )
-    .expect_err("int_rem(5, 0) must refuse: modulus must be positive");
-    assert!(
-        matches!(fault, EvalFault::CapabilityRefused { .. }),
-        "int_rem(5, 0) must be a typed Arithmetic fault, got {fault:?}"
-    );
-    let neg = eval(
-        vec![cell(INT_REM, vec![EmirValue(0), EmirValue(1)])],
-        &[Value::I64(5), Value::I64(-3)],
-    )
-    .expect_err("int_rem(5, -3) must refuse: modulus must be positive");
-    assert!(
-        matches!(neg, EvalFault::CapabilityRefused { .. }),
-        "int_rem(5, -3) must be a typed Arithmetic fault, got {neg:?}"
-    );
-}
 
-// ── the three .emath examples are RUNNABLE from disk ──
-#[test]
-fn language_examples_admit_and_evaluate_from_disk() {
-    use emath_sema::CompilerSession;
-    use std::collections::BTreeMap;
-    use std::path::PathBuf;
 
-    emath_syntax::install_source_parser();
 
-    let intro = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../language/examples/intro");
-    for file in [
-        "option-result-ops.emath",
-        "option-result-graph-field.emath",
-        "field-mod-arithmetic.emath",
-    ] {
-        let source = std::fs::read_to_string(intro.join(file))
-            .unwrap_or_else(|e| panic!("{file} must exist on disk: {e}"));
-        let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-        let checked = session.check_owned(file, &source);
-        let errors: Vec<String> = checked
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect();
-        assert!(errors.is_empty(), "{file} must admit clean: {errors:#?}");
-        assert!(
-            !checked.package.declarations.is_empty(),
-            "{file} must declare at least one function"
-        );
-        for declaration in &checked.package.declarations {
-            if !declaration.inputs.is_empty() {
-                // Parameterized definitions need caller-supplied inputs;
-                // only the nullary entry points auto-run here.
-                continue;
-            }
-            let values = emath_exec_ir::runner::eval_definitions_values(
-                &checked.package,
-                declaration,
-                &BTreeMap::new(),
-                &BTreeMap::new(),
-            )
-            .unwrap_or_else(|fault| panic!("{file} must evaluate: {fault}"));
-            assert!(
-                !values.is_empty(),
-                "{file}: {:?} must produce values",
-                declaration.name
-            );
-        }
-    }
-}
+
+
+

@@ -34,6 +34,7 @@ use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::{KernelArity, install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{SymbolId, Term};
+use emath_test_harness::Probe;
 
 const POISSON_SINE: &str = "std.capability.pde.poisson-sine";
 
@@ -93,7 +94,10 @@ fn quadratic_exact(x: f64) -> f64 {
 }
 
 #[test]
-fn constant_load_sample_exact() {
+fn intent() {
+    let mut p = Probe::new("(thin nucleus slice): spectral Poisson on the unit");
+    p.case("constant_load_sample_exact", |p| {
+
     // f ≡ 1: the discrete solve IS the sampled exact solution
     // (quadratics are exact under the 3-point Laplacian). A mutant
     // with a wrong DST normalization, a wrong eigenvalue form, or a
@@ -101,20 +105,17 @@ fn constant_load_sample_exact() {
     for n in [7usize, 15, 31] {
         let h = 1.0 / (n as f64 + 1.0);
         let field = solve(&vec![1.0; n]).expect("constant load solves");
-        assert_eq!(field.len(), n, "interior field length law");
+        p.eq("interior field length law", field.len(), n);
         for (j, u) in field.iter().enumerate() {
             let x = (j as f64 + 1.0) * h;
             let exact = quadratic_exact(x);
-            assert!(
-                (u - exact).abs() < 1e-12,
-                "n={n} node {j}: u={u} vs exact {exact}"
-            );
+            p.demand(format!("n={n} node {j}: u={u} vs exact {exact}"), (u - exact).abs() < 1e-12, format!("n={n} node {j}: u={u} vs exact {exact}"));
         }
     }
-}
 
-#[test]
-fn first_eigenmode_second_order_convergence() {
+    });
+    p.case("first_eigenmode_second_order_convergence", |p| {
+
     // f = sin(πx) is the first sine eigenmode: the discrete solution
     // is the continuous solution sin(πx)/π² times (1 + O(h²)). The
     // midpoint error must shrink by ≈ 4× when n doubles — the
@@ -136,17 +137,14 @@ fn first_eigenmode_second_order_convergence() {
     };
     let coarse = midpoint_error(7);
     let fine = midpoint_error(15);
-    assert!(coarse < 0.02, "coarse error bounded, got {coarse}");
-    assert!(fine < 0.006, "fine error bounded, got {fine}");
+    p.demand(format!("coarse error bounded, got {coarse}"), coarse < 0.02, format!("coarse error bounded, got {coarse}"));
+    p.demand(format!("fine error bounded, got {fine}"), fine < 0.006, format!("fine error bounded, got {fine}"));
     let ratio = coarse / fine;
-    assert!(
-        (3.0..5.5).contains(&ratio),
-        "second-order law: coarse/fine ≈ 4, got {ratio} ({coarse} / {fine})"
-    );
-}
+    p.demand(format!("second-order law: coarse/fine ≈ 4, got {ratio} ({coarse} / {fine})"), (3.0..5.5).contains(&ratio), format!("second-order law: coarse/fine ≈ 4, got {ratio} ({coarse} / {fine})"));
 
-#[test]
-fn symmetric_load_symmetric_field() {
+    });
+    p.case("symmetric_load_symmetric_field", |p| {
+
     // Metamorphic law: f(1−x) = f(x) ⟹ u(1−x) = u(x) to machine
     // precision (the sine diagonalization is order-preserving; a
     // mutant that reverses the transform index fails).
@@ -160,54 +158,40 @@ fn symmetric_load_symmetric_field() {
         .collect();
     let field = solve(&load).expect("symmetric load solves");
     for j in 0..n / 2 {
-        assert!(
-            (field[j] - field[n - 1 - j]).abs() < 1e-12,
-            "symmetry: u_{j} = u_{{n+1-j}}, got {} vs {}",
-            field[j],
-            field[n - 1 - j]
-        );
+        p.demand(format!("symmetry: u_{j} = u_{{n+1-j}}, got {} vs {}", field[j], field[n - 1 - j]), (field[j] - field[n - 1 - j]).abs() < 1e-12, format!("symmetry: u_{j} = u_{{n+1-j}}, got {} vs {}", field[j], field[n - 1 - j]));
     }
-}
 
-#[test]
-fn empty_domain_refuses_typed() {
+    });
+    p.case("empty_domain_refuses_typed", |p| {
+
     // E-PDE-001: no interior nodes, no solve — the negative seed's
     // silent-success shape.
     let error = solve(&[]).expect_err("empty interior refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-PDE-001"),
-        "empty interior must name E-PDE-001, got {fault}"
-    );
+    p.demand(format!("empty interior must name E-PDE-001, got {fault}"), fault.contains("E-PDE-001"), format!("empty interior must name E-PDE-001, got {fault}"));
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/spectral_poisson.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-PDE-001"),
-        "seed expects the empty-domain refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the empty-domain refusal, found: {expect_line}"), expect_line.contains("E-PDE-001"), format!("seed expects the empty-domain refusal, found: {expect_line}"));
 
-#[test]
-fn non_finite_load_refuses_typed() {
+    });
+    p.case("non_finite_load_refuses_typed", |p| {
+
     // E-PDE-002: a NaN load sample refuses — never a silently
     // corrupted field.
     let error = solve(&[1.0, f64::NAN, 1.0]).expect_err("non-finite load refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-PDE-002"),
-        "non-finite load must name E-PDE-002, got {fault}"
-    );
-}
+    p.demand(format!("non-finite load must name E-PDE-002, got {fault}"), fault.contains("E-PDE-002"), format!("non-finite load must name E-PDE-002, got {fault}"));
 
-#[test]
-fn poisson_capsule_kernel_abi_and_shape_law() {
+    });
+    p.case("poisson_capsule_kernel_abi_and_shape_law", |p| {
+
     install_language();
     let kernel = native_kernel(POISSON_SINE).expect("Poisson capsule kernel bound");
-    assert_eq!(kernel.kernel_id, "checked-poisson-dirichlet-sine");
-    assert_eq!(kernel.arity_contract(), KernelArity::Exact(1));
+    p.demand("poisson_capsule_kernel_abi_and_shape_law#1", kernel.kernel_id == "checked-poisson-dirichlet-sine", format!("expected {:?}, got {:?}", "checked-poisson-dirichlet-sine", kernel.kernel_id));
+    p.eq("poisson_capsule_kernel_abi_and_shape_law#2", kernel.arity_contract(), KernelArity::Exact(1));
 
     // Evaluate through ApplyCapability: f ≡ 1 on n = 7.
     let n = 7usize;
@@ -228,15 +212,11 @@ fn poisson_capsule_kernel_abi_and_shape_law() {
     )
     .expect("cell evaluates");
     let Value::Vector(field) = value else {
-        panic!("expected a vector field")
-    };
+        { p.fail("poisson_capsule_kernel_abi_and_shape_law#3", format!("expected a vector field")); return; }};
     let h = 1.0 / (n as f64 + 1.0);
     for (j, u) in field.iter().enumerate() {
         let exact = quadratic_exact((j as f64 + 1.0) * h);
-        assert!(
-            (u - exact).abs() < 1e-12,
-            "cell field node {j}: {u} vs {exact}"
-        );
+        p.demand(format!("cell field node {j}: {u} vs {exact}"), (u - exact).abs() < 1e-12, format!("cell field node {j}: {u} vs {exact}"));
     }
 
     let error = eval(
@@ -244,14 +224,11 @@ fn poisson_capsule_kernel_abi_and_shape_law() {
         &[Value::F64(1.0)],
     )
     .expect_err("scalar load refuses at the kernel ABI");
-    assert!(
-        matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")),
-        "scalar load must refuse typed, got {error:?}"
-    );
-}
+    p.demand(format!("scalar load must refuse typed, got {error:?}"), matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")), format!("scalar load must refuse typed, got {error:?}"));
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct PdeWorld;
     impl emath_genesis::FirstOrderWorld for PdeWorld {
@@ -295,11 +272,27 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "spectral-poisson-nucleus");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "spectral-poisson-nucleus", format!("expected {:?}, got {:?}", "spectral-poisson-nucleus", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

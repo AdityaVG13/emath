@@ -23,6 +23,7 @@
 use emath_core::limits::Limits;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
+use emath_test_harness::{Probe, boot};
 
 fn session() -> CompilerSession {
     install_source_parser();
@@ -38,52 +39,50 @@ fn error_codes(result: &emath_sema::CheckResult) -> Vec<String> {
 }
 
 #[test]
-fn dynamical_events_section_admits() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("(B42, thin slice): `events:` section");
+    p.case("dynamical_events_section_admits", |p| {
+
     // `events:` with typed event declarations admits on a model.
     let source = "emath model thermostat:\n    state:\n        heat: Float64\n    definitions:\n        limit = 1.0\n    events:\n        event ThresholdCrossed(value: Float64)\n        event Switched\n".to_string();
     let result = session().check_owned("thermostat", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.is_empty(),
-        "events section admits, got {codes:?} (messages: {:?})",
-        result
+    p.demand(format!("events section admits, got {codes:?} (messages: {:?})", result
             .diagnostics
             .errors()
             .map(|diagnostic| diagnostic.message.clone())
-            .collect::<Vec<_>>()
-    );
-}
+            .collect::<Vec<_>>()), codes.is_empty(), format!("events section admits, got {codes:?} (messages: {:?})", result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()));
 
-#[test]
-fn duplicate_dynamical_event_refuses() {
+    });
+    p.case("duplicate_dynamical_event_refuses", |p| {
+
     // Events are named surface: the same event name twice in one
     // `events:` section refuses typed (E-NAME-022 lane) — never
     // silently shadowed.
     let source = "emath model thermostat:\n    state:\n        heat: Float64\n    definitions:\n        limit = 1.0\n    events:\n        event ThresholdCrossed(value: Float64)\n        event ThresholdCrossed\n".to_string();
     let result = session().check_owned("dup-events", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.contains(&"E-NAME-022".to_string()),
-        "duplicate event name must refuse E-NAME-022, got {codes:?}"
-    );
-}
+    p.demand(format!("duplicate event name must refuse E-NAME-022, got {codes:?}"), codes.contains(&"E-NAME-022".to_string()), format!("duplicate event name must refuse E-NAME-022, got {codes:?}"));
 
-#[test]
-fn non_event_statement_in_events_section_refuses() {
+    });
+    p.case("non_event_statement_in_events_section_refuses", |p| {
+
     // The events section is CLOSED: a statement that is not an event
     // declaration (here a bare assignment) refuses typed — the section
     // cannot smuggle effectful surface in under an events label.
     let source = "emath model thermostat:\n    state:\n        heat: Float64\n    definitions:\n        limit = 1.0\n    events:\n        heat = 0.0\n".to_string();
     let result = session().check_owned("non-event", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.contains(&"E-SYN-101".to_string()),
-        "a non-event statement in `events:` must refuse E-SYN-101, got {codes:?}"
-    );
-}
+    p.demand(format!("a non-event statement in `events:` must refuse E-SYN-101, got {codes:?}"), codes.contains(&"E-SYN-101".to_string()), format!("a non-event statement in `events:` must refuse E-SYN-101, got {codes:?}"));
 
-#[test]
-fn unsupported_dynamical_transition_refuses() {
+    });
+    p.case("unsupported_dynamical_transition_refuses", |p| {
+
     // Fence (no-half-admit law): `transitions:` stays refused while the
     // `on <trigger>:` rule suite does not parse (parser lane). If this
     // test starts failing because transitions began admitting WITHOUT
@@ -93,14 +92,11 @@ fn unsupported_dynamical_transition_refuses() {
     let source = "emath model thermostat:\n    state:\n        heat: Float64\n    definitions:\n        limit = 1.0\n    transitions:\n        on ThresholdCrossed(value):\n            heat = 1.0\n".to_string();
     let result = session().check_owned("fence", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.contains(&"E-SEC-101".to_string()),
-        "transitions stays fenced until the parser slice; got {codes:?}"
-    );
-}
+    p.demand(format!("transitions stays fenced until the parser slice; got {codes:?}"), codes.contains(&"E-SEC-101".to_string()), format!("transitions stays fenced until the parser slice; got {codes:?}"));
 
-#[test]
-fn bouncing_ball_events_admit() {
+    });
+    p.case("bouncing_ball_events_admit", |p| {
+
     // E2E (admission bar): the bouncing-ball hybrid model
     // compiles — continuous state + event surface. (The bounce
     // TRANSITION rule and event-driven simulation are the named next
@@ -108,13 +104,25 @@ fn bouncing_ball_events_admit() {
     let source = "emath model bouncing_ball:\n    state:\n        height: Float64\n        velocity: Float64\n    definitions:\n        gravity = 9.81\n    events:\n        event Bounce\n".to_string();
     let result = session().check_owned("bouncing-ball", &source);
     let codes = error_codes(&result);
-    assert!(
-        codes.is_empty(),
-        "the bouncing-ball hybrid model compiles, got {codes:?} (messages: {:?})",
-        result
+    p.demand(format!("the bouncing-ball hybrid model compiles, got {codes:?} (messages: {:?})", result
             .diagnostics
             .errors()
             .map(|diagnostic| diagnostic.message.clone())
-            .collect::<Vec<_>>()
-    );
+            .collect::<Vec<_>>()), codes.is_empty(), format!("the bouncing-ball hybrid model compiles, got {codes:?} (messages: {:?})", result
+            .diagnostics
+            .errors()
+            .map(|diagnostic| diagnostic.message.clone())
+            .collect::<Vec<_>>()));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+

@@ -22,6 +22,7 @@ use emath_exec_ir::runner::eval_definitions_values;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
+use emath_test_harness::{Probe, boot};
 
 /// The runnable example IS the pinned artifact for the curve/surface/
 /// implicit tests (the `geometry3d.rs` pattern): the shipped
@@ -32,25 +33,124 @@ use std::collections::BTreeMap;
 const EXAMPLE_SOURCE: &str =
     include_str!("../../../language/examples/geometry/parametric-surfaces.emath");
 
-/// Intended behavior: r(0.5) == [0.5, 0.25, 1.0], r(2.0) == [2.0, 4.0, 4.0].
 #[test]
-fn curve_point_evaluates_end_to_end() {
-    let values = eval_source(
+fn intent() {
+    boot();
+    let mut p = Probe::new("Prove curve evaluation `r(t) -> Vector[3]`,");
+    p.case("curve_point_evaluates_end_to_end", |p| {
+// Intended behavior: r(0.5) == [0.5, 0.25, 1.0], r(2.0) == [2.0, 4.0, 4.0].
+
+    let values = eval_source(p, 
         EXAMPLE_SOURCE,
         "parametric-surfaces",
         "ParametricSurfacesAcceptance",
     );
-    assert_eq!(
-        values.get("p_half"),
-        Some(&Value::Vector(vec![0.5, 0.25, 1.0])),
-        "r(0.5) = [0.5, 0.25, 1.0]"
+    p.eq("r(0.5) = [0.5, 0.25, 1.0]", values.get("p_half"), Some(&Value::Vector(vec![0.5, 0.25, 1.0])));
+    p.eq("r(2.0) == [2.0, 4.0, 4.0]", values.get("p_two"), Some(&Value::Vector(vec![2.0, 4.0, 4.0])));
+
+    });
+    p.case("surface_point_evaluates_end_to_end", |p| {
+// Intended behavior: paraboloid(0.5, 2.0) == [0.5, 2.0, 4.25],
+// paraboloid(1.0, -1.0) == [1.0, -1.0, 2.0], sphere(0,0) == [0,0,1]
+// exactly (sin(0)=0, cos(0)=1 are exact in f64), and the torus outer
+// equator torus(0,0) == [3,0,0] exactly ((2+cos(0))·cos(0) = 3·1).
+
+    let values = eval_source(p, 
+        EXAMPLE_SOURCE,
+        "parametric-surfaces",
+        "ParametricSurfacesAcceptance",
     );
-    assert_eq!(
-        values.get("p_two"),
-        Some(&Value::Vector(vec![2.0, 4.0, 4.0])),
-        "r(2.0) == [2.0, 4.0, 4.0]"
+    p.eq("paraboloid(0.5, 2.0) = [0.5, 2.0, 4.25]", values.get("s_a"), Some(&Value::Vector(vec![0.5, 2.0, 4.25])));
+    p.eq("paraboloid(1.0, -1.0) = [1.0, -1.0, 2.0]", values.get("s_b"), Some(&Value::Vector(vec![1.0, -1.0, 2.0])));
+    p.eq("sphere north pole r(0,0) = (0,0,1)", values.get("s_north"), Some(&Value::Vector(vec![0.0, 0.0, 1.0])));
+    p.eq("torus outer equator (0,0) = (3,0,0)", values.get("t_ring"), Some(&Value::Vector(vec![3.0, 0.0, 0.0])));
+
+    });
+    p.case("implicit_field_evaluates_end_to_end", |p| {
+// Intended behavior: the implicit sphere field evaluates
+// exactly at representable points: f([1,2,2]) = 9, f([0,0,0]) = 0.
+
+    let values = eval_source(p, 
+        EXAMPLE_SOURCE,
+        "parametric-surfaces",
+        "ParametricSurfacesAcceptance",
     );
+    p.eq("f([1,2,2]) = 9", values.get("f_q"), Some(&Value::F64(9.0)));
+    p.eq("f([0,0,0]) = 0", values.get("f_origin"), Some(&Value::F64(0.0)));
+
+    });
+    p.case("wrong_arity_call_refused_typed", |p| {
+// Intended behavior: a wrong-arity call is refused with a
+// diagnostic that names the arity problem. Failure-first: today the
+// refusal is the generic E-TYPE-003 "unknown function", which does NOT
+// mention arity, so this test is RED until the typed refusal lands.
+
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let checked = session.check_owned("parametric-arity", ARITY_SOURCE);
+    let errors: Vec<String> = checked
+        .diagnostics
+        .errors()
+        .map(ToString::to_string)
+        .collect();
+    p.demand("wrong-arity call must be refused", !errors.is_empty(), "wrong-arity call must be refused");
+    p.demand(format!("refusal must name the arity problem, got: {errors:#?}"), errors.iter().any(|e| e.contains("arity")), format!("refusal must name the arity problem, got: {errors:#?}"));
+
+    });
+    p.case("reparameterization_invariance_within_tolerance", |p| {
+// Intended behavior: the 2*pi-shifted sphere agrees with the
+// original within 1e-12 at a generic point and EXACTLY at (0,0).
+
+    let values = eval_source(p, REPARAM_SOURCE, "reparam-invariance", "ReparamAcceptance");
+    for name in ["dx_ok", "dy_ok", "dz_ok"] {
+        p.eq(format!("{name}: shifted-sphere component must match within 1e-12"), values.get(name), Some(&Value::Bool(true)));
+    }
+    // Component-wise f64 equality (not Value equality): the shifted
+    // path computes 0.0 * sin(2pi) = -0.0 in y — the same real number
+    // zero, so f64 `==` (which treats -0.0 == 0.0) is the honest check.
+    let (Some(Value::Vector(a)), Some(Value::Vector(b))) =
+        (values.get("r_origin_a"), values.get("r_origin_b"))
+    else {
+        { p.fail("reparameterization_invariance_within_tolerance#2", format!("north-pole bindings must be vectors")); return; };
+    };
+    p.demand(format!("period-shifted sphere must reproduce the north pole exactly: {a:?} vs {b:?}"), a == b, format!("period-shifted sphere must reproduce the north pole exactly: {a:?} vs {b:?}"));
+
+    });
+    p.case("symmetric_determinism_and_exact_reproduction", |p| {
+// Intended behavior: same-args calls are bitwise identical,
+// the (u,v) swap leaves the shared z component bit-identical, and a
+// wrapper call reproduces the direct call exactly.
+
+    let values = eval_source(p, DETERMINISM_SOURCE, "determinism", "DeterminismAcceptance");
+    p.eq("determinism", values.get("same"), Some(&Value::Bool(true)));
+    p.eq("swap symmetry in z is exact", values.get("z_match"), Some(&Value::Bool(true)));
+    p.eq("wrapper call reproduces the direct call exactly", values.get("wrap_match"), Some(&Value::Bool(true)));
+
+    });
+    p.case("log_domain_violation_propagates_nan_per_ieee", |p| {
+// Strict-f64 discipline through the call path. The
+// builtin contract (crates/emath-exec-ir/src/builtin.rs, the 9bj1
+// convention) is IEEE-faithful propagation: ln/sqrt of a negative
+// argument yield NaN, detectable with `is_finite`, and the tangent
+// stays NaN-consistent. The call path must preserve that convention
+// exactly — inlining may not perturb, silence, or magnify it. (The
+// 's own typed-refusal duty — degenerate parameter domains
+// lands in the sampling cell, where the domain is mine to define.)
+
+    let values = eval_source(p, DOMAIN_SOURCE, "log-domain", "DomainAcceptance");
+    p.eq("ln(-1) through a called function stays IEEE NaN", values.get("bad"), Some(&Value::F64(f64::NAN)));
+
+    });
+    p.case("sqrt_domain_violation_propagates_nan_per_ieee", |p| {
+// Sqrt mirrors ln: IEEE NaN through the call path.
+
+    let values = eval_source(p, SQRT_DOMAIN_SOURCE, "sqrt-domain", "SqrtDomainAcceptance");
+    p.eq("sqrt(-1) through a called function stays IEEE NaN", values.get("bad"), Some(&Value::F64(f64::NAN)));
+
+    });
+    p.finish();
 }
+
 
 /// A call with the wrong argument count must be
 /// refused with a diagnostic that names the arity problem (not a generic
@@ -70,7 +170,7 @@ emath function ArityAcceptance:
         bad = paraboloid(1.0)
 "#;
 
-fn eval_source(source: &str, session_name: &str, entry: &str) -> BTreeMap<String, Value> {
+fn eval_source(p: &mut Probe, source: &str, session_name: &str, entry: &str) -> BTreeMap<String, Value> {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned(session_name, source);
@@ -79,7 +179,7 @@ fn eval_source(source: &str, session_name: &str, entry: &str) -> BTreeMap<String
         .errors()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    assert!(errors.is_empty(), "source must admit: {errors:#?}");
+    p.demand("\"source must admit: {errors:#?}\"", errors.is_empty(), format!("source must admit: {errors:#?}"));
     let declaration = checked
         .package
         .declarations
@@ -95,76 +195,11 @@ fn eval_source(source: &str, session_name: &str, entry: &str) -> BTreeMap<String
     .unwrap_or_else(|fault| panic!("source must evaluate: {fault}"))
 }
 
-/// Intended behavior: paraboloid(0.5, 2.0) == [0.5, 2.0, 4.25],
-/// paraboloid(1.0, -1.0) == [1.0, -1.0, 2.0], sphere(0,0) == [0,0,1]
-/// exactly (sin(0)=0, cos(0)=1 are exact in f64), and the torus outer
-/// equator torus(0,0) == [3,0,0] exactly ((2+cos(0))·cos(0) = 3·1).
-#[test]
-fn surface_point_evaluates_end_to_end() {
-    let values = eval_source(
-        EXAMPLE_SOURCE,
-        "parametric-surfaces",
-        "ParametricSurfacesAcceptance",
-    );
-    assert_eq!(
-        values.get("s_a"),
-        Some(&Value::Vector(vec![0.5, 2.0, 4.25])),
-        "paraboloid(0.5, 2.0) = [0.5, 2.0, 4.25]"
-    );
-    assert_eq!(
-        values.get("s_b"),
-        Some(&Value::Vector(vec![1.0, -1.0, 2.0])),
-        "paraboloid(1.0, -1.0) = [1.0, -1.0, 2.0]"
-    );
-    assert_eq!(
-        values.get("s_north"),
-        Some(&Value::Vector(vec![0.0, 0.0, 1.0])),
-        "sphere north pole r(0,0) = (0,0,1)"
-    );
-    assert_eq!(
-        values.get("t_ring"),
-        Some(&Value::Vector(vec![3.0, 0.0, 0.0])),
-        "torus outer equator (0,0) = (3,0,0)"
-    );
-}
 
-/// Intended behavior: the implicit sphere field evaluates
-/// exactly at representable points: f([1,2,2]) = 9, f([0,0,0]) = 0.
-#[test]
-fn implicit_field_evaluates_end_to_end() {
-    let values = eval_source(
-        EXAMPLE_SOURCE,
-        "parametric-surfaces",
-        "ParametricSurfacesAcceptance",
-    );
-    assert_eq!(values.get("f_q"), Some(&Value::F64(9.0)), "f([1,2,2]) = 9");
-    assert_eq!(
-        values.get("f_origin"),
-        Some(&Value::F64(0.0)),
-        "f([0,0,0]) = 0"
-    );
-}
 
-/// Intended behavior: a wrong-arity call is refused with a
-/// diagnostic that names the arity problem. Failure-first: today the
-/// refusal is the generic E-TYPE-003 "unknown function", which does NOT
-/// mention arity, so this test is RED until the typed refusal lands.
-#[test]
-fn wrong_arity_call_refused_typed() {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let checked = session.check_owned("parametric-arity", ARITY_SOURCE);
-    let errors: Vec<String> = checked
-        .diagnostics
-        .errors()
-        .map(ToString::to_string)
-        .collect();
-    assert!(!errors.is_empty(), "wrong-arity call must be refused");
-    assert!(
-        errors.iter().any(|e| e.contains("arity")),
-        "refusal must name the arity problem, got: {errors:#?}"
-    );
-}
+
+
+
 
 /// Metamorphic: reparametrization by a period shift
 /// preserves the sampled point set within tolerance. The sphere shifted
@@ -300,76 +335,10 @@ fn try_eval_source(
     .map_err(|fault| format!("evaluation fault: {fault}"))
 }
 
-/// Intended behavior: the 2*pi-shifted sphere agrees with the
-/// original within 1e-12 at a generic point and EXACTLY at (0,0).
-#[test]
-fn reparameterization_invariance_within_tolerance() {
-    let values = eval_source(REPARAM_SOURCE, "reparam-invariance", "ReparamAcceptance");
-    for name in ["dx_ok", "dy_ok", "dz_ok"] {
-        assert_eq!(
-            values.get(name),
-            Some(&Value::Bool(true)),
-            "{name}: shifted-sphere component must match within 1e-12"
-        );
-    }
-    // Component-wise f64 equality (not Value equality): the shifted
-    // path computes 0.0 * sin(2pi) = -0.0 in y — the same real number
-    // zero, so f64 `==` (which treats -0.0 == 0.0) is the honest check.
-    let (Some(Value::Vector(a)), Some(Value::Vector(b))) =
-        (values.get("r_origin_a"), values.get("r_origin_b"))
-    else {
-        panic!("north-pole bindings must be vectors");
-    };
-    assert!(
-        a == b,
-        "period-shifted sphere must reproduce the north pole exactly: {a:?} vs {b:?}"
-    );
-}
 
-/// Intended behavior: same-args calls are bitwise identical,
-/// the (u,v) swap leaves the shared z component bit-identical, and a
-/// wrapper call reproduces the direct call exactly.
-#[test]
-fn symmetric_determinism_and_exact_reproduction() {
-    let values = eval_source(DETERMINISM_SOURCE, "determinism", "DeterminismAcceptance");
-    assert_eq!(values.get("same"), Some(&Value::Bool(true)), "determinism");
-    assert_eq!(
-        values.get("z_match"),
-        Some(&Value::Bool(true)),
-        "swap symmetry in z is exact"
-    );
-    assert_eq!(
-        values.get("wrap_match"),
-        Some(&Value::Bool(true)),
-        "wrapper call reproduces the direct call exactly"
-    );
-}
 
-/// Strict-f64 discipline through the call path. The
-/// builtin contract (crates/emath-exec-ir/src/builtin.rs, the 9bj1
-/// convention) is IEEE-faithful propagation: ln/sqrt of a negative
-/// argument yield NaN, detectable with `is_finite`, and the tangent
-/// stays NaN-consistent. The call path must preserve that convention
-/// exactly — inlining may not perturb, silence, or magnify it. (The
-/// 's own typed-refusal duty — degenerate parameter domains
-/// lands in the sampling cell, where the domain is mine to define.)
-#[test]
-fn log_domain_violation_propagates_nan_per_ieee() {
-    let values = eval_source(DOMAIN_SOURCE, "log-domain", "DomainAcceptance");
-    assert_eq!(
-        values.get("bad"),
-        Some(&Value::F64(f64::NAN)),
-        "ln(-1) through a called function stays IEEE NaN"
-    );
-}
 
-/// Sqrt mirrors ln: IEEE NaN through the call path.
-#[test]
-fn sqrt_domain_violation_propagates_nan_per_ieee() {
-    let values = eval_source(SQRT_DOMAIN_SOURCE, "sqrt-domain", "SqrtDomainAcceptance");
-    assert_eq!(
-        values.get("bad"),
-        Some(&Value::F64(f64::NAN)),
-        "sqrt(-1) through a called function stays IEEE NaN"
-    );
-}
+
+
+
+

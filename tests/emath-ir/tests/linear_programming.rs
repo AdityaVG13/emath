@@ -32,6 +32,7 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::{KernelArity, install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
+use emath_test_harness::Probe;
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -104,7 +105,10 @@ fn textbook_lp() -> (Value, Value, Value) {
 }
 
 #[test]
-fn lp_minimize_returns_known_objective() {
+fn intent() {
+    let mut p = Probe::new("Linear programming (slice 1): the LP + multi-objective compute");
+    p.case("lp_minimize_returns_known_objective", |p| {
+
     let (a, b, c) = textbook_lp();
     let solution = eval(
         vec![cell(
@@ -115,21 +119,18 @@ fn lp_minimize_returns_known_objective() {
     )
     .expect("lp computes");
     let x = vector_of(&solution);
-    assert_eq!(x.len(), 2);
+    p.eq("lp_minimize_returns_known_objective#1", x.len(), 2);
     // Objective value law: cᵀx = -6 within tolerance.
     let objective = -x[0] - 2.0 * x[1];
-    assert!(
-        (objective + 6.0).abs() < 1e-7,
-        "optimal objective is -6, got {objective} at {x:?}"
-    );
+    p.demand(format!("optimal objective is -6, got {objective} at {x:?}"), (objective + 6.0).abs() < 1e-7, format!("optimal objective is -6, got {objective} at {x:?}"));
     // Feasibility law: A x ≤ b and x ≥ 0 (the certificate, not trust).
-    assert!(x[0] >= -1e-9 && x[1] >= -1e-9, "x ≥ 0, got {x:?}");
-    assert!(x[0] + x[1] <= 4.0 + 1e-7, "x0 + x1 ≤ 4, got {x:?}");
-    assert!(x[0] + 2.0 * x[1] <= 6.0 + 1e-7, "x0 + 2x1 ≤ 6, got {x:?}");
-}
+    p.demand(format!("x ≥ 0, got {x:?}"), x[0] >= -1e-9 && x[1] >= -1e-9, format!("x ≥ 0, got {x:?}"));
+    p.demand(format!("x0 + x1 ≤ 4, got {x:?}"), x[0] + x[1] <= 4.0 + 1e-7, format!("x0 + x1 ≤ 4, got {x:?}"));
+    p.demand(format!("x0 + 2x1 ≤ 6, got {x:?}"), x[0] + 2.0 * x[1] <= 6.0 + 1e-7, format!("x0 + 2x1 ≤ 6, got {x:?}"));
 
-#[test]
-fn unbounded_linear_program_refuses_typed() {
+    });
+    p.case("unbounded_linear_program_refuses_typed", |p| {
+
     // minimize -x0 s.t. -x0 ≤ 1, x0 ≥ 0: the objective decreases
     // without bound → typed E-LP-001, never a wrong finite "optimum".
     let error = eval(
@@ -145,14 +146,11 @@ fn unbounded_linear_program_refuses_typed() {
     )
     .expect_err("unbounded lp refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-LP-001"),
-        "unbounded lp must name E-LP-001, got {fault}"
-    );
-}
+    p.demand(format!("unbounded lp must name E-LP-001, got {fault}"), fault.contains("E-LP-001"), format!("unbounded lp must name E-LP-001, got {fault}"));
 
-#[test]
-fn linear_program_dimension_mismatch_refuses_typed() {
+    });
+    p.case("linear_program_dimension_mismatch_refuses_typed", |p| {
+
     // b's length must equal A's row count (E-LP-003) — the negative
     // seed's silent-success shape (a mis-shaped LP must never solve
     // against garbage dimensions).
@@ -166,24 +164,18 @@ fn linear_program_dimension_mismatch_refuses_typed() {
     )
     .expect_err("mismatched b refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-LP-003"),
-        "dimension mismatch must name E-LP-003, got {fault}"
-    );
+    p.demand(format!("dimension mismatch must name E-LP-003, got {fault}"), fault.contains("E-LP-003"), format!("dimension mismatch must name E-LP-003, got {fault}"));
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/linear_program_dimensions.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-LP-003"),
-        "seed expects the dimension refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the dimension refusal, found: {expect_line}"), expect_line.contains("E-LP-003"), format!("seed expects the dimension refusal, found: {expect_line}"));
 
-#[test]
-fn pareto_front_computes() {
+    });
+    p.case("pareto_front_computes", |p| {
+
     // Minimize both coordinates. The non-dominated set of
     // {(4,2),(2,4),(3,3),(1,5),(5,1),(2,2)} is {(1,5),(5,1),(2,2)}:
     // (2,2) dominates (3,3),(4,2),(2,4); the rest are incomparable.
@@ -202,11 +194,11 @@ fn pareto_front_computes() {
     );
     let mask = eval(vec![cell(PARETO_FRONT, vec![EmirValue(0)])], &[points])
         .expect("pareto front computes");
-    assert_eq!(vector_of(&mask), vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
-}
+    p.eq("pareto_front_computes#1", vector_of(&mask), vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
 
-#[test]
-fn identical_pareto_points_do_not_dominate() {
+    });
+    p.case("identical_pareto_points_do_not_dominate", |p| {
+
     // Strict Pareto: identical points do not dominate each other —
     // both stay on the front (the deterministic tie law; a mutant that
     // drops duplicates by index order fails one of the two positions).
@@ -220,11 +212,11 @@ fn identical_pareto_points_do_not_dominate() {
     );
     let mask = eval(vec![cell(PARETO_FRONT, vec![EmirValue(0)])], &[points])
         .expect("identical points both survive");
-    assert_eq!(vector_of(&mask), vec![1.0, 1.0]);
-}
+    p.eq("identical_pareto_points_do_not_dominate#1", vector_of(&mask), vec![1.0, 1.0]);
 
-#[test]
-fn non_finite_pareto_point_refuses_typed() {
+    });
+    p.case("non_finite_pareto_point_refuses_typed", |p| {
+
     // A NaN objective entry refuses E-PARETO-001 — never a silently
     // corrupted front (NaN comparisons are always false, which a
     // mutant gate would turn into a wrong mask).
@@ -241,14 +233,11 @@ fn non_finite_pareto_point_refuses_typed() {
     let error = eval(vec![cell(PARETO_FRONT, vec![EmirValue(0)])], &[points])
         .expect_err("non-finite objective refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-PARETO-001"),
-        "non-finite objectives must name E-PARETO-001, got {fault}"
-    );
-}
+    p.demand(format!("non-finite objectives must name E-PARETO-001, got {fault}"), fault.contains("E-PARETO-001"), format!("non-finite objectives must name E-PARETO-001, got {fault}"));
 
-#[test]
-fn linear_program_registry_cell_enforces_shape_law() {
+    });
+    p.case("linear_program_registry_cell_enforces_shape_law", |p| {
+
     // std.capability.optimize.lp-minimize / pareto-front: the same
     // solvers as distribution DATA (the anti-LOC law), bound through
     // the checked-in Language Image. The capsule contract's shape law
@@ -257,11 +246,8 @@ fn linear_program_registry_cell_enforces_shape_law() {
     // solve.
     install_language();
     let lp = native_kernel(LP_MINIMIZE).expect("lp kernel bound");
-    assert!(
-        matches!(lp.arity_contract(), KernelArity::Exact(3)),
-        "lp kernel arity is exact 3"
-    );
-    assert!(native_kernel(PARETO_FRONT).is_some(), "pareto kernel bound");
+    p.demand("lp kernel arity is exact 3", matches!(lp.arity_contract(), KernelArity::Exact(3)), "lp kernel arity is exact 3");
+    p.demand("pareto kernel bound", native_kernel(PARETO_FRONT).is_some(), "pareto kernel bound");
     let (a, b, c) = textbook_lp();
     let solution = eval(
         vec![cell(
@@ -273,7 +259,7 @@ fn linear_program_registry_cell_enforces_shape_law() {
     .expect("registry lp computes");
     let x = vector_of(&solution);
     let objective = -x[0] - 2.0 * x[1];
-    assert!((objective + 6.0).abs() < 1e-7, "registry path: {x:?}");
+    p.demand(format!("registry path: {x:?}"), (objective + 6.0).abs() < 1e-7, format!("registry path: {x:?}"));
     // Shape law at the ABI: a vector in A's slot.
     let error = eval(
         vec![cell(
@@ -288,8 +274,21 @@ fn linear_program_registry_cell_enforces_shape_law() {
     )
     .expect_err("a vector in the constraint-matrix slot refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-TYPE-012"),
-        "shape law must refuse typed, got {fault}"
-    );
+    p.demand(format!("shape law must refuse typed, got {fault}"), fault.contains("E-TYPE-012"), format!("shape law must refuse typed, got {fault}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

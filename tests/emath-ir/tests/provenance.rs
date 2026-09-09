@@ -4,51 +4,49 @@ use emath_ir::{
     DistributionKind, InstrumentRef, Measured, Provenance, SchemeBody, Timestamp,
     core_measure_schemes,
 };
+use emath_test_harness::Probe;
 
 #[test]
-fn measured_schema_has_all_fields_and_closed_provenance_variants() {
+fn intent() {
+    let mut p = Probe::new("Closed provenance and `core::measure` schema contracts.");
+    p.case("measured_schema_has_all_fields_and_closed_provenance_variants", |p| {
+
     let schemes = core_measure_schemes();
-    assert_eq!(schemes.len(), 2);
+    p.eq("measured_schema_has_all_fields_and_closed_provenance_variants#1", schemes.len(), 2);
 
     let SchemeBody::Record(fields) = &schemes[0].body else {
-        panic!("Measured<T> must be a record");
+        { p.fail("measured_schema_has_all_fields_and_closed_provenance_variants#2", format!("Measured<T> must be a record")); return; };
     };
-    assert_eq!(
-        fields
+    p.eq("measured_schema_has_all_fields_and_closed_provenance_variants#3", fields
             .iter()
             .map(|field| field.name.as_str())
-            .collect::<Vec<_>>(),
-        [
+            .collect::<Vec<_>>(), [
             "value",
             "std_uncertainty",
             "distribution",
             "provenance",
             "timestamp",
             "instrument",
-        ]
-    );
+        ].to_vec());
 
     let SchemeBody::Variant(variants) = &schemes[1].body else {
-        panic!("Provenance must be a variant");
+        { p.fail("measured_schema_has_all_fields_and_closed_provenance_variants#4", format!("Provenance must be a variant")); return; };
     };
-    assert_eq!(
-        variants
+    p.eq("measured_schema_has_all_fields_and_closed_provenance_variants#5", variants
             .iter()
             .map(|(name, _)| name.as_str())
-            .collect::<Vec<_>>(),
-        [
+            .collect::<Vec<_>>(), [
             "Exact",
             "Citation",
             "InstrumentRun",
             "Fitted",
             "Assumed",
             "Unstated",
-        ]
-    );
-}
+        ].to_vec());
 
-#[test]
-fn measured_values_require_provenance_and_unstated_is_explicit() {
+    });
+    p.case("measured_values_require_provenance_and_unstated_is_explicit", |p| {
+
     let measured = Measured::new(
         0.42_f64,
         0.03,
@@ -61,33 +59,35 @@ fn measured_values_require_provenance_and_unstated_is_explicit() {
         Some(Timestamp("2026-08-27T00:00:00Z".into())),
         Some(InstrumentRef("balance-7".into())),
     );
-    assert_eq!(measured.provenance.variant_name(), "InstrumentRun");
-    assert_eq!(measured.instrument.unwrap().0, "balance-7");
+    p.demand("measured_values_require_provenance_and_unstated_is_explicit#1", measured.provenance.variant_name() == "InstrumentRun", format!("expected {:?}, got {:?}", "InstrumentRun", measured.provenance.variant_name()));
+    p.demand("measured_values_require_provenance_and_unstated_is_explicit#2", measured.instrument.as_ref().unwrap().0 == "balance-7", format!("expected {:?}, got {:?}", "balance-7", measured.instrument.as_ref().unwrap().0));
 
     let bare = Measured::unstated(1.0_f64, 0.1);
-    assert_eq!(bare.provenance, Provenance::Unstated);
-    assert_eq!(bare.distribution, DistributionKind::Normal);
-}
+    p.eq("measured_values_require_provenance_and_unstated_is_explicit#3", bare.provenance, Provenance::Unstated);
+    p.eq("measured_values_require_provenance_and_unstated_is_explicit#4", bare.distribution, DistributionKind::Normal);
 
-#[test]
-fn optional_provenance_fields_are_identity_distinct_from_empty_values() {
-    assert_ne!(
-        Provenance::Citation {
+    });
+    p.case("optional_provenance_fields_are_identity_distinct_from_empty_values", |p| {
+
+    p.ne("optional_provenance_fields_are_identity_distinct_from_empty_values#1", Provenance::Citation {
             reference: "doi:10.1234/example".into(),
             adjustment: None,
         }
-        .canonical(),
-        Provenance::Citation {
+        .canonical(), Provenance::Citation {
             reference: "doi:10.1234/example".into(),
             adjustment: Some(String::new()),
         }
-        .canonical()
-    );
-    assert_ne!(
-        Provenance::Assumed { reason: None }.canonical(),
-        Provenance::Assumed {
+        .canonical());
+    p.ne("optional_provenance_fields_are_identity_distinct_from_empty_values#2", Provenance::Assumed { reason: None }.canonical(), Provenance::Assumed {
             reason: Some(String::new()),
         }
-        .canonical()
-    );
+        .canonical());
+
+    });
+    p.finish();
 }
+
+
+
+
+

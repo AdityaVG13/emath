@@ -12,6 +12,7 @@ mod canonical_identity {
     use emath_ir::package::{Declaration, SemanticPackage};
     use emath_ir::types::TypeNode;
     use std::collections::BTreeMap;
+    use emath_test_harness::Probe;
 
     fn package_with_input(ty: TypeNode) -> ContentId {
         let mut package = SemanticPackage::new();
@@ -46,14 +47,18 @@ mod canonical_identity {
     }
 
     #[test]
-    fn record_and_opaque_do_not_collide_in_identity() {
-        // display_name() renders both as `m`; structural identity must
-        // still discriminate the node kinds.
-        let record = package_with_input(TypeNode::Record(QualifiedName::single("m")));
-        let opaque = package_with_input(TypeNode::Opaque {
-            name: QualifiedName::single("m"),
-            provider_contract: None,
+    fn intent() {
+        let mut p = Probe::new("canonical content identity discriminates record vs opaque node kinds");
+        p.case("record_and_opaque_do_not_collide_in_identity", |p| {
+            // display_name() renders both as `m`; structural identity must
+            // still discriminate the node kinds.
+            let record = package_with_input(TypeNode::Record(QualifiedName::single("m")));
+            let opaque = package_with_input(TypeNode::Opaque {
+                name: QualifiedName::single("m"),
+                provider_contract: None,
+            });
+            p.ne("record vs opaque identity", record, opaque);
         });
-        assert_ne!(record, opaque);
+        p.finish();
     }
 }

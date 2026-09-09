@@ -15,6 +15,7 @@ use emath_ir::{
     AdmissionRefusal, Capability, CapabilityId, CellClass, CellSchema, ExprId, ExprNode,
     MAX_CELL_ARITY, MigrationPolicy, admit_cell, admit_cell_mutation, canonical_cell, cell_id,
 };
+use emath_test_harness::Probe;
 
 /// Acceptance negative seed.
 const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_cells.emath");
@@ -50,16 +51,19 @@ fn apply_softmax(package: &mut SemanticPackage) -> (CapabilityId, ExprId) {
 }
 
 #[test]
-fn softmax_cell_validates_with_identity() {
+fn intent() {
+    let mut p = Probe::new("capability-cell schema, identity, and bounded");
+    p.case("softmax_cell_validates_with_identity", |p| {
+
     // Positive: the Softmax pure-cell descriptor validates under bounded
     // admission and mints a stable identity.
     let schema = softmax("1.0.0", MigrationPolicy::Frozen);
     let admitted = admit_cell(&schema).expect("softmax pure cell admits");
-    assert_eq!(admitted.name.0, "std.math.softmax");
+    p.demand("softmax_cell_validates_with_identity#1", admitted.name.0 == "std.math.softmax", format!("expected {:?}, got {:?}", "std.math.softmax", admitted.name.0));
 
     // Identity is deterministic and name-bearing: same descriptor, same id.
     let again = cell_id(&softmax("1.0.0", MigrationPolicy::Frozen));
-    assert_eq!(cell_id(&schema), again);
+    p.eq("softmax_cell_validates_with_identity#2", cell_id(&schema), again);
 
     // Canonical preimage carries exactly the identity fields.
     let canonical = canonical_cell(&schema);
@@ -71,25 +75,22 @@ fn softmax_cell_validates_with_identity() {
         "migration:6:frozen",
         "arity:1:1",
     ] {
-        assert!(
-            canonical.contains(token),
-            "canonical missing `{token}`: {canonical}"
-        );
+        p.demand(format!("canonical missing `{token}`: {canonical}"), canonical.contains(token), format!("canonical missing `{token}`: {canonical}"));
     }
-    assert!(!canonical.contains("about"), "about is presentation-only");
-}
+    p.demand("about is presentation-only", !canonical.contains("about"), "about is presentation-only");
 
-#[test]
-fn identity_field_mutation_moves_cell_id() {
+    });
+    p.case("identity_field_mutation_moves_cell_id", |p| {
+
     // Identity: version bump moves the id.
     let v1 = cell_id(&softmax("1.0.0", MigrationPolicy::Frozen));
     let v2 = cell_id(&softmax("1.1.0", MigrationPolicy::Frozen));
-    assert_ne!(v1, v2, "version is identity-affecting");
+    p.ne("version is identity-affecting", v1.clone(), v2);
 
     // Identity: class change moves the id.
     let mut provider = softmax("1.0.0", MigrationPolicy::Frozen);
     provider.class = CellClass::Provider;
-    assert_ne!(v1, cell_id(&provider), "class is identity-affecting");
+    p.ne("class is identity-affecting", v1.clone(), cell_id(&provider));
 
     // Identity: migration policy token moves the id.
     let migratable = softmax(
@@ -98,38 +99,31 @@ fn identity_field_mutation_moves_cell_id() {
             note: "initial".into(),
         },
     );
-    assert_ne!(
-        v1,
-        cell_id(&migratable),
-        "migration policy is identity-affecting"
-    );
+    p.ne("migration policy is identity-affecting", v1.clone(), cell_id(&migratable));
 
     // Identity: arity moves the id.
     let mut wider = softmax("1.0.0", MigrationPolicy::Frozen);
     wider.arity = 2;
-    assert_ne!(v1, cell_id(&wider), "arity is identity-affecting");
+    p.ne("arity is identity-affecting", v1.clone(), cell_id(&wider));
 
     // Presentation: `about` never moves identity.
     let mut documented = softmax("1.0.0", MigrationPolicy::Frozen);
     documented.about = Some("stable maximum of exp(x - max)".into());
-    assert_eq!(v1, cell_id(&documented), "about is presentation-only");
-}
+    p.eq("about is presentation-only", v1.clone(), cell_id(&documented));
 
-#[test]
-fn mutation_is_policy_gated_never_silent() {
+    });
+    p.case("mutation_is_policy_gated_never_silent", |p| {
+
     let from = softmax("1.0.0", MigrationPolicy::Frozen);
 
     // Frozen cell: identity-affecting change refuses by name.
     let mut to = softmax("2.0.0", MigrationPolicy::Frozen);
     to.arity = 3;
-    assert_eq!(
-        admit_cell_mutation(&from, &to),
-        Err(AdmissionRefusal::IdentityMutationRefused {
+    p.eq("mutation_is_policy_gated_never_silent#1", admit_cell_mutation(&from, &to), Err(AdmissionRefusal::IdentityMutationRefused {
             name: "std.math.softmax".into(),
             from_version: "1.0.0".into(),
             to_version: "2.0.0".into(),
-        })
-    );
+        }));
 
     // bump-and-note with a note: version bump admits.
     let migratable_from = softmax(
@@ -144,7 +138,7 @@ fn mutation_is_policy_gated_never_silent() {
             note: "arity widened to 3".into(),
         },
     );
-    assert!(admit_cell_mutation(&migratable_from, &migratable_to).is_ok());
+    p.demand("mutation_is_policy_gated_never_silent#2", admit_cell_mutation(&migratable_from, &migratable_to).is_ok(), "mutation_is_policy_gated_never_silent#2: admit_cell_mutation(&migratable_from, &migratable_to).is_ok()");
 
     // bump-and-note with an empty note: refuses (a policy without a note
     // is not a policy).
@@ -154,14 +148,11 @@ fn mutation_is_policy_gated_never_silent() {
         },
         ..softmax("2.0.0", MigrationPolicy::Frozen)
     };
-    assert_eq!(
-        admit_cell_mutation(&migratable_from, &noteless_to),
-        Err(AdmissionRefusal::IdentityMutationRefused {
+    p.eq("mutation_is_policy_gated_never_silent#3", admit_cell_mutation(&migratable_from, &noteless_to), Err(AdmissionRefusal::IdentityMutationRefused {
             name: "std.math.softmax".into(),
             from_version: "1.0.0".into(),
             to_version: "2.0.0".into(),
-        })
-    );
+        }));
 
     // Class change refuses even under bump-and-note: the taxonomy is not
     // migrated by version bumps.
@@ -172,90 +163,69 @@ fn mutation_is_policy_gated_never_silent() {
         },
     );
     reclassified.class = CellClass::Intrinsic;
-    assert!(matches!(
+    p.demand("mutation_is_policy_gated_never_silent#4", matches!(
         admit_cell_mutation(&migratable_from, &reclassified),
         Err(AdmissionRefusal::IdentityMutationRefused { .. })
-    ));
+    ), "mutation_is_policy_gated_never_silent#4: matches!(\n        admit_cell_mutation(&migratable_from, &reclassified),\n        Err(AdmissionRefusal");
 
     // Same-descriptor call is a no-op admission, not a mutation.
-    assert!(admit_cell_mutation(&from, &from).is_ok());
-}
+    p.demand("mutation_is_policy_gated_never_silent#5", admit_cell_mutation(&from, &from).is_ok(), "mutation_is_policy_gated_never_silent#5: admit_cell_mutation(&from, &from).is_ok()");
 
-#[test]
-fn bounded_admission_refuses_by_code() {
+    });
+    p.case("bounded_admission_refuses_by_code", |p| {
+
     // Closed taxonomy: unknown class token refuses with E-CELL-001.
-    assert_eq!(
-        CellClass::parse("transcendental-quick"),
-        Err(AdmissionRefusal::UnknownCellClass {
+    p.eq("bounded_admission_refuses_by_code#1", CellClass::parse("transcendental-quick"), Err(AdmissionRefusal::UnknownCellClass {
             class: "transcendental-quick".into(),
-        })
-    );
-    assert_eq!(
-        CellClass::parse("transcendental-quick").unwrap_err().code(),
-        "E-CELL-001"
-    );
+        }));
+    p.demand("bounded_admission_refuses_by_code#2", CellClass::parse("transcendental-quick").unwrap_err().code() == "E-CELL-001", format!("expected {:?}, got {:?}", "E-CELL-001", CellClass::parse("transcendental-quick").unwrap_err().code()));
 
     // The negative seed names exactly this diagnostic.
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|line| line.trim_start().starts_with("# expect:"))
         .expect("negative seed must name its required diagnostic");
-    assert!(
-        expect_line.contains("E-CELL-001"),
-        "seed expects the closed-taxonomy refusal, found: {expect_line}"
-    );
+    p.demand(format!("seed expects the closed-taxonomy refusal, found: {expect_line}"), expect_line.contains("E-CELL-001"), format!("seed expects the closed-taxonomy refusal, found: {expect_line}"));
 
     // Missing version refuses with E-CELL-002.
     let versionless = CellSchema {
         version: String::new(),
         ..softmax("1.0.0", MigrationPolicy::Frozen)
     };
-    assert_eq!(
-        admit_cell(&versionless),
-        Err(AdmissionRefusal::MissingVersion {
+    p.eq("bounded_admission_refuses_by_code#4", admit_cell(&versionless), Err(AdmissionRefusal::MissingVersion {
             name: "std.math.softmax".into(),
-        })
-    );
-    assert_eq!(admit_cell(&versionless).unwrap_err().code(), "E-CELL-002");
+        }));
+    p.demand("bounded_admission_refuses_by_code#5", admit_cell(&versionless).unwrap_err().code() == "E-CELL-002", format!("expected {:?}, got {:?}", "E-CELL-002", admit_cell(&versionless).unwrap_err().code()));
 
     // Arity above the bound refuses with E-CELL-004.
     let wide = CellSchema {
         arity: MAX_CELL_ARITY + 1,
         ..softmax("1.0.0", MigrationPolicy::Frozen)
     };
-    assert_eq!(
-        admit_cell(&wide),
-        Err(AdmissionRefusal::ArityExceeded {
+    p.eq("bounded_admission_refuses_by_code#6", admit_cell(&wide), Err(AdmissionRefusal::ArityExceeded {
             name: "std.math.softmax".into(),
             arity: MAX_CELL_ARITY + 1,
-        })
-    );
+        }));
 
     // Malformed name refuses with E-CELL-005 (bare leaf, no namespace path).
     let nameless = CellSchema {
         name: QualifiedName::single("softmax"),
         ..softmax("1.0.0", MigrationPolicy::Frozen)
     };
-    assert_eq!(
-        admit_cell(&nameless),
-        Err(AdmissionRefusal::MalformedName {
+    p.eq("bounded_admission_refuses_by_code#7", admit_cell(&nameless), Err(AdmissionRefusal::MalformedName {
             name: "softmax".into(),
-        })
-    );
+        }));
 
     // Boundary: arity exactly at the bound admits.
     let boundary = CellSchema {
         arity: MAX_CELL_ARITY,
         ..softmax("1.0.0", MigrationPolicy::Frozen)
     };
-    assert!(
-        admit_cell(&boundary).is_ok(),
-        "arity == MAX_CELL_ARITY admits"
-    );
-}
+    p.demand("arity == MAX_CELL_ARITY admits", admit_cell(&boundary).is_ok(), "arity == MAX_CELL_ARITY admits");
 
-#[test]
-fn admitted_cell_terms_stay_slot_stable() {
+    });
+    p.case("admitted_cell_terms_stay_slot_stable", |p| {
+
     // Wiring: a cell descriptor that admits produces the same arena term
     // and the same expression identity regardless of intern order; a
     // dangling capability application still refuses with the
@@ -275,12 +245,8 @@ fn admitted_cell_terms_stay_slot_stable() {
     let second_cell = second.push_capability(admitted);
     let (_, second_apply) = apply_softmax(&mut second);
 
-    assert_ne!(first_cell, second_cell);
-    assert_eq!(
-        canonical_expr(&first, first_apply),
-        canonical_expr(&second, second_apply),
-        "cell identity is name-based, not slot-based"
-    );
+    p.ne("admitted_cell_terms_stay_slot_stable#1", first_cell, second_cell);
+    p.eq("cell identity is name-based, not slot-based", canonical_expr(&first, first_apply), canonical_expr(&second, second_apply));
 
     // The dangling seam stays typed: a refused cell can never be interned,
     // so the only reachable failure is MissingCapability at meaning time.
@@ -288,7 +254,7 @@ fn admitted_cell_terms_stay_slot_stable() {
         arity: MAX_CELL_ARITY + 1,
         ..softmax("1.0.0", MigrationPolicy::Frozen)
     };
-    assert!(admit_cell(&refused).is_err());
+    p.demand("admitted_cell_terms_stay_slot_stable#3", admit_cell(&refused).is_err(), "admitted_cell_terms_stay_slot_stable#3: admit_cell(&refused).is_err()");
     let mut dangling = SemanticPackage::new();
     let dangling_id = dangling.push_capability(Capability {
         name: QualifiedName::single("std.math.softmax"),
@@ -308,8 +274,17 @@ fn admitted_cell_terms_stay_slot_stable() {
     // Dangle the cell: intern the Apply first, then clear the arena, so the
     // term references a slot that admission never filled.
     dangling.capabilities.clear();
-    assert_eq!(
-        dangling.meaning_id(&[]),
-        Err(MeaningError::MissingCapability(dangling_id))
-    );
+    p.eq("admitted_cell_terms_stay_slot_stable#4", dangling.meaning_id(&[]), Err(MeaningError::MissingCapability(dangling_id)));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+

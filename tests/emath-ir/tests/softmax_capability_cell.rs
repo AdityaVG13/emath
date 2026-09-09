@@ -9,6 +9,7 @@ use emath_core::QualifiedName;
 use emath_ir::{
     AdmissionRefusal, CellClass, CellSchema, MigrationPolicy, NumericProfile, admit_cell, cell_id,
 };
+use emath_test_harness::Probe;
 
 const STD_TENSOR_SOFTMAX: &str = "std.tensor.softmax";
 
@@ -24,7 +25,10 @@ fn softmax_schema() -> CellSchema {
 }
 
 #[test]
-fn softmax_pure_cell_admits_descriptor_only() {
+fn intent() {
+    let mut p = Probe::new("Softmax pure cell — first zero-core-delta");
+    p.case("softmax_pure_cell_admits_descriptor_only", |p| {
+
     // Zero-core-delta proof, part 1: the cell admits as a descriptor and
     // its identity is stable, with NO core enum touched. If Softmax ever
     // became a core op variant this test would still pass — the negative
@@ -32,21 +36,21 @@ fn softmax_pure_cell_admits_descriptor_only() {
     // the admitted record is arena data.
     let schema = softmax_schema();
     let admitted = admit_cell(&schema).expect("pure softmax cell admits");
-    assert_eq!(admitted.name.0, STD_TENSOR_SOFTMAX);
+    p.eq("softmax_pure_cell_admits_descriptor_only#1", admitted.name.0, STD_TENSOR_SOFTMAX.to_string());
 
     // Stable identity: same descriptor -> same CellId.
-    assert_eq!(cell_id(&schema), cell_id(&softmax_schema()));
+    p.eq("softmax_pure_cell_admits_descriptor_only#2", cell_id(&schema), cell_id(&softmax_schema()));
 
     // Numeric policy is explicit: strict-f64 is the only phase-1 model the
     // reference semantics accepts; an omitted policy is a typed refusal,
     // not a silent default.
-    assert_eq!(NumericProfile::default_phase1(), NumericProfile::StrictF64);
-    assert_eq!(NumericProfile::StrictF64.as_str(), "strict-f64");
-    assert_eq!(NumericProfile::IntervalF64.as_str(), "interval-f64");
-}
+    p.eq("softmax_pure_cell_admits_descriptor_only#3", NumericProfile::default_phase1(), NumericProfile::StrictF64);
+    p.demand("softmax_pure_cell_admits_descriptor_only#4", NumericProfile::StrictF64.as_str() == "strict-f64", format!("expected {:?}, got {:?}", "strict-f64", NumericProfile::StrictF64.as_str()));
+    p.demand("softmax_pure_cell_admits_descriptor_only#5", NumericProfile::IntervalF64.as_str() == "interval-f64", format!("expected {:?}, got {:?}", "interval-f64", NumericProfile::IntervalF64.as_str()));
 
-#[test]
-fn softmax_reference_semantics_compute() {
+    });
+    p.case("softmax_reference_semantics_compute", |p| {
+
     // Happy path: softmax over a 3-vector, strict-f64, stable-max form.
     let logits = [1.0_f64, 2.0, 3.0];
     let out =
@@ -57,15 +61,12 @@ fn softmax_reference_semantics_compute() {
         (3.0_f64 - 1.0).exp() / (1.0 + (1.0_f64).exp() + (2.0_f64).exp()),
     ];
     for (got, want) in out.iter().zip(expected.iter()) {
-        assert!(
-            (got - want).abs() < 1e-12,
-            "softmax mismatch: got {got}, want {want}"
-        );
+        p.demand(format!("softmax mismatch: got {got}, want {want}"), (got - want).abs() < 1e-12, format!("softmax mismatch: got {got}, want {want}"));
     }
-}
 
-#[test]
-fn softmax_laws_hold() {
+    });
+    p.case("softmax_laws_hold", |p| {
+
     // Law 1: shift invariance — softmax(x) == softmax(x + c) componentwise
     // (the stable-max form IS this law, applied to c = -max(x)).
     let x = [0.3_f64, -1.7, 4.2, 2.0];
@@ -78,10 +79,7 @@ fn softmax_laws_hold() {
     ])
     .unwrap();
     for (a, b) in base.iter().zip(shifted.iter()) {
-        assert!(
-            (a - b).abs() < 1e-12,
-            "shift invariance violated: {a} vs {b}"
-        );
+        p.demand(format!("shift invariance violated: {a} vs {b}"), (a - b).abs() < 1e-12, format!("shift invariance violated: {a} vs {b}"));
     }
 
     // Law 1 (overflow guard): the stable-max shift must keep large finite
@@ -91,32 +89,26 @@ fn softmax_laws_hold() {
     let out_big = emath_ir::capability::softmax_reference_strict_f64(&big)
         .expect("stable-max form must not overflow on large finite logits");
     let sum_big: f64 = out_big.iter().sum();
-    assert!((sum_big - 1.0).abs() < 1e-12, "large-logit normalization");
-    assert!(
-        out_big[0] > out_big[1] && out_big[1] > out_big[2],
-        "large-logit ordering preserved: {out_big:?}"
-    );
+    p.demand("large-logit normalization", (sum_big - 1.0).abs() < 1e-12, "large-logit normalization");
+    p.demand(format!("large-logit ordering preserved: {out_big:?}"), out_big[0] > out_big[1] && out_big[1] > out_big[2], format!("large-logit ordering preserved: {out_big:?}"));
 
     // Law 2: nonnegativity.
     for &v in &base {
-        assert!(v >= 0.0, "nonnegativity violated: {v}");
+        p.demand(format!("nonnegativity violated: {v}"), v >= 0.0, format!("nonnegativity violated: {v}"));
     }
 
     // Law 3: normalization within tolerance T.
     let sum: f64 = base.iter().sum();
-    assert!(
-        (sum - 1.0).abs() < 1e-12,
-        "normalization violated: sum={sum}"
-    );
+    p.demand(format!("normalization violated: sum={sum}"), (sum - 1.0).abs() < 1e-12, format!("normalization violated: sum={sum}"));
 
     // Boundary: single-element input normalizes to exactly 1.
     let single = emath_ir::capability::softmax_reference_strict_f64(&[42.0]).unwrap();
-    assert_eq!(single.len(), 1);
-    assert!((single[0] - 1.0).abs() < 1e-15);
-}
+    p.eq("softmax_laws_hold#6", single.len(), 1);
+    p.demand("softmax_laws_hold#7", (single[0] - 1.0).abs() < 1e-15, "softmax_laws_hold#7: (single[0] - 1.0).abs() < 1e-15");
 
-#[test]
-fn missing_numeric_policy_and_bad_axis_refuse_by_name() {
+    });
+    p.case("missing_numeric_policy_and_bad_axis_refuse_by_name", |p| {
+
     // Negative: missing numeric policy refuses — an empty policy is
     // not a silent empty distribution. The negative seed names the
     // refusal.
@@ -125,44 +117,40 @@ fn missing_numeric_policy_and_bad_axis_refuse_by_name() {
         .lines()
         .find(|line| line.trim_start().starts_with("# expect:"))
         .expect("negative seed must name its required diagnostic");
-    assert!(
-        expect_line.contains("E-CELL-003") && expect_line.contains("E-CELL-004"),
-        "seed expects the admission-seam refusals, found: {expect_line}"
-    );
+    p.demand(format!("seed expects the admission-seam refusals, found: {expect_line}"), expect_line.contains("E-CELL-003") && expect_line.contains("E-CELL-004"), format!("seed expects the admission-seam refusals, found: {expect_line}"));
 
     // The typed missing-policy refusal at the evaluation seam:
     let empty: [f64; 0] = [];
     let err = emath_ir::capability::softmax_reference_strict_f64(&empty).unwrap_err();
-    assert_eq!(err.code(), "E-CELL-006", "missing numeric policy refusal");
+    p.demand("missing numeric policy refusal", err.code() == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", err.code()));
 
     // Non-finite logits refuse under the strict-f64 finite policy.
     let nan_input = [f64::NAN, 1.0];
-    assert_eq!(
-        emath_ir::capability::softmax_reference_strict_f64(&nan_input)
+    p.demand("missing_numeric_policy_and_bad_axis_refuse_by_name#3", emath_ir::capability::softmax_reference_strict_f64(&nan_input)
             .unwrap_err()
-            .code(),
-        "E-CELL-006"
-    );
+            .code() == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", emath_ir::capability::softmax_reference_strict_f64(&nan_input)
+            .unwrap_err()
+            .code()));
     let inf_input = [f64::INFINITY, 1.0];
-    assert_eq!(
-        emath_ir::capability::softmax_reference_strict_f64(&inf_input)
+    p.demand("missing_numeric_policy_and_bad_axis_refuse_by_name#4", emath_ir::capability::softmax_reference_strict_f64(&inf_input)
             .unwrap_err()
-            .code(),
-        "E-CELL-006"
-    );
+            .code() == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", emath_ir::capability::softmax_reference_strict_f64(&inf_input)
+            .unwrap_err()
+            .code()));
     // Negative: provider wrong-axis fails. The cell's contract is
     // a rank-1 vector evaluated whole; a 2D-style axis request (rank 2)
     // is a wrong-axis failure at the provider seam (typed, not silent).
-    assert!(
-        !emath_ir::softmax_axis_well_formed(2),
-        "rank-2 axis request is wrong-axis"
-    );
-    assert!(
-        !emath_ir::softmax_axis_well_formed(0),
-        "rank-0 scalar is wrong-axis"
-    );
-    assert!(
-        emath_ir::softmax_axis_well_formed(1),
-        "rank-1 vector is the contract"
-    );
+    p.demand("rank-2 axis request is wrong-axis", !emath_ir::softmax_axis_well_formed(2), "rank-2 axis request is wrong-axis");
+    p.demand("rank-0 scalar is wrong-axis", !emath_ir::softmax_axis_well_formed(0), "rank-0 scalar is wrong-axis");
+    p.demand("rank-1 vector is the contract", emath_ir::softmax_axis_well_formed(1), "rank-1 vector is the contract");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+

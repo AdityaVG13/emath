@@ -14,23 +14,28 @@ use emath_exec_ir::runner::eval_definitions_values;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
+use emath_test_harness::{Probe, boot};
 
 /// The runnable router example: the language truth for this.
 const ROUTER_EXAMPLE: &str =
-    include_str!("../../../language/examples/numerical/graph-router.emath");
+    include_str!("../../../tests/fixtures/language/numerical/graph-router.emath");
 
 /// The human reference chapter (graphs/Adjacency admission section).
 const REFERENCE_CHAPTER: &str =
     include_str!("../../../language/reference/types-units-shapes-and-domains.md");
 
-fn vector_eq(actual: &Value, want: &[f64]) {
-    assert_eq!(actual, &Value::Vector(want.to_vec()), "vector mismatch");
+fn vector_eq(p: &mut emath_test_harness::Probe, name: &str, actual: &Value, want: &[f64]) {
+    p.eq(name, actual, &Value::Vector(want.to_vec()));
 }
 
-/// The planted gap (was RED): the router example exists, checks clean,
-/// and its graph surface computes the documented answers.
 #[test]
-fn graph_router_example_is_runnable() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("Graph .emath surface tests — acceptance: the runnable");
+    p.case("graph_router_example_is_runnable", |p| {
+// The planted gap (was RED): the router example exists, checks clean,
+// and its graph surface computes the documented answers.
+
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let checked = session.check_owned("graph-router.emath", ROUTER_EXAMPLE);
@@ -39,41 +44,39 @@ fn graph_router_example_is_runnable() {
         .errors()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    assert!(errors.is_empty(), "router example must admit: {errors:#?}");
-    let values = eval_definitions_values(
+    p.demand(format!("router example must admit: {errors:#?}"), errors.is_empty(), format!("router example must admit: {errors:#?}"));
+    let values = match eval_definitions_values(
         &checked.package,
         &checked.package.declarations[0],
         &BTreeMap::new(),
         &BTreeMap::new(),
-    )
-    .unwrap_or_else(|fault| panic!("router example must evaluate: {fault}"));
+    ) {
 
-    assert_eq!(
-        values.get("g"),
-        Some(&Value::Matrix {
+        Ok(values) => values,
+
+        Err(fault) => { p.fail("graph_router_example_is_runnable#2", format!("router example must evaluate: {fault}")); return; }
+
+    };
+
+    p.eq("example carrier", values.get("g"), Some(&Value::Matrix {
             rows: 4,
             cols: 4,
             data: vec![
                 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0
             ],
-        }),
-        "example carrier"
-    );
-    vector_eq(
-        values.get("r").expect("reachability"),
-        &[1.0, 1.0, 1.0, 1.0],
-    );
-    vector_eq(values.get("b").expect("bfs order"), &[0.0, 1.0, 2.0, 3.0]);
-    vector_eq(values.get("d").expect("distances"), &[0.0, 1.0, 1.0, 2.0]);
-    vector_eq(values.get("o").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
-}
+        }));
+    vector_eq(p, "reachability", values.get("r").expect("reachability"), &[1.0, 1.0, 1.0, 1.0]);
+    vector_eq(p, "bfs order", values.get("b").expect("bfs order"), &[0.0, 1.0, 2.0, 3.0]);
+    vector_eq(p, "distances", values.get("d").expect("distances"), &[0.0, 1.0, 1.0, 2.0]);
+    vector_eq(p, "out degrees", values.get("o").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
 
-/// Declare a graph from `.emath` text, then run adjacency + reachability
-/// end-to-end through EMIR: the graph literal lowers to the matrix
-/// substrate, `out_degrees`/`reachability` compute over it, and every
-/// answer is pinned exactly (no tautology).
-#[test]
-fn graph_declare_adjacency_reachability_end_to_end() {
+    });
+    p.case("graph_declare_adjacency_reachability_end_to_end", |p| {
+// Declare a graph from `.emath` text, then run adjacency + reachability
+// end-to-end through EMIR: the graph literal lowers to the matrix
+// substrate, `out_degrees`/`reachability` compute over it, and every
+// answer is pinned exactly (no tautology).
+
     install_source_parser();
     const SOURCE: &str = r#"
 emath function GraphSurfaceFromText:
@@ -94,32 +97,34 @@ emath function GraphSurfaceFromText:
         .errors()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    assert!(errors.is_empty(), "graph surface must admit: {errors:#?}");
+    p.demand(format!("graph surface must admit: {errors:#?}"), errors.is_empty(), format!("graph surface must admit: {errors:#?}"));
 
-    let values = eval_definitions_values(
+    let values = match eval_definitions_values(
         &checked.package,
         &checked.package.declarations[0],
         &BTreeMap::new(),
         &BTreeMap::new(),
-    )
-    .unwrap_or_else(|fault| panic!("graph surface must evaluate: {fault}"));
+    ) {
+
+
+        Ok(values) => values,
+
+
+        Err(fault) => { p.fail("graph_declare_adjacency_reachability_end_to_end#2", format!("graph surface must evaluate: {fault}")); return; }
+
+
+    };
 
     // Reachability from node 0: every node is reachable (0->1, 0->2, 1->3).
-    vector_eq(
-        values.get("mask").expect("reachability"),
-        &[1.0, 1.0, 1.0, 1.0],
-    );
+    vector_eq(p, "mask", values.get("mask").expect("reachability"), &[1.0, 1.0, 1.0, 1.0]);
     // Out-degrees: node 0 has two outgoing edges, 1 and 2 one each, 3 none.
-    vector_eq(
-        values.get("degrees").expect("out degrees"),
-        &[2.0, 1.0, 1.0, 0.0],
-    );
-}
+    vector_eq(p, "degrees", values.get("degrees").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
 
-/// Typed runtime refusal: an out-of-range reachability source must fault
-/// with E-GRAPH-002 — never a panic and never a silently wrong answer.
-#[test]
-fn reachability_refuses_out_of_range_source() {
+    });
+    p.case("reachability_refuses_out_of_range_source", |p| {
+// Typed runtime refusal: an out-of-range reachability source must fault
+// with E-GRAPH-002 — never a panic and never a silently wrong answer.
+
     install_source_parser();
     const SOURCE: &str = r#"
 emath function BadGraphSource:
@@ -137,10 +142,7 @@ emath function BadGraphSource:
         .errors()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    assert!(
-        errors.is_empty(),
-        "admission must accept a well-formed graph: {errors:#?}"
-    );
+    p.demand(format!("admission must accept a well-formed graph: {errors:#?}"), errors.is_empty(), format!("admission must accept a well-formed graph: {errors:#?}"));
 
     let fault = eval_definitions_values(
         &checked.package,
@@ -150,23 +152,24 @@ emath function BadGraphSource:
     )
     .expect_err("out-of-range reachability source must fault at runtime");
     let fault = fault.to_string();
-    assert!(
-        fault.contains("E-GRAPH-003") || fault.contains("E-GRAPH-002"),
-        "fault must name the graph source precondition: {fault}"
-    );
+    p.demand(format!("fault must name the graph source precondition: {fault}"), fault.contains("E-GRAPH-003") || fault.contains("E-GRAPH-002"), format!("fault must name the graph source precondition: {fault}"));
+
+    });
+    p.case("reference_documents_graph_admission", |p| {
+// The planted gap (was RED): the reference chapter documents the
+// graph carrier and the call surface.
+
+    p.demand("reference chapter must document the graph carrier", REFERENCE_CHAPTER.contains("graph"), "reference chapter must document the graph carrier");
+    p.demand("reference chapter must document the graph call names", REFERENCE_CHAPTER.contains("reachability")
+            && REFERENCE_CHAPTER.contains("shortest_distances"), "reference chapter must document the graph call names");
+
+    });
+    p.finish();
 }
 
-/// The planted gap (was RED): the reference chapter documents the
-/// graph carrier and the call surface.
-#[test]
-fn reference_documents_graph_admission() {
-    assert!(
-        REFERENCE_CHAPTER.contains("graph"),
-        "reference chapter must document the graph carrier"
-    );
-    assert!(
-        REFERENCE_CHAPTER.contains("reachability")
-            && REFERENCE_CHAPTER.contains("shortest_distances"),
-        "reference chapter must document the graph call names"
-    );
-}
+
+
+
+
+
+

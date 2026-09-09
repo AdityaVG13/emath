@@ -28,6 +28,7 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::{KernelArity, install_language_distribution, native_kernel};
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
+use emath_test_harness::Probe;
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -83,7 +84,10 @@ fn f64_of(value: &Value) -> f64 {
 }
 
 #[test]
-fn polynomial_multiplication_returns_known_products() {
+fn intent() {
+    let mut p = Probe::new("Polynomials (slice 1): the B28 compute layer —");
+    p.case("polynomial_multiplication_returns_known_products", |probe| {
+
     install_language();
     // (1 + x)(1 + x) = 1 + 2x + x² and (1 + x)(1 − x) = 1 − x² — the
     // convolution law with exact integer-valued coefficients (no
@@ -97,7 +101,7 @@ fn polynomial_multiplication_returns_known_products() {
         &[one_plus_x.clone(), one_plus_x.clone()],
     )
     .expect("poly mul computes");
-    assert_eq!(vector_of(&product), vec![1.0, 2.0, 1.0]);
+    probe.eq("polynomial_multiplication_returns_known_products#1", vector_of(&product), vec![1.0, 2.0, 1.0]);
     let one_minus_x = Value::Vector(vec![1.0, -1.0]);
     let product = eval(
         vec![cell(
@@ -107,11 +111,11 @@ fn polynomial_multiplication_returns_known_products() {
         &[one_plus_x, one_minus_x],
     )
     .expect("poly mul computes");
-    assert_eq!(vector_of(&product), vec![1.0, 0.0, -1.0]);
-}
+    probe.eq("polynomial_multiplication_returns_known_products#2", vector_of(&product), vec![1.0, 0.0, -1.0]);
 
-#[test]
-fn polynomial_multiplication_obeys_identity_and_zero_laws() {
+    });
+    p.case("polynomial_multiplication_obeys_identity_and_zero_laws", |probe| {
+
     install_language();
     // [1] (the constant 1) is the multiplicative identity; the EMPTY
     // carrier is the zero polynomial (the documented representation
@@ -126,7 +130,7 @@ fn polynomial_multiplication_obeys_identity_and_zero_laws() {
         &[p.clone(), one],
     )
     .expect("identity law");
-    assert_eq!(vector_of(&product), vec![2.0, 3.0]);
+    probe.eq("polynomial_multiplication_obeys_identity_and_zero_laws#1", vector_of(&product), vec![2.0, 3.0]);
     let zero = Value::Vector(vec![]);
     let product = eval(
         vec![cell(
@@ -136,7 +140,7 @@ fn polynomial_multiplication_obeys_identity_and_zero_laws() {
         &[p.clone(), zero.clone()],
     )
     .expect("zero law");
-    assert_eq!(vector_of(&product), Vec::<f64>::new());
+    probe.eq("polynomial_multiplication_obeys_identity_and_zero_laws#2", vector_of(&product), Vec::<f64>::new());
     let value = eval(
         vec![cell(
             "std.capability.poly.eval",
@@ -145,11 +149,11 @@ fn polynomial_multiplication_obeys_identity_and_zero_laws() {
         &[zero, Value::F64(5.0)],
     )
     .expect("zero polynomial evaluates to 0");
-    assert_eq!(f64_of(&value), 0.0);
-}
+    probe.eq("polynomial_multiplication_obeys_identity_and_zero_laws#3", f64_of(&value), 0.0);
 
-#[test]
-fn horner_evaluation_returns_known_values() {
+    });
+    p.case("horner_evaluation_returns_known_values", |probe| {
+
     install_language();
     // p = 2 + 3x + 4x²: at x=2 → 24, at x=0 → 2 (the constant-term
     // law), at x=−1 → 3. A mutant that evaluates coefficients in
@@ -164,15 +168,12 @@ fn horner_evaluation_returns_known_values() {
             &[p.clone(), Value::F64(point)],
         )
         .expect("poly eval computes");
-        assert!(
-            (f64_of(&value) - want).abs() < 1e-12,
-            "p({point}) = {want}, got {value:?}"
-        );
+        probe.demand(format!("p({point}) = {want}, got {value:?}"), (f64_of(&value) - want).abs() < 1e-12, format!("p({point}) = {want}, got {value:?}"));
     }
-}
 
-#[test]
-fn non_finite_polynomial_coefficient_refuses_typed() {
+    });
+    p.case("non_finite_polynomial_coefficient_refuses_typed", |probe| {
+
     install_language();
     // E-POLY-001: a NaN coefficient must never silently propagate
     // through the convolution (the negative seed's shape).
@@ -186,23 +187,17 @@ fn non_finite_polynomial_coefficient_refuses_typed() {
     )
     .expect_err("non-finite coefficient refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-POLY-001"),
-        "non-finite coefficients must name E-POLY-001, got {fault}"
-    );
+    probe.demand(format!("non-finite coefficients must name E-POLY-001, got {fault}"), fault.contains("E-POLY-001"), format!("non-finite coefficients must name E-POLY-001, got {fault}"));
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/polynomial_domain.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-POLY-001"),
-        "seed expects the non-finite refusal, found: {expect_line}"
-    );
-}
+    probe.demand(format!("seed expects the non-finite refusal, found: {expect_line}"), expect_line.contains("E-POLY-001"), format!("seed expects the non-finite refusal, found: {expect_line}"));
 
-#[test]
-fn non_finite_polynomial_point_refuses_typed() {
+    });
+    p.case("non_finite_polynomial_point_refuses_typed", |probe| {
+
     install_language();
     // E-POLY-002: a NaN evaluation point refuses — never a silent NaN
     // result masquerading as a value.
@@ -215,14 +210,11 @@ fn non_finite_polynomial_point_refuses_typed() {
     )
     .expect_err("non-finite point refuses");
     let fault = format!("{error:?}");
-    assert!(
-        fault.contains("E-POLY-002"),
-        "non-finite point must name E-POLY-002, got {fault}"
-    );
-}
+    probe.demand(format!("non-finite point must name E-POLY-002, got {fault}"), fault.contains("E-POLY-002"), format!("non-finite point must name E-POLY-002, got {fault}"));
 
-#[test]
-fn polynomial_addition_binds_generic_vector_add() {
+    });
+    p.case("polynomial_addition_binds_generic_vector_add", |probe| {
+
     install_language();
     // poly_add is a NAME BINDING to the generic dense vector-add
     // capability (the norm precedent): coefficientwise addition, no
@@ -238,18 +230,18 @@ fn polynomial_addition_binds_generic_vector_add() {
         ],
     )
     .expect("poly add computes");
-    assert_eq!(vector_of(&sum), vec![4.0, 0.0]);
-}
+    probe.eq("polynomial_addition_binds_generic_vector_add#1", vector_of(&sum), vec![4.0, 0.0]);
 
-#[test]
-fn polynomial_capsules_bind_public_kernels_and_enforce_shape_law() {
+    });
+    p.case("polynomial_capsules_bind_public_kernels_and_enforce_shape_law", |probe| {
+
     install_language();
     let multiply = native_kernel("std.capability.poly.mul").expect("multiply kernel bound");
     let evaluate = native_kernel("std.capability.poly.eval").expect("evaluate kernel bound");
-    assert_eq!(multiply.kernel_id, "polynomial-multiply");
-    assert_eq!(evaluate.kernel_id, "polynomial-evaluate");
-    assert_eq!(multiply.arity_contract(), KernelArity::Exact(2));
-    assert_eq!(evaluate.arity_contract(), KernelArity::Exact(2));
+    probe.demand("polynomial_capsules_bind_public_kernels_and_enforce_shape_law#1", multiply.kernel_id == "polynomial-multiply", format!("expected {:?}, got {:?}", "polynomial-multiply", multiply.kernel_id));
+    probe.demand("polynomial_capsules_bind_public_kernels_and_enforce_shape_law#2", evaluate.kernel_id == "polynomial-evaluate", format!("expected {:?}, got {:?}", "polynomial-evaluate", evaluate.kernel_id));
+    probe.eq("polynomial_capsules_bind_public_kernels_and_enforce_shape_law#3", multiply.arity_contract(), KernelArity::Exact(2));
+    probe.eq("polynomial_capsules_bind_public_kernels_and_enforce_shape_law#4", evaluate.arity_contract(), KernelArity::Exact(2));
 
     let product = eval(
         vec![cell(
@@ -259,7 +251,7 @@ fn polynomial_capsules_bind_public_kernels_and_enforce_shape_law() {
         &[Value::Vector(vec![1.0, 1.0]), Value::Vector(vec![1.0, 1.0])],
     )
     .expect("capsule poly mul computes");
-    assert_eq!(vector_of(&product), vec![1.0, 2.0, 1.0]);
+    probe.eq("polynomial_capsules_bind_public_kernels_and_enforce_shape_law#5", vector_of(&product), vec![1.0, 2.0, 1.0]);
 
     let error = eval(
         vec![cell(
@@ -276,8 +268,21 @@ fn polynomial_capsules_bind_public_kernels_and_enforce_shape_law() {
         ],
     )
     .expect_err("a matrix in the coefficient slot refuses at the kernel ABI");
-    assert!(
-        matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")),
-        "carrier shape law must refuse typed, got {error:?}"
-    );
+    probe.demand(format!("carrier shape law must refuse typed, got {error:?}"), matches!(error, EvalFault::CapabilityRefused { ref code, .. } if code.contains("E-TYPE-012")), format!("carrier shape law must refuse typed, got {error:?}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

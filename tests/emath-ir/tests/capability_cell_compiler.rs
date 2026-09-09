@@ -13,10 +13,27 @@
 use emath_core::Span;
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::term_compile::{
-    ArgGuard, ParamShape, TermCompileError, compile_reference, std_cell_registry,
+    ArgGuard, ParamShape, TermCompileError,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget, ReduceId};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 const STD_TENSOR_SOFTMAX: &str = "std.tensor.softmax";
 
@@ -104,7 +121,10 @@ fn run_softmax(vector: &[f64]) -> Result<Value, EvalFault> {
 }
 
 #[test]
-fn compiled_softmax_matches_reference_bit_exact() {
+fn intent() {
+    let mut p = Probe::new("Compile cell reference semantics to generic");
+    p.case("compiled_softmax_matches_reference_bit_exact", |p| {
+
     // Differential law: the compiled bytecode and the capability layer's
     // Rust oracle agree BIT-FOR-BIT (same stable-max op order), including
     // fixtures where a naive exp(x) overflows or underflows to a silent
@@ -119,25 +139,21 @@ fn compiled_softmax_matches_reference_bit_exact() {
     for logits in fixtures {
         let got = match run_softmax(logits).expect("compiled softmax evaluates") {
             Value::Vector(values) => values,
-            other => panic!("expected vector, got {other:?}"),
+            other => { p.fail("compiled_softmax_matches_reference_bit_exact#1", format!("expected vector, got {other:?}")); return; },
         };
         let oracle = emath_ir::capability::softmax_reference_strict_f64(logits)
             .expect("oracle computes for finite non-empty logits");
-        assert_eq!(got.len(), oracle.len(), "fixture {logits:?}");
+        p.eq(format!("fixture {logits:?}"), got.len(), oracle.len());
         for (i, (g, w)) in got.iter().zip(oracle.iter()).enumerate() {
-            assert_eq!(
-                g.to_bits(),
-                w.to_bits(),
-                "bit-exact differential fixture {logits:?} element {i}: {g} != {w}"
-            );
+            p.eq(format!("bit-exact differential fixture {logits:?} element {i}: {g} != {w}"), g.to_bits(), w.to_bits());
         }
         let total: f64 = got.iter().sum();
-        assert!((total - 1.0).abs() < 1e-12, "distribution sums to 1");
+        p.demand("distribution sums to 1", (total - 1.0).abs() < 1e-12, "distribution sums to 1");
     }
-}
 
-#[test]
-fn compiled_form_is_shift_invariant() {
+    });
+    p.case("compiled_form_is_shift_invariant", |p| {
+
     // The cell's declared law (shift invariance), executed as bytecode:
     // softmax(x) == softmax(x + c) bit-for-bit even when naive exp(x+c)
     // overflows to +inf (which would poison the distribution with NaN).
@@ -146,40 +162,36 @@ fn compiled_form_is_shift_invariant() {
     let shifted = [1002.0_f64, 999.0, 1007.0];
     let a = match run_softmax(&base).expect("base evaluates") {
         Value::Vector(v) => v,
-        other => panic!("expected vector, got {other:?}"),
+        other => { p.fail("compiled_form_is_shift_invariant#1", format!("expected vector, got {other:?}")); return; },
     };
     let b = match run_softmax(&shifted).expect("shifted evaluates") {
         Value::Vector(v) => v,
-        other => panic!("expected vector, got {other:?}"),
+        other => { p.fail("compiled_form_is_shift_invariant#2", format!("expected vector, got {other:?}")); return; },
     };
-    assert_eq!(a.len(), b.len());
+    p.eq("compiled_form_is_shift_invariant#3", a.len(), b.len());
     for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
-        assert_eq!(
-            x.to_bits(),
-            y.to_bits(),
-            "shift invariance element {i}: {x} != {y}"
-        );
+        p.eq(format!("shift invariance element {i}: {x} != {y}"), x.to_bits(), y.to_bits());
     }
-}
 
-#[test]
-fn firewall_refusals_parity() {
+    });
+    p.case("firewall_refusals_parity", |p| {
+
     let span = Span::default();
 
     // Empty vector: the oracle refuses (no numeric policy declared for an
     // empty normalization); the compiled seam refuses with the same code.
     match run_softmax(&[]) {
         Err(EvalFault::CapabilityRefused { capability, code }) => {
-            assert_eq!(capability, STD_TENSOR_SOFTMAX);
-            assert_eq!(code, "E-CELL-006");
+            p.eq("firewall_refusals_parity#1", capability, STD_TENSOR_SOFTMAX.to_string());
+            p.demand("firewall_refusals_parity#2", code == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", code));
         }
-        other => panic!("empty vector must refuse E-CELL-006, got {other:?}"),
+        other => { p.fail("firewall_refusals_parity#3", format!("empty vector must refuse E-CELL-006, got {other:?}")); return; },
     }
 
     // Non-finite logits: never a silent NaN distribution.
     match run_softmax(&[1.0, f64::NAN]) {
-        Err(EvalFault::CapabilityRefused { code, .. }) => assert_eq!(code, "E-CELL-006"),
-        other => panic!("NaN logits must refuse E-CELL-006, got {other:?}"),
+        Err(EvalFault::CapabilityRefused { code, .. }) => { p.demand("firewall_refusals_parity#4", code == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", code)); },
+        other => { p.fail("firewall_refusals_parity#5", format!("NaN logits must refuse E-CELL-006, got {other:?}")); return; },
     }
 
     let build = |op: EmirOp| EmirProgram {
@@ -201,10 +213,10 @@ fn firewall_refusals_parity() {
         class: CellClass::Pure,
         args: vec![EmirValue(0)],
     });
-    assert!(matches!(
+    p.demand("firewall_refusals_parity#6", matches!(
         evaluate_with_budget(&wrong_shape, &[], &[], EvalBudget::default()),
         Err(EvalFault::TypeConfusion { .. })
-    ));
+    ), "firewall_refusals_parity#6: matches!(\n        evaluate_with_budget(&wrong_shape, &[], &[], EvalBudget::default()),\n        Err(E");
 
     // Wrong arity: typed arithmetic-contract fault.
     let wrong_arity = build(EmirOp::ApplyCapability {
@@ -212,10 +224,10 @@ fn firewall_refusals_parity() {
         class: CellClass::Pure,
         args: vec![EmirValue(0), EmirValue(1)],
     });
-    assert!(matches!(
+    p.demand("firewall_refusals_parity#7", matches!(
         evaluate_with_budget(&wrong_arity, &[], &[], EvalBudget::default()),
         Err(EvalFault::Arithmetic { .. })
-    ));
+    ), "firewall_refusals_parity#7: matches!(\n        evaluate_with_budget(&wrong_arity, &[], &[], EvalBudget::default()),\n        Err(E");
 
     // Unknown pure cell: a typed implementation gap, never a silent
     // identity result.
@@ -224,61 +236,47 @@ fn firewall_refusals_parity() {
         class: CellClass::Pure,
         args: vec![EmirValue(0)],
     });
-    assert!(matches!(
+    p.demand("firewall_refusals_parity#8", matches!(
         evaluate_with_budget(&unknown, &[], &[], EvalBudget::default()),
         Err(EvalFault::Arithmetic { .. })
-    ));
-}
+    ), "firewall_refusals_parity#8: matches!(\n        evaluate_with_budget(&unknown, &[], &[], EvalBudget::default()),\n        Err(EvalF");
 
-#[test]
-fn compiled_program_is_generic_vocabulary() {
+    });
+    p.case("compiled_program_is_generic_vocabulary", |p| {
+
     // Anti-LOC law in bytecode: the compiled cell contains ONLY generic
     // VM ops (vector map/reduce over the closed builtin registry). No op
     // name carries the cell's identity; a domain-named `softmax` op
     // variant would violate the zero-core-delta slope.
-    let cell = std_cell_registry()
+    let registry = std_cell_registry();
+    let cell = registry
         .get(STD_TENSOR_SOFTMAX)
         .expect("std cell present");
-    assert!(!cell.program.ops.is_empty(), "compiled program non-empty");
+    p.demand("compiled program non-empty", !cell.program.ops.is_empty(), "compiled program non-empty");
     for (op, _) in &cell.program.ops {
         let name = op.name();
-        assert!(
-            !name.contains("softmax"),
-            "bytecode must be generic, found per-op naming: {name}"
-        );
+        p.demand(format!("bytecode must be generic, found per-op naming: {name}"), !name.contains("softmax"), format!("bytecode must be generic, found per-op naming: {name}"));
     }
     let names: Vec<&str> = cell.program.ops.iter().map(|(op, _)| op.name()).collect();
-    assert!(
-        names.contains(&"vector-map"),
-        "elementwise exp lowers to generic vector-map: {names:?}"
-    );
-    assert!(
-        names.contains(&"vector-map-scalar"),
-        "broadcast subtract/divide lowers to generic vector-map-scalar: {names:?}"
-    );
-    assert!(
-        names.contains(&"vector-reduce"),
-        "sum/max lower to generic vector-reduce: {names:?}"
-    );
+    p.demand(format!("elementwise exp lowers to generic vector-map: {names:?}"), names.contains(&"vector-map"), format!("elementwise exp lowers to generic vector-map: {names:?}"));
+    p.demand(format!("broadcast subtract/divide lowers to generic vector-map-scalar: {names:?}"), names.contains(&"vector-map-scalar"), format!("broadcast subtract/divide lowers to generic vector-map-scalar: {names:?}"));
+    p.demand(format!("sum/max lower to generic vector-reduce: {names:?}"), names.contains(&"vector-reduce"), format!("sum/max lower to generic vector-reduce: {names:?}"));
 
     // The formula of record is the term, pinned by its canonical text:
     // exp(sub(x, vmax(x))) normalized by sum(exp(sub(x, vmax(x)))).
     let (term, signature) = softmax_formula();
     let canonical = term.canonical();
-    assert!(
-        canonical.contains("apply(exp,apply(sub,var(x),apply(vmax,var(x))))"),
-        "canonical formula pins the stable-max structure: {canonical}"
-    );
+    p.demand(format!("canonical formula pins the stable-max structure: {canonical}"), canonical.contains("apply(exp,apply(sub,var(x),apply(vmax,var(x))))"), format!("canonical formula pins the stable-max structure: {canonical}"));
     signature.validate(&term).expect("formula well-formed");
 
     // ReduceId is a closed set with stable tokens.
-    assert_eq!(ReduceId::Sum.as_str(), "sum");
-    assert_eq!(ReduceId::Max.as_str(), "max");
-    assert_eq!(ReduceId::Min.as_str(), "min");
-}
+    p.demand("compiled_program_is_generic_vocabulary#7", ReduceId::Sum.as_str() == "sum", format!("expected {:?}, got {:?}", "sum", ReduceId::Sum.as_str()));
+    p.demand("compiled_program_is_generic_vocabulary#8", ReduceId::Max.as_str() == "max", format!("expected {:?}, got {:?}", "max", ReduceId::Max.as_str()));
+    p.demand("compiled_program_is_generic_vocabulary#9", ReduceId::Min.as_str() == "min", format!("expected {:?}, got {:?}", "min", ReduceId::Min.as_str()));
 
-#[test]
-fn term_compiler_refuses_malformed_reference() {
+    });
+    p.case("term_compiler_refuses_malformed_reference", |p| {
+
     let params = softmax_params();
 
     // Operator outside the closed generic vocabulary: typed compile
@@ -291,8 +289,8 @@ fn term_compiler_refuses_malformed_reference() {
         arguments: vec![Term::Variable(VariableId("x".into()))],
     };
     match compile_reference(&magic, &sig, &params, Vec::new(), "test.magic") {
-        Err(TermCompileError::UnknownOperator { symbol }) => assert_eq!(symbol, "softmax_magic"),
-        other => panic!("expected UnknownOperator, got {other:?}"),
+        Err(TermCompileError::UnknownOperator { symbol }) => { p.demand("term_compiler_refuses_malformed_reference#1", symbol == "softmax_magic", format!("expected {:?}, got {:?}", "softmax_magic", symbol)); },
+        other => { p.fail("term_compiler_refuses_malformed_reference#2", format!("expected UnknownOperator, got {other:?}")); return; },
     }
 
     // Signature arity mismatch: emath-term's own validator refuses.
@@ -309,11 +307,11 @@ fn term_compiler_refuses_malformed_reference() {
             expected,
             actual,
         }) => {
-            assert_eq!(symbol, "sub");
-            assert_eq!(expected, 2);
-            assert_eq!(actual, 1);
+            p.demand("term_compiler_refuses_malformed_reference#3", symbol == "sub", format!("expected {:?}, got {:?}", "sub", symbol));
+            p.eq("term_compiler_refuses_malformed_reference#4", expected, 2);
+            p.eq("term_compiler_refuses_malformed_reference#5", actual, 1);
         }
-        other => panic!("expected ArityMismatch, got {other:?}"),
+        other => { p.fail("term_compiler_refuses_malformed_reference#6", format!("expected ArityMismatch, got {other:?}")); return; },
     }
 
     // Free variable outside the declared params: typed refusal.
@@ -325,8 +323,8 @@ fn term_compiler_refuses_malformed_reference() {
         arguments: vec![Term::Variable(VariableId("y".into()))],
     };
     match compile_reference(&unbound, &sig3, &params, Vec::new(), "test.unbound") {
-        Err(TermCompileError::UnknownVariable { name }) => assert_eq!(name, "y"),
-        other => panic!("expected UnknownVariable, got {other:?}"),
+        Err(TermCompileError::UnknownVariable { name }) => { p.demand("term_compiler_refuses_malformed_reference#7", name == "y", format!("expected {:?}, got {:?}", "y", name)); },
+        other => { p.fail("term_compiler_refuses_malformed_reference#8", format!("expected UnknownVariable, got {other:?}")); return; },
     }
 
     // Shape mismatch: reduce over a scalar-SHAPED BOUND variable refuses
@@ -343,13 +341,13 @@ fn term_compiler_refuses_malformed_reference() {
         Vec::new(),
         "test.shape",
     ) {
-        Err(TermCompileError::ShapeMismatch { symbol, .. }) => assert_eq!(symbol, "sum"),
-        other => panic!("expected ShapeMismatch, got {other:?}"),
+        Err(TermCompileError::ShapeMismatch { symbol, .. }) => { p.demand("term_compiler_refuses_malformed_reference#9", symbol == "sum", format!("expected {:?}, got {:?}", "sum", symbol)); },
+        other => { p.fail("term_compiler_refuses_malformed_reference#10", format!("expected ShapeMismatch, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn world_bundle_and_negative_seed() {
+    });
+    p.case("world_bundle_and_negative_seed", |p| {
+
     // WorldResultBundle fixture: the compiled-cell run
     // as a world record. The World ABI consumes this shape.
     #[derive(Debug)]
@@ -361,7 +359,7 @@ fn world_bundle_and_negative_seed() {
     }
     let outputs = match run_softmax(&[1.0, 2.0, 3.0]).expect("evaluates") {
         Value::Vector(values) => values,
-        other => panic!("expected vector, got {other:?}"),
+        other => { p.fail("world_bundle_and_negative_seed#1", format!("expected vector, got {other:?}")); return; },
     };
     let bundle = WorldResultBundle {
         world: "interp",
@@ -369,18 +367,19 @@ fn world_bundle_and_negative_seed() {
         outputs,
         refusals: Vec::new(),
     };
-    assert_eq!(bundle.world, "interp");
-    assert_eq!(bundle.verdict, "evaluated");
-    assert_eq!(bundle.outputs.len(), 3);
-    assert!(bundle.refusals.is_empty());
+    p.demand("world_bundle_and_negative_seed#2", bundle.world == "interp", format!("expected {:?}, got {:?}", "interp", bundle.world));
+    p.demand("world_bundle_and_negative_seed#3", bundle.verdict == "evaluated", format!("expected {:?}, got {:?}", "evaluated", bundle.verdict));
+    p.eq("world_bundle_and_negative_seed#4", bundle.outputs.len(), 3);
+    p.demand("world_bundle_and_negative_seed#5", bundle.refusals.is_empty(), "world_bundle_and_negative_seed#5: bundle.refusals.is_empty()");
 
     // Guards are data on the compiled cell, checked in declared order
     // (NonEmpty before AllFinite; both refuse E-CELL-006).
-    let cell = std_cell_registry().get(STD_TENSOR_SOFTMAX).unwrap();
-    assert_eq!(cell.params.len(), 1);
-    assert_eq!(cell.guards.len(), 2);
-    assert!(matches!(cell.guards[0], ArgGuard::NonEmpty(0)));
-    assert!(matches!(cell.guards[1], ArgGuard::AllFinite(0)));
+    let registry = std_cell_registry();
+    let cell = registry.get(STD_TENSOR_SOFTMAX).expect("std cell present");
+    p.eq("world_bundle_and_negative_seed#6", cell.params.len(), 1);
+    p.eq("world_bundle_and_negative_seed#7", cell.guards.len(), 2);
+    p.demand("world_bundle_and_negative_seed#8", matches!(cell.guards[0], ArgGuard::NonEmpty(0)), "world_bundle_and_negative_seed#8: matches!(cell.guards[0], ArgGuard::NonEmpty(0))");
+    p.demand("world_bundle_and_negative_seed#9", matches!(cell.guards[1], ArgGuard::AllFinite(0)), "world_bundle_and_negative_seed#9: matches!(cell.guards[1], ArgGuard::AllFinite(0))");
 
     // Negative seed: the seeded silent-success scenario declares a
     // typed refusal.
@@ -390,8 +389,19 @@ fn world_bundle_and_negative_seed() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-CELL") || expect_line.contains("E-VM"),
-        "seed expects a typed refusal, found: {expect_line}"
-    );
+    p.demand(format!("seed expects a typed refusal, found: {expect_line}"), expect_line.contains("E-CELL") || expect_line.contains("E-VM"), format!("seed expects a typed refusal, found: {expect_line}"));
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+

@@ -15,6 +15,7 @@
 use emath_exec_ir::growth::{
     GateViolation, NucleusClass, growth_gate, kernel_generic_surface, nucleus_class,
 };
+use emath_test_harness::Probe;
 
 const COHORT: [&str; 8] = [
     "std.math.add",
@@ -32,7 +33,10 @@ fn short(token: &str) -> &str {
 }
 
 #[test]
-fn real_nucleus_passes_the_gate() {
+fn intent() {
+    let mut p = Probe::new(": Core-growth gate — CDLOC/SCBD/KGS measured;");
+    p.case("real_nucleus_passes_the_gate", |p| {
+
     // The LIVE tripwire: the actual exec-ir nucleus sources, scanned as
     // the gate will see them. The registry file names cells (DATA zone);
     // the kernel dispatch files (interp/emitter/optimize) must be
@@ -48,26 +52,19 @@ fn real_nucleus_passes_the_gate() {
         ("kernel:term_compile.rs", term_compile),
     ];
     let report = growth_gate(&sources, &COHORT);
-    assert!(
-        report.violations.is_empty(),
-        "the real nucleus grew an operation-name branch: {:?}",
-        report.violations
-    );
+    p.demand(format!("the real nucleus grew an operation-name branch: {:?}", report.violations), report.violations.is_empty(), format!("the real nucleus grew an operation-name branch: {:?}", report.violations));
     // Registry DATA zone: cell names appear exactly in term_compile.rs —
     // 8 entries + 2 init-failure diagnostics naming their cell
     // (sum/softmax) = 10 string-literal mentions; the dispatch files
     // carry none.
-    assert_eq!(report.data_zone_mentions, 10, "8 entries + 2 diagnostics");
+    p.eq("8 entries + 2 diagnostics", report.data_zone_mentions, 10);
     for (name, _) in [&sources[0], &sources[1], &sources[2]] {
-        assert_eq!(
-            report.mentions_per_file[*name], 0,
-            "{name} must be branch-free on cohort identity"
-        );
+        p.eq(format!("{name} must be branch-free on cohort identity"), report.mentions_per_file[*name], 0);
     }
-}
 
-#[test]
-fn seeded_operation_name_branch_fails() {
+    });
+    p.case("seeded_operation_name_branch_fails", |p| {
+
     // Seeded PR-style fixture: a backend file grows a per-cell dispatch
     // arm. The gate FAILS it typed, naming file, line, and token —
     // the negative seed's silent-success scenario.
@@ -81,11 +78,11 @@ fn lower_apply(op: &str, args: &[Value]) -> Result<Expr, Error> {
 "#;
     let sources = [("backend:codegen.rs", seeded_backend)];
     let report = growth_gate(&sources, &["std.tensor.softmax"]);
-    assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
+    p.eq(format!("{:?}", report.violations), report.violations.len(), 1);
     let GateViolation { file, line, token } = &report.violations[0];
-    assert_eq!(file, "backend:codegen.rs");
-    assert_eq!(*line, 4, "the match arm line");
-    assert_eq!(token, "std.tensor.softmax");
+    p.demand("seeded_operation_name_branch_fails#2", file == "backend:codegen.rs", format!("expected {:?}, got {:?}", "backend:codegen.rs", file));
+    p.eq("the match arm line", *line, 4);
+    p.demand("seeded_operation_name_branch_fails#4", token == "std.tensor.softmax", format!("expected {:?}, got {:?}", "std.tensor.softmax", token));
 
     // A parser-side name branch fails too (the whole nucleus is gated).
     let seeded_parser = r#"fn kind_of(name: &str) -> Kind {
@@ -93,7 +90,7 @@ fn lower_apply(op: &str, args: &[Value]) -> Result<Expr, Error> {
 }
 "#;
     let report = growth_gate(&[("parser:cells.rs", seeded_parser)], &["std.math.add"]);
-    assert_eq!(report.violations.len(), 1);
+    p.eq("seeded_operation_name_branch_fails#5", report.violations.len(), 1);
 
     // The same token in the DATA zone is NOT a violation (registry
     // entries are the admitted path): the name lives in a STRING here,
@@ -104,22 +101,19 @@ fn lower_apply(op: &str, args: &[Value]) -> Result<Expr, Error> {
         &[("kernel:term_compile.rs", registry_entry)],
         &["std.math.add"],
     );
-    assert!(report.violations.is_empty());
-    assert_eq!(report.data_zone_mentions, 1);
+    p.demand("seeded_operation_name_branch_fails#6", report.violations.is_empty(), "seeded_operation_name_branch_fails#6: report.violations.is_empty()");
+    p.eq("seeded_operation_name_branch_fails#7", report.data_zone_mentions, 1);
 
     const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/core_growth_gate.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-GROWTH-001"),
-        "seed expects the gate refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the gate refusal, found: {expect_line}"), expect_line.contains("E-GROWTH-001"), format!("seed expects the gate refusal, found: {expect_line}"));
 
-#[test]
-fn comments_and_unrelated_names_do_not_trip() {
+    });
+    p.case("comments_and_unrelated_names_do_not_trip", |p| {
+
     // The gate measures BRANCHES, not prose: comments mentioning a cell
     // (design notes) are stripped before scanning; a name that only
     // shares a short prefix does not trip (whole-token match on the
@@ -133,19 +127,19 @@ fn unrelated() -> u32 { 0 }
         &[("backend:notes.rs", notes)],
         &["std.math.exp", "std.tensor.softmax"],
     );
-    assert!(report.violations.is_empty(), "{:?}", report.violations);
-    assert_eq!(report.mentions_per_file["backend:notes.rs"], 0);
+    p.demand(format!("{:?}", report.violations), report.violations.is_empty(), format!("{:?}", report.violations));
+    p.eq("comments_and_unrelated_names_do_not_trip#2", report.mentions_per_file["backend:notes.rs"], 0);
 
     // A same-shortname DIFFERENT cell (a user pack's "exp") does not
     // trip the std cell gate: the gate matches the full path.
     let user_pack = r#"match op { "acme.exp" => Ok(Expr::Call("acme_exp", args)), _ => unreachable() }
 "#;
     let report = growth_gate(&[("backend:acme.rs", user_pack)], &["std.math.exp"]);
-    assert!(report.violations.is_empty(), "{:?}", report.violations);
-}
+    p.demand(format!("{:?}", report.violations), report.violations.is_empty(), format!("{:?}", report.violations));
 
-#[test]
-fn metrics_reported_for_the_cohort() {
+    });
+    p.case("metrics_reported_for_the_cohort", |p| {
+
     // CDLOC/SCBD/KGS (hypotheses until calibrated — the asks for
     // NUMBERS, and the numbers must respond to the inputs):
     // CDLOC = core lines naming a capability outside the data zone
@@ -165,34 +159,28 @@ fn metrics_reported_for_the_cohort() {
         ("kernel:term_compile.rs", term_compile),
     ];
     let report = growth_gate(&sources, &COHORT);
-    assert_eq!(report.cdloc, 0, "clean nucleus: no core LOC names a cell");
-    assert_eq!(report.scbd, 0, "clean nucleus: no identity branches");
+    p.eq("clean nucleus: no core LOC names a cell", report.cdloc, 0);
+    p.eq("clean nucleus: no identity branches", report.scbd, 0);
     let kgs = kernel_generic_surface(lib);
     // Exact ratchet, not an ever-widening range: a generic vocabulary
     // change must update this measurement deliberately, while adding a
     // capability cell as data leaves it unchanged.
-    assert_eq!(
-        kgs, 121,
-        "kernel generic surface changed; justify the generic vocabulary delta"
-    );
+    p.eq("kernel generic surface changed; justify the generic vocabulary delta", kgs, 121);
 
     // The numbers RESPOND: seeding a violation moves CDLOC/SCBD.
     let seeded = r#"match op { "std.math.add" => add_kernel(a, b), _ => unreachable() }
 "#;
     let seeded_report = growth_gate(&[("backend:seed.rs", seeded)], &["std.math.add"]);
-    assert_eq!(seeded_report.cdloc, 1);
-    assert_eq!(seeded_report.scbd, 1);
-    assert_eq!(seeded_report.violations.len(), 1);
+    p.eq("metrics_reported_for_the_cohort#4", seeded_report.cdloc, 1);
+    p.eq("metrics_reported_for_the_cohort#5", seeded_report.scbd, 1);
+    p.eq("metrics_reported_for_the_cohort#6", seeded_report.violations.len(), 1);
     let _ = &report; // clean-report metrics recorded for the pack
-}
 
-#[test]
-fn nucleus_classification_and_bundle_fixture() {
+    });
+    p.case("nucleus_classification_and_bundle_fixture", |p| {
+
     // File classes drive the gate: data zones vs gated nucleus files.
-    assert_eq!(
-        nucleus_class("kernel:term_compile.rs"),
-        NucleusClass::DataZone
-    );
+    p.eq("nucleus_classification_and_bundle_fixture#1", nucleus_class("kernel:term_compile.rs"), NucleusClass::DataZone);
     for name in [
         "kernel:interp.rs",
         "kernel:emitter.rs",
@@ -201,11 +189,11 @@ fn nucleus_classification_and_bundle_fixture() {
         "sema:anything.rs",
         "backend:anything.rs",
     ] {
-        assert_eq!(nucleus_class(name), NucleusClass::Gated, "{name}");
+        p.eq(format!("{name}"), nucleus_class(name), NucleusClass::Gated);
     }
     // Unknown prefixes classify GATED (fail closed — a new directory
     // does not silently escape the gate).
-    assert_eq!(nucleus_class("weird:new.rs"), NucleusClass::Gated);
+    p.eq("nucleus_classification_and_bundle_fixture#3", nucleus_class("weird:new.rs"), NucleusClass::Gated);
 
     // Labeled portfolio: the healthy gate verdict lands in the
     // envelope (gate-as-world: evidence carries the metric laws).
@@ -250,11 +238,23 @@ fn nucleus_classification_and_bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("nucleus_classification_and_bundle_fixture#4", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "core-growth-gate");
+    ), "nucleus_classification_and_bundle_fixture#4: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("nucleus_classification_and_bundle_fixture#5", result.world == "core-growth-gate", format!("expected {:?}, got {:?}", "core-growth-gate", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("nucleus_classification_and_bundle_fixture#6", bundle.bundle_id.starts_with("fnv1a64:"), "nucleus_classification_and_bundle_fixture#6: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+

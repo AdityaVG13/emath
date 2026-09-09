@@ -5,8 +5,12 @@
 //! left out of the pipeline lock (per-gap semantics, matching
 //! `projection_planner.rs`).
 
+use emath_test_harness::Probe;
 #[test]
-fn nanopass_hidden_pass_negative() {
+fn intent() {
+    let mut p = Probe::new("Negative control.");
+    p.case("nanopass_hidden_pass_negative", |p| {
+
     let schema = emath_ir::capability::CellSchema {
         name: emath_core::id::QualifiedName::single("std.math.softmax"),
         class: emath_ir::capability::CellClass::Pure,
@@ -38,21 +42,22 @@ fn nanopass_hidden_pass_negative() {
     ]
     .into_iter()
     .collect();
-    assert_eq!(refusals.len(), 7, "one E-CELL-007 per missing required row");
+    p.eq("one E-CELL-007 per missing required row", refusals.len(), 7);
     let got: std::collections::BTreeSet<_> = refusals
         .iter()
         .map(|r| {
-            assert_eq!(r.code(), "E-CELL-007");
+            p.demand("nanopass_hidden_pass_negative#2", r.code() == "E-CELL-007", format!("expected {:?}, got {:?}", "E-CELL-007", r.code()));
             match r {
                 emath_ir::capability::ClosureRefusal::MissingRequired { projection, .. } => {
                     *projection
                 }
-                other => panic!("unexpected refusal: {other:?}"),
+                other => { p.fail("nanopass_hidden_pass_negative#3", format!("unexpected refusal: {other:?}")); panic!("probe failure: unexpected refusal"); }
             }
         })
         .collect();
-    assert_eq!(
-        got, wanted,
-        "every required-but-missing projection surfaces its refusal"
-    );
+    p.eq("every required-but-missing projection surfaces its refusal", got, wanted);
+
+    });
+    p.finish();
 }
+

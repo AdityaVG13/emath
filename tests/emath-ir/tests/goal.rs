@@ -4,9 +4,12 @@
 
 use emath_core::ContentId;
 use emath_ir::goal::{PLAN_SCHEMA, plan_identity};
+use emath_test_harness::Probe;
 
 #[test]
-fn plan_identity_is_insensitive_to_provider_permutation() {
+fn intent() {
+    let mut p = Probe::new("Plan-identity witnesses: provider-permutation insensitivity, provider");
+    p.case("plan_identity_is_insensitive_to_provider_permutation", |p| {
     let one = plan_identity(
         "goal",
         "policy",
@@ -19,11 +22,10 @@ fn plan_identity_is_insensitive_to_provider_permutation() {
         &["c".to_string(), "b".to_string(), "a".to_string()],
         "rust-library",
     );
-    assert_eq!(one, two);
-}
+    p.eq("plan_identity_is_insensitive_to_provider_permutation#1", one, two);
 
-#[test]
-fn plan_identity_detects_provider_set_change() {
+    });
+    p.case("plan_identity_detects_provider_set_change", |p| {
     let base = plan_identity("goal", "policy", &["a".to_string()], "rust-library");
     let added = plan_identity(
         "goal",
@@ -31,33 +33,30 @@ fn plan_identity_detects_provider_set_change() {
         &["a".to_string(), "b".to_string()],
         "rust-library",
     );
-    assert_ne!(base, added);
-}
+    p.ne("plan_identity_detects_provider_set_change#1", base, added);
 
-/// The identity layer (`plan:` payload) and the JSON `$schema`
-/// layer (`emath.resolution-plan`) are deliberately split; the
-/// payload format is pinned here so neither layer can silently
-/// converge on the other's string.
-#[test]
-fn plan_identity_payload_and_json_schema_are_distinct_layers() {
+    });
+    p.case("plan_identity_payload_and_json_schema_are_distinct_layers", |p| {
     let providers = ["z".to_string(), "a".to_string()];
     let id = plan_identity("goal", "policy", &providers, "rust-library");
     let mut payload = String::from("plan:goal\npolicy\n");
     payload.push_str("a\nz\nrust-library");
-    assert_eq!(
-        id,
-        ContentId(format!(
+    p.eq("plan identity must hash the `plan:` payload (sorted providers, trailing target)", id, ContentId(format!(
             "fnv1a64:{:016x}",
             emath_core::fnv1a64_bytes(payload.as_bytes())
-        )),
-        "plan identity must hash the `plan:` payload (sorted providers, trailing target)"
-    );
-    assert_eq!(
-        payload, "plan:goal\npolicy\na\nz\nrust-library",
-        "payload format pin"
-    );
-    assert_ne!(
-        PLAN_SCHEMA, "plan",
-        "JSON `$schema` id must stay emath.resolution-plan, distinct from the identity prefix"
-    );
+        )));
+    p.demand("payload format pin", payload == "plan:goal\npolicy\na\nz\nrust-library", "payload format pin");
+    p.ne("JSON `$schema` id must stay emath.resolution-plan, distinct from the identity prefix", PLAN_SCHEMA, "plan");
+
+    });
+    p.finish();
 }
+
+
+
+
+// The identity layer (`plan:` payload) and the JSON `$schema`
+// layer (`emath.resolution-plan`) are deliberately split; the
+// payload format is pinned here so neither layer can silently
+// converge on the other's string.
+

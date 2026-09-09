@@ -18,7 +18,7 @@ use emath_core::QualifiedName;
 use emath_core::Span;
 use emath_exec_ir::interp::{Value, evaluate_with_budget};
 use emath_exec_ir::term_compile::{
-    ArgGuard, ParamShape, TermCompileError, compile_reference, std_cell_registry,
+    ArgGuard, ParamShape, TermCompileError,
 };
 use emath_exec_ir::{BuiltinId, CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget, ReduceId};
 use emath_ir::capability::{
@@ -26,6 +26,23 @@ use emath_ir::capability::{
     softmax_reference_strict_f64,
 };
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 fn f64_bits(value: f64) -> u64 {
     value.to_bits()
@@ -79,23 +96,22 @@ fn const_regs(values: &[f64]) -> Vec<EmirOp> {
 }
 
 /// Bit-exact scalar parity (Bool compares directly).
-fn assert_parity(label: &str, cell: &Value, direct: &Value) {
+fn assert_parity(p: &mut Probe, label: &str, cell: &Value, direct: &Value) {
     match (cell, direct) {
-        (Value::F64(a), Value::F64(b)) => assert_eq!(
-            f64_bits(*a),
-            f64_bits(*b),
-            "{label}: bit-exact parity broken ({a} vs {b})"
-        ),
-        (Value::Bool(a), Value::Bool(b)) => assert_eq!(a, b, "{label}: boolean parity"),
+        (Value::F64(a), Value::F64(b)) => { p.eq("f64_bits(*a)", &(f64_bits(*a)), &(f64_bits(*b))); },
+        (Value::Bool(a), Value::Bool(b)) => { p.eq("a", &(a), &(b)); },
         other => panic!("{label}: shape confusion {other:?}"),
     }
 }
 
-/// The scalar cohort: (cell, [inputs], direct ops, direct result
-/// register). The direct ops ARE the handwritten nucleus arms; the cell
-/// path is compiled registry data. Parity is the migration contract.
 #[test]
-fn scalar_cohort_dual_path_bit_exact() {
+fn intent() {
+    let mut p = Probe::new("Ten-operation anti-LOC migration cohort.");
+    p.case("scalar_cohort_dual_path_bit_exact", |p| {
+// The scalar cohort: (cell, [inputs], direct ops, direct result
+// register). The direct ops ARE the handwritten nucleus arms; the cell
+// path is compiled registry data. Parity is the migration contract.
+
     for (cell, inputs, mut ops, result) in [
         ("std.math.add", [2.0, 3.0], const_regs(&[2.0, 3.0]), 2),
         ("std.math.mul", [1.5, 4.0], const_regs(&[1.5, 4.0]), 2),
@@ -107,7 +123,7 @@ fn scalar_cohort_dual_path_bit_exact() {
         let consts: Vec<Value> = inputs.iter().map(|&v| Value::F64(v)).collect();
         let via_cell = seam_eval(cell, &consts);
         let direct = direct_eval(ops, &consts, result);
-        assert_parity(&format!("{cell}({:?})", inputs), &via_cell, &direct);
+        assert_parity(p, &format!("{cell}({:?})", inputs), &via_cell, &direct);
         // NaN propagates identically on both paths (no guard hides it).
         let nan_consts = vec![Value::F64(f64::NAN), Value::F64(1.0)];
         let nan_cell = seam_eval(cell, &nan_consts);
@@ -127,7 +143,7 @@ fn scalar_cohort_dual_path_bit_exact() {
             &nan_consts,
             2,
         );
-        assert_parity(&format!("{cell}(NaN, 1)"), &nan_cell, &nan_direct);
+        assert_parity(p, &format!("{cell}(NaN, 1)"), &nan_cell, &nan_direct);
     }
 
     // Unary builtins: sin, exp, sqrt (sqrt over the declared non-negative
@@ -150,7 +166,7 @@ fn scalar_cohort_dual_path_bit_exact() {
             let consts = vec![Value::F64(x)];
             let via_cell = seam_eval(cell, &consts);
             let direct = direct_eval(ops, &consts, 1);
-            assert_parity(&format!("{cell}({x})"), &via_cell, &direct);
+            assert_parity(p, &format!("{cell}({x})"), &via_cell, &direct);
         }
         // Out-of-domain sqrt: NaN on BOTH paths (silent NaN propagation
         // is the declared strict-f64 behavior for unguarded scalars —
@@ -164,12 +180,11 @@ fn scalar_cohort_dual_path_bit_exact() {
             ];
             let via_cell = seam_eval(cell, &consts);
             let direct = direct_eval(ops, &consts, 1);
-            assert_parity(&format!("{cell}(-1)"), &via_cell, &direct);
+            assert_parity(p, &format!("{cell}(-1)"), &via_cell, &direct);
             match (&via_cell, &direct) {
                 (Value::F64(a), Value::F64(b)) => {
-                    assert!(a.is_nan() && b.is_nan(), "sqrt(-1) is NaN on both paths")
-                }
-                other => panic!("scalar outputs expected, got {other:?}"),
+                    p.demand("sqrt(-1) is NaN on both paths", a.is_nan() && b.is_nan(), "sqrt(-1) is NaN on both paths");}
+                other => { p.fail("scalar_cohort_dual_path_bit_exact#2", format!("scalar outputs expected, got {other:?}")); return; },
             }
         }
     }
@@ -185,15 +200,15 @@ fn scalar_cohort_dual_path_bit_exact() {
         let consts = vec![Value::F64(a), Value::F64(b)];
         let via_cell = seam_eval("std.math.lt", &consts);
         let direct = direct_eval(ops, &consts, 2);
-        assert_parity(&format!("lt({a}, {b})"), &via_cell, &direct);
+        assert_parity(p, &format!("lt({a}, {b})"), &via_cell, &direct);
     }
-}
 
-/// The vector cohort: sum reduction. Left-to-right strict order on both
-/// paths (the cell's compiled VectorReduce vs the handwritten fold), the
-/// declared finite policy (AllFinite guard refuses typed).
-#[test]
-fn sum_reduction_dual_path_bit_exact() {
+    });
+    p.case("sum_reduction_dual_path_bit_exact", |p| {
+// The vector cohort: sum reduction. Left-to-right strict order on both
+// paths (the cell's compiled VectorReduce vs the handwritten fold), the
+// declared finite policy (AllFinite guard refuses typed).
+
     for case in [
         vec![1.0, 2.0, 3.0],
         vec![1e-300, 1e300, 0.0],
@@ -212,7 +227,7 @@ fn sum_reduction_dual_path_bit_exact() {
         }
         let via_cell = seam_eval("std.tensor.sum", &[Value::Vector(case.clone())]);
         let direct = Value::F64(direct);
-        assert_parity(&format!("sum({case:?})"), &via_cell, &direct);
+        assert_parity(p, &format!("sum({case:?})"), &via_cell, &direct);
         let _ = ops;
     }
 
@@ -244,31 +259,31 @@ fn sum_reduction_dual_path_bit_exact() {
         EvalBudget::default(),
     ) {
         Err(emath_exec_ir::interp::EvalFault::CapabilityRefused { code, .. }) => {
-            assert_eq!(code, "E-CELL-006");
+            p.demand("sum_reduction_dual_path_bit_exact#1", code == "E-CELL-006", format!("expected {:?}, got {:?}", "E-CELL-006", code));
         }
-        other => panic!("NaN element must refuse E-CELL-006, got {other:?}"),
+        other => { p.fail("sum_reduction_dual_path_bit_exact#2", format!("NaN element must refuse E-CELL-006, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn softmax_stays_in_cohort() {
+    });
+    p.case("softmax_stays_in_cohort", |p| {
+
     // Softmax remains the cohort's tensor anchor: registry cell vs the
     // emath-ir handwritten oracle, bit-for-bit ('s differential,
     // re-run through the cohort harness).
     for logits in [&[1.0, 2.0, 3.0] as &[f64], &[-5.0, 0.0, 5.0, 500.0], &[0.0]] {
         let via_cell = match seam_eval("std.tensor.softmax", &[Value::Vector(logits.to_vec())]) {
             Value::Vector(values) => values,
-            other => panic!("expected vector, got {other:?}"),
+            other => { p.fail("softmax_stays_in_cohort#1", format!("expected vector, got {other:?}")); return; },
         };
         let oracle = softmax_reference_strict_f64(logits).expect("oracle computes");
         for (i, (g, w)) in via_cell.iter().zip(oracle.iter()).enumerate() {
-            assert_eq!(g.to_bits(), w.to_bits(), "softmax {logits:?} [{i}]");
+            p.eq(format!("softmax {logits:?} [{i}]"), g.to_bits(), w.to_bits());
         }
     }
-}
 
-#[test]
-fn registry_is_data_and_dispatch_is_branch_free() {
+    });
+    p.case("registry_is_data_and_dispatch_is_branch_free", |p| {
+
     // Anti-LOC law: the cohort is DATA. The registry must contain every
     // REQUIRED migrated-cohort cell — the 7 migrated ops +
     // softmax + the four `std.linalg` cells, the five `std.graph`
@@ -312,34 +327,27 @@ fn registry_is_data_and_dispatch_is_branch_free() {
     ];
     let registry = std_cell_registry();
     for name in REQUIRED_MIGRATED_COHORT {
-        assert!(
-            registry.contains_key(*name),
-            "required migrated cohort cell {name} is missing from the registry: {:?}",
-            registry.keys().collect::<Vec<_>>()
-        );
+        p.demand(format!("required migrated cohort cell {name} is missing from the registry: {:?}", registry.keys().collect::<Vec<_>>()), registry.contains_key(*name), format!("required migrated cohort cell {name} is missing from the registry: {:?}", registry.keys().collect::<Vec<_>>()));
     }
     let cell = registry.get("std.math.exp").expect("present");
     for (op, _) in &cell.program.ops {
         let name = op.name();
-        assert!(
-            !name.contains("std.math"),
-            "bytecode is generic vocabulary, not per-op naming: {name}"
-        );
+        p.demand(format!("bytecode is generic vocabulary, not per-op naming: {name}"), !name.contains("std.math"), format!("bytecode is generic vocabulary, not per-op naming: {name}"));
     }
 
     // Contracts are data: the sum cell declares the finite-policy guard;
     // scalar cohort cells declare the unguarded-scalar policy (NaN
     // propagates — pinned in the scalar test).
     let sum = registry.get("std.tensor.sum").expect("registered");
-    assert!(matches!(sum.guards[0], ArgGuard::AllFinite(0)));
+    p.demand("registry_is_data_and_dispatch_is_branch_free#3", matches!(sum.guards[0], ArgGuard::AllFinite(0)), "registry_is_data_and_dispatch_is_branch_free#3: matches!(sum.guards[0], ArgGuard::AllFinite(0))");
     let add = registry.get("std.math.add").expect("registered");
-    assert!(add.guards.is_empty());
-    assert_eq!(add.params.len(), 2);
-    assert_eq!(sum.params, vec![("x".to_string(), ParamShape::Vector)]);
-}
+    p.demand("registry_is_data_and_dispatch_is_branch_free#4", add.guards.is_empty(), "registry_is_data_and_dispatch_is_branch_free#4: add.guards.is_empty()");
+    p.eq("registry_is_data_and_dispatch_is_branch_free#5", add.params.len(), 2);
+    p.eq("registry_is_data_and_dispatch_is_branch_free#6", sum.params.clone(), vec![("x".to_string(), ParamShape::Vector)]);
 
-#[test]
-fn missing_nucleus_diagnosed_typed() {
+    });
+    p.case("missing_nucleus_diagnosed_typed", |p| {
+
     // Matmul and RK4 are NOT in the closed reference vocabulary: the
     // compiler refuses typed, naming the missing nucleus (matrix carrier
     // shapes; integrator loops in first-order terms). The law:
@@ -369,8 +377,8 @@ fn missing_nucleus_diagnosed_typed() {
         Vec::new(),
         "test.matmul",
     ) {
-        Err(TermCompileError::UnknownOperator { symbol }) => assert_eq!(symbol, "matmul"),
-        other => panic!("matmul must diagnose the missing nucleus, got {other:?}"),
+        Err(TermCompileError::UnknownOperator { symbol }) => { p.demand("missing_nucleus_diagnosed_typed#1", symbol == "matmul", format!("expected {:?}, got {:?}", "matmul", symbol)); },
+        other => { p.fail("missing_nucleus_diagnosed_typed#2", format!("matmul must diagnose the missing nucleus, got {other:?}")); return; },
     }
     match compile_reference(
         &Term::Apply {
@@ -382,13 +390,13 @@ fn missing_nucleus_diagnosed_typed() {
         Vec::new(),
         "test.rk4",
     ) {
-        Err(TermCompileError::UnknownOperator { symbol }) => assert_eq!(symbol, "rk4"),
-        other => panic!("rk4 must diagnose the missing nucleus, got {other:?}"),
+        Err(TermCompileError::UnknownOperator { symbol }) => { p.demand("missing_nucleus_diagnosed_typed#3", symbol == "rk4", format!("expected {:?}, got {:?}", "rk4", symbol)); },
+        other => { p.fail("missing_nucleus_diagnosed_typed#4", format!("rk4 must diagnose the missing nucleus, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn frozen_policy_mutation_refused() {
+    });
+    p.case("frozen_policy_mutation_refused", |p| {
+
     // The negative seed's silent-success scenario: an identity-affecting
     // numeric-policy change to a frozen cohort cell refuses typed
     // (E-CELL-003) — the registry never serves a mutated cell silently,
@@ -407,10 +415,10 @@ fn frozen_policy_mutation_refused() {
     };
     match admit_cell_mutation(&frozen, &mutated) {
         Err(refusal) => {
-            assert_eq!(refusal.code(), "E-CELL-003");
-            assert_eq!(refusal.cell_name(), "std.math.add");
+            p.demand("frozen_policy_mutation_refused#1", refusal.code() == "E-CELL-003", format!("expected {:?}, got {:?}", "E-CELL-003", refusal.code()));
+            p.demand("frozen_policy_mutation_refused#2", refusal.cell_name() == "std.math.add", format!("expected {:?}, got {:?}", "std.math.add", refusal.cell_name()));
         }
-        Ok(_) => panic!("frozen cell mutation must refuse"),
+        Ok(_) => { p.fail("frozen_policy_mutation_refused#3", format!("frozen cell mutation must refuse")); return; },
     }
 
     const NEGATIVE_SEED: &str =
@@ -419,14 +427,11 @@ fn frozen_policy_mutation_refused() {
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-CELL-003"),
-        "seed expects the frozen-policy refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the frozen-policy refusal, found: {expect_line}"), expect_line.contains("E-CELL-003"), format!("seed expects the frozen-policy refusal, found: {expect_line}"));
 
-#[test]
-fn cohort_mutant_is_caught_and_lands_in_bundle() {
+    });
+    p.case("cohort_mutant_is_caught_and_lands_in_bundle", |p| {
+
     // Mutation law: flip the compiled add cell into a subtractor and the
     // dual-path differential MUST catch it bit-level (2+3 != 2-3). Then
     // the healthy cohort verdict lands as a labeled world record.
@@ -442,7 +447,7 @@ fn cohort_mutant_is_caught_and_lands_in_bundle() {
             other => (other, span),
         })
         .collect();
-    assert_ne!(mutant_ops, add.program.ops, "the seed mutates the cell");
+    p.ne("the seed mutates the cell", mutant_ops.clone(), add.program.ops.clone());
     let mutant_program = EmirProgram {
         ops: mutant_ops,
         result: add.program.result,
@@ -456,13 +461,8 @@ fn cohort_mutant_is_caught_and_lands_in_bundle() {
         .expect("mutant evaluates");
     match (&via_cell, &via_mutant) {
         (Value::F64(a), Value::F64(b)) => {
-            assert_ne!(
-                a.to_bits(),
-                b.to_bits(),
-                "the differential catches 2+3 vs 2-3"
-            )
-        }
-        other => panic!("scalar outputs expected, got {other:?}"),
+            p.ne("the differential catches 2+3 vs 2-3", a.to_bits(), b.to_bits());}
+        other => { p.fail("cohort_mutant_is_caught_and_lands_in_bundle#3", format!("scalar outputs expected, got {other:?}")); return; },
     }
 
     // Labeled portfolio: the healthy cohort verdict in the
@@ -508,11 +508,27 @@ fn cohort_mutant_is_caught_and_lands_in_bundle() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("cohort_mutant_is_caught_and_lands_in_bundle#5", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "cohort-parity");
+    ), "cohort_mutant_is_caught_and_lands_in_bundle#5: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("cohort_mutant_is_caught_and_lands_in_bundle#6", result.world == "cohort-parity", format!("expected {:?}, got {:?}", "cohort-parity", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("cohort_mutant_is_caught_and_lands_in_bundle#7", bundle.bundle_id.starts_with("fnv1a64:"), "cohort_mutant_is_caught_and_lands_in_bundle#7: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

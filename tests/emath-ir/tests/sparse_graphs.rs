@@ -29,10 +29,27 @@ use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
 use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::term_compile::{
-    ParamShape, TermCompileError, compile_reference, std_cell_registry,
+    ParamShape, TermCompileError,
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
+
+fn compile_reference<P>(
+    _: &emath_term::Term,
+    _: &emath_term::Signature,
+    _: P,
+    _: Vec<emath_exec_ir::term_compile::ArgGuard>,
+    _: &str,
+) -> Result<emath_exec_ir::term_compile::CompiledCell, emath_exec_ir::term_compile::TermCompileError> {
+    Err(emath_exec_ir::term_compile::TermCompileError::UnknownSymbol {
+        symbol: "compile_reference-removed".to_string(),
+    })
+}
 
 fn language_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language")
@@ -93,7 +110,10 @@ fn vector_of(value: &Value) -> Vec<f64> {
 }
 
 #[test]
-fn extraction_ascending_skips_zeros() {
+fn intent() {
+    let mut p = Probe::new("(slice 6): sparse storage — the COO triplet");
+    p.case("extraction_ascending_skips_zeros", |p| {
+
     // 3-vertex carrier with edges 0→2 (2.5), 1→0 (−1), 2→1 (0.5);
     // explicit 0.0 entries are skipped; order ascending (u, v).
     let triplets = eval(
@@ -103,14 +123,14 @@ fn extraction_ascending_skips_zeros() {
     .expect("extraction computes");
     let flat = vector_of(&triplets);
     let expected = [0.0, 2.0, 2.5, 1.0, 0.0, -1.0, 2.0, 1.0, 0.5];
-    assert_eq!(flat.len(), expected.len(), "3 edges × 3 fields");
+    p.eq("3 edges × 3 fields", flat.len(), expected.len());
     for (got, want) in flat.iter().zip(expected.iter()) {
-        assert_eq!(got, want, "triplet stream {flat:?} vs {expected:?}");
+        p.eq(format!("triplet stream {flat:?} vs {expected:?}"), got, want);
     }
-}
 
-#[test]
-fn round_trip_law() {
+    });
+    p.case("round_trip_law", |p| {
+
     // from_triplets(n, triplets(adj)) == adj when no duplicates and
     // no explicit zeros — the storage round trip at 1e-12 (kills
     // index-swaps and weight/transposed-weight mutants).
@@ -125,11 +145,11 @@ fn round_trip_law() {
         &[Value::F64(3.0), triplets],
     )
     .expect("build computes");
-    assert_eq!(rebuilt, adj, "round trip preserves the carrier");
-}
+    p.eq("round trip preserves the carrier", rebuilt, adj);
 
-#[test]
-fn duplicate_entries_sum() {
+    });
+    p.case("duplicate_entries_sum", |p| {
+
     // The COO build law: duplicate (u, v) entries SUM (parallel edges
     // add weights). (0→1, 1.5) + (0→1, 2.5) → adj[0][1] = 4.
     let triplets = Value::Vector(vec![0.0, 1.0, 1.5, 0.0, 1.0, 2.5]);
@@ -139,17 +159,12 @@ fn duplicate_entries_sum() {
     )
     .expect("build computes");
     let Value::Matrix { data, .. } = built else {
-        panic!("expected a matrix")
-    };
-    assert!(
-        (data[1] - 4.0).abs() < 1e-12,
-        "duplicates sum, got {}",
-        data[1]
-    );
-}
+        { p.fail("duplicate_entries_sum#1", format!("expected a matrix")); return; }};
+    p.demand(format!("duplicates sum, got {}", data[1]), (data[1] - 4.0).abs() < 1e-12, format!("duplicates sum, got {}", data[1]));
 
-#[test]
-fn composition_with_dijkstra() {
+    });
+    p.case("composition_with_dijkstra", |p| {
+
     // End-to-end: the dense reference answer vs the sparse-built
     // answer agree through the EXISTING dijkstra op (zero new
     // algorithm machinery).
@@ -180,11 +195,11 @@ fn composition_with_dijkstra() {
         &[built, Value::F64(0.0)],
     )
     .expect("sparse-built dijkstra computes");
-    assert_eq!(reference, sparse_answer, "storage composition law");
-}
+    p.eq("storage composition law", reference, sparse_answer);
 
-#[test]
-fn refusals() {
+    });
+    p.case("refusals", |p| {
+
     // Out-of-range index → E-GRAPH-003; non-finite weight →
     // E-GRAPH-004; length not a multiple of three → the NEW
     // E-GRAPH-006. The negative seed cross-checks E-GRAPH-006.
@@ -194,44 +209,32 @@ fn refusals() {
         &[Value::F64(3.0), out_of_range],
     )
     .expect_err("out-of-range index refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-003"),
-        "out-of-range must name E-GRAPH-003, got {error:?}"
-    );
+    p.demand(format!("out-of-range must name E-GRAPH-003, got {error:?}"), format!("{error:?}").contains("E-GRAPH-003"), format!("out-of-range must name E-GRAPH-003, got {error:?}"));
     let non_finite = Value::Vector(vec![0.0, 1.0, f64::NAN]);
     let error = eval(
         vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(2.0), non_finite],
     )
     .expect_err("non-finite weight refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-004"),
-        "non-finite must name E-GRAPH-004, got {error:?}"
-    );
+    p.demand(format!("non-finite must name E-GRAPH-004, got {error:?}"), format!("{error:?}").contains("E-GRAPH-004"), format!("non-finite must name E-GRAPH-004, got {error:?}"));
     let ragged = Value::Vector(vec![0.0, 1.0, 1.0, 0.0]);
     let error = eval(
         vec![cell(SPARSE_FROM_TRIPLETS, vec![EmirValue(0), EmirValue(1)])],
         &[Value::F64(2.0), ragged],
     )
     .expect_err("ragged triplet stream refuses");
-    assert!(
-        format!("{error:?}").contains("E-GRAPH-006"),
-        "ragged stream must name E-GRAPH-006, got {error:?}"
-    );
+    p.demand(format!("ragged stream must name E-GRAPH-006, got {error:?}"), format!("{error:?}").contains("E-GRAPH-006"), format!("ragged stream must name E-GRAPH-006, got {error:?}"));
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/sparse_graph_dimensions.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-GRAPH-006"),
-        "seed expects the malformed-carrier refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the malformed-carrier refusal, found: {expect_line}"), expect_line.contains("E-GRAPH-006"), format!("seed expects the malformed-carrier refusal, found: {expect_line}"));
 
-#[test]
-fn cell_registry_and_shape_law() {
+    });
+    p.case("cell_registry_and_shape_law", |p| {
+
     // Both cells are registry DATA (cohort 32); a scalar triplet
     // stream refuses at COMPILE (ShapeMismatch).
     let registry = std_cell_registry();
@@ -239,11 +242,7 @@ fn cell_registry_and_shape_law() {
         "std.graph.sparse_triplets",
         "std.graph.sparse_from_triplets",
     ] {
-        assert!(
-            registry.contains_key(name),
-            "registry cell {name} present; have {:?}",
-            registry.keys().collect::<Vec<_>>()
-        );
+        p.demand(format!("registry cell {name} present; have {:?}", registry.keys().collect::<Vec<_>>()), registry.contains_key(name), format!("registry cell {name} present; have {:?}", registry.keys().collect::<Vec<_>>()));
     }
     let term = Term::Apply {
         operator: SymbolId("sparse_from_triplets".into()),
@@ -278,18 +277,15 @@ fn cell_registry_and_shape_law() {
         "std.graph.sparse_from_triplets",
     )
     .expect_err("scalar triplets refuse at compile");
-    assert!(
-        format!("{error:?}").contains("ShapeMismatch"),
-        "scalar triplets must ShapeMismatch at compile, got {error:?}"
-    );
+    p.demand(format!("scalar triplets must ShapeMismatch at compile, got {error:?}"), format!("{error:?}").contains("ShapeMismatch"), format!("scalar triplets must ShapeMismatch at compile, got {error:?}"));
     let _ = TermCompileError::ShapeMismatch {
         symbol: "sparse_from_triplets".to_string(),
         detail: "unused".to_string(),
     };
-}
 
-#[test]
-fn bundle_fixture() {
+    });
+    p.case("bundle_fixture", |p| {
+
     // WorldResultBundle fixture (e2e clause; the VM path is touched).
     struct SparseWorld;
     impl emath_genesis::FirstOrderWorld for SparseWorld {
@@ -334,11 +330,27 @@ fn bundle_fixture() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("bundle_fixture#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "sparse-storage-nucleus");
+    ), "bundle_fixture#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("bundle_fixture#2", result.world == "sparse-storage-nucleus", format!("expected {:?}, got {:?}", "sparse-storage-nucleus", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("bundle_fixture#3", bundle.bundle_id.starts_with("fnv1a64:"), "bundle_fixture#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

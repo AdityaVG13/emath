@@ -15,15 +15,20 @@ use emath_core::limits::Limits;
 use emath_exec_ir::install::{
     InstalledPack, PackError, PackRegistry, install_pack, validate_layout,
 };
-use emath_exec_ir::term_compile::std_cell_registry;
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
+use emath_test_harness::{Probe, boot};
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    std::collections::HashMap::new()
+}
 
 const TOY_PACK: &str = "package community\n\nemath field_pack spectral_style:\n    exports:\n        cell softmax\n    metadata:\n        description reference spectral pack\n";
 
 /// The composition seam: admission (`emath field_pack`) → exports →
 /// install tooling. Returns the admitted pack entry.
-fn admitted_pack(source: &str) -> emath_ir::FieldPackEntry {
+
+fn admitted_pack_or_die(source: &str) -> emath_ir::FieldPackEntry {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("toy-pack", source);
@@ -32,70 +37,87 @@ fn admitted_pack(source: &str) -> emath_ir::FieldPackEntry {
         .errors()
         .map(|diagnostic| diagnostic.code.to_string())
         .collect();
-    assert!(
-        codes.is_empty(),
-        "the toy pack admits at the language layer, got {codes:?}"
-    );
+    if !codes.is_empty() {
+        panic!("the toy pack admits at the language layer, got {codes:?}");
+    }
     let mut packs = result.package.field_packs;
-    assert_eq!(packs.len(), 1, "one field_pack admitted");
+    if packs.len() != 1 {
+        panic!("one field_pack admitted, got {}", packs.len());
+    }
+    packs.remove(0)
+}
+
+fn admitted_pack(p: &mut Probe, source: &str) -> emath_ir::FieldPackEntry {
+    install_source_parser();
+    let mut session = CompilerSession::new(Limits::default());
+    let result = session.check_owned("toy-pack", source);
+    let codes: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.code.to_string())
+        .collect();
+    p.demand("\"the toy pack admits at the language layer, got {codes:?}\"", codes.is_empty(), format!("the toy pack admits at the language layer, got {codes:?}"));
+    let mut packs = result.package.field_packs;
+    p.eq("packs.len()", &(packs.len()), &(1));
     packs.remove(0)
 }
 
 #[test]
-fn toy_pack_installs_and_uses() {
+fn intent() {
+    boot();
+    let mut p = Probe::new("Field-pack layout, install, and `use`");
+    p.case("toy_pack_installs_and_uses", |p| {
+
     // Capstone happy path: add a toy pack (language admission), install
     // it (exports → existing registry → semantic image), `use` it —
     // no core branches anywhere in the path.
-    let entry = admitted_pack(TOY_PACK);
+    let entry = admitted_pack(p, TOY_PACK);
     let installed: InstalledPack =
         install_pack(&entry, &["community".to_string()], &std_cell_registry()).expect("installs");
-    assert_eq!(installed.package, vec!["community".to_string()]);
-    assert_eq!(installed.pack, "spectral_style");
-    assert_eq!(installed.exports, vec!["std.tensor.softmax".to_string()]);
+    p.eq("toy_pack_installs_and_uses#1", installed.package.clone(), vec!["community".to_string()]);
+    p.demand("toy_pack_installs_and_uses#2", installed.pack == "spectral_style", format!("expected {:?}, got {:?}", "spectral_style", installed.pack));
+    p.eq("toy_pack_installs_and_uses#3", installed.exports.clone(), vec!["std.tensor.softmax".to_string()]);
     installed
         .image
         .validate_partitions()
         .expect("the installed image is self-validating");
-    assert!(installed.image.image_id.starts_with("fnv1a64:"));
+    p.demand("toy_pack_installs_and_uses#4", installed.image.image_id.starts_with("fnv1a64:"), "toy_pack_installs_and_uses#4: installed.image.image_id.starts_with(\"fnv1a64:\")");
     let cells = installed.image.load("cells").expect("cells page");
-    assert!(
-        cells.contains("cell:std.tensor.softmax"),
-        "the exported cell landed in the installed image: {cells}"
-    );
+    p.demand(format!("the exported cell landed in the installed image: {cells}"), cells.contains("cell:std.tensor.softmax"), format!("the exported cell landed in the installed image: {cells}"));
 
     let mut registry = PackRegistry::new();
     registry.install(installed);
     let used: &InstalledPack = registry
         .resolve_use(&["community".to_string(), "spectral_style".to_string()])
         .expect("use resolves the installed pack");
-    assert_eq!(used.pack, "spectral_style");
+    p.demand("toy_pack_installs_and_uses#6", used.pack == "spectral_style", format!("expected {:?}, got {:?}", "spectral_style", used.pack));
     match registry.resolve_use(&["community".to_string(), "missing".to_string()]) {
         Err(PackError::UnknownPack { use_path }) => {
-            assert_eq!(use_path, "community.missing");
+            p.demand("toy_pack_installs_and_uses#7", use_path == "community.missing", format!("expected {:?}, got {:?}", "community.missing", use_path));
         }
-        other => panic!("unknown pack use must refuse, got {other:?}"),
+        other => { p.fail("toy_pack_installs_and_uses#8", format!("unknown pack use must refuse, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn unknown_export_refuses() {
+    });
+    p.case("unknown_export_refuses", |p| {
+
     // Install never fabricates: an export the registry does not provide
     // refuses typed (the installed image would otherwise claim a cell
     // nobody compiled — the silent-success shape).
     let source =
         "package community\n\nemath field_pack ghost:\n    exports:\n        cell acme.magic\n"
             .to_string();
-    let entry = admitted_pack(&source);
+    let entry = admitted_pack(p, &source);
     match install_pack(&entry, &["community".to_string()], &std_cell_registry()) {
         Err(PackError::UnknownExport { export }) => {
-            assert_eq!(export, "acme.magic");
+            p.demand("unknown_export_refuses#1", export == "acme.magic", format!("expected {:?}, got {:?}", "acme.magic", export));
         }
-        other => panic!("unknown export must refuse at install, got {other:?}"),
+        other => { p.fail("unknown_export_refuses#2", format!("unknown export must refuse at install, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn layout_is_closed() {
+    });
+    p.case("layout_is_closed", |p| {
+
     // The pack layout is a CLOSED directory set (the fixed
     // layout); a directory outside it — e.g. a `keywords/` injection —
     // refuses typed at the tooling boundary.
@@ -109,13 +131,13 @@ fn layout_is_closed() {
     ])
     .expect("the fixed layout admits");
     match validate_layout(&["src", "keywords"]) {
-        Err(PackError::UnknownLayoutDir { dir }) => assert_eq!(dir, "keywords"),
-        other => panic!("layout injection must refuse, got {other:?}"),
+        Err(PackError::UnknownLayoutDir { dir }) => { p.demand("layout_is_closed#1", dir == "keywords", format!("expected {:?}, got {:?}", "keywords", dir)); },
+        other => { p.fail("layout_is_closed#2", format!("layout injection must refuse, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn keyword_injection_refused_before_install() {
+    });
+    p.case("keyword_injection_refused_before_install", |p| {
+
     // NEGATIVE (the seed's silent-success): pack source that injects
     // parser keywords refuses at ADMISSION (E-SYN-101, the
     // closed section table) — install only ever consumes admitted
@@ -129,28 +151,19 @@ fn keyword_injection_refused_before_install() {
         .errors()
         .map(|diagnostic| diagnostic.code.to_string())
         .collect();
-    assert!(
-        codes.contains(&"E-SYN-101".to_string()),
-        "keyword injection refuses at admission, got {codes:?}"
-    );
-    assert!(
-        result.package.field_packs.is_empty(),
-        "a refused pack yields no installable data"
-    );
+    p.demand(format!("keyword injection refuses at admission, got {codes:?}"), codes.contains(&"E-SYN-101".to_string()), format!("keyword injection refuses at admission, got {codes:?}"));
+    p.demand("a refused pack yields no installable data", result.package.field_packs.is_empty(), "a refused pack yields no installable data");
     const NEGATIVE_SEED: &str =
         include_str!("../../../tests/invalid/field_pack_installation.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-SYN-101"),
-        "seed expects the injection refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects the injection refusal, found: {expect_line}"), expect_line.contains("E-SYN-101"), format!("seed expects the injection refusal, found: {expect_line}"));
 
-#[test]
-fn no_core_rebuild_bundle() {
+    });
+    p.case("no_core_rebuild_bundle", |p| {
+
     // WorldResultBundle fixture (e2e clause; the cell path is touched:
     // install compiles cells to an image). The labeled world verdict
     // records install-without-rebuild: the installed image's cells page
@@ -161,7 +174,7 @@ fn no_core_rebuild_bundle() {
         type Error = emath_genesis::EvalError;
 
         fn constant(&self, _symbol: &emath_term::SymbolId) -> Result<Self::Value, Self::Error> {
-            let entry = admitted_pack(TOY_PACK);
+            let entry = admitted_pack_or_die(TOY_PACK);
             let installed = install_pack(&entry, &["community".to_string()], &std_cell_registry())
                 .expect("installs");
             let cells = installed.image.load("cells").expect("cells page");
@@ -200,11 +213,23 @@ fn no_core_rebuild_bundle() {
         emath_genesis::WorldBudget { max_steps: 8 },
         |verdict: &String| verdict.clone(),
     );
-    assert!(matches!(
+    p.demand("no_core_rebuild_bundle#1", matches!(
         result.disposition,
         emath_genesis::Disposition::Answer { .. }
-    ));
-    assert_eq!(result.world, "field-pack-install");
+    ), "no_core_rebuild_bundle#1: matches!(\n        result.disposition,\n        emath_genesis::Disposition::Answer { .. }\n    )");
+    p.demand("no_core_rebuild_bundle#2", result.world == "field-pack-install", format!("expected {:?}, got {:?}", "field-pack-install", result.world));
     let bundle = emath_genesis::ResultBundle::new(vec![result]).expect("labeled result");
-    assert!(bundle.bundle_id.starts_with("fnv1a64:"));
+    p.demand("no_core_rebuild_bundle#3", bundle.bundle_id.starts_with("fnv1a64:"), "no_core_rebuild_bundle#3: bundle.bundle_id.starts_with(\"fnv1a64:\")");
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+

@@ -11,6 +11,7 @@ use emath_ir::package::Declaration;
 use emath_ir::types::TypeNode;
 use emath_ir::{Mig, MigNodeKind, SemanticPackage};
 use std::collections::BTreeMap;
+use emath_test_harness::Probe;
 
 /// A package exercising every intent plane; `span_offset` shifts every
 /// span to prove presentation-only changes do not alter identity.
@@ -75,22 +76,22 @@ fn package(span_offset: u32, literal_bits: u64) -> SemanticPackage {
 }
 
 #[test]
-fn identity_excludes_presentation_only_span_changes() {
+fn intent() {
+    let mut p = Probe::new("MIG intent-graph witnesses: presentation-only span changes do not");
+    p.case("identity_excludes_presentation_only_span_changes", |p| {
     let original = Mig::from_package(&package(0, 0.0_f64.to_bits()));
     let reformatted = Mig::from_package(&package(9000, 0.0_f64.to_bits()));
-    assert_eq!(original.identity(), reformatted.identity());
-    assert_eq!(original.canonical(), reformatted.canonical());
-}
+    p.eq("identity_excludes_presentation_only_span_changes#1", original.identity(), reformatted.identity());
+    p.eq("identity_excludes_presentation_only_span_changes#2", original.canonical(), reformatted.canonical());
 
-#[test]
-fn identity_detects_semantic_expression_change() {
+    });
+    p.case("identity_detects_semantic_expression_change", |p| {
     let zero = Mig::from_package(&package(0, 0.0_f64.to_bits()));
     let one = Mig::from_package(&package(0, 1.0_f64.to_bits()));
-    assert_ne!(zero.identity(), one.identity());
-}
+    p.ne("identity_detects_semantic_expression_change#1", zero.identity(), one.identity());
 
-#[test]
-fn every_intent_plane_is_represented_and_owned_by_the_declaration() {
+    });
+    p.case("every_intent_plane_is_represented_and_owned_by_the_declaration", |p| {
     let graph = Mig::from_package(&package(0, 0.0_f64.to_bits()));
     for kind in [
         MigNodeKind::Declaration,
@@ -103,16 +104,12 @@ fn every_intent_plane_is_represented_and_owned_by_the_declaration() {
         MigNodeKind::Invariant,
         MigNodeKind::CompileSpec,
     ] {
-        assert!(
-            graph.nodes.iter().any(|node| node.kind == kind),
-            "plane {} missing from the intent graph",
-            kind.name()
-        );
+        p.demand(format!("plane {} missing from the intent graph", kind.name()), graph.nodes.iter().any(|node| node.kind == kind), format!("plane {} missing from the intent graph", kind.name()));
     }
     // Spine property: every non-declaration node is reachable from a
     // declaration node through the edge list.
     let declaration = graph.nodes[0].id;
-    assert_eq!(graph.nodes[0].kind, MigNodeKind::Declaration);
+    p.eq("every_intent_plane_is_represented_and_owned_by_the_declaration#2", graph.nodes[0].kind, MigNodeKind::Declaration);
     let mut reachable = vec![false; graph.nodes.len()];
     reachable[declaration.0] = true;
     // Edges are emitted parent-before-child, one forward pass suffices.
@@ -121,13 +118,21 @@ fn every_intent_plane_is_represented_and_owned_by_the_declaration() {
             reachable[edge.to.0] = true;
         }
     }
-    assert!(
-        reachable.iter().all(|seen| *seen),
-        "unreachable intent nodes: {:?}",
-        graph
+    p.demand(format!("unreachable intent nodes: {:?}", graph
             .nodes
             .iter()
             .filter(|node| !reachable[node.id.0])
-            .collect::<Vec<_>>()
-    );
+            .collect::<Vec<_>>()), reachable.iter().all(|seen| *seen), format!("unreachable intent nodes: {:?}", graph
+            .nodes
+            .iter()
+            .filter(|node| !reachable[node.id.0])
+            .collect::<Vec<_>>()));
+
+    });
+    p.finish();
 }
+
+
+
+
+

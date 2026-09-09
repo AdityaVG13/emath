@@ -25,6 +25,7 @@ use emath_exec_ir::native_kernel::{
 };
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget, lower_definition};
 use emath_ir::{Capability, CapabilityId, ExprNode, SemanticPackage};
+use emath_test_harness::Probe;
 
 const ADD: &str = "std.capability.math.add";
 
@@ -64,24 +65,24 @@ fn binary_apply_program(capability: &str, left: EmirOp, right: EmirOp) -> EmirPr
     }
 }
 
-fn i64_add_result(out: Result<Value, EvalFault>, want: i64) {
+fn i64_add_result(p: &mut Probe, out: Result<Value, EvalFault>, want: i64) {
     match out {
-        Ok(Value::I64(sum)) => assert_eq!(sum, want),
+        Ok(Value::I64(sum)) => { p.eq("sum", &(sum), &(want)); },
         other => panic!("expected exact Int sum {want}, got {other:?}"),
     }
 }
 
 #[test]
-fn exact_add_fallback_executes_from_real_image_reference() {
+fn intent() {
+    let mut p = Probe::new("Generic reference VM — capability");
+    p.case("exact_add_fallback_executes_from_real_image_reference", |p| {
+
     // Reference-only install: the native binding state is cleared, so the
     // seam MUST execute the authored exact-add reference body from the
     // checked-in image (capsule semantics: Int,Int -> Int, exact).
     let distribution = real_distribution();
     install_reference_programs(&distribution).expect("reference-only install");
-    assert!(
-        native_kernel(ADD).is_none(),
-        "reference-only install leaves no native binding state"
-    );
+    p.demand("reference-only install leaves no native binding state", native_kernel(ADD).is_none(), "reference-only install leaves no native binding state");
 
     let out = evaluate_with_budget(
         &binary_apply_program(ADD, EmirOp::ConstI64(2), EmirOp::ConstI64(1)),
@@ -89,11 +90,11 @@ fn exact_add_fallback_executes_from_real_image_reference() {
         &[],
         EvalBudget::default(),
     );
-    i64_add_result(out, 3);
-}
+    i64_add_result(p, out, 3);
 
-#[test]
-fn exact_add_native_binding_wins_with_capsule_hash() {
+    });
+    p.case("exact_add_native_binding_wins_with_capsule_hash", |p| {
+
     // Full install: the checked-add native binding is present, its
     // semantic hash matches the capsule of record, and exact add answers
     // through it.
@@ -107,12 +108,8 @@ fn exact_add_native_binding_wins_with_capsule_hash() {
         .semantic_hash
         .as_str()
         .to_string();
-    assert_eq!(
-        binding_semantic_hash(ADD).as_deref(),
-        Some(capsule_hash.as_str()),
-        "installed binding hash matches the capsule"
-    );
-    assert!(native_kernel(ADD).is_some());
+    p.eq("installed binding hash matches the capsule", binding_semantic_hash(ADD).as_deref(), Some(capsule_hash.as_str()));
+    p.demand("exact_add_native_binding_wins_with_capsule_hash#2", native_kernel(ADD).is_some(), "exact_add_native_binding_wins_with_capsule_hash#2: native_kernel(ADD).is_some()");
 
     let out = evaluate_with_budget(
         &binary_apply_program(ADD, EmirOp::ConstI64(2), EmirOp::ConstI64(1)),
@@ -120,11 +117,11 @@ fn exact_add_native_binding_wins_with_capsule_hash() {
         &[],
         EvalBudget::default(),
     );
-    i64_add_result(out, 3);
-}
+    i64_add_result(p, out, 3);
 
-#[test]
-fn exact_add_overflow_refuses_typed() {
+    });
+    p.case("exact_add_overflow_refuses_typed", |p| {
+
     let distribution = real_distribution();
     install_reference_programs(&distribution).expect("reference-only install");
     let out = evaluate_with_budget(
@@ -135,15 +132,15 @@ fn exact_add_overflow_refuses_typed() {
     );
     match out {
         Err(EvalFault::Arithmetic { op, detail }) => {
-            assert_eq!(op, "f64-add");
-            assert!(detail.contains("overflow"), "overflow named: {detail}");
+            p.demand("exact_add_overflow_refuses_typed#1", op == "f64-add", format!("expected {:?}, got {:?}", "f64-add", op));
+            p.demand(format!("overflow named: {detail}"), detail.contains("overflow"), format!("overflow named: {detail}"));
         }
-        other => panic!("expected typed overflow refusal, got {other:?}"),
+        other => { p.fail("exact_add_overflow_refuses_typed#3", format!("expected typed overflow refusal, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn exact_add_type_mismatch_refuses_typed() {
+    });
+    p.case("exact_add_type_mismatch_refuses_typed", |p| {
+
     // The capsule declares Int,Int: a mixed-carrier application refuses
     // typed — never a silent coercion.
     let distribution = real_distribution();
@@ -154,14 +151,11 @@ fn exact_add_type_mismatch_refuses_typed() {
         &[],
         EvalBudget::default(),
     );
-    assert!(
-        matches!(out, Err(EvalFault::TypeConfusion { .. })),
-        "mixed Int/Float64 operands refuse typed, got {out:?}"
-    );
-}
+    p.demand(format!("mixed Int/Float64 operands refuse typed, got {out:?}"), matches!(out, Err(EvalFault::TypeConfusion { .. })), format!("mixed Int/Float64 operands refuse typed, got {out:?}"));
 
-#[test]
-fn reference_arity_refuses_typed() {
+    });
+    p.case("reference_arity_refuses_typed", |p| {
+
     let distribution = real_distribution();
     install_reference_programs(&distribution).expect("reference-only install");
     // One operand against the two-param cell: typed refusal, never a
@@ -184,14 +178,11 @@ fn reference_arity_refuses_typed() {
         domain_obligations: Vec::new(),
     };
     let out = evaluate_with_budget(&program, &[], &[], EvalBudget::default());
-    assert!(
-        matches!(out, Err(EvalFault::Arithmetic { .. })),
-        "wrong arity refuses typed, got {out:?}"
-    );
-}
+    p.demand(format!("wrong arity refuses typed, got {out:?}"), matches!(out, Err(EvalFault::Arithmetic { .. })), format!("wrong arity refuses typed, got {out:?}"));
 
-#[test]
-fn reference_no_body_no_kernel_refuses_typed() {
+    });
+    p.case("reference_no_body_no_kernel_refuses_typed", |p| {
+
     // No native binding and no installed reference body for this
     // capability: the typed refusal is the ONLY outcome.
     let distribution = real_distribution();
@@ -208,14 +199,14 @@ fn reference_no_body_no_kernel_refuses_typed() {
     );
     match out {
         Err(EvalFault::Arithmetic { detail, .. }) => {
-            assert!(detail.contains("no installed reference bytecode or native kernel"));
+            p.demand("reference_no_body_no_kernel_refuses_typed#1", detail.contains("no installed reference bytecode or native kernel"), "reference_no_body_no_kernel_refuses_typed#1: detail.contains(\"no installed reference bytecode or native kernel\")");
         }
-        other => panic!("expected typed no-body refusal, got {other:?}"),
+        other => { p.fail("reference_no_body_no_kernel_refuses_typed#2", format!("expected typed no-body refusal, got {other:?}")); return; },
     }
-}
 
-#[test]
-fn budget_exhaustion_is_typed_refusal_never_partial() {
+    });
+    p.case("budget_exhaustion_is_typed_refusal_never_partial", |p| {
+
     // Resource exhaustion: an op budget below the program's step count is
     // a typed refusal, and no partial result escapes (Result::Err, not a
     // value). No capability dispatch is needed to pin the budget.
@@ -236,8 +227,8 @@ fn budget_exhaustion_is_typed_refusal_never_partial() {
         max_capability_applications: u32::MAX,
     };
     match evaluate_with_budget(&chain, &[], &[], starved) {
-        Err(EvalFault::BudgetExhausted { executed }) => assert_eq!(executed, 3),
-        other => panic!("expected typed budget refusal, got {other:?}"),
+        Err(EvalFault::BudgetExhausted { executed }) => { p.eq("budget_exhaustion_is_typed_refusal_never_partial#1", executed, 3); },
+        other => { p.fail("budget_exhaustion_is_typed_refusal_never_partial#2", format!("expected typed budget refusal, got {other:?}")); return; },
     }
 
     // Boundary: a budget exactly equal to the needed steps admits.
@@ -245,7 +236,7 @@ fn budget_exhaustion_is_typed_refusal_never_partial() {
         max_steps: 5,
         max_capability_applications: u32::MAX,
     };
-    assert!(evaluate_with_budget(&chain, &[], &[], exact).is_ok());
+    p.demand("budget_exhaustion_is_typed_refusal_never_partial#3", evaluate_with_budget(&chain, &[], &[], exact).is_ok(), "budget_exhaustion_is_typed_refusal_never_partial#3: evaluate_with_budget(&chain, &[], &[], exact).is_ok()");
 
     // The application budget bounds capability dispatch itself.
     let app_starved = EvalBudget {
@@ -253,14 +244,14 @@ fn budget_exhaustion_is_typed_refusal_never_partial() {
         max_capability_applications: 0,
     };
     let dispatch = binary_apply_program(ADD, EmirOp::ConstI64(2), EmirOp::ConstI64(1));
-    assert!(matches!(
+    p.demand("budget_exhaustion_is_typed_refusal_never_partial#4", matches!(
         evaluate_with_budget(&dispatch, &[], &[], app_starved),
         Err(EvalFault::BudgetExhausted { .. })
-    ));
-}
+    ), "budget_exhaustion_is_typed_refusal_never_partial#4: matches!(\n        evaluate_with_budget(&dispatch, &[], &[], app_starved),\n        Err(EvalFault::Bud");
 
-#[test]
-fn provider_and_unknown_pure_refusals_are_typed() {
+    });
+    p.case("provider_and_unknown_pure_refusals_are_typed", |p| {
+
     install_language_distribution(&real_distribution()).expect("full install");
     let span = Span::default();
     let vector: Vec<(EmirOp, Span)> = vec![
@@ -289,10 +280,10 @@ fn provider_and_unknown_pure_refusals_are_typed() {
     });
     match evaluate_with_budget(&provider, &[], &[], EvalBudget::default()) {
         Err(EvalFault::ProviderCallRequired { capability, args }) => {
-            assert_eq!(capability, "sim.engine.integrate");
-            assert_eq!(args, 2);
+            p.demand("provider_and_unknown_pure_refusals_are_typed#1", capability == "sim.engine.integrate", format!("expected {:?}, got {:?}", "sim.engine.integrate", capability));
+            p.eq("provider_and_unknown_pure_refusals_are_typed#2", args, 2);
         }
-        other => panic!("expected provider continuation hole, got {other:?}"),
+        other => { p.fail("provider_and_unknown_pure_refusals_are_typed#3", format!("expected provider continuation hole, got {other:?}")); return; },
     }
 
     // A pure capability with no native kernel and no installed reference
@@ -302,14 +293,14 @@ fn provider_and_unknown_pure_refusals_are_typed() {
         class: CellClass::Pure,
         args: vec![EmirValue(0)],
     });
-    assert!(matches!(
+    p.demand("provider_and_unknown_pure_refusals_are_typed#4", matches!(
         evaluate_with_budget(&unknown_pure, &[], &[], EvalBudget::default()),
         Err(EvalFault::Arithmetic { .. })
-    ));
-}
+    ), "provider_and_unknown_pure_refusals_are_typed#4: matches!(\n        evaluate_with_budget(&unknown_pure, &[], &[], EvalBudget::default()),\n        Err(");
 
-#[test]
-fn emitter_lowers_apply_and_term_evaluates() {
+    });
+    p.case("emitter_lowers_apply_and_term_evaluates", |p| {
+
     // Lowering seam: an admitted package's Apply term lowers to
     // ApplyCapability (data: name + class), prints deterministically, and
     // the lowered program evaluates end-to-end through the installed
@@ -348,17 +339,14 @@ fn emitter_lowers_apply_and_term_evaluates() {
             class,
             args,
         } => {
-            assert_eq!(capability, ADD);
-            assert_eq!(*class, CellClass::Pure);
-            assert_eq!(args.len(), 2);
+            p.eq("emitter_lowers_apply_and_term_evaluates#1", capability.as_str(), ADD);
+            p.eq("emitter_lowers_apply_and_term_evaluates#2", *class, CellClass::Pure);
+            p.eq("emitter_lowers_apply_and_term_evaluates#3", args.len(), 2);
         }
-        other => panic!("expected ApplyCapability, got {other:?}"),
+        other => { p.fail("emitter_lowers_apply_and_term_evaluates#4", format!("expected ApplyCapability, got {other:?}")); return; },
     }
     let printed = program.print();
-    assert!(
-        printed.contains("apply-capability") && printed.contains(ADD),
-        "byte-deterministic SSA must carry the cell identity: {printed}"
-    );
+    p.demand(format!("byte-deterministic SSA must carry the cell identity: {printed}"), printed.contains("apply-capability") && printed.contains(ADD), format!("byte-deterministic SSA must carry the cell identity: {printed}"));
 
     let out = evaluate_with_budget(
         &program,
@@ -366,7 +354,7 @@ fn emitter_lowers_apply_and_term_evaluates() {
         &[],
         EvalBudget::default(),
     );
-    i64_add_result(out, 3);
+    i64_add_result(p, out, 3);
 
     // Dangling capability id at the lowering seam: typed refusal, never a
     // silent lower.
@@ -377,32 +365,28 @@ fn emitter_lowers_apply_and_term_evaluates() {
         },
         Span::default(),
     );
-    assert!(lower_definition(&package, dangling, &["x".to_string()][..], &[]).is_err());
-}
+    p.demand("emitter_lowers_apply_and_term_evaluates#6", lower_definition(&package, dangling, &["x".to_string()][..], &[]).is_err(), "emitter_lowers_apply_and_term_evaluates#6: lower_definition(&package, dangling, &[\"x\".to_string()][..], &[]).is_err()");
 
-/// Negative seed: seeded silent-success scenario is refused.
-#[test]
-fn negative_seed_names_typed_refusal() {
-    const NEGATIVE_SEED: &str =
-        include_str!("../../../tests/invalid/capability_reference_vm.emath");
+    });
+    p.case("negative_seed_names_typed_refusal", |p| {
+// Negative seed: seeded silent-success scenario is refused.
+
+    const NEGATIVE_SEED: &str = include_str!("../../../tests/invalid/capability_reference_vm.emath");
     let expect_line = NEGATIVE_SEED
         .lines()
         .find(|l| l.trim_start().starts_with("# expect:"))
         .expect("seed declares its diagnostic");
-    assert!(
-        expect_line.contains("E-VM") || expect_line.contains("E-CELL"),
-        "seed expects a typed VM/admission refusal, found: {expect_line}"
-    );
-}
+    p.demand(format!("seed expects a typed VM/admission refusal, found: {expect_line}"), expect_line.contains("E-VM") || expect_line.contains("E-CELL"), format!("seed expects a typed VM/admission refusal, found: {expect_line}"));
 
-/// The universal program-as-value carrier: two distinct program literals
-/// stay distinct values, the literal survives evaluation into
-/// `Value::Program` with its body intact in the canonical dump, and the
-/// carrier rides an `ApplyCapability` argument register as an ordinary
-/// value (the unknown-name refusal fires only after the register is
-/// read — the artifact never triggers domain interpretation).
-#[test]
-fn program_literal_is_a_distinct_ordinary_value() {
+    });
+    p.case("program_literal_is_a_distinct_ordinary_value", |p| {
+// The universal program-as-value carrier: two distinct program literals
+// stay distinct values, the literal survives evaluation into
+// `Value::Program` with its body intact in the canonical dump, and the
+// carrier rides an `ApplyCapability` argument register as an ordinary
+// value (the unknown-name refusal fires only after the register is
+// read — the artifact never triggers domain interpretation).
+
     let nested = |constant: i64| EmirProgram {
         ops: vec![(EmirOp::ConstI64(constant), Span::default())],
         result: EmirValue(0),
@@ -411,14 +395,10 @@ fn program_literal_is_a_distinct_ordinary_value() {
         domain_obligations: Vec::new(),
     };
     let (first, second) = (nested(7), nested(8));
-    assert_ne!(
-        Value::Program(first.clone()),
-        Value::Program(second.clone()),
-        "two distinct programs must remain distinct values"
-    );
+    p.ne("two distinct programs must remain distinct values", Value::program(first.clone()), Value::program(second.clone()));
 
     let literal = EmirProgram {
-        ops: vec![(EmirOp::ProgramLiteral(first.clone()), Span::default())],
+        ops: vec![(EmirOp::ProgramLiteral { body: first.clone(), captures: Vec::new(), vector_input: false }, Span::default())],
         result: EmirValue(0),
         input_count: 0,
         state_count: 0,
@@ -426,16 +406,13 @@ fn program_literal_is_a_distinct_ordinary_value() {
     };
     let carried = evaluate_with_budget(&literal, &[], &[], EvalBudget::default())
         .expect("program literal evaluates");
-    assert_eq!(carried, Value::Program(first.clone()));
+    p.eq("program_literal_is_a_distinct_ordinary_value#2", carried.clone(), Value::program(first.clone()));
     let dump = format!("{carried}");
-    assert!(
-        dump.starts_with("program(") && dump.contains("ConstI64(7)"),
-        "canonical dump must preserve the artifact: {dump}"
-    );
+    p.demand(format!("canonical dump must preserve the artifact: {dump}"), dump.starts_with("program(") && dump.contains("ConstI64(7)"), format!("canonical dump must preserve the artifact: {dump}"));
 
     let argument = EmirProgram {
         ops: vec![
-            (EmirOp::ProgramLiteral(first.clone()), Span::default()),
+            (EmirOp::ProgramLiteral { body: first.clone(), captures: Vec::new(), vector_input: false }, Span::default()),
             (
                 EmirOp::ApplyCapability {
                     capability: "std.stochastic.does_not_exist".to_string(),
@@ -453,10 +430,31 @@ fn program_literal_is_a_distinct_ordinary_value() {
     let refused = evaluate_with_budget(&argument, &[], &[], EvalBudget::default())
         .expect_err("unknown capability refuses");
     match refused {
-        EvalFault::Arithmetic { detail, .. } => assert_eq!(
-            detail, "no installed reference bytecode or native kernel",
-            "carrier-as-argument reaches the seam unchanged"
-        ),
-        other => panic!("expected the unknown-name refusal, got {other:?}"),
+        EvalFault::Arithmetic { detail, .. } => { p.demand("carrier-as-argument reaches the seam unchanged", detail == "no installed reference bytecode or native kernel", format!("expected {:?}, got {:?}", "no installed reference bytecode or native kernel", detail)); },
+        other => { p.fail("program_literal_is_a_distinct_ordinary_value#5", format!("expected the unknown-name refusal, got {other:?}")); return; },
     }
+
+    });
+    p.finish();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
