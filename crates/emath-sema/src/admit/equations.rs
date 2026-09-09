@@ -500,15 +500,24 @@ pub(super) fn admit_residual(
     let right = admitter.rewrite_residual_rates(right, definitions, &mut rates)?;
     let (left_id, l_infer) = admitter.lower_expr(&left)?;
     let (right_id, r_infer) = admitter.lower_expr(&right)?;
-    let (operation, components) = residual_difference(admitter, &l_infer, &r_infer, left.source)?;
-    let expr = admitter.push_expr(
-        ExprNode::Binary {
-            operation,
-            left: left_id,
-            right: right_id,
-        },
-        left.source,
-    );
+    let components = residual_components(admitter, &l_infer, &r_infer, left.source)?;
+    let expr = if matches!(l_infer, Infer::Vector { .. }) {
+        admitter.apply_capability(
+            "std.capability.linear.vector-sub",
+            vec![left_id, right_id],
+            l_infer,
+            left.source,
+        )?.0
+    } else {
+        admitter.push_expr(
+            ExprNode::Binary {
+                operation: BinaryOp::StrictFloatSub,
+                left: left_id,
+                right: right_id,
+            },
+            left.source,
+        )
+    };
     let expr = admitter.inline_defs(expr);
     rates.dedup();
     admitter.record(
@@ -529,20 +538,19 @@ pub(super) fn admit_residual(
     Some(residual)
 }
 
-/// Pick the subtraction operation and component count for a residual
-/// `left - right`. Scalar and fixed-extent vector operands are admitted.
-pub(super) fn residual_difference(
+/// Check the component count of scalar or fixed-extent vector residuals.
+fn residual_components(
     admitter: &mut Admitter,
     l: &Infer,
     r: &Infer,
     span: Span,
-) -> Option<(emath_ir::BinaryOp, usize)> {
+) -> Option<usize> {
     use Infer::Vector;
     fn scalar(infer: &Infer) -> bool {
         matches!(infer, Infer::F64 | Infer::Nat | Infer::Int)
     }
     match (l, r) {
-        (l, r) if scalar(l) && scalar(r) => Some((BinaryOp::StrictFloatSub, 1)),
+        (l, r) if scalar(l) && scalar(r) => Some(1),
         (
             Vector {
                 extent: Some(Extent::Fixed(le)),
@@ -561,7 +569,7 @@ pub(super) fn residual_difference(
                 );
                 return None;
             }
-            Some((BinaryOp::VectorSub, *le))
+            Some(*le)
         }
         _ => {
             admitter.error(

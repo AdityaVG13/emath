@@ -3,7 +3,7 @@
 
 use super::Admitter;
 use emath_core::tree::Expr;
-use emath_ir::{Extent, TypeNode, Unit, UnitDim, UnitFamily, check_compatible};
+use emath_ir::{check_compatible, Extent, TypeNode, Unit, UnitDim, UnitFamily};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Infer {
@@ -214,6 +214,7 @@ pub(super) enum NumericCombine {
 pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
     match node {
         TypeNode::Bool => Infer::Bool,
+        TypeNode::Other(name) if name.0 == "Text" => Infer::Text,
         TypeNode::Nat => Infer::Nat,
         TypeNode::Int => Infer::Int,
         TypeNode::Complex(_) => Infer::Complex,
@@ -306,6 +307,7 @@ pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
         // conformance arm already accepts a field/Int definition.
         | (Infer::OptionCarrier, Infer::OptionCarrier)
         | (Infer::ResultCarrier, Infer::ResultCarrier) => true,
+        (Infer::Record(got), Infer::Record(declared)) => got == declared,
         (Infer::Nat | Infer::Int, Infer::F64) | (Infer::F64, Infer::Nat | Infer::Int) => true,
         // A natural number is an integer: Nat literal (e.g. the `7` in
         // `f = 7` for a `Field<7>`/Int-typed output) conforms to an
@@ -371,6 +373,8 @@ pub(super) fn combine_numeric(
         (Infer::HostDeferred, Infer::F64, _) | (Infer::F64, Infer::HostDeferred, _) => {
             Some(Infer::F64)
         }
+        (Infer::Nat, Infer::Nat, NumericCombine::Mul) => Some(Infer::Nat),
+        (Infer::Int | Infer::Nat, Infer::Int | Infer::Nat, NumericCombine::Mul) => Some(Infer::Int),
         (Infer::F64 | Infer::Nat | Infer::Int, Infer::F64 | Infer::Nat | Infer::Int, _) => {
             Some(Infer::F64)
         }

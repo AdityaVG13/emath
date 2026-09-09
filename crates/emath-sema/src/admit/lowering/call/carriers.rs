@@ -5,6 +5,7 @@ use emath_core::QualifiedName;
 use super::*;
 
 pub(super) fn carrier_arity(name: &str) -> Option<usize> {
+    let name = name.rsplit("::").next().unwrap_or(name);
     match name {
         "option_none" => Some(0),
         "option_some" | "option_is_some" | "result_ok" | "result_err" | "result_is_ok"

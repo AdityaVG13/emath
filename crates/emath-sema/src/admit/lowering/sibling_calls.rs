@@ -8,10 +8,10 @@
 //! Recursion (inline cycle) and arity mismatch refuse typed; the
 //! callee's own admission reports its internal errors.
 
-use super::super::Admitter;
 use super::super::infer::Infer;
-use emath_core::Span;
+use super::super::Admitter;
 use emath_core::tree::{Expr, ExprKind};
+use emath_core::Span;
 use emath_ir::ExprId;
 use std::collections::BTreeMap;
 
@@ -389,6 +389,44 @@ pub(in crate::admit) fn rename_parameter_uses(
 }
 
 impl Admitter {
+    /// A Program argument names a closed sibling function. Reuse sibling
+    /// substitution with fresh machine inputs, not caller values or captures.
+    pub(super) fn lower_program_argument(&mut self, argument: &Expr) -> Option<(ExprId, Infer)> {
+        let ExprKind::Path { segments, .. } = &argument.kind else {
+            self.error("E-TYPE-012", "Program argument must name a declared numeric function", argument.source);
+            return None;
+        };
+        let name = segments.join("::");
+        let Some(callee) = self.sibling_functions.get(&name).cloned() else {
+            self.error("E-TYPE-012", format!("Program argument names unknown function \x60{name}\x60"), argument.source);
+            return None;
+        };
+        if callee.params.iter().any(|(_, infer)| !matches!(infer, Infer::F64)) {
+            self.error("E-TYPE-012", "numeric Program parameters must be Float64", argument.source);
+            return None;
+        }
+        let inputs = (0..callee.params.len()).map(|index| format!("__program#{name}#{index}")).collect::<Vec<_>>();
+        let mut arguments = Vec::with_capacity(inputs.len());
+        for input in &inputs {
+            self.params.insert(input.clone(), Infer::F64);
+            arguments.push(Expr { kind: ExprKind::Path { segments: vec![input.clone()], generics: None }, source: argument.source });
+        }
+        let result = self.lower_sibling_call(&name, &arguments, argument.source);
+        for input in &inputs { self.params.remove(input); }
+        let (body, infer) = result?;
+        let numeric = match &infer {
+            Infer::F64 => true,
+            Infer::Vector { element, .. } => element.as_deref().is_none_or(|element| matches!(element, Infer::F64)),
+            _ => false,
+        };
+        if !numeric {
+            self.error("E-TYPE-012", "numeric Program must return Float64 or Vector<Float64>", argument.source);
+            return None;
+        }
+        let program = self.push_expr(emath_ir::ExprNode::Program { body, inputs }, argument.source);
+        Some((program, Infer::Opaque))
+    }
+
     /// Lower a call to a sibling `emath function` by inline substitution.
     ///
     /// Invariant: the caller environment (`params`/`inputs`/

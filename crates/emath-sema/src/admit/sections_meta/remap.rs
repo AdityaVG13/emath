@@ -95,24 +95,12 @@ pub(super) fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset
                 remap_e(id);
             }
         }
-        ExprNode::Differentiate { body, .. } => remap_e(body),
-        ExprNode::Solve { body, .. } => remap_e(body),
-        ExprNode::Optimize { body, .. } => remap_e(body),
-        ExprNode::SampleLimit {
-            body,
-            target,
-            direction,
-            ..
-        } => {
-            remap_e(target);
-            remap_e(direction);
-            remap_e(body);
-        }
         ExprNode::Apply { arguments, .. } => {
             for id in arguments {
                 remap_e(id);
             }
         }
+        ExprNode::Program { body, .. } => remap_e(body),
     }
 }
 

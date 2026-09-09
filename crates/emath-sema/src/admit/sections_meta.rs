@@ -20,6 +20,7 @@ use super::{
 };
 
 mod host;
+mod law_packages;
 mod provenance;
 mod remap;
 
@@ -50,6 +51,13 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     super::attributes::admit_capability_gates(tree, &mut diagnostics);
     let units_profiles = super::attributes::admit_units_profiles(tree, &mut diagnostics);
     if !has_declaration {
+        if let Some(mut resolved) =
+            law_packages::resolve_embedded_law_import(&package.imports, tree.source)
+        {
+            resolved.diagnostics.extend_from(&diagnostics);
+            resolved.trace.entries.extend(trace.entries);
+            return resolved;
+        }
         diagnostics.error("E-PKG-081", "source has no declarations", tree.source);
         return CheckResult {
             package,
@@ -222,6 +230,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut capability_inputs: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut capability_diagnostics: BTreeMap<String, Option<String>> = BTreeMap::new();
     let mut capability_aliases: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut capability_kernels: BTreeMap<String, Option<String>> = BTreeMap::new();
     for binding in crate::language::language_bindings() {
         package.capabilities.push(emath_ir::Capability {
             name: emath_core::QualifiedName(binding.feature_id.clone()),
@@ -231,15 +240,40 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         capability_arities.insert(binding.feature_id.clone(), binding.arity);
         capability_inputs.insert(binding.feature_id.clone(), binding.inputs);
         capability_diagnostics.insert(binding.feature_id.clone(), binding.diagnostic);
+        capability_kernels.insert(binding.feature_id.clone(), binding.kernel);
         capability_aliases.insert(binding.feature_id, binding.aliases);
     }
     for item in &tree.items {
-        let emath_core::tree::Item::Declaration(decl) = item else {
+        let emath_core::tree::Item::Declaration(decl_orig) = item else {
             continue;
         };
+        let original_kind = decl_orig.as_kind.clone();
+        let mut decl_storage = decl_orig.clone();
+        let executable_kind_application = kind_defs.get(&original_kind).and_then(|def| {
+            def.extends
+                .as_deref()
+                .filter(|base| matches!(*base, "function" | "policy" | "model" | "law"))
+        });
+        if let Some(base) = executable_kind_application {
+            let Some(def) = kind_defs.get(&original_kind) else {
+                continue;
+            };
+            if !crate::recognition::validate_kind_application(
+                decl_orig,
+                def,
+                &mut diagnostics,
+                &mut trace,
+            ) {
+                continue;
+            }
+            decl_storage.as_kind = base.to_string();
+        }
+        let decl = &decl_storage;
         let local_kind_application =
             decl.item_kind == "custom" && kind_defs.contains_key(&decl.as_kind);
-        if decl.item_kind != "custom" || local_kind_application {
+        if executable_kind_application.is_none()
+            && (decl.item_kind != "custom" || local_kind_application)
+        {
             crate::recognition::admit_declaration(
                 decl,
                 &kind_defs,
@@ -332,6 +366,64 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             );
             continue;
         }
+        if decl.as_kind == "capability" {
+            let canonical = match &package.package_path {
+                Some(path) if !path.is_empty() => format!("{}.{}", path.join("."), decl.name),
+                _ => decl.name.clone(),
+            };
+            let output = decl.body.iter().find_map(|stmt| match &stmt.kind {
+                emath_core::tree::StmtKind::Section(section) if section.name == "outputs" => {
+                    section.suite.statements.iter().find_map(|stmt| match &stmt.kind {
+                        emath_core::tree::StmtKind::FieldDecl { ty, .. } => {
+                            Some(crate::recognition::type_text(ty))
+                        }
+                        _ => None,
+                    })
+                }
+                _ => None,
+            });
+            let errors_before = diagnostics.errors().count();
+            crate::recognition::admit_capability(
+                decl,
+                &mut package,
+                &mut diagnostics,
+                &mut trace,
+            );
+            if diagnostics.errors().count() == errors_before {
+                let inputs: Vec<String> = decl
+                    .body
+                    .iter()
+                    .find_map(|stmt| match &stmt.kind {
+                        emath_core::tree::StmtKind::Section(section)
+                            if section.name == "inputs" =>
+                        {
+                            Some(
+                                section
+                                    .suite
+                                    .statements
+                                    .iter()
+                                    .filter_map(|stmt| match &stmt.kind {
+                                        emath_core::tree::StmtKind::FieldDecl { ty, .. } => {
+                                            Some(crate::recognition::type_text(ty))
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect(),
+                            )
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                capability_arities.insert(canonical.clone(), Some(inputs.len()));
+                capability_inputs.insert(canonical.clone(), inputs);
+                capability_output_types.insert(canonical, output);
+            }
+            continue;
+        }
+        if decl.as_kind == "reaction_network" {
+            crate::recognition::admit_reaction_network(decl, &mut diagnostics);
+            continue;
+        }
         if !matches!(
             decl.as_kind.as_str(),
             "function" | "policy" | "model" | "law"
@@ -356,6 +448,28 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         // is unambiguous across cells. A call resolving here lowers to
         // `ExprNode::Apply` (the emitter's ApplyCapability path); no
         // builtin name is added and unknown names still refuse typed.
+        let package_prefix = match &package.package_path {
+            Some(path) if !path.is_empty() => Some(path.join(".")),
+            _ => None,
+        };
+        let local_bares: BTreeSet<String> = package
+            .capabilities
+            .iter()
+            .filter_map(|capability| {
+                let prefix = package_prefix.as_deref()?;
+                let name = capability.name.0.as_str();
+                if name == prefix || name.starts_with(&format!("{prefix}.")) {
+                    Some(
+                        name.rsplit('.')
+                            .next()
+                            .unwrap_or("")
+                            .to_string(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect();
         let mut bare_cell_counts: BTreeMap<String, usize> = BTreeMap::new();
         for capability in &package.capabilities {
             let bare = capability
@@ -389,6 +503,10 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
                     .get(&capability.name.0)
                     .cloned()
                     .flatten();
+                let kernel = capability_kernels
+                    .get(&capability.name.0)
+                    .cloned()
+                    .flatten();
                 let bare = capability
                     .name
                     .0
@@ -396,16 +514,24 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
                     .next()
                     .unwrap_or("")
                     .to_string();
+                let is_local = package_prefix.as_ref().is_some_and(|prefix| {
+                    capability.name.0 == *prefix
+                        || capability.name.0.starts_with(&format!("{prefix}."))
+                });
                 let mut keys = vec![capability.name.0.clone()];
-                if bare != capability.name.0 && bare_cell_counts.get(&bare).copied() == Some(1) {
-                    keys.push(bare);
+                if bare != capability.name.0
+                    && (is_local
+                        || bare_cell_counts.get(&bare).copied() == Some(1))
+                {
+                    keys.push(bare.clone());
                 }
                 keys.extend(
                     capability_aliases
                         .get(&capability.name.0)
                         .into_iter()
                         .flatten()
-                        .cloned(),
+                        .cloned()
+                        .filter(|alias| is_local || !local_bares.contains(alias)),
                 );
                 keys.into_iter().map(move |key| CapabilityCallBinding {
                     key,
@@ -414,6 +540,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
                     output: output.clone(),
                     arity,
                     diagnostic: diagnostic.clone(),
+                    kernel: kernel.clone(),
                 })
             })
             .collect();

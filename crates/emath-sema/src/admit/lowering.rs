@@ -1,16 +1,17 @@
 //! Expression lowering: lowers parsed `.emath` expressions into typed
 //! EMIR expression nodes with stable inference.
 
-use emath_core::QualifiedName;
 use emath_core::tree::{
     BinaryOp as SynBinOp, BinderKind, DerivativeKind, Expr, ExprKind, UnaryOp as SynUnOp,
 };
+use emath_core::QualifiedName;
 use emath_ir::{
-    BinaryOp, DistributionKind, ExprId, ExprNode, Extent, Literal, TypeNode, UnitDim, UnitFamily,
-    lookup_unit,
+    lookup_unit, BinaryOp, DistributionKind, ExprId, ExprNode, Extent, Literal, TypeNode, UnitDim,
+    UnitFamily,
 };
 
 mod call;
+mod csv;
 mod exprs;
 mod goals;
 mod helpers;
@@ -18,11 +19,11 @@ mod series;
 pub(super) mod sibling_calls;
 mod terms;
 
-use super::Admitter;
 use super::equations::*;
 use super::expr_helpers::*;
 use super::infer::*;
 use super::sections::{integer_range, restore_index_local};
+use super::Admitter;
 use super::{E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE};
 use crate::recognition::expr_text;
 
@@ -32,7 +33,7 @@ const E_APPROX_TOL: &str = "E-APPROX-TOL";
 
 fn capability_input_admits(input: &str, infer: &Infer) -> bool {
     match input.trim() {
-        "Float64" | "F64" => matches!(infer, Infer::F64),
+        "Float64" | "F64" => matches!(infer, Infer::F64 | Infer::Nat | Infer::Int),
         "Bool" => matches!(infer, Infer::Bool),
         // Naturals are integers: admitting a Nat argument where `Int` is
         // declared preserves exactness, and value-level kernel guards
@@ -40,14 +41,35 @@ fn capability_input_admits(input: &str, infer: &Infer) -> bool {
         // evaluation. Literal `1` infers as Nat, so refusing Nat here
         // would make every integer-literal capsule call unusable.
         "Int" => matches!(infer, Infer::Int | Infer::Nat),
-        "Nat" => matches!(infer, Infer::Nat),
+        "Nat" => matches!(infer, Infer::Nat | Infer::Int),
         "ExactInt" | "PositiveExactInt" | "PrimeModulus" => {
-            matches!(infer, Infer::Int | Infer::Nat | Infer::BigInt)
+            matches!(infer, Infer::Int | Infer::Nat | Infer::BigInt | Infer::F64)
         }
         "Rat" | "Rational" => matches!(infer, Infer::Rat),
         "BigInt" => matches!(infer, Infer::BigInt),
+        text if text.starts_with("Vector<") => match infer {
+            Infer::Vector { element, .. } => capability_input_admits(
+                &text[7..text.len()-1], element.as_deref().unwrap_or(&Infer::F64)),
+            _ => false,
+        },
+        text if text.starts_with("Record<") && text.ends_with('>') =>
+            matches!(infer, Infer::Record(name) if name == &text[7..text.len()-1]),
+        "Text" => matches!(infer, Infer::Text),
         text if text.starts_with("Vector") => matches!(infer, Infer::Vector { .. }),
+        text if text.starts_with("Dense") => matches!(
+            infer,
+            Infer::Vector { .. }
+                | Infer::Matrix { .. }
+                | Infer::Tensor { .. }
+                | Infer::HostDeferred
+        ),
         text if text.starts_with("Matrix") => matches!(infer, Infer::Matrix { .. }),
+        text if text.starts_with("Tensor") || text.starts_with("SameTensor") => {
+            matches!(infer, Infer::Tensor { .. } | Infer::HostDeferred)
+        }
+        "Sequence" => matches!(infer, Infer::Set(_) | Infer::Sequence | Infer::Opaque),
+        "I64" => matches!(infer, Infer::Int | Infer::Nat),
+        "Program" => true,
         _ => false,
     }
 }
@@ -64,6 +86,13 @@ fn capability_result_infer(output: Option<&str>) -> Infer {
         Some("Nat") => Infer::Nat,
         Some("Rat") | Some("Rational") => Infer::Rat,
         Some("BigInt") => Infer::BigInt,
+        Some("Text") => Infer::Text,
+        Some(text) if text.starts_with("Record<") && text.ends_with('>') =>
+            Infer::Record(text[7..text.len()-1].into()),
+        Some(text) if text.starts_with("Vector<") && text.ends_with('>') => Infer::Vector {
+            extent: None,
+            element: Some(Box::new(capability_result_infer(Some(&text[7..text.len()-1])))),
+        },
         Some(text) if text.starts_with("Vector") => Infer::Vector {
             extent: None,
             element: None,
@@ -72,6 +101,10 @@ fn capability_result_infer(output: Option<&str>) -> Infer {
             rows: None,
             cols: None,
         },
+        Some(text) if text.starts_with("Tensor") || text.starts_with("SameTensor") => {
+            Infer::HostDeferred
+        }
+        Some(text) if text.starts_with("Estimate") => Infer::Record("Estimate".into()),
         _ => Infer::Opaque,
     }
 }

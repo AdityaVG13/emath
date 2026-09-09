@@ -4,10 +4,10 @@
 use emath_core::tree::{BinderKind, Expr, ExprKind};
 use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
-use super::super::E_UNSUPPORTED_TYPE;
 use super::super::expr_helpers::*;
 use super::super::infer::*;
 use super::super::sections::*;
+use super::super::E_UNSUPPORTED_TYPE;
 
 impl super::super::Admitter {
     pub(super) fn lower_finite_binder(
@@ -151,7 +151,7 @@ impl super::super::Admitter {
         let (start_id, _) = self.lower_expr(start_expr)?;
         let (end_id, _) = self.lower_expr(end_expr)?;
         // For inclusive range (`..`=`), the end becomes end+1.
-        let end_id = if *inclusive {
+        let end_id = if *inclusive && !matches!(kind, BinderKind::Integral) {
             let one = self.push_expr(
                 ExprNode::Literal(Literal::Integer("1".into())),
                 domain.source,
@@ -175,7 +175,12 @@ impl super::super::Admitter {
         // of the same name so an inner runtime fold actually shadows a
         // constant-range outer binder instead of baking the outer value.
         let prev_index = self.index_locals.remove(&binder.name);
-        let prev = self.inputs.insert(binder.name.clone(), Infer::Nat);
+        let binder_infer = if matches!(kind, BinderKind::Integral) {
+            Infer::F64
+        } else {
+            Infer::Nat
+        };
+        let prev = self.inputs.insert(binder.name.clone(), binder_infer);
         let (body_id, body_infer) = match self.lower_expr(body) {
             Some(result) => result,
             None => {
@@ -225,6 +230,7 @@ impl super::super::Admitter {
         } else {
             body_id
         };
+        let program_inputs = self.inputs.keys().cloned().collect::<Vec<_>>();
         restore_index_local(&mut self.index_locals, &binder.name, prev_index);
         restore_input(&mut self.inputs, &binder.name, prev);
         let is_bool_fold = matches!(kind, BinderKind::ForAll | BinderKind::Exists);
@@ -244,6 +250,65 @@ impl super::super::Admitter {
                 body.source,
             );
             return None;
+        }
+        if matches!(kind, BinderKind::Integral) {
+            let Some(slot) = Self::slot_index_in(&program_inputs, &binder.name) else {
+                self.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!("integral variable `{}` is not a program input", binder.name),
+                    expr.source,
+                );
+                return None;
+            };
+            let zero = self.push_expr(
+                ExprNode::Literal(Literal::FloatBits(0.0_f64.to_bits())),
+                expr.source,
+            );
+            let start_id = self.push_expr(
+                ExprNode::Binary {
+                    operation: emath_ir::BinaryOp::StrictFloatAdd,
+                    left: start_id,
+                    right: zero,
+                },
+                expr.source,
+            );
+            let end_id = self.push_expr(
+                ExprNode::Binary {
+                    operation: emath_ir::BinaryOp::StrictFloatAdd,
+                    left: end_id,
+                    right: zero,
+                },
+                expr.source,
+            );
+            let extra = vec![
+                start_id,
+                end_id,
+                self.push_expr(
+                    ExprNode::Literal(Literal::Integer(
+                        super::goals::DEFAULT_INTEGRAL_STEPS.to_string(),
+                    )),
+                    expr.source,
+                ),
+                self.push_expr(
+                    ExprNode::Literal(Literal::Integer(slot.to_string())),
+                    expr.source,
+                ),
+            ];
+            let Some((id, infer)) = self.apply_program_capability(
+                super::goals::CAPABILITY_SIMPSON,
+                body_id,
+                program_inputs,
+                extra,
+                expr.source,
+            ) else {
+                return None;
+            };
+            self.record(
+                "sema",
+                format!("integral `{}` -> program-carrier Simpson", binder.name),
+                expr.source,
+            );
+            return Some((id, infer));
         }
         let binder_id = self.push_expr(
             ExprNode::Binder {
@@ -310,12 +375,15 @@ impl super::super::Admitter {
         }
         let count = items.len();
         let mut lowered = Vec::with_capacity(count);
+        let mut exact = None;
         for item in items {
             let (id, infer) = self.lower_expr(item)?;
-            if !is_numeric_element(&infer) {
-                self.error("E-TYPE-012", "vector element must be numeric", item.source);
+            let rational = infer == Infer::Rat;
+            if (!rational && !is_numeric_element(&infer)) || exact.is_some_and(|previous| previous != rational) {
+                self.error("E-TYPE-012", "vector elements must share a numeric carrier; do not mix Rat and Float64", item.source);
                 return None;
             }
+            exact = Some(rational);
             lowered.push(id);
         }
         self.record("sema", "vector literal", expr.source);
@@ -324,7 +392,7 @@ impl super::super::Admitter {
             id,
             Infer::Vector {
                 extent: Some(Extent::Fixed(count)),
-                element: None,
+                element: exact.filter(|x| *x).map(|_| Box::new(Infer::Rat)),
             },
         ))
     }
@@ -606,6 +674,22 @@ impl super::super::Admitter {
             }
             let result_infer = result.map_or(Infer::F64, |boxed| *boxed);
             self.record("sema", "scalar index", expr.source);
+            if self.capability_by_kernel("checked-dense-index").is_some() {
+                let guards = vec![None; index_ids.len()];
+                let packed = self.push_expr(
+                    ExprNode::Set {
+                        elements: index_ids,
+                        guards,
+                    },
+                    expr.source,
+                );
+                return self.apply_kernel(
+                    "checked-dense-index",
+                    vec![target_id, packed],
+                    result_infer,
+                    expr.source,
+                );
+            }
             let id = self.push_expr(
                 ExprNode::Index {
                     value: target_id,

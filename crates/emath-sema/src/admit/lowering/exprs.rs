@@ -165,16 +165,16 @@ impl super::super::Admitter {
             expr.source,
         );
         let absolute_difference = self.push_expr(
-            ExprNode::Call {
-                function: QualifiedName::single("abs"),
-                arguments: vec![difference],
+            ExprNode::Unary {
+                operation: emath_ir::UnaryOp::Abs,
+                value: difference,
             },
             expr.source,
         );
         let absolute_reference = self.push_expr(
-            ExprNode::Call {
-                function: QualifiedName::single("abs"),
-                arguments: vec![right_id],
+            ExprNode::Unary {
+                operation: emath_ir::UnaryOp::Abs,
+                value: right_id,
             },
             expr.source,
         );
@@ -257,16 +257,14 @@ impl super::super::Admitter {
                     }
                     let res_extent = ext_l.clone().or_else(|| ext_r.clone());
                     self.record("sema", "vector add", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::VectorAdd,
-                        expr,
-                        l,
-                        r,
+                    self.apply_capability(
+                        "std.capability.linear.vector-add",
+                        vec![l, r],
                         Infer::Vector {
                             extent: res_extent,
                             element: None,
                         },
+                        expr.source,
                     )
                 }
                 (Infer::Matrix { rows: r1, cols: c1 }, Infer::Matrix { rows: r2, cols: c2 }) => {
@@ -291,29 +289,36 @@ impl super::super::Admitter {
                         }
                     }
                     self.record("sema", "matrix add", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::MatrixAdd,
-                        expr,
-                        l,
-                        r,
+                    self.apply_capability(
+                        "std.capability.linear.matrix-add",
+                        vec![l, r],
                         Infer::Matrix {
                             rows: r1.clone().or_else(|| r2.clone()),
                             cols: c1.clone().or_else(|| c2.clone()),
                         },
+                        expr.source,
                     )
                 }
                 (Infer::Tensor { shape: left_shape }, Infer::Tensor { shape: right_shape }) => {
                     let shape = broadcast_tensor_shapes(self, left_shape, right_shape, expr)?;
                     self.record("sema", "tensor add", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::TensorAdd,
-                        expr,
-                        l,
-                        r,
+                    self.apply_capability(
+                        "std.capability.tensor.add",
+                        vec![l, r],
                         Infer::Tensor { shape },
+                        expr.source,
                     )
+                }
+                (Infer::Int | Infer::Nat, Infer::Int | Infer::Nat) => {
+                    if self.capability_by_kernel("checked-add").is_some() {
+                        self.record("sema", "int add → checked-add", expr.source);
+                        self.apply_kernel("checked-add", vec![l, r], Infer::Int, expr.source)
+                    } else {
+                        let result =
+                            combine_numeric(&l_infer, &r_infer, NumericCombine::Add, expr, self)?;
+                        self.record("sema", "int add → binary (no image)", expr.source);
+                        arithmetic(self, emath_ir::BinaryOp::StrictFloatAdd, expr, l, r, result)
+                    }
                 }
                 _ => {
                     let result =
@@ -338,17 +343,10 @@ impl super::super::Admitter {
                     }
                     let res_extent = ext_l.clone().or_else(|| ext_r.clone());
                     self.record("sema", "vector subtract", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::VectorSub,
-                        expr,
-                        l,
-                        r,
-                        Infer::Vector {
-                            extent: res_extent,
-                            element: None,
-                        },
-                    )
+                    self.apply_capability("std.capability.linear.vector-sub", vec![l, r], Infer::Vector {
+                        extent: res_extent,
+                        element: None,
+                    }, expr.source)
                 }
                 (Infer::Matrix { rows: r1, cols: c1 }, Infer::Matrix { rows: r2, cols: c2 }) => {
                     if let (Some(r1_e), Some(r2_e)) = (r1, r2) {
@@ -372,29 +370,15 @@ impl super::super::Admitter {
                         }
                     }
                     self.record("sema", "matrix subtract", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::MatrixSub,
-                        expr,
-                        l,
-                        r,
-                        Infer::Matrix {
-                            rows: r1.clone().or_else(|| r2.clone()),
-                            cols: c1.clone().or_else(|| c2.clone()),
-                        },
-                    )
+                    self.apply_capability("std.capability.linear.matrix-sub", vec![l, r], Infer::Matrix {
+                        rows: r1.clone().or_else(|| r2.clone()),
+                        cols: c1.clone().or_else(|| c2.clone()),
+                    }, expr.source)
                 }
                 (Infer::Tensor { shape: left_shape }, Infer::Tensor { shape: right_shape }) => {
                     let shape = broadcast_tensor_shapes(self, left_shape, right_shape, expr)?;
                     self.record("sema", "tensor subtract", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::TensorSub,
-                        expr,
-                        l,
-                        r,
-                        Infer::Tensor { shape },
-                    )
+                    self.apply_capability("std.capability.tensor.sub", vec![l, r], Infer::Tensor { shape }, expr.source)
                 }
                 _ => {
                     self.record("sema", "subtract → strict f64 subtract", expr.source);
@@ -406,85 +390,43 @@ impl super::super::Admitter {
             SynBinOp::Mul => match (&l_infer, &r_infer) {
                 (Infer::Vector { extent, .. }, Infer::F64 | Infer::HostDeferred) => {
                     self.record("sema", "vector scale", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::VectorScale,
-                        expr,
-                        l,
-                        r,
-                        Infer::Vector {
-                            extent: extent.clone(),
-                            element: None,
-                        },
-                    )
+                    self.apply_capability("std.capability.linear.vector-scale", vec![l, r], Infer::Vector {
+                        extent: extent.clone(),
+                        element: None,
+                    }, expr.source)
                 }
                 (Infer::F64 | Infer::HostDeferred, Infer::Vector { extent, .. }) => {
                     self.record("sema", "vector scale", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::VectorScale,
-                        expr,
-                        r,
-                        l,
-                        Infer::Vector {
-                            extent: extent.clone(),
-                            element: None,
-                        },
-                    )
+                    self.apply_capability("std.capability.linear.vector-scale", vec![r, l], Infer::Vector {
+                        extent: extent.clone(),
+                        element: None,
+                    }, expr.source)
                 }
                 (Infer::Matrix { rows, cols }, Infer::F64 | Infer::HostDeferred) => {
                     self.record("sema", "matrix scale", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::MatrixScale,
-                        expr,
-                        l,
-                        r,
-                        Infer::Matrix {
-                            rows: rows.clone(),
-                            cols: cols.clone(),
-                        },
-                    )
+                    self.apply_capability("std.capability.linear.matrix-scale", vec![l, r], Infer::Matrix {
+                        rows: rows.clone(),
+                        cols: cols.clone(),
+                    }, expr.source)
                 }
                 (Infer::F64 | Infer::HostDeferred, Infer::Matrix { rows, cols }) => {
                     self.record("sema", "matrix scale", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::MatrixScale,
-                        expr,
-                        r,
-                        l,
-                        Infer::Matrix {
-                            rows: rows.clone(),
-                            cols: cols.clone(),
-                        },
-                    )
+                    self.apply_capability("std.capability.linear.matrix-scale", vec![r, l], Infer::Matrix {
+                        rows: rows.clone(),
+                        cols: cols.clone(),
+                    }, expr.source)
                 }
                 (Infer::Tensor { shape }, Infer::F64 | Infer::HostDeferred) => {
                     self.record("sema", "tensor scale", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::TensorScale,
-                        expr,
-                        l,
-                        r,
-                        Infer::Tensor {
-                            shape: shape.clone(),
-                        },
-                    )
+                    self.apply_capability("std.capability.tensor.scale", vec![l, r], Infer::Tensor {
+                        shape: shape.clone(),
+                    }, expr.source)
                 }
                 (Infer::F64 | Infer::HostDeferred, Infer::Tensor { shape }) => {
                     self.record("sema", "tensor scale", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::TensorScale,
-                        expr,
-                        r,
-                        l,
-                        Infer::Tensor {
-                            shape: shape.clone(),
-                        },
-                    )
+                    self.apply_capability("std.capability.tensor.scale", vec![r, l], Infer::Tensor {
+                        shape: shape.clone(),
+                    }, expr.source)
                 }
                 (Infer::Matrix { rows, cols }, Infer::Vector { extent, .. }) => {
                     if let (Some(c_e), Some(v_e)) = (cols, extent) {
@@ -498,16 +440,14 @@ impl super::super::Admitter {
                         }
                     }
                     self.record("sema", "matrix mul vector", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::MatrixMulVector,
-                        expr,
-                        l,
-                        r,
+                    self.apply_capability(
+                        "std.capability.linear.matrix-vector-product",
+                        vec![l, r],
                         Infer::Vector {
                             extent: rows.clone(),
                             element: None,
                         },
+                        expr.source,
                     )
                 }
                 (Infer::Matrix { rows: r1, cols: c1 }, Infer::Matrix { rows: r2, cols: c2 }) => {
@@ -522,16 +462,14 @@ impl super::super::Admitter {
                         }
                     }
                     self.record("sema", "matrix mul matrix", expr.source);
-                    arithmetic(
-                        self,
-                        emath_ir::BinaryOp::MatrixMulMatrix,
-                        expr,
-                        l,
-                        r,
+                    self.apply_capability(
+                        "std.capability.linear.matrix-product",
+                        vec![l, r],
                         Infer::Matrix {
                             rows: r1.clone(),
                             cols: c2.clone(),
                         },
+                        expr.source,
                     )
                 }
                 _ => {

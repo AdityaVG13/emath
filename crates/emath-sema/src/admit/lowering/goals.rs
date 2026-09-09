@@ -2,6 +2,19 @@
 
 use super::*;
 
+pub(super) const CAPABILITY_SIMPSON: &str = "std.capability.calculus.simpson-integral";
+pub(super) const CAPABILITY_NEWTON: &str = "std.capability.calculus.scalar-solve";
+pub(super) const KERNEL_FORWARD: &str = "program-forward-difference";
+pub(super) const CAPABILITY_OPTIMIZE: &str = "std.capability.program.optimize";
+pub(super) const CAPABILITY_SAMPLE_LIMIT: &str = "std.capability.program.sample-limit";
+
+const DEFAULT_SOLVE_TOLERANCE: f64 = 1e-10;
+const DEFAULT_SOLVE_MAX_ITER: i64 = 64;
+const DEFAULT_OPT_LEARNING_RATE: f64 = 0.0;
+const DEFAULT_OPT_TOLERANCE: f64 = 1e-8;
+const DEFAULT_OPT_MAX_ITER: i64 = 64;
+pub(super) const DEFAULT_INTEGRAL_STEPS: i64 = 128;
+
 impl super::super::Admitter {
     pub(super) fn lower_sample_limit_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
         let ExprKind::SampleLimit {
@@ -29,12 +42,12 @@ impl super::super::Admitter {
         // body can reference it.
         let prev = self.inputs.insert(var.clone(), Infer::F64);
         let (body_id, body_infer) = self.lower_expr(body)?;
-        if let Some(p) = prev {
-            self.inputs.insert(var.clone(), p);
-        } else {
-            self.inputs.remove(var);
-        }
         if !is_numeric_element(&body_infer) {
+            if let Some(p) = prev {
+                self.inputs.insert(var.clone(), p);
+            } else {
+                self.inputs.remove(var);
+            }
             self.error(
                 "E-TYPE-012",
                 "sample_limit body must be numeric",
@@ -42,21 +55,41 @@ impl super::super::Admitter {
             );
             return None;
         }
-        let id = self.push_expr(
-            ExprNode::SampleLimit {
-                body: body_id,
-                var: var.clone(),
-                target: target_id,
-                direction: dir_id,
-            },
+        let program_inputs = self.program_input_names();
+        let Some(slot) = Self::slot_index_in(&program_inputs, var) else {
+            if let Some(p) = prev {
+                self.inputs.insert(var.clone(), p);
+            } else {
+                self.inputs.remove(var);
+            }
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                format!("sample_limit variable `{var}` is not a program input"),
+                expr.source,
+            );
+            return None;
+        };
+        if let Some(p) = prev {
+            self.inputs.insert(var.clone(), p);
+        } else {
+            self.inputs.remove(var);
+        }
+        let extra = vec![self.push_i64(slot, expr.source), target_id, dir_id];
+        let Some((id, infer)) = self.apply_program_capability(
+            CAPABILITY_SAMPLE_LIMIT,
+            body_id,
+            program_inputs,
+            extra,
             expr.source,
-        );
+        ) else {
+            return None;
+        };
         self.record(
             "sema",
-            format!("sample_limit {var} → numerical limit approximation"),
+            format!("sample_limit {var} → program-carrier geometric sampler"),
             expr.source,
         );
-        Some((id, Infer::F64))
+        Some((id, infer))
     }
 
     pub(super) fn lower_limit_expr_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -157,24 +190,46 @@ impl super::super::Admitter {
         }
         let inlined = self.inline_defs(body_id);
         let body_with_penalty = self.add_constraint_penalties(inlined, expr.source);
-        let id = self.push_expr(
-            ExprNode::Optimize {
-                body: body_with_penalty,
-                vars: var_names.clone(),
-                maximize: *maximize,
-            },
+        let program_inputs = self.program_input_names();
+        let mut slot_ids = Vec::with_capacity(var_names.len());
+        for name in &var_names {
+            let Some(slot) = Self::slot_index_in(&program_inputs, name) else {
+                self.error(
+                    E_UNSUPPORTED_TYPE,
+                    format!("optimization variable `{name}` is not a program input"),
+                    expr.source,
+                );
+                return None;
+            };
+            slot_ids.push(self.push_f64(slot as f64, expr.source));
+        }
+        let indices = self.push_expr(ExprNode::Vector(slot_ids), expr.source);
+        let extra = vec![
+            indices,
+            self.push_bool(*maximize, expr.source),
+            self.push_f64(DEFAULT_OPT_LEARNING_RATE, expr.source),
+            self.push_f64(DEFAULT_OPT_TOLERANCE, expr.source),
+            self.push_i64(DEFAULT_OPT_MAX_ITER, expr.source),
+        ];
+        let Some((id, infer)) = self.apply_program_capability(
+            CAPABILITY_OPTIMIZE,
+            body_with_penalty,
+            program_inputs,
+            extra,
             expr.source,
-        );
+        ) else {
+            return None;
+        };
         let direction = if *maximize { "maximize" } else { "minimize" };
         self.record(
             "sema",
             format!(
-                "{direction} wrt {} → Newton stationarity (∇f = 0)",
+                "{direction} wrt {} → program-carrier Newton stationarity",
                 var_names.join(", ")
             ),
             expr.source,
         );
-        Some((id, Infer::F64))
+        Some((id, infer))
     }
 
     pub(super) fn lower_solve_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -223,19 +278,31 @@ impl super::super::Admitter {
             return None;
         }
         let inlined = self.inline_defs(body_id);
-        let id = self.push_expr(
-            ExprNode::Solve {
-                body: inlined,
-                var: var_name.clone(),
-            },
-            expr.source,
-        );
+        let program_inputs = self.program_input_names();
+        let Some(slot) = Self::slot_index_in(&program_inputs, &var_name) else {
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                format!("solve variable `{var_name}` is not a program input"),
+                expr.source,
+            );
+            return None;
+        };
+        let extra = vec![
+            self.push_i64(slot, expr.source),
+            self.push_f64(DEFAULT_SOLVE_TOLERANCE, expr.source),
+            self.push_i64(DEFAULT_SOLVE_MAX_ITER, expr.source),
+        ];
+        let Some((id, infer)) =
+            self.apply_program_capability(CAPABILITY_NEWTON, inlined, program_inputs, extra, expr.source)
+        else {
+            return None;
+        };
         self.record(
             "sema",
-            format!("solve wrt {var_name} → Newton's method root-finding"),
+            format!("solve wrt {var_name} → program-carrier Newton root"),
             expr.source,
         );
-        Some((id, Infer::F64))
+        Some((id, infer))
     }
 
     pub(super) fn lower_derivative_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -335,18 +402,182 @@ impl super::super::Admitter {
             return None;
         }
         let inlined = self.inline_defs(body_id);
-        let id = self.push_expr(
-            ExprNode::Differentiate {
-                body: inlined,
-                var: var_name.clone(),
-            },
-            expr.source,
-        );
+        let program_inputs = self.program_input_names();
+        let Some(slot) = Self::slot_index_in(&program_inputs, &var_name) else {
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                format!("derivative variable `{var_name}` is not a program input"),
+                expr.source,
+            );
+            return None;
+        };
+        let extra = vec![self.push_i64(slot, expr.source)];
+        let Some((id, infer)) =
+            self.apply_program_kernel(KERNEL_FORWARD, inlined, program_inputs, extra, expr.source)
+        else {
+            return None;
+        };
         self.record(
             "sema",
-            format!("derivative wrt {var_name} → forward-mode autodiff"),
+            format!("derivative wrt {var_name} → program-carrier forward difference"),
             expr.source,
         );
-        Some((id, Infer::F64))
+        Some((id, infer))
+    }
+
+    pub(super) fn capability_by_kernel(
+        &self,
+        kernel: &str,
+    ) -> Option<super::super::CapabilityCallBinding> {
+        self.capability_cells
+            .iter()
+            .find(|binding| binding.kernel.as_deref() == Some(kernel))
+            .cloned()
+    }
+
+    pub(super) fn push_i64(&mut self, value: i64, span: emath_core::Span) -> ExprId {
+        self.push_expr(ExprNode::Literal(Literal::Integer(value.to_string())), span)
+    }
+
+    pub(super) fn push_f64(&mut self, value: f64, span: emath_core::Span) -> ExprId {
+        self.push_expr(ExprNode::Literal(Literal::FloatBits(value.to_bits())), span)
+    }
+
+    fn push_bool(&mut self, value: bool, span: emath_core::Span) -> ExprId {
+        self.push_expr(ExprNode::Literal(Literal::Bool(value)), span)
+    }
+
+    pub(super) fn program_input_names(&self) -> Vec<String> {
+        let mut names = self.inputs.keys().cloned().collect::<Vec<_>>();
+        for name in self.states.keys() {
+            let ir_name = format!("state.{name}");
+            if !names
+                .iter()
+                .any(|existing| existing == name || existing == &ir_name)
+            {
+                names.push(ir_name);
+            }
+        }
+        names
+    }
+
+    fn push_environment_for(
+        &mut self,
+        program_inputs: &[String],
+        span: emath_core::Span,
+    ) -> ExprId {
+        let elements = program_inputs
+            .iter()
+            .map(|name| {
+                let bare = name.strip_prefix("state.").unwrap_or(name);
+                if self.inputs.contains_key(name)
+                    || self.inputs.contains_key(bare)
+                    || self.states.contains_key(bare)
+                {
+                    self.push_expr(
+                        ExprNode::Variable(emath_core::QualifiedName(name.clone())),
+                        span,
+                    )
+                } else {
+                    self.push_f64(0.0, span)
+                }
+            })
+            .collect();
+        self.push_expr(ExprNode::Vector(elements), span)
+    }
+
+    pub(super) fn apply_program_kernel(
+        &mut self,
+        kernel: &str,
+        body: ExprId,
+        program_inputs: Vec<String>,
+        extra: Vec<ExprId>,
+        span: emath_core::Span,
+    ) -> Option<(ExprId, Infer)> {
+        let Some(binding) = self.capability_by_kernel(kernel) else {
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                "program-carrier capability is not executable in the loaded Language Image",
+                span,
+            );
+            return None;
+        };
+        self.apply_program_capability(&binding.key, body, program_inputs, extra, span)
+    }
+
+    pub(super) fn apply_program_capability(
+        &mut self,
+        capability: &str,
+        body: ExprId,
+        program_inputs: Vec<String>,
+        extra: Vec<ExprId>,
+        span: emath_core::Span,
+    ) -> Option<(ExprId, Infer)> {
+        let program = self.push_expr(
+            ExprNode::Program { body, inputs: program_inputs.clone() },
+            span,
+        );
+        let environment = self.push_environment_for(&program_inputs, span);
+        let mut arguments = Vec::with_capacity(2 + extra.len());
+        arguments.push(program);
+        arguments.push(environment);
+        arguments.extend(extra);
+        self.apply_capability(capability, arguments, Infer::F64, span)
+    }
+
+    pub(in crate::admit) fn apply_capability(
+        &mut self,
+        capability: &str,
+        arguments: Vec<ExprId>,
+        result: Infer,
+        span: emath_core::Span,
+    ) -> Option<(ExprId, Infer)> {
+        let Some(capability) = self.capability_cells.iter()
+            .find(|binding| binding.key == capability)
+            .map(|binding| emath_ir::CapabilityId(binding.capability))
+        else {
+            self.error(E_UNSUPPORTED_TYPE, "capability is not executable in the loaded Language Image", span);
+            return None;
+        };
+        let id = self.push_expr(
+            ExprNode::Apply {
+                capability,
+                arguments,
+            },
+            span,
+        );
+        Some((id, result))
+    }
+
+    pub(super) fn apply_kernel(
+        &mut self,
+        kernel: &str,
+        arguments: Vec<ExprId>,
+        result: Infer,
+        span: emath_core::Span,
+    ) -> Option<(ExprId, Infer)> {
+        let Some(binding) = self.capability_by_kernel(kernel) else {
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                "capability kernel is not executable in the loaded Language Image",
+                span,
+            );
+            return None;
+        };
+        let id = self.push_expr(
+            ExprNode::Apply {
+                capability: emath_ir::CapabilityId(binding.capability),
+                arguments,
+            },
+            span,
+        );
+        Some((id, result))
+    }
+
+    pub(super) fn slot_index_in(program_inputs: &[String], name: &str) -> Option<i64> {
+        program_inputs
+            .iter()
+            .position(|input| input == name)
+            .map(|index| index as i64)
     }
 }

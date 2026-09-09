@@ -60,11 +60,19 @@ pub(super) fn admit_declaration_definitions(
             }
             let name = &target.segments[0];
             if !target.indices.is_empty() {
-                admitter.error(
-                    E_UNSUPPORTED_TYPE,
-                    "indexed definition targets require a capsule-provided feature",
-                    target.source,
-                );
+                if target.indices.len() != 1 {
+                    admitter.error(
+                        "E-SEQ-RECURRENCE",
+                        "sequence definition rows require exactly one index",
+                        target.source,
+                    );
+                } else {
+                    admitter.error(
+                        E_UNSUPPORTED_TYPE,
+                        "indexed definition targets require a capsule-provided feature",
+                        target.source,
+                    );
+                }
                 continue;
             }
             // 04 §5.2: the model/observation

@@ -3,7 +3,7 @@
 
 use emath_core::tree::{ExprKind, GenericArg, TypeExpr, TypeKind as SynTypeKind, TypeProductOp};
 use emath_core::{Diagnostics, QualifiedName, SchemaId};
-use emath_ir::{TypeNode, Unit, lookup_unit, per_unit};
+use emath_ir::{lookup_unit, per_unit, TypeNode, Unit};
 use std::collections::BTreeSet;
 
 use super::E_UNSUPPORTED_TYPE;
@@ -458,6 +458,9 @@ pub(super) fn map_type(
         // existing `TypeNode::Rational` (exact i128 num/den) instead of the
         // Phase 1 refusal.
         "Rat" | "Rational" => Some(TypeNode::Rational),
+        "Text" => Some(TypeNode::Other(QualifiedName("Text".into()))),
+        // Labeled estimate carrier: value + method + sample size.
+        "Estimate" => Some(TypeNode::Record(QualifiedName("Estimate".into()))),
         // Stage-2 (emath-t63iz): the big-integer field-element spelling.
         "BigInt" => Some(TypeNode::BigInt),
         "Sequence"
