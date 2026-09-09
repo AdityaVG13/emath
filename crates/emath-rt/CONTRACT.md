@@ -20,24 +20,23 @@ Layer: foundation (std-only, no other emath crates).
 
 - `SOURCE: &'static str`; the embeddable kernel body; byte-stable per
   version.
-- `body.rs` kernels are re-exported at the crate root. The unavoidable generic
-  substrate comprises shape-preserving vector/matrix/tensor storage and
-  arithmetic, checked indexing/slicing/einsum, deterministic scalar and integer
-  arithmetic (including bounded big integers), folds, quadrature/limit drivers,
-  stencil application, and numeric decomposition/solve routines. These remain
-  public because interpreter adapters and generated Rust call them directly.
+- `body.rs` kernels are re-exported at the crate root. The permitted machine
+  layer includes storage, checked indexing, and primitive numeric representation
+  operations. Mathematical methods such as quadrature and decomposition are
+  still present, but they are migration debt, not an unavoidable substrate.
+  Direct interpreter or generated-code callers do not justify retaining a
+  mathematical method in Rust. Migrate the method and its callers together.
 - `rat.rs` and `stochastic.rs` are no longer linked: no production adapter uses
   them. The source files remain present and unreferenced because deletion was not
   authorized.
-- Native `KernelId` adapters call only neutral root names for dense carriers,
-  decompositions, checked polynomial/linear operations, optimization, sampling,
-  and densities. Root sampling takes an image-supplied numeric kernel code rather
-  than publishing a distribution-family enum.
+- Neutral `KernelId` names do not establish the language/compiler boundary.
+  Inspect the implementation: decomposition, optimization, distribution sampling,
+  and density formulas remain mathematical algorithms regardless of their names.
 - `category`, `control`, `dynamics`, `graph`, `linalg`, `optimization`, `pde`,
-  `polynomial`, `probability`, and `sequence` remain public solely because
-  production interpreter/backend callers outside this task's edit scope still
-  use those paths. They are unavoidable public-module residue, not semantic
-  authority, and must become private when those callers use the root kernel ABI.
+  `polynomial`, `probability`, and `sequence` still contain linked mathematical
+  implementations. Making modules private or renaming exports is not migration.
+  Their methods must move into executable language definitions while preserving
+  current behavior. See the ownership rule in the root `AGENTS.md`.
 - `stencil_1d` / `stencil_2d` take `EdgePolicy` **by value** (moved from a
   borrowed `&EdgePolicy`); `stencil_1d` honors Clamp / Neumann / OneSided
   / Dirichlet; `stencil_2d` refuses `Dirichlet`.
@@ -123,3 +122,12 @@ contains no crate-level attribute).
 - `mat_mul_mat` is semantically naive O(n³) with direct indexing.
 - Complex helpers provide numeric operations only; they do not choose a complex
   world or authorize complex-valued language semantics.
+
+## Authored exact methods
+
+`body/exact.rs` supplies only the bounded rational carrier and checked
+scalar arithmetic. Polynomial brackets, exact linear families, scalar
+parameter cases, series enclosures, and quantization execute from authored
+Language Image programs. The runtime no longer exports their former
+record types or algorithms. Generated Rust emits authored record layouts
+and program bodies through the same generic backend.

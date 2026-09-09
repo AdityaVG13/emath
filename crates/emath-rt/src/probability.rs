@@ -6,45 +6,22 @@
 //! counter-based root-stream contract, whose
 //! counter-zero value deterministically seeds the local sampling kernel.
 //!
-//! Capability bounds, honestly named: three admitted families
-//! (Normal, Uniform, Bernoulli) with exact densities. MCMC/Bayesian
-//! posterior sampling, UQ, and random-matrix theory are the
-//! documented deferrals, not claims of this module.
+//! Capsules own the family names. This wrapper takes the image-supplied
+//! kernel code (`0` gaussian, `1` affine support, `2` binary mass) and
+//! refuses unknown codes. MCMC/Bayesian posterior sampling, UQ, and
+//! random-matrix theory are documented deferrals, not claims of this
+//! module.
 
 use crate::body::{prob_density as kernel_density, prob_sample as kernel_sample};
 use emath_core::{Seed, StreamPath, local_stream_seed};
 
-/// The admitted distribution families (the op payload encodes these
-/// as `u8`: 0 = Normal, 1 = Uniform, 2 = Bernoulli).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Family {
-    /// Normal(μ, σ), Box–Muller sampling.
-    Normal,
-    /// Uniform(a, b), affine map of [0, 1).
-    Uniform,
-    /// Bernoulli(p), threshold sampling; p ∈ {0, 1} exact.
-    Bernoulli,
-}
-
-impl Family {
-    /// The kernel's `u8` encoding (stable; codegen renders it).
-    #[must_use]
-    pub fn code(self) -> u8 {
-        match self {
-            Self::Normal => 0,
-            Self::Uniform => 1,
-            Self::Bernoulli => 2,
-        }
-    }
-
-    /// Required parameter arity (ascending carrier): Normal/Uniform
-    /// take two, Bernoulli one.
-    #[must_use]
-    pub fn arity(self) -> usize {
-        match self {
-            Self::Normal | Self::Uniform => 2,
-            Self::Bernoulli => 1,
-        }
+/// Required parameter arity for a capsule-supplied kernel code.
+#[must_use]
+fn kernel_arity(kind: u8) -> Option<usize> {
+    match kind {
+        0 | 1 => Some(2),
+        2 => Some(1),
+        _ => None,
     }
 }
 
@@ -78,44 +55,47 @@ impl ProbError {
 /// the budget is part of the determinism contract).
 const MAX_DRAWS: usize = 1 << 20;
 
-fn validate(family: Family, params: &[f64]) -> Result<(), ProbError> {
-    if params.len() != family.arity() {
+fn validate(kind: u8, params: &[f64]) -> Result<(), ProbError> {
+    let Some(arity) = kernel_arity(kind) else {
+        return Err(ProbError::InvalidParameter);
+    };
+    if params.len() != arity {
         return Err(ProbError::ParamArity);
     }
     if params.iter().any(|value| !value.is_finite()) {
         return Err(ProbError::NonFinite);
     }
-    match family {
-        Family::Normal if params[1] <= 0.0 => Err(ProbError::InvalidParameter),
-        Family::Uniform if params[0] > params[1] => Err(ProbError::InvalidParameter),
-        Family::Bernoulli if !(0.0..=1.0).contains(&params[0]) => Err(ProbError::InvalidParameter),
+    match kind {
+        0 if params[1] <= 0.0 => Err(ProbError::InvalidParameter),
+        1 if params[0] > params[1] => Err(ProbError::InvalidParameter),
+        2 if !(0.0..=1.0).contains(&params[0]) => Err(ProbError::InvalidParameter),
         _ => Ok(()),
     }
 }
 
-/// Sample `draws` values from `family` with the given seed. Same seed
-/// ⟹ bit-identical draws (the reproducibility law). Zero draws
+/// Sample `draws` values from the kernel code with the given seed. Same
+/// seed ⟹ bit-identical draws (the reproducibility law). Zero draws
 /// is the legal empty stream; a draw count that is not a non-negative
 /// integer or exceeds the compute budget refuses.
 pub fn prob_sample(
-    family: Family,
+    kind: u8,
     params: &[f64],
     seed: f64,
     draws: f64,
 ) -> Result<Vec<f64>, ProbError> {
-    prob_sample_in_stream(family, params, seed, draws, "")
+    prob_sample_in_stream(kind, params, seed, draws, "")
 }
 
 /// Sample from one declared stream path. Dot-separated labels define split
 /// topology; the empty spelling is the root stream.
 pub fn prob_sample_in_stream(
-    family: Family,
+    kind: u8,
     params: &[f64],
     seed: f64,
     draws: f64,
     stream_path: &str,
 ) -> Result<Vec<f64>, ProbError> {
-    validate(family, params)?;
+    validate(kind, params)?;
     if !seed.is_finite() {
         return Err(ProbError::NonFinite);
     }
@@ -131,7 +111,7 @@ pub fn prob_sample_in_stream(
     let local_seed = local_stream_seed(&Seed::new(seed.to_bits()), &path)
         .map_err(|_| ProbError::InvalidParameter)?;
     let stream = kernel_sample(
-        family.code(),
+        kind,
         params,
         f64::from_bits(local_seed),
         draws as usize,
@@ -144,12 +124,12 @@ pub fn prob_sample_in_stream(
     Ok(stream)
 }
 
-/// The density (PMF for Bernoulli) of `family` at `x` — exact closed
+/// The density (PMF for the binary-mass kernel) at `x` — exact closed
 /// forms, not estimates.
-pub fn prob_density(family: Family, params: &[f64], x: f64) -> Result<f64, ProbError> {
-    validate(family, params)?;
+pub fn prob_density(kind: u8, params: &[f64], x: f64) -> Result<f64, ProbError> {
+    validate(kind, params)?;
     if !x.is_finite() {
         return Err(ProbError::NonFinite);
     }
-    kernel_density(family.code(), params, x).ok_or(ProbError::NonFinite)
+    kernel_density(kind, params, x).ok_or(ProbError::NonFinite)
 }

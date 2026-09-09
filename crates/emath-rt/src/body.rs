@@ -13,3 +13,4 @@ include!("body/numeric.rs");
 include!("body/graphs.rs");
 include!("body/poly.rs");
 include!("body/control.rs");
+include!("body/exact.rs");
