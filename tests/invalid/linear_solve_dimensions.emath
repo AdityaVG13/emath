@@ -1,3 +1,4 @@
+# expect: E-TYPE-003 unknown operator solve_linear (never aliased to nonlinear solve)
 // negative seed: solve_linear outside the
 // closed reference vocabulary.
 //

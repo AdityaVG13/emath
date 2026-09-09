@@ -1,3 +1,4 @@
+# expect: E-SYN-101 incomplete outline (no qed)
 emath function proof_outline_incomplete:
     inputs:
         a: Float64

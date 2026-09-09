@@ -1,3 +1,4 @@
+# expect: E-MIGR-011 unclassified numeric_policy change
 # Negative control: a migration card that declares a
 #  semantic change but never classifies it. Hidden desugars and silent
 #  custom->strict fallthroughs refuse; omission is not a classification.

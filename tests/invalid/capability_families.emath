@@ -1,3 +1,4 @@
+# expect: E-KIND-026 unknown family member / parameter not Op
 use std.kinds.family
 
 # The family parameter must be Op, every member must be in the mounted

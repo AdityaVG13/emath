@@ -1,3 +1,4 @@
+# expect: E-UNIT-101 velocity used where acceleration belongs
 package r3_units_ext_physics_invalid
 
 emath law NewtonSeededWrongOutput:

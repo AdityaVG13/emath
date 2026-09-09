@@ -1,3 +1,4 @@
+# expect: E-SYN-101 field-pack propensity (named bio fence, never generic drop)
 emath function bio_propensity_fence:
     inputs:
         alpha: Float64

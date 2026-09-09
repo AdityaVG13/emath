@@ -1,3 +1,4 @@
+# expect: admit (presentation-only; MeaningID must equal square)
 # CAPSTONE negative fixture.
 # invariant: whitespace/comment edits preserve MeaningID (+
 # + ). This file IS a presentation edit of the capstone base

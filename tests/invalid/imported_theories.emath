@@ -1,3 +1,4 @@
+# expect: E-LAW-003 finite model fails the declared associative law
 use std.kinds.theory
 use std.kinds.model
 

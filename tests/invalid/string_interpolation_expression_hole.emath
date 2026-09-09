@@ -1,3 +1,4 @@
+# expect: E-SYN-101 interpolation hole must be a name or path
 # Negative control (U8): an expression in
 #  an interpolation hole. Purity keeps interpolation evidence-grade —
 #  only names and dotted paths may appear in `{}`, so `{f(x)}` refuses

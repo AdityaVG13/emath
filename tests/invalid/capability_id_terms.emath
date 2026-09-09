@@ -1,3 +1,4 @@
+# expect: E-TYPE-003 unknown operator Undeclared (never a MeaningID over a dangling cell)
 # negative seed.
 #
 # Scenario: a capability cell applies `Undeclared`, a capability that was

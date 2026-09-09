@@ -1,3 +1,4 @@
+# expect: E-OBS-WRITE observations are read-only measured evidence
 # Negative control (04 §5.2): a definition
 # binding an observation name is refused — observations are read-only
 # measured evidence, never written by the model (E-OBS-WRITE).

@@ -1,3 +1,4 @@
+# expect: E-KIND-027 method cannot claim certified authority
 # A method cannot raise its own evidence authority. `certified` is not a
 # value a method may claim: authority stays proposal-only (E1, not-run).
 use std.kinds.method

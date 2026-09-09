@@ -1,3 +1,4 @@
+# expect: E-SYN-101 space before (2) is not an uncertainty literal
 # negative control: a space before the
 # parenthetical breaks attachment. `1.50 (2)` is `1.50` followed by a grouped
 # `2` — never an uncertainty literal, never silently admitted as one.

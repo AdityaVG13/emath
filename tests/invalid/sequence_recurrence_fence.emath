@@ -1,3 +1,4 @@
+# expect: E-SYN-101 recurrence row is not a Phase-1 definition
 emath function seq_recurrence_fence:
     inputs:
         n: Float64

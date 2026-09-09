@@ -1,3 +1,4 @@
+# expect: E-TYPE-012 untyped string value is not a numeric definition
 emath function text_report_probe:
     inputs:
         x: Float64
