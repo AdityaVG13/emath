@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+emath-test-harness = { workspace = true }
 emath-sema = { path = "../../crates/emath-sema" }
 emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }
@@ -14,6 +15,10 @@ emath-cli = { path = "../../crates/emath-cli" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-term = { path = "../../crates/emath-term" }
 emath-world-ir = { path = "../../crates/emath-world-ir" }
+
+[[test]]
+name = "admit_extern_negative"
+path = "admit_extern_negative.rs"
 
 # Dual seal (ra96/U010): inherit the workspace lint set, including
 # forbid(unsafe_code), over the test package.

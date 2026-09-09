@@ -1,48 +1,27 @@
-//!: `Rat` / `Rational` at type sites must
-//! be admitted as `TypeNode::Rational`, not refused as outside the Phase 1
-//! strict-f64 subset.
+//! `Rat` / `Rational` at type sites are admitted as `TypeNode::Rational`.
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-
-fn diagnostics_of(source: &str) -> Vec<String> {
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned("rat-admission", source);
-    result
-        .diagnostics
-        .errors()
-        .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-        .collect()
-}
-
-fn install_source_parser() {
-    // Idempotent installer from emath-syntax, mirrors other suites here.
-    emath_syntax::install_source_parser();
-}
+use emath_test_harness::{boot, Probe, Source};
 
 #[test]
 fn rat_type_sites_are_admitted() {
-    let source = "\
-emath function F:
-    inputs:
-        a: Rat
-        b: Rational
-    outputs:
-        r: Rat
-    definitions:
-        r = a * b
-";
-    let messages = diagnostics_of(source);
-    assert!(
-        !messages.iter().any(|message| message.contains("E-TYPE-001")
-            || message.contains("outside the Phase 1 subset")),
-        "Rat/Rational type sites must not be refused, got {:?}",
-        messages
+    boot();
+    let mut p = Probe::new("Rat/Rational spellings admit as exact rational types");
+    let result = Source::from_str(
+        "rat-sites",
+        "emath function F:\n    inputs:\n        a: Rat\n        b: Rational\n    outputs:\n        r: Rat\n    definitions:\n        r = a * b\n",
+    )
+    .must_admit(&mut p);
+    let messages: Vec<String> = result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.to_string())
+        .collect();
+    p.demand(
+        "no-phase1-subset-refusal",
+        messages.iter().any(|message| {
+            message.contains("E-TYPE-001") || message.contains("outside the Phase 1 subset")
+        }) == false,
+        format!("Rat/Rational must not hit the old Phase-1 refusal, got {messages:?}"),
     );
-    assert!(
-        messages.is_empty(),
-        "Rat/Rational program must fully type-check, got {:?}",
-        messages
-    );
+    p.finish();
 }

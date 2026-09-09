@@ -13,134 +13,68 @@
 //! custom declaration kinds — emath-r6-kinds-45l8; PDE methods beyond
 //! Laplacians — emath-xx0x.4.
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
+use emath_test_harness::{Probe, Source, boot};
 
-fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
-}
+const GRAPH: &str = "\
+emath function negative_edge_shortest_paths:
+    inputs:
+        source: Float64
+    outputs:
+        distances: Vector<Float64>
+    definitions:
+        distances = bellman_ford([[0, 4, 1, 0], [0, 0, 0, 1], [0, -2, 0, 5], [0, 0, 0, 0]], source)
+";
 
-fn error_codes(result: &emath_sema::admit::CheckResult) -> Vec<&'static str> {
-    result
-        .diagnostics
-        .errors()
-        .map(|diagnostic| diagnostic.code)
-        .collect()
-}
+const RECORD_DATA: &str = "\
+emath function Wrap:
+    inputs:
+        x: Float64
+    outputs:
+        c: Float64
+    definitions:
+        p = Point:{ x: 1.0, y: 2.0 }
+        c = 3.0
+";
 
-#[test]
-fn shipped_compute_examples_still_admit() {
-    // Mutating any of these examples to expect a refusal must fail this
-    // gate (and be restored) — they are the compute-first proof.
-    let shipped: &[(&str, &str)] = &[
-        (
-            "autodiff",
-            include_str!("../../../language/examples/intro/autodiff.emath"),
-        ),
-        (
-            "solve",
-            include_str!("../../../language/examples/intro/solve.emath"),
-        ),
-        (
-            "optimize",
-            include_str!("../../../language/examples/intro/optimize.emath"),
-        ),
-        (
-            "jacobian",
-            include_str!("../../../language/examples/intro/jacobian.emath"),
-        ),
-        (
-            "dae",
-            include_str!("../../../language/examples/numerical/dae-rc-circuit.emath"),
-        ),
-    ];
-    for (name, source) in shipped {
-        let result = check(name, source);
-        assert!(
-            !result.diagnostics.has_errors(),
-            "{name} must keep admitting: {:?}",
-            result.diagnostics.errors().collect::<Vec<_>>()
-        );
-    }
-}
+const RECORD_ACCESS: &str = "\
+emath function Wrap:
+    inputs:
+        x: Float64
+    outputs:
+        c: Float64
+    definitions:
+        p = Point:{ x: 1.0, y: 2.0 }
+        c = p.x + 1.0
+";
 
 #[test]
-fn landed_remaining_slice_capabilities_admit() {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    // Graphs landed (emath-r2-graphs-masa closed): the shipped
-    // negative-edge carrier admits.
-    let graph = session
-        .check_owned(
-            "graph",
-            "emath function negative_edge_shortest_paths:\n    inputs:\n        source: Float64\n    outputs:\n        distances: Vector<Float64>\n    definitions:\n        distances = bellman_ford([[0, 4, 1, 0], [0, 0, 0, 1], [0, -2, 0, 5], [0, 0, 0, 0]], source)\n",
-        );
-    assert!(!graph.diagnostics.has_errors());
-
-    // Multi-file imports (emath-r3-imports-utzd closed): embedded
-    // package imports resolve.
-    let imports = session.check_owned("imports", "use physics::classical::{NewtonSecond}\n");
-    assert!(!imports.diagnostics.has_errors());
-}
-
-#[test]
-fn remaining_slice_sketches_refuse_with_pinned_codes() {
-    // Custom declaration kinds: schema-driven sections are owned by
-    // emath-r6-kinds-45l8. The fence is the Phase 1 subset, not a
-    // catch-all.
-    let kinds = check(
-        "kinds",
-        "emath widget Cool:\n    inputs:\n        x: Float64\n",
+fn doctrine() {
+    boot();
+    let mut p = Probe::new(
+        "shipped compute paths admit; open gaps fail closed with pinned codes",
     );
-    assert!(
-        error_codes(&kinds).iter().any(|code| *code == "E-KIND-100"),
-        "custom-kind sketches must refuse with the pinned subset fence"
-    );
-
-    // Records as first-class values (member access) are owned by
-    // emath-r5-records-6hcu; today the fence is the name resolver
-    // (E-TYPE-002), never a silent admit. Record DATA (a prefixed
-    // record literal bound to a name) admits — the value lane is
-    // landed; member access is the gap.
-    let records = check(
-        "records-data",
-        "emath function Wrap:\n    inputs:\n        x: Float64\n    outputs:\n        c: Float64\n    definitions:\n        p = Point:{ x: 1.0, y: 2.0 }\n        c = 3.0\n",
-    );
-    assert!(
-        !records.diagnostics.has_errors(),
-        "record DATA admits (the value lane is landed)"
-    );
-    let mut session = CompilerSession::new(Limits::default());
-    let access = session.check_owned(
-        "records-member-access",
-        "emath function Wrap:\n    inputs:\n        x: Float64\n    outputs:\n        c: Float64\n    definitions:\n        p = Point:{ x: 1.0, y: 2.0 }\n        c = p.x + 1.0\n",
-    );
-    assert!(
-        access
-            .diagnostics
-            .errors()
-            .any(|diagnostic| diagnostic.code == "E-TYPE-002"),
-        "record member access must fail closed until emath-r5-records-6hcu lands"
-    );
+    p.case("shipped", |p| {
+        for path in [
+            "language/examples/intro/autodiff.emath",
+            "tests/fixtures/language/intro/solve.emath",
+            "language/examples/intro/optimize.emath",
+            "tests/fixtures/language/intro/jacobian.emath",
+            "language/examples/numerical/dae-rc-circuit.emath",
+        ] {
+            Source::from_workspace(path).must_admit(&mut *p);
+        }
+    });
+    p.case("landed", |p| {
+        Source::from_str("graph", GRAPH).must_admit(&mut *p);
+        Source::from_str("imports", "use physics::classical::{NewtonSecond}\n")
+            .must_admit(&mut *p);
+    });
+    p.case("gaps", |p| {
+        Source::from_str("kinds", "emath widget Cool:\n    inputs:\n        x: Float64\n")
+            .must_refuse(&mut *p, &["E-KIND-100"]);
+        Source::from_str("records-data", RECORD_DATA).must_admit(&mut *p);
+        Source::from_str("records-member-access", RECORD_ACCESS)
+            .must_refuse(&mut *p, &["E-TYPE-002"]);
+    });
+    p.finish();
 }

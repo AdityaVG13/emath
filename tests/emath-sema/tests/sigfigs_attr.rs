@@ -7,37 +7,7 @@
 //! refusals); malformed specs and unknown modes are typed refusals
 //! (E-SYN-117), never silent drops.
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
-
-/// (severity, code) pairs so tests can assert warning receipts without
-/// confusing them with refusals.
-fn check(source: &str) -> Vec<(String, String)> {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session
-        .check_owned("sigfigs", source)
-        .diagnostics
-        .items()
-        .iter()
-        .map(|diagnostic| {
-            (
-                format!("{:?}", diagnostic.severity),
-                diagnostic.code.to_string(),
-            )
-        })
-        .collect()
-}
+use emath_test_harness::{boot, Probe, Source};
 
 fn function_source(prefix: &str, definitions: &str) -> String {
     format!(
@@ -45,104 +15,90 @@ fn function_source(prefix: &str, definitions: &str) -> String {
     )
 }
 
-/// Positive control: `display` mode admits with no diagnostic at all.
 #[test]
-fn display_mode_admits_silently() {
-    let out = check(&function_source(
-        "@significant_figures(display)\n",
-        "        y = x * 1.5\n",
-    ));
-    assert!(
-        !out.iter().any(|(_, code)| code == "E-SYN-118"),
-        "display mode must be a known attribute, got {out:?}"
-    );
-    assert!(out.is_empty(), "expected no diagnostics, got {out:?}");
-}
-
-/// `display` accepts an optional sf count: `@significant_figures(display, 4)`.
-#[test]
-fn display_mode_with_count_admits() {
-    let out = check(&function_source(
-        "@significant_figures(display, 4)\n",
-        "        y = x * 1.500\n",
-    ));
-    assert!(out.is_empty(), "expected no diagnostics, got {out:?}");
-}
-
-/// Enforce mode: a literal with fewer sf than declared is a WARNING
-/// receipt, and the file still admits (no errors).
-#[test]
-fn enforce_mode_under_report_is_a_warning_receipt() {
-    let out = check(&function_source(
-        "@significant_figures(enforce, 3)\n",
-        "        y = x * 1.5\n",
-    ));
-    assert!(
-        out.iter()
-            .any(|(severity, code)| severity == "Warning" && code == "E-SF-UNDER-REPORT"),
-        "expected an E-SF-UNDER-REPORT warning receipt, got {out:?}"
-    );
-    assert!(
-        !out.iter().any(|(severity, _)| severity == "Error"),
-        "warning receipts never refuse, got {out:?}"
-    );
-}
-
-/// Enforce mode: a literal meeting the declared sf count stays silent.
-#[test]
-fn enforce_mode_compliant_literal_is_silent() {
-    let out = check(&function_source(
-        "@significant_figures(enforce, 3)\n",
-        "        y = x * 1.50\n",
-    ));
-    assert!(out.is_empty(), "expected no diagnostics, got {out:?}");
-}
-
-/// Negative control: `enforce` without an sf count is a typed refusal
-/// (the threshold must be explicit), never a silent default.
-#[test]
-fn enforce_without_count_refuses() {
-    let out = check(&function_source(
-        "@significant_figures(enforce)\n",
-        "        y = x * 1.5\n",
-    ));
-    assert!(
-        out.iter()
-            .any(|(severity, code)| severity == "Error" && code == "E-SYN-117"),
-        "expected E-SYN-117, got {out:?}"
-    );
-}
-
-/// Negative control: an unknown mode is a typed refusal, never silent.
-#[test]
-fn unknown_mode_refuses() {
-    let out = check(&function_source(
-        "@significant_figures(precision)\n",
-        "        y = x * 1.5\n",
-    ));
-    assert!(
-        out.iter()
-            .any(|(severity, code)| severity == "Error" && code == "E-SYN-117"),
-        "expected E-SYN-117, got {out:?}"
-    );
-}
-
-/// Negative control: mixing Measured (uncertainty) values with bare
-/// sf-values under one precision contract is a warning receipt, never a
-/// refusal and never silent.
-#[test]
-fn mixing_measured_with_bare_sf_warns() {
-    let out = check(&function_source(
-        "@significant_figures(display)\n",
-        "        y = x * (1.5 ± 0.02) + 2.0\n",
-    ));
-    assert!(
-        out.iter()
-            .any(|(severity, code)| severity == "Warning" && code == "E-SF-MIXED-KINDS"),
-        "expected an E-SF-MIXED-KINDS warning receipt, got {out:?}"
-    );
-    assert!(
-        !out.iter().any(|(severity, _)| severity == "Error"),
-        "mixing kinds warns, never refuses, got {out:?}"
-    );
+fn sigfigs_contract() {
+    boot();
+    let mut p = Probe::new("sigfigs display/enforce admission contract");
+    p.case("display-silent", |p| {
+        let src = function_source("@significant_figures(display)\n", "        y = x * 1.5\n");
+        let result = Source::from_str("display", &src).must_admit(p);
+        let all: Vec<String> = result
+            .diagnostics
+            .items()
+            .iter()
+            .map(|d| format!("{:?}:{}", d.severity, d.code))
+            .collect();
+        p.demand("no-diagnostics", all.is_empty(), format!("expected silence, got {all:?}"));
+    });
+    p.case("display-with-count", |p| {
+        let src = function_source("@significant_figures(display, 4)\n", "        y = x * 1.500\n");
+        let result = Source::from_str("display-count", &src).must_admit(p);
+        let all: Vec<String> = result
+            .diagnostics
+            .items()
+            .iter()
+            .map(|d| format!("{:?}:{}", d.severity, d.code))
+            .collect();
+        p.demand("no-diagnostics", all.is_empty(), format!("expected silence, got {all:?}"));
+    });
+    p.case("enforce-warn-receipt", |p| {
+        let src = function_source("@significant_figures(enforce, 3)\n", "        y = x * 1.5\n");
+        let result = Source::from_str("enforce-warn", &src).check();
+        let items: Vec<(String, String)> = result
+            .diagnostics
+            .items()
+            .iter()
+            .map(|d| (format!("{:?}", d.severity), d.code.to_string()))
+            .collect();
+        p.demand(
+            "under-report-warns",
+            items.iter().any(|(s, c)| s == "Warning" && c == "E-SF-UNDER-REPORT"),
+            format!("expected E-SF-UNDER-REPORT warning receipt, got {items:?}"),
+        );
+        p.demand(
+            "warn-never-refuses",
+            items.iter().all(|(s, _)| s != "Error"),
+            format!("warning receipts never refuse, got {items:?}"),
+        );
+    });
+    p.case("enforce-compliant-silent", |p| {
+        let src = function_source("@significant_figures(enforce, 3)\n", "        y = x * 1.50\n");
+        let result = Source::from_str("enforce-ok", &src).must_admit(p);
+        let all: Vec<String> = result
+            .diagnostics
+            .items()
+            .iter()
+            .map(|d| format!("{:?}:{}", d.severity, d.code))
+            .collect();
+        p.demand("no-diagnostics", all.is_empty(), format!("expected silence, got {all:?}"));
+    });
+    p.case("enforce-without-count", |p| {
+        let src = function_source("@significant_figures(enforce)\n", "        y = x * 1.5\n");
+        Source::from_str("enforce-bare", &src).must_refuse(p, &["E-SYN-117"]);
+    });
+    p.case("unknown-mode", |p| {
+        let src = function_source("@significant_figures(precision)\n", "        y = x * 1.5\n");
+        Source::from_str("unknown-mode", &src).must_refuse(p, &["E-SYN-117"]);
+    });
+    p.case("mixed-kinds", |p| {
+        let src = function_source("@significant_figures(display)\n", "        y = x * (1.5 ± 0.02) + 2.0\n");
+        let result = Source::from_str("mixed", &src).check();
+        let items: Vec<(String, String)> = result
+            .diagnostics
+            .items()
+            .iter()
+            .map(|d| (format!("{:?}", d.severity), d.code.to_string()))
+            .collect();
+        p.demand(
+            "mixed-warns",
+            items.iter().any(|(s, c)| s == "Warning" && c == "E-SF-MIXED-KINDS"),
+            format!("expected E-SF-MIXED-KINDS warning receipt, got {items:?}"),
+        );
+        p.demand(
+            "warn-never-refuses",
+            items.iter().all(|(s, _)| s != "Error"),
+            format!("mixing kinds warns, never refuses, got {items:?}"),
+        );
+    });
+    p.finish();
 }

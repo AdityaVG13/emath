@@ -15,34 +15,9 @@
 //! Docs of record: CAPABILITY.md `emath kind` row + ch.8 "Execution
 //! story (today)".
 
-use emath_core::limits::Limits;
 use emath_exec_ir::interp::Value;
-use emath_exec_ir::runner::run_package;
-use emath_sema::session::CompilerSession;
-
-fn install_source_parser() {
-    emath_syntax::install_source_parser();
-}
-
-fn check(text: &str, name: &str) -> Vec<String> {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, text);
-    result
-        .diagnostics
-        .errors()
-        .map(|d| format!("{} {}", d.code, d.message))
-        .collect()
-}
+use emath_exec_ir::runner::{TestVerdict, run_package};
+use emath_test_harness::{Probe, Source, boot};
 
 const KIND_DEFINED_AND_APPLIED: &str = "\
 emath kind Gauge:
@@ -97,69 +72,74 @@ emath function PlainFn:
 ";
 
 #[test]
-fn defined_function_kind_application_executes() {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let checked = session.check_owned("kind-apply", KIND_DEFINED_AND_APPLIED);
-    let errors: Vec<_> = checked.diagnostics.errors().collect();
-    assert!(
-        errors.is_empty(),
-        "defined function-shaped kind must admit; got: {errors:#?}"
-    );
-    let report = run_package(&checked.package);
-    let half_gauge = report
-        .declarations
-        .iter()
-        .find(|declaration| declaration.name == "HalfGauge")
-        .expect("custom-kind application runs");
-    assert_eq!(
-        half_gauge.tests[0].definitions.get("y"),
-        Some(&Value::F64(4.0))
-    );
-}
-
-#[test]
-fn undefined_application_keeps_generic_refusal() {
-    let errors = check(KIND_UNDEFINED_APPLICATION, "kind-undefined");
-    assert!(
-        errors
+fn custom_kind_execution_story() {
+    boot();
+    let mut p = Probe::new("function-shaped custom kinds execute; undefined kinds keep the generic refusal");
+    p.case("define-and-apply", |p| {
+        // The example must Pass (8 / 2 = 4), not merely admit.
+        Source::from_str("half-gauge", KIND_DEFINED_AND_APPLIED).eval_tests(&mut *p);
+        let checked = Source::from_str("half-gauge", KIND_DEFINED_AND_APPLIED).check();
+        match checked
+            .package
+            .declarations
             .iter()
-            .any(|e| e.starts_with("E-KIND-100") && e.contains("outside the Phase 1 subset")),
-        "an UNDEFINED application keeps the generic Phase-1-subset \
-         refusal; got: {errors:#?}"
-    );
-    assert!(
-        !errors.iter().any(|e| e.contains("NO RUN PATH")),
-        "the no-run-path story must not fire for undefined kinds; got: \
-         {errors:#?}"
-    );
-}
-
-#[test]
-fn valid_kind_definition_checks_clean() {
-    let errors = check(KIND_DEFINITION_ALONE, "kind-def");
-    assert!(
-        errors.is_empty(),
-        "a valid `emath kind` definition (schema + lower) checks clean; \
-         got: {errors:#?}"
-    );
-}
-
-#[test]
-fn plain_functions_admit_unchanged() {
-    let errors = check(PLAIN_FUNCTION, "kind-plain-guard");
-    assert!(
-        errors.is_empty(),
-        "the kind-execution story must not affect ordinary functions; \
-         got: {errors:#?}"
-    );
+            .find(|decl| decl.name.leaf() == "HalfGauge")
+        {
+            None => {
+                p.fail("half-gauge/decl", "HalfGauge declaration missing after admit");
+            }
+            Some(_) => {}
+        }
+        let report = run_package(&checked.package);
+        match report.declarations.iter().find(|run| run.name == "HalfGauge") {
+            None => {
+                p.fail("half-gauge/run", "custom-kind application did not run");
+            }
+            Some(run) => match run.tests.first() {
+                None => {
+                    p.fail("half-gauge/test", "HalfGauge carries no example test");
+                }
+                Some(test) => {
+                    p.demand(
+                        "half-gauge/passed",
+                        test.verdict == TestVerdict::Passed,
+                        format!("expected Passed, got {}", test.verdict),
+                    );
+                    p.eq(
+                        "half-gauge/y",
+                        test.definitions.get("y"),
+                        Some(&Value::F64(4.0)),
+                    );
+                }
+            },
+        }
+    });
+    p.case("undefined-keeps-generic-refusal", |p| {
+        Source::from_str("kind-undefined", KIND_UNDEFINED_APPLICATION)
+            .must_refuse(&mut *p, &["E-KIND-100"]);
+        let checked = Source::from_str("kind-undefined", KIND_UNDEFINED_APPLICATION).check();
+        let joined = checked
+            .diagnostics
+            .errors()
+            .map(|diag| diag.message.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        p.contains(
+            "kind-undefined/phase1-subset",
+            &joined,
+            "outside the Phase 1 subset",
+        );
+        p.demand(
+            "kind-undefined/no-run-path-story",
+            joined.contains("NO RUN PATH") == false,
+            "the no-run-path story must not fire for undefined kinds",
+        );
+    });
+    p.case("kind-definition-clean", |p| {
+        Source::from_str("kind-def", KIND_DEFINITION_ALONE).must_admit(&mut *p);
+    });
+    p.case("plain-function-guard", |p| {
+        Source::from_str("kind-plain-guard", PLAIN_FUNCTION).must_admit(&mut *p);
+    });
+    p.finish();
 }

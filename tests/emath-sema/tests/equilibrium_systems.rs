@@ -13,139 +13,35 @@
 //! - the `<=>` relation is RECORDED as recognized meaning (admission
 //!   trace), never evaluated — Newton solving is the eval tier, fenced.
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
-
-fn check(source: &str) -> Vec<(String, String)> {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session
-        .check_owned("equilibrium", source)
-        .diagnostics
-        .items()
-        .iter()
-        .map(|diagnostic| {
-            (
-                format!("{:?}", diagnostic.severity),
-                diagnostic.code.to_string(),
-            )
-        })
-        .collect()
-}
-
-fn errors(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter()
-        .filter(|(severity, _)| severity == "Error")
-        .collect()
-}
+use emath_test_harness::{Probe, Source, boot};
 
 const ACETIC: &str = "\
-emath reaction_network AceticDissociation:
-    species:
-        CH3COOH
-        H2O
-        CH3COO
-        H3O
-    Ka: Measured<Real> in M = 1.75(3)e-5
-    reactions:
-        dissoc: CH3COOH + H2O <=> CH3COO + H3O
-";
+emath reaction_network AceticDissociation:\n    species:\n        CH3COOH\n        H2O\n        CH3COO\n        H3O\n    Ka: Measured<Real> in M = 1.75(3)e-5\n    reactions:\n        dissoc: CH3COOH + H2O <=> CH3COO + H3O\n";
 
-/// The flagship: acetic acid dissociation with a measured Ka
-/// admits once the constant-line form exists.
-#[test]
-fn equilibrium_constant_line_admits() {
-    let out = check(ACETIC);
-    assert!(
-        errors(&out).is_empty(),
-        "measured Ka line must admit, got {:?}",
-        out
-    );
-}
+const CONSISTENT: &str = "\
+emath reaction_network ConsistentPair:\n    species:\n        A\n        B\n    K: Measured<Real> = 2.0(1)\n    rate:\n        kf = 4.0\n        kr = 2.0\n    reactions:\n        kinetic: A <-> B\n        equil: A <=> B\n";
 
-/// Negative control: an equilibrium constant without uncertainty is a
-/// refusal — a measured Ka is uncertain by nature; an exact literal is
-/// the dishonest spelling.
 #[test]
-fn ka_without_uncertainty_refuses() {
-    let fixture = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/equilibrium_ka_specification.emath"
-    ));
-    assert!(
-        fixture.contains("expect: E-CHEM-KA-EXACT"),
-        "fixture must pin E-CHEM-KA-EXACT"
-    );
-    let out = check(fixture);
-    let errs = errors(&out);
-    assert!(
-        errs.iter().any(|(_, code)| code == "E-CHEM-KA-EXACT"),
-        "Ka without uncertainty must refuse E-CHEM-KA-EXACT, got {errs:?}"
-    );
-}
-
-/// Flagship negative control: a kinetic pair (`<->` with kf/kr) plus an
-/// equilibrium (`<=>` with K) whose K is inconsistent with kf/kr refuses
-/// E-CHEM-THERMO.
-#[test]
-fn inconsistent_k_vs_kf_kr_refuses_e_chem_thermo() {
-    let fixture = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/equilibrium_thermodynamics.emath"
-    ));
-    assert!(
-        fixture.contains("expect: E-CHEM-THERMO"),
-        "fixture must pin E-CHEM-THERMO"
-    );
-    let out = check(fixture);
-    let errs = errors(&out);
-    assert!(
-        errs.iter().any(|(_, code)| code == "E-CHEM-THERMO"),
-        "inconsistent K vs kf/kr must refuse E-CHEM-THERMO, got {errs:?}"
-    );
-}
-
-/// Honesty triangle, consistent side: with K == kf/kr within uncertainty
-/// the network admits — the gate must not fire false positives.
-#[test]
-fn consistent_k_with_rates_admits() {
-    let out = check(
-        "emath reaction_network ConsistentPair:\n    species:\n        A\n        B\n    K: Measured<Real> = 2.0(1)\n    rate:\n        kf = 4.0\n        kr = 2.0\n    reactions:\n        kinetic: A <-> B\n        equil: A <=> B\n",
-    );
-    assert!(
-        errors(&out).is_empty(),
-        "consistent K == kf/kr must admit, got {:?}",
-        out
-    );
-}
-
-/// Honesty triangle, missing-constant arm: a reversible pair plus an
-/// equilibrium with NO constant line at all refuses E-CHEM-THERMO — the
-/// consistency claim must be declared, never left unstated.
-#[test]
-fn missing_k_with_both_arrows_refuses_e_chem_thermo() {
-    let fixture = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/equilibrium_missing_constant.emath"
-    ));
-    assert!(
-        fixture.contains("expect: E-CHEM-THERMO"),
-        "fixture must pin E-CHEM-THERMO"
-    );
-    let out = check(fixture);
-    let errs = errors(&out);
-    assert!(
-        errs.iter().any(|(_, code)| code == "E-CHEM-THERMO"),
-        "both arrows without a declared K must refuse E-CHEM-THERMO, got {errs:?}"
-    );
+fn equilibrium_systems() {
+    boot();
+    let mut p = Probe::new("measured Ka admits, exact Ka and thermo violations refuse typed");
+    p.case("ka-admits", |p| {
+        Source::from_str("acetic", ACETIC).must_admit(p);
+    });
+    p.case("exact-ka-refuses", |p| {
+        Source::from_workspace("tests/invalid/equilibrium_ka_specification.emath")
+            .must_refuse(p, &["E-CHEM-KA-EXACT"]);
+    });
+    p.case("thermo-violation-refuses", |p| {
+        Source::from_workspace("tests/invalid/equilibrium_thermodynamics.emath")
+            .must_refuse(p, &["E-CHEM-THERMO"]);
+    });
+    p.case("consistent-admits", |p| {
+        Source::from_str("consistent-pair", CONSISTENT).must_admit(p);
+    });
+    p.case("missing-constant-refuses", |p| {
+        Source::from_workspace("tests/invalid/equilibrium_missing_constant.emath")
+            .must_refuse(p, &["E-CHEM-THERMO"]);
+    });
+    p.finish();
 }

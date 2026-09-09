@@ -1,13 +1,8 @@
 //! Diagnostics-as-teachers: unit mismatch carries pedagogy.
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
+use emath_test_harness::{Probe, Source, boot};
 
-#[test]
-fn duration_plus_information_has_teacher_help() {
-    install_source_parser();
-    let source = "\
+const TIMED: &str = "\
 emath function Timed:
     inputs:
         t: Duration
@@ -21,36 +16,38 @@ emath function Timed:
         profile library
         numeric strict-f64
 ";
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned("mismatch", source);
-    let error = result
-        .diagnostics
-        .errors()
-        .find(|diagnostic| diagnostic.code == "E-UNIT-101")
-        .expect("Duration + MiB must be E-UNIT-101");
-    let pedagogy = error
-        .pedagogy
-        .as_ref()
-        .expect("E-UNIT-101 must carry pedagogy");
-    assert!(!pedagogy.understood.is_empty());
-    assert!(!pedagogy.unknown.is_empty());
-    assert!(!pedagogy.why.is_empty());
-    assert!(!pedagogy.smallest_repair.is_empty());
-    assert!(!pedagogy.alternatives.is_empty());
-    assert!(pedagogy.example.as_ref().is_some());
-    assert!(pedagogy.deeper_concept.as_ref().is_some());
-    assert!(pedagogy.authority_consequence.as_ref().is_some());
-    assert!(
-        pedagogy
-            .library_link
-            .as_deref()
-            .unwrap()
-            .contains("types-units")
-    );
-    let help = error.help.as_deref().unwrap_or("");
-    assert!(help.contains("understood:"), "{help}");
-    assert!(help.contains("missing:"), "{help}");
-    assert!(help.contains("smallest fix:"), "{help}");
-    assert!(help.contains("library:"), "{help}");
-    assert!(!help.to_lowercase().contains("stellar"), "{help}");
+
+#[test]
+fn unit_mismatch_teaches() {
+    boot();
+    let mut p = Probe::new("unit mismatch E-UNIT-101 carries teacher pedagogy");
+    let result = Source::from_str("mismatch", TIMED).check();
+    if let Some(error) = result.diagnostics.errors().find(|d| d.code == "E-UNIT-101") {
+        if let Some(pedagogy) = error.pedagogy.as_ref() {
+            p.eq("understood", pedagogy.understood.is_empty(), false);
+            p.eq("unknown", pedagogy.unknown.is_empty(), false);
+            p.eq("why", pedagogy.why.is_empty(), false);
+            p.eq("smallest-repair", pedagogy.smallest_repair.is_empty(), false);
+            p.eq("alternatives", pedagogy.alternatives.is_empty(), false);
+            p.eq("example", pedagogy.example.as_ref().is_some(), true);
+            p.eq("deeper-concept", pedagogy.deeper_concept.as_ref().is_some(), true);
+            p.eq("authority", pedagogy.authority_consequence.as_ref().is_some(), true);
+            p.eq(
+                "library-link",
+                pedagogy.library_link.as_deref().unwrap_or("").contains("types-units"),
+                true,
+            );
+        } else {
+            p.fail("pedagogy", "E-UNIT-101 must carry pedagogy");
+        }
+        let help = error.help.as_deref().unwrap_or("");
+        p.contains("help/understood", help, "understood:");
+        p.contains("help/missing", help, "missing:");
+        p.contains("help/fix", help, "smallest fix:");
+        p.contains("help/library", help, "library:");
+        p.eq("help/no-stellar", help.to_lowercase().contains("stellar"), false);
+    } else {
+        p.fail("unit-101", "Duration + MiB must refuse as E-UNIT-101");
+    }
+    p.finish();
 }

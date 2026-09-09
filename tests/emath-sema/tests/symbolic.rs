@@ -3,61 +3,46 @@
 use emath_core::limits::Limits;
 use emath_ir::{ExprNode, GoalKind};
 use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
+use emath_test_harness::{boot, Probe, Source};
 
-#[test]
-fn simplify_goal_returns_native_symbolic_expression() {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let source = include_str!("../../../language/examples/algebra/symbolic-cas.emath");
+fn plan_of(name: &str, text: &str) -> emath_sema::session::PlanResult {
     let mut session = CompilerSession::new(Limits::default());
-    let file = session.load_text("symbolic-cas", source);
-    let checked = session.plan(file);
-    assert!(
-        !checked.diagnostics.has_errors(),
-        "{:?}",
-        checked.diagnostics.errors().collect::<Vec<_>>()
-    );
-    let goal = checked
-        .package
-        .goals
-        .iter()
-        .find(|goal| goal.kind == GoalKind::Simplify)
-        .unwrap();
-    let expression = checked.package.expr(goal.expression.unwrap());
-    assert!(
-        matches!(expression, Some(ExprNode::Variable(_))),
-        "{expression:?}"
-    );
-    assert!(
-        checked
-            .plans
-            .iter()
-            .any(|plan| plan.goal == goal.id && plan.artifact_class == "native-symbolic")
-    );
+    let file = session.load_text(name, text);
+    session.plan(file)
 }
 
 #[test]
-fn simplify_goal_refuses_non_exact_domain() {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let source = "\
+fn symbolic_contract() {
+    boot();
+    let mut p = Probe::new("simplify goals elaborate to native-symbolic plans");
+    p.case("native-expression", |p| {
+        let text = Source::from_workspace("language/examples/algebra/symbolic-cas.emath");
+        let planned = plan_of("symbolic-cas", &text.text());
+        let errors: Vec<&str> = planned.diagnostics.errors().map(|e| e.code).collect();
+        p.demand("admits", errors.is_empty(), format!("must admit, got {errors:?}"));
+        match planned.package.goals.iter().find(|g| g.kind == GoalKind::Simplify) {
+            Some(goal) => {
+                let expression = goal.expression.and_then(|id| planned.package.expr(id));
+                p.demand(
+                    "variable-form",
+                    matches!(expression, Some(ExprNode::Variable(_))),
+                    format!("simplify must return a native symbolic variable, got {expression:?}"),
+                );
+                p.demand(
+                    "native-plan",
+                    planned.plans.iter().any(|plan| plan.goal == goal.id && plan.artifact_class == "native-symbolic"),
+                    "simplify goal needs a native-symbolic plan".to_string(),
+                );
+            }
+            None => {
+                p.fail("goal", "a Simplify goal must exist".to_string());
+            }
+        }
+    });
+    p.case("non-exact-refuses", |p| {
+        let planned = plan_of(
+            "general-real-claim",
+            "\
 emath function GeneralRealClaim:
     inputs:
         x: Float64
@@ -68,37 +53,20 @@ emath function GeneralRealClaim:
     goals:
         simplify <value>:
             require exact
-";
-    let mut session = CompilerSession::new(Limits::default());
-    let file = session.load_text("general-real-claim", source);
-    let planned = session.plan(file);
-    assert!(
-        planned
-            .diagnostics
-            .errors()
-            .any(|error| error.code == "E-SYM-003")
-    );
-    assert!(
-        planned
-            .plans
-            .iter()
-            .all(|plan| plan.artifact_class != "native-symbolic")
-    );
-}
-
-#[test]
-fn simplify_goal_stays_attached_to_its_declaration() {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let source = "\
+",
+        );
+        let codes: Vec<&str> = planned.diagnostics.errors().map(|e| e.code).collect();
+        p.demand("E-SYM-003", codes.contains(&"E-SYM-003"), format!("got {codes:?}"));
+        p.demand(
+            "no-native-plan",
+            planned.plans.iter().all(|plan| plan.artifact_class != "native-symbolic"),
+            "refused goal must not carry a native-symbolic plan".to_string(),
+        );
+    });
+    p.case("goal-attachment", |p| {
+        let planned = plan_of(
+            "owned-symbolic-goal",
+            "\
 emath function First:
     inputs:
         x: Int
@@ -116,19 +84,23 @@ emath function Second:
     goals:
         simplify <value>:
             require exact
-";
-    let mut session = CompilerSession::new(Limits::default());
-    let file = session.load_text("owned-symbolic-goal", source);
-    let planned = session.plan(file);
-    assert!(!planned.diagnostics.has_errors());
-    let goal = planned
-        .package
-        .goals
-        .iter()
-        .find(|goal| goal.kind == GoalKind::Simplify)
-        .unwrap();
-    assert!(matches!(
-        planned.package.expr(goal.expression.unwrap()),
-        Some(ExprNode::Variable(name)) if name.leaf() == "y"
-    ));
+",
+        );
+        let errors: Vec<&str> = planned.diagnostics.errors().map(|e| e.code).collect();
+        p.demand("admits", errors.is_empty(), format!("must admit, got {errors:?}"));
+        match planned.package.goals.iter().find(|g| g.kind == GoalKind::Simplify) {
+            Some(goal) => {
+                let expression = goal.expression.and_then(|id| planned.package.expr(id));
+                p.demand(
+                    "attached-to-second",
+                    matches!(expression, Some(ExprNode::Variable(name)) if name.leaf() == "y"),
+                    format!("simplify must stay attached to Second's y, got {expression:?}"),
+                );
+            }
+            None => {
+                p.fail("goal", "a Simplify goal must exist".to_string());
+            }
+        }
+    });
+    p.finish();
 }

@@ -1,42 +1,34 @@
 //! Spec-oracle: declaration kinds, sections, and admission
 //! (`language/CAPABILITY.md` vs syntax + `emath-sema`).
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-use emath_syntax::{install_source_parser, parse_str};
+use emath_syntax::parse_str;
+use emath_test_harness::{Probe, Source, boot};
 
-struct Probe {
-    parse_ok: bool,
-    messages: Vec<String>,
-    admitted_names: Vec<String>,
-    admitted_labels: Vec<String>,
+fn error_text(result: &emath_sema::admit::CheckResult) -> String {
+    result
+        .diagnostics
+        .errors()
+        .map(|diagnostic| diagnostic.to_string())
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
-fn probe(name: &str, source: &str) -> Probe {
-    let (_, parse_diags) = parse_str(source);
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(name, source);
-    Probe {
-        parse_ok: !parse_diags.has_errors(),
-        messages: result
-            .diagnostics
-            .errors()
-            .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
-            .collect(),
-        admitted_names: result
-            .package
-            .declarations
-            .iter()
-            .map(|declaration| declaration.name.leaf().to_string())
-            .collect(),
-        admitted_labels: result
-            .package
-            .declarations
-            .iter()
-            .map(|declaration| declaration.kind_label.clone())
-            .collect(),
-    }
+fn admitted_names(result: &emath_sema::admit::CheckResult) -> Vec<String> {
+    result
+        .package
+        .declarations
+        .iter()
+        .map(|declaration| declaration.name.leaf().to_string())
+        .collect()
+}
+
+fn admitted_labels(result: &emath_sema::admit::CheckResult) -> Vec<String> {
+    result
+        .package
+        .declarations
+        .iter()
+        .map(|declaration| declaration.kind_label.clone())
+        .collect()
 }
 
 fn square_body() -> &'static str {
@@ -44,9 +36,11 @@ fn square_body() -> &'static str {
 }
 
 #[test]
-fn emath_kind_validates_schema_and_does_not_run() {
-    // CAPABILITY: `emath kind` parses, partial schema validation, does not run.
-    let source = "\
+fn declaration_kinds() {
+    boot();
+    let mut p = Probe::new("declaration kinds admit their sections, refuse foreign ones by name");
+    p.case("kind-ok", |p| {
+        let source = "\
 emath kind Scoring:
     extends model
 
@@ -57,120 +51,65 @@ emath kind Scoring:
     lower:
         model.inputs = section.inputs
 ";
-    let result = probe("kind-ok", source);
-    assert!(
-        result.parse_ok,
-        "kind declaration must parse, got {:?}",
-        result.messages
-    );
-    assert!(
-        result.messages.is_empty(),
-        "valid kind schema must admit with no errors, got {:?}",
-        result.messages
-    );
-    assert_eq!(
-        result.admitted_names,
-        ["Scoring"],
-        "valid kind schemas register a marker for later application diagnostics"
-    );
-    assert_eq!(
-        result.admitted_labels,
-        ["kind"],
-        "the marker must remain distinguishable from a runnable function"
-    );
-}
-
-#[test]
-fn emath_kind_unknown_section_is_named_not_silent() {
-    let source = "\
-emath kind Scoring:
-    inputs:
-        x: Float64
-";
-    let result = probe("kind-bad-section", source);
-    assert!(
-        result.parse_ok,
-        "kind with an extra section must still parse, got {:?}",
-        result.messages
-    );
-    assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("E-SYN-101") && message.contains("inputs")),
-        "unknown section on emath kind must be a named section refusal, got {:?}",
-        result.messages
-    );
-    assert!(
-        result.admitted_names.is_empty(),
-        "kind must not be admitted as a function, got {:?}",
-        result.admitted_names
-    );
-}
-
-#[test]
-fn emath_custom_refuses_or_treats_as_function_without_crash() {
-    // CAPABILITY: parses; treats as function or refuses; does not run.
-    let source = format!("emath custom Square:\n{body}", body = square_body());
-    let result = probe("custom", &source);
-    assert!(
-        result.parse_ok,
-        "emath custom must parse, got {:?}",
-        result.messages
-    );
-    let treated_as_function = result.admitted_labels == ["function".to_string()]
-        && result.admitted_names == ["Square".to_string()];
-    let refused = result
-        .messages
-        .iter()
-        .any(|message| message.contains("E-KIND-"))
-        && result.admitted_names.is_empty();
-    assert!(
-        treated_as_function || refused,
-        "emath custom must treat as function or refuse with a named error, got names={:?} labels={:?} messages={:?}",
-        result.admitted_names,
-        result.admitted_labels,
-        result.messages
-    );
-    if refused {
-        assert!(
-            result
-                .messages
-                .iter()
-                .any(|message| message.contains("`custom`")),
-            "custom refusal must name `custom`, not an empty type, got {:?}",
-            result.messages
+        let (_, parse_diags) = parse_str(source);
+        p.demand("kind-ok:parse", !parse_diags.has_errors(), "kind declaration must parse");
+        let result = Source::from_str("kind-ok", source).check();
+        let text = error_text(&result);
+        p.demand("kind-ok:admit", text.is_empty(), format!("valid kind schema admits: {text}"));
+        p.eq("kind-ok:names", admitted_names(&result), vec!["Scoring".to_string()]);
+        p.eq("kind-ok:labels", admitted_labels(&result), vec!["kind".to_string()]);
+    });
+    p.case("kind-bad-section", |p| {
+        let source = "emath kind Scoring:\n    inputs:\n        x: Float64\n";
+        let (_, parse_diags) = parse_str(source);
+        p.demand("kind-bad-section:parse", !parse_diags.has_errors(), "extra section still parses");
+        let result = Source::from_str("kind-bad-section", source).check();
+        let text = error_text(&result);
+        p.contains("kind-bad-section:code", &text, "E-SYN-101");
+        p.contains("kind-bad-section:names-section", &text, "inputs");
+        p.demand(
+            "kind-bad-section:no-admit",
+            admitted_names(&result).is_empty(),
+            "kind must not be admitted as a function",
         );
-    }
-}
-
-#[test]
-fn other_kind_refuses_with_named_error() {
-    let source = format!("emath widget W:\n{body}", body = square_body());
-    let result = probe("widget", &source);
-    assert!(
-        result.parse_ok,
-        "other kinds must parse, got {:?}",
-        result.messages
-    );
-    assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("E-KIND-")),
-        "other kinds must refuse with a named E-KIND error, got {:?}",
-        result.messages
-    );
-    assert!(
-        result.admitted_names.is_empty(),
-        "other kinds must not be admitted, got {:?}",
-        result.admitted_names
-    );
-}
-
-#[test]
-fn transitions_and_events_parse_and_are_not_admitted() {
-    let source = "\
+    });
+    p.case("custom", |p| {
+        let source = format!("emath custom Square:\n{body}", body = square_body());
+        let (_, parse_diags) = parse_str(&source);
+        p.demand("custom:parse", !parse_diags.has_errors(), "emath custom must parse");
+        let result = Source::from_str("custom", &source).check();
+        let text = error_text(&result);
+        let as_function =
+            admitted_labels(&result) == ["function".to_string()] && admitted_names(&result) == ["Square".to_string()];
+        let refused = text.contains("E-KIND-") && admitted_names(&result).is_empty();
+        p.demand(
+            "custom:function-or-refusal",
+            as_function || refused,
+            format!(
+                "treat as function or refuse with a named error, names={:?} labels={:?} text={text}",
+                admitted_names(&result),
+                admitted_labels(&result),
+            ),
+        );
+        if refused {
+            p.contains("custom:names-kind", &text, "`custom`");
+        }
+    });
+    p.case("widget", |p| {
+        let source = format!("emath widget W:\n{body}", body = square_body());
+        let (_, parse_diags) = parse_str(&source);
+        p.demand("widget:parse", !parse_diags.has_errors(), "other kinds must parse");
+        let result = Source::from_str("widget", &source).check();
+        let text = error_text(&result);
+        p.contains("widget:code", &text, "E-KIND-");
+        p.demand(
+            "widget:no-admit",
+            admitted_names(&result).is_empty(),
+            "other kinds must not be admitted",
+        );
+    });
+    p.case("hybrid-sections", |p| {
+        let source = "\
 emath function Hybrid:
     inputs:
         x: Float64
@@ -183,37 +122,15 @@ emath function Hybrid:
     events:
         dummy = 1
 ";
-    let result = probe("hybrid-sections", source);
-    assert!(
-        result.parse_ok,
-        "transitions/events must parse, got {:?}",
-        result.messages
-    );
-    // `events:`/`transitions:` are admitted Phase 1 sections (hybrid
-    // events); malformed CONTENT is the refusal:
-    // `dummy = 1` is not an `event Name(field: Type)` declaration
-    // (E-SYN-101) and not an `on <Event>:` rule (E-TRANS-003).
-    assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("E-SYN-101")),
-        "malformed `events:` content must refuse with E-SYN-101, got {:?}",
-        result.messages
-    );
-    assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("E-TRANS-003")),
-        "malformed `transitions:` content must refuse with E-TRANS-003, got {:?}",
-        result.messages
-    );
-}
-
-#[test]
-fn invariant_section_is_admitted() {
-    let source = "\
+        let (_, parse_diags) = parse_str(source);
+        p.demand("hybrid-sections:parse", !parse_diags.has_errors(), "transitions/events parse");
+        let result = Source::from_str("hybrid-sections", source).check();
+        let text = error_text(&result);
+        p.contains("hybrid-sections:events", &text, "E-SYN-101");
+        p.contains("hybrid-sections:transitions", &text, "E-TRANS-003");
+    });
+    p.case("invariant", |p| {
+        let source = "\
 emath function Bounded:
     inputs:
         x: Float64
@@ -224,20 +141,15 @@ emath function Bounded:
     invariant:
         x >= 0
 ";
-    let result = probe("invariant", source);
-    assert!(
-        result.parse_ok && result.messages.is_empty(),
-        "invariant: must admit, got {:?}",
-        result.messages
-    );
-    assert_eq!(result.admitted_names, ["Bounded".to_string()]);
-}
-
-#[test]
-fn invariants_plural_section_is_refused() {
-    // CAPABILITY / reference spelling is `invariant:` (singular). The
-    // plural is E-SEC-101, not an admitted alias.
-    let source = "\
+        let (_, parse_diags) = parse_str(source);
+        let result = Source::from_str("invariant", source).check();
+        let text = error_text(&result);
+        let clean = !parse_diags.has_errors() && text.is_empty();
+        p.demand("invariant:admit", clean, format!("invariant: admits: {text}"));
+        p.eq("invariant:names", admitted_names(&result), vec!["Bounded".to_string()]);
+    });
+    p.case("invariants-plural", |p| {
+        let source = "\
 emath function Bounded:
     inputs:
         x: Float64
@@ -248,46 +160,26 @@ emath function Bounded:
     invariants:
         x >= 0
 ";
-    let result = probe("invariants-plural", source);
-    assert!(
-        result.parse_ok,
-        "invariants: must parse as a section head, got {:?}",
-        result.messages
-    );
-    assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("E-SEC-101") && message.contains("invariants")),
-        "invariants: must be E-SEC-101, got {:?}",
-        result.messages
-    );
-}
-
-#[test]
-fn emath_kind_schema_shape_is_validated() {
-    let source = "\
-emath kind Scoring:
-    schema:
-        x = 1
-";
-    let result = probe("kind-schema-shape", source);
-    assert!(
-        result.parse_ok,
-        "kind schema must parse, got {:?}",
-        result.messages
-    );
-    assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("E-SYN-101") && message.contains("schema")),
-        "assignment in schema: must be a named shape refusal, got {:?}",
-        result.messages
-    );
-    assert!(
-        result.admitted_names.is_empty(),
-        "invalid kind schema must not run, got {:?}",
-        result.admitted_names
-    );
+        let (_, parse_diags) = parse_str(source);
+        p.demand("invariants-plural:parse", !parse_diags.has_errors(), "plural parses as a section head");
+        let result = Source::from_str("invariants-plural", source).check();
+        let text = error_text(&result);
+        p.contains("invariants-plural:code", &text, "E-SEC-101");
+        p.contains("invariants-plural:names-section", &text, "invariants");
+    });
+    p.case("kind-schema-shape", |p| {
+        let source = "emath kind Scoring:\n    schema:\n        x = 1\n";
+        let (_, parse_diags) = parse_str(source);
+        p.demand("kind-schema-shape:parse", !parse_diags.has_errors(), "kind schema parses");
+        let result = Source::from_str("kind-schema-shape", source).check();
+        let text = error_text(&result);
+        p.contains("kind-schema-shape:code", &text, "E-SYN-101");
+        p.contains("kind-schema-shape:names-section", &text, "schema");
+        p.demand(
+            "kind-schema-shape:no-admit",
+            admitted_names(&result).is_empty(),
+            "invalid kind schema must not run",
+        );
+    });
+    p.finish();
 }

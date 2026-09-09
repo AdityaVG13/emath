@@ -15,47 +15,8 @@
 //!   (outside `rate:`/reaction contexts `[x]` stays the list/index
 //!   reading — the parser is untouched, so no other suite changes).
 
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
-
-fn check(source: &str) -> Vec<(String, String)> {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session
-        .check_owned("chem_surface", source)
-        .diagnostics
-        .items()
-        .iter()
-        .map(|diagnostic| {
-            (
-                format!("{:?}", diagnostic.severity),
-                diagnostic.code.to_string(),
-            )
-        })
-        .collect()
-}
-
-fn errors(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter()
-        .filter(|(severity, _)| severity == "Error")
-        .collect()
-}
-
-fn warnings(out: &[(String, String)]) -> Vec<&(String, String)> {
-    out.iter()
-        .filter(|(severity, _)| severity == "Warning")
-        .collect()
-}
+use emath_core::Severity;
+use emath_test_harness::{Probe, Source, boot, error_codes};
 
 const MM_PLAIN: &str = "\
 emath reaction_network MichaelisMenten:
@@ -89,112 +50,57 @@ emath reaction_network MichaelisMentenAssumed:
         cat: ES -> E + P
 ";
 
-/// §3.5 flagship: the named rate-law form admits; non-mass-action
-/// without a declared assumption carries the W-CHEM-RATELAW warning
-/// receipt.
 #[test]
-fn rate_law_form_admits_with_warning_receipt() {
-    let out = check(MM_PLAIN);
-    assert!(
-        errors(&out).is_empty(),
-        "named rate-law form must admit, got {:?}",
-        out
-    );
-    assert!(
-        warnings(&out)
+fn chemical_rate_law_contracts() {
+    boot();
+    let mut p = Probe::new("named rate laws admit with declared assumptions; brackets read by context");
+    p.case("warning-receipt", |p| {
+        // Non-mass-action without a declared assumption admits with the
+        // W-CHEM-RATELAW warning receipt — never a silent admit, never a refusal.
+        let plain = Source::from_str("mm-plain", MM_PLAIN).must_admit(&mut *p);
+        let warns: Vec<&str> = plain
+            .diagnostics
+            .items()
             .iter()
-            .any(|(_, code)| code == "W-CHEM-RATELAW"),
-        "non-mass-action rate law without assumptions must warn W-CHEM-RATELAW, got {out:?}"
-    );
-}
-
-/// With `assumptions: quasi_steady_state` declared the warning stays
-/// silent — the approximation is declared, not ambient.
-#[test]
-fn declared_assumptions_silence_warning() {
-    let out = check(MM_ASSUMED);
-    assert!(
-        errors(&out).is_empty(),
-        "declared-assumption network must admit, got {:?}",
-        out
-    );
-    assert!(
-        warnings(&out).is_empty(),
-        "declared assumptions must silence W-CHEM-RATELAW, got {out:?}"
-    );
-}
-
-/// §3.4 context-scoped reading: `[S]` with S declared is the
-/// concentration reading inside the rate context — no ambiguity refusal.
-#[test]
-fn bracket_concentration_in_rate_admits() {
-    let out = check(MM_PLAIN);
-    assert!(
-        errors(&out)
+            .filter(|diag| diag.severity == Severity::Warning)
+            .map(|diag| diag.code)
+            .collect();
+        p.demand(
+            "ratelaw-warns",
+            warns.contains(&"W-CHEM-RATELAW"),
+            format!("non-mass-action rate law without assumptions must warn W-CHEM-RATELAW, got {warns:?}"),
+        );
+        // Declared species brackets in the rate context read as
+        // concentration — no ambiguity refusal.
+        p.demand(
+            "no-ambig",
+            error_codes(&plain.diagnostics).iter().all(|code| *code != "E-NOTATION-AMBIG"),
+            "declared species bracket in rate context must read as concentration",
+        );
+    });
+    p.case("assumptions-silence-warning", |p| {
+        let assumed = Source::from_str("mm-assumed", MM_ASSUMED).must_admit(&mut *p);
+        let warns: Vec<&str> = assumed
+            .diagnostics
+            .items()
             .iter()
-            .all(|(_, code)| code != "E-NOTATION-AMBIG"),
-        "declared species bracket in rate context must read as concentration, got {out:?}"
-    );
-}
-
-/// Negative control: an undeclared species inside the rate-context
-/// bracket refuses E-NOTATION-AMBIG (no silent guessing).
-#[test]
-fn bracket_unknown_species_refuses_ambig() {
-    let fixture = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/chemical_rate_law_ambiguous.emath"
-    ));
-    assert!(
-        fixture.contains("expect: E-NOTATION-AMBIG"),
-        "fixture must pin E-NOTATION-AMBIG"
-    );
-    let out = check(fixture);
-    let errs = errors(&out);
-    assert!(
-        errs.iter().any(|(_, code)| code == "E-NOTATION-AMBIG"),
-        "undeclared bracket species in rate context must refuse E-NOTATION-AMBIG, got {errs:?}"
-    );
-}
-
-/// Negative control: a `rate:` entry value that is not a numeric
-/// literal refuses E-KIND-027 (rate constants feed the honesty gate;
-/// nothing is guessed).
-#[test]
-fn rate_entry_non_numeric_refuses() {
-    let fixture = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/chemical_rate_nonnumeric.emath"
-    ));
-    assert!(
-        fixture.contains("expect: E-KIND-027"),
-        "fixture must pin E-KIND-027"
-    );
-    let out = check(fixture);
-    let errs = errors(&out);
-    assert!(
-        errs.iter().any(|(_, code)| code == "E-KIND-027"),
-        "non-numeric rate entry must refuse E-KIND-027, got {errs:?}"
-    );
-}
-
-/// Negative control: an `assumptions:` entry that is not a bare name
-/// refuses E-KIND-027 (declared approximations hash by name; a
-/// call-shaped spelling is not a declaration).
-#[test]
-fn assumption_entry_malformed_refuses() {
-    let fixture = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/chemical_assumption_malformed.emath"
-    ));
-    assert!(
-        fixture.contains("expect: E-KIND-027"),
-        "fixture must pin E-KIND-027"
-    );
-    let out = check(fixture);
-    let errs = errors(&out);
-    assert!(
-        errs.iter().any(|(_, code)| code == "E-KIND-027"),
-        "malformed assumptions entry must refuse E-KIND-027, got {errs:?}"
-    );
+            .filter(|diag| diag.severity == Severity::Warning)
+            .map(|diag| diag.code)
+            .collect();
+        p.eq("no-warnings", warns.len(), 0);
+    });
+    p.case("typed-refusals", |p| {
+        // Undeclared species inside the rate-context bracket: no silent guessing.
+        Source::from_workspace("tests/invalid/chemical_rate_law_ambiguous.emath")
+            .must_refuse(&mut *p, &["E-NOTATION-AMBIG"]);
+        // A `rate:` entry value that is not a numeric literal feeds the
+        // honesty gate: nothing is guessed.
+        Source::from_workspace("tests/invalid/chemical_rate_nonnumeric.emath")
+            .must_refuse(&mut *p, &["E-KIND-027"]);
+        // An `assumptions:` entry that is not a bare name is not a
+        // declaration (declared approximations hash by name).
+        Source::from_workspace("tests/invalid/chemical_assumption_malformed.emath")
+            .must_refuse(&mut *p, &["E-KIND-027"]);
+    });
+    p.finish();
 }

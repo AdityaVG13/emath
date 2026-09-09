@@ -8,6 +8,7 @@ use emath_core::{FileId, Span};
 use emath_sema::admit::check_tree;
 use emath_syntax::parse_str;
 use emath_syntax::tree::{Declaration, Item, SyntaxTree};
+use emath_test_harness::{Probe, boot};
 
 fn span() -> Span {
     Span {
@@ -38,39 +39,46 @@ fn tree_with(decl: Declaration) -> SyntaxTree {
     }
 }
 
-fn checked(tree: &SyntaxTree) -> bool {
-    let result = check_tree(tree);
-    let errors = result.diagnostics.errors().count();
-    errors > 0
+fn has_code(result: &emath_sema::CheckResult, code: &str) -> bool {
+    result.diagnostics.errors().any(|error| error.code == code)
 }
 
 #[test]
-fn generic_extern_operator_is_refused_with_e_type_112() {
-    let source = "extern operator semantic_distance<D: Nat>(a: Float64, b: Float64) -> Float64:\
-";
-    let (tree, _) = parse_str(source);
-    let result = check_tree(&tree);
-    let found = result.diagnostics.errors().any(|e| e.code == "E-TYPE-112");
-    assert!(
-        found,
-        "generic extern operator must be refused at admission"
+fn probe() {
+    boot();
+    let mut p = Probe::new(
+        "generic or unsigned extern operators refuse with typed codes; a plain extern admits",
     );
-}
-
-#[test]
-fn extern_without_signature_is_refused_with_e_syn_101() {
-    let tree = tree_with(declaration_without_signature());
-    let result = check_tree(&tree);
-    let found = result.diagnostics.errors().any(|e| e.code == "E-SYN-101");
-    assert!(found, "extern operator without signature must be refused");
-}
-
-#[test]
-fn plain_extern_operator_is_not_refused() {
-    let source = "extern operator semantic_distance(a: Float64, b: Float64) -> Float64:\
-";
-    let (tree, _) = parse_str(source);
-    let result = check_tree(&tree);
-    assert!(!checked(&tree), "plain extern operator must not error");
-    let _ = result;
+    p.case("generic", |p| {
+        let source =
+            "extern operator semantic_distance<D: Nat>(a: Float64, b: Float64) -> Float64:\n";
+        let (tree, _) = parse_str(source);
+        let result = check_tree(&tree);
+        p.demand(
+            "E-TYPE-112",
+            has_code(&result, "E-TYPE-112"),
+            "generic extern operator must be refused at admission",
+        );
+    });
+    p.case("no-signature", |p| {
+        let tree = tree_with(declaration_without_signature());
+        let result = check_tree(&tree);
+        p.demand(
+            "E-SYN-101",
+            has_code(&result, "E-SYN-101"),
+            "extern operator without signature must be refused",
+        );
+    });
+    p.case("plain", |p| {
+        let source =
+            "extern operator semantic_distance(a: Float64, b: Float64) -> Float64:\n";
+        let (tree, _) = parse_str(source);
+        let result = check_tree(&tree);
+        p.eq(
+            "errors",
+            result.diagnostics.errors().count(),
+            0,
+        );
+    });
+    p.finish();
 }

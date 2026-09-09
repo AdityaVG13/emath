@@ -16,11 +16,9 @@
 //! - Replay: same source + inputs + policy → same disposition fields
 //!   (determinism class).
 
-mod common;
-
-use crate::common::check_source;
 use emath_exec_ir::interp::Value;
 use emath_exec_ir::{SimulateOptions, StepMethod, simulate_continuous_dispositioned};
+use emath_test_harness::{Probe, Source, boot};
 use std::collections::BTreeMap;
 
 const CAUSAL_RC: &str = "\
@@ -49,202 +47,163 @@ emath model Decay:
 ";
 
 fn rc_inputs() -> BTreeMap<String, Value> {
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(1.0));
-    inputs.insert("C".into(), Value::F64(1.0));
-    inputs.insert("I".into(), Value::F64(1.0));
-    inputs
+    [("V", 10.0), ("R", 1.0), ("C", 1.0), ("I", 1.0)]
+        .iter()
+        .map(|(name, v)| (name.to_string(), Value::F64(*v)))
+        .collect()
 }
 
-fn rc_state() -> BTreeMap<String, Value> {
-    let mut state = BTreeMap::new();
-    state.insert("q".into(), Value::F64(0.0));
-    state
-}
-
-/// Positive: the causalized index-1 RC circuit integrates AND the
-/// disposition names index One, a differential/constraint partition
-/// (1 differential state `q`, 1 constraint unknown `I`), a
-/// consistent-initialization verdict from the t0 projection, and a
-/// `None` continuation (nothing owed).
-#[test]
-fn index1_dae_emits_disposition() {
-    let result = check_source("rc", CAUSAL_RC);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "causalized DAE must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
+fn sim(
+    probe: &mut Probe,
+    name: &str,
+    source: &str,
+    inputs: &BTreeMap<String, Value>,
+    state: &BTreeMap<String, Value>,
+    t1: f64,
+    dt: f64,
+    method: StepMethod,
+) -> Result<
+    (
+        emath_exec_ir::Trajectory,
+        emath_exec_ir::DAEDisposition,
+    ),
+    String,
+> {
+    let result = Source::from_str(name, source).must_admit(probe);
+    if result.package.declarations.is_empty() {
+        probe.fail(format!("{name}:decl"), "no declaration to simulate");
+        return Err("admission failed; see diagnostics".to_string());
+    }
     let decl = &result.package.declarations[0];
-    let (traj, disposition) = simulate_continuous_dispositioned(
+    simulate_continuous_dispositioned(
         &result.package,
         decl,
-        &rc_inputs(),
-        &rc_state(),
+        inputs,
+        state,
         0.0,
-        1.0,
-        0.01,
-        StepMethod::Rk4,
+        t1,
+        dt,
+        method,
         &SimulateOptions::default(),
     )
-    .expect("index-1 DAE must integrate with a disposition");
-    assert_eq!(disposition.index, emath_exec_ir::DAEIndex::One);
-    assert_eq!(disposition.differential_states, vec!["q".to_string()]);
-    assert_eq!(disposition.constraint_unknowns, vec!["I".to_string()]);
-    assert_eq!(
-        disposition.initialization,
-        emath_exec_ir::InitializationVerdict::Consistent
-    );
-    assert!(disposition.continuation.is_none());
-    let q_final = match traj.samples.last().unwrap().state.get("q") {
-        Some(Value::F64(v)) => *v,
-        other => panic!("{other:?}"),
-    };
-    let expected = 10.0 * (1.0 - (-1.0f64).exp());
-    assert!(
-        (q_final - expected).abs() < 0.01,
-        "trajectory unchanged by dispositioning: q(1) ~{expected:.4}, got {q_final:.4}"
-    );
 }
 
-/// Positive control: an ODE-only model records `index: Ode` with an
-/// empty constraint partition — the record exists for plain models
-/// too, not just DAEs.
 #[test]
-fn ode_model_records_ode_index() {
-    let result = check_source("decay", PURE_ODE);
-    assert!(!result.diagnostics.has_errors());
-    let decl = &result.package.declarations[0];
-    let mut inputs = BTreeMap::new();
-    inputs.insert("k".into(), Value::F64(1.0));
-    let mut state = BTreeMap::new();
-    state.insert("x".into(), Value::F64(1.0));
-    let (_, disposition) = simulate_continuous_dispositioned(
-        &result.package,
-        decl,
-        &inputs,
-        &state,
-        0.0,
-        1.0,
-        0.1,
-        StepMethod::Euler,
-        &SimulateOptions::default(),
-    )
-    .expect("ODE must integrate with a disposition");
-    assert_eq!(disposition.index, emath_exec_ir::DAEIndex::Ode);
-    assert_ne!(
-        disposition.index,
-        emath_exec_ir::DAEIndex::One,
-        "an ODE model must NOT be classified as an index-1 DAE (misclassification would \
-         pretend an algebraic constraint exists)"
-    );
-    assert_eq!(disposition.differential_states, vec!["x".to_string()]);
-    assert!(disposition.constraint_unknowns.is_empty());
-    assert_eq!(
-        disposition.initialization,
-        emath_exec_ir::InitializationVerdict::Consistent
-    );
-}
-
-/// Negative control: a missing algebraic guess at t0 is a typed
-/// refusal with a continuation note — never a trajectory that silently
-/// dropped the algebraic constraint.
-#[test]
-fn missing_algebraic_guess_refuses_with_continuation() {
-    let result = check_source("rc", CAUSAL_RC);
-    assert!(!result.diagnostics.has_errors());
-    let decl = &result.package.declarations[0];
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(1.0));
-    inputs.insert("C".into(), Value::F64(1.0));
-    // `I` guess deliberately absent.
-    let err = simulate_continuous_dispositioned(
-        &result.package,
-        decl,
-        &inputs,
-        &rc_state(),
-        0.0,
-        1.0,
-        0.01,
-        StepMethod::Rk4,
-        &SimulateOptions::default(),
-    )
-    .expect_err("missing algebraic guess must refuse, not simulate");
-    assert!(
-        err.contains("E-DAE-INIT"),
-        "refusal must carry the E-DAE-INIT code and a continuation note, got: {err}"
-    );
-    assert!(
-        err.contains("algebraic"),
-        "refusal must name the algebraic unknown, got: {err}"
-    );
-}
-
-/// Negative control: an inconsistent initialization (constraint can
-/// never be satisfied for these inputs — R = 0 makes the residual
-/// `V - q/C == 0` with no I dependence, and the Newton system for I is
-/// singular) is a typed refusal with a continuation note, not a
-/// trajectory presented as the DAE solution.
-#[test]
-fn singular_system_refuses_with_continuation() {
-    let result = check_source("rc", CAUSAL_RC);
-    assert!(!result.diagnostics.has_errors());
-    let decl = &result.package.declarations[0];
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(0.0)); // I leaves the residual
-    inputs.insert("C".into(), Value::F64(1.0));
-    inputs.insert("I".into(), Value::F64(1.0));
-    let err = simulate_continuous_dispositioned(
-        &result.package,
-        decl,
-        &inputs,
-        &rc_state(),
-        0.0,
-        1.0,
-        0.01,
-        StepMethod::Rk4,
-        &SimulateOptions::default(),
-    )
-    .expect_err("singular residual system must refuse, not fake a trajectory");
-    assert!(
-        err.contains("E-DAE-INIT"),
-        "singular system refusal must carry E-DAE-INIT and a continuation note, got: {err}"
-    );
-}
-
-/// Replay: same source + inputs + numeric policy → identical
-/// disposition fields (determinism class).
-#[test]
-fn disposition_is_replay_deterministic() {
-    let result = check_source("rc", CAUSAL_RC);
-    assert!(!result.diagnostics.has_errors());
-    let decl = &result.package.declarations[0];
-    let run = || {
-        simulate_continuous_dispositioned(
-            &result.package,
-            decl,
-            &rc_inputs(),
-            &rc_state(),
-            0.0,
-            1.0,
-            0.01,
-            StepMethod::Rk4,
-            &SimulateOptions::default(),
-        )
-        .expect("replay run must succeed")
-        .1
-    };
-    let a = run();
-    let b = run();
-    assert_eq!(
-        a, b,
-        "same source + inputs + policy must replay the same disposition"
-    );
+fn dae_disposition() {
+    boot();
+    let mut p = Probe::new("DAE runs return a disposition artifact beside the trajectory");
+    p.case("index1", |p| {
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        match sim(&mut *p, "rc", CAUSAL_RC, &rc_inputs(), &state, 1.0, 0.01, StepMethod::Rk4) {
+            Err(error) => {
+                p.fail("index1:run", format!("index-1 DAE must integrate: {error}"));
+            }
+            Ok((trajectory, disposition)) => {
+                p.eq("index1:index", disposition.index, emath_exec_ir::DAEIndex::One);
+                p.eq("index1:differential", disposition.differential_states, vec!["q".to_string()]);
+                p.eq("index1:constraints", disposition.constraint_unknowns, vec!["I".to_string()]);
+                p.eq(
+                    "index1:init",
+                    disposition.initialization,
+                    emath_exec_ir::InitializationVerdict::Consistent,
+                );
+                p.eq("index1:continuation", disposition.continuation.is_none(), true);
+                match trajectory.samples.last().and_then(|s| s.state.get("q")) {
+                    Some(Value::F64(q)) => {
+                        p.close("index1:q1", *q, 10.0 * (1.0 - (-1.0f64).exp()), 0.01);
+                    }
+                    _ => {
+                        p.fail("index1:q1", "final q must be scalar");
+                    }
+                };
+            }
+        };
+    });
+    p.case("ode", |p| {
+        let inputs = [("k", 1.0)].iter().map(|(n, v)| (n.to_string(), Value::F64(*v))).collect();
+        let state = [("x", 1.0)].iter().map(|(n, v)| (n.to_string(), Value::F64(*v))).collect();
+        match sim(&mut *p, "decay", PURE_ODE, &inputs, &state, 1.0, 0.1, StepMethod::Euler) {
+            Err(error) => {
+                p.fail("ode:run", format!("ODE must integrate: {error}"));
+            }
+            Ok((_, disposition)) => {
+                p.eq("ode:index", disposition.index, emath_exec_ir::DAEIndex::Ode);
+                p.ne("ode:not-index1", disposition.index, emath_exec_ir::DAEIndex::One);
+                p.eq("ode:differential", disposition.differential_states, vec!["x".to_string()]);
+                p.eq("ode:no-constraints", disposition.constraint_unknowns.is_empty(), true);
+                p.eq(
+                    "ode:init",
+                    disposition.initialization,
+                    emath_exec_ir::InitializationVerdict::Consistent,
+                );
+            }
+        };
+    });
+    p.case("missing-guess", |p| {
+        let inputs = [("V", 10.0), ("R", 1.0), ("C", 1.0)]
+            .iter()
+            .map(|(n, v)| (n.to_string(), Value::F64(*v)))
+            .collect();
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        match sim(&mut *p, "rc", CAUSAL_RC, &inputs, &state, 1.0, 0.01, StepMethod::Rk4) {
+            Ok(_) => {
+                p.fail("missing-guess:refuse", "missing algebraic guess must refuse, not simulate");
+            }
+            Err(error) => {
+                p.contains("missing-guess:code", &error, "E-DAE-INIT");
+                p.contains("missing-guess:target", &error, "algebraic");
+            }
+        };
+    });
+    p.case("singular", |p| {
+        let inputs = [("V", 10.0), ("R", 0.0), ("C", 1.0), ("I", 1.0)]
+            .iter()
+            .map(|(n, v)| (n.to_string(), Value::F64(*v)))
+            .collect();
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        match sim(&mut *p, "rc", CAUSAL_RC, &inputs, &state, 1.0, 0.01, StepMethod::Rk4) {
+            Ok(_) => {
+                p.fail("singular:refuse", "singular residual system must refuse, not fake a trajectory");
+            }
+            Err(error) => {
+                p.contains("singular:code", &error, "E-DAE-INIT");
+            }
+        };
+    });
+    p.case("replay", |p| {
+        let result = Source::from_str("rc", CAUSAL_RC).must_admit(&mut *p);
+        if result.package.declarations.is_empty() {
+            p.fail("replay:decl", "no declaration to simulate");
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        let run = || {
+            simulate_continuous_dispositioned(
+                &result.package,
+                decl,
+                &rc_inputs(),
+                &state,
+                0.0,
+                1.0,
+                0.01,
+                StepMethod::Rk4,
+                &SimulateOptions::default(),
+            )
+            .map(|(_, disposition)| disposition)
+        };
+        match (run(), run()) {
+            (Ok(a), Ok(b)) => {
+                p.eq("replay:disposition", a, b);
+            }
+            (first, second) => {
+                p.fail("replay:run", format!("replay runs must succeed: {first:?} vs {second:?}"));
+            }
+        };
+    });
+    p.finish();
 }

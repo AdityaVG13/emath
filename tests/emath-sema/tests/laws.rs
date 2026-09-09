@@ -1,253 +1,236 @@
 //! Executable `emath law` declarations and their metadata boundary.
-
-use emath_core::limits::Limits;
 use emath_exec_ir::runner::run_package;
 use emath_ir::{EvidenceLevel, GoalId, MeaningError};
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
+use emath_test_harness::{boot, Probe, Source};
 
-fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
+const NEWTON: &str = "language/examples/physics/newton-second.emath";
+
+#[test]
+fn laws() {
+    boot();
+    let mut p = Probe::new("executable emath law declarations admit, run, and carry their metadata boundary");
+    p.case("newton-second", |p| {
+        let newton = Source::from_workspace(NEWTON);
+        let result = newton.must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let declaration = &result.package.declarations[0];
+        p.eq("kind", declaration.kind.0.clone(), "law".to_string());
+        p.eq("kind-label", declaration.kind_label.clone(), "law".to_string());
+        match declaration.evidence.first() {
+            Some(evidence) => {
+                p.eq("evidence-level", evidence.level, EvidenceLevel::E2);
+                p.eq(
+                    "evidence-assumptions",
+                    evidence.assumptions.clone(),
+                    vec!["The mass is constant in the chosen inertial frame.".to_string()],
+                );
+            }
+            None => {
+                p.fail("evidence", "newton-second must carry evidence");
+            }
+        }
+        let metadata = match result.package.law_metadata.get(&declaration.id) {
+            Some(metadata) => metadata,
+            None => {
+                p.fail("metadata", "newton-second must carry law metadata");
+                return;
+            }
+        };
+        p.eq("domain", metadata.domain.clone(), "classical mechanics".to_string());
+        p.eq(
+            "assumptions",
+            metadata.assumptions.clone(),
+            vec!["The mass is constant in the chosen inertial frame.".to_string()],
+        );
+        p.eq("provenance", metadata.provenance.len(), 1);
+        p.eq("citations", metadata.citations.len(), 1);
+        let report = run_package(&result.package);
+        p.eq("tests", report.summary.tests, 1);
+        p.eq("passed", report.summary.passed, 1);
+        if report.declarations.is_empty() {
+            p.fail("report", "run report must carry the law declaration");
+        } else {
+            p.eq(
+                "report-metadata",
+                report.declarations[0].law_metadata.as_ref(),
+                Some(metadata),
+            );
+        }
+        let revised = Source::from_str(
+            "newton-second-revised-domain",
+            newton.text().replace("classical mechanics", "relativistic mechanics"),
+        )
+        .must_admit(&mut *p);
+        if revised.diagnostics.has_errors() {
+            return;
+        }
+        match (
+            result.package.identity.as_ref(),
+            revised.package.identity.as_ref(),
+        ) {
+            (Some(before), Some(after)) => {
+                p.ne(
+                    "identity-tracks-metadata",
+                    format!("{:?}", before.content),
+                    format!("{:?}", after.content),
+                );
+            }
+            _ => {
+                p.fail("identity", "law packages must carry identity");
+            }
+        }
+        match (
+            result.package.meaning_id(&[]),
+            revised.package.meaning_id(&[]),
+        ) {
+            (Ok(before), Ok(after)) => {
+                p.eq(
+                    "meaning-stable",
+                    format!("{before:?}"),
+                    format!("{after:?}"),
+                );
+            }
+            (before, after) => {
+                p.fail(
+                    "meaning-stable",
+                    format!("meaning_id must succeed, got {before:?} / {after:?}"),
+                );
+            }
+        }
+    });
+    for (name, path, expected) in [
+        ("physics-classical", "language/stdlib/laws/physics-classical.emath", 5u32),
+        ("physics-relativity", "language/stdlib/laws/physics-relativity.emath", 1u32),
+        ("computer-science", "language/stdlib/laws/computer-science.emath", 3u32),
+        ("probability-statistics", "language/stdlib/laws/probability-statistics.emath", 3u32),
+        ("analysis", "language/stdlib/laws/analysis.emath", 3u32),
+        ("algebra-number-theory", "language/stdlib/laws/algebra-number-theory.emath", 3u32),
+        ("optimization-control", "language/stdlib/laws/optimization-control.emath", 3u32),
+    ] {
+        p.case(name, |p| {
+            let result = Source::from_workspace(path).must_admit(&mut *p);
+            if result.diagnostics.has_errors() {
+                return;
+            }
+            p.eq("declarations", result.package.declarations.len(), expected as usize);
+            p.eq("metadata", result.package.law_metadata.len(), expected as usize);
+            let report = run_package(&result.package);
+            p.eq("tests", report.summary.tests, expected);
+            p.eq("passed", report.summary.passed, expected);
+            for declaration in &report.declarations {
+                for test in &declaration.tests {
+                    p.demand(
+                        format!("{}/{}", declaration.name, test.name),
+                        test.verdict.expect_passed(),
+                        format!("law example must pass, got {}", test.verdict),
+                    );
+                }
+            }
+        });
     }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
-}
-
-fn error_codes(result: &emath_sema::admit::CheckResult) -> Vec<&str> {
-    result
-        .diagnostics
-        .errors()
-        .map(|diagnostic| diagnostic.code)
-        .collect()
-}
-
-fn assert_pack(name: &str, source: &str, expected_laws: usize) {
-    let result = check(name, source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "{:?}",
-        result.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert_eq!(result.package.declarations.len(), expected_laws);
-    assert_eq!(result.package.law_metadata.len(), expected_laws);
-    let report = run_package(&result.package);
-    assert_eq!(report.summary.tests as usize, expected_laws);
-    assert_eq!(report.summary.passed as usize, expected_laws);
-}
-
-#[test]
-fn newton_second_admits_runs_and_preserves_metadata() {
-    let result = check(
-        "newton-second",
-        include_str!("../../../language/examples/physics/newton-second.emath"),
-    );
-    assert!(
-        !result.diagnostics.has_errors(),
-        "{:?}",
-        result.diagnostics.errors().collect::<Vec<_>>()
-    );
-
-    let declaration = &result.package.declarations[0];
-    assert_eq!(declaration.kind.0, "law");
-    assert_eq!(declaration.kind_label, "law");
-    assert_eq!(declaration.evidence[0].level, EvidenceLevel::E2);
-
-    let metadata = result.package.law_metadata.get(&declaration.id).unwrap();
-    assert_eq!(metadata.domain, "classical mechanics");
-    assert_eq!(
-        metadata.assumptions,
-        ["The mass is constant in the chosen inertial frame."]
-    );
-    assert_eq!(declaration.evidence[0].assumptions, metadata.assumptions);
-    assert_eq!(metadata.provenance.len(), 1);
-    assert_eq!(metadata.citations.len(), 1);
-
-    let report = run_package(&result.package);
-    assert_eq!(report.summary.tests, 1);
-    assert_eq!(report.summary.passed, 1);
-    assert_eq!(report.declarations[0].law_metadata.as_ref(), Some(metadata));
-
-    let revised_source = include_str!("../../../language/examples/physics/newton-second.emath")
-        .replace("classical mechanics", "relativistic mechanics");
-    let revised = check("newton-second-revised-domain", &revised_source);
-    assert_ne!(
-        result.package.identity.as_ref().unwrap().content,
-        revised.package.identity.as_ref().unwrap().content,
-        "law metadata must participate in package identity"
-    );
-    assert_eq!(
-        result.package.meaning_id(&[]).unwrap(),
-        revised.package.meaning_id(&[]).unwrap(),
-        "non-authoritative law prose must not change admitted mathematical meaning"
-    );
-}
-
-#[test]
-fn law_requires_assumptions() {
-    let source = include_str!("../../../language/examples/physics/newton-second.emath")
-        .replace(
+    p.case("classical-import", |p| {
+        let result =
+            Source::from_str("physics-classical-import", "use physics::classical::{NewtonSecond, Hooke}")
+                .must_admit(&mut *p);
+        if result.diagnostics.has_errors() {
+            return;
+        }
+        p.eq("declarations", result.package.declarations.len(), 2);
+        p.eq("metadata", result.package.law_metadata.len(), 2);
+        let report = run_package(&result.package);
+        p.eq("tests", report.summary.tests, 2);
+        p.eq("passed", report.summary.passed, 2);
+    });
+    p.case("law-requires-assumptions", |p| {
+        let text = include_str!("../../../language/examples/physics/newton-second.emath").replace(
             "    assumptions:\n        assume: \"The mass is constant in the chosen inertial frame.\"\n        require mass >= 0 kg\n\n",
             "",
         );
-    let result = check("law-without-assumptions", &source);
-    assert!(error_codes(&result).contains(&"E-LAW-002"));
-}
-
-#[test]
-fn law_definition_still_enforces_units() {
-    let source = include_str!("../../../language/examples/physics/newton-second.emath")
-        .replace("force = mass * acceleration", "force = mass + acceleration");
-    let result = check("law-unit-mismatch", &source);
-    assert!(error_codes(&result).contains(&"E-UNIT-101"));
-}
-
-#[test]
-fn law_refuses_unknown_evidence_level() {
-    let source = include_str!("../../../language/examples/physics/newton-second.emath")
-        .replace("level E2", "level E9");
-    let result = check("law-unknown-evidence", &source);
-    assert!(error_codes(&result).contains(&"E-EVID-115"));
-}
-
-#[test]
-fn unresolved_law_package_import_is_explicit() {
-    let source = format!(
-        "use physics::NewtonSecond\n\n{}",
-        include_str!("../../../language/examples/physics/newton-second.emath")
-    );
-    let result = check("law-import", &source);
-    assert!(error_codes(&result).contains(&"E-PKG-052"));
-}
-
-#[test]
-fn multiple_embedded_law_packages_refuse_explicitly() {
-    let result = check(
-        "multiple-law-packages",
-        "use physics::classical::{NewtonSecond}\nuse analysis::laws::{TaylorQuadratic}\n",
-    );
-    assert!(error_codes(&result).contains(&"E-PKG-053"));
-}
-
-#[test]
-fn malformed_law_goal_refuses_meaning_identity() {
-    let mut result = check(
-        "malformed-law-goal",
-        include_str!("../../../language/examples/physics/newton-second.emath"),
-    );
-    result.package.declarations[0].goals.push(GoalId(u32::MAX));
-    assert!(matches!(
-        result.package.meaning_id(&[]),
-        Err(MeaningError::MissingGoal(GoalId(u32::MAX)))
-    ));
-}
-
-#[test]
-fn classical_law_pack_evaluates_all_listed_symbols() {
-    assert_pack(
-        "physics-classical",
-        include_str!("../../../language/stdlib/laws/physics-classical.emath"),
-        5,
-    );
-}
-
-#[test]
-fn classical_law_symbols_resolve_from_embedded_package() {
-    let result = check(
-        "physics-classical-import",
-        "use physics::classical::{NewtonSecond, Hooke}",
-    );
-    assert!(
-        !result.diagnostics.has_errors(),
-        "{:?}",
-        result.diagnostics.errors().collect::<Vec<_>>()
-    );
-    assert_eq!(result.package.declarations.len(), 2);
-    assert_eq!(result.package.law_metadata.len(), 2);
-    let report = run_package(&result.package);
-    assert_eq!(report.summary.tests, 2);
-    assert_eq!(report.summary.passed, 2);
-}
-
-#[test]
-fn relativity_and_cs_law_packs_evaluate() {
-    assert_pack(
-        "physics-relativity",
-        include_str!("../../../language/stdlib/laws/physics-relativity.emath"),
-        1,
-    );
-    assert_pack(
-        "computer-science",
-        include_str!("../../../language/stdlib/laws/computer-science.emath"),
-        3,
-    );
-}
-
-#[test]
-fn probability_and_analysis_law_packs_evaluate() {
-    assert_pack(
-        "probability-statistics",
-        include_str!("../../../language/stdlib/laws/probability-statistics.emath"),
-        3,
-    );
-    assert_pack(
-        "analysis",
-        include_str!("../../../language/stdlib/laws/analysis.emath"),
-        3,
-    );
-}
-
-#[test]
-fn algebra_and_control_law_packs_evaluate() {
-    assert_pack(
-        "algebra-number-theory",
-        include_str!("../../../language/stdlib/laws/algebra-number-theory.emath"),
-        3,
-    );
-    assert_pack(
-        "optimization-control",
-        include_str!("../../../language/stdlib/laws/optimization-control.emath"),
-        3,
-    );
-}
-
-#[test]
-fn violated_law_assumption_refuses_before_partial_evaluation() {
-    let source = include_str!("../../../language/stdlib/laws/probability-statistics.emath")
-        .replace("given normalizer = 0.4", "given normalizer = 0");
-    let result = check("probability-invalid-normalizer", &source);
-    assert!(!result.diagnostics.has_errors());
-    let report = run_package(&result.package);
-    assert_eq!(report.summary.refused, 1);
-    assert_eq!(report.summary.passed, 2);
-}
-
-#[test]
-fn every_embedded_law_package_resolves_a_symbol() {
-    let imports = [
-        "use physics::classical::NewtonSecond",
-        "use physics::relativity::MassEnergyEquivalence",
-        "use cs::laws::AmdahlSpeedup",
-        "use probability::laws::BayesPosterior",
-        "use analysis::laws::TaylorQuadratic",
-        "use number_theory::laws::ModularInverse",
-        "use optimization_control::laws::BellmanTwoActionBackup",
-    ];
-    for source in imports {
-        let result = check("law-package-import", source);
-        assert!(
-            !result.diagnostics.has_errors(),
-            "{source}: {:?}",
-            result.diagnostics.errors().collect::<Vec<_>>()
+        Source::from_str("law-without-assumptions", text).must_refuse(&mut *p, &["E-LAW-002"]);
+    });
+    p.case("law-enforces-units", |p| {
+        let text = include_str!("../../../language/examples/physics/newton-second.emath")
+            .replace("force = mass * acceleration", "force = mass + acceleration");
+        Source::from_str("law-unit-mismatch", text).must_refuse(&mut *p, &["E-UNIT-101"]);
+    });
+    p.case("law-unknown-evidence", |p| {
+        let text = include_str!("../../../language/examples/physics/newton-second.emath")
+            .replace("level E2", "level E9");
+        Source::from_str("law-unknown-evidence", text).must_refuse(&mut *p, &["E-EVID-115"]);
+    });
+    p.case("unresolved-import", |p| {
+        let text = format!(
+            "use physics::NewtonSecond\n\n{}",
+            include_str!("../../../language/examples/physics/newton-second.emath")
         );
-        assert_eq!(result.package.declarations.len(), 1, "{source}");
-        assert_eq!(run_package(&result.package).summary.passed, 1, "{source}");
+        Source::from_str("law-import", text).must_refuse(&mut *p, &["E-PKG-052"]);
+    });
+    p.case("multiple-packages", |p| {
+        Source::from_str(
+            "multiple-law-packages",
+            "use physics::classical::{NewtonSecond}\nuse analysis::laws::{TaylorQuadratic}\n",
+        )
+        .must_refuse(&mut *p, &["E-PKG-053"]);
+    });
+    p.case("malformed-goal", |p| {
+        let mut result = Source::from_workspace(NEWTON).check();
+        if result.package.declarations.is_empty() {
+            p.fail("decl", "fixture must admit before goal surgery");
+            return;
+        }
+        result.package.declarations[0].goals.push(GoalId(u32::MAX));
+        p.demand(
+            "missing-goal",
+            matches!(
+                result.package.meaning_id(&[]),
+                Err(MeaningError::MissingGoal(GoalId(u32::MAX)))
+            ),
+            "malformed law goal must refuse meaning identity with MissingGoal",
+        );
+    });
+    p.case("violated-assumption", |p| {
+        let base = Source::from_workspace("language/stdlib/laws/probability-statistics.emath");
+        let result = Source::from_str(
+            "probability-invalid-normalizer",
+            base.text().replace("given normalizer = 0.4", "given normalizer = 0"),
+        )
+        .must_admit(&mut *p);
+        if result.diagnostics.has_errors() {
+            return;
+        }
+        let report = run_package(&result.package);
+        p.eq("refused", report.summary.refused, 1);
+        p.eq("passed", report.summary.passed, 2);
+    });
+    for (name, source) in [
+        ("newton-second", "use physics::classical::NewtonSecond"),
+        ("mass-energy", "use physics::relativity::MassEnergyEquivalence"),
+        ("amdahl", "use cs::laws::AmdahlSpeedup"),
+        ("bayes", "use probability::laws::BayesPosterior"),
+        ("taylor", "use analysis::laws::TaylorQuadratic"),
+        ("modular-inverse", "use number_theory::laws::ModularInverse"),
+        ("bellman", "use optimization_control::laws::BellmanTwoActionBackup"),
+    ] {
+        p.case(name, |p| {
+            let result = Source::from_str("law-package-import", source).must_admit(&mut *p);
+            if result.diagnostics.has_errors() {
+                return;
+            }
+            p.eq("declarations", result.package.declarations.len(), 1);
+            let report = run_package(&result.package);
+            p.eq("passed", report.summary.passed, 1);
+            for declaration in &report.declarations {
+                for test in &declaration.tests {
+                    p.demand(
+                        format!("{}/{}", declaration.name, test.name),
+                        test.verdict.expect_passed(),
+                        format!("law example must pass, got {}", test.verdict),
+                    );
+                }
+            }
+        });
     }
+    p.finish();
 }

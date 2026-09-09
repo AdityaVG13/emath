@@ -9,160 +9,158 @@
 //! applies (negative control here via the refusal of a regime-violating
 //! evaluation claim and the E1 evidence level pin).
 
-use emath_core::limits::Limits;
-use emath_exec_ir::runner::run_package as _;
+use emath_exec_ir::interp::Value;
+use emath_exec_ir::runner::{TestVerdict, run_package};
 use emath_ir::EvidenceLevel;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
+use emath_test_harness::{Probe, Source, boot};
 
-const PACKAGE: &str = include_str!("../../../language/stdlib/laws/approximation.emath");
+// Independent oracles: Taylor 1+1+0.25=2.25; Chebyshev 2·0.25-1=-0.5; Pade 1.625/0.75.
+const EXPECTED: &[(&str, f64)] = &[
+    ("TaylorQuadraticRegime", 2.25),
+    ("ChebyshevThreeTerm", -0.5),
+    ("PadeTwoOne", 2.1666666666666665),
+];
 
-fn check(name: &str, source: &str) -> emath_sema::admit::CheckResult {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
-}
-
-/// The package admits with all three laws and every example passes.
 #[test]
-fn approximation_package_admits_and_runs() {
-    let result = check("approximation-laws", PACKAGE);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "{:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|diagnostic| (diagnostic.code, diagnostic.message.clone()))
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(result.package.declarations.len(), 3);
-    assert_eq!(result.package.law_metadata.len(), 3);
-    let report = emath_exec_ir::runner::run_package(&result.package);
-    assert_eq!(report.summary.tests, 3);
-    assert_eq!(report.summary.passed, 3);
-}
-
-/// Values: Taylor quadratic 1 + 2*0.5 + 2*0.25/2 = 2.5;
-/// Chebyshev T2(0.5) = 2*0.25 - 1 = -0.5;
-/// Padé (2,1) at 0.5: (1 + 0.5 + 0.125) / (1 - 0.25) = 1.625/0.75.
-#[test]
-fn expansion_values_are_correct() {
-    let result = check("approximation-values", PACKAGE);
-    assert!(!result.diagnostics.has_errors());
-    let report = emath_exec_ir::runner::run_package(&result.package);
-    assert_eq!(report.summary.passed, 3, "all three examples must hold");
-}
-
-/// Every law carries the honesty label: evidence level E1 claims state
-/// the approximation is computed (not a remainder bound, not exact).
-#[test]
-fn honesty_labels_are_e1_claims() {
-    let result = check("approximation-honesty", PACKAGE);
-    assert!(!result.diagnostics.has_errors());
-    for declaration in &result.package.declarations {
-        assert_eq!(declaration.kind_label, "law");
-        let claim = &declaration.evidence[0];
-        assert_eq!(claim.level, EvidenceLevel::E1, "{:?}", claim.statement);
-        let statement = claim.statement.to_lowercase();
-        assert!(
-            statement.contains("declared")
-                || statement.contains("regime")
-                || statement.contains("not fabricated")
-                || statement.contains("not a remainder bound"),
-            "evidence claim must carry the honesty label: {statement}"
-        );
-    }
-}
-
-/// Law identity carries the enforced regime: mutating the `require`
-/// constraint changes the canonical package encoding. (An example
-/// `given` value is runtime data, not identity.)
-#[test]
-fn declared_regime_participates_in_identity() {
-    let base = check("approximation-regime-base", PACKAGE);
-    let widened = check(
-        "approximation-regime-widened",
-        &PACKAGE.replace(
+fn approximation_stdlib_honesty() {
+    boot();
+    let mut p = Probe::new("stdlib expansions carry declared regimes and honest E1 labels");
+    let package = Source::from_workspace("language/stdlib/laws/approximation.emath");
+    let admitted = package.must_admit(&mut p);
+    p.case("admits-and-runs", |p| {
+        p.eq("declarations", admitted.package.declarations.len(), 3);
+        p.eq("law-metadata", admitted.package.law_metadata.len(), 3);
+        let report = run_package(&admitted.package);
+        p.eq("tests", report.summary.tests, 3);
+        p.eq("passed", report.summary.passed, 3);
+    });
+    p.case("expansion-values", |p| {
+        let report = run_package(&admitted.package);
+        for (name, expected) in EXPECTED {
+            match report.declarations.iter().find(|run| &run.name == name) {
+                None => {
+                    p.fail("expansion-values/missing", format!("no run for {name}"));
+                }
+                Some(run) => match run.tests.first() {
+                    None => {
+                        p.fail(
+                            format!("{name}/example"),
+                            "law carries no example test to evaluate",
+                        );
+                    }
+                    Some(test) => {
+                        p.demand(
+                            format!("{name}/passed"),
+                            test.verdict == TestVerdict::Passed,
+                            format!("expected Passed, got {}", test.verdict),
+                        );
+                        match test.definitions.get("approximation") {
+                            Some(Value::F64(got)) => {
+                                p.close(format!("{name}/value"), *got, *expected, 1e-12);
+                            }
+                            other => {
+                                p.fail(
+                                    format!("{name}/value"),
+                                    format!("expected F64 approximation, got {other:?}"),
+                                );
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    });
+    p.case("honesty-labels", |p| {
+        for decl in &admitted.package.declarations {
+            let leaf = decl.name.leaf().to_string();
+            p.eq(format!("{leaf}/kind"), decl.kind_label.clone(), "law".to_string());
+            match decl.evidence.first() {
+                None => {
+                    p.fail(format!("{leaf}/evidence"), "law carries no evidence claim");
+                }
+                Some(claim) => {
+                    p.eq(format!("{leaf}/level"), claim.level, EvidenceLevel::E1);
+                    let statement = claim.statement.to_lowercase();
+                    p.demand(
+                        format!("{leaf}/honesty-words"),
+                        statement.contains("declared")
+                            || statement.contains("regime")
+                            || statement.contains("not fabricated")
+                            || statement.contains("not a remainder bound"),
+                        format!("evidence claim must carry the honesty label: {statement}"),
+                    );
+                }
+            }
+        }
+    });
+    p.case("regime-identity", |p| {
+        let widened_text = package.text().replace(
             "require abs(delta) < convergence_radius",
             "require abs(delta) <= convergence_radius",
-        ),
-    );
-    assert_ne!(
-        base.package.identity.as_ref().unwrap().content,
-        widened.package.identity.as_ref().unwrap().content,
-        "the declared approximation regime is meaning-bearing, not prose"
-    );
-}
-
-/// Negative control: deleting the regime assumption (the declared
-/// convergence radius) refuses — an approximation without a declared
-/// regime is exactly the lie the honesty surface forbids.
-#[test]
-fn missing_declared_regime_loses_the_constraint() {
-    // The declared regime IS machine-checked: removing the `require`
-    // line removes the admission constraint (the declaration still
-    // admits — prose assumptions remain — but the enforced regime is
-    // gone). Identity still changes because constraints are IR.
-    let source = PACKAGE.replace("        require abs(delta) < convergence_radius\n", "");
-    assert_ne!(source, PACKAGE, "regime line must exist to be removed");
-    let base = check("approximation-regime-base", PACKAGE);
-    let stripped = check("approximation-no-regime", &source);
-    assert!(!base.diagnostics.has_errors());
-    assert!(!stripped.diagnostics.has_errors());
-    // The base package carries the regime as an enforced invariant; the
-    // stripped one must not.
-    let base_invariants: usize = base
-        .package
-        .declarations
-        .iter()
-        .map(|d| d.invariants.len())
-        .sum();
-    let stripped_invariants: usize = stripped
-        .package
-        .declarations
-        .iter()
-        .map(|d| d.invariants.len())
-        .sum();
-    assert_eq!(
-        base_invariants, 3,
-        "each law carries its regime as an enforced constraint"
-    );
-    assert_eq!(
-        stripped_invariants, 2,
-        "stripped regime must lose exactly one constraint"
-    );
-}
-
-/// Negative control: a Chebyshev evaluation outside the declared domain
-/// (|x| > 1) refuses — the regime is enforced, not decorative.
-#[test]
-fn chebyshev_domain_violation_refuses_at_run() {
-    // The declared domain |x| <= 1 is an enforced invariant: evaluating
-    // the example at x = 2 must REFUSE at run time (typed refusal
-    // verdict), never silently compute a value.
-    let source = PACKAGE.replace("            given x = 0.5", "            given x = 2");
-    assert_ne!(source, PACKAGE, "domain line must exist to be mutated");
-    let result = check("approximation-domain-violation", &source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "admission admits; the refusal is at run: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|diagnostic| (diagnostic.code, diagnostic.message.clone()))
-            .collect::<Vec<_>>()
-    );
-    let report = emath_exec_ir::runner::run_package(&result.package);
-    assert_eq!(report.summary.refused, 2, "domain violation must refuse");
-    assert_eq!(report.summary.passed, 1);
+        );
+        p.demand(
+            "regime-line-exists",
+            widened_text != package.text(),
+            "the regime line must exist to be widened",
+        );
+        let widened =
+            Source::from_str("approximation-widened", widened_text).must_admit(&mut *p);
+        let base_content = admitted
+            .package
+            .identity
+            .as_ref()
+            .map(|id| id.content.0.clone())
+            .unwrap_or_default();
+        let wide_content = widened
+            .package
+            .identity
+            .as_ref()
+            .map(|id| id.content.0.clone())
+            .unwrap_or_default();
+        p.demand("base-sealed", !base_content.is_empty(), "base package must be sealed");
+        p.demand("widened-sealed", !wide_content.is_empty(), "widened package must be sealed");
+        p.ne("regime-moves-identity", wide_content, base_content);
+    });
+    p.case("regime-required", |p| {
+        let stripped_text = package
+            .text()
+            .replace("        require abs(delta) < convergence_radius\n", "");
+        p.demand(
+            "regime-line-present",
+            stripped_text != package.text(),
+            "the regime line must exist to be removed",
+        );
+        let stripped =
+            Source::from_str("approximation-no-regime", stripped_text).must_admit(&mut *p);
+        let base_invariants: usize = admitted
+            .package
+            .declarations
+            .iter()
+            .map(|decl| decl.invariants.len())
+            .sum();
+        let stripped_invariants: usize = stripped
+            .package
+            .declarations
+            .iter()
+            .map(|decl| decl.invariants.len())
+            .sum();
+        p.eq("base-invariants", base_invariants, 3);
+        p.eq("stripped-invariants", stripped_invariants, 2);
+    });
+    p.case("domain-violation", |p| {
+        let violated_text = package
+            .text()
+            .replace("            given x = 0.5", "            given x = 2");
+        p.demand(
+            "domain-line-exists",
+            violated_text != package.text(),
+            "the domain line must exist to be mutated",
+        );
+        let violated =
+            Source::from_str("approximation-domain", violated_text).must_admit(&mut *p);
+        let report = run_package(&violated.package);
+        p.eq("refused", report.summary.refused, 2);
+        p.eq("passed", report.summary.passed, 1);
+    });
+    p.finish();
 }

@@ -12,439 +12,211 @@
 //! package); this package is cli-free so the surface runs even while
 //! the calibration lane's emath-cli WIP is mid-flight.
 
-use emath_core::limits::Limits;
-use emath_exec_ir::interp::Value;
-use emath_exec_ir::runner::eval_definitions_values;
-use emath_sema::CompilerSession;
-use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
-/// The slice reference carrier: edges 0→1, 0→2, 1→3, 2→3 (unweighted).
-const ROUTER_SOURCE: &str = "emath function router:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n        b = bfs_order(g, 0)\n        d = shortest_distances(g, 0)\n        o = out_degrees(g)\n";
+use emath_exec_ir::interp::Value;
+use emath_test_harness::{Probe, Source, boot};
 
-/// Check a source and evaluate its definitions.
-fn eval(source: &str) -> BTreeMap<String, Value> {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
+const ROUTER: &str = "emath function router:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n        b = bfs_order(g, 0)\n        d = shortest_distances(g, 0)\n        o = out_degrees(g)\n";
+
+fn eval_values(p: &mut Probe, name: &str, source: &str) -> Option<BTreeMap<String, Value>> {
+    let checked = Source::from_str(name, source).must_admit(p);
+    if checked.diagnostics.has_errors() {
+        return None;
     }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let checked = session.check_owned("graph-surface.emath", source);
-    let errors = checked
-        .diagnostics
-        .errors()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    assert!(
-        errors.is_empty(),
-        "graph source must admit: {errors:#?}\nsource:\n{source}"
-    );
-    eval_definitions_values(
+    match emath_exec_ir::runner::eval_definitions_values(
         &checked.package,
         &checked.package.declarations[0],
         &BTreeMap::new(),
         &BTreeMap::new(),
-    )
-    .unwrap_or_else(|fault| panic!("graph source must evaluate: {fault}"))
-}
-
-/// Evaluate a source that must REFUSE at eval, returning the fault text.
-fn eval_refusal(source: &str) -> String {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let checked = session.check_owned("graph-refusal.emath", source);
-    if checked.diagnostics.errors().next().is_some() {
-        panic!("source must ADMIT and refuse at eval, got diagnostics");
-    }
-    let fault = eval_definitions_values(
-        &checked.package,
-        &checked.package.declarations[0],
-        &BTreeMap::new(),
-        &BTreeMap::new(),
-    );
-    match fault {
-        Err(message) => message.to_string(),
-        Ok(values) => panic!("evaluation must refuse, got {values:?}"),
-    }
-}
-
-/// Check a source that must REFUSE at ADMISSION, returning the
-/// diagnostics for the caller to assert on.
-fn admit_refusal(source: &str) -> Vec<String> {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let checked = session.check_owned("graph-admit-refusal.emath", source);
-    checked
-        .diagnostics
-        .errors()
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn matrix_eq(actual: &Value, rows: usize, cols: usize, data: &[f64]) {
-    assert_eq!(
-        actual,
-        &Value::Matrix {
-            rows,
-            cols,
-            data: data.to_vec(),
-        },
-        "matrix mismatch"
-    );
-}
-
-fn vector_eq(actual: &Value, want: &[f64]) {
-    assert_eq!(actual, &Value::Vector(want.to_vec()), "vector mismatch");
-}
-
-/// P2: the dense carrier (graph literal) admits and the closed call
-/// names execute from .emath source.
-#[test]
-fn emath_dense_carrier_and_call_surface() {
-    let values = eval(ROUTER_SOURCE);
-    matrix_eq(
-        values.get("g").expect("graph literal"),
-        4,
-        4,
-        &[
-            0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-        ],
-    );
-    vector_eq(
-        values.get("r").expect("reachability"),
-        &[1.0, 1.0, 1.0, 1.0],
-    );
-    vector_eq(values.get("b").expect("bfs order"), &[0.0, 1.0, 2.0, 3.0]);
-    vector_eq(values.get("d").expect("distances"), &[0.0, 1.0, 1.0, 2.0]);
-    vector_eq(values.get("o").expect("out degrees"), &[2.0, 1.0, 1.0, 0.0]);
-}
-
-/// P3: BFS is breadth-first, not depth-first, and deterministic —
-/// two evaluations of the same program are bit-identical, and the
-/// discriminator graph forces the ordering law (a DFS would visit 3
-/// before 2).
-#[test]
-fn emath_bfs_is_breadth_first_and_deterministic() {
-    let first = eval(ROUTER_SOURCE);
-    let second = eval(ROUTER_SOURCE);
-    assert_eq!(first, second, "evaluation is deterministic");
-    vector_eq(first.get("b").expect("order"), &[0.0, 1.0, 2.0, 3.0]);
-    // Isolated vertex: unreachable vertices stay absent from the
-    // order and 0 in the mask.
-    let isolated = eval(
-        "emath function iso:\n    definitions:\n        g = graph { 0, 1, 2, 3, 4; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n        b = bfs_order(g, 0)\n",
-    );
-    vector_eq(isolated.get("r").expect("mask"), &[1.0, 1.0, 1.0, 1.0, 0.0]);
-    vector_eq(isolated.get("b").expect("order"), &[0.0, 1.0, 2.0, 3.0]);
-    // The mutation discriminator: 0→1, 0→2, 1→3, 2→4. A breadth-first
-    // queue discovers [0, 1, 2, 3, 4]; a depth-first LIFO stack pops 2
-    // before 1 and discovers 4 before 3 -> [0, 1, 2, 4, 3].
-    let discriminating = eval(
-        "emath function disc:\n    definitions:\n        g = graph { 0, 1, 2, 3, 4; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 4 }\n        b = bfs_order(g, 0)\n",
-    );
-    vector_eq(
-        discriminating.get("b").expect("order"),
-        &[0.0, 1.0, 2.0, 3.0, 4.0],
-    );
-    // BFS, never DFS: a LIFO stack would discover 4 before 3.
-}
-
-/// P4: Dijkstra distances with deterministic equal-weight tie layout,
-/// and the nonnegative-weight refusal surfaced from .emath source.
-#[test]
-fn emath_dijkstra_ties_and_nonneg_refusal() {
-    let values = eval(
-        "emath function forks:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        d = shortest_distances(g, 0)\n",
-    );
-    vector_eq(values.get("d").expect("distances"), &[0.0, 1.0, 1.0, 2.0]);
-
-    // A negative edge refuses Dijkstra's precondition (E-GRAPH-002) as
-    // a typed eval fault — never a silently greedy answer, whichever
-    // carrier spelling surfaces the negative weight (sparse build here;
-    // signed graph literal in `emath_dijkstra_refuses_signed_negative_weight`).
-    let refused = eval_refusal(
-        "emath function neg:\n    definitions:\n        g = sparse_from_triplets(2.0, [0.0, 1.0, -1.0])\n        d = shortest_distances(g, 0)\n",
-    );
-    assert!(
-        refused.contains("E-GRAPH-002"),
-        "negative edge must refuse Dijkstra typed, got: {refused}"
-    );
-}
-
-/// P5: degree, Laplacian, and spectral composition — the Laplacian of
-/// an UNDIRECTED carrier composes through the existing symmetric eigen
-/// op, and a directed carrier refuses the symmetric gate.
-#[test]
-fn emath_degree_laplacian_spectral_composition() {
-    // Path P4 as an undirected carrier: 0–1, 1–2, 2–3 (the `u - v`
-    // spelling yields two directed edges). Laplacian = D − A; its
-    // spectrum is {0, 2−√2, 2, 2+√2}.
-    let values = eval(
-        "emath function path:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 - 1, 1 - 2, 2 - 3 }\n        o = out_degrees(g)\n        l = graph_laplacian(g)\n        e = eigvals(l)\n",
-    );
-    vector_eq(values.get("o").expect("degrees"), &[1.0, 2.0, 2.0, 1.0]);
-    matrix_eq(
-        values.get("l").expect("laplacian"),
-        4,
-        4,
-        &[
-            1.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 1.0,
-        ],
-    );
-    let Value::Vector(spectrum) = values.get("e").expect("spectrum") else {
-        panic!("eigvals must return a vector");
-    };
-    let mut sorted = spectrum.clone();
-    sorted.sort_by(|a, b| a.total_cmp(b));
-    let want = [
-        0.0,
-        2.0 - std::f64::consts::SQRT_2,
-        2.0,
-        2.0 + std::f64::consts::SQRT_2,
-    ];
-    for (got, want) in sorted.iter().zip(want.iter()) {
-        assert!(
-            (got - want).abs() < 1e-9,
-            "path spectrum mismatch: got {sorted:?}, want {want:?}"
-        );
-    }
-
-    // A directed carrier refuses the symmetric eigen gate — the fence
-    // is explicit, not a silent diagonalization.
-    let refused = eval_refusal(
-        "emath function di:\n    definitions:\n        g = graph { 0, 1; 0 --> 1 }\n        l = graph_laplacian(g)\n        e = eigvals(l)\n",
-    );
-    assert!(
-        refused.contains("E-LINALG-002"),
-        "directed carrier must refuse the symmetric eigen gate, got: {refused}"
-    );
-
-    // Symmetrization is a user choice: symmetrized directed carrier
-    // composes through the same path.
-    let values = eval(
-        "emath function sym:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 1 --> 2, 2 --> 3 }\n        s = graph_symmetrize(g)\n        l = graph_laplacian(s)\n        e = eigvals(l)\n",
-    );
-    assert!(
-        matches!(values.get("e"), Some(Value::Vector(v)) if v.len() == 4),
-        "symmetrized path must carry a 4-element spectrum"
-    );
-}
-
-/// P6: Bellman-Ford admits negative edges; a reachable negative cycle
-/// refuses (E-GRAPH-005); sparse COO extraction/build round-trips the
-/// dense carrier.
-#[test]
-fn emath_bellman_ford_negative_edges_and_cycle_refusal() {
-    // Negative weights enter through the sparse COO build (and — since
-    // grant 156–158 — through signed graph literals, see the P6b tests).
-    // Negative edge admitted: d = [0, -1] (Dijkstra would have refused).
-    let values = eval(
-        "emath function negbf:\n    definitions:\n        g = sparse_from_triplets(2.0, [0.0, 1.0, -1.0])\n        d = bellman_ford(g, 0)\n",
-    );
-    vector_eq(values.get("d").expect("distances"), &[0.0, -1.0]);
-
-    // Reachable negative cycle: no answer exists — refuse typed.
-    let refused = eval_refusal(
-        "emath function cyc:\n    definitions:\n        g = sparse_from_triplets(2.0, [0.0, 1.0, -1.0, 1.0, 0.0, -1.0])\n        d = bellman_ford(g, 0)\n",
-    );
-    assert!(
-        refused.contains("E-GRAPH-005"),
-        "reachable negative cycle must refuse, got: {refused}"
-    );
-
-    // COO round-trip: sparse_triplets extracts ascending (u, v) with
-    // explicit zeros skipped; sparse_from_triplets rebuilds the dense
-    // carrier identically.
-    let values = eval(
-        "emath function coo:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3, 2 --> 0 }\n        t = sparse_triplets(g)\n        g2 = sparse_from_triplets(4.0, t)\n",
-    );
-    let Value::Vector(triplets) = values.get("t").expect("triplets") else {
-        panic!("sparse_triplets must return a vector");
-    };
-    assert_eq!(
-        triplets,
-        &[
-            0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 1.0
-        ]
-        .to_vec(),
-        "triplet stream is ascending (u, v), explicit zeros skipped"
-    );
-    matrix_eq(
-        values.get("g2").expect("rebuilt"),
-        4,
-        4,
-        &[
-            0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-        ],
-    );
-}
-
-/// P6b (grant 156–158): signed numeric literals in graph edges. The
-/// generic signed-literal helper folds unary minus/plus over `Int`/
-/// `Float` spellings, so `-[w]->` weights admit negative AND positive
-/// signs in the graph literal itself — not only via
-/// `sparse_from_triplets`.
-#[test]
-fn emath_signed_weight_literal_admits_as_edge() {
-    let values = eval(
-        "emath function sgn:\n    definitions:\n        g = graph { 0, 1, 2; 0 -[-1.0]-> 1, 1 -[+2.0]-> 2 }\n",
-    );
-    matrix_eq(
-        values.get("g").expect("graph literal"),
-        3,
-        3,
-        &[0.0, -1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0],
-    );
-}
-
-/// The signed negative literal that previously died at admission
-/// (E-TYPE-012) must now REACH Dijkstra and refuse there with its own
-/// exact precondition code — the gap moves, it does not get silently
-/// diagonalized or rounded.
-#[test]
-fn emath_dijkstra_refuses_signed_negative_weight() {
-    let refused = eval_refusal(
-        "emath function neg:\n    definitions:\n        g = graph { 0, 1; 0 -[-1.0]-> 1 }\n        d = shortest_distances(g, 0)\n",
-    );
-    assert!(
-        refused.contains("E-GRAPH-002"),
-        "Dijkstra must refuse the signed negative literal with E-GRAPH-002, got: {refused}"
-    );
-}
-
-/// Bellman-Ford computes through the signed literal carrier: the
-/// negative edge is a real weight, and the shortest path uses it.
-#[test]
-fn emath_bellman_ford_computes_signed_negative_weights() {
-    let values = eval(
-        "emath function negbf:\n    definitions:\n        g = graph { 0, 1, 2; 0 -[-1.0]-> 1, 0 -[2.0]-> 2, 1 -[0.5]-> 2 }\n        d = bellman_ford(g, 0)\n",
-    );
-    // 0 → 1 costs -1.0; 0 → 2 costs -0.5 (via 1), beating the +2.0 edge.
-    vector_eq(values.get("d").expect("distances"), &[0.0, -1.0, -0.5]);
-}
-
-/// The fix must NOT widen the fence: a path, a computed expression, or
-/// any non-literal spelling in a weight bracket still refuses
-/// E-TYPE-012 at admission.
-#[test]
-fn emath_malformed_weight_still_refuses() {
-    for source in [
-        "emath function bad1:\n    definitions:\n        g = graph { 0, 1; 0 -[w]-> 1 }\n",
-        "emath function bad2:\n    definitions:\n        g = graph { 0, 1; 0 -[1 + 2]-> 1 }\n",
-    ] {
-        let errors = admit_refusal(source);
-        assert!(
-            errors.iter().any(|e| e.contains("E-TYPE-012")),
-            "malformed weight must refuse E-TYPE-012, got: {errors:#?}"
-        );
-    }
-}
-
-/// P7: vertex-relabel metamorphic laws. Relabeling vertices by a
-/// permutation p must preserve the graph's meaning:
-/// - reachability masks permute: reach′[p(u)] == reach[u];
-/// - shortest distances permute: d′[p(u)] == d[u];
-/// - out-degrees permute: deg′[p(u)] == deg[u];
-/// - Laplacians are permutation-similar, so sorted spectra are equal.
-#[test]
-fn emath_vertex_relabel_metamorphic_laws() {
-    // Base graph: 0→1 (1.0), 0→2 (2.0), 1→3 (3.0), 2→3 (0.5).
-    let base = eval(
-        "emath function base:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 -[1.0]-> 1, 0 -[2.0]-> 2, 1 -[3.0]-> 3, 2 -[0.5]-> 3 }\n        r = reachability(g, 0)\n        d = shortest_distances(g, 0)\n        o = out_degrees(g)\n        l = graph_laplacian(graph_symmetrize(g))\n        e = eigvals(l)\n",
-    );
-    // Relabeled graph under p = [2, 0, 3, 1]: base edges mapped
-    // u→v into p[u]→p[v]. The spectral side flows through the user's
-    // explicit symmetrization (a directed carrier is never diagonalized
-    // silently).
-    let relabeled = eval(
-        "emath function relabeled:\n    definitions:\n        g = graph { 0, 1, 2, 3; 2 -[1.0]-> 0, 2 -[2.0]-> 3, 0 -[3.0]-> 1, 3 -[0.5]-> 1 }\n        r = reachability(g, 2)\n        d = shortest_distances(g, 2)\n        o = out_degrees(g)\n        l = graph_laplacian(graph_symmetrize(g))\n        e = eigvals(l)\n",
-    );
-    let p = [2usize, 0, 3, 1];
-
-    /// relabeled[p[u]] for each u — the relabel law's left side.
-    let relabel_view = |value: &Value| -> Vec<f64> {
-        let Value::Vector(vec) = value else {
-            panic!("expected vector");
-        };
-        p.iter().map(|&u| vec[u]).collect()
-    };
-    let base_as_vec = |name: &str| -> Vec<f64> {
-        let Value::Vector(vec) = base.get(name).expect(name) else {
-            panic!("expected vector");
-        };
-        vec.clone()
-    };
-
-    assert_eq!(
-        relabel_view(relabeled.get("r").expect("r")),
-        base_as_vec("r"),
-        "reachability relabel law: relabeled[p[u]] == base[u]"
-    );
-    let Value::Vector(d_rel) = relabeled.get("d").expect("d") else {
-        panic!("expected vector");
-    };
-    for old in 0..4usize {
-        let Value::Vector(d_base) = base.get("d").expect("d") else {
-            panic!("expected vector");
-        };
-        if d_base[old].is_finite() {
-            assert_eq!(
-                d_rel[p[old]], d_base[old],
-                "distance relabel law at vertex {old}"
-            );
-        } else {
-            assert!(
-                !d_rel[p[old]].is_finite(),
-                "unreachable stays unreachable under relabel at {old}"
-            );
+    ) {
+        Ok(values) => Some(values),
+        Err(fault) => {
+            p.fail(format!("{name}/eval"), format!("graph source must evaluate: {fault}"));
+            None
         }
     }
-    assert_eq!(
-        relabel_view(relabeled.get("o").expect("o")),
-        base_as_vec("o"),
-        "out-degree relabel law: relabeled[p[u]] == base[u]"
-    );
+}
 
-    // Laplacian spectra are equal as sorted multisets (P L Pᵀ).
-    let spectrum_of = |value: &Value| -> Vec<f64> {
-        let Value::Vector(vec) = value else {
-            panic!("expected spectrum vector");
-        };
-        let mut sorted = vec.clone();
-        sorted.sort_by(|a, b| a.total_cmp(b));
-        sorted
-    };
-    let base_spectrum = spectrum_of(base.get("e").expect("e"));
-    let relabeled_spectrum = spectrum_of(relabeled.get("e").expect("e"));
-    assert_eq!(base_spectrum.len(), relabeled_spectrum.len());
-    for (a, b) in base_spectrum.iter().zip(relabeled_spectrum.iter()) {
-        assert!(
-            (a - b).abs() < 1e-9,
-            "relabel must preserve the spectrum: {base_spectrum:?} vs {relabeled_spectrum:?}"
-        );
+fn eval_refuses(p: &mut Probe, name: &str, source: &str, code: &str) {
+    let checked = Source::from_str(name, source).check();
+    p.demand(format!("{name}/admits"), !checked.diagnostics.has_errors(), "source must admit and refuse at eval");
+    if checked.diagnostics.has_errors() {
+        return;
     }
+    match emath_exec_ir::runner::eval_definitions_values(
+        &checked.package,
+        &checked.package.declarations[0],
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    ) {
+        Err(fault) => {
+            p.contains(format!("{name}/code"), &fault.to_string(), code);
+        }
+        Ok(values) => {
+            p.fail(format!("{name}/must-refuse"), format!("evaluation must refuse {code}, got {values:?}"));
+        }
+    }
+}
+
+#[test]
+fn graph_emath_surface() {
+    boot();
+    let mut p = Probe::new("executable .emath graph surface: carriers, calls, refusals, relabel laws");
+    p.case("dense-carrier", |p| {
+        let Some(values) = eval_values(p, "router", ROUTER) else { return };
+        p.eq("g", values.get("g"), Some(&Value::Matrix { rows: 4, cols: 4, data: vec![0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0] }));
+        p.eq("r", values.get("r"), Some(&Value::Vector(vec![1.0, 1.0, 1.0, 1.0])));
+        p.eq("b", values.get("b"), Some(&Value::Vector(vec![0.0, 1.0, 2.0, 3.0])));
+        p.eq("d", values.get("d"), Some(&Value::Vector(vec![0.0, 1.0, 1.0, 2.0])));
+        p.eq("o", values.get("o"), Some(&Value::Vector(vec![2.0, 1.0, 1.0, 0.0])));
+    });
+    p.case("bfs-order", |p| {
+        let Some(first) = eval_values(p, "router", ROUTER) else { return };
+        let Some(second) = eval_values(p, "router-again", ROUTER) else { return };
+        p.eq("deterministic", first.clone(), second);
+        p.eq("order", first.get("b"), Some(&Value::Vector(vec![0.0, 1.0, 2.0, 3.0])));
+        let Some(isolated) = eval_values(p, "iso", "emath function iso:\n    definitions:\n        g = graph { 0, 1, 2, 3, 4; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        r = reachability(g, 0)\n        b = bfs_order(g, 0)\n") else { return };
+        p.eq("iso-mask", isolated.get("r"), Some(&Value::Vector(vec![1.0, 1.0, 1.0, 1.0, 0.0])));
+        p.eq("iso-order", isolated.get("b"), Some(&Value::Vector(vec![0.0, 1.0, 2.0, 3.0])));
+        let Some(discriminating) = eval_values(p, "disc", "emath function disc:\n    definitions:\n        g = graph { 0, 1, 2, 3, 4; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 4 }\n        b = bfs_order(g, 0)\n") else { return };
+        p.eq("bfs-not-dfs", discriminating.get("b"), Some(&Value::Vector(vec![0.0, 1.0, 2.0, 3.0, 4.0])));
+    });
+    p.case("dijkstra", |p| {
+        let Some(values) = eval_values(p, "forks", "emath function forks:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3 }\n        d = shortest_distances(g, 0)\n") else { return };
+        p.eq("distances", values.get("d"), Some(&Value::Vector(vec![0.0, 1.0, 1.0, 2.0])));
+        eval_refuses(p, "neg-dijkstra", "emath function neg:\n    definitions:\n        g = sparse_from_triplets(2.0, [0.0, 1.0, -1.0])\n        d = shortest_distances(g, 0)\n", "E-GRAPH-002");
+    });
+    p.case("laplacian-spectral", |p| {
+        let Some(values) = eval_values(p, "path", "emath function path:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 - 1, 1 - 2, 2 - 3 }\n        o = out_degrees(g)\n        l = graph_laplacian(g)\n        e = eigvals(l)\n") else { return };
+        p.eq("degrees", values.get("o"), Some(&Value::Vector(vec![1.0, 2.0, 2.0, 1.0])));
+        p.eq("laplacian", values.get("l"), Some(&Value::Matrix { rows: 4, cols: 4, data: vec![1.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 1.0] }));
+        match values.get("e") {
+            Some(Value::Vector(spectrum)) => {
+                let mut sorted = spectrum.clone();
+                sorted.sort_by(|a, b| a.total_cmp(b));
+                let want = [0.0, 2.0 - std::f64::consts::SQRT_2, 2.0, 2.0 + std::f64::consts::SQRT_2];
+                p.eq("spectrum-len", sorted.len(), 4);
+                for (index, (got, want)) in sorted.iter().zip(want.iter()).enumerate() {
+                    p.close(format!("spectrum/{index}"), *got, *want, 1e-9);
+                }
+            }
+            other => {
+                p.fail("spectrum", format!("eigvals must return a vector, got {other:?}"));
+            }
+        }
+        eval_refuses(p, "directed-eig", "emath function di:\n    definitions:\n        g = graph { 0, 1; 0 --> 1 }\n        l = graph_laplacian(g)\n        e = eigvals(l)\n", "E-LINALG-002");
+        let Some(sym) = eval_values(p, "sym", "emath function sym:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 1 --> 2, 2 --> 3 }\n        s = graph_symmetrize(g)\n        l = graph_laplacian(s)\n        e = eigvals(l)\n") else { return };
+        p.demand("symmetrized-spectrum", matches!(sym.get("e"), Some(Value::Vector(v)) if v.len() == 4), "symmetrized path must carry a 4-element spectrum");
+    });
+    p.case("bellman-ford", |p| {
+        let Some(values) = eval_values(p, "negbf", "emath function negbf:\n    definitions:\n        g = sparse_from_triplets(2.0, [0.0, 1.0, -1.0])\n        d = bellman_ford(g, 0)\n") else { return };
+        p.eq("neg-distances", values.get("d"), Some(&Value::Vector(vec![0.0, -1.0])));
+        eval_refuses(p, "neg-cycle", "emath function cyc:\n    definitions:\n        g = sparse_from_triplets(2.0, [0.0, 1.0, -1.0, 1.0, 0.0, -1.0])\n        d = bellman_ford(g, 0)\n", "E-GRAPH-005");
+        let Some(coo) = eval_values(p, "coo", "emath function coo:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 --> 1, 0 --> 2, 1 --> 3, 2 --> 3, 2 --> 0 }\n        t = sparse_triplets(g)\n        g2 = sparse_from_triplets(4.0, t)\n") else { return };
+        p.eq("triplets", coo.get("t"), Some(&Value::Vector(vec![0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 1.0, 3.0, 1.0, 2.0, 0.0, 1.0, 2.0, 3.0, 1.0])));
+        p.eq("rebuilt", coo.get("g2"), Some(&Value::Matrix { rows: 4, cols: 4, data: vec![0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0] }));
+    });
+    p.case("signed-literals", |p| {
+        let Some(values) = eval_values(p, "sgn", "emath function sgn:\n    definitions:\n        g = graph { 0, 1, 2; 0 -[-1.0]-> 1, 1 -[+2.0]-> 2 }\n") else { return };
+        p.eq("signed-weights", values.get("g"), Some(&Value::Matrix { rows: 3, cols: 3, data: vec![0.0, -1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0] }));
+        eval_refuses(p, "signed-dijkstra", "emath function neg:\n    definitions:\n        g = graph { 0, 1; 0 -[-1.0]-> 1 }\n        d = shortest_distances(g, 0)\n", "E-GRAPH-002");
+        let Some(negbf) = eval_values(p, "negbf-signed", "emath function negbf:\n    definitions:\n        g = graph { 0, 1, 2; 0 -[-1.0]-> 1, 0 -[2.0]-> 2, 1 -[0.5]-> 2 }\n        d = bellman_ford(g, 0)\n") else { return };
+        p.eq("signed-bellman-ford", negbf.get("d"), Some(&Value::Vector(vec![0.0, -1.0, -0.5])));
+    });
+    p.case("malformed-weight", |p| {
+        for (index, source) in [
+            "emath function bad1:\n    definitions:\n        g = graph { 0, 1; 0 -[w]-> 1 }\n",
+            "emath function bad2:\n    definitions:\n        g = graph { 0, 1; 0 -[1 + 2]-> 1 }\n",
+        ]
+        .iter()
+        .enumerate()
+        {
+            Source::from_str(format!("malformed-{index}"), *source).must_refuse(p, &["E-TYPE-012"]);
+        }
+    });
+    p.case("relabel-laws", |p| {
+        let Some(base) = eval_values(p, "base", "emath function base:\n    definitions:\n        g = graph { 0, 1, 2, 3; 0 -[1.0]-> 1, 0 -[2.0]-> 2, 1 -[3.0]-> 3, 2 -[0.5]-> 3 }\n        r = reachability(g, 0)\n        d = shortest_distances(g, 0)\n        o = out_degrees(g)\n        l = graph_laplacian(graph_symmetrize(g))\n        e = eigvals(l)\n") else { return };
+        let Some(relabeled) = eval_values(p, "relabeled", "emath function relabeled:\n    definitions:\n        g = graph { 0, 1, 2, 3; 2 -[1.0]-> 0, 2 -[2.0]-> 3, 0 -[3.0]-> 1, 3 -[0.5]-> 1 }\n        r = reachability(g, 2)\n        d = shortest_distances(g, 2)\n        o = out_degrees(g)\n        l = graph_laplacian(graph_symmetrize(g))\n        e = eigvals(l)\n") else { return };
+        let perm = [2usize, 0, 3, 1];
+        let relabel_view = |value: &Value| -> Option<Vec<f64>> {
+            match value {
+                Value::Vector(vec) => Some(perm.iter().map(|u| vec[*u]).collect()),
+                _ => None,
+            }
+        };
+        let base_vec = |values: &BTreeMap<String, Value>, name: &str| -> Option<Vec<f64>> {
+            match values.get(name) {
+                Some(Value::Vector(vec)) => Some(vec.clone()),
+                _ => None,
+            }
+        };
+        match (relabeled.get("r"), base.get("r")) {
+            (Some(relabeled_r), Some(_)) => match (relabel_view(relabeled_r), base_vec(&base, "r")) {
+                (Some(got), Some(want)) => {
+                    p.eq("relabel-reach", got, want);
+                }
+                _ => {
+                    p.fail("relabel-reach", "reachability vectors must be vectors");
+                }
+            },
+            other => {
+                p.fail("relabel-reach", format!("reachability vectors missing: {other:?}"));
+            }
+        }
+        match (relabeled.get("d"), base.get("d")) {
+            (Some(Value::Vector(d_rel)), Some(Value::Vector(d_base))) => {
+                for old in 0..4usize {
+                    if d_base[old].is_finite() {
+                        p.eq(format!("relabel-dist/{old}"), d_rel[perm[old]], d_base[old]);
+                    } else {
+                        p.demand(format!("relabel-unreachable/{old}"), !d_rel[perm[old]].is_finite(), "unreachable stays unreachable under relabel");
+                    }
+                }
+            }
+            other => {
+                p.fail("relabel-dist", format!("distance vectors missing: {other:?}"));
+            }
+        }
+        match (relabeled.get("o"), base.get("o")) {
+            (Some(relabeled_o), Some(_)) => match (relabel_view(relabeled_o), base_vec(&base, "o")) {
+                (Some(got), Some(want)) => {
+                    p.eq("relabel-degree", got, want);
+                }
+                _ => {
+                    p.fail("relabel-degree", "degree vectors must be vectors");
+                }
+            },
+            other => {
+                p.fail("relabel-degree", format!("degree vectors missing: {other:?}"));
+            }
+        }
+        let spectrum_of = |value: &Value| -> Option<Vec<f64>> {
+            match value {
+                Value::Vector(vec) => {
+                    let mut sorted = vec.clone();
+                    sorted.sort_by(|a, b| a.total_cmp(b));
+                    Some(sorted)
+                }
+                _ => None,
+            }
+        };
+        match (base.get("e"), relabeled.get("e")) {
+            (Some(base_e), Some(relabeled_e)) => match (spectrum_of(base_e), spectrum_of(relabeled_e)) {
+                (Some(base_spectrum), Some(relabeled_spectrum)) => {
+                    p.eq("spectrum-len", base_spectrum.len(), relabeled_spectrum.len());
+                    for (index, (a, b)) in base_spectrum.iter().zip(relabeled_spectrum.iter()).enumerate() {
+                        p.close(format!("relabel-spectrum/{index}"), *a, *b, 1e-9);
+                    }
+                }
+                _ => {
+                    p.fail("relabel-spectrum", "spectra must be vectors");
+                }
+            }
+            other => {
+                p.fail("relabel-spectrum", format!("spectra missing: {other:?}"));
+            }
+        }
+    });
+    p.finish();
 }

@@ -9,41 +9,9 @@
 //! fallback must find the root deterministically or refuse with the
 //! typed fault — never hang, never invent a root.
 
-use emath_core::limits::Limits;
-use emath_exec_ir::interp::EvalFault;
-use emath_exec_ir::runner::run_package;
-use emath_sema::CompilerSession;
-use emath_sema::admit::CheckResult;
-use emath_syntax::install_source_parser;
-
-fn check_source(name: &str, source: &str) -> CheckResult {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
-}
-
-fn run_once(source: &str, name: &str) -> emath_exec_ir::runner::RunReport {
-    let result = check_source(name, source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "fixture must admit: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    run_package(&result.package)
-}
+use emath_exec_ir::interp::{EvalFault, Value};
+use emath_exec_ir::runner::{RunReport, run_package};
+use emath_test_harness::{Probe, Source, boot};
 
 const FLAT_SEED_SQRT2: &str = "\
 emath function FlatSeedSqrt2:
@@ -118,104 +86,6 @@ emath function PoleResidual:
             expect r == 0.0
 ";
 
-fn arithmetic_detail(verdict: &emath_exec_ir::runner::TestVerdict) -> Option<&str> {
-    match verdict {
-        emath_exec_ir::runner::TestVerdict::Fault {
-            fault: EvalFault::Arithmetic { detail, .. },
-        } => Some(detail),
-        _ => None,
-    }
-}
-
-#[test]
-fn flat_seed_sqrt2_falls_back_to_bisection_deterministically() {
-    // Newton's derivative vanishes at the seed (df = 2x = 0 at x = 0);
-    // the deterministic bracket scan + bisection must find sqrt(2).
-    // Running twice must produce byte-identical reports.
-    let first = run_once(FLAT_SEED_SQRT2, "flat-seed-sqrt2");
-    let second = run_once(FLAT_SEED_SQRT2, "flat-seed-sqrt2");
-    let test1 = &first.declarations[0].tests[0];
-    let test2 = &second.declarations[0].tests[0];
-    assert_eq!(
-        first, second,
-        "the fallback must be deterministic across runs"
-    );
-    assert!(
-        test1.verdict.expect_passed(),
-        "flat-seed sqrt(2) must be found by the fallback: {}",
-        test1.verdict
-    );
-    let Some(r) = test1.outputs.get("r") else {
-        panic!("r must be evaluated");
-    };
-    let emath_exec_ir::interp::Value::F64(root) = r else {
-        panic!("r must be a scalar");
-    };
-    assert!(
-        *root > 0.5 && (root * root - 2.0).abs() < 1e-6,
-        "root ~= sqrt(2), got {root}"
-    );
-}
-
-#[test]
-fn flat_seed_cubic_falls_back_to_the_real_root() {
-    // f(x) = x^3 - 8 has df = 3x^2 = 0 at the seed; the fallback must
-    // find the single real root x = 2.
-    let report = run_once(FLAT_SEED_CUBIC, "flat-seed-cubic");
-    let test = &report.declarations[0].tests[0];
-    assert!(
-        test.verdict.expect_passed(),
-        "flat-seed cubic root must be found: {}",
-        test.verdict
-    );
-    let emath_exec_ir::interp::Value::F64(root) = test.outputs.get("r").expect("r evaluated")
-    else {
-        panic!("r must be a scalar");
-    };
-    assert!((*root - 2.0).abs() < 1e-6, "root must be 2, got {root}");
-}
-
-#[test]
-fn bracketless_residual_refuses_with_the_typed_fault() {
-    // f(x) = x^2 + 1 has no real root: Newton's derivative vanishes at
-    // the seed AND the deterministic scan finds no sign change. The
-    // language-level verdict must be the typed arithmetic fault, never
-    // a hang and never an invented root.
-    let report = run_once(BRACKETLESS_RESIDUAL, "bracketless-residual");
-    let test = &report.declarations[0].tests[0];
-    assert_eq!(
-        arithmetic_detail(&test.verdict),
-        Some("solve derivative vanished before convergence"),
-        "no-root residual must refuse with the vanished-derivative fault: {}",
-        test.verdict
-    );
-}
-
-#[test]
-fn pole_residual_refuses_with_the_nonfinite_fault() {
-    // f(x) = 1/x at the seed 0: the residual is non-finite, and the
-    // scan's sign change is across a pole, not a root — bisection
-    // never converges, so the refusal must be the nonfinite fault.
-    let report = run_once(POLE_RESIDUAL, "pole-residual");
-    let test = &report.declarations[0].tests[0];
-    assert_eq!(
-        arithmetic_detail(&test.verdict),
-        Some(
-            "solve produced a nonfinite value and found no sign-changing bracket in the deterministic scan"
-        ),
-        "pole residual must refuse with the nonfinite fault: {}",
-        test.verdict
-    );
-}
-
-// --- Metamorphic laws: root-set invariance under
-// transformations that preserve the zero set. The oracle problem
-// (unknown analytic root) is bypassed by relating roots of
-// transformed residuals to roots of the original through the
-// language: rescaling the residual by a nonzero constant and
-// re-solving from a different seed must land on the same root, and
-// the residual must vanish at every solved root.
-
 const ROOT_SCALING_INVARIANCE: &str = "\
 emath function RootScalingInvariance:
     inputs:
@@ -258,51 +128,104 @@ emath function RootSeedInvariance:
             expect abs(r * r - 2) < 1e-6
 ";
 
-#[test]
-fn mr_rescaling_a_residual_preserves_its_root() {
-    // The zero set is invariant under multiplying by a nonzero scalar:
-    // solve(7*f) must land on the same root as solve(f) — even when
-    // Newton is unreliable at the shared seed (the fallback drives
-    // both).
-    let report = run_once(ROOT_SCALING_INVARIANCE, "root-scaling-invariance");
-    let test = &report.declarations[0].tests[0];
-    assert!(
-        test.verdict.expect_passed(),
-        "solve(7*f) must land on the same root as solve(f): {}",
-        test.verdict
-    );
-}
-
-#[test]
-fn mr_residual_vanishes_at_the_solved_root() {
-    // Definitional residual law: a reported root must satisfy
-    // f(root) == 0 within tolerance (never an invented value). The
-    // fixture asserts this in-language for the flat-seed sqrt2 case.
-    let report = run_once(ROOT_SCALING_INVARIANCE, "root-scaling-invariance-residual");
-    let test = &report.declarations[0].tests[0];
-    let emath_exec_ir::interp::Value::F64(r1) = test.outputs.get("r1").expect("r1 evaluated")
-    else {
-        panic!("r1 must be a scalar");
-    };
-    assert!(
-        (*r1 * *r1 - 2.0).abs() < 1e-6,
-        "the solved root must satisfy f(root) == 0, got r1 = {r1}"
-    );
-}
-
-#[test]
-fn mr_root_set_is_seed_invariant_when_the_fallback_is_deterministic() {
-    // Solving from a different seed must not change the reported root
-    // set: seed 0 (flat derivative, fallback-driven) and seed 5 (plain
-    // Newton) must both land on a root of x² − 2. This pins the
-    // fallback's determinism across seeds in addition to across runs.
-    let report = run_once(ROOT_SEED_INVARIANCE, "root-seed-invariance");
-    assert_eq!(report.declarations[0].tests.len(), 2, "both examples run");
-    for test in &report.declarations[0].tests {
-        assert!(
-            test.verdict.expect_passed(),
-            "the fallback must be seed-invariant for f(x)=x²−2: {}",
-            test.verdict
-        );
+fn arithmetic_detail(verdict: &emath_exec_ir::runner::TestVerdict) -> Option<&str> {
+    match verdict {
+        emath_exec_ir::runner::TestVerdict::Fault {
+            fault: EvalFault::Arithmetic { detail, .. },
+        } => Some(detail),
+        _ => None,
     }
+}
+
+fn run_admitted(p: &mut Probe, name: &str, source: &str) -> RunReport {
+    let result = Source::from_str(name, source).must_admit(p);
+    run_package(&result.package)
+}
+
+fn scalar_output(p: &mut Probe, case: &str, report: &RunReport, key: &str) -> f64 {
+    match report.declarations[0].tests[0].outputs.get(key) {
+        Some(Value::F64(value)) => *value,
+        other => {
+            p.fail(format!("{case}:output"), format!("{key} must be a scalar, got {other:?}"));
+            f64::NAN
+        }
+    }
+}
+
+#[test]
+fn solve_falls_back_deterministically_or_refuses_typed() {
+    boot();
+    let mut p = Probe::new("solve(f) wrt x finds the root deterministically or refuses with the typed fault");
+    // In-language oracles: every solvable residual carries `tests:` with real
+    // numeric expects (sqrt(2)^2 = 2, cbrt(8) = 2); eval_tests demands Passed.
+    Source::from_str("flat-sqrt2", FLAT_SEED_SQRT2).eval_tests(&mut p);
+    Source::from_str("flat-cubic", FLAT_SEED_CUBIC).eval_tests(&mut p);
+    Source::from_str("scaling", ROOT_SCALING_INVARIANCE).eval_tests(&mut p);
+    Source::from_str("seed", ROOT_SEED_INVARIANCE).eval_tests(&mut p);
+    p.case("flat-sqrt2", |p| {
+        // df = 2x vanishes at the seed, so Newton cannot step; the bracket
+        // scan + bisection must find sqrt(2), byte-identically every run.
+        let first = run_admitted(p, "flat-sqrt2-a", FLAT_SEED_SQRT2);
+        let second = run_admitted(p, "flat-sqrt2-b", FLAT_SEED_SQRT2);
+        p.eq("deterministic", &first, &second);
+        let test = &first.declarations[0].tests[0];
+        p.demand("passed", test.verdict.expect_passed(), format!("must pass: {}", test.verdict));
+        let root = scalar_output(p, "flat-sqrt2", &first, "r");
+        p.close("value", root, std::f64::consts::SQRT_2, 1e-6);
+        p.close("residual", root * root, 2.0, 1e-6);
+        p.demand("positive", root > 0.5, format!("root ~= +sqrt(2), got {root}"));
+    });
+    p.case("flat-cubic", |p| {
+        // df = 3x^2 vanishes at the seed; the single real root is x = 2.
+        let report = run_admitted(p, "flat-cubic-run", FLAT_SEED_CUBIC);
+        let test = &report.declarations[0].tests[0];
+        p.demand("passed", test.verdict.expect_passed(), format!("must pass: {}", test.verdict));
+        let root = scalar_output(p, "flat-cubic", &report, "r");
+        p.close("value", root, 2.0, 1e-6);
+    });
+    p.case("bracketless", |p| {
+        // x^2 + 1 has no real root: vanished derivative and no sign change
+        // must refuse with the typed fault, never hang or invent a root.
+        let report = run_admitted(p, "bracketless-run", BRACKETLESS_RESIDUAL);
+        let test = &report.declarations[0].tests[0];
+        p.demand("refused", test.verdict.is_refused(), format!("must refuse, got {}", test.verdict));
+        p.eq(
+            "fault",
+            arithmetic_detail(&test.verdict),
+            Some("solve derivative vanished before convergence"),
+        );
+    });
+    p.case("pole", |p| {
+        // 1/x at the seed 0 is non-finite and the sign change is a pole,
+        // not a root: the refusal must name the nonfinite fault.
+        let report = run_admitted(p, "pole-run", POLE_RESIDUAL);
+        let test = &report.declarations[0].tests[0];
+        p.demand("refused", test.verdict.is_refused(), format!("must refuse, got {}", test.verdict));
+        p.eq(
+            "fault",
+            arithmetic_detail(&test.verdict),
+            Some("solve produced a nonfinite value and found no sign-changing bracket in the deterministic scan"),
+        );
+    });
+    p.case("scaling", |p| {
+        // Multiplying by nonzero 7 preserves the zero set: solve(7*f) must
+        // land on the same root, and the residual must vanish there.
+        let report = run_admitted(p, "scaling-run", ROOT_SCALING_INVARIANCE);
+        let r1 = scalar_output(p, "scaling", &report, "r1");
+        p.close("residual", r1.powi(2), 2.0, 1e-6);
+    });
+    p.case("seed", |p| {
+        // Seed 0 (flat derivative, fallback-driven) and seed 5 (Newton)
+        // must both land on a root of x^2 - 2.
+        let report = run_admitted(p, "seed-run", ROOT_SEED_INVARIANCE);
+        p.eq("examples", report.declarations[0].tests.len(), 2);
+        for test in &report.declarations[0].tests {
+            p.demand(
+                format!("{}:passed", test.name),
+                test.verdict.expect_passed(),
+                format!("must pass: {}", test.verdict),
+            );
+        }
+    });
+    p.finish();
 }

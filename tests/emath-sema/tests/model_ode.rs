@@ -1,28 +1,10 @@
 //! Continuous `emath model` admission: explicit `derivative(state) = rhs`.
-
-use emath_core::limits::Limits;
-use emath_exec_ir::interp::{Value, evaluate};
-use emath_exec_ir::{StepMethod, lower_definition, simulate_continuous, step_continuous_values};
-use emath_ir::{Declaration, ExprNode, SemanticPackage};
-use emath_sema::CompilerSession;
-use emath_sema::admit::CheckResult;
-use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 
-fn check_source(name: &str, source: &str) -> CheckResult {
-    {
-        // Capsule admission resolves only through the installed language
-        // distribution; install per thread before any session (rat_cells pattern).
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
-        let distribution = emath_exec_ir::language_image::load_language_distribution(&root)
-            .expect("load capsule distribution");
-        emath_sema::language::install_language_distribution(&distribution)
-            .expect("install capsule-active kernels");
-    }
-    install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    session.check_owned(name, source)
-}
+use emath_exec_ir::interp::{Value, evaluate};
+use emath_exec_ir::{StepMethod, TrajectorySample, lower_definition, simulate_continuous, step_continuous_values};
+use emath_ir::{Declaration, ExprNode, SemanticPackage};
+use emath_test_harness::{boot, Probe, Source};
 
 fn decay_model() -> &'static str {
     "\
@@ -36,581 +18,9 @@ emath model Decay:
 "
 }
 
-#[test]
-fn model_derivative_equation_admits_as_rate() {
-    let result = check_source("decay", decay_model());
-    assert!(
-        !result.diagnostics.has_errors(),
-        "explicit ODE model must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let decl = &result.package.declarations[0];
-    assert_eq!(decl.kind_label, "model");
-    assert_eq!(decl.state.len(), 1);
-    assert!(decl.definitions.contains_key("der_x"));
-    let rate = decl.definitions["der_x"];
-    assert!(matches!(
-        result.package.expr(rate),
-        Some(ExprNode::Binary { .. })
-    ));
-}
-
-// Coaching refusals (F4): when the declared kind
-// mismatches the sections, the diagnostic names the kind that fits.
-#[test]
-fn state_on_function_coaches_model_or_policy() {
-    let result = check_source(
-        "fn-state",
-        "\
-emath function Bad:
-    state:
-        x: Float64
-    definitions:
-        y = x
-",
-    );
-    assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
-    assert!(
-        messages.iter().any(|m| m.contains("E-KIND-010")
-            && m.contains("`emath model`")
-            && m.contains("`emath policy`")),
-        "state on function must coach model/policy, got {messages:?}"
-    );
-}
-
-#[test]
-fn constructors_on_function_coaches_policy() {
-    let result = check_source(
-        "fn-ctor",
-        "\
-emath function Bad:
-    constructors:
-        public fn new() -> Self
-",
-    );
-    assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
-    assert!(
-        messages
-            .iter()
-            .any(|m| m.contains("E-KIND-010") && m.contains("`emath policy`")),
-        "constructors on function must coach policy, got {messages:?}"
-    );
-}
-
-#[test]
-fn equations_on_function_coaches_model() {
-    let result = check_source(
-        "fn-eq-coach",
-        "\
-emath function Bad:
-    definitions:
-        y = 1
-    equations:
-        derivative(x) = 0
-",
-    );
-    assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
-    assert!(
-        messages
-            .iter()
-            .any(|m| m.contains("E-KIND-010") && m.contains("`emath model`")),
-        "equations on function must coach model, got {messages:?}"
-    );
-}
-
-#[test]
-fn algebraic_on_function_coaches_model() {
-    let result = check_source(
-        "fn-algebraic",
-        "\
-emath function Bad:
-    inputs:
-        x: Float64
-    algebraic:
-        y: Float64
-    definitions:
-        y = x
-",
-    );
-    assert!(result.diagnostics.has_errors());
-    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
-    assert!(
-        messages
-            .iter()
-            .any(|m| m.contains("E-KIND-010") && m.contains("did you mean `emath model`?")),
-        "algebraic on function must coach model, got {messages:?}"
-    );
-}
-
-#[test]
-fn definitions_only_model_notes_function() {
-    // A `emath model` with only `definitions:` admits, but the kind
-    // coaching note suggests `emath function` (F4).
-    let result = check_source(
-        "model-defs-only",
-        "\
-emath model Stateless:
-    definitions:
-        y = 1
-",
-    );
-    assert!(
-        !result.diagnostics.has_errors(),
-        "definitions-only model admits, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let messages: Vec<String> = result
-        .diagnostics
-        .items()
-        .iter()
-        .map(|d| d.to_string())
-        .collect();
-    assert!(
-        messages
-            .iter()
-            .any(|m| m.contains("N-KIND-001") && m.contains("`emath function`")),
-        "definitions-only model must note function, got {messages:?}"
-    );
-}
-
-#[test]
-fn model_with_state_does_not_get_function_coaching() {
-    // A genuine model (state + equations) must not be nagged toward
-    // `emath function`; the E-KIND-011 coaching hint is conditional.
-    let result = check_source("model-real", decay_model());
-    assert!(
-        !result.diagnostics.has_errors(),
-        "real model must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn model_der_call_and_wrt_time_admit() {
-    let source = "\
-emath model Spring:
-    inputs:
-        m: Float64
-        c: Float64
-        k: Float64
-    state:
-        x: Float64
-        v: Float64
-    equations:
-        der(x) = v
-        derivative v wrt t = (-c * v - k * x) / m
-";
-    let result = check_source("spring", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "der/wrt spellings must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let decl = &result.package.declarations[0];
-    assert!(decl.definitions.contains_key("der_x"));
-    assert!(decl.definitions.contains_key("der_v"));
-}
-
-#[test]
-fn scalar_mass_times_derivative_admits_as_rewrite() {
-    let source = "\
-emath model MassSpring:
-    inputs:
-        m: Float64
-        c: Float64
-        k: Float64
-    state:
-        x: Float64
-        v: Float64
-    equations:
-        der(x) = v
-        m * derivative(v) = -c * v - k * x
-";
-    let result = check_source("mass-matrix", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "named scalar mass-matrix must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let decl = &result.package.declarations[0];
-    assert!(decl.definitions.contains_key("der_x"));
-    assert!(decl.definitions.contains_key("der_v"));
-    let rate = decl.definitions["der_v"];
-    assert!(matches!(
-        result.package.expr(rate),
-        Some(ExprNode::Binary { .. })
-    ));
-}
-
-#[test]
-fn mass_matrix_spring_matches_explicit() {
-    let implicit = check_source(
-        "mass-sim",
-        "\
-emath model MassSpring:
-    inputs:
-        m: Float64
-        c: Float64
-        k: Float64
-    state:
-        x: Float64
-        v: Float64
-    equations:
-        der(x) = v
-        m * der(v) = -c * v - k * x
-",
-    );
-    let explicit = check_source(
-        "explicit-sim",
-        include_str!("../../../language/examples/numerical/explicit-mass-spring.emath"),
-    );
-    assert!(!implicit.diagnostics.has_errors());
-    assert!(!explicit.diagnostics.has_errors());
-    let mut inputs = BTreeMap::new();
-    inputs.insert("m".into(), Value::F64(1.0));
-    inputs.insert("c".into(), Value::F64(0.2));
-    inputs.insert("k".into(), Value::F64(1.0));
-    let mut state = BTreeMap::new();
-    state.insert("x".into(), Value::F64(1.0));
-    state.insert("v".into(), Value::F64(0.0));
-    let mut vector_state = BTreeMap::new();
-    vector_state.insert("s".into(), Value::Vector(vec![1.0, 0.0]));
-    let left = simulate_continuous(
-        &implicit.package,
-        &implicit.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        0.5,
-        0.05,
-        StepMethod::Rk4,
-    )
-    .unwrap();
-    let right = simulate_continuous(
-        &explicit.package,
-        &explicit.package.declarations[0],
-        &inputs,
-        &vector_state,
-        0.0,
-        0.5,
-        0.05,
-        StepMethod::Rk4,
-    )
-    .unwrap();
-    let lx = match left.samples.last().unwrap().state.get("x") {
-        Some(Value::F64(value)) => *value,
-        other => panic!("{other:?}"),
-    };
-    let rx = match right.samples.last().unwrap().state.get("s") {
-        Some(Value::Vector(components)) => components[0],
-        other => panic!("{other:?}"),
-    };
-    assert!((lx - rx).abs() < 1e-12, "implicit={lx} explicit={rx}");
-}
-
-fn undamped_unit_spring() -> (
-    CheckResult,
-    BTreeMap<String, Value>,
-    BTreeMap<String, Value>,
-) {
-    let checked = check_source(
-        "undamped-spring",
-        include_str!("../../../language/examples/numerical/explicit-mass-spring.emath"),
-    );
-    assert!(
-        !checked.diagnostics.has_errors(),
-        "undamped spring example must admit, got: {:?}",
-        checked
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let mut inputs = BTreeMap::new();
-    inputs.insert("m".into(), Value::F64(1.0));
-    inputs.insert("c".into(), Value::F64(0.0));
-    inputs.insert("k".into(), Value::F64(1.0));
-    let mut state = BTreeMap::new();
-    state.insert("s".into(), Value::Vector(vec![1.0, 0.0]));
-    (checked, inputs, state)
-}
-
-fn spring_xv(sample: &emath_exec_ir::TrajectorySample) -> (f64, f64) {
-    match sample.state.get("s") {
-        Some(Value::Vector(components)) if components.len() == 2 => (components[0], components[1]),
-        other => panic!("expected s=[x, v], got {other:?}"),
-    }
-}
-
-#[test]
-fn undamped_mass_spring_rk4_tracks_cos_t() {
-    // m=k=1, c=0, s(0)=[1,0] ⇒ x=cos(t), v=-sin(t). Classic RK4 at
-    // dt=0.01 must stay close; a mislabeled Euler/Heun step is ~1e-2/1e-4.
-    let (checked, inputs, state) = undamped_unit_spring();
-    let t1 = std::f64::consts::PI;
-    let dt = 0.01;
-    let trajectory = simulate_continuous(
-        &checked.package,
-        &checked.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        t1,
-        dt,
-        StepMethod::Rk4,
-    )
-    .unwrap();
-    let last = trajectory.samples.last().unwrap();
-    assert!(
-        (last.t - t1).abs() <= 1e-12,
-        "dt must land on t1, got t={}",
-        last.t
-    );
-    let (x, v) = spring_xv(last);
-    let exact_x = t1.cos();
-    let exact_v = -t1.sin();
-    let x_err = (x - exact_x).abs();
-    let v_err = (v - exact_v).abs();
-    assert!(
-        x_err < 1e-6 && v_err < 1e-6,
-        "RK4 vs analytic at t=π: x={x} (err {x_err}) v={v} (err {v_err})"
-    );
-    let energy = 0.5 * (x * x + v * v);
-    assert!(
-        (energy - 0.5).abs() < 1e-6,
-        "undamped RK4 energy must stay near 1/2, got {energy}"
-    );
-}
-
-#[test]
-fn undamped_mass_spring_euler_grows_energy() {
-    // Forward Euler on ẍ = -x multiplies energy by (1+dt²) each step.
-    // The example must not be read as a conservative Euler integrator.
-    let (checked, inputs, state) = undamped_unit_spring();
-    let dt = 0.1;
-    let t1 = 10.0;
-    let trajectory = simulate_continuous(
-        &checked.package,
-        &checked.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        t1,
-        dt,
-        StepMethod::Euler,
-    )
-    .unwrap();
-    let last = trajectory.samples.last().unwrap();
-    let (x, v) = spring_xv(last);
-    let energy = 0.5 * (x * x + v * v);
-    let steps = (t1 / dt).round();
-    let predicted = 0.5 * (1.0 + dt * dt).powf(steps);
-    assert!(
-        energy > 1.0,
-        "forward Euler on the undamped spring must grow energy, got {energy}"
-    );
-    assert!(
-        (energy - predicted).abs() / predicted < 1e-9,
-        "Euler energy {energy} != (1+dt²)^n/2 = {predicted}"
-    );
-}
-
-#[test]
-fn scalar_rate_residual_spelling_is_admitted_after_f5() {
-    // After F5 (non-greedy derivative operand), `m * derivative(v) + v`
-    // parses as `(m * derivative(v)) + v`, not `m * derivative(v + v)`.
-    // The derivative only consumes the postfix expression `v` (a state
-    // field), so this is a valid implicit ODE residual:
-    //   0 = m * der(v) + v
-    // Previously the greedy parse consumed `v + v` as the derivative
-    // operand, producing `derivative(v + v)` which was refused (E-TYPE-010)
-    // because a complex expression (not a plain state field) appeared as
-    // the derivative operand inside a residual.
-    let source = "\
-emath model ResidualDecay:
-    inputs:
-        m: Float64
-    state:
-        v: Float64
-    equations:
-        0 = m * derivative(v) + v
-";
-    let result = check_source("residual-decay", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "after F5, `m * derivative(v) + v` should admit as a valid residual, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| (d.code, d.message.as_str()))
-            .collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn causalized_implicit_dae_admits_and_simulates() {
-    // Full causalization: the current I is declared in `algebraic:` and
-    // found by the coupled Newton solve at each step — no manual
-    // `solve(...) wrt I` wrapping.
-    let source = "\
-emath model CausalCircuit:
-    inputs:
-        V: Float64
-        R: Float64
-        C: Float64
-    algebraic:
-        I: Float64
-    state:
-        q: Float64
-    equations:
-        V - R * I - q / C == 0
-        der(q) = I
-";
-    let result = check_source("causal-circuit", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "causalized implicit DAE must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let residuals = result
-        .package
-        .residuals
-        .get(&result.package.declarations[0].id)
-        .expect("residual must be recorded");
-    assert_eq!(residuals[0].algebraic, vec!["I"]);
-    assert!(residuals[0].rates.is_empty());
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(1.0));
-    inputs.insert("C".into(), Value::F64(1.0));
-    inputs.insert("I".into(), Value::F64(1.0)); // initial guess
-    let mut state = BTreeMap::new();
-    state.insert("q".into(), Value::F64(0.0));
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        1.0,
-        0.01,
-        StepMethod::Rk4,
-    )
-    .unwrap();
-    let q_final = match traj.samples.last().unwrap().state.get("q") {
-        Some(Value::F64(v)) => *v,
-        other => panic!("{other:?}"),
-    };
-    let expected = 10.0 * (1.0 - (-1.0f64).exp());
-    assert!(
-        (q_final - expected).abs() < 0.01,
-        "causal RC q(1) should be ~{expected:.4}, got {q_final:.4}"
-    );
-    let last = traj.samples.last().unwrap();
-    let residual = algebraic_residual_max(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &last.state,
-    );
-    assert!(
-        residual < 1e-6,
-        "after RK4 the algebraic residual must be ~0, got {residual:.3e} at t={}",
-        last.t
-    );
-}
-
-/// TrueDivergence: explicit Euler/RK4 used to succeed with g(q_new, I_old)
-/// of size O(dt). After a successful DAE step the returned extended state
-/// (differential + projected algebraic) must sit on the constraint.
-#[test]
-fn causalized_step_projects_algebraic_residual() {
-    let source = "\
-emath model CausalCircuit:
-    inputs:
-        V: Float64
-        R: Float64
-        C: Float64
-    algebraic:
-        I: Float64
-    state:
-        q: Float64
-    equations:
-        V - R * I - q / C == 0
-        der(q) = I
-";
-    let result = check_source("causal-step-residual", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "causalized implicit DAE must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let declaration = &result.package.declarations[0];
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(1.0));
-    inputs.insert("C".into(), Value::F64(1.0));
-    inputs.insert("I".into(), Value::F64(0.0));
-    let mut state = BTreeMap::new();
-    state.insert("q".into(), Value::F64(0.0));
-    for method in [StepMethod::Euler, StepMethod::Rk4] {
-        let next =
-            step_continuous_values(&result.package, declaration, &inputs, &state, 0.1, method)
-                .unwrap_or_else(|err| panic!("{method:?} step must succeed, got {err}"));
-        let q = match next.get("q") {
-            Some(Value::F64(v)) => *v,
-            other => panic!("q after {method:?}: {other:?}"),
-        };
-        let i = match next.get("I") {
-            Some(Value::F64(v)) => *v,
-            other => panic!("projected I missing after {method:?}: {other:?}"),
-        };
-        assert!(q > 0.0, "{method:?} must advance charge, got q={q}");
-        let residual = (10.0 - i - q).abs();
-        assert!(
-            residual < 1e-6,
-            "{method:?} algebraic residual V-R*I-q/C must be ~0 after the step, got {residual:.3e} (q={q}, I={i})"
-        );
-        let evaled = algebraic_residual_max(&result.package, declaration, &inputs, &next);
-        assert!(
-            evaled < 1e-6,
-            "{method:?} lowered residual must be ~0 after the step, got {evaled:.3e}"
-        );
-    }
-}
-
 fn algebraic_residual_max(
+    p: &mut Probe,
+    name: &str,
     package: &SemanticPackage,
     declaration: &Declaration,
     inputs: &BTreeMap<String, Value>,
@@ -634,772 +44,899 @@ fn algebraic_residual_max(
         .collect();
     let bind_values: Vec<Value> = bind_names
         .iter()
-        .map(|name| {
-            state
-                .get(name)
-                .cloned()
-                .or_else(|| inputs.get(name).cloned())
-                .unwrap_or_else(|| panic!("missing bind `{name}`"))
+        .map(|bind| match state.get(bind).cloned().or_else(|| inputs.get(bind).cloned()) {
+            Some(value) => value,
+            None => {
+                p.fail(name, format!("missing bind `{bind}`"));
+                Value::F64(f64::NAN)
+            }
         })
         .collect();
     let state_values: Vec<Value> = state_names
         .iter()
-        .map(|name| {
-            state
-                .get(name)
-                .cloned()
-                .unwrap_or_else(|| panic!("missing state `{name}`"))
+        .map(|bind| match state.get(bind).cloned() {
+            Some(value) => value,
+            None => {
+                p.fail(name, format!("missing state `{bind}`"));
+                Value::F64(f64::NAN)
+            }
         })
         .collect();
     let mut max = 0.0_f64;
     for residual in residuals {
-        let program = lower_definition(package, residual.expr, &bind_names, &state_names)
-            .unwrap_or_else(|err| panic!("residual lowering: {err}"));
-        match evaluate(&program, &bind_values, &state_values)
-            .unwrap_or_else(|err| panic!("residual eval: {err:?}"))
-        {
-            Value::F64(v) => max = max.max(v.abs()),
-            Value::I64(v) => max = max.max((v as f64).abs()),
-            Value::Vector(items) => {
+        let program = match lower_definition(package, residual.expr, &bind_names, &state_names) {
+            Ok(program) => program,
+            Err(error) => {
+                p.fail(name, format!("residual lowering: {error}"));
+                continue;
+            }
+        };
+        match evaluate(&program, &bind_values, &state_values) {
+            Ok(Value::F64(value)) => max = max.max(value.abs()),
+            Ok(Value::I64(value)) => max = max.max((value as f64).abs()),
+            Ok(Value::Vector(items)) => {
                 for item in items {
                     max = max.max(item.abs());
                 }
             }
-            other => panic!("residual must be numeric, got {other:?}"),
+            Ok(other) => {
+                p.fail(name, format!("residual must be numeric, got {other:?}"));
+            }
+            Err(error) => {
+                p.fail(name, format!("residual eval: {error:?}"));
+            }
         }
     }
     max
 }
 
-#[test]
-fn coupled_algebraic_system_solves_together() {
-    // Two residuals, two unknowns: Newton solves the coupled system
-    // a=6, b=4 at every step; the rate uses the solved algebraic value.
-    let source = "\
-emath model CoupledSys:
-    algebraic:
-        a: Float64
-        b: Float64
-    state:
-        q: Float64
-    equations:
-        a + b == 10
-        a - b - 2 == 0
-        der(q) = a + b - 4
-";
-    let result = check_source("coupled", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "coupled algebraic system must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
+fn undamped_spring(p: &mut Probe) -> Option<(SemanticPackage, BTreeMap<String, Value>, BTreeMap<String, Value>)> {
+    let result = Source::from_workspace("tests/fixtures/language/numerical/explicit-mass-spring.emath").must_admit(p);
+    if result.diagnostics.has_errors() {
+        return None;
+    }
     let mut inputs = BTreeMap::new();
-    inputs.insert("a".into(), Value::F64(0.0));
-    inputs.insert("b".into(), Value::F64(0.0));
+    inputs.insert("m".into(), Value::F64(1.0));
+    inputs.insert("c".into(), Value::F64(0.0));
+    inputs.insert("k".into(), Value::F64(1.0));
     let mut state = BTreeMap::new();
-    state.insert("q".into(), Value::F64(0.0));
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        0.1,
-        0.1,
-        StepMethod::Euler,
-    )
-    .unwrap();
-    let q_final = match traj.samples.last().unwrap().state.get("q") {
-        Some(Value::F64(v)) => *v,
-        other => panic!("{other:?}"),
-    };
-    assert!(
-        (q_final - 0.6).abs() < 1e-9,
-        "a=6, b=4 → der(q)=6, so q(0.1)=0.6, got {q_final}"
-    );
+    state.insert("s".into(), Value::Vector(vec![1.0, 0.0]));
+    Some((result.package, inputs, state))
 }
 
-#[test]
-fn matrix_mass_residual_simulates_like_scalar() {
-    // Non-scalar mass: `M * der(v) == f` with a 2x2 matrix cannot be
-    // rewritten to `der(v) = f / M`. Causalization keeps it as a vector
-    // residual over the vector rate unknown der(v); Newton solves
-    // M * u = f each step.
-    let source = "\
-emath model MatrixMass:
-    inputs:
-        M: Matrix[2, 2]
-        f: Vector[2]
-    state:
-        x: Vector[2]
-        v: Vector[2]
-    equations:
-        der(x) = v
-        M * der(v) == f
-";
-    let result = check_source("matrix-mass", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "matrix-mass residual must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let residuals = result
-        .package
-        .residuals
-        .get(&result.package.declarations[0].id)
-        .expect("residual must be recorded");
-    assert_eq!(residuals[0].components, 2);
-    assert_eq!(residuals[0].rates, vec!["v"]);
-    let mut inputs = BTreeMap::new();
-    inputs.insert(
-        "M".into(),
-        Value::Matrix {
-            rows: 2,
-            cols: 2,
-            data: vec![2.0, 0.0, 0.0, 2.0],
-        },
-    );
-    inputs.insert("f".into(), Value::Vector(vec![1.0, 2.0]));
-    let mut state = BTreeMap::new();
-    state.insert("x".into(), Value::Vector(vec![0.0, 0.0]));
-    state.insert("v".into(), Value::Vector(vec![0.0, 0.0]));
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        0.5,
-        0.05,
-        StepMethod::Rk4,
-    )
-    .unwrap();
-    let last = traj.samples.last().unwrap();
-    let vf = match last.state.get("v") {
-        Some(Value::Vector(v)) => v.clone(),
-        other => panic!("{other:?}"),
-    };
-    // M = diag(2), so der(v) = f / 2 = [0.5, 1.0]; v(0.5) = [0.25, 0.5].
-    assert!(
-        (vf[0] - 0.25).abs() < 1e-9,
-        "v[0] should be 0.25, got {}",
-        vf[0]
-    );
-    assert!(
-        (vf[1] - 0.5).abs() < 1e-9,
-        "v[1] should be 0.5, got {}",
-        vf[1]
-    );
-    let xf = match last.state.get("x") {
-        Some(Value::Vector(x)) => x.clone(),
-        other => panic!("{other:?}"),
-    };
-    // x(t) = v0*t + a*t^2/2 → x(0.5) = [0.5,1] * 0.125 = [0.0625, 0.125].
-    assert!(
-        (xf[0] - 0.0625).abs() < 1e-9,
-        "x[0] should be 0.0625, got {}",
-        xf[0]
-    );
-    assert!(
-        (xf[1] - 0.125).abs() < 1e-9,
-        "x[1] should be 0.125, got {}",
-        xf[1]
-    );
-}
-
-#[test]
-fn residual_without_unknowns_is_refused() {
-    // An implicit residual whose variables are all parameters or state —
-    // no `algebraic:` variable, no implicit rate — still refuses.
-    let source = "\
-emath model NoUnknowns:
-    inputs:
-        V: Float64
-        R: Float64
-    state:
-        q: Float64
-    equations:
-        V * R - q == 0
-";
-    let result = check_source("no-unknowns", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-TYPE-010"),
-        "residual without unknowns must be E-TYPE-010, got {codes:?}"
-    );
-}
-
-#[test]
-fn non_square_residual_system_is_refused() {
-    let source = "\
-emath model Underdetermined:
-    algebraic:
-        a: Float64
-        b: Float64
-    state:
-        q: Float64
-    equations:
-        a + b == 10
-        der(q) = 0
-";
-    let result = check_source("underdetermined", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-TYPE-010"),
-        "non-square residual system must be E-TYPE-010, got {codes:?}"
-    );
-}
-
-#[test]
-fn unused_algebraic_variable_is_refused() {
-    let source = "\
-emath model UnusedAlgebraic:
-    algebraic:
-        a: Float64
-        b: Float64
-    state:
-        q: Float64
-    equations:
-        a == 5
-        der(q) = 0
-";
-    let result = check_source("unused-algebraic", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-TYPE-002"),
-        "unused algebraic variable must be E-TYPE-002, got {codes:?}"
-    );
-}
-
-#[test]
-fn algebraic_without_residual_is_refused() {
-    let source = "\
-emath model BareAlgebraic:
-    algebraic:
-        I: Float64
-    state:
-        q: Float64
-    equations:
-        der(q) = I
-";
-    let result = check_source("bare-algebraic", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-TYPE-010"),
-        "algebraic without residual must be E-TYPE-010, got {codes:?}"
-    );
-}
-
-#[test]
-fn explicit_rate_residual_conflict_is_refused() {
-    let source = "\
-emath model RateConflict:
-    inputs:
-        m: Float64
-    state:
-        v: Float64
-    equations:
-        der(v) = -v
-        0 = m * derivative(v) + v
-";
-    let result = check_source("rate-conflict", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-TYPE-010"),
-        "residual referencing an explicitly defined rate must be E-TYPE-010, got {codes:?}"
-    );
-}
-
-#[test]
-fn function_cannot_use_equations() {
-    let source = "\
-emath function NotAModel:
-    inputs:
-        x: Float64
-    outputs:
-        y: Float64
-    definitions:
-        y = x
-    equations:
-        derivative(x) = 0
-";
-    let result = check_source("fn-eq", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-KIND-010"),
-        "equations on function must be E-KIND-010, got {codes:?}"
-    );
-}
-
-#[test]
-fn incomplete_rates_are_refused() {
-    let source = "\
-emath model Incomplete:
-    state:
-        x: Float64
-        v: Float64
-    equations:
-        der(x) = v
-";
-    let result = check_source("incomplete", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-NAME-025"),
-        "missing der(v) must be E-NAME-025, got {codes:?}"
-    );
-}
-
-#[test]
-fn explicit_mass_spring_declares_vector_state_rate() {
-    let source = include_str!("../../../language/examples/numerical/explicit-mass-spring.emath");
-    let result = check_source("explicit-mass-spring", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "mass-spring model must typecheck, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let decl = &result.package.declarations[0];
-    assert_eq!(decl.kind_label, "model");
-    // The coupled pair is one vector-state rate (`s = [x, v]`).
-    assert!(decl.definitions.contains_key("der_s"));
-}
-
-#[test]
-fn unit_rates_admit_when_state_is_quantity() {
-    let source = "\
-emath model UnitSpring:
-    inputs:
-        v: Float64 in m/s
-    state:
-        x: Float64 in m
-    equations:
-        der(x) = v
-";
-    let result = check_source("unit-rates", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "quantity state with matching rate unit must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-}
-
-#[test]
-fn unit_rate_mismatch_is_refused() {
-    let source = "\
-emath model BadUnits:
-    inputs:
-        v: Float64 in m
-    state:
-        x: Float64 in m
-    equations:
-        der(x) = v
-";
-    let result = check_source("unit-mismatch", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-UNIT-101"),
-        "rate unit mismatch must be E-UNIT-101, got {codes:?}"
-    );
-}
-
-#[test]
-fn empty_model_is_refused() {
-    let source = "\
-emath model Empty:
-    inputs:
-        x: Float64
-";
-    let result = check_source("empty-model", source);
-    assert!(result.diagnostics.has_errors());
-    let codes: Vec<&str> = result.diagnostics.errors().map(|d| d.code).collect();
-    assert!(
-        codes.contains(&"E-KIND-011"),
-        "empty model must be E-KIND-011, got {codes:?}"
-    );
-}
-
-#[test]
-fn algebraic_definition_in_equations_admits() {
-    let source = "\
-emath model RCCircuit:
-    inputs:
-        V: Float64
-        R: Float64
-        C: Float64
-    state:
-        q: Float64
-    equations:
-        I = (V - q / C) / R
-        der(q) = I
-";
-    let result = check_source("rc-circuit", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "algebraic definition in equations must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let decl = &result.package.declarations[0];
-    assert!(
-        decl.definitions.contains_key("I"),
-        "algebraic var I must be in definitions"
-    );
-    assert!(
-        decl.definitions.contains_key("der_q"),
-        "rate der_q must be in definitions"
-    );
-}
-
-#[test]
-fn algebraic_dae_simulates_correctly() {
-    let source = "\
-emath model RCCircuit:
-    inputs:
-        V: Float64
-        R: Float64
-        C: Float64
-    state:
-        q: Float64
-    equations:
-        I = (V - q / C) / R
-        der(q) = I
-";
-    let result = check_source("rc-sim", source);
-    assert!(!result.diagnostics.has_errors());
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(1.0));
-    inputs.insert("C".into(), Value::F64(1.0));
-    let mut state = BTreeMap::new();
-    state.insert("q".into(), Value::F64(0.0));
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        1.0,
-        0.01,
-        StepMethod::Rk4,
-    )
-    .unwrap();
-    let q_final = match traj.samples.last().unwrap().state.get("q") {
-        Some(Value::F64(v)) => *v,
-        other => panic!("{other:?}"),
-    };
-    // Analytical: q(t) = C*V*(1 - exp(-t/(R*C))) = 10*(1 - exp(-1))
-    let expected = 10.0 * (1.0 - (-1.0f64).exp());
-    assert!(
-        (q_final - expected).abs() < 0.01,
-        "RC circuit q(1) should be ~{expected:.4}, got {q_final:.4}"
-    );
-}
-
-#[test]
-fn implicit_dae_with_solve_admits_and_simulates() {
-    // Implicit DAE: current I is found via Newton's method (solve op)
-    // at each time step. I is declared as an input (initial guess).
-    let source = "\
-emath model ImplicitCircuit:
-    inputs:
-        V: Float64
-        R: Float64
-        C: Float64
-        I: Float64
-    state:
-        q: Float64
-    equations:
-        I_solved = solve(V - R * I - q / C) wrt I
-        der(q) = I_solved
-";
-    let result = check_source("implicit-circuit", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "implicit DAE with solve must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let mut inputs = BTreeMap::new();
-    inputs.insert("V".into(), Value::F64(10.0));
-    inputs.insert("R".into(), Value::F64(1.0));
-    inputs.insert("C".into(), Value::F64(1.0));
-    inputs.insert("I".into(), Value::F64(1.0)); // initial guess
-    let mut state = BTreeMap::new();
-    state.insert("q".into(), Value::F64(0.0));
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        1.0,
-        0.01,
-        StepMethod::Euler, // Euler for predictable Newton convergence
-    )
-    .unwrap();
-    let q_final = match traj.samples.last().unwrap().state.get("q") {
-        Some(Value::F64(v)) => *v,
-        other => panic!("{other:?}"),
-    };
-    // Same analytical solution as the semi-explicit case:
-    // q(t) = C*V*(1 - exp(-t/(R*C))) = 10*(1 - exp(-1))
-    let expected = 10.0 * (1.0 - (-1.0f64).exp());
-    assert!(
-        (q_final - expected).abs() < 0.05,
-        "implicit RC circuit q(1) should be ~{expected:.4}, got {q_final:.4}"
-    );
-}
-
-#[test]
-fn heat_rod_model_simulates_and_conserves_total_heat() {
-    // 1D heat equation as a continuous model: der(u) = alpha * laplacian(u, dx)
-    // with an insulated (Clamp) boundary. The runner integrates the vector-
-    // valued state with RK4. Total heat sum(u) is conserved (the Clamp
-    // laplacian sums to zero), and an initial hot spot diffuses to its
-    // neighbors.
-    let result = check_source(
-        "heat-rod-sim",
-        include_str!("../../../language/examples/numerical/heat-rod-sim.emath"),
-    );
-    assert!(
-        !result.diagnostics.has_errors(),
-        "heat-rod model must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let mut inputs = BTreeMap::new();
-    inputs.insert("alpha".into(), Value::F64(1.0));
-    let mut state = BTreeMap::new();
-    // Hot spot at index 1; total heat = 1.0.
-    state.insert("u".into(), Value::Vector(vec![0.0, 1.0, 0.0, 0.0, 0.0]));
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        0.5,
-        0.01,
-        StepMethod::Rk4,
-    )
-    .expect("heat-rod simulation should not fault");
-    let final_u = match traj.samples.last().unwrap().state.get("u") {
-        Some(Value::Vector(v)) => v.clone(),
-        other => panic!("expected Vector state `u`, got {other:?}"),
-    };
-    // Insulated boundary: total heat is conserved.
-    let total: f64 = final_u.iter().sum();
-    assert!(
-        (total - 1.0).abs() < 1e-9,
-        "total heat should be conserved at 1.0, got {total}"
-    );
-    // The hot spot diffuses: the peak drops and heat reaches both neighbors.
-    assert!(
-        final_u[1] < 1.0,
-        "hot spot should diffuse down, got u[1] = {}",
-        final_u[1]
-    );
-    assert!(
-        final_u[0] > 0.0,
-        "heat should reach the left neighbor, got u[0] = {}",
-        final_u[0]
-    );
-    assert!(
-        final_u[2] > 0.0,
-        "heat should reach the right neighbor, got u[2] = {}",
-        final_u[2]
-    );
-}
-
-#[test]
-fn heat_plate_model_simulates_and_conserves_total_heat() {
-    // 2D heat equation as a continuous model:
-    //   der(u) = alpha * laplacian_2d(u, dx)
-    // with an insulated (Clamp) boundary. The runner integrates the
-    // matrix-valued state with RK4. Total heat sum(u) is conserved (the
-    // 5-point Clamp laplacian sums to zero), and an initial hot spot at
-    // the center diffuses to its four neighbors.
-    let result = check_source(
-        "heat-plate-sim",
-        include_str!("../../../tests/fixtures/language/numerical/heat-plate-sim.emath"),
-    );
-    assert!(
-        !result.diagnostics.has_errors(),
-        "heat-plate model must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let mut inputs = BTreeMap::new();
-    inputs.insert("alpha".into(), Value::F64(1.0));
-    let mut state = BTreeMap::new();
-    // Hot spot at the center cell; total heat = 1.0.
-    state.insert(
-        "u".into(),
-        Value::Matrix {
-            rows: 3,
-            cols: 3,
-            data: vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-        },
-    );
-    let traj = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        0.5,
-        0.01,
-        StepMethod::Rk4,
-    )
-    .expect("heat-plate simulation should not fault");
-    let final_u = match traj.samples.last().unwrap().state.get("u") {
-        Some(Value::Matrix { data, .. }) => data.clone(),
-        other => panic!("expected Matrix state `u`, got {other:?}"),
-    };
-    // Insulated boundary: total heat is conserved.
-    let total: f64 = final_u.iter().sum();
-    assert!(
-        (total - 1.0).abs() < 1e-9,
-        "total heat should be conserved at 1.0, got {total}"
-    );
-    // The hot spot diffuses: the center drops and heat reaches all four
-    // neighbors (up=1, left=3, right=5, down=7 in row-major order).
-    assert!(
-        final_u[4] < 1.0,
-        "center hot spot should diffuse down, got u[4] = {}",
-        final_u[4]
-    );
-    assert!(final_u[1] > 0.0, "heat should reach the top neighbor");
-    assert!(final_u[3] > 0.0, "heat should reach the left neighbor");
-    assert!(final_u[5] > 0.0, "heat should reach the right neighbor");
-    assert!(final_u[7] > 0.0, "heat should reach the bottom neighbor");
-}
-
-#[test]
-fn heat_volume_model_simulates_one_hundred_steps_and_conserves_heat() {
-    let result = check_source(
-        "heat-volume-sim",
-        include_str!("../../../tests/fixtures/language/numerical/heat-volume-sim.emath"),
-    );
-    assert!(
-        !result.diagnostics.has_errors(),
-        "{:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-    );
-    let mut inputs = BTreeMap::new();
-    inputs.insert("alpha".into(), Value::F64(1.0));
-    let mut data = vec![0.0; 27];
-    data[13] = 1.0;
-    let mut state = BTreeMap::new();
-    state.insert(
-        "u".into(),
-        Value::Tensor {
-            shape: vec![3, 3, 3],
-            data,
-        },
-    );
-    let trajectory = simulate_continuous(
-        &result.package,
-        &result.package.declarations[0],
-        &inputs,
-        &state,
-        0.0,
-        0.5,
-        0.005,
-        StepMethod::Rk4,
-    )
-    .expect("3D heat simulation should run");
-    let Some(Value::Tensor { data, .. }) = trajectory.samples.last().unwrap().state.get("u") else {
-        panic!("expected rank-3 Tensor state");
-    };
-    let total: f64 = data.iter().sum();
-    assert!((total - 1.0).abs() < 1e-9, "total heat was {total}");
-    assert!(data[13] < 1.0, "center hot voxel did not diffuse");
-    for neighbor in [4, 10, 12, 14, 16, 22] {
-        assert!(data[neighbor] > 0.0, "neighbor {neighbor} stayed cold");
+fn spring_xv(p: &mut Probe, name: &str, sample: &TrajectorySample) -> (f64, f64) {
+    match sample.state.get("s") {
+        Some(Value::Vector(components)) if components.len() == 2 => (components[0], components[1]),
+        other => {
+            p.fail(name, format!("expected s=[x, v], got {other:?}"));
+            (f64::NAN, f64::NAN)
+        }
     }
 }
 
-/// Non-finite guard: a step that produces NaN/±Inf must FAIL the run —
-/// the finite-state invariant — never return a trajectory of poisoned
-/// samples. Euler on `x' = x²` from x₀ = 2 overflows f64 at step 11
-/// (t = 5.5, dt = 0.5): the value jumps past 1e308 to infinity.
+fn f64_cell(p: &mut Probe, name: &str, state: &BTreeMap<String, Value>, key: &str) -> f64 {
+    match state.get(key) {
+        Some(Value::F64(value)) => *value,
+        other => {
+            p.fail(name, format!("expected F64 `{key}`, got {other:?}"));
+            f64::NAN
+        }
+    }
+}
+
+fn numeric_cells(p: &mut Probe, name: &str, value: Option<&Value>) -> Vec<f64> {
+    match value {
+        Some(Value::Vector(values)) => values.clone(),
+        Some(Value::Matrix { data, .. }) => data.clone(),
+        Some(Value::Tensor { data, .. }) => data.clone(),
+        other => {
+            p.fail(name, format!("expected numeric state, got {other:?}"));
+            Vec::new()
+        }
+    }
+}
+
+const FN_STATE: &str = "emath function Bad:\n    state:\n        x: Float64\n    definitions:\n        y = x\n";
+const FN_CTOR: &str = "emath function Bad:\n    constructors:\n        public fn new() -> Self\n";
+const FN_EQUATIONS: &str = "emath function Bad:\n    definitions:\n        y = 1\n    equations:\n        derivative(x) = 0\n";
+const FN_ALGEBRAIC: &str = "emath function Bad:\n    inputs:\n        x: Float64\n    algebraic:\n        y: Float64\n    definitions:\n        y = x\n";
+const MODEL_DEFS_ONLY: &str = "emath model Stateless:\n    definitions:\n        y = 1\n";
+const SPRING_DER_WRT: &str = "emath model Spring:\n    inputs:\n        m: Float64\n        c: Float64\n        k: Float64\n    state:\n        x: Float64\n        v: Float64\n    equations:\n        der(x) = v\n        derivative v wrt t = (-c * v - k * x) / m\n";
+const MASS_SPRING_SCALAR: &str = "emath model MassSpring:\n    inputs:\n        m: Float64\n        c: Float64\n        k: Float64\n    state:\n        x: Float64\n        v: Float64\n    equations:\n        der(x) = v\n        m * derivative(v) = -c * v - k * x\n";
+const MASS_SPRING_IMPLICIT: &str = "emath model MassSpring:\n    inputs:\n        m: Float64\n        c: Float64\n        k: Float64\n    state:\n        x: Float64\n        v: Float64\n    equations:\n        der(x) = v\n        m * der(v) = -c * v - k * x\n";
+const RESIDUAL_DECAY: &str = "emath model ResidualDecay:\n    inputs:\n        m: Float64\n    state:\n        v: Float64\n    equations:\n        0 = m * derivative(v) + v\n";
+const CAUSAL_CIRCUIT: &str = "emath model CausalCircuit:\n    inputs:\n        V: Float64\n        R: Float64\n        C: Float64\n    algebraic:\n        I: Float64\n    state:\n        q: Float64\n    equations:\n        V - R * I - q / C == 0\n        der(q) = I\n";
+const COUPLED_SYS: &str = "emath model CoupledSys:\n    algebraic:\n        a: Float64\n        b: Float64\n    state:\n        q: Float64\n    equations:\n        a + b == 10\n        a - b - 2 == 0\n        der(q) = a + b - 4\n";
+const MATRIX_MASS: &str = "emath model MatrixMass:\n    inputs:\n        M: Matrix[2, 2]\n        f: Vector[2]\n    state:\n        x: Vector[2]\n        v: Vector[2]\n    equations:\n        der(x) = v\n        M * der(v) == f\n";
+const NO_UNKNOWNS: &str = "emath model NoUnknowns:\n    inputs:\n        V: Float64\n        R: Float64\n    state:\n        q: Float64\n    equations:\n        V * R - q == 0\n";
+const UNDERDETERMINED: &str = "emath model Underdetermined:\n    algebraic:\n        a: Float64\n        b: Float64\n    state:\n        q: Float64\n    equations:\n        a + b == 10\n        der(q) = 0\n";
+const UNUSED_ALGEBRAIC: &str = "emath model UnusedAlgebraic:\n    algebraic:\n        a: Float64\n        b: Float64\n    state:\n        q: Float64\n    equations:\n        a == 5\n        der(q) = 0\n";
+const BARE_ALGEBRAIC: &str = "emath model BareAlgebraic:\n    algebraic:\n        I: Float64\n    state:\n        q: Float64\n    equations:\n        der(q) = I\n";
+const RATE_CONFLICT: &str = "emath model RateConflict:\n    inputs:\n        m: Float64\n    state:\n        v: Float64\n    equations:\n        der(v) = -v\n        0 = m * derivative(v) + v\n";
+const FN_NOT_A_MODEL: &str = "emath function NotAModel:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x\n    equations:\n        derivative(x) = 0\n";
+const INCOMPLETE: &str = "emath model Incomplete:\n    state:\n        x: Float64\n        v: Float64\n    equations:\n        der(x) = v\n";
+const UNIT_SPRING: &str = "emath model UnitSpring:\n    inputs:\n        v: Float64 in m/s\n    state:\n        x: Float64 in m\n    equations:\n        der(x) = v\n";
+const BAD_UNITS: &str = "emath model BadUnits:\n    inputs:\n        v: Float64 in m\n    state:\n        x: Float64 in m\n    equations:\n        der(x) = v\n";
+const EMPTY_MODEL: &str = "emath model Empty:\n    inputs:\n        x: Float64\n";
+const RC_CIRCUIT: &str = "emath model RCCircuit:\n    inputs:\n        V: Float64\n        R: Float64\n        C: Float64\n    state:\n        q: Float64\n    equations:\n        I = (V - q / C) / R\n        der(q) = I\n";
+const IMPLICIT_CIRCUIT: &str = "emath model ImplicitCircuit:\n    inputs:\n        V: Float64\n        R: Float64\n        C: Float64\n        I: Float64\n    state:\n        q: Float64\n    equations:\n        I_solved = solve(V - R * I - q / C) wrt I\n        der(q) = I_solved\n";
+const BLOWUP: &str = "emath model Blowup:\n    state:\n        x: Float64\n    equations:\n        derivative(x) = x * x\n";
+fn coaching(p: &mut Probe, name: &str, source: &str, codes: &[&str], phrases: &[&str]) {
+    let result = Source::from_str(name, source).check();
+    let messages: Vec<String> = result.diagnostics.errors().map(|d| d.to_string()).collect();
+    let joined = messages.join("\n");
+    p.demand(
+        name.to_string() + ":refused",
+        result.diagnostics.has_errors(),
+        format!("must refuse, got {messages:?}"),
+    );
+    for code in codes {
+        p.contains(name.to_string() + ":code", &joined, code);
+    }
+    for phrase in phrases {
+        p.contains(name.to_string() + ":coach", &joined, phrase);
+    }
+}
+
+fn notes(p: &mut Probe, name: &str, source: &str) -> String {
+    let result = Source::from_str(name, source).check();
+    result
+        .diagnostics
+        .items()
+        .iter()
+        .map(|d| d.to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
-fn diverging_euler_fails_with_non_finite_state() {
-    let source = "\
-emath model Blowup:
-    state:
-        x: Float64
-    equations:
-        derivative(x) = x * x
-";
-    let result = check_source("blowup", source);
-    assert!(
-        !result.diagnostics.has_errors(),
-        "blow-up model must admit, got: {:?}",
-        result
-            .diagnostics
-            .errors()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-    );
-    let decl = &result.package.declarations[0];
-    let inputs = BTreeMap::new();
-    let mut state = BTreeMap::new();
-    state.insert("x".into(), Value::F64(2.0));
-    let err = simulate_continuous(
-        &result.package,
-        decl,
-        &inputs,
-        &state,
-        0.0,
-        6.0,
-        0.5,
-        StepMethod::Euler,
-    )
-    .expect_err("diverging Euler must error, not return inf/NaN samples");
-    assert!(
-        err.contains("non-finite"),
-        "error must name the non-finite state, got: {err}"
-    );
+fn model_ode() {
+    boot();
+    let mut p = Probe::new("continuous emath model admission, kind coaching, and simulated trajectories");
+    p.case("decay-admits", |p| {
+        let result = Source::from_str("decay", decay_model()).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        p.eq("kind", decl.kind_label.clone(), "model".to_string());
+        p.eq("state", decl.state.len(), 1);
+        match decl.definitions.get("der_x") {
+            Some(rate) => {
+                p.demand(
+                    "rate-binary",
+                    matches!(result.package.expr(*rate), Some(ExprNode::Binary { .. })),
+                    "rate -k*x must lower to a Binary node",
+                );
+            }
+            None => {
+                p.fail("der-x", "derivative(x) must lower to der_x");
+            }
+        }
+    });
+    p.case("state-coaches", |p| {
+        coaching(&mut *p, "fn-state", FN_STATE, &["E-KIND-010"], &["`emath model`", "`emath policy`"]);
+    });
+    p.case("ctor-coaches", |p| {
+        coaching(&mut *p, "fn-ctor", FN_CTOR, &["E-KIND-010"], &["`emath policy`"]);
+    });
+    p.case("equations-coach", |p| {
+        coaching(&mut *p, "fn-eq-coach", FN_EQUATIONS, &["E-KIND-010"], &["`emath model`"]);
+    });
+    p.case("algebraic-coaches", |p| {
+        coaching(
+            &mut *p,
+            "fn-algebraic",
+            FN_ALGEBRAIC,
+            &["E-KIND-010"],
+            &["did you mean `emath model`?"],
+        );
+    });
+    p.case("defs-only-note", |p| {
+        // A definitions-only model admits, but the kind note suggests `emath function`.
+        let result = Source::from_str("model-defs-only", MODEL_DEFS_ONLY).must_admit(&mut *p);
+        if result.diagnostics.has_errors() {
+            return;
+        }
+        let joined = notes(&mut *p, "model-defs-only", MODEL_DEFS_ONLY);
+        p.contains("note", &joined, "N-KIND-001");
+        p.contains("function", &joined, "`emath function`");
+    });
+    p.case("real-model-no-nag", |p| {
+        // A genuine model (state + equations) must not be nagged toward `emath function`.
+        let result = Source::from_str("model-real", decay_model()).must_admit(&mut *p);
+        if result.diagnostics.has_errors() {
+            return;
+        }
+        let joined = notes(&mut *p, "model-real", decay_model());
+        p.demand(
+            "no-nag",
+            joined.find("N-KIND-001").is_none(),
+            format!("genuine model must not be nagged toward function, got {joined:?}"),
+        );
+    });
+    p.case("der-spellings", |p| {
+        let result = Source::from_str("spring", SPRING_DER_WRT).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        p.demand("der-x", decl.definitions.contains_key("der_x"), "der(x) must admit".to_string());
+        p.demand("der-v", decl.definitions.contains_key("der_v"), "derivative v wrt t must admit".to_string());
+    });
+    p.case("scalar-mass", |p| {
+        let result = Source::from_str("mass-matrix", MASS_SPRING_SCALAR).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        p.demand("der-x", decl.definitions.contains_key("der_x"), "der(x) must admit".to_string());
+        match decl.definitions.get("der_v") {
+            Some(rate) => {
+                p.demand(
+                    "rate-binary",
+                    matches!(result.package.expr(*rate), Some(ExprNode::Binary { .. })),
+                    "scalar mass rewrite must lower to a Binary node",
+                );
+            }
+            None => {
+                p.fail("der-v", "m * derivative(v) must rewrite to der_v");
+            }
+        }
+    });
+    p.case("mass-matches-explicit", |p| {
+        let implicit = Source::from_str("mass-sim", MASS_SPRING_IMPLICIT).must_admit(&mut *p);
+        let explicit = Source::from_workspace("tests/fixtures/language/numerical/explicit-mass-spring.emath").must_admit(&mut *p);
+        if implicit.diagnostics.has_errors()
+            || explicit.diagnostics.has_errors()
+            || implicit.package.declarations.is_empty()
+            || explicit.package.declarations.is_empty()
+        {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("m".into(), Value::F64(1.0));
+        inputs.insert("c".into(), Value::F64(0.2));
+        inputs.insert("k".into(), Value::F64(1.0));
+        let mut state = BTreeMap::new();
+        state.insert("x".into(), Value::F64(1.0));
+        state.insert("v".into(), Value::F64(0.0));
+        let mut vector_state = BTreeMap::new();
+        vector_state.insert("s".into(), Value::Vector(vec![1.0, 0.0]));
+        let left = match simulate_continuous(
+            &implicit.package,
+            &implicit.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            0.5,
+            0.05,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("implicit:run", format!("implicit simulation must run: {error}"));
+                return;
+            }
+        };
+        let right = match simulate_continuous(
+            &explicit.package,
+            &explicit.package.declarations[0],
+            &inputs,
+            &vector_state,
+            0.0,
+            0.5,
+            0.05,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("explicit:run", format!("explicit simulation must run: {error}"));
+                return;
+            }
+        };
+        let left_last = match left.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("implicit:samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let right_last = match right.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("explicit:samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let lx = f64_cell(&mut *p, "lx", &left_last.state, "x");
+        let rv = numeric_cells(&mut *p, "rv", right_last.state.get("s"));
+        p.eq("rv-len", rv.len(), 2);
+        p.close("match", lx, rv.first().copied().unwrap_or(f64::NAN), 1e-12);
+    });
+    p.case("rk4-tracks-cos", |p| {
+        // m=k=1, c=0, s(0)=[1,0]: x=cos(t), v=-sin(t). Classic RK4 at
+        // dt=0.01 must stay close; a mislabeled Euler/Heun step is ~1e-2/1e-4 off.
+        let trail = undamped_spring(&mut *p);
+        let (package, inputs, state) = match trail {
+            Some(ok) => ok,
+            None => return,
+        };
+        if package.declarations.is_empty() {
+            p.fail("decl", "spring example must admit a model");
+            return;
+        }
+        let t1 = std::f64::consts::PI;
+        let traj = match simulate_continuous(
+            &package,
+            &package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            t1,
+            0.01,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("RK4 simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        p.close("lands-on-pi", last.t, t1, 1e-12);
+        let (x, v) = spring_xv(&mut *p, "xv", last);
+        p.close("x", x, t1.cos(), 1e-6);
+        p.close("v", v, -t1.sin(), 1e-6);
+        p.close("energy", 0.5 * (x * x + v * v), 0.5, 1e-6);
+    });
+    p.case("euler-grows-energy", |p| {
+        // Forward Euler on x'' = -x multiplies energy by (1+dt^2) each step.
+        let trail = undamped_spring(&mut *p);
+        let (package, inputs, state) = match trail {
+            Some(ok) => ok,
+            None => return,
+        };
+        if package.declarations.is_empty() {
+            p.fail("decl", "spring example must admit a model");
+            return;
+        }
+        let dt = 0.1;
+        let t1 = 10.0;
+        let traj = match simulate_continuous(
+            &package,
+            &package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            t1,
+            dt,
+            StepMethod::Euler,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("Euler simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let (x, v) = spring_xv(&mut *p, "xv", last);
+        let energy = 0.5 * (x * x + v * v);
+        let predicted = 0.5 * (1.0 + dt * dt).powf((t1 / dt).round());
+        p.demand("grows", energy > 1.0, format!("forward Euler must grow energy, got {energy}"));
+        p.close("law", energy, predicted, 1e-9 * predicted);
+    });
+    p.case("residual-f5", |p| {
+        // Non-greedy derivative operand: `m * derivative(v) + v` parses as
+        // `(m * derivative(v)) + v`, a valid implicit ODE residual.
+        Source::from_str("residual-decay", RESIDUAL_DECAY).must_admit(&mut *p);
+    });
+    p.case("causal-sim", |p| {
+        // Full causalization: current I is declared in `algebraic:` and
+        // found by the coupled Newton solve at each step.
+        let result = Source::from_str("causal-circuit", CAUSAL_CIRCUIT).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        let residuals = match result.package.residuals.get(&decl.id) {
+            Some(residuals) => residuals,
+            None => {
+                p.fail("residual", "residual must be recorded");
+                return;
+            }
+        };
+        if residuals.is_empty() {
+            p.fail("residual", "residual must be recorded");
+            return;
+        }
+        p.eq("algebraic", residuals[0].algebraic.clone(), vec!["I".to_string()]);
+        p.eq("rates", residuals[0].rates.clone(), Vec::<String>::new());
+        let mut inputs = BTreeMap::new();
+        inputs.insert("V".into(), Value::F64(10.0));
+        inputs.insert("R".into(), Value::F64(1.0));
+        inputs.insert("C".into(), Value::F64(1.0));
+        inputs.insert("I".into(), Value::F64(1.0));
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        let traj = match simulate_continuous(
+            &result.package,
+            decl,
+            &inputs,
+            &state,
+            0.0,
+            1.0,
+            0.01,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("causal simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let q_final = f64_cell(&mut *p, "q", &last.state, "q");
+        // Analytical: q(t) = C*V*(1 - exp(-t/(R*C))) = 10*(1 - exp(-1)).
+        let expected = 10.0 * (1.0 - (-1.0f64).exp());
+        p.close("q", q_final, expected, 0.01);
+        let residual = algebraic_residual_max(&mut *p, "residual", &result.package, decl, &inputs, &last.state);
+        p.demand(
+            "residual",
+            residual < 1e-6,
+            format!("algebraic residual must be ~0, got {residual:.3e} at t={}", last.t),
+        );
+    });
+    p.case("causal-step", |p| {
+        // After a successful DAE step the extended state (differential +
+        // projected algebraic) must sit on the constraint.
+        let result = Source::from_str("causal-step-residual", CAUSAL_CIRCUIT).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        let mut inputs = BTreeMap::new();
+        inputs.insert("V".into(), Value::F64(10.0));
+        inputs.insert("R".into(), Value::F64(1.0));
+        inputs.insert("C".into(), Value::F64(1.0));
+        inputs.insert("I".into(), Value::F64(0.0));
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        for method in [StepMethod::Euler, StepMethod::Rk4] {
+            let next = match step_continuous_values(&result.package, decl, &inputs, &state, 0.1, method) {
+                Ok(next) => next,
+                Err(error) => {
+                    p.fail(format!("{method:?}:step"), format!("step must succeed, got {error}"));
+                    continue;
+                }
+            };
+            let q = f64_cell(&mut *p, &format!("{method:?}:q"), &next, "q");
+            let i = f64_cell(&mut *p, &format!("{method:?}:i"), &next, "I");
+            p.demand(format!("{method:?}:advances"), q > 0.0, format!("must advance charge, got q={q}"));
+            p.demand(
+                format!("{method:?}:projected"),
+                (10.0 - i - q).abs() < 1e-6,
+                format!("V-R*I-q/C must be ~0 after the step (q={q}, I={i})"),
+            );
+            let lowered = algebraic_residual_max(&mut *p, &format!("{method:?}:lowered"), &result.package, decl, &inputs, &next);
+            p.demand(
+                format!("{method:?}:lowered"),
+                lowered < 1e-6,
+                format!("lowered residual must be ~0, got {lowered:.3e}"),
+            );
+        }
+    });
+    p.case("coupled", |p| {
+        // Two residuals, two unknowns: a=6, b=4 at every step, so
+        // der(q) = 6 and q(0.1) = 0.6.
+        let result = Source::from_str("coupled", COUPLED_SYS).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("a".into(), Value::F64(0.0));
+        inputs.insert("b".into(), Value::F64(0.0));
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            0.1,
+            0.1,
+            StepMethod::Euler,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("coupled simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let q = f64_cell(&mut *p, "q", &last.state, "q");
+        p.close("q", q, 0.6, 1e-9);
+    });
+    p.case("matrix-mass", |p| {
+        // M = diag(2): der(v) = f/2 = [0.5, 1.0], v(0.5) = [0.25, 0.5],
+        // x(t) = a*t^2/2 -> [0.0625, 0.125].
+        let result = Source::from_str("matrix-mass", MATRIX_MASS).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let residuals = match result.package.residuals.get(&result.package.declarations[0].id) {
+            Some(residuals) => residuals,
+            None => {
+                p.fail("residual", "residual must be recorded");
+                return;
+            }
+        };
+        if residuals.is_empty() {
+            p.fail("residual", "residual must be recorded");
+            return;
+        }
+        p.eq("components", residuals[0].components, 2);
+        p.eq("rates", residuals[0].rates.clone(), vec!["v".to_string()]);
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            "M".into(),
+            Value::Matrix { rows: 2, cols: 2, data: vec![2.0, 0.0, 0.0, 2.0] },
+        );
+        inputs.insert("f".into(), Value::Vector(vec![1.0, 2.0]));
+        let mut state = BTreeMap::new();
+        state.insert("x".into(), Value::Vector(vec![0.0, 0.0]));
+        state.insert("v".into(), Value::Vector(vec![0.0, 0.0]));
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            0.5,
+            0.05,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("matrix-mass simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let vf = numeric_cells(&mut *p, "v", last.state.get("v"));
+        let xf = numeric_cells(&mut *p, "x", last.state.get("x"));
+        p.eq("v-len", vf.len(), 2);
+        p.eq("x-len", xf.len(), 2);
+        p.close("v0", vf.first().copied().unwrap_or(f64::NAN), 0.25, 1e-9);
+        p.close("v1", vf.get(1).copied().unwrap_or(f64::NAN), 0.5, 1e-9);
+        p.close("x0", xf.first().copied().unwrap_or(f64::NAN), 0.0625, 1e-9);
+        p.close("x1", xf.get(1).copied().unwrap_or(f64::NAN), 0.125, 1e-9);
+    });
+    p.case("no-unknowns", |p| {
+        Source::from_str("no-unknowns", NO_UNKNOWNS).must_refuse(&mut *p, &["E-TYPE-010"]);
+    });
+    p.case("underdetermined", |p| {
+        Source::from_str("underdetermined", UNDERDETERMINED).must_refuse(&mut *p, &["E-TYPE-010"]);
+    });
+    p.case("unused-algebraic", |p| {
+        Source::from_str("unused-algebraic", UNUSED_ALGEBRAIC).must_refuse(&mut *p, &["E-TYPE-002"]);
+    });
+    p.case("bare-algebraic", |p| {
+        Source::from_str("bare-algebraic", BARE_ALGEBRAIC).must_refuse(&mut *p, &["E-TYPE-010"]);
+    });
+    p.case("rate-conflict", |p| {
+        Source::from_str("rate-conflict", RATE_CONFLICT).must_refuse(&mut *p, &["E-TYPE-010"]);
+    });
+    p.case("fn-equations", |p| {
+        Source::from_str("fn-eq", FN_NOT_A_MODEL).must_refuse(&mut *p, &["E-KIND-010"]);
+    });
+    p.case("incomplete-rates", |p| {
+        Source::from_str("incomplete", INCOMPLETE).must_refuse(&mut *p, &["E-NAME-025"]);
+    });
+    p.case("explicit-vector-rate", |p| {
+        let result = Source::from_workspace("tests/fixtures/language/numerical/explicit-mass-spring.emath").must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        p.eq("kind", decl.kind_label.clone(), "model".to_string());
+        p.demand("der-s", decl.definitions.contains_key("der_s"), "coupled pair must lower to one vector-state rate".to_string());
+    });
+    p.case("unit-rates", |p| {
+        Source::from_str("unit-rates", UNIT_SPRING).must_admit(&mut *p);
+    });
+    p.case("unit-mismatch", |p| {
+        Source::from_str("unit-mismatch", BAD_UNITS).must_refuse(&mut *p, &["E-UNIT-101"]);
+    });
+    p.case("empty-model", |p| {
+        Source::from_str("empty-model", EMPTY_MODEL).must_refuse(&mut *p, &["E-KIND-011"]);
+    });
+    p.case("rc-definition", |p| {
+        let result = Source::from_str("rc-circuit", RC_CIRCUIT).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let decl = &result.package.declarations[0];
+        p.demand("I", decl.definitions.contains_key("I"), "algebraic var I must be in definitions".to_string());
+        p.demand("der-q", decl.definitions.contains_key("der_q"), "rate der_q must be in definitions".to_string());
+    });
+    p.case("rc-sim", |p| {
+        let result = Source::from_str("rc-sim", RC_CIRCUIT).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("V".into(), Value::F64(10.0));
+        inputs.insert("R".into(), Value::F64(1.0));
+        inputs.insert("C".into(), Value::F64(1.0));
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            1.0,
+            0.01,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("RC simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let expected = 10.0 * (1.0 - (-1.0f64).exp());
+        let q = f64_cell(&mut *p, "q", &last.state, "q");
+        p.close("q", q, expected, 0.01);
+    });
+    p.case("implicit-solve", |p| {
+        // Implicit DAE: I is found via Newton's method at each step from
+        // the input initial guess; same analytical solution as rc-sim.
+        let result = Source::from_str("implicit-circuit", IMPLICIT_CIRCUIT).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("V".into(), Value::F64(10.0));
+        inputs.insert("R".into(), Value::F64(1.0));
+        inputs.insert("C".into(), Value::F64(1.0));
+        inputs.insert("I".into(), Value::F64(1.0));
+        let mut state = BTreeMap::new();
+        state.insert("q".into(), Value::F64(0.0));
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            1.0,
+            0.01,
+            StepMethod::Euler,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("implicit simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let expected = 10.0 * (1.0 - (-1.0f64).exp());
+        let q = f64_cell(&mut *p, "q", &last.state, "q");
+        p.close("q", q, expected, 0.05);
+    });
+    p.case("heat-rod", |p| {
+        // Insulated (Clamp) boundary: total heat is conserved and the hot
+        // spot diffuses to both neighbors.
+        let result = Source::from_workspace("language/examples/numerical/heat-rod-sim.emath").must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("alpha".into(), Value::F64(1.0));
+        let mut state = BTreeMap::new();
+        state.insert("u".into(), Value::Vector(vec![0.0, 1.0, 0.0, 0.0, 0.0]));
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            0.5,
+            0.01,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("heat-rod simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let u = numeric_cells(&mut *p, "u", last.state.get("u"));
+        p.eq("cells", u.len(), 5);
+        if u.len() == 5 {
+            let total: f64 = u.iter().sum();
+            p.close("conserved", total, 1.0, 1e-9);
+            p.demand("diffuses", u[1] < 1.0, format!("hot spot must diffuse down, got u[1] = {}", u[1]));
+            p.demand("left", u[0] > 0.0, format!("heat must reach the left neighbor, got u[0] = {}", u[0]));
+            p.demand("right", u[2] > 0.0, format!("heat must reach the right neighbor, got u[2] = {}", u[2]));
+        }
+    });
+    p.case("heat-plate", |p| {
+        // 2D insulated boundary: total heat conserved, center diffuses to
+        // all four neighbors (up=1, left=3, right=5, down=7 row-major).
+        let result = Source::from_workspace("tests/fixtures/language/numerical/heat-plate-sim.emath").must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("alpha".into(), Value::F64(1.0));
+        let mut state = BTreeMap::new();
+        state.insert(
+            "u".into(),
+            Value::Matrix { rows: 3, cols: 3, data: vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0] },
+        );
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            0.5,
+            0.01,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("heat-plate simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let u = numeric_cells(&mut *p, "u", last.state.get("u"));
+        p.eq("cells", u.len(), 9);
+        if u.len() == 9 {
+            let total: f64 = u.iter().sum();
+            p.close("conserved", total, 1.0, 1e-9);
+            p.demand("center", u[4] < 1.0, format!("center must diffuse down, got u[4] = {}", u[4]));
+            for (name, index) in [("top", 1), ("left", 3), ("right", 5), ("bottom", 7)] {
+                p.demand(name, u[index] > 0.0, format!("heat must reach the {name} neighbor"));
+            }
+        }
+    });
+    p.case("heat-volume", |p| {
+        let result = Source::from_workspace("tests/fixtures/language/numerical/heat-volume-sim.emath").must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut inputs = BTreeMap::new();
+        inputs.insert("alpha".into(), Value::F64(1.0));
+        let mut data = vec![0.0; 27];
+        data[13] = 1.0;
+        let mut state = BTreeMap::new();
+        state.insert("u".into(), Value::Tensor { shape: vec![3, 3, 3], data });
+        let traj = match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &inputs,
+            &state,
+            0.0,
+            0.5,
+            0.005,
+            StepMethod::Rk4,
+        ) {
+            Ok(traj) => traj,
+            Err(error) => {
+                p.fail("run", format!("3D heat simulation must run: {error}"));
+                return;
+            }
+        };
+        let last = match traj.samples.last() {
+            Some(last) => last,
+            None => {
+                p.fail("samples", "trajectory must contain samples");
+                return;
+            }
+        };
+        let u = numeric_cells(&mut *p, "u", last.state.get("u"));
+        p.eq("cells", u.len(), 27);
+        if u.len() == 27 {
+            let total: f64 = u.iter().sum();
+            p.close("conserved", total, 1.0, 1e-9);
+            p.demand("center", u[13] < 1.0, "center hot voxel must diffuse".to_string());
+            for neighbor in [4, 10, 12, 14, 16, 22] {
+                p.demand(
+                    format!("neighbor-{neighbor}"),
+                    u[neighbor] > 0.0,
+                    format!("neighbor {neighbor} stayed cold"),
+                );
+            }
+        }
+    });
+    p.case("blowup", |p| {
+        // Non-finite guard: Euler on x' = x^2 from x0 = 2 overflows f64
+        // and must FAIL the run, never return poisoned samples.
+        let result = Source::from_str("blowup", BLOWUP).must_admit(&mut *p);
+        if result.diagnostics.has_errors() || result.package.declarations.is_empty() {
+            return;
+        }
+        let mut state = BTreeMap::new();
+        state.insert("x".into(), Value::F64(2.0));
+        match simulate_continuous(
+            &result.package,
+            &result.package.declarations[0],
+            &BTreeMap::new(),
+            &state,
+            0.0,
+            6.0,
+            0.5,
+            StepMethod::Euler,
+        ) {
+            Ok(_) => {
+                p.fail("must-fail", "diverging Euler must error, not return inf/NaN samples");
+            }
+            Err(error) => {
+                p.contains("non-finite", &error, "non-finite");
+            }
+        }
+    });
+    p.finish();
 }
