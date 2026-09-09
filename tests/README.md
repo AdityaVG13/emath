@@ -1,33 +1,55 @@
 # tests
 
-Single home for this repository's behavioral integration tests, organized
-by crate as \`tests/emath-<crate>/\`.
+Failure-first intent library. Not a 1:1 mirror of production functions.
 
-## Policy
+## Law
 
-- The shipping surface is production code under \`crates/\`; compile/lint
-  hygiene is verified by the workspace build itself (\`cargo check --workspace\`,
-  \`cargo clippy --workspace --all-targets -- -D warnings\`).
-- \`tests/emath-<crate>/\` crates are workspace members that exercise the
-  PUBLIC API only, run by \`cargo test --workspace\`. Behavioral tests,
-  round-trips, and negative controls live here on purpose: this is their
-  landing zone.
-- A test that only reaches private internals is deleted, not moved; either
-  exercise via the public surface or drop it.
-- New crate-level integration tests are added under \`tests/emath-<crate>/\`.
-- Generated-crate behavior is verified separately: \`build --verify\` /
-  \`emath test\` refuse a generated crate with no \`#[test]\` tests
-  (E-TLT-012), so \`tests:\` sections in specs are the mock-free assurance
-  for generated code, backed by the \`scripts/validate.sh\` capstones.
+- Tests live here, never next to production code.
+- Demand the intended math. A test that passes against today's incomplete
+  compiler is fluff. The probe stays red until the engine upgrades.
+- One `#[test]` runs many functions, many files, many stages. Do not ship a
+  test per assertion.
+- Never skip, ignore, or XFAIL. A known hole is a recorded failure, not a
+  green row.
+- Independent oracles (algebra, named diagnostics). Never snapshot the code
+  under test and call that expected.
 
-## \`.emath\` fixtures
+## Library
 
-- \`tests/valid/\` contains \`.emath\` sources expected to parse/admit at the
-  appropriate phase. \`affine_scorer.emath\` is the phase-1 vertical-slice
-  spec compiled by \`scripts/validate.sh\`, the \`demo-host\` build script,
-  and \`cargo xtask demo affine-scorer\`; \`square.emath\` is the minimal
-  function example.
-- \`tests/invalid/\` names the required diagnostic in its first comment and is
-  exercised by the negative controls in \`scripts/validate.sh\`. These are
-  strategy fixtures until the full parser is implemented; Phase 1 copies
-  supported fixtures into executable tests.
+`tests/harness` (`emath-test-harness`) is the builder:
+
+```rust
+use emath_test_harness::{boot, Probe, Source};
+
+#[test]
+fn dense_index_and_oob_are_one_intent() {
+    boot();
+    let mut p = Probe::new("rank-polymorphic index; OOB is E-SHAPE-006");
+    Source::from_str("ok", "...").eval_tests(&mut p);
+    Source::from_str("oob", "...").must_refuse(&mut p, &["E-SHAPE-006"]);
+    p.finish();
+}
+```
+
+`Probe` collects every mismatch and panics with all of them. `Source` is
+parse → admit → eval. `demand_workspace_corpora` walks `tests/valid`,
+`tests/invalid`, `tests/fixtures/language`, and `language/examples`.
+`demand_language_gaps` is the upgrade ratchet (RK45, range slices, interval
+arithmetic): it is supposed to fail in multiple places.
+
+## Corpora
+
+- `tests/valid` — runnable math must admit and `Passed` every `expect`.
+  Catalog shells (field packs, custom) must admit.
+- `tests/invalid` — header pins `expect: E-XXX-NNN`; every pinned code must
+  fire as Error.
+- `tests/fixtures/language` — same contract as valid.
+- `language/examples` — teaching set; same hard eval contract.
+- `tests/conformance/DISCREPANCIES.md` — spec vs impl ledger. WILL-FIX rows
+  are probe failures, not skips.
+
+## Layout
+
+`tests/emath-<crate>/` are workspace members. They exercise the public API
+through the harness. Named `cargo test -p <crate> --test <file>` is the
+only targeted run; never a workspace-wide suite as routine verification.

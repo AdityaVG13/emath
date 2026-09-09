@@ -15,6 +15,9 @@ Protocol:
   `WILL-FIX` (implementation must converge; keep the DISC open),
   `CLOSED` (premise stale or divergence resolved).
 - A DISC id is never reused for a different divergence.
+- WILL-FIX rows are hard probe failures in `emath-test-harness`. They are
+  not skips, not XFAIL, not expected-green. The suite stays red until the
+  implementation matches the spec.
 
 ---
 

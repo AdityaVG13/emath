@@ -124,3 +124,9 @@ emath function AstroAndAngleQuantities:
         perihelion_m = 1.495978707e11 * orbit_radius
     constraints:
         dimension of inclination == dimension of phase
+    tests:
+        example <one_au>:
+            given orbit_radius = 1
+            given inclination = 0
+            given phase = 0
+            expect perihelion_m == 1.495978707e11

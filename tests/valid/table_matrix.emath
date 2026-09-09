@@ -8,3 +8,7 @@ emath function table_matrix_fixture:
 
     outputs:
         r: Float64
+
+    tests:
+        example <indexed_sum>:
+            expect r == 5.0
