@@ -4,6 +4,9 @@
 # standalone test-crate build artifacts (not workspace members)
 tests/*/target/
 
+# language examples must never commit Cargo incremental trees
+language/**/target/
+
 # zero tool caches and disposable agent scratch workspaces
 .zerostack/
 .scratch-*/

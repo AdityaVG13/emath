@@ -681,6 +681,7 @@ dependencies = [
  "emath-exec-ir",
  "emath-ir",
  "emath-lab-core",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -700,6 +701,7 @@ dependencies = [
  "emath-adapter-rumoca",
  "emath-ir",
  "emath-provider-api",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -718,6 +720,7 @@ dependencies = [
  "emath-core",
  "emath-evidence",
  "emath-ir",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -726,10 +729,7 @@ version = "0.1.0"
 dependencies = [
  "emath-artifact",
  "emath-core",
- "emath-exec-ir",
- "emath-goal",
  "emath-ir",
- "emath-plan",
  "emath-rust-backend",
  "emath-sema",
  "emath-syntax",
@@ -742,6 +742,7 @@ dependencies = [
  "emath-artifact",
  "emath-build",
  "emath-core",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -749,19 +750,36 @@ name = "emath-cli"
 version = "0.1.0"
 dependencies = [
  "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
- "emath-adapter-rumoca",
  "emath-artifact",
  "emath-build",
  "emath-core",
  "emath-evidence",
  "emath-exec-ir",
- "emath-genesis",
- "emath-goal",
  "emath-ir",
  "emath-lab-core",
  "emath-plan",
  "emath-provider-api",
+ "emath-rt",
  "emath-rust-backend",
+ "emath-sema",
+ "emath-syntax",
+ "emath-term",
+]
+
+[[package]]
+name = "emath-cli-lab"
+version = "0.1.0"
+dependencies = [
+ "emath-adapter-rumoca",
+ "emath-artifact",
+ "emath-build",
+ "emath-cli",
+ "emath-core",
+ "emath-evidence",
+ "emath-exec-ir",
+ "emath-genesis",
+ "emath-ir",
+ "emath-lab-core",
  "emath-sema",
  "emath-store",
  "emath-syntax",
@@ -776,6 +794,7 @@ dependencies = [
  "asupersync 0.4.9 (git+https://github.com/Dicklesworthstone/asupersync.git?rev=9eb0600e6ef4d17633dff3dc43ad99c64e72adbe)",
  "emath-artifact",
  "emath-cli",
+ "emath-cli-lab",
  "emath-core",
  "emath-exec-ir",
  "emath-genesis",
@@ -785,6 +804,7 @@ dependencies = [
  "emath-sema",
  "emath-syntax",
  "emath-term",
+ "emath-test-harness",
  "emath-world-ir",
 ]
 
@@ -801,6 +821,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-syntax",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -818,13 +839,13 @@ version = "0.1.0"
 dependencies = [
  "emath-evidence",
  "emath-ir",
+ "emath-test-harness",
 ]
 
 [[package]]
 name = "emath-exec-ir"
 version = "0.1.0"
 dependencies = [
- "emath-artifact",
  "emath-core",
  "emath-ir",
  "emath-rt",
@@ -845,6 +866,7 @@ dependencies = [
  "emath-sema",
  "emath-store",
  "emath-syntax",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -852,6 +874,7 @@ name = "emath-genesis"
 version = "0.1.0"
 dependencies = [
  "emath-artifact",
+ "emath-core",
  "emath-term",
  "emath-world-ir",
 ]
@@ -862,6 +885,7 @@ version = "0.1.0"
 dependencies = [
  "emath-genesis",
  "emath-term",
+ "emath-test-harness",
  "emath-world-ir",
 ]
 
@@ -888,6 +912,7 @@ dependencies = [
  "emath-core",
  "emath-hir",
  "emath-ir",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -895,6 +920,8 @@ name = "emath-ir"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-schema",
+ "emath-term",
 ]
 
 [[package]]
@@ -912,6 +939,7 @@ dependencies = [
  "emath-sema",
  "emath-syntax",
  "emath-term",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -921,7 +949,6 @@ dependencies = [
  "emath-core",
  "emath-ir",
  "emath-term",
- "emath-world-ir",
 ]
 
 [[package]]
@@ -933,6 +960,7 @@ dependencies = [
  "emath-lab-core",
  "emath-syntax",
  "emath-term",
+ "emath-test-harness",
  "emath-wasm",
  "emath-world-ir",
 ]
@@ -949,11 +977,22 @@ dependencies = [
 name = "emath-plan"
 version = "0.1.0"
 dependencies = [
- "emath-artifact",
  "emath-core",
- "emath-goal",
  "emath-ir",
  "emath-provider-api",
+]
+
+[[package]]
+name = "emath-plan-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-ir",
+ "emath-plan",
+ "emath-provider-api",
+ "emath-sema",
+ "emath-syntax",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -963,7 +1002,6 @@ dependencies = [
  "emath-core",
  "emath-ir",
  "emath-term",
- "emath-world-ir",
 ]
 
 [[package]]
@@ -977,6 +1015,7 @@ dependencies = [
  "emath-provider-api",
  "emath-registry",
  "emath-schema",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1009,6 +1048,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-rt",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1031,6 +1071,7 @@ dependencies = [
  "emath-rust-backend",
  "emath-sema",
  "emath-syntax",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1038,8 +1079,21 @@ name = "emath-schema"
 version = "0.1.0"
 dependencies = [
  "emath-core",
- "emath-ir",
  "emath-term",
+]
+
+[[package]]
+name = "emath-schema-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-exec-ir",
+ "emath-ir",
+ "emath-schema",
+ "emath-sema",
+ "emath-syntax",
+ "emath-term",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1065,6 +1119,7 @@ dependencies = [
  "emath-sema",
  "emath-syntax",
  "emath-term",
+ "emath-test-harness",
  "emath-world-ir",
 ]
 
@@ -1089,6 +1144,7 @@ dependencies = [
  "emath-sema",
  "emath-store",
  "emath-syntax",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1109,6 +1165,7 @@ dependencies = [
  "emath-ir",
  "emath-sema",
  "emath-syntax",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1121,12 +1178,20 @@ version = "0.1.0"
 dependencies = [
  "emath-lab-core",
  "emath-term",
+ "emath-test-harness",
  "semantic-genesis-worlds",
 ]
 
 [[package]]
 name = "emath-test-harness"
 version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-exec-ir",
+ "emath-ir",
+ "emath-sema",
+ "emath-syntax",
+]
 
 [[package]]
 name = "emath-trust-gates"
@@ -1138,6 +1203,7 @@ dependencies = [
  "emath-evidence",
  "emath-ir",
  "emath-provider-api",
+ "emath-test-harness",
 ]
 
 [[package]]
@@ -1170,6 +1236,7 @@ name = "emath-world-ir"
 version = "0.1.0"
 dependencies = [
  "emath-core",
+ "emath-ir",
  "emath-term",
 ]
 
@@ -1179,6 +1246,7 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-term",
+ "emath-test-harness",
  "emath-world-ir",
  "semantic-genesis-worlds",
 ]
@@ -2906,6 +2974,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "emath-cli",
+ "emath-cli-lab",
  "emath-core",
  "emath-exec-ir",
  "emath-genesis",
