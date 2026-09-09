@@ -9,9 +9,8 @@
 //! positive fuel under every trust class. No network, no component host,
 //! std-only.
 
-use std::fmt::Write as _;
-
 use emath_core::content_id_of_str;
+use emath_core::json_quote_into;
 
 /// Descriptor document schema.
 pub const PLUGIN_SCHEMA: &str = "emath.plugin";
@@ -82,11 +81,11 @@ impl PluginDescriptor {
         let mut out = String::from(r#"{"capabilities":["#);
         push_strings(&self.capabilities, &mut out);
         out.push_str(r#"],"id":"#);
-        json_string(&self.id, &mut out);
+        json_quote_into(&self.id, &mut out);
         out.push_str(r#","interface_core":"#);
-        json_string(&self.interface_core, &mut out);
+        json_quote_into(&self.interface_core, &mut out);
         out.push_str(r#","kind":"#);
-        json_string(&self.kind, &mut out);
+        json_quote_into(&self.kind, &mut out);
         out.push_str(r#","sandbox":{"allowed_capabilities":["#);
         push_strings(&self.sandbox.allowed_capabilities, &mut out);
         out.push_str(r#"],"fuel":"#);
@@ -278,28 +277,10 @@ pub fn descriptor_for(
 
 fn push_strings(values: &[String], out: &mut String) {
     for value in values {
-        json_string(value, out);
+        json_quote_into(value, out);
         out.push(',');
     }
     if !values.is_empty() {
         out.pop();
     }
-}
-
-fn json_string(text: &str, out: &mut String) {
-    out.push('"');
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if (ch as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", ch as u32);
-            }
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
 }

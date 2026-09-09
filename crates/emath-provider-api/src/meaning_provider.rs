@@ -3,7 +3,7 @@
 //! Stable contracts for meaning proposal and world checking.
 
 use emath_term::{Signature, Term};
-use emath_world_ir::{MeaningHole, WorldIr};
+use emath_ir::{MeaningHole, WorldIr};
 
 /// Bounded provider request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
