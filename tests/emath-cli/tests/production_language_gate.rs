@@ -1,90 +1,19 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
-
+//! Production semantic commands require the verified checked-in language distribution.
 mod common;
-
-fn copy_tree(source: &Path, destination: &Path) {
-    fs::create_dir_all(destination).expect("create destination");
-    for entry in fs::read_dir(source).expect("read source directory") {
-        let entry = entry.expect("read directory entry");
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        if source_path.is_dir() {
-            copy_tree(&source_path, &destination_path);
-        } else {
-            fs::copy(&source_path, &destination_path).expect("copy fixture file");
-        }
-    }
-}
-
-fn fixture() -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "emath-production-language-gate-{}-{nonce}",
-        std::process::id()
-    ));
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    copy_tree(&workspace.join("language"), &root.join("language"));
-    root
-}
-
-fn check(root: &Path) -> Output {
-    Command::new(common::emath_bin())
-        .args(["check", "language/examples/intro/add-exact.emath", "--json"])
-        .current_dir(root)
-        .output()
-        .expect("run emath check")
-}
-
-fn refusal_text(output: &Output) -> String {
-    format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    )
-}
-
+use emath_test_harness::Probe;
+use std::path::{Path, PathBuf};
+fn copy_tree(source: &Path, dest: &Path) { std::fs::create_dir_all(dest).expect("dest"); for e in std::fs::read_dir(source).expect("read") { let e = e.expect("entry"); let (s, d) = (e.path(), dest.join(e.file_name())); if s.is_dir() { if e.file_name() == "target" { continue; } copy_tree(&s, &d); } else { std::fs::copy(&s, &d).expect("copy"); } } }
+fn fixture() -> PathBuf { let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("time").as_nanos(); let root = std::env::temp_dir().join(format!("emath-prod-gate-{}-{n}", std::process::id())); copy_tree(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language"), &root.join("language")); root }
+fn check(root: &Path) -> std::process::Output { std::process::Command::new(common::emath_bin()).args(["check", "tests/fixtures/language/intro/clamp-distance-builtins.emath", "--json"]).current_dir(root).output().expect("check") }
+fn text(o: &std::process::Output) -> String { format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)) }
 #[test]
-fn semantic_commands_require_the_verified_checked_in_language_distribution() {
+fn probe() {
+    let mut p = Probe::new("tampered language image, missing source map, or seeded hole refuses with E-LANG-IMAGE");
     let root = fixture();
-    let clean = check(&root);
-    assert!(clean.status.success(), "{}", refusal_text(&clean));
-    assert!(String::from_utf8_lossy(&clean.stdout).contains("\"admitted\": true"));
-
-    let lock = root.join("language/language.lock");
-    let clean_lock = fs::read_to_string(&lock).expect("read lock");
-    fs::write(&lock, format!("{clean_lock}tampered=true\n")).expect("tamper lock");
-    let tampered = check(&root);
-    assert_eq!(tampered.status.code(), Some(1));
-    assert!(refusal_text(&tampered).contains("E-LANG-IMAGE"));
-    fs::write(&lock, clean_lock).expect("restore lock");
-
-    let source_map = root.join("language/generated/source-map.lock");
-    let hidden_source_map = root.join("language/generated/source-map.lock.missing");
-    fs::rename(&source_map, &hidden_source_map).expect("hide source map");
-    let missing = check(&root);
-    assert_eq!(missing.status.code(), Some(1));
-    assert!(refusal_text(&missing).contains("E-LANG-IMAGE"));
-    fs::rename(&hidden_source_map, &source_map).expect("restore source map");
-
-    let add_capsule = root.join("language/spec/capabilities/core/add.emath");
-    let clean_capsule = fs::read_to_string(&add_capsule).expect("read add capsule");
-    let hidden_hole = clean_capsule.replace(
-        "projection: \"semantics -> provided\"",
-        "projection: \"semantics -> hole(hidden-active-hole | seeded refusal)\"",
-    );
-    assert_ne!(hidden_hole, clean_capsule);
-    fs::write(&add_capsule, hidden_hole).expect("seed active hole");
-    let hole = check(&root);
-    assert_eq!(hole.status.code(), Some(1));
-    assert!(refusal_text(&hole).contains("E-LANG-IMAGE"));
-    fs::write(&add_capsule, clean_capsule).expect("restore add capsule");
-
-    let restored = check(&root);
-    assert!(restored.status.success(), "{}", refusal_text(&restored));
+    p.case("clean", |p| { let c = check(&root); p.demand("ok", c.status.success(), text(&c)); p.contains("admitted", &String::from_utf8_lossy(&c.stdout).into_owned(), "\"admitted\": true"); });
+    p.case("tampered-lock", |p| { let lock = root.join("language/language.lock"); let clean = std::fs::read_to_string(&lock).expect("lock"); std::fs::write(&lock, format!("{clean}tampered=true\n")).expect("tamper"); let t = check(&root); p.eq("exit", t.status.code(), Some(1)); p.contains("code", &text(&t), "E-LANG-IMAGE"); std::fs::write(&lock, clean).expect("restore"); });
+    p.case("missing-map", |p| { let (m, h) = (root.join("language/generated/source-map.lock"), root.join("language/generated/source-map.lock.missing")); std::fs::rename(&m, &h).expect("hide"); let t = check(&root); p.eq("exit", t.status.code(), Some(1)); p.contains("code", &text(&t), "E-LANG-IMAGE"); std::fs::rename(&h, &m).expect("restore"); });
+    p.case("seeded-hole", |p| { let cap = root.join("language/spec/capabilities/core/add.emath"); let clean = std::fs::read_to_string(&cap).expect("cap"); let holed = clean.replace("projection: \"semantics -> provided\"", "projection: \"semantics -> hole(hidden-active-hole | seeded refusal)\""); p.ne("seeded", holed.clone(), clean.clone()); std::fs::write(&cap, &holed).expect("seed"); let t = check(&root); p.eq("exit", t.status.code(), Some(1)); p.contains("code", &text(&t), "E-LANG-IMAGE"); std::fs::write(&cap, &clean).expect("restore"); });
+    p.case("restored", |p| { let r = check(&root); p.demand("ok", r.status.success(), text(&r)); });
+    p.finish();
 }

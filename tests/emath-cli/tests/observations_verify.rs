@@ -1,77 +1,14 @@
 //! `emath check --verify-data` (04 §5.2).
-//!
-//! Contracts:
-//! - a file whose InstrumentRun provenance declares a sha256 matching the
-//!   data file on disk passes `--verify-data` (exit 0, no E-OBS-HASH);
-//! - a file whose declared digest no on-disk file hashes to refuses with
-//!   `E-OBS-HASH` and exit 1 (missing file and digest drift are the same
-//!   refusal lane: the evidence cannot be confirmed);
-//! - plain `emath check` (no flag) does NOT hash: provenance is
-//!   declared, not verified, without the flag;
-//! - a definitions binding of an observation name refuses `E-OBS-WRITE`
-//!   at plain check (read-only measured evidence).
-
-use std::path::PathBuf;
-
 mod common;
 use common::cli;
-
-fn repo_file(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(rel)
-}
-
+use emath_test_harness::Probe;
+fn repo(rel: &str) -> String { std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel).to_str().expect("utf8").to_string() }
 #[test]
-fn verify_data_accepts_matching_digest() {
-    // The example ships `pk_run_041.csv` beside it with the declared
-    // sha256 of those exact bytes.
-    let path = repo_file("language/examples/science/observations.emath");
-    let (stdout, code) = cli(&["check", "--verify-data", path.to_str().expect("utf8")]);
-    assert_eq!(code, 0, "matching digest must pass; got:\n{stdout}");
-    assert!(
-        !stdout.contains("E-OBS-HASH"),
-        "no E-OBS-HASH when the digest matches; got:\n{stdout}"
-    );
-}
-
-#[test]
-fn verify_data_refuses_digest_drift() {
-    // The declared digest is a placeholder (64 ones) no on-disk file
-    // hashes to; `pk_run_041.csv` is absent beside the fixture, so the
-    // evidence cannot be confirmed: E-OBS-HASH, exit 1.
-    let path = repo_file("tests/invalid/observations_hash_drift.emath");
-    let (stdout, code) = cli(&["check", "--verify-data", path.to_str().expect("utf8")]);
-    assert_eq!(
-        code, 1,
-        "unconfirmable evidence must refuse; got:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("E-OBS-HASH"),
-        "drift/missing data must refuse E-OBS-HASH; got:\n{stdout}"
-    );
-}
-
-#[test]
-fn plain_check_does_not_hash_data() {
-    // Without --verify-data, provenance is declared but not verified:
-    // the drift fixture admits (provenance declared, not checked).
-    let path = repo_file("tests/invalid/observations_hash_drift.emath");
-    let (stdout, code) = cli(&["check", path.to_str().expect("utf8")]);
-    assert_eq!(code, 0, "plain check must not hash; got:\n{stdout}");
-    assert!(
-        !stdout.contains("E-OBS-HASH"),
-        "no hashing without the flag; got:\n{stdout}"
-    );
-}
-
-#[test]
-fn writing_to_an_observation_refuses_at_plain_check() {
-    let path = repo_file("tests/invalid/observations_write.emath");
-    let (stdout, code) = cli(&["check", path.to_str().expect("utf8")]);
-    assert_eq!(code, 1, "E-OBS-WRITE must refuse; got:\n{stdout}");
-    assert!(
-        stdout.contains("E-OBS-WRITE"),
-        "definitions binding an observation must refuse E-OBS-WRITE; got:\n{stdout}"
-    );
+fn probe() {
+    let mut p = Probe::new("verify-data hashes declared evidence, plain check never hashes");
+    p.case("match", |p| { let (out, code) = cli(&["check", "--verify-data", &repo("tests/fixtures/language/science/observations.emath")]); p.eq("exit", code, 0); p.demand("no-hash-code", !out.contains("E-OBS-HASH"), "matching digest passes"); });
+    p.case("drift", |p| { let (out, code) = cli(&["check", "--verify-data", &repo("tests/invalid/observations_hash_drift.emath")]); p.eq("exit", code, 1); p.contains("code", &out, "E-OBS-HASH"); });
+    p.case("plain", |p| { let (out, code) = cli(&["check", &repo("tests/invalid/observations_hash_drift.emath")]); p.eq("exit", code, 0); p.demand("declared-not-verified", !out.contains("E-OBS-HASH"), "plain check never hashes"); });
+    p.case("write", |p| { let (out, code) = cli(&["check", &repo("tests/invalid/observations_write.emath")]); p.eq("exit", code, 1); p.contains("code", &out, "E-OBS-WRITE"); });
+    p.finish();
 }

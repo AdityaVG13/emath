@@ -207,9 +207,9 @@ fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sam
     let golden_sha = lab::hex(&lab::digest(&golden_lib));
     let cell = move || {
         let start = Instant::now();
-        let analysis = emath_cli::genesis_cmd::analyze(&glyphs)
+        let analysis = emath_cli_lab::genesis_cmd::analyze(&glyphs)
             .map_err(|error| format!("genesis analyze refused: {error}"))?;
-        let worlds = emath_cli::genesis_cmd::builtin_worlds(&analysis.inference.signature);
+        let worlds = emath_cli_lab::genesis_cmd::builtin_worlds(&analysis.inference.signature);
         // Portfolio witnesses (`one_point`, `csa_seeded`) have no lowering;
         // generate() refuses them with E-GEN-094. Time the compiled trio only.
         let specs = worlds
@@ -305,9 +305,9 @@ fn cell_genesis_replay(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>
     let glyphs = root.join(GLYPHS_REL);
     let cell = move || {
         let start = Instant::now();
-        let first = emath_cli::genesis_cmd::analyze(&glyphs)
+        let first = emath_cli_lab::genesis_cmd::analyze(&glyphs)
             .map_err(|error| format!("genesis analyze refused: {error}"))?;
-        let second = emath_cli::genesis_cmd::analyze(&glyphs)
+        let second = emath_cli_lab::genesis_cmd::analyze(&glyphs)
             .map_err(|error| format!("genesis replay refused: {error}"))?;
         if first.parse_id != second.parse_id
             || first.signature_id != second.signature_id
@@ -347,12 +347,12 @@ fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
     let files = [
         "tests/valid/square.emath",
         "tests/valid/affine_scorer.emath",
-        "language/examples/intro/hello-square.emath",
-        "language/examples/intro/scratch.emath",
-        "language/examples/intro/l1_guided.emath",
+        "tests/fixtures/language/intro/hello-square.emath",
+        "tests/fixtures/language/intro/scratch.emath",
+        "tests/fixtures/language/intro/l1_guided.emath",
         "language/examples/intro/units.emath",
         "language/examples/intro/autodiff.emath",
-        "language/examples/intro/solve.emath",
+        "tests/fixtures/language/intro/solve.emath",
     ];
     let cell = move || {
         let start = Instant::now();

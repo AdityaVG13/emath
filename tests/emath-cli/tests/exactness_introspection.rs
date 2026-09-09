@@ -1,433 +1,66 @@
 //! CLI: expand / exactness / freeze / why / assumptions.
-
-use emath_cli::{
-    EXIT_OK, EXIT_REFUSED, EXIT_USAGE, agent_check_json_document, agent_plan_json_document,
-    agent_triage_json_document, exactness_json_document, expand_json_document, plan_json_document,
-    run,
-};
+use emath_cli::{EXIT_OK, EXIT_REFUSED, EXIT_USAGE, plan_json_document};
+use emath_cli_lab::{agent_check_json_document, agent_plan_json_document, agent_triage_json_document, exactness_json_document, expand_json_document, run};
 use emath_syntax::{exactness_ledger, expand_scratch};
-
-fn repo_file(rel: &str) -> String {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(rel)
-        .to_string_lossy()
-        .into_owned()
-}
-
-fn json_arr<'a>(
-    parsed: &'a emath_artifact::JsonValue,
-    key: &str,
-) -> &'a [emath_artifact::JsonValue] {
-    match parsed.field(key).unwrap_or_else(|_| panic!("{key}")) {
-        emath_artifact::JsonValue::Arr(items) => items,
-        other => panic!("{key} must be array, got {other:?}"),
-    }
-}
-
+use emath_test_harness::{Probe, boot};
+fn repo(rel: &str) -> String { std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel).to_string_lossy().into_owned() }
+fn arr<'a>(v: &'a emath_artifact::JsonValue, k: &str) -> &'a [emath_artifact::JsonValue] { match v.field(k).unwrap_or_else(|_| panic!("{k}")) { emath_artifact::JsonValue::Arr(i) => i, o => panic!("{k} must be array, got {o:?}") } }
 #[test]
-fn expand_and_exactness_and_assumptions_succeed() {
-    emath_syntax::install_source_parser();
-    let path = repo_file("language/examples/intro/scratch.emath");
-    assert_eq!(run(&["expand".into(), path.clone()]), EXIT_OK);
-    assert_eq!(
-        run(&["expand".into(), path.clone(), "--json".into()]),
-        EXIT_OK
-    );
-    let source = std::fs::read_to_string(&path).expect("scratch source");
-    let expansion = expand_scratch(&source);
-    let parsed =
-        emath_artifact::parse_json_document(&expand_json_document(&source, &expansion, None))
-            .expect("expand --json");
-    assert_eq!(parsed.string_field("command").expect("command"), "expand");
-    match parsed.field("rewritten").expect("rewritten") {
-        emath_artifact::JsonValue::Bool(_) => {}
-        other => panic!("rewritten must be bool, got {other:?}"),
-    }
-    assert_eq!(
-        parsed.string_field("level").expect("level"),
-        expansion.level().as_str()
-    );
-    match parsed.field("ok").expect("ok") {
-        emath_artifact::JsonValue::Bool(_) => {}
-        other => panic!("ok must be bool, got {other:?}"),
-    }
-    assert_eq!(parsed.string_field("source").expect("source"), source);
-    let _ = parsed.string_field("expanded").expect("expanded");
-    let notes = json_arr(&parsed, "notes");
-    assert_eq!(notes.len(), expansion.notes.len());
-    for (note, row) in expansion.notes.iter().zip(notes) {
-        assert_eq!(
-            row.string_field("stability").expect("stability"),
-            note.stability.as_str()
-        );
-    }
-    let holes = json_arr(&parsed, "holes");
-    assert_eq!(holes.len(), expansion.holes.len());
-    for (hole, row) in expansion.holes.iter().zip(holes) {
-        assert_eq!(
-            row.string_field("continuation").expect("continuation"),
-            hole.continuation.as_str()
-        );
-        let candidates = json_arr(row, "candidates");
-        assert_eq!(candidates.len(), hole.candidates.len());
-        for (candidate, cand) in hole.candidates.iter().zip(candidates) {
-            assert_eq!(cand.string_field("status").expect("status"), "labeled");
-            assert_eq!(
-                cand.string_field("kind").expect("kind"),
-                candidate.kind.as_str()
-            );
-            assert_eq!(cand.string_field("label").expect("label"), candidate.label);
-        }
-    }
-    let solve_candidates = json_arr(&parsed, "solve_candidates");
-    assert_eq!(solve_candidates.len(), expansion.solve.menu().len());
-    for (world, cand) in expansion.solve.menu().iter().zip(solve_candidates) {
-        assert_eq!(cand.string_field("label").expect("label"), world.as_str());
-    }
-    let diagnostics = json_arr(&parsed, "diagnostics");
-    for item in diagnostics {
-        let _ = item.string_field("code").expect("diagnostics[].code");
-        let severity = item
-            .string_field("severity")
-            .expect("diagnostics[].severity");
-        assert!(
-            matches!(severity.as_str(), "error" | "warning" | "note"),
-            "severity token {severity}"
-        );
-        let _ = item.string_field("message").expect("diagnostics[].message");
-    }
-    assert_eq!(run(&["exactness".into(), path.clone()]), EXIT_OK);
-    assert_eq!(
-        run(&["exactness".into(), path.clone(), "--json".into()]),
-        EXIT_OK
-    );
-    let ledger = exactness_ledger(&source);
-    let parsed = emath_artifact::parse_json_document(&exactness_json_document(&ledger, None))
-        .expect("exactness --json");
-    assert_eq!(
-        parsed.string_field("command").expect("command"),
-        "exactness"
-    );
-    for key in ["declared", "inferred", "constructed", "open"] {
-        let _ = parsed.int_field(key).unwrap_or_else(|_| panic!("{key}"));
-    }
-    let entries = json_arr(&parsed, "entries");
-    assert_eq!(entries.len(), ledger.entries.len());
-    for (entry, row) in ledger.entries.iter().zip(entries) {
-        assert_eq!(row.string_field("id").expect("id"), entry.inference_id);
-        assert_eq!(
-            row.string_field("dimension").expect("dimension"),
-            entry.dimension.as_str()
-        );
-        assert_eq!(
-            row.string_field("status").expect("status"),
-            entry.status.as_str()
-        );
-        assert_eq!(row.string_field("name").expect("name"), entry.name);
-        let _ = row.string_field("rationale").expect("rationale");
-    }
-    assert_eq!(
-        run(&[
-            "exactness".into(),
-            path.clone(),
-            "--raise".into(),
-            "units".into()
-        ]),
-        EXIT_OK
-    );
-    assert_eq!(run(&["assumptions".into(), path.clone()]), EXIT_OK);
-    assert_eq!(
-        run(&["why".into(), path.clone(), "inference:1".into()]),
-        EXIT_OK
-    );
-    assert_eq!(run(&["freeze".into(), path.clone()]), EXIT_OK);
-}
-
-#[test]
-fn freeze_emits_versioned_lock_without_raising_authority() {
-    emath_syntax::install_source_parser();
-    let path = repo_file("language/examples/intro/scratch.emath");
-    let tmp = std::env::temp_dir().join("emath-freeze-check.emath");
-    assert_eq!(
-        run(&[
-            "freeze".into(),
-            path.clone(),
-            "--out".into(),
-            tmp.display().to_string(),
-            "--json".into(),
-        ]),
-        EXIT_OK
-    );
-    let lock_path = tmp.with_extension("freeze.lock.json");
-    let lock = std::fs::read_to_string(&lock_path).expect("sidecar lock");
-    assert!(lock.contains("emath.freeze.lock.v1"), "{lock}");
-    assert!(lock.contains("emath:meaning:v1:"), "{lock}");
-    assert!(
-        lock.contains("\"schema\": \"emath.freeze.lock.v1\""),
-        "{lock}"
-    );
-    assert!(lock.contains("\"authority_raised\": false"), "{lock}");
-    assert!(!lock.contains("\"authority_raised\": true"), "{lock}");
-    assert!(lock.contains("\"source_content_id\""), "{lock}");
-    assert!(lock.contains("\"frozen_content_id\""), "{lock}");
-    assert!(lock.contains("\"prelude\""), "{lock}");
-    assert!(lock.contains("\"numeric_policy\""), "{lock}");
-    assert!(lock.contains("\"open\""), "{lock}");
-    assert!(lock.contains("\"ledger\""), "{lock}");
-    assert!(lock.contains("strict-f64"), "{lock}");
-    assert!(lock.contains("native.rust"), "{lock}");
-    let parsed = emath_artifact::parse_json_document(&lock).expect("lock must parse as JSON");
-    let original = std::fs::read_to_string(&path).expect("original source");
-    let frozen = std::fs::read_to_string(&tmp).expect("frozen sidecar");
-    assert_eq!(
-        parsed.string_field("schema").expect("schema"),
-        "emath.freeze.lock.v1"
-    );
-    assert!(
-        parsed.field("command").is_err(),
-        "lock is not the freeze envelope"
-    );
-    let source_id = parsed
-        .string_field("source_content_id")
-        .expect("source_content_id");
-    let frozen_id = parsed
-        .string_field("frozen_content_id")
-        .expect("frozen_content_id");
-    assert_eq!(source_id, emath_core::content_id_of_str(&original).0);
-    assert_eq!(frozen_id, emath_core::content_id_of_str(&frozen).0);
-    assert_ne!(source_id, frozen_id);
-    assert!(
-        parsed
-            .string_field("meaning_id")
-            .expect("meaning_id")
-            .starts_with("emath:meaning:v1:")
-    );
-    assert_eq!(
-        parsed.field("authority_raised").expect("authority_raised"),
-        &emath_artifact::JsonValue::Bool(false)
-    );
-    assert_eq!(
-        parsed.string_field("prelude").expect("prelude"),
-        "scratch-v1"
-    );
-    assert_eq!(
-        parsed
-            .string_field("numeric_policy")
-            .expect("numeric_policy"),
-        "strict-f64"
-    );
-    for key in ["packages", "methods", "providers", "open", "ledger"] {
-        match parsed.field(key).unwrap_or_else(|_| panic!("{key}")) {
-            emath_artifact::JsonValue::Arr(_) => {}
-            other => panic!("{key} must be array, got {other:?}"),
-        }
-    }
-    match parsed.field("providers").expect("providers") {
-        emath_artifact::JsonValue::Arr(items) => {
-            assert!(
-                items.iter().any(|item| {
-                    matches!(item, emath_artifact::JsonValue::Str(s) if s == "native.rust")
-                }),
-                "{items:?}"
-            );
-        }
-        other => panic!("providers must be array, got {other:?}"),
-    }
-    let exactness = exactness_ledger(&original);
-    let ledger_rows = json_arr(&parsed, "ledger");
-    assert_eq!(ledger_rows.len(), exactness.entries.len());
-    for (entry, row) in exactness.entries.iter().zip(ledger_rows) {
-        match row {
-            emath_artifact::JsonValue::Str(concatenated) => {
-                panic!("ledger items must be objects with as_str tokens, got {concatenated:?}")
-            }
-            _ => {}
-        }
-        assert_eq!(row.string_field("id").expect("id"), entry.inference_id);
-        assert_eq!(
-            row.string_field("dimension").expect("dimension"),
-            entry.dimension.as_str()
-        );
-        assert_eq!(
-            row.string_field("status").expect("status"),
-            entry.status.as_str()
-        );
-        assert_eq!(row.string_field("name").expect("name"), entry.name);
-    }
-    assert!(frozen.starts_with("# emath freeze: does not raise evidence authority\n"));
-}
-
-#[test]
-fn plan_json_goals_are_kind_as_str_objects() {
-    emath_syntax::install_source_parser();
-    let path = repo_file("language/examples/intro/hello-square.emath");
-    assert_eq!(
-        run(&["plan".into(), path.clone(), "--json".into()]),
-        EXIT_OK
-    );
-    let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
-    let package = session
-        .load_package(std::path::Path::new(&path))
-        .expect("load hello-square");
-    let result = session.plan(package.file);
-    assert!(
-        !result.package.goals.is_empty(),
-        "hello-square must have goals"
-    );
-    let parsed = emath_artifact::parse_json_document(&plan_json_document(
-        !result.diagnostics.has_errors(),
-        &result.package.goals,
-        result.plans.len() as u64,
-    ))
-    .expect("plan --json");
-    assert_eq!(parsed.string_field("command").expect("command"), "plan");
-    match parsed.field("admitted").expect("admitted") {
-        emath_artifact::JsonValue::Bool(_) => {}
-        other => panic!("admitted must be bool, got {other:?}"),
-    }
-    let _ = parsed.int_field("plans").expect("plans");
-    assert!(
-        parsed.int_field("goals").is_err(),
-        "goals must be an object array, not a duplicate count key"
-    );
-    let goals = json_arr(&parsed, "goals");
-    assert_eq!(goals.len(), result.package.goals.len());
-    for (goal, row) in result.package.goals.iter().zip(goals) {
-        match row {
-            emath_artifact::JsonValue::Str(concatenated) => {
-                panic!("goals items must be objects with as_str kind, got {concatenated:?}")
-            }
-            _ => {}
-        }
-        assert_eq!(row.string_field("kind").expect("kind"), goal.kind.as_str());
-        assert_eq!(row.string_field("target").expect("target"), goal.target);
-    }
-}
-
-#[test]
-fn agent_plan_json_goals_are_kind_as_str_objects() {
-    emath_syntax::install_source_parser();
-    let path = repo_file("language/examples/intro/hello-square.emath");
-    assert_eq!(run(&["agent".into(), "plan".into(), path.clone()]), EXIT_OK);
-    let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
-    let package = session
-        .load_package(std::path::Path::new(&path))
-        .expect("load hello-square");
-    let result = session.plan(package.file);
-    let parsed = emath_artifact::parse_json_document(&agent_plan_json_document(
-        !result.diagnostics.has_errors(),
-        &result.package.goals,
-        result.plans.len() as u64,
-    ))
-    .expect("agent plan json");
-    assert_eq!(
-        parsed.string_field("schema").expect("schema"),
-        "emath.agent"
-    );
-    assert!(
-        parsed.int_field("goals").is_err(),
-        "agent plan goals must be an object array, not a duplicate count key"
-    );
-    let goals = json_arr(&parsed, "goals");
-    assert_eq!(goals.len(), result.package.goals.len());
-    for (goal, row) in result.package.goals.iter().zip(goals) {
-        assert_eq!(row.string_field("kind").expect("kind"), goal.kind.as_str());
-        assert_eq!(row.string_field("target").expect("target"), goal.target);
-    }
-    let parsed = emath_artifact::parse_json_document(&agent_triage_json_document(
-        &path,
-        true,
-        &[],
-        !result.diagnostics.has_errors(),
-        &result.package.content_id().0,
-        &result.diagnostics,
-        true,
-        None,
-        &result.package.goals,
-        result.plans.len() as u64,
-    ))
-    .expect("agent triage json");
-    assert!(
-        parsed.int_field("goals").is_err(),
-        "agent triage goals must be an object array, not a count"
-    );
-    let goals = json_arr(&parsed, "goals");
-    assert_eq!(goals.len(), result.package.goals.len());
-    for (goal, row) in result.package.goals.iter().zip(goals) {
-        assert_eq!(row.string_field("kind").expect("kind"), goal.kind.as_str());
-        assert_eq!(row.string_field("target").expect("target"), goal.target);
-    }
-    let empty =
-        std::env::temp_dir().join(format!("emath-agent-empty-{}.emath", std::process::id()));
-    std::fs::write(&empty, "").expect("empty pane");
-    assert_eq!(
-        run(&[
-            "agent".into(),
-            "check".into(),
-            empty.to_string_lossy().into_owned(),
-        ]),
-        EXIT_REFUSED
-    );
-    let (diagnostics, package_id) = {
-        let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
-        match session.load_package(&empty) {
-            Ok(package) => {
-                let result = session.check(package.file);
-                (result.diagnostics, result.package.content_id().0)
-            }
-            Err(_) => panic!("empty file must load as empty source"),
-        }
-    };
-    let parsed = emath_artifact::parse_json_document(&agent_check_json_document(
-        false,
-        &package_id,
-        &diagnostics,
-    ))
-    .expect("agent check json");
-    assert!(
-        parsed.int_field("diagnostics").is_err(),
-        "agent check diagnostics must be objects, not a count"
-    );
-    assert!(parsed.string_field("diagnostics_text").is_err());
-    let items = json_arr(&parsed, "diagnostics");
-    assert!(
-        items
-            .iter()
-            .any(|row| row.string_field("code").ok().as_deref() == Some("E-PKG-081")),
-        "agent check must surface E-PKG-081, got {items:?}"
-    );
-    let _ = std::fs::remove_file(&empty);
-}
-
-#[test]
-fn freeze_refuses_claimed_exact_hole() {
-    emath_syntax::install_source_parser();
-    let path = repo_file("tests/invalid/exactness_introspection.emath");
-    assert_eq!(run(&["freeze".into(), path]), EXIT_REFUSED);
-}
-
-#[test]
-fn freeze_sidecar_lock_write_failure_removes_partial_source() {
-    emath_syntax::install_source_parser();
-    let path = repo_file("language/examples/intro/scratch.emath");
-    let dir = std::env::temp_dir().join("emath-partial-freeze-check");
-    let _ = std::fs::create_dir_all(&dir);
-    let out = dir.join("frozen.emath");
-    let lock_path = out.with_extension("freeze.lock.json");
-    let _ = std::fs::remove_file(&out);
-    let _ = std::fs::remove_dir_all(&lock_path);
-    std::fs::create_dir_all(&lock_path).expect("lock path as directory");
-    assert_eq!(
-        run(&[
-            "freeze".into(),
-            path,
-            "--out".into(),
-            out.display().to_string(),
-        ]),
-        EXIT_USAGE
-    );
-    assert!(!out.exists(), "partial frozen source must be removed");
-    let _ = std::fs::remove_dir_all(&lock_path);
-    let _ = std::fs::remove_dir_all(&dir);
+fn probe() {
+    boot();
+    let mut p = Probe::new("expand, exactness, freeze, plan, and agent envelopes keep schema and exits");
+    let scratch = repo("tests/fixtures/language/intro/scratch.emath");
+    p.case("expand-exactness", |p| {
+        for a in [vec!["expand", scratch.as_str()], vec!["expand", scratch.as_str(), "--json"], vec!["exactness", scratch.as_str()], vec!["exactness", scratch.as_str(), "--json"], vec!["exactness", scratch.as_str(), "--raise", "units"], vec!["assumptions", scratch.as_str()], vec!["freeze", scratch.as_str()]] { p.eq(a.join(" "), run(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>()), EXIT_OK); }
+        p.eq("why", run(&["why".into(), scratch.clone(), "inference:1".into()]), EXIT_OK);
+        let src = std::fs::read_to_string(&scratch).expect("src"); let exp = expand_scratch(&src);
+        let parsed = emath_artifact::parse_json_document(&expand_json_document(&src, &exp, None)).expect("expand json");
+        p.eq("command", parsed.string_field("command").expect("c"), "expand".to_string()); p.eq("level", parsed.string_field("level").expect("l"), exp.level().as_str().to_string());
+        p.demand("rewritten-bool", matches!(parsed.field("rewritten"), Ok(emath_artifact::JsonValue::Bool(_))), "rewritten bool"); p.demand("ok-bool", matches!(parsed.field("ok"), Ok(emath_artifact::JsonValue::Bool(_))), "ok bool");
+        p.eq("notes", arr(&parsed, "notes").len(), exp.notes.len()); p.eq("holes", arr(&parsed, "holes").len(), exp.holes.len()); p.eq("menu", arr(&parsed, "solve_candidates").len(), exp.solve.menu().len());
+        p.demand("diag-shape", arr(&parsed, "diagnostics").iter().all(|d| d.string_field("code").is_ok() && matches!(d.string_field("severity").ok().as_deref(), Some("error" | "warning" | "note")) && d.string_field("message").is_ok()), "diagnostics carry code/severity/message");
+        let ledger = exactness_ledger(&src); let ep = emath_artifact::parse_json_document(&exactness_json_document(&ledger, None)).expect("exactness json");
+        p.eq("e-command", ep.string_field("command").expect("c"), "exactness".to_string()); p.eq("entries", arr(&ep, "entries").len(), ledger.entries.len());
+        p.demand("entry-shape", arr(&ep, "entries").iter().zip(&ledger.entries).all(|(r, e)| r.string_field("id").ok().as_deref() == Some(e.inference_id.as_str()) && r.string_field("dimension").ok().as_deref() == Some(e.dimension.as_str()) && r.string_field("status").ok().as_deref() == Some(e.status.as_str()) && r.string_field("name").ok().as_deref() == Some(e.name.as_str())), "ledger rows mirror (id, dimension, status, name)");
+    });
+    p.case("freeze-lock", |p| {
+        let tmp = std::env::temp_dir().join("emath-freeze-check.emath");
+        p.eq("exit", run(&["freeze".into(), scratch.clone(), "--out".into(), tmp.display().to_string(), "--json".into()]), EXIT_OK);
+        let lock = std::fs::read_to_string(tmp.with_extension("freeze.lock.json")).expect("lock");
+        for needle in ["emath.freeze.lock.v1", "emath:meaning:v1:", "\"schema\": \"emath.freeze.lock.v1\"", "\"authority_raised\": false", "\"source_content_id\"", "\"frozen_content_id\"", "strict-f64", "native.rust"] { p.contains(needle, &lock, needle); }
+        p.demand("no-raise", !lock.contains("\"authority_raised\": true"), "never raises authority");
+        let parsed = emath_artifact::parse_json_document(&lock).expect("lock json"); let (orig, frozen) = (std::fs::read_to_string(&scratch).expect("orig"), std::fs::read_to_string(&tmp).expect("frozen"));
+        p.eq("schema", parsed.string_field("schema").expect("s"), "emath.freeze.lock.v1".to_string()); p.demand("no-command", parsed.field("command").is_err(), "lock is not the envelope");
+        p.eq("src-id", parsed.string_field("source_content_id").expect("s"), emath_core::content_id_of_str(&orig).0); p.eq("frozen-id", parsed.string_field("frozen_content_id").expect("f"), emath_core::content_id_of_str(&frozen).0);
+        p.ne("ids-differ", parsed.string_field("source_content_id").expect("s"), parsed.string_field("frozen_content_id").expect("f"));
+        p.demand("meaning", parsed.string_field("meaning_id").expect("m").starts_with("emath:meaning:v1:"), "meaning carried"); p.eq("prelude", parsed.string_field("prelude").expect("p"), "scratch-v1".to_string()); p.eq("numeric", parsed.string_field("numeric_policy").expect("n"), "strict-f64".to_string());
+        p.demand("arrays", ["packages", "methods", "providers", "open", "ledger"].iter().all(|k| matches!(parsed.field(k), Ok(emath_artifact::JsonValue::Arr(_)))), "array sections");
+        p.eq("ledger", arr(&parsed, "ledger").len(), exactness_ledger(&orig).entries.len());
+        p.demand("header", frozen.starts_with("# emath freeze: does not raise evidence authority\n"), "frozen header");
+    });
+    p.case("plan", |p| {
+        let hello = repo("tests/fixtures/language/intro/hello-square.emath"); p.eq("exit", run(&["plan".into(), hello.clone(), "--json".into()]), EXIT_OK);
+        let mut s = emath_sema::CompilerSession::new(emath_core::limits::Limits::default()); let pkg = s.load_package(std::path::Path::new(&hello)).expect("load"); let r = s.plan(pkg.file);
+        p.demand("goals", !r.package.goals.is_empty(), "hello-square has goals");
+        let parsed = emath_artifact::parse_json_document(&plan_json_document(!r.diagnostics.has_errors(), &r.package.goals, r.plans.len() as u64)).expect("plan json");
+        p.eq("command", parsed.string_field("command").expect("c"), "plan".to_string()); p.demand("no-count", parsed.int_field("goals").is_err(), "goals is an object array");
+        p.eq("len", arr(&parsed, "goals").len(), r.package.goals.len());
+        p.demand("kinds", arr(&parsed, "goals").iter().zip(&r.package.goals).all(|(row, g)| row.string_field("kind").ok().as_deref() == Some(g.kind.as_str()) && row.string_field("target").ok().as_deref() == Some(g.target.as_str())), "goal (kind, target) rows");
+    });
+    p.case("agent", |p| {
+        let hello = repo("tests/fixtures/language/intro/hello-square.emath"); p.eq("plan", run(&["agent".into(), "plan".into(), hello.clone()]), EXIT_OK);
+        let mut s = emath_sema::CompilerSession::new(emath_core::limits::Limits::default()); let pkg = s.load_package(std::path::Path::new(&hello)).expect("load"); let r = s.plan(pkg.file);
+        let ap = emath_artifact::parse_json_document(&agent_plan_json_document(!r.diagnostics.has_errors(), &r.package.goals, r.plans.len() as u64)).expect("agent plan");
+        p.eq("schema", ap.string_field("schema").expect("s"), "emath.agent".to_string()); p.demand("no-count", ap.int_field("goals").is_err(), "object array"); p.eq("len", arr(&ap, "goals").len(), r.package.goals.len());
+        let at = emath_artifact::parse_json_document(&agent_triage_json_document(&hello, true, &[], !r.diagnostics.has_errors(), &r.package.content_id().0, &r.diagnostics, true, None, &r.package.goals, r.plans.len() as u64)).expect("triage");
+        p.demand("triage-count", at.int_field("goals").is_err(), "triage goals array"); p.eq("triage-len", arr(&at, "goals").len(), r.package.goals.len());
+        let empty = std::env::temp_dir().join(format!("emath-agent-empty-{}.emath", std::process::id())); std::fs::write(&empty, "").expect("empty");
+        p.eq("refused", run(&["agent".into(), "check".into(), empty.to_string_lossy().into_owned()]), EXIT_REFUSED);
+        let mut s2 = emath_sema::CompilerSession::new(emath_core::limits::Limits::default()); let pkg2 = s2.load_package(&empty).expect("load empty"); let res2 = s2.check(pkg2.file);
+        let ac = emath_artifact::parse_json_document(&agent_check_json_document(false, &res2.package.content_id().0, &res2.diagnostics)).expect("agent check");
+        p.demand("diag-array", ac.int_field("diagnostics").is_err(), "diagnostics array"); p.demand("e-pkg-081", arr(&ac, "diagnostics").iter().any(|d| d.string_field("code").ok().as_deref() == Some("E-PKG-081")), "surfaces E-PKG-081");
+        let _ = std::fs::remove_file(&empty);
+    });
+    p.case("freeze-negatives", |p| { p.eq("hole", run(&["freeze".into(), repo("tests/invalid/exactness_introspection.emath")]), EXIT_REFUSED); let dir = std::env::temp_dir().join("emath-partial-freeze-check"); let _ = std::fs::create_dir_all(&dir); let out = dir.join("frozen.emath"); let lock = out.with_extension("freeze.lock.json"); let _ = std::fs::remove_file(&out); let _ = std::fs::remove_dir_all(&lock); std::fs::create_dir_all(&lock).expect("lock as dir"); p.eq("usage", run(&["freeze".into(), scratch.clone(), "--out".into(), out.display().to_string()]), EXIT_USAGE); p.demand("removed", !out.exists(), "partial source removed"); let _ = std::fs::remove_dir_all(&lock); let _ = std::fs::remove_dir_all(&dir); });
+    p.finish();
 }
