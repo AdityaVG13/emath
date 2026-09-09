@@ -29,11 +29,11 @@ pub(super) fn artifact_json(artifact: &ArtifactRef) -> JsonValue {
 pub(super) fn artifact_from_json(value: &JsonValue, at: &str) -> Result<ArtifactRef, LabError> {
     let object = expect_object(value, at)?;
     Ok(ArtifactRef {
-        package: expect_string(field(object, "package")?, &format!("{at}.package"))?.to_string(),
+        package: string_field(object, "package", &format!("{at}.package"))?.to_string(),
         content_id: ContentId(
-            expect_string(field(object, "content_id")?, &format!("{at}.content_id"))?.to_string(),
+            string_field(object, "content_id", &format!("{at}.content_id"))?.to_string(),
         ),
-        profile: expect_string(field(object, "profile")?, &format!("{at}.profile"))?.to_string(),
+        profile: string_field(object, "profile", &format!("{at}.profile"))?.to_string(),
     })
 }
 
@@ -48,6 +48,60 @@ pub(super) fn field<'a>(object: &'a [(String, JsonValue)], name: &str) -> Result
                 format!("manifest JSON is missing field {name}"),
             )
         })
+}
+
+pub(super) fn string_field<'a>(
+    object: &'a [(String, JsonValue)],
+    name: &str,
+    at: &str,
+) -> Result<&'a str, LabError> {
+    expect_string(field(object, name)?, at)
+}
+
+pub(super) fn owned_string_field(
+    object: &[(String, JsonValue)],
+    name: &str,
+) -> Result<String, LabError> {
+    string_field(object, name, name).map(str::to_string)
+}
+
+pub(super) fn bool_field(object: &[(String, JsonValue)], name: &str) -> Result<bool, LabError> {
+    expect_bool(field(object, name)?, name)
+}
+
+pub(super) fn u64_field(object: &[(String, JsonValue)], name: &str) -> Result<u64, LabError> {
+    expect_u64(field(object, name)?, name)
+}
+
+pub(super) fn number_field(object: &[(String, JsonValue)], name: &str, at: &str) -> Result<f64, LabError> {
+    expect_number(field(object, name)?, at)
+}
+
+pub(super) fn object_field<'a>(
+    object: &'a [(String, JsonValue)],
+    name: &str,
+    at: &str,
+) -> Result<&'a [(String, JsonValue)], LabError> {
+    expect_object(field(object, name)?, at)
+}
+
+pub(super) fn array_field<'a>(
+    object: &'a [(String, JsonValue)],
+    name: &str,
+    at: &str,
+) -> Result<&'a [JsonValue], LabError> {
+    expect_array(field(object, name)?, at)
+}
+
+pub(super) fn optional_number_field(
+    object: &[(String, JsonValue)],
+    name: &str,
+    at: &str,
+) -> Result<Option<f64>, LabError> {
+    match field(object, name)? {
+        JsonValue::Null => Ok(None),
+        other => Ok(Some(expect_number(other, at)?)),
+    }
 }
 
 pub(super) fn expect_object<'a>(
@@ -214,13 +268,13 @@ pub(super) fn kill_condition_json(condition: &KillCondition) -> JsonValue {
 
 pub(super) fn kill_condition_from_json(value: &JsonValue) -> Result<KillCondition, LabError> {
     let object = expect_object(value, "kill_rule.condition")?;
-    let kind = expect_string(field(object, "kind")?, "kill_rule.condition.kind")?;
-    match kind {
+    match string_field(object, "kind", "kill_rule.condition.kind")? {
         "correctness" => Ok(KillCondition::CorrectnessFailure),
         "evidence_missing" => Ok(KillCondition::EvidenceMissing),
         "regression_below" => Ok(KillCondition::RegressionBelow {
-            median_ratio: expect_number(
-                field(object, "median_ratio")?,
+            median_ratio: number_field(
+                object,
+                "median_ratio",
                 "kill_rule.condition.median_ratio",
             )?,
         }),

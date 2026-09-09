@@ -7,23 +7,17 @@ impl LabManifest {
     #[must_use]
     pub fn validate(&self) -> Vec<LabProblem> {
         let mut problems = Vec::new();
+        self.validate_identity(&mut problems);
+        self.validate_partitions(&mut problems);
+        self.validate_metrics(&mut problems);
+        self.validate_thresholds(&mut problems);
+        self.validate_rules(&mut problems);
+        problems
+    }
+
+    fn validate_identity(&self, problems: &mut Vec<LabProblem>) {
         if self.schema != "lab" {
             problems.push(problem("E-HOST-003", "schema must be lab"));
-        }
-        if self.partitions.is_empty() {
-            problems.push(problem(
-                "E-HOST-003",
-                "manifest requires at least one partition",
-            ));
-        }
-        let mut partition_names: Vec<&str> = self
-            .partitions
-            .iter()
-            .map(|part| part.name.as_str())
-            .collect();
-        partition_names.sort_unstable();
-        if partition_names.windows(2).any(|pair| pair[0] == pair[1]) {
-            problems.push(problem("E-HOST-003", "duplicate partition name"));
         }
         if self.generator.is_empty() {
             problems.push(problem(
@@ -31,21 +25,46 @@ impl LabManifest {
                 "manifest requires a generator identity",
             ));
         }
+        if !self.frozen {
+            problems.push(problem(
+                "E-HOST-004",
+                "experiment manifest must be frozen before measurement",
+            ));
+        }
+        if self.baseline.content_id == self.candidate.content_id {
+            problems.push(problem(
+                "E-HOST-004",
+                "baseline and candidate must be distinct artifacts",
+            ));
+        }
+    }
+
+    fn validate_partitions(&self, problems: &mut Vec<LabProblem>) {
+        if self.partitions.is_empty() {
+            problems.push(problem(
+                "E-HOST-003",
+                "manifest requires at least one partition",
+            ));
+        }
+        reject_duplicate_ids(
+            problems,
+            self.partitions.iter().map(|part| part.name.as_str()),
+            "duplicate partition name",
+        );
+    }
+
+    fn validate_metrics(&self, problems: &mut Vec<LabProblem>) {
         if self.metrics.is_empty() {
             problems.push(problem(
                 "E-HOST-003",
                 "manifest requires at least one metric",
             ));
         }
-        let mut metric_ids: Vec<&str> = self
-            .metrics
-            .iter()
-            .map(|metric| metric.id.as_str())
-            .collect();
-        metric_ids.sort_unstable();
-        if metric_ids.windows(2).any(|pair| pair[0] == pair[1]) {
-            problems.push(problem("E-HOST-003", "duplicate metric id"));
-        }
+        reject_duplicate_ids(
+            problems,
+            self.metrics.iter().map(|metric| metric.id.as_str()),
+            "duplicate metric id",
+        );
         if self
             .metrics
             .iter()
@@ -56,24 +75,25 @@ impl LabManifest {
                 "metric weight must be positive and finite",
             ));
         }
+    }
+
+    fn validate_thresholds(&self, problems: &mut Vec<LabProblem>) {
         let thresholds = &self.thresholds;
-        if !thresholds.max_median_regression.is_finite() || thresholds.max_median_regression <= 0.0
-        {
-            problems.push(problem(
-                "E-HOST-003",
-                "max_median_regression must be positive",
-            ));
-        }
-        if !thresholds.max_p99_regression.is_finite() || thresholds.max_p99_regression <= 0.0 {
-            problems.push(problem("E-HOST-003", "max_p99_regression must be positive"));
-        }
-        if !thresholds.max_memory_regression.is_finite() || thresholds.max_memory_regression <= 0.0
-        {
-            problems.push(problem(
-                "E-HOST-003",
-                "max_memory_regression must be positive",
-            ));
-        }
+        require_positive(
+            problems,
+            thresholds.max_median_regression,
+            "max_median_regression must be positive",
+        );
+        require_positive(
+            problems,
+            thresholds.max_p99_regression,
+            "max_p99_regression must be positive",
+        );
+        require_positive(
+            problems,
+            thresholds.max_memory_regression,
+            "max_memory_regression must be positive",
+        );
         if !thresholds.min_correctness_rate.is_finite()
             || thresholds.min_correctness_rate <= 0.0
             || thresholds.min_correctness_rate > 1.0
@@ -92,28 +112,14 @@ impl LabManifest {
                 "energy budget must be positive when present",
             ));
         }
-        let mut rule_ids: Vec<&str> = self
-            .kill_rules
-            .iter()
-            .map(|rule| rule.id.as_str())
-            .collect();
-        rule_ids.sort_unstable();
-        if rule_ids.windows(2).any(|pair| pair[0] == pair[1]) {
-            problems.push(problem("E-HOST-003", "duplicate kill rule id"));
-        }
-        if !self.frozen {
-            problems.push(problem(
-                "E-HOST-004",
-                "experiment manifest must be frozen before measurement",
-            ));
-        }
-        if self.baseline.content_id == self.candidate.content_id {
-            problems.push(problem(
-                "E-HOST-004",
-                "baseline and candidate must be distinct artifacts",
-            ));
-        }
-        problems
+    }
+
+    fn validate_rules(&self, problems: &mut Vec<LabProblem>) {
+        reject_duplicate_ids(
+            problems,
+            self.kill_rules.iter().map(|rule| rule.id.as_str()),
+            "duplicate kill rule id",
+        );
     }
 
     /// Versioned canonical encoding (`lab:...`); identity input.
@@ -351,139 +357,141 @@ impl LabManifest {
             LabError::new("E-HOST-003", format!("manifest JSON is invalid: {error}"))
         })?;
         let object = expect_object(&value, "manifest")?;
-        let schema = expect_string(field(object, "schema")?, "schema")?.to_string();
-        let experiment_id =
-            ContentId(expect_string(field(object, "experiment_id")?, "experiment_id")?.to_string());
-        let frozen = expect_bool(field(object, "frozen")?, "frozen")?;
-        let baseline = artifact_from_json(field(object, "baseline")?, "baseline")?;
-        let candidate = artifact_from_json(field(object, "candidate")?, "candidate")?;
-        let generator = expect_string(field(object, "generator")?, "generator")?.to_string();
-        let seed = expect_u64(field(object, "seed")?, "seed")?;
-        let partitions = expect_array(field(object, "partitions")?, "partitions")?
-            .iter()
-            .map(|entry| {
-                let object = expect_object(entry, "partition")?;
-                Ok(CorpusPartition {
-                    name: expect_string(field(object, "name")?, "partition.name")?.to_string(),
-                    kind: parse_partition_kind(expect_string(
-                        field(object, "kind")?,
-                        "partition.kind",
-                    )?)?,
-                    operations: expect_u64(field(object, "operations")?, "partition.operations")?,
-                    fingerprint: ContentId(
-                        expect_string(field(object, "fingerprint")?, "partition.fingerprint")?
-                            .to_string(),
-                    ),
-                })
-            })
-            .collect::<Result<Vec<CorpusPartition>, LabError>>()?;
-        let metrics = expect_array(field(object, "metrics")?, "metrics")?
-            .iter()
-            .map(|entry| {
-                let object = expect_object(entry, "metric")?;
-                Ok(MetricSpec {
-                    id: expect_string(field(object, "id")?, "metric.id")?.to_string(),
-                    kind: expect_string(field(object, "kind")?, "metric.kind")?.to_string(),
-                    unit: expect_string(field(object, "unit")?, "metric.unit")?.to_string(),
-                    direction: parse_direction(expect_string(
-                        field(object, "direction")?,
-                        "metric.direction",
-                    )?)?,
-                    weight: expect_number(field(object, "weight")?, "metric.weight")?,
-                })
-            })
-            .collect::<Result<Vec<MetricSpec>, LabError>>()?;
-        let thresholds_value = expect_object(field(object, "thresholds")?, "thresholds")?;
-        let thresholds = Thresholds {
-            max_median_regression: expect_number(
-                field(thresholds_value, "max_median_regression")?,
-                "thresholds.max_median_regression",
-            )?,
-            max_p99_regression: expect_number(
-                field(thresholds_value, "max_p99_regression")?,
-                "thresholds.max_p99_regression",
-            )?,
-            max_memory_regression: expect_number(
-                field(thresholds_value, "max_memory_regression")?,
-                "thresholds.max_memory_regression",
-            )?,
-            min_correctness_rate: expect_number(
-                field(thresholds_value, "min_correctness_rate")?,
-                "thresholds.min_correctness_rate",
-            )?,
-            energy_budget_joules: match field(thresholds_value, "energy_budget_joules")? {
-                JsonValue::Null => None,
-                other => Some(expect_number(other, "thresholds.energy_budget_joules")?),
-            },
-        };
-        let kill_rules = expect_array(field(object, "kill_rules")?, "kill_rules")?
-            .iter()
-            .map(|entry| {
-                let object = expect_object(entry, "kill_rule")?;
-                Ok(KillRule {
-                    id: expect_string(field(object, "id")?, "kill_rule.id")?.to_string(),
-                    condition: kill_condition_from_json(field(object, "condition")?)?,
-                    action: parse_kill_action(expect_string(
-                        field(object, "action")?,
-                        "kill_rule.action",
-                    )?)?,
-                })
-            })
-            .collect::<Result<Vec<KillRule>, LabError>>()?;
-        let fallback_value = expect_object(field(object, "fallback")?, "fallback")?;
-        let fallback = FallbackPlan {
-            on_gate_failure: parse_fallback_action(expect_string(
-                field(fallback_value, "on_gate_failure")?,
-                "fallback.on_gate_failure",
-            )?)?,
-            on_regression: parse_fallback_action(expect_string(
-                field(fallback_value, "on_regression")?,
-                "fallback.on_regression",
-            )?)?,
-            on_measurement_failure: parse_fallback_action(expect_string(
-                field(fallback_value, "on_measurement_failure")?,
-                "fallback.on_measurement_failure",
-            )?)?,
-        };
-        let environment_value = expect_object(field(object, "environment")?, "environment")?;
-        let environment = EnvironmentPin {
-            toolchain: expect_string(
-                field(environment_value, "toolchain")?,
-                "environment.toolchain",
-            )?
-            .to_string(),
-            target_triple: expect_string(
-                field(environment_value, "target_triple")?,
-                "environment.target_triple",
-            )?
-            .to_string(),
-            features: expect_array(
-                field(environment_value, "features")?,
-                "environment.features",
-            )?
-            .iter()
-            .map(|entry| expect_string(entry, "environment.features[]").map(str::to_string))
-            .collect::<Result<Vec<String>, LabError>>()?,
-            host: expect_string(field(environment_value, "host")?, "environment.host")?.to_string(),
-        };
         let manifest = LabManifest {
-            schema,
-            experiment_id,
-            baseline,
-            candidate,
-            partitions,
-            metrics,
-            thresholds,
-            kill_rules,
-            fallback,
-            environment,
-            generator,
-            seed,
-            frozen,
+            schema: owned_string_field(object, "schema")?,
+            experiment_id: ContentId(owned_string_field(object, "experiment_id")?),
+            frozen: bool_field(object, "frozen")?,
+            baseline: artifact_from_json(field(object, "baseline")?, "baseline")?,
+            candidate: artifact_from_json(field(object, "candidate")?, "candidate")?,
+            generator: owned_string_field(object, "generator")?,
+            seed: u64_field(object, "seed")?,
+            partitions: array_field(object, "partitions", "partitions")?
+                .iter()
+                .map(partition_from_json)
+                .collect::<Result<Vec<CorpusPartition>, LabError>>()?,
+            metrics: array_field(object, "metrics", "metrics")?
+                .iter()
+                .map(metric_from_json)
+                .collect::<Result<Vec<MetricSpec>, LabError>>()?,
+            thresholds: thresholds_from_json(object_field(object, "thresholds", "thresholds")?)?,
+            kill_rules: array_field(object, "kill_rules", "kill_rules")?
+                .iter()
+                .map(kill_rule_from_json)
+                .collect::<Result<Vec<KillRule>, LabError>>()?,
+            fallback: fallback_from_json(object_field(object, "fallback", "fallback")?)?,
+            environment: environment_from_json(object_field(
+                object,
+                "environment",
+                "environment",
+            )?)?,
         };
         if let Some(problem) = manifest.validate().into_iter().next() {
             return Err(LabError::new(problem.code, problem.message));
         }
         Ok(manifest)
+    }
+}
+
+fn partition_from_json(entry: &JsonValue) -> Result<CorpusPartition, LabError> {
+    let object = expect_object(entry, "partition")?;
+    Ok(CorpusPartition {
+        name: string_field(object, "name", "partition.name")?.to_string(),
+        kind: parse_partition_kind(string_field(object, "kind", "partition.kind")?)?,
+        operations: expect_u64(field(object, "operations")?, "partition.operations")?,
+        fingerprint: ContentId(
+            string_field(object, "fingerprint", "partition.fingerprint")?.to_string(),
+        ),
+    })
+}
+
+fn metric_from_json(entry: &JsonValue) -> Result<MetricSpec, LabError> {
+    let object = expect_object(entry, "metric")?;
+    Ok(MetricSpec {
+        id: string_field(object, "id", "metric.id")?.to_string(),
+        kind: string_field(object, "kind", "metric.kind")?.to_string(),
+        unit: string_field(object, "unit", "metric.unit")?.to_string(),
+        direction: parse_direction(string_field(object, "direction", "metric.direction")?)?,
+        weight: number_field(object, "weight", "metric.weight")?,
+    })
+}
+
+fn thresholds_from_json(object: &[(String, JsonValue)]) -> Result<Thresholds, LabError> {
+    const FIELDS: [(&str, &str); 4] = [
+        ("max_median_regression", "thresholds.max_median_regression"),
+        ("max_p99_regression", "thresholds.max_p99_regression"),
+        ("max_memory_regression", "thresholds.max_memory_regression"),
+        ("min_correctness_rate", "thresholds.min_correctness_rate"),
+    ];
+    let mut nums = [0.0; 4];
+    for (slot, &(key, path)) in FIELDS.iter().enumerate() {
+        nums[slot] = number_field(object, key, path)?;
+    }
+    Ok(Thresholds {
+        max_median_regression: nums[0],
+        max_p99_regression: nums[1],
+        max_memory_regression: nums[2],
+        min_correctness_rate: nums[3],
+        energy_budget_joules: optional_number_field(
+            object,
+            "energy_budget_joules",
+            "thresholds.energy_budget_joules",
+        )?,
+    })
+}
+
+fn kill_rule_from_json(entry: &JsonValue) -> Result<KillRule, LabError> {
+    let object = expect_object(entry, "kill_rule")?;
+    Ok(KillRule {
+        id: string_field(object, "id", "kill_rule.id")?.to_string(),
+        condition: kill_condition_from_json(field(object, "condition")?)?,
+        action: parse_kill_action(string_field(object, "action", "kill_rule.action")?)?,
+    })
+}
+
+fn fallback_from_json(object: &[(String, JsonValue)]) -> Result<FallbackPlan, LabError> {
+    const FIELDS: [(&str, &str); 3] = [
+        ("on_gate_failure", "fallback.on_gate_failure"),
+        ("on_regression", "fallback.on_regression"),
+        ("on_measurement_failure", "fallback.on_measurement_failure"),
+    ];
+    let mut actions = [FallbackAction::RetainBaseline; 3];
+    for (slot, &(key, path)) in FIELDS.iter().enumerate() {
+        actions[slot] = parse_fallback_action(string_field(object, key, path)?)?;
+    }
+    Ok(FallbackPlan {
+        on_gate_failure: actions[0],
+        on_regression: actions[1],
+        on_measurement_failure: actions[2],
+    })
+}
+
+fn environment_from_json(object: &[(String, JsonValue)]) -> Result<EnvironmentPin, LabError> {
+    Ok(EnvironmentPin {
+        toolchain: string_field(object, "toolchain", "environment.toolchain")?.to_string(),
+        target_triple: string_field(object, "target_triple", "environment.target_triple")?
+            .to_string(),
+        features: array_field(object, "features", "environment.features")?
+            .iter()
+            .map(|entry| expect_string(entry, "environment.features[]").map(str::to_string))
+            .collect::<Result<Vec<String>, LabError>>()?,
+        host: string_field(object, "host", "environment.host")?.to_string(),
+    })
+}
+
+fn reject_duplicate_ids<'a>(
+    problems: &mut Vec<LabProblem>,
+    ids: impl Iterator<Item = &'a str>,
+    message: &str,
+) {
+    let mut names: Vec<&str> = ids.collect();
+    names.sort_unstable();
+    if names.windows(2).any(|pair| pair[0] == pair[1]) {
+        problems.push(problem("E-HOST-003", message));
+    }
+}
+
+fn require_positive(problems: &mut Vec<LabProblem>, value: f64, message: &str) {
+    if !value.is_finite() || value <= 0.0 {
+        problems.push(problem("E-HOST-003", message));
     }
 }

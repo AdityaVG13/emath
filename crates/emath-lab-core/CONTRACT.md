@@ -5,6 +5,21 @@
 - Experiment manifests, quality gates, measurement, statistical protocol, and promotion policy engine. Everything is std-only and deterministic; wall-clock timing enters only as injected raw samples.
 - Brings the std-only SHA-256 primitive used as the keep-gate identity.
 
+## Nucleus disposition (emath-3so27)
+
+Recorded 2026-09-04. This crate is not compiler machinery (parse / admit /
+universal IR / VM / kernel ABI / artifacts). It is still-load-bearing for
+the production CLI (`fit`, `portfolio` `Authority`, `diagnostics` law
+check) and for `tests/emath-lab-core`, `tests/emath-cli` keep-gate,
+`tests/emath-sema` pedagogic diagnostics, and `tests/emath-adapter-dew`.
+The parse/admit/IR/VM path does not depend on it.
+
+Decision: **peripheral to the compiler nucleus**. `emath-qbk53` extracted
+`fit` into `emath-cli-lab`, but this crate remains load-bearing for
+production `emath` (`diagnostics` law check, portfolio `Authority`) and
+for `emath-cli-lab` (`fit`), plus tests and wasm/sema consumers. Keep it
+in `crates/`. Do not park under `tests/` without written authorization.
+
 ## Public types and semantics
 - `ExperimentManifest` (schema, experiment_id, baseline, candidate, admission_policy, promotion, created_by) plus `AdmissionPolicy` and `PromotionPolicy`.
 - `Observation`, `MetricDefinition`, `MetricKind`, `CandidateAdmission`, `AdmissionStatus` (observed experiment records).

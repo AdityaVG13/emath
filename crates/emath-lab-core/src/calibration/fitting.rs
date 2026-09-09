@@ -7,7 +7,7 @@ use emath_term::SymbolId;
 // The shared leaf type lives in world-ir (magnet relocation);
 // this crate owns the FITTING procedures and re-exports the type for
 // stable paths.
-pub use emath_world_ir::FittedTable;
+pub use emath_ir::FittedTable;
 
 use crate::calibration::partition::{CalibrationExample, ExampleKind};
 

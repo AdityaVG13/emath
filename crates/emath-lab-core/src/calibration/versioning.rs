@@ -2,7 +2,7 @@
 //! future examples becomes a new version or a semantic delta, never a
 //! silent redefinition.
 
-use emath_world_ir::fnv1a64;
+use emath_core::fnv1a64_bytes as fnv1a64;
 
 /// Seed mixed into every deterministic version stamp.
 pub const VERSION_SEED: u64 = 0x5eed_0007;

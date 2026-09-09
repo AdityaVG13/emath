@@ -27,7 +27,7 @@ pub use partition::{CalibrationExample, ExampleKind, PartitionedExamples};
 pub use versioning::{VERSION_SEED, WorldVersion};
 
 use emath_term::SymbolId;
-use emath_world_ir::fnv1a64 as world_fnv1a64;
+use emath_core::fnv1a64_bytes as world_fnv1a64;
 
 /// Deterministic content identity of an example.
 #[must_use]

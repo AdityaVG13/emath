@@ -1,6 +1,6 @@
 //! Deterministic meaning-hole graph (spec 8).
 
-use emath_world_ir::fnv1a64;
+use emath_core::fnv1a64_bytes as fnv1a64;
 
 /// Hole kinds (spec 8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
