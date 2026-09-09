@@ -19,7 +19,7 @@ pub(super) fn codegen_specs(
                         .operators
                         .iter()
                         .filter_map(|operator| match &operator.semantics {
-                            emath_world_ir::OperatorSemantics::DeclaredExpression(meaning) => {
+                            emath_ir::OperatorSemantics::DeclaredExpression(meaning) => {
                                 Some((operator.symbol.0.clone(), meaning.clone()))
                             }
                             _ => None,

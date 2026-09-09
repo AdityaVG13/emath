@@ -24,7 +24,7 @@
 
 #![forbid(unsafe_code)]
 
-use crate::CliExit;
+use emath_cli::CliExit;
 use crate::coverage_seed::{self, DomainSeed};
 use std::path::Path;
 
@@ -336,7 +336,7 @@ pub fn coverage_cmd(rest: &[String]) -> CliExit {
 
 fn usage_coverage(message: &str) -> CliExit {
     eprintln!("error: {message}");
-    crate::usage("coverage [--emit json] [--check <ledger-file>]")
+    emath_cli::usage("coverage [--emit json] [--check <ledger-file>]")
 }
 
 /// Rendered public dashboard: one row per super-domain.

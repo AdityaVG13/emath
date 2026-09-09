@@ -1,0 +1,31 @@
+[package]
+name = "emath-cli-lab"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "emath-lab"
+path = "src/main.rs"
+
+[dependencies]
+emath-cli = { workspace = true }
+emath-adapter-rumoca = { workspace = true }
+emath-artifact = { workspace = true }
+emath-build = { workspace = true }
+emath-core.workspace = true
+emath-evidence = { workspace = true }
+emath-exec-ir = { workspace = true }
+emath-genesis.workspace = true
+emath-ir = { workspace = true }
+emath-lab-core = { workspace = true }
+emath-sema = { workspace = true }
+emath-store = { path = "../emath-store" }
+emath-syntax = { workspace = true }
+emath-term.workspace = true
+emath-world-ir = { workspace = true }
+
+[lints]
+workspace = true

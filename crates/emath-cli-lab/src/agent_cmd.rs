@@ -1,23 +1,30 @@
 //! Structured `emath agent` envelope over the real check/plan/build paths.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::agent_protocol::{
     AgentProposal, ChallengeLoop, ChallengeOutcome, CheckerSuite, ProposalKind,
 };
-use crate::portfolio::InterpretationPortfolio;
 use emath_artifact::JsonWriter;
 use emath_build::{BuildOptions, build_file};
+use emath_cli::portfolio::InterpretationPortfolio;
+use emath_cli::tooling_cmd::{classify_build_error, doctor_probes};
+use emath_cli::{
+    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
+    run_check, split_error_code,
+};
 use emath_genesis::tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
 use emath_sema::CompilerSession;
 use emath_world_ir::WorldId;
 use emath_world_ir::{EvidenceHandle, WorldMorphism};
 
-use crate::tooling_cmd::{classify_build_error, doctor_probes};
-use crate::{
-    AgentRequest, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry,
-    json_diagnostics_entries, run_check, split_error_code,
-};
+pub(crate) enum AgentRequest {
+    Check { path: PathBuf },
+    Plan { path: PathBuf },
+    Build { path: PathBuf, out: PathBuf },
+    Triage { path: PathBuf },
+    Propose { path: PathBuf },
+}
 
 fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
     goals

@@ -241,7 +241,7 @@ pub fn expand_cmd(path: &Path, json: bool) -> CliExit {
     exit_from_diagnostics(expansion.diagnostics.has_errors())
 }
 
-pub(super) enum ExactnessRequest {
+pub(crate) enum ExactnessRequest {
     Ready {
         path: PathBuf,
         json: bool,
@@ -249,7 +249,7 @@ pub(super) enum ExactnessRequest {
     },
 }
 
-pub(super) fn parse_exactness_request(args: &[String]) -> Option<ExactnessRequest> {
+pub(crate) fn parse_exactness_request(args: &[String]) -> Option<ExactnessRequest> {
     let mut path = None;
     let mut json = false;
     let mut raise = None;
@@ -273,7 +273,7 @@ pub(super) fn parse_exactness_request(args: &[String]) -> Option<ExactnessReques
     Some(ExactnessRequest::Ready { path, json, raise })
 }
 
-pub(super) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
+pub(crate) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
     let ExactnessRequest::Ready { path, json, raise } = request;
     let source = match read_emath_source("exactness", &path, json) {
         Ok(source) => source,
@@ -333,7 +333,7 @@ pub(super) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
     EXIT_OK
 }
 
-pub(super) fn hole_json(hole: &emath_syntax::HoleRecord) -> String {
+pub(crate) fn hole_json(hole: &emath_syntax::HoleRecord) -> String {
     let mut object = emath_artifact::JsonWriter::object();
     object.string("name", &hole.name);
     object.strings("constraints", &hole.constraints);
@@ -367,7 +367,7 @@ pub(super) fn hole_json(hole: &emath_syntax::HoleRecord) -> String {
     object.finish().trim_end().to_string()
 }
 
-pub(super) fn solve_candidate_json(world: emath_syntax::SolveWorld, selected: bool) -> String {
+pub(crate) fn solve_candidate_json(world: emath_syntax::SolveWorld, selected: bool) -> String {
     let mut object = emath_artifact::JsonWriter::object();
     object.string("label", world.as_str());
     object.string("result_type", world.result_type());
@@ -386,7 +386,7 @@ pub(super) fn solve_candidate_json(world: emath_syntax::SolveWorld, selected: bo
     object.finish().trim_end().to_string()
 }
 
-pub(super) enum SolveRequest {
+pub(crate) enum SolveRequest {
     Apply {
         path: PathBuf,
         world: emath_syntax::SolveWorld,
@@ -398,13 +398,13 @@ pub(super) enum SolveRequest {
     },
 }
 
-pub(super) enum ParsedSolve {
+pub(crate) enum ParsedSolve {
     Request(SolveRequest),
     Usage,
     UnknownLabel(String),
 }
 
-pub(super) fn parse_solve_request(args: &[String]) -> ParsedSolve {
+pub(crate) fn parse_solve_request(args: &[String]) -> ParsedSolve {
     let json = catalog::wants_json(args);
     let check = args.iter().any(|arg| arg == "--check");
     let mut apply = None;
@@ -447,7 +447,7 @@ pub(super) fn parse_solve_request(args: &[String]) -> ParsedSolve {
 }
 
 /// `solve --check <file>`: print labeled completions; never a naked float.
-pub(super) fn solve_check_cmd(request: SolveRequest) -> CliExit {
+pub(crate) fn solve_check_cmd(request: SolveRequest) -> CliExit {
     match request {
         SolveRequest::Apply { path, world, json } => {
             let source = match read_emath_source("solve", &path, json) {

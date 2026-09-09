@@ -34,7 +34,7 @@ pub(super) fn declared_world(
         version: 1,
         name: label.into(),
         signature: signature.clone(),
-        carriers: vec![emath_world_ir::CarrierDef {
+        carriers: vec![emath_ir::CarrierDef {
             name: "Element".into(),
             type_expression: match label {
                 "Boolean_algebra" => "Bool".into(),

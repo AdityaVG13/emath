@@ -8,7 +8,7 @@
 //! loop itself (those require external compiler, capability, evidence,
 //! and benchmark gates).
 
-use crate::portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
+use emath_cli::portfolio::{Authority, InterpretationCandidate, InterpretationPortfolio, ScoreVector};
 use emath_world_ir::{WorldId, fnv1a64};
 
 use crate::agent_protocol::proposal::AgentProposal;

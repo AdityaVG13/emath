@@ -343,58 +343,6 @@ pub(super) fn select_entrypoint<'p>(
     }
 }
 
-/// Parse one `--set name=value` payload against the DECLARED input type:
-/// a finite decimal scalar, an integer scalar for `Int`/`Nat` inputs, or
-/// a `[a, b, c]` vector of finite decimals. Integer literals keep parsing
-/// as Float64 for Float64 inputs (prior behavior), so `--set x=7` works
-/// for both float and integer parameters.
-pub(super) fn parse_set_value_for(declared: Option<&TypeNode>, raw: &str) -> Option<Value> {
-    // Stage-2 (emath-t63iz): `BigInt` inputs bind the exact decimal —
-    // never an f64 round trip, which would lose digits above 2^53.
-    if matches!(declared, Some(TypeNode::BigInt)) {
-        return Value::parse_bigint(raw);
-    }
-    let integer_scalar = matches!(declared, Some(TypeNode::Int) | Some(TypeNode::Nat));
-    let parsed = parse_set_value(raw)?;
-    match (integer_scalar, &parsed) {
-        // Integer literal for an integer input: re-derive the exact i64.
-        (true, Value::F64(value)) if value.fract() == 0.0 && value.abs() <= 9.3e18 => {
-            Some(Value::I64(*value as i64))
-        }
-        // Non-integer (or out-of-range) literal for an integer input.
-        (true, _) => None,
-        (_, other) => Some(other.clone()),
-    }
-}
-
-/// Untyped parse: a finite decimal scalar or a `[a, b, c]` vector of
-/// finite decimals. Nothing else binds.
-pub(super) fn parse_set_value(raw: &str) -> Option<Value> {
-    let trimmed = raw.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        let inner = trimmed[1..trimmed.len() - 1].trim();
-        if inner.is_empty() {
-            return None;
-        }
-        let mut elements = Vec::new();
-        for part in inner.split(',') {
-            let value: f64 = part.trim().parse().ok()?;
-            if !value.is_finite() {
-                return None;
-            }
-            elements.push(value);
-        }
-        Some(Value::Vector(elements))
-    } else {
-        let value: f64 = trimmed.parse().ok()?;
-        if value.is_finite() {
-            Some(Value::F64(value))
-        } else {
-            None
-        }
-    }
-}
-
 /// Deterministic `emath.eval-function` receipt. Inputs are rendered in
 /// sorted name order (`BTreeMap`), outputs in declared order, so the
 /// byte stream is stable across runs and `--set` arrangement.

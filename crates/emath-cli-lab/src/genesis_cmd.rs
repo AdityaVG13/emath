@@ -6,8 +6,8 @@
 //! answer receipt → parametric Rust artifact. Emitted JSON is deterministic
 //! and std-only.
 
-use super::{CliExit, CompileRequest, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
-use crate::portfolio::{
+use crate::{CliExit, CompileRequest, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use emath_cli::portfolio::{
     Authority, CollapsePolicy, InterpretationCandidate, InterpretationPolicy,
     InterpretationPortfolio, MetricAxis, MetricPolarity, PROVENANCE_USER_LOCKED, PortfolioError,
     ScoreVector, apply_portfolio_cap, evaluate,
@@ -20,9 +20,9 @@ use emath_genesis::{
 };
 use emath_syntax::genesis as genesis_syntax;
 use emath_term::{Signature, TERM_IR_VERSION, Term, VariableId};
-use emath_world_ir::{
-    Fixity, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr, fnv1a64,
-};
+use emath_core::fnv1a64_bytes as fnv1a64;
+use emath_ir::world::Fixity;
+use emath_ir::{MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WorldIr};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;

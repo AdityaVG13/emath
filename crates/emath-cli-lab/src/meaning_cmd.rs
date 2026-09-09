@@ -1,18 +1,18 @@
 //! `emath meaning list|set|unset|explain`: project-local interpretation locks.
 
-use super::genesis_cmd::{self, Analysis};
-use super::{CliExit, EXIT_OK, EXIT_REFUSED};
-use crate::portfolio::{
+use crate::genesis_cmd::{self, Analysis};
+use crate::{CliExit, EXIT_OK, EXIT_REFUSED};
+use emath_cli::portfolio::{
     Authority, DEFAULT_PORTFOLIO_CAP, InterpretationPolicy, LockEntry, LockError, LockKey,
     MeaningLock, MetricAxis, MetricPolarity, PROVENANCE_USER_LOCKED, SelectionMethod,
     WHOLE_TERM_HOLE, WorldCandidate, evaluate, refuse_disqualified,
 };
 use emath_artifact::JsonWriter;
-use emath_world_ir::WorldIr;
+use emath_ir::WorldIr;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) enum MeaningRequest {
+pub enum MeaningRequest {
     List {
         dir: Option<PathBuf>,
         json: bool,
@@ -58,125 +58,133 @@ fn next_value<'a>(
     args.get(*index).map(String::as_str).ok_or(missing)
 }
 
-pub(crate) fn parse_meaning_request(args: &[String]) -> Result<MeaningRequest, &'static str> {
+pub fn parse_meaning_request(args: &[String]) -> Result<MeaningRequest, &'static str> {
     let rest = args.get(1..).unwrap_or(&[]);
     match args.first().map(String::as_str) {
-        Some("list") => {
-            let mut dir = None;
-            let mut json = false;
-            let mut index = 0;
-            while index < rest.len() {
-                match rest[index].as_str() {
-                    "--dir" => assign_once(
-                        &mut dir,
-                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
-                    )?,
-                    "--json" => json = true,
-                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
-                    _ => return Err(USAGE_MEANING),
-                }
-                index += 1;
-            }
-            Ok(MeaningRequest::List { dir, json })
-        }
-        Some("set") => {
-            let mut path = None;
-            let mut world = None;
-            let mut dir = None;
-            let mut hole = None;
-            let mut cap = None;
-            let mut index = 0;
-            while index < rest.len() {
-                match rest[index].as_str() {
-                    "--world" => assign_once(
-                        &mut world,
-                        next_value(rest, &mut index, USAGE_SET)?.to_string(),
-                    )?,
-                    "--dir" => assign_once(
-                        &mut dir,
-                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
-                    )?,
-                    "--hole" => assign_once(
-                        &mut hole,
-                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
-                    )?,
-                    "--cap" => assign_once(
-                        &mut cap,
-                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
-                    )?,
-                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
-                    other => assign_once(&mut path, PathBuf::from(other))?,
-                }
-                index += 1;
-            }
-            match (path, world) {
-                (Some(path), Some(world)) => Ok(MeaningRequest::Set {
-                    path,
-                    world,
-                    dir,
-                    hole,
-                    cap,
-                }),
-                _ => Err(USAGE_SET),
-            }
-        }
-        Some("unset") => {
-            let mut path = None;
-            let mut dir = None;
-            let mut declaration = None;
-            let mut hole = None;
-            let mut index = 0;
-            while index < rest.len() {
-                match rest[index].as_str() {
-                    "--dir" => assign_once(
-                        &mut dir,
-                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
-                    )?,
-                    "--declaration" => assign_once(
-                        &mut declaration,
-                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
-                    )?,
-                    "--hole" => assign_once(
-                        &mut hole,
-                        next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
-                    )?,
-                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
-                    other => assign_once(&mut path, PathBuf::from(other))?,
-                }
-                index += 1;
-            }
-            Ok(MeaningRequest::Unset {
-                path,
-                dir,
-                declaration,
-                hole,
-            })
-        }
-        Some("explain") => {
-            let mut path = None;
-            let mut dir = None;
-            let mut json = false;
-            let mut index = 0;
-            while index < rest.len() {
-                match rest[index].as_str() {
-                    "--dir" => assign_once(
-                        &mut dir,
-                        PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
-                    )?,
-                    "--json" => json = true,
-                    other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
-                    other => assign_once(&mut path, PathBuf::from(other))?,
-                }
-                index += 1;
-            }
-            Ok(MeaningRequest::Explain { path, dir, json })
-        }
+        Some("list") => parse_meaning_list(rest),
+        Some("set") => parse_meaning_set(rest),
+        Some("unset") => parse_meaning_unset(rest),
+        Some("explain") => parse_meaning_explain(rest),
         _ => Err(USAGE_MEANING),
     }
 }
 
+fn parse_meaning_list(rest: &[String]) -> Result<MeaningRequest, &'static str> {
+    let mut dir = None;
+    let mut json = false;
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--dir" => assign_once(
+                &mut dir,
+                PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+            )?,
+            "--json" => json = true,
+            other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+            _ => return Err(USAGE_MEANING),
+        }
+        index += 1;
+    }
+    Ok(MeaningRequest::List { dir, json })
+}
+
+fn parse_meaning_set(rest: &[String]) -> Result<MeaningRequest, &'static str> {
+    let mut path = None;
+    let mut world = None;
+    let mut dir = None;
+    let mut hole = None;
+    let mut cap = None;
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--world" => assign_once(
+                &mut world,
+                next_value(rest, &mut index, USAGE_SET)?.to_string(),
+            )?,
+            "--dir" => assign_once(
+                &mut dir,
+                PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+            )?,
+            "--hole" => assign_once(
+                &mut hole,
+                next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+            )?,
+            "--cap" => assign_once(
+                &mut cap,
+                next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+            )?,
+            other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+        index += 1;
+    }
+    match (path, world) {
+        (Some(path), Some(world)) => Ok(MeaningRequest::Set {
+            path,
+            world,
+            dir,
+            hole,
+            cap,
+        }),
+        _ => Err(USAGE_SET),
+    }
+}
+
+fn parse_meaning_unset(rest: &[String]) -> Result<MeaningRequest, &'static str> {
+    let mut path = None;
+    let mut dir = None;
+    let mut declaration = None;
+    let mut hole = None;
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--dir" => assign_once(
+                &mut dir,
+                PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+            )?,
+            "--declaration" => assign_once(
+                &mut declaration,
+                next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+            )?,
+            "--hole" => assign_once(
+                &mut hole,
+                next_value(rest, &mut index, USAGE_MEANING)?.to_string(),
+            )?,
+            other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+        index += 1;
+    }
+    Ok(MeaningRequest::Unset {
+        path,
+        dir,
+        declaration,
+        hole,
+    })
+}
+
+fn parse_meaning_explain(rest: &[String]) -> Result<MeaningRequest, &'static str> {
+    let mut path = None;
+    let mut dir = None;
+    let mut json = false;
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--dir" => assign_once(
+                &mut dir,
+                PathBuf::from(next_value(rest, &mut index, USAGE_MEANING)?),
+            )?,
+            "--json" => json = true,
+            other if other.starts_with('-') && other != "-" => return Err(USAGE_MEANING),
+            other => assign_once(&mut path, PathBuf::from(other))?,
+        }
+        index += 1;
+    }
+    Ok(MeaningRequest::Explain { path, dir, json })
+}
+
 /// Dispatch `emath meaning …`.
-pub(crate) fn dispatch(request: MeaningRequest) -> CliExit {
+pub fn dispatch(request: MeaningRequest) -> CliExit {
     match request {
         MeaningRequest::List { dir, json } => list_cmd(dir, json),
         MeaningRequest::Set {
@@ -539,7 +547,7 @@ fn now_secs() -> u64 {
 }
 
 /// Shared lock resolution for genesis/eval/compile.
-pub(crate) fn resolve_locked_worlds(
+pub fn resolve_locked_worlds(
     path: &Path,
     analysis: &Analysis,
     all_worlds: Vec<WorldIr>,
@@ -593,7 +601,7 @@ pub(crate) fn resolve_locked_worlds(
 }
 
 #[derive(Clone)]
-pub(crate) struct LockedWorlds {
+pub struct LockedWorlds {
     pub worlds: Vec<WorldIr>,
     pub cap: u32,
     pub lock: Option<ResolvedLock>,

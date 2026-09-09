@@ -1,6 +1,21 @@
 //! Provider and fork management commands.
 
-use super::*;
+use emath_artifact::JsonWriter;
+use emath_cli::tooling_cmd::{PROVIDERS, upstream_lock_path};
+use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use emath_core::content_id_of_str;
+use std::path::Path;
+
+pub(crate) enum ProviderRequest {
+    List { json: bool },
+    Inspect { id: String },
+    Test { id: String, json: bool },
+}
+
+pub(crate) enum ForkRequest {
+    Status { json: bool },
+    Sync { dry_run: bool, json: bool },
+}
 
 /// `provider list|inspect <id>|test <id>`.
 pub(crate) fn provider_cmd(request: ProviderRequest) -> CliExit {
@@ -174,14 +189,4 @@ pub(super) fn suggest_provider(unknown: &str) -> Option<&'static str> {
         }
     }
     best.map(|(id, _)| id)
-}
-
-/// Maps a build error to the conventional exit class.
-pub(crate) fn classify_build_error(error: &dyn std::fmt::Display) -> CliExit {
-    let text = error.to_string();
-    if text.contains("admission refused") {
-        EXIT_REFUSED
-    } else {
-        EXIT_USAGE
-    }
 }

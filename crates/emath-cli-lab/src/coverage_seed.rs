@@ -51,7 +51,7 @@ pub const SEED: [DomainSeed; 12] = [
             Some("language/reference/goals-requests-strategies-and-resolution.md"),
             Some("language/reference/lexical-layout-and-source.md"),
             NONE,
-            Some("language/examples/science/observations.emath"),
+            Some("tests/fixtures/language/science/observations.emath"),
         ],
         packages: &[
             "std.core",
@@ -213,9 +213,9 @@ pub const SEED: [DomainSeed; 12] = [
         label: "RK4/RK45 integrators, solvers, determinism class",
         ratings: ["FULL", "FULL", "FULL", "SYNTAX-ONLY", "SYNTAX-ONLY", "FULL"],
         artifacts: [
-            Some("language/examples/numerical/explicit-mass-spring.emath"),
-            Some("language/examples/numerical/explicit-mass-spring.emath"),
-            Some("language/examples/numerical/explicit-mass-spring.emath"),
+            Some("tests/fixtures/language/numerical/explicit-mass-spring.emath"),
+            Some("tests/fixtures/language/numerical/explicit-mass-spring.emath"),
+            Some("tests/fixtures/language/numerical/explicit-mass-spring.emath"),
             Some("language/reference/diagnostics-and-tooling-contract.md"),
             Some("language/reference/total-compilation-protocol.md"),
             Some("language/stdlib/laws/computer-science.emath"),

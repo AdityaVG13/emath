@@ -11,13 +11,14 @@
 //!   receipt (or a typed E-EVAL-* refusal). No genesis-only fallback, no
 //!   second evaluator, no domain branch.
 
-use super::genesis_cmd::{self, Analysis};
-use super::world_ir_eval::WorldIrValue;
-use super::{
+use crate::world_ir_eval::WorldIrValue;
+use crate::genesis_cmd::{self, Analysis};
+use emath_cli::{
     CliExit, EXIT_OK, EXIT_REFUSED, json_diagnostic_entry, json_diagnostics_entries,
     print_diagnostics, print_json_diagnostics, split_error_code,
 };
 use emath_artifact::JsonWriter;
+use emath_cli::execution::parse_set_value_for;
 use emath_core::limits::Limits;
 use emath_exec_ir::interp::Value;
 use emath_exec_ir::runner::{TestVerdict, eval_definitions_values, run_declaration};

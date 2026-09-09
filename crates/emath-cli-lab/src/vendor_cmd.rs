@@ -1,6 +1,10 @@
 //! The `emath vendor` dependency-staging command.
 
-use super::*;
+use emath_artifact::JsonWriter;
+use emath_cli::tooling_cmd::{UPSTREAM_LOCK_REL, upstream_lock_path};
+use emath_cli::{CliExit, EXIT_OK, EXIT_USAGE};
+use emath_core::content_id_of_str;
+use std::path::Path;
 
 /// `vendor --out <dir>`: offline dependency snapshot (zero third-party deps).
 pub(crate) fn vendor_cmd(out: &Path) -> CliExit {

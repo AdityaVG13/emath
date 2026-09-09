@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn freeze_lock_json(
+pub(crate) fn freeze_lock_json(
     source: &str,
     frozen: &str,
     ledger: &emath_syntax::ExactnessLedger,
@@ -48,7 +48,7 @@ pub(super) fn freeze_lock_json(
     object.finish()
 }
 
-pub(super) fn write_via_rename(path: &Path, bytes: &str) -> bool {
+pub(crate) fn write_via_rename(path: &Path, bytes: &str) -> bool {
     let mut tmp = path.to_path_buf();
     tmp.as_mut_os_string().push(".tmp");
     let ok = std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, path).is_ok();
@@ -58,7 +58,7 @@ pub(super) fn write_via_rename(path: &Path, bytes: &str) -> bool {
     ok
 }
 
-pub(super) fn sidecar_lock_path(out: &Path) -> PathBuf {
+pub(crate) fn sidecar_lock_path(out: &Path) -> PathBuf {
     let mut lock_path = out.to_path_buf();
     match lock_path.extension().and_then(|ext| ext.to_str()) {
         Some("emath") | Some("lock") => {
@@ -74,7 +74,7 @@ pub(super) fn sidecar_lock_path(out: &Path) -> PathBuf {
     lock_path
 }
 
-pub(super) enum FreezeRequest {
+pub(crate) enum FreezeRequest {
     Ready {
         path: PathBuf,
         out: Option<PathBuf>,
@@ -82,7 +82,7 @@ pub(super) enum FreezeRequest {
     },
 }
 
-pub(super) fn parse_freeze_request(args: &[String]) -> Option<FreezeRequest> {
+pub(crate) fn parse_freeze_request(args: &[String]) -> Option<FreezeRequest> {
     let mut path = None;
     let mut out = None;
     let mut json = false;
@@ -105,7 +105,7 @@ pub(super) fn parse_freeze_request(args: &[String]) -> Option<FreezeRequest> {
     Some(FreezeRequest::Ready { path, out, json })
 }
 
-pub(super) fn freeze_cmd(request: FreezeRequest) -> CliExit {
+pub(crate) fn freeze_cmd(request: FreezeRequest) -> CliExit {
     let FreezeRequest::Ready { path, out, json } = request;
     let source = match read_emath_source("freeze", &path, json) {
         Ok(source) => source,
@@ -180,7 +180,7 @@ pub(super) fn freeze_cmd(request: FreezeRequest) -> CliExit {
     exit_from_diagnostics(expansion.diagnostics.has_errors())
 }
 
-pub(super) enum WhyRequest {
+pub(crate) enum WhyRequest {
     Ready {
         path: PathBuf,
         needle: String,
@@ -188,7 +188,7 @@ pub(super) enum WhyRequest {
     },
 }
 
-pub(super) fn parse_why_request(args: &[String]) -> Option<WhyRequest> {
+pub(crate) fn parse_why_request(args: &[String]) -> Option<WhyRequest> {
     let mut path = None;
     let mut json = false;
     let mut needle = None;
@@ -209,7 +209,7 @@ pub(super) fn parse_why_request(args: &[String]) -> Option<WhyRequest> {
     })
 }
 
-pub(super) fn why_cmd(request: WhyRequest) -> CliExit {
+pub(crate) fn why_cmd(request: WhyRequest) -> CliExit {
     let WhyRequest::Ready { path, needle, json } = request;
     let source = match read_emath_source("why", &path, json) {
         Ok(source) => source,
@@ -234,7 +234,7 @@ pub(super) fn why_cmd(request: WhyRequest) -> CliExit {
     EXIT_OK
 }
 
-pub(super) fn print_why(note: &emath_syntax::ScratchNote, json: bool) {
+pub(crate) fn print_why(note: &emath_syntax::ScratchNote, json: bool) {
     if json {
         let mut object = emath_artifact::JsonWriter::object();
         object.string("command", "why");
@@ -250,7 +250,7 @@ pub(super) fn print_why(note: &emath_syntax::ScratchNote, json: bool) {
     }
 }
 
-pub(super) fn assumptions_cmd(path: &Path, json: bool) -> CliExit {
+pub(crate) fn assumptions_cmd(path: &Path, json: bool) -> CliExit {
     let source = match read_emath_source("assumptions", path, json) {
         Ok(source) => source,
         Err(code) => return code,
