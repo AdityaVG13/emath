@@ -3,7 +3,7 @@
 //! Resolves identity/version from package locks and verifies content
 //! identity. Refusals: `E-KIND-030/031/032`, `E-PKG-020`.
 
-use emath_ir::kind_schema::KindSchema;
+use crate::kind_schema::KindSchema;
 
 /// Maximum depth of a kind expansion without recursion.
 pub const MAX_EXPANSION_DEPTH: usize = 16;

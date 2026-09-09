@@ -1,18 +1,29 @@
 //! Custom kind schemas and restricted lowering.
 //!
-//! - `lang`: the schema language → shared [`emath_ir::KindSchema`].
+//! - `kind_schema` / `capsule_record`: language-owned records (T1).
+//! - `lang`: the schema language → shared [`KindSchema`].
 //! - `lower`: bounded, typed lowering into core HIR with an expansion trace.
 //! - `registry`: thirteen canonical schemas, deterministic writers.
 //! - `load`: kind package loading with typed refusals.
 
 #![forbid(unsafe_code)]
 
+pub mod capsule_record;
 pub mod feature_capsule;
+pub mod kind_schema;
 pub mod lang;
 pub mod load;
 pub mod lower;
 pub mod registry;
 
+pub use capsule_record::{
+    CapsuleEdge, CapsuleProjection, CapsuleRecordError, CapsuleSlot, FEATURE_CAPSULE_SCHEMA,
+    FeatureCapsule, FeatureClass, LegacyCellMapping, Maturity, ProjectionDisposition,
+};
+pub use kind_schema::{
+    CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
+    core_model_schema, core_policy_schema, payload_allows,
+};
 pub use feature_capsule::{
     CAPSULE_EDGE_KINDS, CLASS_RULES, CapsuleIssue, ClassRule, capsule_semantic_hash,
     parse_capsule_slot, parse_feature_capsule, parse_projection_disposition, validate_capsule,

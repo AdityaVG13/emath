@@ -3,7 +3,7 @@
 //! Bounded, typed ops over the kind schema; applications are validated
 //! before publishing HIR (`E-KIND-020`/`021`/`022`) with the trace kept.
 
-use emath_ir::kind_schema::KindSchema;
+use crate::kind_schema::KindSchema;
 
 /// Maximum expansion steps a lowered schema may produce.
 pub const MAX_LOWER_OPS: usize = 64;

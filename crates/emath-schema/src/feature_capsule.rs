@@ -7,11 +7,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
-use emath_core::{CanonicalField, FeatureId, SemanticHash};
-use emath_ir::{
+use crate::capsule_record::{
     CapsuleEdge, CapsuleProjection, CapsuleSlot, FEATURE_CAPSULE_SCHEMA, FeatureCapsule,
     FeatureClass, Maturity, ProjectionDisposition,
 };
+use emath_core::{CanonicalField, FeatureId, SemanticHash};
 use emath_term::{Signature as TermSignature, SymbolId as TermSymbol, Term, TermError};
 
 const COMMON_REQUIRED: [&str; 15] = [
@@ -322,6 +322,19 @@ pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<Capsule
         ));
     }
 
+    for name in [
+        "reference_defaults",
+        "record_fields",
+        "method_step",
+        "method_check",
+        "method_complete",
+        "method_bindings",
+    ] {
+        if let Some((value, _)) = raw.scalars.get(name) {
+            slots.insert(name.to_string(), CapsuleSlot::Value(value.clone()));
+        }
+    }
+
     let mut edges = Vec::new();
     for (kind, target, line) in raw.edges {
         if !CAPSULE_EDGE_KINDS.contains(&kind.as_str()) {
@@ -555,7 +568,7 @@ fn validate_executable_reference(capsule: &FeatureCapsule, issues: &mut Vec<Caps
     }
     let mut signature = TermSignature::default();
     for entry in signature_text.split(',') {
-        let Some((symbol, arity)) = entry.trim().split_once('=') else {
+        let Some((symbol, arity)) = entry.trim().rsplit_once('=') else {
             issues.push(issue(
                 "E-CAPSULE-023",
                 format!("reference signature entry `{entry}` requires `symbol=arity`"),
@@ -650,9 +663,62 @@ fn collect_variables(term: &Term, out: &mut BTreeSet<String>) {
             out.insert(variable.0.clone());
         }
         Term::Constant(_) => {}
-        Term::Apply { arguments, .. } => {
-            for argument in arguments {
-                collect_variables(argument, out);
+        Term::Apply {
+            operator,
+            arguments,
+        } => {
+            let binding = match (operator.0.as_str(), arguments.as_slice()) {
+                ("let", [Term::Variable(name), init, body]) => {
+                    Some((vec![&name.0], vec![init], body, None))
+                }
+                ("collect", [Term::Variable(index), count, body]) => {
+                    Some((vec![&index.0], vec![count], body, None))
+                }
+                (
+                    "iterate",
+                    [
+                        Term::Variable(index),
+                        Term::Variable(state),
+                        count,
+                        init,
+                        body,
+                    ],
+                ) => Some((vec![&index.0, &state.0], vec![count, init], body, None)),
+                (
+                    "iterate_until",
+                    [
+                        Term::Variable(index),
+                        Term::Variable(state),
+                        count,
+                        init,
+                        stop,
+                        body,
+                    ],
+                ) => Some((
+                    vec![&index.0, &state.0],
+                    vec![count, init],
+                    body,
+                    Some(stop),
+                )),
+                _ => None,
+            };
+            if let Some((names, initializers, body, stop)) = binding {
+                for initializer in initializers {
+                    collect_variables(initializer, out);
+                }
+                let mut body_free = BTreeSet::new();
+                collect_variables(body, &mut body_free);
+                if let Some(stop) = stop {
+                    collect_variables(stop, &mut body_free);
+                }
+                for name in names {
+                    body_free.remove(name);
+                }
+                out.extend(body_free);
+            } else {
+                for argument in arguments {
+                    collect_variables(argument, out);
+                }
             }
         }
     }

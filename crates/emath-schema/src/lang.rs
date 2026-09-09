@@ -4,7 +4,7 @@
 //! Refusals carry stable `E-KIND-01x` codes; output is the shared
 //! `KindSchema` the compiler and builder both admit against.
 
-use emath_ir::kind_schema::{KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema};
+use crate::kind_schema::{KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema};
 
 /// One schema-language refusal.
 #[derive(Clone, Debug, PartialEq, Eq)]

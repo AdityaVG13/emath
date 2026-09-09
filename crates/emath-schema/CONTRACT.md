@@ -96,3 +96,11 @@ not a JSON document), `emath.math-layout-graph`,
 `emath.provenance-receipt` (13th registry id; the "plus examples" are
 the per-id `example_json` writers, not a 13th artifact name). These
 nine are disclosed envelope-only.
+
+## Authored reference defaults
+
+Feature capsules retain optional `reference_defaults` with the required
+`reference_body`, `reference_params`, and `reference_signature` fields.
+The Language Image compiler checks default terms against the preceding
+parameters and the declared arity range. Raw default text participates in
+the capsule semantic hash, as other semantic fields do.
