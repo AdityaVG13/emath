@@ -1,4 +1,5 @@
 use emath_term::{Signature, SymbolId};
+use emath_test_harness::Probe;
 use emath_world_ir::{
     CarrierDef, Fixity, MeaningHole, MeaningHoleId, MeaningHoleKind, MeaningHoleState,
     MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef, WORLD_IR_VERSION, WorldIr,
@@ -43,15 +44,13 @@ fn reference_world() -> WorldIr {
     }
 }
 
-/// World IR mutation matrix: every semantic component participates
-/// in identity (mutating it yields a new `WorldId`), and
-/// presentation-only fields (name, symbol display) do not. One row
-/// per component so a missed field fails by name.
 #[test]
-fn semantic_mutations_change_identity_and_presentation_does_not() {
+fn probe() {
+    let mut p = Probe::new(
+        "WorldId tracks every semantic component, ignores presentation, and is order-independent",
+    );
     let base = reference_world();
     let base_id = base.identity();
-
     let semantic: Vec<MutationRow> = vec![
         ("version", Box::new(|w| w.version += 1)),
         (
@@ -101,16 +100,17 @@ fn semantic_mutations_change_identity_and_presentation_does_not() {
             Box::new(|w| w.capabilities.push("associative".to_string())),
         ),
     ];
-    for (component, mutate) in semantic {
-        let mut mutated = base.clone();
-        mutate(&mut mutated);
-        assert_ne!(
-            mutated.identity(),
-            base_id,
-            "semantic mutation of `{component}` must change WorldId"
-        );
-    }
-
+    p.case("semantic", |p| {
+        for (component, mutate) in semantic {
+            let mut mutated = base.clone();
+            mutate(&mut mutated);
+            p.ne(
+                component,
+                mutated.identity(),
+                base_id.clone(),
+            );
+        }
+    });
     let presentation: Vec<MutationRow> = vec![
         ("name", Box::new(|w| w.name = "alias".to_string())),
         (
@@ -118,31 +118,25 @@ fn semantic_mutations_change_identity_and_presentation_does_not() {
             Box::new(|w| w.symbols[0].display = "join".to_string()),
         ),
     ];
-    for (component, mutate) in presentation {
-        let mut mutated = base.clone();
-        mutate(&mut mutated);
-        assert_eq!(
-            mutated.identity(),
-            base_id,
-            "presentation-only mutation of `{component}` must not change WorldId"
-        );
-    }
-}
-
-/// Canonicalization is input-order independent: permuting the vector
-/// fields yields the same canonical form and identity.
-#[test]
-fn canonical_form_is_input_order_independent() {
-    let mut base = reference_world();
-    base.laws.push("forall x. x ⋈ ζ == x".to_string());
-    base.capabilities.push("monoid".to_string());
-    base.effects.push("alloc".to_string());
-    base.effects.push("io".to_string());
-
-    let mut permuted = base.clone();
-    permuted.laws.reverse();
-    permuted.capabilities.reverse();
-    permuted.effects.reverse();
-    assert_eq!(permuted.canonical(), base.canonical());
-    assert_eq!(permuted.identity(), base.identity());
+    p.case("presentation", |p| {
+        for (component, mutate) in presentation {
+            let mut mutated = base.clone();
+            mutate(&mut mutated);
+            p.eq(component, mutated.identity(), base_id.clone());
+        }
+    });
+    p.case("order", |p| {
+        let mut ordered = reference_world();
+        ordered.laws.push("forall x. x ⋈ ζ == x".to_string());
+        ordered.capabilities.push("monoid".to_string());
+        ordered.effects.push("alloc".to_string());
+        ordered.effects.push("io".to_string());
+        let mut permuted = ordered.clone();
+        permuted.laws.reverse();
+        permuted.capabilities.reverse();
+        permuted.effects.reverse();
+        p.eq("canonical", permuted.canonical(), ordered.canonical());
+        p.eq("identity", permuted.identity(), ordered.identity());
+    });
+    p.finish();
 }

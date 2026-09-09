@@ -1,37 +1,33 @@
+//! Builtin worlds cover at least five classes with deterministic distinct identities.
+
+use emath_test_harness::Probe;
 use emath_world_ir::builtin::{WorldClass, builtin_worlds};
 
-/// The exit-gate shape: at least five world classes, every identity
-/// deterministic (recomputation stable) and pairwise distinct.
 #[test]
-fn at_least_five_classes_with_deterministic_distinct_identities() {
+fn builtin() {
+    let mut p = Probe::new("builtin worlds cover five classes with stable distinct identities");
     let worlds = builtin_worlds();
-    assert!(worlds.len() >= 5, "need at least five world classes");
-    assert_eq!(worlds.len(), WorldClass::ALL.len());
-    let mut seen = std::collections::BTreeMap::new();
-    for world in &worlds {
-        let first = world.identity();
-        let second = world.identity();
-        assert_eq!(first, second, "{} identity unstable", world.world.name);
-        if let Some(previous) = seen.insert(first, world.class) {
-            panic!(
-                "identity collision between {previous:?} and {:?}",
-                world.class
-            );
+    p.demand("five", worlds.len() >= 5, "at least five world classes");
+    p.eq("count", worlds.len(), WorldClass::ALL.len());
+    p.case("identities", |p| {
+        let mut seen = std::collections::BTreeMap::new();
+        for world in &worlds {
+            p.eq(format!("stable/{}", world.world.name), world.identity(), world.identity());
+            if let Some(previous) = seen.insert(world.identity(), world.class) {
+                p.fail("distinct", format!("collision between {previous:?} and {:?}", world.class));
+            } else {
+                p.demand(format!("distinct/{}", world.world.name), true, "distinct");
+            }
         }
-    }
-    let classes: Vec<WorldClass> = worlds.iter().map(|world| world.class).collect();
-    assert_eq!(classes, WorldClass::ALL.to_vec(), "stable class order");
-}
-
-/// Rebuilding the provider is deterministic end to end: same classes,
-/// same canonical forms, same identities.
-#[test]
-fn builtin_provider_is_deterministic_across_rebuilds() {
-    let first = builtin_worlds();
-    let second = builtin_worlds();
-    assert_eq!(first, second);
-    for (a, b) in first.iter().zip(&second) {
-        assert_eq!(a.world.canonical(), b.world.canonical());
-        assert_eq!(a.identity(), b.identity());
-    }
+        p.eq("order", worlds.iter().map(|w| w.class).collect::<Vec<_>>(), WorldClass::ALL.to_vec());
+    });
+    p.case("rebuild", |p| {
+        let second = builtin_worlds();
+        p.eq("equal", worlds.clone(), second.clone());
+        for (a, b) in worlds.iter().zip(&second) {
+            p.eq(format!("canonical/{}", a.world.name), a.world.canonical(), b.world.canonical());
+            p.eq(format!("identity/{}", a.world.name), a.identity(), b.identity());
+        }
+    });
+    p.finish();
 }
