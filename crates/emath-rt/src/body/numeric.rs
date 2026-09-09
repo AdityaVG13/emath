@@ -487,425 +487,94 @@ fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
     }
 }
 
-// ── Richer linear algebra ────────────────────────────────────────
-//
-// Deterministic strict-f64 kernels over flat row-major storage: cyclic
-// Jacobi eigen (real symmetric, ascending values, aligned unit columns),
-// thin SVD via the symmetric AᵀA eigenproblem (descending singular
-// values; reconstruction A = U·diag(s)·Vᵀ), and conjugate gradient
-// (SPD-convergence-checked). Empty output = typed refusal upstream (the
-// interpreter path surfaces E-LINALG-001..003); these kernels never
-// return NaN spectra.
-
-/// Jacobi eigenvalue decomposition of a real symmetric `rows×rows`
-/// matrix (flat row-major). Returns `(values ascending, vectors
-/// columns-aligned)`; empty values on non-square/non-symmetric input
-/// or a convergence stall.
-pub fn eig_symmetric(flat: &[f64], rows: usize, cols: usize) -> (Vec<f64>, Vec<Vec<f64>>) {
-    if rows != cols || rows == 0 {
-        return (Vec::new(), Vec::new());
-    }
-    let n = rows;
-    let mut work: Vec<Vec<f64>> = (0..n)
-        .map(|r| flat[r * cols..r * cols + cols].to_vec())
-        .collect();
-    // Symmetry gate (relative tolerance; rounding noise admits).
-    let magnitude: f64 = work
-        .iter()
-        .flat_map(|row| row.iter())
-        .map(|x| x.abs())
-        .sum();
-    let tolerance = 1e-9 * magnitude.max(1.0);
-    for i in 0..n {
-        for j in 0..n {
-            if (work[i][j] - work[j][i]).abs()
-                > tolerance * (work[i][j].abs() + work[j][i].abs() + 1.0)
-            {
-                return (Vec::new(), Vec::new());
-            }
-        }
-    }
-    let mut vectors = vec![vec![0.0; n]; n];
-    for (i, row) in vectors.iter_mut().enumerate() {
-        row[i] = 1.0;
-    }
-    let scale: f64 = work.iter().flat_map(|row| row.iter()).map(|x| x * x).sum();
-    let threshold = 1e-24 * scale.max(1.0);
-    for _sweep in 0..100 {
-        let off: f64 = (0..n)
-            .flat_map(|p| (0..n).map(move |q| (p, q)))
-            .filter(|(p, q)| p != q)
-            .map(|(p, q)| work[p][q] * work[p][q])
-            .sum();
-        if off <= threshold {
-            break;
-        }
-        for p in 0..n {
-            for q in (p + 1)..n {
-                let apq = work[p][q];
-                if apq.abs() <= 1e-300 {
-                    continue;
-                }
-                let theta = (work[q][q] - work[p][p]) / (2.0 * apq);
-                let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
-                let c = 1.0 / (t * t + 1.0).sqrt();
-                let s = c * t;
-                for k in 0..n {
-                    let akp = work[k][p];
-                    let akq = work[k][q];
-                    work[k][p] = c * akp - s * akq;
-                    work[k][q] = s * akp + c * akq;
-                }
-                for k in 0..n {
-                    let apk = work[p][k];
-                    let aqk = work[q][k];
-                    work[p][k] = c * apk - s * aqk;
-                    work[q][k] = s * apk + c * aqk;
-                }
-                for k in 0..n {
-                    let vkp = vectors[k][p];
-                    let vkq = vectors[k][q];
-                    vectors[k][p] = c * vkp - s * vkq;
-                    vectors[k][q] = s * vkp + c * vkq;
-                }
-            }
-        }
-    }
-    let off: f64 = (0..n)
-        .flat_map(|p| (0..n).map(move |q| (p, q)))
-        .filter(|(p, q)| p != q)
-        .map(|(p, q)| work[p][q] * work[p][q])
-        .sum();
-    if off > threshold {
-        return (Vec::new(), Vec::new());
-    }
-    // Canonical signs: the largest-|.| component of each column is +.
-    for j in 0..n {
-        let argmax = (0..n)
-            .fold((0usize, 0.0f64), |best, i| {
-                let magnitude = vectors[i][j].abs();
-                if magnitude > best.1 {
-                    (i, magnitude)
-                } else {
-                    best
-                }
-            })
-            .0;
-        if vectors[argmax][j] < 0.0 {
-            for i in 0..n {
-                vectors[i][j] = -vectors[i][j];
-            }
-        }
-    }
-    let mut order: Vec<usize> = (0..n).collect();
-    let mut values: Vec<f64> = (0..n).map(|i| work[i][i]).collect();
-    order.sort_by(|x, y| values[*x].total_cmp(&values[*y]));
-    let sorted_values = order.iter().map(|i| values[*i]).collect::<Vec<_>>();
-    let sorted_vectors = order
-        .iter()
-        .map(|i| (0..n).map(|r| vectors[r][*i]).collect::<Vec<_>>())
-        .collect();
-    values = sorted_values;
-    (values, sorted_vectors)
+/// Row-major storage with explicit extents, including zero-row matrices.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Matrix<T = f64> {
+    rows: usize,
+    cols: usize,
+    data: Vec<T>,
 }
 
-/// Eigenvalues only (ascending); empty on refusal.
-pub fn eig_values_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    eig_symmetric(flat, rows, cols).0
+impl<T> Matrix<T> {
+    pub fn new(rows: usize, cols: usize, data: Vec<T>) -> Result<Self, &'static str> {
+        if rows.checked_mul(cols) != Some(data.len()) {
+            return Err("E-MATRIX-SHAPE: invalid dimensions or data length");
+        }
+        Ok(Self { rows, cols, data })
+    }
+
+    pub fn rows(&self) -> usize { self.rows }
+    pub fn cols(&self) -> usize { self.cols }
+    pub fn as_slice(&self) -> &[T] { &self.data }
+    pub fn into_data(self) -> Vec<T> { self.data }
+    pub fn get(&self, row: usize, col: usize) -> Option<&T> {
+        if row >= self.rows || col >= self.cols { return None; }
+        self.data.get(row * self.cols + col)
+    }
 }
 
-/// Eigenvector matrix (flat row-major, column j for eigenvalue j);
-/// empty on refusal.
-pub fn eig_vectors_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    let (values, vectors) = eig_symmetric(flat, rows, cols);
-    if values.is_empty() {
-        return Vec::new();
-    }
-    let n = rows;
-    let mut out = vec![0.0; n * n];
-    for (j, column) in vectors.iter().enumerate() {
-        for (i, entry) in column.iter().enumerate() {
-            out[i * n + j] = *entry;
-        }
-    }
-    out
+/// Format binary64 in scientific notation without a significance policy.
+/// Precision counts digits after the decimal point; allocation failure refuses.
+pub fn format_scientific(value: f64, precision: i64) -> Result<String, &'static str> {
+    use std::fmt::Write;
+    let precision = usize::try_from(precision).map_err(|_| "E-SCALAR-CONVERT: negative precision")?;
+    let capacity = if value.is_finite() {
+        precision.checked_add(32).ok_or("E-SCALAR-CONVERT: precision exceeds capacity")?
+    } else { 32 };
+    let mut text = String::new();
+    text.try_reserve_exact(capacity).map_err(|_| "E-SCALAR-CONVERT: formatting allocation failed")?;
+    write!(&mut text, "{value:.precision$e}").map_err(|_| "E-SCALAR-CONVERT: formatting failed")?;
+    Ok(text)
 }
 
-/// Singular values of a rectangular matrix, DESCENDING (thin rank via
-/// the symmetric AᵀA eigenproblem); empty on refusal.
-pub fn svd_values_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    let (singular, _) = svd_thin_flat(flat, rows, cols);
-    singular
+/// Numeric storage layout. The stored length does not certify shape validity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DenseLayout {
+    Scalar,
+    Vector(usize),
+    Matrix { rows: usize, cols: usize, len: usize },
+    Tensor { shape: Vec<usize>, len: usize },
 }
 
-/// Packed `[U; s; Vᵀ]` thin-SVD factors (width max(cols, rank), zero
-/// padding; see the EMIR op docs); empty on refusal.
-pub fn svd_factors_flat(flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    let (singular, factors) = svd_thin_flat(flat, rows, cols);
-    if singular.is_empty() {
-        return Vec::new();
+impl DenseLayout {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Scalar => 1,
+            Self::Vector(len) | Self::Matrix { len, .. } | Self::Tensor { len, .. } => *len,
+        }
     }
-    factors
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
-/// Thin SVD core: returns `(s descending, packed [U; s; Vᵀ])`.
-fn svd_thin_flat(flat: &[f64], rows: usize, cols: usize) -> (Vec<f64>, Vec<f64>) {
-    if rows == 0 || cols == 0 || flat.len() != rows * cols {
-        return (Vec::new(), Vec::new());
-    }
-    if flat.iter().any(|x| !x.is_finite()) {
-        return (Vec::new(), Vec::new());
-    }
-    // AᵀA (cols×cols, symmetric PSD).
-    let mut ata = vec![vec![0.0; cols]; cols];
-    for i in 0..cols {
-        for j in 0..cols {
-            ata[i][j] = (0..rows)
-                .map(|k| flat[k * cols + i] * flat[k * cols + j])
-                .sum();
-        }
-    }
-    let (eigenvalues, vectors) = eig_symmetric(
-        &ata.iter().flatten().copied().collect::<Vec<f64>>(),
-        cols,
-        cols,
-    );
-    if eigenvalues.is_empty() {
-        return (Vec::new(), Vec::new());
-    }
-    let rank = rows.min(cols);
-    // Descending order; keep the thin rank.
-    let mut order: Vec<usize> = (0..cols).collect();
-    order.sort_by(|x, y| eigenvalues[*y].total_cmp(&eigenvalues[*x]));
-    order.truncate(rank);
-    let singular: Vec<f64> = order
-        .iter()
-        .map(|i| eigenvalues[*i].max(0.0).sqrt())
-        .collect();
-    // V rows (columns of V, i.e. rows of Vᵀ) in descending order.
-    let v_rows: Vec<Vec<f64>> = order
-        .iter()
-        .map(|source| (0..cols).map(|row| vectors[row][*source]).collect())
-        .collect();
-    // U columns: u_k = A·v_k / σ_k (zero column for σ ≈ 0).
-    let width = cols.max(rank);
-    let out_rows = rows + 1 + rank;
-    let mut packed = vec![0.0; out_rows * width];
-    for (k, sigma) in singular.iter().enumerate() {
-        if *sigma <= 1e-12 {
-            continue; // rank-deficient direction: zero column (documented)
-        }
-        for row in 0..rows {
-            let dot: f64 = (0..cols).map(|i| flat[row * cols + i] * v_rows[k][i]).sum();
-            packed[row * width + k] = dot / sigma;
-        }
-        // Vᵀ row k.
-        let base = (rows + 1 + k) * width;
-        packed[base..base + cols].copy_from_slice(&v_rows[k]);
-    }
-    // s row.
-    packed[rows * width..rows * width + rank].copy_from_slice(&singular);
-    (singular, packed)
+/// Numeric callback result carrier. Float64, Int, and vector results remain distinct.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NumericProgramResult {
+    Scalar(f64),
+    Integer(i64),
+    Vector(Vec<f64>),
 }
 
-/// Conjugate gradient over flat row-major dense storage: solves
-/// `A x = b` for SPD `A` (200 iterations, 1e-10 relative tolerance).
-/// Empty result = non-convergence (typed upstream, never a wrong x).
-pub fn cg_solve_flat(a_flat: &[f64], rows: usize, cols: usize, b: &[f64]) -> Vec<f64> {
-    if rows != cols || rows == 0 || b.len() != rows || a_flat.len() != rows * cols {
-        return Vec::new();
+impl NumericProgramResult {
+    pub fn into_vector(self) -> Result<Vec<f64>, String> {
+        match self {
+            Self::Scalar(value) => Ok(vec![value]),
+            Self::Vector(values) => Ok(values),
+            Self::Integer(_) => Err("E-TYPE-012: program result must be Float64 or Vector<Float64>".into()),
+        }
     }
-    let n = rows;
-    let mat_vec = |x: &[f64]| -> Vec<f64> {
-        (0..n)
-            .map(|i| (0..n).map(|j| a_flat[i * n + j] * x[j]).sum())
-            .collect()
-    };
-    let b_norm: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-300);
-    let mut x = vec![0.0; n];
-    let mut residual = b.to_vec();
-    let mut direction = residual.clone();
-    let mut residual_norm_sq: f64 = residual.iter().map(|x| x * x).sum();
-    for _iteration in 0..200 {
-        if residual_norm_sq.sqrt() <= 1e-10 * b_norm {
-            return x;
-        }
-        let adirection = mat_vec(&direction);
-        let denominator: f64 = direction
-            .iter()
-            .zip(adirection.iter())
-            .map(|(d, ad)| d * ad)
-            .sum();
-        if denominator <= 0.0 || !denominator.is_finite() {
-            return Vec::new(); // non-SPD step: typed refusal upstream
-        }
-        let step = residual_norm_sq / denominator;
-        for (x_i, d_i) in x.iter_mut().zip(direction.iter()) {
-            *x_i += step * d_i;
-        }
-        for (r_i, ad_i) in residual.iter_mut().zip(adirection.iter()) {
-            *r_i -= step * ad_i;
-        }
-        let new_norm_sq: f64 = residual.iter().map(|x| x * x).sum();
-        let beta = new_norm_sq / residual_norm_sq;
-        for (d_i, r_i) in direction.iter_mut().zip(residual.iter()) {
-            *d_i = *r_i + beta * *d_i;
-        }
-        residual_norm_sq = new_norm_sq;
-    }
-    if residual_norm_sq.sqrt() <= 1e-10 * b_norm {
-        return x;
-    }
-    Vec::new()
-}
 
-/// Dense partial-pivot solve of `A x = b`; empty on a singular,
-/// non-finite, or shape-invalid system.
-pub fn linear_solve_flat(a_flat: &[f64], rows: usize, cols: usize, b: &[f64]) -> Vec<f64> {
-    if rows == 0
-        || rows != cols
-        || a_flat.len() != rows * cols
-        || b.len() != rows
-        || a_flat.iter().chain(b).any(|value| !value.is_finite())
-    {
-        return Vec::new();
-    }
-    let n = rows;
-    let mut a = a_flat.to_vec();
-    let mut rhs = b.to_vec();
-    for column in 0..n {
-        let pivot = (column..n)
-            .max_by(|left, right| {
-                a[*left * n + column]
-                    .abs()
-                    .total_cmp(&a[*right * n + column].abs())
-            })
-            .unwrap_or(column);
-        if a[pivot * n + column].abs() <= 1e-14 {
-            return Vec::new();
-        }
-        if pivot != column {
-            for j in 0..n {
-                a.swap(column * n + j, pivot * n + j);
-            }
-            rhs.swap(column, pivot);
-        }
-        for row in (column + 1)..n {
-            let factor = a[row * n + column] / a[column * n + column];
-            a[row * n + column] = 0.0;
-            for j in (column + 1)..n {
-                a[row * n + j] -= factor * a[column * n + j];
-            }
-            rhs[row] -= factor * rhs[column];
+    pub fn into_real(self) -> Result<f64, String> {
+        match self {
+            Self::Scalar(value) => Ok(value),
+            Self::Integer(value) => Ok(value as f64),
+            Self::Vector(_) => Err("E-TYPE-012: program result must be a real scalar".into()),
         }
     }
-    let mut solution = vec![0.0; n];
-    for row in (0..n).rev() {
-        let residual = rhs[row]
-            - ((row + 1)..n)
-                .map(|column| a[row * n + column] * solution[column])
-                .sum::<f64>();
-        solution[row] = residual / a[row * n + row];
-    }
-    solution
-}
 
-/// Packed partial-pivot LU factorization `[p; L; U]`, with permutation
-/// row `p` followed by `n` rows of `L` and `n` rows of `U`.
-pub fn lu_factors_flat(a_flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    if rows == 0
-        || rows != cols
-        || a_flat.len() != rows * cols
-        || a_flat.iter().any(|value| !value.is_finite())
-    {
-        return Vec::new();
-    }
-    let n = rows;
-    let mut lu = a_flat.to_vec();
-    let mut permutation: Vec<usize> = (0..n).collect();
-    for column in 0..n {
-        let pivot = (column..n)
-            .max_by(|left, right| {
-                lu[*left * n + column]
-                    .abs()
-                    .total_cmp(&lu[*right * n + column].abs())
-            })
-            .unwrap_or(column);
-        if lu[pivot * n + column].abs() <= 1e-14 {
-            return Vec::new();
-        }
-        if pivot != column {
-            for j in 0..n {
-                lu.swap(column * n + j, pivot * n + j);
-            }
-            permutation.swap(column, pivot);
-        }
-        for row in (column + 1)..n {
-            lu[row * n + column] /= lu[column * n + column];
-            for j in (column + 1)..n {
-                lu[row * n + j] -= lu[row * n + column] * lu[column * n + j];
-            }
+    pub fn into_scalar(self) -> Result<f64, String> {
+        match self {
+            Self::Scalar(value) => Ok(value),
+            Self::Vector(_) | Self::Integer(_) => Err("E-TYPE-012: program result must be Float64".into()),
         }
     }
-    let mut packed = vec![0.0; (2 * n + 1) * n];
-    for (column, source) in permutation.into_iter().enumerate() {
-        packed[column] = source as f64;
-    }
-    for row in 0..n {
-        for column in 0..n {
-            packed[(row + 1) * n + column] = if row == column {
-                1.0
-            } else if row > column {
-                lu[row * n + column]
-            } else {
-                0.0
-            };
-            packed[(n + 1 + row) * n + column] = if row <= column {
-                lu[row * n + column]
-            } else {
-                0.0
-            };
-        }
-    }
-    packed
 }
-
-/// Packed thin QR factorization `[Q; R]` for `m >= n`, with `m` rows
-/// of `Q` followed by `n` rows of `R`; empty for rank deficiency.
-pub fn qr_factors_flat(a_flat: &[f64], rows: usize, cols: usize) -> Vec<f64> {
-    if rows == 0
-        || cols == 0
-        || rows < cols
-        || a_flat.len() != rows * cols
-        || a_flat.iter().any(|value| !value.is_finite())
-    {
-        return Vec::new();
-    }
-    let mut q = vec![0.0; rows * cols];
-    let mut r = vec![0.0; cols * cols];
-    for column in 0..cols {
-        let mut vector = (0..rows)
-            .map(|row| a_flat[row * cols + column])
-            .collect::<Vec<_>>();
-        for previous in 0..column {
-            let projection = (0..rows)
-                .map(|row| q[row * cols + previous] * vector[row])
-                .sum::<f64>();
-            r[previous * cols + column] = projection;
-            for row in 0..rows {
-                vector[row] -= projection * q[row * cols + previous];
-            }
-        }
-        let norm = vector.iter().map(|value| value * value).sum::<f64>().sqrt();
-        if norm <= 1e-14 {
-            return Vec::new();
-        }
-        r[column * cols + column] = norm;
-        for row in 0..rows {
-            q[row * cols + column] = vector[row] / norm;
-        }
-    }
-    q.extend(r);
-    q
-}
-
