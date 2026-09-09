@@ -135,46 +135,7 @@ impl MeaningLock {
             })?;
         let mut entries = BTreeMap::new();
         for item in raw_entries {
-            let row = item.as_object().ok_or_else(|| LockError::Malformed {
-                detail: "lock entry must be an object".to_string(),
-            })?;
-            refuse_unknown_keys(
-                row,
-                &[
-                    "declaration_id",
-                    "hole_id",
-                    "source",
-                    "source_hash",
-                    "world_fingerprint",
-                    "portfolio_receipt_id",
-                    "selection_method",
-                    "selected_at",
-                ],
-            )?;
-            let declaration_id = parse_hex(required_str(row, "declaration_id")?)?;
-            let hole_id = required_str(row, "hole_id")?.to_string();
-            if hole_id.is_empty() {
-                return Err(LockError::Malformed {
-                    detail: "hole_id must be non-empty".to_string(),
-                });
-            }
-            let method = required_str(row, "selection_method")?;
-            let selection_method =
-                SelectionMethod::parse(method).ok_or_else(|| LockError::Malformed {
-                    detail: format!("unknown selection_method `{method}`"),
-                })?;
-            let key = LockKey {
-                declaration_id,
-                hole_id,
-            };
-            let entry = LockEntry {
-                source: required_str(row, "source")?.to_string(),
-                source_hash: parse_hex(required_str(row, "source_hash")?)?,
-                world_fingerprint: parse_hex(required_str(row, "world_fingerprint")?)?,
-                portfolio_receipt_id: parse_hex(required_str(row, "portfolio_receipt_id")?)?,
-                selection_method,
-                selected_at: parse_decimal(required_str(row, "selected_at")?)?,
-            };
+            let (key, entry) = parse_lock_entry(item)?;
             if entries.insert(key, entry).is_some() {
                 return Err(LockError::Malformed {
                     detail: "duplicate lock key".to_string(),
@@ -413,4 +374,54 @@ pub fn commit_locked_world(
 pub fn apply_portfolio_cap<T: Clone>(candidates: &[T], cap: u32) -> Vec<T> {
     let limit = usize::try_from(cap).unwrap_or(usize::MAX);
     candidates.iter().take(limit).cloned().collect()
+}
+
+fn parse_lock_entry(item: &Json) -> Result<(LockKey, LockEntry), LockError> {
+    let row = item.as_object().ok_or_else(|| LockError::Malformed {
+        detail: "lock entry must be an object".to_string(),
+    })?;
+    refuse_unknown_keys(
+        row,
+        &[
+            "declaration_id",
+            "hole_id",
+            "source",
+            "source_hash",
+            "world_fingerprint",
+            "portfolio_receipt_id",
+            "selection_method",
+            "selected_at",
+        ],
+    )?;
+    let hole_id = required_str(row, "hole_id")?.to_string();
+    if hole_id.is_empty() {
+        return Err(LockError::Malformed {
+            detail: "hole_id must be non-empty".to_string(),
+        });
+    }
+    let method = required_str(row, "selection_method")?;
+    let selection_method = SelectionMethod::parse(method).ok_or_else(|| LockError::Malformed {
+        detail: format!("unknown selection_method `{method}`"),
+    })?;
+    let declaration_id = parse_hex(required_str(row, "declaration_id")?)?;
+    let source = required_str(row, "source")?.to_string();
+    const HASH_FIELDS: [&str; 3] = ["source_hash", "world_fingerprint", "portfolio_receipt_id"];
+    let mut hashes = [0_u64; 3];
+    for (slot, name) in HASH_FIELDS.iter().enumerate() {
+        hashes[slot] = parse_hex(required_str(row, name)?)?;
+    }
+    Ok((
+        LockKey {
+            declaration_id,
+            hole_id,
+        },
+        LockEntry {
+            source,
+            source_hash: hashes[0],
+            world_fingerprint: hashes[1],
+            portfolio_receipt_id: hashes[2],
+            selection_method,
+            selected_at: parse_decimal(required_str(row, "selected_at")?)?,
+        },
+    ))
 }

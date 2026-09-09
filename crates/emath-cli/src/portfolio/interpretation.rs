@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use emath_world_ir::fnv1a64;
+use emath_core::fnv1a64_bytes as fnv1a64;
 
 use crate::portfolio::Authority;
 use crate::portfolio::record::WorldCandidate;

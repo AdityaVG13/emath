@@ -3,7 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use emath_world_ir::{WorldId, fnv1a64};
+use emath_core::fnv1a64_bytes as fnv1a64;
+use emath_ir::WorldId;
 
 use crate::portfolio::{Authority, ScoreVector};
 

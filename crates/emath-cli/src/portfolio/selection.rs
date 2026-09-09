@@ -5,7 +5,7 @@
 //! Selection never raises meaning authority (no hidden escalation): a
 //! fast candidate remains only as authoritative as its checks.
 
-use emath_world_ir::WorldId;
+use emath_ir::WorldId;
 
 use crate::portfolio::Authority;
 use crate::portfolio::record::CandidateRecord;

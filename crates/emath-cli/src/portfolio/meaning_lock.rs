@@ -12,7 +12,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use emath_world_ir::fnv1a64;
+use emath_core::fnv1a64_bytes as fnv1a64;
 
 use crate::portfolio::interpretation::{
     InterpretationPolicy, LedgerEntry, MetricAxis, PortfolioError, PortfolioReceipt, evaluate,

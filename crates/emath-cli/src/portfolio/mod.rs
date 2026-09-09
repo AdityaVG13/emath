@@ -24,8 +24,8 @@ pub use record::{
 };
 pub use selection::{SelectionOutcome, SelectionPolicy, SelectionWeights, select};
 
-use emath_world_ir::WorldId;
-use emath_world_ir::translation::{PreservationRelation, WorldMorphism};
+use emath_ir::WorldId;
+use emath_ir::{PreservationRelation, WorldMorphism};
 
 /// Meaning authority for a candidate result (defined in `emath-lab-core`,
 /// re-exported here as portfolio vocabulary).
