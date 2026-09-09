@@ -1,0 +1,47 @@
+# `Option<T>` / `Result<T, E>` carrier ops from text.
+# The composite types admit recursively (`Option<Option<Int>>`,
+# `Option<Result<Int, Bool>>`) and their EXPRESSION surface computes from
+# ordinary `.emath` calls: `option_some(v)` / `option_none()` /
+# `option_is_some(o)` / `option_unwrap_or(o, default)` and `result_ok(v)` /
+# `result_err(v)` / `result_is_ok(r)` / `result_unwrap_or(r, default)` /
+# `result_error_of(r)`. `unwrap_or` is total (value or injected default —
+# there is no panicking unwrap). The aliasing `Option<Option<T>>` keeps a
+# nested Some(None) distinct from a flattened none.
+#
+# `carrier_ops` takes the demo values as inputs, so `emath eval` binds them:
+#   emath check language/examples/intro/option-result-ops.emath
+#   emath eval  language/examples/intro/option-result-ops.emath \
+#       --function carrier_ops --set v=1.0 --set err=7.0 --set dflt=9.0
+# Every row is pinned by a semantics test.
+#
+# REFUSED (typed): a scalar where a carrier is required, `result_error_of`
+# on an Option, and a mismatched carrier kind in an `unwrap_or` default all
+# refuse `E-TYPE-012`.
+
+emath function carrier_ops:
+    inputs:
+        v: Float64
+        err: Float64
+        dflt: Float64
+    outputs:
+        os: Bool
+        ou: Float64
+        ro: Bool
+        ru: Float64
+        proj: Float64
+        outer: Bool
+
+    definitions:
+        # With v=1.0, err=7.0, dflt=9.0 (the demo values from the header):
+        # os = Some(v) is_some → true
+        os = option_is_some(option_some(v))
+        # ou = None.unwrap_or(dflt) → dflt (total; no panic)
+        ou = option_unwrap_or(option_none(), dflt)
+        # ro = Ok(v) is_ok → true
+        ro = result_is_ok(result_ok(v))
+        # ru = Err(err).unwrap_or(dflt) → dflt (default on the Err side)
+        ru = result_unwrap_or(result_err(err), dflt)
+        # proj = error_of(Err(err)) → Some(err), unwrap_or(-1 sentinel) → err
+        proj = option_unwrap_or(result_error_of(result_err(err)), -1.0)
+        # outer = Some(None) is_some → true (tag survives nesting)
+        outer = option_is_some(option_some(option_none()))

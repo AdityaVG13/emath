@@ -1,0 +1,62 @@
+# The six strict-f64 builtin contracts — `abs`, `min`, `max`, `sqrt`,
+# `atan2`, `sign` — as one runnable pinned witness.
+#
+# The strict-f64 registry emitter admits these calls end-to-end since
+# emath-s9w1m + fpl60 (previously they diagnosed `unknown function in
+# strict-f64 subset`); this file is the probe artifact for that
+# admission.  Contracts of record:
+#   abs(x)       piecewise: `x < 0 -> -x`, else `x`.
+#   min/max(a,b) piecewise selection of the smaller/larger operand.
+#   sqrt(x)      domain obligation `SqrtNonNegative` on the CALLER: a
+#                negative operand yields the IEEE NaN VALUE on the
+#                Float64 carrier (per the IEEE-754 contract in
+#                reference/types-units-shapes-and-domains.md), it does
+#                not refuse at parse; discharge the obligation as an
+#                assumption or a checked constraint before the call.
+#   atan2(y, x)  the IEEE two-argument arctangent, correctly rounded.
+#   sign(x)      mathematical sgn: `-1 / 0 / +1`, exactly `0` at zero.
+# Exact-first: every pin below is exactly representable or a single
+# correctly-rounded IEEE constant, verified independently.
+#
+# Runnable (no Cargo; generic EMIR + reference-VM lane):
+#   emath eval language/examples/intro/clamp-distance-builtins.emath --set x=-3 --set y=7 --set v=9 --set b=3.7
+# `emath test` on this file builds and runs the one pinned example
+# block (Phase 1: one evaluate target per test-bearing declaration, so
+# all six builtin probes ride in the single packed vector).
+#
+# The clamp is composed from the audited builtins:
+# `min(max(v, min(x, y)), max(x, y))` clamps `v` into the window
+# [min(x, y), max(x, y)] — the abs/min/max-in-a-clamp context.
+
+emath function builtin_six_contracts:
+    inputs:
+        x: Float64
+        y: Float64
+        v: Float64
+        b: Float64
+    outputs:
+        packed: Vector[Float64]
+    definitions:
+        abs_pin = abs(x)
+        min_pin = min(x, y)
+        max_pin = max(x, y)
+        clamp_pin = min(max(v, min(x, y)), max(x, y))
+        packed = [abs_pin, min_pin, max_pin, clamp_pin,
+                  sqrt(4.0), sqrt(2.25), sqrt(0.0),
+                  atan2(1.0, 1.0), atan2(1.0, 0.0),
+                  sign(b), sign(0.0), sign(-2.5)]
+    goals:
+        evaluate <packed>:
+            produce rust.library
+    tests:
+        example <six_contracts_pinned>:
+            given x = -3.0
+            given y = 7.0
+            given v = 9.0
+            given b = 3.7
+            expect packed == [3.0, -3.0, 7.0, 7.0, 2.0, 1.5, 0.0, 0.7853981633974483, 1.5707963267948966, 1.0, 0.0, -1.0]
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

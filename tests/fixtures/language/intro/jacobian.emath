@@ -1,0 +1,40 @@
+# Jacobian-as-value with forward-mode automatic differentiation.
+# `jacobian(expr) wrt v1, v2` computes the Jacobian matrix of the
+# body with respect to the listed inputs. A list body `[f1, f2]`
+# differentiates component-wise (one row per component, one column
+# per `wrt` variable); a scalar body yields a single row.
+# The form is parse-time sugar for a matrix literal of the shipped
+# dual-number `derivative(...) wrt v` cells, so evaluation uses the
+# same forward-mode engine as `derivative` — no second language, no
+# new engine. Each cell is exact where the elementary functions are
+# exact (here exp(x)·y at x=0, y=2).
+# For f = [x·y, x + y] the Jacobian is [[y, x], [1, 1]]:
+# at x=3, y=2 that is [[2, 3], [1, 1]].
+emath function JacobianExample:
+    inputs:
+        x: Float64
+        y: Float64
+
+    outputs:
+        J: Matrix[2, 2]
+        J_scalar: Matrix[1, 2]
+        jv: Vector[2]
+
+    definitions:
+        f1 = x * y
+        f2 = x + y
+        J = jacobian([f1, f2]) wrt x, y
+        J_scalar = jacobian(f1) wrt x, y
+        jv = J * [1.0, 2.0]
+
+    goals:
+        evaluate <J>:
+            produce rust.library
+
+    tests:
+        example <eval>:
+            given x = 3
+            given y = 2
+            expect J == [[2.0, 3.0], [1.0, 1.0]]
+            expect J_scalar == [[2.0, 3.0]]
+            expect jv == [8.0, 3.0]

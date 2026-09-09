@@ -1,0 +1,15 @@
+# Check: emath eval language/examples/intro/sum-first-n.emath --set n=5 --json
+# Expected: result = 10. The binder meaning comes from std.binder.sum; Rust
+# supplies only the generic finite fold and exact additive mechanism.
+
+emath function SumFirstN:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = sum i in 0..n: i
+    tests:
+        example <five>:
+            given n = 5
+            expect result == 10

@@ -1,0 +1,6 @@
+# Open meaning: the differential equation is stated; emath does not invent f.
+# `emath expand` shows the hole object. `emath freeze` must not claim it exact.
+f(x) = ?
+require f(0) = 1
+require derivative(f) = f
+find f

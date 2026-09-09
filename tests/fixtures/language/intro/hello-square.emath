@@ -1,0 +1,23 @@
+emath function Square:
+    inputs:
+        x: Float64
+
+    outputs:
+        y: Float64
+
+    definitions:
+        y = x * x
+
+    goals:
+        evaluate <y>:
+            produce rust.library
+
+    tests:
+        example <three_squared>:
+            given x = 3
+            expect y == 9
+
+    compile:
+        target rust
+        profile library
+        numeric strict-f64

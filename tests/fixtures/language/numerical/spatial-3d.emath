@@ -24,4 +24,4 @@ emath function Spatial3d:
         gz = gradient_3d_z(u, 2.0)
         divergence_1d = div_1d(line, 0.5)
         divergence_2d = div_2d(plane_x, plane_y, 0.5, 1.0)
-        divergence_3d = div(vx, vy, vz, 0.5, 1.0, 2.0)
+        divergence_3d = div_3d(vx, vy, vz, 0.5, 1.0, 2.0)
