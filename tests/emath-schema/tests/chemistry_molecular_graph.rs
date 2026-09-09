@@ -24,10 +24,16 @@ use emath_core::limits::Limits;
 use emath_core::Span;
 use emath_exec_ir::install::{PackRegistry, install_pack};
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::term_compile::std_cell_registry;
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    // Language image is the registry now. Empty here is the honest hole:
+    // chemistry pack install must resolve real cells, never a fabricated table.
+    std::collections::HashMap::new()
+}
 
 /// The capability path of the valence-preservation checker cell.
 const REWRITE_PRESERVE: &str = "std.chem.graph_rewrite_preserve";
@@ -47,7 +53,7 @@ emath field_pack chemistry:
 ";
 
 /// Admit the pack source at the language layer and return the entry.
-fn admitted_pack(source: &str) -> emath_ir::FieldPackEntry {
+fn admitted_pack(p: &mut Probe, source: &str) -> emath_ir::FieldPackEntry {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("chemistry-pack", source);
@@ -62,12 +68,9 @@ fn admitted_pack(source: &str) -> emath_ir::FieldPackEntry {
         .iter()
         .map(|d| format!("{}: {}", d.code, d.message))
         .collect();
-    assert!(
-        codes.is_empty(),
-        "the chemistry pack admits at the language layer, got {messages:?}"
-    );
+    p.demand("\"the chemistry pack admits at the language layer, got {messages:?}\"", codes.is_empty(), format!("the chemistry pack admits at the language layer, got {messages:?}"));
     let mut packs = result.package.field_packs;
-    assert_eq!(packs.len(), 1, "one field_pack admitted");
+    p.eq("packs.len()", &(packs.len()), &(1));
     packs.remove(0)
 }
 
@@ -176,202 +179,37 @@ fn broken_bond() -> (Value, Value, Value) {
 
 /// The pack admits, installs against the EXISTING std registry, and
 /// carries the checker cell.
-#[test]
-fn chemistry_pack_carries_rewrite_checker() {
-    let entry = admitted_pack(CHEM_PACK);
-    let installed = install_pack(&entry, &["std".to_string()], std_cell_registry())
-        .expect("the chemistry pack installs from the existing registry");
-    assert!(
-        installed.exports.contains(&REWRITE_PRESERVE.to_string()),
-        "exports carry graph_rewrite_preserve: {:?}",
-        installed.exports
-    );
-    installed
-        .image
-        .validate_partitions()
-        .expect("the installed image is self-validating");
-    let mut registry = PackRegistry::new();
-    registry.install(installed);
-    registry
-        .resolve_use(&["std".to_string(), "chemistry".to_string()])
-        .expect("use std.chemistry resolves");
-}
+
 
 /// Positive: a real rewrite (allyl shift) preserves every context
 /// atom's valence; the certificate is EXACTLY zero.
-#[test]
-fn allyl_shift_preserves_valence() {
-    let (l, k, r) = allyl_shift();
-    let out = call_preserve(l, k, r)
-        .expect("valence-preserving rewrite evaluates in the reference VM");
-    assert_eq!(
-        out,
-        Value::F64(0.0),
-        "violation count is exactly zero for a preserved rewrite"
-    );
-}
+
 
 /// Negative: dropping a double bond to a single without compensation
 /// breaks C1's valence; the certificate refuses typed
 /// `ValenceImbalance` — never a silent value.
-#[test]
-fn broken_bond_refuses_typed_valence_imbalance() {
-    let (l, k, r) = broken_bond();
-    match call_preserve(l, k, r) {
-        Err(EvalFault::CapabilityRefused { capability, code }) => {
-            assert_eq!(capability, REWRITE_PRESERVE);
-            assert!(
-                code.starts_with("ValenceImbalance"),
-                "typed refusal names the check, got {code}"
-            );
-            assert_ne!(code, "ValenceImbalance", "refusal carries the residual");
-        }
-        ok => panic!("broken bond must refuse typed ValenceImbalance, got {ok:?}"),
-    }
-}
+
 
 /// MR atom-permutation invariance (score 8): the checker is a sum over
 /// context rows and union columns, so permuting atoms consistently in
 /// L, K and R leaves the certificate unchanged (0 for preserved rules).
-#[test]
-fn mr_atom_permutation_invariance() {
-    let (l0, k0, r0) = allyl_shift();
-    let permute = |m: Value| -> Value {
-        let Value::Matrix { rows, cols, data } = m else {
-            unreachable!()
-        };
-        // Cycle the three context rows and the H columns {3,4,5}:
-        // row p -> row (p+1)%3; column swap 3<->4.
-        let mut out_data = vec![0.0; data.len()];
-        for r in 0..rows {
-            for c in 0..cols {
-                let pr = (r + 1) % rows;
-                let pc = match c {
-                    3 => 4,
-                    4 => 3,
-                    other => other,
-                };
-                out_data[pr * cols + pc] = data[r * cols + c];
-            }
-        }
-        Value::Matrix {
-            rows,
-            cols,
-            data: out_data,
-        }
-    };
-    let (l, k, r) = (permute(l0), permute(k0), permute(r0));
-    let out = call_preserve(l, k, r)
-        .expect("permuted rewrite still evaluates");
-    assert_eq!(
-        out,
-        Value::F64(0.0),
-        "certificate is invariant under atom permutation"
-    );
-}
+
 
 /// MR disjoint composition (score 8): two independent preserved
 /// rewrites on disjoint atoms compose (block-diagonal union) into a
 /// preserved rewrite — the certificate of the union is the sum of the
 /// certificates of the parts.
-#[test]
-fn mr_disjoint_rewrites_compose() {
-    let (l1, k1, r1) = allyl_shift();
-    let (lb, kb, rb) = broken_bond();
-    let block = |a: Value, b: Value| -> Value {
-        let Value::Matrix {
-            rows: ra,
-            cols: ca,
-            data: da,
-        } = a
-        else {
-            unreachable!()
-        };
-        let Value::Matrix {
-            rows: rb,
-            cols: cb,
-            data: db,
-        } = b
-        else {
-            unreachable!()
-        };
-        let mut data = Vec::with_capacity(ra * ca + rb * cb);
-        for r in 0..ra {
-            let mut row = da[r * ca..(r + 1) * ca].to_vec();
-            row.extend(std::iter::repeat(0.0).take(cb));
-            data.extend(row);
-        }
-        for r in 0..rb {
-            let mut row = std::iter::repeat(0.0)
-                .take(ca)
-                .collect::<Vec<f64>>();
-            row.extend(db[r * cb..(r + 1) * cb].to_vec());
-            data.extend(row);
-        }
-        Value::Matrix {
-            rows: ra + rb,
-            cols: ca + cb,
-            data,
-        }
-    };
-    // Preserved ∘ preserved admits.
-    let (l1b, k1b, r1b) = allyl_shift();
-    let union = call_preserve(
-        block(l1.clone(), l1b),
-        block(k1.clone(), k1b),
-        block(r1.clone(), r1b),
-    )
-    .expect("disjoint preserved rewrites compose");
-    assert_eq!(union, Value::F64(0.0), "certificate of the union is zero");
 
-    // Preserved ∘ broken refuses (one side's violation dominates).
-    let mixed = call_preserve(block(l1, lb), block(k1, kb), block(r1, rb));
-    assert!(
-        matches!(mixed, Err(EvalFault::CapabilityRefused { .. })),
-        "composing a broken rewrite refuses typed, got {mixed:?}"
-    );
-}
 
 /// MR trivial-rule edge: a rule with no bond changes anywhere is the
 /// identity rewrite and always preserves (violation 0).
-#[test]
-fn mr_identity_rewrite_preserves() {
-    let (l, _, r) = allyl_shift();
-    let out = call_preserve(l.clone(), l.clone(), r.clone())
-        .expect("identity rewrite evaluates");
-    // K == L == context; R == a permuted copy that is still preserved.
-    let _ = r;
-    assert_eq!(out, Value::F64(0.0));
-}
+
 
 /// MR cancellation trap (score 10): a rewrite where each context
 /// atom's valence change sums to zero ACROSS atoms (one gains exactly
 /// what another loses) — the certificate must still refuse because the
 /// per-atom law uses absolute differences, never net sums.
-#[test]
-fn mr_cancellation_trap_still_refuses() {
-    // Context atoms A, B; columns A, B. L: A double-bonded to B
-    // (valences [2, 2]); R: a single bond plus an H migrating so
-    // valences become [1, 3] — total 4 == total 4, no atom's valence
-    // preserved.
-    let l = Value::Matrix {
-        rows: 2,
-        cols: 2,
-        data: vec![0.0, 2.0, 2.0, 0.0],
-    };
-    let k = l.clone();
-    let r = Value::Matrix {
-        rows: 2,
-        cols: 2,
-        data: vec![0.0, 1.0, 1.0, 2.0],
-    };
-    match call_preserve(l, k, r) {
-        Err(EvalFault::CapabilityRefused { capability, .. }) => {
-            assert_eq!(capability, REWRITE_PRESERVE);
-        }
-        ok => panic!("cancellation trap must refuse typed, got {ok:?}"),
-    }
-}
+
 
 /// MR charge-break negative (score 6): a rewrite that changes a formal
 /// charge without touching a bond order changes the electron count
@@ -380,39 +218,197 @@ fn mr_cancellation_trap_still_refuses() {
 /// no-claim (needs element/property tables, a later slice), and the
 /// checker's typed negative covers the BOND-order break that the
 /// carrier can express. The refusal text names ValenceImbalance.
-#[test]
-fn mr_charge_break_is_documented_no_claim() {
-    // The bond-order analogue of a charge breaking: a bond-order drop
-    // of one with no compensating gain — refuses.
-    let (l, k, r) = broken_bond();
-    match call_preserve(l, k, r) {
-        Err(EvalFault::CapabilityRefused { code, .. }) => {
-            assert!(
-                code.starts_with("ValenceImbalance"),
-                "bond-order break is the charge-break analogue, got {code}"
-            );
-        }
-        ok => panic!("must refuse, got {ok:?}"),
-    }
-}
+
 
 /// MR scale-invariance (score 4.5): multiplying every bond order in
 /// all three graphs by k scales every valence by k, so a preserved
 /// rule stays preserved and a broken one stays broken (same relation).
 #[test]
-fn mr_bond_scaling_preserves_relation() {
-    let (l, k, r) = allyl_shift();
-    let scale = |m: Value| -> Value {
-        let Value::Matrix { rows, cols, data } = m else {
-            unreachable!()
-        };
-        Value::Matrix {
-            rows,
-            cols,
-            data: data.iter().map(|x| x * 2.0).collect(),
+fn probe() {
+    let mut probe = Probe::new("chemistry molecular graph: every check in one probe");
+    probe.case("chemistry_pack_carries_rewrite_checker", |probe| {
+
+        let entry = admitted_pack(probe, CHEM_PACK);
+        let installed = install_pack(&entry, &["std".to_string()], &std_cell_registry())
+            .expect("the chemistry pack installs from the existing registry");
+        probe.demand("installed.exports", installed.exports.contains(&REWRITE_PRESERVE.to_string()), format!("exports carry graph_rewrite_preserve: {:?}", installed.exports));
+        installed
+            .image
+            .validate_partitions()
+            .expect("the installed image is self-validating");
+        let mut registry = PackRegistry::new();
+        registry.install(installed);
+        registry
+            .resolve_use(&["std".to_string(), "chemistry".to_string()])
+            .expect("use std.chemistry resolves");
+    });
+    probe.case("allyl_shift_preserves_valence", |probe| {
+
+        let (l, k, r) = allyl_shift();
+        let out = call_preserve(l, k, r)
+            .expect("valence-preserving rewrite evaluates in the reference VM");
+        probe.eq("out", &(out), &(Value::F64(0.0)));
+    });
+    probe.case("broken_bond_refuses_typed_valence_imbalance", |probe| {
+
+        let (l, k, r) = broken_bond();
+        match call_preserve(l, k, r) {
+            Err(EvalFault::CapabilityRefused { capability, code }) => {
+                probe.eq("capability", &(capability), &(REWRITE_PRESERVE));
+                probe.demand("\"typed refusal names the check, got {code}\"", code.starts_with("ValenceImbalance"), format!("typed refusal names the check, got {code}"));
+                probe.ne("code", &(code), &("ValenceImbalance"));
+            }
+            ok => panic!("broken bond must refuse typed ValenceImbalance, got {ok:?}"),
         }
-    };
-    let out = call_preserve(scale(l), scale(k), scale(r))
-        .expect("scaled preserved rewrite evaluates");
-    assert_eq!(out, Value::F64(0.0), "scaling keeps the certificate zero");
+    });
+    probe.case("mr_atom_permutation_invariance", |probe| {
+
+        let (l0, k0, r0) = allyl_shift();
+        let permute = |m: Value| -> Value {
+            let Value::Matrix { rows, cols, data } = m else {
+                unreachable!()
+            };
+            // Cycle the three context rows and the H columns {3,4,5}:
+            // row p -> row (p+1)%3; column swap 3<->4.
+            let mut out_data = vec![0.0; data.len()];
+            for r in 0..rows {
+                for c in 0..cols {
+                    let pr = (r + 1) % rows;
+                    let pc = match c {
+                        3 => 4,
+                        4 => 3,
+                        other => other,
+                    };
+                    out_data[pr * cols + pc] = data[r * cols + c];
+                }
+            }
+            Value::Matrix {
+                rows,
+                cols,
+                data: out_data,
+            }
+        };
+        let (l, k, r) = (permute(l0), permute(k0), permute(r0));
+        let out = call_preserve(l, k, r)
+            .expect("permuted rewrite still evaluates");
+        probe.eq("out", &(out), &(Value::F64(0.0)));
+    });
+    probe.case("mr_disjoint_rewrites_compose", |probe| {
+
+        let (l1, k1, r1) = allyl_shift();
+        let (lb, kb, rb) = broken_bond();
+        let block = |a: Value, b: Value| -> Value {
+            let Value::Matrix {
+                rows: ra,
+                cols: ca,
+                data: da,
+            } = a
+            else {
+                unreachable!()
+            };
+            let Value::Matrix {
+                rows: rb,
+                cols: cb,
+                data: db,
+            } = b
+            else {
+                unreachable!()
+            };
+            let mut data = Vec::with_capacity(ra * ca + rb * cb);
+            for r in 0..ra {
+                let mut row = da[r * ca..(r + 1) * ca].to_vec();
+                row.extend(std::iter::repeat(0.0).take(cb));
+                data.extend(row);
+            }
+            for r in 0..rb {
+                let mut row = std::iter::repeat(0.0)
+                    .take(ca)
+                    .collect::<Vec<f64>>();
+                row.extend(db[r * cb..(r + 1) * cb].to_vec());
+                data.extend(row);
+            }
+            Value::Matrix {
+                rows: ra + rb,
+                cols: ca + cb,
+                data,
+            }
+        };
+        // Preserved ∘ preserved admits.
+        let (l1b, k1b, r1b) = allyl_shift();
+        let union = call_preserve(
+            block(l1.clone(), l1b),
+            block(k1.clone(), k1b),
+            block(r1.clone(), r1b),
+        )
+        .expect("disjoint preserved rewrites compose");
+        probe.eq("union", &(union), &(Value::F64(0.0)));
+
+        // Preserved ∘ broken refuses (one side's violation dominates).
+        let mixed = call_preserve(block(l1, lb), block(k1, kb), block(r1, rb));
+        probe.demand("\"composing a broken rewrite refuses typed, got {mixed:?}\"", matches!(mixed, Err(EvalFault::CapabilityRefused { .. })), format!("composing a broken rewrite refuses typed, got {mixed:?}"));
+    });
+    probe.case("mr_identity_rewrite_preserves", |probe| {
+
+        let (l, _, r) = allyl_shift();
+        let out = call_preserve(l.clone(), l.clone(), r.clone())
+            .expect("identity rewrite evaluates");
+        // K == L == context; R == a permuted copy that is still preserved.
+        let _ = r;
+        probe.eq("out", &(out), &(Value::F64(0.0)));
+    });
+    probe.case("mr_cancellation_trap_still_refuses", |probe| {
+
+        // Context atoms A, B; columns A, B. L: A double-bonded to B
+        // (valences [2, 2]); R: a single bond plus an H migrating so
+        // valences become [1, 3] — total 4 == total 4, no atom's valence
+        // preserved.
+        let l = Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![0.0, 2.0, 2.0, 0.0],
+        };
+        let k = l.clone();
+        let r = Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![0.0, 1.0, 1.0, 2.0],
+        };
+        match call_preserve(l, k, r) {
+            Err(EvalFault::CapabilityRefused { capability, .. }) => {
+                probe.eq("capability", &(capability), &(REWRITE_PRESERVE));
+            }
+            ok => panic!("cancellation trap must refuse typed, got {ok:?}"),
+        }
+    });
+    probe.case("mr_charge_break_is_documented_no_claim", |probe| {
+
+        // The bond-order analogue of a charge breaking: a bond-order drop
+        // of one with no compensating gain — refuses.
+        let (l, k, r) = broken_bond();
+        match call_preserve(l, k, r) {
+            Err(EvalFault::CapabilityRefused { code, .. }) => {
+                probe.demand("\"bond-order break is the charge-break analogue, got {code}\"", code.starts_with("ValenceImbalance"), format!("bond-order break is the charge-break analogue, got {code}"));
+            }
+            ok => panic!("must refuse, got {ok:?}"),
+        }
+    });
+    probe.case("mr_bond_scaling_preserves_relation", |probe| {
+
+        let (l, k, r) = allyl_shift();
+        let scale = |m: Value| -> Value {
+            let Value::Matrix { rows, cols, data } = m else {
+                unreachable!()
+            };
+            Value::Matrix {
+                rows,
+                cols,
+                data: data.iter().map(|x| x * 2.0).collect(),
+            }
+        };
+        let out = call_preserve(scale(l), scale(k), scale(r))
+            .expect("scaled preserved rewrite evaluates");
+        probe.eq("out", &(out), &(Value::F64(0.0)));
+    });
+    probe.finish();
 }
+

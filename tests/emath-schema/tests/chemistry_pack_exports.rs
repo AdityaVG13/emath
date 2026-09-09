@@ -12,8 +12,15 @@
 use std::collections::HashMap;
 
 use emath_exec_ir::install::{InstalledPack, PackRegistry, install_pack};
-use emath_exec_ir::term_compile::{CompiledCell, std_cell_registry};
+use emath_exec_ir::term_compile::CompiledCell;
 use emath_term::{Signature, SymbolId, Term, VariableId};
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    // Language image is the registry now. Empty here is the honest hole:
+    // chemistry pack install must resolve real cells, never a fabricated table.
+    std::collections::HashMap::new()
+}
 
 
 /// The chemistry softmax reference cell of record: the same
@@ -62,57 +69,49 @@ fn softmax_reference_term() -> (Term, Signature) {
 }
 
 #[test]
-fn chemistry_pack_exports() {
-    // Real chemistry export through the field-pack machine: the
-    // std.softmax reference term, packaged as `std.chem.softmax` cell
-    // data and installed against the EXISTING std cell registry. No
-    // fabricated exports — every export resolves — and no parser or
-    // backend branch anywhere in the path.
-    let registry = std_cell_registry();
-    let softmax_cell = registry
-        .get("std.tensor.softmax")
-        .expect("std.tensor.softmax reference cell exists in the std registry");
+fn probe() {
+    let mut probe = Probe::new("chemistry pack exports: every check in one probe");
+    probe.case("chemistry_pack_exports", |probe| {
 
-    let entry = emath_ir::FieldPackEntry {
-        name: "softmax".to_string(),
-        exports: vec![("cell".to_string(), "std.chem.softmax".to_string())],
-    };
-    let package = vec!["std".to_string(), "chem".to_string()];
-    let installed: InstalledPack = install_pack(&entry, &package, &registry)
-        .expect("chemistry cell exports install cleanly through the machine");
-    assert_eq!(
-        installed.pack, "softmax",
-        "the exported cell keeps its declared LEAF pack identity"
-    );
-    assert_eq!(
-        installed.exports,
-        vec!["std.chem.softmax".to_string()],
-        "exports resolve to the declared canonical names"
-    );
-    installed
-        .image
-        .validate_partitions()
-        .expect("the installed image is self-validating");
-    assert!(
-        installed.image.image_id.starts_with("fnv1a64:"),
-        "the image id is the deterministic fnv1a64 fingerprint"
-    );
+        // Real chemistry export through the field-pack machine: the
+        // std.softmax reference term, packaged as `std.chem.softmax` cell
+        // data and installed against the EXISTING std cell registry. No
+        // fabricated exports — every export resolves — and no parser or
+        // backend branch anywhere in the path.
+        let registry = &std_cell_registry();
+        let softmax_cell = registry
+            .get("std.tensor.softmax")
+            .expect("std.tensor.softmax reference cell exists in the std registry");
 
-    let mut pack_registry = PackRegistry::new();
-    pack_registry.install(installed);
-    let used: InstalledPack = pack_registry
-        .resolve_use(&[
-            "std".to_string(),
-            "chem".to_string(),
-            "softmax".to_string(),
-        ])
-        .expect("`use std.chem.softmax` resolves against the installed pack")
-        .clone();
-    assert_eq!(
-        used.pack, "softmax",
-        "`use` resolves the installed chemistry pack by its leaf identity"
-    );
-    let _ = softmax_cell;
-    let _ = softmax_reference_term();
-    let _: HashMap<String, CompiledCell> = std_cell_registry().clone();
+        let entry = emath_ir::FieldPackEntry {
+            name: "softmax".to_string(),
+            exports: vec![("cell".to_string(), "std.chem.softmax".to_string())],
+        };
+        let package = vec!["std".to_string(), "chem".to_string()];
+        let installed: InstalledPack = install_pack(&entry, &package, &registry)
+            .expect("chemistry cell exports install cleanly through the machine");
+        probe.eq("installed.pack", &(installed.pack), &("softmax"));
+        probe.eq("installed.exports", &(installed.exports), &(vec!["std.chem.softmax".to_string()]));
+        installed
+            .image
+            .validate_partitions()
+            .expect("the installed image is self-validating");
+        probe.demand("\"the image id is the deterministic fnv1a64 fingerprint\"", installed.image.image_id.starts_with("fnv1a64:"), "the image id is the deterministic fnv1a64 fingerprint");
+
+        let mut pack_registry = PackRegistry::new();
+        pack_registry.install(installed);
+        let used: InstalledPack = pack_registry
+            .resolve_use(&[
+                "std".to_string(),
+                "chem".to_string(),
+                "softmax".to_string(),
+            ])
+            .expect("`use std.chem.softmax` resolves against the installed pack")
+            .clone();
+        probe.eq("used.pack", &(used.pack), &("softmax"));
+        let _ = softmax_cell;
+        let _ = softmax_reference_term();
+    });
+    probe.finish();
 }
+

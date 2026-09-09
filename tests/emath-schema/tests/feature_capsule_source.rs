@@ -1,5 +1,4 @@
-use emath_core::limits::Limits;
-use emath_sema::CompilerSession;
+use emath_test_harness::{Probe, Source, boot};
 
 const SOURCE: &str = r#"
 emath feature AddCapability:
@@ -28,36 +27,32 @@ emath feature AddCapability:
 "#;
 
 #[test]
-fn generic_feature_shell_admits_candidate_without_live_declaration() {
-    emath_syntax::install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned("AddCapability.emath", SOURCE);
-    assert_eq!(
-        result
-            .diagnostics
-            .errors()
-            .map(|diagnostic| diagnostic.code)
-            .collect::<Vec<_>>(),
-        Vec::<&str>::new()
+fn generic_feature_shell() {
+    boot();
+    let mut p = Probe::new(
+        "feature shell admits a candidate without a live declaration; versioned schema or class mismatch refuses",
     );
-    assert_eq!(result.package.feature_capsules.len(), 1);
-    assert!(result.package.declarations.is_empty());
-    assert_eq!(
-        result.package.feature_capsules[0].feature_id.as_str(),
-        "std.capability.math.add"
-    );
-}
-
-#[test]
-fn generic_feature_shell_refuses_versioned_schema_and_class_mismatch() {
-    emath_syntax::install_source_parser();
-    let mut session = CompilerSession::new(Limits::default());
-    let result = session.check_owned(
-        "BadCapsule.emath",
-        &SOURCE
+    p.case("admits-candidate", |p| {
+        let result = Source::from_str("AddCapability.emath", SOURCE).must_admit(p);
+        p.eq("capsules", result.package.feature_capsules.len(), 1);
+        p.demand("no-decls", result.package.declarations.is_empty(), "no live declaration");
+        p.eq(
+            "id",
+            result.package.feature_capsules[0].feature_id.as_str(),
+            "std.capability.math.add",
+        );
+    });
+    p.case("version-class-mismatch-refuses", |p| {
+        let mutated = SOURCE
             .replace("emath.feature-capsule", "emath.feature-capsule.v2")
-            .replace("class: \"capability\"", "class: \"theory\""),
-    );
-    assert!(result.diagnostics.has_errors());
-    assert!(result.package.feature_capsules.is_empty());
+            .replace("class: \"capability\"", "class: \"theory\"");
+        let result = Source::from_str("BadCapsule.emath", &mutated).check();
+        p.demand("errors", result.diagnostics.has_errors(), "mismatch must refuse");
+        p.demand(
+            "no-capsule",
+            result.package.feature_capsules.is_empty(),
+            "refused mismatch must not intern a capsule",
+        );
+    });
+    p.finish();
 }

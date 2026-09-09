@@ -2,11 +2,13 @@
 
 use emath_ir::kind_schema::KindSchema;
 use emath_schema::{apply_lowering, is_bound, LowerOp};
+use emath_test_harness::Probe;
 
 #[test]
 fn rename_migrates_hoist_aliases_and_bind() {
+    let mut p = Probe::new("rename keeps hoist aliases and bind on the new section name");
     let core = KindSchema::core_model();
-    let report = apply_lowering(
+    match apply_lowering(
         &core,
         &[
             LowerOp::Hoist {
@@ -22,41 +24,34 @@ fn rename_migrates_hoist_aliases_and_bind() {
                 to: "eqs".into(),
             },
         ],
-    )
-    .expect("hoist+bind+rename admitted");
-
-    assert!(
-        report.schema.section("equations").is_none(),
-        "old section name must be gone"
-    );
-    assert!(
-        report.schema.section("eqs").is_some(),
-        "renamed section must exist"
-    );
-
-    let admission = report
-        .schema
-        .default_for("admission.eqs")
-        .expect("admission.eqs");
-    assert!(
-        admission.split(',').any(|part| part == "rates"),
-        "hoist alias `rates` must survive rename, got {admission:?}"
-    );
-    assert!(
-        admission.split(',').any(|part| part == "equations"),
-        "rename source must be recorded, got {admission:?}"
-    );
-    assert!(
-        report.schema.default_for("admission.equations").is_none(),
-        "orphan admission.equations must be removed"
-    );
-
-    assert!(
-        is_bound(&report.schema, "eqs"),
-        "bind must move with the renamed section"
-    );
-    assert!(
-        !is_bound(&report.schema, "equations"),
-        "bind must not linger on the removed name"
-    );
+    ) {
+        Err(error) => { p.fail("lower", format!("hoist+bind+rename admitted, got {error:?}")); }
+        Ok(report) => {
+            p.demand("old-gone", report.schema.section("equations").is_none(), "old section name must be gone");
+            p.demand("new-present", report.schema.section("eqs").is_some(), "renamed section must exist");
+            match report.schema.default_for("admission.eqs") {
+                None => { p.fail("admission.eqs", "admission.eqs must exist"); }
+                Some(admission) => {
+                    p.demand(
+                        "hoist-alias",
+                        admission.split(',').any(|part| part == "rates"),
+                        format!("hoist alias `rates` must survive rename, got {admission:?}"),
+                    );
+                    p.demand(
+                        "rename-source",
+                        admission.split(',').any(|part| part == "equations"),
+                        format!("rename source must be recorded, got {admission:?}"),
+                    );
+                }
+            }
+            p.demand(
+                "orphan-gone",
+                report.schema.default_for("admission.equations").is_none(),
+                "orphan admission.equations must be removed",
+            );
+            p.demand("bound-new", is_bound(&report.schema, "eqs"), "bind must move with the renamed section");
+            p.demand("unbound-old", !is_bound(&report.schema, "equations"), "bind must not linger on the removed name");
+        }
+    }
+    p.finish();
 }

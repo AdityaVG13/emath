@@ -23,10 +23,16 @@ use emath_core::limits::Limits;
 use emath_core::Span;
 use emath_exec_ir::install::{PackRegistry, install_pack};
 use emath_exec_ir::interp::{EvalFault, Value, evaluate_with_budget};
-use emath_exec_ir::term_compile::std_cell_registry;
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_sema::CompilerSession;
 use emath_syntax::install_source_parser;
+use emath_test_harness::Probe;
+
+fn std_cell_registry() -> std::collections::HashMap<String, emath_exec_ir::term_compile::CompiledCell> {
+    // Language image is the registry now. Empty here is the honest hole:
+    // chemistry pack install must resolve real cells, never a fabricated table.
+    std::collections::HashMap::new()
+}
 
 /// The capability path of the chemistry mass-balance cell.
 const MASS_BALANCE: &str = "std.chem.mass_balance";
@@ -75,7 +81,7 @@ emath field_pack chemistry:
 ";
 
 /// Admit the pack source at the language layer and return the entry.
-fn admitted_pack(source: &str) -> emath_ir::FieldPackEntry {
+fn admitted_pack(p: &mut Probe, source: &str) -> emath_ir::FieldPackEntry {
     install_source_parser();
     let mut session = CompilerSession::new(Limits::default());
     let result = session.check_owned("chemistry-pack", source);
@@ -90,12 +96,9 @@ fn admitted_pack(source: &str) -> emath_ir::FieldPackEntry {
         .iter()
         .map(|d| format!("{}: {}", d.code, d.message))
         .collect();
-    assert!(
-        codes.is_empty(),
-        "the chemistry pack admits at the language layer, got {messages:?}"
-    );
+    p.demand("\"the chemistry pack admits at the language layer, got {messages:?}\"", codes.is_empty(), format!("the chemistry pack admits at the language layer, got {messages:?}"));
     let mut packs = result.package.field_packs;
-    assert_eq!(packs.len(), 1, "one field_pack admitted");
+    p.eq("packs.len()", &(packs.len()), &(1));
     packs.remove(0)
 }
 
@@ -135,107 +138,23 @@ fn combustion_matrix() -> Value {
 /// The pack admits, installs against the EXISTING std registry, and
 /// `use std.chemistry` resolves the installed artifact — the field-pack
 /// compiler path, end to end.
-#[test]
-fn chemistry_pack_admits_installs_and_resolves() {
-    let entry = admitted_pack(CHEM_PACK);
-    let installed = install_pack(&entry, &["std".to_string()], std_cell_registry())
-        .expect("the chemistry pack installs from the existing registry");
-    assert_eq!(installed.pack, "chemistry");
-    assert_eq!(
-        installed.exports,
-        vec![MASS_BALANCE.to_string(), BALANCE.to_string()],
-        "the exports resolve to the canonical registry cells"
-    );
-    installed
-        .image
-        .validate_partitions()
-        .expect("the installed image is self-validating");
-    let cells = installed.image.load("cells").expect("cells page");
-    assert!(
-        cells.contains("cell:std.chem.mass_balance"),
-        "image cells page carries the mass-balance cell: {cells}"
-    );
-    assert!(
-        cells.contains("cell:std.chem.balance"),
-        "image cells page carries the balancing cell: {cells}"
-    );
-    let mut registry = PackRegistry::new();
-    registry.install(installed);
-    let used = registry
-        .resolve_use(&["std".to_string(), "chemistry".to_string()])
-        .expect("use std.chemistry resolves");
-    assert_eq!(used.pack, "chemistry");
-}
+
 
 /// Balanced `2 H2 + O2 -> 2 H2O` (`s = [2, 1, -2]`) admits and the cell
 /// returns the EXACT all-zero mass-balance residual — the
 /// stoichiometric evidence, bit-identical zeros, not a tolerance.
-#[test]
-fn balanced_combustion_admits_with_exact_zero_evidence() {
-    let out = evaluate_with_budget(
-        &balance_program(),
-        &[combustion_matrix(), Value::Vector(vec![2.0, 1.0, -2.0])],
-        &[],
-        EvalBudget::default(),
-    )
-    .expect("balanced combustion evaluates in the reference VM");
-    let residual = match out {
-        Value::Vector(values) => values,
-        other => panic!("expected a residual vector, got {other:?}"),
-    };
-    assert_eq!(residual, vec![0.0, 0.0], "H and O residuals vanish");
-    assert!(
-        residual.iter().all(|x| *x == 0.0),
-        "residual entries are exact zeros: {residual:?}"
-    );
-}
+
 
 /// Unbalanced `2 H2 + O2 -> H2O` (`s = [2, 1, -1]`) refuses typed
 /// `MassImbalance` at the capability seam — never a silent value, never
 /// an untyped arithmetic fault. Residual `[2, 1]`: H is the first
 /// violating element with residual 2.
-#[test]
-fn unbalanced_combustion_refuses_typed_mass_imbalance() {
-    match evaluate_with_budget(
-        &balance_program(),
-        &[combustion_matrix(), Value::Vector(vec![2.0, 1.0, -1.0])],
-        &[],
-        EvalBudget::default(),
-    ) {
-        Err(EvalFault::CapabilityRefused { capability, code }) => {
-            assert_eq!(capability, MASS_BALANCE);
-            assert_eq!(
-                code, "MassImbalance(element 0, residual 2)",
-                "typed refusal names the violating element and its exact residual"
-            );
-        }
-        ok => panic!(
-            "unbalanced combustion must refuse typed MassImbalance, got {ok:?}"
-        ),
-    }
-}
+
 
 /// A second nonzero case with a different imbalance shape: `H2 + O2 ->
 /// H2O` (`s = [1, 1, -1]`) leaves H residual 0 but O residual 1 — the
 /// refusal must name element 1 (O), not element 0.
-#[test]
-fn second_unbalanced_case_names_the_other_element() {
-    match evaluate_with_budget(
-        &balance_program(),
-        &[combustion_matrix(), Value::Vector(vec![1.0, 1.0, -1.0])],
-        &[],
-        EvalBudget::default(),
-    ) {
-        Err(EvalFault::CapabilityRefused { capability, code }) => {
-            assert_eq!(capability, MASS_BALANCE);
-            assert_eq!(
-                code, "MassImbalance(element 1, residual 1)",
-                "H is balanced here; O is the violating element"
-            );
-        }
-        ok => panic!("second unbalanced case must refuse typed, got {ok:?}"),
-    }
-}
+
 
 // ===========================================================================
 // Balancing: `std.chem.balance(S)` auto-derives the canonical primitive
@@ -295,294 +214,366 @@ fn combustion_composition() -> Value {
 
 /// MR1 (fixture, not MR): combustion balances to `2 H2 + O2 -> 2 H2O`,
 /// coefficients `[2, 1, -2]`, primitive and canonically signed.
-#[test]
-fn balance_combustion_derives_primitive_vector() {
-    match call_balance(combustion_composition()) {
-        Ok(Value::Vector(s)) => {
-            assert_eq!(s, vec![2.0, 1.0, -2.0], "hand-derived null vector");
-            assert!(
-                s.iter().any(|x| *x != 0.0) && s[0] > 0.0,
-                "canonical sign: first nonzero entry positive, got {s:?}"
-            );
-        }
-        other => panic!("combustion must balance, got {other:?}"),
-    }
-}
+
 
 /// MR the chain (score 10): the derived coefficients are CERTIFIED by
 /// the mass-balance cell — `mass_balance(S, balance(S))` must admit with
 /// the exact zero residual. Composition of the two cells.
-#[test]
-fn mr_chain_balance_then_certify() {
-    let s = match call_balance(combustion_composition()) {
-        Ok(Value::Vector(s)) => s,
-        other => panic!("combustion must balance first, got {other:?}"),
-    };
-    let out = evaluate_with_budget(
-        &balance_program(),
-        &[combustion_composition(), Value::Vector(s)],
-        &[],
-        EvalBudget::default(),
-    )
-    .expect("the derived coefficients certify");
-    match out {
-        Value::Vector(residual) => {
-            assert_eq!(residual, vec![0.0, 0.0], "S·s == 0 exactly");
-        }
-        other => panic!("expected a residual vector, got {other:?}"),
-    }
-}
+
 
 /// Nonzero target: thermite `Fe2O3 + 2 Al -> Al2O3 + 2 Fe`, four
 /// species. Rows Fe, O, Al; columns Fe2O3, Al, Al2O3, Fe. Hand-derived
 /// null vector `[1, 2, -1, -2]`.
-#[test]
-fn balance_thermite_nontrivial_reaction() {
-    let matrix = Value::Matrix {
-        rows: 3,
-        cols: 4,
-        data: vec![2.0, 0.0, 0.0, 1.0, 3.0, 0.0, 3.0, 0.0, 0.0, 1.0, 2.0, 0.0],
-    };
-    match call_balance(matrix.clone()) {
-        Ok(Value::Vector(s)) => {
-            assert_eq!(s, vec![1.0, 2.0, -1.0, -2.0], "thermite hand-derived");
-            let out = evaluate_with_budget(
-                &balance_program(),
-                &[matrix, Value::Vector(s)],
-                &[],
-                EvalBudget::default(),
-            )
-            .expect("thermite coefficients certify");
-            assert_eq!(out, Value::Vector(vec![0.0, 0.0, 0.0]));
-        }
-        other => panic!("thermite must balance, got {other:?}"),
-    }
-}
+
 
 /// A second nonzero reaction shape: `C2H4 + H2 -> C2H6` balances to
 /// `[1, 1, -1]` (rows C, H; columns C2H4, H2, C2H6).
-#[test]
-fn balance_hydrogenation_derives_vector() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 3,
-        data: vec![2.0, 0.0, 2.0, 4.0, 2.0, 6.0],
-    };
-    match call_balance(matrix.clone()) {
-        Ok(Value::Vector(s)) => {
-            assert_eq!(s, vec![1.0, 1.0, -1.0], "hydrogenation hand-derived");
-            let out = evaluate_with_budget(
-                &balance_program(),
-                &[matrix, Value::Vector(s)],
-                &[],
-                EvalBudget::default(),
-            )
-            .expect("hydrogenation coefficients certify");
-            assert_eq!(out, Value::Vector(vec![0.0, 0.0]));
-        }
-        other => panic!("hydrogenation must balance, got {other:?}"),
-    }
-}
+
 
 /// MR underdetermined (score 8): adding H2O2 to the combustion species
 /// set leaves TWO independent balance equations in FOUR species — a
 /// one-dimensional nullspace no longer exists, so balancing MUST refuse
 /// typed rather than guess a basis vector.
-#[test]
-fn mr_underdetermined_system_refuses_typed() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 4,
-        data: vec![2.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 2.0],
-    };
-    match call_balance(matrix.clone()) {
-        Err(EvalFault::Arithmetic { op, detail }) => {
-            assert_eq!(op, "int-nullspace");
-            assert!(
-                detail.contains("E-NULLSPACE-002"),
-                "underdetermined balance refuses with the typed code, got {detail}"
-            );
-        }
-        other => panic!("underdetermined system must refuse typed, got {other:?}"),
-    }
-}
+
 
 /// MR impossible (score 8): `H2 + He` — each element appears in exactly
 /// one species, so the only null vector is zero; balancing refuses
 /// (dimension 0) rather than emitting an all-zero equation.
-#[test]
-fn mr_impossible_system_refuses_typed() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 2,
-        data: vec![2.0, 0.0, 0.0, 1.0],
-    };
-    match call_balance(matrix) {
-        Err(EvalFault::Arithmetic { op, detail }) => {
-            assert_eq!(op, "int-nullspace");
-            assert!(
-                detail.contains("E-NULLSPACE-002"),
-                "impossible balance refuses with the typed code, got {detail}"
-            );
-        }
-        other => panic!("impossible system must refuse typed, got {other:?}"),
-    }
-}
+
 
 /// MR non-integral (score 9): fractional composition entries have no
 /// integer nullspace meaning — refuse typed before any arithmetic.
-#[test]
-fn mr_non_integral_composition_refuses_typed() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 2,
-        data: vec![1.5, 0.0, 0.0, 1.0],
-    };
-    match call_balance(matrix) {
-        Err(EvalFault::Arithmetic { op, detail }) => {
-            assert_eq!(op, "int-nullspace");
-            assert!(
-                detail.contains("E-NULLSPACE-001"),
-                "non-integral input refuses with the typed code, got {detail}"
-            );
-        }
-        other => panic!("non-integral composition must refuse typed, got {other:?}"),
-    }
-}
+
 
 /// MR canonical sign (score 6): reordering the species columns may turn
 /// the raw null vector negative; the canonical form must keep the FIRST
 /// nonzero entry positive, so [H2O, H2, O2] still reports the same
 /// reaction `2 H2 + O2 -> 2 H2O` (coefficients [2, -1, -2]).
-#[test]
-fn mr_canonical_sign_is_first_nonzero_positive() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 3,
-        data: vec![2.0, 0.0, 2.0, 1.0, 2.0, 0.0],
-    };
-    match call_balance(matrix) {
-        Ok(Value::Vector(s)) => {
-            assert_eq!(s, vec![2.0, -1.0, -2.0], "canonical sign flip");
-            assert!(s[0] > 0.0, "first nonzero entry is positive");
-        }
-        other => panic!("canonical sign must balance, got {other:?}"),
-    }
-}
+
 
 /// MR scaled-equivalence (score 4.5): DERIVED coefficients are
 /// canonical; USER-supplied integer multiples of them must still
 /// certify through the mass-balance cell (2x combustion coefficients
 /// have zero residual too — the certificate is scaling-invariant).
-#[test]
-fn mr_scaled_coefficients_still_certify() {
-    for s in [vec![2.0, 1.0, -2.0], vec![4.0, 2.0, -4.0], vec![-2.0, -1.0, 2.0]]
-    {
-        let out = evaluate_with_budget(
-            &balance_program(),
-            &[combustion_composition(), Value::Vector(s.clone())],
-            &[],
-            EvalBudget::default(),
-        )
-        .expect("scaled coefficients certify");
-        assert_eq!(out, Value::Vector(vec![0.0, 0.0]), "s = {s:?}");
-    }
-}
+
 
 /// MR species permutation (score 8): permuting the SPECIES columns
 /// permutes the derived coefficient vector in exactly the same way.
-#[test]
-fn mr_species_permutation_permutes_vector() {
-    let base = combustion_composition();
-    let Value::Matrix { rows, cols, data } = base else {
-        unreachable!("combustion composition is a matrix")
-    };
-    let perm: [usize; 3] = [2, 0, 1]; // H2O, H2, O2
-    let mut permuted_data = vec![0.0; data.len()];
-    for r in 0..rows {
-        for c in 0..cols {
-            permuted_data[r * cols + c] = data[r * cols + perm[c]];
-        }
-    }
-    let permuted = Value::Matrix {
-        rows,
-        cols,
-        data: permuted_data,
-    };
-    let s = match call_balance(permuted.clone()) {
-        Ok(Value::Vector(s)) => s,
-        other => panic!("permuted system must balance, got {other:?}"),
-    };
-    // The raw null vector in the permuted column order is [-2, 2, 1],
-    // which canonicalizes (first nonzero positive) to [2, -2, -1]: the
-    // original [2, 1, -2] permuted by the same column swap.
-    assert_eq!(s, vec![2.0, -2.0, -1.0], "vector permuted with the columns");
-    // And the permuted coefficients still certify against the permuted
-    // matrix — balance and certificate commute.
-    let out = evaluate_with_budget(
-        &balance_program(),
-        &[permuted, Value::Vector(s)],
-        &[],
-        EvalBudget::default(),
-    )
-    .expect("permuted coefficients certify against the permuted matrix");
-    assert_eq!(out, Value::Vector(vec![0.0, 0.0]), "permutation preserves balance");
-}
+
 
 /// MR element permutation (score 8): permuting the ELEMENT rows leaves
 /// the derived coefficient vector unchanged — the nullspace is
 /// row-order independent.
-#[test]
-fn mr_element_permutation_keeps_vector() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 3,
-        data: vec![0.0, 2.0, 1.0, 2.0, 0.0, 2.0], // O row first, then H
-    };
-    let s = match call_balance(matrix) {
-        Ok(Value::Vector(s)) => s,
-        other => panic!("element-permuted system must balance, got {other:?}"),
-    };
-    assert_eq!(s, vec![2.0, 1.0, -2.0], "row order does not matter");
-}
+
 
 /// MR row scaling (score 6): multiplying an element's row by any
 /// positive INTEGER preserves the nullspace exactly (the integrality
 /// gate admits integer multiples only).
-#[test]
-fn mr_row_scaling_invariance() {
-    // H row doubled (x2), O row tripled (x3) — same nullspace.
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 3,
-        data: vec![4.0, 0.0, 4.0, 0.0, 6.0, 3.0],
-    };
-    let s = match call_balance(matrix) {
-        Ok(Value::Vector(s)) => s,
-        other => panic!("row-scaled system must balance, got {other:?}"),
-    };
-    assert_eq!(s, vec![2.0, 1.0, -2.0], "row scaling keeps the null vector");
-}
+
 
 /// MR zero-column (score 8): a species with zero atoms in every element
 /// (a column of zeros) adds a free direction — the nullspace is at
 /// least two-dimensional and balancing must refuse typed
 /// (E-NULLSPACE-002), never silently ignore the species.
 #[test]
-fn mr_zero_column_species_refuses_typed() {
-    let matrix = Value::Matrix {
-        rows: 2,
-        cols: 4,
-        data: vec![2.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0],
-    };
-    match call_balance(matrix) {
-        Err(EvalFault::Arithmetic { op, detail }) => {
-            assert_eq!(op, "int-nullspace");
-            assert!(
-                detail.contains("E-NULLSPACE-002"),
-                "zero-column species refuses typed, got {detail}"
-            );
+fn probe() {
+    let mut probe = Probe::new("chemistry mass balance: every check in one probe");
+    probe.case("chemistry_pack_admits_installs_and_resolves", |probe| {
+
+        let entry = admitted_pack(probe, CHEM_PACK);
+        let installed = install_pack(&entry, &["std".to_string()], &std_cell_registry())
+            .expect("the chemistry pack installs from the existing registry");
+        probe.eq("installed.pack", &(installed.pack), &("chemistry"));
+        probe.eq("installed.exports", &(installed.exports), &(vec![MASS_BALANCE.to_string(), BALANCE.to_string()]));
+        installed
+            .image
+            .validate_partitions()
+            .expect("the installed image is self-validating");
+        let cells = installed.image.load("cells").expect("cells page");
+        probe.demand("\"image cells page carries the mass-balance cell: {cells}\"", cells.contains("cell:std.chem.mass_balance"), format!("image cells page carries the mass-balance cell: {cells}"));
+        probe.demand("\"image cells page carries the balancing cell: {cells}\"", cells.contains("cell:std.chem.balance"), format!("image cells page carries the balancing cell: {cells}"));
+        let mut registry = PackRegistry::new();
+        registry.install(installed);
+        let used = registry
+            .resolve_use(&["std".to_string(), "chemistry".to_string()])
+            .expect("use std.chemistry resolves");
+        probe.eq("used.pack", &(used.pack), &("chemistry"));
+    });
+    probe.case("balanced_combustion_admits_with_exact_zero_evidence", |probe| {
+
+        let out = evaluate_with_budget(
+            &balance_program(),
+            &[combustion_matrix(), Value::Vector(vec![2.0, 1.0, -2.0])],
+            &[],
+            EvalBudget::default(),
+        )
+        .expect("balanced combustion evaluates in the reference VM");
+        let residual = match out {
+            Value::Vector(values) => values,
+            other => panic!("expected a residual vector, got {other:?}"),
+        };
+        probe.eq("residual", &(residual), &(vec![0.0, 0.0]));
+        probe.demand("\"residual entries are exact zeros: {residual:?}\"", residual.iter().all(|x| *x == 0.0), format!("residual entries are exact zeros: {residual:?}"));
+    });
+    probe.case("unbalanced_combustion_refuses_typed_mass_imbalance", |probe| {
+
+        match evaluate_with_budget(
+            &balance_program(),
+            &[combustion_matrix(), Value::Vector(vec![2.0, 1.0, -1.0])],
+            &[],
+            EvalBudget::default(),
+        ) {
+            Err(EvalFault::CapabilityRefused { capability, code }) => {
+                probe.eq("capability", &(capability), &(MASS_BALANCE));
+                probe.eq("code", &(code), &("MassImbalance(element 0, residual 2)"));
+            }
+            ok => panic!(
+                "unbalanced combustion must refuse typed MassImbalance, got {ok:?}"
+            ),
         }
-        other => panic!("zero-column species must refuse typed, got {other:?}"),
-    }
+    });
+    probe.case("second_unbalanced_case_names_the_other_element", |probe| {
+
+        match evaluate_with_budget(
+            &balance_program(),
+            &[combustion_matrix(), Value::Vector(vec![1.0, 1.0, -1.0])],
+            &[],
+            EvalBudget::default(),
+        ) {
+            Err(EvalFault::CapabilityRefused { capability, code }) => {
+                probe.eq("capability", &(capability), &(MASS_BALANCE));
+                probe.eq("code", &(code), &("MassImbalance(element 1, residual 1)"));
+            }
+            ok => panic!("second unbalanced case must refuse typed, got {ok:?}"),
+        }
+    });
+    probe.case("balance_combustion_derives_primitive_vector", |probe| {
+
+        match call_balance(combustion_composition()) {
+            Ok(Value::Vector(s)) => {
+                probe.eq("s", &(s), &(vec![2.0, 1.0, -2.0]));
+                probe.demand("\"canonical sign: first nonzero entry positive, got {s:?}\"", s.iter().any(|x| *x != 0.0) && s[0] > 0.0, format!("canonical sign: first nonzero entry positive, got {s:?}"));
+            }
+            other => panic!("combustion must balance, got {other:?}"),
+        }
+    });
+    probe.case("mr_chain_balance_then_certify", |probe| {
+
+        let s = match call_balance(combustion_composition()) {
+            Ok(Value::Vector(s)) => s,
+            other => panic!("combustion must balance first, got {other:?}"),
+        };
+        let out = evaluate_with_budget(
+            &balance_program(),
+            &[combustion_composition(), Value::Vector(s)],
+            &[],
+            EvalBudget::default(),
+        )
+        .expect("the derived coefficients certify");
+        match out {
+            Value::Vector(residual) => {
+                probe.eq("residual", &(residual), &(vec![0.0, 0.0]));
+            }
+            other => panic!("expected a residual vector, got {other:?}"),
+        }
+    });
+    probe.case("balance_thermite_nontrivial_reaction", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 3,
+            cols: 4,
+            data: vec![2.0, 0.0, 0.0, 1.0, 3.0, 0.0, 3.0, 0.0, 0.0, 1.0, 2.0, 0.0],
+        };
+        match call_balance(matrix.clone()) {
+            Ok(Value::Vector(s)) => {
+                probe.eq("s", &(s), &(vec![1.0, 2.0, -1.0, -2.0]));
+                let out = evaluate_with_budget(
+                    &balance_program(),
+                    &[matrix, Value::Vector(s)],
+                    &[],
+                    EvalBudget::default(),
+                )
+                .expect("thermite coefficients certify");
+                probe.eq("out", &(out), &(Value::Vector(vec![0.0, 0.0, 0.0])));
+            }
+            other => panic!("thermite must balance, got {other:?}"),
+        }
+    });
+    probe.case("balance_hydrogenation_derives_vector", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 3,
+            data: vec![2.0, 0.0, 2.0, 4.0, 2.0, 6.0],
+        };
+        match call_balance(matrix.clone()) {
+            Ok(Value::Vector(s)) => {
+                probe.eq("s", &(s), &(vec![1.0, 1.0, -1.0]));
+                let out = evaluate_with_budget(
+                    &balance_program(),
+                    &[matrix, Value::Vector(s)],
+                    &[],
+                    EvalBudget::default(),
+                )
+                .expect("hydrogenation coefficients certify");
+                probe.eq("out", &(out), &(Value::Vector(vec![0.0, 0.0])));
+            }
+            other => panic!("hydrogenation must balance, got {other:?}"),
+        }
+    });
+    probe.case("mr_underdetermined_system_refuses_typed", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 4,
+            data: vec![2.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 2.0],
+        };
+        match call_balance(matrix.clone()) {
+            Err(EvalFault::Arithmetic { op, detail }) => {
+                probe.eq("op", &(op), &("int-nullspace"));
+                probe.demand("\"underdetermined balance refuses with the typed code, got {detail}\"", detail.contains("E-NULLSPACE-002"), format!("underdetermined balance refuses with the typed code, got {detail}"));
+            }
+            other => panic!("underdetermined system must refuse typed, got {other:?}"),
+        }
+    });
+    probe.case("mr_impossible_system_refuses_typed", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![2.0, 0.0, 0.0, 1.0],
+        };
+        match call_balance(matrix) {
+            Err(EvalFault::Arithmetic { op, detail }) => {
+                probe.eq("op", &(op), &("int-nullspace"));
+                probe.demand("\"impossible balance refuses with the typed code, got {detail}\"", detail.contains("E-NULLSPACE-002"), format!("impossible balance refuses with the typed code, got {detail}"));
+            }
+            other => panic!("impossible system must refuse typed, got {other:?}"),
+        }
+    });
+    probe.case("mr_non_integral_composition_refuses_typed", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![1.5, 0.0, 0.0, 1.0],
+        };
+        match call_balance(matrix) {
+            Err(EvalFault::Arithmetic { op, detail }) => {
+                probe.eq("op", &(op), &("int-nullspace"));
+                probe.demand("\"non-integral input refuses with the typed code, got {detail}\"", detail.contains("E-NULLSPACE-001"), format!("non-integral input refuses with the typed code, got {detail}"));
+            }
+            other => panic!("non-integral composition must refuse typed, got {other:?}"),
+        }
+    });
+    probe.case("mr_canonical_sign_is_first_nonzero_positive", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 3,
+            data: vec![2.0, 0.0, 2.0, 1.0, 2.0, 0.0],
+        };
+        match call_balance(matrix) {
+            Ok(Value::Vector(s)) => {
+                probe.eq("s", &(s), &(vec![2.0, -1.0, -2.0]));
+                probe.demand("\"first nonzero entry is positive\"", s[0] > 0.0, "first nonzero entry is positive");
+            }
+            other => panic!("canonical sign must balance, got {other:?}"),
+        }
+    });
+    probe.case("mr_scaled_coefficients_still_certify", |probe| {
+
+        for s in [vec![2.0, 1.0, -2.0], vec![4.0, 2.0, -4.0], vec![-2.0, -1.0, 2.0]]
+        {
+            let out = evaluate_with_budget(
+                &balance_program(),
+                &[combustion_composition(), Value::Vector(s.clone())],
+                &[],
+                EvalBudget::default(),
+            )
+            .expect("scaled coefficients certify");
+            probe.eq("out", &(out), &(Value::Vector(vec![0.0, 0.0])));
+        }
+    });
+    probe.case("mr_species_permutation_permutes_vector", |probe| {
+
+        let base = combustion_composition();
+        let Value::Matrix { rows, cols, data } = base else {
+            unreachable!("combustion composition is a matrix")
+        };
+        let perm: [usize; 3] = [2, 0, 1]; // H2O, H2, O2
+        let mut permuted_data = vec![0.0; data.len()];
+        for r in 0..rows {
+            for c in 0..cols {
+                permuted_data[r * cols + c] = data[r * cols + perm[c]];
+            }
+        }
+        let permuted = Value::Matrix {
+            rows,
+            cols,
+            data: permuted_data,
+        };
+        let s = match call_balance(permuted.clone()) {
+            Ok(Value::Vector(s)) => s,
+            other => panic!("permuted system must balance, got {other:?}"),
+        };
+        // The raw null vector in the permuted column order is [-2, 2, 1],
+        // which canonicalizes (first nonzero positive) to [2, -2, -1]: the
+        // original [2, 1, -2] permuted by the same column swap.
+        probe.eq("s", &(s), &(vec![2.0, -2.0, -1.0]));
+        // And the permuted coefficients still certify against the permuted
+        // matrix — balance and certificate commute.
+        let out = evaluate_with_budget(
+            &balance_program(),
+            &[permuted, Value::Vector(s)],
+            &[],
+            EvalBudget::default(),
+        )
+        .expect("permuted coefficients certify against the permuted matrix");
+        probe.eq("out", &(out), &(Value::Vector(vec![0.0, 0.0])));
+    });
+    probe.case("mr_element_permutation_keeps_vector", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 3,
+            data: vec![0.0, 2.0, 1.0, 2.0, 0.0, 2.0], // O row first, then H
+        };
+        let s = match call_balance(matrix) {
+            Ok(Value::Vector(s)) => s,
+            other => panic!("element-permuted system must balance, got {other:?}"),
+        };
+        probe.eq("s", &(s), &(vec![2.0, 1.0, -2.0]));
+    });
+    probe.case("mr_row_scaling_invariance", |probe| {
+
+        // H row doubled (x2), O row tripled (x3) — same nullspace.
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 3,
+            data: vec![4.0, 0.0, 4.0, 0.0, 6.0, 3.0],
+        };
+        let s = match call_balance(matrix) {
+            Ok(Value::Vector(s)) => s,
+            other => panic!("row-scaled system must balance, got {other:?}"),
+        };
+        probe.eq("s", &(s), &(vec![2.0, 1.0, -2.0]));
+    });
+    probe.case("mr_zero_column_species_refuses_typed", |probe| {
+
+        let matrix = Value::Matrix {
+            rows: 2,
+            cols: 4,
+            data: vec![2.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0],
+        };
+        match call_balance(matrix) {
+            Err(EvalFault::Arithmetic { op, detail }) => {
+                probe.eq("op", &(op), &("int-nullspace"));
+                probe.demand("\"zero-column species refuses typed, got {detail}\"", detail.contains("E-NULLSPACE-002"), format!("zero-column species refuses typed, got {detail}"));
+            }
+            other => panic!("zero-column species must refuse typed, got {other:?}"),
+        }
+    });
+    probe.finish();
 }
+
