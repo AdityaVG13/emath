@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+emath-test-harness = { workspace = true }
 emath-provider-api = { path = "../../crates/emath-provider-api" }
 emath-artifact = { path = "../../crates/emath-artifact" }
 emath-core = { path = "../../crates/emath-core" }
