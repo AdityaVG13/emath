@@ -1,8 +1,7 @@
 //! Certificate-registry tests.
-//!
-//! Moved from #[cfg(test)] in crates/emath-evidence/src/registry.rs.
 
 use emath_evidence::{CertificateKind, CertificateRegistry, CheckerContract, lookup_contract};
+use emath_test_harness::Probe;
 
 fn contract(kind: CertificateKind, version: &str) -> CheckerContract {
     CheckerContract {
@@ -17,38 +16,25 @@ fn contract(kind: CertificateKind, version: &str) -> CheckerContract {
 }
 
 #[test]
-fn certificate_registry_lookup_and_refusal() {
+fn certificate_registry() {
+    let mut p = Probe::new("certificate registry lookup admits and refusals are typed");
     let mut registry = CertificateRegistry::default();
-    let missing = registry
-        .lookup(CertificateKind::Proof, "1.0.0")
-        .unwrap_err();
-    assert_eq!(missing.code, "E-EVID-401");
-
-    let empty = CheckerContract {
-        admits: vec![],
-        ..contract(CertificateKind::Witness, "1.0.0")
-    };
-    let no_class = registry.register(empty).unwrap_err();
-    assert_eq!(no_class.code, "E-EVID-403");
-
-    registry
-        .register(contract(CertificateKind::Proof, "1.0.0"))
-        .unwrap();
-    let found = lookup_contract(&registry, CertificateKind::Proof, "1.0.0").unwrap();
-    assert_eq!(found.checker_id, "checker-proof");
-    assert!(
-        registry
-            .admits(CertificateKind::Proof, "1.0.0", "correctness")
-            .unwrap()
-    );
-    assert!(
-        !registry
-            .admits(CertificateKind::Proof, "1.0.0", "safety")
-            .unwrap()
-    );
-
-    let duplicate = registry
-        .register(contract(CertificateKind::Proof, "1.0.0"))
-        .unwrap_err();
-    assert_eq!(duplicate.code, "E-EVID-402");
+    p.case("missing-refused", |p| {
+        let missing = registry.lookup(CertificateKind::Proof, "1.0.0").unwrap_err();
+        p.eq("code", missing.code, "E-EVID-401");
+    });
+    p.case("empty-admits-refused", |p| {
+        let empty = CheckerContract { admits: vec![], ..contract(CertificateKind::Witness, "1.0.0") };
+        p.eq("code", registry.register(empty).unwrap_err().code, "E-EVID-403");
+    });
+    p.case("lookup-and-admits", |p| {
+        registry.register(contract(CertificateKind::Proof, "1.0.0")).unwrap();
+        p.eq("checker", lookup_contract(&registry, CertificateKind::Proof, "1.0.0").unwrap().checker_id.clone(), "checker-proof".to_string());
+        p.eq("admits-correctness", registry.admits(CertificateKind::Proof, "1.0.0", "correctness").unwrap(), true);
+        p.eq("refuses-safety", registry.admits(CertificateKind::Proof, "1.0.0", "safety").unwrap(), false);
+    });
+    p.case("duplicate-refused", |p| {
+        p.eq("code", registry.register(contract(CertificateKind::Proof, "1.0.0")).unwrap_err().code, "E-EVID-402");
+    });
+    p.finish();
 }

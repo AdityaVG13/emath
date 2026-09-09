@@ -1,8 +1,7 @@
 //! Assumption-ledger tests.
-//!
-//! Moved from #[cfg(test)] in crates/emath-evidence/src/ledger.rs.
 
 use emath_evidence::{Assumption, AssumptionLedger, PremiseClass};
+use emath_test_harness::Probe;
 
 fn assumption(id: &str, class: PremiseClass) -> Assumption {
     Assumption {
@@ -14,7 +13,8 @@ fn assumption(id: &str, class: PremiseClass) -> Assumption {
 }
 
 #[test]
-fn reclassifying_an_assumption_is_refused() {
+fn assumption_ledger() {
+    let mut p = Probe::new("reclassifying a registered assumption is refused");
     let mut ledger = AssumptionLedger::default();
     for (id, class) in [
         ("a1", PremiseClass::Math),
@@ -25,23 +25,20 @@ fn reclassifying_an_assumption_is_refused() {
     ] {
         ledger.register(assumption(id, class)).unwrap();
     }
-    let ids: Vec<&str> = ledger
-        .assumptions()
-        .iter()
-        .map(|entry| entry.id.as_str())
-        .collect();
-    assert_eq!(ids, ["a1", "b1", "c1", "d1", "e1"]);
-    assert!(ledger.canonical().contains("a1:M:"));
-    assert_eq!(ledger.counts()[0], (PremiseClass::Math, 1));
-
-    let error = ledger
-        .register(assumption("a1", PremiseClass::Numeric))
-        .unwrap_err();
-    assert_eq!(error.code, "E-EVID-405");
-    assert_eq!(ledger.assumptions().len(), 5);
-
-    ledger
-        .register(assumption("a1", PremiseClass::Math))
-        .unwrap();
-    assert_eq!(ledger.assumptions().len(), 5);
+    p.case("register", |p| {
+        let ids: Vec<&str> = ledger.assumptions().iter().map(|e| e.id.as_str()).collect();
+        p.eq("order", ids, ["a1", "b1", "c1", "d1", "e1"].to_vec());
+        p.contains("canonical", &ledger.canonical(), "a1:M:");
+        p.eq("counts", ledger.counts()[0], (PremiseClass::Math, 1));
+    });
+    p.case("reclassify-refused", |p| {
+        let error = ledger.register(assumption("a1", PremiseClass::Numeric)).unwrap_err();
+        p.eq("code", error.code, "E-EVID-405");
+        p.eq("len-held", ledger.assumptions().len(), 5);
+    });
+    p.case("idempotent-reregister", |p| {
+        ledger.register(assumption("a1", PremiseClass::Math)).unwrap();
+        p.eq("len", ledger.assumptions().len(), 5);
+    });
+    p.finish();
 }
