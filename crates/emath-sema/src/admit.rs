@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod declaration;
 use declaration::admit_declaration;
 mod attributes;
-mod expr_helpers;
+pub(crate) mod expr_helpers;
 use expr_helpers::*;
 mod infer;
 use infer::*;
@@ -235,6 +235,7 @@ pub(super) struct CapabilityCallBinding {
     pub(super) output: Option<String>,
     pub(super) arity: Option<usize>,
     pub(super) diagnostic: Option<String>,
+    pub(super) kernel: Option<String>,
 }
 
 /// One sibling `emath function` callable from lowering time: parameter
@@ -432,9 +433,9 @@ impl Admitter {
                 let elements: Vec<_> = elements.into_iter().map(|e| self.inline_defs(e)).collect();
                 self.push_expr(ExprNode::Tensor { shape, elements }, span)
             }
-            ExprNode::Differentiate { body, var } => {
+            ExprNode::Program { body, inputs } => {
                 let body = self.inline_defs(body);
-                self.push_expr(ExprNode::Differentiate { body, var }, span)
+                self.push_expr(ExprNode::Program { body, inputs }, span)
             }
             // Slice, Record — keep as-is (rare in derivative bodies).
             // Binder DOMAINS must be inlined like any other expression:
@@ -589,18 +590,20 @@ impl Admitter {
             violation
         } else {
             self.push_expr(
-                ExprNode::Call {
-                    function: QualifiedName("max".to_string()),
-                    arguments: vec![zero, violation],
+                ExprNode::Binary {
+                    operation: BinaryOp::Max,
+                    left: zero,
+                    right: violation,
                 },
                 span,
             )
         };
         // penalty = clamped^2
         Some(self.push_expr(
-            ExprNode::Call {
-                function: QualifiedName("pow".to_string()),
-                arguments: vec![clamped, two],
+            ExprNode::Binary {
+                operation: BinaryOp::StrictFloatPow,
+                left: clamped,
+                right: two,
             },
             span,
         ))

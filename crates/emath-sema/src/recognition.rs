@@ -23,16 +23,20 @@ pub const RECOGNIZED_KINDS: &[&str] = &[
     "type",
 ];
 
+mod capability;
 mod declaration;
 mod feature_capsule;
+mod reaction;
 mod schema;
 mod sections;
 mod text;
 
 pub use declaration::admit_declaration;
-pub(crate) use declaration::admit_field_pack;
+pub(crate) use capability::admit_capability;
+pub(crate) use declaration::{admit_field_pack, validate_kind_application};
 pub(super) use declaration::*;
 pub(crate) use feature_capsule::admit_feature_capsule;
+pub(crate) use reaction::admit_reaction_network;
 pub(super) use sections::*;
 
 pub use schema::{KindDef, SchemaRule};
@@ -156,6 +160,17 @@ pub fn admit_front_end(
                     );
                     continue;
                 }
+                if is_unresolved_law_import(path, tree) {
+                    diagnostics.error(
+                        "E-PKG-052",
+                        format!(
+                            "law package import `{}` is not resolved yet; declare the law locally until the curated package registry lands",
+                            path.join("::")
+                        ),
+                        *source,
+                    );
+                    continue;
+                }
                 let mut path = path.clone();
                 let selection = match tree {
                     UseTree::All => ImportSelection::All,
@@ -185,6 +200,15 @@ pub fn admit_front_end(
         }
     }
     result
+}
+
+fn is_unresolved_law_import(path: &[String], tree: &UseTree) -> bool {
+    path == ["physics", "NewtonSecond"]
+        || (path == ["physics"]
+            && matches!(
+                tree,
+                UseTree::Named(names) if names.iter().any(|(name, _)| name == "NewtonSecond")
+            ))
 }
 
 fn is_external_import(path: &[String]) -> bool {

@@ -24,6 +24,7 @@
 //! byte-identical receipt (replay). No I/O, no clocks, no locale.
 
 use crate::session::CompilerSession;
+use emath_core::json_escape_into;
 use emath_core::limits::Limits;
 use emath_ir::meaning::meaning_id;
 
@@ -173,17 +174,17 @@ impl MigrationReceipt {
                 out.push(',');
             }
             out.push_str("{\"rule\":\"");
-            push_escaped(&mut out, &r.rule);
+            json_escape_into(&r.rule, &mut out);
             out.push_str("\",\"kind\":\"");
             out.push_str(r.kind.as_str());
             out.push_str("\",\"span\":\"");
-            push_escaped(&mut out, &r.span);
+            json_escape_into(&r.span, &mut out);
             out.push_str("\",\"before_hash\":\"");
-            push_escaped(&mut out, &r.before_hash);
+            json_escape_into(&r.before_hash, &mut out);
             out.push_str("\",\"after_hash\":\"");
-            push_escaped(&mut out, &r.after_hash);
+            json_escape_into(&r.after_hash, &mut out);
             out.push_str("\",\"identity_delta\":\"");
-            push_escaped(&mut out, &r.identity_delta);
+            json_escape_into(&r.identity_delta, &mut out);
             out.push_str("\"}");
         }
         out.push_str("],\"refusals\":[");
@@ -194,20 +195,20 @@ impl MigrationReceipt {
             out.push_str("{\"code\":\"");
             out.push_str(r.code);
             out.push_str("\",\"reason\":\"");
-            push_escaped(&mut out, &r.reason);
+            json_escape_into(&r.reason, &mut out);
             out.push_str("\",\"candidates\":[");
             for (candidate_index, candidate) in r.candidates.iter().enumerate() {
                 if candidate_index > 0 {
                     out.push(',');
                 }
                 out.push('"');
-                push_escaped(&mut out, candidate);
+                json_escape_into(candidate, &mut out);
                 out.push('"');
             }
             out.push_str("]}");
         }
         out.push_str("],\"verdict\":\"");
-        push_escaped(&mut out, &self.verdict);
+        json_escape_into(&self.verdict, &mut out);
         out.push_str("\",\"identity_verified\":");
         out.push_str(if self.identity_verified {
             "true"
@@ -216,22 +217,6 @@ impl MigrationReceipt {
         });
         out.push('}');
         out
-    }
-}
-
-fn push_escaped(out: &mut String, text: &str) {
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => out.push(c),
-        }
     }
 }
 

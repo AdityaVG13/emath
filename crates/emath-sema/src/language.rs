@@ -11,6 +11,7 @@ pub(crate) struct LanguageBinding {
     pub inputs: Vec<String>,
     pub output: Option<String>,
     pub diagnostic: Option<String>,
+    pub kernel: Option<String>,
 }
 
 thread_local! {
@@ -58,6 +59,7 @@ pub fn install_language_distribution(
                 .unwrap_or_default(),
             output: semantic_field(semantics, "output").map(str::to_string),
             diagnostic: semantic_field(semantics, "diagnostic").map(str::to_string),
+            kernel: semantic_field(semantics, "kernel").map(str::to_string),
         });
     }
     bindings.sort_by(|left, right| left.feature_id.cmp(&right.feature_id));

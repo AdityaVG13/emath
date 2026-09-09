@@ -229,28 +229,41 @@ fn collect_expr(
     }
 }
 
+enum TinyExact {
+    Value(i64),
+    Overflow,
+}
+
 fn evaluate_tiny_exact(package: &emath_ir::SemanticPackage) -> Option<String> {
     for declaration in &package.declarations {
         for expression in declaration.definitions.values() {
-            if let Some(value) = eval_int(package, *expression) {
-                return Some(format!("value:{value}:exact-int"));
+            match eval_int(package, *expression)? {
+                TinyExact::Value(value) => return Some(format!("value:{value}:exact-int")),
+                TinyExact::Overflow => return Some("diagnosis:E-INT-OVERFLOW".to_string()),
             }
         }
     }
     None
 }
 
-fn eval_int(package: &emath_ir::SemanticPackage, id: emath_ir::ExprId) -> Option<i64> {
+fn eval_int(package: &emath_ir::SemanticPackage, id: emath_ir::ExprId) -> Option<TinyExact> {
     match package.exprs.get(id.index())? {
-        ExprNode::Literal(Literal::Integer(value)) => value.parse().ok(),
+        ExprNode::Literal(Literal::Integer(value)) => Some(TinyExact::Value(value.parse().ok()?)),
         ExprNode::Binary {
             operation: emath_ir::BinaryOp::ExactAdd | emath_ir::BinaryOp::StrictFloatAdd,
             left,
             right,
-        } => eval_int(package, *left)?.checked_add(eval_int(package, *right)?),
+        } => match (eval_int(package, *left)?, eval_int(package, *right)?) {
+            (TinyExact::Overflow, _) | (_, TinyExact::Overflow) => Some(TinyExact::Overflow),
+            (TinyExact::Value(left), TinyExact::Value(right)) => Some(
+                left.checked_add(right)
+                    .map(TinyExact::Value)
+                    .unwrap_or(TinyExact::Overflow),
+            ),
+        },
         ExprNode::Literal(Literal::FloatBits(bits)) => {
             let value = f64::from_bits(*bits);
-            (value.fract() == 0.0).then_some(value as i64)
+            (value.fract() == 0.0).then_some(TinyExact::Value(value as i64))
         }
         _ => None,
     }

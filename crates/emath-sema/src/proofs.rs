@@ -11,7 +11,7 @@
 //! Determinism class: pure functions of the outline; the same outline
 //! produces byte-identical record JSON (the obligation hash pins it).
 
-use emath_core::content_id_of_str;
+use emath_core::{content_id_of_str, json_quote_into};
 
 /// The versioned machine schema (receipt-class artifact; stable).
 pub const PROOF_OBLIGATION_SCHEMA: &str = "emath.proof-obligation v1";
@@ -30,28 +30,6 @@ pub struct ProofObligation {
     pub hypotheses: Vec<String>,
 }
 
-fn push_escaped(out: &mut String, text: &str) {
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => out.push(c),
-        }
-    }
-}
-
-fn push_json_string(out: &mut String, text: &str) {
-    out.push('"');
-    push_escaped(out, text);
-    out.push('"');
-}
-
 impl ProofObligation {
     /// Canonical `emath.proof-obligation v1` JSON for this record:
     /// fixed key order, minimal escaping, no ambient formatting.
@@ -61,14 +39,14 @@ impl ProofObligation {
         out.push_str("{\"schema\":\"");
         out.push_str(PROOF_OBLIGATION_SCHEMA);
         out.push_str("\",\"outline\":");
-        push_json_string(&mut out, &self.outline);
+        json_quote_into(&self.outline, &mut out);
         out.push_str(",\"kind\":");
-        push_json_string(&mut out, self.kind);
+        json_quote_into(self.kind, &mut out);
         out.push_str(",\"name\":");
-        push_json_string(&mut out, &self.name);
+        json_quote_into(&self.name, &mut out);
         out.push_str(",\"claim\":");
         match &self.claim {
-            Some(claim) => push_json_string(&mut out, claim),
+            Some(claim) => json_quote_into(claim, &mut out),
             None => out.push_str("null"),
         }
         out.push_str(",\"hypotheses\":[");
@@ -76,7 +54,7 @@ impl ProofObligation {
             if i > 0 {
                 out.push(',');
             }
-            push_json_string(&mut out, h);
+            json_quote_into(h, &mut out);
         }
         out.push_str("]}");
         out
@@ -155,9 +133,9 @@ pub fn lower_outline(
 pub fn outline_records_json(outline: &str, obligations: &[ProofObligation]) -> String {
     let mut out = String::with_capacity(200);
     out.push_str("{\"schema\":");
-    push_json_string(&mut out, PROOF_OBLIGATION_SCHEMA);
+    json_quote_into(PROOF_OBLIGATION_SCHEMA, &mut out);
     out.push_str(",\"outline\":");
-    push_json_string(&mut out, outline);
+    json_quote_into(outline, &mut out);
     out.push_str(",\"records\":[");
     for (i, o) in obligations.iter().enumerate() {
         if i > 0 {

@@ -38,15 +38,27 @@ generic consumers.
   its `CapabilityId`.
 - Unknown explicit `std::...` FeatureIDs refuse with `E-LANG-FEATURE`; other
   unresolved calls refuse with `E-TYPE-003`.
-- No builtin arity table, mathematical call-name router, standard-kind registry,
-  embedded domain package recognizer, or reaction/chemistry/finite recognizer
-  exists in this crate. Item-attribute governance is typed-refusal admission,
-  not domain semantics: unknown `@attributes` refuse (E-SYN-118), unknown
-  capability keys refuse (E-PKG-065), `@experimental` without the declared
+- Named mathematics is not admitted by a handwritten FeatureID router.
+  Remaining compiler primitives intern or apply *authored* data:
+  `emath capability` cells intern into the package arena; local names
+  shadow image aliases; `use physics::classical::{...}` parses the
+  authored file under `language/stdlib/laws/`; `series_from_csv` /
+  `series_at` map string literals onto universal `ExprNode::Series` /
+  `SeriesSample`; rank-3 stencil sugar is a spelling table that builds
+  weight carriers and `Apply`s existing kernels; Option/Result and
+  `length`/`norm`/`not` are universal IR. None of these mint a FeatureID.
+- `emath reaction_network` admission is labeled-multiset schema (species
+  closure, section shape, element-spelling balance). It is not a chemistry
+  kernel and does not select a FeatureID. Moving the element spelling
+  table into a capsule is diet follow-up, not a dispatch registry.
+- Item-attribute governance is typed-refusal admission, not domain
+  semantics: unknown `@attributes` refuse (E-SYN-118), unknown capability
+  keys refuse (E-PKG-065), `@experimental` without the declared
   `experimental-syntax` capability refuses (E-PKG-064), `@units_profile`
   validates its ladder and provenance requirements, and
-  `@significant_figures` validates display/enforce contracts against retained
-  presentation helpers. None of these compute mathematics or admit features.
+  `@significant_figures` validates display/enforce contracts against
+  retained presentation helpers. None of these compute mathematics or
+  admit features.
 - Source `emath feature` declarations are generic restricted capsule data.
   `emath-schema` validates their closed class table; sema does not branch on a
   feature or domain name.
@@ -91,5 +103,6 @@ generic consumers.
   authority, select kernels/providers, or interpret exactness/evidence/world
   policy. Those are authored image data and later generic execution concerns.
 - Backend and artifact emission live outside this crate.
-- Retired source files are retained as non-module tombstones because file
-  deletion was not authorized; they contain no executable authority.
+- Undeclared leftover recognition/call files were deleted on 2026-09-04
+  with user authorization (`emath-5gz4o`). They are not modules and
+  contained no executable authority.
