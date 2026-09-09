@@ -132,7 +132,7 @@ pub fn expand_scratch(source: &str) -> ScratchExpansion {
                 "a claimed exact closed form",
                 "open meaning is a continuation; freeze does not invent a solution",
                 "drop `claim exact` / `exact` until the hole is filled, or keep the hole labeled open",
-                "language/examples/intro/scratch.emath",
+                "language/examples/intro/add-exact.emath",
             ),
         );
     }
@@ -158,7 +158,7 @@ pub fn expand_scratch(source: &str) -> ScratchExpansion {
                 "which surface is official",
                 "scratch and contracted declarations are the same IR; mixing hides the desugar",
                 "wrap the scratch in `emath function Name:` or drop the header",
-                "language/examples/intro/scratch.emath",
+                "language/examples/intro/add-exact.emath",
             ),
         );
         return expansion(
@@ -181,7 +181,7 @@ pub fn expand_scratch(source: &str) -> ScratchExpansion {
                 "a labeled domain (`over Real`) or the candidate menu from `emath expand` / `emath solve --check`",
                 "x^2 = 2 is many problems; 1.414… is not the intended meaning",
                 "write `solve x^2 = 2 over Real`, or run `emath solve --check` and pin a candidate",
-                "language/examples/intro/scratch.emath",
+                "language/examples/intro/add-exact.emath",
             ),
         );
     }
@@ -212,7 +212,7 @@ pub(super) fn refuse_hidden_desugar(source: &str, diagnostics: &mut Diagnostics)
                 "the contracted form of this shorthand",
                 "hidden defaults are the learnability failure mode",
                 "delete the hide marker and run `emath expand`",
-                "language/examples/intro/scratch.emath",
+                "language/examples/intro/add-exact.emath",
             ),
         );
         refuse_if_contains_pair(
@@ -229,7 +229,7 @@ pub(super) fn refuse_hidden_desugar(source: &str, diagnostics: &mut Diagnostics)
                 "labeled candidates (Real, Complex, modular, symbolic, numeric)",
                 "intent-completion must name alternatives, not pick one",
                 "write `over Real` or inspect candidates with `emath expand`",
-                "language/examples/intro/scratch.emath",
+                "language/examples/intro/add-exact.emath",
             ),
         );
     }
@@ -323,7 +323,7 @@ pub(super) fn apply_scratch_kinds(
                                 "a single type for that example",
                                 "conflicting examples must refuse rather than pick a silent default",
                                 "keep one `example` binding, or make both the same type",
-                                "language/examples/intro/scratch.emath",
+                                "language/examples/intro/add-exact.emath",
                             ),
                         );
                     }
@@ -410,7 +410,7 @@ pub(super) fn wrap_scratch(
                             "a known intent verb or an assignment/expression",
                             "unknown verbs must be typed diagnostics, not a crash or silent skip",
                             "use `solve`/`plot`/`find` or write `name = expr`",
-                            "language/examples/intro/scratch.emath",
+                            "language/examples/intro/add-exact.emath",
                         ),
                     );
                 } else {
@@ -424,7 +424,7 @@ pub(super) fn wrap_scratch(
                             "an expression, `name = expr`, `example x = 3`, or an intent verb",
                             "junk text is not a hidden beginner dialect",
                             "start with `2+2` or `y = x^2`",
-                            "language/examples/intro/scratch.emath",
+                            "language/examples/intro/add-exact.emath",
                         ),
                     );
                 }

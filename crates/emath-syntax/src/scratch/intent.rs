@@ -252,7 +252,7 @@ pub(super) fn rewrite_l2(
                     "a body of assignments/examples/intent verbs, or L3 sections",
                     "a name without a body is not L0 scratch",
                     "write `y = x^2` under the name, or use full `inputs:`/`definitions:` sections",
-                    "language/examples/intro/hello-square.emath",
+                    "language/examples/intro/add-exact.emath",
                 ),
             );
             out.push_str(&text);
@@ -269,7 +269,7 @@ pub(super) fn rewrite_l2(
                     "assignments, examples, or intent verbs",
                     "unknown kind/body is not a scratch grab",
                     "write `y = x^2` or `example x = 3`",
-                    "language/examples/intro/hello-square.emath",
+                    "language/examples/intro/add-exact.emath",
                 ),
             );
             out.push_str(&text);
@@ -329,7 +329,7 @@ pub(super) fn rewrite_l2(
                             format!(
                                 "rename the header argument to `{free_name}`, or use `{free_name}` in the body"
                             ),
-                            "language/examples/intro/hello-square.emath",
+                            "language/examples/intro/add-exact.emath",
                         ),
                     );
                     l2_ok = false;
@@ -355,7 +355,7 @@ pub(super) fn rewrite_l2(
                         format!(
                             "write `{callee} = ?` under the name, or bind `{callee}` in `definitions:`"
                         ),
-                        "language/examples/intro/hello-square.emath",
+                        "language/examples/intro/add-exact.emath",
                     ),
                 );
                 l2_ok = false;
