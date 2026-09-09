@@ -1,41 +1,22 @@
 //! Compiler-phase census tests.
-//!
-//! Moved from #[cfg(test)] in crates/emath-adapter-rumoca/src/census.rs.
-
 use emath_adapter_rumoca::census::{PHASES, phase};
 use emath_adapter_rumoca::{PhaseKind, Stability};
+use emath_test_harness::Probe;
 
 #[test]
-fn no_phase_claims_upstream_stability_or_public_contract() {
-    // Phase 1 has native stand-ins only; a phase marked Stable or
-    // public_contract would claim an upstream Rumoca engine that is
-    // not consumed.
-    for record in &PHASES {
-        assert_ne!(
-            record.stability,
-            Stability::Stable,
-            "phase {:?} must not claim Stable without an upstream engine",
-            record.kind
-        );
-        assert!(
-            !record.public_contract,
-            "phase {:?} must not claim a public upstream contract",
-            record.kind
-        );
-    }
-}
-
-#[test]
-fn census_phase_lookup_round_trips() {
-    for record in &PHASES {
-        assert_eq!(
-            phase(record.kind),
-            Some(record),
-            "phase lookup must find every census row"
-        );
-    }
-    assert_eq!(
-        phase(PhaseKind::Resolve).unwrap().note,
-        "no name resolver in Phase 1"
-    );
+fn probe() {
+    let mut p = Probe::new("rumoca phase census claims no upstream stability or public contract");
+    p.case("no-stable-claim", |p| {
+        for r in &PHASES {
+            p.demand(format!("{:?}/stable", r.kind), r.stability != Stability::Stable, "must not claim Stable without upstream engine");
+            p.demand(format!("{:?}/contract", r.kind), !r.public_contract, "must not claim public contract");
+        }
+    });
+    p.case("lookup", |p| {
+        for r in &PHASES {
+            p.eq(format!("{:?}", r.kind), phase(r.kind), Some(r));
+        }
+        p.eq("resolve-note", phase(PhaseKind::Resolve).unwrap().note, "no name resolver in Phase 1");
+    });
+    p.finish();
 }

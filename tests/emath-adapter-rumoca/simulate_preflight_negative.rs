@@ -1,117 +1,39 @@
-#![forbid(unsafe_code)]
-//! Negative tests: `simulate` fails closed under `E-PROV-235` on
-//! malformed plan shapes (fewer than two states, invalid `dt`) instead
-//! of indexing past the end of `plan.states` (bug-hunt residual).
-
+//! Negative tests: `simulate` fails closed under `E-PROV-235` on malformed plan shapes instead of indexing past `plan.states`.
 use std::collections::BTreeMap;
-
 use emath_adapter_rumoca::lower::lower;
-use emath_adapter_rumoca::provider::{simulate, SimulationConfig};
-use emath_adapter_rumoca::structural::{
-    EqExpr, Equation, StructuralModel, Unit, VariableDecl, VariableKind,
-};
+use emath_adapter_rumoca::provider::{SimulationConfig, simulate};
+use emath_adapter_rumoca::structural::{EqExpr, Equation, StructuralModel, Unit, VariableDecl, VariableKind};
 use emath_ir::TypeNode;
 use emath_provider_api::runtime::{Budget, Outcome};
+use emath_test_harness::Probe;
 
-fn one_state_model() -> StructuralModel {
+fn state_model(n: usize) -> StructuralModel {
+    let names = ["x", "y"];
     StructuralModel {
-        variables: vec![VariableDecl {
-            name: "x".into(),
-            kind: VariableKind::State,
-            unit: Unit::dimensionless(),
-            ty: TypeNode::Float64,
-        }],
-        equations: vec![Equation {
-            lhs: EqExpr::Der("x".into()),
-            rhs: EqExpr::constant(0.0),
-            origin: "fixture".into(),
-        }],
-        ..StructuralModel::default()
-    }
-}
-
-fn two_state_model() -> StructuralModel {
-    StructuralModel {
-        variables: vec![
-            VariableDecl {
-                name: "x".into(),
-                kind: VariableKind::State,
-                unit: Unit::dimensionless(),
-                ty: TypeNode::Float64,
-            },
-            VariableDecl {
-                name: "y".into(),
-                kind: VariableKind::State,
-                unit: Unit::dimensionless(),
-                ty: TypeNode::Float64,
-            },
-        ],
-        equations: vec![
-            Equation {
-                lhs: EqExpr::Der("x".into()),
-                rhs: EqExpr::constant(0.0),
-                origin: "fixture".into(),
-            },
-            Equation {
-                lhs: EqExpr::Der("y".into()),
-                rhs: EqExpr::constant(0.0),
-                origin: "fixture".into(),
-            },
-        ],
+        variables: (0..n).map(|i| VariableDecl { name: names[i].into(), kind: VariableKind::State, unit: Unit::dimensionless(), ty: TypeNode::Float64 }).collect(),
+        equations: (0..n).map(|i| Equation { lhs: EqExpr::Der(names[i].into()), rhs: EqExpr::constant(0.0), origin: "fixture".into() }).collect(),
         ..StructuralModel::default()
     }
 }
 
 #[test]
-fn one_state_plan_fails_closed_not_panics() {
-    let model = one_state_model();
-    let plan = lower(&model).expect("one-state model lowers");
-    assert_eq!(plan.states.len(), 1);
-    let outcome = simulate(
-        &model,
-        &plan,
-        &BTreeMap::new(),
-        &SimulationConfig {
-            steps: 5,
-            ..SimulationConfig::default()
-        },
-        &Budget::default(),
-    );
-    assert!(matches!(outcome, Outcome::Failed(_)));
-}
-
-#[test]
-fn non_finite_dt_fails_closed() {
-    let model = two_state_model();
-    let plan = lower(&model).expect("two-state model lowers");
-    let outcome = simulate(
-        &model,
-        &plan,
-        &BTreeMap::new(),
-        &SimulationConfig {
-            dt: f64::NAN,
-            steps: 5,
-            error_estimate: false,
-        },
-        &Budget::default(),
-    );
-    assert!(matches!(outcome, Outcome::Failed(_)));
-}
-
-#[test]
-fn well_formed_plan_still_simulates() {
-    let model = two_state_model();
-    let plan = lower(&model).expect("two-state model lowers");
-    let outcome = simulate(
-        &model,
-        &plan,
-        &BTreeMap::new(),
-        &SimulationConfig {
-            dt: 0.001,
-            steps: 5,
-            error_estimate: false,
-        },
-        &Budget::default(),
-    );
-    assert!(outcome.is_resolved());
+fn probe() {
+    let mut p = Probe::new("rumoca simulate fails closed on malformed plans and still resolves well-formed ones");
+    p.case("one-state", |p| {
+        let model = state_model(1);
+        let plan = lower(&model).expect("one-state lowers");
+        p.eq("states", plan.states.len(), 1);
+        p.demand("refused", matches!(simulate(&model, &plan, &BTreeMap::new(), &SimulationConfig { steps: 5, ..SimulationConfig::default() }, &Budget::default()), Outcome::Failed(_)), "one-state must fail closed");
+    });
+    p.case("non-finite-dt", |p| {
+        let model = state_model(2);
+        let plan = lower(&model).expect("two-state lowers");
+        p.demand("refused", matches!(simulate(&model, &plan, &BTreeMap::new(), &SimulationConfig { dt: f64::NAN, steps: 5, error_estimate: false }, &Budget::default()), Outcome::Failed(_)), "NaN dt must fail closed");
+    });
+    p.case("well-formed", |p| {
+        let model = state_model(2);
+        let plan = lower(&model).expect("two-state lowers");
+        p.demand("resolved", simulate(&model, &plan, &BTreeMap::new(), &SimulationConfig { dt: 0.001, steps: 5, error_estimate: false }, &Budget::default()).is_resolved(), "well-formed must resolve");
+    });
+    p.finish();
 }
