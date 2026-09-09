@@ -25,7 +25,7 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-syntax` | `crates/emath-syntax` | lexer, layout, lossless tree, parser backend (`install_source_parser`), lossless formatter | core |
-| `emath-schema` | `crates/emath-schema` | custom kind schemas and restricted lowering (thirteen-schema registry) | core |
+| `emath-schema` | `crates/emath-schema` | custom kind schemas and restricted lowering (thirteen-schema registry) | core/term |
 | `emath-hir` | `crates/emath-hir` | resolved declaration representation | core/ir |
 | `emath-term` | `crates/emath-term` | provider-neutral first-order term representation (canonical round-trip) | core |
 
@@ -33,7 +33,7 @@ intent, not an implemented surface.
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-ir` | `crates/emath-ir` | neutral SIR/GIR/plan/EMIR/evidence structures | core |
+| `emath-ir` | `crates/emath-ir` | neutral SIR/GIR/plan/EMIR/evidence structures | core/schema/term |
 | `emath-sema` | `crates/emath-sema` | orchestration and constructor/invariant admission (`CompilerSession`) | core/ir/syntax/goal |
 | `emath-exec-ir` | `crates/emath-exec-ir` | executable target-independent regions | ir |
 | `emath-goal` | `crates/emath-goal` | request elaboration and goal schemas | ir |
@@ -64,13 +64,14 @@ intent, not an implemented surface.
 | `emath-macro` | `crates/emath-macro` | procedural macro convenience (corrected name; formerly `emath-macros`) |: |
 | `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity (corrected name; formerly `emath-lab`) | core |
 | `emath-registry` | `crates/emath-registry` | package/provider registry slice | provider-api |
-| `emath-cli` | `crates/emath-cli` | command-line application | sema/build/lab-core |
+| `emath-cli` | `crates/emath-cli` | production compiler CLI (`emath`) | sema/build/lab-core |
+| `emath-cli-lab` | `crates/emath-cli-lab` | extracted lab/host CLI (`emath-lab`) | emath-cli/genesis/world-ir/store |
 
 ### Tier 6: semantic genesis substrate
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-genesis` | `crates/emath-genesis` | minimal Semantic Genesis evaluator and built-in example worlds | term/world-ir |
+| `emath-genesis` | `crates/emath-genesis` | minimal Semantic Genesis evaluator and built-in example worlds | core/term/world-ir |
 | `emath-world-ir` | `crates/emath-world-ir` | provider-neutral World IR and meaning-hole structures; owns FittedTable and re-exports core's fnv1a64 (o7a6) | ir/core |
 
 ### Tier 7: governance and operations
