@@ -15,8 +15,35 @@ pub fn run(args: &[String]) -> CliExit {
             EXIT_OK
         }),
         ParsedCli::CommandHelp { name } => print_command_help(name),
-        ParsedCli::UnknownFlag { code } => code,
-        ParsedCli::Usage(message) => usage(message),
+        ParsedCli::UnknownFlag { code } => {
+            if catalog::wants_json(args)
+                && matches!(
+                    args.first().map(String::as_str),
+                    Some("api" | "run" | "step" | "inspect" | "verify")
+                )
+            {
+                execution::diagnostic(
+                    true,
+                    code,
+                    "E-CLI-USAGE",
+                    "invalid command arguments; use emath help for the accepted arguments",
+                )
+            } else {
+                code
+            }
+        }
+        ParsedCli::Usage(message) => {
+            if catalog::wants_json(args)
+                && matches!(
+                    args.first().map(String::as_str),
+                    Some("api" | "run" | "step" | "inspect" | "verify")
+                )
+            {
+                execution::diagnostic(true, EXIT_USAGE, "E-CLI-USAGE", message)
+            } else {
+                usage(message)
+            }
+        }
         ParsedCli::Unknown(name) => unknown_command(name),
         ParsedCli::Known(command) => run_command(command),
     }
@@ -38,50 +65,7 @@ pub(super) enum Command {
     Plan(FileJsonRequest),
     Planner(PlannerRequest),
     Build(BuildRequest),
-    Expand(FileJsonRequest),
-    Assumptions(FileJsonRequest),
-    Solve(ParsedSolve),
-    Exactness(ExactnessRequest),
-    Freeze(FreezeRequest),
-    Why(WhyRequest),
-    Parse(ParseRequest),
-    Signature(SignatureRequest),
-    Genesis(GenesisRequest),
-    Compile(CompileRequest),
-    RobotDocs,
-    Provider(ProviderRequest),
-    Fork(ForkRequest),
-    Capabilities,
-    Eval(eval_cmd::EvalArgs),
-    Sweep(eval_cmd::SweepArgs),
     Simulate(simulate_cmd::SimulateArgs),
-    Fit(fit_cmd::FitArgs),
-    Repl {
-        path: PathBuf,
-    },
-    WorldShow {
-        id: String,
-        dir: PathBuf,
-    },
-    PortfolioShow {
-        id: String,
-        dir: PathBuf,
-    },
-    Meaning(meaning_cmd::MeaningRequest),
-    LibraryMount {
-        name: String,
-    },
-    ImportModelica {
-        path: PathBuf,
-        json: bool,
-    },
-    ArtifactCheck(PathBuf),
-    ArtifactBattery(PathBuf),
-    Architecture {
-        json: bool,
-    },
-    Web(serve_cmd::ServeArgs),
-    Serve(serve_cmd::ServeArgs),
     New {
         name: String,
         out: PathBuf,
@@ -101,19 +85,17 @@ pub(super) enum Command {
         list_rules: bool,
     },
     Explain(ExplainRequest),
-    Run {
-        path: PathBuf,
-        out: PathBuf,
-    },
+    Run(execution::RunRequest),
+    Search(compiled_search::SearchRequest),
+    Step(execution::RunRequest),
+    Api(language_cmd::ApiRequest),
     Test {
         path: PathBuf,
         out: PathBuf,
     },
-    Bench {
-        path: PathBuf,
-    },
     Verify {
         dir: PathBuf,
+        json: bool,
     },
     Inspect {
         dir: PathBuf,
@@ -127,11 +109,6 @@ pub(super) enum Command {
     Doctor {
         json: bool,
     },
-    Vendor {
-        out: PathBuf,
-    },
-    Agent(AgentRequest),
-    Coverage(Vec<String>),
 }
 
 pub(crate) enum ExplainRequest {
@@ -145,25 +122,6 @@ pub(crate) enum ExplainRequest {
     Law {
         json: bool,
     },
-}
-
-pub(crate) enum AgentRequest {
-    Check { path: PathBuf },
-    Plan { path: PathBuf },
-    Build { path: PathBuf, out: PathBuf },
-    Triage { path: PathBuf },
-    Propose { path: PathBuf },
-}
-
-pub(crate) enum ProviderRequest {
-    List { json: bool },
-    Inspect { id: String },
-    Test { id: String, json: bool },
-}
-
-pub(crate) enum ForkRequest {
-    Status { json: bool },
-    Sync { dry_run: bool, json: bool },
 }
 
 pub(super) enum ParseKnownError {
@@ -216,55 +174,6 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
             .ok_or(ParseKnownError::Usage(
                 "build <file.emath> [--out <dir>] [--verify] [--json]",
             )),
-        "parse" => parse_parse_request(rest)
-            .map(Command::Parse)
-            .ok_or(ParseKnownError::Usage(
-                "parse --forest <file.emath> [--out <dir>]",
-            )),
-        "expand" => parse_file_json_request(rest)
-            .map(Command::Expand)
-            .ok_or(ParseKnownError::Usage("expand <file.emath> [--json]")),
-        "solve" => Ok(Command::Solve(parse_solve_request(rest))),
-        "exactness" => {
-            parse_exactness_request(rest)
-                .map(Command::Exactness)
-                .ok_or(ParseKnownError::Usage(
-                    "exactness <file.emath> [--json] [--raise units]",
-                ))
-        }
-        "freeze" => parse_freeze_request(rest)
-            .map(Command::Freeze)
-            .ok_or(ParseKnownError::Usage(
-                "freeze <file.emath> [--out <file>] [--json]",
-            )),
-        "why" => parse_why_request(rest)
-            .map(Command::Why)
-            .ok_or(ParseKnownError::Usage(
-                "why <file.emath> inference:N [--json]",
-            )),
-        "assumptions" => parse_file_json_request(rest)
-            .map(Command::Assumptions)
-            .ok_or(ParseKnownError::Usage("assumptions <file.emath> [--json]")),
-        "signature" => {
-            parse_signature_request(rest)
-                .map(Command::Signature)
-                .ok_or(ParseKnownError::Usage(
-                    "signature <file.emath> [--out <dir>]",
-                ))
-        }
-        "genesis" => parse_genesis_request(rest)
-            .map(Command::Genesis)
-            .ok_or(ParseKnownError::Usage("genesis <file.emath> --out <dir>")),
-        "eval" => eval_cmd::parse_eval_args(rest)
-            .map(Command::Eval)
-            .ok_or(ParseKnownError::Usage(
-                "eval <file.emath> [--world <name>] [--function NAME] [--set name=value] [--json]",
-            )),
-        "sweep" => eval_cmd::parse_sweep_args(rest)
-            .map(Command::Sweep)
-            .ok_or(ParseKnownError::Usage(
-                "sweep <file.emath> --function NAME --grid name=v1,v2,... [--expect name=value] [--out <file>] [--json]",
-            )),
         "simulate" => match simulate_cmd::parse_simulate_args(rest) {
             Ok(parsed) => Ok(Command::Simulate(parsed)),
             Err(message) => {
@@ -273,88 +182,6 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                     "simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
                 ))
             }
-        },
-        "fit" => match fit_cmd::parse_fit_args(rest) {
-            Ok(parsed) => Ok(Command::Fit(parsed)),
-            Err(message) => {
-                eprintln!("error: {message}");
-                Err(ParseKnownError::Usage("fit <file.emath> [--json]"))
-            }
-        },
-        "repl" => eval_cmd::parse_repl_path(rest)
-            .map(|path| Command::Repl { path })
-            .ok_or(ParseKnownError::Usage("repl <file.emath>")),
-        "compile" => {
-            parse_compile_request(rest)
-                .map(Command::Compile)
-                .ok_or(ParseKnownError::Usage(
-                    "compile --parametric <file.emath> --out <dir> [--world LABEL]",
-                ))
-        }
-        "world" => parse_show_named(rest)
-            .map(|(id, dir)| Command::WorldShow { id, dir })
-            .ok_or(ParseKnownError::Usage("world show WORLD_ID --dir <dir>")),
-        "portfolio" => parse_show_named(rest)
-            .map(|(id, dir)| Command::PortfolioShow { id, dir })
-            .ok_or(ParseKnownError::Usage(
-                "portfolio show PORTFOLIO_ID --dir <dir>",
-            )),
-        "meaning" => meaning_cmd::parse_meaning_request(rest)
-            .map(Command::Meaning)
-            .map_err(ParseKnownError::Usage),
-        "library" => match rest {
-            [sub, name] if sub == "mount" => Ok(Command::LibraryMount {
-                name: name.clone(),
-            }),
-            _ => Err(ParseKnownError::Usage("library mount <name>")),
-        },
-        "import" => parse_import_modelica(rest)
-            .map(|(path, json)| Command::ImportModelica { path, json })
-            .ok_or(ParseKnownError::Usage("import modelica <file.mo> [--json]")),
-        "artifact" => match rest {
-            [sub, dir] if sub == "check" => Ok(Command::ArtifactCheck(PathBuf::from(dir))),
-            [sub, dir] if sub == "battery" => Ok(Command::ArtifactBattery(PathBuf::from(dir))),
-            _ => Err(ParseKnownError::Usage("artifact check|battery <dir>")),
-        },
-        "architecture" => {
-            if no_extra_positionals(rest) {
-                Ok(Command::Architecture {
-                    json: catalog::wants_json(rest),
-                })
-            } else {
-                Err(ParseKnownError::Usage("architecture [--json]"))
-            }
-        }
-        "web" => match serve_cmd::parse_serve_args(rest) {
-            Ok(parsed) => Ok(Command::Web(parsed)),
-            Err(message) => {
-                eprintln!("error: {message}");
-                Err(ParseKnownError::Usage(
-                    "web [--port N] [--no-open] [--dist PATH]",
-                ))
-            }
-        },
-        "serve" => match serve_cmd::parse_serve_args(rest) {
-            Ok(parsed) => Ok(Command::Serve(parsed)),
-            Err(message) => {
-                eprintln!("error: {message}");
-                Err(ParseKnownError::Usage(
-                    "serve [--port N] [--no-open] [--dist PATH]",
-                ))
-            }
-        },
-        "capabilities" => {
-            if no_extra_positionals(rest) {
-                Ok(Command::Capabilities)
-            } else {
-                Err(ParseKnownError::Usage("capabilities [--json]"))
-            }
-        }
-        "coverage" => Ok(Command::Coverage(rest.to_vec())),
-        "robot-docs" => match rest {
-            [] => Ok(Command::RobotDocs),
-            [guide] if guide == "guide" || guide == "--guide" => Ok(Command::RobotDocs),
-            _ => Err(ParseKnownError::Usage("robot-docs [guide]")),
         },
         "new" => parse_new_request(rest)
             .map(|(name, out)| Command::New { name, out })
@@ -369,18 +196,24 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                      E-LAW-001 [--json]",
                 ))
         }
-        "run" => parse_path_out_request(rest)
-            .map(|(path, out)| Command::Run { path, out })
-            .ok_or(ParseKnownError::Usage("run <file.emath> [--out <dir>]")),
+        "api" => language_cmd::ApiRequest::parse(rest)
+            .map(Command::Api)
+            .ok_or(ParseKnownError::Usage("api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]")),
+        "search" => compiled_search::SearchRequest::parse(rest)
+            .map(Command::Search)
+            .ok_or(ParseKnownError::Usage(compiled_search::USAGE)),
+        "run" => execution::RunRequest::parse(rest, false)
+            .map(Command::Run)
+            .ok_or(ParseKnownError::Usage("run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]")),
+        "step" => execution::RunRequest::parse(rest, true)
+            .map(Command::Step)
+            .ok_or(ParseKnownError::Usage("step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]")),
         "test" => parse_path_out_request(rest)
             .map(|(path, out)| Command::Test { path, out })
             .ok_or(ParseKnownError::Usage("test <file.emath> [--out <dir>]")),
-        "bench" => parse_required_path(rest)
-            .map(|path| Command::Bench { path })
-            .ok_or(ParseKnownError::Usage("bench <file.emath>")),
         "verify" => parse_required_path(rest)
-            .map(|dir| Command::Verify { dir })
-            .ok_or(ParseKnownError::Usage("verify <artifact-dir>")),
+            .map(|dir| Command::Verify { dir, json: catalog::wants_json(rest) })
+            .ok_or(ParseKnownError::Usage("verify <artifact-dir> | verify <checkpoint.json> [--json]")), 
         "inspect" => parse_inspect_request(rest)
             .map(|(dir, json)| Command::Inspect { dir, json })
             .ok_or(ParseKnownError::Usage("inspect <artifact-dir> [--json]")),
@@ -396,26 +229,6 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                 Err(ParseKnownError::Usage("doctor [--json]"))
             }
         }
-        "vendor" => parse_vendor_request(rest)
-            .map(|out| Command::Vendor { out })
-            .ok_or(ParseKnownError::Usage("vendor --out <dir>")),
-        "provider" => {
-            parse_provider_request(rest)
-                .map(Command::Provider)
-                .ok_or(ParseKnownError::Usage(
-                    "provider list|inspect <id>|test <id> [--json]",
-                ))
-        }
-        "fork" => parse_fork_request(rest)
-            .map(Command::Fork)
-            .ok_or(ParseKnownError::Usage(
-                "fork status|sync [--dry-run] [--json]",
-            )),
-        "agent" => parse_agent_request(rest)
-            .map(Command::Agent)
-            .ok_or(ParseKnownError::Usage(
-                "agent check|plan|build|triage|propose <file> [--out <dir>]",
-            )),
         _ => Err(ParseKnownError::Unknown),
     }
 }

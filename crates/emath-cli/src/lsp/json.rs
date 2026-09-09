@@ -5,7 +5,8 @@
 //! Rust's deterministic `f64` display form. No third-party dependencies.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
+
+use emath_core::json_quote_into;
 
 /// A parsed or constructed JSON value.
 #[derive(Debug, Clone, PartialEq)]
@@ -41,7 +42,7 @@ impl JsonValue {
             Self::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
             Self::Number(value) => out.push_str(&value.to_string()),
             Self::Float(value) => out.push_str(&value.to_string()),
-            Self::String(value) => write_string(value, out),
+            Self::String(value) => json_quote_into(value, out),
             Self::Array(values) => {
                 out.push('[');
                 for (index, value) in values.iter().enumerate() {
@@ -58,7 +59,7 @@ impl JsonValue {
                     if index > 0 {
                         out.push(',');
                     }
-                    write_string(key, out);
+                    json_quote_into(key, out);
                     out.push(':');
                     value.write(out);
                 }
@@ -113,25 +114,6 @@ impl JsonValue {
     pub fn is_null(&self) -> bool {
         matches!(self, Self::Null)
     }
-}
-
-/// Renders a JSON string literal.
-fn write_string(text: &str, out: &mut String) {
-    out.push('"');
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if (ch as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", ch as u32);
-            }
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
 }
 
 struct Parser<'a> {

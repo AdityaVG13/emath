@@ -20,7 +20,7 @@ pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.
 pub fn plan(path: &Path, json: bool) -> CliExit {
-    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
+    if let Some(code) = refuse_malformed_project_lock(path) {
         return code;
     }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
@@ -122,7 +122,7 @@ pub fn build(request: BuildRequest) -> CliExit {
         bin,
         json,
     } = request;
-    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(&spec) {
+    if let Some(code) = refuse_malformed_project_lock(&spec) {
         return code;
     }
     let options = BuildOptions {

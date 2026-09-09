@@ -3,11 +3,11 @@
 use super::*;
 
 /// Relative path of the committed upstream lock file (repo layout).
-pub(super) const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
+pub const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
 
 /// Absolute lock path: crate-relative so `vendor`/`fork` work regardless of
 /// the caller's working directory.
-pub(super) fn upstream_lock_path() -> PathBuf {
+pub fn upstream_lock_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -18,7 +18,7 @@ pub(super) fn upstream_lock_path() -> PathBuf {
 /// match in-tree reality: std-only native stand-ins `implemented`;
 /// upstream lanes (Dew JIT/GPU, full Rumoca, Wrenfold, Franken*) always
 /// `planned`.
-pub(super) const PROVIDERS: [(&str, &str, &str); 10] = [
+pub const PROVIDERS: [(&str, &str, &str); 10] = [
     (
         "native.rust",
         "scalar codegen + checked constructors",
@@ -122,7 +122,7 @@ pub(crate) fn new_cmd(name: &str, out: &Path) -> CliExit {
         main.display(),
         content_id_of_str(main_body).0
     );
-    println!("next: emath run {}", main.display());
+    println!("next: emath run {} --set x=3", main.display());
     EXIT_OK
 }
 

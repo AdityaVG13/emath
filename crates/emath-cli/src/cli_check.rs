@@ -7,7 +7,7 @@ use super::*;
 /// `sha256` declared in InstrumentRun provenance against the file on
 /// disk, relative to the source file; drift refuses `E-OBS-HASH`.
 pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
-    if let Some(code) = meaning_cmd::refuse_malformed_project_lock(path) {
+    if let Some(code) = refuse_malformed_project_lock(path) {
         return code;
     }
     let path = path.to_path_buf();
@@ -106,7 +106,7 @@ pub(super) fn verify_declared_data(path: &Path, diagnostics: &mut Diagnostics) {
     }
 }
 
-pub(super) fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::MeaningId> {
+pub fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::MeaningId> {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let result = session.check_owned(&path.display().to_string(), source);
     if result.diagnostics.has_errors() {
@@ -115,14 +115,14 @@ pub(super) fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_cor
     result.package.meaning_id(&[]).ok()
 }
 
-pub(super) fn source_has_content(source: &str) -> bool {
+pub fn source_has_content(source: &str) -> bool {
     source
         .lines()
         .map(str::trim)
         .any(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with("//"))
 }
 
-pub(super) fn read_emath_source(command: &str, path: &Path, json: bool) -> Result<String, CliExit> {
+pub fn read_emath_source(command: &str, path: &Path, json: bool) -> Result<String, CliExit> {
     match std::fs::read_to_string(path) {
         Ok(source) => {
             if source_has_content(&source) {
@@ -147,7 +147,7 @@ pub(super) fn read_emath_source(command: &str, path: &Path, json: bool) -> Resul
     }
 }
 
-pub(super) fn print_missing_newline(s: &str) {
+pub fn print_missing_newline(s: &str) {
     if !s.ends_with('\n') {
         println!();
     }

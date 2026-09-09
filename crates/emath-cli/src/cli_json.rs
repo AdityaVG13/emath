@@ -18,7 +18,7 @@ pub fn print_diagnostics(diagnostics: &Diagnostics) {
 
 /// Split `error: E-FOO-001: rest` (or the same without the `error:` prefix)
 /// into a stable code and message.
-pub(crate) fn split_error_code(error: &str) -> Option<(&str, &str)> {
+pub fn split_error_code(error: &str) -> Option<(&str, &str)> {
     let error = error.strip_prefix("error: ").unwrap_or(error).trim();
     let (code, rest) = error.split_once(':')?;
     let code = code.trim();
@@ -38,13 +38,13 @@ pub fn json_diagnostic_entry(code: &str, severity: &str, message: &str) -> Strin
     entry.finish().trim_end().to_string()
 }
 
-pub(super) fn json_put_opt(entry: &mut emath_artifact::JsonObject, key: &str, value: Option<&str>) {
+pub fn json_put_opt(entry: &mut emath_artifact::JsonObject, key: &str, value: Option<&str>) {
     if let Some(value) = value {
         entry.string(key, value);
     }
 }
 
-pub(crate) fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String> {
+pub fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String> {
     diagnostics
         .items()
         .iter()
@@ -96,11 +96,11 @@ pub fn diagnostics_json_document(command: &str, admitted: bool, entries: &[Strin
     out.finish()
 }
 
-pub(crate) fn print_json_diagnostics(command: &str, admitted: bool, entries: &[String]) {
+pub fn print_json_diagnostics(command: &str, admitted: bool, entries: &[String]) {
     println!("{}", diagnostics_json_document(command, admitted, entries));
 }
 
-pub(super) fn refuse_coded(
+pub fn refuse_coded(
     command: &str,
     json: bool,
     exit: CliExit,
@@ -145,7 +145,7 @@ pub fn check_json_document(
     out.finish()
 }
 
-pub(super) fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
+pub fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
     goals
         .iter()
         .map(|goal| {
@@ -155,4 +155,15 @@ pub(super) fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
             row.finish().trim_end().to_string()
         })
         .collect()
+}
+
+/// Stdout envelope for `emath plan --json`.
+/// `goals` is `[{kind, target}]` with `kind` = `GoalKind::as_str()`.
+pub fn plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
+    let mut object = emath_artifact::JsonWriter::object();
+    object.string("command", "plan");
+    object.bool("admitted", admitted);
+    object.int("plans", plans);
+    object.objects("goals", &goal_json_rows(goals));
+    object.finish()
 }

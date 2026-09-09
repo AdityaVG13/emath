@@ -1,8 +1,8 @@
 //! `emath simulate`: explicit, adaptive, implicit, and symplectic integration.
 
 use super::{
-    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
-    print_diagnostics, print_json_diagnostics, split_error_code,
+    assign_once, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry,
+    json_diagnostics_entries, print_diagnostics, print_json_diagnostics, split_error_code,
 };
 use emath_artifact::JsonWriter;
 use emath_core::limits::Limits;
@@ -32,132 +32,126 @@ pub(crate) struct SimulateArgs {
     event: Option<(String, f64)>,
 }
 
-fn assign_once<T>(slot: &mut Option<T>, value: T) -> Result<(), String> {
-    if slot.is_some() {
-        Err("duplicate flag".to_string())
-    } else {
-        *slot = Some(value);
-        Ok(())
-    }
+fn take_arg<'a>(args: &'a [String], index: &mut usize, missing: &str) -> Result<&'a str, String> {
+    *index += 1;
+    args.get(*index)
+        .map(String::as_str)
+        .ok_or_else(|| missing.to_string())
 }
+
+fn assign_f64(
+    slot: &mut Option<f64>,
+    args: &[String],
+    index: &mut usize,
+    flag: &str,
+    positive: bool,
+) -> Result<(), String> {
+    let text = take_arg(args, index, &format!("{flag} needs a number"))?;
+    let value = if positive {
+        parse_positive_f64(text, flag)?
+    } else {
+        parse_f64(text, flag)?
+    };
+    assign_once(slot, value).ok_or_else(|| "duplicate flag".to_string())
+}
+
+/// `--dt` / `--t0` / `--t1` / `--atol` / `--rtol` / `--dt-max` share one
+/// assign-once finite slot. Index is the `nums` slot in `parse_simulate_args`.
+const F64_FLAGS: &[(&str, usize, bool)] = &[
+    ("--dt", 0, true),
+    ("--t0", 1, false),
+    ("--t1", 2, false),
+    ("--atol", 3, true),
+    ("--rtol", 4, true),
+    ("--dt-max", 5, true),
+];
+
+const STEP_METHODS: &[(&str, StepMethod)] = &[
+    ("euler", StepMethod::Euler),
+    ("rk4", StepMethod::Rk4),
+    ("rk45", StepMethod::Rk45),
+    ("backward-euler", StepMethod::BackwardEuler),
+    ("velocity-verlet", StepMethod::VelocityVerlet),
+];
 
 pub(crate) fn parse_simulate_args(args: &[String]) -> Result<SimulateArgs, String> {
     let mut path = None;
     let mut model = None;
-    let mut dt = None;
-    let mut t0 = None;
-    let mut t1 = None;
+    let mut nums = [None; 6];
     let mut method = None;
     let mut bindings = BTreeMap::new();
     let mut json = false;
-    let mut atol = None;
-    let mut rtol = None;
-    let mut dt_max = None;
     let mut event = None;
     let mut index = 0;
     while index < args.len() {
-        match args[index].as_str() {
-            "--json" => json = true,
-            "--dt" => {
-                index += 1;
-                assign_once(
-                    &mut dt,
-                    parse_positive_f64(args.get(index).ok_or("--dt needs a number")?, "--dt")?,
-                )?;
+        let token = args[index].as_str();
+        let mut numeric = false;
+        for &(name, slot, positive) in F64_FLAGS {
+            if token != name {
+                continue;
             }
-            "--t0" => {
-                index += 1;
-                assign_once(
-                    &mut t0,
-                    parse_f64(args.get(index).ok_or("--t0 needs a number")?, "--t0")?,
-                )?;
-            }
-            "--t1" => {
-                index += 1;
-                assign_once(
-                    &mut t1,
-                    parse_f64(args.get(index).ok_or("--t1 needs a number")?, "--t1")?,
-                )?;
-            }
-            "--method" => {
-                index += 1;
-                assign_once(
-                    &mut method,
-                    parse_method(args.get(index).ok_or("--method needs a name")?)?,
-                )?;
-            }
-            "--model" => {
-                index += 1;
-                let name = args.get(index).ok_or("--model needs a declaration name")?;
-                if name.is_empty() {
-                    return Err("--model name must be non-empty".to_string());
+            assign_f64(&mut nums[slot], args, &mut index, name, positive)?;
+            numeric = true;
+            break;
+        }
+        if !numeric {
+            match token {
+                "--json" => json = true,
+                "--method" => {
+                    assign_once(
+                        &mut method,
+                        parse_method(take_arg(args, &mut index, "--method needs a name")?)?,
+                    )
+                    .ok_or_else(|| "duplicate flag".to_string())?;
                 }
-                assign_once(&mut model, name.to_string())?;
-            }
-            "--atol" => {
-                index += 1;
-                assign_once(
-                    &mut atol,
-                    parse_positive_f64(args.get(index).ok_or("--atol needs a number")?, "--atol")?,
-                )?;
-            }
-            "--rtol" => {
-                index += 1;
-                assign_once(
-                    &mut rtol,
-                    parse_positive_f64(args.get(index).ok_or("--rtol needs a number")?, "--rtol")?,
-                )?;
-            }
-            "--dt-max" => {
-                index += 1;
-                assign_once(
-                    &mut dt_max,
-                    parse_positive_f64(
-                        args.get(index).ok_or("--dt-max needs a number")?,
-                        "--dt-max",
-                    )?,
-                )?;
-            }
-            "--event" => {
-                index += 1;
-                assign_once(
-                    &mut event,
-                    parse_event(args.get(index).ok_or("--event needs name=value")?)?,
-                )?;
-            }
-            "--set" => {
-                index += 1;
-                let binding = args.get(index).ok_or("--set needs name=value")?;
-                let (name, value) = binding
-                    .split_once('=')
-                    .ok_or_else(|| format!("`--set {binding}` must be `name=value`"))?;
-                if name.is_empty() {
-                    return Err("--set name must be non-empty".to_string());
+                "--model" => {
+                    let name = take_arg(args, &mut index, "--model needs a declaration name")?;
+                    if name.is_empty() {
+                        return Err("--model name must be non-empty".to_string());
+                    }
+                    assign_once(&mut model, name.to_string())
+                        .ok_or_else(|| "duplicate flag".to_string())?;
                 }
-                bindings.insert(name.to_string(), parse_set_value(value)?);
+                "--event" => {
+                    assign_once(
+                        &mut event,
+                        parse_event(take_arg(args, &mut index, "--event needs name=value")?)?,
+                    )
+                    .ok_or_else(|| "duplicate flag".to_string())?;
+                }
+                "--set" => {
+                    let binding = take_arg(args, &mut index, "--set needs name=value")?;
+                    let (name, value) = binding
+                        .split_once('=')
+                        .ok_or_else(|| format!("`--set {binding}` must be `name=value`"))?;
+                    if name.is_empty() {
+                        return Err("--set name must be non-empty".to_string());
+                    }
+                    bindings.insert(name.to_string(), parse_set_value(value)?);
+                }
+                other if other.starts_with('-') && other != "-" => {
+                    return Err(format!("unknown flag `{other}`"));
+                }
+                other if path.is_some() => {
+                    return Err(format!("unexpected extra file `{other}`"));
+                }
+                other => path = Some(PathBuf::from(other)),
             }
-            other if other.starts_with('-') && other != "-" => {
-                return Err(format!("unknown flag `{other}`"));
-            }
-            other if path.is_some() => {
-                return Err(format!("unexpected extra file `{other}`"));
-            }
-            other => path = Some(PathBuf::from(other)),
         }
         index += 1;
     }
     Ok(SimulateArgs {
         path: path.ok_or_else(|| "missing <file.emath>".to_string())?,
         model,
-        dt: dt.unwrap_or(0.1),
-        t0: t0.unwrap_or(0.0),
-        t1: t1.unwrap_or(1.0),
+        dt: nums[0].unwrap_or(0.1),
+        t0: nums[1].unwrap_or(0.0),
+        t1: nums[2].unwrap_or(1.0),
         method: method.unwrap_or(StepMethod::Rk4),
         bindings,
         json,
-        atol,
-        rtol,
-        dt_max,
+        atol: nums[3],
+        rtol: nums[4],
+        dt_max: nums[5],
         event,
     })
 }
@@ -290,16 +284,14 @@ fn parse_event(text: &str) -> Result<(String, f64), String> {
 }
 
 fn parse_method(name: &str) -> Result<StepMethod, String> {
-    match name {
-        "euler" => Ok(StepMethod::Euler),
-        "rk4" => Ok(StepMethod::Rk4),
-        "rk45" => Ok(StepMethod::Rk45),
-        "backward-euler" => Ok(StepMethod::BackwardEuler),
-        "velocity-verlet" => Ok(StepMethod::VelocityVerlet),
-        other => Err(format!(
-            "unknown method `{other}` (expected euler, rk4, rk45, backward-euler, or velocity-verlet)"
-        )),
+    for &(token, method) in STEP_METHODS {
+        if token == name {
+            return Ok(method);
+        }
     }
+    Err(format!(
+        "unknown method `{name}` (expected euler, rk4, rk45, backward-euler, or velocity-verlet)"
+    ))
 }
 
 pub fn simulate_error_json(text: &str) -> String {
@@ -494,13 +486,12 @@ fn emit_trajectory(
 }
 
 fn method_name(method: StepMethod) -> &'static str {
-    match method {
-        StepMethod::Euler => "euler",
-        StepMethod::Rk4 => "rk4",
-        StepMethod::Rk45 => "rk45",
-        StepMethod::BackwardEuler => "backward-euler",
-        StepMethod::VelocityVerlet => "velocity-verlet",
+    for &(token, known) in STEP_METHODS {
+        if known == method {
+            return token;
+        }
     }
+    "rk4"
 }
 
 fn bind_field(
@@ -660,5 +651,6 @@ fn value_json(value: &Value) -> String {
             }
         }
         Value::Program(program) => format!("{:?}", format!("program({program:?})")),
+        Value::DenseLayout(layout) => format!("{:?}", format!("layout({layout:?})")),
     }
 }

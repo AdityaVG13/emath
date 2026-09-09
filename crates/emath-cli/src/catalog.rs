@@ -3,27 +3,30 @@
 
 use crate::CliExit;
 
-/// Every top-level token `emath <command>` accepts (plus version aliases).
+/// Production `emath` tokens (compiler / user surface). Extracted tokens live
+/// in `EXTRACTED_COMMANDS` and are served by `emath-lab`.
 pub const COMMANDS: &[&str] = &[
-    "check",
-    "plan",
-    "planner",
-    "build",
-    "parse",
+    "api", "check", "plan", "planner", "build", "simulate", "new", "fmt", "migrate", "explain",
+    "run", "search", "step", "test", "verify", "inspect", "diff", "doctor", "help", "version",
+];
+
+/// Tokens moved to `emath-lab` (emath-qbk53). Production `emath` hints here.
+pub const EXTRACTED_COMMANDS: &[&str] = &[
     "expand",
     "solve",
     "exactness",
     "freeze",
     "why",
     "assumptions",
+    "parse",
+    "compile",
+    "library",
     "signature",
     "genesis",
     "eval",
     "sweep",
-    "simulate",
     "fit",
     "repl",
-    "compile",
     "world",
     "portfolio",
     "meaning",
@@ -33,23 +36,11 @@ pub const COMMANDS: &[&str] = &[
     "coverage",
     "web",
     "serve",
-    "new",
-    "fmt",
-    "migrate",
-    "explain",
-    "run",
-    "test",
     "bench",
-    "verify",
-    "inspect",
-    "diff",
-    "doctor",
     "vendor",
     "provider",
     "fork",
     "agent",
-    "help",
-    "version",
     "capabilities",
     "robot-docs",
 ];
@@ -58,6 +49,8 @@ pub const COMMANDS: &[&str] = &[
 #[must_use]
 pub fn command_usage(command: &str) -> Option<&'static str> {
     Some(match command {
+        "search" => crate::compiled_search::USAGE,
+        "api" => "api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]",
         "check" => "check <file.emath> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
@@ -103,11 +96,16 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
                       E-LAW-001 [--json]"
         }
-        "run" => "run <file.emath> [--out <dir>]",
+        "run" => {
+            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]"
+        }
+        "step" => {
+            "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
+        }
         "test" => "test <file.emath> [--out <dir>]",
         "bench" => "bench <file.emath>",
-        "verify" => "verify <artifact-dir>",
-        "inspect" => "inspect <artifact-dir> [--json]",
+        "verify" => "verify <artifact-dir> | verify <checkpoint.json> [--json]",
+        "inspect" => "inspect <artifact-dir-or-checkpoint.json> [--json]",
         "diff" => "diff <a.emath> <b.emath> [--json]",
         "doctor" => "doctor [--json]",
         "vendor" => "vendor --out <dir>",
@@ -126,6 +124,9 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
 #[must_use]
 pub fn command_summary(command: &str) -> Option<&'static str> {
     Some(match command {
+        "api" => {
+            "discover commands, source syntax, and active Language Image features; executable status comes from installed reference/native implementations"
+        }
         "check" => {
             "parse + admit, no codegen; `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
         }
@@ -186,11 +187,20 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "explain" => {
             "plan/provider explanation, binding provenance DAG, or `E-LAW-001` checker witness"
         }
-        "run" => "build then execute the generated crate (library crates run example tests)",
+        "run" => {
+            "execute source mathematics with saved authored method states; --cancel-file stops between work units; --measure N records reference timings; changed-problem branches never satisfy the original goal"
+        }
+        "step" => {
+            "continue a fixed target and saved authored methods with one commit per work unit; identical requests reuse committed work; competing requests cannot commit at the same revision"
+        }
         "test" => "build with `--verify`; empty test surface is E-TLT-012",
         "bench" => "typed refusal E-TLT-004 until the comparison ruleset lands",
-        "verify" => "independent artifact re-verification (same as `artifact check`)",
-        "inspect" => "print committed artifact manifests",
+        "verify" => {
+            "check published artifacts, or check saved certificates and source results without replaying refinement; no formal-proof or execution-history claim"
+        }
+        "inspect" => {
+            "read saved mathematical results without execution, or print committed artifact manifests"
+        }
         "diff" => "content-id fingerprint comparison of parse-admitted sources",
         "doctor" => "toolchain presence: rustc, cargo, rustfmt, clippy",
         "vendor" => "offline dependency lock snapshot",
@@ -213,7 +223,7 @@ pub fn suggest_command(unknown: &str) -> Option<&'static str> {
         return None;
     }
     let mut best: Option<(&'static str, usize)> = None;
-    for command in COMMANDS {
+    for command in COMMANDS.iter().chain(EXTRACTED_COMMANDS) {
         if *command == needle {
             return Some(command);
         }
@@ -253,7 +263,7 @@ pub fn command_help_text(command: &str) -> Option<String> {
     let usage = command_usage(command)?;
     let summary = command_summary(command)?;
     Some(format!(
-        "emath {usage}\n{summary}\n\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\nrun `emath help` for the full command list, or `emath capabilities --json` for the machine contract\n"
+        "emath {usage}\n{summary}\n\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\nrun `emath help` for the full command list, or `emath api --json` for the machine contract\n"
     ))
 }
 
@@ -322,6 +332,35 @@ Rules
 
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     match command {
+        "search" => &["--function", "--candidate", "--set", "--measure", "--out", "-o", "--json", "--help", "-h"],
+        "api" => &[
+            "--search", "--offset", "--limit", "--source", "--json", "--help", "-h",
+        ],
+        "run" => &[
+            "--function",
+            "--set",
+            "--work",
+            "--cancel-file",
+            "--measure",
+            "--branch-from",
+            "--relation",
+            "--out",
+            "-o",
+            "--json",
+            "--help",
+            "-h",
+        ],
+        "step" => &[
+            "--work",
+            "--expect-revision",
+            "--cancel-file",
+            "--out",
+            "-o",
+            "--json",
+            "--help",
+            "-h",
+        ],
+        "verify" => &["--json", "--help", "-h"],
         "explain" => &["--json", "--provenance", "--show-defaults", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
@@ -333,7 +372,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "planner" => &["--json", "--parametric", "--help", "-h"],
         "fit" => &["--json", "--help", "-h"],
         "build" => &["--json", "--out", "-o", "--verify", "--bin", "--help", "-h"],
-        "run" | "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
+        "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
             &["--out", "-o", "--help", "-h"]
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
@@ -403,6 +442,16 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--event"
             | "--set"
             | "--function"
+            | "--work"
+            | "--expect-revision"
+            | "--cancel-file"
+            | "--measure"
+            | "--branch-from"
+            | "--relation"
+            | "--search"
+            | "--offset"
+            | "--limit"
+            | "--source"
             | "--grid"
             | "--expect"
             | "--raise"

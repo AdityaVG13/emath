@@ -1,45 +1,40 @@
-//! emath CLI: `check`, `plan`, `build`, `artifact`, `architecture`, `web`, `serve`,
-//! Semantic Genesis (`parse`, `expand`, `signature`, `genesis`, `eval`,
-//! `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning`),
-//! and meaning-budget (`solve`, `exactness`, `freeze`, `why`, `assumptions`).
+//! Production `emath` CLI: compiler / user surface (`check`, `plan`, `build`,
+//! `parse`, `compile`, `simulate`, `run`, `test`, …). Extracted lab/host
+//! commands live in `emath-cli-lab` (`emath-lab`).
 //! Host entry is [`run`] -> [`CliExit`] (not a raw `u8`). Exit codes: 0 ok, 1 refused, 2 usage/io.
 
 #![forbid(unsafe_code)]
 
-mod agent_cmd;
 pub mod catalog;
-pub mod coverage_cmd;
-pub mod coverage_seed;
 pub mod diagnostics;
-mod eval_cmd;
-mod fit_cmd;
-pub mod genesis_cmd;
+pub mod execution;
 pub mod language_cmd;
-mod library_cmd;
-pub mod meaning_cmd;
 mod provenance_cmd;
-pub mod serve_cmd;
 pub mod simulate_cmd;
-mod tooling_cmd;
-mod world_ir_eval;
+pub mod tooling_cmd;
 
 mod cli_artifacts;
 mod cli_build;
 mod cli_check;
 mod cli_dispatch;
-mod cli_freeze;
 mod cli_json;
 mod cli_parse;
-mod cli_scratch;
+mod compiled_search;
+mod project_lock;
 
 pub use cli_artifacts::*;
 pub use cli_build::*;
 pub use cli_check::*;
 pub(crate) use cli_dispatch::*;
-pub(crate) use cli_freeze::*;
+pub use cli_dispatch::{
+    CompileRequest, FileJsonRequest, GenesisRequest, ParseRequest, SignatureRequest, assign_once,
+    parse_compile_request, parse_file_json_request, parse_genesis_request, parse_parse_request,
+    parse_show_named, parse_signature_request, refuse_unverified_language_image, take_nonflag_value,
+    usage,
+};
+pub use project_lock::refuse_malformed_project_lock;
 pub use cli_json::*;
 pub use cli_parse::*;
-pub use cli_scratch::*;
 
 use emath_build::{BuildOptions, build_file};
 use emath_core::Diagnostics;
@@ -49,7 +44,6 @@ use emath_plan::{
 };
 use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::CompilerSession;
-use emath_syntax::ExactnessStatus;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -67,7 +61,7 @@ pub const EXIT_OK: CliExit = CliExit::Ok;
 pub const EXIT_REFUSED: CliExit = CliExit::Refused;
 pub const EXIT_USAGE: CliExit = CliExit::Usage;
 
-fn exit_from_diagnostics(has_errors: bool) -> CliExit {
+pub fn exit_from_diagnostics(has_errors: bool) -> CliExit {
     if has_errors { EXIT_REFUSED } else { EXIT_OK }
 }
 
@@ -75,8 +69,5 @@ pub use provenance_cmd::provenance_explanation;
 
 pub mod lsp;
 
-pub mod layout;
-
-pub mod agent_protocol;
 
 pub mod portfolio;

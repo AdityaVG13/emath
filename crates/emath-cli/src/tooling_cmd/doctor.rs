@@ -2,13 +2,13 @@
 
 use super::*;
 
-pub(crate) struct DoctorProbe {
-    pub(crate) name: &'static str,
-    pub(crate) ok: bool,
-    pub(crate) version: Option<String>,
+pub struct DoctorProbe {
+    pub name: &'static str,
+    pub ok: bool,
+    pub version: Option<String>,
 }
 
-pub(crate) fn doctor_probes() -> Vec<DoctorProbe> {
+pub fn doctor_probes() -> Vec<DoctorProbe> {
     [
         ("rustc", "rustc --version"),
         ("cargo", "cargo --version"),

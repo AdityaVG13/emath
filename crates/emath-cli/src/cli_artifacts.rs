@@ -53,50 +53,7 @@ pub(super) fn register_native_rust(registry: &mut ProviderRegistry) {
     }
 }
 
-/// `import modelica <file.mo> [--json]`: retain a Modelica subset source as
-/// foreign-model declarations with adapter identity. No source rewrite.
-pub fn import_modelica_cmd(path: &Path, json: bool) -> CliExit {
-    let source = match std::fs::read_to_string(path) {
-        Ok(source) => source,
-        Err(error) => {
-            eprintln!("error: cannot read {}: {error}", path.display());
-            return EXIT_USAGE;
-        }
-    };
-    match emath_adapter_rumoca::import_modelica(&source) {
-        Ok(declarations) => {
-            if json {
-                let mut object = emath_artifact::JsonWriter::object();
-                object.string("command", "import modelica");
-                object.int("declarations", declarations.len() as u64);
-                let names: Vec<String> = declarations
-                    .iter()
-                    .map(|declaration| declaration.name.clone())
-                    .collect();
-                object.strings("models", &names);
-                println!("{}", object.finish());
-            } else {
-                for declaration in &declarations {
-                    println!(
-                        "foreign {} adapter={} parameters={} equations={} identity={:016x}",
-                        declaration.name,
-                        declaration.adapter,
-                        declaration.parameters.join(","),
-                        declaration.equations,
-                        declaration.content_identity()
-                    );
-                }
-            }
-            EXIT_OK
-        }
-        Err(error) => {
-            eprintln!("error: {} {}", error.code, error.message);
-            EXIT_REFUSED
-        }
-    }
-}
-
-pub(super) fn list_published_artifact_ids(dir: &Path) -> Result<Vec<String>, CliExit> {
+pub fn list_published_artifact_ids(dir: &Path) -> Result<Vec<String>, CliExit> {
     let artifact_root = dir.join("emath");
     if !artifact_root.is_dir() {
         eprintln!(
@@ -160,81 +117,10 @@ pub fn artifact_check(dir: &Path) -> CliExit {
     if ok { EXIT_OK } else { EXIT_REFUSED }
 }
 
-/// `artifact battery <dir>`: run the seeded negative-control battery over
-/// every published artifact. Each seed must be refused with the code the
-/// checker assigns; an escape is an admitted dishonest artifact and
-/// refuses the command (CI-visible lane over real staged output).
-pub fn artifact_battery(dir: &Path) -> CliExit {
-    let artifact_ids = match list_published_artifact_ids(dir) {
-        Ok(ids) => ids,
-        Err(code) => return code,
-    };
-    let artifact_root = dir.join("emath");
-    let mut ok = true;
-    for id in artifact_ids {
-        let root = artifact_root.join(&id);
-        match emath_evidence::checker::artifact_input_from_dir(&root) {
-            Ok(input) => {
-                let run = emath_evidence::checker::run_standard_battery(&input);
-                for control in &run.refused {
-                    println!("artifact {id}: control refused ({control})");
-                }
-                for (control, detail) in &run.escaped {
-                    eprintln!("artifact {id}: control ESCAPED ({control}): {detail}");
-                }
-                if run.all_refused() {
-                    println!(
-                        "artifact {id}: battery clean ({} controls, {})",
-                        run.refused.len() + run.escaped.len(),
-                        run.refused.join(", ")
-                    );
-                } else {
-                    ok = false;
-                }
-            }
-            Err(error) => {
-                eprintln!("artifact {id}: battery FAILED: {error}");
-                ok = false;
-            }
-        }
-    }
-    if ok { EXIT_OK } else { EXIT_REFUSED }
-}
-
-/// Stdout document for `emath architecture --json`.
-pub fn architecture_json() -> String {
-    let pipeline = ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion";
-    let paths: Vec<String> = emath_artifact::required_artifact_paths()
-        .iter()
-        .map(ToString::to_string)
-        .collect();
-    let mut object = emath_artifact::JsonWriter::object();
-    object.string("schema", "emath.architecture");
-    object.string("pipeline", pipeline);
-    object.strings("required_paths", &paths);
-    object.finish()
-}
-
-/// `architecture [--json]`: provider-neutral pipeline description.
-pub fn architecture(json: bool) -> CliExit {
-    if json {
-        print!("{}", architecture_json());
-    } else {
-        let pipeline = ".emath -> SIR -> GIR -> resolution plan -> EMIR -> Rust artifact -> protected host promotion";
-        let paths: Vec<String> = emath_artifact::required_artifact_paths()
-            .iter()
-            .map(ToString::to_string)
-            .collect();
-        println!("{pipeline}");
-        println!("provider-neutral required paths: {paths:?}");
-    }
-    EXIT_OK
-}
-
 /// `help` output. Generated from the command catalog so usage and summary
 /// cannot drift from `emath help <command>` / `emath capabilities --json`.
 pub fn help_text() -> String {
-    let mut out = String::from("emath compiler (Phase 1 + Semantic Genesis G0-G3)\n\nusage:\n");
+    let mut out = String::from("emath compiler (Phase 1). Lab/host commands: `emath-lab help`.\n\nusage:\n");
     for command in catalog::COMMANDS {
         let Some(usage) = catalog::command_usage(command) else {
             continue;

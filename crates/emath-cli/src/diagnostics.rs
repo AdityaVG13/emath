@@ -12,7 +12,7 @@ use emath_lab_core::law_check::{
     WorldCheckReport, WorldObligation,
 };
 use emath_term::SymbolId;
-use emath_world_ir::{FittedTable, WorldId};
+use emath_ir::{FittedTable, WorldId};
 
 /// Stable code for a finite-checker commutative-law refutation.
 pub const E_LAW_001: &str = "E-LAW-001";

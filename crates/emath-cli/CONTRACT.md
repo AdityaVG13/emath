@@ -2,11 +2,33 @@
 
 ## Purpose and layer
 - Command-line application (CRATE_MAP tier: sema/build/lab-core).
-- Commands: `check`, `plan`, `planner`, `build`, `eval`, `simulate`, `artifact check/battery`, `import modelica`, `architecture`, `web` (alias `serve`), plus Semantic Genesis (`parse`, `signature`, `genesis`, `eval`, `repl`, `compile --parametric`, `world show`, `portfolio show`, `meaning list|set|unset|explain`), meaning-budget (`expand`, `solve --check|--apply`, `exactness [--raise units]`, `freeze`, `why`, `assumptions`), and tooling commands (`new`, `fmt`, `explain`, `run`, `test`, `bench`, `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider`, `fork`, `agent`, `help [<command>]`, `version`, `capabilities`, `robot-docs`).
+- Commands (production `emath`): `check`, `plan`, `planner`, `build`, `parse`, `compile`, `simulate`, `new`, `fmt`, `migrate`, `explain`, `api`, `run`, `step`, `test`, `verify`, `inspect`, `diff`, `doctor`, `help`, `version`. Extracted lab/host commands live in `emath-cli-lab` (`emath-lab`).
 - Exit codes: 0 success, 1 refusal/diagnostic, 2 usage or io error (`EXIT_OK`, `EXIT_REFUSED`, `EXIT_USAGE`).
 - `run(&[String]) -> CliExit` is the testable entry behind `main`; the generated crate builds an agent envelope (`emath.agent`) over the same admission/plan/build paths as interactive commands.
 - Registers the in-tree static `native.rust` capability so the generic planner
   serves native evaluation and exact scalar `simplify` goals.
+
+## CLI diet (emath-qbk53)
+
+Recorded 2026-09-05. Extracted lab/host commands live in `emath-cli-lab`
+(`emath-lab`). Production `emath` refuses those tokens with an
+`emath-lab` hint.
+
+Keep in the production CLI (compiler / user surface): `check`, `plan`,
+`planner`, `build`, `parse`, `new`, `fmt`, `run`, `test`, `help`,
+`version`, `explain`, `doctor`, `inspect`, `diff`, `verify`, `simulate`,
+`compile`.
+
+Extract from the production crate (xtask / tests / tools) once
+authorized:
+
+- agent / process: `agent`, `capabilities`, `robot-docs`, `coverage`,
+  `web`, `serve`
+- genesis / lab: `genesis`, `eval`, `sweep`, `repl`, `world`,
+  `portfolio`, `meaning`, `fit`
+- remaining host: `import`, `artifact`, `architecture`, `freeze`, `why`,
+  `assumptions`, `signature`, `expand`, `solve`, `exactness`, `vendor`,
+  `provider`, `fork`, `bench`
 
 ## Public types and semantics
 - Constants `EXIT_OK` (0), `EXIT_REFUSED` (1), `EXIT_USAGE` (2).
@@ -47,15 +69,64 @@
 - `--raise` is catalog-legal only on `exactness`, and only the token `units`/`unit` (ExactnessDimension::Unit). Other commands or tokens are `EXIT_USAGE`. Raise does not rewrite non-unit ledger rows.
 - Meaning lock: `emath meaning set` writes `.emath/meaning.lock` (local-side). On `genesis`/`eval`/`compile` (and malformed-file refusal on `check`/`plan`/`build`/`run`/`test`), a matching lock commits to that `WorldIr::identity` before portfolio ranking. Drift/tamper/malformed locks are typed `E-LOCK-*` refusals; never a silent fallback. `emath new` gitignores the lock file; teams MAY commit it.
 
+## Saved source execution (2026-09-07)
+
+`execution` owns source `run`, `step`, and saved-run inspection and verification.
+`language_cmd` owns `api`. They reuse verified Language Image installation,
+semantic admission, and the existing declaration runner.
+
+`run` returns reference-VM results, not Cargo test output. Its `--out` selects
+a saved-run directory. Generated Rust testing remains `test`; publication remains `build`.
+
+`emath.api.v1` reports bounded FeatureID pages, authored source links, command
+arguments, and a starter source. A feature name does not establish executable support.
+
+`emath.run.v1` separates operation status from goal status. Values retain their
+compute representation and evidence scope. Non-evaluation goals remain open.
+The shared typed input parser preserves exact scalar integers and checks vector extents.
+
+`emath.run-checkpoint.v1` binds source bytes and path, admitted meaning, Language
+Image, raw bindings, runner version, completed result documents, measurement policy,
+and branch ancestry. Checksums detect corruption, not malicious forgery.
+Publication never replaces a committed checkpoint. A repeated request reuses
+its committed results and timing samples. `reference-cases/3` rejects older states.
+
+`--work` counts complete cases. Each case commits before the next starts.
+OS file locks and immutable request/successor records admit one writer per revision.
+A retry uses the original checkpoint and work grant; another request receives
+`E-RUN-BUSY` or `E-RUN-REVISION`. `inspect` follows committed successors.
+An interrupted, uncommitted call can run again; external exactly-once execution
+and external-job reconciliation are not claimed. `--cancel-file` stops between
+cases and returns committed results with a cancelled operation.
+
+`--branch-from` and `--relation` never modify or merge into the parent.
+Same-problem branches require the same target. Other relations keep `goal_met`
+false even when `current_target_met` is true. Relations are declared, not proved
+transfer laws. Ancestry is checked on load and limited to 64 checkpoints.
+
+`--measure N` runs 1–32 identical-result repetitions per case. Raw wall times
+cover binding, lowering, evaluation, and rendering, not admission or storage.
+Existing lab summaries supply medians and noise quarantine. Samples are observations,
+not bounds, speedup claims, or generated-code measurements. Sampling policy stays
+fixed during continuation. No new solver, method pack, or world is selected.
+
+`emath.run-verification.v1` reports reference replay of completed cases.
+It does not provide independent mathematical proof or raise evidence.
+It checks branch identity but reports `measurements_verified: false` for timed runs.
+Artifact-directory verification retains its existing meaning.
+
+The [runtime command reference](../../implementation/CLI_REFERENCE.md#durable-execution-controls-2026-09-08) defines the current arguments, exit codes, and failure repairs.
+The earlier language documentation remains unchanged under the runtime-only approval boundary.
+
 ## Error model
 - No dedicated error enum: command functions return `CliExit` and print structured diagnostics to stderr (`print_diagnostics`, `error: ...`). `--json` documents stay on stdout. Build/planner/checker failures surface with their typed E-* codes via the stderr message text.
 - `artifact battery` treats an escaped control (admitted dishonest artifact) as a refusal.
 
 ## Determinism class
-- Deterministic: artifact ids, plan output, JSON documents and diagnostics ordering are fixed; output is documented in `help_text`.
+- Deterministic: plan output, result ordering, and content identities for fixed observations. Optional wall-time samples are nondeterministic; retries preserve the committed samples.
 
 ## Cancellation behavior
-- Not applicable: CLI is synchronous; the only long-running steps (`build --verify`, `run`, `test`, `bench`-adjacent cargo) are bounded by `emath-build`'s `run_cargo_timed` wall-clock budget (`E-RES-120`). The keep-gate harness runs subprocesses, not unsafe code.
+- The CLI is synchronous. Generated-Cargo work (`build --verify` and `test`) uses the `emath-build` wall-clock budget (`E-RES-120`). Source `run` and `step` commit at complete-case boundaries, not that Cargo budget. A cancel file stops before a new case; an active call can be lost on interruption. OS locks release when the process exits.
 
 ## Unsafe boundary
 - None: crate declares `#![forbid(unsafe_code)]`; workspace lint forbids it.
@@ -490,3 +561,17 @@ Missing declared metrics disqualify as `failed-guard:missing-metric` and never e
 - Genesis still emits the genesis-era `InterpretationPortfolio` JSON bag (`keep: pareto N` is a cap on that bag). Answer selection is `evaluate` / `replay` over `InterpretationCandidate::world_candidate` (uniform `cost=1`, so domination cannot drop a kept world). `g7-portfolio-receipt.txt` is the selection artifact. Hidden single-winner collapse is `E-GEN-095`.
 - Meaning-provider discovery and world construction live in other crates; this crate ranks and selects records it is given.
 - A user lock does not promote a world to `tested`/`certified`/`proved`. Provenance `user-locked` is a selection source, not an authority upgrade.
+
+## Compiled search
+
+`search` compiles authored stateless alternatives to a local offline
+release crate. It compares each native result with the checked VM baseline
+on fixed inputs, then selects the lowest median outside measurement
+quarantine. Output identity includes binary64 bits and exact record fields.
+A native refusal, panic, or counterexample rejects a candidate. A baseline
+mismatch refuses the search. The `emath.compiled-search.v1` report retains
+source and Language Image identity, bindings, raw samples, compiler and
+machine data, generated source, binary identity, and build log. Selection
+is empirical and input-specific. It is not a proof of universal equivalence
+or speedup. Partial baseline mathematics keeps `goal_met: false`.
+The full command contract is in the language tooling reference.

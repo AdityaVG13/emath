@@ -17,16 +17,15 @@ async-runtime = ["dep:asupersync"]
 
 [dependencies]
 emath-term.workspace = true
-emath-genesis.workspace = true
 emath-core.workspace = true
 asupersync = { workspace = true, optional = true, features = ["test-internals"] }
-emath-adapter-rumoca = { workspace = true }
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-lab-core = { workspace = true }
 emath-evidence = { workspace = true }
 emath-exec-ir = { workspace = true }
-emath-goal = { workspace = true }
+emath-rt = { workspace = true }
+emath-rust-backend = { workspace = true }
 # This dependency is deliberate: it carries real domain data, not thin type
 # imports. It provides Goal (used in plan and agent JSON rendering),
 # Provenance, FallbackPolicy, and EvidenceLevel. Re-expressing Goal in
@@ -35,11 +34,8 @@ emath-goal = { workspace = true }
 emath-ir = { workspace = true }
 emath-plan = { workspace = true }
 emath-provider-api = { workspace = true }
-emath-rust-backend = { workspace = true }
 emath-sema = { workspace = true }
 emath-syntax = { workspace = true }
-emath-store = { path = "../emath-store" }
-emath-world-ir = { workspace = true }
 
 [lints]
 workspace = true
