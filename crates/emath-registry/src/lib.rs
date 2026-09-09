@@ -25,9 +25,9 @@ pub use symbol_catalog::{
 };
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 
 use emath_core::fnv1a64_bytes;
+use emath_core::json_quote_into;
 
 /// Index document schema id.
 pub const INDEX_SCHEMA: &str = "emath.registry-index";
@@ -74,10 +74,10 @@ impl IndexSnapshot {
     pub fn canonical_json(&self) -> String {
         let mut out = String::from(r#"{"schema":"emath.registry-index","packages":{"#);
         for (name, versions) in &self.packages {
-            json_string(name, &mut out);
+            json_quote_into(name, &mut out);
             out.push_str(":{");
             for (version, record) in versions {
-                json_string(version, &mut out);
+                json_quote_into(version, &mut out);
                 out.push(':');
                 record.write(&mut out);
                 out.push(',');
@@ -192,9 +192,9 @@ impl RegistryLock {
             self.snapshot_id
         );
         for (name, version) in &self.pins {
-            json_string(name, &mut out);
+            json_quote_into(name, &mut out);
             out.push(':');
-            json_string(version, &mut out);
+            json_quote_into(version, &mut out);
             out.push(',');
         }
         if !self.pins.is_empty() {
@@ -292,17 +292,17 @@ impl PackageVersion {
     fn write(&self, out: &mut String) {
         out.push_str(r#"{"artifact_link":"#);
         match &self.artifact_link {
-            Some(link) => json_string(link, out),
+            Some(link) => json_quote_into(link, out),
             None => out.push_str("null"),
         }
         out.push_str(r#","content_id":"#);
-        json_string(&self.content_id, out);
+        json_quote_into(&self.content_id, out);
         out.push_str(r#","evidence_summary":"#);
-        json_string(&self.evidence_summary, out);
+        json_quote_into(&self.evidence_summary, out);
         out.push_str(r#","kind_schemas":["#);
         push_strings(&self.kind_schemas, out);
         out.push_str(r#"],"license":"#);
-        json_string(&self.license, out);
+        json_quote_into(&self.license, out);
         out.push_str(r#","provider_descriptors":["#);
         push_strings(&self.provider_descriptors, out);
         out.push_str(r#"],"revoked":"#);
@@ -310,9 +310,9 @@ impl PackageVersion {
         out.push_str(r#","security_notes":["#);
         push_strings(&self.security_notes, out);
         out.push_str(r#"],"source_location":"#);
-        json_string(&self.source_location, out);
+        json_quote_into(&self.source_location, out);
         out.push_str(r#","version":"#);
-        json_string(&self.version, out);
+        json_quote_into(&self.version, out);
         out.push_str(r#","yanked":"#);
         out.push_str(if self.yanked { "true" } else { "false" });
         out.push('}');
@@ -321,29 +321,10 @@ impl PackageVersion {
 
 fn push_strings(values: &[String], out: &mut String) {
     for value in values {
-        json_string(value, out);
+        json_quote_into(value, out);
         out.push(',');
     }
     if !values.is_empty() {
         out.pop();
     }
-}
-
-/// Renders a JSON string with the default escaping table.
-fn json_string(text: &str, out: &mut String) {
-    out.push('"');
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if (ch as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", ch as u32);
-            }
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
 }
