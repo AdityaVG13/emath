@@ -21,7 +21,7 @@ pub use deps::{
 };
 pub use edition::{ManifestEditionError, manifest_edition, parse_edition_field};
 pub use first_cutover::{
-    CutoverError, FIRST_CUTOVER_IDS, activate_first_cutover, rollback_feature,
+    CutoverError, FIRST_CUTOVER_CONFORMANCE_CASES, FIRST_CUTOVER_IDS, activate_first_cutover, rollback_feature,
 };
 pub use metrics::{BENCHMARK_RECEIPT_SCHEMA, BENCHMARK_RECEIPT_VERSION, MetricsCollector};
 pub use publication::{
@@ -46,7 +46,7 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 /// Persistent cargo target dir for generated crates (`$CWD/target/emath-cargo/<key>`).
-/// Incremental rustc survives across `emath run` / `--verify` because those
+/// Incremental rustc survives across `emath test` / `--verify` because those
 /// paths wipe their source staging dirs after each invocation.
 #[must_use]
 pub fn generated_crate_target_dir(key: &str) -> PathBuf {

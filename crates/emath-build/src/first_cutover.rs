@@ -8,6 +8,13 @@ use emath_core::{FeatureId, SemanticHash};
 
 use crate::{PublicationEvidence, PublicationMode, publish_feature};
 
+pub const FIRST_CUTOVER_CONFORMANCE_CASES: [&str; 4] = [
+    "AddExact",
+    "FloatIntoInt",
+    "IntOverflow",
+    "AddExactMutationControl",
+];
+
 pub const FIRST_CUTOVER_IDS: [&str; 18] = [
     "std.syntax.source",
     "std.syntax.declaration.generic",
