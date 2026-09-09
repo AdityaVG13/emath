@@ -1,5 +1,4 @@
-//! tuning tests migrated from the in-crate `#[cfg(test)]`
-//! module: every symbol they exercise is public crate surface.
+//! Joint-tuning winner, protection, and resume tests.
 
 use emath_genesis::joint_tuning::{
     CandidateStatus, HostExample, ImplVariant, ProtectedObjective, TUNING_VERSION, TuningBudget,
@@ -7,325 +6,125 @@ use emath_genesis::joint_tuning::{
     tuning_id,
 };
 use emath_genesis::synth::OpTable;
+use emath_test_harness::Probe;
 
 fn xor_table() -> OpTable {
-    OpTable {
-        carrier_size: 2,
-        cells: vec![0, 1, 1, 0],
-    }
+    OpTable { carrier_size: 2, cells: vec![0, 1, 1, 0] }
 }
 
 fn xor_objective() -> ProtectedObjective {
-    ProtectedObjective {
-        examples: vec![
-            HostExample {
-                inputs: vec![0, 0],
-                expected: 0,
-            },
-            HostExample {
-                inputs: vec![0, 1],
-                expected: 1,
-            },
-            HostExample {
-                inputs: vec![1, 0],
-                expected: 1,
-            },
-            HostExample {
-                inputs: vec![1, 1],
-                expected: 0,
-            },
-        ],
-    }
+    ProtectedObjective { examples: vec![HostExample { inputs: vec![0, 0], expected: 0 }, HostExample { inputs: vec![0, 1], expected: 1 }, HostExample { inputs: vec![1, 0], expected: 1 }, HostExample { inputs: vec![1, 1], expected: 0 }] }
 }
 
 fn xor_request() -> TuningRequest {
-    TuningRequest {
-        version: TUNING_VERSION,
-        carrier_size: 2,
-        objective: xor_objective(),
-        budget: TuningBudget::default(),
-        joint_cursor: 0,
-        incumbent: None,
-    }
+    TuningRequest { version: TUNING_VERSION, carrier_size: 2, objective: xor_objective(), budget: TuningBudget::default(), joint_cursor: 0, incumbent: None }
 }
 
 #[test]
-fn happy_path_xor_fold_left_is_the_deterministic_winner() {
-    assert_eq!(OpTable::from_index(2, 6).cells, xor_table().cells);
-    let receipt = tune(&xor_request()).expect("winner");
-    assert_eq!(receipt.dna, "2:0,1,1,0");
-    assert_eq!(receipt.impl_token, "fold-left");
-    assert_eq!(receipt.cost, 6);
-    assert_eq!(receipt.version, TUNING_VERSION);
-    assert_eq!(
-        receipt.winner_id,
-        candidate_id(&xor_table(), ImplVariant::FoldLeft)
-    );
-    assert!(receipt.qualified >= 1);
-    assert!(receipt.examined >= 19);
-}
-
-#[test]
-fn protection_beats_cost_seeded_negative_control() {
-    let receipt = tune(&xor_request()).expect("winner");
-    let cheap = OpTable::from_index(2, 0);
-    let cheap_id = candidate_id(&cheap, ImplVariant::FoldLeft);
-    let entry = receipt
-        .ledger
-        .iter()
-        .find(|row| row.candidate_id == cheap_id)
-        .expect("cheapest constant table must be in the ledger");
-    assert_eq!(entry.first_failed_example, 1);
-    let cheap_cost = 4 + 1;
-    assert!(
-        receipt.cost > cheap_cost,
-        "winner cost {} must beat cheap disqualified cost {cheap_cost}",
-        receipt.cost
-    );
-    assert_eq!(receipt.dna, "2:0,1,1,0");
-    assert_eq!(receipt.impl_token, "fold-left");
-}
-
-#[test]
-fn impl_variants_are_real_on_a_non_associative_table() {
-    let nand = OpTable {
-        carrier_size: 2,
-        cells: vec![1, 1, 1, 0],
-    };
-    let inputs = [0_u8, 0, 1];
-    let left = ImplVariant::FoldLeft
-        .evaluate(&nand, &inputs)
-        .expect("non-empty");
-    let right = ImplVariant::FoldRight
-        .evaluate(&nand, &inputs)
-        .expect("non-empty");
-    assert_ne!(left, right);
-    let objective = ProtectedObjective {
-        examples: vec![HostExample {
-            inputs: inputs.to_vec(),
-            expected: left,
-        }],
-    };
-    assert_eq!(
-        classify(&nand, ImplVariant::FoldLeft, &objective),
-        CandidateStatus::Qualified { cost: 4 }
-    );
-    assert_eq!(
-        classify(&nand, ImplVariant::FoldRight, &objective),
-        CandidateStatus::Disqualified {
-            first_failed_example: 0
-        }
-    );
-}
-
-#[test]
-fn semantic_dna_is_meaning_only() {
-    let table = xor_table();
-    let dna = semantic_dna(&table);
-    assert_eq!(dna, semantic_dna(&OpTable::from_index(2, 6)));
-    let left = candidate_id(&table, ImplVariant::FoldLeft);
-    let right = candidate_id(&table, ImplVariant::FoldRight);
-    let tree = candidate_id(&table, ImplVariant::PairwiseTree);
-    assert_eq!(semantic_dna(&table), "2:0,1,1,0");
-    assert_ne!(left, right);
-    assert_ne!(left, tree);
-    assert_ne!(right, tree);
-}
-
-#[test]
-fn budget_then_resume_matches_unsplit_winner() {
-    let unsplit = tune(&xor_request()).expect("unsplit");
-    let first = TuningRequest {
-        budget: TuningBudget { max_candidates: 8 },
-        ..xor_request()
-    };
-    let incumbent = match tune(&first) {
-        Err(TuningError::BudgetExceeded {
-            limit: 8,
-            incumbent,
-        }) => incumbent,
-        other => panic!("window of 8 must refuse with incumbent, got {other:?}"),
-    };
-    // No qualified candidate exists in the first 8 joint indices of
-    // the XOR objective, so the incumbent is empty here.
-    assert_eq!(incumbent, None);
-    let resumed = tune(&TuningRequest {
-        budget: TuningBudget::default(),
-        joint_cursor: 8,
-        incumbent,
-        ..xor_request()
-    })
-    .expect("resume");
-    assert_eq!(resumed.dna, unsplit.dna);
-    assert_eq!(resumed.impl_token, unsplit.impl_token);
-    assert_eq!(resumed.cost, unsplit.cost);
-    assert_eq!(resumed.winner_id, unsplit.winner_id);
-    assert_eq!(resumed.tuning_id, unsplit.tuning_id);
-}
-
-#[test]
-fn incumbent_preserves_a_cheap_winner_found_before_the_split() {
-    // Objective satisfied by the constant-0 table (joint index 0,
-    // complexity 1, cheapest possible). Splitting right after table 0
-    // must not lose it to a costlier later candidate.
-    let request = TuningRequest {
-        version: TUNING_VERSION,
-        carrier_size: 2,
-        objective: ProtectedObjective {
-            examples: vec![HostExample {
-                inputs: vec![0, 0],
-                expected: 0,
-            }],
-        },
-        budget: TuningBudget::default(),
-        joint_cursor: 0,
-        incumbent: None,
-    };
-    let unsplit = tune(&request).expect("unsplit");
-    assert_eq!(unsplit.dna, "2:0,0,0,0");
-    assert_eq!(unsplit.cost, 2);
-
-    let window = TuningRequest {
-        budget: TuningBudget { max_candidates: 3 },
-        ..request.clone()
-    };
-    let incumbent = match tune(&window) {
-        Err(TuningError::BudgetExceeded {
-            limit: 3,
-            incumbent,
-        }) => incumbent,
-        other => panic!("window of 3 must refuse with incumbent, got {other:?}"),
-    };
-    assert_eq!(incumbent, Some(0), "constant-0 fold-left is the incumbent");
-
-    let resumed = tune(&TuningRequest {
-        joint_cursor: 3,
-        incumbent,
-        ..request.clone()
-    })
-    .expect("resume with incumbent");
-    assert_eq!(resumed.dna, unsplit.dna);
-    assert_eq!(resumed.impl_token, unsplit.impl_token);
-    assert_eq!(resumed.cost, unsplit.cost);
-    assert_eq!(resumed.winner_id, unsplit.winner_id);
-
-    // Dropping the incumbent silently loses the pre-split winner:
-    // the naive resume picks a strictly costlier later candidate.
-    let naive = tune(&TuningRequest {
-        joint_cursor: 3,
-        incumbent: None,
-        ..request.clone()
-    })
-    .expect("naive resume");
-    assert!(
-        naive.cost > unsplit.cost,
-        "naive resume must miss the cheap pre-split winner ({} vs {})",
-        naive.cost,
-        unsplit.cost
-    );
-
-    // Adversarial incumbents are re-verified, never trusted.
-    assert_eq!(
-        tune(&TuningRequest {
-            joint_cursor: 3,
-            incumbent: Some(5),
-            ..request.clone()
-        }),
-        Err(TuningError::InvalidRequest {
-            reason: "incumbent-out-of-window"
-        })
-    );
-    let disqualified_incumbent = TuningRequest {
-        objective: ProtectedObjective {
-            examples: vec![HostExample {
-                inputs: vec![0, 1],
-                expected: 1,
-            }],
-        },
-        joint_cursor: 3,
-        incumbent: Some(0),
-        ..request
-    };
-    assert_eq!(
-        tune(&disqualified_incumbent),
-        Err(TuningError::InvalidRequest {
-            reason: "incumbent-not-qualified"
-        })
-    );
-}
-
-#[test]
-fn malformed_requests_refuse() {
-    let base = xor_request();
-    assert_eq!(
-        tune(&TuningRequest {
-            carrier_size: 0,
-            ..base.clone()
-        }),
-        Err(TuningError::InvalidRequest {
-            reason: "empty-carrier"
-        })
-    );
-    assert_eq!(
-        tune(&TuningRequest {
-            objective: ProtectedObjective {
-                examples: vec![HostExample {
-                    inputs: vec![0, 2],
-                    expected: 0,
-                }],
-            },
-            ..base.clone()
-        }),
-        Err(TuningError::InvalidRequest {
-            reason: "example-out-of-range"
-        })
-    );
-    assert_eq!(
-        tune(&TuningRequest {
-            objective: ProtectedObjective {
-                examples: Vec::new(),
-            },
-            ..base.clone()
-        }),
-        Err(TuningError::InvalidRequest {
-            reason: "no-protected-objective"
-        })
-    );
-    assert_eq!(check_version(TUNING_VERSION), Ok(()));
-    assert_eq!(
-        check_version(TUNING_VERSION + 1),
-        Err(TuningError::UnknownVersion {
-            version: TUNING_VERSION + 1
-        })
-    );
-    assert_eq!(
-        tune(&TuningRequest {
-            version: TUNING_VERSION + 1,
-            ..base
-        }),
-        Err(TuningError::UnknownVersion {
-            version: TUNING_VERSION + 1
-        })
-    );
-}
-
-#[test]
-fn receipts_are_byte_identical_across_runs() {
-    let request = xor_request();
-    let first = tune(&request).expect("first").to_json();
-    let second = tune(&request).expect("second").to_json();
-    assert_eq!(first, second);
-    assert!(first.starts_with('{'));
-    assert!(first.contains("\"schema\":\"emath.joint-tuning\""));
-    assert_eq!(tuning_id(&request), tuning_id(&request));
-    let shifted_budget = TuningRequest {
-        budget: TuningBudget { max_candidates: 64 },
-        ..request.clone()
-    };
-    assert_eq!(tuning_id(&request), tuning_id(&shifted_budget));
-    let shifted_cursor = TuningRequest {
-        joint_cursor: 1,
-        ..request.clone()
-    };
-    assert_eq!(tuning_id(&request), tuning_id(&shifted_cursor));
+fn joint_tuning() {
+    let mut p = Probe::new("protection beats cost and resume preserves the winner");
+    p.case("xor-winner", |p| {
+        p.eq("index", OpTable::from_index(2, 6).cells, xor_table().cells);
+        let receipt = tune(&xor_request()).expect("winner");
+        p.eq("dna", receipt.dna, "2:0,1,1,0".to_string());
+        p.eq("impl", receipt.impl_token, "fold-left".to_string());
+        p.eq("cost", receipt.cost, 6);
+        p.eq("version", receipt.version, TUNING_VERSION);
+        p.eq("winner", receipt.winner_id, candidate_id(&xor_table(), ImplVariant::FoldLeft));
+        p.demand("qualified", receipt.qualified >= 1, "at least one qualifier");
+        p.demand("examined", receipt.examined >= 19, "search examines the space");
+    });
+    p.case("protection-beats-cost", |p| {
+        let receipt = tune(&xor_request()).expect("winner");
+        let cheap = OpTable::from_index(2, 0);
+        let entry = receipt.ledger.iter().find(|row| row.candidate_id == candidate_id(&cheap, ImplVariant::FoldLeft)).expect("cheapest table in ledger");
+        p.eq("failed-at", entry.first_failed_example, 1);
+        p.demand("costlier", receipt.cost > 4 + 1, format!("winner cost {} beats cheap disqualified cost", receipt.cost));
+        p.eq("dna", receipt.dna, "2:0,1,1,0".to_string());
+        p.eq("impl", receipt.impl_token, "fold-left".to_string());
+    });
+    p.case("impl-variants-real", |p| {
+        let nand = OpTable { carrier_size: 2, cells: vec![1, 1, 1, 0] };
+        let inputs = [0_u8, 0, 1];
+        let left = ImplVariant::FoldLeft.evaluate(&nand, &inputs).expect("non-empty");
+        let right = ImplVariant::FoldRight.evaluate(&nand, &inputs).expect("non-empty");
+        p.ne("differ", left, right);
+        let objective = ProtectedObjective { examples: vec![HostExample { inputs: inputs.to_vec(), expected: left }] };
+        p.eq("left-qualifies", classify(&nand, ImplVariant::FoldLeft, &objective), CandidateStatus::Qualified { cost: 4 });
+        p.eq("right-refused", classify(&nand, ImplVariant::FoldRight, &objective), CandidateStatus::Disqualified { first_failed_example: 0 });
+    });
+    p.case("dna-meaning-only", |p| {
+        let table = xor_table();
+        p.eq("dna", semantic_dna(&table), semantic_dna(&OpTable::from_index(2, 6)));
+        p.eq("dna", semantic_dna(&table), "2:0,1,1,0".to_string());
+        let left = candidate_id(&table, ImplVariant::FoldLeft);
+        let right = candidate_id(&table, ImplVariant::FoldRight);
+        let tree = candidate_id(&table, ImplVariant::PairwiseTree);
+        p.ne("left-right", left, right);
+        p.ne("left-tree", left, tree);
+        p.ne("right-tree", right, tree);
+    });
+    p.case("resume-matches", |p| {
+        let unsplit = tune(&xor_request()).expect("unsplit");
+        let incumbent = match tune(&TuningRequest { budget: TuningBudget { max_candidates: 8 }, ..xor_request() }) {
+            Err(TuningError::BudgetExceeded { limit: 8, incumbent }) => incumbent,
+            other => {
+                p.fail("window", format!("window of 8 must refuse with incumbent, got {other:?}"));
+                return;
+            }
+        };
+        p.eq("no-early-winner", incumbent, None);
+        let resumed = tune(&TuningRequest { budget: TuningBudget::default(), joint_cursor: 8, incumbent, ..xor_request() }).expect("resume");
+        p.eq("dna", resumed.dna, unsplit.dna);
+        p.eq("impl", resumed.impl_token, unsplit.impl_token);
+        p.eq("cost", resumed.cost, unsplit.cost);
+        p.eq("winner", resumed.winner_id, unsplit.winner_id);
+        p.eq("id", resumed.tuning_id, unsplit.tuning_id);
+    });
+    p.case("incumbent-preserved", |p| {
+        let request = TuningRequest { version: TUNING_VERSION, carrier_size: 2, objective: ProtectedObjective { examples: vec![HostExample { inputs: vec![0, 0], expected: 0 }] }, budget: TuningBudget::default(), joint_cursor: 0, incumbent: None };
+        let unsplit = tune(&request).expect("unsplit");
+        p.eq("dna", unsplit.dna.clone(), "2:0,0,0,0".to_string());
+        p.eq("cost", unsplit.cost, 2);
+        let incumbent = match tune(&TuningRequest { budget: TuningBudget { max_candidates: 3 }, ..request.clone() }) {
+            Err(TuningError::BudgetExceeded { limit: 3, incumbent }) => incumbent,
+            other => {
+                p.fail("window", format!("window of 3 must refuse with incumbent, got {other:?}"));
+                return;
+            }
+        };
+        p.eq("incumbent", incumbent, Some(0));
+        let resumed = tune(&TuningRequest { joint_cursor: 3, incumbent, ..request.clone() }).expect("resume with incumbent");
+        p.eq("dna", resumed.dna, unsplit.dna);
+        p.eq("impl", resumed.impl_token, unsplit.impl_token);
+        p.eq("cost", resumed.cost, unsplit.cost);
+        p.eq("winner", resumed.winner_id, unsplit.winner_id);
+        let naive = tune(&TuningRequest { joint_cursor: 3, incumbent: None, ..request.clone() }).expect("naive resume");
+        p.demand("naive-costlier", naive.cost > unsplit.cost, "naive resume misses the cheap winner");
+        p.eq("adversarial", tune(&TuningRequest { joint_cursor: 3, incumbent: Some(5), ..request.clone() }), Err(TuningError::InvalidRequest { reason: "incumbent-out-of-window" }));
+        let disqualified = TuningRequest { objective: ProtectedObjective { examples: vec![HostExample { inputs: vec![0, 1], expected: 1 }] }, joint_cursor: 3, incumbent: Some(0), ..request };
+        p.eq("reverified", tune(&disqualified), Err(TuningError::InvalidRequest { reason: "incumbent-not-qualified" }));
+    });
+    p.case("malformed-refused", |p| {
+        let base = xor_request();
+        p.eq("empty", tune(&TuningRequest { carrier_size: 0, ..base.clone() }), Err(TuningError::InvalidRequest { reason: "empty-carrier" }));
+        p.eq("range", tune(&TuningRequest { objective: ProtectedObjective { examples: vec![HostExample { inputs: vec![0, 2], expected: 0 }] }, ..base.clone() }), Err(TuningError::InvalidRequest { reason: "example-out-of-range" }));
+        p.eq("no-objective", tune(&TuningRequest { objective: ProtectedObjective { examples: Vec::new() }, ..base.clone() }), Err(TuningError::InvalidRequest { reason: "no-protected-objective" }));
+        p.eq("version-ok", check_version(TUNING_VERSION), Ok(()));
+        p.eq("version-unknown", check_version(TUNING_VERSION + 1), Err(TuningError::UnknownVersion { version: TUNING_VERSION + 1 }));
+        p.eq("request-version", tune(&TuningRequest { version: TUNING_VERSION + 1, ..base }), Err(TuningError::UnknownVersion { version: TUNING_VERSION + 1 }));
+    });
+    p.case("receipts-deterministic", |p| {
+        let request = xor_request();
+        let first = tune(&request).expect("first").to_json();
+        p.eq("stable", first.clone(), tune(&request).expect("second").to_json());
+        p.demand("brace", first.starts_with('{'), "receipt is JSON");
+        p.contains("schema", &first, "\"schema\":\"emath.joint-tuning\"");
+        p.eq("id", tuning_id(&request), tuning_id(&request));
+        let shifted_budget = TuningRequest { budget: TuningBudget { max_candidates: 64 }, ..request.clone() };
+        p.eq("budget-blind", tuning_id(&request), tuning_id(&shifted_budget));
+        let shifted_cursor = TuningRequest { joint_cursor: 1, ..request.clone() };
+        p.eq("cursor-blind", tuning_id(&request), tuning_id(&shifted_cursor));
+    });
+    p.finish();
 }
